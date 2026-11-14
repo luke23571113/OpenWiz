@@ -4,6 +4,8 @@
 
 ## In one paragraph
 
+- **Fleet check cost (#2788, 2026-11-14):** R1 restores snapshot priming after changed/expired reads. All nine paired synthetic ticks keep GraphQL commands, modeled requests and points at or below main's, including zero on both immediate recovery ticks, with identical due output. Snapshot packing and tag comparison reduce local process work; merged-PR CI remains excluded while metadata and open-PR CI stay checked. All 14 load proofs and the unchanged 600-second Workload guard pass. See the [R1 proof](tools/fleet-load/evidence/2788-r1.md). Live HTTP costs and latency remain unverified.
+
 - **EB5 contract preparation (#2176):** versioned journey outcomes, frozen experiment/CF4 bindings, paired replay and numeric live-protocol shapes have synthetic validation proofs. The existing benchmark CI invokes the owning contract proofs. Known builder-start provenance is retained across journey refreshes. Execution remains unavailable. Revision 11 approval preserves separate research, paid-eval, replay, live, activation and publication gates; no speedup or safety result is claimed.
 
 - **OpenWiz 0.0.1 through 0.0.5 are published** to the [public OpenWiz repository](https://github.com/jparker2006/OpenWiz). The 0.0.3–0.0.5 export and public docs update were published on November 5 ([release record #276](https://github.com/jparker2006/ClosedWiz/issues/276)); build, live acceptance and publication remain separate gates.

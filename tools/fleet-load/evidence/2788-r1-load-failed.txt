@@ -1,0 +1,53 @@
+......E..
+======================================================================
+ERROR: setUpClass (__main__.LoadProof)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/ClosedWiz/tools/fleet-load/load.py", line 479, in run
+    return Workload(root, fleet or SCRIPTS / 'fleet.sh', scaled=scaled).run()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/code/ClosedWiz/tools/fleet-load/load.py", line 470, in run
+    self.tick(spec, low=tick == 2)
+  File "/code/ClosedWiz/tools/fleet-load/load.py", line 393, in tick
+    result = subprocess.run(['sh', self.fleet, 'spec', str(spec)], env=self.env,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 1207, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 2060, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+  File "/usr/lib/python3.11/subprocess.py", line 1251, in _check_timeout
+    raise TimeoutExpired(
+subprocess.TimeoutExpired: Command '['sh', '/code/ClosedWiz/tools/fleet-load/../../skills/launch-fleet/scripts/fleet.sh', 'spec', '300']' timed out after 3.6312120761722326 seconds
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/code/ClosedWiz/tools/fleet-load/test.py", line 34, in setUpClass
+    cls.report = json.loads(cls.trace_path.read_text()) if cls.trace_path else load.run(scaled=True)
+                                                                               ^^^^^^^^^^^^^^^^^^^^^
+  File "/code/ClosedWiz/tools/fleet-load/load.py", line 478, in run
+    with tempfile.TemporaryDirectory(prefix='fa3-') as root:
+  File "/usr/lib/python3.11/tempfile.py", line 1052, in __exit__
+    self.cleanup()
+  File "/usr/lib/python3.11/tempfile.py", line 1056, in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+  File "/usr/lib/python3.11/tempfile.py", line 1038, in _rmtree
+    _rmtree(name, onerror=onerror)
+  File "/usr/lib/python3.11/shutil.py", line 732, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/usr/lib/python3.11/shutil.py", line 660, in _rmtree_safe_fd
+    _rmtree_safe_fd(dirfd, fullname, onerror)
+  File "/usr/lib/python3.11/shutil.py", line 666, in _rmtree_safe_fd
+    onerror(os.rmdir, fullname, sys.exc_info())
+  File "/usr/lib/python3.11/shutil.py", line 664, in _rmtree_safe_fd
+    os.rmdir(entry.name, dir_fd=topfd)
+OSError: [Errno 39] Directory not empty: 'usr'
+
+----------------------------------------------------------------------
+Ran 8 tests in 638.894s
+
+FAILED (errors=1)

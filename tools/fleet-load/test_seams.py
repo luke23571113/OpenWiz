@@ -31,6 +31,33 @@ def module(name, path):
     return value
 
 
+class FixtureBytecodeProof(unittest.TestCase):
+    def test_equal_size_equal_timestamp_source_change_invalidates_the_cache(self):
+        load = module('bytecode_load', HERE / 'load.py')
+        with tempfile.TemporaryDirectory(prefix='fixture-bytecode-') as directory:
+            root = Path(directory)
+            source = root / 'synthetic.py'
+            alias = root / 'alias.py'
+            alias.symlink_to(source)
+            for module_path in (source, alias):
+                with self.subTest(source=module_path.name):
+                    source.write_text('answer = "before"\n')
+                    cache = root / ('cache-' + module_path.stem)
+                    load.prepare_bytecode(cache, [module_path])
+                    program = ('import importlib.util,sys; '
+                               's=importlib.util.spec_from_file_location("synthetic",sys.argv[1]); '
+                               'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(m.answer)')
+                    def read():
+                        return subprocess.check_output([sys.executable, '-I', '-B', '-X', 'pycache_prefix=' + str(cache),
+                                                        '-c', program, str(module_path)], text=True).strip()
+                    self.assertEqual(read(), 'before')
+                    timestamp = source.stat().st_mtime_ns
+                    source.write_text('answer = "after!"\n')
+                    os.utime(source, ns=(timestamp, timestamp))
+                    self.assertEqual(read(), 'after!', 'recording cache hid a changed fixture source')
+
+
+
 class MeasurementIdentityProof(unittest.TestCase):
     def test_changed_response_or_revision_model_cannot_compare_silently(self):
         with tempfile.TemporaryDirectory(prefix='scale-model-') as directory:
@@ -138,12 +165,55 @@ class BackOffGate(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.gate = staticmethod(module('gate_load', HERE / 'load.py').backoff_gate)
+        reader = module('gate_load', HERE / 'load.py')
+        cls.gate = staticmethod(reader.backoff_gate)
+        cls.saved_probe = staticmethod(reader.saved_ticket_probe)
 
     def test_cold_cache_allows_the_one_graphql_read_only(self):
         self.assertTrue(self.gate([GRAPHQL], None))
         # The review's candidate: an unconditional repository GET before the first GraphQL read.
         self.assertFalse(self.gate([rest(REPO), GRAPHQL], None))
+
+    def test_changed_primer_requires_a_known_baseline_and_current_clock(self):
+        endpoint = REPO + '/issues/5/sub_issues?per_page=100'
+        probe = dict(endpoint=endpoint, etags=['"a"'])
+        calls = [dict(rest(endpoint, '"a"'), http_status=200, status=0, etag='"b"'), GRAPHQL]
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            for replayable, tags, at, now, allowed in [
+                    (False, ['"a"'], 0, 60, True),
+                    (False, ['"-"'], 0, 60, False),
+                    (True, ['"a"'], 0, 60, True),
+                    (False, ['"a"'], 0, 1800, False),
+                    (False, ['"a"'], 60, 0, False)]:
+                with self.subTest(replayable=replayable, tags=tags, at=at, now=now):
+                    body = dict(repo='synthetic-owner/synthetic-repo', replayable=replayable,
+                                read_at=at, probes=[dict(probe, etags=tags)])
+                    (cache / 'unchanged-spec-5.json').write_text(json.dumps(dict(body=json.dumps(body))))
+                    cut = self.saved_probe(cache, 5, now)
+                    self.assertEqual(self.gate(calls, [REPO, endpoint], cut), allowed)
+
+    def test_changed_ticket_list_requires_observed_change_and_complete_pages(self):
+        endpoint = REPO + '/issues/5/sub_issues?per_page=100'
+        page2 = 'repositories/1/issues/5/sub_issues?per_page=100&page=2'
+        cut = dict(endpoint=endpoint, etags=['"a"', '"b"'])
+        saved = [REPO, endpoint]
+        probes = [dict(rest(endpoint, '"a"', next=page2), http_status=304, status=1, etag='"a"'),
+                  dict(rest(page2, '"b"'), http_status=200, status=0, etag='"c"')]
+        self.assertTrue(self.gate(probes + [GRAPHQL], saved, cut))
+        unchanged = copy.deepcopy(probes)
+        unchanged[1].update(http_status=304, status=1, etag='"b"')
+        self.assertFalse(self.gate(unchanged + [GRAPHQL], saved, cut))
+        self.assertFalse(self.gate(probes[:1] + [GRAPHQL], saved, cut))
+        self.assertFalse(self.gate(probes + [GRAPHQL], saved))
+        self.assertFalse(self.gate(probes + [rest(REPO + '/pulls/9'), GRAPHQL], saved, cut))
+        for field in ['etag', 'http_status', 'status']:
+            missing = copy.deepcopy(probes)
+            del missing[1][field]
+            self.assertFalse(self.gate(missing + [GRAPHQL], saved, cut))
+        # Fresh pagination metadata matters even when every page says 304.
+        longer = dict(cut, etags=['"a"'])
+        self.assertTrue(self.gate(unchanged + [GRAPHQL], saved, longer))
 
     def test_warm_cache_allows_exactly_the_saved_probes_once(self):
         saved = [REPO, REPO + '/issues/5/timeline?per_page=100']
