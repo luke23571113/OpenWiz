@@ -1,0 +1,1385 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenWiz setup to first merge v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/identity_selection"
+    },
+    {
+      "$ref": "#/$defs/secret_capability"
+    },
+    {
+      "$ref": "#/$defs/init_request"
+    },
+    {
+      "$ref": "#/$defs/init_result"
+    },
+    {
+      "$ref": "#/$defs/brain_reference"
+    },
+    {
+      "$ref": "#/$defs/first_merge_receipt"
+    }
+  ],
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]{1,100}$"
+    },
+    "account": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]{1,39}$"
+    },
+    "hex32": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "hex40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z_]{0,39}$"
+    },
+    "state": {
+      "enum": [
+        "verified",
+        "missing",
+        "refused",
+        "unknown"
+      ]
+    },
+    "proof_class": {
+      "enum": [
+        "fixture",
+        "recording",
+        "live"
+      ]
+    },
+    "synthetic_assumptions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/text"
+      },
+      "maxItems": 32
+    },
+    "private_record": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^https://github\\.com/jparker2006/ClosedWiz/(issues|pull)/[1-9][0-9]*#issuecomment-[1-9][0-9]*$"
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "basis",
+        "revision",
+        "at_ms",
+        "detail"
+      ],
+      "properties": {
+        "basis": {
+          "$ref": "#/$defs/code"
+        },
+        "revision": {
+          "$ref": "#/$defs/count"
+        },
+        "at_ms": {
+          "$ref": "#/$defs/ms"
+        },
+        "detail": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "fact_count": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "known"
+          ],
+          "properties": {
+            "known": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unknown"
+          ],
+          "properties": {
+            "unknown": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      ]
+    },
+    "fact_ms": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "known"
+          ],
+          "properties": {
+            "known": {
+              "$ref": "#/$defs/ms"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unknown"
+          ],
+          "properties": {
+            "unknown": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      ]
+    },
+    "fact_candidate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "known"
+          ],
+          "properties": {
+            "known": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "source",
+                "target",
+                "manifest_sha256"
+              ],
+              "properties": {
+                "version": {
+                  "$ref": "#/$defs/text"
+                },
+                "source": {
+                  "$ref": "#/$defs/text"
+                },
+                "target": {
+                  "$ref": "#/$defs/text"
+                },
+                "manifest_sha256": {
+                  "$ref": "#/$defs/hex64"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unknown"
+          ],
+          "properties": {
+            "unknown": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      ]
+    },
+    "fact_repository": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "known"
+          ],
+          "properties": {
+            "known": {
+              "$ref": "#/$defs/repository"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unknown"
+          ],
+          "properties": {
+            "unknown": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      ]
+    },
+    "fact_visibility": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "known"
+          ],
+          "properties": {
+            "known": {
+              "enum": [
+                "private",
+                "public"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unknown"
+          ],
+          "properties": {
+            "unknown": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      ]
+    },
+    "pair_role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "name"
+      ],
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/account"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,100}$"
+        }
+      }
+    },
+    "brain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "location",
+        "code_repository",
+        "code_visibility",
+        "brain_repository",
+        "brain_visibility",
+        "visibility_basis",
+        "folder",
+        "setting",
+        "decision_repositories"
+      ],
+      "properties": {
+        "location": {
+          "enum": [
+            "in_repository",
+            "companion"
+          ]
+        },
+        "code_repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "code_visibility": {
+          "enum": [
+            "private",
+            "public"
+          ]
+        },
+        "brain_repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "brain_visibility": {
+          "$ref": "#/$defs/fact_visibility"
+        },
+        "visibility_basis": {
+          "$ref": "#/$defs/code"
+        },
+        "folder": {
+          "const": ".openwiz/brain"
+        },
+        "setting": {
+          "const": "brain_location"
+        },
+        "decision_repositories": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "public",
+                "private"
+              ],
+              "properties": {
+                "public": {
+                  "$ref": "#/$defs/pair_role"
+                },
+                "private": {
+                  "$ref": "#/$defs/pair_role"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "personal_login": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "login",
+        "state",
+        "evidence"
+      ],
+      "properties": {
+        "login": {
+          "$ref": "#/$defs/account"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "maxItems": 16
+        }
+      }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "visibility",
+        "visibility_setting",
+        "owner_account",
+        "installation",
+        "state",
+        "evidence"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "user",
+            "factory"
+          ]
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "public"
+          ]
+        },
+        "visibility_setting": {
+          "enum": [
+            "user_default",
+            "explicit_factory"
+          ]
+        },
+        "owner_account": {
+          "$ref": "#/$defs/account"
+        },
+        "installation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "account",
+                "repository_selection",
+                "repositories"
+              ],
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/account"
+                },
+                "repository_selection": {
+                  "enum": [
+                    "selected",
+                    "all"
+                  ]
+                },
+                "repositories": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/repository"
+                  },
+                  "maxItems": 100
+                }
+              }
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "maxItems": 16
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "actor",
+        "counted"
+      ],
+      "properties": {
+        "step": {
+          "enum": [
+            "agent_save",
+            "open_app_settings",
+            "generate_key",
+            "download_key",
+            "encode_key",
+            "paste_protected_prompt",
+            "delete_download"
+          ]
+        },
+        "actor": {
+          "enum": [
+            "owner",
+            "agent"
+          ]
+        },
+        "counted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "repository",
+        "phase",
+        "effect_count",
+        "attempts",
+        "reconciliation"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "create_companion",
+            "link_companion",
+            "open_pull_request",
+            "create_label"
+          ]
+        },
+        "repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "phase": {
+          "enum": [
+            "proposed",
+            "applied",
+            "refused",
+            "uncertain"
+          ]
+        },
+        "effect_count": {
+          "$ref": "#/$defs/count"
+        },
+        "attempts": {
+          "$ref": "#/$defs/count"
+        },
+        "reconciliation": {
+          "enum": [
+            "none",
+            "provider_read_back"
+          ]
+        }
+      }
+    },
+    "pull_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "number",
+        "visible",
+        "state"
+      ],
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "merged",
+            "closed"
+          ]
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at_ms",
+        "kind",
+        "actor",
+        "stage",
+        "detail"
+      ],
+      "properties": {
+        "at_ms": {
+          "$ref": "#/$defs/ms"
+        },
+        "kind": {
+          "enum": [
+            "tap",
+            "sign_in",
+            "permission",
+            "app_manifest",
+            "key_step",
+            "protected_paste",
+            "typed_choice",
+            "confirmation",
+            "approval",
+            "spending_approval"
+          ]
+        },
+        "actor": {
+          "enum": [
+            "owner",
+            "agent_for_owner"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/code"
+        },
+        "detail": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "wait": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "started_at_ms",
+        "ended_at_ms",
+        "detail"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "install",
+            "account",
+            "approval",
+            "queue",
+            "review",
+            "ci",
+            "other"
+          ]
+        },
+        "started_at_ms": {
+          "$ref": "#/$defs/ms"
+        },
+        "ended_at_ms": {
+          "$ref": "#/$defs/ms"
+        },
+        "detail": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "help": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at_ms",
+        "source",
+        "detail"
+      ],
+      "properties": {
+        "at_ms": {
+          "$ref": "#/$defs/ms"
+        },
+        "source": {
+          "enum": [
+            "public_docs",
+            "product_message",
+            "owner",
+            "operator",
+            "private_instruction",
+            "prepared_plan"
+          ]
+        },
+        "detail": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "identity_selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "proof_class",
+        "synthetic_assumptions",
+        "private_record",
+        "repository",
+        "check_revision",
+        "selected",
+        "selection_basis",
+        "app_choice",
+        "personal_login",
+        "app",
+        "ready"
+      ],
+      "properties": {
+        "schema": {
+          "const": "openwiz.setup-onboard.v1"
+        },
+        "kind": {
+          "const": "identity_selection"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "synthetic_assumptions": {
+          "$ref": "#/$defs/synthetic_assumptions"
+        },
+        "private_record": {
+          "$ref": "#/$defs/private_record"
+        },
+        "repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "check_revision": {
+          "$ref": "#/$defs/count"
+        },
+        "selected": {
+          "enum": [
+            "app",
+            "personal_login",
+            "unselected"
+          ]
+        },
+        "selection_basis": {
+          "enum": [
+            "owner_choice",
+            "saved_choice",
+            "fallback",
+            "none"
+          ]
+        },
+        "app_choice": {
+          "enum": [
+            "create",
+            "reuse",
+            "skip",
+            "undecided"
+          ]
+        },
+        "personal_login": {
+          "$ref": "#/$defs/personal_login"
+        },
+        "app": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/app"
+            }
+          ]
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      }
+    },
+    "secret_capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "proof_class",
+        "synthetic_assumptions",
+        "private_record",
+        "secret",
+        "app_id_variable",
+        "upstream",
+        "route",
+        "converted_key",
+        "steps",
+        "intermediate_key_file",
+        "delivery",
+        "app_registrations",
+        "outcome"
+      ],
+      "properties": {
+        "schema": {
+          "const": "openwiz.setup-onboard.v1"
+        },
+        "kind": {
+          "const": "secret_capability"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "synthetic_assumptions": {
+          "$ref": "#/$defs/synthetic_assumptions"
+        },
+        "private_record": {
+          "$ref": "#/$defs/private_record"
+        },
+        "secret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "holds"
+          ],
+          "properties": {
+            "name": {
+              "const": "OPENWIZ_GITHUB_APP_KEY"
+            },
+            "holds": {
+              "const": [
+                "private_key"
+              ]
+            }
+          }
+        },
+        "app_id_variable": {
+          "const": "OPENWIZ_GITHUB_APP_ID"
+        },
+        "upstream": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "state",
+            "evidence"
+          ],
+          "properties": {
+            "name": {
+              "const": "cloudroom_agent_save_secret"
+            },
+            "state": {
+              "enum": [
+                "observed_supported",
+                "not_shipped",
+                "unknown"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/evidence"
+              },
+              "maxItems": 16
+            }
+          }
+        },
+        "route": {
+          "enum": [
+            "agent_save",
+            "protected_paste"
+          ]
+        },
+        "converted_key": {
+          "enum": [
+            "stored_by_agent_save",
+            "discarded"
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          },
+          "maxItems": 16
+        },
+        "intermediate_key_file": {
+          "enum": [
+            "none",
+            "owner_download_deleted",
+            "owner_download_retained",
+            "unknown"
+          ]
+        },
+        "delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "evidence"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "verified",
+                "missing",
+                "refused",
+                "unknown",
+                "uncertain"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/evidence"
+              },
+              "maxItems": 16
+            }
+          }
+        },
+        "app_registrations": {
+          "$ref": "#/$defs/count"
+        },
+        "outcome": {
+          "enum": [
+            "stored",
+            "failed",
+            "uncertain"
+          ]
+        }
+      }
+    },
+    "init_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "proof_class",
+        "synthetic_assumptions",
+        "private_record",
+        "repository",
+        "mode",
+        "operation_id",
+        "fingerprint",
+        "authorization"
+      ],
+      "properties": {
+        "schema": {
+          "const": "openwiz.setup-onboard.v1"
+        },
+        "kind": {
+          "const": "init_request"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "synthetic_assumptions": {
+          "$ref": "#/$defs/synthetic_assumptions"
+        },
+        "private_record": {
+          "$ref": "#/$defs/private_record"
+        },
+        "repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "mode": {
+          "enum": [
+            "preview",
+            "apply"
+          ]
+        },
+        "operation_id": {
+          "$ref": "#/$defs/hex32"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "authorization": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "operation_id",
+                "fingerprint"
+              ],
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/hex32"
+                },
+                "fingerprint": {
+                  "$ref": "#/$defs/hex64"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "init_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "proof_class",
+        "synthetic_assumptions",
+        "private_record",
+        "operation_id",
+        "fingerprint",
+        "repository",
+        "outcome",
+        "reason_code",
+        "brain",
+        "private_content_written",
+        "placement_question",
+        "report_line",
+        "effects",
+        "pull_requests"
+      ],
+      "properties": {
+        "schema": {
+          "const": "openwiz.setup-onboard.v1"
+        },
+        "kind": {
+          "const": "init_result"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "synthetic_assumptions": {
+          "$ref": "#/$defs/synthetic_assumptions"
+        },
+        "private_record": {
+          "$ref": "#/$defs/private_record"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/hex32"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "repository": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "full_name",
+            "visibility",
+            "basis"
+          ],
+          "properties": {
+            "full_name": {
+              "$ref": "#/$defs/repository"
+            },
+            "visibility": {
+              "$ref": "#/$defs/fact_visibility"
+            },
+            "basis": {
+              "$ref": "#/$defs/code"
+            }
+          }
+        },
+        "outcome": {
+          "enum": [
+            "proposed",
+            "applied",
+            "refused",
+            "uncertain"
+          ]
+        },
+        "reason_code": {
+          "$ref": "#/$defs/code"
+        },
+        "brain": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/brain"
+            }
+          ]
+        },
+        "private_content_written": {
+          "enum": [
+            "none",
+            "brain_repository",
+            "code_repository"
+          ]
+        },
+        "placement_question": {
+          "const": false
+        },
+        "report_line": {
+          "$ref": "#/$defs/text"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "maxItems": 16
+        },
+        "pull_requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pull_request"
+          },
+          "maxItems": 16
+        }
+      }
+    },
+    "brain_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "proof_class",
+        "synthetic_assumptions",
+        "private_record",
+        "brain"
+      ],
+      "properties": {
+        "schema": {
+          "const": "openwiz.setup-onboard.v1"
+        },
+        "kind": {
+          "const": "brain_reference"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "synthetic_assumptions": {
+          "$ref": "#/$defs/synthetic_assumptions"
+        },
+        "private_record": {
+          "$ref": "#/$defs/private_record"
+        },
+        "brain": {
+          "$ref": "#/$defs/brain"
+        }
+      }
+    },
+    "first_merge_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "proof_class",
+        "synthetic_assumptions",
+        "private_record",
+        "verdict",
+        "binding",
+        "instruction",
+        "idea",
+        "clock",
+        "actions",
+        "identity",
+        "app_registration",
+        "secret_route",
+        "secret_route_observed",
+        "decisions",
+        "waits",
+        "help",
+        "freshness"
+      ],
+      "properties": {
+        "schema": {
+          "const": "openwiz.setup-onboard.v1"
+        },
+        "kind": {
+          "const": "first_merge_receipt"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "synthetic_assumptions": {
+          "$ref": "#/$defs/synthetic_assumptions"
+        },
+        "private_record": {
+          "$ref": "#/$defs/private_record"
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail",
+            "unverified"
+          ]
+        },
+        "binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "first_hour_result_sha256",
+            "candidate",
+            "repository",
+            "merge"
+          ],
+          "properties": {
+            "first_hour_result_sha256": {
+              "$ref": "#/$defs/hex64"
+            },
+            "candidate": {
+              "$ref": "#/$defs/fact_candidate"
+            },
+            "repository": {
+              "$ref": "#/$defs/fact_repository"
+            },
+            "merge": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "pull_request",
+                "head",
+                "merge_commit",
+                "merged_at_ms",
+                "basis",
+                "change",
+                "reviewed_head",
+                "ci_green_head"
+              ],
+              "properties": {
+                "pull_request": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "head": {
+                  "$ref": "#/$defs/hex40"
+                },
+                "merge_commit": {
+                  "$ref": "#/$defs/hex40"
+                },
+                "merged_at_ms": {
+                  "$ref": "#/$defs/ms"
+                },
+                "basis": {
+                  "$ref": "#/$defs/code"
+                },
+                "change": {
+                  "enum": [
+                    "implementation",
+                    "init_only"
+                  ]
+                },
+                "reviewed_head": {
+                  "$ref": "#/$defs/hex40"
+                },
+                "ci_green_head": {
+                  "$ref": "#/$defs/hex40"
+                }
+              }
+            }
+          }
+        },
+        "instruction": {
+          "$ref": "#/$defs/text"
+        },
+        "idea": {
+          "$ref": "#/$defs/text"
+        },
+        "clock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "started_at_ms",
+            "ended_at_ms",
+            "limit_ms",
+            "rule"
+          ],
+          "properties": {
+            "started_at_ms": {
+              "$ref": "#/$defs/fact_ms"
+            },
+            "ended_at_ms": {
+              "$ref": "#/$defs/fact_ms"
+            },
+            "limit_ms": {
+              "const": 1800000
+            },
+            "rule": {
+              "const": "strictly_less_than"
+            }
+          }
+        },
+        "actions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count",
+            "limit",
+            "log"
+          ],
+          "properties": {
+            "count": {
+              "$ref": "#/$defs/fact_count"
+            },
+            "limit": {
+              "const": 5
+            },
+            "log": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/action"
+              },
+              "maxItems": 64
+            }
+          }
+        },
+        "identity": {
+          "enum": [
+            "app",
+            "personal_login"
+          ]
+        },
+        "app_registration": {
+          "enum": [
+            "created",
+            "reused",
+            "skipped"
+          ]
+        },
+        "secret_route": {
+          "enum": [
+            "agent_save",
+            "protected_paste",
+            "not_used"
+          ]
+        },
+        "secret_route_observed": {
+          "type": "boolean"
+        },
+        "decisions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "spec_confirmation",
+            "plan_approval"
+          ],
+          "properties": {
+            "spec_confirmation": {
+              "type": "boolean"
+            },
+            "plan_approval": {
+              "type": "boolean"
+            }
+          }
+        },
+        "waits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wait"
+          },
+          "maxItems": 64
+        },
+        "help": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/help"
+          },
+          "maxItems": 64
+        },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "machine",
+            "repository",
+            "seeded_openwiz_state",
+            "initial_record"
+          ],
+          "properties": {
+            "machine": {
+              "enum": [
+                "fresh",
+                "reused",
+                "unknown"
+              ]
+            },
+            "repository": {
+              "enum": [
+                "fresh",
+                "reused",
+                "unknown"
+              ]
+            },
+            "seeded_openwiz_state": {
+              "type": "boolean"
+            },
+            "initial_record": {
+              "enum": [
+                "recorded",
+                "missing"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -80,6 +80,18 @@ own definition and owner (`owner: 1110`). `state` is `met` (`elapsed_ms` at most
 `600000`), `missed` (`elapsed_ms` above it) or `unmeasured` (`elapsed_ms` null).
 It never decides the first-hour verdict, and the hour never decides it.
 
+## The separate 0.0.16 receipt
+
+Spec #2920 adds a stricter result beside this one, never in place of it: the
+`first_merge_receipt` of [setup-onboard.v1](setup-onboard.v1.md#the-0016-receipt).
+It binds the SHA-256 of the same attempt's `result` document and the same
+candidate, repository and merge, and adds a limit strictly below 30 minutes,
+at most five owner actions, the secret route used, freshness, and every wait
+and help. This contract is unchanged by it: its `limit_ms` stays `3600000`, the
+hour holds at most that, the ten-minute measure keeps its own meaning, and
+neither verdict decides the other. A record here is never relabelled a
+30-minute proof.
+
 ## Stages and evidence
 
 A stage's `state` is `verified`, `missing`, `refused`, `unknown` or `failed`,

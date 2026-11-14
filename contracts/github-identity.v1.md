@@ -164,6 +164,45 @@ They are still never written into this contract or its fixtures.
   repository's installation, and checks that the installation's account owns
   the repository and that its selection is `selected`.
 
+## Each user's own App and the factory's (0.0.16)
+
+Spec #2920's [setup-onboard.v1](setup-onboard.v1.md) extends this contract
+compatibly; the pin above is unchanged and still describes the **factory's**
+App. J48 (Jake, 2026-11-14) settles that each user's own OpenWiz App is private
+by default and installable only on its owner's account, while the current
+factory's multi-account App stays public.
+Private record: https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6869926983
+
+- **Two modes, never inferred.** A user's own App is `mode: user`,
+  `visibility: private` on its default setting. The factory's App is
+  `mode: factory`, `visibility: public`, through an explicit separate setting
+  that is never a default. A repository outside the user App's owning account
+  never causes an automatic switch to a public App, and nothing changes the
+  factory's existing App or its installations.
+- **The owner boundary is enforced where tokens are minted.** For a user App,
+  the token command and the adapter accept an installation only on the App
+  owner's account, for a repository that account owns, selected repositories
+  only. Another account is refused like any installation outside the rules
+  above. The permission profile, read downscoping, lifetime guards, exits and
+  user authorship are unchanged.
+- **The explicit login path.** When the owner explicitly skips the App, setup
+  records that the factory acts through their verified personal login
+  (setup.v1). That is a separate, visible choice: this command still never
+  falls back to another identity, and an App failure or revocation never
+  selects the login path.
+- **Key delivery and the one temporary key file.** The preferred route hands
+  the converted key straight to the protected secret through the CloudRoom
+  agent-side save-secret contribution, once it ships and is observed; it leaves
+  no key file. Until then the supported route is one protected paste
+  (`docs/agents/github-app.md`, step 4): the converted key is discarded, GitHub
+  generates a replacement key that the owner's browser downloads, the owner
+  encodes it to one line, pastes it into CloudRoom's own protected prompt and
+  deletes the download. That owner download is the one explicit exception to
+  "nothing writes it to disk anywhere else": it is outside every OpenWiz
+  component and Git tree, temporary, deleted after provisioning and counted
+  among the owner's actions. No OpenWiz component writes, reads or keeps it,
+  and it is never described as a no-download route.
+
 ## The token command
 
 ```text

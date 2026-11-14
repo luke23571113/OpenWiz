@@ -4270,6 +4270,26 @@ fn install_keeps_its_order_and_gates() {
     assert_eq!(files, ["SKILL.md", "agents/openai.yaml"]);
 }
 
+// #2940: the setup-onboard contract's offline consistency checks run in the
+// checks binary, so CI's always-run set executes them on every run.
+#[test]
+fn setup_onboard_contract_passes() {
+    let result = std::process::Command::new("python3")
+        .args([
+            "-I",
+            "tools/install/tests/setup-onboard-contract/test_contract.py",
+        ])
+        .current_dir(ROOT)
+        .output()
+        .expect("run the setup-onboard contract checks");
+    assert!(
+        result.status.success(),
+        "setup-onboard contract checks failed: {}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
 // #1109 (IF9): one install line. The install skill, the public guide and the
 // README quote the same line, and the setup page names the same upgrade
 // destination. The site lane's own tests (apps/site/test/site.test.mjs) pin

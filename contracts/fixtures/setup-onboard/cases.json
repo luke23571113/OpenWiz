@@ -1,0 +1,4284 @@
+{
+ "about": "Synthetic examples for contracts/setup-onboard.v1.md. Expected codes are written by hand from the contract; nothing here is live evidence.",
+ "examples": {
+  "identity-user-app": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "identity_selection",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "repository": "synthetic-owner/synthetic-app",
+    "check_revision": 4,
+    "selected": "app",
+    "selection_basis": "owner_choice",
+    "app_choice": "create",
+    "personal_login": {
+     "login": "synthetic-owner",
+     "state": "verified",
+     "evidence": [
+      {
+       "basis": "github_account_read_back",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      },
+      {
+       "basis": "repository_access_read_back",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    },
+    "app": {
+     "mode": "user",
+     "visibility": "private",
+     "visibility_setting": "user_default",
+     "owner_account": "synthetic-owner",
+     "installation": {
+      "account": "synthetic-owner",
+      "repository_selection": "selected",
+      "repositories": [
+       "synthetic-owner/synthetic-app"
+      ]
+     },
+     "state": "verified",
+     "evidence": [
+      {
+       "basis": "installation_token_read_back",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    },
+    "ready": true
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "identity-skip-app": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "identity_selection",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "repository": "synthetic-owner/synthetic-app",
+    "check_revision": 4,
+    "selected": "personal_login",
+    "selection_basis": "owner_choice",
+    "app_choice": "skip",
+    "personal_login": {
+     "login": "synthetic-owner",
+     "state": "verified",
+     "evidence": [
+      {
+       "basis": "github_account_read_back",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      },
+      {
+       "basis": "repository_access_read_back",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    },
+    "app": null,
+    "ready": true
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "secret-protected-paste": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "secret_capability",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "secret": {
+     "name": "OPENWIZ_GITHUB_APP_KEY",
+     "holds": [
+      "private_key"
+     ]
+    },
+    "app_id_variable": "OPENWIZ_GITHUB_APP_ID",
+    "upstream": {
+     "name": "cloudroom_agent_save_secret",
+     "state": "not_shipped",
+     "evidence": []
+    },
+    "route": "protected_paste",
+    "converted_key": "discarded",
+    "steps": [
+     {
+      "step": "open_app_settings",
+      "actor": "owner",
+      "counted": true
+     },
+     {
+      "step": "generate_key",
+      "actor": "owner",
+      "counted": true
+     },
+     {
+      "step": "encode_key",
+      "actor": "owner",
+      "counted": true
+     },
+     {
+      "step": "paste_protected_prompt",
+      "actor": "owner",
+      "counted": true
+     },
+     {
+      "step": "delete_download",
+      "actor": "owner",
+      "counted": true
+     }
+    ],
+    "intermediate_key_file": "owner_download_deleted",
+    "delivery": {
+     "state": "verified",
+     "evidence": [
+      {
+       "basis": "delivered_app_id_matches",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    },
+    "app_registrations": 1,
+    "outcome": "stored"
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "secret-agent-save-shape": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "secret_capability",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "secret": {
+     "name": "OPENWIZ_GITHUB_APP_KEY",
+     "holds": [
+      "private_key"
+     ]
+    },
+    "app_id_variable": "OPENWIZ_GITHUB_APP_ID",
+    "upstream": {
+     "name": "cloudroom_agent_save_secret",
+     "state": "observed_supported",
+     "evidence": [
+      {
+       "basis": "cloudroom_save_observed",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    },
+    "route": "agent_save",
+    "converted_key": "stored_by_agent_save",
+    "steps": [
+     {
+      "step": "agent_save",
+      "actor": "agent",
+      "counted": false
+     }
+    ],
+    "intermediate_key_file": "none",
+    "delivery": {
+     "state": "verified",
+     "evidence": [
+      {
+       "basis": "delivered_app_id_matches",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    },
+    "app_registrations": 1,
+    "outcome": "stored"
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "init-request-preview": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "init_request",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "repository": "synthetic-owner/synthetic-app",
+    "mode": "preview",
+    "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "authorization": null
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "init-request-apply": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "init_request",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "repository": "synthetic-owner/synthetic-app",
+    "mode": "apply",
+    "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "authorization": {
+     "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "init-private": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "init_result",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "repository": {
+     "full_name": "synthetic-owner/synthetic-app",
+     "visibility": {
+      "known": "private"
+     },
+     "basis": "github_repository_read"
+    },
+    "outcome": "applied",
+    "reason_code": "brain_proposed",
+    "brain": {
+     "location": "in_repository",
+     "code_repository": "synthetic-owner/synthetic-app",
+     "code_visibility": "private",
+     "brain_repository": "synthetic-owner/synthetic-app",
+     "brain_visibility": {
+      "known": "private"
+     },
+     "visibility_basis": "github_repository_read",
+     "folder": ".openwiz/brain",
+     "setting": "brain_location",
+     "decision_repositories": null
+    },
+    "private_content_written": "brain_repository",
+    "placement_question": false,
+    "report_line": "Brain: synthetic-owner/synthetic-app in .openwiz/brain (private repository); change it with the brain_location setting.",
+    "effects": [
+     {
+      "kind": "open_pull_request",
+      "repository": "synthetic-owner/synthetic-app",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     },
+     {
+      "kind": "create_label",
+      "repository": "synthetic-owner/synthetic-app",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     }
+    ],
+    "pull_requests": [
+     {
+      "repository": "synthetic-owner/synthetic-app",
+      "number": 7,
+      "visible": true,
+      "state": "open"
+     }
+    ]
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "init-public-companion": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "init_result",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "repository": {
+     "full_name": "synthetic-owner/synthetic-app",
+     "visibility": {
+      "known": "public"
+     },
+     "basis": "github_repository_read"
+    },
+    "outcome": "applied",
+    "reason_code": "brain_proposed",
+    "brain": {
+     "location": "companion",
+     "code_repository": "synthetic-owner/synthetic-app",
+     "code_visibility": "public",
+     "brain_repository": "synthetic-owner/synthetic-app-brain",
+     "brain_visibility": {
+      "known": "private"
+     },
+     "visibility_basis": "github_repository_read",
+     "folder": ".openwiz/brain",
+     "setting": "brain_location",
+     "decision_repositories": {
+      "public": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app"
+      },
+      "private": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app-brain"
+      }
+     }
+    },
+    "private_content_written": "brain_repository",
+    "placement_question": false,
+    "report_line": "Brain: private companion synthetic-owner/synthetic-app-brain in .openwiz/brain; change it with the brain_location setting.",
+    "effects": [
+     {
+      "kind": "create_companion",
+      "repository": "synthetic-owner/synthetic-app-brain",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     },
+     {
+      "kind": "link_companion",
+      "repository": "synthetic-owner/synthetic-app",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     },
+     {
+      "kind": "open_pull_request",
+      "repository": "synthetic-owner/synthetic-app-brain",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     },
+     {
+      "kind": "create_label",
+      "repository": "synthetic-owner/synthetic-app",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     }
+    ],
+    "pull_requests": [
+     {
+      "repository": "synthetic-owner/synthetic-app-brain",
+      "number": 1,
+      "visible": true,
+      "state": "open"
+     }
+    ]
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "init-unknown-visibility-refused": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "init_result",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "repository": {
+     "full_name": "synthetic-owner/synthetic-app",
+     "visibility": {
+      "unknown": "GitHub did not answer the visibility read."
+     },
+     "basis": "github_repository_read"
+    },
+    "outcome": "refused",
+    "reason_code": "visibility_unknown",
+    "brain": null,
+    "private_content_written": "none",
+    "placement_question": false,
+    "report_line": "Nothing was written: the repository visibility could not be read.",
+    "effects": [],
+    "pull_requests": []
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "brain-in-repository": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "brain_reference",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "brain": {
+     "location": "in_repository",
+     "code_repository": "synthetic-owner/synthetic-app",
+     "code_visibility": "private",
+     "brain_repository": "synthetic-owner/synthetic-app",
+     "brain_visibility": {
+      "known": "private"
+     },
+     "visibility_basis": "github_repository_read",
+     "folder": ".openwiz/brain",
+     "setting": "brain_location",
+     "decision_repositories": null
+    }
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "brain-companion": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "brain_reference",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "brain": {
+     "location": "companion",
+     "code_repository": "synthetic-owner/synthetic-app",
+     "code_visibility": "public",
+     "brain_repository": "synthetic-owner/synthetic-app-brain",
+     "brain_visibility": {
+      "known": "private"
+     },
+     "visibility_basis": "github_repository_read",
+     "folder": ".openwiz/brain",
+     "setting": "brain_location",
+     "decision_repositories": {
+      "public": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app"
+      },
+      "private": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app-brain"
+      }
+     }
+    }
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  },
+  "receipt-skip-app-under-limit": {
+   "document": {
+    "schema": "openwiz.setup-onboard.v1",
+    "kind": "first_merge_receipt",
+    "proof_class": "fixture",
+    "synthetic_assumptions": [
+     "Every account, repository, id, time and hash is a synthetic placeholder."
+    ],
+    "private_record": null,
+    "verdict": "unverified",
+    "binding": {
+     "first_hour_result_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "candidate": {
+      "known": {
+       "version": "0.0.16",
+       "source": "synthetic-source",
+       "target": "synthetic-target",
+       "manifest_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+     },
+     "repository": {
+      "known": "synthetic-owner/synthetic-app"
+     },
+     "merge": {
+      "pull_request": 3,
+      "head": "1111111111111111111111111111111111111111",
+      "merge_commit": "2222222222222222222222222222222222222222",
+      "merged_at_ms": 1799999,
+      "basis": "merge_read_back",
+      "change": "implementation",
+      "reviewed_head": "1111111111111111111111111111111111111111",
+      "ci_green_head": "1111111111111111111111111111111111111111"
+     }
+    },
+    "instruction": "Install OpenWiz from github.com/openwizdev/openwiz",
+    "idea": "Synthetic idea: add a greeting to the readme.",
+    "clock": {
+     "started_at_ms": {
+      "known": 0
+     },
+     "ended_at_ms": {
+      "known": 1799999
+     },
+     "limit_ms": 1800000,
+     "rule": "strictly_less_than"
+    },
+    "actions": {
+     "count": {
+      "known": 5
+     },
+     "limit": 5,
+     "log": [
+      {
+       "at_ms": 1000,
+       "kind": "sign_in",
+       "actor": "owner",
+       "stage": "personal_github",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 2000,
+       "kind": "permission",
+       "actor": "owner",
+       "stage": "personal_github",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 3000,
+       "kind": "typed_choice",
+       "actor": "owner",
+       "stage": "idea",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 4000,
+       "kind": "confirmation",
+       "actor": "owner",
+       "stage": "spec_confirmation",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 5000,
+       "kind": "approval",
+       "actor": "owner",
+       "stage": "plan_approval",
+       "detail": "Synthetic owner action."
+      }
+     ]
+    },
+    "identity": "personal_login",
+    "app_registration": "skipped",
+    "secret_route": "not_used",
+    "secret_route_observed": false,
+    "decisions": {
+     "spec_confirmation": true,
+     "plan_approval": true
+    },
+    "waits": [
+     {
+      "kind": "ci",
+      "started_at_ms": 6000,
+      "ended_at_ms": 9000,
+      "detail": "Synthetic CI wait."
+     }
+    ],
+    "help": [
+     {
+      "at_ms": 1500,
+      "source": "public_docs",
+      "detail": "Synthetic public guide."
+     }
+    ],
+    "freshness": {
+     "machine": "fresh",
+     "repository": "fresh",
+     "seeded_openwiz_state": false,
+     "initial_record": "recorded"
+    }
+   },
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   }
+  }
+ },
+ "variants": {
+  "user-app-public": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "user_app_not_private"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "visibility"
+     ],
+     "public"
+    ]
+   ]
+  },
+  "user-app-factory-setting": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "user_app_not_private"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "visibility_setting"
+     ],
+     "explicit_factory"
+    ]
+   ]
+  },
+  "factory-app-implicit": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "factory_app_not_explicit"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "mode"
+     ],
+     "factory"
+    ],
+    [
+     [
+      "app",
+      "visibility"
+     ],
+     "public"
+    ]
+   ]
+  },
+  "factory-app-explicit": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "mode"
+     ],
+     "factory"
+    ],
+    [
+     [
+      "app",
+      "visibility"
+     ],
+     "public"
+    ],
+    [
+     [
+      "app",
+      "visibility_setting"
+     ],
+     "explicit_factory"
+    ]
+   ]
+  },
+  "factory-app-private": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "factory_app_not_explicit"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "mode"
+     ],
+     "factory"
+    ],
+    [
+     [
+      "app",
+      "visibility_setting"
+     ],
+     "explicit_factory"
+    ]
+   ]
+  },
+  "app-verified-by-manifest-conversion": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "app_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "manifest_converted",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "app-verified-by-saved-id": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "app_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "app_id_saved",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      },
+      {
+       "basis": "install_page_returned",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "app-evidence-stale": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "stale_evidence:app"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "installation_token_read_back",
+       "revision": 3,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "private-app-foreign-repository": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "cross_account_private_app",
+     "repository_not_installed"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "repository"
+     ],
+     "synthetic-other/synthetic-app"
+    ]
+   ]
+  },
+  "private-app-foreign-installation": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "cross_account_private_app"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "installation",
+      "account"
+     ],
+     "synthetic-other"
+    ]
+   ]
+  },
+  "private-app-foreign-installed-repository": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "cross_account_private_app"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "append": [
+    [
+     [
+      "app",
+      "installation",
+      "repositories"
+     ],
+     "synthetic-other/synthetic-app"
+    ]
+   ]
+  },
+  "app-all-repositories": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "all_repositories_installation"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "installation",
+      "repository_selection"
+     ],
+     "all"
+    ]
+   ]
+  },
+  "app-not-covering-repository": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "repository_not_installed"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "installation",
+      "repositories"
+     ],
+     [
+      "synthetic-owner/synthetic-other"
+     ]
+    ]
+   ]
+  },
+  "app-revoked-not-ready": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "state"
+     ],
+     "refused"
+    ],
+    [
+     [
+      "app",
+      "evidence"
+     ],
+     []
+    ],
+    [
+     [
+      "ready"
+     ],
+     false
+    ]
+   ]
+  },
+  "app-revoked-claims-ready": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "identity_ready_inconsistent"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app",
+      "state"
+     ],
+     "refused"
+    ],
+    [
+     [
+      "app",
+      "evidence"
+     ],
+     []
+    ]
+   ]
+  },
+  "app-failure-falls-back-to-login": {
+   "base": "identity-user-app",
+   "expect": {
+    "problems": [
+     "identity_ready_inconsistent",
+     "silent_identity_switch",
+     "skip_not_chosen"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "selected"
+     ],
+     "personal_login"
+    ],
+    [
+     [
+      "selection_basis"
+     ],
+     "fallback"
+    ],
+    [
+     [
+      "app",
+      "state"
+     ],
+     "refused"
+    ],
+    [
+     [
+      "app",
+      "evidence"
+     ],
+     []
+    ]
+   ]
+  },
+  "login-selected-without-skip": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "identity_ready_inconsistent",
+     "skip_not_chosen"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app_choice"
+     ],
+     "undecided"
+    ]
+   ]
+  },
+  "selection-without-choice": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "selection_without_choice"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "selection_basis"
+     ],
+     "none"
+    ]
+   ]
+  },
+  "saved-skip-reused": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "selection_basis"
+     ],
+     "saved_choice"
+    ]
+   ]
+  },
+  "skipped-app-marked-verified": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "skipped_app_verified"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app"
+     ],
+     {
+      "mode": "user",
+      "visibility": "private",
+      "visibility_setting": "user_default",
+      "owner_account": "synthetic-owner",
+      "installation": {
+       "account": "synthetic-owner",
+       "repository_selection": "selected",
+       "repositories": [
+        "synthetic-owner/synthetic-app"
+       ]
+      },
+      "state": "verified",
+      "evidence": [
+       {
+        "basis": "installation_token_read_back",
+        "revision": 4,
+        "at_ms": 1000,
+        "detail": "Synthetic observation."
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "skipped-app-truthfully-missing": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app"
+     ],
+     {
+      "mode": "user",
+      "visibility": "private",
+      "visibility_setting": "user_default",
+      "owner_account": "synthetic-owner",
+      "installation": null,
+      "state": "missing",
+      "evidence": []
+     }
+    ]
+   ]
+  },
+  "login-by-browser-callback": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "login_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "personal_login",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "browser_opened",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      },
+      {
+       "basis": "auth_callback_received",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "login-without-repository-access": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "login_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "personal_login",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "github_account_read_back",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "login-evidence-stale": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "stale_evidence:personal_login"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "personal_login",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "github_account_read_back",
+       "revision": 2,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      },
+      {
+       "basis": "repository_access_read_back",
+       "revision": 2,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "login-denied-claims-ready": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "identity_ready_inconsistent"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "personal_login",
+      "state"
+     ],
+     "refused"
+    ],
+    [
+     [
+      "personal_login",
+      "evidence"
+     ],
+     []
+    ]
+   ]
+  },
+  "login-unknown-not-ready": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "personal_login",
+      "state"
+     ],
+     "unknown"
+    ],
+    [
+     [
+      "personal_login",
+      "evidence"
+     ],
+     []
+    ],
+    [
+     [
+      "ready"
+     ],
+     false
+    ]
+   ]
+  },
+  "unselected-claims-ready": {
+   "base": "identity-skip-app",
+   "expect": {
+    "problems": [
+     "identity_ready_inconsistent"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "selected"
+     ],
+     "unselected"
+    ],
+    [
+     [
+      "selection_basis"
+     ],
+     "none"
+    ],
+    [
+     [
+      "app_choice"
+     ],
+     "undecided"
+    ]
+   ]
+  },
+  "agent-save-on-test-stand-in": {
+   "base": "secret-agent-save-shape",
+   "expect": {
+    "problems": [
+     "upstream_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "upstream",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "test_stand_in",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "agent-save-not-shipped": {
+   "base": "secret-agent-save-shape",
+   "expect": {
+    "problems": [
+     "agent_save_unavailable"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "upstream",
+      "state"
+     ],
+     "not_shipped"
+    ],
+    [
+     [
+      "upstream",
+      "evidence"
+     ],
+     []
+    ]
+   ]
+  },
+  "agent-save-leaves-key-file": {
+   "base": "secret-agent-save-shape",
+   "expect": {
+    "problems": [
+     "no_paste_route_inconsistent"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "intermediate_key_file"
+     ],
+     "owner_download_deleted"
+    ]
+   ]
+  },
+  "agent-save-with-paste": {
+   "base": "secret-agent-save-shape",
+   "expect": {
+    "problems": [
+     "no_paste_route_inconsistent"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "append": [
+    [
+     [
+      "steps"
+     ],
+     {
+      "step": "paste_protected_prompt",
+      "actor": "owner",
+      "counted": true
+     }
+    ]
+   ]
+  },
+  "fallback-without-encoding-step": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [
+     "fallback_step_missing:encode_key"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "delete": [
+    [
+     "steps",
+     2
+    ]
+   ]
+  },
+  "fallback-cleanup-uncounted": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [
+     "owner_step_uncounted:delete_download"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "steps",
+      4,
+      "counted"
+     ],
+     false
+    ]
+   ]
+  },
+  "fallback-keeps-converted-key": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [
+     "converted_key_kept"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "converted_key"
+     ],
+     "stored_by_agent_save"
+    ]
+   ]
+  },
+  "fallback-claims-no-download": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [
+     "fallback_download_unrecorded"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "intermediate_key_file"
+     ],
+     "none"
+    ]
+   ]
+  },
+  "fallback-download-retained": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "key_download_retained"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "intermediate_key_file"
+     ],
+     "owner_download_retained"
+    ]
+   ]
+  },
+  "fallback-download-unknown": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "key_download_unknown",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "intermediate_key_file"
+     ],
+     "unknown"
+    ]
+   ]
+  },
+  "delivery-assumed": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [
+     "delivery_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "delivery",
+      "evidence"
+     ],
+     [
+      {
+       "basis": "prompt_closed",
+       "revision": 4,
+       "at_ms": 1000,
+       "detail": "Synthetic observation."
+      }
+     ]
+    ]
+   ]
+  },
+  "store-failed-claims-stored": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [
+     "secret_success_claimed"
+    ],
+    "failures": [
+     "secret_store_failed"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "delivery",
+      "state"
+     ],
+     "refused"
+    ],
+    [
+     [
+      "delivery",
+      "evidence"
+     ],
+     []
+    ]
+   ]
+  },
+  "store-failed": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "secret_store_failed"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "delivery",
+      "state"
+     ],
+     "refused"
+    ],
+    [
+     [
+      "delivery",
+      "evidence"
+     ],
+     []
+    ],
+    [
+     [
+      "outcome"
+     ],
+     "failed"
+    ]
+   ]
+  },
+  "store-reply-lost": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "delivery_unverified",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "delivery",
+      "state"
+     ],
+     "uncertain"
+    ],
+    [
+     [
+      "delivery",
+      "evidence"
+     ],
+     []
+    ],
+    [
+     [
+      "outcome"
+     ],
+     "uncertain"
+    ]
+   ]
+  },
+  "replacement-app-registered": {
+   "base": "secret-protected-paste",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "duplicate_app_registration"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "app_registrations"
+     ],
+     2
+    ]
+   ]
+  },
+  "apply-without-authorization": {
+   "base": "init-request-apply",
+   "expect": {
+    "problems": [
+     "authorization_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "authorization"
+     ],
+     null
+    ]
+   ]
+  },
+  "apply-other-operation": {
+   "base": "init-request-apply",
+   "expect": {
+    "problems": [
+     "authorization_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "authorization",
+      "operation_id"
+     ],
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ]
+   ]
+  },
+  "apply-changed-request": {
+   "base": "init-request-apply",
+   "expect": {
+    "problems": [
+     "authorization_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "authorization",
+      "fingerprint"
+     ],
+     "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    ]
+   ]
+  },
+  "preview-carrying-authorization": {
+   "base": "init-request-preview",
+   "expect": {
+    "problems": [
+     "preview_authorized"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "authorization"
+     ],
+     {
+      "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+     }
+    ]
+   ]
+  },
+  "init-placement-question": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "schema"
+    ],
+    "failures": [],
+    "unproven": []
+   },
+   "set": [
+    [
+     [
+      "placement_question"
+     ],
+     true
+    ]
+   ]
+  },
+  "init-unknown-visibility-writes": {
+   "base": "init-unknown-visibility-refused",
+   "expect": {
+    "problems": [
+     "visibility_unverified_init"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "private_content_written"
+     ],
+     "brain_repository"
+    ]
+   ]
+  },
+  "init-unknown-visibility-completes": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "visibility_unverified_init"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "repository",
+      "visibility"
+     ],
+     {
+      "unknown": "Unread."
+     }
+    ]
+   ]
+  },
+  "init-visibility-from-local-remote": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "visibility_unverified_init"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "repository",
+      "basis"
+     ],
+     "local_remote"
+    ]
+   ]
+  },
+  "init-private-gets-companion": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "brain_change_not_visible",
+     "brain_placement_mismatch",
+     "brain_visibility_mismatch",
+     "report_line_missing_location",
+     "unexpected_companion"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain"
+     ],
+     {
+      "location": "companion",
+      "code_repository": "synthetic-owner/synthetic-app",
+      "code_visibility": "public",
+      "brain_repository": "synthetic-owner/synthetic-app-brain",
+      "brain_visibility": {
+       "known": "private"
+      },
+      "visibility_basis": "github_repository_read",
+      "folder": ".openwiz/brain",
+      "setting": "brain_location",
+      "decision_repositories": {
+       "public": {
+        "owner": "synthetic-owner",
+        "name": "synthetic-app"
+       },
+       "private": {
+        "owner": "synthetic-owner",
+        "name": "synthetic-app-brain"
+       }
+      }
+     }
+    ]
+   ],
+   "append": [
+    [
+     [
+      "effects"
+     ],
+     {
+      "kind": "create_companion",
+      "repository": "synthetic-owner/synthetic-app-brain",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     }
+    ]
+   ]
+  },
+  "init-public-in-repository": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [
+     "brain_change_not_visible",
+     "brain_placement_mismatch",
+     "brain_visibility_mismatch",
+     "report_line_missing_location"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain"
+     ],
+     {
+      "location": "in_repository",
+      "code_repository": "synthetic-owner/synthetic-app",
+      "code_visibility": "private",
+      "brain_repository": "synthetic-owner/synthetic-app",
+      "brain_visibility": {
+       "known": "private"
+      },
+      "visibility_basis": "github_repository_read",
+      "folder": ".openwiz/brain",
+      "setting": "brain_location",
+      "decision_repositories": null
+     }
+    ]
+   ]
+  },
+  "init-public-writes-code-repository": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "private_content_published"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "private_content_written"
+     ],
+     "code_repository"
+    ]
+   ]
+  },
+  "companion-not-private": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [
+     "brain_not_private"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "brain_visibility"
+     ],
+     {
+      "known": "public"
+     }
+    ]
+   ]
+  },
+  "companion-visibility-unread": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [
+     "brain_not_private"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "brain_visibility"
+     ],
+     {
+      "unknown": "Unread."
+     }
+    ]
+   ]
+  },
+  "companion-is-code-repository": {
+   "base": "brain-companion",
+   "expect": {
+    "problems": [
+     "brain_pair_mismatch",
+     "companion_same_repository"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "brain_repository"
+     ],
+     "Synthetic-Owner/Synthetic-App"
+    ]
+   ]
+  },
+  "companion-without-pair": {
+   "base": "brain-companion",
+   "expect": {
+    "problems": [
+     "brain_pair_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "decision_repositories"
+     ],
+     null
+    ]
+   ]
+  },
+  "companion-pair-swapped": {
+   "base": "brain-companion",
+   "expect": {
+    "problems": [
+     "brain_pair_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "decision_repositories"
+     ],
+     {
+      "public": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app-brain"
+      },
+      "private": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app"
+      }
+     }
+    ]
+   ]
+  },
+  "in-repository-with-pair": {
+   "base": "brain-in-repository",
+   "expect": {
+    "problems": [
+     "brain_pair_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "decision_repositories"
+     ],
+     {
+      "public": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app"
+      },
+      "private": {
+       "owner": "synthetic-owner",
+       "name": "synthetic-app-brain"
+      }
+     }
+    ]
+   ]
+  },
+  "in-repository-elsewhere": {
+   "base": "brain-in-repository",
+   "expect": {
+    "problems": [
+     "in_repository_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "brain_repository"
+     ],
+     "synthetic-owner/synthetic-app-brain"
+    ]
+   ]
+  },
+  "brain-public-code-in-repository": {
+   "base": "brain-in-repository",
+   "expect": {
+    "problems": [
+     "brain_placement_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain",
+      "code_visibility"
+     ],
+     "public"
+    ]
+   ]
+  },
+  "init-brain-change-hidden": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "brain_change_not_visible"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "pull_requests",
+      0,
+      "visible"
+     ],
+     false
+    ]
+   ]
+  },
+  "init-brain-closed-pr": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "brain_change_not_visible"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "pull_requests",
+      0,
+      "state"
+     ],
+     "closed"
+    ]
+   ]
+  },
+  "init-report-without-location": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "report_line_missing_location"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "report_line"
+     ],
+     "Brain ready."
+    ]
+   ]
+  },
+  "init-applied-without-brain": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "outcome_brain_missing"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "brain"
+     ],
+     null
+    ]
+   ]
+  },
+  "init-duplicate-companion": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "duplicate_effect:create_companion"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "effects",
+      0,
+      "effect_count"
+     ],
+     2
+    ],
+    [
+     [
+      "effects",
+      0,
+      "attempts"
+     ],
+     2
+    ],
+    [
+     [
+      "effects",
+      0,
+      "reconciliation"
+     ],
+     "provider_read_back"
+    ]
+   ]
+  },
+  "init-blind-retry": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "blind_retry:create_companion"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "effects",
+      0,
+      "attempts"
+     ],
+     2
+    ]
+   ]
+  },
+  "init-reconciled-retry": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "effects",
+      0,
+      "attempts"
+     ],
+     2
+    ],
+    [
+     [
+      "effects",
+      0,
+      "reconciliation"
+     ],
+     "provider_read_back"
+    ]
+   ]
+  },
+  "init-lost-reply": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "effect_uncertain:create_companion",
+     "not_live",
+     "outcome_uncertain"
+    ]
+   },
+   "set": [
+    [
+     [
+      "effects",
+      0,
+      "phase"
+     ],
+     "uncertain"
+    ],
+    [
+     [
+      "effects",
+      0,
+      "effect_count"
+     ],
+     0
+    ],
+    [
+     [
+      "outcome"
+     ],
+     "uncertain"
+    ],
+    [
+     [
+      "pull_requests"
+     ],
+     []
+    ]
+   ]
+  },
+  "init-applied-without-effect": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "phase_effect_mismatch:open_pull_request"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "effects",
+      0,
+      "effect_count"
+     ],
+     0
+    ]
+   ]
+  },
+  "init-duplicate-effect-row": {
+   "base": "init-private",
+   "expect": {
+    "problems": [
+     "duplicate_effect_row:open_pull_request:synthetic-owner/synthetic-app"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "append": [
+    [
+     [
+      "effects"
+     ],
+     {
+      "kind": "open_pull_request",
+      "repository": "synthetic-owner/synthetic-app",
+      "phase": "applied",
+      "effect_count": 1,
+      "attempts": 1,
+      "reconciliation": "none"
+     }
+    ]
+   ]
+  },
+  "init-companion-creation-denied": {
+   "base": "init-public-companion",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "outcome"
+     ],
+     "refused"
+    ],
+    [
+     [
+      "reason_code"
+     ],
+     "companion_denied"
+    ],
+    [
+     [
+      "brain"
+     ],
+     null
+    ],
+    [
+     [
+      "private_content_written"
+     ],
+     "none"
+    ],
+    [
+     [
+      "effects"
+     ],
+     [
+      {
+       "kind": "create_companion",
+       "repository": "synthetic-owner/synthetic-app-brain",
+       "phase": "refused",
+       "effect_count": 0,
+       "attempts": 1,
+       "reconciliation": "none"
+      }
+     ]
+    ],
+    [
+     [
+      "pull_requests"
+     ],
+     []
+    ],
+    [
+     [
+      "report_line"
+     ],
+     "Nothing was written: GitHub refused the private companion."
+    ]
+   ]
+  },
+  "receipt-exactly-thirty-minutes": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "thirty_minutes_missed"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "clock",
+      "ended_at_ms"
+     ],
+     {
+      "known": 1800000
+     }
+    ],
+    [
+     [
+      "binding",
+      "merge",
+      "merged_at_ms"
+     ],
+     1800000
+    ],
+    [
+     [
+      "verdict"
+     ],
+     "fail"
+    ]
+   ]
+  },
+  "receipt-sixth-action": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "actions_exceeded"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "actions",
+      "count"
+     ],
+     {
+      "known": 6
+     }
+    ],
+    [
+     [
+      "verdict"
+     ],
+     "fail"
+    ]
+   ],
+   "append": [
+    [
+     [
+      "actions",
+      "log"
+     ],
+     {
+      "at_ms": 5500,
+      "kind": "tap",
+      "actor": "owner",
+      "stage": "fleet",
+      "detail": "Synthetic owner action."
+     }
+    ]
+   ]
+  },
+  "receipt-count-unknown": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "action_count_unknown",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "actions",
+      "count"
+     ],
+     {
+      "unknown": "The interaction log was not kept."
+     }
+    ]
+   ]
+  },
+  "receipt-action-omitted": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "action_count_mismatch"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "delete": [
+    [
+     "actions",
+     "log",
+     4
+    ]
+   ]
+  },
+  "receipt-failure-not-reported": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "failure_not_reported"
+    ],
+    "failures": [
+     "thirty_minutes_missed"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "clock",
+      "ended_at_ms"
+     ],
+     {
+      "known": 1800000
+     }
+    ],
+    [
+     [
+      "binding",
+      "merge",
+      "merged_at_ms"
+     ],
+     1800000
+    ]
+   ]
+  },
+  "receipt-clock-unknown": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "clock_unknown",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "clock",
+      "started_at_ms"
+     ],
+     {
+      "unknown": "The instruction opening was not recorded."
+     }
+    ]
+   ]
+  },
+  "receipt-clock-order": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "clock_order"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "clock",
+      "started_at_ms"
+     ],
+     {
+      "known": 1800001
+     }
+    ]
+   ]
+  },
+  "receipt-clock-not-merge": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "clock_not_merge"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "clock",
+      "ended_at_ms"
+     ],
+     {
+      "known": 1700000
+     }
+    ]
+   ]
+  },
+  "receipt-wait-outside-clock": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "outside_clock:wait:0"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "waits",
+      0,
+      "ended_at_ms"
+     ],
+     1900000
+    ]
+   ]
+  },
+  "receipt-action-outside-clock": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "outside_clock:action:0"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "actions",
+      "log",
+      0,
+      "at_ms"
+     ],
+     1900000
+    ]
+   ]
+  },
+  "receipt-help-outside-clock": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "outside_clock:help:0"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "help",
+      0,
+      "at_ms"
+     ],
+     1900000
+    ]
+   ]
+  },
+  "receipt-prepared-help": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live",
+     "prepared_help"
+    ]
+   },
+   "append": [
+    [
+     [
+      "help"
+     ],
+     {
+      "at_ms": 1600,
+      "source": "private_instruction",
+      "detail": "Synthetic operator step."
+     }
+    ]
+   ]
+  },
+  "receipt-closed-pr-is-not-merge": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "merge_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "binding",
+      "merge",
+      "basis"
+     ],
+     "pr_closed"
+    ]
+   ]
+  },
+  "receipt-merge-unreviewed-head": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "merge_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "binding",
+      "merge",
+      "reviewed_head"
+     ],
+     "3333333333333333333333333333333333333333"
+    ]
+   ]
+  },
+  "receipt-merge-ci-other-head": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "merge_weak_evidence"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "binding",
+      "merge",
+      "ci_green_head"
+     ],
+     "3333333333333333333333333333333333333333"
+    ]
+   ]
+  },
+  "receipt-init-only-merge": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [
+     "init_only_merge"
+    ],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "binding",
+      "merge",
+      "change"
+     ],
+     "init_only"
+    ],
+    [
+     [
+      "verdict"
+     ],
+     "fail"
+    ]
+   ]
+  },
+  "receipt-candidate-unknown": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "candidate_unknown",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "binding",
+      "candidate"
+     ],
+     {
+      "unknown": "Unread."
+     }
+    ]
+   ]
+  },
+  "receipt-repository-unknown": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live",
+     "repository_unknown"
+    ]
+   },
+   "set": [
+    [
+     [
+      "binding",
+      "repository"
+     ],
+     {
+      "unknown": "Unread."
+     }
+    ]
+   ]
+  },
+  "receipt-seeded-state": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live",
+     "seeded_state"
+    ]
+   },
+   "set": [
+    [
+     [
+      "freshness",
+      "seeded_openwiz_state"
+     ],
+     true
+    ]
+   ]
+  },
+  "receipt-reused-machine": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_fresh:machine",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "freshness",
+      "machine"
+     ],
+     "reused"
+    ]
+   ]
+  },
+  "receipt-repository-freshness-unknown": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_fresh:repository",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "freshness",
+      "repository"
+     ],
+     "unknown"
+    ]
+   ]
+  },
+  "receipt-initial-record-missing": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "initial_record_missing",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "freshness",
+      "initial_record"
+     ],
+     "missing"
+    ]
+   ]
+  },
+  "receipt-plan-not-approved": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "decision_unsaved:plan_approval",
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "decisions",
+      "plan_approval"
+     ],
+     false
+    ]
+   ]
+  },
+  "receipt-skip-with-secret-route": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "identity_route_inconsistent",
+     "secret_steps_uncounted"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "secret_route"
+     ],
+     "protected_paste"
+    ],
+    [
+     [
+      "secret_route_observed"
+     ],
+     true
+    ]
+   ]
+  },
+  "receipt-agent-save-five": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "identity"
+     ],
+     "app"
+    ],
+    [
+     [
+      "app_registration"
+     ],
+     "created"
+    ],
+    [
+     [
+      "secret_route"
+     ],
+     "agent_save"
+    ],
+    [
+     [
+      "secret_route_observed"
+     ],
+     true
+    ],
+    [
+     [
+      "actions",
+      "log"
+     ],
+     [
+      {
+       "at_ms": 1000,
+       "kind": "sign_in",
+       "actor": "owner",
+       "stage": "personal_github",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 2000,
+       "kind": "app_manifest",
+       "actor": "owner",
+       "stage": "github_app",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 3000,
+       "kind": "app_manifest",
+       "actor": "owner",
+       "stage": "github_app",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 4000,
+       "kind": "confirmation",
+       "actor": "owner",
+       "stage": "spec_confirmation",
+       "detail": "Synthetic owner action."
+      },
+      {
+       "at_ms": 5000,
+       "kind": "approval",
+       "actor": "owner",
+       "stage": "plan_approval",
+       "detail": "Synthetic owner action."
+      }
+     ]
+    ]
+   ]
+  },
+  "receipt-app-steps-hidden": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "app_steps_uncounted"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "identity"
+     ],
+     "app"
+    ],
+    [
+     [
+      "app_registration"
+     ],
+     "created"
+    ],
+    [
+     [
+      "secret_route"
+     ],
+     "agent_save"
+    ],
+    [
+     [
+      "secret_route_observed"
+     ],
+     true
+    ]
+   ]
+  },
+  "receipt-agent-save-unobserved": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "app_steps_uncounted"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live",
+     "secret_route_unobserved"
+    ]
+   },
+   "set": [
+    [
+     [
+      "identity"
+     ],
+     "app"
+    ],
+    [
+     [
+      "app_registration"
+     ],
+     "created"
+    ],
+    [
+     [
+      "secret_route"
+     ],
+     "agent_save"
+    ]
+   ]
+  },
+  "receipt-paste-steps-hidden": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "app_steps_uncounted",
+     "secret_steps_uncounted"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "identity"
+     ],
+     "app"
+    ],
+    [
+     [
+      "app_registration"
+     ],
+     "created"
+    ],
+    [
+     [
+      "secret_route"
+     ],
+     "protected_paste"
+    ],
+    [
+     [
+      "secret_route_observed"
+     ],
+     true
+    ]
+   ]
+  },
+  "receipt-agent-stand-in-counted": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "actions",
+      "log",
+      1,
+      "actor"
+     ],
+     "agent_for_owner"
+    ]
+   ]
+  },
+  "receipt-fixture-claims-pass": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "non_live_pass",
+     "unproven_pass"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "verdict"
+     ],
+     "pass"
+    ]
+   ]
+  },
+  "receipt-live-labelled-synthetic": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "live_without_private_record",
+     "synthetic_live"
+    ],
+    "failures": [],
+    "unproven": []
+   },
+   "set": [
+    [
+     [
+      "proof_class"
+     ],
+     "live"
+    ]
+   ]
+  },
+  "receipt-recording-unlabelled": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "synthetic_unlabelled"
+    ],
+    "failures": [],
+    "unproven": [
+     "not_live"
+    ]
+   },
+   "set": [
+    [
+     [
+      "proof_class"
+     ],
+     "recording"
+    ],
+    [
+     [
+      "synthetic_assumptions"
+     ],
+     []
+    ]
+   ]
+  },
+  "receipt-limit-relabelled": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "schema"
+    ],
+    "failures": [],
+    "unproven": []
+   },
+   "set": [
+    [
+     [
+      "clock",
+      "limit_ms"
+     ],
+     3600000
+    ]
+   ]
+  },
+  "receipt-six-allowed": {
+   "base": "receipt-skip-app-under-limit",
+   "expect": {
+    "problems": [
+     "schema"
+    ],
+    "failures": [],
+    "unproven": []
+   },
+   "set": [
+    [
+     [
+      "actions",
+      "limit"
+     ],
+     6
+    ]
+   ]
+  }
+ },
+ "setup_views": {
+  "legacy-app-ready": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": []
+   },
+   "valid": true
+  },
+  "legacy-app-missing-not-ready": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": false,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": []
+   },
+   "valid": true
+  },
+  "legacy-app-missing-claims-ready": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": []
+   },
+   "valid": false
+  },
+  "skip-app-login-ready": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "personal_login",
+     "app_choice": "skip",
+     "acting_login": "synthetic-owner"
+    }
+   },
+   "valid": true
+  },
+  "skip-app-with-brain": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "personal_login",
+     "app_choice": "skip",
+     "acting_login": "synthetic-owner"
+    },
+    "brain": {
+     "location": "companion",
+     "brain_repository": "synthetic-owner/synthetic-app-brain",
+     "folder": ".openwiz/brain"
+    }
+   },
+   "valid": true
+  },
+  "skip-app-login-unverified-claims-ready": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "unknown",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "personal_login",
+     "app_choice": "skip",
+     "acting_login": "synthetic-owner"
+    }
+   },
+   "valid": false
+  },
+  "login-selected-without-skip": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": false,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "personal_login",
+     "app_choice": "undecided",
+     "acting_login": "synthetic-owner"
+    }
+   },
+   "valid": false
+  },
+  "app-selected-app-missing-claims-ready": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "app",
+     "app_choice": "create",
+     "acting_login": null
+    }
+   },
+   "valid": false
+  },
+  "app-selected-ready": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "app",
+     "app_choice": "reuse",
+     "acting_login": null
+    }
+   },
+   "valid": true
+  },
+  "login-selected-names-no-login": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": true,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "missing",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "personal_login",
+     "app_choice": "skip",
+     "acting_login": null
+    }
+   },
+   "valid": false
+  },
+  "brain-unknown-location": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": false,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "brain": {
+     "location": "anywhere",
+     "brain_repository": "synthetic-owner/synthetic-app-brain",
+     "folder": ".openwiz/brain"
+    }
+   },
+   "valid": false
+  },
+  "identity-extra-key": {
+   "document": {
+    "schema": "openwiz.setup.v1",
+    "ready": false,
+    "components": [
+     {
+      "id": "cloudroom",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "harness",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "personal_github",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "github_app",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "project",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "engine",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     },
+     {
+      "id": "remote_access",
+      "state": "verified",
+      "reason": "Synthetic reason.",
+      "next": "Nothing to do."
+     }
+    ],
+    "engine": "local",
+    "cost": {
+     "provenance": "unknown",
+     "credits": null,
+     "window_s": null,
+     "monthly_projection": null,
+     "free_allowance": null,
+     "reason": "Synthetic: no measurement."
+    },
+    "operations": [],
+    "identity": {
+     "selected": "personal_login",
+     "app_choice": "skip",
+     "acting_login": "synthetic-owner",
+     "token": "x"
+    }
+   },
+   "valid": false
+  }
+ }
+}

@@ -57,3 +57,38 @@ process is insufficient. No quick tunnel. Keep loopback binding, HTTPS host,
 origin, callback, content-type, request-id and once-only write guards. Denied,
 expired and foreign requests cannot reach an effect. Setup does not fabricate
 spec confirmation or plan approval, and install permission never starts work.
+
+## 0.0.16 expansion: selected identity and brain (#2940)
+
+[setup-onboard.v1](setup-onboard.v1.md) pins the shapes; this section is the
+compatible change to `openwiz.setup.v1`. The schema name, component ids, states,
+`GET` read-only rule and operation rules are unchanged.
+
+- **Two optional response fields.** `identity` is `selected` (`app`,
+  `personal_login`, `unselected`), `app_choice` (`create`, `reuse`, `skip`,
+  `undecided`) and `acting_login` (the personal login acting, or `null`).
+  `personal_login` needs `app_choice: skip` and names its login. `brain` is
+  `null` or `location` (`in_repository`, `companion`), `brain_repository` and
+  `folder` (`.openwiz/brain`). Both carry public identifiers only.
+- **Revised ready rule.** Ready still requires every other prerequisite of the
+  selected engine verified. It requires `github_app` verified unless `identity`
+  says the owner explicitly selected the personal login and skipped the App;
+  then `github_app` stays truthfully `missing` (reason: skipped) and the
+  `personal_github` login's positive account and repository checks establish
+  the identity part. An App failure, revocation or unknown identity never
+  selects that path; only the owner's explicit skip does.
+- **Old producers and saved state.** A response without `identity` keeps the
+  original App-required rule exactly. Saved setup state (`openwiz.setup-state.v1`)
+  gains the optional `identity` and `brain` fields, as `engine` did; a state
+  omitting them stays valid and reads as no selection (the App-required rule)
+  and no brain reference (today's project settings and repository discovery,
+  unchanged). Project settings keep their exact nine keys.
+- **Old and new readers.** Readers are strict, so a reader that predates these
+  fields refuses a response carrying either field as unreadable, rather than
+  ignoring it; it never shows a partial or upgraded state. A producer emits
+  them only in a package whose reader accepts them (T2 #2941 ships the server
+  and page together; T5 #2943 adds `brain`). A new reader accepts both the old
+  and the new form and applies the rule that form selects.
+- **No effect.** `GET /api/v1/setup` still creates nothing and calls no
+  CloudRoom or GitHub executable; sign-in, skip and init are separate,
+  disclosed, authorized operations.
