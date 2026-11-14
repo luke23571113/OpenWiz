@@ -65,7 +65,9 @@ standard library, `gh`, `room-cli`) are not local file dependencies; a tool name
 does not permit importing its helper from another checkout.
 
 The **only outside project-file names allowed** are `docs/agents/*.md` (one
-file directly in that directory), `changes/README.md` and `GLOSSARY.md`.
+file directly in that directory), `changes/README.md`, `GLOSSARY.md`,
+`AGENTS.md`, `CLAUDE.md` and Markdown files directly in the project's ADR
+folder (`docs/adr/*.md`).
 Name them in words as the **consumer project's** settings, or read them from
 that project at run time. Never hyperlink them from the package, treat them as
 packaged files, or execute/import them under this exception. This is no grant
@@ -261,7 +263,7 @@ demonstrate structure; downstream tests prove real copying and execution.
   "required_files": ["skills/README.md", "check/run.py", ".github/workflows/ci.yml", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "README.md", "CHANGELOG.md", "LICENSE", "install.sh"],
   "skill_files": ["SKILL.md", "agents/openai.yaml"],
   "carried_contracts": ["contracts/decisions.v1.md", "contracts/decisions.v1.schema.json", "contracts/plan-links.v1.md", "contracts/plan-links.v1.schema.json", "contracts/open-development.v1.md", "contracts/ops-dispatch.v1.md", "contracts/ops-dispatch.v1.schema.json", "contracts/github-identity.v1.md", "contracts/cli.v1.md"],
-  "project_settings": ["docs/agents/*.md", "changes/README.md", "GLOSSARY.md"],
+  "project_settings": ["docs/agents/*.md", "changes/README.md", "GLOSSARY.md", "AGENTS.md", "CLAUDE.md", "docs/adr/*.md"],
   "plugin_name": "openwiz",
   "marketplace_name": "wizskills",
   "version_pattern": "(?:0\\.[1-9][0-9]*|[1-9][0-9]*\\.(?:0|[1-9][0-9]*))\\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?",

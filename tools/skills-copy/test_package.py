@@ -156,6 +156,40 @@ class Fixture(unittest.TestCase):
 
 
 class InstallTests(Fixture):
+    def test_concurrent_destination_and_release_child_survive_publication(self):
+        # Inject the race at the real publication syscall boundary, after the
+        # installer's last absence check. The wrapper then invokes the real mv.
+        real_mv = shutil.which('mv')
+        for child in ('empty', 'nonempty', 'foreign'):
+            with self.subTest(child=child):
+                if self.dest.exists():
+                    shutil.rmtree(self.dest)
+                before = self.root / 'concurrent.json'
+                wrapper = self.bin / 'mv'
+                wrapper.write_text('#!' + sys.executable + '\n'
+                    'import json, os, pathlib, sys\n'
+                    'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                    'if sys.argv[-1] == str(dest):\n'
+                    '    dest.mkdir(mode=0o750)\n'
+                    '    release = dest / "release"\n'
+                    '    release.mkdir(mode=0o710)\n'
+                    + ('    (release / "keep").write_text("synthetic bytes")\n' if child == 'nonempty' else '')
+                    + ('    (dest / "foreign").write_text("synthetic foreign")\n' if child == 'foreign' else '')
+                    + '    os.utime(release, ns=(123000000000, 456000000000))\n'
+                    '    os.utime(dest, ns=(789000000000, 987000000000))\n'
+                    '    pathlib.Path(' + repr(str(before)) + ').write_text(json.dumps({\n'
+                    '        str(p.relative_to(dest)): [p.stat().st_mode, p.stat().st_mtime_ns,\n'
+                    '            p.stat().st_ino, p.read_text() if p.is_file() else None]\n'
+                    '        for p in [dest, *dest.rglob("*")]}))\n'
+                    'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+                wrapper.chmod(0o755)
+                self.install(code=1)
+                after = {str(p.relative_to(self.dest)): [p.stat().st_mode, p.stat().st_mtime_ns,
+                         p.stat().st_ino, p.read_text() if p.is_file() else None]
+                         for p in [self.dest, *self.dest.rglob('*')]}
+                self.assertEqual(after, json.loads(before.read_text()))
+                self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
+
     # Criterion 3: installs a local fake tagged repository.
     def test_installs_the_tagged_release_as_a_detached_checkout(self):
         before = set(os.listdir(self.parent))

@@ -249,12 +249,11 @@ if [ $existing -eq 0 ]; then
     if [ -e "$dest" ] || [ -L "$dest" ]; then
         fail 1 'destination appeared during installation'
     fi
-    mv "$work" "$dest" 2>/dev/null || fail 3 'cannot publish the installation'
-    if [ -e "$dest/release/.git" ] && [ ! -e "$work" ]; then
-        # The destination was created concurrently and mv moved staging inside it.
-        mv "$dest/release" "$work" 2>/dev/null
-        fail 1 'destination appeared during installation'
-    fi
+    # -T prevents nesting inside a concurrent directory; -n prevents replacing
+    # even an empty one. Unsupported no-clobber/no-target-directory semantics
+    # refuse safely. Never infer ownership from a child name or roll it back.
+    mv -T -n "$work" "$dest" 2>/dev/null || fail 3 'cannot publish the installation safely'
+    [ ! -e "$work" ] || fail 1 'destination appeared during installation'
     exit 0
 fi
 

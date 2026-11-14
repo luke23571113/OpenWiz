@@ -19,20 +19,34 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Each skill's own suites, run from the tree's root: the list ClosedWiz CI
-# ran before the split (ci/select/skills.py), without its one ClosedWiz tool.
+# Each carried skill's own suites, run from the tree's root. The inventory
+# guard below refuses any newly added suite until this list includes it.
 SUITES = {
-    'triage': [['python3', '-I', 'skills/triage/test/test_find_work.py']],
+    'triage': [['python3', '-I', 'skills/triage/test/test_find_work.py'],
+               ['python3', '-I', 'skills/triage/test/test_public_records.py']],
+    'feedback': [['python3', '-I', 'skills/feedback/test/test_feedback.py']],
+    'feedback-triage': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/feedback-triage/tests']],
+    'huntr': [['sh', 'skills/huntr/scripts/test.sh']],
+    'grill': [['sh', 'skills/grill/scripts/test.sh']],
+    'diagnose': [['node', '--test', 'skills/diagnose/tests/hitl-loop.test.mjs']],
+    'build-ticket': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/build-ticket/scripts/test']],
     'where-are-we': [['python3', '-I', 'skills/where-are-we/test/test_read_github.py']],
     'hill-climb': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/hill-climb/tests']],
-    'image': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/tests']],
+    'image': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/tests'],
+              ['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/references']],
     'plan-graph': [['python3', '-I', 'skills/plan-graph/scripts/test_check_approval.py'],
                    ['sh', 'skills/plan-graph/test/test-revision.sh']],
     'launch-fleet': [['sh', 'skills/launch-fleet/scripts/test.sh'],
                      ['python3', '-I', 'skills/launch-fleet/test/ops-protocol/test_protocol.py'],
                      ['python3', '-I', 'skills/launch-fleet/scripts/test-effects.py'],
                      ['python3', '-I', 'skills/launch-fleet/scripts/test-grants.py'],
-                     ['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py']],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-records.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-ops-starts.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-on1.py'],
+                     ['sh', 'skills/launch-fleet/scripts/test-loop.sh'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-limit-replacement.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-limit-recovery.py']],
 }
 
 # The skills not adapted from Matt Pocock's, each with the source line its
@@ -461,7 +475,8 @@ def marketplace(root, version, out):
 # ---- The standalone check and the suites ----
 
 def clean_env():
-    return {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
+    return {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN',
+            'TEST_ONLY', 'TEST_EXPECTED', 'TEST_PASS', 'TEST_WORKER')}
 
 
 def command_path(command):
@@ -472,7 +487,25 @@ def command_path(command):
 
 
 def suites(root):
-    failed = False
+    covered = set()
+    for commands in SUITES.values():
+        for command in commands:
+            rel, folder = command_path(command)
+            if folder:
+                covered.update(p.relative_to(root).as_posix() for p in (root / rel).glob('test*.py'))
+            else:
+                covered.add(rel)
+    # Huntr's public shell entrypoint executes its four Node test modules.
+    covered.update('skills/huntr/scripts/' + name for name in
+                   ('gate.test.mjs', 'manifest.test.mjs', 'records.test.mjs', 'controller.test.mjs'))
+    discovered = {p.relative_to(root).as_posix() for p in (root / 'skills').rglob('*')
+                  if p.is_file() and 'fixtures' not in p.parts and
+                  ((p.name.startswith('test') and p.suffix in ('.py', '.sh'))
+                   or p.name.endswith('.test.mjs'))}
+    unlisted = discovered - covered
+    for rel in sorted(unlisted):
+        print(f'suite inventory: {rel}: unlisted', flush=True)
+    failed = bool(unlisted)
     for name, commands in SUITES.items():
         for command in commands:
             shown = ' '.join(command)
@@ -483,9 +516,23 @@ def suites(root):
                 print(f'suite {name}: {shown}: missing', flush=True)
                 failed = True
                 continue
+            cwd = root
             argv = [sys.executable if command[0] == 'python3' else command[0], *command[1:]]
+            if name == 'huntr':
+                cwd = root / 'check/fixtures/huntr-project'
+                settings = cwd / 'docs/agents/huntr.md'
+                if not settings.is_file() or settings.is_symlink():
+                    print(f'suite {name}: synthetic consumer missing', flush=True)
+                    failed = True
+                    continue
+                argv[-1] = str(target.resolve())
             print(f'suite {name}: {shown}: running', flush=True)
-            code = subprocess.run(argv, cwd=root, env=clean_env()).returncode
+            try:
+                code = subprocess.run(argv, cwd=cwd, env=clean_env()).returncode
+            except OSError:
+                print(f'suite {name}: {shown}: cannot start', flush=True)
+                failed = True
+                continue
             print(f'suite {name}: {shown}: {"pass" if code == 0 else f"fail ({code})"}', flush=True)
             failed = failed or code != 0
     return not failed
