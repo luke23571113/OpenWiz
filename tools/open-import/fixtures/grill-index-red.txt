@@ -1,0 +1,39 @@
+$ python3 -I tools/open-import/test_import.py Import.test_tree_parent_bytes_preservation_repeat_and_no_private_objects Import.test_reviewed_carriage_patch_excludes_private_retired
+FF
+======================================================================
+FAIL: test_tree_parent_bytes_preservation_repeat_and_no_private_objects (__main__.Import.test_tree_parent_bytes_preservation_repeat_and_no_private_objects)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/open-import/test_import.py", line 185, in test_tree_parent_bytes_preservation_repeat_and_no_private_objects
+    self.assertEqual(self.git(self.public, 'show', commit + ':docs/grills/README.md'),
+AssertionError: 'synthetic source grill index\n' != 'synthetic destination grill index\n'
+- synthetic source grill index
+?             ^^^^
++ synthetic destination grill index
+?           ++ ++++++ ^
+
+
+======================================================================
+FAIL: test_reviewed_carriage_patch_excludes_private_retired (__main__.Import.test_reviewed_carriage_patch_excludes_private_retired)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/open-import/test_import.py", line 358, in test_reviewed_carriage_patch_excludes_private_retired
+    self.assertEqual(binding['paths'], sorted(CARRIED))
+AssertionError: Lists differ: ['ci/[141 chars]docs/grills/README.md', 'docs/security/public-[675 chars].py'] != ['ci/[141 chars]docs/security/public-release-review.md', 'docs[650 chars].py']
+
+First differing element 6:
+'docs/grills/README.md'
+'docs/security/public-release-review.md'
+
+First list contains 1 additional elements.
+First extra element 27:
+'tools/war-room/suite.py'
+
+Diff is 956 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 2 tests in 1.361s
+
+FAILED (failures=2)
+
+Exit: 1
