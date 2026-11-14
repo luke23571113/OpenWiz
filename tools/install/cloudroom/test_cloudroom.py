@@ -9,10 +9,12 @@ temporary directory. Expected values come from the fixtures and the contract
 import hashlib
 import http.client
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import re
+import runpy
 import shutil
 import stat
 import subprocess
@@ -20,6 +22,7 @@ import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 sys.dont_write_bytecode = True
@@ -1122,6 +1125,50 @@ class Allowlist(Base):
 
 
 class Packaged(Base):
+    def test_deeply_nested_release_json_gets_the_fixed_refusal_without_writes(self):
+        # Synthetic assumption: a release response is valid JSON but nested
+        # beyond Python's decoder limit, including Python 3.13's C decoder
+        # limit (which differs from sys.getrecursionlimit()). Existing cases do
+        # not exercise RecursionError or the executable's refusal boundary.
+        responses = {
+            GUIDE: (FIXTURES / 'setup.md').read_bytes(),
+            API: b'[' * 10000 + b'0' + b']' * 10000,
+        }
+        fetched = []
+
+        def fetch(opener, request, **kwargs):
+            fetched.append(request.full_url)
+            return io.BytesIO(responses[request.full_url])
+
+        # Seed only the ordinary empty lock, so the before/after comparison
+        # covers every byte and path, including absence of an install record.
+        folder = self.state / 'cloudroom'
+        folder.mkdir(parents=True, mode=0o700)
+        self.state.chmod(0o700)
+        (folder / '.lock').touch(mode=0o600)
+
+        def files():
+            return {p.relative_to(self.base).as_posix(): p.read_bytes() if p.is_file() else None
+                    for p in self.base.rglob('*')}
+
+        before = files()
+        out, err = io.StringIO(), io.StringIO()
+        with patch.dict(os.environ, HOME=str(self.host.home)), \
+                patch('platform.system', return_value='Linux'), \
+                patch('platform.machine', return_value='x86_64'), \
+                patch('urllib.request.OpenerDirector.open', fetch), \
+                patch('subprocess.Popen', side_effect=AssertionError('no program may run')), \
+                patch.object(sys, 'argv', [str(HERE / 'cloudroom.py'), 'install', '--state-dir', str(self.state)]), \
+                redirect_stdout(out), redirect_stderr(err):
+            with self.assertRaises(SystemExit) as stopped:
+                runpy.run_path(str(HERE / 'cloudroom.py'), run_name='__main__')
+        self.assertEqual(stopped.exception.code, 5)
+        self.assertEqual(out.getvalue(), '')
+        self.assertEqual(err.getvalue(),
+                         'openwiz-cloudroom: refused: the CloudRoom step could not be completed safely\n')
+        self.assertEqual(fetched, [GUIDE, API], 'no installer or checksum is fetched')
+        self.assertEqual(files(), before, 'no files, records or applications are written')
+
     def test_the_command_line_reports_status_as_fixed_json(self):
         result = subprocess.run([sys.executable, '-I', str(HERE / 'cloudroom.py'), 'status', '--state-dir', str(self.state)],
                                 capture_output=True, text=True, stdin=subprocess.DEVNULL,
