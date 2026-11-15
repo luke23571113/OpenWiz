@@ -44,6 +44,10 @@ class GateTests(unittest.TestCase):
             ('.claude/skills/unreviewed/new.txt', {}, False),
             ('skills/alpha/private-event.txt', {'repository': 'jparker2006/ClosedWiz'}, False),
             ('skills/alpha/fork-event.txt', {'repository': 'synthetic/fork'}, False),
+            # RN6: GitHub's name for this repository in any capitals; a lookalike is still refused.
+            ('skills/alpha/capitals-event.txt', {'repository': 'openwizdev/OpenWiz'}, True),
+            ('skills/alpha/upper-event.txt', {'repository': 'OPENWIZDEV/OPENWIZ'}, True),
+            ('skills/alpha/lookalike-event.txt', {'repository': 'openwizdev/openwiz2'}, False),
             ('skills/alpha/branch-event.txt', {'ref': 'refs/heads/feature'}, False),
             ('skills/alpha/pr-event.txt', {'event_name': 'pull_request'}, False),
         ]

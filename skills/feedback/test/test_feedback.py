@@ -725,5 +725,68 @@ class Share(Helper):
         self.assertEqual(self.calls(), [])
 
 
+
+class Capitals(Helper):
+    """RN6: GitHub may name the destination with any capitals; another repository is still refused."""
+    SAME = ('openwizdev/openwiz', 'openwizdev/OpenWiz', 'OpenWizDev/OPENWIZ')
+    FOREIGN = ('openwizdev/openwiz2', 'someone/openwiz', 'openwizdev/WizPlugins')
+
+    def test_send_accepts_either_capitals_in_github_replies(self):
+        for name in self.SAME:
+            with self.subTest(name):
+                self.world(name=name, repo=dict(REPO, full_name=name))
+                op = self.draft(title=f'{TITLE} ({name})')
+                a = self.preview(op)
+                _, sent = self.run_helper('send', op, '--preview-id', a['preview_id'], expect=0)
+                self.assertEqual(sent['phase'], 'sent')
+        self.assertEqual(len(self.creates()), len(self.SAME))
+
+    def test_send_refuses_another_repository_in_github_replies(self):
+        for name in self.FOREIGN:
+            with self.subTest(name):
+                self.world(name=REPO['full_name'], repo=dict(REPO))
+                op = self.draft(title=f'{TITLE} ({name})')
+                a = self.preview(op)
+                self.world(name=name, repo=dict(REPO, full_name=name))
+                _, sent = self.run_helper('send', op, '--preview-id', a['preview_id'], expect=1)
+                self.assertEqual(sent['phase'], 'refused')
+        self.assertEqual(self.creates(), [])
+
+    def test_created_issue_in_another_repository_is_not_sent(self):
+        self.world(name='openwizdev/openwiz2')  # the repository reads right; the created issue does not
+        op = self.draft()
+        a = self.preview(op)
+        _, sent = self.run_helper('send', op, '--preview-id', a['preview_id'], expect=1)
+        self.assertNotEqual(sent['phase'], 'sent')
+        self.assertEqual(len(self.creates()), 1)
+
+    def test_share_of_an_issue_accepts_either_capitals_only(self):
+        self.world(issues=[{'number': 5, 'title': 't', 'body': 'b', 'user': USER}])
+        url = 'https://github.com/' + REPO['full_name'] + '/issues/5'
+        for name in self.SAME:
+            with self.subTest(name):
+                self.world(name=name, repo=dict(REPO, full_name=name))
+                self.assertEqual(self.share('See this.', url, 0)['share'], 'See this.\n\n' + url)
+        for name in self.FOREIGN:
+            with self.subTest(name):
+                self.world(name=name, repo=dict(REPO))
+                self.share('See this.', url, 1)
+        self.assertEqual(self.creates(), [])
+
+    def test_a_record_with_either_capitals_still_reads(self):
+        op = self.draft()
+        path = self.state / 'feedback' / f'{op}.json'
+        for name, expect in (('OpenWizDev/OpenWiz', 0), ('openwizdev/openwiz2', 1)):
+            with self.subTest(name):
+                rec = json.loads(path.read_text())
+                rec['destination'] = name
+                path.write_text(json.dumps(rec))
+                self.run_helper('status', op, expect=expect)
+
+    def share(self, text, url, expect):
+        f = self.tmp / 'share.txt'
+        f.write_text(text)
+        return self.run_helper('share', '--text-file', str(f), '--url', url, expect=expect)[1]
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

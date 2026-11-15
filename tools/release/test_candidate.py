@@ -680,7 +680,10 @@ class Candidate(World):
         self.git(self.repo, 'reset', '-q', '--hard', self.head)
         self.git(self.repo, 'remote', 'set-url', 'origin', f'https://github.com/{PRIVATE}.git')
         self.blocked(self.prepare(good), 'private_source')
-        self.git(self.repo, 'remote', 'set-url', 'origin', PUBLIC_URL)
+        self.git(self.repo, 'remote', 'set-url', 'origin', 'https://github.com/openwizdev/openwiz2.git')
+        self.blocked(self.prepare(good), 'private_source')
+        # RN6: the public origin in other capitals is the same repository.
+        self.git(self.repo, 'remote', 'set-url', 'origin', 'https://github.com/OpenWizDev/OPENWIZ.git')
         self.made = good
         self.assertEqual(self.prepare()[0], 0)
         self.decisions()
@@ -691,6 +694,15 @@ class Candidate(World):
 
     def d3_cutover_read_backs_refuse(self):
         """R1/D3: only the command's own cut-over read-backs count."""
+        public = f'repos/{PUBLIC}'
+        for name in ('openwizdev/openwiz', 'openwizdev/OpenWiz', 'OpenWizDev/OPENWIZ'):
+            with self.subTest(full_name=name):  # RN6: GitHub's reply in any capitals
+                self.world[public]['full_name'] = name
+                self.save()
+                code, out = self.evaluate()
+                self.assertEqual(code, 0, out)
+        self.world[public]['full_name'] = PUBLIC
+        self.save()
         rules = f'repos/{PUBLIC}/rulesets/71'
         o16, o17 = f'repos/{PRIVATE}/issues/1284', f'repos/{PRIVATE}/issues/1285'
         held = [{'name': 'held'}]
@@ -700,6 +712,7 @@ class Candidate(World):
                 ('O17 held', o17, {'labels': held}),
                 ('O16 held', o16, {'labels': held}),
                 ('public repository private', f'repos/{PUBLIC}', {'visibility': 'private'}),
+                ('another repository', f'repos/{PUBLIC}', {'full_name': 'openwizdev/openwiz2'}),
                 ('immutable releases off', f'repos/{PUBLIC}/immutable-releases', {'enabled': False}),
                 ('a bypass actor', rules, {'bypass_actors': [{'actor_type': 'RepositoryRole', 'actor_id': 5}]}),
                 ('ruleset disabled', rules, {'enforcement': 'disabled'}),

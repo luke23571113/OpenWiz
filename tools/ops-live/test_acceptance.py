@@ -261,7 +261,8 @@ class Kit(unittest.TestCase):
         kit["discovery_2244"]["J56"]["verdict_source"] = "github_comment"
         cases.append(("J56 source", kit,
                       "discovery_2244.J56.verdict_source: not thread_output_by_id"))
-        for repository in ("jparker2006/ClosedWiz", "openwizdev/openwiz", "not a repository"):
+        for repository in ("jparker2006/ClosedWiz", "openwizdev/openwiz", "openwizdev/OpenWiz",
+                           "OPENWIZDEV/OPENWIZ", "not a repository"):
             kit = json.loads(KIT_TEXT)
             kit["test_repository"] = repository
             cases.append((f"test repository {repository}", kit,
