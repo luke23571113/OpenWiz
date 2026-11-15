@@ -1031,21 +1031,20 @@ class Check(unittest.TestCase):
         caller = b'jobs:\n  test:\n    uses: ./.github/workflows/local.yml\n'
         local = b'jobs:\n  reusable:\n    runs-on: ubuntu-latest\n'
         self.commit_files('synthetic 1', {'planted.md': planted, 'contracts/open-development.v1.md': bad,
-                                          'docs/runner.yml': runner, '.github/workflows/caller.yml': caller,
-                                          '.github/workflows/local.yml': local})
+                                          'docs/runner.yml': runner, '.github/workflows/caller.yml': caller})
         self.commit_files('synthetic 2', {'copy.md': planted, 'other.md': bad,
-                                          '.github/workflows/runner.yml': runner})
+                                          '.github/workflows/runner.yml': runner,
+                                          '.github/workflows/local.yml': local})
         self.commit_files('synthetic 3', {'planted.md': None, 'copy.md': None, 'other.md': None,
-                                          '.github/workflows/runner.yml': None,
-                                          '.github/workflows/local.yml': None})
+                                          '.github/workflows/runner.yml': None})
         self.assertEqual(self.scan_range(), (1,
             # commit-tree-1 is HEAD (synthetic 3); -2 is synthetic 2; -3 is synthetic 1.
-            'F2 commit-tree-1:".github/workflows/caller.yml":1\n'
             'F2 commit-tree-2:".github/workflows/runner.yml":1\n'
             'T1 commit-tree-2:"copy.md":1\n'
             'T1 commit-tree-2:"other.md":2\n'
             'T1 commit-tree-2:"planted.md":1\n'
             'T1 commit-tree-3:"planted.md":1\n'
+            'F2 commit-tree-3:".github/workflows/caller.yml":1\n'
             'literals: not used\n'))
 
     def test_matrix_block_scalar_cannot_hide_include_override(self):
