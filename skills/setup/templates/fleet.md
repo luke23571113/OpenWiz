@@ -93,3 +93,11 @@ Source: <the CI workflow, linked>, and the branch rules (`gh api 'repos/{owner}/
 <With no rule recorded: "None yet: every merge waits for the user.">
 
 Source: <linked source files, or decider, date and plain decision with a Markdown private-record comment link>.
+
+## GitHub identity
+
+| Setting | Value |
+| --- | --- |
+| Record authors | `<app-slug>[bot]`, `<the login of the account the fleet falls back to>` |
+
+Source: <the App's settings, and `gh api user` on the account the fleet runs as>.

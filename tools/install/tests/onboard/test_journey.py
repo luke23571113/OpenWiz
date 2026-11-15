@@ -39,7 +39,8 @@ FILES = {
         '# Fleet settings\n\nSynthetic settings.\n\n## CI checks\n\n'
         '| Check | Runs | Required on |\n| --- | --- | --- |\n| `build` | 1 | `main` |\n\n'
         'Source: synthetic.\n\n## Standing merge rules\n\n'
-        '| Pull request | Review | Merged by, and when |\n| --- | --- | --- |\n| `not-a-check` | none | synthetic |\n'),
+        '| Pull request | Review | Merged by, and when |\n| --- | --- | --- |\n| `not-a-check` | none | synthetic |\n\n'
+        '## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n| Record authors | `synthetic-factory[bot]` |\n'),
     'docs/agents/triage-labels.md': (
         '# Triage labels\n\n## Labels\n\n| Role | Label here | Meaning |\n| --- | --- | --- |\n'
         '| `needs-triage` | `needs-triage` | Synthetic |\n| `needs-info` | `needs-info` | Synthetic |\n'

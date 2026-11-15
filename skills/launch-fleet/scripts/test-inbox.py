@@ -14,6 +14,9 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIX = HERE.parent / 'test/ops-inbox'
 OLD, NEW, NEWER = 'a' * 40, 'b' * 40, 'c' * 40
+# #641: the factory's record authors, and an outsider who can comment too.
+FACTORY, OUTSIDER = 'synthetic-factory[bot]', 'synthetic-outsider'
+AUTHORS = frozenset({FACTORY, 'synthetic-owner'})
 
 
 def load(path, name):
@@ -41,9 +44,9 @@ def pr_view(**changes):
     view = {
         'repository': 'synthetic/ops', 'spec': 9000, 'ticket': 9001, 'pull_request': 9101,
         'approval': copy.deepcopy(APPROVAL), 'rule': copy.deepcopy(RULE), 'complete': True,
-        'head': NEW, 'ci': {'head': NEW, 'state': 'success'},
-        'records': [{'comment': 501, 'line': 'launch-fleet: review started ' + OLD}],
-        'verdicts': [{'comment': 502, 'verdict': 'CHANGES', 'head': OLD}],
+        'head': NEW, 'ci': {'head': NEW, 'state': 'success'}, 'authors': AUTHORS,
+        'records': [{'comment': 501, 'author': FACTORY, 'line': 'launch-fleet: review started ' + OLD}],
+        'verdicts': [{'comment': 502, 'author': FACTORY, 'verdict': 'CHANGES', 'head': OLD}],
         'builder': 'builder-9001', 'intents': [], 'now': 1000,
     }
     view.update(changes)
@@ -56,10 +59,24 @@ class Recheck(unittest.TestCase):
     def decide(self, view):
         return inbox.recheck(view)
 
+    def test_only_the_factory_records_and_verdicts_count(self):
+        """#641: an outsider's or authorless record or verdict routes nothing."""
+        for who in (OUTSIDER, None):
+            with self.subTest(author=who):
+                verdict = [{'comment': 502, 'author': who, 'verdict': 'CHANGES', 'head': OLD}]
+                self.assertEqual(self.decide(pr_view(verdicts=verdict)), ('none', 'no verdict'))
+                self.assertEqual(inbox.findings(pr_view(head=OLD, verdicts=verdict)), ('none', 'no verdict'))
+                start = [{'comment': 501, 'author': who, 'line': 'launch-fleet: review started ' + OLD}]
+                self.assertEqual(self.decide(pr_view(records=start)), ('refused', 'ambiguous reviewer'))
+        # The owner's account is a record author too, in any case; a view with no authors trusts nobody.
+        owner = [{'comment': 502, 'author': 'Synthetic-Owner', 'verdict': 'CHANGES', 'head': OLD}]
+        self.assertEqual(self.decide(pr_view(verdicts=owner))[0], 'record')
+        self.assertEqual(self.decide(pr_view(authors=frozenset())), ('refused', 'ambiguous reviewer'))
+
     def test_green_head_after_changes_or_approve_records_one_recheck_to_the_span(self):
         for verdict in ('CHANGES', 'APPROVE'):
             with self.subTest(verdict=verdict):
-                state, intent = self.decide(pr_view(verdicts=[{'comment': 502, 'verdict': verdict, 'head': OLD}]))
+                state, intent = self.decide(pr_view(verdicts=[{'comment': 502, 'author': FACTORY, 'verdict': verdict, 'head': OLD}]))
                 self.assertEqual(state, 'record')
                 effects.read_record(json.dumps(intent))  # strict schema and key identity
                 self.assertEqual(
@@ -76,8 +93,8 @@ class Recheck(unittest.TestCase):
             self.assertEqual((state, again), ('duplicate', intent))
 
     def test_the_legacy_tick_record_also_counts_as_sent(self):
-        records = [{'comment': 501, 'line': 'launch-fleet: review started ' + OLD},
-                   {'comment': 503, 'line': 'launch-fleet: re-check sent ' + NEW}]
+        records = [{'comment': 501, 'author': FACTORY, 'line': 'launch-fleet: review started ' + OLD},
+                   {'comment': 503, 'author': FACTORY, 'line': 'launch-fleet: re-check sent ' + NEW}]
         self.assertEqual(self.decide(pr_view(records=records)), ('none', 'recheck already sent'))
 
     def test_nothing_is_due_without_a_new_green_head(self):
@@ -89,26 +106,26 @@ class Recheck(unittest.TestCase):
 
     def test_superseded_verdicts_cannot_redirect_or_add_a_recheck(self):
         # The older verdict at OLD is superseded by the newer one at NEW: nothing is due at NEW.
-        verdicts = [{'comment': 502, 'verdict': 'CHANGES', 'head': OLD},
-                    {'comment': 504, 'verdict': 'APPROVE', 'head': NEW}]
+        verdicts = [{'comment': 502, 'author': FACTORY, 'verdict': 'CHANGES', 'head': OLD},
+                    {'comment': 504, 'author': FACTORY, 'verdict': 'APPROVE', 'head': NEW}]
         self.assertEqual(self.decide(pr_view(verdicts=verdicts)), ('none', 'head unchanged since the verdict'))
         # A verdict from before a fresh reviewer's start is not that reviewer's to recheck.
-        records = [{'comment': 501, 'line': 'launch-fleet: review started ' + OLD},
-                   {'comment': 503, 'line': 'launch-fleet: review given up ' + OLD + ': quiet'},
-                   {'comment': 505, 'line': 'launch-fleet: review started ' + NEW}]
+        records = [{'comment': 501, 'author': FACTORY, 'line': 'launch-fleet: review started ' + OLD},
+                   {'comment': 503, 'author': FACTORY, 'line': 'launch-fleet: review given up ' + OLD + ': quiet'},
+                   {'comment': 505, 'author': FACTORY, 'line': 'launch-fleet: review started ' + NEW}]
         self.assertEqual(self.decide(pr_view(records=records, head=NEWER, ci={'head': NEWER, 'state': 'success'})),
                          ('none', 'verdict precedes the current reviewer span'))
 
     def test_retired_and_ambiguous_reviewers_are_refused(self):
-        retired = [{'comment': 501, 'line': 'launch-fleet: review started ' + OLD},
-                   {'comment': 503, 'line': 'launch-fleet: review given up ' + OLD + ': quiet'}]
+        retired = [{'comment': 501, 'author': FACTORY, 'line': 'launch-fleet: review started ' + OLD},
+                   {'comment': 503, 'author': FACTORY, 'line': 'launch-fleet: review given up ' + OLD + ': quiet'}]
         self.assertEqual(self.decide(pr_view(records=retired)), ('refused', 'reviewer retired'))
         for records in (
             [],
-            [{'comment': 499, 'line': 'launch-fleet: re-check sent ' + OLD}],
-            [{'comment': 501, 'line': 'launch-fleet: review started ' + OLD + ', thread ' + 'thr' + '_x'}],
-            [{'comment': 501, 'line': 'launch-fleet: review started ' + OLD},
-             {'comment': 501, 'line': 'launch-fleet: review started ' + OLD}],
+            [{'comment': 499, 'author': FACTORY, 'line': 'launch-fleet: re-check sent ' + OLD}],
+            [{'comment': 501, 'author': FACTORY, 'line': 'launch-fleet: review started ' + OLD + ', thread ' + 'thr' + '_x'}],
+            [{'comment': 501, 'author': FACTORY, 'line': 'launch-fleet: review started ' + OLD},
+             {'comment': 501, 'author': FACTORY, 'line': 'launch-fleet: review started ' + OLD}],
         ):
             with self.subTest(records=records):
                 self.assertEqual(self.decide(pr_view(records=records)), ('refused', 'ambiguous reviewer'))
@@ -135,7 +152,7 @@ class Recheck(unittest.TestCase):
         self.assertEqual((recheck['destination'], recheck['sequence']), ('reviewer', 2))
         self.assertNotEqual(recheck['operation_key'], findings['operation_key'])
         self.assertEqual(inbox.findings(pr_view(head=OLD, ci=None, intents=[findings, recheck])), ('duplicate', findings))
-        self.assertEqual(inbox.findings(pr_view(verdicts=[{'comment': 502, 'verdict': 'APPROVE', 'head': OLD}])),
+        self.assertEqual(inbox.findings(pr_view(verdicts=[{'comment': 502, 'author': FACTORY, 'verdict': 'APPROVE', 'head': OLD}])),
                          ('none', 'no CHANGES at the head'))
 
 
@@ -168,8 +185,8 @@ class Inbox(unittest.TestCase):
     def view(self, records, **changes):
         view = {'repository': 'synthetic/ops', 'spec': 9000, 'ticket': 9001, 'approval': copy.deepcopy(APPROVAL),
                 'head': NEW, 'complete': True, 'cursor': {'created_at': 0, 'comment': 0},
-                'read_through': {'created_at': 3000, 'comment': 777}, 'records': records,
-                'verdicts': [{'comment': 502, 'verdict': 'CHANGES', 'head': OLD}], 'verified_acks': set()}
+                'read_through': {'created_at': 3000, 'comment': 777}, 'records': records, 'authors': AUTHORS,
+                'verdicts': [{'comment': 502, 'author': FACTORY, 'verdict': 'CHANGES', 'head': OLD}], 'verified_acks': set()}
         view.update(changes)
         return view
 
@@ -264,7 +281,7 @@ class Inbox(unittest.TestCase):
                                       self.one['id'], 'ack-9', 2500, evidence('fixture:ops-inbox/ack'), 'e' * 64)
 
     def test_r2_a_newer_verdict_supersedes_the_older_verdict_item(self):
-        verdicts = [{'comment': 502, 'verdict': 'CHANGES', 'head': OLD}, {'comment': 504, 'verdict': 'CHANGES', 'head': OLD}]
+        verdicts = [{'comment': 502, 'author': FACTORY, 'verdict': 'CHANGES', 'head': OLD}, {'comment': 504, 'author': FACTORY, 'verdict': 'CHANGES', 'head': OLD}]
         _, newer = inbox.recheck(pr_view(intents=[self.one], verdicts=verdicts))
         self.assertEqual(self.states(self.pull([self.one, newer], verdicts=verdicts)),
                          [(self.one['id'], 'superseded', 'superseded'), (newer['id'], 'recorded', 'record_only')])

@@ -2,7 +2,7 @@
   "repo": "synthetic-owner/synthetic-repo",
   "default": "main",
   "files": {
-    "docs/agents/fleet.md": "# Fleet settings\n\nSynthetic settings for fleet.sh's tests.\n\n## CI checks\n\n| Check | Runs | Required on |\n| --- | --- | --- |\n| `build` | 1 to 3 | `main` |\n| `test` | 4 | `main` |\n\n- **Both must pass** before anything merges.\n\nSource: synthetic.\n\n## Standing merge rules\n\n| Pull request | Review | Merged by, and when |\n| --- | --- | --- |\n| `not-a-check` | none | synthetic |\n",
+    "docs/agents/fleet.md": "# Fleet settings\n\nSynthetic settings for fleet.sh's tests.\n\n## CI checks\n\n| Check | Runs | Required on |\n| --- | --- | --- |\n| `build` | 1 to 3 | `main` |\n| `test` | 4 | `main` |\n\n- **Both must pass** before anything merges.\n\nSource: synthetic.\n\n## Standing merge rules\n\n| Pull request | Review | Merged by, and when |\n| --- | --- | --- |\n| `not-a-check` | none | synthetic |\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n| App | Synthetic, for the factory |\n| Record authors | `synthetic-factory[bot]`, `Synthetic-Owner` |\n",
     "docs/agents/triage-labels.md": "# Triage labels\n\n## Labels\n\n| Role | Label here | Meaning |\n| --- | --- | --- |\n| `needs-triage` | `needs-triage` | Maintainer needs to evaluate this issue |\n| `needs-info` | `needs-answer` | Waiting on reporter for more information |\n| `ready-for-agent` | `ready-for-agent` | Fully specified, ready for an agent to take unattended |\n| `ready-for-human` | `ready-for-human` | Requires human implementation |\n| `wontfix` | `wontfix` | Will not be actioned |\n"
   },
   "issues": [
