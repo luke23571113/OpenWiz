@@ -710,7 +710,8 @@ class Check(unittest.TestCase):
         self.git('commit', '--allow-empty', '-qm', 'clean pushed commit')
 
     def test_first_push_scans_from_merge_base_with_destination_main(self):
-        # The user-facing hook, copied with synthetic policy constants.
+        # The user-facing hook, copied with synthetic policy constants, pushing
+        # to a guarded ssh URL whose transport runs a local bare repository.
         self.published_main()
         hook = self.root / 'hook-root'
         (hook / '.githooks').mkdir(parents=True)
@@ -722,33 +723,55 @@ class Check(unittest.TestCase):
             text, count = re.subn(name + " = '[0-9a-f]{40}'", name + " = '" + value + "'", text)
             self.assertEqual(count, 1)
         policy.write_text(text)
-        def push():
+        remotes = self.root / 'remotes'
+        ssh = self.root / 'fake-ssh'
+        ssh.write_text('#!/bin/sh\nfor a; do cmd=$a; done\nsub=${cmd%% *}\neval "set -- ${cmd#* }"\n'
+                       'exec git "${sub#git-}" "' + str(remotes) + '$1"\n')
+        ssh.chmod(0o755)
+        self.git('config', 'core.sshCommand', str(ssh))
+        published, fresh = self.git('rev-parse', 'refs/remotes/origin/main'), self.anchor
+        for name, main in (('published', published), ('fresh', fresh), ('empty', None)):
+            subprocess.run(['git', 'init', '-q', '--bare', str(remotes / (name + '.git'))], check=True)
+            if main:
+                self.git('push', '-q', str(remotes / (name + '.git')), main + ':refs/heads/main')
+        url = lambda name: 'ssh://synthetic.invalid/' + name + '.git'
+        def push(name):
             line = 'refs/heads/topic {} refs/heads/topic {}\n'.format(self.git('rev-parse', 'HEAD'), '0' * 40)
-            r = subprocess.run(['sh', str(hook / '.githooks/pre-push'), 'origin', 'https://github.com/openwizdev/openwiz.git'],
+            r = subprocess.run(['sh', str(hook / '.githooks/pre-push'), 'origin', url(name)],
                                cwd=self.repo, input=line, text=True, capture_output=True,
                                env={**os.environ, **self.git_env, 'XDG_CACHE_HOME': str(self.root / 'cache')})
             return r.returncode, r.stdout + r.stderr
-        # Only the pushed commit is new: main's published history is not rescanned.
-        rc, out = push()
+        # Only the pushed commit is new at the destination, whose main
+        # already holds the published history: that history is not rescanned.
+        self.git('remote', 'add', 'origin', url('published'))
+        rc, out = push('published')
         self.assertEqual(rc, 0, out)
-        self.assertNotIn('T1 ', out)
+        self.assertIn('range: from the merge-base with upstream', out)
         # The pushed commits themselves are always scanned.
         self.git('commit', '--allow-empty', '-qm', 'pushed\n\n' + THREAD)
-        self.assertEqual(push()[0], 1)
+        self.assertEqual(push('published')[0], 1)
         self.git('reset', '-q', '--hard', 'HEAD~1')
-        # Fail closed: an unrelated main (no merge-base) or no main at all
-        # scans from the public anchor, as before.
-        self.git('checkout', '-q', '--orphan', 'unrelated')
-        self.git('commit', '--allow-empty', '-qm', 'unrelated root')
-        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
-        self.git('checkout', '-q', 'topic')
-        for step in ('unrelated', 'missing'):
-            if step == 'missing':
-                self.git('update-ref', '-d', 'refs/remotes/origin/main')
-            with self.subTest(main=step):
-                rc, out = push()
+        # The local origin/main still names the planted commit in every case
+        # below, but the destination does not hold it: it is unpublished
+        # there and must be scanned. Fail closed: scan from the anchor.
+        cases = (
+            ('split push URL', 'fresh', [('remote.origin.url', str(remotes / 'published.git')),
+                                         ('remote.origin.pushurl', url('fresh'))]),
+            ('retargeted URL, stale ref', 'fresh', [('remote.origin.url', url('fresh'))]),
+            ('destination has no main', 'empty', [('remote.origin.url', url('empty'))]),
+            ('URL Git would rewrite', 'empty', [('remote.origin.url', url('empty')),
+                                                ('url.' + url('published') + '.insteadOf', url('empty'))]),
+        )
+        for case, name, config in cases:
+            with self.subTest(case=case):
+                for key, value in config:
+                    self.git('config', key, value)
+                self.assertEqual(self.git('rev-parse', 'refs/remotes/origin/main'), published)
+                rc, out = push(name)
                 self.assertEqual(rc, 1, out)
                 self.assertIn('T1 ', out)
+                for key, _ in config:
+                    self.git('config', '--unset-all', key)
 
     def test_ci_new_ref_push_scans_from_merge_base_with_main(self):
         self.published_main()
