@@ -156,6 +156,108 @@ class Fixture(unittest.TestCase):
 
 
 class InstallTests(Fixture):
+    def test_first_install_and_reuse_with_bsd_mv(self):
+        real_mv = shutil.which('mv')
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
+                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
+                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.install()
+        self.assertEqual(self.git(self.dest, 'rev-parse', 'HEAD^{tree}').stdout.strip(), self.release['tree'])
+        before = snapshot(self.parent)
+        self.install()
+        self.assertEqual(snapshot(self.parent), before)
+
+    def test_partial_publication_failure_removes_only_our_installation(self):
+        real_mv = shutil.which('mv')
+        count = self.root / 'moves'
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'count = pathlib.Path(' + repr(str(count)) + ')\n'
+                           'n = int(count.read_text()) + 1 if count.exists() else 1\n'
+                           'count.write_text(str(n))\n'
+                           'if n == 2: sys.exit(1)\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.assert_refused_unchanged(code=3)
+        self.assertFalse(self.dest.exists())
+
+    def test_failed_destination_claim_is_io_failure_without_writes(self):
+        real_mkdir = shutil.which('mkdir')
+        wrapper = self.bin / 'mkdir'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
+                           'if sys.argv[-1] == ' + repr(str(self.dest)) + ': sys.exit(1)\n'
+                           'os.execv(' + repr(real_mkdir) + ', [' + repr(real_mkdir) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.assert_refused_unchanged(code=3)
+
+    def test_failed_publish_preserves_a_replacement_destination(self):
+        real_mv = shutil.which('mv')
+        count = self.root / 'moves'
+        moved = self.parent / 'claimed-directory-moved'
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'count = pathlib.Path(' + repr(str(count)) + ')\n'
+                           'n = int(count.read_text()) + 1 if count.exists() else 1\n'
+                           'count.write_text(str(n))\n'
+                           'if n == 2:\n'
+                           '    dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           '    dest.rename(' + repr(str(moved)) + ')\n'
+                           '    dest.mkdir(mode=0o750)\n'
+                           '    (dest / "release").mkdir(mode=0o710)\n'
+                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           '    os.utime(dest, ns=(123000000000, 456000000000))\n'
+                           '    sys.exit(1)\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.install(code=3)
+        self.assertEqual(snapshot(self.dest), {
+            '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes'),
+            'release': ('dir', 0o710)})
+        self.assertEqual(self.dest.stat().st_mtime_ns, 456000000000)
+        self.assertEqual(list(moved.iterdir()), [])
+        self.assertFalse(any(p.name.startswith('.wizskills-install.') for p in self.parent.iterdir()))
+
+    def test_concurrent_destination_and_release_child_survive_publication(self):
+        # Inject the race at the real publication syscall boundary, after the
+        # installer's last absence check. The wrapper then invokes the real mv.
+        real_mv = shutil.which('mv')
+        real_mkdir = shutil.which('mkdir')
+        for child in ('empty', 'nonempty', 'foreign'):
+            with self.subTest(child=child):
+                if self.dest.exists():
+                    shutil.rmtree(self.dest)
+                before = self.root / 'concurrent.json'
+                wrapper = self.bin / 'mv'
+                wrapper.write_text('#!' + sys.executable + '\n'
+                    'import json, os, pathlib, sys\n'
+                    'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                    'if sys.argv[-1] == str(dest):\n'
+                    '    dest.mkdir(mode=0o750)\n'
+                    '    release = dest / "release"\n'
+                    '    release.mkdir(mode=0o710)\n'
+                    + ('    (release / "keep").write_text("synthetic bytes")\n' if child == 'nonempty' else '')
+                    + ('    (dest / "foreign").write_text("synthetic foreign")\n' if child == 'foreign' else '')
+                    + '    os.utime(release, ns=(123000000000, 456000000000))\n'
+                    '    os.utime(dest, ns=(789000000000, 987000000000))\n'
+                    '    pathlib.Path(' + repr(str(before)) + ').write_text(json.dumps({\n'
+                    '        str(p.relative_to(dest)): [p.stat().st_mode, p.stat().st_mtime_ns,\n'
+                    '            p.stat().st_ino, p.read_text() if p.is_file() else None]\n'
+                    '        for p in [dest, *dest.rglob("*")]}))\n'
+                    'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+                wrapper.chmod(0o755)
+                mkdir_wrapper = self.bin / 'mkdir'
+                mkdir_wrapper.write_text(wrapper.read_text().replace(repr(real_mv), repr(real_mkdir)))
+                mkdir_wrapper.chmod(0o755)
+                self.install(code=1)
+                after = {str(p.relative_to(self.dest)): [p.stat().st_mode, p.stat().st_mtime_ns,
+                         p.stat().st_ino, p.read_text() if p.is_file() else None]
+                         for p in [self.dest, *self.dest.rglob('*')]}
+                self.assertEqual(after, json.loads(before.read_text()))
+                self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
+
     # Criterion 3: installs a local fake tagged repository.
     def test_installs_the_tagged_release_as_a_detached_checkout(self):
         before = set(os.listdir(self.parent))

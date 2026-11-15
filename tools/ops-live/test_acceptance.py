@@ -41,7 +41,7 @@ def fixture():
 
 def authorized_kit():
     """The real kit (#2244's findings, J55/J56, the recorded grants including J60)
-    with its one open precondition, #1110's posted evidence, met under a synthetic pointer."""
+    with its one open precondition, FR5's exclusive-use check, recorded under a synthetic pointer."""
     kit = json.loads(KIT_TEXT)
     kit["status"] = "authorized"
     for n, (name, entry) in enumerate(kit["controls"]["permissions"].items()):
@@ -49,8 +49,7 @@ def authorized_kit():
             entry["granted"] = True
             entry["record"] = POINTER.format(100 + n)
             kit["read_back"][name] = DIGEST
-    for entry in kit["start_after"]:
-        entry["record"] = POINTER.format(210)
+    kit["exclusive_use"]["record"] = POINTER.format(210)
     return kit
 
 
@@ -111,6 +110,7 @@ def live_results(kit_text):
         "verdicts": [{"reviewer": "reviewer-a", "verdict": "APPROVE", "comment": observed(50),
                       "thread_output": observed(51), "matches": True}],
         "respawns": 0,
+        "exclusive_use": {"checked_at": START, "evidence": [observed(60)]},
         "cleanup": [{"step": s, "state": "done", "evidence": [observed(30 + i)]}
                     for i, s in enumerate(steps)],
         "claims": [{"claim": c, "status": "pass", "evidence": [observed(40 + i)]}
@@ -129,6 +129,7 @@ def prepared_results():
     doc["fencing"] = {"boundary": "unknown", "evidence": []}
     doc["reviewer_output"] = {"access": "unknown", "evidence": []}
     doc["verdicts"] = []
+    doc["exclusive_use"] = None
     doc["cleanup"] = [dict(c, state="accounted") for c in doc["cleanup"]]
     for claim in doc["claims"]:
         claim.update(status="unverified", evidence=[])
@@ -149,14 +150,23 @@ class Kit(unittest.TestCase):
         kit = acceptance.read(KIT_TEXT)
         self.assertEqual(acceptance.check_kit(kit), [])
         # The permissions are recorded and read back, #2244's findings, J55/J56 and
-        # J60's thread grant are in: only #1110's run keeps the gate closed.
+        # J60's thread grant are in: only FR5's exclusive-use check keeps the gate closed.
         self.assertEqual(acceptance.live_gate(kit), [
-            "start_after #1110: not met: 0.0.13's timed live run has finished and its "
-            "evidence is posted on #1110"])
+            "exclusive_use: not recorded: no other live run is using "
+            "openwizdev/livecheck-throwaway-1110 at the time, checked and recorded right "
+            "before the first live effect"])
+        self.assertEqual(kit["exclusive_use"], {
+            "FR5": "https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6888295193",
+            "condition": "no other live run is using openwizdev/livecheck-throwaway-1110 at the time",
+            "when": "checked and recorded right before the first live effect",
+            "record": None})
+        self.assertNotIn("start_after", kit)
         self.assertEqual(kit["cloud_threads"]["J60"], {
             "record": "https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6874553811",
-            "active": 3, "total": 6, "repository": "openwizdev/livecheck-throwaway-1110",
-            "after": 1110})
+            "active": 3, "total": 6, "repository": "openwizdev/livecheck-throwaway-1110"})
+        self.assertEqual(kit["controls"]["limits"], {
+            "threads": {"active": 3, "total": 6}, "operations": {"active": 2, "total": 40},
+            "duration_minutes": 180})
         grant = "https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6868136156"
         for name, entry in kit["controls"]["permissions"].items():
             with self.subTest(name):
@@ -180,8 +190,9 @@ class Kit(unittest.TestCase):
         cases.append(("no grants", kit, "permission live: not granted"))
         kit = json.loads(KIT_TEXT)
         kit["status"] = "authorized"
-        cases.append(("#1110 still running", kit, "start_after #1110: not met: 0.0.13's timed "
-                      "live run has finished and its evidence is posted on #1110"))
+        cases.append(("exclusive use unchecked", kit, "exclusive_use: not recorded: no other live "
+                      "run is using openwizdev/livecheck-throwaway-1110 at the time, checked and "
+                      "recorded right before the first live effect"))
         kit = authorized_kit()
         kit["cloud_threads"]["J60"]["record"] = None
         cases.append(("J60 unanswered", kit, "cloud_threads: kit limits 3 active, 6 total exceed "
@@ -268,11 +279,28 @@ class Kit(unittest.TestCase):
             cases.append((f"test repository {repository}", kit,
                           "test_repository: not a throwaway owner/name repository"))
         kit = json.loads(KIT_TEXT)
-        kit["start_after"] = []
-        cases.append(("no #1110 precondition", kit, "start_after: not exactly #1110's posted evidence"))
+        del kit["exclusive_use"]
+        cases.append(("no FR5 precondition", kit, "exclusive_use: missing"))
         kit = json.loads(KIT_TEXT)
-        kit["start_after"][0]["record"] = "posted"
-        cases.append(("#1110 record", kit, "start_after[0].record: not a private-record comment pointer"))
+        kit["start_after"] = [{"ticket": 1110, "condition": "posted", "record": None}]
+        cases.append(("old #1110 ordering", kit, "start_after: unknown key"))
+        kit = json.loads(KIT_TEXT)
+        kit["exclusive_use"]["record"] = "checked"
+        cases.append(("check record", kit, "exclusive_use.record: not a private-record comment pointer"))
+        kit = json.loads(KIT_TEXT)
+        kit["exclusive_use"]["FR5"] = None
+        cases.append(("FR5 uncited", kit, "exclusive_use.FR5: not a private-record comment pointer"))
+        kit = json.loads(KIT_TEXT)
+        kit["exclusive_use"]["condition"] = "no other live run is using openwizdev/livecheck-throwaway-1111 at the time"
+        cases.append(("another repository checked", kit,
+                      "exclusive_use.condition: not no other live run using the kit's test_repository"))
+        kit = json.loads(KIT_TEXT)
+        kit["exclusive_use"]["when"] = "checked once before the run"
+        cases.append(("check not right before", kit,
+                      "exclusive_use.when: not checked and recorded right before the first live effect"))
+        kit = json.loads(KIT_TEXT)
+        kit["exclusive_use"]["ticket"] = 1110
+        cases.append(("ordering smuggled back", kit, "exclusive_use.ticket: unknown key"))
         kit = json.loads(KIT_TEXT)
         kit["cloud_threads"]["granted"] = 0
         cases.append(("no grant", kit, "cloud_threads.granted: not a positive integer"))
@@ -286,12 +314,8 @@ class Kit(unittest.TestCase):
         kit["cloud_threads"]["J60"]["repository"] = "jparker2006/ClosedWiz"
         cases.append(("J60 elsewhere", kit, "cloud_threads.J60.repository: not the kit's test_repository"))
         kit = json.loads(KIT_TEXT)
-        kit["cloud_threads"]["J60"]["after"] = 1111
-        cases.append(("J60 unordered", kit, "cloud_threads.J60.after: not a start_after ticket"))
-        kit = json.loads(KIT_TEXT)
-        kit["start_after"] = []
-        cases.append(("#1110 ordering dropped under J60", kit,
-                      "cloud_threads.J60.after: not a start_after ticket"))
+        kit["cloud_threads"]["J60"]["after"] = 1110
+        cases.append(("J60 ordered after #1110 again", kit, "cloud_threads.J60.after: unknown key"))
         kit = json.loads(KIT_TEXT)
         kit["permitted_effects"] = [e for e in kit["permitted_effects"] if "J55" not in e]
         cases.append(("re-spawn not a permitted effect", kit,
@@ -543,22 +567,53 @@ class Results(unittest.TestCase):
         doc = live_results(text(kit))
         self.assertEqual([r for r in refusals(text(kit), doc) if "Cloud threads" in r], [])
 
-    def test_run_only_on_the_throwaway_repository_after_1110(self):
+    def test_run_only_on_the_throwaway_repository_when_no_other_run_uses_it(self):
         doc = live_results(self.kit_text)
         doc["repository"] = "jparker2006/ClosedWiz"
         self.assertIn("repository: not the kit's throwaway repository",
                       refusals(self.kit_text, doc))
-        # J60's threads are granted, but a run before #1110's posted evidence is refused.
+        # FR5: J60's threads are granted, but a run whose exclusive-use check is not
+        # recorded is refused.
         kit = authorized_kit()
-        kit["start_after"][0]["record"] = None
-        self.assertIn("status: authorized but live gate closed: start_after #1110: not met: 0.0.13's "
-                      "timed live run has finished and its evidence is posted on #1110",
+        kit["exclusive_use"]["record"] = None
+        self.assertIn("status: authorized but live gate closed: exclusive_use: not recorded: no "
+                      "other live run is using openwizdev/livecheck-throwaway-1110 at the time, "
+                      "checked and recorded right before the first live effect",
                       acceptance.check_kit(kit))
         kit["status"] = "prepared"
         kit_text = text(kit)
         found = refusals(kit_text, live_results(kit_text))
-        self.assertIn("live: start_after #1110 not met", found)
+        self.assertIn("live: exclusive_use not recorded", found)
         self.assertEqual([r for r in found if "Cloud threads" in r], [])
+
+    def test_fr5_check_right_before_the_first_live_effect(self):
+        """FR5: the exclusive-use check is observed and precedes every live effect."""
+        cases = []
+        doc = live_results(self.kit_text)
+        doc["exclusive_use"] = None
+        cases.append(("live run without the check", doc, "exclusive_use: live run without its check"))
+        doc = live_results(self.kit_text)
+        doc["exclusive_use"]["checked_at"] = START + 2 * MINUTE  # after builder-a and op 1 began
+        cases.append(("checked after the first effect", doc,
+                      "exclusive_use: checked after the first live effect"))
+        doc = live_results(self.kit_text)
+        doc["exclusive_use"]["checked_at"] = START - MINUTE
+        cases.append(("checked before the run", doc, "exclusive_use: checked outside the run window"))
+        doc = live_results(self.kit_text)
+        doc["exclusive_use"]["evidence"] = [fixture()]
+        cases.append(("check from a fixture", doc, "exclusive_use: check not observed"))
+        doc = live_results(self.kit_text)
+        doc["exclusive_use"]["evidence"] = []
+        cases.append(("check without evidence", doc, "exclusive_use: check not observed"))
+        doc = live_results(self.kit_text)
+        doc["exclusive_use"]["other_runs"] = 0
+        cases.append(("check shape", doc, "exclusive_use.other_runs: unknown key"))
+        for name, doc, reason in cases:
+            with self.subTest(name):
+                self.assertIn(reason, refusals(self.kit_text, doc))
+        doc = live_results(self.kit_text)
+        doc["threads"][0]["start"] = START + MINUTE  # the check at START precedes every effect
+        self.assertEqual(refusals(self.kit_text, doc), [])
 
     def test_j56_verdict_read_by_id(self):
         cases = []

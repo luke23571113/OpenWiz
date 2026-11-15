@@ -212,7 +212,10 @@ moved-to URL remains until O9's address cleanup is verified merged.
 
 State version 5 is locked, owner-only and atomically fsynced before effects.
 Lost push/create/comment responses reconcile by their durable identity and
-read-back. Each edit persists its exact resource, intended value, full request and
+read-back. GitHub's issue list can omit a just-created item, so each confirming
+read also reads the next numbers directly (at most five, up to the first missing)
+with the same identity checks; each create pauses before its POST and retries its
+confirmation up to eight times, 5 s apart. Each edit persists its exact resource, intended value, full request and
 payload digest before sending. Resume reads that specific resource; an absent or
 ambiguous outcome refuses without retry or intent clearance. Other phase saves
 cannot clear an unsettled effect. Edit confirmation and intent clearance share

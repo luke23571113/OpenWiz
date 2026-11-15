@@ -19,6 +19,7 @@ import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
+BASELINE = HERE/'fixtures/baseline'  # synthetic (#677); see its README.md
 SINCE, UNTIL = '2030-01-01T08:00:00Z', '2030-01-02T08:00:00Z'
 SHA = 'a' * 40
 
@@ -624,7 +625,7 @@ class Dashboard(unittest.TestCase):
             p.update(since=UNTIL, until='2030-01-03T08:00:00Z', label='2030-01-02 PST')
             (old/'point.json').write_text(json.dumps(p))
             out = Path(tmp)/'dash'
-            r = cli('dashboard', old, d, '--out', out)
+            r = cli('dashboard', '--baseline', BASELINE, old, d, '--out', out)
             self.assertEqual(r.returncode, 0, r.stderr)
             md = (out/'README.md').read_text()
             self.assertIn('## Factory benches', md)
@@ -695,7 +696,7 @@ class Dashboard(unittest.TestCase):
             p.update(since='2030-01-03T08:00:00Z', until='2030-01-04T08:00:00Z', label='2030-01-03 PST')
             (later/'point.json').write_text(json.dumps(p))
             out2 = Path(tmp)/'dash2'
-            self.assertEqual(cli('dashboard', old, d, later, '--out', out2).returncode, 0)
+            self.assertEqual(cli('dashboard', '--baseline', BASELINE, old, d, later, '--out', out2).returncode, 0)
             six_svg = (out2/'buckets-6h.svg').read_text()
             for hours in ('00:00–06:00', '06:00–12:00', '12:00–18:00', '18:00–24:00'):
                 self.assertIn(f'<title>2030-01-02 {hours} PST: unknown', six_svg)

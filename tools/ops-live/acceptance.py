@@ -40,6 +40,8 @@ DISCOVERY_AFFECTS = ("P3", "P4", "P5", "P7")
 SPAWNS = ("builder_start", "review_start")
 # J56: a verdict counts only when it matches its reviewer thread's own output read by id.
 VERDICTS = ("APPROVE", "CHANGES")
+# FR5: the live run's only ordering precondition, checked right before the first effect.
+EXCLUSIVE_WHEN = "checked and recorded right before the first live effect"
 # Never a throwaway: the real repositories under test.
 REAL_REPOSITORIES = ("jparker2006/closedwiz", "openwizdev/OpenWiz")
 REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+")
@@ -52,12 +54,12 @@ COMPLETIONS = ("completed", "superseded", "uncertain", "reconciled_not_executed"
                "disabled", "refused")
 ROUTED = ("builder_start", "review_start", "delivery")  # completion needs the recipient's ACK
 EVIDENCE_CLASSES = ("fixture", "observation", "review")
-KIT_TOP = ("format", "status", "discovery_2244", "start_after", "test_repository",
+KIT_TOP = ("format", "status", "discovery_2244", "exclusive_use", "test_repository",
            "cloud_threads", "controls", "read_back", "host_roles", "cloud_exposure",
            "permitted_effects", "claims", "measures")
 RESULTS_TOP = ("format", "kit", "live", "repository", "window", "threads", "operations",
-               "respawns", "fencing", "reviewer_output", "verdicts", "cleanup", "claims",
-               "measures", "gaps")
+               "respawns", "exclusive_use", "fencing", "reviewer_output", "verdicts",
+               "cleanup", "claims", "measures", "gaps")
 
 
 def _text(value):
@@ -102,8 +104,8 @@ def check_kit(doc):
         out += [f"controls.{r}" for r in controls.check(doc["controls"])]
     if "discovery_2244" in doc:
         _discovery(doc["discovery_2244"], out)
-    if "start_after" in doc:
-        _start_after(doc["start_after"], out)
+    if "exclusive_use" in doc:
+        _exclusive_use(doc, out)
     if "test_repository" in doc:
         repository = doc["test_repository"]
         heads = doc.get("controls", {}).get("candidates", {}).get("heads", []) \
@@ -184,28 +186,29 @@ def _discovery(discovery, out):
             out.append("discovery_2244.J56.github_comment_alone: not never")
 
 
-def _start_after(entries, out):
-    """Runs that must finish, with their evidence posted, before this one starts."""
-    if not isinstance(entries, list):
-        out.append("start_after: not a list")
+def _exclusive_condition(doc):
+    return f"no other live run is using {doc.get('test_repository')} at the time"
+
+
+def _exclusive_use(doc, out):
+    """FR5: no other live run uses the throwaway repository, checked and recorded
+    right before the first live effect; `record` points to that check."""
+    entry = doc["exclusive_use"]
+    if not _keys(entry, ("FR5", "condition", "when", "record"), "exclusive_use", out):
         return
-    for i, entry in enumerate(entries):
-        p = f"start_after[{i}]"
-        if not _keys(entry, ("ticket", "condition", "record"), p, out):
-            continue
-        if not _positive(entry.get("ticket")):
-            out.append(f"{p}.ticket: not a positive integer")
-        if not _text(entry.get("condition")):
-            out.append(f"{p}.condition: not a non-empty printable ASCII string")
-        if not _pointer(entry.get("record"), nullable=True):
-            out.append(f"{p}.record: not a private-record comment pointer")
-    if not any(isinstance(e, dict) and e.get("ticket") == 1110 for e in entries):
-        out.append("start_after: not exactly #1110's posted evidence")
+    if not _pointer(entry.get("FR5")):
+        out.append("exclusive_use.FR5: not a private-record comment pointer")
+    if entry.get("condition") != _exclusive_condition(doc):
+        out.append("exclusive_use.condition: not no other live run using the kit's test_repository")
+    if entry.get("when") != EXCLUSIVE_WHEN:
+        out.append(f"exclusive_use.when: not {EXCLUSIVE_WHEN}")
+    if not _pointer(entry.get("record"), nullable=True):
+        out.append("exclusive_use.record: not a private-record comment pointer")
 
 
 def _cloud_threads(doc, out):
     """The recorded Cloud-thread grant; J60's record, once set, replaces it, only in
-    its throwaway repository and only after its named run."""
+    its throwaway repository (FR5 replaced its #1110 ordering with exclusive_use)."""
     grant, roles = doc["cloud_threads"], doc.get("host_roles")
     if not _keys(grant, ("record", "granted", "roles", "J60"), "cloud_threads", out):
         return
@@ -219,7 +222,7 @@ def _cloud_threads(doc, out):
             and len(set(names)) == len(names)):
         out.append("cloud_threads.roles: not kit host roles")
     j60 = grant.get("J60")
-    if _keys(j60, ("record", "active", "total", "repository", "after"), "cloud_threads.J60", out):
+    if _keys(j60, ("record", "active", "total", "repository"), "cloud_threads.J60", out):
         if not _pointer(j60.get("record"), nullable=True):
             out.append("cloud_threads.J60.record: not a private-record comment pointer")
         for name in ("active", "total"):
@@ -227,10 +230,6 @@ def _cloud_threads(doc, out):
                 out.append(f"cloud_threads.J60.{name}: not a positive integer")
         if j60.get("repository") != doc.get("test_repository"):
             out.append("cloud_threads.J60.repository: not the kit's test_repository")
-        after = doc.get("start_after")
-        if not (_positive(j60.get("after")) and isinstance(after, list) and any(
-                isinstance(e, dict) and e.get("ticket") == j60["after"] for e in after)):
-            out.append("cloud_threads.J60.after: not a start_after ticket")
 
 
 def _thread_grant(kit):
@@ -286,8 +285,9 @@ def live_gate(doc):
 
 
 def _unmet(kit):
-    return [f"start_after #{e['ticket']}: not met: {e['condition']}"
-            for e in kit["start_after"] if e["record"] is None]
+    entry = kit["exclusive_use"]
+    return [] if entry["record"] is not None else [
+        f"exclusive_use: not recorded: {entry['condition']}, {entry['when']}"]
 
 
 def _unknown_2244(kit):
@@ -401,9 +401,8 @@ def check_results(kit_text, doc):
         out.append("live: not true or false")
     elif live and kit["status"] != "authorized":
         out.append("live: kit is not authorized")
-    if live is True:
-        out += [f"live: start_after #{e['ticket']} not met" for e in kit["start_after"]
-                if e["record"] is None]
+    if live is True and kit["exclusive_use"]["record"] is None:
+        out.append("live: exclusive_use not recorded")
     if doc.get("repository") != kit["test_repository"]:
         out.append("repository: not the kit's throwaway repository")
     limits = kit["controls"]["limits"]
@@ -500,6 +499,8 @@ def check_results(kit_text, doc):
         out.append(f"operations: duplicate completed effect {key}")
     duplicate_starts = sum(len(v) - 1 for v in completed.values()
                            if v[0].get("action") == "builder_start")
+
+    _exclusive_check(doc, live, window, threads, [op for _, op in ops], out)
 
     fencing = doc.get("fencing")
     boundary = None
@@ -613,6 +614,29 @@ def check_results(kit_text, doc):
             if name == "duplicate_starts" and value != duplicate_starts:
                 out.append(f"{p}: {value} but {duplicate_starts} duplicate builder start recorded")
     return out
+
+
+def _exclusive_check(doc, live, window, threads, ops, out):
+    """FR5: an observed exclusive-use check inside the run window, at or before
+    every thread and operation start; null only for a run that is not live."""
+    check = doc.get("exclusive_use")
+    if check is None:
+        if live is True:
+            out.append("exclusive_use: live run without its check")
+        return
+    if not _keys(check, ("checked_at", "evidence"), "exclusive_use", out):
+        return
+    if not _observed(_evidence_list(check, "exclusive_use", out)):
+        out.append("exclusive_use: check not observed")
+    at = check.get("checked_at")
+    if not _time(at):
+        out.append("exclusive_use.checked_at: not a time in milliseconds")
+        return
+    if window and not window[0] <= at <= window[1]:
+        out.append("exclusive_use: checked outside the run window")
+    starts = [e.get("start") for e in threads + ops if _time(e.get("start"))]
+    if starts and at > min(starts):
+        out.append("exclusive_use: checked after the first live effect")
 
 
 def _respawn(kit, i, op, starts, respawned, out):

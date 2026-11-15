@@ -17,7 +17,7 @@ FIXTURES = ROOT / 'contracts/fixtures/wizskills'
 spec = importlib.util.spec_from_file_location('standalone', TOOL)
 standalone = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(standalone)
-SETTINGS = ['docs/agents/*.md', 'changes/README.md', 'GLOSSARY.md']
+SETTINGS = ['docs/agents/*.md', 'changes/README.md', 'GLOSSARY.md', 'AGENTS.md', 'CLAUDE.md', 'docs/adr/*.md']
 UP = '../../../'  # from skills/alpha/<folder>/ to above the package root
 
 
@@ -48,7 +48,7 @@ class ContractExamples(Base):
         for name, text in package['files'].items():
             self.write(name, text)
         rows = json.loads((FIXTURES / 'references.json').read_text())
-        self.assertEqual(len(rows), 20)
+        self.assertEqual(len(rows), 35)
         for row in rows:
             with self.subTest(name=row['name']):
                 if row['kind'] == 'symlink':
@@ -242,6 +242,35 @@ class ReviewRound1(Base):
         # Relative to the instruction's own file, as a nested README writes it.
         self.write('skills/alpha/test/case/README.md', 'Run `../../scripts/run.sh`.\n')
         self.assertEqual(self.refused(), [refusal('script', md, n) for n in (3, 6, 9, 10, 15, 21, 22, 24, 26, 27)])
+
+    def test_wz15_project_settings_are_reads_only(self):
+        for target in ('AGENTS.md', 'CLAUDE.md', 'docs/adr/0001-example.md'):
+            with self.subTest(target=target):
+                f = 'skills/alpha/scripts/settings.py'
+                self.write(f, 'from pathlib import Path\nPath(' + repr(target) + ').read_text()\n')
+                self.assertEqual(self.refused(), [])
+                self.write(f, 'import runpy\nrunpy.run_path(' + repr(target) + ')\n')
+                self.assertEqual(self.refused(), [refusal('import', f, 2)])
+
+    def test_wz15_openwiz_cargo_requirement_is_refused_without_echoing_it(self):
+        f = 'skills/alpha/SKILL.md'
+        self.write(f, '# Alpha\nRun the consumer project checks.\n```sh\n'
+                      'cargo test -p openwiz-tests --test checks skills\n```\n'
+                      '```json\n{"example": "cargo test -p openwiz-tests"}\n```\n')
+        self.assertEqual(self.refused(), [refusal('script', f, 4)])
+        p = subprocess.run([sys.executable, '-I', str(TOOL), '--tree', str(self.tree)],
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 1)
+        self.assertEqual(json.loads(p.stdout), refusal('script', f, 4))
+        self.assertNotIn('cargo', p.stdout + p.stderr)
+
+    def test_wz15_cargo_in_a_historical_result_is_data_but_a_requirement_is_not(self):
+        f = 'skills/alpha/evidence.md'
+        self.write(f, '# Historical proof\n'
+                      'The affected suite is `cargo test -p openwiz-tests --test checks skills`.\n'
+                      '- `cargo test -p openwiz-tests --test checks skills`: 46 passed, no failures.\n'
+                      'Run `cargo test -p openwiz-tests --test checks skills` before handing back.\n')
+        self.assertEqual(self.refused(), [refusal('script', f, 4)])
 
     def test_r2_literal_operands_at_sinks(self):
         py, js, sh = 'skills/alpha/scripts/lit.py', 'skills/alpha/scripts/lit.mjs', 'skills/alpha/scripts/lit.sh'

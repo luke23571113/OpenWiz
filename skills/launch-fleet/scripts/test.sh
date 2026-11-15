@@ -29,7 +29,7 @@ HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 FLEET=${FLEET_SH:-$HERE/fleet.sh}
 FIX=$HERE/fixtures
 NOW=1793534400 # 2026-11-01T12:00:00Z, the fixtures' "now"
-CASES=749      # 734 existing cases plus #2725's 12 review-subject cases and #2549's 3 GI7 cases
+CASES=783      # 770 existing cases plus #2888 R1's 13 completion-request cases
 fails=0
 cases=0
 ERR=''         # the exact stderr the next case expects, when not the points line
@@ -1559,6 +1559,7 @@ expect 'an open planned live check prevents spec completion' 0 check.json 'all_c
 person #15: Live check (spec #10) is ready, and only the user can do it
 EOF
 expect 'a completed planned live check needs no pull request' 0 check.json 'all_closed | ticket(15; "Live check"; ["ready-for-human"]; []) | issue(15; .state = "CLOSED") | approve(10; 1002; "11:00"; 2; [11, 12, 13, 14, [15, "ready-for-human"]])' -- check <<EOF
+look #15: closed person ticket needs launch-fleet: complete: <evidence>
 spec done #10: every planned ticket is done; no follow-ups
 EOF
 
@@ -1767,6 +1768,126 @@ expect 'a closed blocker is not enough: with a verified merge it is' 0 frontier.
 #42 G2: gadget writer
 #45 G5: gadget import
 #55 G11: gadget filter
+EOF
+# #2888: synthetic person completion evidence, through the public commands.
+# A closed human blocker with a completion record frees its dependent; the
+# existing merge-only cases never exercised a human blocker without a PR.
+HUMAN43='issue(43; .labels = ["ready-for-human"])
+  | say(43; 4301; "10:00"; "launch-fleet: complete: synthetic repository read-back in evidence/repository.txt")'
+PERSON_FRONTIER='#41 G1: gadget reader
+#42 G2: gadget writer
+#45 G5: gadget import
+#55 G11: gadget filter'
+expect 'person blocker: closed human with evidence frees the frontier' 0 frontier.json "$HUMAN43" -- frontier <<EOF
+$PERSON_FRONTIER
+EOF
+expect 'person blocker: person label with evidence also frees the frontier' 0 frontier.json "$HUMAN43 | issue(43; .labels = [\"person\"])" -- frontier <<EOF
+$PERSON_FRONTIER
+EOF
+expect 'person blocker: configured human label frees the frontier' 0 frontier.json "$HUMAN43 | issue(43; .labels = [\"human-step\"]) @@then@@ .files[\"docs/agents/triage-labels.md\"] |= sub(\"[|] \`ready-for-human\` [|] \`ready-for-human\`\"; \"| \`ready-for-human\` | \`human-step\`\")" -- frontier <<EOF
+$PERSON_FRONTIER
+EOF
+expect 'person blocker: closed human without a record stays blocked' 0 frontier.json "$HUMAN43 | issue(43; .comments = [])" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: empty completion has no evidence' 0 frontier.json "$HUMAN43 | issue(43; .comments[0].body = \"launch-fleet: complete:   \")" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: prose mentioning completion is not a record' 0 frontier.json "$HUMAN43 | issue(43; .comments[0].body = \"Discussion: launch-fleet: complete: synthetic evidence\")" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: completion without the colon is not the record form' 0 frontier.json "$HUMAN43 | issue(43; .comments[0].body = \"launch-fleet: completed synthetic evidence\")" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: reopened human with evidence stays blocked' 0 frontier.json "$HUMAN43 | issue(43; .state = \"OPEN\")" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: agent with completion still needs a merged PR' 0 frontier.json "$HUMAN43 | issue(43; .labels = [\"ready-for-agent\"])" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: unknown label with completion stays blocked' 0 frontier.json "$HUMAN43 | issue(43; .labels = [\"personality\"])" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: evidence on the dependent cannot complete the blocker' 0 frontier.json 'issue(43; .labels = ["ready-for-human"]) | say(42; 4201; "10:00"; "launch-fleet: complete: synthetic evidence")' -- frontier <<EOF
+$FRONTIER
+EOF
+HUMAN12='issue(12; .state = "CLOSED" | .labels = ["ready-for-human"])
+  | say(12; 1202; "11:05"; "launch-fleet: archived")
+  | say(12; 1203; "11:06"; "launch-fleet: complete: synthetic read-back in evidence/repository.txt")
+  | approve(10; 1002; "11:10"; 2; [11, [12, "ready-for-human"], 13, 14])'
+expect 'person blocker: spec check starts the dependent' 0 check.json "$HUMAN12" -- spec 10 <<EOF
+start #13: W3: widget page (spec #10)
+EOF
+expect 'person blocker: claim goes after human completion without a PR' 0 check.json "$HUMAN12 | say(13; 1301; \"11:58\"; \"launch-fleet: starting\")" -- claim 13 1301 <<EOF
+go #13
+EOF
+expect 'person blocker: completion on an older comment page is read' 0 frontier.json "$HUMAN43 | issue(43; .comments += discussion(119))" -- frontier <<EOF
+$PERSON_FRONTIER
+EOF
+expect 'person blocker: dual agent and human labels still require a merge' 0 frontier.json "$HUMAN43 | issue(43; .labels += [\"ready-for-agent\"])" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: quoted completion is not a record' 0 frontier.json "$HUMAN43 | issue(43; .comments[0].body = \" > launch-fleet: complete: synthetic evidence\")" -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: unreadable evidence stays blocked' 0 frontier.json "$HUMAN43" FAKE_GH_FAIL=issue_comments_43_page=1 -- frontier <<EOF
+$FRONTIER
+EOF
+expect 'person blocker: spec cache begins without completion' 0 check.json "$HUMAN12 | issue(12; .comments |= map(select(.id != 1203)))" -- spec 10 <<EOF
+look #12: closed person ticket needs launch-fleet: complete: <evidence>
+EOF
+again 'person blocker: spec cache warms without completion' '.' -- spec 10 <<EOF
+look #12: closed person ticket needs launch-fleet: complete: <evidence>
+EOF
+again 'person blocker: added completion frees the cached dependent' 'say(12; 1203; "11:06"; "launch-fleet: complete: synthetic read-back in evidence/repository.txt")' -- spec 10 <<EOF
+start #13: W3: widget page (spec #10)
+EOF
+again 'person blocker: deleted completion blocks the cached dependent' 'issue(12; .comments |= map(select(.id != 1203)))' -- spec 10 <<EOF
+look #12: closed person ticket needs launch-fleet: complete: <evidence>
+EOF
+
+# R1: closed person work must ask for the evidence record instead of silently
+# holding its dependent. Existing frontier cases prove refusal, not this prompt.
+MISSING_COMPLETION='closed person ticket needs launch-fleet: complete: <evidence>'
+MISSING12="$HUMAN12 | issue(12; .comments |= map(select(.id != 1203)))"
+expect 'R1 completion: spec asks for the missing evidence record' 0 check.json "$MISSING12" -- spec 10 <<EOF
+look #12: $MISSING_COMPLETION
+EOF
+again 'R1 completion: recorded request is quiet' 'say(12; 1204; "11:20"; "launch-fleet: look: closed person ticket needs launch-fleet: complete: <evidence>")' -- spec 10 < /dev/null
+again 'R1 completion: adding evidence after the request frees the dependent' 'say(12; 1205; "11:30"; "launch-fleet: complete: synthetic read-back in evidence/repository.txt")' -- spec 10 <<EOF
+start #13: W3: widget page (spec #10)
+EOF
+expect 'R1 completion: project check asks for the record' 0 check.json "$MISSING12" -- check <<EOF
+look #12: $MISSING_COMPLETION
+EOF
+expect 'R1 completion: targeted wake asks for the record' 0 check.json "$MISSING12" -- wake 12 <<EOF
+look #12: $MISSING_COMPLETION
+EOF
+expect 'R1 completion: person label asks for the record' 0 check.json "$MISSING12 | issue(12; .labels = [\"person\"])" -- spec 10 <<EOF
+look #12: $MISSING_COMPLETION
+EOF
+expect 'R1 completion: empty evidence still asks for the record' 0 check.json "$HUMAN12 | edit(12; 1203; \"11:06\"; \"launch-fleet: complete:   \")" -- spec 10 <<EOF
+look #12: $MISSING_COMPLETION
+EOF
+expect 'R1 completion: an agent ticket gets no person-completion request' 0 check.json "$MISSING12 | issue(12; .labels = [\"ready-for-agent\"])" -- spec 10 < /dev/null
+expect 'R1 completion: unrelated look does not suppress the request' 0 check.json "$MISSING12 | say(12; 1204; \"11:20\"; \"launch-fleet: look: synthetic old concern\")" -- spec 10 <<EOF
+look #12: $MISSING_COMPLETION
+EOF
+expect 'R1 completion: request coexists with archiving its builder' 0 check.json "$MISSING12 | issue(12; .comments |= map(select(.id != 1202)))" -- spec 10 <<EOF
+look #12: $MISSING_COMPLETION
+archive #12: closed; archive thr_syn12
+EOF
+# A closed human blocker may live outside the spec being checked.
+EXTERNAL_PERSON='merge12 | closed_single(71; "11:00") | issue(71; .labels = ["ready-for-human"])
+  | issue(13; .blockedBy = [71]) | approve(10; 1002; "11:10"; 2; [11, 12, 13, 14])'
+expect 'R1 external: spec asks for a person blocker outside its graph' 0 check.json "$EXTERNAL_PERSON" -- spec 10 <<EOF
+look #71: $MISSING_COMPLETION
+EOF
+expect 'R1 external: dependent wake asks for its person blocker record' 0 check.json "$EXTERNAL_PERSON" -- wake 13 <<EOF
+look #71: $MISSING_COMPLETION
+EOF
+again 'R1 external: completion lets the dependent wake proceed' 'say(71; 7101; "11:30"; "launch-fleet: complete: synthetic read-back in evidence/repository.txt")' -- wake 13 <<EOF
+start #13: W3: widget page (spec #10)
 EOF
 expect 'a merge into a release branch is not a verified merge: into main it is' 0 frontier.json 'pull(72; .base = "main")' -- frontier <<EOF
 #41 G1: gadget reader

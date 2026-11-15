@@ -735,6 +735,15 @@ class Check(unittest.TestCase):
                                          'jparker2006/ClosedWiz' else 'ubuntu-24.04')
         self.assertEqual(parsed['permissions'], {'contents': 'read'})
         self.assertEqual(set(parsed['on']), {'push', 'pull_request', 'merge_group'})
+        # #714, #725: a push run on any branch but main duplicates the required
+        # privacy check; a new branch's first push (zero before) scans every
+        # commit tree since the anchor, hits the job timeout and reports
+        # cancelled, which blocks the merge queue. pull_request and merge_group
+        # cover PR branches and queue groups, so push stays main only.
+        self.assertEqual(parsed['on']['push'], {'branches': ['main']})
+        # privacy is required: a branch or path filter would leave it missing on some PRs.
+        self.assertFalse({'branches', 'branches-ignore', 'paths', 'paths-ignore'} & set(parsed['on']['pull_request']))
+        self.assertEqual(parsed['on']['merge_group'], {'types': ['checks_requested']})
         self.assertEqual(workflow.refused_jobs(path.read_text()), [])
         self.assertIn('edited', parsed['on']['pull_request']['types'])
 

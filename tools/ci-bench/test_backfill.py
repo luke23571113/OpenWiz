@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
+BASELINE = HERE/'fixtures/baseline'  # synthetic (#677); see its README.md
 
 def module(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -105,7 +106,7 @@ class DailyMetrics(unittest.TestCase):
             self.assertEqual(json.loads(cached.read_text())['factory']['merged_prs'], 0)
             cached_point = json.loads(cached.read_text())
             dashboard = root/'dashboard'
-            r = cli('dashboard', out/'2030-07-02', out/'2030-07-01', '--out', dashboard)
+            r = cli('dashboard', '--baseline', BASELINE, out/'2030-07-02', out/'2030-07-01', '--out', dashboard)
             self.assertEqual(r.returncode, 0, r.stderr)
             md = (dashboard/'README.md').read_text()
             self.assertEqual(md.splitlines()[2], '![Daily CI metrics](daily-metrics.svg)')
@@ -147,7 +148,7 @@ class DailyMetrics(unittest.TestCase):
             p['label'] = 'checkpoint at same daily bounds'
             (duplicate/'point.json').write_text(json.dumps(p))
             out = root/'dashboard'
-            r = cli('dashboard', windows[2], duplicate, windows[1], windows[0], '--out', out)
+            r = cli('dashboard', '--baseline', BASELINE, windows[2], duplicate, windows[1], windows[0], '--out', out)
             self.assertEqual(r.returncode, 0, r.stderr)
             svg = (out/'daily-metrics.svg').read_text()
             self.assertEqual(svg.count('class="metric-point"'), 4)

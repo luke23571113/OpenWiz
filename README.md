@@ -1,4 +1,10 @@
-# OpenWiz
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/openwiz-lockup-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/brand/openwiz-lockup-light.svg">
+    <img alt="OpenWiz" src="docs/brand/openwiz-lockup-light.svg" width="380">
+  </picture>
+</h1>
 
 OpenWiz runs coding agents in fleets, with the user approving plans and OpenWiz building, reviewing and merging their tickets. It also provides a terminal and loopback web interface for CloudRoom sessions, messaging, new threads and attachments. See [STATUS.md](STATUS.md) for the distinction between published features, fixture-tested work and live acceptance.
 

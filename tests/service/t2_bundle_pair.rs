@@ -164,6 +164,11 @@ fn named(appdir: &Path, appimage: &Path) -> Vec<u8> {
 // "message": "thread list could not be run: CloudRoom not running: room-cli
 // could not be started (ambiguous app bundles). ..."
 // test result: FAILED. 0 passed; 1 failed; 64 filtered out.
+// #2991 red (2026-11-14): the same command with only thread-list logging
+// suppressed (responses unchanged) exited 101 at the exact count: 0 != 1.
+// Suppressing only cloud-status logging exited 101 at its count: 0 != 2.
+// The HTTP status/verdict checks passed in both runs; nonempty version logs
+// alone therefore no longer satisfy this proof.
 #[test]
 fn t2_bundle_pair_server_reads_accept_a_helper_through_an_intermediate_shell() {
     use std::io::{BufRead, BufReader, Read, Write};
@@ -260,12 +265,23 @@ esac
             }
         }
     };
+    let count = |suffix: &str| {
+        fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .filter(|line| line.ends_with(suffix))
+            .count()
+    };
     read_form(); // The unchanged pair works before the helper starts.
+    assert_eq!(count(" thread list --json"), 1);
+    assert_eq!(count(" cloud status --json"), 2);
     pair.shell("500100", "201", b"");
     pair.identity("500100", "201", 120);
     pair.app("500000", GUI, "500100", None);
     pair.identity("500000", "500100", 130);
     read_form(); // Red on main: inventory returns 502 / Ambiguous here.
+    assert_eq!(count(" thread list --json"), 2);
+    assert_eq!(count(" cloud status --json"), 4);
     std::thread::scope(|scope| {
         for _ in 0..8 {
             scope.spawn(|| {
@@ -286,15 +302,26 @@ esac
     assert_eq!(pair.resolve(), Err(LocateError::Ambiguous));
     drop(server);
     reader.join().unwrap();
-    let ran = fs::read_to_string(calls).unwrap();
+    let ran = fs::read_to_string(&calls).unwrap();
     assert!(
-        !ran.is_empty()
-            && ran.lines().all(|line| {
-                line.split_once(' ').unwrap().0 == pair.cli(BRIDGE).to_str().unwrap()
-            }),
+        ran.lines()
+            .all(|line| line.split_once(' ').unwrap().0 == pair.cli(BRIDGE).to_str().unwrap()),
         "only the verified bridge launcher may run: {ran}"
     );
     assert!(!ran.contains("thread spawn"), "preview must only read");
+    // Runs::call shares identical in-flight reads, so the 64 concurrent
+    // forms cannot promise exactly 66 thread lists and 132 cloud statuses
+    // overall. The two serial forms above pin exact counts for inventory,
+    // options and preview; concurrency must add each read within those bounds.
+    // Default inventory has no hidden/archived flags.
+    assert!(
+        (3..=66).contains(&count(" thread list --json")),
+        "concurrent inventories must reach thread list: {ran}"
+    );
+    assert!(
+        (6..=132).contains(&count(" cloud status --json")),
+        "concurrent options and previews must reach cloud status: {ran}"
+    );
 }
 
 #[test]

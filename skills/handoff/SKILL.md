@@ -19,7 +19,7 @@ An orchestrator is one long chat. When it grows too long, or a new orchestrator 
 
 ## Find the page
 
-Read `docs/agents/issue-tracker.md` for the private repository and `docs/agents/domain.md` for its checkout and state paths, then the handoff path the project's instructions name. For OpenWiz this is `private/orchestration/HANDOFF.md` in ClosedWiz; all orchestrator state stays under `private/orchestration/` there. Verify the remote and private visibility before writing. If no handoff exists, create it at that private path from the template below. Missing private settings or unknown visibility stops the write; never fall back to a public `docs/agents/handoff.md`. A public instruction may name the private location, but must not copy its content.
+Read `docs/agents/issue-tracker.md` for the private repository and `docs/agents/domain.md` for its checkout and state paths, then the handoff path the project's instructions name. Resolve the private handoff file and orchestrator state through the consumer project's settings. Verify the remote and private visibility before writing. If no handoff exists, create it at that private path from the template below. Missing private settings or unknown visibility stops the write; never fall back to a public `docs/agents/handoff.md`. A public instruction may name the private location, but must not copy its content.
 
 ## Take over
 

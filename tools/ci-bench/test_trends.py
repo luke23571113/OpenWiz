@@ -12,6 +12,7 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+BASELINE = HERE/'fixtures/baseline'  # synthetic (#677); see its README.md
 sys.dont_write_bytecode = True
 FIXTURE = ROOT/'tools/factory-metrics/fixtures/journey/journeys.json'
 SINCE, UNTIL = '2030-01-01T08:00:00Z', '2030-01-02T08:00:00Z'
@@ -351,7 +352,7 @@ class Trends(unittest.TestCase):
                 if i == 7: t['experiments'][0]['merged_at'] = '2030-01-08T12:00:00Z'
                 p['journey'] = t
                 (d/'point.json').write_text(json.dumps(p))
-            cmd = [sys.executable, '-I', str(HERE/'bench.py'), 'dashboard', *map(str, days), '--out', str(w/'charts')]
+            cmd = [sys.executable, '-I', str(HERE/'bench.py'), 'dashboard', '--baseline', str(BASELINE), *map(str, days), '--out', str(w/'charts')]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, r.stderr)
             md = (w/'charts/journey-trends.md').read_text()
@@ -420,7 +421,7 @@ class Trends(unittest.TestCase):
             p.update(since=report['since'], until=report['until'], label=label, hours=hours,
                      latency_basis='workflow created to last job completed', journey=report)
             (w/'point.json').write_text(json.dumps(p))
-            r = subprocess.run([sys.executable, '-I', str(HERE/'bench.py'), 'dashboard', str(w),
+            r = subprocess.run([sys.executable, '-I', str(HERE/'bench.py'), 'dashboard', '--baseline', str(BASELINE), str(w),
                                 '--out', str(w/'out')], capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, r.stderr)
             return (w/'out/journey-trends.md').read_text()
@@ -466,7 +467,7 @@ class Trends(unittest.TestCase):
                          latency_basis='workflow created to last job completed', journey=r)
                 r['since'], r['until'] = p['since'], p['until']
                 (w/'point.json').write_text(json.dumps(p))
-            result = subprocess.run([sys.executable, '-I', str(HERE/'bench.py'), 'dashboard',
+            result = subprocess.run([sys.executable, '-I', str(HERE/'bench.py'), 'dashboard', '--baseline', str(BASELINE),
                                      *map(str, days), '--out', str(root/'out')], capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             ns = '{http://www.w3.org/2000/svg}'
