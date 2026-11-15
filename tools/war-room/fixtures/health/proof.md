@@ -64,3 +64,29 @@ AssertionError: Lists differ: [{9001, 9002, 9003, 9004, 9005, 9006}] != []
 Ran 1 test in 2.416s
 FAILED (failures=3)
 ```
+
+## Public board readers red (OpenWiz)
+
+Run on OpenWiz before the extraction, committed with the new proofs:
+
+```text
+$ python3 -I tools/war-room/test_gather.py PublicBoardReaders
+ERROR: test_board_graph_measures_and_states_keep_the_source_definitions (__main__.PublicBoardReaders.test_board_graph_measures_and_states_keep_the_source_definitions)
+AttributeError: module 'sources' has no attribute 'board_check_links'
+ERROR: test_credit_samples_and_their_sampled_drops (__main__.PublicBoardReaders.test_credit_samples_and_their_sampled_drops)
+AttributeError: module 'sources' has no attribute 'read_credits'
+ERROR: test_half_up_rounding_and_undefined_ratios (__main__.PublicBoardReaders.test_half_up_rounding_and_undefined_ratios)
+AttributeError: module 'sources' has no attribute 'board_measures'
+ERROR: test_history_rows_are_strict (__main__.PublicBoardReaders.test_history_rows_are_strict)
+AttributeError: module 'sources' has no attribute 'board_strict'
+FAIL: test_no_private_module_is_loaded_and_each_board_source_still_reads (__main__.PublicBoardReaders.test_no_private_module_is_loaded_and_each_board_source_still_reads) [board_graph]
+AssertionError: a private module was loaded: private/orchestration/board/board.py
+FAIL: test_no_private_module_is_loaded_and_each_board_source_still_reads (__main__.PublicBoardReaders.test_no_private_module_is_loaded_and_each_board_source_still_reads) [board_history]
+AssertionError: a private module was loaded: private/orchestration/board/board.py
+FAIL: test_no_private_module_is_loaded_and_each_board_source_still_reads (__main__.PublicBoardReaders.test_no_private_module_is_loaded_and_each_board_source_still_reads) [credits]
+AssertionError: a private module was loaded: private/orchestration/board/board.py
+FAIL: test_no_private_module_is_loaded_and_each_board_source_still_reads (__main__.PublicBoardReaders.test_no_private_module_is_loaded_and_each_board_source_still_reads)
+AssertionError: a private module was loaded: private/orchestration/board/board.py
+Ran 5 tests in 0.104s
+FAILED (failures=4, errors=4)
+```

@@ -156,6 +156,111 @@ def git(cwd, *args, env=None):
                           env=env).stdout
 
 
+class PublicBoardReaders(unittest.TestCase):
+    """#629: the board's offline readers live in sources.py; no private module is loaded.
+
+    Expected values are literals read off the synthetic fixtures (fixtures/page-history/
+    board-graph.json, fixtures/gather/history.jsonl and credits.jsonl), pinned once
+    against the board's existing readers before their extraction."""
+    AT = '2030-01-02T12:30:00Z'
+    LINK = 'https://github.com/synthetic-owner/work/commit/' + 'c' * 40
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix='war-room-board-'))
+        self.addCleanup(shutil.rmtree, self.root)
+        graph = json.loads((FIX / 'page-history/board-graph.json').read_text())
+        graph['repo'] = REPO
+        self.graph = graph
+        self.inputs = {'board_graph': json.dumps(graph),
+                       'board_history': (FIX / 'gather/history.jsonl').read_text(),
+                       'credits': (FIX / 'gather/credits.jsonl').read_text()}
+
+    def select(self, kind, wire):
+        (self.root / kind).write_text(wire)
+        entry = {'kind': kind, 'slot': sources.SLOTS[kind], 'path': kind, 'observed_at': self.AT,
+                 'sha256': hashlib.sha256(wire.encode()).hexdigest(), 'evidence': [self.LINK]}
+        return sources.select(self.root, [entry], self.AT)[0], entry
+
+    def test_no_private_module_is_loaded_and_each_board_source_still_reads(self):
+        real = sources.native
+
+        def public_only(path):
+            if path.startswith('private/'):
+                raise AssertionError('a private module was loaded: ' + path)
+            return real(path)
+        with patch.object(sources, 'native', side_effect=public_only):
+            for kind, wire in self.inputs.items():
+                with self.subTest(kind):
+                    provider, entry = self.select(kind, wire)
+                    self.assertNotEqual(provider, sources._failed(entry['slot'], None, self.AT))
+            self.assertEqual(gatherer().open_approved(self.inputs['board_graph'].encode()),
+                             [9001, 9002, 9003, 9004, 9005, 9006])
+
+    def test_board_graph_measures_and_states_keep_the_source_definitions(self):
+        report = sources.board_check_links(self.graph)
+        self.assertEqual((report['kind'], report['repo'], len(report['links'])), ('report', REPO, 4))
+        m = sources.board_measures(self.graph, report)
+        self.assertEqual({k: m[k] for k in sources.BOARD_MEASURE_KEYS},
+                         {'open_approved': 6, 'can_start': 2, 'startable_percent': 33, 'file_links': 0,
+                          'unlabelled_links': 0, 'ready_stock': 2, 'builders_running': 0,
+                          'fed_ratio': None, 'low_stock': False})
+        self.assertEqual([(t['number'], sources.board_state(t)) for t in sources.board_open_approved(self.graph)],
+                         [(9001, 'ready'), (9002, 'blocked'), (9003, 'blocked'), (9004, 'blocked'),
+                          (9005, 'ready'), (9006, 'blocked')])
+        provider, _ = self.select('board_graph', self.inputs['board_graph'])
+        self.assertEqual(len(provider['metrics']), 7)  # readiness plus one point per open approved ticket
+
+    def test_half_up_rounding_and_undefined_ratios(self):
+        def ticket(n, building=False, blocked=False):
+            return {'number': n, 'title': 'Synthetic', 'state': 'OPEN', 'labels': ['ready-for-agent'],
+                    'milestone': None, 'parent': None, 'body': '', 'start_recorded': building,
+                    'pull_requests': [], 'blocked_by': [{'number': 1, 'state': 'OPEN'}] if blocked else []}
+        report = {'kind': 'report', 'repo': REPO, 'links': []}
+        # 2 startable of 3 = 66.67 -> 67; 1 ready per 3 building = 0.33 -> 0.3.
+        graph = {'tickets': [ticket(1, True), ticket(2, True), ticket(3, True, blocked=True)]}
+        m = sources.board_measures(graph, report)
+        self.assertEqual((m['startable_percent'], m['fed_ratio'], m['low_stock']), (67, None, True))
+        graph = {'tickets': [ticket(1), ticket(2, True), ticket(3, True), ticket(4, True)]}
+        m = sources.board_measures(graph, report)
+        self.assertEqual((m['ready_stock'], m['builders_running'], m['fed_ratio']), (1, 3, 0.3))
+        m = sources.board_measures({'tickets': []}, report)  # zero denominators stay undefined, never zero
+        self.assertEqual((m['startable_percent'], m['fed_ratio']), (None, None))
+
+    def test_history_rows_are_strict(self):
+        rows = [sources.board_strict(l) for l in self.inputs['board_history'].splitlines() if l.strip()]
+        self.assertTrue(all(sources.board_valid_row(r, False) for r in rows))
+        with self.assertRaises(ValueError):
+            sources.board_strict('{"at": 1, "at": 2}')
+        good = rows[0]
+        bad = [dict(good, open_approved=-1), dict(good, low_stock=1), dict(good, day='2030-01-03'),
+               dict(good, at='2030-02-30T11:00:00Z'), dict(good, fed_ratio='3.0'),
+               {k: good[k] for k in reversed(list(good))}, dict(good, sample='baseline')]
+        for row in bad:
+            with self.subTest(row=row):
+                self.assertFalse(sources.board_valid_row(row, False))
+        # A legacy baseline is admitted only as the first row, by its shape.
+        baseline = dict(good, sample='baseline', file_links=None, unlabelled_links=None, ready_stock=None,
+                        builders_running=None, fed_ratio=None, low_stock=None)
+        self.assertTrue(sources.board_valid_row(baseline, True))
+        self.assertFalse(sources.board_valid_row(baseline, False))
+        self.assertFalse(sources.board_valid_row(good, True))
+        self.assertFalse(sources.board_valid_row(dict(baseline, open_approved=None), True))
+
+    def test_credit_samples_and_their_sampled_drops(self):
+        samples = sources.read_credits(self.inputs['credits'])
+        self.assertEqual([sources.credit_spent(a, b) for a, b in zip(samples, samples[1:])], [30, 15])
+        rise = dict(samples[1], at='2030-01-02T13:00:00Z', extra_credits=900)
+        self.assertEqual(sources.credit_spent(samples[1], rise), 0)  # a rise counts as zero
+        seed = {'at': '2030-01-02T09:00:00Z', 'extra_credits': 520, 'only': 'extra_credits'}
+        self.assertEqual(sources.credit_spent(seed, samples[0]), 20)  # extra-only spans compare extra only
+        line = self.inputs['credits'].splitlines()[0]
+        for text in (line + '\n' + line, line.replace('"credits":1000', '"credits":-1'),
+                     line.replace('"credits":1000', '"credits":"1000"'), '{"at":"2030-01-02T09:00:00Z"}',
+                     json.dumps(dict(seed, only='credits'))):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                sources.read_credits(text)
+
+
 class Gather(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix='war-room-gather-'))
