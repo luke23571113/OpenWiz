@@ -184,6 +184,33 @@ class InstallTests(Fixture):
         self.assert_refused_unchanged(code=3)
         self.assertFalse(self.dest.exists())
 
+    def test_failed_publish_preserves_a_replacement_destination(self):
+        real_mv = shutil.which('mv')
+        count = self.root / 'moves'
+        moved = self.parent / 'claimed-directory-moved'
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'count = pathlib.Path(' + repr(str(count)) + ')\n'
+                           'n = int(count.read_text()) + 1 if count.exists() else 1\n'
+                           'count.write_text(str(n))\n'
+                           'if n == 2:\n'
+                           '    dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           '    dest.rename(' + repr(str(moved)) + ')\n'
+                           '    dest.mkdir(mode=0o750)\n'
+                           '    (dest / "release").mkdir(mode=0o710)\n'
+                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           '    os.utime(dest, ns=(123000000000, 456000000000))\n'
+                           '    sys.exit(1)\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.install(code=3)
+        self.assertEqual(snapshot(self.dest), {
+            '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes'),
+            'release': ('dir', 0o710)})
+        self.assertEqual(self.dest.stat().st_mtime_ns, 456000000000)
+        self.assertEqual(list(moved.iterdir()), [])
+        self.assertFalse(any(p.name.startswith('.wizskills-install.') for p in self.parent.iterdir()))
+
     def test_concurrent_destination_and_release_child_survive_publication(self):
         # Inject the race at the real publication syscall boundary, after the
         # installer's last absence check. The wrapper then invokes the real mv.

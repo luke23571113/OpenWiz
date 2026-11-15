@@ -568,7 +568,7 @@ class Inventory(unittest.TestCase):
                 self.assertTrue((SOURCE / rel).exists(), rel)
                 if folder:
                     covered.update(p.relative_to(SOURCE).as_posix()
-                                   for p in (SOURCE / rel).glob('test*.py'))
+                                   for p in (SOURCE / rel).glob('test*.py') if runner.unittest_file(p))
                 else:
                     covered.add(rel)
         # Huntr's shell entrypoint explicitly runs these Node suites together.

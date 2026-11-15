@@ -245,15 +245,51 @@ if [ $existing -eq 0 ]; then
     g -C "$work" checkout -q --detach "$record_commit" >/dev/null 2>&1 || fail 3 'checkout failed'
     [ "$(worktree_tree "$work")" = "$record_tree" ] || fail 1 'tree mismatch'
     check_package "$work" || fail 1 'plugin.json or CHANGELOG.md disagrees with the version'
-    # Publish atomically: never into, or over, a destination that appeared meanwhile.
-    if [ -e "$dest" ] || [ -L "$dest" ]; then
-        fail 1 'destination appeared during installation'
-    fi
-    # -T prevents nesting inside a concurrent directory; -n prevents replacing
-    # even an empty one. Unsupported no-clobber/no-target-directory semantics
-    # refuse safely. Never infer ownership from a child name or roll it back.
-    mv -T -n "$work" "$dest" 2>/dev/null || fail 3 'cannot publish the installation safely'
-    [ ! -e "$work" ] || fail 1 'destination appeared during installation'
+    # Claim the destination atomically. A concurrent directory, file or link
+    # makes mkdir fail; nothing under that other destination is touched.
+    (
+        mkdir "$dest" 2>/dev/null || fail 1 'destination appeared during installation'
+        # POSIX ls -i supplies identity on this same-parent filesystem. Keep
+        # the claimed directory as cwd so a later rename cannot redirect cleanup.
+        inode() { ls -di "$1" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]].*//'; }
+        owner=$(inode "$dest")
+        matches '[0-9]+' "$owner" || fail 3 'cannot identify the installation directory'
+        cd "$dest" || fail 3 'cannot enter the installation directory'
+        [ "$(inode .)" = "$owner" ] || fail 3 'installation directory changed'
+        journal=$staging/published
+        rollback() {
+            if [ -f "$journal" ]; then
+                while IFS= read -r name && IFS= read -r original; do
+                    # A missing source and the original inode prove this entry
+                    # was renamed by us. Never remove a replacement or collision.
+                    if [ ! -e "$work/$name" ] && [ ! -L "$work/$name" ] &&
+                       [ "$(inode "./$name")" = "$original" ]; then
+                        rm -rf "./$name"
+                    fi
+                done < "$journal"
+            fi
+            # rmdir cannot remove foreign contents; an uncertain directory
+            # identity is retained rather than rolling back another owner's path.
+            if [ "$(inode "$dest")" = "$owner" ] && [ "$(pwd -P)" = "$dest" ]; then
+                rmdir "$dest" 2>/dev/null || :
+            fi
+        }
+        trap rollback 0
+        trap 'exit 3' HUP INT TERM
+        : > "$journal" || fail 3 'cannot record publication ownership'
+        for entry in "$work"/* "$work"/.[!.]* "$work"/..?*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            name=${entry##*/}
+            if [ -e "./$name" ] || [ -L "./$name" ]; then
+                fail 1 'installation entry appeared during publication'
+            fi
+            original=$(inode "$entry")
+            matches '[0-9]+' "$original" || fail 3 'cannot identify a staged entry'
+            printf '%s\n%s\n' "$name" "$original" >> "$journal" || fail 3 'cannot record publication ownership'
+            mv "$entry" . 2>/dev/null || fail 3 'cannot publish the installation'
+        done
+        trap - 0
+    ) || exit "$?"
     exit 0
 fi
 

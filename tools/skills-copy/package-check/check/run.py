@@ -9,6 +9,7 @@ and every skill's own suites, all of them even after a failure, and exits 1
 if any fails or is missing, 2 on arguments. Python 3.11+ standard library,
 POSIX `sh`; no network, no secret, no file outside the tree.
 """
+import ast
 import json
 import os
 import re
@@ -29,7 +30,8 @@ SUITES = {
     'huntr': [['sh', 'skills/huntr/scripts/test.sh']],
     'grill': [['sh', 'skills/grill/scripts/test.sh']],
     'diagnose': [['node', '--test', 'skills/diagnose/tests/hitl-loop.test.mjs']],
-    'build-ticket': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/build-ticket/scripts/test']],
+    'build-ticket': [['python3', '-I', 'skills/build-ticket/scripts/test/test_check_helpers.py'],
+                     ['python3', '-I', 'skills/build-ticket/scripts/test/test_durable_helpers.py']],
     'where-are-we': [['python3', '-I', 'skills/where-are-we/test/test_read_github.py']],
     'hill-climb': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/hill-climb/tests']],
     'image': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/tests'],
@@ -476,7 +478,7 @@ def marketplace(root, version, out):
 
 def clean_env():
     return {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN',
-            'TEST_ONLY', 'TEST_EXPECTED', 'TEST_PASS', 'TEST_WORKER')}
+            'TEST_ONLY', 'TEST_EXPECTED', 'TEST_PASS', 'TEST_WORKER', 'LIST_CASES')}
 
 
 def command_path(command):
@@ -486,13 +488,64 @@ def command_path(command):
     return command[-1], False
 
 
+def unittest_file(path):
+    """Only known unittest class definitions count as discovery coverage.
+
+    Unknown/script-style files require their own explicit entrypoint. Actual
+    collection below also refuses classes that contain no runnable tests.
+    """
+    try:
+        module = ast.parse(path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeError, SyntaxError):
+        return False
+    modules = {'unittest'}
+    bases = set()
+    for node in module.body:
+        if isinstance(node, ast.Import):
+            modules.update(alias.asname or alias.name for alias in node.names if alias.name == 'unittest')
+        elif isinstance(node, ast.ImportFrom) and node.module == 'unittest':
+            bases.update(alias.asname or alias.name for alias in node.names if alias.name == 'TestCase')
+        elif isinstance(node, ast.ClassDef):
+            if any((isinstance(base, ast.Attribute) and base.attr == 'TestCase'
+                    and isinstance(base.value, ast.Name) and base.value.id in modules)
+                   or (isinstance(base, ast.Name) and base.id in bases) for base in node.bases):
+                return True
+    return False
+
+
+# An isolated interpreter collects each matched file, counts its actual cases,
+# then executes the collection. A successful empty collection is still a failure.
+UNIT_RUNNER = r"""
+import pathlib, sys, unittest
+folder, pattern = sys.argv[1:]
+suite = unittest.TestLoader().discover(folder, pattern=pattern)
+counts = {}
+def count(item):
+    if isinstance(item, unittest.TestSuite):
+        for child in item: count(child)
+    else:
+        module = sys.modules.get(type(item).__module__)
+        file = getattr(module, '__file__', None)
+        if file:
+            key = pathlib.Path(file).resolve()
+            counts[key] = counts.get(key, 0) + 1
+count(suite)
+empty = [p for p in pathlib.Path(folder).glob(pattern) if not counts.get(p.resolve(), 0)]
+for path in sorted(empty):
+    print('suite collection: zero tests: ' + path.as_posix(), flush=True)
+result = unittest.TextTestRunner().run(suite)
+sys.exit(0 if result.wasSuccessful() and not empty else 1)
+"""
+
+
 def suites(root):
     covered = set()
     for commands in SUITES.values():
         for command in commands:
             rel, folder = command_path(command)
             if folder:
-                covered.update(p.relative_to(root).as_posix() for p in (root / rel).glob('test*.py'))
+                covered.update(p.relative_to(root).as_posix() for p in (root / rel).glob('test*.py')
+                               if unittest_file(p))
             else:
                 covered.add(rel)
     # Huntr's public shell entrypoint executes its four Node test modules.
@@ -518,6 +571,10 @@ def suites(root):
                 continue
             cwd = root
             argv = [sys.executable if command[0] == 'python3' else command[0], *command[1:]]
+            if folder:
+                argv = [sys.executable, '-I', '-c', UNIT_RUNNER, rel, 'test*.py']
+            elif command[0] == 'python3' and unittest_file(target):
+                argv = [sys.executable, '-I', '-c', UNIT_RUNNER, target.parent.relative_to(root).as_posix(), target.name]
             if name == 'huntr':
                 cwd = root / 'check/fixtures/huntr-project'
                 settings = cwd / 'docs/agents/huntr.md'
