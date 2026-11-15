@@ -1490,42 +1490,19 @@ mod tests {
             (factory(), true),
             (serde_json::json!({"login": "SYNTHETIC-OWNER"}), true),
             (serde_json::json!({"login": "synthetic-outsider"}), false),
-            // GraphQL drops an App's `[bot]`: its plain name counts only
-            // with the Bot type, and a user of that name never does.
+            // `gh issue view` gives an App's login without `[bot]` and no
+            // author type, so an App-shaped plain login is never the App,
+            // whatever fields ride with it; only the exact entry counts.
             (serde_json::json!({"login": "synthetic-app"}), false),
             (
                 serde_json::json!({"login": "synthetic-app", "is_bot": true}),
-                true,
+                false,
             ),
             (
                 serde_json::json!({"login": "Synthetic-App", "__typename": "Bot"}),
-                true,
-            ),
-            (
-                serde_json::json!({"login": "synthetic-app", "is_bot": false}),
                 false,
             ),
-            (
-                serde_json::json!({"login": "synthetic-app", "is_bot": "true"}),
-                false,
-            ),
-            (
-                serde_json::json!({"login": "synthetic-app", "__typename": "User"}),
-                false,
-            ),
-            // A Bot named like the fallback account is an App, not that user.
-            (
-                serde_json::json!({"login": "synthetic-owner", "is_bot": true}),
-                false,
-            ),
-            (
-                serde_json::json!({"login": "synthetic-app[bot]", "is_bot": true}),
-                true,
-            ),
-            (
-                serde_json::json!({"login": "synthetic-outsider", "is_bot": true}),
-                false,
-            ),
+            (serde_json::json!({"login": "Synthetic-App[bot]"}), true),
             (serde_json::json!({"login": null}), false),
             (serde_json::json!({}), false),
             (Value::Null, false),
