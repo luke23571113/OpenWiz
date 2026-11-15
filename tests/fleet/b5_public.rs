@@ -560,7 +560,8 @@ fn reviewed_world(name: &str) -> World {
 /// verdict. An outsider's copy, or one with no author, is ignored: the plan
 /// is exactly the plan without it. The factory's copy, in any case, still
 /// changes the plan.
-/// Catches: a record reader or the verdict parser trusting any commenter.
+/// Catches: a record reader or the verdict parser trusting any commenter, or
+/// a match that drops `[bot]` and so takes a user named `openwiz` for the App.
 #[test]
 fn p4_718_only_the_factory_s_records_count() {
     type Setup = fn(&str) -> World;
@@ -625,6 +626,9 @@ fn p4_718_only_the_factory_s_records_count() {
             ("factory", None, true),
             ("owner", Some(json!("Syn-Owner")), true),
             ("outsider", Some(json!(OUTSIDER)), false),
+            // REST names the App `openwiz[bot]`; a plain user login with the
+            // App's name is a different account, never the App.
+            ("user named as the App", Some(json!("openwiz")), false),
             ("no author", Some(Value::Null), false),
         ] {
             let w = setup(&format!(
