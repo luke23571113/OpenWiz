@@ -296,7 +296,17 @@
     "tools/war-room/test_rework.py",
     "tools/war-room/test_stage_waits.py",
     "tools/war-room/test_weekly.py",
-    "tools/war-room/weekly.py"
+    "tools/war-room/weekly.py",
+    "tools/war-room/contract.v2.md",
+    "tools/war-room/fixtures/health/fake_gh.py",
+    "tools/war-room/fixtures/health/green.log",
+    "tools/war-room/fixtures/health/proof.md",
+    "tools/war-room/fixtures/health/red-collect-only.log",
+    "tools/war-room/fixtures/health/red-first.log",
+    "tools/war-room/fixtures/health/red-providers.log",
+    "tools/war-room/health.py",
+    "tools/war-room/record.v2.schema.json",
+    "tools/war-room/test_health.py"
   ],
   "keep": [
     "docs/grills/README.md",

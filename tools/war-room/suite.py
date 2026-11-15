@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One finite, offline composition/check seam. Python standard library only."""
+"""One finite, offline composition/check seam for v1 and v2 records. Python standard library only."""
 import argparse
 import copy
 from datetime import datetime
@@ -48,20 +48,26 @@ def _decode(wire):
 SCHEMA = _decode((HERE / 'record.schema.json').read_text(encoding='utf-8'))
 PROVIDERS = SCHEMA['x-providers']
 GROUPS = SCHEMA['properties']['groups']['const']
+# WRD1: the successor record. v1 samples stay readable byte for byte; compose writes v2.
+V1, V2 = 'openwiz.war-room.v1', 'openwiz.war-room.v2'
+SCHEMA2 = _decode((HERE / 'record.v2.schema.json').read_text(encoding='utf-8'))
+SCHEMAS = {V1: SCHEMA, V2: SCHEMA2}
+HEALTH = SCHEMA2['x-health']
+PREDATES = 'Not observed: this sample predates the v2 health record.'
 
 
-def _shape(value, rule):
-    """Evaluate only the structural JSON Schema vocabulary used by this file.
+def _shape(value, rule, root=SCHEMA):
+    """Evaluate only the structural JSON Schema vocabulary used by these files.
 
     No package, remote reference or format resolver. Cross-record rules below
     are deliberately separate from JSON Schema's structural guarantees.
     """
     if '$ref' in rule:
-        return _shape(value, SCHEMA['$defs'][rule['$ref'].removeprefix('#/$defs/')])
+        return _shape(value, root['$defs'][rule['$ref'].removeprefix('#/$defs/')], root)
     if 'anyOf' in rule:
         for alternative in rule['anyOf']:
             try:
-                _shape(value, alternative)
+                _shape(value, alternative, root)
                 return
             except ValueError:
                 pass
@@ -79,14 +85,14 @@ def _shape(value, rule):
     if kind == 'object':
         require(set(rule['required']) <= set(value) <= set(rule['properties']), 'unexpected or missing fields')
         for key, item in value.items():
-            _shape(item, rule['properties'][key])
+            _shape(item, rule['properties'][key], root)
     elif kind == 'array':
         require(len(value) >= rule.get('minItems', 0), 'missing array entries')
         require('maxItems' not in rule or len(value) <= rule['maxItems'], 'extra array entries')
         if rule.get('uniqueItems'):
             require(len({json.dumps(v, sort_keys=True) for v in value}) == len(value), 'duplicate array entry')
         for item in value:
-            _shape(item, rule['items'])
+            _shape(item, rule['items'], root)
     elif kind == 'string':
         require(len(value) >= rule.get('minLength', 0), 'empty text')
         require('pattern' not in rule or re.search(rule['pattern'], value) is not None, 'invalid text form')
@@ -177,10 +183,93 @@ def _metric(metric, groups, assembled):
         require(state != 'known' or (start is not None and end is not None), 'open interval cannot be known complete')
 
 
+def schema_of(record):
+    """The record's version: v1 or its v2 successor. Anything else refuses."""
+    require(type(record) is dict and type(record.get('schema')) is str and record['schema'] in SCHEMAS,
+            'unknown record version')
+    return record['schema']
+
+
+def _observation(o, definition, assembled):
+    """One v2 health observation: a point (or native window) read, never Unknown as zero."""
+    slot, state, value, result = definition['slot'], o['state'], o['value'], o['result']
+    statistic, unit, sample = o['statistic'], o['unit'], o['sample']
+    require(sample['observed'] == len(sample['identities']), 'sample identity coverage mismatch')
+    require(sample['expected'] is None or sample['observed'] <= sample['expected'], 'sample coverage exceeds cohort')
+    started, ended = _time(o['read']['started_at']), _time(o['read']['ended_at'])
+    require(started <= ended <= assembled, 'health read bounds')
+    point = _time(o['point']) if o['point'] is not None else None
+    require(point is None or o['window'] is None, 'a point observation has no window')
+    require(point is None or point <= ended, 'point after its read')
+    if o['window'] is not None:
+        since, until = _time(o['window']['since']), _time(o['window']['until'])
+        require(since < until <= ended, 'window beyond its read')
+    require(result is None or result in definition['results'], 'result outside its slot')
+    if statistic == 'result':
+        require(value is None and unit is None and result is not None, 'a result is not a number')
+    else:
+        require(unit == ('count' if statistic == 'count' else 'minutes'), 'health unit conflict')
+        require(result is None or slot == 'stage_health', 'only a stage wait carries a number and a result')
+    if statistic == 'count':
+        require(value is None or (type(value) is int and value == sample['observed']), 'count differs from its identities')
+    measured = value is not None or result not in (None, 'unknown')
+    if state == 'known':
+        require(not o['prerequisites'] and sample['expected'] == sample['observed'], 'known observation incomplete')
+        require(measured and result != 'unknown', 'known observation without a value')
+        require(statistic == 'result' or value is not None, 'known observation without a value')
+    elif state == 'unavailable':
+        require(value is None and result in (None, 'unknown') and bool(o['prerequisites']), 'unavailable observation measured')
+    else:
+        require(bool(o['prerequisites']), 'partial observation needs prerequisites')
+    if measured:
+        require(o['source'] is not None and (point is not None or o['window'] is not None), 'value needs source and basis')
+        require(bool(o['evidence']) or (statistic == 'count' and value == 0), 'value needs source evidence')
+        require(o['evidence_class'] != 'unobserved', 'an unobserved value')
+    if o['fresh_until'] is None:
+        require(o['freshness'] == 'unknown', 'freshness requires source validity bound')
+    else:
+        bound = _time(o['fresh_until'])
+        require(ended <= bound, 'invalid source validity bound')
+        require(o['freshness'] == ('stale' if assembled > bound else 'fresh'), 'freshness mismatch')
+    interval = o['interval']
+    if interval is not None:
+        start = _time(interval['started_at']) if interval['started_at'] is not None else None
+        end = _time(interval['ended_at']) if interval['ended_at'] is not None else None
+        require(start is None or start <= ended, 'interval begins after its read')
+        require(end is None or (start is not None and start <= end <= ended), 'reversed/unobserved interval')
+        require(state != 'known' or (start is not None and end is not None), 'open interval cannot be known complete')
+    if o['limit'] is not None:
+        require(_time(o['limit']['read_at']) <= assembled, 'limit read after assembly')
+    if result == 'success':
+        # Green only for a complete, stable identity of the current main head's run attempt.
+        require(state == 'known' and all(o['identity'][k] is not None for k in
+                ('repository', 'branch', 'head_sha', 'workflow', 'run_id', 'run_attempt')), 'green without its run identity')
+
+
+def _health(providers, assembled):
+    require([p['slot'] for p in providers] == [h['slot'] for h in HEALTH], 'health inventory/order mismatch')
+    for provider, definition in zip(providers, HEALTH):
+        observations, state = provider['observations'], provider['state']
+        ids = [o['id'] for o in observations]
+        require(len(ids) == len(set(ids)), 'duplicate observation identity')
+        if state == 'known':
+            require(bool(observations) and not provider['prerequisites']
+                    and all(o['state'] == 'known' for o in observations), 'known health lacks complete observations')
+        elif state == 'partial':
+            require(bool(provider['prerequisites']) and any(o['state'] != 'unavailable' and o['source'] is not None
+                                                            for o in observations), 'partial health lacks observations')
+        else:
+            require(bool(provider['prerequisites']) and all(o['state'] == 'unavailable' for o in observations),
+                    'unavailable health contains observations')
+        for o in observations:
+            _observation(o, definition, assembled)
+
+
 def validate(record):
-    """Check the entire snapshot; return None, or raise ValueError. No writes."""
+    """Check the entire snapshot, v1 or v2; return None, or raise ValueError. No writes."""
     _finite(record)
-    _shape(record, SCHEMA)
+    version = schema_of(record)
+    _shape(record, SCHEMAS[version], SCHEMAS[version])
     sample, assembled = _time(record['sample_at']), _time(record['assembled_at'])
     require(sample.minute % 5 == 0 and sample.second == 0, 'sample must be a five-minute UTC boundary')
     require(record['sample_id'] == record['sample_at'], 'sample identity mismatch')
@@ -201,6 +290,21 @@ def validate(record):
             require(bool(provider['prerequisites']) and all(m['state'] == 'unavailable' for m in metrics), 'unavailable provider contains known metrics')
         for metric in metrics:
             _metric(metric, definition['groups'], assembled)
+    if version == V2:
+        _health(record['health'], assembled)
+
+
+def health(record):
+    """The explicit health reader for both versions. A v1 sample's health is unobserved,
+    never backfilled green or zero."""
+    if schema_of(record) == V2:
+        return copy.deepcopy(record['health'])
+    return [_unobserved(h, [PREDATES]) for h in HEALTH]
+
+
+def _unobserved(definition, prerequisites):
+    return {'slot': definition['slot'], 'state': 'unavailable', 'prerequisites': list(prerequisites),
+            'observations': []}
 
 
 def loads(wire):
@@ -221,18 +325,23 @@ def compose(sample_at, providers=(), *, assembled_at=None):
     sample, or changes source timestamps. Invalid supplied data fails closed.
     """
     supplied = {}
+    health_slots = {h['slot'] for h in HEALTH}
     for provider in providers:
         _finite(provider)
-        _shape(provider, SCHEMA['$defs']['provider'])
+        require(type(provider) is dict, 'provider must be an object')
+        kind = 'health_provider' if provider.get('slot') in health_slots else 'provider'
+        _shape(provider, SCHEMA2['$defs'][kind], SCHEMA2)
         require(provider['slot'] not in supplied, 'duplicate provider')
         supplied[provider['slot']] = copy.deepcopy(provider)
-    record = {'schema': 'openwiz.war-room.v1', 'sample_id': sample_at,
+    record = {'schema': V2, 'sample_id': sample_at,
               'sample_at': sample_at, 'assembled_at': sample_at if assembled_at is None else assembled_at,
-              'groups': copy.deepcopy(GROUPS), 'providers': []}
+              'groups': copy.deepcopy(GROUPS), 'providers': [], 'health': []}
     for definition in PROVIDERS:
         record['providers'].append(supplied.get(definition['slot'], {
             'slot': definition['slot'], 'state': 'unavailable',
             'prerequisites': copy.deepcopy(definition['prerequisites']), 'metrics': []}))
+    for definition in HEALTH:
+        record['health'].append(supplied.get(definition['slot'], _unobserved(definition, definition['prerequisites'])))
     validate(record)
     return record
 

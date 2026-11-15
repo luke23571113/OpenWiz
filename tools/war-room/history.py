@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Immutable complete five-minute samples. No clock, pruning or collector."""
+"""Immutable complete five-minute samples, v1 or v2. No clock, pruning or schedule."""
 import json
 import os
 from pathlib import Path
@@ -64,3 +64,21 @@ def save(root, record):
         return True
     finally:
         os.unlink(name)
+
+
+def collect(root, at, read_providers):
+    """WRD1's finite collection: one complete v2 envelope at `at`'s five-minute boundary.
+
+    Returns (record, created). A boundary already saved is reused without a read; a
+    missing boundary stays absent. Nothing is rendered or drawn. `read_providers`
+    is called as main.tick calls it, with the latest earlier sample.
+    """
+    moment = suite._time(at)
+    sample_at = moment.replace(minute=moment.minute // 5 * 5, second=0).strftime('%Y-%m-%dT%H:%M:%SZ')
+    records = read_all(root)
+    saved = next((r for r in records if r['sample_at'] == sample_at), None)
+    if saved is not None:
+        return saved, False
+    previous = next((r for r in reversed(records) if r['sample_at'] < sample_at), None)
+    record = suite.compose(sample_at, read_providers(at, previous), assembled_at=at)
+    return record, save(root, record)

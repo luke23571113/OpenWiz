@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select pinned local existing artifacts. No collection, subprocess reads or API."""
+"""Select pinned local existing artifacts. No collection or API; the one subprocess is the offline plan-links checker."""
 import copy
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -82,6 +82,9 @@ def safe_record(record):
     for provider in record['providers']:
         for metric in provider['metrics']:
             suite.require(all(LINK.fullmatch(url) for url in metric['evidence']), 'unsupported evidence link')
+    for provider in record.get('health', []):
+        for observation in provider['observations']:
+            suite.require(all(LINK.fullmatch(url) for url in observation['evidence']), 'unsupported evidence link')
 
 
 def window(since, until, timezone='UTC'):
@@ -295,35 +298,176 @@ def point(s, schema, id, group, label, observed_at, *, ticket=None, evidence=Non
     return item
 
 
+# --- Board readers (#629) ------------------------------------------------------
+# The board's offline readers for its published artifacts (graph.json, history.jsonl,
+# credits.jsonl), kept here so the War room loads no private module. Definitions are the
+# board's: the plan-links contract's open approved tickets and states, the history row and
+# credit sample shapes, half-up rounding and the sampled-drop rule. They read only what
+# they are given; the link report comes from the public plan-links checker.
+
+PLAN_LINKS = 'openwiz.plan-links.v1'
+APPROVED = ('ready-for-agent', 'ready-for-human', 'held', 'needs-info')
+HISTORY_KEYS = ['schema', 'kind', 'sample', 'at', 'day', 'repo', 'open_approved', 'can_start', 'startable_percent',
+                'file_links', 'unlabelled_links', 'ready_stock', 'builders_running', 'fed_ratio', 'low_stock']
+BOARD_MEASURE_KEYS = HISTORY_KEYS[6:]
+BASELINE_NULL = ('file_links', 'unlabelled_links', 'ready_stock', 'builders_running', 'fed_ratio', 'low_stock')
+CREDIT_KEYS = ['at', 'credits', 'credits_limit', 'extra_credits', 'extra_credits_total']
+SEED_KEYS = ['at', 'extra_credits', 'only']
+CHECK_LINKS = ROOT / 'skills/plan-graph/check-links.sh'
+
+
+def board_strict(line):
+    """One JSON object; a repeated key refuses rather than silently replacing."""
+    def pairs(items):
+        keys = [k for k, _ in items]
+        suite.require(len(keys) == len(set(keys)), 'a repeated key')
+        return dict(items)
+    return json.loads(line, object_pairs_hook=pairs)
+
+
+def _is_time(at):
+    try:
+        suite._time(at)
+        return True
+    except ValueError:
+        return False
+
+
+def _pst_day(at):
+    return (suite._time(at) - timedelta(hours=8)).strftime('%Y-%m-%d')
+
+
+def _half_up(num, den):
+    return (2 * num + den) // (2 * den)
+
+
+def board_check_links(graph):
+    """The public plan-links checker's JSON report on one graph read (no GitHub call)."""
+    import subprocess
+    try:
+        out = subprocess.run(['sh', str(CHECK_LINKS), '--json', '--graph', '-'], input=json.dumps(graph),
+                             capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError('the link checker did not run') from error
+    suite.require(out.returncode in (0, 1), 'the link checker refused the read')  # 1: a report with refusals
+    report = json.loads(out.stdout)
+    suite.require(type(report) is dict and report.get('kind') == 'report' and report.get('repo') == graph['repo'],
+                  "the link checker's report is not for this read")
+    return report
+
+
+def board_open_approved(graph):
+    return [t for t in graph['tickets'] if t['state'] == 'OPEN' and any(l in APPROVED for l in t['labels'])]
+
+
+def board_state(t):
+    labels = t['labels']
+    if t['pull_requests'] or t['start_recorded']:
+        return 'building'
+    if 'held' in labels:
+        return 'held'
+    if 'needs-info' in labels:
+        return 'question'
+    if any(b['state'] == 'OPEN' for b in t['blocked_by']):
+        return 'blocked'
+    if 'ready-for-human' in labels:
+        return 'live-gate'
+    return 'ready'
+
+
+def board_measures(graph, report):
+    tickets = board_open_approved(graph)
+    numbers = {t['number'] for t in tickets}
+    states = [board_state(t) for t in tickets]
+    oa = len(tickets)
+    can = sum(1 for t in tickets if not any(b['state'] == 'OPEN' for b in t['blocked_by']))
+    links = [l for l in report['links'] if l['ticket'] in numbers]
+    ready, running = states.count('ready'), states.count('building')
+    return {'schema': PLAN_LINKS, 'kind': 'measures', 'open_approved': oa, 'can_start': can,
+            'startable_percent': _half_up(100 * can, oa) if oa else None,
+            'file_links': sum(1 for l in links if l['kind'] == 'file'),
+            'unlabelled_links': sum(1 for l in links if l['kind'] == 'unlabelled'),
+            'ready_stock': ready, 'builders_running': running,
+            'fed_ratio': _half_up(10 * ready, running) / 10 if running else None,
+            'low_stock': ready < 2 * running}
+
+
+def board_valid_row(r, first):
+    """A history row in its place. A legacy baseline is admitted only as the first row,
+    by its shape: its two counts and percent known, the later measures null."""
+    if not isinstance(r, dict) or list(r) != HISTORY_KEYS or r['schema'] != PLAN_LINKS or r['kind'] != 'history':
+        return False
+    if (r['sample'] == 'baseline') != first or r['sample'] not in ('baseline', 'run'):
+        return False
+    if not (_is_time(r['at']) and r['day'] == _pst_day(r['at'])):
+        return False
+    if type(r['repo']) is not str or re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', r['repo']) is None:
+        return False
+    counts = ('open_approved', 'can_start') if r['sample'] == 'baseline' else (
+        'open_approved', 'can_start', 'file_links', 'unlabelled_links', 'ready_stock', 'builders_running')
+    if not all(type(r[k]) is int and r[k] >= 0 for k in counts):
+        return False
+    if r['sample'] == 'baseline':
+        return type(r['startable_percent']) is int and r['startable_percent'] >= 0 and all(r[k] is None for k in BASELINE_NULL)
+    return (type(r['low_stock']) is bool
+            and (r['startable_percent'] is None or (type(r['startable_percent']) is int and r['startable_percent'] >= 0))
+            and (r['fed_ratio'] is None or (type(r['fed_ratio']) in (int, float) and r['fed_ratio'] >= 0)))
+
+
+def read_credits(text):
+    """Credit samples, sorted by time: full samples, or extra-only seed lines."""
+    out, seen = [], set()
+    for line in (l for l in text.split('\n') if l.strip()):
+        r = board_strict(line)
+        keys = CREDIT_KEYS[1:] if isinstance(r, dict) and sorted(r) == sorted(CREDIT_KEYS) else (
+            ['extra_credits'] if isinstance(r, dict) and sorted(r) == sorted(SEED_KEYS) and r['only'] == 'extra_credits'
+            else None)
+        suite.require(bool(keys) and _is_time(r['at']) and all(type(r[k]) is int and r[k] >= 0 for k in keys)
+                      and r['at'] not in seen, 'not a credit sample')
+        seen.add(r['at'])
+        out.append(r)
+    return sorted(out, key=lambda r: r['at'])
+
+
+def _remaining(r):
+    return r['credits_limit'] - r['credits'] + r['extra_credits']
+
+
+def credit_spent(a, b):
+    """The drop in credits left from sample a to b; a rise counts as 0. An extra-only
+    seed line on either side compares extra credits only."""
+    if 'only' in a or 'only' in b:
+        return max(0, a['extra_credits'] - b['extra_credits'])
+    return max(0, _remaining(a) - _remaining(b))
+
+
 def board_graph(s, raw):
-    B = native('private/orchestration/board/board.py')
     graph = suite._decode(raw.decode('utf-8'))
-    # The existing --graph checker is finite and offline, not a GitHub read.
-    report = B.render.check_links(graph)
-    B.measures(graph, report)  # Reuse the source's definitions; never copy bodies/titles.
+    # The public --graph checker is finite and offline, not a GitHub read.
+    report = board_check_links(graph)
+    board_measures(graph, report)  # The source's definitions; never copy bodies/titles.
     suite._time(graph['read_at'])
     items = [point(s, graph['schema'], 'graph-readiness', 'board',
                    'Validated board graph; point counts remain Unknown', graph['read_at'])]
-    for ticket in B.render.open_approved(graph):
+    for ticket in board_open_approved(graph):
         link = f'https://github.com/{graph["repo"]}/issues/{ticket["number"]}'
         items.append(point(s, graph['schema'], 'ticket-' + str(ticket['number']), 'board',
-                           'Board ticket state: ' + B.render.state(ticket), graph['read_at'],
+                           'Board ticket state: ' + board_state(ticket), graph['read_at'],
                            ticket=ticket['number'], evidence=[link]))
     return provider('board', items, [POINT_PREREQUISITE])
 
 
 def board_history(s, raw):
-    B = native('private/orchestration/board/board.py')
-    rows = [B.strict(line) for line in raw.decode('utf-8').splitlines() if line.strip()]
+    rows = [board_strict(line) for line in raw.decode('utf-8').splitlines() if line.strip()]
     suite.require(bool(rows), 'empty board history')
     for i, row in enumerate(rows):
         suite._finite(row)
         # A selected run row/fragment uses the same native run-row validator;
         # complete legacy histories may also retain their original baseline.
-        suite.require(B.valid_row(row, i == 0 and row.get('sample') == 'baseline'), 'invalid board history row')
+        suite.require(board_valid_row(row, i == 0 and row.get('sample') == 'baseline'), 'invalid board history row')
     row = max(enumerate(rows), key=lambda pair: (pair[1]['at'], pair[0]))[1]
     items = [point(s, row['schema'], key, 'board', 'Board point: ' + key.replace('_', ' '), row['at'])
-             for key in B.MEASURE_KEYS]
+             for key in BOARD_MEASURE_KEYS]
     return provider('board', items, [POINT_PREREQUISITE])
 
 
@@ -360,8 +504,7 @@ def decisions(s, raw):
 
 
 def credits(s, raw):
-    B = native('private/orchestration/board/board.py')
-    samples = B.read_credits(raw.decode('utf-8'))
+    samples = read_credits(raw.decode('utf-8'))
     items = []
     for a, b in zip(samples, samples[1:]):
         span = window(a['at'], b['at'], 'PST-fixed-UTC-08:00')
@@ -371,7 +514,7 @@ def credits(s, raw):
         identity = hashlib.sha256(interval_key.encode('ascii')).hexdigest()
         items.append(metric(s, 'board.credits.jsonl', 'sampled-drop-' + identity, 'usage',
                             'Approximate sampled credit drop; rises count zero; extra-only seed spans stay extra-only',
-                            B.spent(a, b), 'credits', span, state='partial',
+                            credit_spent(a, b), 'credits', span, state='partial',
                             prerequisites=['Sampled balance drops are approximate, not complete daily usage or a billing total.'],
                             identities=['credit-span-' + identity]))
     return provider('credits', items, ['Consecutive sampled balance spans only; no daily billing endpoint is assumed.'])
@@ -396,7 +539,14 @@ def claude_usage(s, raw):
                     else ['Unreported provider units stay Unknown; units are never converted.'])
 
 
+HEALTH_SLOTS = {h['slot'] for h in suite.HEALTH}
+HEALTH_FAILED = ('Selected health source unavailable, malformed or hash/time binding refused; restore the pinned '
+                 'validated artifact. A health observation is never carried from an earlier sample.')
+
+
 def _failed(slot, previous, at):
+    if slot in HEALTH_SLOTS:  # WRD1: no missing health observation is backfilled.
+        return {'slot': slot, 'state': 'unavailable', 'prerequisites': [HEALTH_FAILED], 'observations': []}
     reason = 'Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.'
     old = next((p for p in (previous or {}).get('providers', []) if p['slot'] == slot), None)
     if old and any(m['state'] != 'unavailable' for m in old['metrics']):
@@ -425,7 +575,8 @@ def select(root, selections, at, previous=None):
     for s in selections:
         suite.require(type(s) is dict and set(s) == REQUIRED, 'invalid selection fields')
         suite.require(type(s['kind']) is str and type(s['slot']) is str and
-                      s['kind'] in KINDS and s['slot'] in {p['slot'] for p in suite.PROVIDERS}, 'unsupported source')
+                      s['kind'] in KINDS and s['slot'] in {p['slot'] for p in suite.PROVIDERS} | HEALTH_SLOTS,
+                      'unsupported source')
         suite.require(s['slot'] not in seen, 'duplicate selected slot')
         suite.require(s['kind'] == 'projected' or SLOTS[s['kind']] == s['slot'], 'source slot mismatch')
         suite.require(type(s['path']) is str and re.fullmatch(r'[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*', s['path'])
@@ -446,9 +597,14 @@ def select(root, selections, at, previous=None):
             if s['kind'] == 'projected':
                 p = suite._decode(raw.decode('utf-8'))
                 suite.require(p['slot'] == s['slot'], 'projected slot mismatch')
-                for m in p['metrics']:
-                    suite.require(m['observed_at'] is None or m['observed_at'] <= s['observed_at'], 'projected observation after read')
-                    m['freshness'] = 'unknown' if m['fresh_until'] is None else 'stale' if at > m['fresh_until'] else 'fresh'
+                if s['slot'] in HEALTH_SLOTS:
+                    for o in p['observations']:
+                        suite.require(o['read']['ended_at'] <= s['observed_at'], 'projected observation after read')
+                        o['freshness'] = 'unknown' if o['fresh_until'] is None else 'stale' if at > o['fresh_until'] else 'fresh'
+                else:
+                    for m in p['metrics']:
+                        suite.require(m['observed_at'] is None or m['observed_at'] <= s['observed_at'], 'projected observation after read')
+                        m['freshness'] = 'unknown' if m['fresh_until'] is None else 'stale' if at > m['fresh_until'] else 'fresh'
             else:
                 p = globals()[s['kind']](s, raw)
             sample = suite._time(at).replace(minute=suite._time(at).minute // 5 * 5, second=0).strftime('%Y-%m-%dT%H:%M:%SZ')
