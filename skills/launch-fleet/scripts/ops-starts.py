@@ -37,14 +37,14 @@ SMALL = {'polish', 'huntr', 'proposal'}
 NOT_READY = {'needs-info', 'needs-triage', 'ready-for-human', 'wontfix', 'held'}
 SETTLED = {'completed', 'superseded', 'reconciled_not_executed', 'disabled', 'refused'}
 BENCH = 'closedwiz.journey.stage-bench.v1'
-# The original #1480 audit measurement, retained as provenance (a capacity
-# ceiling from the 2026-11-06 snapshot, never a recovered-time claim).
+# Explicitly synthetic audit example; no recorded factory measurement and no
+# recovered-time claim. These invented values illustrate the report's shape.
 PROVENANCE = {
-    'source': '#1480 original proposal, factory audit snapshot 2026-11-06 10:35:05 UTC',
-    'cohort': 'PRs merged since 2026-11-03 plus open PRs at the snapshot',
-    'initial_review_handoffs': 41,
-    'green_to_dispatch_pr_hours': 20.0117,
-    'meaning': 'measured ceiling only; gated intervals and unproven authority are not recoverable time',
+    'source': 'synthetic audit example, not an operational measurement',
+    'cohort': 'invented merged and open pull requests',
+    'initial_review_handoffs': 10,
+    'green_to_dispatch_pr_hours': 2.5,
+    'meaning': 'synthetic ceiling only; gated intervals and unproven authority are not recoverable time',
 }
 
 

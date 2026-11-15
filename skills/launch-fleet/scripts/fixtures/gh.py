@@ -623,6 +623,7 @@ def graphql(w, repo, o, ids, page, answer):
         data[k] = v
     if op == 'Blockers':
         nodes = [{'id': sha_text(get(t, 'number')), 'number': get(t, 'number'),
+                  'repository': {'nameWithOwner': w['repo']}, 'labels': t['labels'],
                   'closedByPullRequestsReferences': {'nodes': [
                       {'number': get(p, 'number'), 'merged': get(p, 'merged'), 'baseRefName': get(p, 'baseRefName')}
                       for p in t['closedByPullRequestsReferences']['nodes']]}} for t in data['nodes']]

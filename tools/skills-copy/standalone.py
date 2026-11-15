@@ -206,7 +206,12 @@ class Finder:
         self.refs.append({'kind': kind, 'file': self.rel, 'line': line, 'target': target,
                           'context': context, 'skill_relative': skill_relative})
 
-    def commands(self, line, n, context='.', skill_relative=False):
+    def commands(self, line, n, context='.', skill_relative=False, cargo_requirement=True):
+        # This executable requirement names OpenWiz's absent Rust workspace.
+        # Treat it as an unresolved script, preserving the fixed report shape.
+        if cargo_requirement and re.search(r'(?:^|[;&|`]|\b(?:then|do|exec)\s)\s*cargo\s+test\s+'
+                     r'(?:[^;&|`]*?\s)?(?:-p\s+|--package(?:=|\s+))openwiz-tests(?:\s|$)', line):
+            self.refs.append({'kind': 'script', 'file': self.rel, 'line': n, 'target': ''})
         for m in SH_DIRECT.finditer(line):
             self.literal('script', m[1], n, context, skill_relative)
         for m in SH_COMMAND.finditer(line):
@@ -261,7 +266,16 @@ def markdown(finder, text):
                 finder.commands(command, n, skill_relative=True)
             continue
         for span in CODE_SPAN.finditer(line):
-            finder.commands(span[0].strip('`').strip(), n, skill_relative=True)
+            # Cargo isn't a file path. In prose, refuse it as a workspace
+            # requirement, while retaining archived results as data. Shell
+            # fences and executable scripts always remain requirements.
+            prefix = line[:span.start()].strip(' -*')
+            result = re.match(r'\s*:\s*(?:[0-9]+\s+(?:passed|failed)|pass\b|fail\b)',
+                              line[span.end():])
+            operative = bool(re.search(r'\b(?:run|runs|running|execute|invoke|use|must|require[sd]?|verify|verification|check)\b',
+                                       prefix, re.I)) or (not prefix and not result)
+            finder.commands(span[0].strip('`').strip(), n, skill_relative=True,
+                            cargo_requirement=operative)
         line = CODE_SPAN.sub(' ', line)
         targets = [m[1] for m in INLINE.finditer(line)]
         definition = DEFINITION.match(line)

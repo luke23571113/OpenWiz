@@ -243,7 +243,8 @@ query() {
     Blockers) printf '%s\n' 'query Blockers($ids: [ID!]!) {
   rateLimit { cost remaining limit resetAt }
   nodes(ids: $ids) { ... on Issue {
-    id number
+    id number repository { nameWithOwner }
+    labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
     closedByPullRequestsReferences(first: 5, includeClosedPrs: true) { nodes { number merged baseRefName } }
   } }
 }' ;;
@@ -822,12 +823,12 @@ hydrate() (
   done < "$source.blockers"
   [ $# -eq 0 ] || blocker_closures "$@" || exit 1
   if [ -s "$source.blockers" ]; then
-    jq -s 'map({key: .id, value: .closedByPullRequestsReferences}) | from_entries' \
+    jq -s 'map({key: .id, value: {closedByPullRequestsReferences, labels, comments, repository}}) | from_entries' \
       "$TMP"/closure-*.json > "$source.closures" || exit 1
   else printf '{}' > "$source.closures" || exit 1; fi
   jq --slurpfile c "$source.closures" 'with_entries(.value |=
-    (if has("blockedBy") then .blockedBy.nodes |= map(. + {closedByPullRequestsReferences:
-      ($c[0][.node_id] // {nodes: []})} | del(.node_id)) else . end))' \
+    (if has("blockedBy") then .blockedBy.nodes |= map(. +
+      ($c[0][.node_id] // {closedByPullRequestsReferences: {nodes: []}}) | del(.node_id)) else . end))' \
     "$source.facts" > "$source.next" && mv "$source.next" "$source.facts" || exit 1
   jq --slurpfile facts "$source.facts" 'walk(if type == "object" and has("number")
     and (.closedByPullRequestsReferences.pageInfo != null or has("subIssues")
@@ -853,6 +854,25 @@ blocker_closures() {
     id=$(printf '%s' "$closure" | jq -er .id) || return 1
     file=$(closure_file "$id") || return 1
     printf '%s\n' "$closure" > "$file" || return 1
+    # Only person blockers need issue-comment evidence. Address their own
+    # repository from the exact node, never a same-number local issue.
+    # Item reads precede settings; conservatively read possible custom roles
+    # there. The final blocker guard always uses the configured role labels.
+    human_label=''
+    [ ! -f "$TMP/labels.json" ] || human_label=$(jq -er '."ready-for-human"' "$TMP/labels.json") || return 1
+    if jq -e --arg human "$human_label" '.labels.pageInfo.hasNextPage == false and any(.labels.nodes[]?;
+        .name == $human or .name == "person" or ($human == "" and .name != "ready-for-agent"))' "$file" > /dev/null; then
+      repo=$(jq -er '.repository.nameWithOwner | strings
+        | select(test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))' "$file") || return 1
+      n=$(jq -er .number "$file") || return 1
+      if rest_pages "repos/$repo/issues/$n/comments?per_page=100" "$file.raw" 2> /dev/null \
+        && jq -se 'select(length > 0 and all(.[]; type == "array")) | add
+          | select(all(.[]; type == "object" and (.body | type) == "string"))
+          | {nodes: map({body})}' "$file.raw" > "$file.comments"; then
+        jq --slurpfile c "$file.comments" '. + {comments: $c[0]}' "$file" > "$file.next" \
+          && mv "$file.next" "$file" || return 1
+      fi
+    fi
   done < "$TMP/closures-lines"
 }
 
@@ -1275,6 +1295,19 @@ def follow_up($s): any(labels[]; . == "polish")
 def labelled_held: any(labels[]; . == "held");
 def verified_merge: any(.closedByPullRequestsReferences.nodes[]?; .merged == true and .baseRefName == $W.default);
 def merged_ok: .state == "CLOSED" and verified_merge;
+# A person can finish a blocker without a PR, with evidence on that ticket.
+# Agent tickets retain the verified-merge requirement, even with both labels.
+def person_labelled: .labels.pageInfo.hasNextPage == false
+  and (any(.labels.nodes[]?; .name == $W.labels["ready-for-agent"]) | not)
+  and any(.labels.nodes[]?; .name == $W.labels["ready-for-human"] or .name == "person");
+def completion_record: any(.comments.nodes[]?; (.body | rec // "") | test("^complete:\\s*\\S"));
+def blocker_done: merged_ok or (.state == "CLOSED" and person_labelled and completion_record);
+def completion_request:
+  if .state == "CLOSED" and person_labelled and (.comments.nodes | type) == "array"
+      and .comments.pageInfo.hasPreviousPage != true and (completion_record | not) then
+    records as $rs | look(.number; $rs; "closed person ticket needs launch-fleet: complete: <evidence>")
+  else empty end;
+
 # Every approved row must still exist. Human work (including a live check) is
 # recorded complete by its owner; a builder ticket also needs a verified merge.
 def planned_done($s): latest($s) as $a
@@ -1415,7 +1448,7 @@ def release_due($s): release_candidate($s)
 # The release path must be able to check these while ready is still removed.
 def start_clear($s):
   ([has_role("needs-info"), has_role("needs-triage"), has_role("ready-for-human"), has_role("wontfix")] | any | not)
-  and all(.blockedBy.nodes[]; merged_ok)
+  and all(.blockedBy.nodes[]; blocker_done)
   and start.state == "queued"
   and (open_prs | length) == 0
   and (held($s) | not)
@@ -1431,7 +1464,7 @@ def may_start($s): ready($s) and (refused_lately(start.last; "start") | not);
 # recorded builder and its open pull request.
 def takeover_clear($s): has_role("ready-for-agent")
   and ([has_role("needs-info"), has_role("needs-triage"), has_role("ready-for-human"), has_role("wontfix")] | any | not)
-  and all(.blockedBy.nodes[]; merged_ok)
+  and all(.blockedBy.nodes[]; blocker_done)
   and (held($s) | not) and (labelled_held | not) and (ordering_inflight | not)
   and (due_hits($s) | length) == 0;
 def takeover_ready($s): takeover_clear($s) and current($s);
@@ -1577,6 +1610,7 @@ def ticket_lines_now($s): . as $t
       (.closedByPullRequestsReferences.nodes[] | select(.comments.pageInfo.hasPreviousPage)
        | look(.number; []; "comment history could not be read in full"))
     elif .state == "CLOSED" then
+      completion_request,
       ([(records[] | kind("started|start checked") | thread),
         (.closedByPullRequestsReferences.nodes[] | records[] | (kind("review started") | thread), (kind("review failed") | failed_thread), (select(.givenUp) | .archiveThread))]
        | map(select(. != null)) | unique) as $th
@@ -1588,7 +1622,7 @@ def ticket_lines_now($s): . as $t
       (if release_due($s) then "release #\(.number): approved again since its hold; take the held label off" else empty end),
       (due_hits($s)[] | "hold #\($t.number): \(.files | join(", ")) changed in #\(.pr)"),
       (if has_role("ready-for-human") and (labelled_held | not) and (held($s) | not) and (due_hits($s) | length) == 0
-          and all(.blockedBy.nodes[]; merged_ok) and (.blockedBy.pageInfo.hasNextPage | not)
+          and all(.blockedBy.nodes[]; blocker_done) and (.blockedBy.pageInfo.hasNextPage | not)
           and (any(records[]; .r | test("^told the user\\b")) | not)
        then "person #\(.number): \(.title) (spec #\($s.number)) is ready, and only the user can do it" else empty end)
     else
@@ -1745,13 +1779,17 @@ def to_builder: test("^(note|resume|reconcile resume|check start|CI failed|findi
 # ticket with no builder yet, which the user re-approves before the takeover
 # goes on.
 def takeover_holds($s): . as $t | due_hits($s)[] | "hold #\($t.number): \(.files | join(", ")) changed in #\(.pr)";
-def ticket_lines($s): fleet_of($s) as $f | start as $st
+def ticket_lines($s):
+  (if .state == "OPEN" and is_planned($s) and (looks | length) == 0 then
+     .blockedBy.nodes[]? | completion_request
+   else empty end),
+  (fleet_of($s) as $f | start as $st
   | if $f != null and .state == "OPEN" and is_approved($s) and (looks | length) == 0
        and ($st.state == "started" or $st.state == "checked") and ($st.rec | inherited($f))
     then takeover_holds($s), take_over($s; $f; $st.rec), (ticket_lines_now($s) | select(to_builder | not))
     elif .state == "OPEN" and is_approved($s) and (looks | length) == 0 and taking_over($s)
     then takeover_holds($s), take_over_again($s; $st), (ticket_lines_now($s) | select((to_builder or test("^(start|hold) #")) | not))
-    else ticket_lines_now($s) end;
+    else ticket_lines_now($s) end);
 
 # A spec'"'"'s approval: a look when it lists no tickets, a re-approve when the
 # plan changed since.
@@ -2337,7 +2375,9 @@ keep_read() {
     ["repos/\($r)", $identity,
      (.specs[] | "repos/\($r)/issues/\(.number)/sub_issues?per_page=100",
        (.subIssues.nodes[] | timeline, (prs | pr_probes),
-         (.blockedBy.nodes[]? | select(.state == "CLOSED") | timeline, (prs | "repos/\($r)/pulls/\(.number)")))),
+         (.blockedBy.nodes[]? | select(.state == "CLOSED") | timeline,
+           "repos/\(.repository.nameWithOwner // $r)/issues/\(.number)",
+           (prs | "repos/\($r)/pulls/\(.number)")))),
      (.waited // {} | to_entries[] | if (.key | startswith("PR:")) then "repos/\($r)/pulls/\(.key[3:])"
        else "repos/\($r)/issues/\(.key)", "repos/\($r)/issues/\(.key)/timeline?per_page=100",
          (.value // {} | prs | "repos/\($r)/pulls/\(.number)") end),

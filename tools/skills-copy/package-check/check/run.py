@@ -9,6 +9,7 @@ and every skill's own suites, all of them even after a failure, and exits 1
 if any fails or is missing, 2 on arguments. Python 3.11+ standard library,
 POSIX `sh`; no network, no secret, no file outside the tree.
 """
+import ast
 import json
 import os
 import re
@@ -19,20 +20,35 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Each skill's own suites, run from the tree's root: the list ClosedWiz CI
-# ran before the split (ci/select/skills.py), without its one ClosedWiz tool.
+# Each carried skill's own suites, run from the tree's root. The inventory
+# guard below refuses any newly added suite until this list includes it.
 SUITES = {
-    'triage': [['python3', '-I', 'skills/triage/test/test_find_work.py']],
+    'triage': [['python3', '-I', 'skills/triage/test/test_find_work.py'],
+               ['python3', '-I', 'skills/triage/test/test_public_records.py']],
+    'feedback': [['python3', '-I', 'skills/feedback/test/test_feedback.py']],
+    'feedback-triage': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/feedback-triage/tests']],
+    'huntr': [['sh', 'skills/huntr/scripts/test.sh']],
+    'grill': [['sh', 'skills/grill/scripts/test.sh']],
+    'diagnose': [['node', '--test', 'skills/diagnose/tests/hitl-loop.test.mjs']],
+    'build-ticket': [['python3', '-I', 'skills/build-ticket/scripts/test/test_check_helpers.py'],
+                     ['python3', '-I', 'skills/build-ticket/scripts/test/test_durable_helpers.py']],
     'where-are-we': [['python3', '-I', 'skills/where-are-we/test/test_read_github.py']],
     'hill-climb': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/hill-climb/tests']],
-    'image': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/tests']],
+    'image': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/tests'],
+              ['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/references']],
     'plan-graph': [['python3', '-I', 'skills/plan-graph/scripts/test_check_approval.py'],
                    ['sh', 'skills/plan-graph/test/test-revision.sh']],
     'launch-fleet': [['sh', 'skills/launch-fleet/scripts/test.sh'],
                      ['python3', '-I', 'skills/launch-fleet/test/ops-protocol/test_protocol.py'],
                      ['python3', '-I', 'skills/launch-fleet/scripts/test-effects.py'],
                      ['python3', '-I', 'skills/launch-fleet/scripts/test-grants.py'],
-                     ['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py']],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-records.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-ops-starts.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-on1.py'],
+                     ['sh', 'skills/launch-fleet/scripts/test-loop.sh'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-limit-replacement.py'],
+                     ['python3', '-I', 'skills/launch-fleet/scripts/test-limit-recovery.py']],
 }
 
 # The skills not adapted from Matt Pocock's, each with the source line its
@@ -461,7 +477,8 @@ def marketplace(root, version, out):
 # ---- The standalone check and the suites ----
 
 def clean_env():
-    return {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
+    return {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN',
+            'TEST_ONLY', 'TEST_EXPECTED', 'TEST_PASS', 'TEST_WORKER', 'LIST_CASES')}
 
 
 def command_path(command):
@@ -471,8 +488,87 @@ def command_path(command):
     return command[-1], False
 
 
+def unittest_file(path):
+    """Only known unittest class definitions count as discovery coverage.
+
+    Unknown/script-style files require their own explicit entrypoint. Actual
+    collection below also refuses classes that contain no runnable tests.
+    """
+    try:
+        module = ast.parse(path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeError, SyntaxError):
+        return False
+    modules = {'unittest'}
+    bases = set()
+    for node in module.body:
+        if isinstance(node, ast.Import):
+            modules.update(alias.asname or alias.name for alias in node.names if alias.name == 'unittest')
+        elif isinstance(node, ast.ImportFrom) and node.module == 'unittest':
+            bases.update(alias.asname or alias.name for alias in node.names if alias.name == 'TestCase')
+        elif isinstance(node, ast.ClassDef):
+            if any((isinstance(base, ast.Attribute) and base.attr == 'TestCase'
+                    and isinstance(base.value, ast.Name) and base.value.id in modules)
+                   or (isinstance(base, ast.Name) and base.id in bases) for base in node.bases):
+                return True
+    return False
+
+
+# An isolated interpreter collects each matched file, counts its actual cases,
+# then executes the collection. A successful empty collection is still a failure.
+UNIT_RUNNER = r"""
+import importlib.util, pathlib, sys, unittest
+folder, pattern = sys.argv[1:]
+loader = unittest.TestLoader()
+if pattern == 'test*.py':
+    suite = loader.discover(folder, pattern=pattern)
+else:
+    # discover ignores filenames such as test-effects.py even with an exact
+    # pattern. Explicitly listed files need a loader that accepts their names.
+    spec = importlib.util.spec_from_file_location('listed_suite', pathlib.Path(folder) / pattern)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    suite = loader.loadTestsFromModule(module)
+counts = {}
+def count(item):
+    if isinstance(item, unittest.TestSuite):
+        for child in item: count(child)
+    else:
+        module = sys.modules.get(type(item).__module__)
+        file = getattr(module, '__file__', None)
+        if file:
+            key = pathlib.Path(file).resolve()
+            counts[key] = counts.get(key, 0) + 1
+count(suite)
+empty = [p for p in pathlib.Path(folder).glob(pattern) if not counts.get(p.resolve(), 0)]
+for path in sorted(empty):
+    print('suite collection: zero tests: ' + path.as_posix(), flush=True)
+result = unittest.TextTestRunner().run(suite)
+sys.exit(0 if result.wasSuccessful() and not empty else 1)
+"""
+
+
 def suites(root):
-    failed = False
+    covered = set()
+    for commands in SUITES.values():
+        for command in commands:
+            rel, folder = command_path(command)
+            if folder:
+                covered.update(p.relative_to(root).as_posix() for p in (root / rel).glob('test*.py')
+                               if unittest_file(p))
+            else:
+                covered.add(rel)
+    # Huntr's public shell entrypoint executes its four Node test modules.
+    covered.update('skills/huntr/scripts/' + name for name in
+                   ('gate.test.mjs', 'manifest.test.mjs', 'records.test.mjs', 'controller.test.mjs'))
+    discovered = {p.relative_to(root).as_posix() for p in (root / 'skills').rglob('*')
+                  if p.is_file() and 'fixtures' not in p.parts and
+                  ((p.name.startswith('test') and p.suffix in ('.py', '.sh'))
+                   or p.name.endswith('.test.mjs'))}
+    unlisted = discovered - covered
+    for rel in sorted(unlisted):
+        print(f'suite inventory: {rel}: unlisted', flush=True)
+    failed = bool(unlisted)
     for name, commands in SUITES.items():
         for command in commands:
             shown = ' '.join(command)
@@ -483,9 +579,27 @@ def suites(root):
                 print(f'suite {name}: {shown}: missing', flush=True)
                 failed = True
                 continue
+            cwd = root
             argv = [sys.executable if command[0] == 'python3' else command[0], *command[1:]]
+            if folder:
+                argv = [sys.executable, '-I', '-c', UNIT_RUNNER, rel, 'test*.py']
+            elif command[0] == 'python3' and unittest_file(target):
+                argv = [sys.executable, '-I', '-c', UNIT_RUNNER, target.parent.relative_to(root).as_posix(), target.name]
+            if name == 'huntr':
+                cwd = root / 'check/fixtures/huntr-project'
+                settings = cwd / 'docs/agents/huntr.md'
+                if not settings.is_file() or settings.is_symlink():
+                    print(f'suite {name}: synthetic consumer missing', flush=True)
+                    failed = True
+                    continue
+                argv[-1] = str(target.resolve())
             print(f'suite {name}: {shown}: running', flush=True)
-            code = subprocess.run(argv, cwd=root, env=clean_env()).returncode
+            try:
+                code = subprocess.run(argv, cwd=cwd, env=clean_env()).returncode
+            except OSError:
+                print(f'suite {name}: {shown}: cannot start', flush=True)
+                failed = True
+                continue
             print(f'suite {name}: {shown}: {"pass" if code == 0 else f"fail ({code})"}', flush=True)
             failed = failed or code != 0
     return not failed
