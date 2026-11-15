@@ -605,6 +605,11 @@ jobs:
           save: ${{ steps.guard.outputs.save }}
           rust-version: ${{ env.RUST_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
+          # #742: its own partition. always saves cargo-rust first on main, so
+          # a save of that key here failed and the release build stayed cold.
+          # cargo-rust seeds it until main has saved one.
+          cache: cargo-rust-export
+          fallback: cargo-rust
           cargo: 'true'
           npm: ${{ needs.changes.outputs.planted == 'true' }}
           browser: 'false'
@@ -673,17 +678,17 @@ jobs:
           path: ${{ runner.temp }}/select-records/*.json*
           if-no-files-found: ignore
           retention-days: 7
-      - name: Save the cargo-rust cache
+      - name: Save the cargo-rust-export cache
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') && strategy.job-index == 0
-        run: sh ci/runner/cache.sh save cargo-rust "$HOME/.cargo/registry" "$GITHUB_WORKSPACE/target"
-      - name: Save the GitHub cargo-rust cache
+        run: sh ci/runner/cache.sh save cargo-rust-export "$HOME/.cargo/registry" "$GITHUB_WORKSPACE/target"
+      - name: Save the GitHub cargo-rust-export cache
         if: steps.guard.outputs.save == 'true' && strategy.job-index == 0
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path:  |
             ~/.cargo/registry
             target
-          key: cargo-rust-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          key: cargo-rust-export-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
       # Only once its tests passed: the ci job counts these records.
       - name: Record passed lane
         env:
