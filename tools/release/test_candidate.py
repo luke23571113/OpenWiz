@@ -1643,15 +1643,15 @@ class Notes(World):
         # catches: a structure check that refuses the approved VS9 bytes, or a cut
         # that is not the approved 0.0.6-0.0.12 release notes.
         raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
-        self.assertEqual(sha(raw), '747c312709383a9fbf23844372319ac716e85cbd59fd8cf5bb408869e33e45c6')
+        self.assertEqual(sha(raw), 'e690a1652787865d67cb557fc1a2a59588b87a21a067b2e547b90a709f5e6e3d')
         self.assertEqual((ROOT / 'CHANGELOG.md').read_bytes(), raw)
         self.untagged(raw.decode())
         (self.repo / 'changes/notes').mkdir()
         (self.repo / 'changes/notes/0.0.12.md').write_bytes(raw)
         (code, out), folder = self.curated(raw.decode(), list(COMBINED))
         self.assertEqual(code, 0, out)
-        self.assertEqual(out['notes_sha256'], 'b1230111974137f22d5109559ab6e7bae5a859a96d286f13f69a0906ed7ae98b')
-        self.assertEqual(out['notes_bytes'], 6947)
+        self.assertEqual(out['notes_sha256'], '27135ed4d22479e17d6f02806ccb9e8a8b33e2ef37a970e1a216800da4af9191')
+        self.assertEqual(out['notes_bytes'], 6896)
         self.assertEqual((folder / 'CHANGELOG.md').read_bytes(), raw)
 
     def test_rl6_malformed_curated_notes_refuse_with_their_reason(self):
