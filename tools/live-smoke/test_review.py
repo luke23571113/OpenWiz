@@ -51,36 +51,6 @@ class Review(FixtureCase):
                                          str(self.state / 'fleet-expected-plan.json'), '--json']])
         self.assertTrue(marker.exists())
 
-    def test_r5_nondefault_port_refuses_before_any_effect(self):
-        marker = self.root / 'wrong-service-effect'
-        text = self.fake.read_text().replace("case = sys.argv[1]",
-            "case = sys.argv[1]\nif case == 'fleet':\n    (root / 'wrong-service-effect').write_text('dispatched')")
-        self.fake.write_text(text)
-        self.kit['artifacts'][str(self.fake)] = self.sha(self.fake)
-        self.kit['default_terminal_port'] = '7474'
-        service = {'id': 'service_before', 'claim': 'service', 'kind': 'read',
-            'argv': [str(self.fake), 'status'], 'exit': 0,
-            'checks': [{'path': '/schema', 'equals': 'openwiz.service-status.v1'}]}
-        self.kit['steps'].insert(0, service)
-        self.kit['steps'][1:1] = [{'id': 'terminal_default', 'claim': 'terminal', 'kind': 'read',
-            'argv': [str(self.fake), 'terminal'], 'exit': 0,
-            'checks': [{'path': '/count', 'equals': 1}]}]
-        self.replies['status'] = {'exit': 0, 'out': '{"schema":"openwiz.service-status.v1","server":{"port":7474}}'}
-        self.wrong_port_result = self.invoke()
-        self.wrong_port_calls = self.call_list()
-        self.assertFalse(marker.exists(), 'wrong-service inputs dispatched a write')
-        self.assertEqual(self.report(self.wrong_port_result, 3)['reason'], 'default_terminal_port')
-        self.assertEqual(self.call_list(), [])
-        # A declared default port also needs the approved service's actual status.
-        self.kit['default_terminal_port'] = '7370'
-        self.state = self.root / 'wrong-service'
-        self.assertEqual(self.report(self.invoke(), 3)['reason'], 'default_terminal_port')
-        self.assertNotIn(['fleet'], self.call_list())
-        self.assertFalse(marker.exists())
-        self.replies['status']['out'] = '{"schema":"openwiz.service-status.v1","server":{"port":7370}}'
-        self.state = self.root / 'right-service'
-        self.report(self.invoke(), 0)
-
     def test_r6_timeout_reaps_the_real_pty_drivers_new_session(self):
         # Adopt a leaking baseline child so this regression can clean it up
         # even before the fix. Only descendants of this test can be adopted.

@@ -111,7 +111,8 @@ class Port(FixtureCase):
         self.service_reply('8124')
         doc = self.report(self.invoke(), 3)
         self.assertEqual(doc['reason'], 'port_mismatch')
-        self.assertEqual([c[0] for c in self.call_list()], ['service'])
+        # Only the bundle preflight and the service read ran: no write.
+        self.assertEqual([c[0] for c in self.call_list()], ['ls', 'service'])
         self.service_reply(PORT)
         self.state = self.root / 'right-port'
         self.calls.unlink()
@@ -157,9 +158,12 @@ class Inputs(unittest.TestCase):
                 records[name] = [str(self.fake), 'readback']
             else:
                 records[name] = str(self.fake)
+        openwiz = self.root / 'openwiz'
+        openwiz.write_text('#!/bin/sh\nexit 0\n')
+        openwiz.chmod(0o700)
         records.update(mode='fixture', scratch_checkout=str(self.root), env={},
-                       control_thread=PRIVATE,
-                       artifacts={str(self.fake): self.sha(self.fake)},
+                       control_thread=PRIVATE, openwiz=str(openwiz),
+                       artifacts={str(self.fake): self.sha(self.fake), str(openwiz): self.sha(openwiz)},
                        source={'checkout': str(self.root), 'head': '0' * 40},
                        fleet_scope={'specs': [9001], 'tickets': [9002, 9003, 9004],
                                     'rules': ['frontier', 'adr_0008'], 'never_start': [9004]})
@@ -227,6 +231,10 @@ class Inputs(unittest.TestCase):
             'scope_sha256': canonical_sha(SCOPE), 'port': PORT})
         self.assertEqual(kit['port'], PORT)
         self.assertNotIn('default_terminal_port', kit)
+        # A kit changes only by preparing a new file: never an overwrite.
+        original = out.read_bytes()
+        again = run(HERE / 'prepare.py', '--inputs', good, '--out', out)
+        self.assertEqual((again.returncode, out.read_bytes()), (2, original))
         checkout = self.root / 'checkout'
         subprocess.run(['git', 'init', '-q', str(checkout)], check=True)
         (checkout / 'private').mkdir()
@@ -300,70 +308,84 @@ class FakeGitHub(http.server.BaseHTTPRequestHandler):
         pass
 
 
-class AppToken(unittest.TestCase):
+class AppToken(FixtureCase):
     """catches: the scratch App steps running with a token wider than the
     kit's recorded App scope, a permission the App was never granted, or the
-    token reaching argv, output or the kit."""
+    token reaching argv, output, the kit or a program other than the runner."""
+    TOKEN = 'ghs_' + 'S' * 36
 
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        state = self.root / 'state'
-        app_dir = state / 'github-app'
+        super().setUp()
+        state = self.root / 'app-state'
+        app_dir = state / 'service' / 'app'
         app_dir.mkdir(parents=True, mode=0o700)
-        state.chmod(0o700)
+        for folder in (state, state / 'service', app_dir):
+            folder.chmod(0o700)
         subprocess.run(['openssl', 'genrsa', '-out', str(app_dir / 'private-key.pem'), '2048'],
                        check=True, capture_output=True)
         (app_dir / 'private-key.pem').chmod(0o600)
         (app_dir / 'app.json').write_text('{"app_id": 1001}')
         (app_dir / 'app.json').chmod(0o600)
-        self.state = state
+        self.app_state = state
         self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), FakeGitHub)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
         FakeGitHub.granted, FakeGitHub.requests = None, []
-        self.kit = self.root / 'kit.json'
-        self.child = self.root / 'child.py'
-        self.child.write_text('import json, os, sys\n'
-                              'print(json.dumps({"argv": sys.argv[1:], '
-                              '"token": os.environ.get("OPENWIZ_SMOKE_APP_TOKEN")}))\n')
+        # The App step's program reports only a digest of the token it was given.
+        text = self.fake.read_text().replace("print(reply['out'])", (
+            "if case == 'app':\n    import hashlib, os\n"
+            "    reply['out'] = json.dumps({'token': hashlib.sha256(os.environ.get('GH_TOKEN', '').encode()).hexdigest()})\n"
+            "print(reply['out'])"))
+        self.fake.write_text(text)
+        self.kit['artifacts'][str(self.fake)] = self.sha(self.fake)
+        step = next(s for s in self.kit['steps'] if s['claim'] == 'app')
+        step['token_env'] = 'OPENWIZ_SMOKE_APP_TOKEN'
+        step['checks'] = [{'path': '/token', 'equals': hashlib.sha256(self.TOKEN.encode()).hexdigest()}]
 
-    def mint(self, permissions):
-        self.kit.write_text(json.dumps({'release': {'scope': dict(SCOPE, app_permissions=permissions)}}))
-        self.kit.chmod(0o600)
-        return run(HERE / 'app_token.py', '--kit', self.kit, '--state-dir', self.state,
+    def mint(self, permissions, command=None):
+        self.kit['release'] = {'scope': dict(SCOPE, app_permissions=permissions)}
+        self.kit_path.write_text(json.dumps(self.kit))
+        self.kit_path.chmod(0o600)
+        (self.root / 'replies.json').write_text(json.dumps(self.replies))
+        command = command or [sys.executable, '-I', HERE / 'smoke.py', '--kit', self.kit_path,
+                              '--state', self.state, '--fixture']
+        env = {k: v for k, v in os.environ.items() if k != 'OPENWIZ_SMOKE_APP_TOKEN'}
+        return run(HERE / 'app_token.py', '--kit', self.kit_path, '--state-dir', self.app_state,
                    '--installation-id', '2002', '--repository', 'synthetic-owner/synthetic-scratch',
-                   '--api-base', f'http://127.0.0.1:{self.server.server_port}',
-                   '--', sys.executable, '-I', self.child, 'synthetic-arg')
+                   '--api-base', f'http://127.0.0.1:{self.server.server_port}', '--', *command, env=env)
 
-    def test_token_is_exactly_the_kits_app_scope_and_reaches_only_the_childs_environment(self):
+    def test_token_is_exactly_the_kits_app_scope_and_reaches_only_the_runners_app_steps(self):
         result = self.mint(SCOPE['app_permissions'])
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(FakeGitHub.requests, [{
             'path': '/app/installations/2002/access_tokens',
             'body': {'permissions': {'contents': 'write', 'issues': 'write', 'metadata': 'read'},
                      'repositories': ['synthetic-scratch']}}])
-        child = json.loads(result.stdout)
-        self.assertEqual(child, {'argv': ['synthetic-arg'], 'token': 'ghs_' + 'S' * 36})
-        self.assertNotIn('ghs_', result.stderr)
+        self.assertEqual(self.report(result, 0)['claims']['app'], 'pass')
+        self.assertNotIn('ghs_', result.stdout + result.stderr + self.kit_path.read_text())
+        self.assertNotIn('ghs_', json.dumps(self.call_list()))
 
-    def test_a_permission_the_app_lacks_or_a_wider_grant_refuses_without_running(self):
-        for name, permissions, granted in (
-                ('new permission', ['administration:write'], None),
-                ('write the App only reads', ['checks:write'], None),
-                ('wider grant', ['issues:write'], {'issues': 'write', 'contents': 'write'})):
+    def test_a_permission_the_app_lacks_a_wider_grant_or_another_program_refuses_without_running(self):
+        runner = [sys.executable, '-I', HERE / 'smoke.py', '--kit', self.kit_path]
+        for name, permissions, granted, command in (
+                ('new permission', ['administration:write'], None, None),
+                ('write the App only reads', ['checks:write'], None, None),
+                ('wider grant', ['issues:write'], {'issues': 'write', 'contents': 'write'}, None),
+                ('another program', SCOPE['app_permissions'], None, [str(self.fake), 'app']),
+                ('another kit', SCOPE['app_permissions'], None, runner[:4] + [self.root / 'other.json'])):
             with self.subTest(name):
                 FakeGitHub.granted, FakeGitHub.requests = granted, []
-                result = self.mint(permissions)
+                result = self.mint(permissions, command)
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 self.assertNotIn('ghs_', result.stdout + result.stderr)
-                self.assertNotIn('synthetic-arg', result.stdout)
+                self.assertEqual(self.call_list(), [])
+                self.assertFalse(self.state.exists())
                 if granted is None:
                     self.assertEqual(FakeGitHub.requests, [])
 
 
 class Collectors(unittest.TestCase):
+    maxDiff = None
     """The exported read-only AC6 collectors, over a synthetic gh/room-cli."""
 
     def setUp(self):
@@ -430,7 +452,7 @@ class Collectors(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(json.loads(result.stdout), {
             'schema': 'openwiz.live-smoke-fleet.v1', 'branch': 'scratch',
-            'spec': {'number': 9001, 'state': 'OPEN', 'state_reason': ''},
+            'spec': {'number': 9001, 'state': 'OPEN', 'state_reason': '', 'needs_info': False},
             'tickets': [
                 {'number': 9002, 'state': 'CLOSED', 'state_reason': 'COMPLETED', 'needs_info': False,
                  'merged': [{'number': 7001, 'head': 'b' * 40, 'merge_commit': 'a' * 40}]},

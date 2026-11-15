@@ -1,0 +1,28 @@
+== test_kit
+Ran 10 tests in 5.681s
+
+OK
+== test_smoke
+Ran 28 tests in 18.388s
+
+OK
+== test_review
+Ran 4 tests in 9.166s
+
+OK
+== test_receipt
+Ran 17 tests in 15.915s
+
+OK
+== test_restriction
+Ran 16 tests in 4.848s
+
+OK
+== node --check
+ok
+== open-import/test_guard
+OK
+== open-import/test_frozen
+OK
+== open-import/test_import
+OK
