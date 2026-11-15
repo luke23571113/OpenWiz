@@ -258,6 +258,95 @@
           }
         }
       }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected",
+        "app_choice",
+        "acting_login"
+      ],
+      "properties": {
+        "selected": {
+          "enum": [
+            "app",
+            "personal_login",
+            "unselected"
+          ]
+        },
+        "app_choice": {
+          "enum": [
+            "create",
+            "reuse",
+            "skip",
+            "undecided"
+          ]
+        },
+        "acting_login": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]{1,39}$"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "selected": {
+                "const": "personal_login"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "app_choice": {
+                "const": "skip"
+              },
+              "acting_login": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "brain": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "location",
+            "brain_repository",
+            "folder"
+          ],
+          "properties": {
+            "location": {
+              "enum": [
+                "in_repository",
+                "companion"
+              ]
+            },
+            "brain_repository": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]{1,100}$"
+            },
+            "folder": {
+              "const": ".openwiz/brain"
+            }
+          }
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -333,22 +422,6 @@
                 "contains": {
                   "properties": {
                     "id": {
-                      "const": "github_app"
-                    },
-                    "state": {
-                      "const": "verified"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "state"
-                  ]
-                }
-              },
-              {
-                "contains": {
-                  "properties": {
-                    "id": {
                       "const": "project"
                     },
                     "state": {
@@ -379,7 +452,46 @@
               }
             ]
           }
-        }
+        },
+        "anyOf": [
+          {
+            "properties": {
+              "components": {
+                "contains": {
+                  "properties": {
+                    "id": {
+                      "const": "github_app"
+                    },
+                    "state": {
+                      "const": "verified"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "state"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "required": [
+              "identity"
+            ],
+            "properties": {
+              "identity": {
+                "properties": {
+                  "selected": {
+                    "const": "personal_login"
+                  },
+                  "app_choice": {
+                    "const": "skip"
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     },
     {

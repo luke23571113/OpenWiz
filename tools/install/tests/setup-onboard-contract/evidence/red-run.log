@@ -1,0 +1,1952 @@
+test_every_emitted_code_is_in_the_table_and_every_code_is_exercised (__main__.CodeTable.test_every_emitted_code_is_in_the_table_and_every_code_is_exercised) ... FAIL
+test_the_contract_table_is_the_checker_vocabulary (__main__.CodeTable.test_the_contract_table_is_the_checker_vocabulary) ... FAIL
+test_committed_contract_and_fixtures_hold_no_credential (__main__.Credentials.test_committed_contract_and_fixtures_hold_no_credential) ... ok
+test_fixture_accounts_and_repositories_are_synthetic (__main__.Credentials.test_fixture_accounts_and_repositories_are_synthetic) ... ok
+test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) ... 
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='ghs_SS') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='github') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='-----B') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='eyJaaa') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='OPENWI') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='ghs_SS') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='github') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='-----B') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='eyJaaa') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='OPENWI') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='ghs_SS') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='github') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='-----B') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='eyJaaa') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='OPENWI') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='ghs_SS') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='github') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='-----B') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='eyJaaa') ... FAIL
+  test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='OPENWI') ... FAIL
+test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) ... 
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='identity-user-app') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='identity-skip-app') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='secret-protected-paste') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='secret-agent-save-shape') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-request-preview') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-request-apply') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-private') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-public-companion') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-unknown-visibility-refused') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='brain-in-repository') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='brain-companion') ... FAIL
+  test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='receipt-skip-app-under-limit') ... FAIL
+test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) ... 
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='user-app-public') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='user-app-factory-setting') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='factory-app-implicit') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='factory-app-explicit') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='factory-app-private') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-verified-by-manifest-conversion') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-verified-by-saved-id') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-evidence-stale') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='private-app-foreign-repository') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='private-app-foreign-installation') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='private-app-foreign-installed-repository') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-all-repositories') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-not-covering-repository') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-revoked-not-ready') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-revoked-claims-ready') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-failure-falls-back-to-login') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-selected-without-skip') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='selection-without-choice') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='saved-skip-reused') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='skipped-app-marked-verified') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='skipped-app-truthfully-missing') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-by-browser-callback') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-without-repository-access') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-evidence-stale') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-denied-claims-ready') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-unknown-not-ready') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='unselected-claims-ready') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-on-test-stand-in') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-not-shipped') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-leaves-key-file') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-with-paste') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-without-encoding-step') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-cleanup-uncounted') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-keeps-converted-key') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-claims-no-download') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-download-retained') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-download-unknown') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='delivery-assumed') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='store-failed-claims-stored') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='store-failed') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='store-reply-lost') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='replacement-app-registered') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='apply-without-authorization') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='apply-other-operation') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='apply-changed-request') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='preview-carrying-authorization') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-placement-question') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-unknown-visibility-writes') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-unknown-visibility-completes') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-visibility-from-local-remote') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-private-gets-companion') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-public-in-repository') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-public-writes-code-repository') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-not-private') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-visibility-unread') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-is-code-repository') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-without-pair') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-pair-swapped') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='in-repository-with-pair') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='in-repository-elsewhere') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='brain-public-code-in-repository') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-brain-change-hidden') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-brain-closed-pr') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-report-without-location') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-applied-without-brain') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-duplicate-companion') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-blind-retry') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-reconciled-retry') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-lost-reply') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-applied-without-effect') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-duplicate-effect-row') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-companion-creation-denied') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-exactly-thirty-minutes') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-sixth-action') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-count-unknown') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-action-omitted') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-failure-not-reported') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-clock-unknown') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-clock-order') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-clock-not-merge') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-wait-outside-clock') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-action-outside-clock') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-help-outside-clock') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-prepared-help') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-closed-pr-is-not-merge') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-merge-unreviewed-head') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-merge-ci-other-head') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-init-only-merge') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-candidate-unknown') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-repository-unknown') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-seeded-state') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-reused-machine') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-repository-freshness-unknown') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-initial-record-missing') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-plan-not-approved') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-skip-with-secret-route') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-agent-save-five') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-app-steps-hidden') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-agent-save-unobserved') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-paste-steps-hidden') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-agent-stand-in-counted') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-fixture-claims-pass') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-live-labelled-synthetic') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-recording-unlabelled') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-limit-relabelled') ... FAIL
+  test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-six-allowed') ... FAIL
+test_every_example_is_clean_once_live_in_memory (__main__.Fixtures.test_every_example_is_clean_once_live_in_memory) ... ok
+test_strict_json (__main__.Fixtures.test_strict_json) ... FAIL
+test_a_sixth_action_fails (__main__.Limits.test_a_sixth_action_fails) ... FAIL
+test_an_unknown_or_missing_count_never_passes (__main__.Limits.test_an_unknown_or_missing_count_never_passes) ... FAIL
+test_exactly_thirty_minutes_fails (__main__.Limits.test_exactly_thirty_minutes_fails) ... FAIL
+test_just_under_thirty_minutes_with_five_actions_passes (__main__.Limits.test_just_under_thirty_minutes_with_five_actions_passes) ... ok
+test_the_first_hour_keeps_its_own_measures (__main__.Limits.test_the_first_hour_keeps_its_own_measures) ... ok
+test_schemas_use_only_evaluated_keywords (__main__.Schemas.test_schemas_use_only_evaluated_keywords) ... ok
+test_secret_names_are_the_identity_pin (__main__.Schemas.test_secret_names_are_the_identity_pin) ... ok
+test_setup_identity_and_brain_agree_with_this_contract (__main__.Schemas.test_setup_identity_and_brain_agree_with_this_contract) ... ERROR
+test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) ... 
+  test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='legacy-app-missing-claims-ready') ... FAIL
+  test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='skip-app-login-unverified-claims-ready') ... FAIL
+  test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='login-selected-without-skip') ... FAIL
+  test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='app-selected-app-missing-claims-ready') ... FAIL
+  test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='login-selected-names-no-login') ... FAIL
+  test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='brain-unknown-location') ... FAIL
+  test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='identity-extra-key') ... FAIL
+
+======================================================================
+ERROR: test_setup_identity_and_brain_agree_with_this_contract (__main__.Schemas.test_setup_identity_and_brain_agree_with_this_contract)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 248, in test_setup_identity_and_brain_agree_with_this_contract
+    self.assertEqual(props['identity']['properties']['selected'], selection['selected'])
+                     ~~~~~^^^^^^^^^^^^
+KeyError: 'identity'
+
+======================================================================
+FAIL: test_every_emitted_code_is_in_the_table_and_every_code_is_exercised (__main__.CodeTable.test_every_emitted_code_is_in_the_table_and_every_code_is_exercised)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 282, in test_every_emitted_code_is_in_the_table_and_every_code_is_exercised
+    self.assertEqual(set(table) - seen, set())
+AssertionError: Items in the first set but not the second:
+'upstream_weak_evidence'
+'outcome_brain_missing'
+'prepared_help'
+'synthetic_live'
+'stale_evidence:<which>'
+'report_line_missing_location'
+'candidate_unknown'
+'converted_key_kept'
+'agent_save_unavailable'
+'identity_route_inconsistent'
+'clock_order'
+'brain_not_private'
+'not_fresh:<which>'
+'action_count_mismatch'
+'brain_change_not_visible'
+'seeded_state'
+'duplicate_effect:<kind>'
+'in_repository_mismatch'
+'login_weak_evidence'
+'brain_visibility_mismatch'
+'initial_record_missing'
+'app_steps_uncounted'
+'merge_weak_evidence'
+'visibility_unverified_init'
+'synthetic_unlabelled'
+'unproven_pass'
+'init_only_merge'
+'delivery_weak_evidence'
+'phase_effect_mismatch:<kind>'
+'brain_pair_mismatch'
+'authorization_mismatch'
+'cross_account_private_app'
+'secret_success_claimed'
+'decision_unsaved:<decision>'
+'preview_authorized'
+'delivery_unverified'
+'failure_not_reported'
+'key_download_unknown'
+'identity_ready_inconsistent'
+'private_content_published'
+'action_count_unknown'
+'key_download_retained'
+'non_live_pass'
+'effect_uncertain:<kind>'
+'outside_clock:<list>:<index>'
+'actions_exceeded'
+'secret_route_unobserved'
+'owner_step_uncounted:<step>'
+'live_without_private_record'
+'skip_not_chosen'
+'repository_unknown'
+'clock_unknown'
+'duplicate_app_registration'
+'factory_app_not_explicit'
+'blind_retry:<kind>'
+'fallback_step_missing:<step>'
+'selection_without_choice'
+'companion_same_repository'
+'no_paste_route_inconsistent'
+'brain_placement_mismatch'
+'secret_steps_uncounted'
+'skipped_app_verified'
+'not_live'
+'repository_not_installed'
+'unexpected_companion'
+'duplicate_effect_row:<kind>:<repository>'
+'secret_store_failed'
+'user_app_not_private'
+'schema'
+'silent_identity_switch'
+'all_repositories_installation'
+'app_weak_evidence'
+'thirty_minutes_missed'
+'fallback_download_unrecorded'
+'outcome_uncertain'
+'clock_not_merge'
+
+======================================================================
+FAIL: test_the_contract_table_is_the_checker_vocabulary (__main__.CodeTable.test_the_contract_table_is_the_checker_vocabulary)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 269, in test_the_contract_table_is_the_checker_vocabulary
+    self.assertEqual(table_codes(), check.CODES)
+AssertionError: {'not_strict_json': 'problem', 'schema': '[2761 chars]ven'} != {}
+Diff is 3047 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='ghs_SS')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='github')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='-----B')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='eyJaaa')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='identity-skip-app', shape='OPENWI')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='ghs_SS')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='github')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='-----B')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='eyJaaa')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='secret-protected-paste', shape='OPENWI')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='ghs_SS')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='github')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='-----B')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='eyJaaa')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='init-private', shape='OPENWI')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='ghs_SS')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='github')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='-----B')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='eyJaaa')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_planted_credentials_are_refused_wherever_they_appear (__main__.Credentials.test_planted_credentials_are_refused_wherever_they_appear) (example='receipt-skip-app-under-limit', shape='OPENWI')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 215, in test_planted_credentials_are_refused_wherever_they_appear
+    self.assertIn('leaked_credential', report(doc)['problems'])
+AssertionError: 'leaked_credential' not found in []
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='identity-user-app')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='identity-skip-app')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='secret-protected-paste')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='secret-agent-save-shape')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-request-preview')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-request-apply')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-private')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-public-companion')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='init-unknown-visibility-refused')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='brain-in-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='brain-companion')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_example_gives_exactly_its_codes (__main__.Fixtures.test_each_example_gives_exactly_its_codes) (example='receipt-skip-app-under-limit')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 132, in test_each_example_gives_exactly_its_codes
+    self.assertEqual(report(example['document']), example['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='user-app-public')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['user_app_not_private'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['user_app_not_private'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='user-app-factory-setting')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['user_app_not_private'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['user_app_not_private'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='factory-app-implicit')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['factory_app_not_explicit'], 'failures': [24 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['factory_app_not_explicit'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='factory-app-explicit')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='factory-app-private')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['factory_app_not_explicit'], 'failures': [24 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['factory_app_not_explicit'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-verified-by-manifest-conversion')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['app_weak_evidence'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['app_weak_evidence'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-verified-by-saved-id')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['app_weak_evidence'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['app_weak_evidence'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-evidence-stale')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['stale_evidence:app'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['stale_evidence:app'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='private-app-foreign-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['cross_account_private_app', 'repository_[53 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['cross_account_private_app', 'repository_not_installed'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='private-app-foreign-installation')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['cross_account_private_app'], 'failures':[25 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['cross_account_private_app'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='private-app-foreign-installed-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['cross_account_private_app'], 'failures':[25 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['cross_account_private_app'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-all-repositories')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['all_repositories_installation'], 'failur[29 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['all_repositories_installation'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-not-covering-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['repository_not_installed'], 'failures': [24 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['repository_not_installed'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-revoked-not-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-revoked-claims-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['identity_ready_inconsistent'], 'failures[27 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['identity_ready_inconsistent'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='app-failure-falls-back-to-login')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['identity_ready_inconsistent', 'silent_id[72 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['identity_ready_inconsistent',
++               'silent_identity_switch',
++               'skip_not_chosen'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-selected-without-skip')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['identity_ready_inconsistent', 'skip_not_[46 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['identity_ready_inconsistent', 'skip_not_chosen'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='selection-without-choice')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['selection_without_choice'], 'failures': [24 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['selection_without_choice'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='saved-skip-reused')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='skipped-app-marked-verified')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['skipped_app_verified'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['skipped_app_verified'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='skipped-app-truthfully-missing')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-by-browser-callback')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['login_weak_evidence'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['login_weak_evidence'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-without-repository-access')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['login_weak_evidence'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['login_weak_evidence'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-evidence-stale')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['stale_evidence:personal_login'], 'failur[29 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['stale_evidence:personal_login'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-denied-claims-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['identity_ready_inconsistent'], 'failures[27 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['identity_ready_inconsistent'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='login-unknown-not-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='unselected-claims-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['identity_ready_inconsistent'], 'failures[27 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['identity_ready_inconsistent'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-on-test-stand-in')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['upstream_weak_evidence'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['upstream_weak_evidence'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-not-shipped')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['agent_save_unavailable'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['agent_save_unavailable'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-leaves-key-file')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['no_paste_route_inconsistent'], 'failures[27 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['no_paste_route_inconsistent'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='agent-save-with-paste')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['no_paste_route_inconsistent'], 'failures[27 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['no_paste_route_inconsistent'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-without-encoding-step')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['fallback_step_missing:encode_key'], 'fai[32 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['fallback_step_missing:encode_key'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-cleanup-uncounted')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['owner_step_uncounted:delete_download'], [36 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['owner_step_uncounted:delete_download'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-keeps-converted-key')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['converted_key_kept'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['converted_key_kept'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-claims-no-download')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['fallback_download_unrecorded'], 'failure[28 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['fallback_download_unrecorded'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-download-retained')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[13 chars]failures': [], 'unproven': []} != {'pro[13 chars]failures': ['key_download_retained'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['key_download_retained'],
++  'problems': [],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='fallback-download-unknown')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[14 chars]ailures': [], 'unproven': []} != {'pro[14 chars]ailures': [], 'unproven': ['key_download_unknown', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': [],
++  'unproven': ['key_download_unknown', 'not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='delivery-assumed')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['delivery_weak_evidence'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['delivery_weak_evidence'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='store-failed-claims-stored')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['secret_success_claimed'], 'failures': ['[43 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['secret_store_failed'],
++  'problems': ['secret_success_claimed'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='store-failed')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': ['secret_store_failed'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['secret_store_failed'], 'problems': [], 'unproven': ['not_live']}
+?               +++++++++++++++++++++                                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='store-reply-lost')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[13 chars]failures': [], 'unproven': []} != {'pro[13 chars]failures': [], 'unproven': ['delivery_unverified', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': [],
++  'unproven': ['delivery_unverified', 'not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='replacement-app-registered')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[18 chars]res': [], 'unproven': []} != {'pro[18 chars]res': ['duplicate_app_registration'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['duplicate_app_registration'],
++  'problems': [],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='apply-without-authorization')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['authorization_mismatch'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['authorization_mismatch'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='apply-other-operation')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['authorization_mismatch'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['authorization_mismatch'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='apply-changed-request')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['authorization_mismatch'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['authorization_mismatch'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='preview-carrying-authorization')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['preview_authorized'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['preview_authorized'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-placement-question')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['schema'], 'failures': [], 'unproven': []}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['schema'], 'unproven': []}
+?                               ++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-unknown-visibility-writes')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['visibility_unverified_init'], 'failures'[26 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['visibility_unverified_init'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-unknown-visibility-completes')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['visibility_unverified_init'], 'failures'[26 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['visibility_unverified_init'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-visibility-from-local-remote')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['visibility_unverified_init'], 'failures'[26 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['visibility_unverified_init'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-private-gets-companion')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_change_not_visible', 'brain_placem[137 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['brain_change_not_visible',
++               'brain_placement_mismatch',
++               'brain_visibility_mismatch',
++               'report_line_missing_location',
++               'unexpected_companion'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-public-in-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_change_not_visible', 'brain_placem[113 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['brain_change_not_visible',
++               'brain_placement_mismatch',
++               'brain_visibility_mismatch',
++               'report_line_missing_location'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-public-writes-code-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[17 chars]ures': [], 'unproven': []} != {'pro[17 chars]ures': ['private_content_published'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['private_content_published'],
++  'problems': [],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-not-private')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_not_private'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['brain_not_private'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-visibility-unread')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_not_private'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['brain_not_private'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-is-code-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_pair_mismatch', 'companion_same_re[48 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['brain_pair_mismatch', 'companion_same_repository'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-without-pair')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_pair_mismatch'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['brain_pair_mismatch'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='companion-pair-swapped')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_pair_mismatch'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['brain_pair_mismatch'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='in-repository-with-pair')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_pair_mismatch'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['brain_pair_mismatch'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='in-repository-elsewhere')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['in_repository_mismatch'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['in_repository_mismatch'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='brain-public-code-in-repository')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_placement_mismatch'], 'failures': [24 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['brain_placement_mismatch'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-brain-change-hidden')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_change_not_visible'], 'failures': [24 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['brain_change_not_visible'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-brain-closed-pr')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['brain_change_not_visible'], 'failures': [24 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['brain_change_not_visible'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-report-without-location')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['report_line_missing_location'], 'failure[28 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['report_line_missing_location'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-applied-without-brain')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['outcome_brain_missing'], 'failures': [],[21 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['outcome_brain_missing'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-duplicate-companion')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[20 chars]s': [], 'unproven': []} != {'pro[20 chars]s': ['duplicate_effect:create_companion'], 'un[17 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['duplicate_effect:create_companion'],
++  'problems': [],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-blind-retry')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[20 chars]s': [], 'unproven': []} != {'pro[20 chars]s': ['blind_retry:create_companion'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['blind_retry:create_companion'],
++  'problems': [],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-reconciled-retry')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-lost-reply')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[36 chars]n': []} != {'pro[36 chars]n': ['effect_uncertain:create_companion', 'not[24 chars]in']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': [],
++  'unproven': ['effect_uncertain:create_companion',
++               'not_live',
++               'outcome_uncertain']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-applied-without-effect')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['phase_effect_mismatch:open_pull_request'[39 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['phase_effect_mismatch:open_pull_request'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-duplicate-effect-row')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['duplicate_effect_row:open_pull_request:s[68 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['duplicate_effect_row:open_pull_request:synthetic-owner/synthetic-app'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='init-companion-creation-denied')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-exactly-thirty-minutes')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[13 chars]failures': [], 'unproven': []} != {'pro[13 chars]failures': ['thirty_minutes_missed'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['thirty_minutes_missed'],
++  'problems': [],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-sixth-action')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': ['actions_exceeded'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['actions_exceeded'], 'problems': [], 'unproven': ['not_live']}
+?               ++++++++++++++++++                                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-count-unknown')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[14 chars]ailures': [], 'unproven': []} != {'pro[14 chars]ailures': [], 'unproven': ['action_count_unknown', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': [],
++  'unproven': ['action_count_unknown', 'not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-action-omitted')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['action_count_mismatch'], 'failures': [],[21 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['action_count_mismatch'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-failure-not-reported')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['failure_not_reported'], 'failures': ['th[43 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['thirty_minutes_missed'],
++  'problems': ['failure_not_reported'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-clock-unknown')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['clock_unknown', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['clock_unknown', 'not_live']}
+?                                               +++++++++++++++++++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-clock-order')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['clock_order'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['clock_order'], 'unproven': ['not_live']}
+?                               +++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-clock-not-merge')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['clock_not_merge'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['clock_not_merge'], 'unproven': ['not_live']}
+?                               +++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-wait-outside-clock')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['outside_clock:wait:0'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['outside_clock:wait:0'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-action-outside-clock')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['outside_clock:action:0'], 'failures': [][22 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['outside_clock:action:0'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-help-outside-clock')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['outside_clock:help:0'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['outside_clock:help:0'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-prepared-help')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live', 'prepared_help']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live', 'prepared_help']}
+?                                               +++++++++++++++++++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-closed-pr-is-not-merge')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['merge_weak_evidence'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['merge_weak_evidence'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-merge-unreviewed-head')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['merge_weak_evidence'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['merge_weak_evidence'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-merge-ci-other-head')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['merge_weak_evidence'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['merge_weak_evidence'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-init-only-merge')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': ['init_only_merge'], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': ['init_only_merge'], 'problems': [], 'unproven': ['not_live']}
+?               +++++++++++++++++                                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-candidate-unknown')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['candidate_unknown', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['candidate_unknown', 'not_live']}
+?                                               +++++++++++++++++++++++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-repository-unknown')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live', 'repository_unknown']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live', 'repository_unknown']}
+?                                               ++++++++++++++++++++++++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-seeded-state')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live', 'seeded_state']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live', 'seeded_state']}
+?                                               ++++++++++++++++++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-reused-machine')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_fresh:machine', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_fresh:machine', 'not_live']}
+?                                               +++++++++++++++++++++++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-repository-freshness-unknown')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[14 chars]ailures': [], 'unproven': []} != {'pro[14 chars]ailures': [], 'unproven': ['not_fresh:repository', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': [],
++  'unproven': ['not_fresh:repository', 'not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-initial-record-missing')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[16 chars]lures': [], 'unproven': []} != {'pro[16 chars]lures': [], 'unproven': ['initial_record_missing', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': [],
++  'unproven': ['initial_record_missing', 'not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-plan-not-approved')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'pro[24 chars][], 'unproven': []} != {'pro[24 chars][], 'unproven': ['decision_unsaved:plan_approval', 'not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': [],
++  'unproven': ['decision_unsaved:plan_approval', 'not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-skip-with-secret-route')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['identity_route_inconsistent', 'secret_st[53 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['identity_route_inconsistent', 'secret_steps_uncounted'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-agent-save-five')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-app-steps-hidden')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['app_steps_uncounted'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['app_steps_uncounted'], 'unproven': ['not_live']}
+?                               +++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-agent-save-unobserved')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['app_steps_uncounted'], 'failures': [], '[46 chars]ed']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['app_steps_uncounted'],
++  'unproven': ['not_live', 'secret_route_unobserved']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-paste-steps-hidden')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['app_steps_uncounted', 'secret_steps_unco[45 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['app_steps_uncounted', 'secret_steps_uncounted'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-agent-stand-in-counted')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': [], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': [], 'unproven': ['not_live']}
+?                                               ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-fixture-claims-pass')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['non_live_pass', 'unproven_pass'], 'failu[30 chars]ve']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['non_live_pass', 'unproven_pass'],
++  'unproven': ['not_live']}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-live-labelled-synthetic')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['live_without_private_record', 'synthetic[35 chars]: []}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [],
++  'problems': ['live_without_private_record', 'synthetic_live'],
++  'unproven': []}
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-recording-unlabelled')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['synthetic_unlabelled'], 'failures': [], 'unproven': ['not_live']}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['synthetic_unlabelled'], 'unproven': ['not_live']}
+?                               ++++++++++++++++++++++                ++++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-limit-relabelled')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['schema'], 'failures': [], 'unproven': []}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['schema'], 'unproven': []}
+?                               ++++++++
+
+
+======================================================================
+FAIL: test_each_variant_gives_exactly_its_codes (__main__.Fixtures.test_each_variant_gives_exactly_its_codes) (variant='receipt-six-allowed')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 137, in test_each_variant_gives_exactly_its_codes
+    self.assertEqual(report(document(name)), variant['expect'])
+AssertionError: {'problems': [], 'failures': [], 'unproven': []} != {'problems': ['schema'], 'failures': [], 'unproven': []}
+- {'failures': [], 'problems': [], 'unproven': []}
++ {'failures': [], 'problems': ['schema'], 'unproven': []}
+?                               ++++++++
+
+
+======================================================================
+FAIL: test_strict_json (__main__.Fixtures.test_strict_json)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 147, in test_strict_json
+    self.assertEqual(check.check_text(text).unproven, ['not_live'])
+AssertionError: Lists differ: [] != ['not_live']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'not_live'
+
+- []
++ ['not_live']
+
+======================================================================
+FAIL: test_a_sixth_action_fails (__main__.Limits.test_a_sixth_action_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 183, in test_a_sixth_action_fails
+    self.assertIn('actions_exceeded', report(doc)['failures'])
+AssertionError: 'actions_exceeded' not found in []
+
+======================================================================
+FAIL: test_an_unknown_or_missing_count_never_passes (__main__.Limits.test_an_unknown_or_missing_count_never_passes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 189, in test_an_unknown_or_missing_count_never_passes
+    self.assertIn('action_count_unknown', r['unproven'])
+AssertionError: 'action_count_unknown' not found in []
+
+======================================================================
+FAIL: test_exactly_thirty_minutes_fails (__main__.Limits.test_exactly_thirty_minutes_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 174, in test_exactly_thirty_minutes_fails
+    self.assertIn('thirty_minutes_missed', r['failures'])
+AssertionError: 'thirty_minutes_missed' not found in []
+
+======================================================================
+FAIL: test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='legacy-app-missing-claims-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 243, in test_setup_views_follow_the_expanded_setup_schema
+    self.assertEqual(not errors, view['valid'], errors)
+AssertionError: True != False : []
+
+======================================================================
+FAIL: test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='skip-app-login-unverified-claims-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 243, in test_setup_views_follow_the_expanded_setup_schema
+    self.assertEqual(not errors, view['valid'], errors)
+AssertionError: True != False : []
+
+======================================================================
+FAIL: test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='login-selected-without-skip')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 243, in test_setup_views_follow_the_expanded_setup_schema
+    self.assertEqual(not errors, view['valid'], errors)
+AssertionError: True != False : []
+
+======================================================================
+FAIL: test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='app-selected-app-missing-claims-ready')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 243, in test_setup_views_follow_the_expanded_setup_schema
+    self.assertEqual(not errors, view['valid'], errors)
+AssertionError: True != False : []
+
+======================================================================
+FAIL: test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='login-selected-names-no-login')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 243, in test_setup_views_follow_the_expanded_setup_schema
+    self.assertEqual(not errors, view['valid'], errors)
+AssertionError: True != False : []
+
+======================================================================
+FAIL: test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='brain-unknown-location')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 243, in test_setup_views_follow_the_expanded_setup_schema
+    self.assertEqual(not errors, view['valid'], errors)
+AssertionError: True != False : []
+
+======================================================================
+FAIL: test_setup_views_follow_the_expanded_setup_schema (__main__.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='identity-extra-key')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/setup-onboard-contract/test_contract.py", line 243, in test_setup_views_follow_the_expanded_setup_schema
+    self.assertEqual(not errors, view['valid'], errors)
+AssertionError: True != False : []
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.030s
+
+FAILED (failures=151, errors=1)

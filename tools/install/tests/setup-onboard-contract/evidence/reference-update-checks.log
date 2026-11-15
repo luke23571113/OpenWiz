@@ -1,0 +1,18 @@
+Scoped checks at the reference-update commit (paths replaced with <checkout>)
+== python3 -I tools/install/tests/setup-onboard-contract/test_contract.py
+Ran 19 tests in 0.097s
+
+OK
+exit 0
+== python3 -I tools/install/tests/first-hour-contract/test_contract.py
+Ran 11 tests in 0.242s
+
+OK
+exit 0
+== python3 -I tools/github-app/test_identity_contract.py
+Ran 14 tests in 0.005s
+
+OK
+exit 0
+== cargo fmt --check
+exit 0
