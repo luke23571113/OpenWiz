@@ -1585,4 +1585,69 @@ mod tests {
             table("| Fallback | today's account |")
         )));
     }
+
+    /// Catches: the start-record reader ignoring the start records the App
+    /// writes (#740), because `gh issue view` reports an App's login
+    /// without `[bot]` and no author type; and, once the type is read, a
+    /// user account named like the App, an outsider or a flood of
+    /// outsiders' comments deciding whether a ticket has started.
+    #[test]
+    fn the_start_record_reader_reads_each_authors_type() {
+        use serde_json::json;
+        let start = "launch-fleet: started";
+        let row = |login: &str, kind: &str, body: &str| json!({"login": login, "type": kind, "body": body});
+        let app = |body: &str| row("synthetic-app[bot]", "Bot", body);
+        let outsider = |body: &str| row("synthetic-outsider", "User", body);
+        let flood: Vec<Value> = (0..15).map(|_| outsider("synthetic progress")).collect();
+        let cases: Vec<(Vec<Vec<Value>>, bool)> = vec![
+            // The App's own start record counts.
+            (vec![vec![app(start)]], true),
+            // A user account with the App's name is never the App.
+            (vec![vec![row("synthetic-app", "User", start)]], false),
+            (vec![vec![row("Synthetic-App[bot]", "User", start)]], false),
+            // An outsider's start record never counts, and outsiders'
+            // comments never push the App's record out of the window.
+            (vec![vec![outsider(start)]], false),
+            (vec![vec![app(start)], flood.clone()], true),
+            (
+                vec![vec![json!({"login": null, "type": null, "body": start})]],
+                false,
+            ),
+        ];
+        for (pages, started) in cases {
+            let rest: String = pages
+                .iter()
+                .map(|page| serde_json::to_string(page).unwrap() + "\n")
+                .collect();
+            let tickets = Tickets::with_executor(process::Executor::supplied(std::sync::Arc::new(
+                move |call: &Invocation, _| {
+                    let argv: Vec<&str> = call.argv().iter().map(String::as_str).collect();
+                    let mut issue: Value = serde_json::from_str(ISSUE).unwrap();
+                    // As `gh issue view` reports the App's record: a plain
+                    // login and no type.
+                    issue["comments"] = json!([{"id":"synthetic-comment","author":{"login":"synthetic-app"},"authorAssociation":"NONE","body":start,"createdAt":"2030-01-15T09:00:00Z","includesCreatedEdit":false,"isMinimized":false,"minimizedReason":null,"reactionGroups":[],"url":"https://example.invalid/issues/1#synthetic","viewerDidAuthor":false}]);
+                    let answer = match argv.as_slice() {
+                        ["repo", "view", ..] => json!({"defaultBranchRef":{"name":"main"},"nameWithOwner":"synthetic/repo","url":"https://example.invalid/synthetic/repo"}).to_string(),
+                        ["api", p, ..] if p.contains("/git/ref/heads/") => json!({"sha":"a".repeat(40)}).to_string(),
+                        ["api", p, ..] if p.contains("/contents/docs/agents/fleet.md") => SETTINGS.to_owned(),
+                        ["issue", "view", "1", ..] => issue.to_string(),
+                        ["api", p, "--paginate", ..] if p.contains("/issues/1/comments") => rest.clone(),
+                        _ => return Err(malformed("synthetic gh", "unexpected call")),
+                    };
+                    Ok(answer.into_bytes())
+                },
+            )));
+            let read = tickets
+                .stock_issue(
+                    Number::new(1).unwrap(),
+                    Instant::now() + std::time::Duration::from_secs(5),
+                )
+                .unwrap();
+            assert_eq!(
+                read.1,
+                openwiz_core::model::Fact::Known(started),
+                "{pages:?}"
+            );
+        }
+    }
 }
