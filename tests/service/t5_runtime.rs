@@ -277,6 +277,17 @@ impl Drop for CapturedStderr {
 // TA2 child stderr END
 
 struct Process(std::process::Child, CapturedStderr);
+impl Process {
+    /// Starts the fixture service with no input and its stdout discarded.
+    fn start(mut command: std::process::Command) -> Self {
+        let (stderr, sink) = CapturedStderr::new();
+        command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(sink);
+        Self(command.spawn().unwrap(), stderr)
+    }
+}
 impl Drop for Process {
     fn drop(&mut self) {
         let _ = self.0.kill();
@@ -315,18 +326,11 @@ elif a==['issue','view','901','--json','comments']:
 else:sys.exit(2)
 "#,
     );
-    let (child_stderr, child_stderr_sink) = CapturedStderr::new();
-    let mut process = Process(
-        std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "runtime::service_process", "--nocapture"])
-            .env("OPENWIZ_T5_PROCESS_ROOT", &f.0)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(child_stderr_sink)
-            .spawn()
-            .unwrap(),
-        child_stderr,
-    );
+    let mut service = std::process::Command::new(std::env::current_exe().unwrap());
+    service
+        .args(["--exact", "runtime::service_process", "--nocapture"])
+        .env("OPENWIZ_T5_PROCESS_ROOT", &f.0);
+    let mut process = Process::start(service);
     let until = Instant::now() + RUN_BUDGET;
     let status = loop {
         assert!(
@@ -364,6 +368,44 @@ else:sys.exit(2)
         1
     );
     drop(process);
+}
+/// #719: the fixture service's `room` and `gh` scripts outlived its kill and
+/// recreated `calls` while `Fixture` removed the directory (DirectoryNotEmpty).
+/// Stopping the service must stop everything it started first.
+#[test]
+fn stopping_the_fixture_service_stops_the_programs_it_started() {
+    let f = Fixture::new();
+    let mut leader = std::process::Command::new("/bin/sh");
+    leader.args([
+        "-c",
+        "sh -c 'i=0; while [ $i -lt 500 ]; do sleep 0.02; i=$((i+1)); done' & echo $! > \"$0/started\"; wait",
+    ]);
+    leader.arg(&f.0);
+    let process = Process::start(leader);
+    let until = Instant::now() + RUN_BUDGET;
+    let started = loop {
+        if let Ok(text) = fs::read_to_string(f.0.join("started"))
+            && let Some(pid) = text.strip_suffix('\n')
+        {
+            break pid.to_owned();
+        }
+        assert!(
+            Instant::now() < until,
+            "the fixture never started its program"
+        );
+        std::thread::park_timeout(Duration::from_millis(5));
+    };
+    drop(process);
+    let alive = std::process::Command::new("/bin/kill")
+        .args(["-0", &started])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap()
+        .success();
+    assert!(
+        !alive,
+        "a program the fixture service started outlived its stop"
+    );
 }
 
 #[test]
