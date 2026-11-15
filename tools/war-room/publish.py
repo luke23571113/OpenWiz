@@ -205,16 +205,34 @@ def selection_reader(source_root, selection):
     return read
 
 
-def tick(history, at, read):
+def chart_builder(source_root, selection, at):
+    """WRD2: the chart build for one render, over the tick's history and the selected board
+    history. A refusal is a Fail: nothing is published and the branch keeps its last good page."""
+    charts = sources.native('tools/war-room/charts/build.py')
+    # A native board history, or the projected board gather writes over its pinned raw history.
+    chosen = [] if selection is None else charts.prepare.chart_selections(
+        suite._decode(Path(selection).read_text(encoding='utf-8')))
+
+    def build(history_root):
+        try:
+            return charts.build(history_root, at=at, source_root=source_root, selections=chosen)
+        except (ValueError, OSError, UnicodeError) as error:
+            raise Fail('the chart build refused (%s)' % (error if isinstance(error, ValueError) else type(error).__name__))
+    return build
+
+
+def tick(history, at, read, charts=None):
     """One WR2 tick on `history`. The page's path."""
     page_path = Path(history).parent / 'page' / 'page.html'
-    main.tick(at, history, page_path, read)
+    main.tick(at, history, page_path, read, charts=charts)
     return page_path
 
 
-def render(out, history, at, read):
-    """One tick on `history`, then README.md and both pictures in `out`. The page's HTML."""
-    page_path = tick(history, at, read)
+def render(out, history, at, read, charts=None):
+    """One tick on `history`, then README.md and both pictures in `out`. The page's HTML.
+    With `charts` (WRD2) the page embeds that build's finished SVG figures, and both
+    pictures are drawn from it."""
+    page_path = tick(history, at, read, charts)
     record = main.history.latest(history)
     html = page_path.read_text(encoding='utf-8')
     draw(drawable(html, False), os.path.join(out, PICTURES[0]), WIDTH)
@@ -225,7 +243,7 @@ def render(out, history, at, read):
     return html
 
 
-def publish(remote, at, read, draw_page=True):
+def publish(remote, at, read, draw_page=True, charts=None):
     """One tick and, with draw_page, the README and pictures; push only war-room.
     Without draw_page (the five-minute collection) only a new sample is added."""
     with tempfile.TemporaryDirectory(prefix='war-room-') as tmp:
@@ -267,7 +285,7 @@ def publish(remote, at, read, draw_page=True):
                 before[path.name] = path.read_bytes()
                 (samples / path.name).write_bytes(before[path.name])
         if draw_page:
-            html = render(work, history, at, read)
+            html = render(work, history, at, read, charts)
         else:
             # WRD1: the collection saves one sample and renders no page or picture.
             main.history.collect(history, at, read)
@@ -331,15 +349,16 @@ def cli(argv):
             return 0
         suite._time(a.at)
         read = selection_reader(a.source_root, a.selection)
+        charts = chart_builder(a.source_root, a.selection, a.at)
         if a.cmd == 'publish':
-            print('published war-room at %s' % publish(a.remote, a.at, read))
+            print('published war-room at %s' % publish(a.remote, a.at, read, charts=charts))
         elif a.cmd == 'collect':
             head = publish(a.remote, a.at, read, draw_page=False)
             print('collected into war-room at %s' % head if head else 'boundary already collected')
         else:
             a.out.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='war-room-preview-') as tmp:
-                html = render(a.out, Path(tmp) / 'history', a.at, read)
+                html = render(a.out, Path(tmp) / 'history', a.at, read, charts)
                 scan(a.out, html)
             print((a.out / 'README.md').read_text(encoding='utf-8'))
     except Exception as e:

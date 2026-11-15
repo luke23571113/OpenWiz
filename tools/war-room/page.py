@@ -18,6 +18,13 @@ NAMES = {'activity': 'Current activity', 'stage_waits': 'Stage waits',
          'eb6': 'EB6', 'eb7': 'EB7', 'eb8': 'EB8', 'eb9': 'EB9'}
 
 
+# WRD2: only with prebuilt charts, so a page without them keeps its exact bytes.
+CHART_CSS = ('.chart{border:1px solid #465569;margin:16px 0;padding:12px;max-width:480px}'
+             '.chart svg{display:block;width:100%;height:auto}.chart svg text{white-space:pre}'
+             '.chart figcaption span{display:block}table.values{border-collapse:collapse;font-size:13px}'
+             'table.values td,table.values th{border-top:1px solid #465569;padding:3px 6px;text-align:left}')
+
+
 def esc(value):
     return escape(str(value), quote=True)
 
@@ -49,7 +56,26 @@ def metric_html(metric):
             + f'<p class="links">{links}</p></article>')
 
 
-def render(record):
+def figure_html(f):
+    """WRD2's minimal preview of one prebuilt figure: its finished SVG, caption, gaps and values.
+    WRD3 composes the page; the SVG bytes are the chart build's own, embedded unchanged."""
+    unit = '' if f['unit'] is None else ' · ' + f['unit'].replace('_', ' ')
+    window = '' if f['window'] is None else f" · {f['window']['since']} to {f['window']['until']} {f['window']['timezone']}"
+    cov = f['coverage']
+    coverage = f"coverage {cov['observed']} of {'Unknown' if cov['expected'] is None else cov['expected']}"
+    rows = ''.join(f'<tr class="{esc(r["state"])}"><td>{esc(r["label"])}</td><td>{esc(r["state"])}</td></tr>'
+                   for r in f['rows'])
+    return (f'<figure class="chart" id="figure-{esc(f["id"])}"><figcaption><b>{esc(f["id"])}</b> '
+            f'{esc(f["title"])}<span class="detail">{esc(f["caption"])}{esc(unit + window)} · {esc(coverage)}'
+            f'{" · ∅ no sample or Unknown" if any(r["y"] is None for r in f["rows"]) else ""}</span></figcaption>'
+            + f['svg']
+            + ''.join(f'<p class="detail gap">{esc(g)}</p>' for g in f['gaps'])
+            + f'<details class="values"><summary>Values</summary><table class="values"><thead><tr><th>Value</th>'
+            f'<th>State</th></tr></thead><tbody>{rows}</tbody></table></details></figure>')
+
+
+def render(record, charts=None):
+    """The page. `charts`, when given, is a chart build's bundle (charts/build.py)."""
     safe_record(record)
     parts = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
              '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -62,11 +88,16 @@ def render(record):
              '.metric{background:#182538}.metric strong{font-size:26px}.detail{font-size:13px;overflow-wrap:anywhere;margin:6px 0}'
              '.unavailable,.stale,.unknown{color:#bbc3ce;background:#222a35}.badge{font-size:12px;border:1px solid #677487;border-radius:12px;padding:2px 8px}'
              '.eyebrow{color:#a7d5ff;font-size:12px;letter-spacing:.13em;text-transform:uppercase}nav{display:flex;gap:16px;flex-wrap:wrap}'
+             + (CHART_CSS if charts is not None else '') +
              '</style></head><body><main><header><p class="eyebrow">Private · offline preparation</p><h1>War room</h1>',
              f'<p>Saved sample <b>{esc(record["sample_at"])}</b> · assembled {esc(record["assembled_at"])}</p>',
              '<p>Live freshness, complete source history, scheduled operation and private hosting are Unverified. '
              'This file reloads every five minutes; only an explicit finite invocation creates a new sample.</p><nav>',
              *[f'<a href="#{g}">{esc(t)}</a>' for g, t in zip(suite.GROUPS, TITLES)], '</nav></header>']
+    if charts is not None:
+        parts.append('<section id="figures"><h2>Figures</h2>')
+        parts.extend(figure_html(f) for f in charts['figures'])
+        parts.append('</section>')
     for group, title in zip(suite.GROUPS, TITLES):
         parts.append(f'<section id="{group}"><h2>{esc(title)}</h2>')
         for provider, definition in zip(record['providers'], suite.PROVIDERS):

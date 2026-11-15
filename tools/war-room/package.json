@@ -1,0 +1,14 @@
+{
+  "name": "openwiz-war-room-charts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build-time only: Observable Plot draws the War room's static SVG figures (WRD2, #630). No package reaches the page.",
+  "license": "MIT",
+  "engines": {
+    "node": "24.22.1"
+  },
+  "dependencies": {
+    "@observablehq/plot": "0.6.19"
+  }
+}
