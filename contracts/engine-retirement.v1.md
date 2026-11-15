@@ -21,7 +21,7 @@ is read again before it is deleted.
 | **Kept** | Stays, with its behaviour unchanged: the web view and its local server, the CLI (`fleet due` and every read), the existing loop features, and the GitHub and Cloudroom adapters' reads (spec #786, "Kept"). |
 | **Delete** | The whole file or folder goes, with its `mod`, `[[test]]` or import line. |
 | **Edit** | Only the named part of a file goes; the rest stays as it is. |
-| **Path gap** | A file the removal must edit that is not in its ticket's owned paths. The removal asks on its ticket for that exact path before editing it, as build-ticket says. |
+| **Path gap** | A file the removal must edit that is not in its ticket's owned paths. Granted narrowly, same intent, by D4 below: the removal may make exactly the edit listed here and lists it in its pull request. Anything beyond it is asked on its ticket, as build-ticket says. |
 | **Left for later** | Needed by nothing kept and not named for retirement. It stays, listed in "Left for later", for a later decision (spec #786, "Out of Scope"). |
 | **Keeper** | A kept test that still catches what a deleted test caught. |
 
@@ -65,7 +65,7 @@ navigation entry (see ER4, "Web").
 | `attachment add`, `ls`, `rm` | cli `attachment.rs`; core `attachment`; store `attachments.rs` |
 | `fleets`, `fleet <spec>` | cli `fleets.rs`, `fleet.rs`; core `fleet/*`; github `fleets.rs`, `tickets.rs`; cloudroom `fleet.rs` |
 | `fleet due --github-only` | cli `fleet_tick.rs` (its `due` path), **`fleet_tick_graph.rs`**, **`fleet_tick_records.rs`**; core `fleet/tick/*` (the planner); github `tick.rs` (`TickReads` and every read on it), `fleets.rs`, `process.rs` |
-| `fleet tick --dry-run` (a read; see Q2) | the same as `fleet due`, plus cloudroom `source.rs` for the CloudRoom facts |
+| `fleet tick --dry-run` (a kept read; D1) | the same as `fleet due`, plus cloudroom `source.rs` for the CloudRoom facts |
 | `loop` | cli `loops.rs`; core `loops/*`; store `loops/*` |
 | `github token` | cli `github_token.rs` |
 | `ui` | cli `ui.rs` (and `crates/terminal`, whose removal is #776's) |
@@ -150,7 +150,7 @@ that ER4 and ER3 must edit, and say so in their pull requests (sections 4 and 5)
 - `crates/service/examples/fixture.rs`: the `OPENWIZ_FIXTURE_NOTIFICATION_JOURNEY` branch and its `journey` module.
 - `crates/store/src/loops/mod.rs` and `paths.rs`: only the notification store used `inspect_settled` and `Failure`. Without it, clippy's `-D warnings` fails on dead code. #818 may want them back (spec #786's note on #753's busy pattern).
 - `tests/web-api/main.rs` (`mod notification_target;`) and `tests/web-api/e11_decisions_support.rs` (`serve_targets`, `serve_targets_with_clock`).
-- **The web view's route tests change.** `tests/web-api/a4_no_mutation.rs` (`legacy_routes` and its catalogue mutation loop) and `tests/web-api/contract.rs` (`the_contract_documents_what_the_tests_check`) pin the notification routes, so 7 of 354 web-API tests fail until they are edited (checked). Also `tests/loops/l6_api.rs` (`route_inventory_appends_exactly_the_two_local_switch_writes`) and `contracts/web-api.v1.md` ("Notifications (0.0.15 T1, contract only)"). ER4's acceptance criterion "the web view's kept route tests pass unchanged" cannot hold for these three tests; see Q4.
+- **The web view's route tests change.** `tests/web-api/a4_no_mutation.rs` (`legacy_routes` and its catalogue mutation loop) and `tests/web-api/contract.rs` (`the_contract_documents_what_the_tests_check`) pin the notification routes, so 7 of 354 web-API tests fail until they are edited (checked). Also `tests/loops/l6_api.rs` (`route_inventory_appends_exactly_the_two_local_switch_writes`) and `contracts/web-api.v1.md` ("Notifications (0.0.15 T1, contract only)"). ER4's acceptance criterion "the web view's kept route tests pass unchanged" cannot hold for these three tests. D3 grants exactly these edits, only to remove the notification routes.
 - `apps/web/src/api.ts`: the four notification imports and `readNotificationTarget`, `readNotificationStatus`, `readNotificationPreferences`, `writeNotificationPreferences`.
 - `apps/web/pages/_app.tsx`: the `notifications.css` import.
 - `apps/web/public/sw.js` (its `push` and `notificationclick` handlers) and `apps/web/test/unit/pwa.test.ts` (P6's event list, P9, P10). The app shell itself stays.
@@ -187,40 +187,38 @@ that ER4 and ER3 must edit, and say so in their pull requests (sections 4 and 5)
 
 ## 7. ER6 (#800): retire the start-up switch and the CLI tick
 
-**Order:** ER6 must merge after ER2. On `main` without ER2, deleting the executor breaks `crates/service/src/tick.rs` (checked). ER6 is blocked by #795, #799 and #828 only, so this is Q1.
+**Order:** ER6 must merge after ER2. On `main` without ER2, deleting the executor breaks `crates/service/src/tick.rs` (checked). ER6 is blocked by #795, #799 and #828 only, so this is open plan change P1.
 
 **Delete**
 
 - `crates/cli/src/engine.rs` (and `pub mod engine;` in `crates/cli/src/lib.rs`), `crates/cli/src/fleet_tick_execute.rs`
-- `crates/service/src/bootstrap.rs` and its call in `crates/service/src/lib.rs`, **only after Q3**
 - `tests/service/t12_handover.rs` (and `mod t12_handover;` in `main.rs`), `tests/service/install_engine_commands.rs` (and its two lines in `t4_service.rs`)
 - `tests/fleet/pre_effect.rs`, `pre_effect_input.rs` (`--expect-plan`), and their two lines in `b5_tick.rs`
 - In `tests/fleet/`: the 71 executing-tick tests listed in "ER6's failing tests" below, except the two `fleet due` tests, which ER6 re-seeds
 
 **Edit (owned)**
 
-- `crates/cli/src/fleet_tick.rs`: delete the `execute` module line, `--expect-plan`, `read_expected`, `Control`, `run_with_control`, `run_with`, `run_selected`, recovery and `perform` in `run_observed`, and `write_diagnostic`; `fleet tick` without `--dry-run` refuses as usage. Keep `parse`, `run`, `run_observed`'s plan, `print_candidates`, `Inventory` and `World`, and `USAGE`/`HELP` for `fleet tick --dry-run` and `fleet due` (Q2).
+- `crates/cli/src/fleet_tick.rs`: delete the `execute` module line, `--expect-plan`, `read_expected`, `Control`, `run_with_control`, `run_with`, `run_selected`, recovery and `perform` in `run_observed`, and `write_diagnostic`; `fleet tick` without `--dry-run` refuses as usage. Keep `parse`, `run`, `run_observed`'s plan, `print_candidates`, `Inventory` and `World`, and `USAGE`/`HELP` for `fleet tick --dry-run` and `fleet due` (D1).
 - `crates/cli/src/fleet_tick_records.rs`: delete only `fallback_record` (the executor was its one caller). The rest serves `fleet_tick_graph.rs`. Do not delete the file.
 - `crates/cli/src/main.rs`: the `engine` dispatch block.
-- `crates/cli/src/agent-catalogue.json`: `engine.preview`, `engine.activate`, `engine.status`, `fleet.tick` (the executing form), the `--expect-plan`, `--operation`, `--root` and `--location` flags, the `engine` help aliases, and the notes' "fleet tick" wording. `fleet.tick.preview` and `fleet.due` stay (Q2).
+- `crates/cli/src/agent-catalogue.json`: `engine.preview`, `engine.activate`, `engine.status`, `fleet.tick` (the executing form), the `--expect-plan`, `--operation`, `--root` and `--location` flags, the `engine` help aliases, and the notes' "fleet tick" wording. `fleet.tick.preview` and `fleet.due` stay (D1).
 - `contracts/cli.v1.md` ("Installed engine preparation (#1106)", and the `fleet tick` and `engine` rows), `contracts/service.v1.md` (the packaged-start parts of "Packaged update channel"), `contracts/fleet-tick.v1.md` ("Reviewed-plan execution (revision #1892)", "What each action writes", "Outcomes" and the run-mode envelope). "launch-fleet's lines", "Actions", "Facts", "Merge", "Order" and "Where each fact comes from" stay: they describe the plan `fleet due` and `--dry-run` read.
 - `crates/adapters/github/src/tick.rs`: nothing. Every read on `TickReads` is still used by `fleet_tick_graph.rs`.
 
 **Path gaps**
 
 - `crates/cli/src/lib.rs`: `pub mod engine;` and `engine_usage` in the help text.
-- `crates/service/src/lib.rs`: the `bootstrap::check` call and `pub mod bootstrap;` (if Q3 says delete).
 - `tests/proof/p08a_allowlist_static.rs`: the `ENGINE_LAUNCHER` exception, `engine_launcher_problems`, `engine_interpreter_exception_rejects_planted_widening` and its case row (it `include_str!`s `engine.rs`).
 - `tests/cli-agent/main.rs` and `process.rs`: `cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers`, `cp1_catalogue_covers_the_public_command_flag_and_schema_matrix`, `cp1_fleet_forms_separate_execution_from_read_only_candidates_and_plans`, `cp2_due_candidates_and_tick_reports_follow_the_recorded_world` and `cp2_fleet_source_failures_and_partial_fleets_preserve_reports` run the executing tick or list its flags (checked: 5 of 55 fail).
 - `contracts/cli.v1.schema.json`: the engine and executing-tick shapes.
-- The Python half of the start-up switch, which the spec retires ("the activation handover") but no ticket owns: `tools/install/engine/`, `tools/install/handover/`, `tools/install/pc_activation/`, `tools/install/install.py`'s `ENGINE_RUNTIME` and `HANDOVER_RUNTIME`, and `tools/release/build_products.py`'s engine and handover packaging (and their tests in `tools/release/`). This is a release-packaging change. **Not build-checked here.** See Q5.
+- The Python half of the start-up switch, which the spec retires ("the activation handover") but no ticket owns: `tools/install/engine/`, `tools/install/handover/`, `tools/install/pc_activation/`, `tools/install/install.py`'s `ENGINE_RUNTIME` and `HANDOVER_RUNTIME`, and `tools/release/build_products.py`'s engine and handover packaging (and their tests in `tools/release/`). This is a release-packaging change. **Not build-checked here.** Outside D4: ER6 leaves it for open plan change P2.
 
 **Re-seed, never delete:** `b5_due_running_builder_is_idle_without_cloudroom_or_state` and `b5_r13_due_ignores_a_superseded_approval_at_the_same_head` test the kept `fleet due`, but set up their world with the executing tick (`w.tick()`). ER6 writes their state directly so they stay keepers.
 
 **Keepers:** `tests/fleet/b2_planner.rs` (the planner); the 35 `b5_edges` and 4 `b5_public` tests that pass on `--dry-run`; `b5_due_empty_repository_is_silent_and_never_reads_cloudroom`; `tests/cli-agent` `cp2` tests for `fleet due`.
 
 **Closes as not needed:** #643, #642, #518, #461, #189, and #516 (First hour's engine recovery wording; see "Not covered by any ticket").
-**Must not close:** #664. It is a live bug in the kept `openwiz new --yes` (room-cli v152's spawn receipt), not engine code, although ER6's acceptance criterion lists it. See Q6.
+**Must not close:** #664. It is a live bug in the kept `openwiz new --yes` (room-cli v152's spawn receipt), not engine code, although ER6's acceptance criterion lists it. See open plan change P3.
 **Stays open:** #143 and #561 (planner rules `fleet due` still uses), #82 (the GitHub reads stay).
 
 ### ER6's failing tests
@@ -242,7 +240,7 @@ They may keep calling launch-fleet's frontier (`skills/launch-fleet/scripts/flee
 
 ## 9. Infra MT9 (#828): live-smoke
 
-live-smoke may stop calling `openwiz fleet tick --expect-plan` (`tools/live-smoke/restriction.py` and its tests), which ER6 deletes. `fleet tick --dry-run` stays, subject to Q2.
+live-smoke may stop calling `openwiz fleet tick --expect-plan` (`tools/live-smoke/restriction.py` and its tests), which ER6 deletes. `fleet tick --dry-run` stays (D1).
 
 ## Not covered by any ticket
 
@@ -264,16 +262,25 @@ Needed by nothing kept once the removals merge, and not named for retirement. Ea
 | `crates/service/src/health/loops.rs` and `loops::observe` | Loop health, kept by the spec. After ER3 no production code calls them |
 | `crates/service/src/update.rs`, `app.rs`, `runtime.rs`, `paths.rs` | The rest of `openwiz-service` (spec, "Out of Scope") |
 | `crates/store/src/loops/paths.rs` `inspect_settled` | If ER4 does not delete it; #818 may use it |
+| `crates/service/src/bootstrap.rs` | The packaged service's fail-closed start gate; it belongs to the rest of the service, kept for a later grill (D2). ER6 does not delete it |
 
-## Open questions for the orchestrator
+## Decisions
 
-- **Q1:** add the real link "ER6 blocked by ER2" (ER6 deletes the executor that ER2's scheduled tick calls). Without it, ER6 must also do ER2's tick edits.
-- **Q2:** this map treats `fleet tick --dry-run` as a kept read (it writes nothing). It keeps about 40 planner and graph tests that `fleet due` shares, and the catalogue already lists it apart as `fleet.tick.preview`. If it is retired too, ER6 also deletes the dry-run path, its `USAGE` and `HELP`, the catalogue row and the dry-run `b5` tests, and `fleet due` keeps only `b2_planner` and the due tests.
-- **Q3:** `crates/service/src/bootstrap.rs` is the packaged service's fail-closed start gate. Deleting it lets a packaged service start with no activation record. Keeping it means a packaged service never starts once activation is retired. Recommended: keep it (fail closed) until the service's own retirement decision, and close the handover follow-ups on the reasoning that activation is retired.
-- **Q4:** ER4's "web view's kept route tests pass unchanged" cannot hold. Recommended: allow exactly the three route-catalogue edits named in ER4's path gaps, which remove only the notification routes.
-- **Q5:** the Python engine, handover and activation runtimes and their release packaging (ER6's path gaps). Widen ER6, or file a follow-up ticket.
-- **Q6:** #664 must stay open; ER6's acceptance criterion should not close it.
-- **Q7:** the path gaps listed per removal: widen each ticket's owned paths to exactly those files and parts, or answer per ticket.
+The orchestrator's ruling on ER1's questions, 2026-11-15 (#795 comment 6903517854), following this map's recommendations:
+
+- **D1 (Q2):** `fleet tick --dry-run` is a kept read. ER6 retires only the executing `fleet tick` and `--expect-plan`.
+- **D2 (Q3):** `crates/service/src/bootstrap.rs` stays. It belongs to the rest of the service, which stays for a later grill.
+- **D3 (Q4):** ER4 may edit `tests/web-api/a4_no_mutation.rs`, `tests/web-api/contract.rs` and `tests/loops/l6_api.rs`, only to remove the notification routes.
+- **D4 (Q7):** each removal has a narrow grant, same intent, for exactly the path gaps this map lists for it. Each pull request lists the ones it uses.
+
+## Open plan changes
+
+These change #786's graph or ticket bodies, so they go to Jake as one proposed revision 4 of the plan. None blocks ER1. Until it is approved, each ticket keeps its current body.
+
+- **P1 (Q1):** a new real link, ER6 (#800) blocked by ER2 (#796). ER6 deletes the executor that ER2's scheduled tick calls (section 7, "Order").
+- **P2 (Q5):** a new ticket for the Python engine, handover and activation runtimes (`tools/install/engine/`, `handover/`, `pc_activation/`) and their release packaging (`tools/install/install.py`, `tools/release/build_products.py`). It is listed in ER6's path gaps but outside D4: ER6 leaves it.
+- **P3 (Q6):** a shorter close list for ER6: #664 stays open (a live bug in the kept `openwiz new --yes`).
+- **P4:** a new ticket for the web view's Setup and First-hour engine step ("Not covered by any ticket").
 
 ## The build check (E1)
 
@@ -284,7 +291,7 @@ Run on a scratch worktree of `192f6e4`, nothing committed, Rust 1.99.1 and Node 
 | ER2 alone | pass, no warnings | pass | none needed (all deleted files were tests or the executor composition) |
 | ER3 alone | pass | pass | `openwiz-service` `l12-registration` 17/17 (after its edit; 14/17 before), `l3-runner` 58/58, `l5-watchdog` 7/7 |
 | ER4 alone | pass | pass | `web-api` 354/354 (after the route-catalogue edits; 347/354 before); `checks` 145/145; `notifications` (stock only) 7/7; `loops` `l6_api` 9/9 (after its edit); unit tests of core, store, server and service pass; `apps/web` `typecheck`, `check` and `build` pass |
-| ER6 alone on `main` | **fails**: `crates/service/src/tick.rs` needs the executor (Q1) | none | none |
+| ER6 alone on `main` | **fails**: `crates/service/src/tick.rs` needs the executor (P1) | none | none |
 | ER6 after ER2 | pass | pass | `proof` 125/125; `fleet` 216 pass, 71 fail (the list above); `cli-agent` 50 pass, 5 fail (the path gap above) |
 | ER2, ER3, ER4 and ER6 together | pass | pass | none (each part ran above); 111 files changed, about 30,900 lines deleted |
 
