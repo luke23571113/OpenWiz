@@ -66,7 +66,10 @@ private file at the tip does not remove it from published history. Without
 with REF, a commit already published at the push destination. A missing REF
 or no merge-base falls back to the anchor. The hook never trusts a local
 tracking ref for this: it asks the exact push URL for its `main`
-(`git ls-remote`), and narrows only when Git would not rewrite that URL, the
+(`git ls-remote`), and narrows only when the URL is on `hook.py`'s
+`PUBLIC_URLS`, the push carries no command-scoped Git setting or override
+variable (`git -c`, `GIT_CONFIG_*`, `GIT_SSH*`, `GIT_DIR`, ...; only
+`HOOK_GIT_VARIABLES` may be set), Git would not rewrite that URL, the
 destination names exactly one `main` and that commit is present locally.
 `ci.py` passes `origin/main`, fetched from the destination in that job, for a
 new branch, never for a new `main`. There is no command

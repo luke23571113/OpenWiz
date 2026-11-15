@@ -30,19 +30,38 @@ def private_or_local(url):
     return host and host.lower() == 'github.com' and path == 'jparker2006/closedwiz'
 
 
+# The only push URLs whose main may narrow a new ref's scan (#727).
+PUBLIC_URLS = (
+    'https://github.com/openwizdev/OpenWiz',
+    'https://github.com/openwizdev/OpenWiz.git',
+    'git@github.com:openwizdev/OpenWiz',
+    'git@github.com:openwizdev/OpenWiz.git',
+)
+# GIT_* variables Git itself sets for a hook, none of which picks a
+# repository or a transport. Any other one (GIT_DIR, GIT_SSH, GIT_SSH_COMMAND,
+# GIT_CONFIG_PARAMETERS from git -c, GIT_CONFIG_COUNT/KEY/VALUE, ...) could
+# make the lookup below reach a different repository than the push.
+HOOK_GIT_VARIABLES = ('GIT_EXEC_PATH', 'GIT_PREFIX', 'GIT_EDITOR')
+
+
 def destination_main(repo, url):
     """The commit the push destination itself names as its main, or None.
 
     A new ref's scan may skip only history already published where the push
     goes. A local tracking ref proves nothing (a separate push URL, or a URL
-    retargeted without a fetch), so ask the exact push URL. Git must not
-    rewrite that URL (insteadOf), and the destination must name exactly one
-    main. Anything else, or any failure, returns None: scan from the anchor.
+    retargeted without a fetch), so ask the exact push URL, and only when all
+    of these hold: the URL is on PUBLIC_URLS; the push carries no
+    command-scoped Git setting or override variable, so the lookup runs with
+    the push's own configuration; Git would not rewrite the URL (insteadOf);
+    and the destination names exactly one main. Anything else, or any
+    failure, returns None: scan from the anchor. That commit must also exist
+    locally, or check.py scans from the anchor too.
     """
-    if not url or url.startswith('-'):
+    if url not in PUBLIC_URLS:
         return None
-    keep = ('GIT_SSH', 'GIT_SSH_COMMAND', 'GIT_SSH_VARIANT', 'GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')
-    env = {**check.git_environment(), **{k: os.environ[k] for k in keep if k in os.environ}}
+    if any(k.startswith('GIT_') and k not in HOOK_GIT_VARIABLES for k in os.environ):
+        return None
+    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
     def run(*args):
         result = subprocess.run(['git', '-C', str(repo), 'ls-remote', *args], env=env, stdin=subprocess.DEVNULL,
                                 capture_output=True, text=True, timeout=60)
