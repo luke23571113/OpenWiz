@@ -1470,7 +1470,37 @@ mod tests {
             (factory(), true),
             (serde_json::json!({"login": "SYNTHETIC-OWNER"}), true),
             (serde_json::json!({"login": "synthetic-outsider"}), false),
+            // GraphQL drops an App's `[bot]`: its plain name counts only
+            // with the Bot type, and a user of that name never does.
             (serde_json::json!({"login": "synthetic-app"}), false),
+            (
+                serde_json::json!({"login": "synthetic-app", "is_bot": true}),
+                true,
+            ),
+            (
+                serde_json::json!({"login": "Synthetic-App", "__typename": "Bot"}),
+                true,
+            ),
+            (
+                serde_json::json!({"login": "synthetic-app", "is_bot": false}),
+                false,
+            ),
+            (
+                serde_json::json!({"login": "synthetic-app", "is_bot": "true"}),
+                false,
+            ),
+            (
+                serde_json::json!({"login": "synthetic-app", "__typename": "User"}),
+                false,
+            ),
+            (
+                serde_json::json!({"login": "synthetic-owner", "is_bot": true}),
+                true,
+            ),
+            (
+                serde_json::json!({"login": "synthetic-outsider", "is_bot": true}),
+                false,
+            ),
             (serde_json::json!({"login": null}), false),
             (serde_json::json!({}), false),
             (Value::Null, false),
