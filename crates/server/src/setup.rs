@@ -77,7 +77,7 @@ const CHECK_AGAIN: &str = "Ask your installing agent to run the setup check agai
 /// Every observation code the setup check writes, its component and state,
 /// and fixed public text. A code not listed here is unknown, never trusted.
 #[rustfmt::skip]
-const CODES: [(&str, &str, &str, &str, &str); 53] = [
+const CODES: [(&str, &str, &str, &str, &str); 54] = [
     ("cloudroom", "cloudroom_reachable", "unknown", "CloudRoom answered a live read, but no check here proves your CloudRoom login is current.", "Keep CloudRoom open and signed in. No current login evidence is available to this check yet."),
     ("cloudroom", "cloudroom_missing", "missing", "The installed OpenWiz CLI or CloudRoom's room-cli was not found on this host.", "Install CloudRoom and sign in, then check again."),
     ("cloudroom", "cloudroom_unreadable", "unknown", "CloudRoom could not be read; the check got no usable answer.", "Open CloudRoom and sign in, then check again."),
@@ -106,6 +106,8 @@ const CODES: [(&str, &str, &str, &str, &str); 53] = [
     ("personal_github", "identity_bot", "refused", "Your agents' GitHub login is an App or bot account, not your own identity.", "Sign your agents in with your own GitHub account, separate from OpenWiz's App."),
     ("personal_github", "identity_no_push", "refused", "Your agents' GitHub login cannot push to the selected repository.", "Give that login write access to the repository, then check again."),
     ("personal_github", "identity_unreadable", "unknown", "GitHub did not answer the identity check.", CHECK_AGAIN),
+    // #633: the signed-in account differs from the login the owner chose to act when skipping the App.
+    ("personal_github", "identity_account_mismatch", "refused", "The signed-in GitHub login is not the personal login you chose to act for the factory.", "Sign in as the login you chose, or ask your installing agent to choose again, then check again."),
     ("github_app", "app_verified", "verified", "OpenWiz's App is installed on selected repositories with its service permissions and issued a token for the selected repository.", "Nothing to do."),
     ("github_app", "app_missing", "missing", "OpenWiz's GitHub App is not registered on this host.", "Connect OpenWiz's App to only the repositories you choose, then verify its permissions."),
     ("github_app", "app_not_installed", "missing", "OpenWiz's App is registered but not installed for the selected repository's owner.", "Install the App on only the selected repositories, then check again."),
@@ -169,12 +171,37 @@ fn component(
     }
 }
 
-/// Overall readiness: every prerequisite of the selected engine verified.
-fn ready(components: &[Value], _skipped: bool) -> bool {
+/// Overall readiness (setup.v1, #633): every prerequisite of the selected
+/// engine verified. The App is one, unless the owner explicitly skipped it;
+/// then the verified personal login carries the identity part on its own.
+fn ready(components: &[Value], skipped: bool) -> bool {
     components
         .iter()
-        .filter(|c| c["id"] != "remote_access")
+        .filter(|c| c["id"] != "remote_access" && !(skipped && c["id"] == "github_app"))
         .all(|c| c["state"] == "verified")
+}
+
+/// A skipped App stays truthfully missing: never verified, whatever an
+/// earlier check saw.
+const SKIPPED_APP: (&str, &str, &str) = (
+    "missing",
+    "Skipped: you chose to act through your personal GitHub login instead. No OpenWiz App is installed or verified.",
+    "Nothing to do for the App. Connecting it later is a separate choice; your personal login acts until then.",
+);
+
+/// The saved identity choice that applies to the selected repository: an old
+/// state has none (the App rule); another repository's choice selects nothing.
+fn identity(state: &SetupState) -> Option<Value> {
+    let saved = state.identity.as_ref()?;
+    let here = state
+        .project
+        .as_ref()
+        .is_some_and(|p| p.repository == saved.repository);
+    Some(if here {
+        json!({"selected":saved.selected,"app_choice":saved.app_choice,"acting_login":saved.acting_login})
+    } else {
+        json!({"selected":"unselected","app_choice":"undecided","acting_login":null})
+    })
 }
 
 /// The report from the setup state read at `now` (Unix ms). Readiness needs
@@ -191,11 +218,17 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
                 && s.project.as_ref().and_then(|p| p.runtime.as_deref()) == Some(e.runtime.as_str())
         })
     });
+    let identity = state.and_then(identity);
+    let skipped = identity
+        .as_ref()
+        .is_some_and(|i| i["selected"] == "personal_login" && i["app_choice"] == "skip");
     let components = DEFAULTS
         .into_iter()
         .map(|(id, state_default, reason, next)| {
             let checked = CHECKED.contains(&id);
-            let (s, r, n) = if id == "engine" && engine.is_some() {
+            let (s, r, n) = if id == "github_app" && skipped {
+                SKIPPED_APP
+            } else if id == "engine" && engine.is_some() {
                 ("unknown", "Engine selection is saved; activation remains closed and no runtime is verified.", "Current login evidence and approved host provisioning are required. Check the saved operation; never retry an uncertain activation.")
             } else if unreadable && checked {
                 ("unknown", "This host's setup state could not be read safely.", "Check that OpenWiz's state directory is owner-only, then run the setup check again.")
@@ -209,7 +242,7 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
         .collect::<Vec<_>>();
     // Overall readiness: every prerequisite of the selected engine verified.
     // Phone access is reported, never inferred; T1's engine stays unselected.
-    let ready = ready(&components, false);
+    let ready = ready(&components, skipped);
     let operations = state
         .map(|s| {
             s.operations
@@ -225,6 +258,9 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
         "engine":"unselected","cost":{"provenance":"unknown","credits":null,
         "window_s":null,"monthly_projection":null,"free_allowance":null,
         "reason":"Cloud Credits have not been measured."},"operations":operations});
+    if let Some(identity) = identity {
+        report["identity"] = identity;
+    }
     if let Some(engine) = engine {
         report["engine"] = json!(engine.location);
         report["cost"]["reason"] = json!(
