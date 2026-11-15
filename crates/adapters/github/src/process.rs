@@ -486,22 +486,24 @@ mod tests {
 
     #[test]
     fn x2_fixture_timeout_reaps_the_read_without_exhausting_the_run() {
-        let dir = scratch("fixture-timeout");
-        let pid_file = dir.join("pid");
-        let program = plan_program(
-            "fixture-timeout",
-            &format!("echo $$ > '{}'; kill -STOP $$", pid_file.display()),
-        );
+        // The child never exits by itself, so only the runner's kill and
+        // wait can end it. It reports nothing: under load the 100 ms cap can
+        // kill it before it could (#707), so the test finds it as its own
+        // child instead.
+        let program = plan_program("fixture-timeout", "kill -STOP $$");
         let deadline = Instant::now() + Duration::from_secs(3);
         let executor = Executor::program_for_fixtures(&program, Duration::from_millis(100));
         let call = Invocation::new(&["--version"]).unwrap();
+        assert_eq!(unreaped_children(), "", "no earlier child is left");
         let got = executor.run(&call, deadline);
         assert!(matches!(got, Err(SourceError::TimedOut { .. })), "{got:?}");
-        let pid = fs::read_to_string(&pid_file).expect("the child started");
-        assert!(
-            !Path::new("/proc").join(pid.trim()).exists(),
-            "child must be reaped"
-        );
+        // Wait, with a limit, for the child to be gone, not merely killed:
+        // a zombie is still listed until it is reaped.
+        let limit = Instant::now() + Duration::from_secs(5);
+        while !unreaped_children().is_empty() && Instant::now() < limit {
+            thread::sleep(POLL);
+        }
+        assert_eq!(unreaped_children(), "", "child must be reaped");
         let next = plan_program("fixture-next", "printf 'synthetic-next'");
         assert_eq!(
             Executor::program(next).run(&call, deadline),
@@ -662,6 +664,15 @@ mod tests {
     fn plan_call() -> Invocation {
         let argv = crate::plan::Request::Issues.argv(None);
         Invocation::new(&argv.iter().map(String::as_str).collect::<Vec<_>>()).unwrap()
+    }
+
+    /// The pids of every child this thread started and has not reaped,
+    /// zombies included (Linux). Other tests' threads keep their own.
+    fn unreaped_children() -> String {
+        fs::read_to_string("/proc/thread-self/children")
+            .expect("this thread's children are readable")
+            .trim()
+            .to_owned()
     }
 
     fn plan_program(name: &str, script: &str) -> PathBuf {

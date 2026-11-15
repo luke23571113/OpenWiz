@@ -3,6 +3,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   push:
+    # #714: merge-queue branches are covered by merge_group; a duplicate push
+    # run there is cancelled on queue rebuilds and fails the required check.
+    branches-ignore:
+      - 'gh-readonly-queue/**'
   merge_group:
     types: [checks_requested]
 permissions:
