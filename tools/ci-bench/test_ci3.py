@@ -103,7 +103,7 @@ class Measure(unittest.TestCase):
         h3["runs"]["ci.yml"]["attempts"][-1]["jobs"].append(
             {"id": 999999, "name": "queued", "conclusion": "cancelled", "created_at": "2026-01-05T12:25:00Z",
              "started_at": "2026-01-05T12:25:00Z", "completed_at": "2026-01-05T12:30:00Z", "runner_name": None,
-             "steps": []})
+             "steps": [], "run_attempt": 2})
         rec = ci3.measure(w)
         self.assertEqual(rec["runner_minutes"]["total"], 153.8)
         self.assertEqual(rec["critical_path"]["setup"]["p95_seconds"], 58)

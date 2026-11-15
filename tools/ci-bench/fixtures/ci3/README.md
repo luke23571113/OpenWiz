@@ -23,7 +23,8 @@ clock starts):
 | 106 | `f…` | still running when collected | missing: `ci: unfinished` | — |
 | 107 | none | the push isn't in the activity | missing: `push time unknown` | — |
 
-Each `privacy` run finishes before its `ci` run.
+Each `privacy` run finishes before its `ci` run. Every job carries the attempt that ran it
+(`run_attempt`), here always the attempt it is listed in.
 
 **The measure:** five timed results, sorted 180, 900, 1200, 2400, 2700 s.
 Nearest rank: p50 is the 3rd (1,200 s, **20.0 min**), p95 the 5th (2,700 s,

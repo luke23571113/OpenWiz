@@ -615,7 +615,9 @@ python3 -I tools/ci-bench/test_ci3.py                                           
 `collect` reads GitHub only through `bench.py`'s `gh` and `pages` (`gh api
 <path>`, GET): pull requests into `main`, each branch's repository activity
 for the push times, each head's first `ci.yml` and `privacy.yml` run with every
-attempt's jobs, and the merge-group runs. It is a separate window file, not a
+attempt's jobs (each with the attempt that ran it), and the merge-group runs.
+A pull request from a fork in the window stops it: a fork's pushes aren't in
+this repository's activity. It is a separate window file, not a
 second collector of the bench's `jobs.jsonl`: the bench reads only `ci.yml`'s
 latest attempts, and CI3 needs both required workflows, every attempt and the
 push. `measure` reads no clock and no network, so one window file always

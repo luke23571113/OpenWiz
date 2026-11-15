@@ -20,7 +20,7 @@ reported, never required.
 | **PR head** | One commit that was a pull request's head: the commit it opened at, and each commit pushed to its branch while it was open. A pull request into `main` with three pushes has four heads at most (its opening commit and three pushes; a commit seen twice counts once) |
 | **Clock start** | When the commit became the PR's head: its push, as GitHub's repository activity records it (`push`, `force_push` or `branch_creation`), or the PR's opening when the commit was pushed before the PR was opened. Never a run's creation: the wait from push to run is part of the result's time |
 | **Required checks** | The checks `main`'s ruleset requires today: `ci` (the `ci` job of `.github/workflows/ci.yml`) and `privacy` (the `privacy` job of `.github/workflows/privacy.yml`). A change to the set is a new version |
-| **A check's result** | The first `pull_request` run of the check's workflow on that head created at or after its clock start, and in it, the check's job in the run's **latest attempt**: its conclusion and completion. A later run on the same head (a PR's text edited, marked ready) is not that head's result. A rerun is a later attempt of that run, so the rerun's result is final and all of its time counts. A completed run whose check never reported (cancelled before the job existed) stands for the check with its own conclusion and the end of its last job |
+| **A check's result** | The first `pull_request` run of the check's workflow on that head created at or after its clock start, and in it, the check's job in the run's **latest attempt**: its conclusion and completion. A later run on the same head (a PR's text edited, marked ready) is not that head's result. A rerun is a later attempt of that run, so the rerun's result is final and all of its time counts. A completed run whose check never reported (cancelled before the job existed) stands for the check with its own conclusion and the end of its last job (its last update when it has none) |
 | **The head's result** | Every required check has its result. Its outcome is `success` when all are green, `failure` when any is red (failed, timed out, start-up failure), else `cancelled` |
 | **Time to the result** | The last required check's completion minus the clock start, in seconds |
 | **Missing** | A head without a result: its push isn't in the activity (`push time unknown`), a required workflow has no run on it (`no run`), or its run hadn't finished when collected (`unfinished`) |
@@ -55,11 +55,16 @@ Reported beside the measure, never instead of it:
   the group's head, at p50 and p95, with its outcomes and missing groups.
 - **Runner minutes:** every job's time on a runner, started to completed, in
   every attempt of every run counted above (PR heads and merge groups), in
-  total and per day. A job that never got a runner counts none.
-- **The critical path's buckets:** for each result, the jobs its last
-  required check waited on, in that check's latest attempt: the check's job,
-  then the job of the same attempt that finished last before it was created,
-  and so on back. Each job's steps split into **setup** and **running** by the
+  total and per day. A job that never got a runner (none, and no steps)
+  counts none. Each execution counts once: a rerun of failed jobs lists the
+  earlier attempt's jobs again, and only the attempt that ran a job (its
+  `run_attempt`) counts it.
+- **The critical path's buckets:** for every result, the jobs its last
+  required check waited on, among the jobs its latest attempt ran itself
+  (not those carried from an earlier attempt): the check's job (for a check
+  that never reported, the attempt's last job; with no job, the path is
+  empty and the whole time is waiting), then the job that finished last
+  before it was created, and so on back. Each job's steps split into **setup** and **running** by the
   CI bench's step table (`tools/ci-bench/steps.tsv`: `setup` rows are setup,
   every other category is running; a job's time no step covers is setup), a
   step the table doesn't name is **unclassified**, and **waiting** is the
@@ -103,8 +108,10 @@ each branch's repository activity, each head's runs of the two required
 workflows with every attempt's jobs, and the merge-group runs created in the
 window. A read it can't trust stops it (`ci3: <what>`, exit 1, nothing
 written), including a branch with 100 or more activity entries, which one page
-can't hold. A fork's pull request has no activity here: its heads are missing
-as `push time unknown`.
+can't hold, and **a pull request from a fork** in the window: its pushes
+aren't in this repository's activity, so its heads can't be listed, and a
+cohort without them would look complete. Such a window has no CI3 number
+until a later version can read fork heads.
 
 ## Gaming it
 

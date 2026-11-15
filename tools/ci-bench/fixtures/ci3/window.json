@@ -14,6 +14,7 @@
          "created_at": "2026-01-05T17:00:00Z",
          "id": 1025,
          "name": "changes",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T17:00:02Z",
          "steps": [
@@ -40,6 +41,7 @@
          "created_at": "2026-01-05T17:00:30Z",
          "id": 1026,
          "name": "rust",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T17:00:33Z",
          "steps": [
@@ -71,6 +73,7 @@
          "created_at": "2026-01-05T17:24:40Z",
          "id": 1027,
          "name": "ci",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T17:24:43Z",
          "steps": [
@@ -107,6 +110,7 @@
          "created_at": "2026-01-05T17:00:05Z",
          "id": 1028,
          "name": "privacy",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T17:00:07Z",
          "steps": [
@@ -158,6 +162,7 @@
          "created_at": "2026-01-05T10:00:40Z",
          "id": 1001,
          "name": "changes",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T10:00:42Z",
          "steps": [
@@ -184,6 +189,7 @@
          "created_at": "2026-01-05T10:01:10Z",
          "id": 1002,
          "name": "rust",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T10:01:13Z",
          "steps": [
@@ -215,6 +221,7 @@
          "created_at": "2026-01-05T10:19:40Z",
          "id": 1003,
          "name": "ci",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T10:19:43Z",
          "steps": [
@@ -251,6 +258,7 @@
          "created_at": "2026-01-05T10:00:40Z",
          "id": 1004,
          "name": "privacy",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T10:00:42Z",
          "steps": [
@@ -301,6 +309,7 @@
          "created_at": "2026-01-05T11:00:20Z",
          "id": 1005,
          "name": "changes",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T11:00:22Z",
          "steps": [
@@ -327,6 +336,7 @@
          "created_at": "2026-01-05T11:00:50Z",
          "id": 1006,
          "name": "rust",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T11:00:53Z",
          "steps": [
@@ -358,6 +368,7 @@
          "created_at": "2026-01-05T11:39:40Z",
          "id": 1007,
          "name": "ci",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T11:39:43Z",
          "steps": [
@@ -394,6 +405,7 @@
          "created_at": "2026-01-05T11:00:20Z",
          "id": 1008,
          "name": "privacy",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T11:00:22Z",
          "steps": [
@@ -444,6 +456,7 @@
          "created_at": "2026-01-05T12:00:20Z",
          "id": 1009,
          "name": "changes",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T12:00:22Z",
          "steps": [
@@ -470,6 +483,7 @@
          "created_at": "2026-01-05T12:00:50Z",
          "id": 1010,
          "name": "rust",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T12:00:53Z",
          "steps": [
@@ -501,6 +515,7 @@
          "created_at": "2026-01-05T12:09:40Z",
          "id": 1011,
          "name": "ci",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T12:09:43Z",
          "steps": [
@@ -527,6 +542,7 @@
          "created_at": "2026-01-05T12:30:00Z",
          "id": 1012,
          "name": "changes",
+         "run_attempt": 2,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T12:30:02Z",
          "steps": [
@@ -553,6 +569,7 @@
          "created_at": "2026-01-05T12:30:30Z",
          "id": 1013,
          "name": "rust",
+         "run_attempt": 2,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T12:30:33Z",
          "steps": [
@@ -584,6 +601,7 @@
          "created_at": "2026-01-05T12:44:40Z",
          "id": 1014,
          "name": "ci",
+         "run_attempt": 2,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T12:44:43Z",
          "steps": [
@@ -620,6 +638,7 @@
          "created_at": "2026-01-05T12:00:20Z",
          "id": 1015,
          "name": "privacy",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T12:00:22Z",
          "steps": [
@@ -670,6 +689,7 @@
          "created_at": "2026-01-05T13:00:20Z",
          "id": 1016,
          "name": "changes",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T13:00:22Z",
          "steps": [
@@ -696,6 +716,7 @@
          "created_at": "2026-01-05T13:00:50Z",
          "id": 1017,
          "name": "rust",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T13:00:53Z",
          "steps": [
@@ -727,6 +748,7 @@
          "created_at": "2026-01-05T13:02:40Z",
          "id": 1018,
          "name": "ci",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T13:02:43Z",
          "steps": [
@@ -763,6 +785,7 @@
          "created_at": "2026-01-05T13:00:20Z",
          "id": 1019,
          "name": "privacy",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T13:00:22Z",
          "steps": [
@@ -813,6 +836,7 @@
          "created_at": "2026-01-05T14:00:30Z",
          "id": 1020,
          "name": "changes",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T14:00:32Z",
          "steps": [
@@ -839,6 +863,7 @@
          "created_at": "2026-01-05T14:01:00Z",
          "id": 1021,
          "name": "rust",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T14:01:03Z",
          "steps": [
@@ -870,6 +895,7 @@
          "created_at": "2026-01-05T14:14:40Z",
          "id": 1022,
          "name": "ci",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T14:14:43Z",
          "steps": [
@@ -906,6 +932,7 @@
          "created_at": "2026-01-05T14:00:30Z",
          "id": 1023,
          "name": "privacy",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T14:00:32Z",
          "steps": [
@@ -970,6 +997,7 @@
          "created_at": "2026-01-05T15:00:20Z",
          "id": 1024,
          "name": "privacy",
+         "run_attempt": 1,
          "runner_name": "GitHub Actions 1",
          "started_at": "2026-01-05T15:00:22Z",
          "steps": [

@@ -134,7 +134,11 @@ def read_jobs(rid, attempt, read):
                      "created_at": as_time(job, "created_at", at),
                      "started_at": as_time(job, "started_at", at, null=True),
                      "completed_at": as_time(job, "completed_at", at, null=True),
-                     "runner_name": as_str(job, "runner_name", at, null=True), "steps": steps})
+                     "runner_name": as_str(job, "runner_name", at, null=True), "steps": steps,
+                     # The attempt that ran it: a rerun of failed jobs lists the earlier attempt's jobs again.
+                     "run_attempt": as_int(job, "run_attempt", at)})
+        if not 1 <= jobs[-1]["run_attempt"] <= attempt:
+            raise Fail(f"{at}: job {jobs[-1]['id']} of attempt {jobs[-1]['run_attempt']} listed in attempt {attempt}")
     return sorted(jobs, key=lambda j: j["id"])
 
 
@@ -202,7 +206,10 @@ def collect(since, until, out, workers=1, read=None, now=None):
     prs = read_pr_list(since, until, read)
     work = []
     for pr in prs:
-        pushes = [] if pr["fork"] else read_pushes(pr["ref"], read)
+        if pr["fork"]:
+            raise Fail(f"PR #{pr['number']} is from a fork: its pushes aren't in this repository's activity,"
+                       " so the window's heads can't be read complete")
+        pushes = read_pushes(pr["ref"], read)
         for head in heads_of(pr, pushes):
             if secs(since) <= secs(head["start"]) < secs(until):
                 work.append((pr, head))
@@ -235,10 +242,17 @@ def check_result(run, job_name):
         raise Fail(f"run {run['id']}: {len(jobs)} jobs named {job_name}")
     if jobs and jobs[0]["completed_at"] is not None and jobs[0]["conclusion"] is not None:
         return {"outcome": jobs[0]["conclusion"], "end": jobs[0]["completed_at"], "attempt": final, "job": jobs[0]}, None
-    # The check never reported (a run cancelled before it): the run's own end and conclusion stand for it.
-    ends = [secs(j["completed_at"]) for j in final["jobs"] if j["completed_at"] is not None]
-    end = utc(max(ends)) if ends else run["updated_at"]
-    return {"outcome": run["conclusion"] or "cancelled", "end": end, "attempt": final, "job": None}, None
+    # The check never reported (a run cancelled before it): the run's own end and
+    # conclusion stand for it, anchored at its last job, or its update with none.
+    done = [j for j in owned(final) if j["completed_at"] is not None]
+    anchor = max(done, key=lambda j: (secs(j["completed_at"]), j["id"])) if done else None
+    end = anchor["completed_at"] if anchor else run["updated_at"]
+    return {"outcome": run["conclusion"] or "cancelled", "end": end, "attempt": final, "job": anchor}, None
+
+
+def owned(attempt):
+    """The jobs this attempt ran itself, not those carried from an earlier one."""
+    return [j for j in attempt["jobs"] if j["run_attempt"] == attempt["attempt"]]
 
 
 def outcome_of(outcomes):
@@ -252,7 +266,8 @@ def outcome_of(outcomes):
 
 
 def job_secs(job):
-    if job["started_at"] is None or job["completed_at"] is None:
+    # A job that never got a runner (none, and no steps) held one for no time, as the bench counts it.
+    if job["started_at"] is None or bench.never_ran(job) or job["completed_at"] is None:
         return 0
     return max(0, secs(job["completed_at"]) - secs(job["started_at"]))
 
@@ -263,7 +278,7 @@ def critical_path(attempt, last):
     path, cur = [], last
     while cur is not None:
         path.append(cur)
-        done = [j for j in attempt["jobs"] if j["id"] not in {p["id"] for p in path}
+        done = [j for j in owned(attempt) if j["id"] not in {p["id"] for p in path}
                 and j["completed_at"] is not None and secs(j["completed_at"]) <= secs(cur["created_at"])]
         cur = max(done, key=lambda j: (secs(j["completed_at"]), j["id"])) if done else None
     return path
@@ -311,14 +326,16 @@ def result(item, start, table):
     attempts = sum(len(item["runs"][wf]["attempts"]) for wf in REQUIRED)
     out = {"seconds": total, "outcome": outcome_of([c["outcome"] for c in checks.values()]),
            "reruns": attempts - len(REQUIRED)}
-    if last["job"] is not None:
-        out["buckets"] = split(critical_path(last["attempt"], last["job"]), total, table)
+    path = critical_path(last["attempt"], last["job"]) if last["job"] is not None else []
+    out["buckets"] = split(path, total, table)
+    if sum(out["buckets"].values()) != total:
+        raise Fail(f"{item.get('sha')}: its buckets don't add up to its time")
     return out, None
 
 
 def runner_seconds(items):
     return sum(job_secs(j) for it in items for run in it["runs"].values() if run
-               for a in run["attempts"] for j in a["jobs"])
+               for a in run["attempts"] for j in owned(a))
 
 
 def minutes(s):
@@ -392,7 +409,9 @@ def check_runs(runs, where, allowed):
             for job in as_list(a["jobs"], aat):
                 jat = f"{aat} job"
                 bench.exact(as_obj(job, jat), {"id", "name", "conclusion", "created_at", "started_at", "completed_at",
-                                               "runner_name", "steps"}, jat)
+                                               "runner_name", "steps", "run_attempt"}, jat)
+                if not 1 <= as_int(job, "run_attempt", jat) <= k:
+                    raise Fail(f"{jat}: job of attempt {job['run_attempt']} listed in attempt {k}")
                 as_int(job, "id", jat), as_str(job, "name", jat), as_time(job, "created_at", jat)
                 as_str(job, "conclusion", jat, null=True), as_str(job, "runner_name", jat, null=True)
                 as_time(job, "started_at", jat, null=True), as_time(job, "completed_at", jat, null=True)
