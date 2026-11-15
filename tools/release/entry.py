@@ -16,6 +16,9 @@ GENERATED = {"CHANGELOG.md", "ROADMAP.md"}
 # ([private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6842773730)).
 SETTLED_COMBINED = ("0.0.12", "0.0.11", "0.0.10", "0.0.9", "0.0.8", "0.0.7", "0.0.6")
 CAP_EXCEPTIONS = {"0.0.6": 17, "0.0.8": 7, "0.0.9": 11, "0.0.11": 6, "0.0.12": 6}
+# changes/<N>.md is OpenWiz ticket N; changes/closedwiz-<N>.md is a line moved
+# from old ClosedWiz ticket N, renamed where OpenWiz N owns changes/<N>.md (#735).
+CHANGE = r"changes/(closedwiz-)?([1-9][0-9]*)\.md"
 ISSUE_JQ = ('{number, body, milestone: (.milestone | {number, title}), '
             'pull: (.pull_request != null), sub_issues: .sub_issues_summary.total}')
 
@@ -177,7 +180,7 @@ def exclusions(rows):
     excluded = {}
     for row in rows:
         shape(row, "path sha256 reason")
-        require(isinstance(row["path"], str) and re.fullmatch(r"changes/[1-9][0-9]*\.md", row["path"])
+        require(isinstance(row["path"], str) and re.fullmatch(CHANGE, row["path"])
                 and row["path"] not in excluded and isinstance(row["sha256"], str)
                 and re.fullmatch(r"[0-9a-f]{64}", row["sha256"])
                 and isinstance(row["reason"], str) and row["reason"].strip(),
@@ -193,15 +196,20 @@ def sections(check, source, versions, excluded):
     for path in tree(a.repo, source, ["changes"]):
         if path == "changes/README.md":
             continue
-        match = re.fullmatch(r"changes/([1-9][0-9]*)\.md", path)
+        match = re.fullmatch(CHANGE, path)
         require(match is not None, f"entry: invalid changelog filename {path}")
+        # OpenWiz N is a different ticket and cannot supply an old ClosedWiz
+        # line's version, so it is never read; the line waits as an exclusion.
+        require(not match[1] or path in excluded, f"entry: {path} is old ClosedWiz #{match[2]}, "
+                "not an OpenWiz ticket: record it as an exclusion")
         if path in excluded:
             # A recorded unassigned source: exact bytes, still without a version.
             require(sha(blob(a.repo, source, path)) == excluded[path], f"entry: excluded source changed: {path}")
-            data = issue(a.repo, int(match[1]), unversioned=True)
-            require(data["milestone"] is None, f"entry: excluded source has a version milestone: {path}")
+            if not match[1]:
+                data = issue(a.repo, int(match[2]), unversioned=True)
+                require(data["milestone"] is None, f"entry: excluded source has a version milestone: {path}")
             continue
-        tickets.append((int(match[1]), path, issue(a.repo, int(match[1]))))
+        tickets.append((int(match[2]), path, issue(a.repo, int(match[2]))))
     missing = sorted(set(excluded) - set(tree(a.repo, source, ["changes"])))
     require(not missing, "entry: excluded source missing: " + ", ".join(missing))
     names = [v["version"] for v in versions]
