@@ -63,6 +63,12 @@ POINTER = re.compile(r'https://github\.com/' + re.escape(PRIVATE) + r'/(?:issues
                      r'#issuecomment-([1-9][0-9]*)')
 DECISION = re.compile(r'Release decision: (ship|changelog) ([0-9a-f]{64})')
 REVOKED = re.compile(r'Release decision revoked: ([1-9][0-9]*)')
+# APP-1 (a), Jake, 2026-11-15 (private record ClosedWiz #325, comment 6902318590):
+# the App-permission live check is waived for 0.0.12 only. A recorded waiver
+# names one risk and one exact version; nothing else is waivable.
+WAIVABLE = {('app_permissions', '0.0.12')}
+WAIVER = re.compile(r'Release waiver: ([a-z_]+) v(0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))')
+WAIVER_REVOKED = re.compile(r'Release waiver revoked: ([1-9][0-9]*)')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 HEADING = re.compile(r'## (' + VERSION.pattern + r') · ([0-9]{4}-[0-9]{2}-[0-9]{2})')
 TARGET_MET = 1800
@@ -670,7 +676,7 @@ def epoch(text):
         block('unreadable')
 
 
-def revoked(issue, comment_id, decided_at):
+def revoked(issue, comment_id, decided_at, pattern=REVOKED):
     """A later operative revocation line for this record; an earlier one does not
     revoke it, and one whose order against the record cannot be read refuses."""
     try:
@@ -681,7 +687,7 @@ def revoked(issue, comment_id, decided_at):
     later = False
     for c in rows:
         if (isinstance(c, dict) and isinstance(c.get('body'), str)
-                and any((m := REVOKED.fullmatch(line)) and m[1] == comment_id for line in c['body'].splitlines())):
+                and any((m := pattern.fullmatch(line)) and m[1] == comment_id for line in c['body'].splitlines())):
             at = epoch(c.get('created_at'))
             if at == decided_at:
                 block('unreadable')
@@ -707,9 +713,54 @@ def resolve_decision(kind, pointer):
             'decided_at': epoch(data['created_at']), 'binding_sha256': bindings[0]}
 
 
+def resolve_waiver(pointer, body):
+    """Jake's recorded one-release waiver, in the same unedited private record
+    form as the release decisions: exactly one waiver line, one risk, one version."""
+    issue, comment_id, data = comment(pointer)
+    text = data['body']
+    lines = text.splitlines()
+    if (data['user'].get('login') != OWNER or not lines
+            or not re.match(r'Private record: Jake, [0-9]{4}-[0-9]{2}-[0-9]{2}', lines[0])
+            or data.get('updated_at') != data['created_at']):
+        block('waiver_not_a_record')
+    named = [line for line in lines if line.startswith('Release waiver:')]
+    if not named:
+        block('waiver_not_a_record')
+    found = [WAIVER.fullmatch(line) for line in named]
+    if len(named) != 1 or not found[0]:
+        block('waiver_invalid')  # several lines, several risks or a range
+    risk, version = found[0][1], found[0][2]
+    if risk not in {r for r, _ in WAIVABLE}:
+        block('waiver_wrong_risk')
+    if version != body['release_version'] or (risk, version) not in WAIVABLE:
+        block('waiver_wrong_version')
+    if revoked(issue, comment_id, epoch(data['created_at']), WAIVER_REVOKED):
+        block('waiver_revoked')
+    return {'pointer': pointer, 'record_sha256': sha(text.encode('utf-8')),
+            'decided_at': epoch(data['created_at']), 'risk': risk, 'version': version}
+
+
+def current_waiver(record):
+    """The saved waiver if it still resolves unchanged for this candidate, else
+    its reasons. No saved waiver: (None, [])."""
+    saved = record['decisions'].get('waiver')
+    if saved is None:
+        return None, []
+    try:
+        current = resolve_waiver(saved['pointer'], record['candidate'])
+    except Blocked as error:
+        return None, error.reasons
+    return (current, []) if current == saved else (None, ['waiver_changed'])
+
+
 def decide(args):
     state = State(args.state)
     record = state.read()
+    if args.waiver:
+        waiver = resolve_waiver(args.waiver, record['candidate'])
+        record['decisions']['waiver'] = waiver
+        state.write('record.json', record)
+        return {'status': 'recorded', 'decision': 'waiver', 'waived': waiver['risk']}
     kind, pointer = ('ship', args.ship) if args.ship else ('changelog', args.changelog)
     decision = resolve_decision(kind, pointer)
     target = record['candidate_sha256'] if kind == 'ship' else record['candidate']['changelog']['sha256']
@@ -1119,7 +1170,9 @@ def live(args):
     return {'status': 'recorded', 'gates': {g: (doc['gates'][g] or {}).get('status') for g in ('smoke',) + RISKS}}
 
 
-def live_reasons(record, saved):
+def live_reasons(record, saved, waived=()):
+    """Every live gate's reasons. A risk in `waived` needs no live receipt: its
+    resolved waiver stands in, recorded as waived, never as passed."""
     reasons = []
     risk = record['candidate']['risk']
     for name in RISKS:
@@ -1127,11 +1180,11 @@ def live_reasons(record, saved):
             reasons.append(f'{name}_unknown')
     if saved is None:
         reasons.append('smoke_missing')
-        reasons += [f'{n}_live_missing' for n in RISKS if risk[n]['required'] == 'yes']
+        reasons += [f'{n}_live_missing' for n in RISKS if risk[n]['required'] == 'yes' and n not in waived]
         return reasons
     receipts = smoke_module()
     for gate in ('smoke',) + RISKS:
-        if gate != 'smoke' and risk[gate]['required'] != 'yes':
+        if gate != 'smoke' and (risk[gate]['required'] != 'yes' or gate in waived):
             continue
         try:
             receipts.accept(gate, saved['doc'], record, Path(saved['kit']), Path(saved['state']), preserved)
@@ -1228,7 +1281,13 @@ def reasons_for(record, state, repo, own=None, artifacts=None, literals=None, ma
                 continue
             inputs = state.read(f'inputs/{name}.json') if state.exists(f'inputs/{name}.json') else None
             reasons += [f'{name}_{r}' for r in gate_reasons(record, name, receipt, inputs, ctx)]
-    reasons += live_reasons(record, live_doc(state))
+    waiver, problems = current_waiver(record)
+    reasons += problems
+    waived = ()
+    if waiver is not None and body['risk'][waiver['risk']]['required'] == 'yes':
+        waived = (waiver['risk'],)
+        made[waiver['risk']] = {'status': 'waived', 'waiver': waiver}
+    reasons += live_reasons(record, live_doc(state), waived)
     return reasons
 
 
@@ -1244,7 +1303,9 @@ def evaluate(args):
     state.write('record.json', record)
     if reasons:
         raise Blocked(reasons)
-    return {'status': 'ready', 'candidate_sha256': record['candidate_sha256']}
+    waived = sorted(g for g, r in made.items() if r and r.get('status') == 'waived')
+    return dict({'status': 'ready', 'candidate_sha256': record['candidate_sha256']},
+                **({'waived': waived} if waived else {}))
 
 
 # ---------------------------------------------------------------- publication
@@ -1497,6 +1558,7 @@ def main(argv=None):
     which = made.add_mutually_exclusive_group(required=True)
     which.add_argument('--ship')
     which.add_argument('--changelog')
+    which.add_argument('--waiver', help="a recorded one-release waiver (APP-1): 'Release waiver: RISK vX.Y.Z'")
     made = sub.add_parser('gate')
     for name in ('state', 'gate', 'receipt', 'inputs'):
         made.add_argument('--' + name, required=True)

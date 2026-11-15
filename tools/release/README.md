@@ -246,7 +246,7 @@ selection as inputs. The command then runs RL4's verifiers over each staged arch
 and requires their rows to equal the candidate's. `live` runs RL3's
 `tools/live-smoke/receipt.py` producer on the approved kit and run state, and
 `evaluate` applies its `accept`. Fixture, dry-run, stale or uncertain results never
-pass, and each risk classified `yes` needs its own live receipt. Typical blocked
+pass, and each risk classified `yes` needs its own live receipt, except that a recorded one-release waiver (APP-1 (a), Jake, 2026-11-15) may stand in for the `app_permissions` receipt of 0.0.12 only: `decide --waiver <pointer>` reads an unedited, unrevoked `Private record: Jake, YYYY-MM-DD` comment holding exactly one `Release waiver: app_permissions v0.0.12` line (`Release waiver revoked: <comment id>` revokes it), and the result and record show that gate as `waived`, never passed. Typical blocked
 results:
 
 ```json
