@@ -50,16 +50,19 @@ class UnreadFixtures(unittest.TestCase):
     def test_a_path_in_test_code_is_read_and_a_mention_in_prose_or_data_is_not(self):
         # catches: a fixture named only in docs or a data inventory (such as
         # CI's selection map) kept as if a test read it; and one a test opens
-        # by path listed for deletion.
+        # by path listed for deletion; a file kept only because a test opens
+        # its neighbour by path.
         self.check({
             'tests/fixtures/used.json': '{}',
             'tests/fixtures/deep/used.json': '{}',
+            'tests/fixtures/deep/sibling.json': '{}',
             'tests/fixtures/only-in-docs.json': '{}',
             'tests/fixtures/only-in-map.json': '{}',
-            'tests/proof/a.rs': 'include_str!("../fixtures/used.json"); let p = dir.join("deep/used.json");',
+            'tests/proof/a.rs': 'include_str!("../fixtures/used.json"); include_str!("../fixtures/deep/used.json");',
             'docs/notes.md': 'See tests/fixtures/only-in-docs.json.',
             'ci/map.json': '{"files": ["tests/fixtures/only-in-map.json"]}',
-        }, ['tests/fixtures/only-in-docs.json', 'tests/fixtures/only-in-map.json'])
+        }, ['tests/fixtures/deep/sibling.json', 'tests/fixtures/only-in-docs.json',
+            'tests/fixtures/only-in-map.json'])
 
     def test_a_scenario_is_read_through_its_name_and_names_its_own_files(self):
         # catches: a scenario's response files deleted although its
