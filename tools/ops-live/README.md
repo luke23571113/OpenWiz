@@ -47,14 +47,19 @@ cannot pass.
 OB8 approval, read back (`read_back` holds the record's SHA-256). Merge stays
 not needed and not granted. `cloud_threads` holds the recorded Cloud-thread
 grant (2) and J60, whose record raises it to 3 active and 6 total, only in
-`test_repository` and only after its `after` run. A kit whose thread limits
+`test_repository`. A kit whose thread limits
 exceed the grant keeps the gate closed. Every test-owned ticket, branch and
 pull request lives in `test_repository`, a throwaway, never a real repository.
 
-**Ordering:** `start_after` names runs that must finish, with their evidence
-posted, first. #1110's timed live run uses the same throwaway repository, so
-until its `record` is set the gate stays closed, `authorized` is refused and a
-live result is refused.
+**Ordering (FR5):** Jake's FR5 decision (`exclusive_use.FR5`, a private-record
+pointer) lets the live run go now: #46's timed run (was ClosedWiz #1110) moved
+to 0.0.16. It replaces the old "after #1110's posted evidence" ordering, J60's
+`after` included, with one precondition: no other live run is using
+`test_repository` at the time, checked and recorded right before the first
+live effect. `condition` must name the kit's own `test_repository`, and `when`
+must say exactly that. Until `record` points to that check the gate stays
+closed, `authorized` is refused and a live result is refused. The results
+carry the check itself (`exclusive_use`, below).
 
 **The live gate** (`kit` command, AC1) stays closed while any needed permission
 is not granted, any grant's record is not read back (`read_back.<class>` holds
@@ -75,6 +80,7 @@ One strict JSON object, every key required:
 | `threads` | `{alias, role, start, end}`; role is a kit host role, `end` null means never ended |
 | `operations` | `{operation_key, intent_id, action, request_id, respawn, start, end, completion, ack}`; ops-dispatch v1 actions and completion states; `request_id` set for spawns, null otherwise; every repeated spawn must set `respawn` true and retain its original key, action, request id and intent; the original must be `uncertain` and end before or when recovery starts; `ack` null or `{operation_key, intent_id, recipient, evidence}` |
 | `respawns` | The count of J55 re-spawns; must equal the repeat count derived independently of the `respawn` flags |
+| `exclusive_use` | FR5's check: `{checked_at, evidence}`, with observed evidence, inside `window` and at or before every thread and operation start; null only when `live` is false |
 | `fencing` | `{boundary: effect, advisory or unknown, evidence}` |
 | `reviewer_output` | `{access: verified, absent or unknown, evidence}` |
 | `verdicts` | `{reviewer, verdict: APPROVE or CHANGES, comment, thread_output, matches}`; authenticated (J56) only with an observed by-id `thread_output` that `matches` |
@@ -107,8 +113,8 @@ It refuses, among others:
 - **Incomplete cleanup:** a kit step missing, repeated, pending or without
   evidence; a thread that never ended.
 - **False live passes:** a pass without `live`, without observed evidence
-  (fixture or review alone), while #2244 is Unknown, before a `start_after`
-  run's evidence, outside the throwaway repository, against another kit, or
+  (fixture or review alone), while #2244 is Unknown, without FR5's observed
+  exclusive-use check before the first live effect, outside the throwaway repository, against another kit, or
   with a duplicate count or measure that its records contradict. Completed
   effects outside `permitted_effects` are refused.
 
