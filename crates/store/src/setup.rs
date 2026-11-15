@@ -517,6 +517,50 @@ mod tests {
         assert!(read(&dir.0).is_err(), "open setup directory");
     }
 
+    /// #633: catches a saved identity choice the Python store refuses (no
+    /// explicit skip, no acting login, a missing key) reaching the server, and
+    /// an old state without the field no longer reading.
+    #[test]
+    fn identity_choice_reads_only_an_explicit_skip_or_nothing() {
+        let dir = state();
+        let skip = r#""identity":{"selected":"personal_login","app_choice":"skip","acting_login":"synthetic-owner","repository":"synthetic-owner/synthetic-consumer"},"#;
+        let with = |identity: &str| GOOD.replacen(r#""operations""#, &format!(r#"{identity}"operations""#), 1);
+        write(&dir.0, GOOD, 0o600);
+        assert_eq!(read(&dir.0).unwrap().unwrap().identity, None, "an old state");
+        write(&dir.0, &with(skip), 0o600);
+        let identity = read(&dir.0).unwrap().unwrap().identity.unwrap();
+        assert_eq!(
+            (identity.selected.as_str(), identity.app_choice.as_str()),
+            ("personal_login", "skip")
+        );
+        assert_eq!(identity.acting_login.as_deref(), Some("synthetic-owner"));
+        for good in [
+            r#""identity":null,"#,
+            r#""identity":{"selected":"unselected","app_choice":"undecided","acting_login":null,"repository":"synthetic-owner/synthetic-consumer"},"#,
+        ] {
+            write(&dir.0, &with(good), 0o600);
+            assert!(read(&dir.0).is_ok(), "{good}");
+        }
+        for bad in [
+            skip.replace(r#""skip""#, r#""create""#),
+            skip.replace(r#""personal_login""#, r#""unselected""#),
+            skip.replace(r#""personal_login""#, r#""app""#),
+            skip.replace(r#""synthetic-owner","#, "null,"),
+            skip.replace(r#""acting_login":"synthetic-owner","#, ""),
+            skip.replace(r#""synthetic-owner","#, &format!(r#""ghp_{}","#, "A".repeat(36))),
+            skip.replace(r#""synthetic-owner","#, r#""synthetic/owner","#),
+            skip.replace(r#""synthetic-owner","#, &format!(r#""{}","#, "x".repeat(40))),
+            skip.replace(r#""synthetic-owner/synthetic-consumer""#, r#""synthetic-owner/..""#),
+            skip.replace(r#""repository""#, r#""token":"x","repository""#),
+            skip.replace(r#""personal_login""#, r#""fallback""#),
+            r#""identity":["personal_login","skip","synthetic-owner","synthetic-owner/synthetic-consumer"],"#.to_owned(),
+            r#""identity":{"selected":"app","app_choice":"reuse","acting_login":"synthetic-owner","repository":"synthetic-owner/synthetic-consumer"},"#.to_owned(),
+        ] {
+            write(&dir.0, &with(&bad), 0o600);
+            assert!(read(&dir.0).is_err(), "{bad}");
+        }
+    }
+
     /// C-S1 (#2865): a credential-shaped harness, model or effort refuses the
     /// whole state; ordinary agent settings, near misses included, still read.
     /// Every planted value is synthetic, built here so no token is a literal.
