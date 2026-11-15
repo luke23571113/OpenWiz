@@ -177,7 +177,8 @@ optionally one closing link line. Links are inline only and go only to
 `https://github.com/openwizdev/OpenWiz`, and a release link names only this
 release's tag or a published one. Published sections are not re-checked. At
 publication every section date of the notes must be the UTC publication day:
-otherwise `publish` refuses `changelog_date` before any write and never edits
+otherwise `publish` refuses `changelog_date` before each still-unattempted write
+(the tag push, and release creation when resuming after it) and never edits
 the approved dates. D4 (`claims`) then holds when the notes are exactly that
 cut at the candidate commit.
 

@@ -1322,6 +1322,13 @@ def ready(body, artifacts, scratch, tag, own=None):
     return data
 
 
+def date_reasons(body):
+    """Every section's date is the publication day, checked before each still-unattempted
+    publication write (the tag push, and release creation after it): refuse, never edit."""
+    dates = [m[5] for m in re.finditer('^' + HEADING.pattern + '$', body['changelog']['utf8'], re.M)]
+    return ['changelog_date'] if any(d != today() for d in dates) else []
+
+
 def publish(args):
     repo = Path(args.repo).resolve(strict=True)
     state = State(args.state)
@@ -1339,11 +1346,8 @@ def publish(args):
                 raise Blocked(['publication_incomplete'], status='incomplete')
         else:
             if attempt is None:
-                reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts), literals=args.literals)
-                # Every section's date is the publication day: refuse, never edit the approved bytes.
-                if any(m[5] != today() for m in re.finditer('^' + HEADING.pattern + '$', body['changelog']['utf8'],
-                                                             re.M)):
-                    reasons.append('changelog_date')
+                reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts),
+                                      literals=args.literals) + date_reasons(body)
                 if reasons:
                     raise Blocked(reasons)
                 ready(body, args.artifacts, scratch, tag)
@@ -1371,7 +1375,8 @@ def publish(args):
                 # The release write is unattempted: re-check every decision, gate and
                 # setting now, excluding only this attempt's own verified tag.
                 own = (tag, attempt['tag_object'], body['source']['commit'])
-                reasons = reasons_for(record, state, repo, own, Path(args.artifacts), args.literals)
+                reasons = (reasons_for(record, state, repo, own, Path(args.artifacts), args.literals)
+                           + date_reasons(body))
                 if reasons:
                     raise Blocked(reasons)
                 data = ready(body, args.artifacts, scratch, tag, own)
