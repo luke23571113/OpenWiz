@@ -60,6 +60,21 @@ pub struct SetupState {
     pub operations: Vec<Operation>,
     #[serde(default)]
     pub engine: Option<Engine>,
+    /// #633 (setup.v1's 0.0.16 expansion): the owner's identity choice for
+    /// one repository. Absent in an old state: no selection, so the App rule.
+    #[serde(default)]
+    pub identity: Option<Identity>,
+}
+
+/// `personal_login` exactly when the owner explicitly skipped the App, naming
+/// the acting login; `store.py`'s `check_identity` refuses the same values.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Identity {
+    pub selected: String,
+    pub app_choice: String,
+    pub acting_login: Option<String>,
+    pub repository: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -248,6 +263,20 @@ impl SetupState {
                 return Err("invalid project settings");
             }
         }
+        if let Some(i) = &self.identity {
+            let skipped = i.selected == "personal_login";
+            let ok = ["app", "personal_login", "unselected"].contains(&i.selected.as_str())
+                && ["create", "reuse", "skip", "undecided"].contains(&i.app_choice.as_str())
+                && skipped == (i.app_choice == "skip")
+                && repository(&i.repository)
+                && match &i.acting_login {
+                    Some(login) => skipped && word(login, 39, b"-"),
+                    None => !skipped,
+                };
+            if !ok {
+                return Err("invalid identity choice");
+            }
+        }
         if let Some(app) = &self.app
             && (!(1..=ID_MAX).contains(&app.app_id)
                 || app
@@ -391,6 +420,8 @@ pub fn read(state_dir: &Path) -> Result<Option<SetupState>, StoreError> {
         && shape["operations"]
             .as_array()
             .is_some_and(|a| a.iter().all(serde_json::Value::is_object))
+        && object_or_null(&shape["identity"])
+        && (shape["identity"].is_null() || shape["identity"].get("acting_login").is_some())
         && object_or_null(&shape["engine"])
         && (shape["engine"].is_null()
             || (shape["engine"].get("cost").is_some() && object_or_null(&shape["engine"]["cost"])));
