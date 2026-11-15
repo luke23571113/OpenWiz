@@ -269,9 +269,9 @@ def history(checker, repo, base, head, upstream=None):
     if roots != [PUBLIC_ROOT] or not anchored:
         checker.refuse('C1', 'history')
         return []
-    # No base means a new remote ref. With --upstream (the destination's main
-    # before the push), only commits after their merge-bases with it are new:
-    # main's history was checked when it landed. A missing upstream or no
+    # No base means a new remote ref. With --upstream (a commit the push
+    # destination itself already publishes, as its main), only commits after
+    # their merge-bases with it are new there. A missing upstream or no
     # merge-base fails closed: check everything after the approved public
     # anchor. Old public history is explicitly exempt from C2/C3.
     exclude = [PUBLIC_ANCHOR]
@@ -349,7 +349,7 @@ def main(argv=None):
     parser.add_argument('--git-tree', help='Git tree/ref to scan without checkout')
     parser.add_argument('--base', help='range exclusion; default is the approved public anchor')
     parser.add_argument('--head', help='commit whose ancestry and new messages/identities are checked')
-    parser.add_argument('--upstream', help='without --base: start after the merge-base with this ref (a missing one starts at the anchor)')
+    parser.add_argument('--upstream', help='without --base: start after the merge-base with this commit, already published at the destination (a missing one starts at the anchor)')
     parser.add_argument('--title-file', type=Path)
     parser.add_argument('--body-file', type=Path)
     parser.add_argument('--literals', type=Path)

@@ -63,10 +63,13 @@ anchor has its message, author/committer email and tree checked: deleting a
 private file at the tip does not remove it from published history. Without
 `--base`, the range begins after the approved public anchor; `--upstream REF`
 (a new ref's first push) narrows it to the commits after their merge-bases
-with REF, the destination's `main` as last fetched, already checked when it
-landed. A missing REF or no merge-base falls back to the anchor. The hook
-passes its remote's `refs/remotes/<remote>/main`; `ci.py` passes `origin/main`
-for a new branch, never for a new `main`. There is no command
+with REF, a commit already published at the push destination. A missing REF
+or no merge-base falls back to the anchor. The hook never trusts a local
+tracking ref for this: it asks the exact push URL for its `main`
+(`git ls-remote`), and narrows only when Git would not rewrite that URL, the
+destination names exactly one `main` and that commit is present locally.
+`ci.py` passes `origin/main`, fetched from the destination in that job, for a
+new branch, never for a new `main`. There is no command
 option or environment override for the root, anchor or decider list. Tests
 substitute synthetic policy constants in memory and traverse real fixture Git
 graphs, including an unrelated root arriving through a merge.

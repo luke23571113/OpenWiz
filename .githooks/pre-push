@@ -60,7 +60,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   }
   # Privacy includes ancestry and messages even when no file changed.
   # It reads Git objects for the pushed commit, never uncommitted files.
-  if ! python3 -I "$privacy_tool" --url "$privacy_url" --repo "$top" --head "$commit" --base "$remote_sha" --remote "$remote"; then
+  if ! python3 -I "$privacy_tool" --url "$privacy_url" --repo "$top" --head "$commit" --base "$remote_sha"; then
     say "privacy check refused $remote_ref: push stopped"
     exit 1
   fi
