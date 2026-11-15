@@ -26,6 +26,7 @@ on:
       - 'tools/skills-eval/**'
       - 'tools/war-room/**'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/privacy.yml'
       - '.github/workflows/ci-bench.yml'
 
 permissions:
