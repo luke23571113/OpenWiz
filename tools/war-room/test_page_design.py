@@ -211,6 +211,22 @@ class PageDesign(unittest.TestCase):
         self.assertEqual(csp, "default-src 'none'; style-src 'unsafe-inline'; font-src data:; "
                               "base-uri 'none'; form-action 'none'")
 
+    def test_the_phone_picture_is_laid_out_at_the_phone_width(self):
+        # catches: the phone picture laid out at headless Chromium's 500 px minimum window
+        # and cropped to 390 px, cutting off every right-hand number and rule.
+        probe = ("<script>onload=()=>{document.body.dataset.w=document.body.getBoundingClientRect().width;"
+                 "document.body.dataset.r=document.querySelector('main').scrollWidth}</script></body>")
+        drawn = publish.drawable(self.html, True).replace('</body>', probe)
+        path = self.tmp / 'phone-drawn.html'
+        path.write_text(drawn, encoding='utf-8')
+        dom = subprocess.run([publish.chromium(), '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
+                              '--user-data-dir=' + str(self.tmp / 'phone-profile'), '--window-size=%d,800' % publish.PHONE_WIDTH,
+                              '--dump-dom', path.as_uri()], check=True, capture_output=True, text=True, timeout=90).stdout
+        width = float(re.search(r'data-w="([0-9.]+)"', dom).group(1))
+        right = float(re.search(r'data-r="([0-9.]+)"', dom).group(1))
+        self.assertEqual(width, publish.PHONE_WIDTH)
+        self.assertLessEqual(right, publish.PHONE_WIDTH)
+
     def test_real_browser_without_scripts_or_network(self):
         # catches: horizontal overflow, cards out of order or not stacked on a phone, charts
         # too small to read, text below WCAG contrast, a page that needs a script, or a

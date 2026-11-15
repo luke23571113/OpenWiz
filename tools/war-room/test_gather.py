@@ -111,9 +111,14 @@ def probed(page, width, script):
     return json.loads(html.unescape(re.search(r'data-probe="([^"]*)"', dom).group(1)))
 
 
+def width(phone):
+    """The CSS width publish.py draws each picture at (WRD3: 1440, and 390 for the phone)."""
+    return publish_module().PHONE_WIDTH if phone else publish_module().WIDTH
+
+
 def visible_cards(page, phone):
     """Each value card's text as real chromium shows it in the drawn picture (innerText skips hidden rows)."""
-    return probed(publish_module().drawable(page, phone), 400 if phone else 1200,
+    return probed(publish_module().drawable(page, phone), width(phone),
                   "[...document.querySelectorAll('article.metric')].map(a=>a.innerText)")
 
 
@@ -133,7 +138,7 @@ def marked(providers):
 
 def marker_pixels(page, png, phone):
     """How many of the picture's pixels inside the marker's heading have its text and its card's colour."""
-    found = probed(publish_module().drawable(page, phone), 400 if phone else 1200, (
+    found = probed(publish_module().drawable(page, phone), width(phone), (
         "(()=>{const h=[...document.querySelectorAll('h4')].filter(e=>e.textContent===%s);"
         "if(h.length!==1)return null;const r=h[0].getBoundingClientRect();"
         "return {box:[r.left,r.top+scrollY,r.width,r.height],text:getComputedStyle(h[0]).color,"
@@ -149,7 +154,7 @@ def marker_pixels(page, png, phone):
              "return {size:[i.naturalWidth,i.naturalHeight],text:near(%s),card:near(%s)}})()") % (
         w, h, x, y, w, h, w, h, w, h, json.dumps(found['text']), json.dumps(found['card']))
     image = '<html><body><img src="data:image/png;base64,%s"></body></html>' % base64.b64encode(png).decode()
-    return probed(image, 400, count)
+    return probed(image, publish_module().PHONE_WIDTH, count)
 
 
 def git(cwd, *args, env=None):
@@ -490,8 +495,8 @@ class Gather(unittest.TestCase):
                                   check=True, capture_output=True).stdout
             self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n')
             sizes[name] = struct.unpack('>II', data[16:24])
-        self.assertEqual(sizes['war-room.png'][0], 1200)
-        self.assertEqual(sizes['war-room-phone.png'][0], 800)
+        self.assertEqual(sizes['war-room.png'][0], width(False))
+        self.assertEqual(sizes['war-room-phone.png'][0], 2 * width(True))
         self.assertGreater(sizes['war-room.png'][1], 8000, 'the full page, not a clipped one')
         self.assertGreater(sizes['war-room-phone.png'][1], 2 * 8000)
         # Every gathered card, with measured values, is on the page that was drawn: all 65 metrics the
@@ -565,12 +570,12 @@ class Gather(unittest.TestCase):
                                        lambda at, previous: marked(real_scale(read(at, previous))))
         record = suite.load(next((self.tmp / 'private' / 'history' / 'samples').glob('*.json')))
         self.assertEqual(sum(len(p['metrics']) for p in record['providers'] if p['slot'] in REAL_SCALE), 133)
-        for name, width, phone in (('war-room.png', 1200, False), ('war-room-phone.png', 800, True)):
+        for name, drawn_width, phone in (('war-room.png', width(False), False), ('war-room-phone.png', 2 * width(True), True)):
             with self.subTest(name):
                 data = (out / name).read_bytes()
                 self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n')
                 drawn, height = struct.unpack('>II', data[16:24])
-                self.assertEqual(drawn, width)
+                self.assertEqual(drawn, drawn_width)
                 self.assertLessEqual(height, publish_module().MAX_HEIGHT)
                 # #2586: and painted to the bottom: the last card's heading shows its text on its card.
                 pixels = marker_pixels(page, data, phone)
