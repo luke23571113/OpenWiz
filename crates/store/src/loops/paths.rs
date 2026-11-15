@@ -16,7 +16,7 @@ pub fn inspect(root: &Path) -> Result<(), String> {
 /// can spend the budget on one pause), `Refused` for a settled unsafe state.
 /// Neither is a pass: a caller may only wait and inspect again.
 pub(crate) fn inspect_settled(root: &Path) -> Result<(), Failure> {
-    retried(|| inspect_once(root).map(|_| ()))
+    retried(RETRY_TIME, || inspect_once(root).map(|_| ()))
 }
 
 // Retry only a regular unlinked observation or a checked/opened mismatch.
@@ -41,13 +41,18 @@ impl From<String> for Failure {
     }
 }
 fn bounded<T>(inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, String> {
-    retried(inspect).map_err(Failure::reason)
+    retried(RETRY_TIME, inspect).map_err(Failure::reason)
 }
-fn retried<T>(mut inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, Failure> {
+// The budget is wall time, so a descheduled reader can spend it on one pause
+// (#753, #764): production always passes RETRY_TIME.
+fn retried<T>(
+    budget: Duration,
+    mut inspect: impl FnMut() -> Result<T, Failure>,
+) -> Result<T, Failure> {
     let started = Instant::now();
     let mut reason = "private state inspection: retry time limit reached".to_owned();
     for attempt in 0..ATTEMPTS {
-        if attempt > 0 && started.elapsed() >= RETRY_TIME {
+        if attempt > 0 && started.elapsed() >= budget {
             return Err(Failure::Changed(reason));
         }
         match inspect() {
@@ -61,7 +66,7 @@ fn retried<T>(mut inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, Fail
                 // the pause grows (50 us x 3^n): the eight attempts span
                 // about 55 ms of the budget instead of about 1 ms.
                 if attempt + 1 < ATTEMPTS {
-                    let remaining = RETRY_TIME.saturating_sub(started.elapsed());
+                    let remaining = budget.saturating_sub(started.elapsed());
                     let pause = Duration::from_micros(50) * 3_u32.pow(attempt as u32);
                     std::thread::sleep(remaining.min(pause));
                 }
@@ -454,15 +459,19 @@ mod tests {
         let path = fixture.file("state", b"original");
         let meta = fs::symlink_metadata(&path).unwrap();
         fs::rename(fixture.file("replacement", b"replacement"), &path).unwrap();
+        // #764: a loaded machine could spend the real 100 ms budget before
+        // the eighth attempt (7 attempts under paused-process load). No pause
+        // can spend this budget, so only the attempt limit ends the retry.
         let mut attempts = 0;
         assert!(
-            bounded(|| {
+            retried(Duration::MAX, || {
                 attempts += 1;
                 open_checked(&path, &meta)
             })
             .is_err()
         );
         assert_eq!(attempts, 8);
+        // The real budget, spent by one attempt longer than it, whatever the load.
         let mut attempts = 0;
         assert!(
             bounded::<File>(|| {
@@ -475,6 +484,80 @@ mod tests {
         assert_eq!(
             attempts, 1,
             "the expired budget must stop before another attempt"
+        );
+    }
+
+    // A safe atomic save (a private temporary file renamed over state.json)
+    // must never be refused while the retry still has budget: a reader that
+    // treats the rename's zero-link or replaced-inode view as unsafe, or gives
+    // up on it too soon, refuses the service's own save. #764: with the real
+    // 100 ms wall-clock budget, a descheduled reader spent it on one pause
+    // (66 to 131 refusals under paused-process load). That outcome is the
+    // documented `Changed` (#753), and the deadline has its own proof above;
+    // no pause can spend this budget.
+    #[test]
+    fn inspect_never_refuses_private_state_during_atomic_replacement() {
+        use std::io::Write;
+        use std::sync::atomic::AtomicBool;
+        use std::sync::{Arc, Barrier};
+        let fixture = Fixture::new();
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(fixture.0.join("service"))
+            .unwrap();
+        fixture.file("service/config.json", b"{}");
+        fixture.file("service/state.json", b"{}");
+        let stop = Arc::new(AtomicBool::new(false));
+        let start = Arc::new(Barrier::new(2));
+        let writer = std::thread::spawn({
+            let (root, stop, start) = (fixture.0.clone(), stop.clone(), start.clone());
+            move || {
+                let temporary = root.join("service/state.tmp");
+                let state = root.join("service/state.json");
+                start.wait();
+                let mut replacements = 0_u64;
+                while !stop.load(Ordering::Relaxed) {
+                    OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .mode(0o600)
+                        .open(&temporary)
+                        .unwrap()
+                        .write_all(b"{}")
+                        .unwrap();
+                    fs::rename(&temporary, &state).unwrap();
+                    replacements += 1;
+                }
+                replacements
+            }
+        });
+        start.wait();
+        let began = Instant::now();
+        let mut failures = std::collections::BTreeMap::<String, usize>::new();
+        for _ in 0..100_000 {
+            if let Err(failure) = retried(Duration::MAX, || inspect_once(&fixture.0).map(|_| ())) {
+                *failures.entry(failure.reason()).or_default() += 1;
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        let replacements = writer.join().unwrap();
+        eprintln!(
+            "100000 inspections in {:?}, {replacements} atomic replacements; refusals: {failures:?}",
+            began.elapsed()
+        );
+        // Distinguish a transient refusal under churn from a persistently
+        // unsafe final state. Neither kind is excused by the assertion below.
+        assert_eq!(
+            read_service_state(&fixture.0).unwrap().as_deref(),
+            Some("{}")
+        );
+        assert!(
+            replacements > 0,
+            "the writer must exercise atomic replacement"
+        );
+        assert!(
+            failures.is_empty(),
+            "safe atomic saves must never refuse: {failures:?}"
         );
     }
 }
