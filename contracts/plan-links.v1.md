@@ -231,10 +231,12 @@ history { schema, kind: "history", sample: "baseline" | "run", at, day, repo,
 - A `run` row is that run's measures, with `at` the graph read's `read_at` and `repo` its `repo`. All its numbers are measured: only `startable_percent` and `fed_ratio` may be `null`, as in the measures.
 - `day` is `at`'s date in PST, a fixed UTC−8 all year, so every day is 24 hours: 2026-11-06T07:59:00Z is day 2026-11-05, and 2026-11-06T08:00:00Z day 2026-11-06.
 - **The daily row** is a day's last sample: the row with that `day` and the latest `at` (on a tie, the later line). A day with no sample has no row.
-- **The baseline row** is the first line, the 2026-11-05 facts, before links were labelled: 48 of 119 can start (40%); the rest wasn't measured, so it is `null`.
+- **The baseline row** is the first line: an explicitly synthetic example,
+  not a factory measurement. In this invented cohort, 20 of 80 can start
+  (25%); the other measures are unknown (`null`).
 
 ```json
-{"schema":"openwiz.plan-links.v1","kind":"history","sample":"baseline","at":"2026-11-05T23:50:00Z","day":"2026-11-05","repo":"jparker2006/ClosedWiz","open_approved":119,"can_start":48,"startable_percent":40,"file_links":null,"unlabelled_links":null,"ready_stock":null,"builders_running":null,"fed_ratio":null,"low_stock":null}
+{"schema":"openwiz.plan-links.v1","kind":"history","sample":"baseline","at":"2026-11-05T23:50:00Z","day":"2026-11-05","repo":"synthetic-owner/synthetic-repo","open_approved":80,"can_start":20,"startable_percent":25,"file_links":null,"unlabelled_links":null,"ready_stock":null,"builders_running":null,"fed_ratio":null,"low_stock":null}
 ```
 
 ## Fixtures

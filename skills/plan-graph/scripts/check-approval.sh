@@ -33,6 +33,20 @@ jq -Rne '
 ' < "$work/label-rows" > "$work/labels.json" 2> /dev/null ||
   fail 'project labels table must map ready-for-agent and ready-for-human exactly once to nonempty names'
 
+# The consumer project's configured private-records repository, read from the
+# default branch. Missing, malformed or duplicate settings refuse; cwd is not
+# a fallback for a project's separate records repository.
+gh api -H 'Accept: application/vnd.github.raw+json' \
+  'repos/{owner}/{repo}/contents/docs/agents/issue-tracker.md' > "$work/tracker.md" ||
+  fail 'cannot read project private records setting'
+private_records=$(jq -Rner '
+  [inputs | select(test("^(- )?\\*\\*Private records:\\*\\*"))] as $rows
+  | if ($rows | length) != 1 then error("one private records setting required")
+    else $rows[0] | capture("^(- )?\\*\\*Private records:\\*\\* `(?<repository>[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9_.-]*)`(?:, [^\\r\\n]+|\\.)?$").repository
+    end
+' < "$work/tracker.md" 2>/dev/null) || fail 'invalid project private records setting'
+[ -n "$private_records" ] || fail 'invalid project private records setting'
+
 gh issue view "$spec" --json subIssues > "$work/graph" || fail "cannot read spec #$spec's tickets"
 # gh may cap a connection. Never treat a partial graph as a complete row set.
 jq -es '
@@ -66,13 +80,13 @@ fi
 
 # Same latest-record rule as launch-fleet: first nonblank line starts with
 # **Plan graph approved by; greatest comment ID wins, never an older good one.
-jq -er --argjson private "$private" --slurpfile tickets "$work/tickets" --slurpfile labels "$work/labels.json" '
+jq -er --arg records "$private_records" --argjson private "$private" --slurpfile tickets "$work/tickets" --slurpfile labels "$work/labels.json" '
   def trim: sub("^\\s+"; "") | sub("\\s+$"; "");
   def public_form:
     . as $lines
     | ($lines[0] | capture("^\\*\\*Plan graph approved by (?<decider>[^,\\r\\n]+), [0-9]{4}-[0-9]{2}-[0-9]{2}, revision [1-9][0-9]*:\\*\\* (?<decision>[^\"“”]+)$") // null) as $header
     | $header != null and ($header.decision | trim | length) > 0
-      and ($lines[1] // "" | test("^Private record: https://github\\.com/jparker2006/ClosedWiz/(issues|pull)/[1-9][0-9]*#issuecomment-[1-9][0-9]*$"))
+      and (($lines[1] // "" | capture("^Private record: https://github\\.com/(?<repository>[A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/(issues|pull)/[1-9][0-9]*#issuecomment-[1-9][0-9]*$").repository) // null) == $records
       and all($lines[];
         (test("thr_[A-Za-z0-9][A-Za-z0-9_-]*") | not)
         and (test("^ {0,3}>") | not)

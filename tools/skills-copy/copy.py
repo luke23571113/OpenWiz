@@ -156,7 +156,9 @@ PACKAGE_CHECK = 'tools/skills-copy/package-check/'
 # WZ14 (#2891): each file of WZ7's check folder, and where it lands. The
 # README, tests and red run are ClosedWiz's own proofs of that folder and
 # stay here; any other file is refused until it is mapped here.
-CHECK_FILES = {'check/run.py': 'check/run.py', 'ci.yml': '.github/workflows/ci.yml'}
+CHECK_FILES = {'check/run.py': 'check/run.py', 'ci.yml': '.github/workflows/ci.yml',
+               'check/fixtures/huntr-project/docs/agents/huntr.md':
+                   'check/fixtures/huntr-project/docs/agents/huntr.md'}
 CHECK_KEPT = {'README.md', 'test_check.py', 'red-run.txt'}
 # Beside the entrypoint, so the scanner runs wholly inside WizSkills: WZ2's
 # scanner, the contract's normative values and the privacy check's redaction,
@@ -308,7 +310,7 @@ def package(source, commit, output, names, version):
         found[suffix] = mode
     if not found:
         return {'version': version, 'check': 'missing'}
-    if set(found) != set(CHECK_FILES):
+    if not {'check/run.py', 'ci.yml'} <= set(found):
         raise Refusal('Incomplete WizSkills check folder: check/run.py and ci.yml are both required')
     contract = blob(CONTRACT, 'Unreadable carried contracts list').decode('utf-8')
     try:

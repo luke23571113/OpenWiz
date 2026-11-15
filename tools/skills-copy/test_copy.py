@@ -717,7 +717,8 @@ class RealCopyTests(unittest.TestCase):
         self.assertFalse((self.output / 'check/check').exists())
         for kept in ('test_check.py', 'red-run.txt'):
             self.assertEqual([n for n in names if n.split('/')[-1] == kept], [])
-        self.assertEqual(sorted(n for n in names if n.startswith('check/')), sorted({'check/run.py', *GENERATED_CHECK}))
+        self.assertEqual(sorted(n for n in names if n.startswith('check/')), sorted({
+            'check/run.py', *GENERATED_CHECK, 'check/fixtures/huntr-project/docs/agents/huntr.md'}))
         self.assertIn('python3 check/run.py', (self.output / '.github/workflows/ci.yml').read_text())
         for path in self.contract['carried_contracts']:
             self.assertEqual((self.output / path).read_bytes(), subprocess.run(
