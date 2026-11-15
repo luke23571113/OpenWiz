@@ -44,6 +44,13 @@ PUBLIC_URLS = (
 HOOK_GIT_VARIABLES = ('GIT_EXEC_PATH', 'GIT_PREFIX', 'GIT_EDITOR')
 
 
+def narrowable(url, env):
+    """Whether a push to URL with environment ENV may ask URL for its main."""
+    if url not in PUBLIC_URLS:
+        return False
+    return not any(k.startswith('GIT_') and k not in HOOK_GIT_VARIABLES for k in env)
+
+
 def destination_main(repo, url):
     """The commit the push destination itself names as its main, or None.
 
@@ -57,9 +64,7 @@ def destination_main(repo, url):
     failure, returns None: scan from the anchor. That commit must also exist
     locally, or check.py scans from the anchor too.
     """
-    if url not in PUBLIC_URLS:
-        return None
-    if any(k.startswith('GIT_') and k not in HOOK_GIT_VARIABLES for k in os.environ):
+    if not narrowable(url, os.environ):
         return None
     env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
     def run(*args):
