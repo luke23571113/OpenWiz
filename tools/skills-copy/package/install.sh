@@ -248,7 +248,12 @@ if [ $existing -eq 0 ]; then
     # Claim the destination atomically. A concurrent directory, file or link
     # makes mkdir fail; nothing under that other destination is touched.
     (
-        mkdir "$dest" 2>/dev/null || fail 1 'destination appeared during installation'
+        if ! mkdir "$dest" 2>/dev/null; then
+            if [ -e "$dest" ] || [ -L "$dest" ]; then
+                fail 1 'destination appeared during installation'
+            fi
+            fail 3 'cannot claim the installation directory'
+        fi
         # POSIX ls -i supplies identity on this same-parent filesystem. Keep
         # the claimed directory as cwd so a later rename cannot redirect cleanup.
         inode() { ls -di "$1" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]].*//'; }
