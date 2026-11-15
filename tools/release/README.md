@@ -138,7 +138,10 @@ In that combined release every section's footer links to the one published
 a confirmed headline and no entries renders its dated heading and headline
 alone (HL1, generic). A source without a version milestone
 refuses unless its exact path and bytes are listed as a recorded exclusion
-that is still unversioned. The output is a proposal, not an approval.
+that is still unversioned. `changes/closedwiz-<N>.md` is a line moved from old
+ClosedWiz ticket N (`changes/README.md`): its milestone is never read from
+OpenWiz ticket N, and it refuses unless its exact path and bytes are listed as
+a recorded exclusion. The output is a proposal, not an approval.
 
 **Prepare** seals the agent-assembled candidate body. It refuses a non-public
 repository or origin, an anchor other than the fixed public anchor, a commit
@@ -325,7 +328,9 @@ headline and bullets. The independent export reviewer still checks meaning and
 whether roadmap prose describes plans rather than shipped capabilities.
 
 The checker reads tracked `changes/<ticket>.md` at the clean release head and
-looks up each ticket's milestone through read-only `gh api` calls. Missing or
+looks up each ticket's milestone through read-only `gh api` calls; a moved
+`changes/closedwiz-<N>.md` is old ClosedWiz ticket N, is never looked up, and
+refuses unless recorded as an exclusion. Missing or
 non-version milestones, pull requests, malformed selected files and unknown
 input shapes fail. Different-version lines are excluded. Selected lines follow
 `changes/README.md`, ordered by numeric ticket number; no sentence is rewritten.
