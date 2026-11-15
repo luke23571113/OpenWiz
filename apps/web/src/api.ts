@@ -456,8 +456,11 @@ export type SetupView = {
   engine: 'unselected' | 'cloud' | 'local';
   cost: { provenance: 'unknown' | 'measured' | 'estimated'; credits: number | null; window_s: number | null; monthly_projection: number | null; free_allowance: number | null; reason: string };
   operations: { operation_id: string; kind: 'connect_app' | 'prepare_project' | 'activate_engine' | 'configure_access'; phase: 'proposed' | 'applied' | 'refused' | 'uncertain'; fingerprint: string; effects: string[]; reason: string }[];
+  /** #633: the owner's identity choice; absent from an old producer (the App rule). */
+  identity?: SetupIdentity;
 };
-type SetupJsonObject = { schema?: unknown; ready?: unknown; components?: unknown; engine?: unknown; cost?: unknown; operations?: unknown; id?: unknown; state?: unknown; reason?: unknown; next?: unknown; provenance?: unknown; credits?: unknown; window_s?: unknown; monthly_projection?: unknown; free_allowance?: unknown; operation_id?: unknown; kind?: unknown; phase?: unknown; fingerprint?: unknown; effects?: unknown };
+export type SetupIdentity = { selected: 'app' | 'personal_login' | 'unselected'; app_choice: 'create' | 'reuse' | 'skip' | 'undecided'; acting_login: string | null };
+type SetupJsonObject = { identity?: unknown; selected?: unknown; app_choice?: unknown; acting_login?: unknown; schema?: unknown; ready?: unknown; components?: unknown; engine?: unknown; cost?: unknown; operations?: unknown; id?: unknown; state?: unknown; reason?: unknown; next?: unknown; provenance?: unknown; credits?: unknown; window_s?: unknown; monthly_projection?: unknown; free_allowance?: unknown; operation_id?: unknown; kind?: unknown; phase?: unknown; fingerprint?: unknown; effects?: unknown };
 const setupObject = (v: unknown): v is SetupJsonObject => typeof v === 'object' && v !== null && !Array.isArray(v);
 const setupText = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const setupNumber = (v: unknown): v is number | null => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0);
@@ -491,10 +494,25 @@ function setupUniqueKeys(text: string): boolean {
   }
   return true;
 }
+/** setup.v1's identity: exact keys; `personal_login` only with `skip` and its login. */
+function parseSetupIdentity(v: unknown): SetupIdentity | null {
+  if (!setupObject(v) || !setupKeys(v, ['selected', 'app_choice', 'acting_login'])) return null;
+  const { selected, app_choice: choice, acting_login: login } = v;
+  if (selected !== 'app' && selected !== 'personal_login' && selected !== 'unselected') return null;
+  if (choice !== 'create' && choice !== 'reuse' && choice !== 'skip' && choice !== 'undecided') return null;
+  if (login !== null && !(typeof login === 'string' && /^[A-Za-z0-9-]{1,39}$/.test(login))) return null;
+  if (selected === 'personal_login' && (choice !== 'skip' || login === null)) return null;
+  return { selected, app_choice: choice, acting_login: login };
+}
 function parseSetupText(text: string): SetupView | null {
   if (!setupUniqueKeys(text)) return null;
   const v = parseJson(text);
-  if (!setupObject(v) || !setupKeys(v, ['schema', 'ready', 'components', 'engine', 'cost', 'operations']) || v.schema !== 'openwiz.setup.v1' || typeof v.ready !== 'boolean' || !Array.isArray(v.components) || v.components.length !== 7 || !Array.isArray(v.operations)) return null;
+  const keys = ['schema', 'ready', 'components', 'engine', 'cost', 'operations'];
+  if (setupObject(v) && 'identity' in v) keys.push('identity');
+  const identity = setupObject(v) && 'identity' in v ? parseSetupIdentity(v.identity) : undefined;
+  if (identity === null) return null;
+  const skipped = identity?.selected === 'personal_login' && identity.app_choice === 'skip';
+  if (!setupObject(v) || !setupKeys(v, keys) || v.schema !== 'openwiz.setup.v1' || typeof v.ready !== 'boolean' || !Array.isArray(v.components) || v.components.length !== 7 || !Array.isArray(v.operations)) return null;
   if (v.engine !== 'unselected' && v.engine !== 'cloud' && v.engine !== 'local') return null;
   const components: SetupComponent[] = [];
   const seen = new Set<string>();
@@ -508,7 +526,7 @@ function parseSetupText(text: string): SetupView | null {
     if (state !== 'verified' && state !== 'missing' && state !== 'refused' && state !== 'unknown') return null;
     components.push({ id, state, reason: item.reason, next: item.next });
   }
-  if (v.ready && (v.engine === 'unselected' || components.some((component) => component.id !== 'remote_access' && component.state !== 'verified'))) return null;
+  if (v.ready && (v.engine === 'unselected' || components.some((component) => component.id !== 'remote_access' && !(skipped && component.id === 'github_app') && component.state !== 'verified'))) return null;
   const c = v.cost;
   if (!setupObject(c) || !setupKeys(c, ['provenance', 'credits', 'window_s', 'monthly_projection', 'free_allowance', 'reason']) || !setupText(c.reason) || !setupNumber(c.credits) || !setupNumber(c.window_s) || !setupNumber(c.monthly_projection) || !setupNumber(c.free_allowance)) return null;
   if (c.provenance !== 'unknown' && c.provenance !== 'measured' && c.provenance !== 'estimated') return null;
@@ -525,7 +543,9 @@ function parseSetupText(text: string): SetupView | null {
     if (effects.length === 0) return null;
     operations.push({ operation_id: op.operation_id, kind: op.kind, phase: op.phase, fingerprint: op.fingerprint, effects, reason: op.reason });
   }
-  return { schema: v.schema, ready: v.ready, components, engine: v.engine, cost: { provenance: c.provenance, credits: c.credits, window_s: c.window_s, monthly_projection: c.monthly_projection, free_allowance: c.free_allowance, reason: c.reason }, operations };
+  const view: SetupView = { schema: v.schema, ready: v.ready, components, engine: v.engine, cost: { provenance: c.provenance, credits: c.credits, window_s: c.window_s, monthly_projection: c.monthly_projection, free_allowance: c.free_allowance, reason: c.reason }, operations };
+  if (identity) view.identity = identity;
+  return view;
 }
 export function readSetup(fetchImpl: FetchLike, signal: AbortSignal): Promise<{ kind: 'ok'; envelope: SetupView } | Failure | 'stopped'> {
   return readText(fetchImpl, '/api/v1/setup', parseSetupText, signal);
