@@ -15,9 +15,11 @@ import json
 import math
 from pathlib import Path
 import sys
+import time
 from urllib.parse import quote
 
 HERE = Path(__file__).resolve().parent
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
 import bench  # noqa: E402  the bench's reader, checks and step table
 
@@ -210,7 +212,7 @@ def collect(since, until, out, workers=1, read=None, now=None):
         with ThreadPoolExecutor(max_workers=workers) as pool:
             heads = list(pool.map(lambda w: collect_head(w[0], w[1], read), work))
     window = {"schema": WINDOW_SCHEMA, "since": since, "until": until,
-              "collected_at": now or utc(__import__("time").time()),
+              "collected_at": now or utc(time.time()),
               "heads": heads, "groups": collect_groups(since, until, read)}
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     bench.write(out, json.dumps(window, indent=1, sort_keys=True) + "\n")
@@ -221,7 +223,7 @@ def collect(since, until, out, workers=1, read=None, now=None):
 # ---------------------------------------------------------------- measuring
 
 
-def check_result(run, job_name, collected_at):
+def check_result(run, job_name):
     """A required check's final result on one run: (outcome, end, attempt) or a missing reason."""
     if run is None:
         return None, "no run"
@@ -291,11 +293,11 @@ def split(path, total, table):
     return {"waiting": max(0, total - on_runner), "setup": setup, "running": running, "unclassified": unclassified}
 
 
-def result(item, start, table, collected_at):
+def result(item, start, table):
     """One head's (or group's) time to its result, or the reason it is missing."""
     checks, missing = {}, []
     for wf, name in sorted(REQUIRED.items()):
-        got, why = check_result(item["runs"].get(wf), name, collected_at)
+        got, why = check_result(item["runs"].get(wf), name)
         if got is None:
             missing.append(f"{name}: {why}")
         else:
@@ -326,8 +328,12 @@ def minutes(s):
 def summary(results):
     times = [r["seconds"] for r in results]
     counts = {k: sum(1 for r in results if r["outcome"] == k) for k in ("success", "failure", "cancelled", "other")}
+    by = {}
+    for k in ("success", "failure", "cancelled"):
+        t = [r["seconds"] for r in results if r["outcome"] == k]
+        by[k] = {"p50_minutes": minutes(rank(t, 0.5)), "p95_minutes": minutes(rank(t, 0.95))}
     return {"p50_minutes": minutes(rank(times, 0.5)), "p95_minutes": minutes(rank(times, 0.95)), "timed": len(times),
-            "outcomes": counts, "with_reruns": sum(1 for r in results if r["reruns"])}
+            "outcomes": counts, "by_outcome": by, "with_reruns": sum(1 for r in results if r["reruns"])}
 
 
 def buckets(results):
@@ -349,7 +355,51 @@ def read_window(path):
     bench.exact(w, {"schema", "since", "until", "collected_at", "heads", "groups"}, str(path))
     for k in ("since", "until", "collected_at"):
         as_time(w, k, str(path))
+    for i, h in enumerate(as_list(w["heads"], path)):
+        at = f"{path} head {i + 1}"
+        bench.exact(as_obj(h, at), {"pr", "sha", "pushed_at", "start", "fork", "runs"}, at)
+        as_int(h, "pr", at), as_str(h, "sha", at, null=True), as_time(h, "pushed_at", at, null=True)
+        as_time(h, "start", at)
+        if type(h["fork"]) is not bool:
+            raise Fail(f"{at}: fork must be true or false")
+        check_runs(h["runs"], at, allowed=set() if h["sha"] is None else set(REQUIRED))
+    for i, g in enumerate(as_list(w["groups"], path)):
+        at = f"{path} group {i + 1}"
+        bench.exact(as_obj(g, at), {"sha", "runs"}, at)
+        as_str(g, "sha", at)
+        check_runs(g["runs"], at, allowed=set(REQUIRED))
     return w
+
+
+def check_runs(runs, where, allowed):
+    """A head's or group's runs, in exactly the shape collect writes."""
+    bench.exact(as_obj(runs, where), allowed, where)
+    for wf, run in runs.items():
+        at = f"{where} {wf}"
+        if run is None:
+            continue
+        bench.exact(as_obj(run, at), {"id", "event", "created_at", "updated_at", "status", "conclusion", "attempts"}, at)
+        as_int(run, "id", at), as_str(run, "event", at), as_str(run, "status", at)
+        as_str(run, "conclusion", at, null=True), as_time(run, "created_at", at), as_time(run, "updated_at", at)
+        attempts = as_list(run["attempts"], at)
+        if not attempts:
+            raise Fail(f"{at}: a run with no attempts")
+        for k, a in enumerate(attempts, 1):
+            aat = f"{at} attempt {k}"
+            bench.exact(as_obj(a, aat), {"attempt", "jobs"}, aat)
+            if as_int(a, "attempt", aat) != k:
+                raise Fail(f"{aat}: attempts out of order")
+            for job in as_list(a["jobs"], aat):
+                jat = f"{aat} job"
+                bench.exact(as_obj(job, jat), {"id", "name", "conclusion", "created_at", "started_at", "completed_at",
+                                               "runner_name", "steps"}, jat)
+                as_int(job, "id", jat), as_str(job, "name", jat), as_time(job, "created_at", jat)
+                as_str(job, "conclusion", jat, null=True), as_str(job, "runner_name", jat, null=True)
+                as_time(job, "started_at", jat, null=True), as_time(job, "completed_at", jat, null=True)
+                for step in as_list(job["steps"], jat):
+                    bench.exact(as_obj(step, jat), {"name", "started_at", "completed_at"}, jat)
+                    as_str(step, "name", jat)
+                    as_time(step, "started_at", jat, null=True), as_time(step, "completed_at", jat, null=True)
 
 
 def measure(window, label=None, table=None):
@@ -363,7 +413,7 @@ def measure(window, label=None, table=None):
         if h["sha"] is None:
             got, why = None, "push time unknown"
         else:
-            got, why = result(h, h["start"], table, window["collected_at"])
+            got, why = result(h, h["start"], table)
         if got is None:
             missing.append({"pr": h["pr"], "head": h["sha"], "reason": why})
         else:
@@ -371,15 +421,15 @@ def measure(window, label=None, table=None):
     groups, group_missing = [], 0
     for g in window["groups"]:
         starts = [secs(r["created_at"]) for r in g["runs"].values() if r]
-        got, _ = result(g, utc(min(starts)), table, window["collected_at"]) if starts else (None, "no run")
+        got, _ = result(g, utc(min(starts)), table) if starts else (None, "no run")
         if got is None:
             group_missing += 1
         else:
             groups.append(got)
-    pr_runner = runner_seconds([h for h in window["heads"]])
+    pr_runner = runner_seconds(window["heads"])
     queue_runner = runner_seconds(window["groups"])
     days = (secs(until) - secs(since)) / 86400
-    record = {
+    return {
         "schema": SCHEMA, "measure": VERSION, "label": label, "since": since, "until": until,
         "collected_at": window["collected_at"], "required_checks": sorted(REQUIRED.values()),
         "heads": len(window["heads"]), "prs": len({h["pr"] for h in window["heads"]}),
@@ -390,7 +440,6 @@ def measure(window, label=None, table=None):
                            "total": minutes(pr_runner + queue_runner),
                            "per_day": minutes((pr_runner + queue_runner) / days)},
     }
-    return record
 
 
 def main(argv=None):

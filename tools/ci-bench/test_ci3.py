@@ -14,6 +14,7 @@ import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
 import ci3  # noqa: E402
 
@@ -39,6 +40,14 @@ class Measure(unittest.TestCase):
         self.assertEqual(r["timed"], 5)
         self.assertEqual(r["outcomes"], {"success": 3, "failure": 1, "cancelled": 1, "other": 0})
         self.assertEqual(r["with_reruns"], 1)
+
+    def test_fast_reds_show_beside_the_number(self):
+        # Bug: quick red heads (a draft fails at once) pull the number down
+        # unseen; each outcome's own times sit beside it.
+        by = ci3.measure(window())["result"]["by_outcome"]
+        self.assertEqual(by, {"success": {"p50_minutes": 20.0, "p95_minutes": 45.0},
+                              "failure": {"p50_minutes": 40.0, "p95_minutes": 40.0},
+                              "cancelled": {"p50_minutes": 3.0, "p95_minutes": 3.0}})
 
     def test_missing_results_are_listed_never_dropped(self):
         # Bug: a head with no final result silently leaves the cohort.
@@ -97,8 +106,25 @@ class Measure(unittest.TestCase):
         with self.assertRaises(ci3.Fail):
             ci3.measure(w)
 
+    def test_a_window_file_of_another_shape_is_refused(self):
+        # Bug: a hand-edited or truncated window file (a run without its
+        # attempts, an unknown field) is measured as if complete.
+        for edit in (lambda w: w["heads"][0]["runs"]["ci.yml"].pop("attempts"),
+                     lambda w: w["heads"][0].update(extra=1),
+                     lambda w: next(h for h in w["heads"] if h["pr"] == 103)["runs"]["ci.yml"]["attempts"].reverse(),
+                     lambda w: w["groups"][0]["runs"].pop("privacy.yml")):
+            w = window()
+            edit(w)
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "w.json"
+                path.write_text(json.dumps(w))
+                run = cli("measure", str(path))
+            self.assertEqual((run.returncode, run.stdout), (1, ""))
+            self.assertTrue(run.stderr.startswith("ci3: "), run.stderr)
+        self.assertEqual(ci3.read_window(WINDOW), window())
 
-SHA1, SHA2, SHA3 = "1" * 40, "2" * 40, "3" * 40
+
+SHA1, SHA2 = "1" * 40, "2" * 40
 
 
 def gh_job(i, name, created, started, completed, conclusion="success"):

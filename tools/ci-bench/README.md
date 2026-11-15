@@ -596,3 +596,30 @@ every cut references the same bill id, counted once. Never sum these shared
 bills or overlapping comparisons, or treat included/free capacity as a
 success-only cohort. Unknown cost stays a gap; actual whole-bill completeness,
 prices and any live speed/spend acceptance require C13's independent evidence.
+
+## CI3: the time to a PR's result (#781)
+
+CI3's one measure, defined in [`contracts/ci3.v1.md`](../../contracts/ci3.v1.md):
+from a PR head's push to the final result of every required check on it
+(`ci` and `privacy`), green or red, at p50 and p95, with the merge queue's
+result, runner minutes and the critical path's waiting, setup and running
+beside it. Its BEFORE record and every later point are in
+[`docs/ci3.md`](../../docs/ci3.md).
+
+```sh
+python3 tools/ci-bench/ci3.py collect --since T --until T --out WINDOW.json [--workers N]   # read-only, through bench.py's reader
+python3 tools/ci-bench/ci3.py measure WINDOW.json [--label TEXT]                          # offline: the record on stdout
+python3 -I tools/ci-bench/test_ci3.py                                                     # its tests: synthetic window, fake gh
+```
+
+`collect` reads GitHub only through `bench.py`'s `gh` and `pages` (`gh api
+<path>`, GET): pull requests into `main`, each branch's repository activity
+for the push times, each head's first `ci.yml` and `privacy.yml` run with every
+attempt's jobs, and the merge-group runs. It is a separate window file, not a
+second collector of the bench's `jobs.jsonl`: the bench reads only `ci.yml`'s
+latest attempts, and CI3 needs both required workflows, every attempt and the
+push. `measure` reads no clock and no network, so one window file always
+prints the same record. Window files hold run ids and job records: keep them
+private; the public record carries aggregates only. The fixture is
+[`fixtures/ci3/`](fixtures/ci3/README.md), synthetic, its numbers worked out by
+hand.
