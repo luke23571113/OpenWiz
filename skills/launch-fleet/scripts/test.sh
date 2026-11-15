@@ -29,7 +29,7 @@ HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 FLEET=${FLEET_SH:-$HERE/fleet.sh}
 FIX=$HERE/fixtures
 NOW=1793534400 # 2026-11-01T12:00:00Z, the fixtures' "now"
-CASES=784      # 770 existing cases, #2888 R1's 13 completion-request cases and E8's release tree
+CASES=785      # 770 existing cases, #2888 R1's 13 completion-request cases, E8's release tree and E5's private map
 fails=0
 cases=0
 ERR=''         # the exact stderr the next case expects, when not the points line
@@ -3313,6 +3313,32 @@ if [ -z "${TEST_ONLY:-}" ] || [ "$TEST_ONLY" = public-records ]; then
     else
       bad public-records 'thread-free records or routing failed'
       cat "$tmp/public-records.log"
+    fi
+  fi
+fi
+
+# E5 (#721 R1): the private map in the shape SKILL.md documents stays readable
+# by records.py: thread entries get synthetic thread ids, any other documented
+# entry a synthetic loop-shaped id, so a non-thread value there is caught.
+if [ -z "${TEST_ONLY:-}" ] || [ "$TEST_ONLY" = private-map ]; then
+  if take; then
+    cases=$((cases + 1))
+    if python3 -I - "$HERE/../SKILL.md" "$tmp/private-map.json" > "$tmp/private-map.log" 2>&1 <<'PY' \
+      && printf '{"specs":[],"singles":[]}' | LAUNCH_FLEET_STATE="$tmp/private-map.json" \
+        python3 -I "$HERE/records.py" synthetic-owner/synthetic-repo false >> "$tmp/private-map.log" 2>&1; then
+import json, re, sys
+text = open(sys.argv[1]).read()
+shape = re.search(r'Its shape is `(\{.*?\}\})`', text).group(1)
+state = json.loads(shape)
+state['repo'] = 'synthetic-owner/synthetic-repo'
+state['threads'] = {k: 'thr_synthetic' if v in ('<thread>', '<sender>', '<fleet>')
+                    else '00000000-0000-4000-8000-000000000010' for k, v in state['threads'].items()}
+json.dump(state, open(sys.argv[2], 'w'))
+PY
+      echo 'ok   private-map'
+    else
+      bad private-map "records.py can't read the private map SKILL.md documents"
+      cat "$tmp/private-map.log"
     fi
   fi
 fi
