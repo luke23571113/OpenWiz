@@ -51,7 +51,10 @@
        "prerequisite": "Selected CI bench points with their native windows (WR2 #2346)."},
       {"figure": "11", "title": "Main red time, steps and reruns", "charts": [], "providers": [],
        "caption": "History of red or unknown main, step splits, buckets, reruns and selector escapes.",
-       "prerequisite": "Selected CI history artifacts for main-red time, step splits, hourly and six-hour buckets, reruns and selector escapes, keeping CI2 and X10 cohorts apart; none are selected yet."}
+       "prerequisite": "Selected CI history artifacts for main-red time, step splits, hourly and six-hour buckets, reruns and selector escapes, keeping CI2 and X10 cohorts apart; none are selected yet."},
+      {"figure": "24", "title": "Latency maximum, splits and runner count", "charts": [], "providers": [],
+       "caption": "Worst-case latency, the waiting, setup and running split, and the runners behind capacity.",
+       "prerequisite": "The CI bench point already carries the latency maximum, the waiting, setup and running split and the runner count, but the War room's CI bench projection (sources.py) keeps only merges, merges per hour, capacity, robot minutes, median and p90; showing them needs that projection to select them."}
     ]},
     {"number": "04", "title": "Usage & cost", "figures": [
       {"figure": "12", "title": "Daily factory usage", "charts": ["body-factory-metrics-*"], "providers": ["factory_metrics"],
@@ -116,10 +119,10 @@
     {"section": "03", "measure": "Current main result", "figures": ["08"]},
     {"section": "03", "measure": "Queue and running counts and waits by pool", "figures": ["09"]},
     {"section": "03", "measure": "Historical main red and unknown time", "figures": ["11"]},
-    {"section": "03", "measure": "Latency median, p90 and max", "figures": ["00c", "10"]},
-    {"section": "03", "measure": "Wait, setup and run splits, and step splits", "figures": ["10", "11"]},
+    {"section": "03", "measure": "Latency median, p90 and max", "figures": ["00c", "10", "24"]},
+    {"section": "03", "measure": "Wait, setup and run splits, and step splits", "figures": ["24", "11"]},
     {"section": "03", "measure": "Runner and billed minutes by kind", "figures": ["00d", "10"]},
-    {"section": "03", "measure": "Capacity with its runner assumption", "figures": ["10"]},
+    {"section": "03", "measure": "Capacity with its runner assumption", "figures": ["10", "24"]},
     {"section": "03", "measure": "Estimates versus billing", "figures": ["10", "14"]},
     {"section": "03", "measure": "Hourly and six-hour buckets, reruns and selector escapes", "figures": ["11"]},
     {"section": "03", "measure": "CI2 required-result and X10 cohorts kept apart", "figures": ["11"]},

@@ -80,7 +80,7 @@ CSS = (
     'details{margin:8px 0 0;font-size:12px}summary{cursor:pointer;color:var(--blue);text-transform:uppercase;'
     'letter-spacing:.06em}'
     'table{border-collapse:collapse;width:100%;margin:6px 0}th,td{border-top:1px solid var(--line);padding:3px 6px;'
-    'text-align:left;vertical-align:top;overflow-wrap:anywhere}td+td,th+th{white-space:nowrap;width:1%}'
+    'text-align:left;vertical-align:top;overflow-wrap:anywhere}table.values td+td,table.values th+th{white-space:nowrap;width:1%}'
     '.section{border-bottom:2px solid var(--rule);padding:22px 0 18px}'
     'h2{font-size:64px;margin:0 0 16px}'
     '.figs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}'
@@ -219,14 +219,39 @@ def _unit(f):
     return 'state' if f['unit'] is None else f['unit'].replace('_', ' ')
 
 
-def meta_html(f):
+def periods(f, record):
+    """The chart's own window, or else (#759 R3) the periods of the values it plots, read from the
+    record: each metric's window, or a point observation's read time. Distinct periods stay apart;
+    a value with no period says so."""
+    if f['window'] is not None:
+        return [_pst_days(f['window'])]
+    found = {(p['slot'], m['id']): m for p in record['providers'] for m in p['metrics']}
+    found.update({(p['slot'], o['id']): o for p in suite.health(record) for o in p['observations']})
+    out = []
+    for src in f['sources']:
+        m = found.get((src['slot'], src['metric']))
+        if m is None:
+            continue
+        if m.get('window'):
+            out.append(_pst_days(m['window']))
+        elif m.get('point'):
+            out.append('read at ' + m['point'])
+        else:
+            out.append('no period, observed ' + (m.get('observed_at') or 'Unknown'))
+    plotted = {src['metric'] for src in f['sources']}
+    if any(r['key'] not in plotted for r in f['rows']):
+        out.append('some values have no source period')
+    return list(dict.fromkeys(out)) or ['latest sample ' + record['sample_at']]
+
+
+def meta_html(f, record):
     """The facts that qualify a chart, visible by default and in every picture: unit, dates,
     coverage, missing points and gaps. Never folded into a disclosure."""
     cov = f['coverage']
     coverage = f"coverage {cov['observed']} of {'Unknown' if cov['expected'] is None else cov['expected']}"
     missing = f" · missing {', '.join(cov['missing'])}" if cov['missing'] else ''
     nulls = ' · ∅ no sample or Unknown' if any(r['y'] is None for r in f['rows']) else ''
-    return (f'<p class="meta">{esc(_unit(f))} · {esc(_pst_days(f["window"]))} · {esc(coverage + missing + nulls)}'
+    return (f'<p class="meta">{esc(_unit(f))} · {esc("; ".join(periods(f, record)))} · {esc(coverage + missing + nulls)}'
             + ''.join(f'<span class="gap">{esc(g)}</span>' for g in f['gaps']) + '</p>')
 
 
@@ -346,7 +371,7 @@ def card_html(card, f, record):
     if f is None:
         body = f'<p class="need"><b>Unavailable</b> {esc(NO_BUILD)}</p>'
     else:
-        body = f'<div class="chart" id="figure-{esc(f["id"])}">{f["svg"]}</div>' + meta_html(f)
+        body = f'<div class="chart" id="figure-{esc(f["id"])}">{f["svg"]}</div>' + meta_html(f, record)
     inner = (values_html(f) if f is not None else '') + source_note(card['providers'])
     return (f'<figure class="fig card" id="fig-{esc(card["figure"])}" aria-labelledby="t-{esc(card["figure"])}">'
             f'<h3 id="t-{esc(card["figure"])}"><span class="no">Fig. {esc(card["figure"])}</span> / {esc(card["title"])}</h3>'
@@ -361,7 +386,7 @@ def body_figure_html(entry, charts, record):
             f'<h3 id="t-{esc(number)}">Fig. {esc(number)} / {esc(entry["title"])}</h3>')
     if charts:
         panels = ''.join(f'<div class="panel" id="figure-{esc(f["id"])}"><h4>{esc(f["title"])}</h4>'
-                         f'<div class="chart">{f["svg"]}</div>{meta_html(f)}</div>' for f in charts)
+                         f'<div class="chart">{f["svg"]}</div>{meta_html(f, record)}</div>' for f in charts)
         body = f'<div class="panels">{panels}</div>'
     else:
         body = f'<p class="need"><b>Unavailable · needs</b> {esc(entry["prerequisite"])}</p>'

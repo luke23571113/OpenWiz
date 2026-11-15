@@ -156,10 +156,35 @@ function key(fig, base) {
   const keyed = fig.series.filter((s) => s.key !== 'missing');
   if (keyed.length < 2 || !['daily-line', 'limits', 'spans'].includes(fig.kind)) return { extra: 0, marks: [] };
   const items = keyed.map((s, i) => ({ i, text: `${GLYPH[palette.marks[s.role].symbol]} ${s.label}`, fill: palette.roles[s.role] }));
+  if (card(fig)) return cardKey(items, base);
   return {
     extra: 15 * items.length,
     marks: items.map((d) => Plot.text([d], { frameAnchor: 'bottom-left', textAnchor: 'start', dx: -30, dy: base + 15 * d.i, text: 'text', fill: 'fill', fontSize: FONT - 1 })),
   };
+}
+
+// A headline card's key (WRD3): each label wrapped at word breaks to the card's width, one line
+// per 13 px, and the key's whole height reserved, so no label is cut off at 260 units (#759 R1).
+const CARD_KEY_CHARS = 34;
+function wrap(text) {
+  const lines = [];
+  for (const word of text.split(' ')) {
+    const last = lines.length - 1;
+    if (last >= 0 && (lines[last] + ' ' + word).length <= CARD_KEY_CHARS) lines[last] += ' ' + word;
+    else lines.push(word);
+  }
+  return lines;
+}
+function cardKey(items, base) {
+  let offset = 0;
+  const marks = items.map((d) => {
+    const lines = wrap(d.text);
+    const mark = Plot.text([d], { frameAnchor: 'bottom-left', textAnchor: 'start', lineAnchor: 'top', dx: -30, dy: base - 6 + offset,
+      text: () => lines.join('\n'), lineHeight: 13 / (FONT - 1), fill: 'fill', fontSize: FONT - 1 });
+    offset += 13 * lines.length + 2;
+    return mark;
+  });
+  return { extra: offset, marks };
 }
 
 function figureSvg(fig, document) {
