@@ -1202,6 +1202,20 @@ class Candidate(World):
         self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])  # never a second push
         self.assertEqual(self.record()['publication']['status'], 'complete')
 
+    def test_rl6_a_next_day_resume_after_a_lost_tag_push_refuses_before_creating_the_release(self):
+        # catches PR #746 R1: the publication-date guard ran only on a fresh attempt,
+        # so resuming the next day created the release with yesterday's dates.
+        self.curate(CURATED)
+        self.ready()
+        self.after_push('    sys.exit(42)')
+        self.assertEqual(self.publish(TODAY='2026-11-20')[0], 1)
+        self.assertEqual(self.writes(), ['tag', 'tag-push'])
+        self.assertEqual(self.blocked(self.publish(TODAY='2026-11-21'), 'changelog_date')['reasons'], ['changelog_date'])
+        self.assertEqual(self.writes(), ['tag', 'tag-push'])  # no release, and never a second push
+        code, out = self.publish(TODAY='2026-11-20')
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
+
     def test_r7_a_lost_release_response_settles_published_on_the_first_recovery(self):
         self.ready()
         # The reviewer's R7 probe: the release is created remotely, then its response is lost.
