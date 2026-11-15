@@ -123,6 +123,10 @@ def main_ci_provider(at, status='completed', conclusion='success'):
     return provider
 
 
+HELD_A = 'builder_start:p4403:' + '3c' * 20 + ':2030-01-08t08:50:00z'
+HELD_B = 'builder_start:p4404:' + '4d' * 20 + ':2030-01-08t08:55:00z'
+
+
 def stage_health_provider():
     """WRD1's own observation shapes: a loaded limit, a known wait, an open wait and a held one."""
     read = {'started_at': '2030-01-08T09:20:00Z', 'ended_at': '2030-01-08T09:21:00Z'}
@@ -146,8 +150,10 @@ def stage_health_provider():
                                 cohort='tl1-limits', identity={'stage': 'builder_start'}, limit=limit),
              wait('w1', 'not_missed', 'known', 12),
              wait('w2', 'missed', 'partial', 45, ['Open at the TL2 read: a lower bound.']),
-             wait('w3', 'gated', 'partial', None, ['TL2 gated: held.']),
-             wait('w4', 'gated', 'partial', None, ['TL2 gated: held.'])]
+             # Two held waits with native TL2 interval keys (stage:pull:head:start, lowercased):
+             # their starts differ, but the last ':' segment of both is '00z' (R3, re-check).
+             wait(HELD_A, 'gated', 'partial', None, ['TL2 gated: held.']),
+             wait(HELD_B, 'gated', 'partial', None, ['TL2 gated: held.'])]
     return health.provider('stage_health', items, ['Synthetic stage history.'])
 
 
@@ -317,7 +323,8 @@ class Charts(unittest.TestCase):
         # catches: a v1 sample's missing health read as a green main CI, a provider left
         # out of the readiness inventory, an open wait shown as complete or a held wait as
         # zero, a limits figure the renderer cannot draw, or two held waits on one stage
-        # sharing a label so the whole build refuses (R3).
+        # sharing a label so the whole build refuses (R3), including native timestamped
+        # interval ids whose last segment collides (R3 re-check: both end in '00z').
         ready = figure(self.bundle, 'body-readiness')
         self.assertEqual(len(ready['rows']), 20)
         main_ci = figure(self.bundle, 'body-main-ci')
@@ -327,8 +334,12 @@ class Charts(unittest.TestCase):
         stage = figure(self.bundle, 'body-stage-health')
         rows = {r['key']: (r['series'], r['y'], r['state']) for r in stage['rows']}
         self.assertEqual(rows, {'limit:builder_start': ('limit', 30, 'known'), 'wait:w1': ('wait', 12, 'known'),
-                                'wait:w2': ('wait', 45, 'partial'), 'wait:w3': ('wait', None, 'partial'),
-                                'wait:w4': ('wait', None, 'partial')})
+                                'wait:w2': ('wait', 45, 'partial'), 'wait:' + HELD_A: ('wait', None, 'partial'),
+                                'wait:' + HELD_B: ('wait', None, 'partial')})
+        # Each held wait's label names its whole interval identity, so neither can be mistaken.
+        labels = {r['key']: r['label'] for r in stage['rows']}
+        self.assertIn(HELD_A, labels['wait:' + HELD_A])
+        self.assertIn(HELD_B, labels['wait:' + HELD_B])
         self.assertIn('at least 45 min', next(r['label'] for r in stage['rows'] if r['key'] == 'wait:w2'))
         with tempfile.TemporaryDirectory() as d:
             old = World(d)
