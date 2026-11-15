@@ -43,7 +43,11 @@ impl Installed {
             }
         }
         let gh = root.join("bin/gh");
-        fs::copy(Path::new(ROOT).join("tools/install/tests/init/fake_gh.py"), &gh).unwrap();
+        fs::copy(
+            Path::new(ROOT).join("tools/install/tests/init/fake_gh.py"),
+            &gh,
+        )
+        .unwrap();
         fs::set_permissions(&gh, fs::Permissions::from_mode(0o700)).unwrap();
         let world = serde_json::json!({"user":{"login":"synthetic-owner","type":"User"},"faults":[],"log":[],
             "repos":{"synthetic-owner/synthetic-app":{"full_name":"synthetic-owner/synthetic-app","private":true,
@@ -58,7 +62,10 @@ impl Installed {
         Command::new(self.root.join("openwiz"))
             .args(args)
             .env_clear()
-            .env("PATH", format!("{}:/usr/bin:/bin", self.root.join("bin").display()))
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin", self.root.join("bin").display()),
+            )
             .env("HOME", self.root.join("home"))
             .env("OPENWIZ_STATE_DIR", self.root.join("state"))
             .env("FAKE_GH_WORLD", self.root.join("world.json"))
@@ -131,7 +138,12 @@ fn installed_init_previews_and_applies_through_the_packaged_runtime() {
 #[test]
 fn installed_init_refuses_without_its_runtime_and_on_bad_arguments() {
     let bare = Installed::new("bare", false);
-    let out = bare.run(&["init", "--repository", "synthetic-owner/synthetic-app", "--json"]);
+    let out = bare.run(&[
+        "init",
+        "--repository",
+        "synthetic-owner/synthetic-app",
+        "--json",
+    ]);
     assert_eq!(out.status.code(), Some(1));
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(report["schema"], "openwiz.cli-error.v1");
@@ -167,7 +179,12 @@ fn init_help_is_source_free_and_listed_in_agent_discovery() {
     assert_eq!(out.status.code(), Some(0));
     let help: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(help["schema"], "openwiz.cli-help.v1");
-    assert!(help["text"].as_str().unwrap().contains("no placement question"));
+    assert!(
+        help["text"]
+            .as_str()
+            .unwrap()
+            .contains("no placement question")
+    );
     let out = bare.run(&["help", "--agent"]);
     let catalogue: Value = serde_json::from_slice(&out.stdout).unwrap();
     let names: Vec<_> = catalogue["commands"]

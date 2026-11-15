@@ -76,7 +76,9 @@ pub fn run(args: &[OsString], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         let _ = writeln!(
             err,
             "openwiz: {}",
-            report["error"]["message"].as_str().unwrap_or("Init failed.")
+            report["error"]["message"]
+                .as_str()
+                .unwrap_or("Init failed.")
         );
         return code;
     }

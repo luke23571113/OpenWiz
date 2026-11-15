@@ -613,14 +613,20 @@ mod tests {
             write(&dir.0, &with(companion), 0o600);
             read(&dir.0).unwrap().unwrap().brain.unwrap()
         };
-        assert_eq!(value.brain_repository, "synthetic-owner/synthetic-app-brain");
+        assert_eq!(
+            value.brain_repository,
+            "synthetic-owner/synthetic-app-brain"
+        );
         for bad in [
             companion.replace(
                 r#""brain_repository":"synthetic-owner/synthetic-app-brain""#,
                 r#""brain_repository":"Synthetic-Owner/Synthetic-App""#,
             ),
             companion.replace(r#"{"known":"private"}"#, r#"{"known":"public"}"#),
-            companion.replace(r#""code_visibility":"public""#, r#""code_visibility":"private""#),
+            companion.replace(
+                r#""code_visibility":"public""#,
+                r#""code_visibility":"private""#,
+            ),
             companion.replace(r#""name":"synthetic-app-brain""#, r#""name":"other""#),
             in_repository.replace(
                 r#""brain_repository":"synthetic-owner/synthetic-app""#,
@@ -628,7 +634,10 @@ mod tests {
             ),
             in_repository.replace(r#","decision_repositories":null"#, ""),
             in_repository.replace(r#""folder":".openwiz/brain""#, r#""folder":"brain""#),
-            companion.replace(r#""setting":"brain_location""#, r#""setting":"brain_location","token":"x""#),
+            companion.replace(
+                r#""setting":"brain_location""#,
+                r#""setting":"brain_location","token":"x""#,
+            ),
         ] {
             write(&dir.0, &with(&bad), 0o600);
             assert!(read(&dir.0).is_err(), "{bad}");
