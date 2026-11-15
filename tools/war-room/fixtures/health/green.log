@@ -1,32 +1,47 @@
-# WRD1 (#629) scoped checks on OpenWiz at c8b08a20cbe37b3d8854d82d95b53c6b56b61fde (tree b53ee7b248b886334fd18483c996d86611e52ed8), base 0b10d1d
+# #629 scoped checks on OpenWiz at 5f88b8080d4861a3873998a3f11f788182b233d0 (tree e2f74695a139af6d977d8c802357139d343d3b47), base 0b10d1d
 $ python3 -I tools/open-import/guard.py --base=<merge-base with origin/main> --head=HEAD
 carriage guard: all 10 added paths are classified
+$ grep -n "private/" tools/war-room/*.py (non-test modules)
+none
 $ python3 -I tools/open-import/test_guard.py
-Ran 11 tests in 1.244s
+Ran 11 tests in 1.356s
 OK
 $ python3 -I tools/open-import/test_import.py
-Ran 24 tests in 27.329s
+Ran 24 tests in 28.351s
 OK
 $ python3 -I tools/war-room/test_health.py
-Ran 22 tests in 8.891s
+Ran 22 tests in 9.053s
 OK
 $ python3 -I tools/war-room/test_contract.py
 Ran 19 tests in 0.090s
 OK
+$ python3 -I tools/war-room/test_gather.py
+Ran 18 tests in 44.194s
+OK
+$ python3 -I tools/war-room/test_page_history.py
+Ran 18 tests in 0.892s
+OK
 $ python3 -I tools/war-room/test_publish.py
-Ran 14 tests in 9.255s
+Ran 14 tests in 9.085s
 OK
 $ python3 -I tools/war-room/test_stage_waits.py
-Ran 11 tests in 2.369s
+Ran 11 tests in 2.343s
 OK
 $ python3 -I tools/war-room/test_weekly.py
-Ran 23 tests in 105.306s
+Ran 23 tests in 105.036s
 OK
-$ python3 -I tools/war-room/test_gather.py
-Ran 13 tests in 3.189s
-FAILED (errors=18)
-$ python3 -I tools/war-room/test_page_history.py
-Ran 18 tests in 0.645s
-FAILED (failures=1, errors=2)
-# test_gather.py and test_page_history.py fail identically on OpenWiz main 0b10d1d (14 errors; 1 failure, 2 errors):
-# every error is FileNotFoundError for private/orchestration/board/board.py, which the public repository does not carry.
+$ python3 -I tools/war-room/test_activity.py
+Ran 14 tests in 4.646s
+OK
+$ python3 -I tools/war-room/test_cost.py
+Ran 16 tests in 1.003s
+OK
+$ python3 -I tools/war-room/test_answer_time.py
+Ran 10 tests in 0.185s
+OK
+$ python3 -I tools/war-room/test_rework.py
+Ran 8 tests in 0.192s
+OK
+$ python3 -I tools/war-room/test_review_loops.py
+Ran 30 tests in 6.464s
+OK
