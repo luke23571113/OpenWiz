@@ -192,24 +192,54 @@ def check_grant(grant, envelope, intent, snapshot, sources, assessment, changes,
     return result
 
 
-def read_sources(rows, repository, subject=None):
+LOGIN = re.compile(r'[A-Za-z0-9](?:-?[A-Za-z0-9])*(?:\[bot\])?')
+
+
+def record_authors(fleet_md):
+    """#641: the factory's record authors, from the project's docs/agents/fleet.md.
+
+    The one place that names them is the "Record authors" row of its
+    "## GitHub identity" table, as fleet.sh reads it. Returns lowercase logins;
+    no row, an empty row or a malformed login refuses (ValueError).
+    """
+    section, rows = None, []
+    for line in fleet_md.splitlines():
+        if line.startswith('## '):
+            section = line
+        elif section == '## GitHub identity' and re.match(r'\| *Record authors *\|', line):
+            rows.append(line)
+    cells = rows[0].split('|') if len(rows) == 1 else []
+    logins = re.findall(r'`([^`]*)`', cells[2]) if len(cells) == 4 else []
+    require(logins and all(LOGIN.fullmatch(x) for x in logins), 'docs/agents/fleet.md names no record authors')
+    return frozenset(x.lower() for x in logins)
+
+
+def authored(author, authors):
+    """True only for a login among the record authors; a missing author is nobody's."""
+    return type(author) is str and author.lower() in authors
+
+
+def read_sources(rows, repository, subject=None, authors=frozenset()):
     """Read normalized GitHub metadata from the existing authenticated collector.
 
     Times are source milliseconds. Container metadata is supplied independently
     of the JSON body. An edited record, failed page or duplicate identity is a
     gap. Ordinary comments confer no authority and need no grant assessment.
+    A comment whose author (its GitHub login, or None) is not one of
+    `authors` (record_authors) is an ordinary comment, whatever it says (#641).
     """
     require(type(rows) is list, 'partial comment page')
     result, comments, ids, sequences = [], set(), set(), set()
     for row in rows:
-        require(type(row) is dict and set(row) == {'id', 'created_at', 'updated_at', 'repository', 'subject', 'body'},
+        require(type(row) is dict
+                and set(row) == {'id', 'created_at', 'updated_at', 'repository', 'subject', 'author', 'body'},
                 'incomplete comment metadata')
         require(type(row['id']) is int and row['id'] > 0 and row['id'] not in comments, 'duplicate source comment')
         comments.add(row['id'])
         require(row['repository'] == repository and (subject is None or row['subject'] == dict(zip(('kind', 'number'), subject))),
                 'wrong source repository or container')
         require(type(row['body']) is str, 'unread comment')
-        if 'openwiz.ops-dispatch.' not in row['body']:
+        if 'openwiz.ops-dispatch.' not in row['body'] or not authored(row['author'], authors):
             continue
         record = protocol.read_comment(row['body'], (repository, row['subject']['kind'], row['subject']['number']))
         require(type(row['created_at']) is int and type(row['updated_at']) is int
@@ -224,7 +254,7 @@ def read_sources(rows, repository, subject=None):
     return sorted(result, key=lambda pair: (pair[0]['created_at'], pair[0]['id']))
 
 
-def collect(fetch_page, repository, subject, page_budget=100):
+def collect(fetch_page, repository, subject, page_budget=100, authors=frozenset()):
     """Finite adapter over the existing collector: (normalized rows, has_next).
 
     has_next comes from verified pagination metadata, not a record's claim of
@@ -237,7 +267,7 @@ def collect(fetch_page, repository, subject, page_budget=100):
         require(type(batch) is list and type(more) is bool, 'unread pagination')
         rows.extend(batch)
         if not more:
-            read_sources(rows, repository, subject)
+            read_sources(rows, repository, subject, authors)
             return rows
     raise ValueError('page budget exhausted; retain cursor and reconcile')
 
@@ -248,7 +278,7 @@ def position(cursor):
     return cursor['created_at'], cursor['comment']
 
 
-def audit(template, records, assessments):
+def audit(template, records, assessments, authors=frozenset()):
     """Retrospective replay. Assessments are the auditor's independently read
     evidence, per source decision: {valid: bool|null, final_diff_digest: str|null}.
     Missing assessment prevents advancement; null validity escalates. The helper
@@ -257,7 +287,7 @@ def audit(template, records, assessments):
     checked(template, 'audit')
     start, end = position(template['start']), position(template['end'])
     require(start <= end and template['rule']['name'] == 'audit', 'backwards cursor or wrong audit rule')
-    parsed = read_sources(records, template['repository'])
+    parsed = read_sources(records, template['repository'], authors=authors)
     require(type(assessments) is dict, 'unread assessments')
     intents, decisions, entries = {}, set(), []
     complete = template['complete']

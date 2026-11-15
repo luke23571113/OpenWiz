@@ -84,6 +84,13 @@ def fail(msg):
 FACTORY = 'synthetic-factory[bot]'
 
 
+# Why an issue was closed, as GraphQL spells it (REST: lowercase): a world's
+# "stateReason", else completed for a closed issue.
+def state_reason(i, spell):
+    reason = i.get('stateReason', 'COMPLETED' if get(i, 'state') == 'CLOSED' else None)
+    return None if reason is None else spell(reason)
+
+
 def author(c):
     login = c.get('author', FACTORY) if isinstance(c, dict) else FACTORY
     return None if login is None else {'login': login, 'type': 'Bot' if login.endswith('[bot]') else 'User'}
@@ -565,7 +572,7 @@ def graphql(w, repo, o, ids, page, answer):
                     t['parent'] = None if get(i, 'parent') is None else {'number': get(i, 'parent')}
                     t['subIssuesSummary'] = {'total': subs_total(get(i, 'number'))}
                     if op == 'Blockers':
-                        t['stateReason'] = i.get('stateReason', 'COMPLETED' if get(i, 'state') == 'CLOSED' else None)
+                        t['stateReason'] = state_reason(i, lambda r: r)
                     nodes.append(t)
         out = {'data': {'nodes': nodes}}
     elif op == 'Specs':
@@ -636,7 +643,7 @@ def graphql(w, repo, o, ids, page, answer):
         data[k] = v
     if op == 'Blockers':
         nodes = [{'id': sha_text(get(t, 'number')), 'number': get(t, 'number'),
-                  'repository': {'nameWithOwner': w['repo']}, 'labels': t['labels'],
+                  'repository': {'nameWithOwner': w['repo']}, 'labels': t['labels'], 'stateReason': t['stateReason'],
                   'closedByPullRequestsReferences': {'nodes': [
                       {'number': get(p, 'number'), 'merged': get(p, 'merged'), 'baseRefName': get(p, 'baseRefName')}
                       for p in t['closedByPullRequestsReferences']['nodes']]}} for t in data['nodes']]
@@ -921,6 +928,7 @@ def rest_read(w, repo, path, page, paginate, include, accept, answer, out):
         if found:
             i = found[0]
             v = {'number': get(i, 'number'), 'title': get(i, 'title'), 'state': ascii_downcase(get(i, 'state')),
+                 'state_reason': state_reason(i, ascii_downcase),
                  'body': alt(get(i, 'body'), ''), 'updated_at': updated(i),
                  'labels': [{'name': l} for l in each_opt(get(i, 'labels'))]}
         else:

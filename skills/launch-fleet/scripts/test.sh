@@ -1932,12 +1932,17 @@ expect 'record authors: the owner account starting record is a claim' 0 check.js
 go #13
 EOF
 expect 'record authors: claim refuses an outsider claim' 2 check.json "$HUMAN12 | by(13; 1301; \"11:58\"; outsider; \"launch-fleet: starting\")" -- claim 13 1301 <<EOF
-fleet.sh: comment 1301 on #13 is not a "launch-fleet: starting" claim
+fleet.sh: can't find comment 1301 on #13
 EOF
-expect 'record authors: an outsider APPROVE does not merge' 0 check.json 'reviewing31 | pr_by(31; 3102; "11:30"; outsider; "VERDICT: APPROVE at \(sha(31))")' -- check < /dev/null
-expect 'record authors: a CHANGES with no author sends no findings' 0 check.json 'reviewing31 | pr_by(31; 3102; "11:30"; null; "VERDICT: CHANGES at \(sha(31))")' -- check < /dev/null
+NO_VERDICT31="check review #31 for #12 at $S31: no verdict 30 minutes after \"review started $S31, thread thr_synrev31\"; read thread thr_synrev31 and tell it again (its record: comment 3101)"
+expect 'record authors: an outsider APPROVE does not merge' 0 check.json 'reviewing31 | pr_by(31; 3102; "11:30"; outsider; "VERDICT: APPROVE at \(sha(31))")' -- check <<EOF
+$NO_VERDICT31
+EOF
+expect 'record authors: a CHANGES with no author sends no findings' 0 check.json 'reviewing31 | pr_by(31; 3102; "11:30"; null; "VERDICT: CHANGES at \(sha(31))")' -- check <<EOF
+$NO_VERDICT31
+EOF
 expect 'record authors: an outsider review started record starts no review span' 0 check.json 'pr31 | pr_by(31; 3101; "11:10"; outsider; "launch-fleet: review started \(sha(31)), thread thr_synrev31")' -- check <<EOF
-review #31 for #12 at $S31: start a reviewer
+review #31 for #12 at $S31: first review
 EOF
 expect 'record authors: an outsider plan approval approves nothing' 0 check.json "$HUMAN12 | issue(10; .comments |= map(.author = outsider))" -- spec 10 < /dev/null
 expect 'record authors: an outsider approval on its own starts nothing' 0 check.json 'own_approval(70; 7002; "09:00") | issue(70; .comments[-1].author = outsider)' -- check < /dev/null

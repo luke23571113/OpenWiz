@@ -89,6 +89,14 @@ def message(view, destination, assignment, prior_verdict, head, evidence, prefix
     return 'record', _record(intent)
 
 
+def _authored(items, view):
+    """#641: only the factory's own comments: each item's author must be one of
+    view['authors'] (lowercase logins, as grants.record_authors reads them).
+    A missing author, or a view with no authors, trusts nobody."""
+    authors = view.get('authors', frozenset())
+    return [i for i in items if type(i.get('author')) is str and i['author'].lower() in authors]
+
+
 def spans(records):
     """The reviewer span from public launch-fleet PR records, as records.py reads them.
 
@@ -129,22 +137,24 @@ def recheck(view):
     """AC1: one recheck to the recorded reviewer for a new green head after its verdict.
 
     view: repository, spec, ticket, pull_request, approval (current), rule,
-    complete, head, ci {head, state}, records [{comment, line}] (public
-    launch-fleet PR records), verdicts [{comment, verdict, head}] (VERDICT
-    comments), intents (read-back ops intents of the ticket), now (ms).
+    complete, head, ci {head, state}, records [{comment, author, line}] (public
+    launch-fleet PR records), verdicts [{comment, author, verdict, head}] (VERDICT
+    comments), authors (the record authors), intents (read-back ops intents of
+    the ticket), now (ms). A record or verdict by anyone else is ignored.
     Returns ('record', intent), ('duplicate', intent), ('none', why) or
     ('refused', why). Keyed by PR, head, prior verdict and assignment.
     """
     if not view['complete']:
         return 'refused', 'incomplete read'
-    span = spans(view['records'])
+    span = spans(_authored(view['records'], view))
     if span is None:
         return 'refused', 'ambiguous reviewer'
     if not span['open']:
         return 'refused', 'reviewer retired'
-    if not view['verdicts']:
+    verdicts = _authored(view['verdicts'], view)
+    if not verdicts:
         return 'none', 'no verdict'
-    verdict = max(view['verdicts'], key=lambda v: v['comment'])  # older verdicts are superseded
+    verdict = max(verdicts, key=lambda v: v['comment'])  # older verdicts are superseded
     if verdict['comment'] < span['start']:
         return 'none', 'verdict precedes the current reviewer span'
     if verdict['head'] == view['head']:
@@ -165,9 +175,10 @@ def findings(view):
     """Findings to the builder: the latest CHANGES at the current head, keyed apart from rechecks."""
     if not view['complete']:
         return 'refused', 'incomplete read'
-    if not view['verdicts']:
+    verdicts = _authored(view['verdicts'], view)
+    if not verdicts:
         return 'none', 'no verdict'
-    verdict = max(view['verdicts'], key=lambda v: v['comment'])
+    verdict = max(verdicts, key=lambda v: v['comment'])
     if verdict['verdict'] != 'CHANGES' or verdict['head'] != view['head']:
         return 'none', 'no CHANGES at the head'
     try:
@@ -224,7 +235,7 @@ def pull(view, recipient, assignment, own):
             return stop
         intents = [r for r in records if r['kind'] == 'intent']
         _sequences(intents, view)
-        latest = max((v['comment'] for v in view['verdicts']), default=None)
+        latest = max((v['comment'] for v in _authored(view['verdicts'], view)), default=None)
     except (KeyError, TypeError, ValueError):
         return stop
     verified = own | set(view['verified_acks'])

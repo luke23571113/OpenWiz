@@ -243,7 +243,7 @@ query() {
     Blockers) printf '%s\n' 'query Blockers($ids: [ID!]!) {
   rateLimit { cost remaining limit resetAt }
   nodes(ids: $ids) { ... on Issue {
-    id number repository { nameWithOwner }
+    id number stateReason repository { nameWithOwner }
     labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
     closedByPullRequestsReferences(first: 5, includeClosedPrs: true) { nodes { number merged baseRefName } }
   } }
@@ -634,6 +634,13 @@ parallel_reads() (
   [ "$failed" = 0 ]
 )
 
+# #641: the comments the factory wrote, by the record authors settings() read
+# (in $TMP/authors.json, passed as $a). GitHub's login is case-insensitive. A
+# comment by anyone else, or with no readable author, is dropped here, at each
+# read, so no record reader ever sees it: fail closed.
+AUTHORED='def authored($a): map(select(((.user | if type == "object" then .login else null end)
+  | if type == "string" then ascii_downcase else null end) as $l | $l != null and any($a[]; . == $l)));'
+
 # Ordinary issue fields and comments have REST equivalents. PR metadata
 # stays with its head and combined CI rollup in GraphQL. Closing relationships
 # and labelled-event selection also stay there: REST references/check lists
@@ -646,12 +653,12 @@ comment_facts() (
   # GraphQL window, and never interpret a partially read history as facts.
   # The existing incomplete-history guard prints look for this item alone.
   if rest_pages "repos/$REPO/issues/$n/comments?per_page=100" "$TMP/comments-$n.raw" 2> /dev/null \
-    && jq -se 'select(length > 0 and all(.[]; type == "array")) | add
+    && jq -se --slurpfile a "$TMP/authors.json" "$AUTHORED"'select(length > 0 and all(.[]; type == "array")) | add
       | select(all(.[]; type == "object" and (.id | type) == "number"
           and (.body | type) == "string" and (.created_at | type) == "string"
           and (.updated_at | type) == "string"))
       | {pageInfo: {hasPreviousPage: false},
-         nodes: map({databaseId: .id, createdAt: .created_at, updatedAt: .updated_at, body})}' \
+         nodes: (authored($a[0]) | map({databaseId: .id, createdAt: .created_at, updatedAt: .updated_at, body}))}' \
       "$TMP/comments-$n.raw" > "$TMP/comments-$n.json" 2> /dev/null; then
     exit 0
   fi
@@ -692,6 +699,7 @@ issue_facts() (
     |         select((.labels | type) == "array" and all(.labels[]; (.name | type) == "string")
           and (.updated_at | type) == "string")
         | {number, title, state: (.state | ascii_upcase), body: (.body // ""), updatedAt: .updated_at,
+           stateReason: (.state_reason | if type == "string" then ascii_upcase else null end),
            labels: {pageInfo: {hasNextPage: ((.labels | length) > 20)}, nodes: (.labels[:20] | map({name}))}}
       | . + {comments: $c[0], blockedBy: $b[0]}' "$facts.detail" > "$facts" || { rm -f "$facts"; exit 1; }
 )
@@ -823,7 +831,7 @@ hydrate() (
   done < "$source.blockers"
   [ $# -eq 0 ] || blocker_closures "$@" || exit 1
   if [ -s "$source.blockers" ]; then
-    jq -s 'map({key: .id, value: {closedByPullRequestsReferences, labels, comments, repository}}) | from_entries' \
+    jq -s 'map({key: .id, value: {closedByPullRequestsReferences, labels, comments, repository, stateReason}}) | from_entries' \
       "$TMP"/closure-*.json > "$source.closures" || exit 1
   else printf '{}' > "$source.closures" || exit 1; fi
   jq --slurpfile c "$source.closures" 'with_entries(.value |=
@@ -856,19 +864,18 @@ blocker_closures() {
     printf '%s\n' "$closure" > "$file" || return 1
     # Only person blockers need issue-comment evidence. Address their own
     # repository from the exact node, never a same-number local issue.
-    # Item reads precede settings; conservatively read possible custom roles
-    # there. The final blocker guard always uses the configured role labels.
-    human_label=''
-    [ ! -f "$TMP/labels.json" ] || human_label=$(jq -er '."ready-for-human"' "$TMP/labels.json") || return 1
+    # Settings precede every read that reaches here (#641). The final blocker
+    # guard always uses the configured role labels.
+    human_label=$(jq -er '."ready-for-human"' "$TMP/labels.json") || return 1
     if jq -e --arg human "$human_label" '.labels.pageInfo.hasNextPage == false and any(.labels.nodes[]?;
         .name == $human or .name == "person" or ($human == "" and .name != "ready-for-agent"))' "$file" > /dev/null; then
       repo=$(jq -er '.repository.nameWithOwner | strings
         | select(test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))' "$file") || return 1
       n=$(jq -er .number "$file") || return 1
       if rest_pages "repos/$repo/issues/$n/comments?per_page=100" "$file.raw" 2> /dev/null \
-        && jq -se 'select(length > 0 and all(.[]; type == "array")) | add
+        && jq -se --slurpfile a "$TMP/authors.json" "$AUTHORED"'select(length > 0 and all(.[]; type == "array")) | add
           | select(all(.[]; type == "object" and (.body | type) == "string"))
-          | {nodes: map({body})}' "$file.raw" > "$file.comments"; then
+          | {nodes: (authored($a[0]) | map({body}))}' "$file.raw" > "$file.comments"; then
         jq --slurpfile c "$file.comments" '. + {comments: $c[0]}' "$file" > "$file.next" \
           && mv "$file.next" "$file" || return 1
       fi
@@ -889,6 +896,16 @@ settings() {
     | sed 's/^| *`\([^`]*\)`.*/\1/' > "$TMP/checks.txt" || die "can't read the CI checks"
   [ -s "$TMP/checks.txt" ] || die "docs/agents/fleet.md lists no CI checks (its \"## CI checks\" table)"
   jq -Rn '[inputs]' < "$TMP/checks.txt" > "$TMP/checks.json" || die "can't read the CI checks"
+  # #641: the factory's own identity, the one place that names it: the logins
+  # that write its records (its App, and the account it falls back to). Every
+  # comment read below by anyone else, or by no one, is dropped before any
+  # reader sees it. No row, an empty one or a malformed login stops the check.
+  awk '/^## /{on = ($0 == "## GitHub identity")} on && /^[|] *Record authors *[|]/' "$TMP/fleet.md" > "$TMP/authors.txt" \
+    && jq -Rse 'split("\n") | map(select(length > 0)) | select(length == 1) | .[0]
+      | split("|") | select(length == 4) | .[2] | [scan("`([^`]*)`") | .[0]]
+      | select(length > 0 and all(.[]; test("^[A-Za-z0-9](-?[A-Za-z0-9])*(\\[bot\\])?$")))
+      | map(ascii_downcase)' "$TMP/authors.txt" > "$TMP/authors.json" 2> /dev/null \
+    || die "docs/agents/fleet.md names no record authors (its \"## GitHub identity\" table's \"Record authors\" row)"
   awk '/^## /{on = ($0 == "## Labels")} on && /^[|] *`[^`]+` *[|] *`[^`]+` *[|]/' "$TMP/labels.md" \
     | sed 's/^| *`\([^`]*\)` *| *`\([^`]*\)`.*/\1`\2/' > "$TMP/labels.txt" || die "can't read the labels"
   jq -Rn '[inputs | split("`") | {key: .[0], value: .[1]}] | from_entries' < "$TMP/labels.txt" > "$TMP/labels.json" \
@@ -1301,9 +1318,14 @@ def person_labelled: .labels.pageInfo.hasNextPage == false
   and (any(.labels.nodes[]?; .name == $W.labels["ready-for-agent"]) | not)
   and any(.labels.nodes[]?; .name == $W.labels["ready-for-human"] or .name == "person");
 def completion_record: any(.comments.nodes[]?; (.body | rec // "") | test("^complete:\\s*\\S"));
-def blocker_done: merged_ok or (.state == "CLOSED" and person_labelled and completion_record);
+# #641: only a close as completed can complete person work. Not planned,
+# duplicate, or a reason that could not be read, completes nothing.
+def closed_completed: .state == "CLOSED" and .stateReason == "COMPLETED";
+def blocker_done: merged_ok or (closed_completed and person_labelled and completion_record);
 def completion_request:
-  if .state == "CLOSED" and person_labelled and (.comments.nodes | type) == "array"
+  if .state == "CLOSED" and person_labelled and (closed_completed | not) then
+    records as $rs | look(.number; $rs; "closed person ticket was closed as \(.stateReason // "unknown" | ascii_downcase | gsub("_"; " ")), so it completes nothing")
+  elif .state == "CLOSED" and person_labelled and (.comments.nodes | type) == "array"
       and .comments.pageInfo.hasPreviousPage != true and (completion_record | not) then
     records as $rs | look(.number; $rs; "closed person ticket needs launch-fleet: complete: <evidence>")
   else empty end;
@@ -2081,10 +2103,11 @@ nightly() {
   esac
   sha=$(jq -r .head_sha "$TMP/nightly.json") || die "invalid nightly CI runs"
   rest_pages "repos/$REPO/commits/$sha/comments?per_page=100" "$TMP/nightly-comments.raw" || die "can't read nightly CI notification records"
-  jq -se --arg s "$sha" '
+  jq -se --arg s "$sha" --slurpfile a "$TMP/authors.json" "$AUTHORED"'
     select(length > 0 and all(.[]; type == "array")) | add
     | select(all(.[]; type == "object" and (.id | type) == "number" and .id > 0 and .id == (.id | floor)
-        and .commit_id == $s and (.body | type) == "string"))' \
+        and .commit_id == $s and (.body | type) == "string"))
+    | authored($a[0])' \
     "$TMP/nightly-comments.raw" > "$TMP/nightly-comments.json" || die "invalid nightly CI notification records"
   jq -nr --arg repo "$REPO" --argjson private "$private" --slurpfile run "$TMP/nightly.json" --slurpfile comments "$TMP/nightly-comments.json" '
     $run[0] as $r | "\($r.id) attempt \($r.run_attempt)" as $key
@@ -2411,8 +2434,9 @@ keep_read() {
 }
 
 if [ "$cmd" = wake ] || [ "$cmd" = claim ]; then
-  items
+  # The settings first: an Item read hydrates comments, which need the record authors (#641).
   settings
+  items
   wake_world
 elif [ "$cmd" = spec ]; then
   # A fleet thread's check: the check's reads, of its own spec alone; none
