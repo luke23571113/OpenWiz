@@ -249,7 +249,7 @@ def commit(repo, ref):
     return value
 
 
-def history(checker, repo, base, head):
+def history(checker, repo, base, head, upstream=None):
     head = commit(repo, head)
     base = commit(repo, base) if base else None
     if git(repo, 'rev-parse', '--is-shallow-repository').strip() != b'false':
@@ -269,11 +269,17 @@ def history(checker, repo, base, head):
     if roots != [PUBLIC_ROOT] or not anchored:
         checker.refuse('C1', 'history')
         return []
-    # No base means a new remote ref: check everything after the approved
-    # public anchor. Old public history is explicitly exempt from C2/C3.
-    if base is None:
-        base = commit(repo, PUBLIC_ANCHOR)
-    hashes = git(repo, 'rev-list', head, '^' + base, '^' + PUBLIC_ANCHOR).decode().splitlines()
+    # No base means a new remote ref. With --upstream (a commit the push
+    # destination itself already publishes, as its main), only commits after
+    # their merge-bases with it are new there. A missing upstream or no
+    # merge-base fails closed: check everything after the approved public
+    # anchor. Old public history is explicitly exempt from C2/C3.
+    exclude = [PUBLIC_ANCHOR]
+    if base is not None:
+        exclude.append(base)
+    elif upstream:
+        exclude += merge_bases(repo, head, upstream)
+    hashes = git(repo, 'rev-list', head, *('^' + x for x in exclude)).decode().splitlines()
     for index, sha in enumerate(hashes, 1):
         data = git(repo, 'cat-file', 'commit', sha).decode('utf-8')
         headers, message = data.split('\n\n', 1)
@@ -287,6 +293,19 @@ def history(checker, repo, base, head):
             if not email or not COMMIT_EMAIL.fullmatch(email[1]):
                 checker.refuse('C3', f'commit-{index}-{role}')
     return hashes
+
+
+def merge_bases(repo, head, upstream):
+    """Every merge-base of HEAD and UPSTREAM, or none when either is missing."""
+    try:
+        bases = git(repo, 'merge-base', '--all', head, commit(repo, upstream)).decode().split()
+    except Unreadable:
+        print('range: no upstream merge-base, scanning from the public anchor')
+        return []
+    if not bases or not all(re.fullmatch(r'[0-9a-f]{40}', x) for x in bases):
+        raise Unreadable()
+    print('range: from the merge-base with upstream')
+    return bases
 
 
 def directory_files(root):
@@ -330,6 +349,7 @@ def main(argv=None):
     parser.add_argument('--git-tree', help='Git tree/ref to scan without checkout')
     parser.add_argument('--base', help='range exclusion; default is the approved public anchor')
     parser.add_argument('--head', help='commit whose ancestry and new messages/identities are checked')
+    parser.add_argument('--upstream', help='without --base: start after the merge-base with this commit, already published at the destination (a missing one starts at the anchor)')
     parser.add_argument('--title-file', type=Path)
     parser.add_argument('--body-file', type=Path)
     parser.add_argument('--literals', type=Path)
@@ -350,9 +370,11 @@ def main(argv=None):
             raise Unreadable()
         if (args.head or args.git_tree or args.base) and not args.repo:
             raise Unreadable()
-        if args.base and not args.head:
+        if (args.base or args.upstream) and not args.head:
             raise Unreadable()
-        commits = history(checker, args.repo, args.base, args.head) if args.head else []
+        if args.base and args.upstream:
+            raise Unreadable()
+        commits = history(checker, args.repo, args.base, args.head, args.upstream) if args.head else []
         blobs = BlobReader(args.repo)
         trees = []
         if args.tree:
