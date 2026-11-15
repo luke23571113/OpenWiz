@@ -27,6 +27,20 @@ LABELS = """# Triage labels
 | `ready-for-agent` | `ready-for-agent` | Agent ticket |
 | `ready-for-human` | `ready-for-human` | Human ticket |
 """
+# #717: the factory's identity, the Record authors row launch-fleet reads.
+FLEET = """# Fleet settings
+
+## GitHub identity
+
+| Setting | Value |
+| --- | --- |
+| App | Synthetic App |
+| Record authors | `openwiz[bot]`, `synthetic-owner` |
+
+## Standing merge rules
+"""
+FACTORY = {"login": "openwiz[bot]"}
+OUTSIDER = {"login": "synthetic-outsider"}
 
 
 def fixture(spec, label="ready-for-agent"):
@@ -43,8 +57,9 @@ def fixture(spec, label="ready-for-agent"):
     )
     return {
         "graph": {"subIssues": {"totalCount": 6, "nodes": [{"number": n} for n in numbers]}},
-        "comments": [[{"id": 100, "body": body}]],
+        "comments": [[{"id": 100, "user": dict(FACTORY), "body": body}]],
         "labels_doc": LABELS,
+        "fleet_doc": FLEET,
         "tracker_doc": "# Tracker\n\n- **Private records:** `jparker2006/ClosedWiz`, permanently private.\n",
         "repo": {"isPrivate": False},
     }
@@ -82,6 +97,8 @@ elif args == ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{ow
     key = "labels_doc"
 elif args == ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/issue-tracker.md"]:
     key = "tracker_doc"
+elif args == ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/fleet.md"]:
+    key = "fleet_doc"
 elif args == ["issue", "view", n, "--json", "subIssues"]:
     key = "graph"
 elif args == ["api", "--paginate", "repos/{owner}/{repo}/issues/" + n + "/comments?per_page=100"]:
@@ -92,7 +109,7 @@ if w.get("fail") == key:
     sys.exit("planted read failure")
 if w.get("empty") == key:
     sys.exit(0)
-if key == "tracker_doc":
+if key in ("tracker_doc", "fleet_doc"):
     print(w[key], end="")
 elif key == "labels_doc":
     print(Path(os.environ["FAKE_LABELS_FILE"]).read_text() if "FAKE_LABELS_FILE" in os.environ else w[key], end="")
@@ -142,6 +159,7 @@ class ApprovalTest(unittest.TestCase):
             self.assertEqual([json.loads(line) for line in (tmp / "calls").read_text().splitlines()], [
                 ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/triage-labels.md"],
                 ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/issue-tracker.md"],
+                ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/fleet.md"],
                 ["issue", "view", "172", "--json", "subIssues"],
                 ["api", "--paginate", "repos/{owner}/{repo}/issues/172/comments?per_page=100"],
                 ["repo", "view", "--json", "isPrivate"],
@@ -170,6 +188,7 @@ class ApprovalTest(unittest.TestCase):
                 self.assertEqual(calls, [
                     ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/triage-labels.md"],
                     ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/issue-tracker.md"],
+                ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/fleet.md"],
                     ["issue", "view", str(spec), "--json", "subIssues"],
                     ["api", "--paginate", f"repos/{{owner}}/{{repo}}/issues/{spec}/comments?per_page=100"],
                     ["repo", "view", "--json", "isPrivate"],
@@ -279,7 +298,7 @@ class ApprovalTest(unittest.TestCase):
         latest = copy.deepcopy(w["comments"][0][0])
         latest["id"] = 102
         latest["body"] = latest["body"].replace("approved as proposed.", '\"approve\"')
-        w["comments"].append([latest, {"id": 103, "body": "Progress only"}])
+        w["comments"].append([latest, {"id": 103, "user": dict(FACTORY), "body": "Progress only"}])
         self.run_check(w, status=1, reason="public approval form")
 
     def test_public_comment_templates(self):
@@ -454,9 +473,9 @@ class ApprovalTest(unittest.TestCase):
         # A later revision number in an older approval must not hide the bad newest record.
         old["id"] = 99
         old["body"] = old["body"].replace("revision 2", "revision 9")
-        w["comments"] = [[w["comments"][0][0]], [old, {"id": 101, "body": "Progress only"}]]
+        w["comments"] = [[w["comments"][0][0]], [old, {"id": 101, "user": dict(FACTORY), "body": "Progress only"}]]
         self.run_check(w, status=1, reason="columns")
-        w["comments"][1].append({"id": 102, "body": fixture(172)["comments"][0][0]["body"]})
+        w["comments"][1].append({"id": 102, "user": dict(FACTORY), "body": fixture(172)["comments"][0][0]["body"]})
         self.run_check(w)
 
     def test_no_or_multiple_or_fenced_tables(self):
@@ -496,6 +515,60 @@ class ApprovalTest(unittest.TestCase):
         for name, w in cases:
             with self.subTest(name=name):
                 self.run_check(w, status=1, reason="cannot read")
+
+    def test_only_record_authors_approve(self):
+        # #717 catches: a plan approval posted by anyone who can comment on a
+        # public spec counted, so an outsider could approve a plan graph, or
+        # hide the factory's refusal behind a newer valid-looking approval.
+        good = fixture(172)["comments"][0][0]["body"]
+        bad = state_table(fixture(172))["comments"][0][0]["body"]
+        # REST names the App `openwiz[bot]`: a bare `openwiz`, even typed Bot,
+        # is never the App on this REST read (orchestrator ruling on #717).
+        for user in (OUTSIDER, {"login": "openwiz"}, {"login": "openwiz", "type": "Bot"},
+                     {"login": "openwiz[bot]x"}, {"login": None},
+                     {}, None, "openwiz[bot]", "missing"):
+            with self.subTest(user=user, case="the outsider's approval is the only one"):
+                w = fixture(172)
+                if user == "missing":
+                    del w["comments"][0][0]["user"]
+                else:
+                    w["comments"][0][0]["user"] = user
+                self.run_check(w, status=1, reason="no posted plan graph approval")
+            with self.subTest(user=user, case="a newer outsider approval hides a refused one"):
+                w = fixture(172)
+                w["comments"][0][0]["body"] = bad
+                w["comments"].append([{"id": 101, "user": user, "body": good}])
+                if user == "missing":
+                    del w["comments"][1][0]["user"]
+                self.run_check(w, status=1, reason="columns")
+        # The factory's own records still count, its logins in any case.
+        for login in ("openwiz[bot]", "OpenWiz[bot]", "synthetic-owner", "SYNTHETIC-OWNER"):
+            with self.subTest(login=login):
+                w = fixture(172)
+                w["comments"][0][0]["user"] = {"login": login}
+                w["comments"].append([{"id": 101, "user": OUTSIDER, "body": bad}])
+                self.run_check(w)
+
+    def test_record_authors_setting_must_be_whole(self):
+        # #717 catches: a reader that trusts everyone, or keeps the logins
+        # that did parse, when the Record authors row is missing or malformed.
+        row = "| Record authors | `openwiz[bot]`, `synthetic-owner` |"
+        for doc in ("", FLEET.replace(row + "\n", ""),
+                    FLEET.replace("## GitHub identity", "## Example"),
+                    FLEET.replace(row, "| Record authors | |"),
+                    FLEET.replace(row, "| Record authors | openwiz[bot] |"),
+                    FLEET.replace(row, "| Record authors | `openwiz[bot]`, synthetic-owner |"),
+                    FLEET.replace(row, "| Record authors | `openwiz[bot]`; `synthetic-owner` |"),
+                    FLEET.replace(row, "| Record authors | `openwiz[bot]`, `-bad` |"),
+                    FLEET.replace(row, row + " extra |"),
+                    FLEET.replace(row, row + "\n" + row)):
+            with self.subTest(doc=doc):
+                w = fixture(172)
+                w["fleet_doc"] = doc
+                self.run_check(w, status=1, reason="record authors")
+        w = fixture(172)
+        w["fail"] = "fleet_doc"
+        self.run_check(w, status=1, reason="record authors")
 
     def test_bad_arguments_never_read(self):
         for argument in ("0", "-1", "172x", "01", ""):

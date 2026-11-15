@@ -10,11 +10,17 @@ It honours what a broken fetch would get wrong:
   - `comments(last: K)` or `comments(first: K)`, and `labels(first: K)`
     with its totalCount: only the comments and labels asked for.
   - `{owner}` and `{repo}` in -F values, as gh fills them in.
+  - each comment's `author { __typename login }`, as GraphQL names it: an
+    App's login without the "[bot]" REST gives it, a deleted account null.
+  - the one raw read of docs/agents/fleet.md from the default branch (#717):
+    the scenario's "fleet" text, or the faults "fleet-fail" (gh fails) and
+    "fleet-doc" (its "doc" served instead).
 Anything else it does not know (a flag, a query shape) exits 3 on stderr.
 
 The repository is a JSON file named by FAKE_GH_SCENARIO:
   {"issues": [{"number", "title", "state", "created", "milestone", "parent",
                "sub_issues", "labels": [...], "comments": [...]}],
+   "fleet": "<docs/agents/fleet.md>",
    "fault": {"kind": "http" | "graphql" | "errors-exit-0" | "no-pages-exit-0"
                      | "open" | "close" | "short" | "repeat", "page": k}}
 A fault hits page k (1-based): an HTTP error or a GraphQL error there; an
@@ -30,6 +36,11 @@ import re
 import sys
 
 OWNER, REPO = "synthetic", "project"
+FLEET_READ = ["api", "-H", "Accept: application/vnd.github.raw+json",
+              "repos/{owner}/{repo}/contents/docs/agents/fleet.md"]
+# A comment written as plain text is the factory App's, as GraphQL names it;
+# a comment as {"body", "author"} names its own author.
+FACTORY = {"__typename": "Bot", "login": "openwiz"}
 
 
 def die(code, msg):
@@ -69,6 +80,14 @@ def arg(text, name):
 
 
 def main():
+    if sys.argv[1:] == FLEET_READ:
+        with open(os.environ["FAKE_GH_SCENARIO"]) as f:
+            scenario = json.load(f)
+        fault = scenario.get("fault") or {}
+        if fault.get("kind") == "fleet-fail":
+            die(1, "gh: Not Found (HTTP 404)")
+        sys.stdout.write(fault["doc"] if fault.get("kind") == "fleet-doc" else scenario["fleet"])
+        sys.exit(0)
     flags, variables = parse_args(sys.argv[1:])
     if "--slurp" in flags and "--paginate" not in flags:
         die(1, "the `--slurp` option is only supported in conjunction with `--paginate`")
@@ -125,7 +144,9 @@ def main():
         if re.search(r"\bsubIssuesSummary\b", query):
             out["subIssuesSummary"] = {"total": i.get("sub_issues", 0)}
         out["labels"] = {"totalCount": len(i["labels"]), "nodes": [{"name": n} for n in i["labels"][:label_k]]}
-        out["comments"] = {"nodes": [{"body": b} for b in comments]}
+        out["comments"] = {"nodes": [
+            {"body": c, "author": FACTORY} if isinstance(c, str) else {"body": c["body"], "author": c["author"]}
+            for c in comments]}
         return out
 
     pages, start, k = [], 0, 0

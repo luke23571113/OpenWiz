@@ -319,7 +319,7 @@ If a contract does not exist yet, verify that its writer owns that exact path an
 
 ## Check link reasons before approval
 
-Run the link checker, `check-links.sh` beside `check-relies.sh`, on the whole spec, beside the Relies on check: when the graph is written (step 5) and before every approval (step 6, and every re-approval). Its form, its report and its exit codes are the plan links contract's (`contracts/plan-links.v1.md`). It reads the spec's tickets and their native blockers through `gh`, writes nothing, and makes no other network call. Run it from the project's root, using the installed skill's path if the skill lives elsewhere:
+Run the link checker, `check-links.sh` beside `check-relies.sh`, on the whole spec, beside the Relies on check: when the graph is written (step 5) and before every approval (step 6, and every re-approval). Its form, its report and its exit codes are the plan links contract's (`contracts/plan-links.v1.md`). It reads the `Record authors` row of `docs/agents/fleet.md` from the default branch, then the spec's tickets and their native blockers, through `gh`; it writes nothing and makes no other network call. Run it from the project's root, using the installed skill's path if the skill lives elsewhere:
 
 ```sh
 sh skills/plan-graph/check-links.sh <spec>
