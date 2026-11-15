@@ -735,6 +735,10 @@ class Check(unittest.TestCase):
                                          'jparker2006/ClosedWiz' else 'ubuntu-24.04')
         self.assertEqual(parsed['permissions'], {'contents': 'read'})
         self.assertEqual(set(parsed['on']), {'push', 'pull_request', 'merge_group'})
+        # #714: a queue-branch push run, cancelled when the queue rebuilds,
+        # failed the required privacy check; merge_group alone covers the queue.
+        self.assertEqual(parsed['on']['push'], {'branches-ignore': ['gh-readonly-queue/**']})
+        self.assertEqual(parsed['on']['merge_group'], {'types': ['checks_requested']})
         self.assertEqual(workflow.refused_jobs(path.read_text()), [])
         self.assertIn('edited', parsed['on']['pull_request']['types'])
 
