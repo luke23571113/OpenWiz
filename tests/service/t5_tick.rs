@@ -115,12 +115,12 @@ else:sys.exit(2)
                     if path.starts_with("git/ref/heads/") {
                         json!({"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
                     } else if path.starts_with("contents/docs/agents/fleet.md") {
-                        return Ok(rules().into_bytes());
+                        return Ok((rules() + RECORD_AUTHORS).into_bytes());
                     } else if path.starts_with("issues/comments?") {
-                        json!(cs.iter().flat_map(|(n,rows)|rows.iter().map(move |c|{let mut c=c.clone();c["issue_url"]=json!(format!("https://github.invalid/api/v3/repos/synthetic-owner/synthetic-repo/issues/{n}"));c})).collect::<Vec<_>>())
+                        factory_authored(json!(cs.iter().flat_map(|(n,rows)|rows.iter().map(move |c|{let mut c=c.clone();c["issue_url"]=json!(format!("https://github.invalid/api/v3/repos/synthetic-owner/synthetic-repo/issues/{n}"));c})).collect::<Vec<_>>()))
                     } else if path.starts_with("issues/") && path.contains("/comments?") {
                         let n = path.split('/').nth(1).unwrap().parse::<u64>().unwrap();
-                        json!(cs.get(&n).cloned().unwrap_or_default())
+                        factory_authored(json!(cs.get(&n).cloned().unwrap_or_default()))
                     } else {
                         return Err(openwiz_core::source::SourceError::Unavailable {
                             detail: "unexpected synthetic API read".into(),
@@ -538,3 +538,20 @@ fn r1_pending_recovery_obeys_the_same_fleet_fence() {
         }
     }
 }
+
+/// #718: the comment reads project each comment's author; these synthetic
+/// comments are all the factory's App's, and the rules name it.
+fn factory_authored(mut v: Value) -> Value {
+    match &mut v {
+        Value::Array(rows) => rows
+            .iter_mut()
+            .for_each(|r| *r = factory_authored(r.take())),
+        Value::Object(row) if row.contains_key("body") && !row.contains_key("author") => {
+            row.insert("author".into(), "openwiz[bot]".into());
+        }
+        _ => {}
+    }
+    v
+}
+const RECORD_AUTHORS: &str =
+    "## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]` |\n";

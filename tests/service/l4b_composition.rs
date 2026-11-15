@@ -46,7 +46,8 @@ fn prs() -> Value {
     json!([{"title":"Synthetic PR","baseRefName":"main","closingIssuesReferences":[{"id":"syn-issue-10","number":10,"repository":{"id":"syn-repo","name":"synthetic-repo","owner":{"id":"syn-owner","login":"synthetic-owner"}},"url":"https://github.invalid/synthetic-owner/synthetic-repo/issues/10"}],"headRefName":"synthetic-branch-10","headRefOid":HEAD,"isDraft":false,"mergeCommit":null,"mergedAt":null,"number":110,"state":"OPEN"}])
 }
 fn comments() -> Value {
-    let row = |id, issue, body| json!({"id":id,"issue_url":format!("https://github.invalid/api/v3/repos/{REPOSITORY}/issues/{issue}"),"body":body,"created":1_793_400_010_000_u64,"updated":1_793_400_010_000_u64});
+    // #718: the factory's App, which the real docs/agents/fleet.md names.
+    let row = |id, issue, body| json!({"id":id,"author":"openwiz[bot]","issue_url":format!("https://github.invalid/api/v3/repos/{REPOSITORY}/issues/{issue}"),"body":body,"created":1_793_400_010_000_u64,"updated":1_793_400_010_000_u64});
     json!([
         row(5100, 9, include_str!("fixtures/t4-completion-approval.md")),
         row(5101, 10, "launch-fleet: started"),

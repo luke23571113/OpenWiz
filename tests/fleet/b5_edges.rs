@@ -863,7 +863,7 @@ fn b5_review_r1_real_gh_page_stream_is_strict_and_preserves_pages() {
         ]
     ])
     .to_string();
-    let good = "[]\n[{\"id\":2,\"body\":\"Synthetic\\nsecond line\",\"created\":10,\"updated\":10}]\n[{\"id\":1,\"body\":\"Other\",\"created\":9,\"updated\":9}]";
+    let good = "[]\n[{\"id\":2,\"author\":\"syn-author\",\"body\":\"Synthetic\\nsecond line\",\"created\":10,\"updated\":10}]\n[{\"id\":1,\"author\":null,\"body\":\"Other\",\"created\":9,\"updated\":9}]";
     w.change(|s| s["overrides"][&key] = good.into());
     let read = || {
         TickReads::new(w.dir.join("bin/gh")).comments(
@@ -882,8 +882,8 @@ fn b5_review_r1_real_gh_page_stream_is_strict_and_preserves_pages() {
         "[] {}",
         "[{}]",
         "[]\nnot JSON",
-        "[{\"id\":1,\"id\":2,\"body\":\"S\",\"created\":9,\"updated\":9}]",
-        "[{\"id\":1,\"body\":\"S\",\"created\":9,\"updated\":9}]\n[{\"id\":1,\"body\":\"S\",\"created\":9,\"updated\":9}]",
+        "[{\"id\":1,\"id\":2,\"author\":null,\"body\":\"S\",\"created\":9,\"updated\":9}]",
+        "[{\"id\":1,\"author\":null,\"body\":\"S\",\"created\":9,\"updated\":9}]\n[{\"id\":1,\"author\":null,\"body\":\"S\",\"created\":9,\"updated\":9}]",
     ] {
         w.change(|s| s["overrides"][&key] = bad.into());
         assert!(read().is_err(), "{bad}");
@@ -1423,7 +1423,7 @@ fn r3b_comments_page_key(page: usize) -> String {
     .to_string()
 }
 fn r3b_comment_row(issue: u64, id: u64) -> Value {
-    json!({"issue_url":format!("https://github.invalid/api/v3/repos/jparker2006/ClosedWiz/issues/{issue}"),"id":id,"body":"Synthetic\nsecond line","created":100,"updated":101})
+    json!({"issue_url":format!("https://github.invalid/api/v3/repos/jparker2006/ClosedWiz/issues/{issue}"),"id":id,"author":"openwiz[bot]","body":"Synthetic\nsecond line","created":100,"updated":101})
 }
 #[test]
 fn b5_review_r3b_bulk_comments_keep_page_identity_and_comment_order() {

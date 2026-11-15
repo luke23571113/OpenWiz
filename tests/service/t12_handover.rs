@@ -777,7 +777,7 @@ fn github(dir: PathBuf) -> TickReads {
                     json!({"sha":"a".repeat(40)})
                 } else if path.starts_with("contents/docs/agents/fleet.md") {
                     let rules = fs::read_to_string(dir.join("rules.md")).unwrap();
-                    return Ok(format!("{rules}\n").into_bytes());
+                    return Ok(format!("{rules}\n{RECORD_AUTHORS}").into_bytes());
                 } else if path.starts_with("issues/comments?") {
                     let mut rows = world["comments"].clone();
                     for row in rows.as_array_mut().unwrap() {
@@ -785,9 +785,9 @@ fn github(dir: PathBuf) -> TickReads {
                             "https://github.invalid/api/v3/repos/synthetic-owner/synthetic-repo/issues/9"
                         );
                     }
-                    rows
+                    factory_authored(rows)
                 } else if path.starts_with("issues/9/comments?") {
-                    world["comments"].clone()
+                    factory_authored(world["comments"].clone())
                 } else if path.contains("/comments?") || path.contains("/timeline?") {
                     json!([])
                 } else {
@@ -988,3 +988,20 @@ fn completion_effects_run_only_after_the_verifier_passes_that_exact_effect() {
         writes(&temp.0)
     );
 }
+
+/// #718: the comment reads project each comment's author; these synthetic
+/// comments are all the factory's App's, and the rules name it.
+fn factory_authored(mut v: Value) -> Value {
+    match &mut v {
+        Value::Array(rows) => rows
+            .iter_mut()
+            .for_each(|r| *r = factory_authored(r.take())),
+        Value::Object(row) if row.contains_key("body") && !row.contains_key("author") => {
+            row.insert("author".into(), "openwiz[bot]".into());
+        }
+        _ => {}
+    }
+    v
+}
+const RECORD_AUTHORS: &str =
+    "## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]` |\n";

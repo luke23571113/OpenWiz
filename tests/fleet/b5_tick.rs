@@ -621,10 +621,16 @@ fn b5_additional_readers_and_allowlist_refuse_shape_drift() {
     ] {
         assert!(repository(&bad).is_err(), "{bad}");
     }
-    let row = json!({"id":1,"body":"Synthetic","created":100,"updated":100});
+    let row = json!({"id":1,"author":"syn-author","body":"Synthetic","created":100,"updated":100});
     assert!(comments(&json!([[row.clone()]])).is_ok());
+    // #718: an author GitHub names nobody for is read as none, never refused.
+    let ghost = json!({"id":1,"author":null,"body":"Synthetic","created":100,"updated":100});
+    assert_eq!(comments(&json!([[ghost]])).unwrap()[0].author, None);
     for bad in [
         json!([row.clone()]),
+        // #718: the author is always projected, and only as a login or null.
+        json!([[{"id":1,"body":"Synthetic","created":100,"updated":100}]]),
+        json!([[{"id":1,"author":7,"body":"Synthetic","created":100,"updated":100}]]),
         json!([[row.clone(), row.clone()]]),
         json!([[{"id":1,"body":"Synthetic","created":100,"updated":99}]]),
         json!([[{"id":"1","body":"Synthetic","created":100,"updated":100}]]),

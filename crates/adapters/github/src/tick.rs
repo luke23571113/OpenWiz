@@ -20,8 +20,8 @@ pub const ALLOWLIST: Module = Module {
     allows,
 };
 pub const REPOSITORY_FIELDS: &str = "defaultBranchRef,nameWithOwner,url";
-pub const COMMENTS: &str = "map({id,body,created: (.created_at | fromdateiso8601 * 1000),updated: (.updated_at | fromdateiso8601 * 1000)})";
-pub const REPOSITORY_COMMENTS: &str = "map({issue_url,id,body,created: (.created_at | fromdateiso8601 * 1000),updated: (.updated_at | fromdateiso8601 * 1000)})";
+pub const COMMENTS: &str = "map({id,author: (.user.login // null),body,created: (.created_at | fromdateiso8601 * 1000),updated: (.updated_at | fromdateiso8601 * 1000)})";
+pub const REPOSITORY_COMMENTS: &str = "map({issue_url,id,author: (.user.login // null),body,created: (.created_at | fromdateiso8601 * 1000),updated: (.updated_at | fromdateiso8601 * 1000)})";
 pub const FILES: &str = "map({path: .filename,previous: (.previous_filename // null),status})";
 pub const EVENTS: &str = "map(select(.event == \"labeled\" or .event == \"unlabeled\" or .event == \"commented\") | {id,event,label: (.label.name // null),body: (.body // null),at: (.created_at | fromdateiso8601 * 1000)})";
 pub const RUNS: &str = "{total_count,runs: [.workflow_runs[] | {id,head_sha,event,run_attempt,updated: (.updated_at | fromdateiso8601 * 1000),prs: [.pull_requests[] | {number,head: .head.sha,base: .base.sha}]}]}";
@@ -92,6 +92,9 @@ pub type Result<T> = std::result::Result<T, &'static str>;
 #[derive(Clone, Debug)]
 pub struct Comment {
     pub id: Number,
+    /// The author's GitHub login, as read; None when GitHub names nobody
+    /// (#718). Which authors' records count is the caller's rule.
+    pub author: Option<String>,
     pub body: String,
     pub created: u64,
     pub updated: u64,
@@ -385,8 +388,11 @@ impl TickReads {
                 {
                     unread.extend([previous, target]);
                 }
-                match object(v, &["issue_url", "id", "body", "created", "updated"])
-                    .and_then(comment)
+                match object(
+                    v,
+                    &["issue_url", "id", "author", "body", "created", "updated"],
+                )
+                .and_then(comment)
                 {
                     Ok(c) => out.entry(target).or_default().push(c),
                     Err(_) => {
@@ -735,7 +741,7 @@ pub fn repository(v: &Value) -> Result<Repository> {
 pub fn comments(v: &Value) -> Result<Vec<Comment>> {
     let mut out = vec![];
     for v in paged_rows(v)? {
-        let o = object(v, &["id", "body", "created", "updated"])?;
+        let o = object(v, &["id", "author", "body", "created", "updated"])?;
         out.push(comment(o)?);
     }
     unique(out.iter().map(|c| c.id.get()))?;
@@ -749,8 +755,13 @@ fn comment(o: &Map<String, Value>) -> Result<Comment> {
     if updated < created {
         return Err("comment time reversed");
     }
+    let author = match &o["author"] {
+        Value::Null => None,
+        v => Some(string(v)?.to_owned()),
+    };
     Ok(Comment {
         id: number(&o["id"])?,
+        author,
         body: string(&o["body"])?.into(),
         created,
         updated,

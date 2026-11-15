@@ -42,6 +42,73 @@ fn blocker_set(s: &str) -> Result<BTreeSet<Number>> {
     }
     Ok(blockers)
 }
+/// #718: the factory's record authors, from the rules file's `## GitHub
+/// identity` table, read as launch-fleet reads it (`grants.py`'s
+/// `record_authors`, `fleet.sh`'s `settings`): exactly one `Record authors`
+/// row, nothing after its value cell, and that whole cell backticked logins
+/// separated by commas. No row, an empty one, a malformed or extra entry, or
+/// two rows refuse the whole setting; it never keeps only the logins that
+/// did parse. Logins are lowercase, compared case-insensitively.
+pub fn record_authors(rules: &str) -> Result<BTreeSet<String>> {
+    const REFUSED: &str = "docs/agents/fleet.md names no record authors";
+    let mut section = "";
+    let mut rows = vec![];
+    for line in rules.lines() {
+        if line.starts_with("## ") {
+            section = line;
+        } else if section == "## GitHub identity"
+            && line
+                .strip_prefix('|')
+                .and_then(|r| r.trim_start_matches(' ').strip_prefix("Record authors"))
+                .is_some_and(|r| r.trim_start_matches(' ').starts_with('|'))
+        {
+            rows.push(line);
+        }
+    }
+    let [row] = rows.as_slice() else {
+        return Err(REFUSED);
+    };
+    let cells = row.split('|').collect::<Vec<_>>();
+    let [_, _, cell, rest] = cells.as_slice() else {
+        return Err(REFUSED);
+    };
+    if !rest.trim().is_empty() {
+        return Err(REFUSED);
+    }
+    cell.split(',')
+        .map(|entry| {
+            let login = entry
+                .trim()
+                .strip_prefix('`')
+                .and_then(|l| l.strip_suffix('`'))
+                .ok_or(REFUSED)?;
+            let name = login.strip_suffix("[bot]").unwrap_or(login);
+            let b = name.as_bytes();
+            let valid = b.first().is_some_and(u8::is_ascii_alphanumeric)
+                && b.last().is_some_and(u8::is_ascii_alphanumeric)
+                && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-')
+                && !name.contains("--");
+            if valid {
+                Ok(login.to_ascii_lowercase())
+            } else {
+                Err(REFUSED)
+            }
+        })
+        .collect()
+}
+/// True only for a comment a record author wrote; one with no author is
+/// nobody's (#718).
+pub fn authored(c: &Comment, authors: &BTreeSet<String>) -> bool {
+    c.author
+        .as_deref()
+        .is_some_and(|a| authors.contains(&a.to_ascii_lowercase()))
+}
+/// The factory's own comments: every other one is dropped before any record
+/// reader or the verdict parser sees it (#718).
+pub fn factory(mut comments: Vec<Comment>, authors: &BTreeSet<String>) -> Vec<Comment> {
+    comments.retain(|c| authored(c, authors));
+    comments
+}
 pub fn first(c: &Comment) -> &str {
     c.body.lines().next().unwrap_or("")
 }
