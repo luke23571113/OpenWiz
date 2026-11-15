@@ -5,7 +5,10 @@ Run: python3 -I tools/test-value/test_measure.py
 """
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
+
+sys.dont_write_bytecode = True
 
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location("measure", HERE / "measure.py")
