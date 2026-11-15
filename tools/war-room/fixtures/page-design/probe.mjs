@@ -91,13 +91,14 @@ const MEASURE = `(() => {
     const s = getComputedStyle(e);
     text.push({ tag: e.tagName.toLowerCase(), cls: e.className, sample: e.textContent.trim().slice(0, 40),
                 color: s.color, background: ground(e), size: parseFloat(s.fontSize), weight: Number(s.fontWeight),
-                family: s.fontFamily });
+                family: s.fontFamily, heading: !!e.closest('h1,h2,h3') });
   }
   return {
     viewport: { width: innerWidth, height: innerHeight },
     scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
     height: document.documentElement.scrollHeight,
     scripts: document.scripts.length,
+    fonts: [...document.fonts].map((f) => ({ family: f.family, weight: f.weight, status: f.status })),
     figures: [...document.querySelectorAll('figure.fig')].map((f) => ({ id: f.id, ...rect(f),
       caption: (f.querySelector('figcaption') || {}).textContent || null,
       charts: [...f.querySelectorAll('.chart svg')].map((s) => ({ ...rect(s), label: s.getAttribute('aria-label'),
@@ -119,6 +120,11 @@ for (const v of VIEWPORTS) {
   await loaded;
   await evaluate('document.fonts.ready.then(() => true)');
   const measured = await evaluate(MEASURE);
+  // The capture first, as loaded: before the keyboard check scrolls or opens anything.
+  const shot = await send('Page.captureScreenshot', v.full
+    ? { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: v.width, height: measured.height, scale: 1 } }
+    : { format: 'png' });
+  writeFileSync(join(out, v.name + '.png'), Buffer.from(shot.data, 'base64'));
   // Keyboard: Tab from the top; the first disclosure reached opens with Enter.
   const focus = [];
   let opened = null;
@@ -134,10 +140,6 @@ for (const v of VIEWPORTS) {
       opened = await evaluate('document.activeElement.parentElement.open');
     }
   }
-  const shot = await send('Page.captureScreenshot', v.full
-    ? { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: v.width, height: measured.height, scale: 1 } }
-    : { format: 'png' });
-  writeFileSync(join(out, v.name + '.png'), Buffer.from(shot.data, 'base64'));
   results.push({ ...v, ...measured, focus, opened });
 }
 writeFileSync(join(out, 'probe.json'), JSON.stringify({ page: pagePath.split('/').pop(), viewports: results }, null, 1));

@@ -8,7 +8,9 @@ the page in Chromium with page scripts disabled and every host unresolvable
 (fixtures/page-design/probe.mjs). Needs `npm ci --ignore-scripts` in tools/war-room, Node
 and Chromium. Synthetic data only; no network, no live read.
 """
+import base64
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -29,6 +31,8 @@ DESIGN = HERE / 'fixtures' / 'page-design'
 CARDS = ['00a', '00b', '00c', '00d', '00e']
 # The page's readability floor for chart text, in CSS px as drawn (design/brief.md).
 MIN_CHART_FONT = 8.5
+# The embedded Oswald 4.103 Bold Basic Latin subset (J85; assets/README.md records its chain).
+FONT_SHA256 = '299fca03acfe32ccf0b401b692ec66861173dd097ba3c5b61667117ff0afe033'
 
 
 def load(name, path):
@@ -109,13 +113,14 @@ class PageDesign(unittest.TestCase):
         for fam in inv['families']:
             self.assertTrue(fam['figures'] and set(fam['figures']) <= known, fam['measure'])
         self.assertEqual({fam['section'] for fam in inv['families']}, {s['number'] for s in inv['sections']})
-        shown = re.findall(r'<div class="panel" id="chart-([\w-]+)"', self.html)
+        shown = re.findall(r'<div class="panel" id="figure-([\w-]+)"', self.html)
         self.assertEqual(sorted(shown + CARDS), sorted(f['id'] for f in self.bundle['figures']))
         for number in numbers + CARDS:
             fig = figure_html(self.html, number)
             self.assertEqual(fig.count('<figcaption'), 1, number)
+        sources = between(self.html, '<details class="sources"', '</details>')
         for slot in slots:
-            self.assertEqual(self.html.count(f'data-slot="{slot}"'), 1, slot)
+            self.assertIn(f'data-slot="{slot}"', sources)
 
     def test_an_unplaced_chart_refuses_the_page(self):
         # catches: a chart the inventory does not place being silently dropped, or shown twice,
@@ -158,11 +163,11 @@ class PageDesign(unittest.TestCase):
         # disclosure or styled away in the published picture, so a chart is shown without
         # the facts that qualify it.
         drawn = publish.drawable(self.html, False)
-        self.assertEqual(drawn.count('<details class="inventory" open id="inventory">'), 1)
+        self.assertEqual(drawn.count('<details class="sources" open id="sources">'), 1)
         style = between(drawn, '<style>', '</style>')
         self.assertNotRegex(style, r'\.meta[^{]*\{[^}]*display:\s*none')
         for f in self.bundle['figures']:
-            anchor = f'id="fig-{f["id"]}"' if f['id'] in CARDS else f'id="chart-{f["id"]}"'
+            anchor = f'id="fig-{f["id"]}"' if f['id'] in CARDS else f'id="figure-{f["id"]}"'
             for view in (self.html, drawn):
                 visible = outside_details(between(view, anchor, '</figure>'))
                 meta = between(visible, '<p class="meta">', '</p>')
@@ -180,9 +185,9 @@ class PageDesign(unittest.TestCase):
         for control in ('<form', '<button', '<input', '<textarea', '<select', '<script'):
             self.assertNotIn(control, self.html)
         headings = re.findall(r'<h[123][^>]*>(.*?)</h[123]>', self.html)
-        self.assertFalse([h for h in headings if 'decision' in h.lower() or 'waiting' in h.lower()], headings)
+        self.assertFalse([h for h in headings if 'pending' in h.lower() or 'waiting' in h.lower()], headings)
         self.assertIn('Fig. 23 / Answer time', self.html)
-        self.assertIn('id="chart-body-answer-time-minutes"', self.html)
+        self.assertIn('id="figure-body-answer-time-minutes"', self.html)
 
     def test_page_ground_keeps_the_chart_palette_distinct_and_readable(self):
         # catches: a page ground (v3 black) under the charts that breaks the validated mark
@@ -191,6 +196,20 @@ class PageDesign(unittest.TestCase):
         self.assertTrue(result['pass'], result)
         kept = json.loads((DESIGN / 'palette-page.json').read_text(encoding='utf-8'))
         self.assertEqual(kept, result)
+
+    def test_the_heading_font_is_the_pinned_asset_embedded_as_data(self):
+        # catches: font bytes swapped from the recorded Oswald 4.103 Bold subset, a font
+        # fetched from anywhere, or a CSP loosened beyond J85's one `font-src data:`.
+        asset = (HERE / 'assets' / 'oswald-bold-latin.woff2').read_bytes()
+        self.assertEqual(hashlib.sha256(asset).hexdigest(), FONT_SHA256)
+        self.assertIn(FONT_SHA256, (HERE / 'assets' / 'README.md').read_text(encoding='utf-8'))
+        faces = re.findall(r'@font-face\{[^}]*\}', self.html)
+        self.assertEqual(len(faces), 1)
+        self.assertIn('url(data:font/woff2;base64,' + base64.b64encode(asset).decode() + ')', faces[0])
+        self.assertEqual(re.findall(r'url\((?!data:)', self.html), [])
+        csp = re.search(r'Content-Security-Policy" content="([^"]*)"', self.html).group(1)
+        self.assertEqual(csp, "default-src 'none'; style-src 'unsafe-inline'; font-src data:; "
+                              "base-uri 'none'; form-action 'none'")
 
     def test_real_browser_without_scripts_or_network(self):
         # catches: horizontal overflow, cards out of order or not stacked on a phone, charts
@@ -230,6 +249,12 @@ class PageDesign(unittest.TestCase):
                 self.assertEqual(v['focus'][-1]['tag'], 'summary')
                 self.assertTrue(all(f['visible'] for f in v['focus']))
                 self.assertIs(v['opened'], True)
+                # J85: the face is loaded from the page itself and used by headings only.
+                self.assertEqual([(f['family'], f['weight'], f['status']) for f in v['fonts']],
+                                 [('Oswald WR', '700', 'loaded')])
+                oswald = [t for t in v['text'] if t['family'].startswith('"Oswald WR"')]
+                self.assertIn('h1', {t['tag'] for t in oswald})
+                self.assertEqual([t['sample'] for t in oswald if not t['heading']], [])
 
 
 if __name__ == '__main__':

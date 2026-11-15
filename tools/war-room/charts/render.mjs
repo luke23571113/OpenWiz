@@ -14,6 +14,10 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const palette = JSON.parse(readFileSync(new URL('./palette.json', import.meta.url), 'utf8'));
 const INK = '#e8edf4';
 const WIDTH = 440;
+// The five headline figures are drawn at the page's card width (WRD3), so their text is not shrunk.
+const CARD = { width: 260, height: 180 };
+const card = (fig) => /^00[a-e]$/.test(fig.id);
+const dayTick = (fig) => (d) => (card(fig) ? d.slice(8) : d.slice(5));
 const FONT = 12;
 
 const colour = (fig, key) => palette.roles[fig.series.find((s) => s.key === key).role];
@@ -56,7 +60,7 @@ const DRAW = {
       return Plot.line(rows, { x: 'x', y: 'y', stroke: palette.roles[s.role], strokeDasharray: palette.marks[s.role].dash ?? undefined, strokeWidth: 1.5 });
     });
     return {
-      x: { type: 'point', domain: fig.domain, padding: 0.4, label: null, tickFormat: (d) => d.slice(5) },
+      x: { type: 'point', domain: fig.domain, padding: 0.4, label: null, tickFormat: dayTick(fig) },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [Plot.ruleY([0], { stroke: palette.roles.muted }), ...lines,
         Plot.dot(valued(fig.rows), seriesStyle(fig, { x: 'x', y: 'y', r: 3.5, strokeWidth: 1.5 })),
@@ -65,7 +69,7 @@ const DRAW = {
   },
   'daily-bar'(fig) {
     return {
-      x: { type: 'band', domain: fig.domain, padding: 0.2, label: null, tickFormat: (d) => d.slice(5) },
+      x: { type: 'band', domain: fig.domain, padding: 0.2, label: null, tickFormat: dayTick(fig) },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [
         Plot.barY(valued(fig.rows), { x: 'x', y: 'y', fill: (r) => colour(fig, r.series), title }),
@@ -79,7 +83,7 @@ const DRAW = {
     const missing = fig.rows.filter((r) => r.state === 'missing');
     const days = fig.domain.map((d) => time(d + 'T08:00:00Z'));
     return {
-      x: { type: 'utc', domain: [time(fig.window.since), time(fig.window.until)], ticks: days, tickFormat: (d) => d.toISOString().slice(5, 10), label: 'PST day starts' },
+      x: { type: 'utc', domain: [time(fig.window.since), time(fig.window.until)], ticks: days, tickFormat: (d) => dayTick(fig)(d.toISOString().slice(0, 10)), label: 'PST day starts' },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [
         Plot.rectY(spans, { x1: (r) => time(r.x), x2: (r) => time(r.x2), y: 'y', fill: (r) => colour(fig, r.series), fillOpacity: 0.85, stroke: palette.roles.primary, strokeWidth: 0.5, inset: 0.5, title }),
@@ -163,7 +167,7 @@ function figureSvg(fig, document) {
   const legend = key(fig, 40);
   spec.marks = [...spec.marks, ...legend.marks];
   const svg = Plot.plot({
-    document, width: WIDTH, height: 220 + legend.extra, marginTop: 22, marginBottom: 34 + legend.extra, marginLeft: 46,
+    document, width: card(fig) ? CARD.width : WIDTH, height: (card(fig) ? CARD.height : 220) + legend.extra, marginTop: 22, marginBottom: 34 + legend.extra, marginLeft: 46,
     marginRight: 16, ariaLabel: fig.title, ariaDescription: fig.caption, style: null, ...spec,
   });
   // A self-contained figure: no style element, the page's ground and ink as attributes.
