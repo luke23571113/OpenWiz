@@ -119,8 +119,6 @@ def prepare(inputs_path, out):
     result = {'prepared': True, 'kit_sha256': smoke['digest'](kit)}
     if 'release' in kit:
         result['scope_sha256'] = smoke['contract_sha'](kit['release'].get('scope'))
-    if 'port' in kit:
-        result['port'] = kit['port']
     return result
 
 

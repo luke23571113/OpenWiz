@@ -17,7 +17,14 @@ import tempfile
 import time
 
 CLAIMS = ('fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
-          'terminal', 'json', 'send', 'new', 'app', 'read_safety')
+          'terminal', 'json', 'send', 'new', 'app', 'read_safety', 'install')
+# A kit without a `claims` declaration is #1844's combined sheet: all of these.
+COMBINED = CLAIMS[:12]
+
+
+def kit_claims(kit):
+    """The claims this kit checks: its declaration, exactly (#772)."""
+    return tuple(kit['claims']) if 'claims' in kit else COMBINED
 LIMIT = 32 * 1024 * 1024
 RULE_KINDS = {
     'frontier': 'start_builder', 'first_review': 'start_reviewer',
@@ -58,9 +65,9 @@ PROBES = (str(Path(__file__).resolve().with_name('browser.mjs')),
 RESERVED_PORT = 7370
 
 
-def port_uses(kit, argv):
-    """Every loopback port a step's argv reaches: `--port N`, the HTTP probe's
-    port and a browser probe config's origin. A launch that would fall back to
+def refuse_reserved_port(kit, argv):
+    """Refuse 7370 wherever a step's argv reaches a loopback port: `--port N`,
+    the HTTP probe's port and a browser probe config's origin. A launch that would fall back to
     the default port (bare `openwiz`, `openwiz ui`, bare `openwiz-terminal`)
     is refused as if it named 7370."""
     ports = []
@@ -89,12 +96,8 @@ def port_uses(kit, argv):
         if ((arg == kit['openwiz'] and (not rest or (rest[0] == 'ui' and rest != ['ui', '--json'] and not explicit)))
                 or (Path(arg).name == 'openwiz-terminal' and not explicit)):
             raise Refusal('reserved_port')
-    for port in ports:
-        if re.fullmatch('[0-9]{1,5}', port) and int(port) == RESERVED_PORT:
-            raise Refusal('reserved_port')
-        if port != kit.get('port'):
-            raise Refusal('port_mismatch')
-    return ports
+    if any(re.fullmatch('[0-9]{1,5}', port) and int(port) == RESERVED_PORT for port in ports):
+        raise Refusal('reserved_port')
 
 
 def is_tick(kit, step):
@@ -199,7 +202,11 @@ def load_kit(path):
         raise Refusal('reserved_port')
     base = {'schema', 'mode', 'cwd', 'openwiz', 'artifacts', 'env', 'timeout_seconds', 'steps'}
     if (type(kit) is not dict or not base <= set(kit)
-            or not set(kit) - base <= {'source', 'port', 'release'}):
+            or not set(kit) - base <= {'source', 'claims', 'release'}):
+        raise Refusal('invalid_kit')
+    if 'claims' in kit and (type(kit['claims']) is not list or not kit['claims']
+                            or any(c not in CLAIMS for c in kit['claims'])
+                            or len(set(kit['claims'])) != len(kit['claims'])):
         raise Refusal('invalid_kit')
     if kit['schema'] != 'openwiz.live-smoke-kit.v1' or kit['mode'] not in ('fixture', 'live'):
         raise Refusal('invalid_kit')
@@ -207,12 +214,6 @@ def load_kit(path):
         raise Refusal('invalid_kit')
     if not integer(kit['timeout_seconds'], 1, 70):
         raise Refusal('invalid_kit')
-    if 'port' in kit:
-        port = kit['port']
-        if type(port) is not str or not re.fullmatch('[1-9][0-9]{0,4}', port) or not 1 <= int(port) <= 65535:
-            raise Refusal('invalid_kit')
-        if int(port) == RESERVED_PORT:
-            raise Refusal('reserved_port')
     if type(kit['artifacts']) is not dict or not kit['artifacts']:
         raise Refusal('invalid_kit')
     for name, sha in kit['artifacts'].items():
@@ -272,7 +273,7 @@ def load_kit(path):
             for arg in argv[1:]:
                 if Path(arg).is_absolute() and Path(arg).is_file() and arg not in kit['artifacts']:
                     raise Refusal('invalid_kit')
-            port_uses(kit, argv)
+            refuse_reserved_port(kit, argv)
             if not integer(step['exit'], 0, 255) or type(step['checks']) is not list or not step['checks']:
                 raise Refusal('invalid_kit')
             if 'until' in step and (step['kind'] != 'await' or type(step['until']) is not list or not step['until']):
@@ -328,16 +329,11 @@ def load_kit(path):
                     or writes[0]['argv'] != [kit['openwiz'], 'fleet', 'tick', '--json']
                     or not any(s['kind'] == 'event' for s in block)):
                 raise Refusal('invalid_kit')
-    if claims != set(CLAIMS):
+    if claims != set(kit_claims(kit)):
         raise Refusal('missing_claim')
-    for claim in ('fleet', 'send', 'new'):
+    for claim in {'fleet', 'send', 'new'} & claims:
         if not any(s['claim'] == claim and s['kind'] == 'write' for s in kit['steps']):
             raise Refusal('missing_write')
-    if 'port' in kit:
-        service = next((i for i, s in enumerate(kit['steps']) if s['id'] == 'service_before'), None)
-        first_write = next(i for i, s in enumerate(kit['steps']) if s['kind'] == 'write')
-        if service is None or service >= first_write or kit['steps'][service]['kind'] != 'read':
-            raise Refusal('invalid_kit')
     return kit
 
 
@@ -727,7 +723,7 @@ def load_state(path, kit):
         raise Refusal('invalid_state')
     if state['reason'] not in ('none', 'comparison', 'uncertain_write', 'missing_fact',
                                 'invalid_json', 'command_failed', 'timeout', 'output_limit', 'pending',
-                                'missing_credential', 'port_mismatch',
+                                'missing_credential',
                                 'process_containment_unavailable', 'process_containment_failed'):
         raise Refusal('invalid_state')
     return state
@@ -735,7 +731,7 @@ def load_state(path, kit):
 
 def report(kit, state, verdict, reason):
     claims = {}
-    for claim in CLAIMS:
+    for claim in kit_claims(kit):
         items = [item['state'] for step, item in zip(kit['steps'], state['steps'])
                  if step['claim'] == claim and step['kind'] != 'event']
         claims[claim] = ('fail' if 'fail' in items else 'pass' if all(s == 'pass' for s in items)
@@ -958,11 +954,6 @@ def run(kit, path, candidate=None):
                     code, doc = command(kit, step['argv'], step.get('token_env'), seen)
                 if code != step['exit']:
                     raise Refusal('command_failed')
-                # The service the kit's steps reach serves the kit's own port.
-                if 'port' in kit and step['id'] == 'service_before':
-                    if (pointer(doc, '/schema') != 'openwiz.service-status.v1'
-                            or pointer(doc, '/server/port') != int(kit['port'])):
-                        raise Refusal('port_mismatch')
                 if is_tick(kit, step):
                     if (type(doc) is not dict or doc.get('schema') != 'openwiz.fleet-tick.v1'
                             or doc.get('mode') != 'run' or type(doc.get('actions')) is not list
