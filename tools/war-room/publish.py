@@ -3,6 +3,7 @@
 
   python3 -I publish.py publish --remote URL --at UTC [--source-root DIR --selection FILE]
   python3 -I publish.py collect --remote URL --at UTC [--source-root DIR --selection FILE]
+  python3 -I publish.py collect --remote URL --gather OWNER/REPO EVIDENCE_URL
   python3 -I publish.py preview --out DIR --at UTC [--source-root DIR --selection FILE]
 
 Like the board: the branch's saved samples are carried forward, WR2's tick
@@ -10,7 +11,10 @@ Like the board: the branch's saved samples are carried forward, WR2's tick
 draws it twice (the page, and one 400 px column for a phone), a privacy scan
 reads every file, and only `refs/heads/war-room` is pushed. A failed read,
 render or scan publishes nothing, so the branch keeps its last good state and
-time. `collect` is the five-minute tick alone: it adds only the new sample.
+time. `collect` is the five-minute collection alone (history.collect): it adds
+only the new sample and renders nothing. With --gather (WRD1) it first gathers
+every source, the three health providers included, reading only; its run time
+is the gather's end.
 A selected artifact that cannot be read refuses the run. publish.sh runs the tests first. With no selection every bench stays
 Unknown with its prerequisite. The caller authenticates git.
 """
@@ -265,7 +269,9 @@ def publish(remote, at, read, draw_page=True):
         if draw_page:
             html = render(work, history, at, read)
         else:
-            html = tick(history, at, read).read_text(encoding='utf-8')
+            # WRD1: the collection saves one sample and renders no page or picture.
+            main.history.collect(history, at, read)
+            html = ''
         (work / 'samples').mkdir(exist_ok=True)
         for path in sorted(samples.glob('*.json')):
             data = path.read_bytes()
@@ -297,17 +303,32 @@ def cli(argv):
     sub = parser.add_subparsers(dest='cmd', required=True)
     for name in ('publish', 'collect', 'preview'):
         p = sub.add_parser(name)
-        p.add_argument('--at', required=True, help='explicit UTC run time; no wall clock is read')
+        p.add_argument('--at', required=name != 'collect', help='explicit UTC run time; no wall clock is read')
         p.add_argument('--source-root', type=Path)
         p.add_argument('--selection', type=Path)
         if name != 'preview':
             p.add_argument('--remote', required=True)
         else:
             p.add_argument('--out', required=True, type=Path)
+        if name == 'collect':
+            p.add_argument('--gather', nargs=2, metavar=('OWNER/REPO', 'EVIDENCE_URL'),
+                           help='gather every source first, reading only; the run time is the gather\'s end')
     a = parser.parse_args(argv)
     try:
         if (a.source_root is None) != (a.selection is None):
             raise Fail('--source-root and --selection go together')
+        gathering = getattr(a, 'gather', None) is not None
+        if gathering == (a.at is not None) or (gathering and a.source_root is not None):
+            raise Fail('collect takes --at with an optional selection, or --gather alone')
+        if a.cmd == 'collect' and gathering:
+            import gather  # gather imports this module: load it only when used
+            with tempfile.TemporaryDirectory(prefix='war-room-collect-') as tmp:
+                gather.gather(Path(tmp) / 'gathered', remote=a.remote, repo=a.gather[0], run_url=a.gather[1])
+                at = gather.now()  # the run time is the gather's end, read once
+                read = selection_reader(Path(tmp) / 'gathered/root', Path(tmp) / 'gathered/selection.json')
+                head = publish(a.remote, at, read, draw_page=False)
+            print('collected into war-room at %s' % head if head else 'boundary already collected')
+            return 0
         suite._time(a.at)
         read = selection_reader(a.source_root, a.selection)
         if a.cmd == 'publish':
@@ -321,9 +342,11 @@ def cli(argv):
                 html = render(a.out, Path(tmp) / 'history', a.at, read)
                 scan(a.out, html)
             print((a.out / 'README.md').read_text(encoding='utf-8'))
-    except (Fail, ValueError, OSError, UnicodeError, RecursionError) as e:
-        # Only the reason class: a source error can carry a private value.
-        print('war-room: %s; nothing published' % (e if isinstance(e, Fail) else type(e).__name__), file=sys.stderr)
+    except Exception as e:
+        # Only the reason class: a source error can carry a private value. gather's Fail is its own class.
+        if not isinstance(e, (Fail, ValueError, OSError, UnicodeError, RecursionError)) and type(e).__name__ != 'Fail':
+            raise
+        print('war-room: %s; nothing published' % (e if type(e).__name__ == 'Fail' else type(e).__name__), file=sys.stderr)
         return 1
     return 0
 

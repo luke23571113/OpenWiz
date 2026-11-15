@@ -276,12 +276,56 @@ impl Drop for CapturedStderr {
 }
 // TA2 child stderr END
 
+/// The fixture service leads its own process group, so the `room` and `gh`
+/// scripts it starts are in it too. Dropping it kills that whole group and
+/// waits until no member is left, so nothing still writes into the fixture's
+/// directory when `Fixture` removes it (#719).
 struct Process(std::process::Child, CapturedStderr);
+impl Process {
+    /// Starts the fixture service with no input and its stdout discarded.
+    fn start(mut command: std::process::Command) -> Self {
+        use std::os::unix::process::CommandExt;
+        let (stderr, sink) = CapturedStderr::new();
+        command
+            .process_group(0)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(sink);
+        Self(command.spawn().unwrap(), stderr)
+    }
+}
+/// Sends `signal` to process group `group` through `/bin/kill`; true when it
+/// was delivered, so when the group still has a member.
+fn signal_group(signal: &str, group: &str) -> bool {
+    std::process::Command::new("/bin/kill")
+        .args([signal, "--", group])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
 impl Drop for Process {
     fn drop(&mut self) {
+        // The leader is not reaped yet, so its id still names only this group.
+        let group = format!("-{}", self.0.id());
+        signal_group("-KILL", &group);
         let _ = self.0.kill();
         let _ = self.0.wait();
+        // Killed members stay in the group until they are reaped.
+        let until = Instant::now() + RUN_BUDGET;
+        let mut emptied = false;
+        while Instant::now() < until {
+            if !signal_group("-0", &group) {
+                emptied = true;
+                break;
+            }
+            std::thread::park_timeout(Duration::from_millis(5));
+        }
         self.1.finish();
+        if !emptied && !std::thread::panicking() {
+            panic!("the fixture service's process group outlived its stop");
+        }
     }
 }
 #[test]
@@ -315,18 +359,11 @@ elif a==['issue','view','901','--json','comments']:
 else:sys.exit(2)
 "#,
     );
-    let (child_stderr, child_stderr_sink) = CapturedStderr::new();
-    let mut process = Process(
-        std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "runtime::service_process", "--nocapture"])
-            .env("OPENWIZ_T5_PROCESS_ROOT", &f.0)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(child_stderr_sink)
-            .spawn()
-            .unwrap(),
-        child_stderr,
-    );
+    let mut service = std::process::Command::new(std::env::current_exe().unwrap());
+    service
+        .args(["--exact", "runtime::service_process", "--nocapture"])
+        .env("OPENWIZ_T5_PROCESS_ROOT", &f.0);
+    let mut process = Process::start(service);
     let until = Instant::now() + RUN_BUDGET;
     let status = loop {
         assert!(
@@ -364,6 +401,44 @@ else:sys.exit(2)
         1
     );
     drop(process);
+}
+/// #719: the fixture service's `room` and `gh` scripts outlived its kill and
+/// recreated `calls` while `Fixture` removed the directory (DirectoryNotEmpty).
+/// Stopping the service must stop everything it started first.
+#[test]
+fn stopping_the_fixture_service_stops_the_programs_it_started() {
+    let f = Fixture::new();
+    let mut leader = std::process::Command::new("/bin/sh");
+    leader.args([
+        "-c",
+        "sh -c 'i=0; while [ $i -lt 500 ]; do sleep 0.02; i=$((i+1)); done' & echo $! > \"$0/started\"; wait",
+    ]);
+    leader.arg(&f.0);
+    let process = Process::start(leader);
+    let until = Instant::now() + RUN_BUDGET;
+    let started = loop {
+        if let Ok(text) = fs::read_to_string(f.0.join("started"))
+            && let Some(pid) = text.strip_suffix('\n')
+        {
+            break pid.to_owned();
+        }
+        assert!(
+            Instant::now() < until,
+            "the fixture never started its program"
+        );
+        std::thread::park_timeout(Duration::from_millis(5));
+    };
+    drop(process);
+    let alive = std::process::Command::new("/bin/kill")
+        .args(["-0", &started])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap()
+        .success();
+    assert!(
+        !alive,
+        "a program the fixture service started outlived its stop"
+    );
 }
 
 #[test]

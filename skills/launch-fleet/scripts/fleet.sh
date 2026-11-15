@@ -2306,8 +2306,8 @@ case ${LAUNCH_FLEET_GITHUB_AUTH:-} in
 esac
 unchanged_entry() { printf '%s/unchanged-spec-%s.json\n' "$CACHE" "$SPEC"; }
 
-# probe ENDPOINT -: one probe's every page, conditionally. It records the
-# ETag of each page it read, and whether each page answered 304.
+# probe ENDPOINT ETAGS: one probe's every page, conditionally. It records
+# each page's ETag and requires all-304 pages and the saved ETAGS array to match.
 probe() (
   endpoint=$1
   key=$(printf '%s' "$endpoint" | hash) && [ ${#key} = 64 ] || exit 0
@@ -2325,7 +2325,11 @@ probe() (
     printf '%s\n' "$tag" >> "$out.etags" || exit 0
     endpoint=$(next_page "$out.http") || exit 0
   done
-  jq -Rn '[inputs]' < "$out.etags" > "$out.read" || exit 0
+  # Retain the current tags even on a mismatch, for the next full read's
+  # snapshot. Only a matching array and all-304 pages earn the same marker.
+  jq -Rn --argjson expected "$2" '[inputs] | .,
+    (if . == $expected then empty else error("changed probe") end)' \
+    < "$out.etags" > "$out.read" 2> /dev/null || exit 0
   [ "$same" = no ] || : > "$out.same"
 )
 
@@ -2366,17 +2370,19 @@ unchanged() {
   jq -r '.graphql | to_entries[] | "\(.key) \(.value | tojson)"' "$TMP/snap/body" > "$TMP/snap/answers" \
     && while read -r key answer; do printf '%s\n' "$answer" > "$TMP/snap/gql-$key.json" || return 0; done < "$TMP/snap/answers" \
     && jq -r '.private' "$TMP/snap/body" > "$TMP/snap/private" \
-    && jq -r '.probes[] | "\(.endpoint) -"' "$TMP/snap/body" > "$TMP/snap/probes" || return 0
+    && jq -r '.probes[] | "\(.endpoint) \(.etags | tojson)"' "$TMP/snap/body" > "$TMP/snap/probes" || return 0
   saved_id=$(jq -r '.repo_id' "$TMP/snap/body") && read_at=$(jq -r '.read_at' "$TMP/snap/body") \
     && replayable=$(jq -r '.replayable' "$TMP/snap/body") || return 0
   # Pages past the first are named by the repository's id.
   REPO_ID=$saved_id
+  # Prime every saved endpoint even when this snapshot changed or expired:
+  # the full read can then retain a snapshot for the next unchanged tick.
   parallel_reads probe "$TMP/snap/probes" || return 0
   [ "$replayable" = true ] && [ "$NOW" -ge "$read_at" ] && [ $((NOW - read_at)) -lt 1800 ] || return 0
-  jq -r '.probes[] | "\(.endpoint)\t\(.etags | tojson)"' "$TMP/snap/body" > "$TMP/snap/expected" || return 0
-  while IFS=$TAB read -r endpoint etags; do
+  jq -r '.probes[].endpoint' "$TMP/snap/body" > "$TMP/snap/expected" || return 0
+  while IFS= read -r endpoint; do
     key=$(printf '%s' "$endpoint" | hash) || return 0
-    [ -f "$TMP/probe/$key.same" ] && [ "$(jq -c . "$TMP/probe/$key.read")" = "$etags" ] || return 0
+    [ -f "$TMP/probe/$key.same" ] || return 0
   done < "$TMP/snap/expected"
   if LAUNCH_FLEET_REPLAY=$TMP sh "$0" spec "$SPEC" > "$TMP/replay.out" 2> /dev/null; then
     cat "$TMP/replay.out"
@@ -2402,7 +2408,10 @@ keep_read() {
   jq -r --arg r "$REPO" --arg d "$DEFAULT" --arg identity "$IDENTITY_PROBE" --argjson merged "$merged" '
     def prs: .closedByPullRequestsReferences.nodes[]?;
     def pr_probes: "repos/\($r)/pulls/\(.number)",
-      (.headRefOid // empty | "repos/\($r)/commits/\(.)/check-runs?per_page=100", "repos/\($r)/commits/\(.)/status");
+      # CI on a merged PR never selects a due line. Its metadata remains a
+      # probe, and every non-merged PR keeps both head-status probes.
+      (select(.state != "MERGED") | .headRefOid // empty
+        | "repos/\($r)/commits/\(.)/check-runs?per_page=100", "repos/\($r)/commits/\(.)/status");
     def timeline: "repos/\($r)/issues/\(.number)/timeline?per_page=100";
     ["repos/\($r)", $identity,
      (.specs[] | "repos/\($r)/issues/\(.number)/sub_issues?per_page=100",
@@ -2416,18 +2425,25 @@ keep_read() {
      (if $merged then "repos/\($r)/git/ref/heads/\($d | @uri)" else empty end)]
     | unique[]' "$TMP/world.json" > "$keep_out/probes" 2> /dev/null || return 0
   replayable=true
-  : > "$keep_out/probes.json" || return 0
+  : > "$keep_out/etags.json" || return 0
   while IFS= read -r endpoint; do
     key=$(printf '%s' "$endpoint" | hash) || return 0
     if [ -f "$TMP/probe/$key.read" ] && [ "$(cat "$TMP/probe/$key.endpoint")" = "$endpoint" ]; then
-      jq -c --arg e "$endpoint" '{endpoint: $e, etags: .}' "$TMP/probe/$key.read" >> "$keep_out/probes.json" || return 0
+      cat "$TMP/probe/$key.read" >> "$keep_out/etags.json" || return 0
     else
       # Not read before this read's GraphQL: its first read now gives the
       # next full read its ETags, and this read is not replayed.
       replayable=false
-      jq -cn --arg e "$endpoint" '{endpoint: $e, etags: ["\"-\""]}' >> "$keep_out/probes.json" || return 0
+      printf '%s\n' '["\"-\""]' >> "$keep_out/etags.json" || return 0
     fi
   done < "$keep_out/probes"
+  # Pack the same endpoint/ETag pairs in one process, preserving list order
+  # and refusing a missing or extra JSON value instead of shifting pairs.
+  jq -cn --rawfile endpoints "$keep_out/probes" '
+    ($endpoints | split("\n") | .[:-1]) as $endpoints | [inputs] as $tags
+    | if ($endpoints | length) != ($tags | length) then error("probe count")
+      else $endpoints | to_entries[] | {endpoint: .value, etags: $tags[.key]} end
+    ' "$keep_out/etags.json" > "$keep_out/probes.json" || return 0
   jq -n --arg schema "$UNCHANGED_SCHEMA" --arg self "$SELF" --arg host "${GH_HOST:-github.com}" --arg repo "$REPO" \
     --argjson spec "$SPEC" --argjson at "$NOW" --argjson replayable "$replayable" --argjson private "$private" \
     --arg default "$DEFAULT" --argjson repo_id "$REPO_ID" --slurpfile graphql "$keep_out/graphql.json" \

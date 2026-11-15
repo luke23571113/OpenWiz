@@ -2,7 +2,12 @@ name: Privacy
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
+  # #714, #725: main only, as in ci.yml. pull_request and merge_group cover PR
+  # branches and queue groups; a duplicate push run there (a new branch's first
+  # push scans every commit tree since the anchor and times out) reports
+  # cancelled and blocks the queue. The pre-push hook checks every push.
   push:
+    branches: [main]
   merge_group:
     types: [checks_requested]
 permissions:

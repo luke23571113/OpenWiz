@@ -7,6 +7,7 @@ observed at 12:00, valid through 12:05, is stale at 12:10 regardless of assembly
 These new composition/wire contracts had no existing War room test owner.
 """
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -151,10 +152,27 @@ class Contract(unittest.TestCase):
         partial = suite.load(HERE / 'fixtures/contract/partial.json')
         self.assertIsNone(partial['providers'][12]['metrics'][0]['value'])
 
+    def test_v1_records_keep_their_bytes_and_still_read(self):
+        # WRD1: the v1 examples predate v2. Their bytes are pinned and they still validate as v1.
+        pinned = {'known.json': 'db94225aa9ba37d4f40a3015cad39231c1e7c00a7b3c9bca21139a94bdad4e6b',
+                  'partial.json': 'c45c6d4bded0aca7d7c686cd81853344331913cf2f193ca42f774002db471c3f',
+                  'unavailable.json': '1622a82d2a276ca34092c012140ab8159ee13ec03d550794517432cb3effa5f7'}
+        for name, digest in pinned.items():
+            with self.subTest(name):
+                raw = (HERE / 'fixtures/contract' / name).read_bytes()
+                self.assertEqual(digest, hashlib.sha256(raw).hexdigest())
+                self.assertEqual('openwiz.war-room.v1', suite.loads(raw.decode())['schema'])
+                self.assertEqual('openwiz.war-room.v1', suite.schema_of(suite.loads(raw.decode())))
+
     def test_one_composition_boundary_and_missing_provider_stubs(self):
         activity = self.record['providers'][0]
         result = suite.compose('2030-01-02T12:00:00Z', [activity])
-        self.assertEqual(self.record, result)
+        # WRD1: new compositions are v2; every v1 field keeps its exact v1 content.
+        self.assertEqual('openwiz.war-room.v2', result['schema'])
+        self.assertEqual({k: v for k, v in self.record.items() if k != 'schema'},
+                         {k: v for k, v in result.items() if k not in ('schema', 'health')})
+        self.assertEqual(['main_ci', 'ci_queue', 'stage_health'], [h['slot'] for h in result['health']])
+        self.assertEqual({'unavailable'}, {h['state'] for h in result['health']})
         self.assertEqual(17, len(result['providers']))
         self.assertEqual(['throughput', 'stage_waits', 'board', 'ci', 'usage', 'decisions'], result['groups'])
         for slot in ('stage_waits', 'cost', 'answer_time', 'rework', 'eb6', 'eb7', 'eb8', 'eb9'):
@@ -169,7 +187,7 @@ class Contract(unittest.TestCase):
         extra.update(id='merged-today-sideways', label='Merged today sideways')
         activity['metrics'].append(extra)
         result = suite.compose('2030-01-02T12:00:00Z', [activity])
-        self.assertEqual('openwiz.war-room.v1', result['schema'])
+        self.assertEqual('openwiz.war-room.v2', result['schema'])  # the current version, not a new one
         self.assertEqual(2, len(result['providers'][0]['metrics']))
         self.assertEqual(1, len(self.record['providers'][0]['metrics']))
 

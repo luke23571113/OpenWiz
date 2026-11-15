@@ -1,5 +1,12 @@
 # War room record and suite contract v1
 
+**Legacy versus successor (WRD1, #629).** New snapshots are written as
+[`openwiz.war-room.v2`](contract.v2.md), which keeps every v1 field and rule
+below unchanged and adds a separate `health` section. Saved v1 samples are
+never rewritten. Read either version with `suite.validate`/`suite.load`, check
+`suite.schema_of`, and read health only through `suite.health`, which shows a v1
+sample's health as unobserved. `compose` below now returns v2.
+
 WR1 (#2345), spec #2340. `openwiz.war-room.v1` is one complete snapshot
 envelope over existing benches, **not** a new collector or source authority.
 Only synthetic/offline preparation is proved here. Source availability,

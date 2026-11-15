@@ -68,6 +68,18 @@ Dark only, on GitHub's dark page (`#0d1117`). Jake, 2026-11-06: option B uses di
 - Runs still in progress when `collect` reads are left out; read a window once it has finished.
 - `--robots` is what you say: the bench can't tell how many robots served a window that mixed the PC's and GitHub's.
 
+## Fixture provenance
+
+Every fixture under `fixtures/` is synthetic. `fixtures/baseline/` (#677) is a
+synthetic stand-in for the historical baseline, so the tests run from the
+public checkout alone: its runs cover each eligibility rule, runner and step
+timing, the denominators and rounding, and its expected `point.json` is worked
+out by hand in [its README](fixtures/baseline/README.md), never written by
+`bench.py`. The historical baseline's records and results stay private; the
+synthetic numbers make no claim about them. Tests that check the default
+`--baseline` copy the script into a test-owned temporary checkout holding the
+synthetic point at the default path.
+
 ## Dashboard and daily publication (#1252)
 
 Open the `ci-benchmarks` branch of the repository selected above.

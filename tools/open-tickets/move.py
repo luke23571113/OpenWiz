@@ -16,6 +16,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -31,6 +32,12 @@ from text import CHECKER, SOURCE, check_text, private_record, transform  # noqa:
 
 PRIVATE = 'jparker2006/ClosedWiz'
 PUBLIC = 'https://github.com/openwizdev/openwiz'  # the contract's final address; no legacy fallback
+# GitHub's issue list can omit a just-created item for minutes while GET issues/<n>
+# returns it, and it rate-limits rapid content creation (secondary limit).
+CREATE_PAUSE = 1.0      # seconds before each create POST
+CONFIRM_RETRIES = 8     # extra confirming reads after a create POST
+CONFIRM_DELAY = 5.0     # seconds between confirming reads
+DIRECT_READS = 5        # numbers read directly past the highest known one
 
 
 def canonical(value):
@@ -190,11 +197,31 @@ class Mover:
         require(len({row['id'] for row in rows}) == len(rows), 'gh: duplicate comment read')
         return rows
 
+    def read_issue(self, new):
+        """One direct issue read: the row, or None when GitHub has no such number."""
+        result = subprocess.run([self.args.gh, 'api', '--method', 'GET', f'repos/{self.target}/issues/{new}'],
+                                capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            require(re.search(r'\(HTTP (404|410)\)', result.stderr) is not None,
+                    'gh: direct target read unconfirmed; inspect and resume')
+            return None
+        row = parse_json(result.stdout)
+        require(type(row) is dict and row.get('number') == new, 'gh: invalid direct target read')
+        return row
+
     def find(self, old, identity=None):
         rows = self.get_pages(f'repos/{self.target}/issues?state=all&per_page=100')
         require(all(type(row) is dict and number(row.get('number')) and type(row.get('body')) is str
                     for row in rows), 'gh: invalid target inventory')
         require(len({row['number'] for row in rows}) == len(rows), 'gh: duplicate target inventory')
+        # The list can lag: read the next numbers directly, until the first missing one.
+        known = max([row['number'] for row in rows] + list(self.state['mapping'].values()) + [0])
+        for new in range(known + 1, known + 1 + DIRECT_READS):
+            row = self.read_issue(new)
+            if row is None:
+                break
+            require(type(row.get('body')) is str, 'gh: invalid direct target read')
+            rows.append(row)
         was = self.was(old)
         matches = [row for row in rows if row['body'].endswith(was) and
                    ('pull_request' in row) == (self.kinds[old] == 'pull_request')]
@@ -484,9 +511,15 @@ class Mover:
             else:
                 self.check_branch(old, nonce, required=True)
         self.intent('create', old, identity=identity)
+        time.sleep(CREATE_PAUSE)
         self.call(['api', '--method', 'POST', f"repos/{self.target}/{'pulls' if old in self.patches else 'issues'}", '--input', '-'],
                   canonical(payload).decode('utf-8'))
         found = self.find(old, self.state['inflight'])
+        for _ in range(CONFIRM_RETRIES):
+            if found is not None:
+                break
+            time.sleep(CONFIRM_DELAY)
+            found = self.find(old, self.state['inflight'])
         require(found is not None, 'resume: create outcome unconfirmed; no automatic retry')
         require(found not in self.state['mapping'].values(), 'resume: duplicate destination')
         self.state['mapping'][str(old)] = found

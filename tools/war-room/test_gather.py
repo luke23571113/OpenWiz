@@ -14,6 +14,7 @@ import hashlib
 import html
 import importlib.util
 import io
+import itertools
 import json
 import os
 from pathlib import Path
@@ -39,6 +40,8 @@ ACTIVE = ('in_progress', 'queued', 'waiting', 'pending', 'requested')
 STATUS = LISTED + 'status=%s&per_page=100&page=1'
 DONE = LISTED + 'created=2030-01-02T00:00:00Z..' + ENDED + '&status=completed&per_page=100&page=1'
 GATHERED = {'activity', 'board', 'ci_bench', 'journey', 'cost', 'credits', 'answer_time', 'rework'}
+# WRD1: also selected, with explicit reasons where this world has no source.
+HEALTH = {'main_ci', 'ci_queue', 'stage_waits', 'stage_health'}
 # #2565: the shape of the real gathered page of 2026-11-13, counts only: per card, its metrics,
 # each incomplete metric's prerequisites and each measured metric's evidence links. Real chromium
 # measured that page at 57,625 CSS px (1200 wide) and 49,909 (400 wide, drawn 2x). Its journey
@@ -78,6 +81,7 @@ def load(name, path):
 
 
 sys.path.insert(0, str(HERE))
+import history  # noqa: E402
 import sources  # noqa: E402
 import suite  # noqa: E402
 import answer_time  # noqa: E402
@@ -122,7 +126,7 @@ def marked(providers):
     """The providers with the last card the page draws (last group, last provider, last metric) labelled MARKER."""
     order = [d['slot'] for d in suite.PROVIDERS]
     last = max(((suite.GROUPS.index(m['group']), order.index(p['slot']), i), m)
-               for p in providers for i, m in enumerate(p['metrics']))[1]
+               for p in providers if 'metrics' in p for i, m in enumerate(p['metrics']))[1]
     last['label'] = MARKER
     return providers
 
@@ -153,6 +157,112 @@ def git(cwd, *args, env=None):
                           env=env).stdout
 
 
+class PublicBoardReaders(unittest.TestCase):
+    """#629: the board's offline readers live in sources.py; no private module is loaded.
+
+    Expected values are literals read off the synthetic fixtures (fixtures/page-history/
+    board-graph.json, fixtures/gather/history.jsonl and credits.jsonl), pinned once
+    against the board's existing readers before their extraction."""
+    AT = '2030-01-02T12:30:00Z'
+    LINK = 'https://github.com/synthetic-owner/work/commit/' + 'c' * 40
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix='war-room-board-'))
+        self.addCleanup(shutil.rmtree, self.root)
+        graph = json.loads((FIX / 'page-history/board-graph.json').read_text())
+        graph['repo'] = REPO
+        self.graph = graph
+        self.inputs = {'board_graph': json.dumps(graph),
+                       'board_history': (FIX / 'gather/history.jsonl').read_text(),
+                       'credits': (FIX / 'gather/credits.jsonl').read_text()}
+
+    def select(self, kind, wire):
+        (self.root / kind).write_text(wire)
+        entry = {'kind': kind, 'slot': sources.SLOTS[kind], 'path': kind, 'observed_at': self.AT,
+                 'sha256': hashlib.sha256(wire.encode()).hexdigest(), 'evidence': [self.LINK]}
+        return sources.select(self.root, [entry], self.AT)[0], entry
+
+    def test_no_private_module_is_loaded_and_each_board_source_still_reads(self):
+        real = sources.native
+
+        def public_only(path):
+            if path.startswith('private/'):
+                raise AssertionError('a private module was loaded: ' + path)
+            return real(path)
+        with patch.object(sources, 'native', side_effect=public_only):
+            for kind, wire in self.inputs.items():
+                with self.subTest(kind):
+                    provider, entry = self.select(kind, wire)
+                    self.assertNotEqual(provider, sources._failed(entry['slot'], None, self.AT))
+            board = dict(self.graph, source={'kind': 'board'})
+            self.assertEqual(gatherer().open_approved(json.dumps(board).encode(), REPO),
+                             [9001, 9002, 9003, 9004, 9005, 9006])
+
+    def test_board_graph_measures_and_states_keep_the_source_definitions(self):
+        report = sources.board_check_links(self.graph)
+        self.assertEqual((report['kind'], report['repo'], len(report['links'])), ('report', REPO, 4))
+        m = sources.board_measures(self.graph, report)
+        self.assertEqual({k: m[k] for k in sources.BOARD_MEASURE_KEYS},
+                         {'open_approved': 6, 'can_start': 2, 'startable_percent': 33, 'file_links': 0,
+                          'unlabelled_links': 0, 'ready_stock': 2, 'builders_running': 0,
+                          'fed_ratio': None, 'low_stock': False})
+        self.assertEqual([(t['number'], sources.board_state(t)) for t in sources.board_open_approved(self.graph)],
+                         [(9001, 'ready'), (9002, 'blocked'), (9003, 'blocked'), (9004, 'blocked'),
+                          (9005, 'ready'), (9006, 'blocked')])
+        provider, _ = self.select('board_graph', self.inputs['board_graph'])
+        self.assertEqual(len(provider['metrics']), 7)  # readiness plus one point per open approved ticket
+
+    def test_half_up_rounding_and_undefined_ratios(self):
+        def ticket(n, building=False, blocked=False):
+            return {'number': n, 'title': 'Synthetic', 'state': 'OPEN', 'labels': ['ready-for-agent'],
+                    'milestone': None, 'parent': None, 'body': '', 'start_recorded': building,
+                    'pull_requests': [], 'blocked_by': [{'number': 1, 'state': 'OPEN'}] if blocked else []}
+        report = {'kind': 'report', 'repo': REPO, 'links': []}
+        # 2 startable of 3 = 66.67 -> 67; 1 ready per 3 building = 0.33 -> 0.3.
+        graph = {'tickets': [ticket(1, True), ticket(2, True), ticket(3, True, blocked=True)]}
+        m = sources.board_measures(graph, report)
+        self.assertEqual((m['startable_percent'], m['fed_ratio'], m['low_stock']), (67, 0.0, True))  # 0 ready per 3 building
+        graph = {'tickets': [ticket(1), ticket(2, True), ticket(3, True), ticket(4, True)]}
+        m = sources.board_measures(graph, report)
+        self.assertEqual((m['ready_stock'], m['builders_running'], m['fed_ratio']), (1, 3, 0.3))
+        m = sources.board_measures({'tickets': []}, report)  # zero denominators stay undefined, never zero
+        self.assertEqual((m['startable_percent'], m['fed_ratio']), (None, None))
+
+    def test_history_rows_are_strict(self):
+        rows = [sources.board_strict(l) for l in self.inputs['board_history'].splitlines() if l.strip()]
+        self.assertTrue(all(sources.board_valid_row(r, False) for r in rows))
+        with self.assertRaises(ValueError):
+            sources.board_strict('{"at": 1, "at": 2}')
+        good = rows[0]
+        bad = [dict(good, open_approved=-1), dict(good, low_stock=1), dict(good, day='2030-01-03'),
+               dict(good, at='2030-02-30T11:00:00Z'), dict(good, fed_ratio='3.0'),
+               {k: good[k] for k in reversed(list(good))}, dict(good, sample='baseline')]
+        for row in bad:
+            with self.subTest(row=row):
+                self.assertFalse(sources.board_valid_row(row, False))
+        # A legacy baseline is admitted only as the first row, by its shape.
+        baseline = dict(good, sample='baseline', file_links=None, unlabelled_links=None, ready_stock=None,
+                        builders_running=None, fed_ratio=None, low_stock=None)
+        self.assertTrue(sources.board_valid_row(baseline, True))
+        self.assertFalse(sources.board_valid_row(baseline, False))
+        self.assertFalse(sources.board_valid_row(good, True))
+        self.assertFalse(sources.board_valid_row(dict(baseline, open_approved=None), True))
+
+    def test_credit_samples_and_their_sampled_drops(self):
+        samples = sources.read_credits(self.inputs['credits'])
+        self.assertEqual([sources.credit_spent(a, b) for a, b in zip(samples, samples[1:])], [30, 15])
+        rise = dict(samples[1], at='2030-01-02T13:00:00Z', extra_credits=900)
+        self.assertEqual(sources.credit_spent(samples[1], rise), 0)  # a rise counts as zero
+        seed = {'at': '2030-01-02T09:00:00Z', 'extra_credits': 520, 'only': 'extra_credits'}
+        self.assertEqual(sources.credit_spent(seed, samples[0]), 20)  # extra-only spans compare extra only
+        line = self.inputs['credits'].splitlines()[0]
+        for text in (line + '\n' + line, line.replace('"credits":1000', '"credits":-1'),
+                     line.replace('"credits":1000', '"credits":"1000"'), '{"at":"2030-01-02T09:00:00Z"}',
+                     json.dumps(dict(seed, only='credits'))):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                sources.read_credits(text)
+
+
 class Gather(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix='war-room-gather-'))
@@ -161,6 +271,7 @@ class Gather(unittest.TestCase):
         git(self.tmp, 'init', '-q', '--bare', str(self.origin))
         graph = json.loads((FIX / 'page-history/board-graph.json').read_text())
         graph['repo'] = REPO
+        graph['source'] = {'kind': 'board'}  # the board's own repository-wide read
         self.branch('board', BOARD_AT, {
             'graph.json': json.dumps(graph, indent=2) + '\n',
             'history.jsonl': (FIX / 'gather/history.jsonl').read_text(),
@@ -224,7 +335,7 @@ class Gather(unittest.TestCase):
 
     def gather(self, out=None, **overrides):
         out = self.tmp / 'out' if out is None else out
-        clock = iter([STARTED, ENDED])
+        clock = itertools.chain([STARTED], itertools.repeat(ENDED))  # WRD1: health reads stamp the clock too
         args = dict(remote=str(self.origin), repo=REPO, run_url=RUN, clock=lambda: next(clock),
                     pools=WR8.POOLS, journeys=self.journeys, cohort=self.cohort, answer_time=self.answer_time)
         args.update(overrides)
@@ -251,7 +362,7 @@ class Gather(unittest.TestCase):
 
     def test_gather_writes_a_selection_sources_select_accepts(self):
         root, selection = self.gather()
-        self.assertEqual({s['slot'] for s in selection}, GATHERED)
+        self.assertEqual({s['slot'] for s in selection}, GATHERED | HEALTH)
         for s in selection:
             with self.subTest(s['slot']):
                 # Pinned by sha256 of the gathered bytes and an observed time no later than the read.
@@ -274,8 +385,65 @@ class Gather(unittest.TestCase):
         for s, p in zip(selection, providers):
             with self.subTest(s['slot']):
                 self.assertNotEqual(p, sources._failed(s['slot'], None, ENDED))
+        # WRD1: the queue is WR8's same read projected again, so the two counts agree.
+        chosen = {p['slot']: p for p in providers}
+        activity = {m['id']: m['value'] for m in chosen['activity']['metrics']}
+        queue = {o['id']: o['value'] for o in chosen['ci_queue']['observations']}
+        self.assertEqual(queue['queued:ubuntu-24.04'], activity['ci-queued-ubuntu-24.04'])
+        self.assertEqual(queue['running:ubuntu-slim'], activity['ci-running-ubuntu-slim'])
+        self.assertEqual(chosen['main_ci']['state'], 'unavailable')  # this world answers no main reads
         # board and ci-benchmarks are only read: every ref of the origin is unchanged.
         self.assertEqual(self.refs(), self.refs_before)
+
+    def test_stage_reads_cover_open_approved_work_and_the_merged_cohort(self):
+        # WRD1: TL2 is collected for unfinished work too: the board graph's six open
+        # ready-for-agent tickets (9001-9006, blocked ones included) and ticket 94, which
+        # the merged cohort's PR closes (WR8's synthetic PR pages).
+        seen = []
+        with patch.object(gatherer(), 'stage_evidence', side_effect=lambda repo, tickets, clock: seen.append(sorted(tickets))):
+            _, selection = self.gather(journeys=None, cohort=None)
+        self.assertEqual(seen, [[94, 9001, 9002, 9003, 9004, 9005, 9006]])
+        # Its collection failed here, so both stage cards name their prerequisite.
+        missing = {s['slot'] for s in selection if s['path'].startswith('missing/')}
+        self.assertLessEqual({'stage_waits', 'stage_health'}, missing)
+
+    def test_r2_without_a_complete_ticket_enumeration_stage_health_is_not_collected(self):
+        # A missing or refused board graph, or failed PR pages, cannot enumerate the unfinished
+        # work, so no stage cohort is collected that silently omits it.
+        graph = json.loads((FIX / 'page-history/board-graph.json').read_text())
+        graph.update(repo=REPO, source={'kind': 'board'})
+        board = {'history.jsonl': (FIX / 'gather/history.jsonl').read_text(),
+                 'credits.jsonl': (FIX / 'gather/credits.jsonl').read_text()}
+        broken = dict(graph, tickets='not a list')
+        # R9: a valid graph of one spec, or another repository's board, enumerates no unfinished work here.
+        spec = dict(graph, source={'kind': 'spec', 'spec': 9000})
+        foreign = dict(graph, repo='synthetic-owner/other')
+        cases = {'no graph': (board, None), 'refused graph': (dict(board, **{'graph.json': json.dumps(broken)}), None),
+                 'failed PR pages': (dict(board, **{'graph.json': json.dumps(graph)}), 'graph:prs:'),
+                 'spec graph': (dict(board, **{'graph.json': json.dumps(spec)}), None),
+                 'foreign board graph': (dict(board, **{'graph.json': json.dumps(foreign)}), None)}
+        for name, (files, drop) in cases.items():
+            with self.subTest(name):
+                self.branch('board', BOARD_AT, files)
+                answers = WR8.fixture()
+                answers.pop(drop, None)
+                self.answer(answers)
+                seen = []
+                out = self.tmp / ('out-' + name.replace(' ', '-'))
+                with patch.object(gatherer(), 'stage_evidence', side_effect=lambda r, t, c: seen.append(t)):
+                    root, selection = self.gather(out, journeys=None, cohort=None)
+                self.assertEqual(seen, [])
+                for slot in ('stage_waits', 'stage_health'):
+                    entry = next(s for s in selection if s['slot'] == slot)
+                    self.assertTrue(entry['path'].startswith('missing/'))
+                    reason = json.loads((root / entry['path']).read_text())['prerequisites'][0]
+                    self.assertIn('unfinished', reason)
+                # Collector to history: the saved v2 sample keeps stage health unavailable, with that reason.
+                saved, _ = history.collect(out / 'history', ENDED,
+                                           publish_module().selection_reader(root, out / 'selection.json'))
+                stage = next(h for h in saved['health'] if h['slot'] == 'stage_health')
+                self.assertEqual((stage['state'], stage['observations']), ('unavailable', []))
+                self.assertTrue(any('unfinished' in p for p in stage['prerequisites']))
 
     def test_publish_shows_measured_values_with_provenance(self):
         root, selection = self.gather()

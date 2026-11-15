@@ -1,0 +1,70 @@
+#2788 scoped proof at reader e85e1fc4b5fd4169e6a1611d67205dcb29b4356a
+Scope approved 2026-11-14: https://github.com/jparker2006/ClosedWiz/issues/2788#issuecomment-6868949881
+
+The code, fixtures and measurement model are unchanged by this evidence/status commit.
+No dependency, workflow, contract or effect-path change. Helpers: 0.
+
+Full load invocation (original cases/counts/assertions retained):
+  python3 -I tools/fleet-load/test.py --report <private trace> --scale-report <private aggregate>
+......100 tickets / 5 specs / 49 spec ticks; 5105 check questions; peak 308/1250 GraphQL points per simulated hour; 200 archives
+........
+----------------------------------------------------------------------
+Ran 14 tests in 635.715s
+
+OK
+
+The 600-second guard is the existing Workload deadline. It passed. The complete
+14-case command took 635.715 s including the other proofs and verification;
+that total is not described as a sub-600-second whole-command result.
+
+Reader regressions:
+- Original 35 affected heavy cases passed on the initial reader (2788-affected.txt).
+- Changed/expired snapshots: 2 passed (first read-path candidate).
+- Consecutive changed primers, then recovered zero-GraphQL replay: 1 passed.
+- Merged CI changes preserve replay; open CI changes still force a full read: 1 passed.
+Every pair compares complete stdout with an empty-cache full read at the same virtual clock.
+ok   WZ-PROBE: changed tickets skip the remaining snapshot probes with identical due lines
+ok   every gh call was one of fleet.sh's reads
+1 cases, 0 failed
+ok   WZ-PROBE: merged PR checks cannot invalidate identical due lines
+ok   every gh call was one of fleet.sh's reads
+1 cases, 0 failed
+
+Back-off/source-cache guard proofs (including same-size/same-timestamp source changes and symlink spellings):
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.149s
+
+OK
+
+Carried-tool drift:
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.005s
+
+OK
+
+Pinned skill dry run:
+commit e85e1fc4b5fd4169e6a1611d67205dcb29b4356a
+launch-fleet standalone: pass
+launch-fleet privacy: pass
+
+Paired measurement: 2788-before.json / 2788-after.json; all seven stdout hashes match.
+Fake CPU/process cost is separate from modeled HTTP pages/304s/GraphQL requests.
+The recorder separately checks 20 exact cached/uncached fake response and trace matches.
+Failed-first evidence: 2788-red.txt, 2788-primer-red.txt, 2788-primer-gate-red.txt,
+2788-merged-red.txt; aggregate deadline failures are retained as load-first,
+load-second and load-cached-failed. None is counted as passing.
+
+Supporting paths and necessity (within the explicitly granted tools/fleet-load/ scope):
+- load.py / fake.py: exact observed early back-off probes, HTTP status/ETag counts,
+  and temporary checked-bytecode preparation; support the reader's probe-cost and deadline criteria.
+- test_seams.py: retains every original negative back-off assertion and verifies new
+  early exits, complete pages, known baselines, clock limits and source-cache invalidation.
+- measure_probes.py / README.md / evidence/2788-*: reproducible synthetic request,
+  process/CPU and before/after due-output evidence for the reader's acceptance criteria.
+- STATUS.md: only the granted #2788 status entry, as AGENTS.md requires.
+- scripts/test.sh: only #2788 regression cases and necessary exact case-count accounting.
+
+Infra/tooling: no-changelog; no product release line.
+Live HTTP behavior/cost/latency remains unverified. CI and independent review remain pending.
