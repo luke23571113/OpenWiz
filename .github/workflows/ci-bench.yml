@@ -59,6 +59,10 @@ jobs:
           python3 -I tools/factory-metrics/test_experiment_contract.py
           python3 -I tools/ci-bench/test_trends.py
           python3 -I tools/ci-bench/test_required.py
+      - name: CI and Privacy job time budgets (CI3 C1)
+        run: |
+          python3 -I tools/ci-bench/budgets.py check
+          python3 -I tools/ci-bench/test_budgets.py
 
   publish:
     needs: proof

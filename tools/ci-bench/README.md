@@ -596,3 +596,24 @@ every cut references the same bill id, counted once. Never sum these shared
 bills or overlapping comparisons, or treat included/free capacity as a
 success-only cohort. Unknown cost stays a gap; actual whole-bill completeness,
 prices and any live speed/spend acceptance require C13's independent evidence.
+
+## Budgets (CI3 C1, #782)
+
+Every job in the CI and Privacy workflows has a time budget that fails. An overrun is a red bug, not lost minutes. A budget is 1.5x the job's p95 running time (started to completed), rounded up to a whole minute, with a floor of 5 minutes. `budgets.tsv` holds one row per job, plus one per mode for a two-mode job. Each row keeps its p95, its sample count and the runs it was read from.
+
+```sh
+# Read-only: each workflow's last 150 completed runs (latest attempt), via gh api GETs.
+python3 -I tools/ci-bench/budgets.py collect --workflow ci.yml --since T --out DIR
+python3 -I tools/ci-bench/budgets.py collect --workflow privacy.yml --since T --out DIR
+# Optional: the same with no --since, for jobs too rare to have samples in DIR.
+python3 -I tools/ci-bench/budgets.py table DIR [--fallback OLDER] # writes budgets.tsv
+python3 -I tools/ci-bench/budgets.py apply                          # sets each timeout-minutes line
+python3 -I tools/ci-bench/budgets.py check                          # CI's guard (ci-bench.yml)
+python3 -I tools/ci-bench/test_budgets.py                           # its proofs, synthetic records only
+```
+
+- **Samples:** every job of the latest attempt that ran to `success` or `failure`. Skipped jobs never ran, and cancelled ones were cut short, so neither counts. A matrix job's legs (`skills (triage)`, `rust-export (2)`) share one `timeout-minutes`, so its p95 is that of its slowest leg.
+- **Traced and planted runs** get their own budget, from their own runs. They run each lane as one shard and upload trace records. A run is traced when it is a scheduled run, or when the upload step right after a lane's tests (`Run cargo test --workspace`, `Run npm test`) ran. Jobs whose steps carry the trace/planted `if` get a `normal` and a `traced` row, and their timeout is `${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && T || N }}`. Every other job gets one `all` row.
+- **Too few samples:** `table` refuses any job or mode with fewer than 5 samples. `--fallback` then reads that job from an older window, and its row names that window.
+- **The check** fails on: a job with no row, a job with no `timeout-minutes`, a timeout that differs from its row, a row whose timeout isn't 1.5x its p95, and a row for a job that no longer exists. It runs in the bench workflow.
+- **No retries and no wider limits.** A job too slow for its budget is a bug to fix, or a budget to re-read from newer runs in its own PR.

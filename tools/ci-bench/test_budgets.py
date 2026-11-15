@@ -173,13 +173,13 @@ class Table(unittest.TestCase):
             return r, rows
 
     def lanes(self):
-        """20 normal runs: always 1..20 min; rust two legs; 3 traced runs."""
+        """20 normal runs: always 1..20 min; rust two legs; 5 traced runs."""
         jobs = []
         for i in range(1, 21):
             jobs.append(job(i, "always", 60 * i))
             jobs.append(job(i, "rust (1)", 300 + i))
             jobs.append(job(i, "rust (2)", 400 + i))
-        for i in range(21, 24):
+        for i in range(21, 26):
             jobs.append(job(i, "always", 120))
             jobs.append(job(i, "rust (1)", 1800 + i, traced=True))
         return jobs
@@ -190,16 +190,16 @@ class Table(unittest.TestCase):
     def test_each_job_gets_one_and_a_half_times_its_p95_rounded_up(self):
         r, rows = self.table(self.lanes())
         self.assertEqual(r.returncode, 0, r.stderr)
-        # always: 23 samples (20 normal + 3 traced, one mode); nearest-rank
-        # p95 is the 22nd of 23 sorted: 60..1200 s and three 120 s, so the
-        # sorted list's 22nd is 1140 s; 1.5 x 1140 s = 28.5 min -> 29.
-        self.assertEqual(rows[("ci.yml", "always", "all")][:4], ["29", "1140", "23", "150"])
+        # always: 25 samples (20 normal + 5 traced, one mode); nearest-rank
+        # p95 is the 24th of 25 sorted: 60, six 120 s, then 180..1200 s at
+        # places 8..25, so the 24th is 1140 s; 1.5 x 1140 s = 28.5 min -> 29.
+        self.assertEqual(rows[("ci.yml", "always", "all")][:4], ["29", "1140", "25", "150"])
         # rust normal: legs (1) 301..320 and (2) 401..420; leg (2)'s p95 is
         # its 19th, 419 s; 1.5 x 419 s = 10.475 min -> 11.
         self.assertEqual(rows[("ci.yml", "rust", "normal")][:4], ["11", "419", "40", "150"])
-        # rust traced: 1821, 1822, 1823 s; p95 of 3 is the 3rd, 1823 s;
-        # 1.5 x 1823 s = 45.575 min -> 46.
-        self.assertEqual(rows[("ci.yml", "rust", "traced")][:4], ["46", "1823", "3", "150"])
+        # rust traced: 1821..1825 s; p95 of 5 is the 5th, 1825 s;
+        # 1.5 x 1825 s = 45.625 min -> 46.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")][:4], ["46", "1825", "5", "150"])
         # privacy: 101..120 s; p95 119 s; 1.5 x 119 s = 2.975 min -> floor 5.
         self.assertEqual(rows[("privacy.yml", "privacy", "all")][:4], ["5", "119", "20", "20"])
         self.assertEqual(rows[("ci.yml", "always", "all")][4:], [T0, "2030-01-02T00:00:00Z"])
@@ -225,7 +225,7 @@ class Table(unittest.TestCase):
         jobs = self.lanes() + [job(30, "rust (1)", 2400, conclusion="failure", event="schedule")]
         r, rows = self.table(jobs)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(rows[("ci.yml", "rust", "traced")][:3], ["60", "2400", "4"])
+        self.assertEqual(rows[("ci.yml", "rust", "traced")][:3], ["60", "2400", "6"])
 
     # Bug: a job or mode with too few samples gets a budget from noise.
     def test_too_few_samples_read_the_fallback_or_fail(self):
