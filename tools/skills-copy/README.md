@@ -196,7 +196,7 @@ retrying; it never claims a verified publication. Hooks are disabled for this
 single generated-commit push, after the required privacy check. Repository or
 credential setup is #1409's work, not this tool's.
 
-The workflow admits only skill-changing pushes to `openwizdev/openwiz` main,
+The workflow admits only skill-changing pushes to `openwizdev/OpenWiz` main,
 uses `ubuntu-24.04` and a read-only source token, and serializes publications.
 `workflow.py` verifies the event and changed paths again before the destination
 credential is used. Synthetic proofs run before publication. ClosedWiz and forks

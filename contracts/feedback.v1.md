@@ -17,7 +17,7 @@ live check pass. Every account, issue number and identifier below is synthetic.
 
 ## Words
 
-- **Destination:** the one repository feedback goes to, `openwizdev/openwiz`.
+- **Destination:** the one repository feedback goes to, `openwizdev/OpenWiz`.
 - **Feedback:** one issue on the destination. There is no other transport: no
   OpenWiz server, email, chat, telemetry, form service or bot account.
 - **User's agent:** the agent the user already works with, acting through the
@@ -33,7 +33,7 @@ live check pass. Every account, issue number and identifier below is synthetic.
 One feedback issue is exactly:
 
 - **Repository:** the destination, created through GitHub's REST
-  `POST /repos/openwizdev/openwiz/issues` with only the `title` and `body`
+  `POST /repos/openwizdev/OpenWiz/issues` with only the `title` and `body`
   fields: no labels, assignees, milestone, type or attachment.
 - **Title:** the chosen title: one line, not empty after trimming, at most 256
   characters (GitHub's limit). Neither the title nor the body may hold a
@@ -70,7 +70,7 @@ is not feedback under this contract.
 
 Before every preview the user's agent:
 
-1. reads the destination (`GET /repos/openwizdev/openwiz`) and proceeds only if
+1. reads the destination (`GET /repos/openwizdev/OpenWiz`) and proceeds only if
    it is `private: false`, `visibility: public`, `archived: false` and
    `has_issues: true`;
 2. reads the account actually logged in (`GET /user`) and records its `login`
@@ -100,7 +100,7 @@ one operation, previews it and asks for an explicit yes.
 
 The preview shows, together and exactly:
 
-- the full destination, `openwizdev/openwiz`, and that it is public;
+- the full destination, `openwizdev/OpenWiz`, and that it is public;
 - the submitting account's `login`;
 - the exact title and the entire body, marker included;
 - that a yes creates one public issue anyone can read, once.
@@ -150,7 +150,7 @@ was created.
 ## Outcomes
 
 - **Sent** only when the created issue is read back
-  (`GET /repos/openwizdev/openwiz/issues/<number>`) and it is in the destination,
+  (`GET /repos/openwizdev/OpenWiz/issues/<number>`) and it is in the destination,
   its author's `id` is the bound account's, and its title and body equal the
   previewed bytes, marker included. The record keeps the issue number and URL.
   A command accepted by the agent, a started process, a response without
@@ -172,7 +172,7 @@ does not prove that Jake's agents read it, queued it or will reply.
 An `uncertain` operation is reconciled under the same bound account before any
 further create call, and never by an automatic retry or a replacement operation.
 The agent lists the destination's issues created by that account since the
-preview (`GET /repos/openwizdev/openwiz/issues?creator=<login>&state=all&since=<time>`,
+preview (`GET /repos/openwizdev/OpenWiz/issues?creator=<login>&state=all&since=<time>`,
 every page), and reads each candidate whose body ends with this operation's
 marker:
 
@@ -217,8 +217,8 @@ Sharing tells someone about OpenWiz. It is separate from feedback: its own
 explicit action, and never a feedback consent.
 
 - **What can be shared:** a short text the user can edit, plus exactly one public
-  URL from this allowlist: `https://github.com/openwizdev/openwiz`, or
-  `https://github.com/openwizdev/openwiz/issues/<number>` for an issue on the
+  URL from this allowlist: `https://github.com/openwizdev/OpenWiz`, or
+  `https://github.com/openwizdev/OpenWiz/issues/<number>` for an issue on the
   destination after it is read back as an issue on a repository that is still
   public. No query string, fragment or other URL. A new allowed URL needs a
   revision of this contract.

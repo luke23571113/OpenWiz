@@ -351,7 +351,7 @@ class Check(unittest.TestCase):
                 self.workflow('jobs:\n  test:\n    runs-on: ' + runner + '\n')
             mutants = [
                 runner.replace("github.repository == 'jparker2006/ClosedWiz'", "github.repository != 'jparker2006/ClosedWiz'"),
-                runner.replace("'jparker2006/ClosedWiz'", "'openwizdev/openwiz'"),
+                runner.replace("'jparker2006/ClosedWiz'", "'openwizdev/OpenWiz'"),
                 runner.replace("'jparker2006/ClosedWiz'", "'owner/repo'"),
                 runner.replace(" && (", " && ").replace(") ||", " ||"),
                 runner.replace("head.repo.full_name !=", "head.repo.full_name =="),
@@ -560,7 +560,7 @@ class Check(unittest.TestCase):
         head = self.git('rev-parse', 'HEAD')
         line = f'refs/heads/main {head} refs/heads/main {self.anchor}\n'
         r = subprocess.run(['sh', str(HERE.parent.parent / '.githooks/pre-push'), 'origin',
-                            'https://github.com/openwizdev/openwiz.git'], cwd=self.repo,
+                            'https://github.com/openwizdev/OpenWiz.git'], cwd=self.repo,
                            input=line, text=True, capture_output=True)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn('C1 ', r.stdout + r.stderr)
@@ -610,7 +610,7 @@ class Check(unittest.TestCase):
         self.git('add', '.')
         self.git('commit', '-qm', 'public change')
         path.write_text(THREAD)
-        args = ['--url', 'git@github.com:openwizdev/openwiz.git', '--repo', str(self.repo),
+        args = ['--url', 'git@github.com:openwizdev/OpenWiz.git', '--repo', str(self.repo),
                 '--base', self.anchor, '--head', 'HEAD']
         def run(extra=()):
             out = io.StringIO()
@@ -640,7 +640,7 @@ class Check(unittest.TestCase):
         guessed = self.repo.parent / 'ClosedWiz/private/evidence/open-development/privacy-check'
         guessed.mkdir(parents=True)
         (guessed / 'literals.txt').write_text('SYNTHETIC_LITERAL_MARKER\n')
-        args = ['--url', 'https://github.com/openwizdev/openwiz', '--repo', str(self.repo), '--head', 'HEAD', '--base', self.anchor]
+        args = ['--url', 'https://github.com/openwizdev/OpenWiz', '--repo', str(self.repo), '--head', 'HEAD', '--base', self.anchor]
         def run(extra):
             out = io.StringIO()
             with patch.dict(os.environ, {}, clear=True), patch.multiple(hook.check, PUBLIC_ROOT=self.public_root, PUBLIC_ANCHOR=self.anchor), contextlib.redirect_stdout(out):
@@ -667,7 +667,7 @@ class Check(unittest.TestCase):
         def run(kind, event):
             event_path.write_text(event if isinstance(event, str) else json.dumps(event))
             out = io.StringIO()
-            with patch.dict(os.environ, GITHUB_REPOSITORY='openwizdev/openwiz', GITHUB_EVENT_NAME=kind,
+            with patch.dict(os.environ, GITHUB_REPOSITORY='openwizdev/OpenWiz', GITHUB_EVENT_NAME=kind,
                             GITHUB_EVENT_PATH=str(event_path)), contextlib.chdir(self.repo), patch.multiple(
                                 adapter.check, PUBLIC_ROOT=self.public_root, PUBLIC_ANCHOR=self.anchor), contextlib.redirect_stdout(out):
                 rc = adapter.main()
@@ -705,7 +705,7 @@ class Check(unittest.TestCase):
         self.assertEqual(parsed['jobs']['privacy']['name'], 'privacy')
         runner = parsed['jobs']['privacy']['runs-on']
         # Synthetic labels distinguish variable precedence from the default.
-        for repository in ('jparker2006/ClosedWiz', 'openwizdev/openwiz', 'owner/repo'):
+        for repository in ('jparker2006/ClosedWiz', 'openwizdev/OpenWiz', 'owner/repo'):
             for event, head, trusted in (
                 ('push', '', True),
                 ('pull_request', repository, True),
@@ -735,6 +735,15 @@ class Check(unittest.TestCase):
                                          'jparker2006/ClosedWiz' else 'ubuntu-24.04')
         self.assertEqual(parsed['permissions'], {'contents': 'read'})
         self.assertEqual(set(parsed['on']), {'push', 'pull_request', 'merge_group'})
+        # #714, #725: a push run on any branch but main duplicates the required
+        # privacy check; a new branch's first push (zero before) scans every
+        # commit tree since the anchor, hits the job timeout and reports
+        # cancelled, which blocks the merge queue. pull_request and merge_group
+        # cover PR branches and queue groups, so push stays main only.
+        self.assertEqual(parsed['on']['push'], {'branches': ['main']})
+        # privacy is required: a branch or path filter would leave it missing on some PRs.
+        self.assertFalse({'branches', 'branches-ignore', 'paths', 'paths-ignore'} & set(parsed['on']['pull_request']))
+        self.assertEqual(parsed['on']['merge_group'], {'types': ['checks_requested']})
         self.assertEqual(workflow.refused_jobs(path.read_text()), [])
         self.assertIn('edited', parsed['on']['pull_request']['types'])
 

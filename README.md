@@ -1,16 +1,22 @@
-# OpenWiz
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/openwiz-lockup-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/brand/openwiz-lockup-light.svg">
+    <img alt="OpenWiz" src="docs/brand/openwiz-lockup-light.svg" width="380">
+  </picture>
+</h1>
 
 OpenWiz runs coding agents in fleets, with the user approving plans and OpenWiz building, reviewing and merging their tickets. It also provides a terminal and loopback web interface for CloudRoom sessions, messaging, new threads and attachments. See [STATUS.md](STATUS.md) for the distinction between published features, fixture-tested work and live acceptance.
 
-Development targets the public repository [openwizdev/openwiz](https://github.com/openwizdev/openwiz). ClosedWiz stays private and keeps exact decision words, grills, live evidence, machine details and orchestration state. Public decisions give the decision, date and a private-record comment pointer, under the [open development contract](contracts/open-development.v1.md).
+Development targets the public repository [openwizdev/OpenWiz](https://github.com/openwizdev/OpenWiz). ClosedWiz stays private and keeps exact decision words, grills, live evidence, machine details and orchestration state. Public decisions give the decision, date and a private-record comment pointer, under the [open development contract](contracts/open-development.v1.md).
 
-**Migration status:** development happens here, in `openwizdev/openwiz`. Private records are kept separately. Older issue and pull request links remain provenance for work completed before the move.
+**Migration status:** development happens here, in `openwizdev/OpenWiz`. Private records are kept separately. Older issue and pull request links remain provenance for work completed before the move.
 
 ## Install
 
 Paste this line into your coding agent:
 
-> Install OpenWiz from github.com/openwizdev/openwiz
+> Install OpenWiz from github.com/openwizdev/OpenWiz
 
 Agents: read [`skills/install/SKILL.md`](skills/install/SKILL.md) and follow it. It checks the machine and CloudRoom, installs the verified prebuilt release (no Rust or Node), opens setup, then hands the first fleet to the [`onboard`](skills/onboard/SKILL.md) skill. Nothing starts until the user approves a plan. People: see the [install guide](docs/install.md), including recovery and removal. OpenWiz is free now. Paid plans come later. CloudRoom and model charges are separate and not included.
 

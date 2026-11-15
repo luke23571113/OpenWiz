@@ -823,7 +823,7 @@ const RELEASE_CANDIDATE_KEYS: &[&str] = &[
 const RELEASE_CANDIDATE_LABELS: &[&str] = &[
     "openwiz.release-candidate.v1",
     "openwiz.product.v1",
-    "openwizdev/openwiz",
+    "openwizdev/OpenWiz",
     "example/private", // synthetic refused repository
     "cli",
     "server",

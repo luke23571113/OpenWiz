@@ -28,7 +28,7 @@ const TITLE = 'Plan page hides the approve button on a narrow phone';
 const BODY = 'On a 360-pixel screen the approve button sits under the footer.';
 const HANDOFF = [
   'Please send this as public feedback about OpenWiz with the OpenWiz feedback skill (openwiz:feedback).',
-  'It becomes one public issue on openwizdev/openwiz, under my own GitHub login.',
+  'It becomes one public issue on openwizdev/OpenWiz, under my own GitHub login.',
   'Show me the exact preview first, and create nothing until I say yes.',
   '',
   `Title: ${TITLE}`,
@@ -36,7 +36,7 @@ const HANDOFF = [
   'Body:',
   BODY,
 ].join('\n');
-const SHARE = 'Have a look at OpenWiz.\n\nhttps://github.com/openwizdev/openwiz';
+const SHARE = 'Have a look at OpenWiz.\n\nhttps://github.com/openwizdev/OpenWiz';
 
 async function fixture() {
   // Planted private-looking state the page holds: a session title and purpose.

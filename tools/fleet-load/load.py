@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import py_compile
 from pathlib import Path
 import re
 import shlex
@@ -59,6 +60,18 @@ def notification(action, pull, ticket, head):
     return f'{action} #{pull} for #{ticket} at {head}'
 
 
+def prepare_bytecode(directory, sources):
+    """Compile immutable recording modules once; validate source hashes on every import."""
+    previous = sys.pycache_prefix
+    try:
+        sys.pycache_prefix = str(Path(directory).resolve())
+        for source in sources:
+            py_compile.compile(str(source), cfile=importlib.util.cache_from_source(str(source)),
+                               invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH, doraise=True)
+    finally:
+        sys.pycache_prefix = previous
+
+
 def saved_probes(cache, spec):
     """The probe endpoints of GI1's saved unchanged-spec entry (#2543), or None without one."""
     try:
@@ -68,13 +81,28 @@ def saved_probes(cache, spec):
         return None
 
 
-def backoff_gate(calls, saved):
+def saved_ticket_probe(cache, spec, now):
+    """The exact known ticket-list baseline for an early changed-probe exit."""
+    try:
+        body = json.loads(json.loads((cache / f'unchanged-spec-{spec}.json').read_text())['body'])
+        if not 0 <= now - body['read_at'] < 1800:
+            return None
+        endpoint = f"repos/{body['repo']}/issues/{spec}/sub_issues?per_page=100"
+        probe = next(p for p in body['probes'] if p['endpoint'] == endpoint)
+        return probe if body['replayable'] is True or probe['etags'] != ['"-"'] else None
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        return None
+
+
+def backoff_gate(calls, saved, cut=None):
     """S4: a back-off tick makes exactly one question, its first GraphQL read, last.
 
     GI1 (#2543) may probe before it: then exactly the saved entry's endpoints, each
     once, plus only the later pages their responses linked to, in that order. No other
-    read, no repeat, no write. Without a saved entry (or one fleet.sh did not use),
-    the GraphQL read is the only call.
+    read, no repeat, no write. A snapshot with a known ticket-list baseline may
+    instead stop after its exact pagination chain proves changed, using HTTP status
+    and ETags against that saved baseline. Without a saved entry (or one fleet.sh
+    did not use), the GraphQL read is the only call.
     """
     if not calls or calls[-1]['tool'] != 'gh' or calls[-1]['args'][:2] != ['api', 'graphql']:
         return False
@@ -98,7 +126,17 @@ def backoff_gate(calls, saved):
             first.append(endpoint)
         if c.get('next'):
             linked.add(c['next'])
-    return sorted(first) == sorted(saved) and len(set(saved)) == len(saved)
+    if sorted(first) == sorted(saved) and len(set(saved)) == len(saved):
+        return True
+    if not cut or cut['endpoint'] not in saved or first != [cut['endpoint']] or linked:
+        return False
+    tags = []
+    for c in probes:
+        if ((c.get('http_status'), c.get('status')) not in ((200, 0), (304, 1))
+                or not isinstance(c.get('etag'), str) or not re.fullmatch(r'(W/)?"[!#-~]{1,250}"', c['etag'])):
+            return False
+        tags.append(c['etag'])
+    return any(c['http_status'] == 200 for c in probes) or tags != cut['etags']
 
 
 class Workload:
@@ -121,6 +159,12 @@ class Workload:
         for key in list(self.env):
             if key.startswith(('FAKE_GH_', 'LAUNCH_FLEET_', 'LOAD_')):
                 del self.env[key]
+        # The stdlib-only fake keeps one process per command. Its large
+        # response modules need not be recompiled in each process; checked
+        # hashes prevent a same-size/source-timestamp change becoming stale.
+        bytecode = self.root / 'bytecode'
+        prepare_bytecode(bytecode, [SCRIPTS / 'fixtures/gh.py', HERE / 'transport.py'])
+        self.env['LOAD_BYTECODE'] = str(bytecode.resolve())
         bindir = self.root / 'bin'
         bindir.mkdir()
         for command in ('gh', 'room-cli'):
@@ -341,7 +385,9 @@ class Workload:
         self.env['FAKE_GH_REMAINING'] = '1249' if low else '5000'
         self.save()
         # fleet.sh keeps its cache per repository: $LAUNCH_FLEET_CACHE/<owner>/<name>.
-        saved = saved_probes(Path(self.env['LAUNCH_FLEET_CACHE']) / self.world['repo'], spec) if low else None
+        cache = Path(self.env['LAUNCH_FLEET_CACHE']) / self.world['repo']
+        saved = saved_probes(cache, spec) if low else None
+        cut = saved_ticket_probe(cache, spec, self.now) if low else None
         before = len(self.read_events())
         began = time.monotonic()
         result = subprocess.run(['sh', self.fleet, 'spec', str(spec)], env=self.env,
@@ -352,7 +398,7 @@ class Workload:
         calls = self.read_events()[before:]
         if low:
             assert not result.stdout and re.fullmatch(r'fleet.sh: backing off: [^\n]+\n', result.stderr), result
-            assert backoff_gate(calls, saved), \
+            assert backoff_gate(calls, saved, cut), \
                 'S4 back-off made extra calls'
             points = calls[-1]['cost']
         else:

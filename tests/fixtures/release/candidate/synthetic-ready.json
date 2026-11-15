@@ -3,7 +3,7 @@
   "candidate_sha256": "24446ae03bf192adc0c4e3047f492de4f67728a36a86ca48d29c115258bd8623",
   "candidate": {
     "source": {
-      "repository": "openwizdev/openwiz",
+      "repository": "openwizdev/OpenWiz",
       "commit": "1111111111111111111111111111111111111111",
       "tree": "2222222222222222222222222222222222222222",
       "anchor": "5d069b025c6eacb4123ca8241ba21345f1eae9dd"

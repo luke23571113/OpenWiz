@@ -13,6 +13,7 @@ import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
+BASELINE = HERE/'fixtures/baseline'  # synthetic (#677); see its README.md
 spec = importlib.util.spec_from_file_location('bench_fixtures', HERE/'test.py')
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
@@ -53,10 +54,10 @@ class Publish(unittest.TestCase):
                 (w/'point.json').write_text(json.dumps(p))
                 windows.append(w)
                 if day == '01':
-                    command(sys.executable, '-I', HERE/'publish.py', '--source', w, '--repo', seed)
-            command(sys.executable, '-I', HERE/'publish.py', '--source', *windows, '--repo', seed)
+                    command(sys.executable, '-I', HERE/'publish.py', '--source', w, '--repo', seed, '--baseline', BASELINE)
+            command(sys.executable, '-I', HERE/'publish.py', '--source', *windows, '--repo', seed, '--baseline', BASELINE)
             first = command('git', '--git-dir', remote, 'rev-parse', 'ci-benchmarks')
-            command(sys.executable, '-I', HERE/'publish.py', '--source', windows[-1], '--repo', seed)
+            command(sys.executable, '-I', HERE/'publish.py', '--source', windows[-1], '--repo', seed, '--baseline', BASELINE)
             self.assertEqual(command('git', '--git-dir', remote, 'rev-parse', 'ci-benchmarks'), first)
             self.assertEqual(command('git', '--git-dir', remote, 'rev-parse', 'main'), main)
             paths = command('git', '--git-dir', remote, 'ls-tree', '-r', '--name-only', 'ci-benchmarks').splitlines()
@@ -79,7 +80,7 @@ class Publish(unittest.TestCase):
             command('git', 'push', 'origin', 'ci-benchmarks', cwd=seed)
             before = command('git', '--git-dir', remote, 'rev-parse', 'ci-benchmarks')
             r = subprocess.run([sys.executable, '-I', str(HERE/'publish.py'), '--source', str(windows[0]),
-                                '--repo', str(seed)], capture_output=True, text=True, timeout=30)
+                                '--repo', str(seed), '--baseline', str(BASELINE)], capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 1, r.stderr)
             self.assertIn('unexpected files', r.stderr)
             self.assertEqual(command('git', '--git-dir', remote, 'rev-parse', 'ci-benchmarks'), before)
@@ -225,7 +226,7 @@ class Publish(unittest.TestCase):
                 world[inventory_call] = {'stdout': '', 'exit': 1}
                 seed = root/'seed'; shutil.copytree(HERE/'fixtures/window', seed)
                 command(sys.executable, '-I', HERE/'bench.py', 'measure', seed, '--robots', '5', '--label', 'last good')
-                command(sys.executable, '-I', HERE/'publish.py', '--source', seed, '--repo', repo)
+                command(sys.executable, '-I', HERE/'publish.py', '--source', seed, '--repo', repo, '--baseline', baseline)
                 previous = command('git', '--git-dir', remote, 'rev-parse', 'ci-benchmarks')
             if factory_fails:
                 world[factory_fixture.gql_call()] = {'stdout': '', 'exit': 1}

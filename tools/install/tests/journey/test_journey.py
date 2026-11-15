@@ -44,8 +44,8 @@ ONBOARD_TESTS = TOOLS / 'tests/onboard'
 TARGET = 'x86_64-unknown-linux-gnu'
 VERSION = '0.0.99'
 NAME = 'openwiz-' + TARGET
-BASE = 'https://github.com/openwizdev/openwiz/releases/'
-LINE = 'Install OpenWiz from github.com/openwizdev/openwiz'
+BASE = 'https://github.com/openwizdev/OpenWiz/releases/'
+LINE = 'Install OpenWiz from github.com/openwizdev/OpenWiz'
 ORDER = ['Preflight', 'Verified install', 'Setup and connections', 'Engine', 'Explain', 'First fleet']
 # #2293 (PR6, copy only): contracts/public-offer.v1.md's free-only copy, as independent literals.
 FREE_ONLY = ('OpenWiz is free now. Paid plans come later. '

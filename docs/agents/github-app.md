@@ -64,7 +64,7 @@ python3 -I tools/github-app/setup.py --agent-for openwizdev --organization --yes
 
 The agent gives you that run's announced local page. It goes straight to
 GitHub's install page. Choose `openwizdev`, then **Only select repositories**:
-exactly `openwizdev/openwiz` and `openwizdev/wizplugins`. **Click "Install".**
+exactly `openwizdev/OpenWiz` and `openwizdev/wizplugins`. **Click "Install".**
 
 Never choose "All repositories": the setup refuses that installation.
 

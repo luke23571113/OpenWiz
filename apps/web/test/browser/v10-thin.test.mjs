@@ -75,7 +75,7 @@ export const INERT_URLS = [
   // core-js's licence banner, inside Next's polyfills chunk (loaded only by browsers without modules).
   /^https:\/\/github\.com\/zloirock\/core-js(\/blob\/v[0-9.]+\/LICENSE)?$/,
   // #2292 (J28): the one allowlisted share URL, copied to the clipboard on Copy, never requested.
-  /^https:\/\/github\.com\/openwizdev\/openwiz$/,
+  /^https:\/\/github\.com\/openwizdev\/OpenWiz$/i,
   /^https?:\/\/www\.w3\.org\/(2000\/svg|1999\/xhtml|1998\/Math\/MathML|1999\/xlink|XML\/1998\/namespace)$/,
 ];
 

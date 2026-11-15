@@ -85,7 +85,7 @@ class Frozen(unittest.TestCase):
 
     def refused(self, result):
         paths = self.named(result, 1)
-        self.assertIn('Product work goes to openwizdev/openwiz', result.stdout)
+        self.assertIn('Product work goes to openwizdev/OpenWiz', result.stdout)
         return paths
 
     # AC1: after activation, a carried path fails, named exactly.

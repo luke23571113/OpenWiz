@@ -1,0 +1,32 @@
+......E..
+======================================================================
+ERROR: setUpClass (__main__.LoadProof)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/ClosedWiz/tools/fleet-load/test.py", line 34, in setUpClass
+    cls.report = json.loads(cls.trace_path.read_text()) if cls.trace_path else load.run(scaled=True)
+                                                                               ^^^^^^^^^^^^^^^^^^^^^
+  File "/code/ClosedWiz/tools/fleet-load/load.py", line 479, in run
+    return Workload(root, fleet or SCRIPTS / 'fleet.sh', scaled=scaled).run()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/code/ClosedWiz/tools/fleet-load/load.py", line 470, in run
+    self.tick(spec, low=tick == 2)
+  File "/code/ClosedWiz/tools/fleet-load/load.py", line 393, in tick
+    result = subprocess.run(['sh', self.fleet, 'spec', str(spec)], env=self.env,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 1207, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 2060, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+  File "/usr/lib/python3.11/subprocess.py", line 1251, in _check_timeout
+    raise TimeoutExpired(
+subprocess.TimeoutExpired: Command '['sh', '/code/ClosedWiz/tools/fleet-load/../../skills/launch-fleet/scripts/fleet.sh', 'spec', '500']' timed out after 6.444734837859869 seconds
+
+----------------------------------------------------------------------
+Ran 8 tests in 635.637s
+
+FAILED (errors=1)

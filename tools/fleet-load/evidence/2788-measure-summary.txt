@@ -1,0 +1,19 @@
+Paired synthetic recorder/transport; no live API measurements.
+Baseline reader: b59bfea272487e67c791263a09be7769fcfcc8d3.
+Candidate reader: e85e1fc4b (source hash in 2788-after.json).
+All seven complete stdout hashes match.
+
+run | REST before -> after | modeled GraphQL before -> after | fake 304s before -> after
+spec-cold | 67 -> 67 | 47 -> 47 | 0 -> 0
+spec-prime | 90 -> 90 | 3 -> 3 | 67 -> 67
+spec-warm | 90 -> 90 | 0 -> 0 | 90 -> 90
+spec-changed | 90 -> 68 | 3 -> 3 | 86 -> 64
+spec-expired | 90 -> 67 | 3 -> 3 | 90 -> 67
+check-cold | 322 -> 322 | 227 -> 227 | 0 -> 0
+check-warm | 322 -> 322 | 7 -> 7 | 322 -> 322
+
+Full check: five specs / 100 tickets. Spec 100: 20 tickets.
+GraphQL commands differ from modeled HTTP requests: revision CLI reads may paginate internally.
+A 304 is still an HTTP request. Each recorder also asserts exact parity of 20 cached/uncached fake responses and event traces.
+Wall/CPU time and fake process counts are separate fields in each JSON record.
+Live gh redirects, retries, authentication exchanges, costs and latency remain unverified.

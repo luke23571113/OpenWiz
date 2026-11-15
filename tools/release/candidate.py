@@ -41,7 +41,7 @@ from install import manifest_at  # noqa: E402
 from publish import git as remote_git, refs  # noqa: E402
 from repository import remote_url, repository  # noqa: E402
 
-PUBLIC = 'openwizdev/openwiz'
+PUBLIC = 'openwizdev/OpenWiz'
 ANCHOR = '5d069b025c6eacb4123ca8241ba21345f1eae9dd'
 PRIVATE = 'jparker2006/ClosedWiz'
 OWNER = 'jparker2006'
@@ -97,6 +97,11 @@ class Blocked(Exception):
     def __init__(self, reasons, status='blocked'):
         super().__init__(', '.join(reasons))
         self.reasons, self.status = list(reasons), status
+
+
+def same_name(value, name):
+    """GitHub matches owner and repository names in any capitals (RN6); anything not ASCII is refused."""
+    return isinstance(value, str) and value.isascii() and value.lower() == name.lower()
 
 
 def block(*reasons):
@@ -211,7 +216,7 @@ def section_hash(text, version):
 def notes(args):
     """Proposed notes from changes/ at the clone's HEAD, J6 caps and recorded exclusions."""
     repo = Path(args.repo).resolve(strict=True)
-    require(repository(repo) == PUBLIC, 'notes come from the public repository')
+    require(same_name(repository(repo), PUBLIC), 'notes come from the public repository')
     data = strict(Path(args.entry).read_bytes())
     require(isinstance(data, dict) and set(data) == {'versions', 'excluded'}, 'invalid entry input')
     versions = entry.entries(data['versions'], args.version)
@@ -281,7 +286,7 @@ def published_tags(cwd, own=None):
 def check_source(repo, body, scratch):
     source = body['source']
     keys(source, 'repository commit tree anchor', 'invalid_source')
-    if source['repository'] != PUBLIC or repository(repo) != PUBLIC:
+    if source['repository'] != PUBLIC or not same_name(repository(repo), PUBLIC):
         block('private_source')
     if source['anchor'] != ANCHOR or not digest(source['commit'], 40) or not digest(source['tree'], 40):
         block('unrelated_history')
@@ -713,7 +718,7 @@ def gate_reasons(record, gate, receipt, inputs, ctx=None):
             return verify_products(record, inputs, ctx)
         if gate == 'cutover':
             meta = gh_json(f'repos/{PUBLIC}')
-            if not isinstance(meta, dict) or meta.get('full_name') != PUBLIC \
+            if not isinstance(meta, dict) or not same_name(meta.get('full_name'), PUBLIC) \
                     or meta.get('visibility') != 'public' or meta.get('archived') is not False:
                 return ['unverified']
     except (Blocked, Refused, ValueError):
@@ -892,7 +897,7 @@ def cutover_reasons():
         contexts = {c.get('context') for d in main for rule in d.get('rules') or [] if rule.get('type') ==
                     'required_status_checks' for c in (rule.get('parameters') or {}).get('required_status_checks') or []}
         ok = (o17.get('state') == 'closed' and o17.get('state_reason') == 'completed' and not held(o17)
-              and not held(o16) and meta.get('full_name') == PUBLIC and meta.get('visibility') == 'public'
+              and not held(o16) and same_name(meta.get('full_name'), PUBLIC) and meta.get('visibility') == 'public'
               and meta.get('archived') is False and immutable.get('enabled') is True and main
               and {'ci', 'privacy'} <= contexts and all(d.get('bypass_actors') == [] for d in main))
     except (Blocked, Refused, ValueError, AttributeError, KeyError, TypeError):
