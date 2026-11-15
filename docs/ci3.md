@@ -14,7 +14,7 @@ the number moved, and why.
 | Window | 2026-11-14 03:17 to 2026-11-15 17:16 UTC (38 hours), the CI-speed audit's window on #693 |
 | Cohort | 65 PR heads of 36 pull requests; 65 with a result, **0 missing** |
 | Outcomes | 50 success, 14 failure, 1 cancelled; no reruns |
-| Read | 2026-11-15 22:46 UTC, after every head's result had settled |
+| Read | 2026-11-15 23:52 UTC, after every head's result had settled (first read 22:46 UTC; read again after the review's fixes to unallocated and carried jobs and fallback buckets: every number unchanged) |
 
 | Number | p50 | p95 | n |
 | --- | ---: | ---: | ---: |
@@ -59,7 +59,7 @@ deleted run), and the record then says so in its counts.
 
 ```json
 {
-  "collected_at": "2026-11-15T22:46:34Z",
+  "collected_at": "2026-11-15T23:52:51Z",
   "critical_path": {
     "results": 65,
     "running": {
