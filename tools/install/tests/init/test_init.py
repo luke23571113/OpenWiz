@@ -74,10 +74,10 @@ class Init(unittest.TestCase):
         change(world)
         self.world_file.write_text(json.dumps(world))
 
-    def init(self, *args, expect=0):
+    def init(self, *args, expect=0, repository=CODE):
         env = {'PATH': f'{self.bin}:/usr/bin:/bin', 'HOME': str(self.base / 'home'),
                'OPENWIZ_STATE_DIR': str(self.state), 'FAKE_GH_WORLD': str(self.world_file)}
-        result = subprocess.run([sys.executable, '-I', str(INIT), '--repository', CODE, '--json', *args],
+        result = subprocess.run([sys.executable, '-I', str(INIT), '--repository', repository, '--json', *args],
                                 env=env, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
         self.assertEqual(result.stderr, '')
@@ -139,7 +139,7 @@ class Init(unittest.TestCase):
         code = self.read()['repos'][CODE.lower()]
         self.assertEqual(code['branches'], {'main': {'README.md': 'Synthetic app.\n'}}, 'public code untouched')
         self.assertEqual(code['labels'], ['openwiz'])
-        self.assertEqual(sum(1 for call in self.writes() if call[1].startswith(f'repos/{CODE}')), 1,
+        self.assertEqual(sum(1 for call in self.writes() if call[1].startswith(f'repos/{CODE}/')), 1,
                          'only the label is written on public code')
         self.assertEqual(applied['private_content_written'], 'brain_repository')
 
@@ -182,8 +182,7 @@ class Init(unittest.TestCase):
                 shutil.rmtree(self.state, ignore_errors=True)
                 self.world(repos, user=login)
                 before = copy.deepcopy(self.read()['repos'])
-                env_repo = ['--repository', target] if target != CODE else []
-                refused = self.init(*env_repo, expect=5)
+                refused = self.init(expect=5, repository=target)
                 self.assertEqual(refused['reason_code'], 'companion_conflict' if name == 'foreign' else name)
                 self.assertEqual(self.writes(), [])
                 self.assertEqual(self.read()['repos'], before)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A recording stand-in for `gh api --include` over a synthetic GitHub world.
+"""A recording stand-in for `gh api --include` (and setup.py's plain `gh api PATH`)
+over a synthetic GitHub world.
 
 Test-only: copied into a scratch bin directory as `gh`. The world is JSON at
 $FAKE_GH_WORLD; every call is appended to its `log` (method, path), so tests
@@ -16,7 +17,13 @@ import urllib.parse
 WORLD = os.environ['FAKE_GH_WORLD']
 
 
+INCLUDE = True
+
+
 def reply(status, body=None):
+    if not INCLUDE:  # setup.py's plain `gh api PATH` read: the body only
+        sys.stdout.write(json.dumps(body))
+        return 0 if status < 400 else 1
     reason = {200: 'OK', 201: 'Created', 404: 'Not Found'}.get(status, 'Status')
     sys.stdout.write(f'HTTP/2.0 {status} {reason}\r\nContent-Type: application/json\r\n\r\n')
     if body is not None:
@@ -25,6 +32,9 @@ def reply(status, body=None):
 
 
 def main(argv):
+    global INCLUDE
+    if len(argv) == 2 and argv[0] == 'api':
+        INCLUDE, argv = False, ['api', '--include', '-X', 'GET', argv[1]]
     assert argv[:4] == ['api', '--include', '-X', argv[3]], argv
     method, target = argv[3], argv[4]
     body = json.loads(sys.stdin.read()) if argv[5:] == ['--input', '-'] else None
