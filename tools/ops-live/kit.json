@@ -17,15 +17,18 @@
     },
     "J56": {"verdict_source": "thread_output_by_id", "github_comment_alone": "never"}
   },
-  "start_after": [
-    {"ticket": 1110, "condition": "0.0.13's timed live run has finished and its evidence is posted on #1110", "record": null}
-  ],
+  "exclusive_use": {
+    "FR5": "https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6888295193",
+    "condition": "no other live run is using openwizdev/livecheck-throwaway-1110 at the time",
+    "when": "checked and recorded right before the first live effect",
+    "record": null
+  },
   "test_repository": "openwizdev/livecheck-throwaway-1110",
   "cloud_threads": {
     "record": "https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6868136156",
     "granted": 2,
     "roles": ["standby", "builder", "reviewer"],
-    "J60": {"record": "https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6874553811", "active": 3, "total": 6, "repository": "openwizdev/livecheck-throwaway-1110", "after": 1110}
+    "J60": {"record": "https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6874553811", "active": 3, "total": 6, "repository": "openwizdev/livecheck-throwaway-1110"}
   },
   "controls": {
     "format": "ops-live-kit-controls/1",
