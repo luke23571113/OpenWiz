@@ -526,6 +526,9 @@ impl Drop for Copy {
     }
 }
 
+#[path = "../support/fixture_service.rs"]
+mod fixture_service;
+
 #[path = "t5_server.rs"]
 mod server;
 
