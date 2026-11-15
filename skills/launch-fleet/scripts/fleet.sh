@@ -903,12 +903,13 @@ settings() {
   # #641: the factory's own identity, the one place that names it: the logins
   # that write its records (its App, and the account it falls back to). Every
   # comment read below by anyone else, or by no one, is dropped before any
-  # reader sees it. The whole cell must be backticked logins separated by
-  # commas: no row, an empty one, or any malformed or extra entry stops the
-  # check, never keeping only the logins that did parse.
+  # reader sees it. The row must be exactly "| Record authors | <cell> |" and
+  # the whole cell backticked logins separated by commas: no row, an empty
+  # one, any malformed or extra entry, or anything after the value cell stops
+  # the check, never keeping only the logins that did parse.
   awk '/^## /{on = ($0 == "## GitHub identity")} on && /^[|] *Record authors *[|]/' "$TMP/fleet.md" > "$TMP/authors.txt" \
     && jq -Rse 'split("\n") | map(select(length > 0)) | select(length == 1) | .[0]
-      | split("|") | select(length == 4) | .[2]
+      | split("|") | select(length == 4 and (.[3] | test("^\\s*$"))) | .[2]
       | "`[A-Za-z0-9](-?[A-Za-z0-9])*(\\[bot\\])?`" as $login
       | select(test("^\\s*" + $login + "(\\s*,\\s*" + $login + ")*\\s*$"))
       | [scan("`([^`]*)`") | .[0] | ascii_downcase]' "$TMP/authors.txt" > "$TMP/authors.json" 2> /dev/null \

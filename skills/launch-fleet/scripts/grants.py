@@ -202,8 +202,9 @@ def record_authors(fleet_md):
 
     The one place that names them is the "Record authors" row of its
     "## GitHub identity" table, as fleet.sh reads it. Returns lowercase logins;
-    no row, an empty row, or any malformed or extra entry refuses the whole
-    row (ValueError): it never keeps only the logins that did parse.
+    no row, an empty row, any malformed or extra entry, or anything after the
+    value cell refuses the whole row (ValueError): it never keeps only the
+    logins that did parse.
     """
     section, rows = None, []
     for line in fleet_md.splitlines():
@@ -212,7 +213,9 @@ def record_authors(fleet_md):
         elif section == '## GitHub identity' and re.match(r'\| *Record authors *\|', line):
             rows.append(line)
     cells = rows[0].split('|') if len(rows) == 1 else []
-    require(len(cells) == 4 and CELL.fullmatch(cells[2]), 'docs/agents/fleet.md names no record authors')
+    # Nothing may follow the value cell but its closing pipe (R3).
+    require(len(cells) == 4 and not cells[3].strip() and CELL.fullmatch(cells[2]),
+            'docs/agents/fleet.md names no record authors')
     logins = re.findall(r'`([^`]*)`', cells[2])
     return frozenset(x.lower() for x in logins)
 
