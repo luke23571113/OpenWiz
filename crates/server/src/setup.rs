@@ -102,7 +102,7 @@ const CODES: [(&str, &str, &str, &str, &str); 54] = [
     ("harness", "harness_unreadable", "unknown", "CloudRoom's harness options could not be read.", CHECK_AGAIN),
     ("personal_github", "identity_verified", "verified", "Your agents' own GitHub login can push to the selected repository.", "Nothing to do."),
     ("personal_github", "identity_unselected", "missing", "No repository is selected yet.", "Save your project settings with a repository."),
-    ("personal_github", "identity_signed_out", "missing", "No GitHub login is available to your agents on this host.", "Sign in to GitHub for your agents (gh auth login), then check again."),
+    ("personal_github", "identity_signed_out", "missing", "No GitHub login is available to your agents on this host.", "Ask your installing agent to open GitHub's browser sign-in, approve it there, then check again. You never paste a token."),
     ("personal_github", "identity_bot", "refused", "Your agents' GitHub login is an App or bot account, not your own identity.", "Sign your agents in with your own GitHub account, separate from OpenWiz's App."),
     ("personal_github", "identity_no_push", "refused", "Your agents' GitHub login cannot push to the selected repository.", "Give that login write access to the repository, then check again."),
     ("personal_github", "identity_unreadable", "unknown", "GitHub did not answer the identity check.", CHECK_AGAIN),
