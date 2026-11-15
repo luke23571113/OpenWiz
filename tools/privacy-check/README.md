@@ -61,7 +61,12 @@ anchor. Replace objects are disabled, grafts and shallow clones refuse, and
 missing objects are never fetched. Every newly reachable commit after the
 anchor has its message, author/committer email and tree checked: deleting a
 private file at the tip does not remove it from published history. Without
-`--base`, the range begins after the approved public anchor. There is no command
+`--base`, the range begins after the approved public anchor; `--upstream REF`
+(a new ref's first push) narrows it to the commits after their merge-bases
+with REF, the destination's `main` as last fetched, already checked when it
+landed. A missing REF or no merge-base falls back to the anchor. The hook
+passes its remote's `refs/remotes/<remote>/main`; `ci.py` passes `origin/main`
+for a new branch, never for a new `main`. There is no command
 option or environment override for the root, anchor or decider list. Tests
 substitute synthetic policy constants in memory and traverse real fixture Git
 graphs, including an unrelated root arriving through a merge.
@@ -80,8 +85,8 @@ contract until the CI tickets change it; this ticket does not edit that workflow
 
 - **Ruleset check name: `privacy`**, fixed by job id and name in
   `.github/workflows/privacy.yml`. O12 (#1280) requires this name. It runs on
-  `ubuntu-24.04` with read-only permissions for every push, PR (including text
-  edits) and merge group. Tests use synthetic fixtures on both repositories.
+  `ubuntu-24.04` with read-only permissions for every PR (including text
+  edits), merge group and push to `main`. Tests use synthetic fixtures on both repositories.
   Its private checkout contains only this tool, hook fixtures and this workflow,
   excluding private files. The event gate exits on the private repository before
   reading its event or tree. On public repositories it checks exact event SHAs and PR title/body.

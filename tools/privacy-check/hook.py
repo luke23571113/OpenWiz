@@ -35,6 +35,7 @@ def main(argv=None):
     parser.add_argument('--repo', required=True, type=Path)
     parser.add_argument('--head', required=True)
     parser.add_argument('--base', required=True)
+    parser.add_argument('--remote', help="the push's remote name; a new ref starts after the merge-base with its main")
     parser.add_argument('--literals', type=Path, default=os.environ.get('OPENWIZ_PRIVACY_LITERALS'))
     args = parser.parse_args(argv)
     if private_or_local(args.url):
@@ -42,6 +43,10 @@ def main(argv=None):
     command = ['--repo', str(args.repo), '--git-tree', args.head, '--head', args.head]
     if args.base.strip('0'):
         command += ['--base', args.base]
+    elif args.remote and re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9._-]*', args.remote) and '..' not in args.remote:
+        # Git names the remote, or passes a URL that has no tracking refs.
+        # Its main as last fetched or pushed is already public there.
+        command += ['--upstream', 'refs/remotes/' + args.remote + '/main']
     if args.literals is not None:
         command += ['--literals', str(args.literals), '--require-literals']
     return check.main(command)

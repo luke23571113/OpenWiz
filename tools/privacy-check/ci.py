@@ -51,6 +51,10 @@ def main():
         args = ['--repo', '.', '--git-tree', head, '--head', head]
         if base.strip('0'):
             args += ['--base', base]
+        elif kind == 'push' and isinstance(event.get('ref'), str) and event['ref'] != 'refs/heads/main':
+            # A new branch: main's history was checked when it landed. A new
+            # main has no earlier public state, so it scans from the anchor.
+            args += ['--upstream', 'refs/remotes/origin/main']
         with tempfile.TemporaryDirectory() as folder:
             for name, text in (('title', title), ('body', body)):
                 path = Path(folder) / name
