@@ -756,6 +756,6 @@ if __name__ == '__main__':
     except Refused as refusal:
         print(f'openwiz-cloudroom: refused: {refusal}', file=sys.stderr)
         sys.exit(5)
-    except (OSError, http.client.HTTPException, ValueError):
+    except (OSError, http.client.HTTPException, ValueError, RecursionError):
         print('openwiz-cloudroom: refused: the CloudRoom step could not be completed safely', file=sys.stderr)
         sys.exit(5)

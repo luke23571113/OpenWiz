@@ -20,4 +20,6 @@ The fixtures of the [plan links contract](../../../../contracts/plan-links.v1.md
 
 `history/` holds a history, its baseline row first, and its expected daily rows across the PST day boundary.
 
-`tests/checks/plan_links.rs` (run by `cargo test -p openwiz-tests --test checks plan_links`) validates every file here against the schema and checks each expectation against its graph read.
+The consumer project's own plan-links check, where its settings name one,
+validates these fixtures against the carried schema and checks each expectation
+against its graph read.

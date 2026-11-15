@@ -561,7 +561,7 @@ fn plan_links_contract_carries_this_specs_lines_and_the_baseline() {
             &baseline["can_start"],
             &baseline["startable_percent"]
         ),
-        (&json!(119), &json!(48), &json!(40))
+        (&json!(80), &json!(20), &json!(25))
     );
     assert_valid(&baseline, "history", "the contract's baseline row");
 }

@@ -259,8 +259,9 @@ checks evidence, never decides scope. Builders cannot grant their own exceptions
 Protected policies, contracts/interfaces, dependencies, workflows, scope, live and
 spending retain their existing gates. Changes to approved bodies, titles, links
 or outcomes still use **hold first**, the full successor revision and reapproval.
-The finite daily audit procedure is `private/orchestration/grant-audit.md` in
-the configured private checkout; do not copy private state into public records.
+Follow the consumer project's finite daily audit procedure, resolved through
+its private-state settings. The procedure stays in the configured private
+repository; never copy it into the skills package.
 
 Delegated ON1 is evidence preparation under the contract, not C2 authority or an
 enabled release effect. Before any proposed release, record the approved producer

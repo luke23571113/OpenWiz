@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -54,12 +55,14 @@ IMAGE_SOURCE = "**Source:** new, original to OpenWiz. Not adapted from Matt Poco
 WHERE_SOURCE = "**Source:** dot-context's written plan. Not adapted from Matt Pocock's skills."
 # WZ6's feedback and WZ13's install (#2891) carry the original-source line too.
 SOURCE_LINES = {'feedback': IMAGE_SOURCE, 'hill-climb': IMAGE_SOURCE, 'image': IMAGE_SOURCE,
-                'install': IMAGE_SOURCE, 'where-are-we': WHERE_SOURCE}
+                'install': IMAGE_SOURCE, 'where-are-we': WHERE_SOURCE,
+                'feedback-triage': IMAGE_SOURCE, 'huntr': IMAGE_SOURCE}
 
 # The suites ci/select/skills.py runs today, by skill and command; the
 # suites runner must run every one of these from the tree's root.
-SUITE_SKILLS = ['triage', 'where-are-we', 'hill-climb', 'image', 'plan-graph', 'launch-fleet']
-SKILLS = sorted(SUITE_SKILLS + ['ask-wiz', 'feedback', 'install'])
+SUITE_SKILLS = ['triage', 'where-are-we', 'hill-climb', 'image', 'plan-graph', 'launch-fleet',
+                'feedback', 'feedback-triage', 'huntr', 'grill', 'build-ticket', 'diagnose']
+SKILLS = sorted(SUITE_SKILLS + ['ask-wiz', 'install'])
 
 # The one command ci/select/skills.py runs that is a ClosedWiz tool, not a
 # skill's own file: WizSkills cannot carry it (contracts/wizskills.v1.md).
@@ -102,27 +105,46 @@ def openai_yaml(name):
 def suite_files(root):
     """Fake suite scripts at the listed paths; each records its own run."""
     marker = {
-        'triage': [('skills/triage/test/test_find_work.py', 'py')],
+        'triage': [('skills/triage/test/test_find_work.py', 'py'),
+                   ('skills/triage/test/test_public_records.py', 'py')],
+        'feedback': [('skills/feedback/test/test_feedback.py', 'py')],
+        'feedback-triage': [('skills/feedback-triage/tests/test_triage.py', 'unit')],
+        'huntr': [('skills/huntr/scripts/test.sh', 'sh')],
+        'grill': [('skills/grill/scripts/test.sh', 'sh')],
+        'diagnose': [('skills/diagnose/tests/hitl-loop.test.mjs', 'node')],
+        'build-ticket': [('skills/build-ticket/scripts/test/test_durable_helpers.py', 'unit'),
+                         ('skills/build-ticket/scripts/test/test_check_helpers.py', 'script')],
         'where-are-we': [('skills/where-are-we/test/test_read_github.py', 'py')],
         'hill-climb': [('skills/hill-climb/tests/test_synthetic.py', 'unit')],
-        'image': [('skills/image/tests/test_synthetic.py', 'unit')],
+        'image': [('skills/image/tests/test_synthetic.py', 'unit'),
+                  ('skills/image/references/test_synthetic.py', 'unit')],
         'plan-graph': [('skills/plan-graph/scripts/test_check_approval.py', 'py'),
                        ('skills/plan-graph/test/test-revision.sh', 'sh')],
         'launch-fleet': [('skills/launch-fleet/scripts/test.sh', 'sh'),
                          ('skills/launch-fleet/test/ops-protocol/test_protocol.py', 'py'),
                          ('skills/launch-fleet/scripts/test-effects.py', 'py'),
                          ('skills/launch-fleet/scripts/test-grants.py', 'py'),
-                         ('skills/launch-fleet/scripts/test-inbox.py', 'py')],
+                         ('skills/launch-fleet/scripts/test-inbox.py', 'py'),
+                         *[(f'skills/launch-fleet/scripts/{name}', 'sh' if name.endswith('.sh') else 'py')
+                           for name in ('test-records.py', 'test-ops-starts.py', 'test-on1.py',
+                                        'test-loop.sh', 'test-limit-replacement.py', 'test-limit-recovery.py')]],
     }
     for files in marker.values():
         for rel, kind in files:
             if kind == 'sh':
-                write(root / rel, f'#!/bin/sh\necho {rel} >> ran.txt\n')
+                write(root / rel, f'#!/bin/sh\necho {rel} >> {shlex.quote(str(root / "ran.txt"))}\n')
+            elif kind == 'node':
+                write(root / rel, 'import { appendFileSync } from \"node:fs\";\n'
+                      + 'appendFileSync(\"ran.txt\", ' + json.dumps(rel + '\n') + ');\n')
+            elif kind == 'script':
+                write(root / rel, 'if __name__ == \"__main__\":\n'
+                      + ''.join('    ' + line + '\n' for line in RECORDER.format(rel).splitlines()))
             elif kind == 'py':
                 write(root / rel, RECORDER.format(rel))
             else:
                 write(root / rel, RECORDER.format(rel) + 'import unittest\n\n\n'
-                      'class T(unittest.TestCase):\n    def test_ok(self):\n        pass\n')
+                      'class T(unittest.TestCase):\n    def test_ok(self):\n        pass\n'
+                      'if __name__ == \"__main__\": unittest.main()\n')
     return sorted(rel for files in marker.values() for rel, _ in files)
 
 
@@ -150,11 +172,14 @@ def build(root):
     (root / 'check').mkdir()
     shutil.copy2(RUN, root / 'check/run.py')
     write(root / 'check/standalone.py', STANDALONE)
+    write(root / 'check/fixtures/huntr-project/docs/agents/huntr.md', '# Synthetic test-only consumer settings.\n')
     return suite_files(root)
 
 
-def run(root):
+def run(root, path=None):
     env = {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
+    if path is not None:
+        env['PATH'] = str(path)
     done = subprocess.run([sys.executable, 'check/run.py'], cwd=root, env=env,
                           capture_output=True, text=True, timeout=120)
     return done.returncode, done.stdout + done.stderr
@@ -407,6 +432,49 @@ class Layout(Tree):
 
 
 class Suites(Tree):
+    def test_direct_unittest_with_hyphenated_name_runs(self):
+        rel = 'skills/launch-fleet/scripts/test-effects.py'
+        write(self.root / rel, RECORDER.format(rel) + 'import unittest\n'
+              'class T(unittest.TestCase):\n    def test_ok(self):\n        pass\n'
+              'if __name__ == "__main__": unittest.main()\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(ran(self.root), self.suites)
+
+    def test_script_style_file_must_run_its_entrypoint(self):
+        rel = 'skills/build-ticket/scripts/test/test_check_helpers.py'
+        script = self.root / rel
+        script.write_text(script.read_text() + '    raise SystemExit(3)\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(ran(self.root), self.suites)
+        self.assertIn('test_check_helpers.py: fail (3)', out)
+
+    def test_unittest_file_with_zero_tests_fails_even_beside_a_real_test(self):
+        rel = 'skills/image/references/test_empty.py'
+        write(self.root / rel, 'import unittest\nclass Empty(unittest.TestCase):\n    pass\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('zero tests', out)
+        self.assertIn('test_empty.py', out)
+        self.assertEqual(ran(self.root), self.suites)
+
+    def test_script_in_discovery_folder_is_not_counted_as_covered(self):
+        write(self.root / 'skills/hill-climb/tests/test_script.py',
+              'if __name__ == "__main__":\n    raise SystemExit(3)\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('unlisted', out)
+        self.assertEqual(ran(self.root), self.suites)
+
+    def test_direct_unittest_file_with_zero_cases_fails(self):
+        rel = 'skills/build-ticket/scripts/test/test_durable_helpers.py'
+        write(self.root / rel, 'import unittest\nclass Empty(unittest.TestCase):\n    pass\n'
+              'if __name__ == "__main__": unittest.main()\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('zero tests', out)
+
     def test_a_failing_suite_fails_the_check_after_every_suite_ran(self):
         write(self.root / 'skills/plan-graph/test/test-revision.sh',
               '#!/bin/sh\necho skills/plan-graph/test/test-revision.sh >> ran.txt\nexit 3\n')
@@ -422,6 +490,38 @@ class Suites(Tree):
         code, out = run(self.root)
         self.assertEqual(code, 1, out)
         self.assertIn('suite image:', out)
+
+    def test_an_unlisted_suite_refuses_instead_of_silently_skipping(self):
+        write(self.root / 'skills/triage/test/test_new.py', 'raise SystemExit(0)\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('unlisted', out)
+        self.assertEqual(ran(self.root), self.suites)
+
+    def test_a_missing_interpreter_does_not_skip_later_suites(self):
+        bin_dir = self.root / 'bin'
+        bin_dir.mkdir()
+        (bin_dir / 'sh').symlink_to(shutil.which('sh'))
+        code, out = run(self.root, path=bin_dir)
+        self.assertEqual(code, 1, out)
+        self.assertIn('cannot start', out)
+        self.assertEqual(ran(self.root), [rel for rel in self.suites if not rel.endswith('.mjs')])
+
+    def test_huntr_runs_in_a_carried_synthetic_consumer(self):
+        script = self.root / 'skills/huntr/scripts/test.sh'
+        original = script.read_text()
+        script.write_text('#!/bin/sh\ntest -f docs/agents/huntr.md || exit 4\n'
+                          'test ! -e .claude-plugin/plugin.json || exit 5\n' + original)
+        code, out = run(self.root)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(ran(self.root), self.suites)
+
+    def test_a_missing_huntr_consumer_fails_after_other_suites_run(self):
+        (self.root / 'check/fixtures/huntr-project/docs/agents/huntr.md').unlink()
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('synthetic consumer missing', out)
+        self.assertEqual(ran(self.root), [rel for rel in self.suites if rel != 'skills/huntr/scripts/test.sh'])
 
     def test_a_missing_suite_fails_the_check(self):
         (self.root / 'skills/launch-fleet/scripts/test-grants.py').unlink()
@@ -468,14 +568,26 @@ class Suites(Tree):
 
 
 class Inventory(unittest.TestCase):
-    def test_suites_are_ci_select_skills_list_without_closedwiz_tools(self):
-        spec = importlib.util.spec_from_file_location('ci_skills', SOURCE / 'ci/select/skills.py')
-        ci = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(ci)
-        expected = {name: [c for c in commands if c != CLOSEDWIZ_ONLY]
-                    for name, commands in ci.SUITES.items()}
-        self.assertEqual(load_run().SUITES, expected)
-        self.assertEqual(sorted(expected), sorted(SUITE_SKILLS))
+    def test_every_source_suite_is_covered(self):
+        runner = load_run()
+        covered = set()
+        for commands in runner.SUITES.values():
+            for command in commands:
+                rel, folder = runner.command_path(command)
+                self.assertTrue((SOURCE / rel).exists(), rel)
+                if folder:
+                    covered.update(p.relative_to(SOURCE).as_posix()
+                                   for p in (SOURCE / rel).glob('test*.py') if runner.unittest_file(p))
+                else:
+                    covered.add(rel)
+        # Huntr's shell entrypoint explicitly runs these Node suites together.
+        covered.update('skills/huntr/scripts/' + name for name in
+                       ('gate.test.mjs', 'manifest.test.mjs', 'records.test.mjs', 'controller.test.mjs'))
+        found = {p.relative_to(SOURCE).as_posix() for p in (SOURCE / 'skills').rglob('*')
+                 if p.is_file() and 'fixtures' not in p.parts and
+                 ((p.name.startswith('test') and p.suffix in ('.py', '.sh'))
+                  or p.name.endswith('.test.mjs'))}
+        self.assertEqual(covered, found)
 
 
 class Workflow(unittest.TestCase):
