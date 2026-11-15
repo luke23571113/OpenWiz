@@ -7,14 +7,41 @@ use std::{
     thread,
 };
 pub(super) fn server(log: openwiz_server::Log) -> openwiz_server::Server {
+    server_on(TcpListener::bind(("127.0.0.1", 0)).unwrap(), log)
+}
+pub(super) fn server_on(listener: TcpListener, log: openwiz_server::Log) -> openwiz_server::Server {
     openwiz_server::start(
-        TcpListener::bind(("127.0.0.1", 0)).unwrap(),
+        listener,
         openwiz_server::Config::default(),
         Arc::new(CloudRoomSource::new("/synthetic/unreachable-room")),
         Arc::new(openwiz_server::SystemClock),
         log,
     )
     .unwrap()
+}
+/// A loopback listener for a test that stops it and binds its port again.
+/// Its port lies below the kernel's ephemeral range, so no other socket's
+/// `bind` to port 0 or `connect` can take it in the gap (#773): only an
+/// explicit bind to that exact port could. The first free port from a
+/// random start is used; nothing is retried after the port is chosen.
+pub(super) fn rebindable_listener() -> TcpListener {
+    use std::hash::{BuildHasher, RandomState};
+    // Linux reads its range here; elsewhere, the IANA dynamic range.
+    let ephemeral = fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range")
+        .ok()
+        .and_then(|range| range.split_whitespace().next()?.parse::<u16>().ok())
+        .unwrap_or(49152);
+    let ports = ephemeral
+        .checked_sub(1024)
+        .filter(|n| *n > 0)
+        .expect("no unprivileged port below the ephemeral range");
+    let start = RandomState::new().hash_one(0u8) % u64::from(ports);
+    (0..u64::from(ports))
+        .find_map(|i| {
+            let port = 1024 + u16::try_from((start + i) % u64::from(ports)).unwrap();
+            TcpListener::bind(("127.0.0.1", port)).ok()
+        })
+        .expect("no free loopback port below the ephemeral range")
 }
 pub(super) fn health(addr: std::net::SocketAddr) -> String {
     let mut connection = TcpStream::connect(addr).unwrap();
