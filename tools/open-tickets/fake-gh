@@ -131,7 +131,10 @@ if 'move' in world:
         if endpoint == 'repos/' + private + '/issues/1257/sub_issues?per_page=100':
             answer([[{'number': n} for n in world.get('remaining', [1283])]])
         if endpoint == 'repos/' + public + '/issues?state=all&per_page=100':
-            answer([[row for n, row in world['created'].items() if listed(n)]])
+            # Numbers start at 4001: an earlier synthetic item is always listed.
+            earlier = {'number': 4000, 'title': 'Earlier synthetic work', 'body': 'Earlier synthetic text.',
+                       'labels': [], 'milestone': None}
+            answer([[earlier] + [row for n, row in world['created'].items() if listed(n)]])
         if endpoint == 'repos/' + public + '/milestones?state=all&per_page=100':
             answer([[dict(m, state='open') for m in fixture['graph']['milestones']]])
         match = re.fullmatch('repos/' + private + r'/issues/([1-9][0-9]*)/comments\?per_page=100', endpoint)

@@ -276,7 +276,8 @@ class MoveContract(unittest.TestCase):
         before = self.world.read_bytes()
         self.assertIn('create outcome unknown', self.run_move('--apply', ok=False).stderr)
         self.assertEqual(self.world.read_bytes(), before)
-        world.pop('listed_from')
+        for key in ['listed_from', 'list_lag', 'direct_missing']:
+            world.pop(key)
         self.world.write_text(json.dumps(world))
         self.run_move('--apply')
         self.assert_complete()
