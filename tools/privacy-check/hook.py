@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from urllib.parse import urlsplit
 
@@ -29,6 +30,74 @@ def private_or_local(url):
     return host and host.lower() == 'github.com' and path == 'jparker2006/closedwiz'
 
 
+# The only push URLs whose main may narrow a new ref's scan (#727).
+PUBLIC_URLS = (
+    'https://github.com/openwizdev/OpenWiz',
+    'https://github.com/openwizdev/OpenWiz.git',
+    'git@github.com:openwizdev/OpenWiz',
+    'git@github.com:openwizdev/OpenWiz.git',
+    'https://github.com/openwizdev/openwiz',
+    'https://github.com/openwizdev/openwiz.git',
+    'git@github.com:openwizdev/openwiz',
+    'git@github.com:openwizdev/openwiz.git',
+)
+# GIT_* variables Git itself sets for a hook, none of which picks a
+# repository or a transport. Any other one (GIT_DIR, GIT_SSH, GIT_SSH_COMMAND,
+# GIT_CONFIG_PARAMETERS from git -c, ...) could make the lookup below reach a
+# different repository than the push. The one exception: a complete
+# GIT_CONFIG_COUNT/KEY_<i>/VALUE_<i> set whose every key starts 'hook.'.
+HOOK_GIT_VARIABLES = ('GIT_EXEC_PATH', 'GIT_PREFIX', 'GIT_EDITOR')
+
+
+def narrowable(url, env):
+    """Whether a push to URL with environment ENV may ask URL for its main."""
+    if url not in PUBLIC_URLS:
+        return False
+    extra = {k for k in env if k.startswith('GIT_') and k not in HOOK_GIT_VARIABLES}
+    if not extra:
+        return True
+    count = env.get('GIT_CONFIG_COUNT', '')
+    if not re.fullmatch(r'0|[1-9][0-9]{0,3}', count):
+        return False
+    keys = ['GIT_CONFIG_KEY_%d' % i for i in range(int(count))]
+    values = ['GIT_CONFIG_VALUE_%d' % i for i in range(int(count))]
+    if extra != {'GIT_CONFIG_COUNT', *keys, *values}:
+        return False
+    return all(env[k].startswith('hook.') for k in keys)
+
+
+def destination_main(repo, url):
+    """The commit the push destination itself names as its main, or None.
+
+    A new ref's scan may skip only history already published where the push
+    goes. A local tracking ref proves nothing (a separate push URL, or a URL
+    retargeted without a fetch), so ask the exact push URL, and only when all
+    of these hold: the URL is on PUBLIC_URLS; the push carries no
+    command-scoped Git setting or override variable, so the lookup runs with
+    the push's own configuration; Git would not rewrite the URL (insteadOf);
+    and the destination names exactly one main. Anything else, or any
+    failure, returns None: scan from the anchor. That commit must also exist
+    locally, or check.py scans from the anchor too.
+    """
+    if not narrowable(url, os.environ):
+        return None
+    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
+    def run(*args):
+        result = subprocess.run(['git', '-C', str(repo), 'ls-remote', *args], env=env, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=60)
+        return result.stdout if result.returncode == 0 else None
+    try:
+        if run('--get-url', url) != url + '\n':
+            return None
+        listed = run('--refs', url, 'refs/heads/main')
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return None
+    mains = [line.split('\t')[0] for line in (listed or '').splitlines() if line.endswith('\trefs/heads/main')]
+    if len(mains) != 1 or not re.fullmatch(r'[0-9a-f]{40}', mains[0]):
+        return None
+    return mains[0]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url', required=True)
@@ -42,6 +111,10 @@ def main(argv=None):
     command = ['--repo', str(args.repo), '--git-tree', args.head, '--head', args.head]
     if args.base.strip('0'):
         command += ['--base', args.base]
+    else:
+        main = destination_main(args.repo, args.url)
+        if main:
+            command += ['--upstream', main]
     if args.literals is not None:
         command += ['--literals', str(args.literals), '--require-literals']
     return check.main(command)

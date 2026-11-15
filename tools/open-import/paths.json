@@ -306,7 +306,13 @@
     "tools/war-room/fixtures/health/red-providers.log",
     "tools/war-room/health.py",
     "tools/war-room/record.v2.schema.json",
-    "tools/war-room/test_health.py"
+    "tools/war-room/test_health.py",
+    "tools/war-room/charts/**",
+    "tools/war-room/dependencies.md",
+    "tools/war-room/fixtures/charts/**",
+    "tools/war-room/package-lock.json",
+    "tools/war-room/package.json",
+    "tools/war-room/test_charts.py"
   ],
   "keep": [
     "docs/grills/README.md",

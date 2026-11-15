@@ -1,0 +1,172 @@
+FFFFFFE.EEFEEEEEF.
+======================================================================
+ERROR: test_body_figures_cover_readiness_health_and_old_samples (__main__.Charts.test_body_figures_cover_readiness_health_and_old_samples)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 287, in test_body_figures_cover_readiness_health_and_old_samples
+    ready = figure(self.bundle, 'body-readiness')
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 185, in figure
+    return next(f for f in bundle['figures'] if f['id'] == fid)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+ERROR: test_ci_latency_keeps_each_cohort_and_native_quantile (__main__.Charts.test_ci_latency_keeps_each_cohort_and_native_quantile)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 238, in test_ci_latency_keeps_each_cohort_and_native_quantile
+    fig = figure(self.bundle, '00c')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 185, in figure
+    return next(f for f in bundle['figures'] if f['id'] == fid)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+ERROR: test_credit_spans_keep_their_actual_length_and_are_never_split (__main__.Charts.test_credit_spans_keep_their_actual_length_and_are_never_split)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 272, in test_credit_spans_keep_their_actual_length_and_are_never_split
+    fig = figure(self.bundle, '00e')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 185, in figure
+    return next(f for f in bundle['figures'] if f['id'] == fid)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+ERROR: test_main_merges_are_native_days_once_each_with_gaps_kept (__main__.Charts.test_main_merges_are_native_days_once_each_with_gaps_kept)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 218, in test_main_merges_are_native_days_once_each_with_gaps_kept
+    fig = figure(self.bundle, '00b')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 185, in figure
+    return next(f for f in bundle['figures'] if f['id'] == fid)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+ERROR: test_pages_and_svgs_carry_no_chart_runtime_and_escape_text (__main__.Charts.test_pages_and_svgs_carry_no_chart_runtime_and_escape_text)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 314, in test_pages_and_svgs_carry_no_chart_runtime_and_escape_text
+    figures = html[html.index('<section id="figures">'):]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: substring not found
+
+======================================================================
+ERROR: test_ready_and_building_use_the_board_daily_row_and_its_goal (__main__.Charts.test_ready_and_building_use_the_board_daily_row_and_its_goal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 260, in test_ready_and_building_use_the_board_daily_row_and_its_goal
+    fig = figure(self.bundle, '00a')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 185, in figure
+    return next(f for f in bundle['figures'] if f['id'] == fid)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+ERROR: test_runner_time_names_its_denominator (__main__.Charts.test_runner_time_names_its_denominator)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 251, in test_runner_time_names_its_denominator
+    fig = figure(self.bundle, '00d')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 185, in figure
+    return next(f for f in bundle['figures'] if f['id'] == fid)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+======================================================================
+ERROR: test_same_input_builds_the_same_bytes_used_by_page_and_export (__main__.Charts.test_same_input_builds_the_same_bytes_used_by_page_and_export)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 338, in test_same_input_builds_the_same_bytes_used_by_page_and_export
+    self.assertEqual(json.loads((out / 'values.json').read_text())['figures'][1]['rows'],
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/pathlib.py", line 1059, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/pathlib.py", line 1045, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-charts-60i53gih/out/values.json'
+
+======================================================================
+FAIL: test_a_failed_chart_build_keeps_the_last_good_page_and_samples (__main__.Charts.test_a_failed_chart_build_keeps_the_last_good_page_and_samples)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 372, in test_a_failed_chart_build_keeps_the_last_good_page_and_samples
+    self.assertIn(b'<section id="figures">', before_page)
+AssertionError: b'<section id="figures">' not found in b'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; base-uri \'none\'; form-action \'none\'"><meta http-equiv="refresh" content="300"><title>Private War room</title><style>body{margin:0;background:#101722;color:#e8edf4;font:16px/1.5 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:32px}header{border-bottom:1px solid #465569;padding-bottom:20px}h1{font-size:36px;margin:0}h2{font-size:23px;margin-top:36px}h3{font-size:18px}h4{margin:0 0 8px}a{color:#a7d5ff}article,.provider{border:1px solid #465569;border-radius:10px;padding:16px;margin:12px 0}.metric{background:#182538}.metric strong{font-size:26px}.detail{font-size:13px;overflow-wrap:anywhere;margin:6px 0}.unavailable,.stale,.unknown{color:#bbc3ce;background:#222a35}.badge{font-size:12px;border:1px solid #677487;border-radius:12px;padding:2px 8px}.eyebrow{color:#a7d5ff;font-size:12px;letter-spacing:.13em;text-transform:uppercase}nav{display:flex;gap:16px;flex-wrap:wrap}</style></head><body><main><header><p class="eyebrow">Private \xc2\xb7 offline preparation</p><h1>War room</h1><p>Saved sample <b>2030-01-08T09:50:00Z</b> \xc2\xb7 assembled 2030-01-08T09:50:00Z</p><p>Live freshness, complete source history, scheduled operation and private hosting are Unverified. This file reloads every five minutes; only an explicit finite invocation creates a new sample.</p><nav><a href="#throughput">Throughput by direction</a><a href="#stage_waits">Stage waits, limits and ticket misses</a><a href="#board">Board and bench readiness</a><a href="#ci">CI running / queued per pool and cost today</a><a href="#usage">Credits and Claude usage</a><a href="#decisions">Pending decisions</a></nav></header><section id="throughput"><h2>Throughput by direction</h2><div class="provider unavailable" data-slot="activity"><h3>Current activity <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR8 #2352: complete existing PR/closing-ticket direction metadata and exact current CI job/pool observations; no inferred queued pool.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="factory_metrics"><h3>Daily factory <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR2 #2346: selected existing daily factory artifacts; preserve UTC days, all-base merge scope and usage day-ratio labels.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div></section><section id="stage_waits"><h2>Stage waits, limits and ticket misses</h2><div class="provider unavailable" data-slot="stage_waits"><h3>Stage waits <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR3 #2347: verified merges of TL1 #2336 and TL2 #2337, then their actual settings and measured stage contracts; native fields unavailable here.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="journey"><h3>Ticket journeys <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR2 #2346: selected validated journey/bench artifacts; historical completeness remains unknown.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="eb6"><h3>EB6 <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: EB6 #2177: sourced first-push-to-merge/defect artifacts and verified coverage; contract preparation does not prove a measured result.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div></section><section id="board"><h2>Board and bench readiness</h2><div class="provider unavailable" data-slot="board"><h3>Board <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR2 #2346: selected validated board graph/measures/history with source observation bounds.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="skills_eval"><h3>Skills eval <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR2 #2346: selected existing skills-eval manifest/score/coverage records; fixture proof is not a paid or live result.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="rework"><h3>Rework rate <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR6 #2350: validated journey independent nonduplicate CHANGES/fix-round facts for a named unique-PR cohort with review coverage; unreviewed is not success.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="eb7"><h3>EB7 <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: EB7 #2178: actual frozen-cohort paired replay result under its separate gates; no replay run is claimed.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="eb8"><h3>EB8 <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: EB8 #2179: independently authorized bounded live experiment and retained result; no live go-ahead or result is supplied here.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="eb9"><h3>EB9 <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: EB9 #2192: retained hold released by its owner and actual huntr/settings A/B artifacts under separate gates; hold is unchanged.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><details><summary>Complete bench inventory</summary><ul><li>Current activity: unavailable</li><li>Stage waits: unavailable</li><li>Board: unavailable</li><li>CI bench: partial</li><li>Daily factory: unavailable</li><li>Ticket journeys: unavailable</li><li>Skills eval: unavailable</li><li>All-in cost per merged PR: unavailable</li><li>Credits: partial</li><li>Claude usage: unavailable</li><li>Pending decisions: unavailable</li><li>Orchestrator answer time: unavailable</li><li>Rework rate: unavailable</li><li>EB6: unavailable</li><li>EB7: unavailable</li><li>EB8: unavailable</li><li>EB9: unavailable</li></ul></details></section><section id="ci"><h2>CI running / queued per pool and cost today</h2><div class="provider unavailable" data-slot="activity"><h3>Current activity <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR8 #2352: complete existing PR/closing-ticket direction metadata and exact current CI job/pool observations; no inferred queued pool.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider partial" data-slot="ci_bench"><h3>CI bench <span class="badge">partial</span></h3><p class="detail">Prerequisite: Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><article class="metric partial unknown"><h4>Merged PRs, completed window, unclassified direction</h4><strong>8 count</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T08:00:00Z, 2030-01-08T08:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:00:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">count \xc2\xb7 native unit count \xc2\xb7 coverage 0/Unknown</p><p class="detail dimensions">cohort: merged</p><p class="detail source">d7.json \xc2\xb7 closedwiz.ci-bench.v1 \xc2\xb7 SHA-256 4d136d7ce695b32925c94de214012ab4c46bd9c4b5146126ddfe77247d9c95ce</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>Merged PRs/hour, completed window, unclassified direction</h4><strong>0.3333 prs_per_hour</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T08:00:00Z, 2030-01-08T08:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:00:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">total \xc2\xb7 native unit prs_per_hour \xc2\xb7 coverage 0/Unknown</p><p class="detail dimensions">cohort: merged-per-hour</p><p class="detail source">d7.json \xc2\xb7 closedwiz.ci-bench.v1 \xc2\xb7 SHA-256 4d136d7ce695b32925c94de214012ab4c46bd9c4b5146126ddfe77247d9c95ce</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>CI capacity assumption, completed window; not merged throughput</h4><strong>1.0 prs_per_hour</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T08:00:00Z, 2030-01-08T08:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:00:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">total \xc2\xb7 native unit prs_per_hour \xc2\xb7 coverage 6/Unknown</p><p class="detail dimensions">cohort: capacity</p><p class="detail source">d7.json \xc2\xb7 closedwiz.ci-bench.v1 \xc2\xb7 SHA-256 4d136d7ce695b32925c94de214012ab4c46bd9c4b5146126ddfe77247d9c95ce</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>Robot minutes per successful code run</h4><strong>9.5 robot_minutes_per_code_run</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T08:00:00Z, 2030-01-08T08:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:00:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">total \xc2\xb7 native unit robot_minutes_per_code_run \xc2\xb7 coverage 6/Unknown</p><p class="detail dimensions">cohort: robot-minutes</p><p class="detail source">d7.json \xc2\xb7 closedwiz.ci-bench.v1 \xc2\xb7 SHA-256 4d136d7ce695b32925c94de214012ab4c46bd9c4b5146126ddfe77247d9c95ce</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>Completed CI queued to done (workflow created to last job completed)</h4><strong>7.5 minutes</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T08:00:00Z, 2030-01-08T08:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:00:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">median \xc2\xb7 native unit minutes \xc2\xb7 coverage 6/Unknown</p><p class="detail dimensions">cohort: queued-to-done-median</p><p class="detail source">d7.json \xc2\xb7 closedwiz.ci-bench.v1 \xc2\xb7 SHA-256 4d136d7ce695b32925c94de214012ab4c46bd9c4b5146126ddfe77247d9c95ce</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>Completed CI queued to done (workflow created to last job completed)</h4><strong>12.0 minutes</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T08:00:00Z, 2030-01-08T08:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:00:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">p90 \xc2\xb7 native unit minutes \xc2\xb7 coverage 6/Unknown</p><p class="detail dimensions">cohort: queued-to-done-p90</p><p class="detail source">d7.json \xc2\xb7 closedwiz.ci-bench.v1 \xc2\xb7 SHA-256 4d136d7ce695b32925c94de214012ab4c46bd9c4b5146126ddfe77247d9c95ce</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article></div><div class="provider unavailable" data-slot="cost"><h3>All-in cost per merged PR <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR4 #2348: complete nonoverlapping USD allocation for one merged-PR cohort including shared-parent/helpers, sandbox and CI; lower bounds and daily ratios alone are insufficient.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div></section><section id="usage"><h2>Credits and Claude usage</h2><div class="provider unavailable" data-slot="factory_metrics"><h3>Daily factory <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR2 #2346: selected existing daily factory artifacts; preserve UTC days, all-base merge scope and usage day-ratio labels.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider partial" data-slot="credits"><h3>Credits <span class="badge">partial</span></h3><p class="detail">Prerequisite: Consecutive sampled balance spans only; no daily billing endpoint is assumed.</p><p class="detail">Prerequisite: Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><article class="metric partial unknown"><h4>Approximate sampled credit drop; rises count zero; extra-only seed spans stay extra-only</h4><strong>30 credits</strong> <span class="badge">partial</span><p class="detail window">[2030-01-06T20:00:00Z, 2030-01-07T02:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:30:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">total \xc2\xb7 native unit credits \xc2\xb7 coverage 1/Unknown</p><p class="detail dimensions">cohort: sampled-drop-2e2d934930c0cd2cc424662f1fc6d24e0e41102708e7ff2568259d9dc4c7d334</p><p class="detail source">credits.jsonl \xc2\xb7 board.credits.jsonl \xc2\xb7 SHA-256 e44471f01886d2fbc5acf2ca1666a061ec64ed6a0ccd6f63a8e6e08057ecfbac</p><p class="detail prerequisite">Sampled balance drops are approximate, not complete daily usage or a billing total.</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>Approximate sampled credit drop; rises count zero; extra-only seed spans stay extra-only</h4><strong>50 credits</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T02:00:00Z, 2030-01-07T10:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:30:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">total \xc2\xb7 native unit credits \xc2\xb7 coverage 1/Unknown</p><p class="detail dimensions">cohort: sampled-drop-ad5cfde18f2eea773a55cb6f2f0887bc290b1157c6b01505c4599efd864a6cfb</p><p class="detail source">credits.jsonl \xc2\xb7 board.credits.jsonl \xc2\xb7 SHA-256 e44471f01886d2fbc5acf2ca1666a061ec64ed6a0ccd6f63a8e6e08057ecfbac</p><p class="detail prerequisite">Sampled balance drops are approximate, not complete daily usage or a billing total.</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>Approximate sampled credit drop; rises count zero; extra-only seed spans stay extra-only</h4><strong>0 credits</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T10:00:00Z, 2030-01-07T20:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:30:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">total \xc2\xb7 native unit credits \xc2\xb7 coverage 1/Unknown</p><p class="detail dimensions">cohort: sampled-drop-431f743361e2774d4546b46c5142edc3b3c03072f5a9e38191c9afc7c7e027d9</p><p class="detail source">credits.jsonl \xc2\xb7 board.credits.jsonl \xc2\xb7 SHA-256 e44471f01886d2fbc5acf2ca1666a061ec64ed6a0ccd6f63a8e6e08057ecfbac</p><p class="detail prerequisite">Sampled balance drops are approximate, not complete daily usage or a billing total.</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article><article class="metric partial unknown"><h4>Approximate sampled credit drop; rises count zero; extra-only seed spans stay extra-only</h4><strong>20 credits</strong> <span class="badge">partial</span><p class="detail window">[2030-01-07T20:00:00Z, 2030-01-08T01:00:00Z) PST-fixed-UTC-08:00</p><p class="detail observed">Observed 2030-01-08T09:30:00Z \xc2\xb7 unknown \xc2\xb7 unknown validity bound</p><p class="detail statistic">total \xc2\xb7 native unit credits \xc2\xb7 coverage 1/Unknown</p><p class="detail dimensions">cohort: sampled-drop-6b25fd0422433dbfaadae5e1eb8587e3dd8089230459a679c44beedde65a4759</p><p class="detail source">credits.jsonl \xc2\xb7 board.credits.jsonl \xc2\xb7 SHA-256 e44471f01886d2fbc5acf2ca1666a061ec64ed6a0ccd6f63a8e6e08057ecfbac</p><p class="detail prerequisite">Sampled balance drops are approximate, not complete daily usage or a billing total.</p><p class="detail prerequisite">Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.</p><p class="links"><a href="https://github.com/synthetic-owner/work/issues/4001" rel="noreferrer noopener">source 1</a></p></article></div><div class="provider unavailable" data-slot="claude_usage"><h3>Claude usage <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR2 #2346: validated complete day-specific owner-supplied usage export or existing recorded usage; no inferred total or endpoint.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div></section><section id="decisions"><h2>Pending decisions</h2><div class="provider unavailable" data-slot="decisions"><h3>Pending decisions <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR2 #2346: sanitized structured pending-decision records with discovery coverage/currentness; no answer control or raw wording.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div><div class="provider unavailable" data-slot="answer_time"><h3>Orchestrator answer time <span class="badge">unavailable</span></h3><p class="detail">Prerequisite: WR5 #2349: source-linked request and substantive orchestrator disposition with independent provenance; accepted notifications or resolved status alone are insufficient.</p><p class="detail">No measured values for this group. Unknown, never zero.</p></div></section></main></body></html>'
+
+======================================================================
+FAIL: test_bad_native_input_refuses_the_whole_build (__main__.Charts.test_bad_native_input_refuses_the_whole_build) [hash]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 360, in test_bad_native_input_refuses_the_whole_build
+    with self.subTest(name), self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_bad_native_input_refuses_the_whole_build (__main__.Charts.test_bad_native_input_refuses_the_whole_build) [escape]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 360, in test_bad_native_input_refuses_the_whole_build
+    with self.subTest(name), self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_bad_native_input_refuses_the_whole_build (__main__.Charts.test_bad_native_input_refuses_the_whole_build) [late]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 360, in test_bad_native_input_refuses_the_whole_build
+    with self.subTest(name), self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_bad_native_input_refuses_the_whole_build (__main__.Charts.test_bad_native_input_refuses_the_whole_build) [row]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 360, in test_bad_native_input_refuses_the_whole_build
+    with self.subTest(name), self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_bad_native_input_refuses_the_whole_build (__main__.Charts.test_bad_native_input_refuses_the_whole_build) [kind]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 360, in test_bad_native_input_refuses_the_whole_build
+    with self.subTest(name), self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_every_figure_draws_one_titled_mark_per_value_row (__main__.Charts.test_every_figure_draws_one_titled_mark_per_value_row)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 208, in test_every_figure_draws_one_titled_mark_per_value_row
+    self.assertEqual(ids[:5], ['00a', '00b', '00c', '00d', '00e'])
+AssertionError: Lists differ: [] != ['00a', '00b', '00c', '00d', '00e']
+
+Second list contains 5 additional elements.
+First extra element 0:
+'00a'
+
+- []
++ ['00a', '00b', '00c', '00d', '00e']
+
+======================================================================
+FAIL: test_the_palette_survives_colour_vision_simulation (__main__.Charts.test_the_palette_survives_colour_vision_simulation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/work/openwiz/tools/war-room/test_charts.py", line 386, in test_the_palette_survives_colour_vision_simulation
+    self.assertTrue(result['pass'], result)
+AssertionError: False is not true : {'pass': False, 'simulations': {}}
+
+----------------------------------------------------------------------
+Ran 14 tests in 1.033s
+
+FAILED (failures=8, errors=8)

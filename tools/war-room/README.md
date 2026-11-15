@@ -669,6 +669,41 @@ python3 -I tools/war-room/test_health.py
 
 Red runs are in `fixtures/health/`: offline fixture evidence, not a live result.
 
+## Build-time charts (WRD2)
+
+WRD2 (#630) draws the War room's figures once per build as static SVG, with the locked
+[Observable Plot](dependencies.md) under Node, from validated history (v1 and v2, read
+as [WRD1's v2 contract](contract.v2.md) defines it) and the selected board history.
+Browsers get the finished SVG and HTML tables: no Plot, D3, chart script, hydration,
+font, image or data request reaches the page. The interface WRD3 consumes is
+[`charts/contract.md`](charts/contract.md) and [`charts/input.schema.json`](charts/input.schema.json).
+
+```sh
+npm ci --ignore-scripts --prefix tools/war-room          # once: the locked Plot (build only), Node 24.22.1
+python3 -I tools/war-room/charts/build.py --history DIR --at UTC \
+  [--source-root DIR --selection FILE] --out DIR          # <id>.svg, values.json, manifest.json
+python3 -I tools/war-room/charts/palette.py              # the colour-vision check's inputs and results
+python3 -I tools/war-room/test_charts.py                 # the chart proofs (synthetic; a real browser for one)
+```
+
+| Figure | From | Rule |
+| --- | --- | --- |
+| `00a` Ready & building | The board `history.jsonl` (selected, or pinned by gather's projected board) | The board's daily row per PST day; goal ready ≥ 2 × building |
+| `00b` Main merges | `ci_bench` `merged` | Native full PST days only; all-base UTC days stay a body figure |
+| `00c` CI latency | `ci_bench` median and p90 | Each cohort basis its own series; re-measured days show the latest, never an average |
+| `00d` Runner time | `ci_bench` robot-minutes | Per successful code run, with its run count |
+| `00e` Credit burn | `credits` sampled drops | Each span over its actual length, never split at midnight, by basis (full balance or extra-only seed); coverage in PST days; sampled, not billing |
+| `body-…` | The latest sample | Readiness of all 20 providers, main CI, queue and stage limits, journeys and every other provider's values by unit |
+
+Repeated observations across samples count once; missing days and Unknown values are
+labelled ∅ marks, never zero. `build.py` refuses an SVG outside its element/attribute
+allowlist or whose mark titles differ from its values rows. `publish.py` (`publish` and
+`preview`) embeds the figures in the page and draws both pictures from it; the
+workflow installs the locked Plot before `publish.sh`. A refused chart build, including
+a missing install, publishes nothing,
+so `war-room` keeps its last good page, and it never writes history. `npm ci` creates
+`tools/war-room/node_modules/`, which git ignores.
+
 ## Review loops bench (RL0)
 
 `review_loops.py` measures the [review-loops contract](../../contracts/review-loops.v1.md)

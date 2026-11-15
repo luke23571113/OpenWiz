@@ -1,0 +1,59 @@
+{
+  "validator": "Machado 2009 CVD simulation, severity 1.0, linear sRGB; CIE76 delta E in CIELAB D65; WCAG 2 contrast",
+  "inputs": {
+    "ground": "#101722",
+    "roles": {
+      "muted": "#7c8797",
+      "older": "#3b7be0",
+      "primary": "#f2f5f8",
+      "reference": "#b4bfcc",
+      "secondary": "#4da3ff"
+    }
+  },
+  "thresholds": {
+    "delta_e": 12,
+    "contrast": 3
+  },
+  "simulations": {
+    "normal": {
+      "min_delta_e": 17.54,
+      "closest": [
+        "older",
+        "secondary"
+      ],
+      "pass": true
+    },
+    "protanopia": {
+      "min_delta_e": 15.11,
+      "closest": [
+        "older",
+        "secondary"
+      ],
+      "pass": true
+    },
+    "deuteranopia": {
+      "min_delta_e": 13.92,
+      "closest": [
+        "older",
+        "secondary"
+      ],
+      "pass": true
+    },
+    "tritanopia": {
+      "min_delta_e": 14.77,
+      "closest": [
+        "older",
+        "secondary"
+      ],
+      "pass": true
+    }
+  },
+  "contrast": {
+    "muted": 4.94,
+    "older": 4.36,
+    "primary": 16.44,
+    "reference": 9.65,
+    "secondary": 6.85
+  },
+  "pass": true
+}
