@@ -813,3 +813,68 @@ fn quarantined_frozen_delivery_keeps_other_repairs_and_healing_progressing() {
         }
     }
 }
+
+/// #770: only a record author's comment confirms a health delivery, both when
+/// a pass checks for an earlier copy before posting and when it reconciles an
+/// uncertain claim. Catches the read-back counting anyone's exact copy of a
+/// predictable record as delivered (so the factory's own record is never
+/// posted, or an uncertain claim settles on a stranger's comment), matching
+/// logins case-sensitively, taking a user login for the App, trusting a
+/// comment with no author, or confirming without the setting.
+#[test]
+fn only_the_factory_s_comments_confirm_a_health_delivery() {
+    // The exact body a first pass at 4000 posts, read from a clean world.
+    let w = World::new();
+    w.engine().pass(&w.seen(false, false), 4000).unwrap();
+    let body = w.comments.lock().unwrap()[0]["body"].clone();
+    for (author, counts) in [
+        (json!("openwiz[bot]"), true),
+        (json!("SYN-Owner"), true),
+        (json!("syn-outsider"), false),
+        (json!("openwiz"), false),
+        (Value::Null, false),
+    ] {
+        // Before posting: an earlier copy counts only when a record author
+        // wrote it; otherwise the factory posts its own.
+        let w = World::new();
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":body,"created":3000,"updated":3000}));
+        w.engine().pass(&w.seen(false, false), 4000).unwrap();
+        assert_eq!(w.posts().len(), usize::from(!counts), "{author}");
+        // Reconciling a lost reply: the only exact copy settles the claim
+        // only when a record author wrote it.
+        let w = World::new();
+        w.lose.store(true, Ordering::SeqCst);
+        w.drop_record.store(true, Ordering::SeqCst);
+        assert!(w.engine().pass(&w.seen(false, false), 4000).is_err());
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":body,"created":3000,"updated":3000}));
+        assert_eq!(
+            w.engine().pass(&w.seen(false, false), 5000).is_ok(),
+            counts,
+            "{author}"
+        );
+        assert_eq!(w.posts().len(), 1, "{author}: never a second post");
+    }
+    // A stranger's copy beside the factory's leaves the delivery unique.
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(&w.seen(false, false), 4000).is_err());
+    w.comments
+        .lock()
+        .unwrap()
+        .push(json!({"id":200,"author":"syn-outsider","body":body,"created":3000,"updated":3000}));
+    w.engine().pass(&w.seen(false, false), 5000).unwrap();
+    assert_eq!(w.posts().len(), 1);
+    // Without the setting, even the factory's own comment confirms nothing.
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(&w.seen(false, false), 4000).is_err());
+    fs::write(w.f.0.join("no-record-authors"), "").unwrap();
+    assert!(w.engine().pass(&w.seen(false, false), 5000).is_err());
+    assert_eq!(w.posts().len(), 1);
+}
