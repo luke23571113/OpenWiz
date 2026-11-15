@@ -1126,13 +1126,13 @@ class Allowlist(Base):
 
 class Packaged(Base):
     def test_deeply_nested_release_json_gets_the_fixed_refusal_without_writes(self):
-        # Synthetic assumption: a release response is valid JSON but nested
-        # beyond Python's decoder limit, including Python 3.13's C decoder
-        # limit (which differs from sys.getrecursionlimit()). Existing cases do
-        # not exercise RecursionError or the executable's refusal boundary.
+        # Synthetic assumption: valid release JSON nests 500,000 arrays inside
+        # the 1 MiB fetch cap, beyond decoder limits on Python 3.11 through 3.14.
+        # Existing malformed-source cases do not exercise RecursionError or
+        # the executable's refusal boundary.
         responses = {
             GUIDE: (FIXTURES / 'setup.md').read_bytes(),
-            API: b'[' * 10000 + b'0' + b']' * 10000,
+            API: b'[' * 500000 + b'0' + b']' * 500000,
         }
         fetched = []
 
