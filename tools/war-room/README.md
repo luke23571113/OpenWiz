@@ -628,6 +628,8 @@ a v1 sample's health as unobserved. Nothing is backfilled.
 | Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/factory-metrics/limits.conf` | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
 
 The same pinned stage evidence also fills the detailed `stage_waits` slot (WR3).
+
+**Board readers.** The War room reads the board's published `graph.json`, `history.jsonl` and `credits.jsonl` with its own readers in `sources.py` (`board_strict`, `board_valid_row`, `board_measures`, `board_open_approved`, `board_state`, `read_credits`, `credit_spent`), with the board's definitions, and the link report from the public `skills/plan-graph/check-links.sh --json --graph -`. It loads no private module. A legacy baseline history row is admitted only as the first row, by its shape.
 `gather.py --stage DIR` takes an existing `journeys.json` and `stage-waits.json`
 instead of collecting them. A failed health source greys only its own card; a
 privacy hit anywhere refuses the whole gather.

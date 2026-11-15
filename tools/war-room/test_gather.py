@@ -219,7 +219,7 @@ class PublicBoardReaders(unittest.TestCase):
         # 2 startable of 3 = 66.67 -> 67; 1 ready per 3 building = 0.33 -> 0.3.
         graph = {'tickets': [ticket(1, True), ticket(2, True), ticket(3, True, blocked=True)]}
         m = sources.board_measures(graph, report)
-        self.assertEqual((m['startable_percent'], m['fed_ratio'], m['low_stock']), (67, None, True))
+        self.assertEqual((m['startable_percent'], m['fed_ratio'], m['low_stock']), (67, 0.0, True))  # 0 ready per 3 building
         graph = {'tickets': [ticket(1), ticket(2, True), ticket(3, True), ticket(4, True)]}
         m = sources.board_measures(graph, report)
         self.assertEqual((m['ready_stock'], m['builders_running'], m['fed_ratio']), (1, 3, 0.3))

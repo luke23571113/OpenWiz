@@ -169,9 +169,8 @@ class Root:
 
 def board_provider(s, raw, graph_raw, graph_sha):
     """The latest board history row as partial counts, in the board's own daily window."""
-    sources.board_history(s, raw)  # the native row validator, first
-    B_ = sources.native('private/orchestration/board/board.py')
-    rows = [B_.strict(line) for line in raw.decode('utf-8').splitlines() if line.strip()]
+    sources.board_history(s, raw)  # the row validator, first
+    rows = [sources.board_strict(line) for line in raw.decode('utf-8').splitlines() if line.strip()]
     row = max(enumerate(rows), key=lambda pair: (pair[1]['at'], pair[0]))[1]
     since = utc(row['day'] + 'T08:00:00Z')
     until = min(utc(s['observed_at']), since + timedelta(days=1))
@@ -186,19 +185,18 @@ def board_provider(s, raw, graph_raw, graph_sha):
     if graph_raw is not None:
         try:
             graph = suite._decode(graph_raw.decode('utf-8'))
-            report = B_.render.check_links(graph)
-            measures = B_.measures(graph, report)
-            if graph['read_at'] == row['at'] and all(measures[k] == row[k] for k in B_.MEASURE_KEYS):
-                tickets = B_.render.open_approved(graph)
-        except Exception as error:  # the board's own readers raise their own Fail
-            if not isinstance(error, (ValueError, KeyError, TypeError, UnicodeError)) and type(error).__name__ != 'Fail':
-                raise
+            report = sources.board_check_links(graph)
+            measures = sources.board_measures(graph, report)
+            if graph['read_at'] == row['at'] and all(measures[k] == row[k] for k in sources.BOARD_MEASURE_KEYS):
+                tickets = sources.board_open_approved(graph)
+        except (ValueError, KeyError, TypeError, UnicodeError):
+            pass
     for key, label, unit, statistic, rounding, num, den in (
             ('startable_percent', 'Startable percent', 'percent', 'proportion', 'half_up_0', 'can_start', None),
             ('fed_ratio', 'Fed ratio (ready stock per builder running)', 'ratio', 'ratio', 'half_up_1', 'ready_stock', 'building')):
         ids = None
         if tickets is not None:
-            chosen = tickets if den is None else [t for t in tickets if B_.render.state(t) == den]
+            chosen = tickets if den is None else [t for t in tickets if sources.board_state(t) == den]
             ids = ['ticket-%d' % t['number'] for t in chosen]
         gaps = [LEVEL] + ([] if ids is not None else [gap])
         if ids is not None and not ids:
@@ -301,14 +299,11 @@ def open_approved(graph_raw):
     """Open approved ticket numbers on the board graph (unfinished work), or None."""
     if graph_raw is None:
         return None
-    B_ = sources.native('private/orchestration/board/board.py')
     try:
         graph = suite._decode(graph_raw.decode('utf-8'))
-        B_.render.check_links(graph)
-        return sorted(t['number'] for t in B_.render.open_approved(graph))
-    except Exception as error:  # the board's own readers raise their own Fail
-        if not isinstance(error, (ValueError, KeyError, TypeError, UnicodeError)) and type(error).__name__ != 'Fail':
-            raise
+        sources.board_check_links(graph)
+        return sorted(t['number'] for t in sources.board_open_approved(graph))
+    except (ValueError, KeyError, TypeError, UnicodeError):
         return None
 
 
