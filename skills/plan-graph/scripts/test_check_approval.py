@@ -522,7 +522,10 @@ class ApprovalTest(unittest.TestCase):
         # hide the factory's refusal behind a newer valid-looking approval.
         good = fixture(172)["comments"][0][0]["body"]
         bad = state_table(fixture(172))["comments"][0][0]["body"]
-        for user in (OUTSIDER, {"login": "openwiz"}, {"login": "openwiz[bot]x"}, {"login": None},
+        # REST names the App `openwiz[bot]`: a bare `openwiz`, even typed Bot,
+        # is never the App on this REST read (orchestrator ruling on #717).
+        for user in (OUTSIDER, {"login": "openwiz"}, {"login": "openwiz", "type": "Bot"},
+                     {"login": "openwiz[bot]x"}, {"login": None},
                      {}, None, "openwiz[bot]", "missing"):
             with self.subTest(user=user, case="the outsider's approval is the only one"):
                 w = fixture(172)

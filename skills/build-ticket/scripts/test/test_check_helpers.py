@@ -597,7 +597,9 @@ def add_comment_by(n, cid, body, user):
     return run
 
 
-for user in ({"login": "synthetic-outsider"}, {"login": "openwiz"}, None, {}):
+# REST names the App `openwiz[bot]`: a bare `openwiz`, even typed Bot, is
+# never the App on this REST read (orchestrator ruling on #717).
+for user in ({"login": "synthetic-outsider"}, {"login": "openwiz"}, {"login": "openwiz", "type": "Bot"}, None, {}):
     case(f"717: hit: --loop-comment on a record by {user}", 1, hits("comment 1204 on #12 is new"),
          after=add_comment_by(12, 1204, "launch-fleet: archived", user), check=["--loop-comment", "1204"])
 case("717: hit: --loop-comment on an outsider's record edited into another record", 1,

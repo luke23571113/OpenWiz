@@ -181,15 +181,24 @@ AUTHORS = [
     issue(3, labels=["needs-triage"], comments=[by(OUTSIDER, PUBLIC_APPROVAL)]),
     issue(4, labels=["ready-for-agent", "needs-info"], milestone=True, parent=99,
           comments=["Synthetic question from the builder.", by(OUTSIDER, MARK + "\n\nWith the user.")]),
-    issue(5, labels=["needs-triage"], comments=[by({"__typename": "User", "login": "openwiz"}, NOTES)]),
     issue(6, labels=["needs-triage"], comments=[by(None, NOTES)]),
     issue(7, labels=["needs-triage"], comments=[by({"__typename": "User", "login": "Synthetic-Owner"}, NOTES)]),
-    issue(8, labels=["needs-info", "bug"], comments=[by({"__typename": "Bot", "login": "OpenWiz"}, NOTES)]),
     issue(9, labels=["needs-triage"], comments=[by({"__typename": "User", "login": "synthetic-owner"}, PUBLIC_APPROVAL)]),
 ]
 AUTHORS_OUT = ["#1 to sort: Synthetic issue 1", "#2 reply: Synthetic issue 2", "#3 to sort: Synthetic issue 3",
-               "#4 builder question: Synthetic issue 4", "#5 to sort: Synthetic issue 5",
-               "#6 to sort: Synthetic issue 6"]
+               "#4 builder question: Synthetic issue 4", "#6 to sort: Synthetic issue 6"]
+# The App's login (orchestrator ruling on #717) catches: GraphQL names the App
+# `openwiz` where the setting lists `openwiz[bot]`, so a reader comparing
+# logins as given ignores every factory marker; and a reader that accepts the
+# bare name would let a user account called `openwiz` pass as the App. Only a
+# Bot author's bare name counts as `<name>[bot]`; a user's never does.
+APP = [
+    issue(1, labels=["needs-triage"], comments=[by({"__typename": "Bot", "login": "openwiz"}, NOTES)]),
+    issue(2, labels=["needs-info", "bug"], comments=[by({"__typename": "Bot", "login": "OpenWiz"}, NOTES)]),
+    issue(3, labels=["needs-triage"], comments=[by({"__typename": "User", "login": "openwiz"}, NOTES)]),
+    issue(4, labels=["needs-info", "bug"], comments=[by({"login": "openwiz"}, NOTES)]),
+]
+APP_OUT = ["#3 to sort: Synthetic issue 3", "#4 reply: Synthetic issue 4"]
 ROW = "| Record authors | `openwiz[bot]`, `synthetic-owner` |"
 
 CROWDED = [issue(1), issue(2, labels=["needs-triage"] + [f"synthetic-{i}" for i in range(100)]), issue(3)]
@@ -235,6 +244,7 @@ CASES = [
      "gh returned no pages"),
     ("F22", "only the record authors' markers and approvals quiet an issue", AUTHORS, None, DEFAULT, "all", 0,
      AUTHORS_OUT, None),
+    ("F27", "a GraphQL Bot's bare login is the App; a user's is not", APP, None, DEFAULT, "all", 0, APP_OUT, None),
     ("F23", "the record authors can't be read", SHAPES, {"kind": "fleet-fail"}, DEFAULT, "all", 2, [],
      "record authors"),
     ("F24", "fleet.md has no Record authors row", SHAPES, {"kind": "fleet-doc", "doc": FLEET.replace(ROW, "")},
