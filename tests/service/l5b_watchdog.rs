@@ -152,6 +152,13 @@ else: sys.exit(2)
                             })
                             .collect::<Vec<_>>()
                     ),
+                    // #770: the Record authors setting, read as the tick reads it.
+                    ["api", path, ..] if path.contains("/git/ref/heads/main") => {
+                        json!({"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+                    }
+                    ["api", path, ..] if path.contains("/contents/docs/agents/fleet.md?") => {
+                        return Ok(b"## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]` |\n".to_vec());
+                    }
                     ["issue", "list", ..] => json!([]),
                     ["issue", "comment", "901", "--body", body] => {
                         let n = 7000 + cs.len() as u64;
