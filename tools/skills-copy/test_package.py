@@ -156,10 +156,39 @@ class Fixture(unittest.TestCase):
 
 
 class InstallTests(Fixture):
+    def test_first_install_and_reuse_with_bsd_mv(self):
+        real_mv = shutil.which('mv')
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
+                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
+                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.install()
+        self.assertEqual(self.git(self.dest, 'rev-parse', 'HEAD^{tree}').stdout.strip(), self.release['tree'])
+        before = snapshot(self.parent)
+        self.install()
+        self.assertEqual(snapshot(self.parent), before)
+
+    def test_partial_publication_failure_removes_only_our_installation(self):
+        real_mv = shutil.which('mv')
+        count = self.root / 'moves'
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'count = pathlib.Path(' + repr(str(count)) + ')\n'
+                           'n = int(count.read_text()) + 1 if count.exists() else 1\n'
+                           'count.write_text(str(n))\n'
+                           'if n == 2: sys.exit(1)\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.assert_refused_unchanged(code=3)
+        self.assertFalse(self.dest.exists())
+
     def test_concurrent_destination_and_release_child_survive_publication(self):
         # Inject the race at the real publication syscall boundary, after the
         # installer's last absence check. The wrapper then invokes the real mv.
         real_mv = shutil.which('mv')
+        real_mkdir = shutil.which('mkdir')
         for child in ('empty', 'nonempty', 'foreign'):
             with self.subTest(child=child):
                 if self.dest.exists():
@@ -183,6 +212,9 @@ class InstallTests(Fixture):
                     '        for p in [dest, *dest.rglob("*")]}))\n'
                     'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
                 wrapper.chmod(0o755)
+                mkdir_wrapper = self.bin / 'mkdir'
+                mkdir_wrapper.write_text(wrapper.read_text().replace(repr(real_mv), repr(real_mkdir)))
+                mkdir_wrapper.chmod(0o755)
                 self.install(code=1)
                 after = {str(p.relative_to(self.dest)): [p.stat().st_mode, p.stat().st_mtime_ns,
                          p.stat().st_ino, p.read_text() if p.is_file() else None]

@@ -112,7 +112,8 @@ def suite_files(root):
         'huntr': [('skills/huntr/scripts/test.sh', 'sh')],
         'grill': [('skills/grill/scripts/test.sh', 'sh')],
         'diagnose': [('skills/diagnose/tests/hitl-loop.test.mjs', 'node')],
-        'build-ticket': [('skills/build-ticket/scripts/test/test_synthetic.py', 'unit')],
+        'build-ticket': [('skills/build-ticket/scripts/test/test_durable_helpers.py', 'unit'),
+                         ('skills/build-ticket/scripts/test/test_check_helpers.py', 'script')],
         'where-are-we': [('skills/where-are-we/test/test_read_github.py', 'py')],
         'hill-climb': [('skills/hill-climb/tests/test_synthetic.py', 'unit')],
         'image': [('skills/image/tests/test_synthetic.py', 'unit'),
@@ -135,11 +136,15 @@ def suite_files(root):
             elif kind == 'node':
                 write(root / rel, 'import { appendFileSync } from \"node:fs\";\n'
                       + 'appendFileSync(\"ran.txt\", ' + json.dumps(rel + '\n') + ');\n')
+            elif kind == 'script':
+                write(root / rel, 'if __name__ == \"__main__\":\n'
+                      + ''.join('    ' + line + '\n' for line in RECORDER.format(rel).splitlines()))
             elif kind == 'py':
                 write(root / rel, RECORDER.format(rel))
             else:
                 write(root / rel, RECORDER.format(rel) + 'import unittest\n\n\n'
-                      'class T(unittest.TestCase):\n    def test_ok(self):\n        pass\n')
+                      'class T(unittest.TestCase):\n    def test_ok(self):\n        pass\n'
+                      'if __name__ == \"__main__\": unittest.main()\n')
     return sorted(rel for files in marker.values() for rel, _ in files)
 
 
@@ -427,6 +432,40 @@ class Layout(Tree):
 
 
 class Suites(Tree):
+    def test_script_style_file_must_run_its_entrypoint(self):
+        rel = 'skills/build-ticket/scripts/test/test_check_helpers.py'
+        script = self.root / rel
+        script.write_text(script.read_text() + '    raise SystemExit(3)\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(ran(self.root), self.suites)
+        self.assertIn('test_check_helpers.py: fail (3)', out)
+
+    def test_unittest_file_with_zero_tests_fails_even_beside_a_real_test(self):
+        rel = 'skills/image/references/test_empty.py'
+        write(self.root / rel, 'import unittest\nclass Empty(unittest.TestCase):\n    pass\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('zero tests', out)
+        self.assertIn('test_empty.py', out)
+        self.assertEqual(ran(self.root), self.suites)
+
+    def test_script_in_discovery_folder_is_not_counted_as_covered(self):
+        write(self.root / 'skills/hill-climb/tests/test_script.py',
+              'if __name__ == "__main__":\n    raise SystemExit(3)\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('unlisted', out)
+        self.assertEqual(ran(self.root), self.suites)
+
+    def test_direct_unittest_file_with_zero_cases_fails(self):
+        rel = 'skills/build-ticket/scripts/test/test_durable_helpers.py'
+        write(self.root / rel, 'import unittest\nclass Empty(unittest.TestCase):\n    pass\n'
+              'if __name__ == "__main__": unittest.main()\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 1, out)
+        self.assertIn('zero tests', out)
+
     def test_a_failing_suite_fails_the_check_after_every_suite_ran(self):
         write(self.root / 'skills/plan-graph/test/test-revision.sh',
               '#!/bin/sh\necho skills/plan-graph/test/test-revision.sh >> ran.txt\nexit 3\n')
