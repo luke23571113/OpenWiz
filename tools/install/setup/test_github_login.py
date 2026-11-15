@@ -209,6 +209,24 @@ class SignIn(Recording):
         self.assertEqual(self.tool('sign-in')['repository'], 'identity_no_push')
 
 
+class Packaged(Recording):
+    """catches: the installed helper needing a file the package does not ship
+    (the runtime's setup/ holds only setup.py, store.py and github_login.py)."""
+
+    def test_the_helper_runs_from_the_packaged_setup_files_alone(self):
+        runtime = self.base / 'runtime/setup'
+        runtime.mkdir(parents=True)
+        for name in ('setup.py', 'store.py', 'github_login.py'):
+            (runtime / name).write_bytes((HERE / name).read_bytes())
+        self.update_scenario(account='synthetic-owner')
+        result = subprocess.run([sys.executable, '-I', '-B', str(runtime / 'github_login.py'), 'sign-in',
+                                 '--repository', REPOSITORY], capture_output=True, text=True, env=self.env,
+                                stdin=subprocess.DEVNULL, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        answer = json.loads(result.stdout)
+        self.assertEqual((answer['code'], answer['repository']), ('login_reused', 'identity_verified'))
+
+
 class SkipApp(Recording):
     """catches: an App skip saved without preview/confirmation, for an
     unverified or changed account, or lost on reload; and a check that keeps

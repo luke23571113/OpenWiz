@@ -38,7 +38,8 @@ REQUIRED = PROGRAMS | {'web/openwiz-build.txt', 'runtime/openwiz-build.txt', 'we
     'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
     'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
     'runtime/skills/launch-fleet/scripts/fleet.sh',
-    'runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/github-app/setup.py',
+    'runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/setup/github_login.py',  # #633
+    'runtime/github-app/setup.py',
     'runtime/github-app/app.py', 'runtime/github-app/manifest.json',
     'runtime/cloudroom/cloudroom.py'}  # #2201: setup's CloudRoom install, reuse and sign-in tool
 
