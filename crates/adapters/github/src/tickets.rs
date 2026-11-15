@@ -167,7 +167,10 @@ impl GitHub for Tickets {
         deadline: Instant,
     ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
         let n = number.to_string();
-        stock_issue(&self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?)
+        stock_issue(
+            &self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?,
+            &RecordAuthors(std::collections::BTreeSet::new()),
+        )
     }
 
     fn pull_request(&self, number: Number, deadline: Instant) -> Result<PrAnswer, SourceError> {
@@ -350,9 +353,29 @@ pub fn issue(stdout: &[u8]) -> Result<IssueAnswer, SourceError> {
 
 /// Retain stock evidence from the existing strictly decoded issue read.
 /// No new invocation, public fleet field or inferred negative.
+/// The factory's record authors (#641): the lowercase logins of the
+/// `Record authors` row in `docs/agents/fleet.md`'s `## GitHub identity`
+/// table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordAuthors(std::collections::BTreeSet<String>);
+
+impl RecordAuthors {
+    /// Red stub: not read yet.
+    pub fn read(_fleet_md: &str) -> Result<Self, &'static str> {
+        Ok(Self(std::collections::BTreeSet::new()))
+    }
+
+    /// Red stub: trusts everyone, as the reader did before #716.
+    pub fn wrote(&self, _login: Option<&str>) -> bool {
+        true
+    }
+}
+
 pub fn stock_issue(
     stdout: &[u8],
+    authors: &RecordAuthors,
 ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
+    let _ = authors;
     let i = issue(stdout)?;
     // issue() has already refused malformed, duplicate and incomplete wire
     // objects. A successful bounded read contains the complete comment array.
@@ -1343,40 +1366,134 @@ mod tests {
             assert_eq!(iso_ms(bad), None, "{bad}");
         }
     }
+    /// Synthetic settings: one App login and one fallback account.
+    const SETTINGS: &str = "# Fleet\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n| Fallback | today's account |\n| Record authors | `synthetic-app[bot]`, `Synthetic-Owner` |\n\n## Next\n";
+
+    fn authors() -> RecordAuthors {
+        RecordAuthors::read(SETTINGS).unwrap()
+    }
+
+    /// Catches: a start record written by anyone outside the record
+    /// authors (or with no author) counting as the factory's (#716), and an
+    /// outsider's comments pushing the factory's record out of the window.
     #[test]
-    fn stock_issue_retains_only_last_fifteen_valid_comments() {
+    fn stock_issue_counts_only_the_factorys_start_records_in_its_last_fifteen() {
         let mut value: Value = serde_json::from_str(ISSUE).unwrap();
-        let comment = |body: &str| serde_json::json!({"id":"synthetic-comment","author":null,"authorAssociation":"NONE","body":body,"createdAt":"2030-01-15T09:00:00Z","includesCreatedEdit":false,"isMinimized":false,"minimizedReason":null,"reactionGroups":[],"url":"https://example.invalid/issues/1#synthetic","viewerDidAuthor":false});
-        value["comments"] = serde_json::json!([comment("launch-fleet: started")]);
-        let read = |v: &Value| stock_issue(&serde_json::to_vec(v).unwrap());
-        assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(true)
-        );
-        for _ in 0..15 {
-            value["comments"]
-                .as_array_mut()
-                .unwrap()
-                .push(comment("synthetic progress"));
+        let comment = |author: Value, body: &str| serde_json::json!({"id":"synthetic-comment","author":author,"authorAssociation":"NONE","body":body,"createdAt":"2030-01-15T09:00:00Z","includesCreatedEdit":false,"isMinimized":false,"minimizedReason":null,"reactionGroups":[],"url":"https://example.invalid/issues/1#synthetic","viewerDidAuthor":false});
+        let factory = || serde_json::json!({"login": "synthetic-app[bot]"});
+        let read = |v: &Value| stock_issue(&serde_json::to_vec(v).unwrap(), &authors());
+        let started = |v: &Value| read(v).unwrap().1 == openwiz_core::model::Fact::Known(true);
+        // Who wrote the one start record decides it. Logins match
+        // case-insensitively, as GitHub's do.
+        for (author, counts) in [
+            (factory(), true),
+            (serde_json::json!({"login": "SYNTHETIC-OWNER"}), true),
+            (serde_json::json!({"login": "synthetic-outsider"}), false),
+            (serde_json::json!({"login": "synthetic-app"}), false),
+            (serde_json::json!({"login": null}), false),
+            (serde_json::json!({}), false),
+            (Value::Null, false),
+        ] {
+            value["comments"] =
+                serde_json::json!([comment(author.clone(), "launch-fleet: started")]);
+            assert_eq!(started(&value), counts, "{author}");
         }
-        assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(false)
+        // The window is the factory's last fifteen: an outsider's comments
+        // never push its record out, and its own do.
+        value["comments"] = serde_json::json!([comment(factory(), "launch-fleet: started")]);
+        for _ in 0..15 {
+            value["comments"].as_array_mut().unwrap().push(comment(
+                serde_json::json!({"login": "synthetic-outsider"}),
+                "synthetic progress",
+            ));
+        }
+        assert!(started(&value), "outsiders' comments are not in the window");
+        for i in 1..=15 {
+            value["comments"][i]["author"] = factory();
+        }
+        assert!(
+            !started(&value),
+            "the factory's own last fifteen hold no start"
         );
         value["comments"][15]["body"] = serde_json::json!("launch-fleet: start checked");
-        assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(true)
-        );
+        assert!(started(&value));
         value["comments"][15]["body"] = serde_json::json!("progress launch-fleet: started");
-        assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(false)
-        );
+        assert!(!started(&value));
         value["comments"][0]["body"] = serde_json::json!(null);
         assert!(
             read(&value).is_err(),
             "malformed reads cannot establish absence"
         );
+    }
+
+    /// Catches: a malformed `Record authors` setting being read as some or
+    /// all logins instead of refused. launch-fleet's rules (#641): one row,
+    /// in the `## GitHub identity` section, whose whole value cell is
+    /// backticked logins separated by commas, and nothing after it.
+    #[test]
+    fn record_authors_take_only_the_whole_well_formed_row() {
+        let table = |row: &str| {
+            format!("## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n{row}\n")
+        };
+        let good = RecordAuthors::read(&table(
+            "| Record authors | `synthetic-app[bot]`, `Synthetic-Owner` |",
+        ))
+        .unwrap();
+        for (login, wrote) in [
+            (Some("synthetic-app[bot]"), true),
+            (Some("SYNTHETIC-APP[BOT]"), true),
+            (Some("synthetic-owner"), true),
+            (Some("synthetic-app"), false),
+            (Some("synthetic-owner2"), false),
+            (Some(""), false),
+            (None, false),
+        ] {
+            assert_eq!(good.wrote(login), wrote, "{login:?}");
+        }
+        assert_eq!(
+            good,
+            authors(),
+            "spacing around cells and other rows don't matter"
+        );
+        for row in [
+            "|Record authors|`a`|",
+            "|  Record authors  |  `a` ,`b-c`  |  ",
+        ] {
+            assert!(RecordAuthors::read(&table(row)).is_ok(), "{row}");
+        }
+        let refused = |text: &str| RecordAuthors::read(text).is_err();
+        for row in [
+            "| Record authors | |",
+            "| Record authors | `` |",
+            "| Record authors | synthetic-app[bot] |",
+            "| Record authors | `synthetic-app[bot]`, |",
+            "| Record authors | `synthetic-app[bot]` `synthetic-owner` |",
+            "| Record authors | `synthetic-app[bot]`, synthetic-owner |",
+            "| Record authors | `-synthetic` |",
+            "| Record authors | `synthetic-` |",
+            "| Record authors | `synthetic--owner` |",
+            "| Record authors | `synthetic owner` |",
+            "| Record authors | ` synthetic` |",
+            "| Record authors | `synthetic[app]` |",
+            "| Record authors | `[bot]` |",
+            "| Record authors | `synthetic_owner` |",
+            "| Record authors | `synthétic` |",
+            "| Record authors | `synthetic-app[bot]` | extra |",
+            "| Record authors | `synthetic-app[bot]` | |",
+            "| Record authors | `synthetic-app[bot]`",
+            "| Record authors | `synthetic-app[bot]` |\n| Record authors | `synthetic-owner` |",
+        ] {
+            assert!(refused(&table(row)), "{row}");
+        }
+        // No row, or the row only outside its section, trusts nobody.
+        assert!(refused("# Fleet\n"));
+        assert!(refused(&table("| Fallback | today's account |")));
+        assert!(refused(
+            "## GitHub identityx\n\n| Record authors | `synthetic-owner` |\n"
+        ));
+        assert!(refused(&format!(
+            "{}## Next\n\n| Record authors | `synthetic-owner` |\n",
+            table("| Fallback | today's account |")
+        )));
     }
 }
