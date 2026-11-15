@@ -36,11 +36,16 @@ PUBLIC_URLS = (
     'https://github.com/openwizdev/OpenWiz.git',
     'git@github.com:openwizdev/OpenWiz',
     'git@github.com:openwizdev/OpenWiz.git',
+    'https://github.com/openwizdev/openwiz',
+    'https://github.com/openwizdev/openwiz.git',
+    'git@github.com:openwizdev/openwiz',
+    'git@github.com:openwizdev/openwiz.git',
 )
 # GIT_* variables Git itself sets for a hook, none of which picks a
 # repository or a transport. Any other one (GIT_DIR, GIT_SSH, GIT_SSH_COMMAND,
-# GIT_CONFIG_PARAMETERS from git -c, GIT_CONFIG_COUNT/KEY/VALUE, ...) could
-# make the lookup below reach a different repository than the push.
+# GIT_CONFIG_PARAMETERS from git -c, ...) could make the lookup below reach a
+# different repository than the push. The one exception: a complete
+# GIT_CONFIG_COUNT/KEY_<i>/VALUE_<i> set whose every key starts 'hook.'.
 HOOK_GIT_VARIABLES = ('GIT_EXEC_PATH', 'GIT_PREFIX', 'GIT_EDITOR')
 
 
@@ -48,7 +53,17 @@ def narrowable(url, env):
     """Whether a push to URL with environment ENV may ask URL for its main."""
     if url not in PUBLIC_URLS:
         return False
-    return not any(k.startswith('GIT_') and k not in HOOK_GIT_VARIABLES for k in env)
+    extra = {k for k in env if k.startswith('GIT_') and k not in HOOK_GIT_VARIABLES}
+    if not extra:
+        return True
+    count = env.get('GIT_CONFIG_COUNT', '')
+    if not re.fullmatch(r'0|[1-9][0-9]{0,3}', count):
+        return False
+    keys = ['GIT_CONFIG_KEY_%d' % i for i in range(int(count))]
+    values = ['GIT_CONFIG_VALUE_%d' % i for i in range(int(count))]
+    if extra != {'GIT_CONFIG_COUNT', *keys, *values}:
+        return False
+    return all(env[k].startswith('hook.') for k in keys)
 
 
 def destination_main(repo, url):

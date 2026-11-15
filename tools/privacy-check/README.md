@@ -69,7 +69,8 @@ tracking ref for this: it asks the exact push URL for its `main`
 (`git ls-remote`), and narrows only when the URL is on `hook.py`'s
 `PUBLIC_URLS`, the push carries no command-scoped Git setting or override
 variable (`git -c`, `GIT_CONFIG_*`, `GIT_SSH*`, `GIT_DIR`, ...; only
-`HOOK_GIT_VARIABLES` may be set), Git would not rewrite that URL, the
+`HOOK_GIT_VARIABLES` may be set, plus a complete `GIT_CONFIG_COUNT`/`KEY_<i>`/
+`VALUE_<i>` set whose every key starts `hook.`), Git would not rewrite that URL, the
 destination names exactly one `main` and that commit is present locally.
 `ci.py` passes `origin/main`, fetched from the destination in that job, for a
 new branch, never for a new `main`. There is no command
