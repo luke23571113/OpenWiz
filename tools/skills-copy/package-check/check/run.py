@@ -516,9 +516,19 @@ def unittest_file(path):
 # An isolated interpreter collects each matched file, counts its actual cases,
 # then executes the collection. A successful empty collection is still a failure.
 UNIT_RUNNER = r"""
-import pathlib, sys, unittest
+import importlib.util, pathlib, sys, unittest
 folder, pattern = sys.argv[1:]
-suite = unittest.TestLoader().discover(folder, pattern=pattern)
+loader = unittest.TestLoader()
+if pattern == 'test*.py':
+    suite = loader.discover(folder, pattern=pattern)
+else:
+    # discover ignores filenames such as test-effects.py even with an exact
+    # pattern. Explicitly listed files need a loader that accepts their names.
+    spec = importlib.util.spec_from_file_location('listed_suite', pathlib.Path(folder) / pattern)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    suite = loader.loadTestsFromModule(module)
 counts = {}
 def count(item):
     if isinstance(item, unittest.TestSuite):
