@@ -40,6 +40,12 @@ NOTES = ('## 0.0.99 · 2026-11-20\n\nFixture-tested: You can preview a synthetic
          'Fixture-tested: Synthetic export fixtures pass; live export remains unverified.\n\n'
          '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n')
 
+# RL6 (#739): a curated notes section in VS9's three parts (synthetic wording).
+CURATED = ("## 0.0.99 · 2026-11-20\n\n### What's new for you\n\n- You can preview a synthetic export.\n"
+           "- You can cancel a preview.\n\nTested on synthetic fixtures; a live export is still unverified.\n\n"
+           "### Under the hood\n\n- The preview reads one synthetic file.\n\n"
+           "[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n")
+
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -90,6 +96,9 @@ def section_sha(text, version):
 # fixture's root commit (the real anchor cannot exist in a synthetic repository).
 LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate; '
           'candidate.ANCHOR = sys.argv.pop(1); '
+          # RL6: a test may give the moved-number map its own synthetic rows.
+          'import json; m = os.environ.get("MOVED"); '
+          'm and hasattr(candidate.entry, "moved") and setattr(candidate.entry, "MOVED", candidate.entry.moved(json.loads(m))); '
           # A test may fix the tool's clock for one invocation, so interval assertions never race it.
           'candidate.now = (lambda: int(os.environ["AT"])) if "AT" in os.environ else candidate.now; '
           'sys.exit(candidate.main(sys.argv[1:]))')
@@ -811,6 +820,34 @@ class Candidate(World):
                          ['privacy_literals_missing'])
         self.assertEqual(self.writes(), [])
 
+    def curate(self, curated, released=None):
+        """RL6: the candidate commit carries a curated notes file and its CHANGELOG.md."""
+        (self.repo / 'changes/notes').mkdir(exist_ok=True)
+        (self.repo / 'changes/notes/0.0.99.md').write_text(curated)
+        at = PUBLISHED.index('## ')
+        (self.repo / 'CHANGELOG.md').write_text(PUBLISHED[:at] + curated + '\n' + PUBLISHED[at:])
+        self.head = self.commit('Synthetic curated notes')
+        self.git(self.repo, 'push', '-q', self.remote, 'HEAD:main')
+        self.notes = curated if released is None else released
+        self.entry = {'curated': 'changes/notes/0.0.99.md', 'included': [VERSION]}
+
+    def test_rl6_curated_notes_pass_every_gate_and_publish_exactly(self):
+        # catches: the command refusing the curated file as unverified claims, or
+        # publishing anything but its included sections.
+        self.curate(CURATED)
+        self.ready()
+        self.assertEqual(self.evaluate(), (0, {'status': 'ready', 'candidate_sha256': self.record()['candidate_sha256']}))
+        self.assertEqual(self.publish()[1]['status'], 'published')
+        self.assertEqual(json.loads((self.releases / ('v' + VERSION) / 'meta.json').read_text())['notes'], CURATED)
+
+    def test_rl6_approved_notes_that_are_not_the_curated_sections_refuse(self):
+        # catches: approved bytes publishing although they differ from the curated
+        # file at the candidate commit (the approval and the file must be one text).
+        self.curate(CURATED, released=CURATED.replace('cancel a preview', 'cancel any preview'))
+        self.ready()
+        self.assertEqual(self.blocked(self.publish(), 'claims_mismatch')['reasons'], ['claims_mismatch'])
+        self.assertEqual(self.writes(), [])
+
     def test_d4_notes_must_be_exactly_what_changes_generates_at_the_candidate(self):
         # A source sentence changes after the notes were written: hashes still agree.
         (self.repo / 'changes/19901.md').write_text('kind: added\n\nFixture-tested: You can cancel every preview.\n')
@@ -1469,14 +1506,16 @@ class Notes(World):
         # #735: changes/closedwiz-<N>.md is old ClosedWiz #N, renamed because the
         # new OpenWiz #N owns changes/<N>.md. OpenWiz #N's milestone must never
         # place the moved line; until its version is mapped it needs an exclusion.
+        # RL6: ClosedWiz #718's ticket did not move, so its line has no OpenWiz milestone.
+        self.env['MOVED'] = json.dumps({'schema': 'openwiz.moved-changes.v1', 'moved': [
+            {'closedwiz': 718, 'openwiz': None, 'sha256': 'a' * 64}]})
         self.spec('0.0.13')
         self.line(718, '0.0.13', 'Fixture-tested: The new ticket line.')
         moved = self.repo / 'changes/closedwiz-718.md'
         moved.write_text('kind: fixed\n\nFixture-tested: The moved line.\n')
         (code, out), _ = self.generate(('0.0.13',))
         self.assertEqual((code, out['reasons']), (1, [
-            'entry: changes/closedwiz-718.md is old ClosedWiz #718, not an OpenWiz ticket: '
-            'record it as an exclusion']))
+            'entry: changes/closedwiz-718.md: ClosedWiz #718 has no OpenWiz ticket: record it as an exclusion']))
         (code, out), folder = self.generate(('0.0.13',), excluded=[
             ('changes/closedwiz-718.md', sha(moved.read_bytes()))])
         self.assertEqual(code, 0, out)
@@ -1488,6 +1527,164 @@ class Notes(World):
         moved.rename(self.repo / 'changes/closedwiz-0718.md')
         (code, out), _ = self.generate(('0.0.13',))
         self.assertEqual((code, out['reasons']), (1, ['entry: invalid changelog filename changes/closedwiz-0718.md']))
+
+    # ------------------------------------------------------------ RL6 (#739)
+    def untagged(self, base):
+        """Nothing published yet: the fixed anchor carries the unpublished history."""
+        shutil.rmtree(self.repo)
+        shutil.rmtree(self.remote)
+        self.repo.mkdir()
+        self.git(self.repo, 'init', '-q', '-b', 'main')
+        (self.repo / 'changes').mkdir()
+        (self.repo / 'changes/README.md').write_text('Synthetic contract.\n')
+        (self.repo / 'CHANGELOG.md').write_text(base)
+        self.anchor = self.commit('Synthetic public anchor')
+        self.git(self.root, 'clone', '-q', '--bare', self.repo, self.remote)
+        self.git(self.repo, 'remote', 'add', 'origin', PUBLIC_URL)
+
+    def curated(self, text, included):
+        (self.repo / 'changes/notes').mkdir(exist_ok=True)
+        (self.repo / 'changes/notes/release.md').write_text(text)
+        self.commit('Synthetic curated notes')
+        (self.root / 'entry.json').write_text(json.dumps({'curated': 'changes/notes/release.md', 'included': included}))
+        out = self.root / f'notes-{len(list(self.root.glob("notes-*")))}'
+        return self.cli('notes', included[0], '--repo', self.repo, '--entry', self.root / 'entry.json',
+                        '--out', out), out
+
+    def test_rl6_with_nothing_published_the_changelog_keeps_the_unpublished_history(self):
+        # catches B4: with no tag, CHANGELOG.md dropped the preamble and every
+        # 0.0.0-0.0.5 entry already on main. A curated file beside changes/ is ignored.
+        self.untagged(HISTORY)
+        (self.repo / 'changes/notes').mkdir()
+        (self.repo / 'changes/notes/release.md').write_text(section('0.0.13'))
+        self.spec('0.0.13')
+        self.line(6001, '0.0.13')
+        (code, out), folder = self.generate(('0.0.13',))
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        at = HISTORY.index('## ')
+        self.assertEqual((folder / 'CHANGELOG.md').read_text(), HISTORY[:at] + text + '\n' + HISTORY[at:])
+
+    def test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history(self):
+        # catches: the curated file's included sections not being exactly the
+        # release notes, or its restated history dropping older entries.
+        self.untagged(HISTORY)
+        text = section('0.0.14') + '\n' + section('0.0.13') + '\n' + section('0.0.5')
+        (code, out), folder = self.curated(text, ['0.0.14', '0.0.13'])
+        self.assertEqual(code, 0, out)
+        released = section('0.0.14') + '\n' + section('0.0.13')
+        self.assertEqual((folder / 'notes.md').read_text(), released)
+        self.assertEqual((out['notes_sha256'], out['curated_sha256']), (sha(released.encode()), sha(text.encode())))
+        # 0.0.5 is restated in its curated words; 0.0.4, older than every curated section, is kept.
+        at = HISTORY.index('## ')
+        self.assertEqual((folder / 'CHANGELOG.md').read_text(),
+                         HISTORY[:at] + text + '\n' + HISTORY[HISTORY.index('## 0.0.4'):])
+        self.assertEqual(out['changelog_sha256'], sha((folder / 'CHANGELOG.md').read_bytes()))
+
+    def test_rl6_malformed_curated_notes_refuse_with_their_reason(self):
+        good = section('0.0.14') + '\n' + section('0.0.13')
+        for name, text, included, reason in (
+                ('missing part', good.replace("### Under the hood\n\n- Synthetic 0.0.13 internals.\n", ''),
+                 ['0.0.14'], 'entry: 0.0.13 needs Under the hood here'),
+                ('wrong order', section('0.0.13') + '\n' + section('0.0.14'), ['0.0.13'],
+                 'entry: curated versions must be newest first, each once'),
+                ('included not leading', good, ['0.0.13'],
+                 'entry: curated notes must start with the included versions, in order'),
+                ('foreign link', good.replace('(https://github.com/openwizdev/OpenWiz/issues/1)',
+                                              '(https://github.com/jparker2006/ClosedWiz/issues/1)'), ['0.0.14'],
+                 'entry: curated link is not to openwizdev/OpenWiz: https://github.com/jparker2006/ClosedWiz/issues/1'),
+                ('bare foreign address', good.replace('Synthetic 0.0.13 internals.',
+                                                      'See github.com/jparker2006/ClosedWiz for internals.'), ['0.0.14'],
+                 'entry: curated link is not to openwizdev/OpenWiz: github.com/jparker2006/ClosedWiz'),
+                ('relative link', good.replace('(https://github.com/openwizdev/OpenWiz/issues/1)', '(docs/x.md)'),
+                 ['0.0.14'], 'entry: curated link is not to openwizdev/OpenWiz: docs/x.md'),
+                ('tag that will not exist', good.replace('Synthetic 0.0.13 internals.',
+                                                         '[0.0.13](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.13).'),
+                 ['0.0.14'], 'entry: curated link to a tag that will not exist: v0.0.13'),
+                ('per-line caveat', good.replace('- You can use 0.0.14 part one.',
+                                                 '- On synthetic fixtures, you can use 0.0.14 part one.'), ['0.0.14'],
+                 "entry: 0.0.14 What's new for you carries a fixture caveat: say it once in Tested on"),
+                ('too many lines', good.replace('- You can use 0.0.14 part two.\n', '- You can use 0.0.14 part two.\n' * 4),
+                 ['0.0.14'], "entry: 0.0.14 What's new for you needs 2 to 4 lines"),
+                ('no footer', good.replace('Tested on synthetic 0.0.14 checks.\n\n', ''), ['0.0.14'],
+                 'entry: 0.0.14 needs one Tested on footer after What\'s new for you'),
+                ('footer twice', good.replace('- Synthetic 0.0.14 internals.', '- Tested on nothing else.'), ['0.0.14'],
+                 'entry: 0.0.14 says Tested on more than once'),
+                ('CRLF', good.replace('\n', '\r\n'), ['0.0.14'],
+                 'entry: curated notes are LF text from a version heading to one final newline')):
+            with self.subTest(case=name):
+                self.setUp()
+                self.untagged(HISTORY)
+                (code, out), _ = self.curated(text, included)
+                self.assertEqual((code, out['reasons']), (1, [reason]))
+
+    def test_rl6_moved_lines_take_their_version_from_the_ticket_they_moved_to(self):
+        # catches G6: a moved line placed by the unrelated OpenWiz ticket that shares
+        # its old ClosedWiz number, and an unmapped or overwritten moved line passing.
+        moved = b'kind: fixed\n\nFixture-tested: The moved line.\n'
+        self.env['MOVED'] = json.dumps({'schema': 'openwiz.moved-changes.v1', 'moved': [
+            {'closedwiz': 718, 'openwiz': 31, 'sha256': sha(moved)},
+            {'closedwiz': 2201, 'openwiz': None, 'sha256': sha(moved)}]})
+        self.spec('0.0.13')
+        self.spec('0.0.14')
+        self.world['repos/{owner}/{repo}/issues/31'] = {
+            'number': 31, 'body': 'Moved ticket, was [ClosedWiz #718](https://example.invalid/718).',
+            'pull': False, 'sub_issues': 0, 'milestone': {'number': self.milestones['0.0.13'], 'title': '0.0.13'}}
+        self.line(718, '0.0.14', 'Fixture-tested: The unrelated OpenWiz 718 line.')
+        (self.repo / 'changes/718.md').write_bytes(moved)
+        (code, out), folder = self.generate(('0.0.14', '0.0.13'))
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        self.assertIn('## 0.0.13 · 2026-11-20\n\nFixture-tested: Version 0.0.13 headline.\n\n'
+                      '- Fixture-tested: The moved line.\n', text)
+        self.assertNotIn('unrelated', text)
+        # #735's prefix: the moved line renamed, OpenWiz #718 writes its own line.
+        (self.repo / 'changes/718.md').rename(self.repo / 'changes/closedwiz-718.md')
+        self.line(718, '0.0.14', 'Fixture-tested: The new OpenWiz 718 line.')
+        (code, out), folder = self.generate(('0.0.14', '0.0.13'))
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        self.assertIn('- Fixture-tested: The moved line.\n', text[text.index('## 0.0.13'):])
+        self.assertIn('- Fixture-tested: The new OpenWiz 718 line.\n', text[:text.index('## 0.0.13')])
+        for name, change, reason in (
+                ('overwritten moved line', lambda: (self.repo / 'changes/closedwiz-718.md').unlink(),
+                 'entry: changes/718.md is not the moved ClosedWiz #718 line: rename the moved line '
+                 'changes/closedwiz-718.md, or record its new bytes in the moved-number map'),
+                ('unmapped prefix', lambda: (self.repo / 'changes/closedwiz-9.md').write_bytes(moved),
+                 'entry: changes/closedwiz-9.md: ClosedWiz #9 is not in the moved-number map'),
+                ('moved ticket that did not move', lambda: (self.repo / 'changes/2201.md').write_bytes(moved),
+                 'entry: changes/2201.md: ClosedWiz #2201 has no OpenWiz ticket: record it as an exclusion'),
+                ('map without the was link', lambda: self.world['repos/{owner}/{repo}/issues/31'].update(body=''),
+                 'entry: OpenWiz #31 does not say it was ClosedWiz #718')):
+            with self.subTest(case=name):
+                state = {p: p.read_bytes() for p in (self.repo / 'changes').iterdir()}
+                world = json.loads(json.dumps(self.world))
+                change()
+                (code, out), _ = self.generate(('0.0.14', '0.0.13'))
+                self.assertEqual((code, out['reasons']), (1, [reason]))
+                for p in (self.repo / 'changes').iterdir():
+                    if p not in state:
+                        p.unlink()
+                for p, data in state.items():
+                    p.write_bytes(data)
+                self.world = world
+        # A moved line whose ticket did not move passes only as a recorded exclusion.
+        (self.repo / 'changes/2201.md').write_bytes(moved)
+        (code, out), _ = self.generate(('0.0.14', '0.0.13'), excluded=[('changes/2201.md', sha(moved))])
+        self.assertEqual(code, 0, out)
+
+
+def section(version):
+    """One synthetic curated section in VS9's three parts."""
+    return (f"## {version} · 2026-11-20\n\n### What's new for you\n\n- You can use {version} part one.\n"
+            f"- You can use {version} part two.\n\nTested on synthetic {version} checks.\n\n"
+            f"### Under the hood\n\n- Synthetic {version} internals.\n- See "
+            f"[the ticket](https://github.com/openwizdev/OpenWiz/issues/1).\n")
+
+
+HISTORY = ('# Changelog\n\nAll synthetic versions, newest first.\n\n'
+           '## 0.0.5 · 2026-01-05\n\n**Earlier unpublished entry**\n\n- Synthetic 0.0.5 line.\n\n'
+           '## 0.0.4 · 2026-01-04\n\n**Older unpublished entry**\n\n- Synthetic 0.0.4 line.\n')
 
 
 def re_headings(text):
