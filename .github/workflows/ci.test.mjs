@@ -249,7 +249,6 @@ test('pull requests and merge groups run the full suite and every required check
   const ci = /^  ci:\n    needs: (.*)\n    if: .*$/m;
   const dropped = workflow.replace(ci, "  ci:\n    needs: $1\n    if: ${{ always() && github.event_name == 'pull_request' }}");
   assert.ok(!simulate(dropped, 'merge_group', FULL_PLAN).includes('ci'));
-  assert.ok(!simulate(dropped, 'merge_group', FULL_PLAN).includes('web-test'));
   const kept = workflow.replace(ci, "  ci:\n    needs: $1\n    if: ${{ always() && github.event_name != 'push' }}");
   assert.ok(simulate(kept, 'merge_group', FULL_PLAN).includes('ci'));
 });

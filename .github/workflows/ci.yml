@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, 'release-*']
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  # #744: a push to main runs only main-light. The merge queue already ran the
+  # full suite on that exact merge (ruleset: no direct pushes), and nightly
+  # stays full, signs the map and refreshes the trusted caches.
   push:
     branches: [main]
   # Full safety run on main, regardless of changed paths.
@@ -42,6 +45,7 @@ env:
 jobs:
 
   changes:
+    if: github.event_name != 'push'
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 10
     outputs:
@@ -1297,7 +1301,7 @@ jobs:
 
   ci:
     needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills]
-    if: ${{ always() }}
+    if: ${{ always() && github.event_name != 'push' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
@@ -1369,7 +1373,7 @@ jobs:
   # name without letting any new lane failure through the old ruleset.
   web-test:
     needs: ci
-    if: ${{ always() }}
+    if: ${{ always() && github.event_name != 'push' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
@@ -1391,3 +1395,30 @@ jobs:
         env:
           CI_RESULT: ${{ needs.ci.result }}
         run: test "$CI_RESULT" = success
+
+  # #744: the light check on a push to main: format only. privacy.yml checks
+  # main on every push; nothing in this workflow publishes from a push.
+  main-light:
+    if: github.event_name == 'push'
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/private/
+      - name: The runner guard
+        id: guard
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: sh ci/hosted/guard.sh
+      - name: Format
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt --no-self-update
+          rustup default "$RUST_VERSION"
+          cargo fmt --check
