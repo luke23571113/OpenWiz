@@ -103,9 +103,14 @@ def read(endpoint, **kwargs):
     return value
 
 
+def same_name(value, name):
+    """GitHub matches owner and repository names in any capitals (RN6); anything not ASCII is refused."""
+    return isinstance(value, str) and value.isascii() and value.lower() == name.lower()
+
+
 def destination_public():
     repo = read(f'repos/{DESTINATION}')
-    if not (isinstance(repo, dict) and str(repo.get('full_name', '')).lower() == DESTINATION
+    if not (isinstance(repo, dict) and same_name(repo.get('full_name'), DESTINATION)
             and repo.get('private') is False and repo.get('visibility') == 'public'
             and repo.get('archived') is False and repo.get('has_issues') is True):
         raise Refused(f'{DESTINATION} is not verified public, unarchived and open for issues')
@@ -448,7 +453,7 @@ def matches(comment, attempt):
     """The attempt's own comment: on its issue, by its account, its exact text, and new."""
     return (isinstance(comment, dict) and type(comment.get('id')) is int
             and comment['id'] not in attempt['existing']
-            and comment.get('issue_url') == f'https://api.github.com/repos/{DESTINATION}/issues/{attempt["issue"]}'
+            and same_name(comment.get('issue_url'), f'https://api.github.com/repos/{DESTINATION}/issues/{attempt["issue"]}')
             and isinstance(comment.get('user'), dict) and comment['user'].get('id') == attempt['account']['id']
             and comment.get('body') == attempt['reply'])
 

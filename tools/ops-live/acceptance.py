@@ -108,9 +108,9 @@ def check_kit(doc):
         repository = doc["test_repository"]
         heads = doc.get("controls", {}).get("candidates", {}).get("heads", []) \
             if isinstance(doc.get("controls"), dict) else []
-        real = set(REAL_REPOSITORIES) | {h["repository"].lower() for h in heads if isinstance(h, dict)
+        real = {r.lower() for r in REAL_REPOSITORIES} | {h["repository"].lower() for h in heads if isinstance(h, dict)
                                         and isinstance(h.get("repository"), str)} \
-            if isinstance(heads, list) else set(REAL_REPOSITORIES)
+            if isinstance(heads, list) else {r.lower() for r in REAL_REPOSITORIES}
         if not (isinstance(repository, str) and REPOSITORY.fullmatch(repository)) \
                 or repository.lower() in real:
             out.append("test_repository: not a throwaway owner/name repository")

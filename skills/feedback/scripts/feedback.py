@@ -55,6 +55,13 @@ TIMEOUT_S = 60
 # Reconciliation lists from a day before the preview: a superset, so a clock
 # ahead of GitHub's cannot hide the issue. Candidates are kept by marker only.
 SINCE_MARGIN = datetime.timedelta(days=1)
+
+
+def same_name(value, name):
+    """GitHub matches owner and repository names in any capitals (RN6); anything not ASCII is refused."""
+    return isinstance(value, str) and value.isascii() and value.lower() == name.lower()
+
+
 SHARE_ISSUE = re.compile(r'https://github\.com/openwizdev/openwiz/issues/([1-9][0-9]{0,9})')
 URLISH = re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://|\bwww\.|\blocalhost\b|\b\d{1,3}(\.\d{1,3}){3}\b'
                     r'|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\.?(?::[\w.~-]*)?/|\b[a-z0-9-]+:\d+/'
@@ -169,7 +176,7 @@ def read_record(path):
     except ValueError:
         rec = None
     if not (isinstance(rec, dict) and list(rec) == KEYS and rec['schema'] == SCHEMA
-            and rec['phase'] in PHASES and rec['destination'] == DESTINATION
+            and rec['phase'] in PHASES and same_name(rec['destination'], DESTINATION)
             and path.name == f"{rec['operation_id']}.json"):
         raise Stop('The record is unreadable. OpenWiz cannot tell whether earlier feedback was created; nothing was sent.')
     return rec
@@ -366,7 +373,7 @@ def read_destination():
     if not got or got[0] != 200 or not isinstance(got[1], dict):
         raise Stop(f'The destination {DESTINATION} could not be read; nothing was sent.')
     repo = got[1]
-    if not (repo.get('full_name') == DESTINATION and repo.get('private') is False
+    if not (same_name(repo.get('full_name'), DESTINATION) and repo.get('private') is False
             and repo.get('visibility') == 'public' and repo.get('archived') is False
             and repo.get('has_issues') is True):
         raise Stop(f'The destination {DESTINATION} is not a public, open repository with issues; nothing was sent.')
@@ -407,7 +414,7 @@ def read_account():
 
 def matches(issue, rec, number=None):
     """Whether a read issue is exactly this operation's, on the destination, by the bound account."""
-    return (isinstance(issue, dict) and issue.get('repository_url') == API_REPO
+    return (isinstance(issue, dict) and same_name(issue.get('repository_url'), API_REPO)
             and 'pull_request' not in issue
             and (number is None or issue.get('number') == number)
             and isinstance(issue.get('user'), dict) and issue['user'].get('id') == rec['account']['id']
@@ -684,7 +691,7 @@ def cmd_share(a):
     if issue:
         read_destination()
         got = read_issue(int(issue.group(1)))
-        if not (isinstance(got, dict) and got.get('repository_url') == API_REPO and 'pull_request' not in got
+        if not (isinstance(got, dict) and same_name(got.get('repository_url'), API_REPO) and 'pull_request' not in got
                 and got.get('number') == int(issue.group(1))):
             raise Stop('That address is not an issue on the public OpenWiz repository.')
     return out({'share': f'{text}\n\n{a.url}',

@@ -16,13 +16,18 @@ def changed_skill(path):
         path.startswith('.claude/skills/' + name + '/') for name in EXTRAS)
 
 
+def same_name(value, name):
+    """GitHub matches owner and repository names in any capitals (RN6); anything not ASCII is refused."""
+    return isinstance(value, str) and value.isascii() and value.lower() == name.lower()
+
+
 def enabled(source):
-    if (os.environ.get('GITHUB_REPOSITORY') != 'openwizdev/openwiz'
+    if (not same_name(os.environ.get('GITHUB_REPOSITORY'), 'openwizdev/openwiz')
             or os.environ.get('GITHUB_REF') != 'refs/heads/main'
             or os.environ.get('GITHUB_EVENT_NAME') != 'push'):
         return False
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
-    if event['repository']['full_name'] != 'openwizdev/openwiz' or event['deleted'] is not False:
+    if not same_name(event['repository']['full_name'], 'openwizdev/openwiz') or event['deleted'] is not False:
         return False
     before, after = event['before'], event['after']
     if not all(isinstance(v, str) and re.fullmatch('[0-9a-f]{40}', v) for v in (before, after)):
