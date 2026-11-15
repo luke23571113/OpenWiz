@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -695,6 +696,79 @@ class Check(unittest.TestCase):
             rc, out = run(kind, event)
             self.assertEqual(rc, 1, out)
             self.assertIn('READ ', out)
+
+    def published_main(self):
+        # Already-public history: a commit on the destination's main whose
+        # message this check would refuse. It stands for main's history,
+        # scanned when it landed; a first-push scan that reaches it scanned
+        # commits the push does not publish.
+        self.make_repo()
+        self.git('commit', '--allow-empty', '-qm', 'published\n\n' + THREAD)
+        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+        self.git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+        self.git('checkout', '-qb', 'topic')
+        self.git('commit', '--allow-empty', '-qm', 'clean pushed commit')
+
+    def test_first_push_scans_from_merge_base_with_destination_main(self):
+        # The user-facing hook, copied with synthetic policy constants.
+        self.published_main()
+        hook = self.root / 'hook-root'
+        (hook / '.githooks').mkdir(parents=True)
+        shutil.copy(HERE.parent.parent / '.githooks/pre-push', hook / '.githooks/pre-push')
+        shutil.copytree(HERE, hook / 'tools/privacy-check', ignore=shutil.ignore_patterns('__pycache__', 'test_*'))
+        policy = hook / 'tools/privacy-check/check.py'
+        text = policy.read_text()
+        for name, value in (('PUBLIC_ROOT', self.public_root), ('PUBLIC_ANCHOR', self.anchor)):
+            text, count = re.subn(name + " = '[0-9a-f]{40}'", name + " = '" + value + "'", text)
+            self.assertEqual(count, 1)
+        policy.write_text(text)
+        def push():
+            line = 'refs/heads/topic {} refs/heads/topic {}\n'.format(self.git('rev-parse', 'HEAD'), '0' * 40)
+            r = subprocess.run(['sh', str(hook / '.githooks/pre-push'), 'origin', 'https://github.com/openwizdev/openwiz.git'],
+                               cwd=self.repo, input=line, text=True, capture_output=True,
+                               env={**os.environ, **self.git_env, 'XDG_CACHE_HOME': str(self.root / 'cache')})
+            return r.returncode, r.stdout + r.stderr
+        # Only the pushed commit is new: main's published history is not rescanned.
+        rc, out = push()
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn('T1 ', out)
+        # The pushed commits themselves are always scanned.
+        self.git('commit', '--allow-empty', '-qm', 'pushed\n\n' + THREAD)
+        self.assertEqual(push()[0], 1)
+        self.git('reset', '-q', '--hard', 'HEAD~1')
+        # Fail closed: an unrelated main (no merge-base) or no main at all
+        # scans from the public anchor, as before.
+        self.git('checkout', '-q', '--orphan', 'unrelated')
+        self.git('commit', '--allow-empty', '-qm', 'unrelated root')
+        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+        self.git('checkout', '-q', 'topic')
+        for step in ('unrelated', 'missing'):
+            if step == 'missing':
+                self.git('update-ref', '-d', 'refs/remotes/origin/main')
+            with self.subTest(main=step):
+                rc, out = push()
+                self.assertEqual(rc, 1, out)
+                self.assertIn('T1 ', out)
+
+    def test_ci_new_ref_push_scans_from_merge_base_with_main(self):
+        self.published_main()
+        adapter = self.load_adapter('ci')
+        event_path = self.root / 'event.json'
+        def run(ref):
+            event = {'before': '0' * 40, 'after': self.git('rev-parse', 'HEAD'), 'ref': ref}
+            event_path.write_text(json.dumps(event))
+            out = io.StringIO()
+            with patch.dict(os.environ, GITHUB_REPOSITORY='openwizdev/openwiz', GITHUB_EVENT_NAME='push',
+                            GITHUB_EVENT_PATH=str(event_path)), contextlib.chdir(self.repo), patch.multiple(
+                                adapter.check, PUBLIC_ROOT=self.public_root, PUBLIC_ANCHOR=self.anchor), contextlib.redirect_stdout(out):
+                return adapter.main(), out.getvalue()
+        rc, out = run('refs/heads/topic')
+        self.assertEqual(rc, 0, out)
+        # Creating main itself: origin/main is the pushed commit, so there is
+        # no earlier public state to start from; scan from the anchor.
+        rc, out = run('refs/heads/main')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('T1 ', out)
 
     def test_workflow_check_name_and_repository_runner(self):
         spec = importlib.util.spec_from_file_location('workflow', HERE / 'workflow.py')
