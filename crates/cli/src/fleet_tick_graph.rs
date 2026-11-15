@@ -133,7 +133,10 @@ pub struct World {
     pub repository: openwiz_adapter_github::tick::Repository,
     pub issues: BTreeMap<Number, IssueRow>,
     pub prs: Vec<PrRow>,
+    /// Only the record authors' comments (#718): see [`World::read_factory`].
     pub comments: BTreeMap<Number, Vec<Comment>>,
+    /// The rules file's record authors, lowercase (#718).
+    pub authors: BTreeSet<String>,
     pub starts: Vec<StartRecord>,
     title_rows: RefCell<Option<Result<Vec<SessionRecord>>>>,
     pub project: Option<String>,
@@ -277,8 +280,10 @@ impl World {
             }
         }
         let branch = gh.branch(repository.default.as_str(), deadline)?;
-        let rules =
-            Rules::parse(&gh.rules(&branch, deadline)?).map_err(|_| "rules unread or invalid")?;
+        let text = gh.rules(&branch, deadline)?;
+        let rules = Rules::parse(&text).map_err(|_| "rules unread or invalid")?;
+        // #718: who wrote the factory's records, read before any comment.
+        let authors = records::record_authors(&text)?;
         let starts = if room.is_some() {
             start_records(state, &repository.name)?
         } else {
@@ -314,7 +319,11 @@ impl World {
                 comment_pages = page;
                 budget.with_work(page)
             })?;
-            let mut comments = all.comments;
+            let mut comments = all
+                .comments
+                .into_iter()
+                .map(|(n, cs)| (n, records::factory(cs, &authors)))
+                .collect::<BTreeMap<_, _>>();
             for number in issues.keys().copied().chain(prs.iter().map(|p| match p {
                 PrRow::Open(p) | PrRow::Merged { facts: p, .. } => p.number,
                 PrRow::Closed { number } => *number,
@@ -351,6 +360,7 @@ impl World {
             issues,
             prs,
             comments,
+            authors,
             starts,
             title_rows: RefCell::new(None),
             project,
@@ -393,6 +403,20 @@ impl World {
         world.snapshot.fleets = Observed::Complete(fleets);
         Ok(world)
     }
+    /// One issue's comments read afresh, keeping only the record authors'
+    /// (#718). Every comment read in a tick comes through here or the
+    /// repository-wide snapshot, filtered the same way.
+    pub fn read_factory(
+        &self,
+        gh: &TickReads,
+        number: Number,
+        deadline: Instant,
+    ) -> Result<Vec<Comment>> {
+        Ok(records::factory(
+            gh.comments(number, deadline)?,
+            &self.authors,
+        ))
+    }
     fn read_comments(
         &mut self,
         gh: &TickReads,
@@ -406,7 +430,7 @@ impl World {
             records::check_forms(c, self.legacy_records)?;
             return Ok(c.clone());
         }
-        let c = gh.comments(number, deadline)?;
+        let c = self.read_factory(gh, number, deadline)?;
         records::check_forms(&c, self.legacy_records)?;
         self.comments.insert(number, c.clone());
         Ok(c)
