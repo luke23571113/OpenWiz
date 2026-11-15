@@ -25,6 +25,11 @@ spans against days (R4); an extra-only seed span joined the full-balance series 
 R1, R2, R4 and R5 were run without the R3 row, because that row alone fails the shared
 setup at `a482ae0`. `green.log` is the fixed head's run.
 
+R3 re-check (`92ae903`): native stage interval keys end in timestamps, so a label that
+kept only the id's last segment collided (`…08:50:00z` and `…08:55:00z` both gave
+`00z`). `red-review-2.log` is that red on the strengthened fixture. Labels now carry the
+whole observation id.
+
 The browser captures come from `capture.py OUT_DIR` (real Chromium, every host
 unresolvable, the page's own `default-src 'none'` CSP) at 1440 and 390 CSS px wide,
 full figure section; re-running it gives byte-identical PNGs. Headless Chromium cannot

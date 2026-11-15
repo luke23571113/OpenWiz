@@ -1,32 +1,32 @@
-# WRD2 scoped local checks (synthetic fixtures only), review 1 fixes
+# WRD2 scoped local checks (synthetic fixtures only), R3 re-check fix
 
 ## python3 -I tools/war-room/test_charts.py
-Ran 19 tests in 5.272s
+Ran 19 tests in 5.115s
 
 OK
 
 ## python3 -I tools/war-room/test_publish.py
-Ran 14 tests in 11.702s
+Ran 14 tests in 11.165s
 
 OK
 
 ## python3 -I tools/war-room/test_page_history.py
-Ran 18 tests in 0.841s
+Ran 18 tests in 0.824s
 
 OK
 
 ## python3 -I tools/war-room/test_gather.py
-Ran 18 tests in 54.251s
+Ran 18 tests in 53.206s
 
 OK
 
 ## python3 -I tools/war-room/test_health.py
-Ran 22 tests in 8.951s
+Ran 22 tests in 8.885s
 
 OK
 
 ## python3 -I tools/war-room/test_contract.py
-Ran 19 tests in 0.094s
+Ran 19 tests in 0.091s
 
 OK
 

@@ -503,9 +503,9 @@ def _limits_figure(fid, title, caption, waits, limits, sample_id, slot, unknown_
     rows, srcs = [], []
     for x, o in waits:
         lower = o['state'] == 'partial' and o['value'] is not None
-        # R3: the observation's own identity (job or interval), so equal waits stay distinct.
-        ident = o['id'].split(':')[-1]
-        text = f'{o["label"]} ({x}, {ident}): ' + ('Unknown' if o['value'] is None else ('at least ' if lower else '') + f'{_fmt(o["value"])} min')
+        # R3: the observation's whole stable id (its job or native interval key), never a
+        # segment of it: interval keys end in timestamps whose last segment repeats.
+        text = f'{o["label"]} ({x}, {o["id"]}): ' + ('Unknown' if o['value'] is None else ('at least ' if lower else '') + f'{_fmt(o["value"])} min')
         rows.append(_row(o['id'], 'wait', x, o['value'], o['state'], text))
         if o['source']:
             srcs.append(_source(slot, o['id'], o['source'], o['evidence'], [sample_id]))
