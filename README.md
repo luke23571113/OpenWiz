@@ -14,7 +14,10 @@ Development targets the public repository [openwizdev/OpenWiz](https://github.co
 
 ## Map
 
-![OpenWiz's parts: the CLI, the web view, the core, the Cloudroom adapter, the skills, and the contracts and proofs](docs/map.png)
+<picture>
+  <source media="(max-width: 600px)" srcset="docs/map-phone.png">
+  <img alt="OpenWiz's parts: the CLI, the web view, the core, the Cloudroom adapter, the skills, and the contracts and proofs" src="docs/map.png" width="560">
+</picture>
 
 OpenWiz is the factory's hands (the CLI) and part of its eyes (the web view). The [org map](https://github.com/openwizdev) shows how it fits with the other repos.
 
