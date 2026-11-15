@@ -3,7 +3,7 @@
 over a synthetic GitHub world.
 
 Test-only: copied into a scratch bin directory as `gh`. The world is JSON at
-$FAKE_GH_WORLD; every call is appended to its `log` (method, path), so tests
+$FAKE_GH_WORLD (else `../world.json` beside its bin directory); every call is appended to its `log` (method, path), so tests
 count provider effects. `faults` rows `{method, path, mode, times}` plant
 `lose` (the effect happens, the reply is lost), `drop` (no effect, no reply)
 or a status number (refused, no effect). Synthetic values only.
@@ -14,7 +14,10 @@ import os
 import sys
 import urllib.parse
 
-WORLD = os.environ['FAKE_GH_WORLD']
+# The installed CLI forwards no test variable, so the fake also finds the
+# world beside its own bin directory.
+WORLD = os.environ.get('FAKE_GH_WORLD') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
+                                                         'world.json')
 
 
 INCLUDE = True
