@@ -581,7 +581,7 @@ EOF
 # Claims: check/spec/wake and claim agree on first review and re-check;
 # stale heads, older claims, missing ci and body-only green still refuse.
 LONG31='pr31
-  | .files["docs/agents/fleet.md"] = "## CI checks\n| `ci` | selected suites | `main` |\n"
+  | .files["docs/agents/fleet.md"] = "## CI checks\n| `ci` | selected suites | `main` |\n\n## GitHub identity\n\n| Record authors | `synthetic-factory[bot]` |\n"
   | pull(31; .headline = "#12: synthetic widget implementation with checks and a long commit…"
       | .message = "#12: synthetic widget implementation with checks and a long commit subject, green"
       | .checks = [{name: "ci", status: "COMPLETED", conclusion: "SUCCESS"}])'

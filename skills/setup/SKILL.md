@@ -29,6 +29,7 @@ Read; never assume. This step is done when you can name, for every value in the 
 - **Builder and reviewer.** Any agent the user already chose for this project's builders or reviewers: in its instructions file (`AGENTS.md` or `CLAUDE.md`), its ADRs, and the comments on its spec issues.
 - **Test commands.** The commands in the instructions file, and every `run:` step in `.github/workflows/`.
 - **CI checks.** The job names in `.github/workflows/`, and which of them must pass before a merge: `gh api 'repos/{owner}/{repo}/rulesets'`, then each ruleset's required checks (`gh api 'repos/{owner}/{repo}/rulesets/<id>'`), and the default branch's protection (`gh api 'repos/{owner}/{repo}/branches/<branch>/protection'`).
+- **Record authors.** The only logins whose comments the fleet treats as its records: the project's GitHub App bot login (`<app-slug>[bot]`) and the account the fleet falls back to (`gh api user --jq .login`), written to `fleet.md`'s `Record authors` row and never guessed, since without that row every check stops.
 - **Merge rules.** Every rule the user has recorded about who merges what, and when: in the ADRs, the instructions file and the spec issues. Keep the decision, its date and a pointer to the private comment holding the exact words; never copy those words into public settings.
 
 ## 2. Ask only what nothing answers

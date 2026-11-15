@@ -366,6 +366,9 @@ gql() {
   case $op in
     Nodes | Item)
       [ "$reads" -gt 1 ] || allowance
+      # Comments are read only with the record authors known (#641), so a
+      # wake's first Item read takes the settings first, once.
+      settings
       hydrate "$out" || die "can't read REST issue facts for the GitHub query $op"
       ;;
   esac
@@ -864,7 +867,7 @@ blocker_closures() {
     printf '%s\n' "$closure" > "$file" || return 1
     # Only person blockers need issue-comment evidence. Address their own
     # repository from the exact node, never a same-number local issue.
-    # Settings precede every read that reaches here (#641). The final blocker
+    # Settings precede every comment read (#641). The final blocker
     # guard always uses the configured role labels.
     human_label=$(jq -er '."ready-for-human"' "$TMP/labels.json") || return 1
     if jq -e --arg human "$human_label" '.labels.pageInfo.hasNextPage == false and any(.labels.nodes[]?;
@@ -890,6 +893,7 @@ raw() {
 }
 
 settings() {
+  [ ! -f "$TMP/settings.done" ] || return 0
   raw docs/agents/fleet.md "$TMP/fleet.md"
   raw docs/agents/triage-labels.md "$TMP/labels.md"
   awk '/^## /{on = ($0 == "## CI checks")} on && /^[|] *`[^`]+` *[|]/' "$TMP/fleet.md" \
@@ -913,6 +917,7 @@ settings() {
   jq -e '. as $l | ["ready-for-agent", "needs-info", "needs-triage", "ready-for-human", "wontfix"]
     | all(.[]; . as $r | $l[$r] | type == "string")' "$TMP/labels.json" > /dev/null \
     || die "docs/agents/triage-labels.md does not map all five roles (its \"## Labels\" table)"
+  : > "$TMP/settings.done" || die "can't write"
 }
 
 # specs_list: every open issue with sub-issues (a spec), as "<number>
@@ -2434,9 +2439,8 @@ keep_read() {
 }
 
 if [ "$cmd" = wake ] || [ "$cmd" = claim ]; then
-  # The settings first: an Item read hydrates comments, which need the record authors (#641).
-  settings
   items
+  settings
   wake_world
 elif [ "$cmd" = spec ]; then
   # A fleet thread's check: the check's reads, of its own spec alone; none
