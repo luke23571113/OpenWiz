@@ -560,6 +560,16 @@ class ReadmeTests(Fixture):
         self.assertEqual(self.blocks()['claude'].split('\n')[:2], pinned + ['claude plugin install openwiz@wizskills --scope project'])
         self.assertIn('install.sh --version <version> --dest <dir>', readme)
 
+    def test_claude_code_and_codex_installs_end_by_starting_a_new_session(self):
+        # A plugin or skill installed into a running session does not load there:
+        # the steps after each install's commands must say to start a new session.
+        readme = self.readme()
+        for heading, agent in (('## Install on Claude Code', 'Claude Code'), ('## Install on Codex', 'Codex')):
+            with self.subTest(agent=agent):
+                section = readme.split(heading + '\n', 1)[1].split('\n## ', 1)[0]
+                after = section.rsplit('```\n', 1)[1]
+                self.assertRegex(after, r'[Ss]tart a new ' + agent + r' session[^.]*`openwiz:` skills')
+
     def test_installer_source_install_codex_and_other_agent_blocks_run(self):
         blocks = self.blocks()
         project = self.root / 'project'
