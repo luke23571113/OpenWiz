@@ -105,8 +105,10 @@ LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate
           # A test may fix the tool's clock for one invocation, so interval assertions never race it.
           'candidate.now = (lambda: int(os.environ["AT"])) if "AT" in os.environ else candidate.now; '
           # APP-1: a test may scope the one-release waiver table to its fixture version.
-          'w = os.environ.get("WAIVABLE"); '
-          'w and setattr(candidate, "WAIVABLE", {tuple(x) for x in json.loads(w)}); '
+          # The receipt tool checks the same table again, so the test scopes both.
+          'w = os.environ.get("WAIVABLE"); w = w and {tuple(x) for x in json.loads(w)}; '
+          'w and setattr(candidate, "WAIVABLE", w); load = candidate.smoke_module; '
+          'w and setattr(candidate, "smoke_module", lambda: (lambda m: (setattr(m, "WAIVABLE", w), m)[1])(load())); '
           'sys.exit(candidate.main(sys.argv[1:]))')
 
 FAKE_GIT = r'''#!/usr/bin/env python3
@@ -1464,6 +1466,13 @@ class Waiver(World):
         self.assertEqual(gate['status'], 'waived')
         self.assertEqual(gate['waiver']['pointer'], pointer)
         self.assertNotIn('pass', json.dumps(gate))
+        # The live receipts made after the waiver record the App gate as waived too.
+        run = f'https://github.com/{PRIVATE}/issues/9000#issuecomment-9301'
+        self.assertEqual(self.cli('live', '--state', self.state, '--kit', self.helper.kit_path,
+                                  '--smoke-state', self.helper.state, '--record', run, WAIVABLE=self.FIXTURE),
+                         (0, {'status': 'recorded', 'gates': {'smoke': 'pass', 'send': 'pass', 'new': 'pass',
+                                                              'app_permissions': 'waived', 'spending': None}}))
+        self.assertEqual(self.evaluate(WAIVABLE=self.FIXTURE)[0], 0)
 
     def test_a_waiver_never_stands_in_for_another_risks_receipt(self):
         """catches: the App waiver excusing send's (or any other risk's) missing live receipt."""

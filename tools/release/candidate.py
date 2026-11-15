@@ -753,6 +753,15 @@ def current_waiver(record):
     return (current, []) if current == saved else (None, ['waiver_changed'])
 
 
+def applied_waiver(record):
+    """The saved waiver when it still resolves and its risk is classified yes;
+    otherwise None (its problems are reported by evaluate)."""
+    waiver, _ = current_waiver(record)
+    if waiver is not None and record['candidate']['risk'][waiver['risk']]['required'] == 'yes':
+        return waiver
+    return None
+
+
 def decide(args):
     state = State(args.state)
     record = state.read()
@@ -1158,8 +1167,9 @@ def live(args):
     state = State(args.state)
     record = state.read()
     receipts = smoke_module()
+    waiver = applied_waiver(record)
     try:
-        doc = receipts.produce(Path(args.kit), Path(args.smoke_state), record, args.record)
+        doc = receipts.produce(Path(args.kit), Path(args.smoke_state), record, args.record, waiver)
     except (receipts.Refusal, receipts.smoke.Refusal) as error:
         block(f'smoke_{error}')
     state.write('live.json', {'doc': doc, 'kit': str(Path(args.kit).resolve()),
@@ -1170,9 +1180,10 @@ def live(args):
     return {'status': 'recorded', 'gates': {g: (doc['gates'][g] or {}).get('status') for g in ('smoke',) + RISKS}}
 
 
-def live_reasons(record, saved, waived=()):
+def live_reasons(record, saved, waiver=None):
     """Every live gate's reasons. A risk in `waived` needs no live receipt: its
     resolved waiver stands in, recorded as waived, never as passed."""
+    waived = (waiver['risk'],) if waiver else ()
     reasons = []
     risk = record['candidate']['risk']
     for name in RISKS:
@@ -1187,7 +1198,8 @@ def live_reasons(record, saved, waived=()):
         if gate != 'smoke' and (risk[gate]['required'] != 'yes' or gate in waived):
             continue
         try:
-            receipts.accept(gate, saved['doc'], record, Path(saved['kit']), Path(saved['state']), preserved)
+            receipts.accept(gate, saved['doc'], record, Path(saved['kit']), Path(saved['state']), preserved,
+                            waiver=waiver)
         except receipts.Refusal as error:
             reason = str(error)
             reasons.append(f'{gate}_live_missing' if gate != 'smoke' and reason in ('missing', 'risk_missing')
@@ -1281,13 +1293,11 @@ def reasons_for(record, state, repo, own=None, artifacts=None, literals=None, ma
                 continue
             inputs = state.read(f'inputs/{name}.json') if state.exists(f'inputs/{name}.json') else None
             reasons += [f'{name}_{r}' for r in gate_reasons(record, name, receipt, inputs, ctx)]
-    waiver, problems = current_waiver(record)
-    reasons += problems
-    waived = ()
-    if waiver is not None and body['risk'][waiver['risk']]['required'] == 'yes':
-        waived = (waiver['risk'],)
+    reasons += current_waiver(record)[1]
+    waiver = applied_waiver(record)
+    if waiver is not None:
         made[waiver['risk']] = {'status': 'waived', 'waiver': waiver}
-    reasons += live_reasons(record, live_doc(state), waived)
+    reasons += live_reasons(record, live_doc(state), waiver)
     return reasons
 
 
