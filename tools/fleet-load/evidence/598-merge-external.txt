@@ -1,0 +1,5 @@
+ok   R1 external: spec asks for a person blocker outside its graph
+ok   R1 external: dependent wake asks for its person blocker record
+ok   R1 external: completion lets the dependent wake proceed
+ok   every gh call was one of fleet.sh's reads
+3 cases, 0 failed

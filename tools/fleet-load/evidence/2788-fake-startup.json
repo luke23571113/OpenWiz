@@ -1,0 +1,19 @@
+{
+  "evidence": "synthetic; no network",
+  "samples": [
+    {
+      "mode": "source-compilation",
+      "count": 20,
+      "wall_s": 0.723,
+      "cpu_s": 0.719
+    },
+    {
+      "mode": "checked-bytecode",
+      "count": 20,
+      "wall_s": 0.543,
+      "cpu_s": 0.539
+    }
+  ],
+  "responses_and_events": "20 exact matches across modes",
+  "source_changes": "checked source hashes; equal-size/equal-timestamp regression passes"
+}

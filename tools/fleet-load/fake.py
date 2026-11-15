@@ -16,6 +16,11 @@ import sys
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
+# Only the recording harness supplies this owner-controlled temporary cache.
+# The modules are precompiled with checked source hashes; no repo cache writes.
+if os.environ.get('LOAD_BYTECODE'):
+    sys.pycache_prefix = os.environ['LOAD_BYTECODE']
+    sys.dont_write_bytecode = False
 
 
 def stamp(seconds):
@@ -143,6 +148,9 @@ def main():
         elif args[:2] == ['api', '--include']:
             # The next page this response's Link names (as fleet.sh reads it), for S4's pagination chain.
             head = result.replace('\r\n', '\n').split('\n\n', 1)[0]
+            event['http_status'] = int(head.splitlines()[0].split()[1])
+            event['etag'] = next((line.split(':', 1)[1].strip() for line in head.splitlines()
+                                  if line.lower().startswith('etag:')), None)
             event['next'] = next((m[1] for line in head.split('\n') if line.lower().startswith('link:')
                                   for m in re.finditer(r'<https://api\.github\.com/([^>]+)>; *rel="next"', line)), None)
     else:

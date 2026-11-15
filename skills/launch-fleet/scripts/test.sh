@@ -29,7 +29,7 @@ HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 FLEET=${FLEET_SH:-$HERE/fleet.sh}
 FIX=$HERE/fixtures
 NOW=1793534400 # 2026-11-01T12:00:00Z, the fixtures' "now"
-CASES=783      # 770 existing cases plus #2888 R1's 13 completion-request cases
+CASES=786      # main's 783 cases plus #2788's three snapshot regressions
 fails=0
 cases=0
 ERR=''         # the exact stderr the next case expects, when not the points line
@@ -3392,6 +3392,38 @@ gi1_case() {
           bad "$name" "a token or ETag in $(basename "$f")"; return
         fi
       done ;;
+    changed-probes | expired-probes)
+      gi1_pair 3 120 && gi1_unchanged 3 || { bad "$name" "$gi1_why"; return; }
+      if [ "$mode" = changed-probes ]; then
+        gi1_change 'say(13; 1301; "11:59"; "Synthetic question")' || { bad "$name" "change failed"; return; }
+        at=180
+      else at=1860; fi
+      gi1_pair 4 "$at" && gi1_full 4 || { bad "$name" "$gi1_why"; return; }
+      # R1: prime before the full read so the very next unchanged tick
+      # reuses its GraphQL snapshot. Every tick retains full due-line parity.
+      next_at=$((at + 60))
+      gi1_pair 5 "$next_at" && gi1_unchanged 5 || { bad "$name" "$gi1_why"; return; }
+      if [ "$mode" = changed-probes ]; then
+        gi1_change 'say(13; 1302; "12:01"; "Synthetic second question")' || { bad "$name" "second change failed"; return; }
+        gi1_pair 6 300 && gi1_full 6 && gi1_pair 7 360 && gi1_unchanged 7 \
+          || { bad "$name" "$gi1_why"; return; }
+      fi
+      printf 'R1 %s GraphQL reads by tick:' "$mode"
+      for tick in 1 2 3 4 5; do printf ' %s' "$(gi1_graphql "$tick")"; done
+      if [ "$mode" = changed-probes ]; then
+        for tick in 6 7; do printf ' %s' "$(gi1_graphql "$tick")"; done
+      fi
+      printf '\n' ;;
+    merged-checks)
+      gi1_pair 3 120 && gi1_unchanged 3 || { bad "$name" "$gi1_why"; return; }
+      # Closed tickets archive from their merge and records, not later CI
+      # results. Keep probing PR metadata (including a changed state/head).
+      gi1_change 'pull(27; .rollup = "FAILURE" | .checks[0].conclusion = "FAILURE")' \
+        || { bad "$name" "merged check change failed"; return; }
+      gi1_pair 4 180 && gi1_unchanged 4 || { bad "$name" "$gi1_why"; return; }
+      gi1_change 'pull(36; .checks[1].status = "COMPLETED" | .checks[1].conclusion = "FAILURE" | .rollup = "FAILURE")' \
+        || { bad "$name" "open check change failed"; return; }
+      gi1_pair 5 240 && gi1_full 5 || { bad "$name" "$gi1_why"; return; } ;;
     time)
       grep -q '^reconcile start #61' "$d/out-2" && { bad "$name" "the claim was due too soon"; return; }
       gi1_pair 3 480 && gi1_unchanged 3 || { bad "$name" "$gi1_why"; return; }
@@ -3429,6 +3461,9 @@ gi1_case() {
   esac
   echo "ok   $name"
 }
+gi1_case 'WZ-PROBE: merged PR checks cannot invalidate identical due lines' merged-checks
+gi1_case 'WZ-PROBE: changed ticks retain immediate snapshot reuse with identical due lines' changed-probes
+gi1_case 'WZ-PROBE: expired ticks retain immediate snapshot reuse with identical due lines' expired-probes
 gi1_case 'GI1: an unchanged spec reads no GraphQL and prints what a full read prints' unchanged
 gi1_case 'GI1: a line due with time comes due from saved facts' time
 gi1_case 'GI1: a full read 30 minutes old is read again' age
@@ -3520,6 +3555,7 @@ case ${TEST_ONLY:-} in
   'OB7a:*') expected=7 ;;
   'OB7:*') expected=13 ;;
   'GI1:*') expected=16 ;;
+  'WZ-PROBE:*') expected=3 ;;
   'GI2:*') expected=13 ;;
 esac
 [ "$cases" = "$expected" ] || bad 'the selected cases ran' "$cases cases ran, not $expected: is \"$TEST_ONLY\" a case's name?"

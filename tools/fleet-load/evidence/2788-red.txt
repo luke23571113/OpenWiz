@@ -1,0 +1,4 @@
+FAIL WZ-PROBE: changed tickets skip the remaining snapshot probes with identical due lines: unusable snapshot still probed timelines, PRs, checks or identity
+FAIL WZ-PROBE: expired snapshots skip probes with identical due lines: unusable snapshot still probed timelines, PRs, checks or identity
+ok   every gh call was one of fleet.sh's reads
+2 cases, 2 failed

@@ -185,3 +185,59 @@ Cargo's `compiler-artifact.executable` selects the freshly built example; no
 `target/debug` path is assumed. The source-change regression covers native
 `CARGO_BUILD_TARGET`, `.cargo/config.toml` `build.target` and a separate ambient
 target directory, with an old native artifact deliberately left in place.
+
+## #2788: per-tick probe measurement
+
+```sh
+python3 -I tools/fleet-load/measure_probes.py --report /tmp/fleet-probes.json
+# Compare every tick with the same recorder/model and main's reader:
+python3 -I tools/fleet-load/measure_probes.py \
+  --baseline /tmp/baseline/skills/launch-fleet/scripts/fleet.sh \
+  --baseline-report /tmp/fleet-probes-before.json \
+  --report /tmp/fleet-probes-after.json
+```
+
+This reuses FA3's synthetic 100-ticket/five-spec world without following due
+lines or producing effects. It measures a cold, priming, unchanged, changed and
+expired check of spec 100 (20 tickets), including the immediately following
+unchanged tick after both change and expiry, plus a cold/warm full check responsible
+for all five specs (their synthetic fleet ownership records are removed for
+that pair). Counts separate fake `gh` processes, GraphQL commands, modeled GraphQL HTTP requests
+(including revision CLI internals), modeled GraphQL points, REST pages and observed fake 304 responses.
+With `--baseline`, all nine tick names and due-output hashes must match, and
+candidate GraphQL commands, modeled requests and points must each be no greater
+than main's on every tick. The control must replay with zero GraphQL reads on
+both recovery ticks. Reports are written before a regression fails the command.
+The recorder also reports child CPU time and separate 20-process fake samples
+with and without the checked-bytecode cache, asserting identical responses and
+recorded events. Run it alone for timing comparisons. These are synthetic traffic and process
+cost measurements: live HTTP retries, redirects, API costs and latency remain
+unverified. A cached 304 is still an HTTP request.
+
+The reader revalidates every saved probe before deciding whether to replay.
+Changed or expired snapshots still require a full read, but priming first
+allows the very next unchanged tick to reuse the refreshed GraphQL snapshot.
+Checks/statuses for merged PRs are omitted: only open PRs use CI to select due
+lines. PR metadata, timelines and all non-merged head checks remain revalidated.
+The back-off validator's existing negative assertions remain in place.
+
+Saving a refreshed snapshot packs its endpoint/ETag pairs in one `jq` process.
+Every endpoint still has its hash and exact-name check, and every tag array is
+retained in list order. A missing or extra JSON value refuses the snapshot.
+This saves serial process startup without skipping probes or GraphQL reads.
+Each probe also compares its complete tag array with the saved array in the
+same `jq` call that records it. Replay still requires every expected endpoint's
+hash marker, matching tags and all-304 pages. A mismatch retains the current
+tags for the refreshed snapshot and prevents replay of the old one.
+
+R1's red and corrected paired measurements are recorded in
+[`evidence/2788-r1.md`](evidence/2788-r1.md). Earlier `2788-before.json`,
+`2788-after.json` and `2788-measure-summary.txt` describe the superseded early
+exits; their changed/expired REST savings are no longer claimed.
+
+The recording harness precompiles its two response modules once into the
+workload's private temporary bytecode cache. CPython checks source hashes on
+import, including an equal-size/equal-timestamp source change (the regression
+in `test_seams.py`). There is still one Python process per fake command and
+the same response/HTTP/event model. This removes repeated fixture compilation,
+not any API probe or assertion; it is a harness cost saving, not live evidence.

@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_changed_primer_requires_a_known_baseline_and_current_clock (__main__.BackOffGate.test_changed_primer_requires_a_known_baseline_and_current_clock) (replayable=False, tags=['"a"'], at=0, now=60)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/fleet-load/test_seams.py", line 167, in test_changed_primer_requires_a_known_baseline_and_current_clock
+    self.assertEqual(self.gate(calls, [REPO, endpoint], cut), allowed)
+AssertionError: False != True
+
+----------------------------------------------------------------------
+Ran 1 test in 0.016s
+
+FAILED (failures=1)
