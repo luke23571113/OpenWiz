@@ -153,7 +153,8 @@ Held time, censored waits, edited records and shared-PR deduplication are TL2's.
 Its `history` is `unknown`, so stage health is never `known` as a provider.
 The input covers unfinished work: gather collects TL2 for every open approved
 ticket on the board graph as well as the merged cohort's tickets. If either list
-cannot be read (no or refused board graph, failed PR pages), no stage evidence
+cannot be read (no or refused board graph, a graph of another repository or of
+one spec only, failed PR pages), no stage evidence
 is collected and both stage slots are unavailable with that prerequisite: a
 cohort that silently omits unfinished work is never shown. A changed
 limit has a different `limit.sha256` and `minutes`. This changes no limit,

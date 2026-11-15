@@ -79,7 +79,8 @@ REASONS = {
                     "the board graph's open approved tickets (health.stage_health).",
     'stage_coverage': 'Stage evidence not collected: the board graph\'s open approved tickets or the merged PR pages '
                       'could not be read, so unfinished approved work cannot be enumerated and no partial stage cohort '
-                      'is shown; prerequisite: a valid graph.json on the board branch and complete PR pages.',
+                      'is shown; prerequisite: a valid board-wide graph.json of this repository on the board branch '
+                      '(source kind board) and complete PR pages.',
 }
 LIMITS = sources.ROOT / 'tools/factory-metrics/limits.conf'  # TL1's one settings source
 
@@ -295,12 +296,17 @@ def scan(root):
             scan_bytes(path.read_bytes())
 
 
-def open_approved(graph_raw):
-    """Open approved ticket numbers on the board graph (unfinished work), or None."""
+def open_approved(graph_raw, repo):
+    """Open approved ticket numbers on the board graph (unfinished work), or None.
+
+    Only the configured repository's own board-wide read enumerates its unfinished work:
+    a spec graph covers one spec, and another repository's numbers are other issues."""
     if graph_raw is None:
         return None
     try:
         graph = suite._decode(graph_raw.decode('utf-8'))
+        if type(graph) is not dict or graph.get('repo') != repo or graph.get('source') != {'kind': 'board'}:
+            return None
         sources.board_check_links(graph)
         return sorted(t['number'] for t in sources.board_open_approved(graph))
     except (ValueError, KeyError, TypeError, UnicodeError):
@@ -375,7 +381,7 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
             stage_wires = tuple(Path(stage, name).read_bytes() for name in ('journeys.json', 'stage-waits.json'))
         else:
             # Both enumerations must succeed: a cohort missing the unfinished work is never collected.
-            approved = open_approved(board[0]['graph.json']() if board and 'graph.json' in board[0] else None)
+            approved = open_approved(board[0]['graph.json']() if board and 'graph.json' in board[0] else None, repo)
             if approved is None or prs is None:
                 stage_wires, stage_gap = None, REASONS['stage_coverage']
             else:
