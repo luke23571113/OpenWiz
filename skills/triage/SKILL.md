@@ -70,7 +70,7 @@ The list is for choosing what to read, never evidence: read each issue in full, 
 
 1. **Read.** The whole issue: its body, every comment, its labels, who filed it and when. Keep what earlier triage notes settled, and never ask again what they answered. Read the glossary and the ADRs (`docs/agents/domain.md` says where they are). For a low finding, also read the review report and the pull request it came from. Then check the code twice:
    - **Already built?** Search for the behaviour by what it does, in the glossary's words, not by the issue's wording. Note where you looked. A low finding may have been fixed since its review, so check it against the default branch.
-   - **Rejected before?** Read every file in `.out-of-scope/`, and note any that matches the request by concept ([OUT-OF-SCOPE.md](OUT-OF-SCOPE.md)).
+   - **Rejected before?** If the optional `.out-of-scope/` folder exists, read every file in it, and note any that matches the request by concept ([OUT-OF-SCOPE.md](OUT-OF-SCOPE.md)); if it doesn't, nothing was rejected before.
 
    Done when you can say where you looked, whether it is already built, and whether it was rejected before.
 2. **Check the claim.** For a bug, reproduce it from the reporter's steps. For an outside pull request, check it out and run its tests. Run only what the project's rules let you run without asking (its tests and fixtures); for anything that needs the user's machine, their account or a live read, write down what it would take instead. Done when you have one result, and why: **confirmed** (with the code path), **not reproduced**, or **not enough detail to try** (a strong sign of `needs-info`).
