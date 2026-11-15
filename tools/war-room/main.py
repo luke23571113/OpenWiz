@@ -15,7 +15,7 @@ import sources
 import suite
 
 
-def tick(at, history_root, page_path, read_providers):
+def tick(at, history_root, page_path, read_providers, charts=None):
     """Injected virtual clock and source seam. Call once, then exit.
 
     Duplicate ticks don't sample again. Out-of-order samples are retained but

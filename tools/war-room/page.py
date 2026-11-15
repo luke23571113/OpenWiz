@@ -49,7 +49,7 @@ def metric_html(metric):
             + f'<p class="links">{links}</p></article>')
 
 
-def render(record):
+def render(record, charts=None):
     safe_record(record)
     parts = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
              '<meta name="viewport" content="width=device-width, initial-scale=1">',
