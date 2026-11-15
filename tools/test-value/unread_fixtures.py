@@ -119,7 +119,9 @@ class References:
                         self.inside.add('/'.join(parts[i:j]))
                 if i < len(parts) - 1 and all(parts[i:]):
                     self.ends.add('/'.join(parts[i:]))
-        self.quoted.update(m.group(2) for m in QUOTED.finditer(text))
+        quoted = {m.group(2) for m in QUOTED.finditer(text)}
+        self.quoted |= quoted
+        return quoted
 
     def file(self, path):
         return any(s in self.inside for s in suffixes(path))
@@ -151,13 +153,12 @@ def scan(repo, roots):
             f = f.parent
     scenarios = {str(PurePosixPath(p).parent) for p in fixtures if PurePosixPath(p).name == SCENARIO}
 
-    read, in_use, whole = set(), set(roots), set()
+    read, in_use, anchored, siblings = set(), set(roots), set(), {}
     while True:
         before = (len(read), len(in_use))
         named = {f for f in folders if refs.folder(f)}
-        whole |= {f for f in folders - scenarios
-                  if any(f == n or f.startswith(n + '/') for n in named)}
-        in_use |= named | whole
+        anchored |= {f for f in folders if any(f == n or f.startswith(n + '/') for n in named)}
+        in_use |= named | (anchored - scenarios)
         found = True
         while found:
             found = {f for f in folders - in_use
@@ -167,10 +168,11 @@ def scan(repo, roots):
             folder, name = str(PurePosixPath(p).parent), PurePosixPath(p).name
             if p not in read and (
                     refs.file(p)
-                    or (folder in in_use and (name == SCENARIO or name in refs.quoted))
-                    or folder in whole):
+                    or (folder in in_use and (name == SCENARIO or name in siblings.get(folder, ())))
+                    or (folder in in_use and folder in anchored
+                        and (name in refs.quoted or folder not in scenarios))):
                 read.add(p)
-                refs.add(read_text(repo, p))
+                siblings.setdefault(folder, set()).update(refs.add(read_text(repo, p)))
         if (len(read), len(in_use)) == before:
             break
     return [p for p in fixtures if p not in read]

@@ -120,7 +120,8 @@ class UnreadFixtures(unittest.TestCase):
 
     def test_a_scan_that_cannot_run_never_prints_the_empty_result(self):
         # catches: a missing or misspelt root, a root outside the repository,
-        # or a folder that is not a Git checkout reported as "nothing unread",
+        # a tracked reader that cannot be read, or a folder that is not a Git
+        # checkout reported as "nothing unread" (or as a deletion),
         # which would pass the prune's proof without scanning anything.
         tree = Tree({'tests/fixtures/a.json': '{}', 'tests/a.rs': '"fixtures/a.json"'})
         self.addCleanup(tree.close)
@@ -129,6 +130,11 @@ class UnreadFixtures(unittest.TestCase):
                 result = tree.run(*roots)
                 self.assertEqual((result.returncode, result.stdout), (2, ''))
                 self.assertTrue(result.stderr.strip())
+        # A reader deleted from the working tree but still in the index would
+        # read as empty and turn its fixture into a deletion.
+        (tree.root / 'tests/a.rs').unlink()
+        result = tree.run()
+        self.assertEqual((result.returncode, result.stdout), (2, ''))
         with tempfile.TemporaryDirectory() as bare:
             result = subprocess.run([sys.executable, '-I', str(SCRIPT), '--repo', bare],
                                     capture_output=True, text=True)
