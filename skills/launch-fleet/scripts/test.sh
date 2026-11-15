@@ -29,7 +29,7 @@ HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 FLEET=${FLEET_SH:-$HERE/fleet.sh}
 FIX=$HERE/fixtures
 NOW=1793534400 # 2026-11-01T12:00:00Z, the fixtures' "now"
-CASES=783      # 770 existing cases plus #2888 R1's 13 completion-request cases
+CASES=784      # 770 existing cases, #2888 R1's 13 completion-request cases and E8's release tree
 fails=0
 cases=0
 ERR=''         # the exact stderr the next case expects, when not the points line
@@ -3313,6 +3313,22 @@ if [ -z "${TEST_ONLY:-}" ] || [ "$TEST_ONLY" = public-records ]; then
     else
       bad public-records 'thread-free records or routing failed'
       cat "$tmp/public-records.log"
+    fi
+  fi
+fi
+
+# E8: the carried O10/triage fixture runs in a release-shaped tree, a copy of
+# the carried skills with no Git history, on those carried sources.
+if [ -z "${TEST_ONLY:-}" ] || [ "$TEST_ONLY" = o10-release ]; then
+  if take; then
+    cases=$((cases + 1))
+    rel=$tmp/o10-release
+    if mkdir -p "$rel/skills" && cp -R "$HERE/../../launch-fleet" "$HERE/../../triage" "$HERE/../../plan-graph" "$rel/skills/" \
+      && (cd "$rel" && GIT_CEILING_DIRECTORIES=$tmp python3 -I skills/launch-fleet/scripts/fixtures/test-o10-triage.py) > "$tmp/o10-release.log" 2>&1; then
+      echo 'ok   o10-release'
+    else
+      bad o10-release 'the carried O10/triage fixture needs source Git history'
+      cat "$tmp/o10-release.log"
     fi
   fi
 fi
