@@ -121,7 +121,7 @@ sh skills/plan-graph/check-links.sh [--json] <spec>       # reads spec <spec>'s 
 sh skills/plan-graph/check-links.sh [--json] --graph -    # reads one graph read on standard input; no network call
 ```
 
-- **`<spec>`:** the spec's sub-issues, open and closed, each with its native blockers and their states, read through `gh`, every read checked and every page counted. It builds the same graph read as below (source `{ "kind": "spec", "spec": <spec> }`) and makes no other call.
+- **`<spec>`:** the spec's sub-issues, open and closed, each with its native blockers and their states, read through `gh`, every read checked and every page counted. It first reads the `Record authors` row of `docs/agents/fleet.md`'s `## GitHub identity` table from the default branch, through `gh`; a failed read, or no row, an empty row or a malformed login, exits 2. It builds the same graph read as below (source `{ "kind": "spec", "spec": <spec> }`) and makes no other call.
 - **`--graph -`:** one graph read, as below, on standard input.
 - **`--json`:** the JSON report on standard output instead of the text report.
 
@@ -190,7 +190,7 @@ ticket  { number, title, state: OPEN | CLOSED, labels, milestone, parent,
 - `labels` are label names; `milestone` is the milestone's title or `null`; `parent` is the parent issue's number or `null`.
 - `blocked_by` is every native blocker with its state, in any order.
 - `body` is the issue body, unchanged.
-- `start_recorded` is the start record the board already reads: true when one of the ticket's last 15 comments starts with `launch-fleet: start`.
+- `start_recorded` is the start record the board already reads: true when one of the ticket's last 15 comments starts with `launch-fleet: start` and was written by a record author (a login in that `Record authors` row, compared case-insensitively); a comment with no author never counts.
 - `pull_requests` are the open pull requests whose titles start with `#<number>` (the ticket's number, then a non-digit or the end), as `render.py` matches them.
 
 Each ticket appears once, each blocker once per ticket. Every object has exactly its listed keys.

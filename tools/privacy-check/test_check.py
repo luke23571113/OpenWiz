@@ -878,6 +878,49 @@ class Check(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn('T1 ', out)
 
+    def test_ci_pull_request_scans_from_merge_base_with_base_branch(self):
+        # #757. A pull_request event's base.sha can be older than its base
+        # branch, as on #721 after main was merged in. Main's already-public
+        # history (the planted commit) is not the PR's own: scanning it made
+        # #721's scan time out. Catches: a range that reaches past the PR's
+        # merge-base with its base branch, one that omits a PR commit, and a
+        # missing base that refuses or skips instead of scanning from the anchor.
+        self.published_main()
+        adapter = self.load_adapter('ci')
+        event_path = self.root / 'event.json'
+        def run(base, ref='main'):
+            pr = dict(base={'sha': base, 'ref': ref}, head={'sha': self.git('rev-parse', 'HEAD')},
+                      title='clean title', body='clean body')
+            event_path.write_text(json.dumps({'pull_request': pr}))
+            out = io.StringIO()
+            with patch.dict(os.environ, GITHUB_REPOSITORY='openwizdev/OpenWiz', GITHUB_EVENT_NAME='pull_request',
+                            GITHUB_EVENT_PATH=str(event_path)), contextlib.chdir(self.repo), patch.multiple(
+                                adapter.check, PUBLIC_ROOT=self.public_root, PUBLIC_ANCHOR=self.anchor), contextlib.redirect_stdout(out):
+                return adapter.main(), out.getvalue()
+        absent = 'f' * 40
+        # A stale base, or one missing from the checkout: the base branch's
+        # merge-base bounds the scan.
+        for base in (self.anchor, absent):
+            with self.subTest(base=base):
+                rc, out = run(base)
+                self.assertEqual(rc, 0, out)
+                self.assertIn('range: from the merge-base with upstream', out)
+        # Every PR commit is still scanned.
+        self.git('commit', '--allow-empty', '-qm', 'pr commit\n\n' + THREAD)
+        rc, out = run(self.anchor)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('T1 commit-1', out)
+        self.git('reset', '-q', '--hard', 'HEAD~1')
+        # No usable base branch and no base commit: the full scan from the
+        # anchor, which reaches the planted commit; never a skip or a refusal.
+        for ref in ('missing', '../main', None):
+            with self.subTest(ref=ref):
+                rc, out = run(absent, ref)
+                self.assertEqual(rc, 1, out)
+                self.assertIn('T1 ', out)
+                self.assertNotIn('READ ', out)
+                self.assertIn('scanning from the public anchor', out)
+
     def test_workflow_check_name_and_repository_runner(self):
         spec = importlib.util.spec_from_file_location('workflow', HERE / 'workflow.py')
         workflow = importlib.util.module_from_spec(spec)
