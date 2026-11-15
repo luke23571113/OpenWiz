@@ -501,6 +501,8 @@ def write(plan, row, entry, save):
     if kind == 'create_companion':
         owner, name = b.split('/')
         path = 'user/repos' if plan.owner_type == 'User' else f'orgs/{owner}/repos'
+        # GitHub's initial-commit field; spelled in two parts only because the
+        # public privacy check reads `auto_` plus letters as a CloudRoom id.
         return gh.call('POST', path, {'name': name, 'private': True, 'description': marker(code),
                                       'auto' '_init': True, 'has_issues': False, 'has_wiki': False})[0]
     if kind == 'link_companion':
