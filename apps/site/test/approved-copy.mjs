@@ -5,7 +5,7 @@
 // version specs, 0.0.6 to 0.0.14. The changelog copy is #1199's: one entry per version.
 // #1109 (0.0.13 T7): the one install line, the confirmed grill's I1 order at the public address.
 // An agent resolves it through the packaged install skill (skills/install/SKILL.md).
-export const setupPrompt = 'Install OpenWiz from github.com/openwizdev/openwiz';
+export const setupPrompt = 'Install OpenWiz from github.com/openwizdev/OpenWiz';
 // #2293 (reconciling #1109's upgrade line, contracts/public-offer.v1.md): OpenWiz is free now and
 // paid plans come later; CloudRoom and model charges are separate, never an OpenWiz upgrade. No
 // owner-supplied referral is verified, so the link is CloudRoom's own pricing page with none, and
@@ -59,7 +59,7 @@ export const landingCharsBefore1190 = 3594;
 // Private record: https://github.com/jparker2006/ClosedWiz/issues/1277#issuecomment-6705218593
 // Each section has a huge numeral and its date,
 // then the headline, 3 to 6 numbered lines and one small link. Words from the public CHANGELOG.md.
-const notes = 'https://github.com/openwizdev/openwiz/blob/main/CHANGELOG.md';
+const notes = 'https://github.com/openwizdev/OpenWiz/blob/main/CHANGELOG.md';
 export const changelogEntries = [
   // [id, version, datetime, shown date, headline, lines, link]
   ['v0.0.5', '0.0.5', '2026-11-05', 'Nov 5, 2026', 'Fleets of agents build for you', [
@@ -98,11 +98,11 @@ export const changelog = [
   "What's tested and what isn't ↗",
   ...changelogEntries.flatMap(([, version, , shown, headline, lines]) => [`${version} ${shown} ${headline}`, ...lines, `${version} on GitHub ↗`]),
 ].join(' ');
-const published = 'https://github.com/openwizdev/openwiz/blob/54a96ddddddc80b41ce129485fa31fc2b67da5bf/';
+const published = 'https://github.com/openwizdev/OpenWiz/blob/54a96ddddddc80b41ce129485fa31fc2b67da5bf/';
 // These public destinations receive the staged release on Jake's publish step.
 // Keep the old releases pinned to their historical evidence.
-const release = 'https://github.com/openwizdev/openwiz/blob/main/';
+const release = 'https://github.com/openwizdev/OpenWiz/blob/main/';
 export const landingLinks = [
-  'https://github.com/openwizdev/openwiz', cloudroomHref, ...Array(6).fill('/changelog/'),
+  'https://github.com/openwizdev/OpenWiz', cloudroomHref, ...Array(6).fill('/changelog/'),
 ];
 export const changelogLinks = [`${release}docs/testing.md`, ...changelogEntries.map(entry => entry[6])];

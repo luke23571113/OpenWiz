@@ -1,11 +1,11 @@
 ---
 name: feedback
-description: Send the user's chosen public feedback about OpenWiz as one GitHub issue on openwizdev/openwiz, through the user's own GitHub login, only after an exact preview and the user's explicit yes; or prepare a public OpenWiz link for the user to copy and share. Use when the user wants to give OpenWiz feedback or report an OpenWiz bug, pastes the OpenWiz app's feedback handoff, or you notice an OpenWiz problem worth reporting.
+description: Send the user's chosen public feedback about OpenWiz as one GitHub issue on openwizdev/OpenWiz, through the user's own GitHub login, only after an exact preview and the user's explicit yes; or prepare a public OpenWiz link for the user to copy and share. Use when the user wants to give OpenWiz feedback or report an OpenWiz bug, pastes the OpenWiz app's feedback handoff, or you notice an OpenWiz problem worth reporting.
 ---
 
 # Feedback
 
-You are the **user's agent**. You help the user send feedback about OpenWiz as one public issue on `openwizdev/openwiz`, through their own GitHub login, and nothing else. The rules are OpenWiz's feedback contract (`openwiz.feedback.v1`); this skill follows them and adds none.
+You are the **user's agent**. You help the user send feedback about OpenWiz as one public issue on `openwizdev/OpenWiz`, through their own GitHub login, and nothing else. The rules are OpenWiz's feedback contract (`openwiz.feedback.v1`); this skill follows them and adds none.
 
 Invoking this skill sends nothing. Pasting the app's handoff sends nothing. Only the user's explicit yes to one exact preview lets you make one create attempt.
 
@@ -25,7 +25,7 @@ The helper refuses an empty or multi-line title, a title over 256 characters, an
 ## 2. Preview, then one explicit yes
 
 1. Run `preview <operation_id>`. It reads the destination (it must be public, unarchived, with issues on) and the GitHub account actually logged in through `gh`. If either can't be read, or the login is missing or refused, stop: tell the user, and never log in, switch account, ask for a token or scope, or use any other account or credential. If the user says more than one account could be meant, stop and let them settle it outside this skill.
-2. Show the helper's `preview` text to the user exactly, every line, with nothing added or left out: the destination and that it is public, the account, the title and the entire body with its last line, the marker `OpenWiz feedback operation <operation_id>`, and its last line, `To create it, reply: yes <code>`, with a six-digit code. Then ask: "Create this public issue on openwizdev/openwiz once? Anyone can read it."
+2. Show the helper's `preview` text to the user exactly, every line, with nothing added or left out: the destination and that it is public, the account, the title and the entire body with its last line, the marker `OpenWiz feedback operation <operation_id>`, and its last line, `To create it, reply: yes <code>`, with a six-digit code. Then ask: "Create this public issue on openwizdev/OpenWiz once? Anyone can read it."
 3. Wait for their answer in their next turn.
    - **An explicit yes** to that preview that repeats its code: run `send <operation_id> --preview-id <code>`, with the code exactly as the user typed it in that reply. The helper hands you no other key: never take the code from the preview yourself.
    - **Anything else** (a no, silence, a reaction, "maybe", "looks good but change X", a yes without the code or with another one, a yes to an earlier preview, a standing preference): run `refuse <operation_id> --reason "<a few plain words>"`. Nothing is sent. To change the words, `edit`, then preview again.
@@ -54,12 +54,12 @@ If the record is missing or unreadable, the helper stops: tell the user OpenWiz 
 
 ## 5. Sharing OpenWiz
 
-Sharing is separate from feedback and never counts as a yes to it. Run `share --text-file <file> --url <url>` with the user's short text and exactly one of these addresses: `https://github.com/openwizdev/openwiz`, or `https://github.com/openwizdev/openwiz/issues/<number>` for an issue the helper reads back on the public repository. The text may hold no other link, address or local host. Show the helper's `share` text exactly; the user copies it themselves. You post, message, email and send nothing for a share, and grant no access.
+Sharing is separate from feedback and never counts as a yes to it. Run `share --text-file <file> --url <url>` with the user's short text and exactly one of these addresses: `https://github.com/openwizdev/OpenWiz`, or `https://github.com/openwizdev/OpenWiz/issues/<number>` for an issue the helper reads back on the public repository. The text may hold no other link, address or local host. Show the helper's `share` text exactly; the user copies it themselves. You post, message, email and send nothing for a share, and grant no access.
 
 ## Never
 
 - Use the OpenWiz GitHub App, Jake's or OpenWiz's credentials, a token given to OpenWiz, or any login but the user's own existing one.
 - Add labels, assignees, attachments, versions, logs, diagnostics, hidden text or anything else to the issue, or change it after the preview.
-- Send feedback anywhere but one issue on `openwizdev/openwiz`.
+- Send feedback anywhere but one issue on `openwizdev/OpenWiz`.
 
 **Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.

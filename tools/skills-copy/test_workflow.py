@@ -21,7 +21,7 @@ class GateTests(unittest.TestCase):
         self.addCleanup(self.fixture.doCleanups)
         self.before = self.fixture.git(self.fixture.source, 'rev-parse', 'HEAD').stdout.strip()
 
-    def gate(self, path, repository='openwizdev/openwiz', ref='refs/heads/main', event_name='push', malformed=False):
+    def gate(self, path, repository='openwizdev/OpenWiz', ref='refs/heads/main', event_name='push', malformed=False):
         self.fixture.write(path, 'synthetic changed file\n')
         after = self.fixture.commit()
         event = self.fixture.root / 'event.json'
@@ -74,7 +74,7 @@ class GateTests(unittest.TestCase):
             'skills/**', 'wizdev/skills/**', '.claude/skills/export-review/**',
             '.claude/skills/live-quick-check/**', '.claude/skills/live-spike/**'])
         self.assertEqual(parsed['jobs']['copy']['runs-on'], 'ubuntu-24.04')
-        self.assertIn("if: ${{ github.repository == 'openwizdev/openwiz' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}", text)
+        self.assertIn("if: ${{ github.repository == 'openwizdev/OpenWiz' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}", text)
         self.assertIn('branches: [main]', text)
         self.assertIn('permissions:\n  contents: read', text)
         self.assertIn('cancel-in-progress: false', text)

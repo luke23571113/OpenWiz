@@ -27,8 +27,8 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 REAL_GIT = shutil.which('git')
-PUBLIC = 'openwizdev/openwiz'
-PUBLIC_URL = 'https://github.com/openwizdev/openwiz.git'
+PUBLIC = 'openwizdev/OpenWiz'
+PUBLIC_URL = 'https://github.com/openwizdev/OpenWiz.git'
 PRIVATE = 'jparker2006/ClosedWiz'
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PRODUCTS = ('cli', 'runtime', 'server', 'service', 'web')
@@ -38,7 +38,7 @@ PUBLISHED = '# Changelog\n\n## 0.0.98 · 2026-01-01\n\nContext: Earlier public e
 NOTES = ('## 0.0.99 · 2026-11-20\n\nFixture-tested: You can preview a synthetic export.\n\n'
          '- Fixture-tested: You can save a preview.\n- Fixture-tested: You can cancel a preview.\n\n'
          'Fixture-tested: Synthetic export fixtures pass; live export remains unverified.\n\n'
-         '[Full release on GitHub](https://github.com/openwizdev/openwiz/releases/tag/v0.0.99)\n')
+         '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n')
 
 
 def load(name, path):
@@ -150,7 +150,7 @@ if args[:2] == ["release", "download"]:
     sys.exit(0)
 assert args[0] == "api" and not any(x in args for x in ("--method", "-X", "-f", "-F")), args
 path = next(a for a in args if a.startswith("repos/"))
-if path.startswith("repos/openwizdev/openwiz/releases/tags/"):
+if path.startswith("repos/openwizdev/OpenWiz/releases/tags/"):
     meta = store / path.rsplit("/", 1)[1] / "meta.json"
     if not meta.exists() or plant == "unreadable":
         print("gh: Not Found (HTTP 404)", file=sys.stderr)
@@ -1242,7 +1242,7 @@ class Candidate(World):
             f'## {v} · 2026-11-20\n\nFixture-tested: Version {v} headline.\n'
             + ('' if v == '0.0.7' else f'\n- Fixture-tested: Synthetic {v} entry.\n\n'
                f'Fixture-tested: Synthetic {v} checks pass.\n\n'
-               '[Full release on GitHub](https://github.com/openwizdev/openwiz/releases/tag/v0.0.12)\n')
+               '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)\n')
             for v in versions)
         published = '# Changelog\n\n## 0.0.5 · 2026-01-05\n\nContext: Earlier public entry.  \n'
         shutil.rmtree(self.repo)

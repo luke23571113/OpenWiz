@@ -7,7 +7,7 @@ stdin. The world is the JSON file FAKE_GH_SCENARIO, read on every call and
 written back after a create, so a test can change it between steps:
 
   {"user": {"login", "id"} | null,          # null: GET /user is HTTP 401
-   "repo": {...} | "fail",                   # GET repos/openwizdev/openwiz
+   "repo": {...} | "fail",                   # GET repos/openwizdev/OpenWiz
    "create": {"status": 201 | 4xx | 5xx}     # POST .../issues
            | {"drop": true}                  # no response at all, exit 1
            | {"kill_parent": true},          # the caller dies mid-request
@@ -36,7 +36,7 @@ import signal
 import sys
 from urllib.parse import parse_qs, urlsplit
 
-REPO = 'openwizdev/openwiz'
+REPO = 'openwizdev/OpenWiz'
 
 
 def respond(status, data, include=True):

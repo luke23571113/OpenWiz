@@ -126,7 +126,7 @@ class Carriage(moves.MoveContract):
                 self.assertNotIn('synthetic PR words', pr['body'])
                 self.assertIn('1. "synthetic PR words"', world['comments']['9010'][0]['body'])
                 self.assertEqual(world['comments']['9010'][1]['body'],
-                    'moved to [OpenWiz #4004](https://github.com/openwizdev/openwiz/pull/4004)')
+                    'moved to [OpenWiz #4004](https://github.com/openwizdev/OpenWiz/pull/4004)')
                 self.assertIn('pull_request\t9010\t4004\n', self.map.read_text())
                 commit = pr['headRefOid']
                 self.assertEqual(self.git(self.public, 'show', '-s', '--format=%P', commit).strip(), self.base)

@@ -455,7 +455,7 @@
           ],
           "properties": {
             "repository": {
-              "const": "openwizdev/openwiz"
+              "const": "openwizdev/OpenWiz"
             },
             "commit": {
               "$ref": "#/$defs/commit"

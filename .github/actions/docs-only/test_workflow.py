@@ -226,7 +226,7 @@ class Security(unittest.TestCase):
             ('pull_request','jparker2006/ClosedWiz','self-hosted','unknown','namespace-profile-planted',
              ('self-hosted','unknown','namespace-profile-planted')),
         ]:
-            for repository in ('jparker2006/ClosedWiz','openwizdev/openwiz','owner/repo'):
+            for repository in ('jparker2006/ClosedWiz','openwizdev/OpenWiz','owner/repo'):
                 event_head=repository if head=='jparker2006/ClosedWiz' else head
                 for name,block in blocks.items():
                     with self.subTest(repository=repository,event=event,head=head,small=small_runner,

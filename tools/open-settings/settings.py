@@ -10,7 +10,7 @@ import subprocess
 import sys
 from urllib.parse import quote
 
-TARGET = "openwizdev/openwiz"
+TARGET = "openwizdev/OpenWiz"
 OLD_TARGET = "jparker2006/OpenWiz"
 SOURCE = "jparker2006/ClosedWiz"
 CHECKS = ("web-build", "rust", "web-test", "privacy")

@@ -186,7 +186,7 @@ class CloudRoomBoundary(unittest.TestCase):
 FEEDBACK = ROOT / 'skills/feedback/scripts/feedback.py'
 FEEDBACK_FAKE = ROOT / 'skills/feedback/test/fake_gh.py'
 USER = {'login': 'synthetic-user', 'id': 9001}
-REPO = {'full_name': 'openwizdev/openwiz', 'private': False, 'visibility': 'public',
+REPO = {'full_name': 'openwizdev/OpenWiz', 'private': False, 'visibility': 'public',
         'archived': False, 'has_issues': True}
 TITLE = 'Plan page hides the approve button on a narrow phone'
 BODY = 'On a 360-pixel screen the approve button sits under the footer.'

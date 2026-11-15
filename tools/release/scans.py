@@ -117,7 +117,8 @@ def record_spans(text, public_repo):
         spans.append((*match.span(),match[2]))
     public_names = {"https://github.com/"+public_repo,
                     PRIVATE_REPOSITORY.replace("ClosedWiz","OpenWiz"),
-                    "https://github.com/openwizdev/openwiz"}
+                    "https://github.com/openwizdev/OpenWiz",
+                    "https://github.com/openwizdev/openwiz"}  # RN6: links written before the capitals changed
     targets = "(?:"+"|".join(re.escape(name) for name in sorted(public_names))+")"
     moved = r"^moved to \[OpenWiz #([1-9][0-9]*)\]\(("+targets+r"/(?:issues|pull)/\1)\)$"
     for match in re.finditer(moved,text,re.M):

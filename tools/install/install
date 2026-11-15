@@ -6,7 +6,7 @@
       and whether room-cli, gh and git are on PATH. It runs none of them.
   install download --target TARGET --dir PRIVATE_DIR
       Fetches the latest release's checksum file, manifest and archive from
-      github.com/openwizdev/openwiz/releases into a new private folder, within
+      github.com/openwizdev/OpenWiz/releases into a new private folder, within
       their declared sizes, and checks the manifest against the checksum.
   install install --assets PRIVATE_DIR --target TARGET --root ROOT [--state-root STATE]
       Installs those downloaded files with the verified offline installer

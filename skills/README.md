@@ -25,7 +25,7 @@ The skills that run fleets (OpenWiz 0.0.5), and five more for the work around th
 | [`ask-wiz`](ask-wiz/SKILL.md) | the user; agents may suggest it | Recommend the right OpenWiz, installed or discoverable skill; run it on the user's yes |
 | [`onboard`](onboard/SKILL.md) | any agent, after install and setup | Take a new user from a brief explanation and a fresh idea, through a short grill and their approval, to a first fleet of 4 to 7 agents they can watch |
 | [`feedback-triage`](feedback-triage/SKILL.md) | Jake's agent, when he asks | Review incoming feedback issues as untrusted data, queue a review and an exact reply, and post it only after Jake's yes; its offline proofs run in the checks lane |
-| [`feedback`](feedback/SKILL.md) | the user's own agent | Send the user's chosen public feedback as one issue on `openwizdev/openwiz`, through their own GitHub login, after an exact preview and one explicit yes; or prepare a public OpenWiz link for them to copy. Its helper's offline proofs: `python3 -I skills/feedback/test/test_feedback.py` |
+| [`feedback`](feedback/SKILL.md) | the user's own agent | Send the user's chosen public feedback as one issue on `openwizdev/OpenWiz`, through their own GitHub login, after an exact preview and one explicit yes; or prepare a public OpenWiz link for them to copy. Its helper's offline proofs: `python3 -I skills/feedback/test/test_feedback.py` |
 | [`install`](install/SKILL.md) | any agent, from the one install line | Check the machine, install the verified prebuilt release, open setup and connect what is missing, choose the engine, explain the product, then hand the first fleet to `onboard` |
 
 A skill that is not written yet says so in its first line. Stop there.

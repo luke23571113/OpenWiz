@@ -22,7 +22,7 @@ const BODY = 'On a 360-pixel screen the approve button sits under the footer.';
 test('the handoff holds a fixed instruction and only the chosen words', () => {
   assert.equal(handoffText(`  ${TITLE} `, `${BODY}\r\n\r\n`), [
     'Please send this as public feedback about OpenWiz with the OpenWiz feedback skill (openwiz:feedback).',
-    'It becomes one public issue on openwizdev/openwiz, under my own GitHub login.',
+    'It becomes one public issue on openwizdev/OpenWiz, under my own GitHub login.',
     'Show me the exact preview first, and create nothing until I say yes.',
     '',
     `Title: ${TITLE}`,
@@ -83,8 +83,8 @@ test('a refused clipboard is not copied, and never says so', async () => {
 });
 
 test('a share is the owner\'s text and the one allowlisted URL; links and addresses are refused', async () => {
-  assert.equal(SHARE_URL, 'https://github.com/openwizdev/openwiz');
-  assert.equal(shareText('  Try OpenWiz with me.\r\n'), 'Try OpenWiz with me.\n\nhttps://github.com/openwizdev/openwiz');
+  assert.equal(SHARE_URL, 'https://github.com/openwizdev/OpenWiz');
+  assert.equal(shareText('  Try OpenWiz with me.\r\n'), 'Try OpenWiz with me.\n\nhttps://github.com/openwizdev/OpenWiz');
   assert.equal(shareProblem('Try OpenWiz with me.'), null);
   assert.equal(shareProblem('Try OpenWiz 0.0.5/today, e.g. at work/home.'), null);
   for (const t of ['', '  ', 'see https://example.com', 'open http://localhost:7370', 'www.example.com', 'at 192.168.1.10',
@@ -122,17 +122,17 @@ const swap = (root: string, rel: string, from: string, to: string) => {
   assert.ok(text.includes(from), `${rel} holds ${from}`);
   writeFileSync(join(root, rel), text.replace(from, to));
 };
-const URL_LITERAL = "'https://github.com/openwizdev/openwiz'";
+const URL_LITERAL = "'https://github.com/openwizdev/OpenWiz'";
 
 test('the feedback exceptions pass, and every other textarea or share URL is still refused', () => {
   assert.equal(checkWith(() => {}).code, 0, 'the unchanged copy passes');
   const cases: [string, (root: string) => void, RegExp][] = [
     ['a textarea in another component', (r) => add(r, 'src/components/Ui.tsx', '\nexport const Planted = () => <textarea />;\n'), /U14: <textarea> in .*src\/components\/Ui\.tsx/],
     ['a second textarea in FeedbackShare.tsx', (r) => add(r, 'src/components/FeedbackShare.tsx', '\nexport const Planted = () => <textarea />;\n'), /U14: <textarea> in .*FeedbackShare\.tsx.*FeedbackShare\.tsx/],
-    ['the share URL in another file', (r) => add(r, 'src/components/FeedbackShare.tsx', `\nexport const planted = ${URL_LITERAL};\n`), /FeedbackShare\.tsx:\d+: an absolute or script URL: https:\/\/github\.com\/openwizdev\/openwiz/],
-    ['another URL in src/feedback.ts', (r) => add(r, 'src/feedback.ts', "\nexport const planted = 'https://github.com/openwizdev/openwiz/issues';\n"), /src\/feedback\.ts:\d+: an absolute or script URL/],
+    ['the share URL in another file', (r) => add(r, 'src/components/FeedbackShare.tsx', `\nexport const planted = ${URL_LITERAL};\n`), /FeedbackShare\.tsx:\d+: an absolute or script URL: https:\/\/github\.com\/openwizdev\/OpenWiz/],
+    ['another URL in src/feedback.ts', (r) => add(r, 'src/feedback.ts', "\nexport const planted = 'https://github.com/openwizdev/OpenWiz/issues';\n"), /src\/feedback\.ts:\d+: an absolute or script URL/],
     ['the share URL twice in src/feedback.ts', (r) => add(r, 'src/feedback.ts', `\nexport const planted = ${URL_LITERAL};\n`), /src\/feedback\.ts: the share URL .* appears 2 times/],
-    ['the share URL as a template in src/feedback.ts', (r) => swap(r, 'src/feedback.ts', URL_LITERAL, '`https://github.com/openwizdev/openwiz`'), /src\/feedback\.ts:\d+: an absolute or script URL/],
+    ['the share URL as a template in src/feedback.ts', (r) => swap(r, 'src/feedback.ts', URL_LITERAL, '`https://github.com/openwizdev/OpenWiz`'), /src\/feedback\.ts:\d+: an absolute or script URL/],
   ];
   for (const [name, plant, refusal] of cases) {
     const { code, out } = checkWith(plant);

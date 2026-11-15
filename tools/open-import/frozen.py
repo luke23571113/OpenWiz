@@ -32,7 +32,7 @@ RECORDS = ('private', 'docs/grills')
 
 REFUSAL = """ClosedWiz's old code is a frozen copy since the cut-over: it is kept for
 history until it is deleted (#1287), never edited here.
-Product work goes to openwizdev/openwiz: make this change there instead.
+Product work goes to openwizdev/OpenWiz: make this change there instead.
 Only private records change here: private/ and docs/grills/."""
 
 # #1287 deletes the old tree: its pull request is the one named exception, for

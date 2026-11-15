@@ -163,7 +163,7 @@ jobs:
 
           def proofs():
               planted = 'thr_' + 'planted2531'
-              closed, public = 'jparker2006/ClosedWiz', 'openwizdev/openwiz'
+              closed, public = 'jparker2006/ClosedWiz', 'openwizdev/OpenWiz'
               with tempfile.TemporaryDirectory() as folder:
                   repo = Path(folder)
                   def git(*args):

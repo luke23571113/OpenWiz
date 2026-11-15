@@ -180,7 +180,7 @@ class MoveContract(unittest.TestCase):
             self.assertTrue(world['created'][str(new)]['body'].endswith(
                 f'was [ClosedWiz #{old}](https://github.com/jparker2006/ClosedWiz/issues/{old})'))
             self.assertEqual(sum(c['body'] == f'moved to [OpenWiz #{new}]'
-                f'(https://github.com/openwizdev/openwiz/issues/{new})'
+                f'(https://github.com/openwizdev/OpenWiz/issues/{new})'
                 for c in world['comments'][str(old)]), 1)
         self.assertNotIn('thr_', world['created']['4002']['body'])
         self.assertNotIn('synthetic approval', world['created']['4002']['body'])
@@ -349,7 +349,7 @@ class MoveContract(unittest.TestCase):
         self.assertEqual(self.world.read_bytes(), before)
 
     def test_b3_conflicting_source_comments_refuse_before_any_effect(self):
-        for body in ['moved to [OpenWiz #4999](https://github.com/openwizdev/openwiz/issues/4999)',
+        for body in ['moved to [OpenWiz #4999](https://github.com/openwizdev/OpenWiz/issues/4999)',
                      '**Private record for OpenWiz #4999, 2030-01-02:**\n\n1. "synthetic conflict"\n']:
             with self.subTest(family=body.split()[0]):
                 self.state = self.root / ('comments-' + str(len(body)))
@@ -464,7 +464,7 @@ class MoveContract(unittest.TestCase):
     def test_a6_complete_migration_comment_set_must_be_unambiguous(self):
         self.run_move('--apply')
         original = self.world.read_text()
-        for conflict in ['moved to [OpenWiz #4999](https://github.com/openwizdev/openwiz/issues/4999)',
+        for conflict in ['moved to [OpenWiz #4999](https://github.com/openwizdev/OpenWiz/issues/4999)',
                          '**Private record for OpenWiz #4999, 2030-01-02:**\n\n1. "synthetic conflict"']:
             with self.subTest(conflict=conflict):
                 world = json.loads(original)
@@ -477,7 +477,7 @@ class MoveContract(unittest.TestCase):
 
         world = json.loads(original)  # the legacy address at the right number is not the contract's form
         world['comments']['9002'] = [dict(c, body=c['body'].replace(
-            'https://github.com/openwizdev/openwiz/', 'https://github.com/jparker2006/OpenWiz/'))
+            'https://github.com/openwizdev/OpenWiz/', 'https://github.com/jparker2006/OpenWiz/'))
             for c in world['comments']['9002']]
         self.assertIn('moved to [OpenWiz #4002](https://github.com/jparker2006/OpenWiz/issues/4002)',
                       [c['body'] for c in world['comments']['9002']])
@@ -486,6 +486,24 @@ class MoveContract(unittest.TestCase):
         self.assertIn('conflicting or duplicate migration comments', self.run_move('--verify', ok=False).stderr)
         self.run_move('--apply', ok=False)
         self.assertEqual(self.world.read_bytes(), before)
+
+    def test_a6_a_moved_comment_written_before_the_capitals_changed_still_verifies(self):
+        # RN6: comments posted before the rename name the repository as `openwizdev/openwiz`.
+        self.run_move('--apply')
+        original = json.loads(self.world.read_text())
+        for written, ok in (('https://github.com/openwizdev/openwiz/', True),
+                            ('https://github.com/OPENWIZDEV/OPENWIZ/', False)):
+            with self.subTest(written=written):
+                world = json.loads(json.dumps(original))
+                world['comments']['9002'] = [dict(c, body=c['body'].replace(
+                    'https://github.com/openwizdev/OpenWiz/', written)) for c in world['comments']['9002']]
+                self.assertIn(f'moved to [OpenWiz #4002]({written}issues/4002)',
+                              [c['body'] for c in world['comments']['9002']])
+                self.world.write_text(json.dumps(world))
+                before = self.world.read_bytes()
+                self.run_move('--verify', ok=ok)
+                self.run_move('--apply', ok=ok)
+                self.assertEqual(self.world.read_bytes(), before)
 
     def test_a7_source_state_metadata_and_migration_exclusions_are_current(self):
         cases = [('state', 'closed'), ('labels', ['changed']), ('milestone', 'Changed'),

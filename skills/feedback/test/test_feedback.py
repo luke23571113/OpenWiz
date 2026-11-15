@@ -27,7 +27,7 @@ HELPER = HERE.parent / 'scripts' / 'feedback.py'
 FAKE = HERE / 'fake_gh.py'
 USER = {'login': 'synthetic-user', 'id': 9001}
 OTHER = {'login': 'synthetic-other', 'id': 9002}
-REPO = {'full_name': 'openwizdev/openwiz', 'private': False, 'visibility': 'public',
+REPO = {'full_name': 'openwizdev/OpenWiz', 'private': False, 'visibility': 'public',
         'archived': False, 'has_issues': True}
 TOKEN = 'synthetic-token-000000'
 SECRET_PATH = '/home/synthetic-user/secret-project'
@@ -173,9 +173,9 @@ class Consent(Helper):
         op = self.draft()
         a = self.preview(op)
         self.assertEqual(a['preview'], '\n'.join([
-            'Destination: openwizdev/openwiz (public: anyone can read it)',
+            'Destination: openwizdev/OpenWiz (public: anyone can read it)',
             'Account: synthetic-user',
-            'A yes creates one public issue on openwizdev/openwiz, once.',
+            'A yes creates one public issue on openwizdev/OpenWiz, once.',
             '', 'Title:', TITLE, '', 'Body:', self.body_of(op),
             '', f"To create it, reply: yes {a['preview_id']}"]))
         self.assertRegex(a['preview_id'], r'^[0-9]{6}$')
@@ -201,7 +201,7 @@ class Consent(Helper):
         creates = self.creates()
         self.assertEqual(len(creates), 1)
         self.assertEqual(creates[0]['argv'], ['api', '--include', '--method', 'POST',
-                                              'repos/openwizdev/openwiz/issues', '--input', '-'])
+                                              'repos/openwizdev/OpenWiz/issues', '--input', '-'])
         self.assertEqual(json.loads(creates[0]['stdin']), {'title': TITLE, 'body': self.body_of(op)})
         for call in self.calls():
             text = json.dumps(call)
@@ -272,10 +272,10 @@ class Outcomes(Helper):
     def test_201_with_matching_read_back_is_sent(self):
         op, a = self.send(0)
         self.assertEqual(a['phase'], 'sent')
-        self.assertEqual(a['issue'], {'number': 41, 'url': 'https://github.com/openwizdev/openwiz/issues/41'})
+        self.assertEqual(a['issue'], {'number': 41, 'url': 'https://github.com/openwizdev/OpenWiz/issues/41'})
         self.assertIn('not that Jake', a['say'])
         reads = [c['argv'] for c in self.calls()]
-        self.assertEqual(reads[-1], ['api', '--include', '--method', 'GET', 'repos/openwizdev/openwiz/issues/41'])
+        self.assertEqual(reads[-1], ['api', '--include', '--method', 'GET', 'repos/openwizdev/OpenWiz/issues/41'])
 
     def test_422_is_failed_and_can_be_previewed_again(self):
         self.world(create={'status': 422})
@@ -404,7 +404,7 @@ class Reconcile(Helper):
         self.assertEqual(len(self.creates()), 1)
         lists = [c['argv'] for c in self.calls() if '--paginate' in c['argv']]
         self.assertEqual(len(lists), 1)
-        self.assertTrue(lists[0][-1].startswith('repos/openwizdev/openwiz/issues?creator=synthetic-user&state=all&since='))
+        self.assertTrue(lists[0][-1].startswith('repos/openwizdev/OpenWiz/issues?creator=synthetic-user&state=all&since='))
 
     def test_none_two_differing_or_unreadable_stay_uncertain(self):
         cases = {
@@ -457,7 +457,7 @@ class Record(Helper):
         self.assertEqual(stat.S_IMODE(os.stat(place / f'{op}.json').st_mode), 0o600)
         rec = self.record(op)
         self.assertEqual((rec['destination'], rec['account'], rec['title'], rec['body']),
-                         ('openwizdev/openwiz', USER, TITLE, self.body_of(op)))
+                         ('openwizdev/OpenWiz', USER, TITLE, self.body_of(op)))
         self.assertRegex(rec['preview']['at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
 
     def test_missing_or_unreadable_record_never_makes_an_attempt_safe(self):
@@ -691,26 +691,26 @@ class Share(Helper):
         return self.run_helper('share', '--text-file', str(f), '--url', url, expect=expect)[1]
 
     def test_share_shows_exactly_the_text_and_the_repository_url(self):
-        a = self.share('Try OpenWiz with me.\n', 'https://github.com/openwizdev/openwiz', 0)
-        self.assertEqual(a['share'], 'Try OpenWiz with me.\n\nhttps://github.com/openwizdev/openwiz')
+        a = self.share('Try OpenWiz with me.\n', 'https://github.com/openwizdev/OpenWiz', 0)
+        self.assertEqual(a['share'], 'Try OpenWiz with me.\n\nhttps://github.com/openwizdev/OpenWiz')
         self.assertEqual(self.calls(), [])
 
     def test_share_of_a_destination_issue_reads_it_back(self):
         self.world(issues=[{'number': 5, 'title': 't', 'body': 'b', 'user': USER},
                            {'number': 6, 'title': 't', 'body': 'b', 'user': USER, 'pull_request': {}}])
-        a = self.share('See this.', 'https://github.com/openwizdev/openwiz/issues/5', 0)
-        self.assertEqual(a['share'], 'See this.\n\nhttps://github.com/openwizdev/openwiz/issues/5')
-        for url in ('https://github.com/openwizdev/openwiz/issues/6', 'https://github.com/openwizdev/openwiz/issues/99'):
+        a = self.share('See this.', 'https://github.com/openwizdev/OpenWiz/issues/5', 0)
+        self.assertEqual(a['share'], 'See this.\n\nhttps://github.com/openwizdev/OpenWiz/issues/5')
+        for url in ('https://github.com/openwizdev/OpenWiz/issues/6', 'https://github.com/openwizdev/OpenWiz/issues/99'):
             self.share('See this.', url, 1)
         self.world(repo=dict(REPO, private=True, visibility='private'))
-        self.share('See this.', 'https://github.com/openwizdev/openwiz/issues/5', 1)
+        self.share('See this.', 'https://github.com/openwizdev/OpenWiz/issues/5', 1)
         self.assertEqual(self.creates(), [])
 
     def test_share_refuses_private_looking_or_unlisted_targets(self):
-        for url in ('https://github.com/openwizdev/openwiz?ref=x', 'https://github.com/openwizdev/openwiz#top',
-                    'https://github.com/openwizdev/openwiz/', 'http://github.com/openwizdev/openwiz',
+        for url in ('https://github.com/openwizdev/OpenWiz?ref=x', 'https://github.com/openwizdev/OpenWiz#top',
+                    'https://github.com/openwizdev/OpenWiz/', 'http://github.com/openwizdev/OpenWiz',
                     'https://github.com/jparker2006/ClosedWiz', 'http://127.0.0.1:7370/',
-                    'https://github.com/openwizdev/openwiz/issues/05', 'https://github.com/openwizdev/openwiz/pull/5'):
+                    'https://github.com/openwizdev/OpenWiz/issues/05', 'https://github.com/openwizdev/OpenWiz/pull/5'):
             with self.subTest(url):
                 self.share('Try it.', url, 1)
         for text in (f'my token {TOKEN} https://example.com', 'open http://localhost:7370', 'see www.example.com',
@@ -719,9 +719,9 @@ class Share(Helper):
                      'at synthetic-git:8443/owner/repo', 'clone git@synthetic-git:owner/repo',
                      'see code.example.org./team/project', 'clone git@code.example:~synthetic-owner/repo'):
             with self.subTest(text):
-                self.share(text, 'https://github.com/openwizdev/openwiz', 1)
-        self.assertEqual(self.share('Try OpenWiz 0.0.5/today, e.g. at work/home.', 'https://github.com/openwizdev/openwiz', 0)['share'],
-                         'Try OpenWiz 0.0.5/today, e.g. at work/home.\n\nhttps://github.com/openwizdev/openwiz')
+                self.share(text, 'https://github.com/openwizdev/OpenWiz', 1)
+        self.assertEqual(self.share('Try OpenWiz 0.0.5/today, e.g. at work/home.', 'https://github.com/openwizdev/OpenWiz', 0)['share'],
+                         'Try OpenWiz 0.0.5/today, e.g. at work/home.\n\nhttps://github.com/openwizdev/OpenWiz')
         self.assertEqual(self.calls(), [])
 
 

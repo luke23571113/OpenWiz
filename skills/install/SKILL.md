@@ -1,13 +1,13 @@
 ---
 name: install
-description: Install OpenWiz for a user from its one install line, "Install OpenWiz from github.com/openwizdev/openwiz". Check the machine and CloudRoom, install the verified prebuilt release (no Rust or Node), open setup and connect what is missing, choose the engine, explain the product in a few lines, then hand the first fleet to the onboard skill. Use when a user asks an agent to install, set up, repair, update or remove OpenWiz, or to resume an interrupted install.
+description: Install OpenWiz for a user from its one install line, "Install OpenWiz from github.com/openwizdev/OpenWiz". Check the machine and CloudRoom, install the verified prebuilt release (no Rust or Node), open setup and connect what is missing, choose the engine, explain the product in a few lines, then hand the first fleet to the onboard skill. Use when a user asks an agent to install, set up, repair, update or remove OpenWiz, or to resume an interrupted install.
 ---
 
 # Install OpenWiz
 
 The user pasted one line into their agent:
 
-> Install OpenWiz from github.com/openwizdev/openwiz
+> Install OpenWiz from github.com/openwizdev/OpenWiz
 
 Take them from that line to setup, then to their first fleet, in this order: preflight, verified install, setup and connections, engine, a brief explanation, first fleet. Keep each step short: the goal is the user seeing their own agents working within minutes.
 
@@ -33,7 +33,7 @@ Get the installer from the public repository into a private temporary folder, ke
 
 ```sh
 openwiz=<private temporary folder>/openwiz
-git clone --depth 1 https://github.com/openwizdev/openwiz "$openwiz"
+git clone --depth 1 https://github.com/openwizdev/OpenWiz "$openwiz"
 python3 -I "$openwiz"/tools/install/install preflight
 ```
 
@@ -50,7 +50,7 @@ python3 -I "$openwiz"/tools/install/install download --target <target> --dir <pr
 python3 -I "$openwiz"/tools/install/install install --assets <private download folder> --target <target> --root <root>
 ```
 
-`download` fetches only the release's checksum file, manifest and archive from `github.com/openwizdev/openwiz/releases`, within their declared sizes. If `<root>`'s parent folder is missing inside your home folder (a fresh `~/.local/lib`), `install` makes it, owner-only, never through a link. `install` checks the manifest against that checksum and every file against the manifest before anything is selected, records the packaged update channel, and switches `<root>/current` to the new build only when everything matched. A checksum proves the files are the release's files, not who published them. If it refuses, the previous install (if any) stays selected and usable; report the refusal, never work around it. Running it again with the same release reuses the verified build.
+`download` fetches only the release's checksum file, manifest and archive from `github.com/openwizdev/OpenWiz/releases`, within their declared sizes. If `<root>`'s parent folder is missing inside your home folder (a fresh `~/.local/lib`), `install` makes it, owner-only, never through a link. `install` checks the manifest against that checksum and every file against the manifest before anything is selected, records the packaged update channel, and switches `<root>/current` to the new build only when everything matched. A checksum proves the files are the release's files, not who published them. If it refuses, the previous install (if any) stays selected and usable; report the refusal, never work around it. Running it again with the same release reuses the verified build.
 
 Done when `install` printed `"activated": true`, the version, source and target, and its `build` and `state_root` paths, which you keep as `<build>` and `<state>`.
 

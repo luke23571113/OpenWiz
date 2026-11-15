@@ -25,7 +25,7 @@ python3 -I tools/open-settings/settings.py --recover --plan <plan.json> --digest
 python3 -I tools/open-settings/test_settings.py
 ```
 
-The single destination setting is `--repo`, default `openwizdev/openwiz`. Only
+The single destination setting is `--repo`, default `openwizdev/OpenWiz`. Only
 that address and its documented predecessor are accepted; the old address may
 redirect to the final address. A validated redirect is resolved before ruleset
 ownership checks, proposed requests and read-backs. The destination must be public with default

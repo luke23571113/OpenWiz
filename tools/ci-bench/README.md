@@ -18,14 +18,14 @@ placeholders, including the factory GraphQL query. The publisher reads that
 clone's `origin` (or the clone supplied with its existing `--repo` option) and
 writes only `ci-benchmarks`. There is no fixed ClosedWiz collection target to
 rewrite. The current private dashboard stays with its repository; after the
-approved cut-over the target is `openwizdev/openwiz`.
+approved cut-over the target is `openwizdev/OpenWiz`.
 
 O16's runbook must account for both O1 bench rows with the actual verified
 merge of this repair and the following steps, never an inventory override:
 
 | O1 row | Cut-over step | Read-back | Way back |
 | --- | --- | --- | --- |
-| `tools/ci-bench/README.md` | Select the approved public clone for collection and the publisher's source clone | Verify its `origin` and `gh` repository identity are `openwizdev/openwiz`; verify the publisher resolves that same origin | Stop public operations and retain the private clone and its dashboard |
+| `tools/ci-bench/README.md` | Select the approved public clone for collection and the publisher's source clone | Verify its `origin` and `gh` repository identity are `openwizdev/OpenWiz`; verify the publisher resolves that same origin | Stop public operations and retain the private clone and its dashboard |
 | `tools/ci-bench/bench.py` | Before public charting or publication, supply an independently reviewed public aggregate baseline through the existing `--baseline DIR` on `chart`, `dashboard` and `publish.py` | Record the baseline's review pointer and exact aggregate digest, and check each command's selected baseline | Stop before output or publication if that baseline or its review is unavailable; retain the private baseline |
 
 The persisted `closedwiz.ci-bench.v1` identity, private baseline bytes and

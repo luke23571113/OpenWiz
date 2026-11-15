@@ -41,7 +41,7 @@ SPAWNS = ("builder_start", "review_start")
 # J56: a verdict counts only when it matches its reviewer thread's own output read by id.
 VERDICTS = ("APPROVE", "CHANGES")
 # Never a throwaway: the real repositories under test.
-REAL_REPOSITORIES = ("jparker2006/closedwiz", "openwizdev/openwiz")
+REAL_REPOSITORIES = ("jparker2006/closedwiz", "openwizdev/OpenWiz")
 REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+")
 MEASURES = ("grant_wait_ms", "review_start_delay_ms", "oldest_pending_message_age_ms",
             "release_delay_ms", "recovery_time_ms", "duplicate_starts",

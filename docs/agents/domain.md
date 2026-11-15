@@ -12,7 +12,7 @@ If the glossary or ADRs do not exist yet, carry on without them. Missing private
 
 ## Private storage
 
-For OpenWiz the private repository is `jparker2006/ClosedWiz`; public development after the gated cut-over is `openwizdev/openwiz`. During preparation this checkout is still ClosedWiz. No path here authorizes switching it.
+For OpenWiz the private repository is `jparker2006/ClosedWiz`; public development after the gated cut-over is `openwizdev/OpenWiz`. During preparation this checkout is still ClosedWiz. No path here authorizes switching it.
 
 The repository routing is in `issue-tracker.md`. Resolve the private checkout by its verified remote, never by a guessed current directory; verify private visibility before writing. Grills (including their branches, PRs and decision requests) use `docs/grills/` there. The handoff is `private/orchestration/HANDOFF.md`; all orchestrator state stays under `private/orchestration/` in that private checkout. Authorized agents read those private sources directly; a public source names a decision and a private-comment pointer, never its exact replies or thread ids. If a source is not available, report the gap.
 

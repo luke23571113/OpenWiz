@@ -204,7 +204,7 @@ It activates only once O17's switch is recorded: the switch date
 read back at cut-over step 7, never by a pull request. Before
 that, it lists the frozen paths it would refuse and passes. After it, any touched
 frozen path fails the check with exit 1. The output lists every such path, one per
-line, and says that product work goes to `openwizdev/openwiz`. An invalid
+line, and says that product work goes to `openwizdev/OpenWiz`. An invalid
 activation value, or an unreadable base, head or list, fails closed with exit 2.
 
 **The one exception** is #1287's own pull request, which deletes the old tree.

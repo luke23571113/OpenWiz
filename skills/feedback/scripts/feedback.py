@@ -39,7 +39,7 @@ import unicodedata
 import urllib.parse
 from pathlib import Path
 
-DESTINATION = 'openwizdev/openwiz'
+DESTINATION = 'openwizdev/OpenWiz'
 API_REPO = 'https://api.github.com/repos/' + DESTINATION
 WEB_REPO = 'https://github.com/' + DESTINATION
 SCHEMA = 'openwiz.feedback-operation.v1'
@@ -62,7 +62,7 @@ def same_name(value, name):
     return isinstance(value, str) and value.isascii() and value.lower() == name.lower()
 
 
-SHARE_ISSUE = re.compile(r'https://github\.com/openwizdev/openwiz/issues/([1-9][0-9]{0,9})')
+SHARE_ISSUE = re.compile(r'https://github\.com/openwizdev/OpenWiz/issues/([1-9][0-9]{0,9})')
 URLISH = re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://|\bwww\.|\blocalhost\b|\b\d{1,3}(\.\d{1,3}){3}\b'
                     r'|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\.?(?::[\w.~-]*)?/|\b[a-z0-9-]+:\d+/'
                     r'|@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.?:~?[\w.-]*/', re.I)  # and a bare host/path (C-F2)

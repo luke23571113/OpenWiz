@@ -41,7 +41,7 @@ from install import manifest_at  # noqa: E402
 from publish import git as remote_git, refs  # noqa: E402
 from repository import remote_url, repository  # noqa: E402
 
-PUBLIC = 'openwizdev/openwiz'
+PUBLIC = 'openwizdev/OpenWiz'
 ANCHOR = '5d069b025c6eacb4123ca8241ba21345f1eae9dd'
 PRIVATE = 'jparker2006/ClosedWiz'
 OWNER = 'jparker2006'

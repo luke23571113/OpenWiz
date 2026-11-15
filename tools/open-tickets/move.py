@@ -30,7 +30,7 @@ from carriage import Patch  # noqa: E402
 from text import CHECKER, SOURCE, check_text, private_record, transform  # noqa: E402
 
 PRIVATE = 'jparker2006/ClosedWiz'
-PUBLIC = 'https://github.com/openwizdev/openwiz'  # the contract's final address; no legacy fallback
+PUBLIC = 'https://github.com/openwizdev/OpenWiz'  # the contract's final address; no legacy fallback
 
 
 def canonical(value):

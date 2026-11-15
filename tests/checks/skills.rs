@@ -4279,7 +4279,7 @@ fn install_keeps_its_order_and_gates() {
 #[test]
 fn one_install_line_everywhere() {
     let read = |path: &str| fs::read_to_string(Path::new(ROOT).join(path)).expect(path);
-    let line = "Install OpenWiz from github.com/openwizdev/openwiz";
+    let line = "Install OpenWiz from github.com/openwizdev/OpenWiz";
     for path in ["skills/install/SKILL.md", "docs/install.md", "README.md"] {
         assert!(
             read(path).contains(&format!("> {line}\n")),

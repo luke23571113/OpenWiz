@@ -23,7 +23,7 @@ import stat
 import subprocess
 import sys
 
-DESTINATION = 'openwizdev/openwiz'
+DESTINATION = 'openwizdev/OpenWiz'
 PRIVATE_REPOSITORY = 'jparker2006/ClosedWiz'
 MARKER = re.compile(r'OpenWiz feedback operation ([0-9a-f]{32})')
 MARKER_LINE = re.compile(r'^OpenWiz feedback operation ', re.M)
@@ -568,7 +568,7 @@ def cmd_reconcile(queue, args):
 
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--state', default=str(Path.home() / '.openwiz' / 'feedback-triage' / DESTINATION))
+    parser.add_argument('--state', default=str(Path.home() / '.openwiz' / 'feedback-triage' / DESTINATION.lower()))
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('scan')
     sub.add_parser('list')

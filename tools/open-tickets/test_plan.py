@@ -178,7 +178,7 @@ class PlanContract(unittest.TestCase):
     def test_final_api_target_is_default_and_apply_still_refuses(self):
         out = self.root / 'default-target'
         self.run_plan('--gh', FAKE, '--out', out)
-        self.assertEqual(json.loads((out / 'inventory.json').read_text())['target'], 'openwizdev/openwiz')
+        self.assertEqual(json.loads((out / 'inventory.json').read_text())['target'], 'openwizdev/OpenWiz')
         before = self.log.read_bytes()
         self.run_plan('--gh', FAKE, '--target', 'synthetic-org/openwiz',
                       '--out', self.root / 'apply', '--apply', ok=False)
