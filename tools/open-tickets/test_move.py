@@ -38,11 +38,30 @@ class MoveContract(unittest.TestCase):
         self.state = self.root / 'state'
         self.literals = self.root / 'literals'
         self.literals.write_text('synthetic-unused-literal\n')
+        self.sleeps = self.root / 'sleeps'
         self.env = dict(os.environ, OPEN_TICKETS_WORLD=str(self.world),
-                        OPEN_TICKETS_LOG=str(self.root / 'gh.jsonl'))
+                        OPEN_TICKETS_LOG=str(self.root / 'gh.jsonl'), OPEN_TICKETS_SLEEPS=str(self.sleeps))
+        # Pauses are recorded, not slept: the same move.py, with time.sleep logged.
+        self.mover = self.root / 'mover.py'
+        self.mover.write_text('import os, runpy, time\n'
+            'def logged(seconds):\n'
+            '    with open(os.environ["OPEN_TICKETS_SLEEPS"], "a") as log:\n'
+            '        log.write(repr(seconds) + "\\n")\n'
+            f'time.sleep = logged\nrunpy.run_path({str(HERE / "move.py")!r}, run_name="__main__")\n')
+
+    def slept(self):
+        return [float(v) for v in self.sleeps.read_text().split()] if self.sleeps.exists() else []
+
+    def gh_log(self):
+        return [json.loads(line) for line in (self.root / 'gh.jsonl').read_text().splitlines()]
+
+    def direct_reads(self):
+        prefix = 'repos/synthetic-org/openwiz/issues/'
+        return [int(a[-1][len(prefix):]) for a in self.gh_log()
+                if a[:3] == ['api', '--method', 'GET'] and len(a) == 4 and a[-1].startswith(prefix)]
 
     def run_move(self, *args, ok=True, program=None):
-        result = subprocess.run([sys.executable, '-I', str(program or HERE / 'move.py'), '--plan', str(self.plan),
+        result = subprocess.run([sys.executable, '-I', str(program or self.mover), '--plan', str(self.plan),
                                  '--state-dir', str(self.state), '--map-out', str(self.map),
                                  '--checker', str(CHECKER), '--literals', str(self.literals),
                                  '--gh', str(HERE / 'fake-gh'), *args],
@@ -219,6 +238,79 @@ class MoveContract(unittest.TestCase):
                 self.run_move('--apply', ok=False)
                 self.run_move('--apply')
                 self.assert_complete()
+
+    def test_c1_listed_late_creation_is_adopted_by_direct_read_without_duplicate(self):
+        # GitHub's list omits a just-created item while GET issues/<n> returns it.
+        original = self.world.read_text()
+        for stop in [None, 1]:
+            with self.subTest(lost_response_after_effect=stop):
+                world = dict(json.loads(original), list_lag=-1)
+                if stop:
+                    world['stop_after_write'] = stop
+                self.world.write_text(json.dumps(world))
+                self.state = self.root / ('state-late-' + str(stop))
+                self.map = self.root / ('map-late-' + str(stop) + '.tsv')
+                if stop:
+                    self.assertIn('effect/read outcome unconfirmed', self.run_move('--apply', ok=False).stderr)
+                self.run_move('--apply')
+                self.assert_complete()
+                self.assertTrue(set(self.direct_reads()) <= {4001, 4002, 4003, 4004})
+
+    def test_c1_confirm_read_retries_then_adopts_listed_late_creation(self):
+        world = dict(json.loads(self.world.read_text()), list_lag=3, direct_missing=True)
+        self.world.write_text(json.dumps(world))
+        self.run_move('--apply')
+        self.assert_complete()
+        # Each create: one pacing pause before the POST, then three 5 s retries.
+        self.assertEqual(self.slept()[:4], [1.0, 5.0, 5.0, 5.0])
+        self.assertEqual(self.slept().count(1.0), 3)
+        self.assertEqual(self.slept().count(5.0), 9)
+
+    def test_c1_unconfirmed_after_last_retry_still_refuses_then_resumes_once(self):
+        world = dict(json.loads(self.world.read_text()), list_lag=-1, direct_missing=True)
+        self.world.write_text(json.dumps(world))
+        self.assertIn('create outcome unconfirmed', self.run_move('--apply', ok=False).stderr)
+        self.assertEqual(self.slept(), [1.0] + [5.0] * 8)
+        world = json.loads(self.world.read_text())
+        self.assertEqual(list(world['created']), ['4001'])
+        before = self.world.read_bytes()
+        self.assertIn('create outcome unknown', self.run_move('--apply', ok=False).stderr)
+        self.assertEqual(self.world.read_bytes(), before)
+        world.pop('listed_from')
+        self.world.write_text(json.dumps(world))
+        self.run_move('--apply')
+        self.assert_complete()
+
+    def test_c1_direct_reads_stop_at_five_and_at_the_first_missing_number(self):
+        world = json.loads(self.world.read_text())
+        for n in range(4001, 4007):
+            world['created'][str(n)] = {'number': n, 'title': 'Other synthetic work', 'body': 'Other.',
+                'labels': [], 'milestone': None, 'parent': None, 'blockedBy': {'nodes': [], 'totalCount': 0}}
+        world['listed_from'] = {str(n): -1 for n in range(4002, 4007)}
+        world['list_lag'] = -1
+        self.world.write_text(json.dumps(world))
+        # 4001 is listed; 4002..4006 are listed late; the new 4007 lies beyond five direct reads.
+        self.assertIn('create outcome unconfirmed', self.run_move('--apply', ok=False).stderr)
+        self.assertEqual(sorted(set(self.direct_reads())), [4002, 4003, 4004, 4005, 4006])
+        self.assertEqual(sorted(map(int, json.loads(self.world.read_text())['created'])), list(range(4001, 4008)))
+        # With nothing listed late, each find reads only the first number past the list.
+        (self.root / 'gh.jsonl').write_text('')
+        self.state, self.map = self.root / 'state-plain', self.root / 'map-plain.tsv'
+        self.world.write_text(json.dumps({'move': fixture(), 'created': {}, 'comments': {}, 'writes': 0}))
+        self.run_move('--apply')
+        self.assertEqual(sorted(set(self.direct_reads())), [4001, 4002, 4003, 4004])
+
+    def test_c1_listed_and_direct_matches_together_are_ambiguous(self):
+        world = json.loads(self.world.read_text())
+        for n in [4001, 4002]:
+            world['created'][str(n)] = {'number': n, 'title': 'Other public work',
+                'body': 'Other.\n\nwas [ClosedWiz #9001](https://github.com/jparker2006/ClosedWiz/issues/9001)',
+                'labels': [], 'milestone': None, 'parent': None, 'blockedBy': {'nodes': [], 'totalCount': 0}}
+        world['listed_from'] = {'4002': -1}
+        self.world.write_text(json.dumps(world))
+        before = self.world.read_bytes()
+        self.assertIn('ambiguous destination', self.run_move('--apply', ok=False).stderr)
+        self.assertEqual(self.world.read_bytes(), before)
 
     def test_p11_uncertain_comment_is_not_retried_when_readback_is_empty(self):
         world = json.loads(self.world.read_text())

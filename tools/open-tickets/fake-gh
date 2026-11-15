@@ -49,6 +49,29 @@ if 'move' in world:
         print(json.dumps(value) if not isinstance(value, str) else value)
         sys.exit(0)
 
+    target_list = 'repos/' + public + '/issues?state=all&per_page=100'
+
+    def list_reads():
+        return Path(os.environ['OPEN_TICKETS_LOG']).read_text().count(json.dumps(target_list))
+
+    def listed(n):
+        # GitHub's list can omit a just-created item: `list_lag` hides it for that
+        # many later list reads (-1: always), while a direct read still returns it
+        # unless `direct_missing` is set.
+        until = world.get('listed_from', {}).get(n)
+        return until is None or (until >= 0 and list_reads() > until)
+
+    def created_row(n):
+        if world.get('list_lag'):
+            lag = world['list_lag']
+            world.setdefault('listed_from', {})[n] = -1 if lag < 0 else list_reads() + lag
+
+    direct = re.fullmatch('repos/' + public + r'/issues/([1-9][0-9]*)', args[-1])
+    if args[:3] == ['api', '--method', 'GET'] and len(args) == 4 and direct:
+        if direct[1] in world['created'] and not world.get('direct_missing'):
+            answer(world['created'][direct[1]])
+        sys.stderr.write('gh: Not Found (HTTP 404)\n')
+        sys.exit(1)
     if args[:2] in (['issue', 'view'], ['pr', 'view']) and len(args) == 7 and args[3] == '--repo' and args[5] == '--json':
         n, repo, fields = args[2], args[4], args[6].split(',')
         if repo == private:
@@ -108,7 +131,7 @@ if 'move' in world:
         if endpoint == 'repos/' + private + '/issues/1257/sub_issues?per_page=100':
             answer([[{'number': n} for n in world.get('remaining', [1283])]])
         if endpoint == 'repos/' + public + '/issues?state=all&per_page=100':
-            answer([list(world['created'].values())])
+            answer([[row for n, row in world['created'].items() if listed(n)]])
         if endpoint == 'repos/' + public + '/milestones?state=all&per_page=100':
             answer([[dict(m, state='open') for m in fixture['graph']['milestones']]])
         match = re.fullmatch('repos/' + private + r'/issues/([1-9][0-9]*)/comments\?per_page=100', endpoint)
@@ -164,6 +187,7 @@ if 'move' in world:
             world['created'][str(n)] = {'number': n, 'title': payload['title'], 'body': payload['body'],
                 'labels': [{'name': label} for label in payload['labels']],
                 'milestone': milestone, 'parent': None, 'blockedBy': {'nodes': [], 'totalCount': 0}}
+            created_row(str(n))
             answer({'number': n}, write=True)
         if args[3] == 'repos/' + public + '/pulls':
             payload = json.load(sys.stdin)
@@ -176,6 +200,7 @@ if 'move' in world:
             world['created'][str(n)] = dict(number=n, title=payload['title'], body=payload['body'],
                 labels=[], milestone=None, pull_request={}, state='OPEN', headRefName=payload['head'],
                 headRefOid=world['refs'][ref], baseRefName='main', baseRefOid=world['public_base'], isCrossRepository=False)
+            created_row(str(n))
             answer({'number': n}, write=True)
         match = re.fullmatch('repos/' + private + r'/issues/([1-9][0-9]*)/comments', args[3])
         if not match:
