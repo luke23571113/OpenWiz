@@ -1,47 +1,47 @@
-# #629 scoped checks on OpenWiz at 87cabd3fe959174d80cc38b7ffea7d99216fd97e (tree b5f1cbfd25b359e5bdb68a3e97802de69e811a91), base 0b10d1d
+# #629 scoped checks on OpenWiz at 97749bbd7892d23e4206831709a29174d25d3e68 (tree fbbba4cfcb1023cc89cd76ee4334902ab2ed47f6), after merging main f171ce3
 $ python3 -I tools/open-import/guard.py --base=<merge-base with origin/main> --head=HEAD
 carriage guard: all 10 added paths are classified
 $ grep -n "private/" tools/war-room/*.py (non-test modules)
 none
 $ python3 -I tools/open-import/test_guard.py
-Ran 11 tests in 1.262s
+Ran 11 tests in 1.229s
 OK
 $ python3 -I tools/open-import/test_import.py
-Ran 24 tests in 26.730s
+Ran 24 tests in 26.895s
 OK
 $ python3 -I tools/war-room/test_health.py
-Ran 22 tests in 7.888s
+Ran 22 tests in 8.816s
 OK
 $ python3 -I tools/war-room/test_contract.py
-Ran 19 tests in 0.090s
+Ran 19 tests in 0.088s
 OK
 $ python3 -I tools/war-room/test_gather.py
-Ran 18 tests in 46.484s
+Ran 18 tests in 45.449s
 OK
 $ python3 -I tools/war-room/test_page_history.py
-Ran 18 tests in 0.905s
+Ran 18 tests in 0.796s
 OK
 $ python3 -I tools/war-room/test_publish.py
-Ran 14 tests in 9.112s
+Ran 14 tests in 8.136s
 OK
 $ python3 -I tools/war-room/test_stage_waits.py
-Ran 11 tests in 2.490s
+Ran 11 tests in 2.327s
 OK
 $ python3 -I tools/war-room/test_weekly.py
-Ran 23 tests in 104.633s
+Ran 23 tests in 104.857s
 OK
 $ python3 -I tools/war-room/test_activity.py
-Ran 14 tests in 4.510s
+Ran 14 tests in 4.427s
 OK
 $ python3 -I tools/war-room/test_cost.py
-Ran 16 tests in 0.949s
+Ran 16 tests in 0.951s
 OK
 $ python3 -I tools/war-room/test_answer_time.py
 Ran 10 tests in 0.182s
 OK
 $ python3 -I tools/war-room/test_rework.py
-Ran 8 tests in 0.187s
+Ran 8 tests in 0.191s
 OK
 $ python3 -I tools/war-room/test_review_loops.py
-Ran 30 tests in 5.901s
+Ran 30 tests in 5.929s
 OK
