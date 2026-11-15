@@ -24,6 +24,12 @@
 # worker, in its own folders; the output is printed in this file's order once
 # all are done. TEST_TIMES=<file> writes each group's milliseconds and first
 # line there (`-` prints them, as on GitHub Actions).
+# TEST_SHARD=K/N (#743) runs only shard K's groups of N, for CI's parallel
+# members: TEST_SHARD_MAP=<file> gives each group its shard ("GROUP SHARD"
+# lines, from ci/shard/lanes.py); a group past the map's last goes to shard
+# ((GROUP - 1) mod N) + 1. It writes TEST_SHARD_RAN=<file>: its case count,
+# the run's total ($CASES) and group count, and each group it ran with its
+# milliseconds; the ci job checks the shards' counts add up to the total.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 FLEET=${FLEET_SH:-$HERE/fleet.sh}
@@ -39,6 +45,20 @@ POINTS='fleet\.sh: used [0-9]+ GitHub points in [0-9]+ questions, [0-9]+ unchang
 
 WORKER=${TEST_WORKER:-} PASS=${TEST_PASS:-all}
 grp=0 mine=yes took='' t0=''
+SHARD_K='' SHARD_N='' SHARD_MAPPED=0
+if [ -n "${TEST_SHARD:-}" ]; then
+  SHARD_K=${TEST_SHARD%/*} SHARD_N=${TEST_SHARD#*/}
+  case $TEST_SHARD in [1-9]*/[1-9]*) ;; *) SHARD_K=x ;; esac
+  case $SHARD_K$SHARD_N in *[!0-9]*) echo "FAIL TEST_SHARD is not K/N: $TEST_SHARD"; exit 1 ;; esac
+  [ "$SHARD_K" -le "$SHARD_N" ] || { echo "FAIL TEST_SHARD is not K/N: $TEST_SHARD"; exit 1; }
+  [ -z "${TEST_ONLY:-}" ] || { echo "FAIL TEST_SHARD runs a whole run's share, not TEST_ONLY"; exit 1; }
+  [ -r "${TEST_SHARD_MAP:-}" ] && [ -n "${TEST_SHARD_RAN:-}" ] \
+    || { echo "FAIL TEST_SHARD needs TEST_SHARD_MAP and TEST_SHARD_RAN"; exit 1; }
+  # Every line "GROUP SHARD", each group once, each shard 1 to N: the last group mapped.
+  SHARD_MAPPED=$(awk -v n="$SHARD_N" 'NF != 2 || $1 !~ /^[1-9][0-9]*$/ || $2 !~ /^[1-9][0-9]*$/ || $2 > n || seen[$1]++ { bad = 1 }
+    $1 > max { max = $1 } END { if (bad) exit 1; print max + 0 }' "$TEST_SHARD_MAP") \
+    || { echo "FAIL TEST_SHARD_MAP is not one \"GROUP SHARD\" line a group: $TEST_SHARD_MAP"; exit 1; }
+fi
 if [ -n "$WORKER" ]; then
   # A worker: its own folder in the run's; what it prints outside a group goes
   # to its stray file, which the run prints and counts as a failure.
@@ -48,6 +68,10 @@ else
   tmp=$(mktemp -d) || { echo "FAIL no temporary folder"; exit 1; }
   trap 'rm -rf "$tmp"' EXIT
   SHARED=$tmp
+  if [ -n "$SHARD_K" ]; then
+    mkdir "$tmp/mine" && awk -v k="$SHARD_K" '$2 == k { print $1 }' "$TEST_SHARD_MAP" | while read -r g; do : > "$tmp/mine/$g"; done \
+      || { echo "FAIL setup: the shard's groups"; exit 1; }
+  fi
 fi
 mkdir "$tmp/bin" "$tmp/nojq" || { echo "FAIL setup"; exit 1; }
 PYTHON=$(command -v python3) || { echo "FAIL setup: python3 is missing"; exit 1; }
@@ -334,6 +358,11 @@ done_group() {
   exec >> "$SHARED/stray-$WORKER-$PASS"
   mine=no
 }
+# ours GROUP: this run's shard runs GROUP (every group, outside TEST_SHARD).
+ours() {
+  [ -n "$SHARD_K" ] || return 0
+  if [ "$1" -le "$SHARD_MAPPED" ]; then [ -e "$SHARED/mine/$1" ]; else [ $((($1 - 1) % SHARD_N + 1)) = "$SHARD_K" ]; fi
+}
 # take [heavy]: the next group of cases begins; succeeds if this process runs
 # it. Outside a worker it always does. A worker runs it only if no worker has
 # taken it (an atomic mkdir), and in its heavy pass only a heavy group; it
@@ -343,6 +372,7 @@ take() {
   [ -n "$WORKER" ] || return 0
   done_group
   if [ "$PASS" = heavy ] && [ "${1:-}" != heavy ]; then return 1; fi
+  ours "$grp" || return 1
   mkdir "$SHARED/claim/$grp" 2> /dev/null || return 1
   mine=yes took=$grp t0=$(ms)
   exec > "$SHARED/out/$grp"
@@ -397,6 +427,7 @@ if [ -z "$WORKER" ] && [ -z "${TEST_ONLY:-}" ]; then
   i=0
   while [ "$i" -lt "${groups:-0}" ]; do
     i=$((i + 1))
+    ours "$i" || continue
     if [ -d "$tmp/claim/$i" ] && [ -f "$tmp/out/$i" ]; then cat "$tmp/out/$i"; else bad "group $i" "no worker ran it"; fi
   done
   for f in "$tmp"/stray-*; do [ ! -s "$f" ] || cat "$f"; done
@@ -408,7 +439,15 @@ if [ -z "$WORKER" ] && [ -z "${TEST_ONLY:-}" ]; then
     if [ "$times" = - ]; then cat "$tmp/times.txt"; else cp "$tmp/times.txt" "$times"; fi
   fi
   only_reads "$tmp"/w*/case-*/gh*.log "$tmp"/w*/cache-*/gh.log "$tmp"/w*/loop/log[0-9]
-  [ "$cases" = "$CASES" ] || bad 'every case ran' "$cases cases ran, not $CASES"
+  if [ -n "$SHARD_K" ]; then
+    # The ci job adds up the shards' counts; each shard records its own.
+    { printf 'cases %s\ntotal %s\ngroups %s\n' "$cases" "$CASES" "${groups:-0}"
+      sort -n "$tmp/times" 2> /dev/null | sed 's/^/group /'; } > "$TEST_SHARD_RAN" \
+      || bad 'the shard record' "can't write $TEST_SHARD_RAN"
+    echo "shard $SHARD_K of $SHARD_N: $cases of $CASES cases, $(grep -c '^group ' "$TEST_SHARD_RAN") of ${groups:-0} groups"
+  else
+    [ "$cases" = "$CASES" ] || bad 'every case ran' "$cases cases ran, not $CASES"
+  fi
   echo "$jobs workers"
   echo "$cases cases, $fails failed"
   [ "$fails" = 0 ]

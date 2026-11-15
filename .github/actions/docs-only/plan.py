@@ -258,7 +258,8 @@ def main(argv):
     dispatch['plan_sha256'] = hashlib.sha256(raw.encode()).hexdigest()
     (out / 'ci-dispatch.json').write_text(json.dumps(dispatch, indent=2) + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-        for key, value in dict(dispatch, **{'site-in-release': combine_site_release(record)}).items():
+        for key, value in dict(dispatch, **{'site-in-release': combine_site_release(record),
+                'skill-jobs': [s for s in dispatch['skills'] if s not in skills.SHARDED]}).items():
             f.write(key + '=' + json.dumps(value, separators=(',', ':')) + '\n')
     lines = [f"CI selection: {record['selection']['mode']}"]
     for name in ('always', 'rust', 'web', 'site'):

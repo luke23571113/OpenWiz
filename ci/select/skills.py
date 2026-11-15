@@ -21,6 +21,9 @@ SUITES = {
                      ['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py'],
                      ['python3', '-I', 'tools/review-relay/test_inbox.py']],
 }
+# #743: suites CI runs as their own job, split across members by
+# ci/shard/lanes.py; the skills job's matrix runs the rest.
+SHARDED = ('launch-fleet',)
 
 
 def valid(value):

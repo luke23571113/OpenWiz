@@ -90,7 +90,8 @@ class Shadow(unittest.TestCase):
     def test_missing_cancelled_pending_stale_and_matrix_work_refuse(self):
         original = copy.deepcopy(self.reads)
         for change in ('missing-job', 'cancelled', 'pending-ci', 'old-attempt',
-                       'missing-check', 'missing-skill', 'missing-shard', 'failed-toolkit'):
+                       'missing-check', 'missing-skill', 'missing-shard', 'failed-toolkit',
+                       'missing-release-member', 'missing-fleet-member'):
             with self.subTest(change=change):
                 self.reads = copy.deepcopy(original)
                 jobs = self.reads['actions/runs/9000100/attempts/1/jobs?per_page=100&page=1']
@@ -108,6 +109,12 @@ class Shadow(unittest.TestCase):
                 elif change == 'missing-shard':
                     jobs['jobs'] = [j for j in jobs['jobs'] if j['name'] != 'rust (2)']
                     jobs['total_count'] -= 1
+                elif change in ('missing-release-member', 'missing-fleet-member'):
+                    # #743: members 1 and 3 report; member 2 never started.
+                    name = 'release' if change == 'missing-release-member' else 'launch-fleet'
+                    member = next(j for j in jobs['jobs'] if j['name'] == name + ' (1)')
+                    jobs['jobs'].append(dict(member, id=member['id'] + 90, name=name + ' (3)'))
+                    jobs['total_count'] += 1
                 else: jobs['jobs'][2]['steps'][0]['conclusion'] = 'failure'
                 report, state = self.reconcile()
                 self.assertFalse(report['complete'], report)
@@ -355,7 +362,7 @@ class Shadow(unittest.TestCase):
                 (folder/'rust-ran').mkdir()
                 for share in self.packet['rust']['shares']:
                     (folder/'rust-ran'/f'ran-{share["shard"]}.txt').write_text('\n'.join(share['tests'])+'\n')
-                needs = {k:{'result':'success'} for k in ('changes','always','web-build','rust','web','site','release','skills')}
+                needs = {k:{'result':'success'} for k in ('changes','always','web-build','rust','web','site','release','skills','launch-fleet')}
                 needs.update({k:{'result':'skipped'} for k in ('rust-export','web-export')})
                 (folder/'needs.json').write_text(json.dumps(needs))
                 (folder/'event.json').write_text(json.dumps({'before':'2'*40,'after':'3'*40,
@@ -413,7 +420,7 @@ class Shadow(unittest.TestCase):
         ci = workflow[workflow.index('\n  ci:\n'):start]
         # #744: never on a main push (main-light); every other event always.
         self.assertIn("    if: ${{ always() && github.event_name != 'push' }}\n", ci, 'required result always runs')
-        self.assertIn('    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills]\n',
+        self.assertIn('    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills, launch-fleet]\n',
                       ci, 'required result dependencies')
         finish = '          python3 -I .github/actions/docs-only/run.py finish "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts"'
         self.assertEqual(workflow.count('run.py finish'), 1, 'required result finish count')

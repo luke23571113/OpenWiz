@@ -180,6 +180,11 @@ class Plans(unittest.TestCase):
                 self.plan.main([str(home / 'plan')])
             emitted = dict(line.split('=', 1) for line in output.read_text().splitlines())
             self.assertIs(json.loads(emitted['site-in-release']), not full)
+            # #743: launch-fleet runs in its own sharded job, never also in the skills matrix.
+            skills, jobs = json.loads(emitted['skills']), json.loads(emitted['skill-jobs'])
+            self.assertEqual(jobs, [s for s in skills if s != 'launch-fleet'])
+            if full:
+                self.assertIn('launch-fleet', skills)
             persisted = json.loads((home / 'plan/ci-dispatch.json').read_text())
             self.assertNotIn('site-in-release', persisted)
         for context in ({'attempt': 2}, {'action': 'ready_for_review'},
