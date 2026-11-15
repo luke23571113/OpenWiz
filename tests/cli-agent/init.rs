@@ -29,11 +29,10 @@ impl Installed {
     fn new(name: &str, with_runtime: bool) -> Self {
         let root = std::env::temp_dir().join(format!("openwiz-init-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("bin")).unwrap();
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        dirs::private_dir_all(root.join("bin")).unwrap();
         fs::copy(openwiz(), root.join("openwiz")).unwrap();
         if with_runtime {
-            fs::create_dir_all(root.join("runtime/setup")).unwrap();
+            dirs::private_dir_all(root.join("runtime/setup")).unwrap();
             for file in ["init.py", "store.py"] {
                 fs::copy(
                     Path::new(ROOT).join("tools/install/setup").join(file),
