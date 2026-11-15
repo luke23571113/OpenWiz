@@ -1340,12 +1340,18 @@ fn plan_links_checker_refuses_a_failed_or_partial_gh_read() {
         // #717: no record authors, no read: never trust everyone.
         ("the record authors fail", |d| gh_fails(d, "fleet")),
         ("no Record authors row", |d| {
-            fs::write(d.join("gh/fleet.md"), FLEET.replace("| Record authors", "| Record writers"))
-                .expect("fleet settings")
+            fs::write(
+                d.join("gh/fleet.md"),
+                FLEET.replace("| Record authors", "| Record writers"),
+            )
+            .expect("fleet settings")
         }),
         ("a malformed Record authors row", |d| {
-            fs::write(d.join("gh/fleet.md"), FLEET.replace("`synthetic-owner`", "synthetic-owner"))
-                .expect("fleet settings")
+            fs::write(
+                d.join("gh/fleet.md"),
+                FLEET.replace("`synthetic-owner`", "synthetic-owner"),
+            )
+            .expect("fleet settings")
         }),
         ("the first page fails", |d| gh_fails(d, "issues-first")),
         ("the second page fails", |d| {
