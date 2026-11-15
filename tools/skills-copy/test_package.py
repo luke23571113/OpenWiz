@@ -568,7 +568,7 @@ class ReadmeTests(Fixture):
             with self.subTest(agent=agent):
                 section = readme.split(heading + '\n', 1)[1].split('\n## ', 1)[0]
                 after = section.rsplit('```\n', 1)[1]
-                self.assertRegex(after, r'[Ss]tart a new ' + agent + r' session[^.]*`openwiz:` skills')
+                self.assertRegex(after, r'[Ss]tart a new ' + agent + r' session so the [^.]*skills load')
 
     def test_installer_source_install_codex_and_other_agent_blocks_run(self):
         blocks = self.blocks()
