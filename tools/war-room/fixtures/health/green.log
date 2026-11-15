@@ -1,33 +1,32 @@
-# WRD1 scoped checks after merging main (origin/main 312474b83) at 25d64f0e6f4e47c915e67a61c7a5c1b67a7c2ba3 (tree 974c3916f4b5e07113d9b7afa9ac9025b7414a01)
+# WRD1 (#629) scoped checks on OpenWiz at c8b08a20cbe37b3d8854d82d95b53c6b56b61fde (tree b53ee7b248b886334fd18483c996d86611e52ed8), base 0b10d1d
 $ python3 -I tools/open-import/guard.py --base=<merge-base with origin/main> --head=HEAD
 carriage guard: all 10 added paths are classified
 $ python3 -I tools/open-import/test_guard.py
-Ran 11 tests in 1.212s
+Ran 11 tests in 1.244s
 OK
 $ python3 -I tools/open-import/test_import.py
-Ran 24 tests in 27.236s
-OK
-$ python3 -I tools/open-import/test_frozen.py
-Ran 15 tests in 2.390s
+Ran 24 tests in 27.329s
 OK
 $ python3 -I tools/war-room/test_health.py
-Ran 22 tests in 8.997s
+Ran 22 tests in 8.891s
 OK
 $ python3 -I tools/war-room/test_contract.py
-Ran 19 tests in 0.114s
-OK
-$ python3 -I tools/war-room/test_gather.py
-Ran 13 tests in 43.673s
+Ran 19 tests in 0.090s
 OK
 $ python3 -I tools/war-room/test_publish.py
-Ran 14 tests in 9.833s
-OK
-$ python3 -I tools/war-room/test_page_history.py
-Ran 18 tests in 1.782s
+Ran 14 tests in 9.255s
 OK
 $ python3 -I tools/war-room/test_stage_waits.py
-Ran 11 tests in 2.468s
+Ran 11 tests in 2.369s
 OK
 $ python3 -I tools/war-room/test_weekly.py
-Ran 23 tests in 104.287s
+Ran 23 tests in 105.306s
 OK
+$ python3 -I tools/war-room/test_gather.py
+Ran 13 tests in 3.189s
+FAILED (errors=18)
+$ python3 -I tools/war-room/test_page_history.py
+Ran 18 tests in 0.645s
+FAILED (failures=1, errors=2)
+# test_gather.py and test_page_history.py fail identically on OpenWiz main 0b10d1d (14 errors; 1 failure, 2 errors):
+# every error is FileNotFoundError for private/orchestration/board/board.py, which the public repository does not carry.
