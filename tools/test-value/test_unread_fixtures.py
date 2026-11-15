@@ -87,7 +87,9 @@ class UnreadFixtures(unittest.TestCase):
         # catches: a folder a test walks, or whose subfolder it names at run
         # time (FIXTURES/finding[-2:].lower()/'README.md'), pruned file by
         # file; a folder kept because a longer path such as tests/notes/send.rs
-        # or notes/send-extra merely starts with its name.
+        # or notes/send-extra merely starts with its name; a folder's own
+        # README kept only because its folder's name and "README.md" are each
+        # quoted somewhere.
         self.check({
             'tests/fixtures/walked/a.md': 'a',
             'tests/fixtures/walked/b.md': 'b',
@@ -95,7 +97,9 @@ class UnreadFixtures(unittest.TestCase):
             'tests/fixtures/notes/send/README.md': 'docs only',
             'tests/walk.py': "for p in (ROOT / 'tests/fixtures/walked').iterdir(): p.read_text()",
             'tests/Cargo.toml': 'path = "tests/notes/send.rs"\nname = "notes/send-extra"',
-        }, ['tests/fixtures/notes/send/README.md'])
+            'tests/fixtures/docs/README.md': 'docs only',
+            'tests/readme.rs': 'let docs = "docs"; let name = "README.md";',
+        }, ['tests/fixtures/docs/README.md', 'tests/fixtures/notes/send/README.md'])
 
     def test_only_tracked_files_count_and_other_roots_can_be_named(self):
         # catches: an untracked local file reported, or read as a reader; a

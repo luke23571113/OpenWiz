@@ -101,14 +101,16 @@ def suffixes(path):
     return ['/'.join(parts[i:]) for i in range(len(parts) - 1)]
 
 
-class Reader:
-    """What one reader names: every run of two or more whole path parts inside
+class References:
+    """What the readers name: every run of two or more whole path parts inside
     a path-like word (`fixtures/a.json` in `../fixtures/a.json`), every such
     run that ends a word (a folder named by path, `dir/` included), and every
     quoted name."""
 
-    def __init__(self, text, folder=None):
-        self.folder, self.inside, self.ends = folder, set(), set()
+    def __init__(self):
+        self.inside, self.ends, self.quoted = set(), set(), set()
+
+    def add(self, text):
         for token in TOKEN.findall(text):
             parts = token.rstrip('/').split('/')
             for i in range(len(parts)):
@@ -117,36 +119,13 @@ class Reader:
                         self.inside.add('/'.join(parts[i:j]))
                 if i < len(parts) - 1 and all(parts[i:]):
                     self.ends.add('/'.join(parts[i:]))
-        self.quoted = {m.group(2) for m in QUOTED.finditer(text)}
-
-    def names_folder(self, folder):
-        """A fixture names its own folder's files; any reader names a folder by
-        its quoted name or a path in or to it."""
-        return (self.folder == folder or PurePosixPath(folder).name in self.quoted
-                or any(s in self.inside for s in suffixes(folder)))
-
-
-class References:
-    def __init__(self):
-        self.readers, self.inside, self.ends, self.quoted = [], set(), set(), set()
-
-    def add(self, text, folder=None):
-        reader = Reader(text, folder)
-        self.readers.append(reader)
-        self.inside |= reader.inside
-        self.ends |= reader.ends
-        self.quoted |= reader.quoted
+        self.quoted.update(m.group(2) for m in QUOTED.finditer(text))
 
     def file(self, path):
         return any(s in self.inside for s in suffixes(path))
 
     def folder(self, path):
         return any(s in self.ends for s in suffixes(path))
-
-    def named_in_folder(self, path):
-        """A reader quotes the file's name and also names its folder."""
-        folder, name = str(PurePosixPath(path).parent), PurePosixPath(path).name
-        return any(name in r.quoted and r.names_folder(folder) for r in self.readers)
 
 
 def scan(repo, roots):
@@ -175,8 +154,10 @@ def scan(repo, roots):
     read, in_use, whole = set(), set(roots), set()
     while True:
         before = (len(read), len(in_use))
-        whole |= {f for f in folders if refs.folder(f)}
-        in_use |= whole
+        named = {f for f in folders if refs.folder(f)}
+        whole |= {f for f in folders - scenarios
+                  if any(f == n or f.startswith(n + '/') for n in named)}
+        in_use |= named | whole
         found = True
         while found:
             found = {f for f in folders - in_use
@@ -186,10 +167,10 @@ def scan(repo, roots):
             folder, name = str(PurePosixPath(p).parent), PurePosixPath(p).name
             if p not in read and (
                     refs.file(p)
-                    or (folder in in_use and (name == SCENARIO or refs.named_in_folder(p)))
-                    or (folder in whole and folder not in scenarios)):
+                    or (folder in in_use and (name == SCENARIO or name in refs.quoted))
+                    or folder in whole):
                 read.add(p)
-                refs.add(read_text(repo, p), folder)
+                refs.add(read_text(repo, p))
         if (len(read), len(in_use)) == before:
             break
     return [p for p in fixtures if p not in read]
