@@ -77,11 +77,19 @@ fn neither_ui_nor_a_bare_openwiz_starts_the_terminal_app() {
 
     let bare = in_terminal(&sandbox, &program, &[]);
     assert_eq!(bare.status.signal(), None, "killed: it waited");
-    assert!(!dir.join("ran").exists(), "bare openwiz started openwiz-terminal");
+    assert!(
+        !dir.join("ran").exists(),
+        "bare openwiz started openwiz-terminal"
+    );
     let text = String::from_utf8_lossy(&bare.stdout).replace("\r\n", "\n");
     assert_eq!(bare.status.code(), Some(0), "{text}");
-    assert!(text.starts_with("Usage:\n"), "{text}");
-    assert!(text.contains("  openwiz ls "), "{text}");
+    let help = sandbox.run(&["--help"]);
+    assert_eq!(help.status.code(), Some(0));
+    assert_eq!(
+        text,
+        String::from_utf8_lossy(&help.stdout),
+        "bare is the help"
+    );
     assert!(!text.contains("openwiz ui"), "{text}");
 
     for args in [&["ui"][..], &["ui", "--port", "7371"]] {

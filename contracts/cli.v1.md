@@ -3,12 +3,12 @@
 T1 of 0.0.12 (#1096), spec #1092, confirmed grill C1–C5 at
 `037f5ea1dac77586a674a2ee694285525483545a`. This is the compatibility
 boundary for agents. [`cli.v1.schema.json`](cli.v1.schema.json) defines
-`catalogue`, `error`, `help`, `terminal_capability` and `loop_switch`.
+`catalogue`, `error`, `help` and `loop_switch`.
 Existing report schemas remain authoritative and unchanged.
 
 **Implementation boundary:** T1 implements `help --agent` and human `help`.
 T2 supplies the additive JSON help/errors and complete stream-selection runtime
-proof. T3 supplies interactive dispatch, `ui` and its capability result. A pinned
+proof. T3's `ui` and its capability result were removed in 0.0.16 (#776). A pinned
 future result does not make its command or JSON form available today. The
 catalogue describes shipped success forms; its `json` boolean and `flags` are
 availability, never permission to run a write. No fixture proves live behaviour.
@@ -63,9 +63,7 @@ Positional requirements may be conditional (`project` versus `--project-id`);
 `arguments.description` and `rules` carry those conditions without inventing a
 default. Examples parse but are not promises that synthetic targets exist.
 `--help`'s `-h` alias applies only to forms listing it. Loop-only help entry
-forms are aliases of human help. `ui` may not be registered as shipped until
-implemented. T3 adds `ui` and its flags, schemas,
-examples and process proof in the same change that adds dispatch.
+forms are aliases of human help.
 
 Effects are `none`, `source_read`, `state_read`, `state_write`, `send`, `create`,
 `stage`, `delete`, `loop_switch`, `fleet_action`. `none` appears alone. `send`
@@ -275,15 +273,12 @@ openwiz init --help [--json]
   call; 8 a stale or conflicting operation id; 10 unusable private state.
   Existing CLI error schemas and numeric meanings remain unchanged.
 
-## Terminal boundary
+## No terminal app (#776)
 
-[`terminal.v1.md`](terminal.v1.md) pins the future separate executable. JSON
-`ui` returns `openwiz.terminal-capability.v1`: availability, fixed executable,
-`loopback-http` transport, implemented action ids and an optional reason. It
-reads no API or state, opens no terminal screen and starts no server. Do not
-advertise unavailable actions. No-argument piped use produces bounded usage;
-only terminal input **and** output permit the implicit visual launch. Until T3
-ships, `ui` remains unimplemented and absent from the shipped catalogue.
+The visual terminal app and its `openwiz.terminal-capability.v1` result were
+removed in 0.0.16. `ui` is not a command: it is a usage error (exit 2) that
+opens and starts nothing. No-argument `openwiz` prints the human help when
+stdin and stdout are both terminals, and is a bounded usage error otherwise.
 
 ## Installed engine preparation (#1106)
 

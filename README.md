@@ -24,7 +24,7 @@ Agents: read [`skills/install/SKILL.md`](skills/install/SKILL.md) and follow it.
 
 | Path | What it is |
 | --- | --- |
-| `crates/` | Rust model, adapters, storage, CLI, loopback server, service and terminal app |
+| `crates/` | Rust model, adapters, storage, CLI, loopback server and service |
 | `apps/web/` | Static web app over the loopback HTTP API |
 | `apps/site/` | Landing page and version changelog |
 | `contracts/` | Versioned contracts and JSON schemas |
