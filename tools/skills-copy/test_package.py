@@ -184,6 +184,15 @@ class InstallTests(Fixture):
         self.assert_refused_unchanged(code=3)
         self.assertFalse(self.dest.exists())
 
+    def test_failed_destination_claim_is_io_failure_without_writes(self):
+        real_mkdir = shutil.which('mkdir')
+        wrapper = self.bin / 'mkdir'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
+                           'if sys.argv[-1] == ' + repr(str(self.dest)) + ': sys.exit(1)\n'
+                           'os.execv(' + repr(real_mkdir) + ', [' + repr(real_mkdir) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.assert_refused_unchanged(code=3)
+
     def test_failed_publish_preserves_a_replacement_destination(self):
         real_mv = shutil.which('mv')
         count = self.root / 'moves'
