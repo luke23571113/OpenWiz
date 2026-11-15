@@ -180,8 +180,8 @@ class PageHistory(unittest.TestCase):
         page = module('page')
         record = suite.compose(AT, [provider()])
         html = page.render(record)
-        positions = [html.index('id="' + group + '"') for group in suite.GROUPS]
-        self.assertEqual(positions, sorted(positions))
+        # WRD3: the page is laid out by figure (test_page_design.py owns its order); every
+        # provider's state, prerequisite and provenance rows stay reachable under its figure.
         for slot in ('cost', 'answer_time', 'rework', 'stage_waits', 'credits',
                      'claude_usage', 'eb6', 'eb7', 'eb8', 'eb9'):
             self.assertIn('data-slot="' + slot + '"', html)

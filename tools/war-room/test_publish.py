@@ -119,10 +119,10 @@ class Publish(unittest.TestCase):
         self.assertIn('| All-in cost per merged PR | unavailable | 0 of 0 |', readme)
         for bench in ('EB6', 'EB7', 'EB8', 'EB9', 'Skills eval', 'Ticket journeys', 'Rework rate'):
             self.assertIn('| %s |' % bench, readme)
-        # The phone picture is one 400 px column drawn at 2x; the full page is wider.
-        self.assertEqual(png_size(self.show('war-room-phone.png')), (800, 3000))
-        self.assertEqual(png_size(self.show('war-room.png')), (1200, 1500))
-        self.assertIn('400,1500 2 screenshot', self.chromium_log.read_text())
+        # WRD3: the v3 page's own widths, 1440 CSS px and its 390 px phone layout drawn at 2x.
+        self.assertEqual(png_size(self.show('war-room-phone.png')), (780, 3000))
+        self.assertEqual(png_size(self.show('war-room.png')), (1440, 1500))
+        self.assertIn('390,1500 2 screenshot', self.chromium_log.read_text())
         sample = json.loads(self.show('samples/2030-01-02T12-00-00Z.json'))
         self.assertEqual(sample['sample_at'], '2030-01-02T12:00:00Z')
         self.assertFalse(self.gh_log.exists(), 'the publish reads nothing from GitHub')
@@ -170,8 +170,8 @@ class Publish(unittest.TestCase):
                 result = self.publish(NEXT if before else AT, FAKE_CHROMIUM_HEIGHT=height)
                 if drawn:
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(png_size(self.show('war-room.png')), (1200, int(height)))
-                    self.assertEqual(png_size(self.show('war-room-phone.png')), (800, 2 * int(height)))
+                    self.assertEqual(png_size(self.show('war-room.png')), (1440, int(height)))
+                    self.assertEqual(png_size(self.show('war-room-phone.png')), (780, 2 * int(height)))
                     git(self.origin, 'update-ref', '-d', 'refs/heads/war-room')
                 else:
                     self.assertNotEqual(result.returncode, 0)

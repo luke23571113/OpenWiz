@@ -313,7 +313,12 @@
     "tools/war-room/fixtures/charts/**",
     "tools/war-room/package-lock.json",
     "tools/war-room/package.json",
-    "tools/war-room/test_charts.py"
+    "tools/war-room/test_charts.py",
+    "tools/war-room/assets/**",
+    "tools/war-room/benchmarks.json",
+    "tools/war-room/design/**",
+    "tools/war-room/fixtures/page-design/**",
+    "tools/war-room/test_page_design.py"
   ],
   "keep": [
     "docs/grills/README.md",

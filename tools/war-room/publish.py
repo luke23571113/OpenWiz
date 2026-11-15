@@ -40,7 +40,8 @@ BRANCH = 'war-room'
 PICTURES = ('war-room.png', 'war-room-phone.png')
 SAMPLE = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z\.json')
 PNG = b'\x89PNG\r\n\x1a\n'
-WIDTH, PHONE_WIDTH = 1200, 400
+# WRD3: the v3 page's own desktop and phone widths, in CSS px (the phone picture is drawn at 2x).
+WIDTH, PHONE_WIDTH = 1440, 390
 # Device px: the drawn picture's height (CSS height times scale). A full gathered page is over
 # 20,000 CSS px; headless chromium drew and painted 45,626 device px whole (#2432 R1), so this
 # bound leaves room and still refuses a runaway page.
@@ -52,17 +53,21 @@ TILE_MEMORY = '--force-gpu-mem-available-mb=4096'
 # The same credential/id forms sources.safe_record refuses inside a record.
 TOKEN = re.compile(r'(?i)(?:\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9_-]{8,}|authorization\s*:|bearer\s+'
                    r'|-----BEGIN .*PRIVATE KEY|\bthr_[A-Za-z0-9_-]+)')
-# A picture has no links to follow, and a closed <details> would hide the bench inventory.
-# #2565: each value's card keeps what tells it from a card with the same label (its window,
-# freshness, statistic and dimensions); its provenance, interval, prerequisites and evidence links
-# stay in its published sample. The full gathered page was 57,625 CSS px tall with them, far past
-# MAX_HEIGHT on the phone picture.
-DRAW_CSS = 'nav,.metric .source,.metric .interval,.metric .prerequisite,.metric .links{display:none}'
-# One column a phone reads at a glance: the same content, tighter.
-PHONE_CSS = ('body{font-size:14px;line-height:1.35}main{padding:14px}h1{font-size:26px}'
-             'h2{font-size:19px;margin:22px 0 6px}h3{font-size:15px;margin:0 0 4px}'
-             'article,.provider{padding:10px;margin:8px 0}.metric strong{font-size:20px}'
-             '.detail{font-size:11px;margin:2px 0;line-height:1.3}header p{margin:6px 0}')
+# WRD3: a picture has no links to follow, so the skip link goes. Every figure's unit, dates,
+# coverage and gaps are in its visible caption line, never in a disclosure, so the picture keeps
+# them. The Sources appendix is drawn open, and (#2565) each value's card keeps what tells it from a
+# card with the same label (its window, freshness, statistic and dimensions); its provenance,
+# interval, prerequisites and evidence links stay in its published sample. Values tables stay
+# folded. The phone picture is the page's own phone layout (its media query).
+DRAW_CSS = ('.skip,.metric .source,.metric .interval,.metric .prerequisite,.metric .links{display:none}')
+# Headless chromium never lays a window out narrower than 500 CSS px, so a 390 px screenshot of a
+# 390 px window was a crop of a 500 px layout, its right side cut off. The phone picture's body is
+# held to the phone width, so the layout and the drawn picture are the same 390 px.
+# Its Sources cards are drawn compact, as #2565's one-column picture was, to stay within MAX_HEIGHT.
+PHONE_CSS = ('html,body{width:%dpx;max-width:%dpx;overflow-x:hidden}'
+             '.sources .detail{font-size:10px;line-height:1.2;margin:0}.sources .metric,.sources .observation{padding:2px 0}'
+             '.sources h4{font-size:11px}.sources strong{font-size:12px}.sources .provider h3{font-size:15px;margin:6px 0 2px}'
+             '.sources h2{font-size:24px;margin:10px 0 4px}' % (PHONE_WIDTH, PHONE_WIDTH))
 
 
 class Fail(Exception):
@@ -86,10 +91,10 @@ def chromium():
 
 
 def drawable(html, phone):
-    """The page as drawn: no refresh, the inventory open, a height probe allowed."""
+    """The page as drawn: no refresh, the Sources appendix open, a height probe allowed."""
     edits = [('<meta http-equiv="refresh" content="300">', ''),
              ("default-src 'none';", "default-src 'none'; script-src 'unsafe-inline';"),
-             ('<details>', '<details open>'),
+             ('<details class="sources"', '<details class="sources" open'),
              ('</style>', DRAW_CSS + (PHONE_CSS if phone else '') + '</style>'),
              ('</body>', '<script>onload=()=>document.body.dataset.h=document.documentElement.scrollHeight</script></body>')]
     for old, new in edits:

@@ -402,8 +402,8 @@ installation, hosting, access rule, account operation or publication is activate
 ## Publish (WR9)
 
 Jake bookmarks **<https://github.com/jparker2006/ClosedWiz/tree/war-room>**: a
-branch `war-room`, never `main`, holding `war-room.png` (the page, 1200 px),
-`war-room-phone.png` (the same page in one 400 px column, drawn at 2x, which a
+branch `war-room`, never `main`, holding `war-room.png` (the page, 1440 px),
+`war-room-phone.png` (the same page in one 390 px column, drawn at 2x, which a
 phone narrower than 700 px shows instead through the README's `<picture>`, as
 the board does), `samples/` (WR2's immutable five-minute envelopes) and a
 `README.md` with the time of the last good render, the pictures and a
@@ -703,6 +703,39 @@ workflow installs the locked Plot before `publish.sh`. A refused chart build, in
 a missing install, publishes nothing,
 so `war-room` keeps its last good page, and it never writes history. `npm ci` creates
 `tools/war-room/node_modules/`, which git ignores.
+
+## V3 page and figures (WRD3)
+
+`page.py` composes the page from one saved sample and one chart build
+(`charts/build.py`): the engraved masthead (`assets/citadel.css`), a status
+strip, the five headline cards `00a`–`00e` and numbered body figures in nine
+themed sections. [`benchmarks.json`](benchmarks.json) is the inventory: each
+provider and health signal has one home figure, each chart the build draws
+belongs to exactly one figure (an unplaced chart refuses the page), and each
+measured family of spec #626 names its figures or the prerequisite it waits for.
+Each figure's unit, dates, coverage, missing days and gaps sit in a visible line
+under its chart, in the page and in both pictures; values tables, the Sources
+appendix (every value's window, freshness and provenance) and the inventory
+audit open without a script. The status strip names only evidenced anomalies
+(a failed main run, ready stock under its goal, a missed stage limit). Missing
+signals read "Not every signal observed", never an all-clear.
+
+Headings use Oswald 4.103 Bold, a Basic Latin subset embedded as data; the page
+CSP allows only `font-src data:` for it. Its source, recipe and hashes are in
+[`assets/README.md`](assets/README.md). Pictures are drawn at 1440 and 390 CSS px
+(the phone at 2x). Headless Chromium lays out at least 500 px, so the phone
+picture holds its body to 390 px.
+
+```sh
+python3 -I tools/war-room/test_page_design.py                    # needs npm ci in tools/war-room, Node and Chromium
+python3 -I tools/war-room/fixtures/page-design/packet.py OUT_DIR  # the frozen synthetic packet's page and charts
+node tools/war-room/fixtures/page-design/probe.mjs CHROMIUM OUT_DIR/page.html OUT_DIR  # measure and capture it
+```
+
+The design brief, pins and hill-climb run plan are in
+[`design/brief.md`](design/brief.md). Proofs are synthetic. The hill-climb,
+Jake's checkpoints and his final visual review are separate, and live figures
+remain Unverified.
 
 ## Review loops bench (RL0)
 

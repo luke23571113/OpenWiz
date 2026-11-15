@@ -14,6 +14,10 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const palette = JSON.parse(readFileSync(new URL('./palette.json', import.meta.url), 'utf8'));
 const INK = '#e8edf4';
 const WIDTH = 440;
+// The five headline figures are drawn at the page's card width (WRD3), so their text is not shrunk.
+const CARD = { width: 260, height: 180 };
+const card = (fig) => /^00[a-e]$/.test(fig.id);
+const dayTick = (fig) => (d) => (card(fig) ? d.slice(8) : d.slice(5));
 const FONT = 12;
 
 const colour = (fig, key) => palette.roles[fig.series.find((s) => s.key === key).role];
@@ -29,6 +33,11 @@ const nullWord = (r) => (r.state === 'missing' ? 'no sample' : 'Unknown');
 // (its full words are its title and its values-table row; the page's caption keys the glyph).
 const NULL_GLYPH = '∅';
 const LIMIT_BAR = { draw(context) { context.moveTo(-14, 0); context.lineTo(14, 0); } };
+// Body-chart margins sized to their own labels, so no category or value text is cut off at the
+// SVG edge (#631, comment 6901463537). About 7.2 units per character at the 12-unit font.
+const CHAR = 7.2;
+const leftFor = (labels) => Math.min(240, 18 + CHAR * Math.max(...labels.map((d) => d.length)));
+const valueText = (r) => shortValue(r.y) + (hollow(r) ? ' (partial)' : '');
 
 function seriesStyle(fig, extra = {}) {
   return {
@@ -56,7 +65,7 @@ const DRAW = {
       return Plot.line(rows, { x: 'x', y: 'y', stroke: palette.roles[s.role], strokeDasharray: palette.marks[s.role].dash ?? undefined, strokeWidth: 1.5 });
     });
     return {
-      x: { type: 'point', domain: fig.domain, padding: 0.4, label: null, tickFormat: (d) => d.slice(5) },
+      x: { type: 'point', domain: fig.domain, padding: 0.4, label: null, tickFormat: dayTick(fig) },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [Plot.ruleY([0], { stroke: palette.roles.muted }), ...lines,
         Plot.dot(valued(fig.rows), seriesStyle(fig, { x: 'x', y: 'y', r: 3.5, strokeWidth: 1.5 })),
@@ -65,7 +74,7 @@ const DRAW = {
   },
   'daily-bar'(fig) {
     return {
-      x: { type: 'band', domain: fig.domain, padding: 0.2, label: null, tickFormat: (d) => d.slice(5) },
+      x: { type: 'band', domain: fig.domain, padding: 0.2, label: null, tickFormat: dayTick(fig) },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [
         Plot.barY(valued(fig.rows), { x: 'x', y: 'y', fill: (r) => colour(fig, r.series), title }),
@@ -79,7 +88,7 @@ const DRAW = {
     const missing = fig.rows.filter((r) => r.state === 'missing');
     const days = fig.domain.map((d) => time(d + 'T08:00:00Z'));
     return {
-      x: { type: 'utc', domain: [time(fig.window.since), time(fig.window.until)], ticks: days, tickFormat: (d) => d.toISOString().slice(5, 10), label: 'PST day starts' },
+      x: { type: 'utc', domain: [time(fig.window.since), time(fig.window.until)], ticks: days, tickFormat: (d) => dayTick(fig)(d.toISOString().slice(0, 10)), label: 'PST day starts' },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [
         Plot.rectY(spans, { x1: (r) => time(r.x), x2: (r) => time(r.x2), y: 'y', fill: (r) => colour(fig, r.series), fillOpacity: 0.85, stroke: palette.roles.primary, strokeWidth: 0.5, inset: 0.5, title }),
@@ -92,12 +101,13 @@ const DRAW = {
   bars(fig) {
     return {
       height: 64 + 24 * fig.domain.length,
-      marginLeft: Math.min(200, 12 + 6.6 * Math.max(...fig.domain.map((d) => d.length))),
+      marginLeft: leftFor(fig.domain),
+      marginRight: Math.max(16, 10 + CHAR * Math.max(0, ...valued(fig.rows).map((r) => valueText(r).length))),
       y: { type: 'band', domain: fig.domain, label: null, padding: 0.25 },
       x: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [
         Plot.barX(valued(fig.rows), { y: 'x', x: 'y', fill: (r) => (hollow(r) ? 'none' : colour(fig, r.series)), stroke: (r) => colour(fig, r.series), title }),
-        Plot.text(valued(fig.rows), { y: 'x', x: 'y', text: (r) => shortValue(r.y) + (hollow(r) ? ' (partial)' : ''), textAnchor: 'start', dx: 4, fill: INK }),
+        Plot.text(valued(fig.rows), { y: 'x', x: 'y', text: valueText, textAnchor: 'start', dx: 4, fill: INK }),
         Plot.text(empty(fig.rows), { y: 'x', x: 0, text: nullWord, textAnchor: 'start', dx: 4, fill: palette.roles.muted, title }),
         Plot.ruleX([0], { stroke: palette.roles.muted }),
       ],
@@ -133,7 +143,7 @@ const DRAW = {
     const fill = { known: palette.roles.primary, partial: palette.roles.secondary, unavailable: palette.roles.muted, missing: palette.roles.muted };
     return {
       height: 60 + 24 * fig.domain.length,
-      marginLeft: Math.min(200, 12 + 6.6 * Math.max(...fig.domain.map((d) => d.length))),
+      marginLeft: leftFor(fig.domain),
       y: { type: 'band', domain: fig.domain, label: null, padding: 0.1 },
       x: { axis: null },
       marks: [
@@ -152,10 +162,35 @@ function key(fig, base) {
   const keyed = fig.series.filter((s) => s.key !== 'missing');
   if (keyed.length < 2 || !['daily-line', 'limits', 'spans'].includes(fig.kind)) return { extra: 0, marks: [] };
   const items = keyed.map((s, i) => ({ i, text: `${GLYPH[palette.marks[s.role].symbol]} ${s.label}`, fill: palette.roles[s.role] }));
+  if (card(fig)) return cardKey(items, base);
   return {
     extra: 15 * items.length,
     marks: items.map((d) => Plot.text([d], { frameAnchor: 'bottom-left', textAnchor: 'start', dx: -30, dy: base + 15 * d.i, text: 'text', fill: 'fill', fontSize: FONT - 1 })),
   };
+}
+
+// A headline card's key (WRD3): each label wrapped at word breaks to the card's width, one line
+// per 13 px, and the key's whole height reserved, so no label is cut off at 260 units (#759 R1).
+const CARD_KEY_CHARS = 34;
+function wrap(text) {
+  const lines = [];
+  for (const word of text.split(' ')) {
+    const last = lines.length - 1;
+    if (last >= 0 && (lines[last] + ' ' + word).length <= CARD_KEY_CHARS) lines[last] += ' ' + word;
+    else lines.push(word);
+  }
+  return lines;
+}
+function cardKey(items, base) {
+  let offset = 0;
+  const marks = items.map((d) => {
+    const lines = wrap(d.text);
+    const mark = Plot.text([d], { frameAnchor: 'bottom-left', textAnchor: 'start', lineAnchor: 'top', dx: -30, dy: base - 6 + offset,
+      text: () => lines.join('\n'), lineHeight: 13 / (FONT - 1), fill: 'fill', fontSize: FONT - 1 });
+    offset += 13 * lines.length + 2;
+    return mark;
+  });
+  return { extra: offset, marks };
 }
 
 function figureSvg(fig, document) {
@@ -163,7 +198,7 @@ function figureSvg(fig, document) {
   const legend = key(fig, 40);
   spec.marks = [...spec.marks, ...legend.marks];
   const svg = Plot.plot({
-    document, width: WIDTH, height: 220 + legend.extra, marginTop: 22, marginBottom: 34 + legend.extra, marginLeft: 46,
+    document, width: card(fig) ? CARD.width : WIDTH, height: (card(fig) ? CARD.height : 220) + legend.extra, marginTop: 22, marginBottom: 34 + legend.extra, marginLeft: 46,
     marginRight: 16, ariaLabel: fig.title, ariaDescription: fig.caption, style: null, ...spec,
   });
   // A self-contained figure: no style element, the page's ground and ink as attributes.
