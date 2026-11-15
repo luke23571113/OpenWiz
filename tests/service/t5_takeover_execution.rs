@@ -156,7 +156,18 @@ fn github(w: &World) -> Executor {
             ["issue", "list", ..] => Some(
                 json!([{"number":900,"id":"syn-issue-900","state":"OPEN","title":"Synthetic","body":"","labels":[],"milestone":null,"blockedBy":{"nodes":[],"totalCount":0},"subIssues":{"nodes":[{"number":901,"id":"syn-issue-901","state":"OPEN","title":"Synthetic","url":"https://example.invalid/issues/901"}],"totalCount":1}}]),
             ),
-            ["api", path, ..] if path.contains("issues/900/comments?") => Some(json!(rows())),
+            // #718: the comment read projects each author; these synthetic
+            // ownership records are the factory App's.
+            ["api", path, ..] if path.contains("issues/900/comments?") => Some(json!(
+                rows()
+                    .iter()
+                    .map(|c| {
+                        let mut c = c.clone();
+                        c["author"] = json!("openwiz[bot]");
+                        c
+                    })
+                    .collect::<Vec<_>>()
+            )),
             ["issue", "comment", "900", "--body", body] => {
                 let mut comments = cs.lock().unwrap();
                 let id = 7000 + comments.len() as u64;

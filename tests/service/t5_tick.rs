@@ -246,7 +246,7 @@ fn r1_failed_pause_fences_scheduled_dispatch_and_reload_but_other_fleets_continu
             .is_some_and(|a| a.contains("issues/9/comments?"))
         {
             let mut rows: Value = serde_json::from_slice(&out).unwrap();
-            rows.as_array_mut().unwrap().insert(0,json!({"id":90,"body":"launch-fleet: fleet thread thr_syn_dead, loop loop_syn_1","created":1000,"updated":1000}));
+            rows.as_array_mut().unwrap().insert(0,json!({"id":90,"author":"openwiz[bot]","body":"launch-fleet: fleet thread thr_syn_dead, loop loop_syn_1","created":1000,"updated":1000}));
             Ok(rows.to_string().into_bytes())
         } else {
             Ok(out)

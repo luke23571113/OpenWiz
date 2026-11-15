@@ -141,7 +141,17 @@ else: sys.exit(2)
                     ["repo", "view", ..] => {
                         json!({"defaultBranchRef":{"name":"main"},"nameWithOwner":"synthetic-owner/synthetic-repo","url":"https://github.invalid/synthetic-owner/synthetic-repo"})
                     }
-                    ["api", path, ..] if path.contains("/comments?") => json!(*cs),
+                    // #718: the comment read projects each author; these
+                    // synthetic health records are the factory App's.
+                    ["api", path, ..] if path.contains("/comments?") => json!(
+                        cs.iter()
+                            .map(|c| {
+                                let mut c = c.clone();
+                                c["author"] = json!("openwiz[bot]");
+                                c
+                            })
+                            .collect::<Vec<_>>()
+                    ),
                     ["issue", "list", ..] => json!([]),
                     ["issue", "comment", "901", "--body", body] => {
                         let n = 7000 + cs.len() as u64;
