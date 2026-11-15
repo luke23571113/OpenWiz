@@ -192,7 +192,9 @@ def check_grant(grant, envelope, intent, snapshot, sources, assessment, changes,
     return result
 
 
-LOGIN = re.compile(r'[A-Za-z0-9](?:-?[A-Za-z0-9])*(?:\[bot\])?')
+LOGIN = r'`[A-Za-z0-9](?:-?[A-Za-z0-9])*(?:\[bot\])?`'
+# The whole cell, as fleet.sh reads it: backticked logins separated by commas.
+CELL = re.compile(rf'\s*{LOGIN}(?:\s*,\s*{LOGIN})*\s*')
 
 
 def record_authors(fleet_md):
@@ -200,7 +202,8 @@ def record_authors(fleet_md):
 
     The one place that names them is the "Record authors" row of its
     "## GitHub identity" table, as fleet.sh reads it. Returns lowercase logins;
-    no row, an empty row or a malformed login refuses (ValueError).
+    no row, an empty row, or any malformed or extra entry refuses the whole
+    row (ValueError): it never keeps only the logins that did parse.
     """
     section, rows = None, []
     for line in fleet_md.splitlines():
@@ -209,8 +212,8 @@ def record_authors(fleet_md):
         elif section == '## GitHub identity' and re.match(r'\| *Record authors *\|', line):
             rows.append(line)
     cells = rows[0].split('|') if len(rows) == 1 else []
-    logins = re.findall(r'`([^`]*)`', cells[2]) if len(cells) == 4 else []
-    require(logins and all(LOGIN.fullmatch(x) for x in logins), 'docs/agents/fleet.md names no record authors')
+    require(len(cells) == 4 and CELL.fullmatch(cells[2]), 'docs/agents/fleet.md names no record authors')
+    logins = re.findall(r'`([^`]*)`', cells[2])
     return frozenset(x.lower() for x in logins)
 
 

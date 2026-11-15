@@ -903,12 +903,15 @@ settings() {
   # #641: the factory's own identity, the one place that names it: the logins
   # that write its records (its App, and the account it falls back to). Every
   # comment read below by anyone else, or by no one, is dropped before any
-  # reader sees it. No row, an empty one or a malformed login stops the check.
+  # reader sees it. The whole cell must be backticked logins separated by
+  # commas: no row, an empty one, or any malformed or extra entry stops the
+  # check, never keeping only the logins that did parse.
   awk '/^## /{on = ($0 == "## GitHub identity")} on && /^[|] *Record authors *[|]/' "$TMP/fleet.md" > "$TMP/authors.txt" \
     && jq -Rse 'split("\n") | map(select(length > 0)) | select(length == 1) | .[0]
-      | split("|") | select(length == 4) | .[2] | [scan("`([^`]*)`") | .[0]]
-      | select(length > 0 and all(.[]; test("^[A-Za-z0-9](-?[A-Za-z0-9])*(\\[bot\\])?$")))
-      | map(ascii_downcase)' "$TMP/authors.txt" > "$TMP/authors.json" 2> /dev/null \
+      | split("|") | select(length == 4) | .[2]
+      | "`[A-Za-z0-9](-?[A-Za-z0-9])*(\\[bot\\])?`" as $login
+      | select(test("^\\s*" + $login + "(\\s*,\\s*" + $login + ")*\\s*$"))
+      | [scan("`([^`]*)`") | .[0] | ascii_downcase]' "$TMP/authors.txt" > "$TMP/authors.json" 2> /dev/null \
     || die "docs/agents/fleet.md names no record authors (its \"## GitHub identity\" table's \"Record authors\" row)"
   awk '/^## /{on = ($0 == "## Labels")} on && /^[|] *`[^`]+` *[|] *`[^`]+` *[|]/' "$TMP/labels.md" \
     | sed 's/^| *`\([^`]*\)` *| *`\([^`]*\)`.*/\1`\2/' > "$TMP/labels.txt" || die "can't read the labels"
