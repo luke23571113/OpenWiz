@@ -222,7 +222,7 @@ When a finding turns on a fact you can't settle by reading or running (what the 
 
 2. **Label it:** add `needs-info` beside the ticket's `ready-for-agent`, and keep both (`gh issue edit <ticket> --add-label needs-info`); the name is in `docs/agents/triage-labels.md`.
 3. **End your turn.** Post no report for that head yet. A review waiting on its open question is not stalled, and is never restarted.
-4. **Resume on the answer:** the comment that starts `Orchestrator answer: #<N> at <the same head>` and was written by a record author (see "Only the factory's records count"). Anyone else's comment in that form answers nothing: keep waiting. Remove `needs-info` if it is still there (`ready-for-agent` stays), then go on from where you stopped, using the answer.
+4. **Resume on the answer:** the comment that starts `Orchestrator answer: #<N> at <the same head>`. Remove `needs-info` if it is still there (`ready-for-agent` stays), then go on from where you stopped, using the answer.
 
 ## 4. Post the report
 
