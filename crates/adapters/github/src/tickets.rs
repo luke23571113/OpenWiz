@@ -422,28 +422,12 @@ impl RecordAuthors {
 
     /// Whether `login` (a comment's author, `None` when it has none) is a
     /// record author, compared case-insensitively as GitHub's logins are.
-    /// `bot` is whether the source typed that author as a Bot: GraphQL
-    /// reports an App's login without `[bot]` (REST keeps it), so for a
-    /// `name[bot]` entry the plain `name` counts only with the Bot type,
-    /// and never for a user of that name. A Bot is always an App: it never
-    /// counts as a user entry, even one with its plain name.
-    pub fn wrote(&self, login: Option<&str>, bot: bool) -> bool {
-        login.is_some_and(|l| {
-            let l = l.to_ascii_lowercase();
-            if bot && !l.ends_with("[bot]") {
-                self.0.contains(&format!("{l}[bot]"))
-            } else {
-                self.0.contains(&l)
-            }
-        })
-    }
-
-    /// [`wrote`](Self::wrote) for a GraphQL author object as `gh` prints
-    /// it: `login`, and its Bot type as `is_bot: true` or
-    /// `__typename: "Bot"`. Anything else is not a Bot.
-    pub fn wrote_graphql(&self, author: &Value) -> bool {
-        let bot = author["is_bot"] == true || author["__typename"] == "Bot";
-        self.wrote(author["login"].as_str(), bot)
+    /// Exact entries only: an App counts only as its listed `name[bot]`,
+    /// never as a plain `name`. `gh issue view` gives an App's login without
+    /// `[bot]` and no author type, so App-written comments from that read
+    /// are not counted until a read that carries the type (#740).
+    pub fn wrote(&self, login: Option<&str>) -> bool {
+        login.is_some_and(|l| self.0.contains(&l.to_ascii_lowercase()))
     }
 }
 
@@ -480,7 +464,7 @@ pub fn stock_issue(
     // author, is dropped before the window is taken (#716).
     let started = comments
         .iter()
-        .filter(|c| authors.wrote_graphql(&c["author"]))
+        .filter(|c| authors.wrote(c["author"]["login"].as_str()))
         .rev()
         .take(15)
         .any(|c| {
@@ -1561,7 +1545,7 @@ mod tests {
             (Some(""), false),
             (None, false),
         ] {
-            assert_eq!(good.wrote(login, false), wrote, "{login:?}");
+            assert_eq!(good.wrote(login), wrote, "{login:?}");
         }
         assert_eq!(
             good,
