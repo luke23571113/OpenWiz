@@ -431,8 +431,30 @@ impl SecretApp {
             Ok((404, _)) if matches!(call, Call::Installation { .. }) => Err(Refusal::NotInstalled),
             Ok(_) => Err(Refusal::Refused),
         };
+        // J48 (#606): a user App's owner, read from GitHub with this App's JWT.
+        let app_owner = match self.mode {
+            Mode::User => {
+                let raw = call(Call::App, 200)?;
+                Some(app_owner(&raw, self.app_id).ok_or(Refusal::Refused)?)
+            }
+            Mode::Factory => None,
+        };
         let raw = call(Call::Installation { repository }, 200)?;
         let installation = installation_for(&raw, self.app_id, owner).ok_or(Refusal::Refused)?;
+        let allowed = match &app_owner {
+            // The installation's account is the repository's owner (checked
+            // above), and must also be the App owner's.
+            Some(app_owner) => owner.eq_ignore_ascii_case(app_owner),
+            None => FACTORY_INSTALLATIONS.iter().any(|(account, repositories)| {
+                account.eq_ignore_ascii_case(owner)
+                    && repositories
+                        .iter()
+                        .any(|named| named.eq_ignore_ascii_case(repository))
+            }),
+        };
+        if !allowed {
+            return Err(Refusal::Refused);
+        }
         let body = token_body(repository, &wanted).map_err(|_| Refusal::Refused)?;
         let raw = call(
             Call::AccessToken {
@@ -453,6 +475,21 @@ impl SecretApp {
             expires_at: minted.expires,
         })
     }
+}
+
+/// The owner's login from GitHub's App object, only when it is this App's.
+fn app_owner(raw: &[u8], app_id: u64) -> Option<String> {
+    let value = serde_json::from_slice::<Unique>(raw).ok()?.0;
+    (value.get("id")?.as_u64()? == app_id)
+        .then(|| {
+            value
+                .get("owner")?
+                .get("login")?
+                .as_str()
+                .map(str::to_owned)
+        })
+        .flatten()
+        .filter(|login| !login.is_empty())
 }
 
 /// The installation id from GitHub's installation object, only when it is

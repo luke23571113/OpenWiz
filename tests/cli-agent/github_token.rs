@@ -498,8 +498,7 @@ fn gi_p6_an_expired_near_expiry_or_overlong_token_is_refused() {
 
 // --- Missing secret, unknown repository, refused exchange: the contract's exits ---
 
-const CONTEXT: &str =
-    "openwiz: github token: the App key or App id is missing or unreadable; no token was minted\n";
+const CONTEXT: &str = "openwiz: github token: the App key, App id or App mode is missing or unreadable; no token was minted\n";
 const UNREACHABLE: &str =
     "openwiz: github token: GitHub gave no complete answer; no token was minted\n";
 const NOT_INSTALLED: &str =
@@ -642,6 +641,9 @@ fn factory_installations() -> Vec<(String, String)> {
     found
 }
 
+/// (mode, App owner, installation account, repository, exit, calls)
+type Bound<'a> = (Option<&'a str>, &'a str, String, String, i32, Vec<&'a str>);
+
 #[test]
 fn j48_a_user_app_mints_only_on_its_owners_account_and_the_factory_only_when_explicit() {
     let named = factory_installations();
@@ -653,7 +655,7 @@ fn j48_a_user_app_mints_only_on_its_owners_account_and_the_factory_only_when_exp
         .clone();
     let token = "synthetic-bound-token";
     // (mode, App owner, installation account, repository, exit, calls)
-    let mut cases: Vec<(Option<&str>, &str, String, String, i32, Vec<&str>)> = vec![
+    let mut cases: Vec<Bound> = vec![
         (
             None,
             "synthetic-owner",

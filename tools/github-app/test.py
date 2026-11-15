@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -561,7 +562,7 @@ class GuardTests(KeyFixture):
             result = self.token(endpoint)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(result.stdout, b"")
-            self.assertEqual(len(calls), 1)
+            self.assertEqual([c[0] for c in calls], OWNER_READS + ["/app/installations/2002/access_tokens"])
             self.assert_no_key(result.stderr)
 
 
@@ -1483,10 +1484,10 @@ class AgentSetupTests(KeyFixture):
         with fake_github(self.pem) as (endpoint, calls, behavior):
             self.register(endpoint)
             # With the secret delivered, the one App is reconciled and only its install is
-            # offered, on this account or another one it installs on.
+            # offered again, on its owner's account (J48: a user App installs nowhere else;
+            # test_agent_reconcile_is_bound_to_the_owner_unless_the_factory_setting_is_explicit).
             outputs = []
-            for login, account in (("synthetic-owner", ("--agent-for", "synthetic-owner")),
-                                   ("synthetic-org", ORG)):
+            for login, account in (("synthetic-owner", ("--agent-for", "synthetic-owner")),):
                 behavior["installations"] = {2002: login}
                 process, line, page, base, state = self.reconcile_start(endpoint, account)
                 answer = self.installed(base, state)
@@ -1494,9 +1495,9 @@ class AgentSetupTests(KeyFixture):
                 self.assertEqual(process.returncode, 0, stderr)
                 self.assertIn(f"Installation 2002 read back: {login}".encode(), stdout)
                 outputs += [line, page, answer, stdout, stderr]
-        self.assertEqual([c[0] for c in calls][2:], ["/app", "/app/installations/2002"] * 2)
+        self.assertEqual([c[0] for c in calls][2:], ["/app", "/app/installations/2002"])
         self.assertEqual(len(self.records()), 2)  # the store was not called again
-        self.assertEqual(self.phases(), ["applied"] * 3)
+        self.assertEqual(self.phases(), ["applied"] * 2)
         self.assert_nothing_left(*outputs)
         self.assert_calls_hold_no_key(calls)
 
@@ -1632,6 +1633,43 @@ class AgentSetupTests(KeyFixture):
                 stdout, stderr = process.communicate(timeout=10)
                 self.assertEqual(process.returncode, 0, stderr)
                 self.assertIn(f"Installation 2002 read back: {named[0]}".encode(), stdout)
+
+    def test_agent_capability_reports_only_what_this_host_shows(self):
+        """setup-onboard.v1's secret_capability producer (#606), judged by the
+        contract's own checker: verified delivery only when the delivered id agrees,
+        no success without it, and a --secret-store seam never counts as the
+        CloudRoom save-secret contribution."""
+        spec = importlib.util.spec_from_file_location(
+            "setup_onboard_check", HERE.parent / "install/tests/setup-onboard-contract/check.py")
+        checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checker)
+        cases = [  # (registered, env, store, outcome, delivery, problems, failures, unproven)
+            (True, self.stored(False), False, "uncertain", "missing", [], [],
+             ["delivery_unverified", "key_download_unknown", "not_live"]),
+            (True, self.stored(True), False, "stored", "verified", [], [], ["key_download_unknown", "not_live"]),
+            (True, self.stored(True, None), False, "uncertain", "uncertain", [], [],
+             ["delivery_unverified", "key_download_unknown", "not_live"]),
+            (True, self.stored(True, "1002"), False, "failed", "refused", [], ["secret_store_failed"],
+             ["key_download_unknown", "not_live"]),
+            (False, self.stored(True), False, "uncertain", "uncertain", [], [],
+             ["delivery_unverified", "key_download_unknown", "not_live"]),
+            (True, self.stored(True), True, "stored", "verified", ["agent_save_unavailable"], [], ["not_live"])]
+        for registered, env, store, outcome, delivery, problems, failures, unproven in cases:
+            with self.subTest(registered=registered, store=store, delivered=env.get("OPENWIZ_GITHUB_APP_ID")):
+                (self.app / "app.json").unlink(missing_ok=True)
+                if registered:
+                    (self.app / "app.json").write_text('{"app_id": 1001}')
+                    (self.app / "app.json").chmod(0o600)
+                result = self.agent_run("http://127.0.0.1:1", ("--capability",), env=env, store=store)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                document = json.loads(result.stdout)
+                report = checker.check(document)
+                self.assertEqual((document["outcome"], document["delivery"]["state"]), (outcome, delivery))
+                self.assertEqual((report.problems, report.failures, report.unproven),
+                                 (problems, failures, unproven))
+                self.assertEqual(document["app_registrations"], 1 if registered else 0)
+                self.assertEqual(self.records(), [])  # reads only: no store call
+                self.assert_nothing_left(result.stdout, result.stderr)
 
     def test_agent_mode_needs_a_valid_account_and_store(self):
         relative = ("--secret-store", "fake-secret-store")

@@ -33,10 +33,12 @@ pub const USAGE: &str = "  openwiz github token --repository OWNER/NAME [--read]
 pub const HELP: &str = "github token --repository OWNER/NAME [--read]
   Mints one GitHub App installation token (about an hour) for the installation
   that covers OWNER/NAME, from the App key in the OPENWIZ_GITHUB_APP_KEY secret
-  and the App id in OPENWIZ_GITHUB_APP_ID. Prints only the token on stdout and
-  `expires_at <unix seconds>` on stderr; stores nothing. --read asks for the
-  read-only profile. Exits 0 printed, 1 key, App id or GitHub unavailable,
-  2 usage, 3 repository not installed, 5 refused.
+  and the App id in OPENWIZ_GITHUB_APP_ID. A user's own App (the default) mints
+  only on its owner's account; OPENWIZ_GITHUB_APP_MODE=factory is the explicit
+  setting for the factory's App and its named installations. Prints only the
+  token on stdout and `expires_at <unix seconds>` on stderr; stores nothing.
+  --read asks for the read-only profile. Exits 0 printed, 1 key, App id, mode
+  or GitHub unavailable, 2 usage, 3 repository not installed, 5 refused.
 ";
 
 /// `openwiz github token`'s options.
@@ -157,7 +159,7 @@ pub fn run(
         return say(
             stderr,
             EXIT_READ_FAILED,
-            "the App key or App id is missing or unreadable; no token was minted",
+            "the App key, App id or App mode is missing or unreadable; no token was minted",
         );
     };
     let minted = match app.mint(&token.repository, token.read, deadline) {

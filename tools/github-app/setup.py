@@ -16,6 +16,11 @@ Cloudroom secret OPENWIZ_GITHUB_APP_KEY through --secret-store, or, with no stor
 is discarded (J27); no copy stays on this host. With that secret delivered, the
 App is reconciled with GitHub on every run, never registered again, and only its
 install is offered and read back.
+
+J48 (#606): each user's own App is registered private, under its own name, and
+installs only on its owner's account; a conversion owned by another account is
+refused before its key goes anywhere. --factory is the explicit, separate
+setting for the factory's public multi-account App and its named installations.
 """
 import base64
 import html
@@ -46,8 +51,8 @@ SECRET, APP_ID = "OPENWIZ_GITHUB_APP_KEY", "OPENWIZ_GITHUB_APP_ID"
 
 def effects(repo, saved, after):
     found = (["Reuse the App already saved on this host; nothing new is registered."] if saved else [
-        "Register a public GitHub App named OpenWiz with Metadata read, Contents, Issues and "
-        "Pull requests write, Checks and Actions read; no webhook.",
+        "Register a private GitHub App of your own, installable only on your account, with Metadata "
+        "read, Contents, Issues and Pull requests write, Checks and Actions read; no webhook.",
         "Save its private key owner-only in this host's OpenWiz state; it is never shown."])
     if after:
         found.append(f"Proceed although operation {after} may have registered an App you have checked on GitHub.")
@@ -88,11 +93,13 @@ def saved_app(directory):
     return config["app_id"]
 
 
-def agent_effects(account, organization, app_id, store):
+def agent_effects(account, organization, app_id, store, factory):
     where = ("the organisation " if organization else "the account ") + account
+    kind = ("the factory's public GitHub App named OpenWiz (the explicit factory setting)" if factory else
+            f"a private GitHub App named {app.user_app_name(account)}, installable only on {account}")
     found = ([f"Reconcile App {app_id} with GitHub from the Cloudroom secret {SECRET}; nothing new is "
               "registered."] if app_id else [
-        f"Prepare a public GitHub App named OpenWiz for {where}, with Metadata read, Contents, Issues and "
+        f"Prepare {kind} for {where}, with Metadata read, Contents, Issues and "
         "Pull requests write, Checks and Actions read; no webhook.",
         f"Record its public App id in this host's OpenWiz state before anything else."
         + (f" Store its private key only in the Cloudroom secret {SECRET} and its id as {APP_ID}."
@@ -118,6 +125,14 @@ def sign(pem, app_id):
         os.close(read)
 
 
+def installable(factory, owner, account):
+    """J48: a user App installs only on its owner's account; the factory's App
+    (the explicit setting) only on an account the identity contract names."""
+    if factory:
+        return account.lower() in app.factory_installations()
+    return isinstance(owner, str) and owner.lower() == account.lower()
+
+
 def store_secret(program, name, value):
     """The one secret seam. Assumption A1: Cloudroom's agent-side store takes
     the secret's NAME as its only argument and its value on stdin. It runs with
@@ -138,6 +153,57 @@ def delivered(registered):
     pem = base64.b64decode(key.encode("ascii"), validate=True)
     app.require(0 < len(pem) <= 16384)
     return app_id, pem, ident is not None
+
+
+# setup-onboard.v1's protected-paste route: the owner's own steps, each counted.
+FALLBACK_STEPS = ("open_app_settings", "generate_key", "download_key", "encode_key",
+                  "paste_protected_prompt", "delete_download")
+
+
+def capability(registered, store, revision):
+    """setup-onboard.v1's `secret_capability` document for this host, from local
+    facts only: no network and no write. The no-paste route needs the CloudRoom
+    agent-side save-secret contribution observed; a --secret-store program is a
+    seam, never that observation, so its upstream stays `unknown` (and the
+    contract's checker reports it unavailable). The owner's steps and their
+    download's deletion are the documented route's, never observed here."""
+    key, ident = os.environ.get(SECRET), os.environ.get(APP_ID)
+    evidence = []
+    if key is None:
+        state = "missing"
+    elif ident is None or registered is None:
+        state = "uncertain"  # a partial delivery, or no registration recorded here to agree with
+    else:
+        try:
+            pem = base64.b64decode(key.encode("ascii"), validate=True)
+            agrees = 0 < len(pem) <= 16384 and int(app.positive_id(ident)) == registered
+        except ValueError:
+            agrees = False
+        state = "verified" if agrees else "refused"
+        if agrees:
+            evidence = [{"basis": "delivered_app_id_matches", "revision": revision,
+                         "at_ms": int(time.time() * 1000),
+                         "detail": "The delivered key decodes and its delivered App id agrees with the saved one."}]
+    agent_save = store
+    return {
+        "schema": "openwiz.setup-onboard.v1", "kind": "secret_capability", "proof_class": "recording",
+        "synthetic_assumptions": [
+            "Produced by tools/github-app/setup.py from this host's facts; owner steps are the documented "
+            "route's, not observed.",
+            "A --secret-store program is a seam; it is not the CloudRoom agent-side save-secret contribution."],
+        "private_record": None,
+        "secret": {"name": SECRET, "holds": ["private_key"]}, "app_id_variable": APP_ID,
+        "upstream": {"name": "cloudroom_agent_save_secret", "state": "unknown" if store else "not_shipped",
+                     "evidence": []},
+        "route": "agent_save" if agent_save else "protected_paste",
+        "converted_key": "stored_by_agent_save" if agent_save else "discarded",
+        "steps": ([{"step": "agent_save", "actor": "agent", "counted": False}] if agent_save else
+                  [{"step": step, "actor": "owner", "counted": True} for step in FALLBACK_STEPS]),
+        "intermediate_key_file": "none" if agent_save else "unknown",
+        "delivery": {"state": state, "evidence": evidence},
+        "app_registrations": 0 if registered is None else 1,
+        "outcome": {"verified": "stored", "refused": "failed"}.get(state, "uncertain"),
+    }
 
 
 def reply(handler, status, text, script=None, location=None):
@@ -167,10 +233,16 @@ def agent(args):
         app.require(program.is_absolute() and program.is_file() and os.access(program, os.X_OK))
     home = "https://github.com/" + account
     # GitHub's manifest schema requires url whenever hook_attributes is present.
-    template = dict(app.manifest(), url=home, hook_attributes={"url": home, "active": False})
+    template = dict(app.manifest(factory=args.factory, account=account), url=home,
+                    hook_attributes={"url": home, "active": False})
     state = app.state_path(args.state_dir)
     directory = app.app_directory(state, create=True)
     try:
+        if args.capability:
+            app.require(not args.yes and args.operation is None)
+            revision = store.Store(str(state)).read()["checks"]["committed"]
+            print(json.dumps(capability(saved_app(directory), program is not None, revision), sort_keys=True))
+            return
         agent_run(args, account, program, template, store.Store(str(state)), directory)
     finally:
         os.close(directory)
@@ -199,7 +271,8 @@ def agent_run(args, account, program, template, setup, directory):
     if existing is None and args.after_uncertain != newest:
         refuse_uncertain(newest)
     reconcile = existing is not None
-    request = {"agent_for": account.lower(), "organization": args.organization, "permissions": app.SERVICE,
+    request = {"agent_for": account.lower(), "organization": args.organization, "factory": args.factory,
+               "permissions": app.SERVICE,
                "reconcile": existing[0] if reconcile else None, "store": program is not None,
                "after": None if reconcile else args.after_uncertain}
     # Review R1: a registration, once applied, stands; a reconciliation never
@@ -207,7 +280,7 @@ def agent_run(args, account, program, template, setup, directory):
     stands = (lambda value: False) if reconcile else (lambda value: True)
     if not args.yes:
         operation = setup.propose("connect_app", request, agent_effects(
-            account, args.organization, request["reconcile"], program is not None),
+            account, args.organization, request["reconcile"], program is not None, args.factory),
             "Proposed: confirm with --yes --operation.", stands)
         print(json.dumps(operation, sort_keys=True))
         return
@@ -223,10 +296,11 @@ def agent_run(args, account, program, template, setup, directory):
     if reconcile:
         app_id, pem, id_delivered = existing
         status, found = app.get(args.api_base, "/app", sign(pem, app_id))
-        # Signed with the delivered key, so it is this App; LOGIN may be another
-        # account it installs on (the one App installs on both accounts).
+        # Signed with the delivered key, so it is this App. A user App must be
+        # LOGIN's own (J48); only the factory's App installs on its other named accounts.
         app.require(status == 200 and found.get("id") == app_id and isinstance(found.get("slug"), str))
         app.service_permissions(found.get("permissions"))
+        app.require(installable(args.factory, (found.get("owner") or {}).get("login"), account))
         if registered is None:
             app.save_file(directory, "app.json", json.dumps({"app_id": app_id}).encode())
         if not id_delivered and program is not None:
@@ -297,7 +371,8 @@ def agent_run(args, account, program, template, setup, directory):
                 script = secrets.token_urlsafe(16)
                 # The form submits itself, so the person's first click is GitHub's Create.
                 reply(self, 200, '<!doctype html><title>OpenWiz GitHub App</title><h1>OpenWiz GitHub App</h1>'
-                      f'<p>Create it for {html.escape(account)} with Metadata read, Contents, Issues and Pull '
+                      f'<p>Create {"the factory&#39;s public App" if args.factory else "your private App"} for '
+                      f'{html.escape(account)} with Metadata read, Contents, Issues and Pull '
                       'requests write, Checks and Actions read. Its private key goes only to the Cloudroom '
                       f'secret {SECRET}; it is never shown.</p>'
                       f'<form method="post" action="{html.escape(action, quote=True)}">'
@@ -328,6 +403,21 @@ def agent_run(args, account, program, template, setup, directory):
             app.require(isinstance(slug, str) and re.fullmatch(r"[a-z0-9-]{1,64}", slug) is not None)
             # The public identity first (review R5), so a partial delivery is repairable.
             app.save_file(directory, "app.json", json.dumps({"app_id": new_id}).encode())
+            owner = (result.get("owner") or {}).get("login")
+            if not isinstance(owner, str) or owner.lower() != account.lower():
+                # J48: the browser's account created it, not the named one. It
+                # exists on GitHub, so its id stays recorded (never registered
+                # again); its key goes nowhere and nothing is offered for install.
+                result = None
+                shown = owner if isinstance(owner, str) and LOGIN.fullmatch(owner) else "another account"
+                setup.settle(operation["operation_id"], "applied",
+                             f"App {new_id} was created by {shown}, not {account}; refused, nothing installed.")
+                print(f"App connection refused: App {new_id} was created by {shown}, not {account}. Delete it in "
+                      f"that account's GitHub App settings, then follow docs/agents/github-app.md.",
+                      file=sys.stderr, flush=True)
+                reply(self, 403, "This App was created by another GitHub account than the one named. Nothing "
+                      "was installed and no key was kept. Return to the agent.")
+                return
             pem = None
             if program is not None:
                 pem = result["pem"].encode("ascii")
@@ -368,6 +458,7 @@ def agent_run(args, account, program, template, setup, directory):
             login = ((found or {}).get("account") or {}).get("login")
             if (status != 200 or found.get("id") != installation or found.get("app_id") != outcome["app_id"]
                     or not isinstance(login, str) or login.lower() != account.lower()
+                    or (args.factory and login.lower() not in app.factory_installations())
                     or found.get("repository_selection") != "selected"):
                 reply(self, 400, "That installation is not this App's on the named account with selected "
                       "repositories only.")
@@ -397,6 +488,10 @@ def main():
     parser.add_argument("--after-uncertain", help="a prior uncertain operation you checked on GitHub")
     parser.add_argument("--agent-for", metavar="LOGIN", help="agent mode: prepare the App for this account")
     parser.add_argument("--organization", action="store_true", help="with --agent-for: LOGIN is an organisation")
+    parser.add_argument("--capability", action="store_true",
+                        help="with --agent-for: print the secret_capability document (setup-onboard.v1); no network")
+    parser.add_argument("--factory", action="store_true",
+                        help="with --agent-for: the explicit setting for the factory's public App (J48)")
     parser.add_argument("--secret-store", metavar="PATH",
                         help="with --agent-for: the absolute secret store program (assumption A1); without it, the key is discarded")
     args = parser.parse_args()
@@ -404,9 +499,11 @@ def main():
     if args.agent_for is not None:
         agent(args)
         return
-    app.require(not args.organization and args.secret_store is None)
+    app.require(not args.organization and args.secret_store is None and not args.factory
+                and not args.capability)
     repo = app.repository(args.repo)
-    template = app.manifest(repo)
+    # The product's App is the user's own (J48): private, named for the repository's owner.
+    template = app.manifest(repo, account=repo.split("/")[0])
     setup = store.Store(str(app.state_path(args.state_dir)))
     directory = app.app_directory(app.state_path(args.state_dir), create=True)
     try:
@@ -442,12 +539,12 @@ def main():
         app.require(operation["phase"] in ("proposed", "uncertain"))
         owner = repo.split("/")[0].lower()
         nonce = secrets.token_urlsafe(32)
-        outcome = {"done": False, "success": False, "slug": None, "app_id": app_id}
+        outcome = {"done": False, "success": False, "slug": None, "app_id": app_id, "owner": None}
         if app_id is not None:
             # Reconcile the exact resource before anything else.
             status, found = app.get(args.api_base, "/app", app.jwt(directory, app_id))
             app.require(status == 200 and found.get("id") == app_id and isinstance(found.get("slug"), str))
-            outcome["slug"] = found["slug"]
+            outcome.update(slug=found["slug"], owner=(found.get("owner") or {}).get("login"))
 
         def install_link():
             app.require(re.fullmatch(r"[a-z0-9-]{1,64}", outcome["slug"] or "") is not None)
@@ -542,7 +639,7 @@ def main():
                 app.save_file(directory, "private-key.pem", pem)
                 app.save_file(directory, "app.json", json.dumps({"app_id": new_id}).encode())
                 os.fsync(directory)
-                outcome.update(app_id=new_id, slug=slug, done=False)
+                outcome.update(app_id=new_id, slug=slug, done=False, owner=(result.get("owner") or {}).get("login"))
                 print(f"App ID: {new_id}. Install: {install_link()}", flush=True)
                 self.reply(200, '<!doctype html><title>App saved</title><p>Key saved on this host. '
                            f'<a href="{html.escape(install_link(), quote=True)}">Install the App</a> '
@@ -563,8 +660,10 @@ def main():
                 status, found = app.get(args.api_base, f"/app/installations/{installation}",
                                         app.jwt(directory, outcome["app_id"]))
                 login = ((found or {}).get("account") or {}).get("login")
+                # J48: also the App owner's account, never another account's private App.
                 if (status != 200 or found.get("id") != installation or found.get("app_id") != outcome["app_id"]
-                        or not isinstance(login, str) or login.lower() != owner):
+                        or not isinstance(login, str) or login.lower() != owner
+                        or not isinstance(outcome["owner"], str) or outcome["owner"].lower() != owner):
                     self.reply(400, "That installation does not belong to this App and repository owner.")
                     return
                 ids = {"app_id": outcome["app_id"], "installation_id": installation}
