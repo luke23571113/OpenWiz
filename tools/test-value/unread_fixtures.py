@@ -13,23 +13,29 @@ never prints the empty result.
 The reading is static and leans towards keeping. A reader is a tracked code
 file outside the scanned roots (by extension, or a `#!` script) or a fixture
 already found read. Prose and data (Markdown, JSON, logs, CI's selection map)
-only mention files; they never read one. A fixture is read when:
+only mention files; they never read one. Comments in code do count. A fixture
+is read when:
 
 1. a reader holds a path ending in it with at least two parts
    (`../fixtures/a.json`, `send/tell.json`, `FIXTURES/'m1/README.md'`);
 2. its folder is in use and it is that folder's `scenario.json`, the file the
-   fake `room-cli` and fake `gh` start from;
-3. its folder is in use and a reader quotes its name (`"stdout_file": "a.json"`);
-4. its folder is named by a path with at least two parts that ends there
-   (`fixtures/walked'`, `room-cli-0.43.1/{parent}`) and holds no
-   `scenario.json`: such a folder is read whole.
+   fake `room-cli` and fake `gh` start from, or a fixture already read in the
+   same folder quotes its name (`"stdout_file": "a.json"`);
+3. its folder, or a folder above it, is named by a path with at least two
+   parts that ends there (`fixtures/walked'`, `room-cli-0.43.1/{parent}`), and
+   a reader quotes its name (`fixture("drift.json")`) or its folder holds no
+   `scenario.json`: a named folder is read whole, subfolders included, since a
+   test can build a subfolder's name at run time; a scenario folder inside it
+   still needs its own name.
 
-A folder is in use when it is a root, when rule 4's path names it, or when its
-parent is in use and a reader quotes its name (`Scenario::new("send")`,
-`"extends": "complete"`). Name matches are whole: `terminal/send.rs` and
-`send-extra` do not name `send`. A match anywhere keeps the file, so a common
-name keeps more than it should; nothing is listed only because a test builds
-its path in an unusual way, the full suite in CI checks that.
+A folder is in use when it is a root, when rule 3 names it or a folder above it
+(scenario folders apart), or when its parent is in use and a reader quotes its
+name (`Scenario::new("send")`, `"extends": "complete"`). A quoted file name
+alone never keeps a file in a folder only in use by name: `"README.md"` and
+`"service"` quoted somewhere do not read `service/README.md`. Name matches are
+whole: `terminal/send.rs` and `send-extra` do not name `send`. A match anywhere
+keeps the file, so a common name can keep more than it should; a test that
+builds a path some other way is caught by the full suite in CI.
 """
 import argparse
 from pathlib import Path, PurePosixPath
@@ -77,6 +83,8 @@ def is_code(repo, path):
     name = PurePosixPath(path)
     if path in SELF:
         return False
+    if (repo / path).is_dir():
+        return False  # a tracked link to a folder
     if name.suffix in CODE:
         return True
     if name.suffix:
@@ -84,15 +92,17 @@ def is_code(repo, path):
     try:
         with open(repo / path, 'rb') as f:
             return f.read(2) == b'#!'
-    except OSError:
-        return False
+    except OSError as err:
+        raise ScanError(f'cannot read tracked file {path}: {err.strerror}') from err
 
 
 def read_text(repo, path):
+    """A tracked file's text. One that can't be read stops the scan: read as
+    empty, it would turn the fixtures it names into deletions."""
     try:
         return (repo / path).read_text('utf-8', 'replace')
-    except OSError:
-        return ''
+    except OSError as err:
+        raise ScanError(f'cannot read tracked file {path}: {err.strerror}') from err
 
 
 def suffixes(path):
