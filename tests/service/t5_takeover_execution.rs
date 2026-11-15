@@ -157,13 +157,16 @@ fn github(w: &World) -> Executor {
                 json!([{"number":900,"id":"syn-issue-900","state":"OPEN","title":"Synthetic","body":"","labels":[],"milestone":null,"blockedBy":{"nodes":[],"totalCount":0},"subIssues":{"nodes":[{"number":901,"id":"syn-issue-901","state":"OPEN","title":"Synthetic","url":"https://example.invalid/issues/901"}],"totalCount":1}}]),
             ),
             // #718: the comment read projects each author; these synthetic
-            // ownership records are the factory App's.
+            // ownership records are the factory App's unless a row names its
+            // own (#732).
             ["api", path, ..] if path.contains("issues/900/comments?") => Some(json!(
                 rows()
                     .iter()
                     .map(|c| {
                         let mut c = c.clone();
-                        c["author"] = json!("openwiz[bot]");
+                        if c.get("author").is_none() {
+                            c["author"] = json!("openwiz[bot]");
+                        }
                         c
                     })
                     .collect::<Vec<_>>()
@@ -766,4 +769,75 @@ fn public_fleet_observation_is_unread_until_the_private_owner_is_proven() {
         assert!(writes(&w).is_empty(), "observations never write");
         assert!(w.posts().is_empty());
     }
+}
+
+/// #732: only a record author's fleet record names a spec's owner, in the
+/// health observation and in the takeover's own re-read. Catches the health
+/// reader trusting any commenter, matching logins case-sensitively, taking a
+/// user login for the App, trusting a comment with no author, or running
+/// without the setting.
+#[test]
+fn only_the_factory_s_fleet_records_name_the_owner() {
+    let later = "launch-fleet: fleet thread thr_syn_other, loop loop_syn_1";
+    for (author, counts) in [
+        (json!("openwiz[bot]"), true),
+        (json!("SYN-Owner"), true),
+        (json!("syn-outsider"), false),
+        (json!("openwiz"), false),
+        (Value::Null, false),
+    ] {
+        // Observation: the factory's record names the owner; a later record
+        // counts only when a record author wrote it.
+        let w = World::new();
+        setup(&w);
+        w.comments.lock().unwrap().push(
+            json!({"id":200,"author":author,"body":later,"created":3000,"updated":3000}),
+        );
+        let server = super::super::server::server(Arc::new(|_| {}));
+        let observed = engine(&w, w.runtime.clone())
+            .observe(server.local_addr().port())
+            .unwrap();
+        server.shutdown(deadline()).unwrap();
+        server.join();
+        let Listed::Read(rows) = observed.fleet_threads else {
+            panic!("{author}: fleet threads unread");
+        };
+        assert_eq!(rows.len(), 1, "{author}");
+        assert_eq!(
+            rows[0].thread.as_str(),
+            if counts { "thr_syn_other" } else { "thr_syn_dead" },
+            "{author}"
+        );
+        // Takeover: when this author's record is the only one, it alone may
+        // authorize the pause.
+        let w = World::new();
+        setup(&w);
+        fs::write(w.f.0.join("ownership"), "Synthetic discussion").unwrap();
+        w.comments.lock().unwrap().push(
+            json!({"id":200,"author":author,"body":RECORD,"created":3000,"updated":3000}),
+        );
+        engine(&w, w.runtime.clone()).pass(&seen(&w), 4000).unwrap();
+        assert_eq!(writes(&w).len(), usize::from(counts), "{author}");
+        assert_eq!(
+            w.runtime.0.lock().unwrap().len(),
+            usize::from(counts),
+            "{author}"
+        );
+    }
+    // Without the setting, no record counts: the observation is unread and
+    // the takeover makes no effect.
+    let w = World::new();
+    setup(&w);
+    fs::write(w.f.0.join("no-record-authors"), "").unwrap();
+    let server = super::super::server::server(Arc::new(|_| {}));
+    let observed = engine(&w, w.runtime.clone())
+        .observe(server.local_addr().port())
+        .unwrap();
+    server.shutdown(deadline()).unwrap();
+    server.join();
+    assert!(matches!(observed.fleet_threads, Listed::Unread(_)));
+    engine(&w, w.runtime.clone()).pass(&seen(&w), 4000).unwrap();
+    assert!(writes(&w).is_empty());
+    assert!(w.runtime.0.lock().unwrap().is_empty());
+    assert!(w.posts().is_empty());
 }
