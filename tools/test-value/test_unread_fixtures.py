@@ -64,29 +64,34 @@ class UnreadFixtures(unittest.TestCase):
     def test_a_scenario_is_read_through_its_name_and_names_its_own_files(self):
         # catches: a scenario's response files deleted although its
         # scenario.json names them; a response file no scenario names kept
-        # because its folder is in use; a scenario folder nothing names kept.
+        # because its folder is in use; a scenario folder nothing names kept;
+        # a file one test names while a support file names its folder.
         self.check({
             'tests/fixtures/cli/used/scenario.json':
                 '{"extends": "base", "responses": [{"stdout_file": "list.json"}]}',
             'tests/fixtures/cli/used/list.json': '[]',
             'tests/fixtures/cli/used/orphan.json': '[]',
+            'tests/fixtures/cli/used/drift.json': '[]',
             'tests/fixtures/cli/base/scenario.json': '{"responses": [{"stdout_file": "show.json"}]}',
             'tests/fixtures/cli/base/show.json': '{}',
             'tests/fixtures/cli/unused/scenario.json': '{"responses": [{"stdout_file": "list.json"}]}',
             'tests/fixtures/cli/unused/list.json': '[]',
             'tests/support.rs': 'const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/cli");',
             'tests/send.rs': 'let s = Scenario::new("used");',
+            'tests/drift.rs': 'let body = fixture("drift.json");',
         }, ['tests/fixtures/cli/unused/list.json',
             'tests/fixtures/cli/unused/scenario.json',
             'tests/fixtures/cli/used/orphan.json'])
 
     def test_a_folder_named_by_its_path_is_read_whole_and_a_longer_name_is_not_it(self):
-        # catches: a folder a test walks (named by path, no scenario.json)
-        # pruned file by file; a folder kept because a longer path such as
-        # tests/notes/send.rs or notes/send-extra merely starts with its name.
+        # catches: a folder a test walks, or whose subfolder it names at run
+        # time (FIXTURES/finding[-2:].lower()/'README.md'), pruned file by
+        # file; a folder kept because a longer path such as tests/notes/send.rs
+        # or notes/send-extra merely starts with its name.
         self.check({
             'tests/fixtures/walked/a.md': 'a',
             'tests/fixtures/walked/b.md': 'b',
+            'tests/fixtures/walked/l1/README.md': 'computed',
             'tests/fixtures/notes/send/README.md': 'docs only',
             'tests/walk.py': "for p in (ROOT / 'tests/fixtures/walked').iterdir(): p.read_text()",
             'tests/Cargo.toml': 'path = "tests/notes/send.rs"\nname = "notes/send-extra"',
