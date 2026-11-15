@@ -14,6 +14,7 @@ import hashlib
 import html
 import importlib.util
 import io
+import itertools
 import json
 import os
 from pathlib import Path
@@ -39,6 +40,8 @@ ACTIVE = ('in_progress', 'queued', 'waiting', 'pending', 'requested')
 STATUS = LISTED + 'status=%s&per_page=100&page=1'
 DONE = LISTED + 'created=2030-01-02T00:00:00Z..' + ENDED + '&status=completed&per_page=100&page=1'
 GATHERED = {'activity', 'board', 'ci_bench', 'journey', 'cost', 'credits', 'answer_time', 'rework'}
+# WRD1: also selected, with explicit reasons where this world has no source.
+HEALTH = {'main_ci', 'ci_queue', 'stage_waits', 'stage_health'}
 # #2565: the shape of the real gathered page of 2026-11-13, counts only: per card, its metrics,
 # each incomplete metric's prerequisites and each measured metric's evidence links. Real chromium
 # measured that page at 57,625 CSS px (1200 wide) and 49,909 (400 wide, drawn 2x). Its journey
@@ -122,7 +125,7 @@ def marked(providers):
     """The providers with the last card the page draws (last group, last provider, last metric) labelled MARKER."""
     order = [d['slot'] for d in suite.PROVIDERS]
     last = max(((suite.GROUPS.index(m['group']), order.index(p['slot']), i), m)
-               for p in providers for i, m in enumerate(p['metrics']))[1]
+               for p in providers if 'metrics' in p for i, m in enumerate(p['metrics']))[1]
     last['label'] = MARKER
     return providers
 
@@ -224,7 +227,7 @@ class Gather(unittest.TestCase):
 
     def gather(self, out=None, **overrides):
         out = self.tmp / 'out' if out is None else out
-        clock = iter([STARTED, ENDED])
+        clock = itertools.chain([STARTED], itertools.repeat(ENDED))  # WRD1: health reads stamp the clock too
         args = dict(remote=str(self.origin), repo=REPO, run_url=RUN, clock=lambda: next(clock),
                     pools=WR8.POOLS, journeys=self.journeys, cohort=self.cohort, answer_time=self.answer_time)
         args.update(overrides)
@@ -251,7 +254,7 @@ class Gather(unittest.TestCase):
 
     def test_gather_writes_a_selection_sources_select_accepts(self):
         root, selection = self.gather()
-        self.assertEqual({s['slot'] for s in selection}, GATHERED)
+        self.assertEqual({s['slot'] for s in selection}, GATHERED | HEALTH)
         for s in selection:
             with self.subTest(s['slot']):
                 # Pinned by sha256 of the gathered bytes and an observed time no later than the read.
@@ -274,8 +277,54 @@ class Gather(unittest.TestCase):
         for s, p in zip(selection, providers):
             with self.subTest(s['slot']):
                 self.assertNotEqual(p, sources._failed(s['slot'], None, ENDED))
+        # WRD1: the queue is WR8's same read projected again, so the two counts agree.
+        chosen = {p['slot']: p for p in providers}
+        activity = {m['id']: m['value'] for m in chosen['activity']['metrics']}
+        queue = {o['id']: o['value'] for o in chosen['ci_queue']['observations']}
+        self.assertEqual(queue['queued:ubuntu-24.04'], activity['ci-queued-ubuntu-24.04'])
+        self.assertEqual(queue['running:ubuntu-slim'], activity['ci-running-ubuntu-slim'])
+        self.assertEqual(chosen['main_ci']['state'], 'unavailable')  # this world answers no main reads
         # board and ci-benchmarks are only read: every ref of the origin is unchanged.
         self.assertEqual(self.refs(), self.refs_before)
+
+    def test_stage_reads_cover_open_approved_work_and_the_merged_cohort(self):
+        # WRD1: TL2 is collected for unfinished work too: the board graph's six open
+        # ready-for-agent tickets (9001-9006, blocked ones included) and ticket 94, which
+        # the merged cohort's PR closes (WR8's synthetic PR pages).
+        seen = []
+        with patch.object(gatherer(), 'stage_evidence', side_effect=lambda repo, tickets, clock: seen.append(sorted(tickets))):
+            _, selection = self.gather(journeys=None, cohort=None)
+        self.assertEqual(seen, [[94, 9001, 9002, 9003, 9004, 9005, 9006]])
+        # Its collection failed here, so both stage cards name their prerequisite.
+        missing = {s['slot'] for s in selection if s['path'].startswith('missing/')}
+        self.assertLessEqual({'stage_waits', 'stage_health'}, missing)
+
+    def test_r2_without_a_complete_ticket_enumeration_stage_health_is_not_collected(self):
+        # A missing or refused board graph, or failed PR pages, cannot enumerate the unfinished
+        # work, so no stage cohort is collected that silently omits it.
+        graph = json.loads((FIX / 'page-history/board-graph.json').read_text())
+        graph['repo'] = REPO
+        board = {'history.jsonl': (FIX / 'gather/history.jsonl').read_text(),
+                 'credits.jsonl': (FIX / 'gather/credits.jsonl').read_text()}
+        broken = dict(graph, tickets='not a list')
+        cases = {'no graph': (board, None), 'refused graph': (dict(board, **{'graph.json': json.dumps(broken)}), None),
+                 'failed PR pages': (dict(board, **{'graph.json': json.dumps(graph)}), 'graph:prs:')}
+        for name, (files, drop) in cases.items():
+            with self.subTest(name):
+                self.branch('board', BOARD_AT, files)
+                answers = WR8.fixture()
+                answers.pop(drop, None)
+                self.answer(answers)
+                seen = []
+                out = self.tmp / ('out-' + name.replace(' ', '-'))
+                with patch.object(gatherer(), 'stage_evidence', side_effect=lambda r, t, c: seen.append(t)):
+                    root, selection = self.gather(out, journeys=None, cohort=None)
+                self.assertEqual(seen, [])
+                for slot in ('stage_waits', 'stage_health'):
+                    entry = next(s for s in selection if s['slot'] == slot)
+                    self.assertTrue(entry['path'].startswith('missing/'))
+                    reason = json.loads((root / entry['path']).read_text())['prerequisites'][0]
+                    self.assertIn('unfinished', reason)
 
     def test_publish_shows_measured_values_with_provenance(self):
         root, selection = self.gather()

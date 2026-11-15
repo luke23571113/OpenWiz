@@ -612,6 +612,61 @@ Red and green runs are in `fixtures/gather/`, which also holds the synthetic
 and the cost CI point. It reuses WR8's synthetic gh, WR6's journeys and WR5's
 pairs. All of these are offline fixture evidence, not a live result.
 
+## Health collection and v2 history (WRD1)
+
+WRD1 (#629) adds the three health signals and the successor record,
+[`contract.v2.md`](contract.v2.md). New samples are `openwiz.war-room.v2`: the 17 v1
+slots, unchanged, plus a `health` section with `main_ci`, `ci_queue` and
+`stage_health`. Saved v1 samples keep their bytes. `suite.load`, `history.read_all`,
+`weekly.py` and the publish scan read both versions, and `suite.health(record)` shows
+a v1 sample's health as unobserved. Nothing is backfilled.
+
+| Signal | Read by gather, read only | Never |
+| --- | --- | --- |
+| Main CI | `health.main_ci`: the `main` head, every page of its `ci.yml` push runs, a reread of the latest run, the head again | Green from another head, a pending, cancelled or changing run, a same-second tie or a failed read |
+| CI queue | `health.ci_queue`: WR8's same checked read (no extra API call), each queued job's `created_at` | Zero from a partial or changing read; a count when a job's pool is unknown; an invented queue limit |
+| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/factory-metrics/limits.conf` | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
+
+The same pinned stage evidence also fills the detailed `stage_waits` slot (WR3).
+`gather.py --stage DIR` takes an existing `journeys.json` and `stage-waits.json`
+instead of collecting them. A failed health source greys only its own card; a
+privacy hit anywhere refuses the whole gather.
+
+**The five-minute collection.** `publish.py collect --remote URL --gather OWNER/REPO
+EVIDENCE_URL` gathers every source once, takes the gather's end as its run time,
+and saves one v2 sample at that five-minute boundary through `history.collect`.
+A loop has no Actions run link, so its evidence anchor is the public spec issue, #626.
+It renders no page and draws no picture. A boundary already saved commits
+nothing; a missed boundary stays absent. The hourly publish is unchanged. This
+is the exact script for the existing collect loop, replacing the selection-less
+script in the Publish section, on the same repository as that section's loops
+(the orchestrator activates it; nothing here does):
+
+```sh
+room-cli loop create --name 'War room collect' --cron '*/5 * * * *' --timezone UTC --new-thread \
+  --script 'python3 -I tools/war-room/publish.py collect --remote https://github.com/jparker2006/ClosedWiz.git --gather jparker2006/ClosedWiz https://github.com/openwizdev/openwiz/issues/626 >/dev/null 2>&1 || echo "War room collection failed"' \
+  --prompt 'The War room five-minute collection failed. Read the error, report it, change nothing.'
+```
+
+Its credential needs the publish job's scopes: contents write for `war-room` only,
+and actions, issues and pull-requests read. Each run is a full gather. Its API
+read count and duration per run are unmeasured.
+
+**Verifying it (after activation):** over three successive boundaries,
+`git log --format=%cI --name-only refs/heads/war-room -- samples` shows one new
+sample per boundary and no rewritten one. In each sample, compare `main_ci`'s
+head and run with `gh api repos/OWNER/REPO/branches/main` and that run's page,
+the `ci_queue` counts with the run and job pages at its `read` time, and at least
+one `stage_health` wait with `journey.py bench --stage-waits` on the same evidence.
+Record absent work or incomplete reads as found. **Live status: Unverified.** No
+loop has run this collection.
+
+```sh
+python3 -I tools/war-room/test_health.py
+```
+
+Red runs are in `fixtures/health/`: offline fixture evidence, not a live result.
+
 ## Review loops bench (RL0)
 
 `review_loops.py` measures the [review-loops contract](../../contracts/review-loops.v1.md)

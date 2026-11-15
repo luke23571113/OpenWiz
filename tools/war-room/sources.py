@@ -82,6 +82,9 @@ def safe_record(record):
     for provider in record['providers']:
         for metric in provider['metrics']:
             suite.require(all(LINK.fullmatch(url) for url in metric['evidence']), 'unsupported evidence link')
+    for provider in record.get('health', []):
+        for observation in provider['observations']:
+            suite.require(all(LINK.fullmatch(url) for url in observation['evidence']), 'unsupported evidence link')
 
 
 def window(since, until, timezone='UTC'):
@@ -396,7 +399,14 @@ def claude_usage(s, raw):
                     else ['Unreported provider units stay Unknown; units are never converted.'])
 
 
+HEALTH_SLOTS = {h['slot'] for h in suite.HEALTH}
+HEALTH_FAILED = ('Selected health source unavailable, malformed or hash/time binding refused; restore the pinned '
+                 'validated artifact. A health observation is never carried from an earlier sample.')
+
+
 def _failed(slot, previous, at):
+    if slot in HEALTH_SLOTS:  # WRD1: no missing health observation is backfilled.
+        return {'slot': slot, 'state': 'unavailable', 'prerequisites': [HEALTH_FAILED], 'observations': []}
     reason = 'Selected source unavailable, malformed or hash/time binding refused; restore the pinned validated artifact. Last good source evidence is retained without a new observation.'
     old = next((p for p in (previous or {}).get('providers', []) if p['slot'] == slot), None)
     if old and any(m['state'] != 'unavailable' for m in old['metrics']):
@@ -425,7 +435,8 @@ def select(root, selections, at, previous=None):
     for s in selections:
         suite.require(type(s) is dict and set(s) == REQUIRED, 'invalid selection fields')
         suite.require(type(s['kind']) is str and type(s['slot']) is str and
-                      s['kind'] in KINDS and s['slot'] in {p['slot'] for p in suite.PROVIDERS}, 'unsupported source')
+                      s['kind'] in KINDS and s['slot'] in {p['slot'] for p in suite.PROVIDERS} | HEALTH_SLOTS,
+                      'unsupported source')
         suite.require(s['slot'] not in seen, 'duplicate selected slot')
         suite.require(s['kind'] == 'projected' or SLOTS[s['kind']] == s['slot'], 'source slot mismatch')
         suite.require(type(s['path']) is str and re.fullmatch(r'[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*', s['path'])
@@ -446,9 +457,14 @@ def select(root, selections, at, previous=None):
             if s['kind'] == 'projected':
                 p = suite._decode(raw.decode('utf-8'))
                 suite.require(p['slot'] == s['slot'], 'projected slot mismatch')
-                for m in p['metrics']:
-                    suite.require(m['observed_at'] is None or m['observed_at'] <= s['observed_at'], 'projected observation after read')
-                    m['freshness'] = 'unknown' if m['fresh_until'] is None else 'stale' if at > m['fresh_until'] else 'fresh'
+                if s['slot'] in HEALTH_SLOTS:
+                    for o in p['observations']:
+                        suite.require(o['read']['ended_at'] <= s['observed_at'], 'projected observation after read')
+                        o['freshness'] = 'unknown' if o['fresh_until'] is None else 'stale' if at > o['fresh_until'] else 'fresh'
+                else:
+                    for m in p['metrics']:
+                        suite.require(m['observed_at'] is None or m['observed_at'] <= s['observed_at'], 'projected observation after read')
+                        m['freshness'] = 'unknown' if m['fresh_until'] is None else 'stale' if at > m['fresh_until'] else 'fresh'
             else:
                 p = globals()[s['kind']](s, raw)
             sample = suite._time(at).replace(minute=suite._time(at).minute // 5 * 5, second=0).strftime('%Y-%m-%dT%H:%M:%SZ')

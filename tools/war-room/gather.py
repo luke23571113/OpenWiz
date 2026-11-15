@@ -2,7 +2,7 @@
 """WR10: gather the real War room sources into one pinned WR2 selection. Reads only.
 
   python3 -I gather.py --remote URL --repo OWNER/REPO --run-url URL --out DIR
-      [--pool LABEL ...] [--journeys FILE --cohort FILE] [--answer-time FILE]
+      [--pool LABEL ...] [--journeys FILE --cohort FILE] [--answer-time FILE] [--stage DIR]
 
 Before a publish: one source root and `DIR/selection.json` in WR2's
 `sources.select` form, each artifact pinned by sha256, observed time and
@@ -10,7 +10,9 @@ evidence. The `board` and `ci-benchmarks` branches are fetched, never pushed;
 WR8's current CI/throughput and the merged cohort's journeys come from the
 existing read-only `gh` readers. A source that cannot be read gives only its
 own card a precise reason; a privacy hit anywhere in the root refuses the
-whole gather, so nothing is selected and nothing is published.
+whole gather, so nothing is selected and nothing is published. WRD1 adds the
+three v2 health providers (main CI, CI queue, stage health) and the detailed
+stage waits, from one pinned stage evidence set (contract.v2.md).
 """
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -31,9 +33,11 @@ sys.path.insert(0, str(HERE))
 import activity  # noqa: E402
 import answer_time as wr5  # noqa: E402
 import cost  # noqa: E402
+import health  # noqa: E402
 import publish  # noqa: E402
 import rework  # noqa: E402
 import sources  # noqa: E402
+import stage_waits  # noqa: E402
 import suite  # noqa: E402
 
 B, M, J = activity.B, activity.M, rework.J
@@ -63,7 +67,21 @@ REASONS = {
                    'prerequisite: WR5 answer_time.project output over source-linked recorded requests.',
     'cost': 'Cost readiness unavailable: neither the journeys nor the CI bench point could be read (WR4 cost.project); '
             'prerequisite: ticket journeys from journey.py collect or a ci-benchmarks point.',
+    'main_ci': 'Main CI unavailable: the read of the main head and its ci.yml push runs could not be selected; '
+               'prerequisite: read-only gh access to the branch and its Actions runs (health.main_ci).',
+    'ci_queue': 'CI queue unavailable: the current ci.yml run/job read could not be selected; '
+                'prerequisite: read-only gh access to Actions runs and jobs (health.ci_queue).',
+    'stage_waits': 'Stage waits unavailable: journey.py collect --stage-waits over the open approved and merged '
+                   'tickets failed or found none, or its sidecar was refused; prerequisite: read-only gh access and '
+                   "the board graph's open approved tickets (stage_waits.project).",
+    'stage_health': 'Stage health unavailable: journey.py collect --stage-waits over the open approved and merged '
+                    'tickets failed or found none, or its sidecar was refused; prerequisite: read-only gh access and '
+                    "the board graph's open approved tickets (health.stage_health).",
+    'stage_coverage': 'Stage evidence not collected: the board graph\'s open approved tickets or the merged PR pages '
+                      'could not be read, so unfinished approved work cannot be enumerated and no partial stage cohort '
+                      'is shown; prerequisite: a valid graph.json on the board branch and complete PR pages.',
 }
+LIMITS = sources.ROOT / 'tools/factory-metrics/limits.conf'  # TL1's one settings source
 
 
 class Fail(Exception):
@@ -139,7 +157,8 @@ class Root:
         return self.select('projected', slot, slot + '/provider.json', data, observed, [self.run_url])
 
     def missing(self, slot, reason):
-        provider = {'slot': slot, 'state': 'unavailable', 'metrics': [], 'prerequisites': [reason]}
+        provider = {'slot': slot, 'state': 'unavailable', 'prerequisites': [reason],
+                    'observations' if slot in sources.HEALTH_SLOTS else 'metrics': []}
         data = (json.dumps(provider, sort_keys=True) + '\n').encode()
         entry = {'kind': 'projected', 'slot': slot, 'path': 'missing/%s.json' % slot,
                  'sha256': self.write('missing/%s.json' % slot, data), 'observed_at': self.at,
@@ -278,8 +297,41 @@ def scan(root):
             scan_bytes(path.read_bytes())
 
 
-def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None):
-    """Write out/root and out/selection.json, or raise Fail and select nothing."""
+def open_approved(graph_raw):
+    """Open approved ticket numbers on the board graph (unfinished work), or None."""
+    if graph_raw is None:
+        return None
+    B_ = sources.native('private/orchestration/board/board.py')
+    try:
+        graph = suite._decode(graph_raw.decode('utf-8'))
+        B_.render.check_links(graph)
+        return sorted(t['number'] for t in B_.render.open_approved(graph))
+    except Exception as error:  # the board's own readers raise their own Fail
+        if not isinstance(error, (ValueError, KeyError, TypeError, UnicodeError)) and type(error).__name__ != 'Fail':
+            raise
+        return None
+
+
+def stage_evidence(repo, tickets, clock):
+    """TL2's journeys and stage sidecar over `tickets`, read once, or None."""
+    if not tickets:
+        return None
+    stages = {}
+    try:
+        doc = J.collect(repo, sorted(tickets), [], stage_export=stages, read_at=clock())
+        J.validate(json.loads(json.dumps(doc)))
+        J.validate_stage_waits(json.loads(json.dumps(stages)), json.loads(json.dumps(doc)))
+    except (J.ReadError, M.ReadError, OSError, ValueError, TypeError, KeyError, StopIteration):
+        return None
+    return ((json.dumps(doc, indent=2) + '\n').encode(), (json.dumps(stages, indent=2) + '\n').encode())
+
+
+def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None,
+           stage=None):
+    """Write out/root and out/selection.json, or raise Fail and select nothing.
+
+    `stage` is an existing directory holding TL2's journeys.json and stage-waits.json;
+    without it they are collected for the open approved and merged cohort tickets."""
     out = Path(out)
     suite.require(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) is not None, 'invalid repository')
     suite.require(sources.LINK.fullmatch(run_url) is not None, 'invalid run link')
@@ -321,17 +373,38 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
                     journey_wire = (json.dumps(journey_doc, indent=2) + '\n').encode()
                 except (J.ReadError, M.ReadError, OSError, ValueError, TypeError, KeyError):
                     journey_wire = None
+        # WRD1 health: main CI, and one stage evidence set covering unfinished approved work.
+        main = health.main_ci(repo, B.gh, clock)
+        stage_gap = None
+        if stage is not None:
+            stage_wires = tuple(Path(stage, name).read_bytes() for name in ('journeys.json', 'stage-waits.json'))
+        else:
+            # Both enumerations must succeed: a cohort missing the unfinished work is never collected.
+            approved = open_approved(board[0]['graph.json']() if board and 'graph.json' in board[0] else None)
+            if approved is None or prs is None:
+                stage_wires, stage_gap = None, REASONS['stage_coverage']
+            else:
+                tickets = set(approved)
+                if chosen is not None:
+                    tickets |= {t for n in chosen['merged_prs'] if n in prs for t in prs[n]['tickets']}
+                stage_wires = stage_evidence(repo, tickets, clock)
+        settings_raw, settings_read_at = LIMITS.read_bytes(), clock()
         ended = clock()
         if utc(ended) <= utc(started):
             time.sleep(1)  # WR8 needs a nonempty read interval: [started, ended)
             ended = clock()
+        ci_read, raw_jobs = health.capture(current_runs(repo, iso(utc(ended).replace(hour=0, minute=0, second=0)),
+                                                        ended, B.gh))
         try:
-            day = iso(utc(ended).replace(hour=0, minute=0, second=0))
             wr8 = activity.project(ended, repo=repo, read_started_at=started, source_path='activity/observation.json',
-                                   pools=tuple(pools), ci_read=current_runs(repo, day, ended, B.gh),
-                                   pr_read=pr_read, ticket_read=M.graphql)
+                                   pools=tuple(pools), ci_read=ci_read, pr_read=pr_read, ticket_read=M.graphql)
         except (ValueError, TypeError, KeyError, OSError):
             wr8 = None
+        # The queue is WR8's same checked read, projected again: no second API read. Its reads
+        # happen inside activity.project, so its read bounds close only now (WR8 keeps `ended`).
+        queue_end = clock()
+        queue = health.ci_queue(repo, tuple(pools), json.loads(wr8[1])['ci'] if wr8 else None, raw_jobs,
+                                started, queue_end)
         if journeys is None:
             journey_observed = ended
 
@@ -339,7 +412,7 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
             raise Fail('the output directory already exists')
         staging = Path(tmp) / 'root'
         staging.mkdir(mode=0o700)
-        root = Root(staging, repo, run_url, ended)
+        root = Root(staging, repo, run_url, queue_end)  # the selection's tick: after every read
 
         # Board history and credits, from the board branch at its commit.
         files = board[0] if board else {}
@@ -387,6 +460,28 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
             root.projected(provider, ended)
         else:
             root.missing('activity', REASONS['activity'])
+
+        # The v2 health providers, each pinned to its own retained observation bytes.
+        for slot, (provider, wire), observed in (('main_ci', main, max(o['read']['ended_at'] for o in main[0]['observations'])),
+                                                 ('ci_queue', queue, queue_end)):
+            root.write('health/%s.json' % slot.replace('_', '-'), wire)
+            if root.projected(provider, observed) is None:
+                (staging / 'health' / ('%s.json' % slot.replace('_', '-'))).unlink()
+        if stage_wires is not None:
+            root.write('stage/journeys.json', stage_wires[0])
+            root.write('stage/stage-waits.json', stage_wires[1])
+            root.write('stage/limits.conf', settings_raw)
+            files = dict(root=staging, journey='stage/journeys.json', sidecar='stage/stage-waits.json',
+                         settings='stage/limits.conf')
+            sample = iso(utc(ended).replace(minute=utc(ended).minute // 5 * 5, second=0))
+            # Each producer's own refusal is an explained unavailable provider, never a miss or zero.
+            root.projected(stage_waits.project(sample, **files, settings_evidence=[run_url], assembled_at=ended,
+                                               settings_read_at=settings_read_at), ended)
+            root.projected(health.stage_health(**files, settings_read_at=settings_read_at,
+                                               read={'started_at': started, 'ended_at': ended}, evidence=[run_url]), ended)
+        else:
+            root.missing('stage_waits', stage_gap or REASONS['stage_waits'])
+            root.missing('stage_health', stage_gap or REASONS['stage_health'])
 
         # Journeys, rework (WR6) and cost readiness (WR4) over one merged cohort.
         journey = None
@@ -448,10 +543,11 @@ def main(argv):
     parser.add_argument('--journeys', type=Path, help='an existing journeys.json instead of collecting one')
     parser.add_argument('--cohort', type=Path, help="the journeys' merged cohort (cohort, merged_prs, since, until, observed_at)")
     parser.add_argument('--answer-time', type=Path, help="WR5's projected answer_time provider")
+    parser.add_argument('--stage', type=Path, help="an existing directory with TL2's journeys.json and stage-waits.json")
     a = parser.parse_args(argv)
     try:
         selection = gather(a.out, remote=a.remote, repo=a.repo, run_url=a.run_url, pools=tuple(a.pool or POOLS),
-                           journeys=a.journeys, cohort=a.cohort, answer_time=a.answer_time)
+                           journeys=a.journeys, cohort=a.cohort, answer_time=a.answer_time, stage=a.stage)
     except (Fail, ValueError, OSError, UnicodeError, RecursionError) as e:
         # Only the reason class: a source error can carry a private value.
         print('war-room gather: %s; nothing selected' % (e if isinstance(e, Fail) else type(e).__name__), file=sys.stderr)
