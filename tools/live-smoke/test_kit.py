@@ -176,9 +176,20 @@ class Inputs(unittest.TestCase):
             args += ['--records', path]
         return run(*args), out
 
+    def checkout_alias(self, name='outside-run', into='private'):
+        """#777 R1: a directory outside Git that is a symlink into a checkout."""
+        checkout = self.root / ('checkout-' + name)
+        subprocess.run(['git', 'init', '-q', str(checkout)], check=True)
+        (checkout / 'private').mkdir()
+        alias = self.root / name
+        alias.symlink_to(checkout / into if into else checkout, target_is_directory=True)
+        return checkout, alias
+
     def test_records_assemble_one_owner_only_file(self):
-        """catches: a world-readable records or inputs file, or conflicting
-        record values silently resolved by whichever comes last."""
+        """catches: a world-readable records or inputs file, conflicting record
+        values silently resolved by whichever comes last, or (#777 R1) records
+        or inputs reached through a symlinked folder that resolves into a Git
+        checkout, where an ordinary add/commit could publish them."""
         records = self.standard_records()
         first = dict(list(records.items())[:12])
         second = dict(list(records.items())[12:])
@@ -195,12 +206,26 @@ class Inputs(unittest.TestCase):
             'conflict': ([self.write(self.root / 'c1.json', {'project': 'prj_syn_0001'}),
                           self.write(self.root / 'c2.json', {'project': 'prj_syn_0002'})], 'conflicting_record'),
         }
+        checkout, alias = self.checkout_alias()
+        (checkout / 'private' / 'records.json').write_text(json.dumps(records))
+        (checkout / 'private' / 'records.json').chmod(0o600)
+        refusals['records through an alias'] = ([alias / 'records.json'], 'inside_checkout')
         for name, (paths, reason) in refusals.items():
             with self.subTest(name):
                 result, target = self.assemble(*paths, out=self.run_dir / (name.replace(' ', '-') + '.json'))
                 self.assertEqual(result.returncode, 2)
                 self.assertEqual(json.loads(result.stdout), {'assembled': False, 'reason': reason})
                 self.assertFalse(target.exists())
+        # The reviewer's reproduction: the output path's folder resolves into Git.
+        for name, target in (('out through an alias', alias / 'inputs.json'),
+                             ('out through an alias above it', self.checkout_alias('outside-root', None)[1]
+                              / 'private' / 'inputs.json')):
+            with self.subTest(name):
+                result, _ = self.assemble(self.root / 'a.json', self.root / 'b.json', out=target)
+                self.assertEqual((result.returncode, json.loads(result.stdout)),
+                                 (2, {'assembled': False, 'reason': 'inside_checkout'}))
+                self.assertFalse(target.exists())
+                self.assertNotIn(PRIVATE, result.stdout)
         result, _ = self.assemble(self.root / 'a.json', out=out)
         self.assertEqual(json.loads(result.stdout)['reason'], 'exists')
         self.assertEqual(json.loads(out.read_text()), inputs)
@@ -231,6 +256,9 @@ class Inputs(unittest.TestCase):
             'shared inputs': (self.write(self.run_dir / 'shared.json', inputs, 0o640), out, 'inputs_not_owner_only'),
             'inputs in a checkout': (self.write(checkout / 'private' / 'inputs.json', inputs), out, 'inside_checkout'),
             'kit in a checkout': (good, checkout / 'kit.json', 'inside_checkout'),
+            'kit through an alias': (good, self.checkout_alias('kit-alias')[1] / 'kit.json', 'inside_checkout'),
+            'inputs through an alias': (self.write(self.checkout_alias('inputs-alias')[1] / 'inputs.json', inputs),
+                                        out, 'inside_checkout'),
             'stale input': (self.write(self.run_dir / 'stale.json', dict(inputs, fleet_scope={})), out, 'unused_input'),
             'missing input': (self.write(self.run_dir / 'missing.json', {k: v for k, v in inputs.items() if k != 'install_root'}),
                               out, 'missing_input'),
