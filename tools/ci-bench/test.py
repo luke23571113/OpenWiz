@@ -1014,6 +1014,33 @@ class Baseline(unittest.TestCase):
         self.assertEqual(legacy["split"], {"waiting": 0.75, "setup": 1.0583, "running": 6.0})
         self.assertEqual(legacy["queued_to_done"], {"median": 5.5, "p90": 8.0, "max": 8.0})
 
+    def test_b2_a_failed_run_with_a_passing_code_step_is_not_a_code_run(self):
+        # fixtures/baseline/README.md, "Run 202 with its npm test passing" (#701): only
+        # run 202's `Run npm test` succeeds; the run still failed, so it stays out.
+        with tempfile.TemporaryDirectory() as tmp:
+            w = Path(tmp) / "baseline"
+            w.mkdir()
+            for name in ("merged.json", "window.json"):
+                shutil.copy(BASELINE / name, w / name)
+            jobs = [json.loads(line) for line in (BASELINE / "jobs.jsonl").read_text().splitlines()]
+            flipped = 0
+            for job in jobs:
+                for step in job["steps"]:
+                    if job["run"] == 202 and step["name"] == "Run npm test":
+                        self.assertEqual((job["run_concl"], step["conclusion"]), ("failure", "failure"))
+                        step["conclusion"] = "success"
+                        flipped += 1
+            self.assertEqual(flipped, 1)
+            (w / "jobs.jsonl").write_text("".join(json.dumps(j, sort_keys=True) + "\n" for j in jobs))
+            r = run(["measure", str(w), "--robots", "3", "--label", "2030-02-01 baseline"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            point = json.loads((w / "point.json").read_text())
+        # Code runs still 201, 203, 205: 720 + 180 + 70 = 970 s. Counting 202 would
+        # give 4 runs and 970 + 180 = 1150 s.
+        self.assertEqual((point["code_runs"]["runs"], point["code_runs"]["robot_seconds"]), (3, 970))
+        # The reconstructed rule takes any result, so it is unchanged: 201, 202, 847 s.
+        self.assertEqual((point["legacy"]["runs"], point["legacy"]["robot_seconds"]), (2, 847))
+
 
 # Selector escapes (#1264): `escapes` on the fake gh, then `measure` and
 # `dashboard`. The window is fixtures/window's; every count is by hand. Each

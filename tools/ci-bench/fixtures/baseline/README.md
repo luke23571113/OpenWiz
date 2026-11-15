@@ -72,3 +72,12 @@ typed in by hand from the arithmetic below, never written by `bench.py`.
 - Split: waiting 60 + 30 + 0 = 90 = **0.75**; setup **1.0583**; running
   847 - 127 = 720 = **6.0**.
 - Queued to done 8 and 3: median **5.5**, p90 (2nd of 2) **8.0**, max **8.0**.
+
+## Run 202 with its npm test passing (#701)
+
+`test.py`'s second `Baseline` case changes one value in a copy of
+`jobs.jsonl`: run 202's `Run npm test` step succeeds. The run itself still
+failed, so it is still not a code run: **3** code runs, 720 + 180 + 70 =
+**970** s, as above. Counting the failed run would give 4 runs and
+970 + 180 = 1150 s. The reconstructed rule takes any result: still 201 and
+202, **847** s.
