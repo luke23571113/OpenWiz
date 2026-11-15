@@ -169,6 +169,14 @@ fn component(
     }
 }
 
+/// Overall readiness: every prerequisite of the selected engine verified.
+fn ready(components: &[Value], _skipped: bool) -> bool {
+    components
+        .iter()
+        .filter(|c| c["id"] != "remote_access")
+        .all(|c| c["state"] == "verified")
+}
+
 /// The report from the setup state read at `now` (Unix ms). Readiness needs
 /// every prerequisite verified by current evidence for the current selection;
 /// an unreadable state is unknown, never an error body.
@@ -201,10 +209,7 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
         .collect::<Vec<_>>();
     // Overall readiness: every prerequisite of the selected engine verified.
     // Phone access is reported, never inferred; T1's engine stays unselected.
-    let ready = components
-        .iter()
-        .filter(|c| c["id"] != "remote_access")
-        .all(|c| c["state"] == "verified");
+    let ready = ready(&components, false);
     let operations = state
         .map(|s| {
             s.operations
@@ -402,6 +407,109 @@ mod composed {
             let report = super::report_at(Ok(Some(&state)), NOW);
             assert_eq!(report["components"][at]["state"], "unknown", "{code}");
         }
+    }
+
+    /// The same state with the owner's identity choice saved.
+    fn chosen(codes: &[(&str, &str)], revision: u64, identity: &str) -> String {
+        observed(codes, revision, NOW - 1_000).replacen(
+            r#""operations""#,
+            &format!(r#""identity":{identity},"operations""#),
+            1,
+        )
+    }
+    const SKIP: &str = r#"{"selected":"personal_login","app_choice":"skip","acting_login":"synthetic-owner","repository":"synthetic-owner/synthetic-consumer"}"#;
+
+    /// #633: catches a skipped App shown verified or blocking the identity, the
+    /// acting login going unnamed, and a choice for another repository applying.
+    #[test]
+    fn an_explicit_skip_names_the_login_and_keeps_the_app_truthfully_missing() {
+        let state = parse(&chosen(&ALL, 3, SKIP));
+        let report = super::report_at(Ok(Some(&state)), NOW);
+        assert_eq!(
+            report["identity"],
+            serde_json::json!({"selected":"personal_login","app_choice":"skip","acting_login":"synthetic-owner"})
+        );
+        let app = &report["components"][3];
+        assert_eq!(
+            app["state"], "missing",
+            "app_verified is never shown for a skipped App"
+        );
+        assert!(app["reason"].as_str().unwrap().starts_with("Skipped"));
+        assert_eq!(report["components"][2]["state"], "verified");
+        // Another repository's choice selects nothing here: the App rule.
+        let elsewhere = SKIP.replace("synthetic-consumer", "synthetic-other");
+        let report = super::report_at(Ok(Some(&parse(&chosen(&ALL, 3, &elsewhere)))), NOW);
+        assert_eq!(report["identity"]["selected"], "unselected");
+        assert_eq!(report["identity"]["acting_login"], serde_json::Value::Null);
+        assert_eq!(report["components"][3]["state"], "verified");
+        // An old state carries no identity field at all.
+        let old = parse(&observed(&ALL, 3, NOW - 1_000));
+        assert!(
+            super::report_at(Ok(Some(&old)), NOW)
+                .get("identity")
+                .is_none()
+        );
+    }
+
+    /// #633: catches an App failure, revocation or unknown identity silently
+    /// becoming the personal-login path, and a different signed-in account or
+    /// an old check counting for the chosen login.
+    #[test]
+    fn no_failure_or_stale_check_selects_or_satisfies_the_personal_login() {
+        let mut codes = ALL;
+        for app in [
+            "app_revoked",
+            "app_key_rejected",
+            "app_unreadable",
+            "app_missing",
+        ] {
+            codes[3] = ("github_app", app);
+            let report = super::report_at(Ok(Some(&parse(&observed(&codes, 3, NOW - 1_000)))), NOW);
+            assert!(report.get("identity").is_none(), "{app}");
+            assert_ne!(report["components"][3]["state"], "verified", "{app}");
+        }
+        codes[2] = ("personal_github", "identity_account_mismatch");
+        let report = super::report_at(Ok(Some(&parse(&chosen(&codes, 3, SKIP)))), NOW);
+        assert_eq!(report["components"][2]["state"], "refused");
+        assert!(
+            report["components"][2]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("not the personal login you chose")
+        );
+        let stale =
+            parse(&chosen(&ALL, 3, SKIP).replace(r#""revision":3,"at""#, r#""revision":2,"at""#));
+        assert_eq!(
+            super::report_at(Ok(Some(&stale)), NOW)["components"][2]["state"],
+            "unknown"
+        );
+    }
+
+    /// #633, setup.v1's revised ready rule: catches the identity part being
+    /// satisfied without the owner's skip, or the skip excusing anything else.
+    #[test]
+    fn ready_needs_the_app_unless_the_owner_skipped_it() {
+        let rows = |app: &str, login: &str| {
+            [
+                ("cloudroom", "verified"),
+                ("harness", "verified"),
+                ("personal_github", login),
+                ("github_app", app),
+                ("project", "verified"),
+                ("engine", "verified"),
+                ("remote_access", "unknown"),
+            ]
+            .map(|(id, state)| serde_json::json!({"id":id,"state":state}))
+        };
+        assert!(super::ready(&rows("verified", "verified"), false));
+        assert!(super::ready(&rows("missing", "verified"), true));
+        assert!(!super::ready(&rows("missing", "verified"), false));
+        assert!(!super::ready(&rows("refused", "verified"), false));
+        assert!(!super::ready(&rows("missing", "refused"), true));
+        assert!(!super::ready(&rows("missing", "unknown"), true));
+        let mut harness = rows("missing", "verified");
+        harness[1]["state"] = "unknown".into();
+        assert!(!super::ready(&harness, true));
     }
 
     #[test]
