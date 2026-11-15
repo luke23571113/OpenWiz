@@ -22,6 +22,9 @@ pub const HEAD10: &str = "1010101010101010101010101010101010101010";
 pub const HEAD11: &str = "1111111111111111111111111111111111111111";
 pub const BASE: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 pub const APPROVAL: &str = "**Plan graph approved by Jake, 2026-10-30, revision 1:** \"approved\"\n\n| Ticket | Title | Blocked by | Label |\n| --- | --- | --- | --- |\n| #10 | Synthetic ticket 10 | none | ready-for-agent |\n| #11 | Synthetic ticket 11 | #10 | ready-for-agent |\n\nFingerprint: `5a46b243aa88e90eaae1c4332f4d625154c4299a6fc3f15f9f75bc6ab414c66c`\n\n```text\nplan-graph revision v2\nspec #9 body sha256 e8ed494ca2bac1d6fd37b4742dcf45b43ac1180e687098745590f3692f90a71a\nticket #10 blocked-by none body sha256 60c009f9e72945c1dc45fe9f9bd9cd09dc092b5f87fcb23e3c873cf4372dca9e title Synthetic ticket 10\nticket #11 blocked-by #10 body sha256 04673879b8ae2d96eec6d0e9cc48f8fe4b3d735792fc246107f6661b40de4f3e title Synthetic ticket 11\n```\n";
+/// #718: the factory's identity, as docs/agents/fleet.md names it: its App and
+/// a synthetic owner account it falls back to.
+pub const IDENTITY: &str = "## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]`, `syn-owner` |\n";
 pub fn node_in(path: &OsStr, cache: Option<&Path>) -> Option<PathBuf> {
     let cached = cache.map(|p| p.join("node/24.22.1/x64/bin/node"));
     std::env::split_paths(path)
@@ -109,7 +112,7 @@ impl World {
         let codex = "| Setting | Value | `room-cli thread spawn` flag |\n| --- | --- | --- |\n| Harness | Codex | `--provider codex` |\n| Model | Sol | `--model gpt-6.1-sol` |\n| Effort | High | `--reasoning-level high` |\n";
         let claude = "| Setting | Value | `room-cli thread spawn` flag |\n| --- | --- | --- |\n| Harness | Claude | `--provider claude-code` |\n| Model | Opus | `--model claude-opus-5-5` |\n| Effort | High | `--reasoning-level high` |\n";
         let rules = format!(
-            "{rules}\n## Builder for small tickets\n{codex}## Reviewer for Claude-built\n{codex}## Reviewer for GPT-built\n{claude}"
+            "{rules}\n## Builder for small tickets\n{codex}## Reviewer for Claude-built\n{codex}## Reviewer for GPT-built\n{claude}{IDENTITY}"
         );
         let world = Self { dir, server };
         world.save(&json!({"issues":rows,"prs":[],"comments":{"9":[{"id":100,"body":APPROVAL,"created":now,"updated":now}]},"threads":{},"base":BASE,"rules":rules,"template":template,"receipt":receipt,"catalogue":catalogue,"next":1000,"spawn_count":0,"merge_bodies":[],"overrides":{},"crash":"","timeline":{},"fail_record":""}));
@@ -524,6 +527,15 @@ const repository = s.repository ?? 'jparker2006/ClosedWiz';
 const repoUrl = 'https://github.invalid/' + repository;
 const url = n => repoUrl + '/issues/' + n;
 const commentUrl = (n, id) => url(n) + '#issuecomment-' + id;
+// #718: a comment row as the requested projection shapes it. A projection
+// that asks for `author` gets the stored one (a planted outsider, or null for
+// a deleted account), else the factory's App; one that doesn't gets none.
+const FACTORY = 'openwiz[bot]';
+function projected(c) {
+  if (typeof c !== 'object' || c === null || Array.isArray(c)) return c;
+  const {author, ...rest} = c;
+  return flag('--jq').includes('author:') ? {...rest, author: author === undefined ? FACTORY : author} : rest;
+}
 function comment(n, body) {
   if (s.fail_record && body.startsWith(s.fail_record)) no();
   const c = {id: ++s.next, body, created: s.comment_time ?? 1793400010000, updated: s.comment_time ?? 1793400010000};
@@ -616,6 +628,7 @@ function run() {
         const pages = s.repository_comment_pages;
         if (pages && pages[page - 1] === undefined) no();
         const value = structuredClone(p.includes('&page=') ? (pages ? pages[page - 1] : rows.slice((page - 1) * 100, page * 100)) : (pages ?? [rows]));
+        if (Array.isArray(value)) value.forEach((r, i) => { value[i] = Array.isArray(r) ? r.map(projected) : projected(r); });
         // Keep the planning snapshot valid while revoking its live approval.
         if (page === 1 && s.revoke_approval_after_comments) { s.revoke_approval_after_comments = false; s.comments['9'] = []; }
         if (page === 1 && s.duplicate_placement_after_comments) { s.duplicate_placement_after_comments = false; s.issues.push({...structuredClone(s.issues[0]), n: 19}); }
@@ -640,7 +653,7 @@ function run() {
       if (p.startsWith('issues/')) {
         const [, n, kind] = p.split('/');
         if (kind.startsWith('comments?')) {
-          answer([s.comments[n] ?? []]);
+          answer([(s.comments[n] ?? []).map(projected)]);
         }
         if (kind.startsWith('timeline?')) {
           const value = [s.timeline[n] ?? []];
