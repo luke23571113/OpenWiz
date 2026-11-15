@@ -1959,8 +1959,9 @@ EOF
 expect 'record authors: no record authors setting stops the check' 2 check.json '.files["docs/agents/fleet.md"] |= sub("[|] Record authors [|][^\n]*\n"; "")' -- check <<EOF
 fleet.sh: docs/agents/fleet.md names no record authors (its "## GitHub identity" table's "Record authors" row)
 EOF
-for cell in '`synthetic-factory[bot]`, Synthetic-Owner' '`synthetic-factory[bot]`, `Synthetic-Owner`, `bad login`' '`synthetic-factory[bot]` `Synthetic-Owner`' '`synthetic-factory[bot]`, `Synthetic-Owner`; extra'; do
-  expect "record authors: a partly malformed row stops the check: $cell" 2 check.json "$HUMAN12 | say(13; 1301; \"11:30\"; \"launch-fleet: starting\") | .files[\"docs/agents/fleet.md\"] |= sub(\"[|] Record authors [|][^\\n]*\"; \"| Record authors | $cell |\")" -- spec 10 <<EOF
+# R3: the row is exactly "| Record authors | <cell> |": anything after the value cell refuses it too.
+for row in '| Record authors | `synthetic-factory[bot]`, Synthetic-Owner |' '| Record authors | `synthetic-factory[bot]` `Synthetic-Owner` |' '| Record authors | `synthetic-factory[bot]`, `Synthetic-Owner`; extra |' '| Record authors | `synthetic-factory[bot]` | `Synthetic-Owner`'; do
+  expect "record authors: a partly malformed row stops the check: $row" 2 check.json "$HUMAN12 | say(13; 1301; \"11:30\"; \"launch-fleet: starting\") | .files[\"docs/agents/fleet.md\"] |= sub(\"[|] Record authors [|][^\\n]*\"; \"$row\")" -- spec 10 <<EOF
 fleet.sh: docs/agents/fleet.md names no record authors (its "## GitHub identity" table's "Record authors" row)
 EOF
 done
