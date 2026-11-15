@@ -276,55 +276,23 @@ impl Drop for CapturedStderr {
 }
 // TA2 child stderr END
 
-/// The fixture service leads its own process group, so the `room` and `gh`
-/// scripts it starts are in it too. Dropping it kills that whole group and
-/// waits until no member is left, so nothing still writes into the fixture's
-/// directory when `Fixture` removes it (#719).
-struct Process(std::process::Child, CapturedStderr);
+/// The fixture service, stopped with everything it started (#719), and its
+/// captured stderr, drained after the stop.
+struct Process {
+    service: super::fixture_service::Service,
+    _stderr: CapturedStderr,
+}
 impl Process {
     /// Starts the fixture service with no input and its stdout discarded.
     fn start(mut command: std::process::Command) -> Self {
-        use std::os::unix::process::CommandExt;
         let (stderr, sink) = CapturedStderr::new();
         command
-            .process_group(0)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(sink);
-        Self(command.spawn().unwrap(), stderr)
-    }
-}
-/// Sends `signal` to process group `group` through `/bin/kill`; true when it
-/// was delivered, so when the group still has a member.
-fn signal_group(signal: &str, group: &str) -> bool {
-    std::process::Command::new("/bin/kill")
-        .args([signal, "--", group])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
-}
-impl Drop for Process {
-    fn drop(&mut self) {
-        // The leader is not reaped yet, so its id still names only this group.
-        let group = format!("-{}", self.0.id());
-        signal_group("-KILL", &group);
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        // Killed members stay in the group until they are reaped.
-        let until = Instant::now() + RUN_BUDGET;
-        let mut emptied = false;
-        while Instant::now() < until {
-            if !signal_group("-0", &group) {
-                emptied = true;
-                break;
-            }
-            std::thread::park_timeout(Duration::from_millis(5));
-        }
-        self.1.finish();
-        if !emptied && !std::thread::panicking() {
-            panic!("the fixture service's process group outlived its stop");
+        Self {
+            service: super::fixture_service::Service::start(&mut command),
+            _stderr: stderr,
         }
     }
 }
@@ -367,7 +335,7 @@ else:sys.exit(2)
     let until = Instant::now() + RUN_BUDGET;
     let status = loop {
         assert!(
-            process.0.try_wait().unwrap().is_none(),
+            process.service.0.try_wait().unwrap().is_none(),
             "fixture service exited before health publication"
         );
         if let Ok(v) = openwiz_service::runtime::status(&f.0)
