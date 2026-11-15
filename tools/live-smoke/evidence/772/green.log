@@ -1,21 +1,21 @@
 == test_kit
-Ran 6 tests in 1.462s
+Ran 6 tests in 1.941s
 
 OK
 == test_smoke
-Ran 28 tests in 17.462s
+Ran 28 tests in 18.717s
 
 OK
 == test_review
-Ran 3 tests in 5.815s
+Ran 3 tests in 5.228s
 
 OK
 == test_receipt
-Ran 17 tests in 17.353s
+Ran 17 tests in 16.437s
 
 OK
 == test_restriction
-Ran 16 tests in 4.392s
+Ran 16 tests in 4.495s
 
 OK
 == node --check

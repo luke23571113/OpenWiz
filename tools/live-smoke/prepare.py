@@ -58,9 +58,14 @@ def strings(value):
 
 
 def inside_checkout(path):
-    """A private file never lives in a Git working tree, where it could be committed."""
-    path = Path(os.path.abspath(path))
-    return any((folder / '.git').exists() for folder in [path, *path.parents])
+    """A private file never lives in a Git working tree, where it could be
+    committed: neither by its given path nor after resolving every symlinked
+    folder on the way (#777 R1). A leaf symlink is refused separately, by the
+    owner-only read and the exclusive write."""
+    given = Path(os.path.abspath(path))
+    resolved = Path(os.path.realpath(given))
+    return any((folder / '.git').exists()
+               for start in (given, resolved) for folder in [start, *start.parents])
 
 
 def owner_only(path, reason):

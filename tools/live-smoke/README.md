@@ -65,7 +65,7 @@ checkout and prints only counts. `prepare.py` replaces an entire JSON string
 `@name` with that named input value (including arrays/objects). No shell
 expansion or string interpolation. It reads the inputs file only by an absolute
 path, owner-only (mode 0600 or tighter, `inputs_not_owner_only`) and outside
-any checkout (`inside_checkout`, also for the kit). A missing or unused input
+any checkout, also after resolving symlinked folders (`inside_checkout`, also for the kit). A missing or unused input
 name refuses and prints only the names (`missing_input`, `unused_input`); a
 GitHub token or private key anywhere in the inputs refuses
 (`credential_in_inputs`). It prints the kit digest and the `release.scope`
