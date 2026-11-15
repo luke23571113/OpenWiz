@@ -61,10 +61,10 @@ Inputs, all resolved from the accepted PC kit rather than guessed:
 | --- | --- |
 | `mode` | `live` on PC; `fixture` only for synthetic proof |
 | `scratch_checkout`, `env` | Existing approved throwaway checkout and stable absolute `OPENWIZ_STATE_DIR`, `OPENWIZ_ORCHESTRATOR_THREAD_ID`; isolate this kit's products from normal work |
-| `openwiz`, `service`, `room_cli`, `gh`, `python`, `node`, `pty_driver`, `http_probe`, `browser_probe`, `cleanup_probe` | Absolute prebuilt executables/script paths; `pty_driver` is `tests/terminal/pty_drive.py`, the HTTP/browser probes and `cleanup.py` are here |
-| `artifacts` | Object from **every** program/script/probe-input absolute path to its previously verified SHA-256, including CLI's fixed `openwiz-terminal` sibling, browser package/Chromium, and `smoke.py` and `restriction.py` themselves; never build during the run |
+| `openwiz`, `service`, `room_cli`, `gh`, `python`, `node`, `http_probe`, `browser_probe`, `cleanup_probe` | Absolute prebuilt executables/script paths; the HTTP/browser probes and `cleanup.py` are here |
+| `artifacts` | Object from **every** program/script/probe-input absolute path to its previously verified SHA-256, including browser package/Chromium, and `smoke.py` and `restriction.py` themselves; never build during the run |
 | `source` | `{ "checkout": "/accepted/source", "head": "<40 hex>" }`; clean accepted source, independently matched to the prebuilt artifact provenance |
-| `port`, `control_thread`, `orchestrator_thread`, `send_thread`, `project` | Discovered local port and already approved throwaway/control destinations; port is an argv string. The no-argument TUI additionally requires port 7370 and matching socket-backed service status before any effect; otherwise incomplete |
+| `port`, `control_thread`, `orchestrator_thread`, `send_thread`, `project` | Discovered local port and already approved throwaway/control destinations; port is an argv string. A kit declaring `default_terminal_port` (the template does) additionally requires port 7370 and matching socket-backed service status before any effect; otherwise incomplete. The key keeps its 0.0.12 name; no terminal step remains |
 | `accepted_236_comments` | Recorded #236 acceptance comments, including W3 **unproven and accepted**, not an invented swarm improvement claim |
 | `service_checks` | JSON-pointer equality checks for current socket-backed service status, expected build/state/config and one tick runner; take field names from that installed binary's reviewed contract |
 | `app_repository_count`, `scratch_repository`, `outside_installation_route` | Exact installation scope and approved existing non-installed synthetic private test repository route; never use an owner's unrelated private repo as a negative target |
@@ -78,8 +78,7 @@ Inputs, all resolved from the accepted PC kit rather than guessed:
 | `expected_decisions` | Current saved wording/fingerprint at the grill PR/spec head and source comments, including ordinary explicit risk; resolved/superseded omitted, unknown/stale cannot authorize a reply |
 | `loops_browser`, `cockpit_browser`, `answer_browser`, `cockpit_dom`, `loops_dom`, `answer_dom` | Private browser probe config files and independently expected DOM observations, described below |
 | `answer_readback_argv`, `answer_readback_checks`, `answer_saved_checks` | Approved observer's read-only exact-one synthetic answer delivery and saved source-record readback; `answer_saved_checks` supplies `until` progress comparisons. Accepted delivery alone is not a saved answer |
-| `expected_catalogue_commands`, `capability_checks` | Accepted CLI catalogue and installed fixed-sibling capability; JSON success/errors must each be one document |
-| `terminal_steps`, `terminal_results`, `default_steps`, `default_results` | JSON-encoded PTY step arrays and exact boolean result arrays; follow the terminal kit below |
+| `expected_catalogue_commands` | Accepted CLI catalogue; JSON success/errors must each be one document |
 | `send_op`, `new_op`, `harness`, `model`, `effort` | Fresh recorded operation ids and choices actually offered by cloud-options; never reuse an uncertain attempt |
 | `send_preview_checks`, `send_lookup_checks`, `new_preview_checks`, `new_status_checks` | Exact expected target/settings/effects and recorded acceptance/creation plus separately observed start; no paused-queue/duplicate acknowledgement implicit in this kit |
 | `release` | The kit's release section for candidate-bound receipts (below): its existing `scope`, the candidate `products` its pinned programs are, `coverage` and `risk` step lists, and known `gaps`. Inside the approved kit digest |
@@ -179,12 +178,12 @@ and pidfds before launch. Children cannot gain privileges through exec. Timeout/
 children across `setsid`, then reaps them before returning. It uses only this
 runner's child tree and pidfd identities, never a global process-name kill.
 Containment unavailable/failure stops incomplete; process groups alone cannot
-contain the existing PTY driver. State is owner-only,
+contain a child that starts its own session. State is owner-only,
 locked, atomically replaced and fsynced, with only claim states, counts, times,
 and hashes of needed comparison facts. Raw stdout/stderr/transcripts, ids,
 private paths, prompts and credentials never enter reports/checkpoints.
 
-## Browser and terminal observations
+## Browser observations
 
 `browser.mjs` takes one pinned private JSON config: `checkout`, `chromium`,
 `origin` (`http://127.0.0.1:PORT/` only), `viewport` (desktop or 390x844 phone),
@@ -213,11 +212,8 @@ Host/Origin emulation is recorded as a gap for real TLS/radios/WebKit.
   live/release/publish approval. Optional network-cut observations consume no
   extra write and uncertainty stops the run.
 
-PTY input is the existing driver's JSON list (`wait`, `send`, `resize`), **no
-`sleep`**. Explicit `ui --port` visits Home, `s`, Enter/detail, Esc, `f`, detail,
-Esc, small/back resize, `q`; default no-argument entry visits Home and Ctrl-C.
-Wait for actual named visible states with bounded timeouts; compare every step,
-exit 0 and `restored: true`. No typed send/new in these read-only PTY parts.
+The kit has no terminal claim: the visual terminal app was removed in 0.0.16
+(#776), so no step drives `openwiz ui` or a no-argument `openwiz`.
 The AC6 kit consumes its already approved one phone-composer reply, followed by
 its two individually checkpointed GitHub cleanup operations. Separately the
 0.0.12 kit consumes its two sends (decision answer + CLI message) and one CLI
@@ -226,8 +222,7 @@ existing kits, one create, AC6's scoped fleet actions and its existing T3 cleanu
 no kit gains an extra attempt or retries. The message guard accepts both healthy
 `accepted` and `queued` reports with the same target/op/mode/replay checks; it
 never sends again to turn Queue into acceptance. Ready new-preview expects exit
-12 and creates nothing. A separate extension that
-moves send/create into the TUI must replace those same steps/budget, not add them.
+12 and creates nothing.
 
 ## Candidate-bound receipts
 

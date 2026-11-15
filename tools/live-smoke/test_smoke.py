@@ -16,7 +16,7 @@ _SPEC = importlib.util.spec_from_file_location('live_smoke_runner_for_tests', RU
 SMOKE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(SMOKE)
 CLAIMS = ['fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
-          'terminal', 'json', 'send', 'new', 'app', 'read_safety']
+          'json', 'send', 'new', 'app', 'read_safety']
 CATALOGUE = {'schema': 'openwiz.cli.v1', 'kind': 'catalogue', 'commands': [
     {'name': 'fleet.tick', 'argv': ['fleet', 'tick'], 'flags': ['--dry-run', '--expect-plan', '--json']}]}
 SCOPE = {'specs': [9001], 'tickets': [9002, 9003, 9004], 'rules': ['frontier'], 'never_start': [9004]}

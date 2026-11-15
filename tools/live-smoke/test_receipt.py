@@ -56,7 +56,7 @@ ACTION = {'kind': 'start_builder', 'rule': 'frontier', 'spec': 9001, 'ticket': 9
           'facts': {}, 'outcome': {'state': 'planned'}}
 PLAN = {'schema': 'openwiz.fleet-tick.v1', 'mode': 'dry_run', 'planned_at': 1893542400,
         'default_branch': 'scratch', 'rules': {}, 'actions': [ACTION]}
-READS = ('swarms', 'service', 'loops', 'cockpit', 'decisions', 'terminal', 'json', 'app', 'read_safety')
+READS = ('swarms', 'service', 'loops', 'cockpit', 'decisions', 'json', 'app', 'read_safety')
 FLEET_ROW = ['fleet_tick'] + list(READS)
 GAP = 'Synthetic gap: no real phone radio, WebKit or Mac observation.'
 

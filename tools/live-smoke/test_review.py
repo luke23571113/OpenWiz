@@ -62,8 +62,8 @@ class Review(FixtureCase):
             'argv': [str(self.fake), 'status'], 'exit': 0,
             'checks': [{'path': '/schema', 'equals': 'openwiz.service-status.v1'}]}
         self.kit['steps'].insert(0, service)
-        self.kit['steps'][1:1] = [{'id': 'terminal_default', 'claim': 'terminal', 'kind': 'read',
-            'argv': [str(self.fake), 'terminal'], 'exit': 0,
+        self.kit['steps'][1:1] = [{'id': 'default_port_read', 'claim': 'json', 'kind': 'read',
+            'argv': [str(self.fake), 'json'], 'exit': 0,
             'checks': [{'path': '/count', 'equals': 1}]}]
         self.replies['status'] = {'exit': 0, 'out': '{"schema":"openwiz.service-status.v1","server":{"port":7474}}'}
         self.wrong_port_result = self.invoke()
@@ -81,33 +81,36 @@ class Review(FixtureCase):
         self.state = self.root / 'right-service'
         self.report(self.invoke(), 0)
 
-    def test_r6_timeout_reaps_the_real_pty_drivers_new_session(self):
+    def test_r6_timeout_reaps_a_child_that_started_its_own_session(self):
+        # A step's child that leaves the runner's session (as a PTY driver's
+        # child does with setsid) must still be killed and reaped on timeout.
         # Adopt a leaking baseline child so this regression can clean it up
         # even before the fix. Only descendants of this test can be adopted.
         libc = ctypes.CDLL(None, use_errno=True)
         self.assertEqual(libc.prctl(36, 1, 0, 0, 0), 0)
         pid_file = self.root / 'child-pid'
-        child = self.root / 'synthetic-terminal.py'
+        child = self.root / 'synthetic-session.py'
         child.write_text('import os, pathlib, signal\n'
-                         f'pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()))\n'
-                         'print("Synthetic child started", flush=True)\nsignal.pause()\n')
-        driver = ROOT / 'tests/terminal/pty_drive.py'
+                         'if os.fork() == 0:\n'
+                         '    os.setsid()\n'
+                         f'    pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()))\n'
+                         '    signal.pause()\n'
+                         'os.wait()\n')
         python = str(Path(sys.executable).resolve())
-        self.kit['artifacts'].update({python: self.sha(Path(python)), str(driver): self.sha(driver), str(child): self.sha(child)})
+        self.kit['artifacts'].update({python: self.sha(Path(python)), str(child): self.sha(child)})
         step = self.kit['steps'][0]
         step['kind'] = 'read'
-        step['argv'] = [python, '-I', str(driver), '80', '24',
-                        json.dumps([{'wait': 'Never printed', 'timeout': 30}]), python, '-I', str(child)]
+        step['argv'] = [python, '-I', str(child)]
         # Keep the fixture's required fleet write separate from the timed probe.
         self.kit['steps'].append({'id': 'fleet_write', 'claim': 'fleet', 'kind': 'write',
             'argv': [str(self.fake), 'fleet'], 'exit': 0,
             'checks': [{'path': '/count', 'equals': 1}]})
         result = self.invoke()
-        self.assertTrue(pid_file.exists(), 'the child actually ran in the PTY')
+        self.assertTrue(pid_file.exists(), 'the new-session child actually ran')
         pid = int(pid_file.read_text())
         try:
             self.assertEqual(self.report(result, 3)['reason'], 'timeout')
-            self.assertFalse(Path(f'/proc/{pid}').exists(), 'the terminal child must be gone and reaped')
+            self.assertFalse(Path(f'/proc/{pid}').exists(), 'the new-session child must be gone and reaped')
         finally:
             if Path(f'/proc/{pid}').exists():
                 try:
@@ -118,7 +121,6 @@ class Review(FixtureCase):
                     os.waitpid(pid, 0)
                 except ChildProcessError:
                     pass
-
 
     def test_r3_reply_and_t3_cleanup_precede_final_ticks_once(self):
         from unittest.mock import patch

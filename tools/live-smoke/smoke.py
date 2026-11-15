@@ -17,7 +17,7 @@ import tempfile
 import time
 
 CLAIMS = ('fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
-          'terminal', 'json', 'send', 'new', 'app', 'read_safety')
+          'json', 'send', 'new', 'app', 'read_safety')
 LIMIT = 32 * 1024 * 1024
 RULE_KINDS = {
     'frontier': 'start_builder', 'first_review': 'start_reviewer',
@@ -787,8 +787,8 @@ def reconcile(path, kit, state):
 
 
 def run(kit, path, candidate=None):
-    # No-argument TUI always uses 7370. Never connect to a different service
-    # merely because the explicit UI probe was given another valid port.
+    # The default-port guard (named for 0.0.12's removed terminal steps, #776):
+    # a kit declaring it uses 7370 and never a different service.
     if kit.get('default_terminal_port', '7370') != '7370':
         return report(kit, initial(kit), 'incomplete', 'default_terminal_port'), 3
     private_dir(path)
