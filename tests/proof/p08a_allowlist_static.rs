@@ -541,10 +541,6 @@ const LOOP_REPOSITORY: &str = "../crates/store/src/loops/repository.rs";
 const LOOP_CHECK: &str = "../crates/service/src/loops/check.rs";
 const LOOP_EXECUTOR: &str = "../crates/service/src/loops/mod.rs";
 
-/// 0.0.12 T3 (#1098, orchestrator ruling): the Send action's capability id,
-/// `"send"`, once, in the terminal crate's action seam.
-const TERMINAL_ACTIONS: &str = "../crates/terminal/src/actions/mod.rs";
-
 /// EN1 (#1106), approved 2026-11-07: only the fixed isolated interpreter
 /// and installed sibling tool, with the minimized environment. Activation and
 /// every other gate remain closed.
@@ -553,7 +549,7 @@ const ENGINE_LAUNCHER: &str = "../crates/cli/src/engine.rs";
 
 #[test]
 fn allowlist_source_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 18] = [
+    let cases: [(&str, fn()); 17] = [
         (
             "engine_interpreter_exception_rejects_planted_widening",
             engine_interpreter_exception_rejects_planted_widening,
@@ -617,10 +613,6 @@ fn allowlist_source_contracts_preserve_original_cases() {
         (
             "the_github_runner_rule_catches_a_planted_break",
             the_github_runner_rule_catches_a_planted_break,
-        ),
-        (
-            "the_terminal_exceptions_refuse_any_widening",
-            the_terminal_exceptions_refuse_any_widening,
         ),
         (
             "updater_runner_exception_still_rejects_extra_effects",
@@ -1964,10 +1956,6 @@ fn no_product_source_spells_a_forbidden_argument() {
         .canonicalize()
         .expect("allowlist");
     let cli = root.join("cli").canonicalize().expect("cli");
-    let terminal_actions = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(TERMINAL_ACTIONS)
-        .canonicalize()
-        .expect("the terminal action seam");
     let service_reader = root
         .join("service/src/document.rs")
         .canonicalize()
@@ -2018,10 +2006,6 @@ fn no_product_source_spells_a_forbidden_argument() {
                 continue;
             }
             if *word == "send" && path.starts_with(&cli) {
-                continue;
-            }
-            // #1098: the Send capability id, once, and nothing else.
-            if *word == "send" && path == terminal_actions && send_capability_id_only(&text) {
                 continue;
             }
             let literal = format!("\"{word}\"");
@@ -2124,51 +2108,6 @@ fn t2_linux_owner_query_keeps_the_existing_kernel_boundary() {
 fn t2_store_retains_p8s_single_program_exception() {
     let text = include_str!("../../crates/store/src/attachments.rs");
     the_free_space_measure_runs_only_bin_df(text);
-}
-
-/// #1098's capability exception, exactly: one `"send"`, as `ActionId::Send`'s
-/// capability id.
-fn send_capability_id_only(text: &str) -> bool {
-    let text = l3_compact(text);
-    text.matches("\"send\"").count() == 1 && text.contains("ActionId::Send=>\"send\",")
-}
-
-fn the_terminal_exceptions_refuse_any_widening() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let actions = fs::read_to_string(root.join(TERMINAL_ACTIONS)).unwrap();
-    assert!(send_capability_id_only(&actions));
-    for text in [
-        actions.replace(
-            "ActionId::Send => \"send\",",
-            "ActionId::Send => \"send\",\n            // \"send\"",
-        ),
-        format!("{actions}\nconst X: &str = \"send\";\n"),
-        actions.replace(
-            "ActionId::Send => \"send\",",
-            "ActionId::Send => \"message\",",
-        ),
-    ] {
-        // A comment never counts; a second literal or another place does.
-        let widened = l3_compact(&text).matches("\"send\"").count() > 1
-            || !l3_compact(&text).contains("ActionId::Send=>\"send\",");
-        assert_eq!(!send_capability_id_only(&text), widened, "{text}");
-    }
-    assert!(!send_capability_id_only(&format!(
-        "{actions}\nconst X: &str = \"send\";\n"
-    )));
-    // The exception is for "send" in that one file only: every other
-    // forbidden word, and every other terminal source, stays refused.
-    for (path, text) in product_sources() {
-        if path.starts_with(root.join("../crates/terminal")) {
-            for word in FORBIDDEN.iter().filter(|w| **w != "send") {
-                assert!(!text.contains(&format!("\"{word}\"")), "{path:?}: {word}");
-            }
-            if !path.ends_with("actions/mod.rs") {
-                assert!(!text.contains("\"send\""), "{path:?}");
-            }
-            assert!(!text.contains("Command::new") && !text.contains("process::Command"));
-        }
-    }
 }
 
 // #1680: the public invocation must carry the allowance for the aggregate
