@@ -284,6 +284,11 @@ class AuditProof(unittest.TestCase):
         self.assertEqual(g.record_authors(fleet), AUTHORS)
         for broken in (fleet.replace('| Record authors |', '| Record writers |'),
                        fleet.replace('`Synthetic-Owner`', '`synthetic owner`'),
+                       # R1: a partly malformed cell refuses whole; its valid entries are not kept.
+                       fleet.replace('`Synthetic-Owner`', 'Synthetic-Owner'),
+                       fleet.replace('`Synthetic-Owner`', '`Synthetic-Owner`, `bad login`'),
+                       fleet.replace('`synthetic-factory[bot]`, `Synthetic-Owner`', '`synthetic-factory[bot]` `Synthetic-Owner`'),
+                       fleet.replace('`Synthetic-Owner`', '`Synthetic-Owner`; extra'),
                        fleet.replace('`synthetic-factory[bot]`, `Synthetic-Owner`', 'none'),
                        fleet.replace('## GitHub identity', '## Elsewhere')):
             with self.subTest(fleet=broken[-80:]), self.assertRaises(ValueError):

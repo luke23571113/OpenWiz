@@ -29,7 +29,7 @@ HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 FLEET=${FLEET_SH:-$HERE/fleet.sh}
 FIX=$HERE/fixtures
 NOW=1793534400 # 2026-11-01T12:00:00Z, the fixtures' "now"
-CASES=806      # 770 existing cases, #2888 R1's 13 completion-request cases and #641's 23 record-author cases
+CASES=810      # 770 existing cases, #2888 R1's 13 completion-request cases and #641's 27 record-author cases
 fails=0
 cases=0
 ERR=''         # the exact stderr the next case expects, when not the points line
@@ -1959,6 +1959,11 @@ EOF
 expect 'record authors: no record authors setting stops the check' 2 check.json '.files["docs/agents/fleet.md"] |= sub("[|] Record authors [|][^\n]*\n"; "")' -- check <<EOF
 fleet.sh: docs/agents/fleet.md names no record authors (its "## GitHub identity" table's "Record authors" row)
 EOF
+for cell in '`synthetic-factory[bot]`, Synthetic-Owner' '`synthetic-factory[bot]`, `Synthetic-Owner`, `bad login`' '`synthetic-factory[bot]` `Synthetic-Owner`' '`synthetic-factory[bot]`, `Synthetic-Owner`; extra'; do
+  expect "record authors: a partly malformed row stops the check: $cell" 2 check.json "$HUMAN12 | say(13; 1301; \"11:30\"; \"launch-fleet: starting\") | .files[\"docs/agents/fleet.md\"] |= sub(\"[|] Record authors [|][^\\n]*\"; \"| Record authors | $cell |\")" -- spec 10 <<EOF
+fleet.sh: docs/agents/fleet.md names no record authors (its "## GitHub identity" table's "Record authors" row)
+EOF
+done
 expect 'record authors: a malformed record author stops the check' 2 check.json '.files["docs/agents/fleet.md"] |= sub("`Synthetic-Owner`"; "`synthetic owner`")' -- check <<EOF
 fleet.sh: docs/agents/fleet.md names no record authors (its "## GitHub identity" table's "Record authors" row)
 EOF
