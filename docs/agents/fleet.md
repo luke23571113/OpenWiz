@@ -237,6 +237,7 @@ The agents act on GitHub as the OpenWiz App, under [`openwiz.github-identity.v1`
 | Token | `openwiz github token --repository <owner/name> [--read]`, minted when needed, never stored |
 | Fallback | No secret, no `openwiz` or a failed mint: today's account, said on stderr |
 | Not as the App | Pushes that change `.github/workflows/`; Jake's approvals and settings |
+| Record authors | `openwiz[bot]`, `jparker2006` |
 
 The App merges only under the standing merge rules below. A repository rule that refuses its merge stops for Jake; nobody bypasses it. Until Jake installs the App (GI6, #2548), every mint fails and the fleet runs as today's account. Source: Jake, 2026-11-13: approved with revision 1 of spec #2537's plan graph ([private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6844995843)).
 
