@@ -1260,11 +1260,12 @@ elif mkdir -p "$L/remote/skills/launch-fleet/scripts" "$L/remote/skills/plan-gra
   else
     bad "the loop's script clones the project and runs its check" "$(cat "$L/out1" "$L/out1.err" | head -c 400)"; cases=$((cases + 1))
   fi
+  # E6: the clone refreshes, but its skills/ is never run: the check stays the installed one.
   printf 'echo "the default branch moved"\n' >> "$L/remote/skills/launch-fleet/scripts/fleet.sh"
-  printf 'the default branch moved\n' >> "$L/want"
   if git -C "$L/remote" -c user.name=synthetic -c user.email=synthetic@example.invalid commit -q -am two \
-    && loop_run log2 out2 && cmp -s "$L/want" "$L/out2" && loop_points "$L/out2.err" && ! grep -q 'repo clone' "$L/log2"; then
-    loop_case "the next run updates its clone to the default branch, without cloning again"
+    && loop_run log2 out2 && cmp -s "$L/want" "$L/out2" && loop_points "$L/out2.err" && ! grep -q 'repo clone' "$L/log2" \
+    && grep -q 'the default branch moved' "$L/home/synthetic-owner/synthetic-repo/skills/launch-fleet/scripts/fleet.sh"; then
+    loop_case "the next run updates its clone to the default branch, without cloning again or running its skills"
   else
     bad "the next run updates its clone" "$(cat "$L/out2" "$L/out2.err" | head -c 400)"; cases=$((cases + 1))
   fi
