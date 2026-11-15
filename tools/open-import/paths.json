@@ -18,6 +18,8 @@
     "ci/runner/cache.sh",
     "ci/runner/.gitattributes",
     "ci/shard/README.md",
+    "ci/shard/lanes.py",
+    "ci/shard/lanes.tsv",
     "ci/shard/shard.py",
     "ci/shard/test.py",
     "ci/shard/times.tsv",

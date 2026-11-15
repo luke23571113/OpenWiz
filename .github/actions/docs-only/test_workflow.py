@@ -63,26 +63,23 @@ class Workflow(unittest.TestCase):
                 self.assert_trigger_contract(source.replace(before,after))
 
     def test_launch_fleet_retains_the_legacy_rust_suite_budget(self):
-        value=re.search(r'^    timeout-minutes: (.+)$',jobs()['skills'],re.M)[1]
-        for skill,expected in [('launch-fleet',60),('triage',30),('image',30),('plan-graph',30)]:
-            with self.subTest(skill=skill):
-                if value.startswith('${{'):
-                    expression=value[3:-2].strip().replace('matrix.skill',repr(skill)).replace('&&',' and ').replace('||',' or ')
-                    actual=eval(expression,{'__builtins__':{}},{})
-                else: actual=int(value)
-                self.assertEqual(actual,expected)
+        # #743: launch-fleet's own sharded job keeps its 60 minutes; no wider.
+        for job,expected in [('launch-fleet',60),('skills',30),('release',60)]:
+            with self.subTest(job=job):
+                self.assertEqual(re.search(r'^    timeout-minutes: (.+)$',jobs()[job],re.M)[1],str(expected))
 
     def test_independent_jobs_wait_for_export_only_when_needed(self):
         blocks=jobs()
         self.assertEqual(set(blocks),{'changes','always','web-build','rust','rust-export','web','web-export',
-                                      'site','release','skills','select-map','ci','web-test','toolkit-nightly'})
-        for name in ('always','web-build','rust','web','site','release','skills'):
+                                      'site','release','skills','launch-fleet','select-map','ci','web-test','toolkit-nightly'})
+        for name in ('always','web-build','rust','web','site','release','skills','launch-fleet'):
             self.assertRegex(blocks[name],r'^    needs: changes\n')
         for name in ('rust-export','web-export'):
             self.assertRegex(blocks[name],r'^    needs: \[changes, web-build\]\n')
             self.assertIn("needs.web-build.result == 'success'",blocks[name])
         self.assertIn('fail-fast: false',blocks['skills'])
-        self.assertIn('fromJSON(needs.changes.outputs.skills)',blocks['skills'])
+        self.assertIn('fromJSON(needs.changes.outputs.skill-jobs)',blocks['skills'])
+        self.assertIn('fail-fast: false',blocks['launch-fleet'])
 
     def test_selected_site_cut_uses_one_job_but_full_runs_keep_both(self):
         blocks = jobs()
@@ -97,7 +94,7 @@ class Workflow(unittest.TestCase):
                     condition = match[1].removeprefix('${{ ').removesuffix(' }}')
                     outputs = dict.fromkeys(('rust', 'toolkit', 'web', 'build-web',
                         'export-rust', 'export-web', 'trace', 'planted'), 'false')
-                    outputs.update(site='true', release='true', skills='[]',
+                    outputs.update(site='true', release='true', skills='[]', **{'skill-jobs': '[]'},
                                    **{'site-in-release': str(combined).lower()})
                     values = {'needs.changes.result': 'success', 'needs.web-build.result': 'skipped',
                               'needs.ci.result': 'success', 'github.event_name': 'pull_request',
@@ -107,7 +104,7 @@ class Workflow(unittest.TestCase):
                         condition = condition.replace(key, repr(values[key]))
                     condition = condition.replace('!cancelled()', 'True').replace('always()', 'True')
                     condition = condition.replace('&&', ' and ').replace('||', ' or ')
-                    if eval(condition, {'__builtins__': {}}, {}):
+                    if eval(condition, {'__builtins__': {}}, {'contains': lambda a, b: b in a}):
                         active.append(name)
                 self.assertEqual(active, ['changes', 'always', *([] if combined else ['site']),
                                            'release', 'ci', 'web-test'])
@@ -115,11 +112,11 @@ class Workflow(unittest.TestCase):
                 # workflows. No matrix is active for this selected fixture.
                 self.assertEqual(len(active) + 2, 7 if combined else 8)
         self.assertIn('site-in-release: ${{ steps.plan.outputs.site-in-release }}', blocks['changes'])
-        # Existing separate receipts are uploaded through the release job's
-        # wildcard only after execute and stamp both succeed.
-        self.assertIn('run.py execute "$RUNNER_TEMP/ci-plan" release', blocks['release'])
-        self.assertIn('run.py stamp "$RUNNER_TEMP/ci-plan" release', blocks['release'])
-        self.assertIn('path: ${{ runner.temp }}/receipts/*.json', blocks['release'])
+        # #743: each release member records its share; the ci job stamps the
+        # separate receipts only after every unit is checked to have run once.
+        self.assertIn('run.py execute "$RUNNER_TEMP/ci-plan" release --shard ', blocks['release'])
+        self.assertIn('run.py check-shards "$RUNNER_TEMP/ci-plan" release ', blocks['ci'])
+        self.assertIn('run.py stamp "$RUNNER_TEMP/ci-plan" release', blocks['ci'])
 
     def test_one_writer_keeps_attempt_specific_plan_and_summary(self):
         workflow=(ROOT/'.github/workflows/ci.yml').read_text()
@@ -128,7 +125,7 @@ class Workflow(unittest.TestCase):
         self.assertIn('python3 -I .github/actions/docs-only/plan.py ',blocks['changes'])
         self.assertIn('name: ci-selection-${{ github.run_attempt }}',blocks['changes'])
         self.assertIn('retention-days: 30',blocks['changes'])
-        for name in ('always','web-build','rust','rust-export','web','web-export','site','release','skills','ci'):
+        for name in ('always','web-build','rust','rust-export','web','web-export','site','release','skills','launch-fleet','ci'):
             self.assertIn('name: ci-selection-${{ github.run_attempt }}',blocks[name])
         self.assertNotIn('uses: ./.github/actions/docs-only\n',workflow)
 
@@ -194,7 +191,7 @@ class Security(unittest.TestCase):
     def test_runner_choices_keep_small_jobs_independent_and_forks_hosted(self):
         small={'changes','select-map','ci','web-test'}
         rust={'always','rust','rust-export','toolkit-nightly'}
-        web={'web-build','web','web-export','site','release','skills'}
+        web={'web-build','web','web-export','site','release','skills','launch-fleet'}
         blocks=jobs()
         self.assertEqual(set(blocks),small|rust|web)
         # Literal expectations describe the runner pool, independently of the
