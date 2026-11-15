@@ -1,36 +1,33 @@
-# WRD3 scoped checks at 243dc034769fb1052fa60573487d1afeffda50e4
+# WRD3 scoped checks at dbf898b80e4b8abff4200623701dec5ec2c7ba86 (review R1-R4 fixes)
 ## python3 -I tools/war-room/test_page_design.py
-Ran 11 tests in 3.440s
+Ran 11 tests in 3.643s
 OK
 ## python3 -I tools/war-room/test_page_history.py
-Ran 18 tests in 0.946s
+Ran 18 tests in 0.960s
 OK
 ## python3 -I tools/war-room/test_charts.py
-Ran 19 tests in 5.236s
+Ran 19 tests in 5.248s
 OK
 ## python3 -I tools/war-room/test_stage_waits.py
-Ran 11 tests in 2.342s
+Ran 11 tests in 2.372s
 OK
 ## python3 -I tools/war-room/test_publish.py
-Ran 14 tests in 11.579s
+Ran 14 tests in 12.172s
 OK
 ## python3 -I tools/war-room/test_gather.py
-Ran 18 tests in 50.799s
+Ran 18 tests in 52.675s
 OK
 ## python3 -I tools/war-room/test_health.py
-Ran 22 tests in 9.013s
+Ran 22 tests in 9.028s
 OK
 ## python3 -I tools/war-room/test_contract.py
 Ran 19 tests in 0.088s
 OK
 ## python3 -I tools/war-room/test_weekly.py
-Ran 23 tests in 105.501s
+Ran 23 tests in 105.417s
 OK
 ## python3 -I tools/open-import/guard.py --base=origin/main --head=HEAD
-carriage guard: all 16 added paths are classified
-## python3 -I tools/open-import/test_guard.py
-Ran 11 tests in 1.168s
-OK
+carriage guard: all 17 added paths are classified
 ## python3 -I tools/privacy-check/check.py --repo . --base origin/main --head HEAD
 literals: not used
 exit 0
