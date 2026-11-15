@@ -12,7 +12,7 @@ ran on ClosedWiz**, at the ClosedWiz commits they name; their logs are kept here
 | AC3 coverage, independent Unknown, privacy | Stage reads cover the open approved tickets and the merged cohort; one failed source greys only its own card; a privacy hit refuses the whole input | `test_gather.py` `test_stage_reads_cover_open_approved_work_and_the_merged_cohort`; `Collection` failed-main boundary; `test_a_privacy_hit_in_health_input_refuses_the_whole_collection` |
 | AC4 no false green or zero | Superseded, pending, cancelled, changing or tied main runs are never green; partial or changing queue reads never give zero; open, held, stale and unknown waits keep TL2's meaning; a changed limit has its own identity | `MainCI`, `Queue`, `Stage` |
 | AC5 both versions | v1 bytes pinned and unchanged across v2 collections; retries, out-of-order samples, failures and `weekly.py` work over mixed history; nothing backfilled | `Collection.test_boundaries_retries_gaps_failures_and_old_bytes`; `test_weekly.py`, `test_publish.py` and `test_page_history.py` unchanged and passing |
-| AC3/AC5 on OpenWiz (approved scope fix) | The War room's board readers are in `sources.py` with the board's definitions, and no private module is loaded, so gather and page history run on the public repository | `test_gather.py` `PublicBoardReaders`; `test_gather.py` and `test_page_history.py` passing on OpenWiz (`green.log`) |
+| AC3/AC5 on OpenWiz (approved scope fix: [scope ruling](https://github.com/openwizdev/openwiz/issues/629#issuecomment-6890777309)) | The War room's board readers are in `sources.py` with the board's definitions, and no private module is loaded, so gather and page history run on the public repository | `test_gather.py` `PublicBoardReaders`; `test_gather.py` and `test_page_history.py` passing on OpenWiz (`green.log`) |
 | AC6 scheduler and verification | The exact loop script and the three-boundary verification procedure are in the README. Live five-minute operation is **Unverified**: no authorized activation was performed | README "Health collection and v2 history (WRD1)" |
 
 Red runs, each committed before its fix:
@@ -91,3 +91,12 @@ AssertionError: a private module was loaded: private/orchestration/board/board.p
 Ran 5 tests in 0.104s
 FAILED (failures=4, errors=4)
 ```
+
+## Board-reader extraction (approved scope fix)
+
+The orchestrator's public scope ruling of 2026-11-15
+(https://github.com/openwizdev/openwiz/issues/629#issuecomment-6890777309, which
+carries its own private-record pointer) folds the bounded board-reader extraction
+into #629. It goes into the owned `sources.py`, `gather.py`, tests and README, with
+no new file and still only the ten `paths.json` rows. The CI-bench baseline gap is
+#677, outside #629.
