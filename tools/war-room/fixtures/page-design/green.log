@@ -1,0 +1,36 @@
+# WRD3 scoped checks at baa0619e38aa6e5e42f5085cdcd9897c363529f3
+## python3 -I tools/war-room/test_page_design.py
+Ran 11 tests in 3.401s
+OK
+## python3 -I tools/war-room/test_page_history.py
+Ran 18 tests in 0.958s
+OK
+## python3 -I tools/war-room/test_charts.py
+Ran 19 tests in 5.187s
+OK
+## python3 -I tools/war-room/test_stage_waits.py
+Ran 11 tests in 2.347s
+OK
+## python3 -I tools/war-room/test_publish.py
+Ran 14 tests in 11.478s
+OK
+## python3 -I tools/war-room/test_gather.py
+Ran 18 tests in 50.275s
+OK
+## python3 -I tools/war-room/test_health.py
+Ran 22 tests in 8.848s
+OK
+## python3 -I tools/war-room/test_contract.py
+Ran 19 tests in 0.087s
+OK
+## python3 -I tools/war-room/test_weekly.py
+Ran 23 tests in 104.385s
+OK
+## python3 -I tools/open-import/guard.py --base=origin/main --head=HEAD
+carriage guard: all 15 added paths are classified
+## python3 -I tools/open-import/test_guard.py
+Ran 11 tests in 1.179s
+OK
+## python3 -I tools/privacy-check/check.py --repo . --base origin/main --head HEAD
+literals: not used
+exit 0
