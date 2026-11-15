@@ -297,6 +297,21 @@ class Security(unittest.TestCase):
                     if re.search(r'^        run: sh ci/runner/cache.sh save ',step,re.M):
                         self.assertIn("if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')",step)
 
+    def test_rust_export_saves_and_restores_a_cargo_cache_no_other_job_saves(self):
+        # #742: always saved cargo-rust first, so rust-export's save of the same
+        # key failed ("Unable to reserve cache") and its release build stayed cold.
+        savers={}
+        for name,block in jobs().items():
+            for partition in (re.findall(r'^          key: (cargo-[a-z-]+)-\$\{\{ runner\.os \}\}',block,re.M)
+                              +re.findall(r'^        run: sh ci/runner/cache\.sh save (cargo-[a-z-]+) ',block,re.M)):
+                savers.setdefault(partition,set()).add(name)
+        own={p for p,names in savers.items() if 'rust-export' in names}
+        self.assertEqual(len(own),1,own)
+        partition=own.pop()
+        self.assertEqual(savers[partition],{'rust-export'})
+        prepare=jobs()['rust-export'].split('uses: ./.github/actions/docs-only/setup\n',1)[1].split('      - ',1)[0]
+        self.assertEqual(re.findall(r'^          cache: (\S+)$',prepare,re.M),[partition])
+
     def test_release_pass_does_not_depend_on_absent_cargo_cache_inputs(self):
         block=jobs()['release']
         commands=re.findall(r'^        run: (sh ci/runner/cache.sh save cargo-[^\n]+)$',block,re.M)
