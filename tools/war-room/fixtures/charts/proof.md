@@ -18,6 +18,13 @@ contract stubs), `red-publish.log` (a publication without Node published anyway)
 `red-limits.log` (a limits figure crashed the renderer; found by `test_gather.py`'s
 real-shaped queue data). Green: `green.log`.
 
+Review 1 (R1–R5 at `a482ae0`): `red-review-1.log` holds each finding's own red before
+its fix. Equal held waits refused the whole build (R3); main CI drew `known` for every
+result (R1); gather's projected board left 00a empty (R2); credit coverage counted
+spans against days (R4); an extra-only seed span joined the full-balance series (R5).
+R1, R2, R4 and R5 were run without the R3 row, because that row alone fails the shared
+setup at `a482ae0`. `green.log` is the fixed head's run.
+
 The browser captures come from `capture.py OUT_DIR` (real Chromium, every host
 unresolvable, the page's own `default-src 'none'` CSP) at 1440 and 390 CSS px wide,
 full figure section; re-running it gives byte-identical PNGs. Headless Chromium cannot

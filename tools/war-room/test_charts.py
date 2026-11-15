@@ -501,27 +501,28 @@ class Charts(unittest.TestCase):
 
     def test_a_gathered_projected_board_feeds_ready_and_building(self):
         # catches (R2): gather selects the board as a projected provider over its raw
-        # history, and the chart build ignored it, so 00a was Unknown on the normal path.
-        import gather
-        with tempfile.TemporaryDirectory() as d:
-            staging = Path(d) / 'root'
-            staging.mkdir()
-            root = gather.Root(staging, REPO, 'https://github.com/synthetic-owner/work/actions/runs/9', BUILD_AT)
-            raw = BOARD.encode()
-            s = {'path': 'board/history.jsonl', 'sha256': root.write('board/history.jsonl', raw),
-                 'observed_at': '2030-01-08T09:40:00Z', 'evidence': [LINK]}
-            root.projected(gather.board_provider(s, raw, None, None), s['observed_at'])
-            self.assertEqual([e['kind'] for e in root.selection], ['projected'])
-            (Path(d) / 'selection.json').write_text(json.dumps(root.selection))
-            w = World(Path(d) / 'w')
-            bundle = publish.chart_builder(staging, Path(d) / 'selection.json', BUILD_AT)(w.history)
-            fig = figure(bundle, '00a')
-            self.assertEqual(by_day(fig, 'ready')['2030-01-07'], 9)
-            self.assertEqual(fig['sources'][0]['sha256'], s['sha256'])
-            # The projected provider names the raw history; tampered raw bytes still refuse.
-            (staging / 'board/history.jsonl').write_bytes(raw + b'\n')
+        # history (its ratios citing graph.json), and the chart build ignored it, so 00a
+        # was Unknown on the normal gathered publication.
+        import test_gather
+        case = test_gather.Gather()
+        case.setUp()
+        try:
+            root, selection = case.gather()
+            self.assertEqual([s['kind'] for s in selection if s['slot'] == 'board'], ['projected'])
+            board = next(json.loads((root / s['path']).read_text()) for s in selection if s['slot'] == 'board')
+            counts = {m['id']: m['value'] for m in board['metrics'] if m['id'] in ('ready-stock', 'builders-running')}
+            build_chart = publish.chart_builder(root, case.tmp / 'out' / 'selection.json', test_gather.PUBLISH_AT)
+            fig = figure(build_chart(case.tmp / 'no-history'), '00a')
+            latest = fig['domain'][-1]
+            self.assertEqual((by_day(fig, 'ready')[latest], by_day(fig, 'building')[latest]),
+                             (counts['ready-stock'], counts['builders-running']))
+            self.assertEqual(fig['sources'][0]['path'], 'board/history.jsonl')
+            # The projected provider pins the raw bytes: changed raw history still refuses.
+            (root / 'board' / 'history.jsonl').write_text((root / 'board' / 'history.jsonl').read_text() + '\n')
             with self.assertRaises(publish.Fail):
-                publish.chart_builder(staging, Path(d) / 'selection.json', BUILD_AT)(w.history)
+                build_chart(case.tmp / 'no-history')
+        finally:
+            case.doCleanups()
 
     def test_credit_seed_spans_keep_their_extra_only_basis(self):
         # catches (R5): an extra-only seed span merged into the full-balance series, so an

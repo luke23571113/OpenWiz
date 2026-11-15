@@ -147,7 +147,7 @@ def main(argv=None):
     a = parser.parse_args(argv)
     try:
         chosen = [] if a.selection is None else suite._decode(a.selection.read_text(encoding='utf-8'))
-        chosen = [s for s in chosen if isinstance(s, dict) and s.get('kind') in prepare.NATIVE_KINDS]
+        chosen = prepare.chart_selections(chosen)
         bundle = build(a.history, at=a.at, source_root=a.source_root, selections=chosen, out=a.out)
     except (ValueError, OSError, UnicodeError, RecursionError) as error:
         print('war-room charts: %s; nothing written' % (error if isinstance(error, ValueError) else type(error).__name__),

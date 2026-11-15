@@ -688,11 +688,11 @@ python3 -I tools/war-room/test_charts.py                 # the chart proofs (syn
 
 | Figure | From | Rule |
 | --- | --- | --- |
-| `00a` Ready & building | Selected board `history.jsonl` | The board's daily row per PST day; goal ready ≥ 2 × building |
+| `00a` Ready & building | The board `history.jsonl` (selected, or pinned by gather's projected board) | The board's daily row per PST day; goal ready ≥ 2 × building |
 | `00b` Main merges | `ci_bench` `merged` | Native full PST days only; all-base UTC days stay a body figure |
 | `00c` CI latency | `ci_bench` median and p90 | Each cohort basis its own series; re-measured days show the latest, never an average |
 | `00d` Runner time | `ci_bench` robot-minutes | Per successful code run, with its run count |
-| `00e` Credit burn | `credits` sampled drops | Each span over its actual length, never split at midnight; sampled, not billing |
+| `00e` Credit burn | `credits` sampled drops | Each span over its actual length, never split at midnight, by basis (full balance or extra-only seed); coverage in PST days; sampled, not billing |
 | `body-…` | The latest sample | Readiness of all 20 providers, main CI, queue and stage limits, journeys and every other provider's values by unit |
 
 Repeated observations across samples count once; missing days and Unknown values are

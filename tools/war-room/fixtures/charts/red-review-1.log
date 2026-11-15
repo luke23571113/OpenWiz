@@ -22,3 +22,10 @@ FAIL: test_credit_seed_spans_keep_their_extra_only_basis (__main__.Charts.test_c
 AssertionError: {'203[21 chars]'drop', 0), '2030-01-07T06:00:00Z': ('drop', 50)} != {'203[21 chars]'drop:extra-only', 0), '2030-01-07T06:00:00Z':[22 chars] 50)}
 Ran 4 tests in 1.274s
 FAILED (failures=7, errors=1)
+
+
+== R2, rewritten over WRD1's gather fixture (its ratios cite graph.json), at a482ae0 without the R3 row:
+ERROR: test_a_gathered_projected_board_feeds_ready_and_building (__main__.Charts.test_a_gathered_projected_board_feeds_ready_and_building)
+IndexError: list index out of range
+Ran 1 test in 1.702s
+FAILED (errors=1)

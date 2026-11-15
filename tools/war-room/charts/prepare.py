@@ -91,30 +91,74 @@ def stale_gap(days, at):
 
 # --- native artifacts -----------------------------------------------------------
 
+def chart_selections(selection):
+    """The entries of a publish selection the chart build reads: a native board history, or
+    the projected board provider gather writes over its pinned raw history (R2)."""
+    return [s for s in selection if isinstance(s, dict) and (
+        s.get('kind') in NATIVE_KINDS or (s.get('kind') == 'projected' and s.get('slot') == 'board'))]
+
+
+def _checked_bytes(root, s, at):
+    suite.require(type(s) is dict and set(s) == sources.REQUIRED, 'invalid chart selection fields')
+    suite.require(type(s['path']) is str and re.fullmatch(r'[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*', s['path'])
+                  and not any(x in ('.', '..') for x in s['path'].split('/')), 'invalid chart source path')
+    suite.require(type(s['sha256']) is str and re.fullmatch('[0-9a-f]{64}', s['sha256']), 'invalid chart source hash')
+    suite.require(type(s['evidence']) is list and s['evidence']
+                  and all(type(u) is str and sources.LINK.fullmatch(u) for u in s['evidence']), 'invalid chart source links')
+    suite.require(suite._time(s['observed_at']) <= suite._time(at), 'chart source observed after the build')
+    suite.require(root is not None, 'a chart selection needs its source root')
+    base = Path(root).resolve()
+    path = (base / s['path']).resolve()
+    suite.require(path.is_relative_to(base), 'chart source escapes its root')
+    raw = path.read_bytes()
+    suite.require(hashlib.sha256(raw).hexdigest() == s['sha256'], 'chart source hash mismatch')
+    return raw
+
+
+BOARD_COUNTS = ('ready-stock', 'builders-running')
+
+
+def board_from_projected(root, s, at):
+    """The native board history a projected board provider was built from, or None.
+
+    Its ready-stock and builders-running counts, the two 00a plots, pin one raw
+    `history.jsonl` (path, SHA-256, observation time, evidence); that becomes a
+    board_history selection, then passes read_natives' own checks. Other metrics can
+    cite other files (the ratios cite graph.json) and are not this history."""
+    provider = suite._decode(_checked_bytes(root, s, at).decode('utf-8'))
+    suite.require(type(provider) is dict and provider.get('slot') == 'board', 'projected board slot mismatch')
+    pinned = {(m['source']['path'], m['source']['sha256'], m['observed_at'], tuple(m['evidence']))
+              for m in provider.get('metrics', [])
+              if type(m) is dict and m.get('id') in BOARD_COUNTS and type(m.get('source')) is dict
+              and m['source'].get('schema') == sources.PLAN_LINKS}
+    if not pinned:
+        return None  # an unavailable or graph-only board: nothing to chart
+    suite.require(len(pinned) == 1, 'a projected board names more than one history')
+    path, sha, observed, evidence = pinned.pop()
+    return {'kind': 'board_history', 'slot': 'board', 'path': path, 'sha256': sha,
+            'observed_at': observed, 'evidence': list(evidence)}
+
+
 def read_natives(root, selections, at):
     """Selected native artifacts the chart build reads itself: board history only.
 
     Each entry has the sources.select shape; its bytes must match their SHA-256, stay
-    inside the root and have been observed at or before the build. Any refusal raises.
+    inside the root and have been observed at or before the build. A projected board
+    provider stands for the raw history it pins. Any refusal raises.
     """
     suite._time(at)
     suite.require(type(selections) in (list, tuple), 'chart selection must be an array')
+    suite.require(len({s.get('slot') for s in selections if type(s) is dict}) == len(selections),
+                  'one chart selection per slot')
     out = []
     for s in selections:
+        if type(s) is dict and s.get('kind') == 'projected' and s.get('slot') == 'board':
+            s = board_from_projected(root, s, at)
+            if s is None:
+                continue
         suite.require(type(s) is dict and set(s) == sources.REQUIRED, 'invalid chart selection fields')
         suite.require(s['kind'] in NATIVE_KINDS and s['slot'] == sources.SLOTS[s['kind']], 'unsupported chart selection')
-        suite.require(type(s['path']) is str and re.fullmatch(r'[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*', s['path'])
-                      and not any(x in ('.', '..') for x in s['path'].split('/')), 'invalid chart source path')
-        suite.require(type(s['sha256']) is str and re.fullmatch('[0-9a-f]{64}', s['sha256']), 'invalid chart source hash')
-        suite.require(type(s['evidence']) is list and s['evidence']
-                      and all(type(u) is str and sources.LINK.fullmatch(u) for u in s['evidence']), 'invalid chart source links')
-        suite.require(suite._time(s['observed_at']) <= suite._time(at), 'chart source observed after the build')
-        suite.require(root is not None, 'a chart selection needs its source root')
-        base = Path(root).resolve()
-        path = (base / s['path']).resolve()
-        suite.require(path.is_relative_to(base), 'chart source escapes its root')
-        raw = path.read_bytes()
-        suite.require(hashlib.sha256(raw).hexdigest() == s['sha256'], 'chart source hash mismatch')
+        raw = _checked_bytes(root, s, at)
         lines = [line for line in raw.decode('utf-8').splitlines() if line.strip()]
         rows = [sources.board_strict(line) for line in lines]
         suite.require(bool(rows), 'empty board history')
@@ -179,8 +223,10 @@ def _figure(fid, kind, title, caption, unit, window, domain, series, rows, gaps,
             'gaps': [clean(g) for g in dict.fromkeys(gaps)], 'srcs': srcs}
 
 
-def _row(key, series, x, y, state, label, x2=None):
-    return {'key': key, 'series': series, 'x': x, 'x2': x2, 'y': y, 'state': state, 'label': clean(label)}
+def _row(key, series, x, y, state, label, x2=None, text=None):
+    """One mark. `text` is a short word drawn visibly on cell figures (a result, a state)."""
+    return {'key': key, 'series': series, 'x': x, 'x2': x2, 'y': y, 'state': state, 'text': text,
+            'label': clean(label)}
 
 
 def _unknown_figure(fid, kind, title, caption, unit, reason):
@@ -349,26 +395,59 @@ def credit_burn(records, at):
     for e in entries:
         by_end.setdefault(pst_day(_iso(suite._time(e['metric']['window']['until']) - timedelta(seconds=1))), []).append(e)
     days = seven_days(max(by_end))
-    rows, srcs = [], []
+    rows, srcs, used = [], [], []
     for e in sorted((e for d in days for e in by_end.get(d, [])), key=lambda e: e['metric']['window']['since']):
         m = e['metric']
         since, until = m['window']['since'], m['window']['until']
         end_day = pst_day(_iso(suite._time(until) - timedelta(seconds=1)))
         crosses = pst_day(since) != end_day
-        label = (f'Credit span {since} to {until} ({_hours(since, until)}): {_fmt(m["value"])} credits dropped, '
+        basis = credit_basis(m['id'], since, until)
+        used.append(basis)
+        label = (f'Credit span {since} to {until} ({_hours(since, until)}): {_fmt(m["value"])} {BASIS_WORDS[basis]}, '
                  f'PST day {end_day}' + ('; crosses a PST midnight, not split' if crosses else '') + '; sampled, not billing')
-        rows.append(_row(m['id'], 'drop', since, _num(m['value']), 'partial' if m['state'] != 'known' else 'known', label, x2=until))
+        rows.append(_row(m['id'], 'drop:' + basis, since, _num(m['value']),
+                         'partial' if m['state'] != 'known' else 'known', label, x2=until))
         srcs.append(_source('credits', m['id'], m['source'], m['evidence'], e['samples']))
     for day in days:
         if day not in by_end:
-            rows.append(_row('missing:' + day, 'drop', day_start(day), None, 'missing',
+            rows.append(_row('missing:' + day, 'missing', day_start(day), None, 'missing',
                              f'PST day {day}: no sampled credit span ends this day', x2=day_start(day_after(day))))
     window = pst_window(days)
     # A span that starts before the window's first day is drawn from the window's start.
     window['since'] = min([window['since']] + [r['x'] for r in rows])
-    series = [{'key': 'drop', 'label': 'Sampled credit drop', 'role': 'secondary'}]
-    gaps = ['Sampled balance drops are approximate, not complete daily usage or a billing total.'] + stale_gap(days, at)
-    return _figure('00e', 'spans', title, caption, 'credits', window, days, series, rows, gaps, srcs, 7)
+    # R5: each measurement basis is its own series; an unknown basis is never full-balance evidence.
+    series = [{'key': 'drop:' + b, 'label': BASIS_SERIES[b], 'role': BASIS_ROLE[b]} for b in BASES if b in used]
+    series.append({'key': 'missing', 'label': 'No span ends this PST day', 'role': 'muted'})
+    gaps = ['Sampled balance drops are approximate, not complete daily usage or a billing total.']
+    if 'extra-only' in used:
+        gaps.append('Extra-only seed spans compare extra credits only; the overall balance change over them is unknown.')
+    if 'unknown' in used:
+        gaps.append('A span whose basis cannot be recovered from its interval id is shown apart, never as full-balance.')
+    observed_days = [d for d in days if d in by_end]
+    gaps.append(f'{len(used)} sampled span{"s" if len(used) != 1 else ""} end on {len(observed_days)} of 7 PST days.')
+    gaps += stale_gap(days, at)
+    fig = _figure('00e', 'spans', title, caption, 'credits', window, days, series, rows, gaps, srcs, 7)
+    # R4: day coverage counts PST days with a span ending, never spans against days.
+    fig['coverage']['observed'] = len(observed_days)
+    return fig
+
+
+# The native credit reader names each span by sha256(since|until|basis) (sources.credits), so
+# the basis is recovered exactly by matching both candidates; anything else stays unknown.
+BASES = ('full-balance', 'extra-only', 'unknown')
+BASIS_WORDS = {'full-balance': 'credits dropped (full balance)',
+               'extra-only': 'extra credits dropped (extra-only seed; overall balance change unknown)',
+               'unknown': 'credits dropped (basis unknown)'}
+BASIS_SERIES = {'full-balance': 'Sampled drop, full balance', 'extra-only': 'Sampled drop, extra credits only (seed)',
+                'unknown': 'Sampled drop, basis unknown'}
+BASIS_ROLE = {'full-balance': 'secondary', 'extra-only': 'older', 'unknown': 'reference'}
+
+
+def credit_basis(metric_id, since, until):
+    for basis in BASES[:2]:
+        if metric_id == 'sampled-drop-' + hashlib.sha256('|'.join((since, until, basis)).encode('ascii')).hexdigest():
+            return basis
+    return 'unknown'
 
 
 # --- body figures ---------------------------------------------------------------
@@ -383,7 +462,7 @@ def readiness(record):
     for p in record['providers'] + suite.health(record):
         name = NAMES.get(p['slot'], p['slot'])
         label = f'{name}: {p["state"]}' + (f'. {p["prerequisites"][0]}' if p['prerequisites'] else '')
-        rows.append(_row(p['slot'], 'state', p['slot'], None, p['state'], label))
+        rows.append(_row(p['slot'], 'state', p['slot'], None, p['state'], label, text=p['state']))
         domain.append(p['slot'])
     series = [{'key': 'state', 'label': 'Provider state', 'role': 'primary'}]
     fig = _figure('body-readiness', 'readiness', 'Bench readiness',
@@ -399,7 +478,7 @@ def main_ci_figure(record):
     for o in provider['observations'] or [None]:
         if o is None:
             rows.append(_row('main', 'result', 'main', None, 'unavailable',
-                             'Main CI: Unknown. ' + '; '.join(provider['prerequisites'])))
+                             'Main CI: Unknown. ' + '; '.join(provider['prerequisites']), text='unknown'))
             continue
         ident = o['identity']
         where = (f' at {ident["head_sha"][:7]}' if ident['head_sha'] else '') + (
@@ -407,7 +486,9 @@ def main_ci_figure(record):
         text = f'Main CI{where}: {o["result"]}' + (f' (read {o["point"]})' if o['point'] else '')
         if o['prerequisites']:
             text += '. ' + '; '.join(o['prerequisites'])
-        rows.append(_row('main', 'result', 'main', None, o['state'], text))
+        # R1: the result itself is drawn, not only the evidence state: success, failure,
+        # pending, cancelled and unknown must look different without hover or disclosure.
+        rows.append(_row('main', 'result', 'main', None, o['state'], text, text=o['result'] or 'unknown'))
     srcs = [_source('main_ci', o['id'], o['source'], o['evidence'], [record['sample_id']])
             for o in provider['observations'] if o['source']]
     return _figure('body-main-ci', 'readiness', 'Main CI now',
@@ -422,7 +503,9 @@ def _limits_figure(fid, title, caption, waits, limits, sample_id, slot, unknown_
     rows, srcs = [], []
     for x, o in waits:
         lower = o['state'] == 'partial' and o['value'] is not None
-        text = f'{o["label"]} ({x}): ' + ('Unknown' if o['value'] is None else ('at least ' if lower else '') + f'{_fmt(o["value"])} min')
+        # R3: the observation's own identity (job or interval), so equal waits stay distinct.
+        ident = o['id'].split(':')[-1]
+        text = f'{o["label"]} ({x}, {ident}): ' + ('Unknown' if o['value'] is None else ('at least ' if lower else '') + f'{_fmt(o["value"])} min')
         rows.append(_row(o['id'], 'wait', x, o['value'], o['state'], text))
         if o['source']:
             srcs.append(_source(slot, o['id'], o['source'], o['evidence'], [sample_id]))
@@ -445,7 +528,7 @@ def health_figures(record):
     counts = [o for o in queue if o['statistic'] == 'count']
     if counts:
         rows = [_row(o['id'], 'count', o['id'], o['value'], o['state'],
-                     f'{o["label"]}: ' + ('Unknown' if o['value'] is None else _fmt(o['value']))) for o in counts]
+                     f'{o["label"]} ({o["id"]}): ' + ('Unknown' if o['value'] is None else _fmt(o['value']))) for o in counts]
         srcs = [_source('ci_queue', o['id'], o['source'], o['evidence'], [record['sample_id']]) for o in counts if o['source']]
         figs.append(_figure('body-ci-queue-count', 'bars', 'CI queue now',
                             'Queued and running CI jobs per exact pool at the read; an incomplete read is Unknown, never zero.',
@@ -486,7 +569,7 @@ def body_figures(record):
             metrics = [m for m in metrics if not m['id'].startswith(('wait:', 'limit:'))]
         if slot == 'journey':
             rows = [_row(m['id'], 'ticket', None, m['value'], m['state'],
-                         f'Ticket {m["dimensions"]["ticket"]}: {_fmt(m["value"])} h ready to merge') for m in metrics]
+                         f'Ticket {m["dimensions"]["ticket"]} ({m["id"]}): {_fmt(m["value"])} h ready to merge') for m in metrics]
             srcs = [_source(slot, m['id'], m['source'], m['evidence'], [record['sample_id']]) for m in metrics if m['source']]
             figs.append(_figure('body-journey', 'distribution', 'Ticket ready to merge',
                                 'Hours from ready to first closing merge, one dot per recorded ticket; coverage is unknown.',
@@ -496,7 +579,7 @@ def body_figures(record):
         for unit in sorted({m['unit'] for m in metrics}):
             mine = [m for m in metrics if m['unit'] == unit]
             rows = [_row(m['id'], 'value', m['id'], m['value'], m['state'],
-                         f'{m["label"]}: ' + ('Unknown' if m['value'] is None else f'{_fmt(m["value"])} {unit}')
+                         f'{m["label"]} ({m["id"]}): ' + ('Unknown' if m['value'] is None else f'{_fmt(m["value"])} {unit}')
                          + (f' [{m["window"]["since"]}, {m["window"]["until"]})' if m['window'] else '')) for m in mine]
             srcs = [_source(slot, m['id'], m['source'], m['evidence'], [record['sample_id']]) for m in mine if m['source']]
             fid = 'body-' + re.sub('[^a-z0-9]+', '-', f'{slot}-{unit}').strip('-')

@@ -138,7 +138,8 @@ const DRAW = {
       x: { axis: null },
       marks: [
         Plot.cell(fig.rows, { y: 'x', fill: (r) => fill[r.state], inset: 1, title }),
-        Plot.text(fig.rows, { y: 'x', text: 'state', fill: palette.ground, fontWeight: 'bold' }),
+        // The row's own visible word: a main-CI result or a provider state, never only a title.
+        Plot.text(fig.rows, { y: 'x', text: (r) => r.text ?? r.state, fill: palette.ground, fontWeight: 'bold' }),
       ],
     };
   },
@@ -148,8 +149,9 @@ const DRAW = {
 // the key is not a plotted value.
 const GLYPH = { circle: '●', square: '■', diamond: '◆', triangle: '▲', times: '×' };
 function key(fig, base) {
-  if (fig.series.length < 2 || !['daily-line', 'limits'].includes(fig.kind)) return { extra: 0, marks: [] };
-  const items = fig.series.map((s, i) => ({ i, text: `${GLYPH[palette.marks[s.role].symbol]} ${s.label}`, fill: palette.roles[s.role] }));
+  const keyed = fig.series.filter((s) => s.key !== 'missing');
+  if (keyed.length < 2 || !['daily-line', 'limits', 'spans'].includes(fig.kind)) return { extra: 0, marks: [] };
+  const items = keyed.map((s, i) => ({ i, text: `${GLYPH[palette.marks[s.role].symbol]} ${s.label}`, fill: palette.roles[s.role] }));
   return {
     extra: 15 * items.length,
     marks: items.map((d) => Plot.text([d], { frameAnchor: 'bottom-left', textAnchor: 'start', dx: -30, dy: base + 15 * d.i, text: 'text', fill: 'fill', fontSize: FONT - 1 })),

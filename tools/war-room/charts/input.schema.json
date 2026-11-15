@@ -71,7 +71,7 @@
     },
     "row": {
       "type": "object",
-      "required": ["key", "series", "x", "x2", "y", "state", "label"],
+      "required": ["key", "series", "x", "x2", "y", "state", "text", "label"],
       "properties": {
         "key": {"$ref": "#/$defs/key"},
         "series": {"$ref": "#/$defs/key"},
@@ -79,6 +79,7 @@
         "x2": {"anyOf": [{"$ref": "#/$defs/time"}, {"type": "null"}]},
         "y": {"anyOf": [{"type": "number"}, {"type": "null"}]},
         "state": {"enum": ["known", "partial", "unavailable", "missing"]},
+        "text": {"anyOf": [{"type": "string", "pattern": "^[a-z0-9_ -]{1,24}(?![\\s\\S])"}, {"type": "null"}]},
         "label": {"$ref": "#/$defs/text"}
       }
     },

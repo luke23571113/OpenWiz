@@ -209,9 +209,9 @@ def chart_builder(source_root, selection, at):
     """WRD2: the chart build for one render, over the tick's history and the selected board
     history. A refusal is a Fail: nothing is published and the branch keeps its last good page."""
     charts = sources.native('tools/war-room/charts/build.py')
-    chosen = [] if selection is None else [
-        s for s in suite._decode(Path(selection).read_text(encoding='utf-8'))
-        if isinstance(s, dict) and s.get('kind') in charts.prepare.NATIVE_KINDS]
+    # A native board history, or the projected board gather writes over its pinned raw history.
+    chosen = [] if selection is None else charts.prepare.chart_selections(
+        suite._decode(Path(selection).read_text(encoding='utf-8')))
 
     def build(history_root):
         try:

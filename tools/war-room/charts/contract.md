@@ -50,9 +50,12 @@ chart script, hydration, module, font, image or data request reaches the page.
   `history.read_all` (strict JSON, `suite.validate`, the privacy rules).
 - **Native artifacts:** selection entries of the same shape as `sources.select`
   (`kind`, `slot`, `path`, `sha256`, `observed_at`, `evidence`). The chart
-  build reads only `board_history` (the board's `history.jsonl`, validated row
-  by row with the board's own `sources.board_valid_row`); other kinds are
-  ignored here and read through history. Each file must stay inside the source
+  build reads only the board's `history.jsonl`, validated row by row with the
+  board's own `sources.board_valid_row`: a `board_history` entry, or the
+  `projected` board provider `gather` writes, which stands for the one raw
+  history its metrics pin (path, SHA-256, observation time, evidence) and then
+  passes the same checks. One entry per slot. Other kinds are ignored here and
+  read through history. Each file must stay inside the source
   root, match its SHA-256 and have been observed at or before the build time. A
   selected artifact that fails refuses the build.
 
@@ -73,7 +76,7 @@ replaced and history is never touched (the build only reads it).
 | `window` | The figure's own actual window `{since, until, timezone}`, or null |
 | `domain` | The category axis in order: the figure's PST days, slots, stages or metric ids |
 | `series` | `{key, label, role}`; `role` picks the palette entry (`primary`, `secondary`, `reference`, `older`, `muted`) |
-| `rows` | One plotted mark each: `{key, series, x, x2, y, state, label}` |
+| `rows` | One plotted mark each: `{key, series, x, x2, y, state, text, label}`; `text` is a short visible word for cell figures (a main-CI result, a provider state), or null |
 | `coverage` | `{observed, expected, missing}` |
 | `gaps` | What the figure cannot show, in plain words |
 | `sources` | `{slot, metric, path, schema, sha256, evidence, samples}`: each selected observation's source and the sample ids that carried it |
@@ -88,8 +91,9 @@ of each series' symbol, colour and label, which has no title because it plots no
 A loaded limit is a short horizontal bar at its stage.
 
 Cross-field rules, checked after the schema: unique figure ids, unique row keys
-in a figure, every row's series declared, category rows inside `domain`, at
-least one row per figure (an empty figure carries one `unavailable` row naming
+in a figure, unique labels (each names its own job, interval or metric id, so
+equal values stay distinct), every row's series declared, category rows inside
+`domain`, at least one row per figure (an empty figure carries one `unavailable` row naming
 its prerequisite), and `coverage.observed` equal to the rows with a value.
 
 ## The headline figures
@@ -105,7 +109,7 @@ day is named in `gaps`.
 | `00b` | Main merges | `ci_bench` `merged` over native full days only: a `PST-fixed-UTC-08:00` 24-hour window. Other windows are excluded and counted in `gaps`. `factory_metrics`' all-base UTC days are never substituted; they stay a separately labelled body figure |
 | `00c` | CI latency | `ci_bench` `queued-to-done-median` and `-p90` per native day, each with its run count. The basis in its label is part of the series: `workflow created to last job completed` is current; any other basis (the older `first job created` cohort) is its own `older` series. No line joins two bases or a missing day |
 | `00d` | Runner time | `ci_bench` `robot-minutes` per successful code run, with its run count (the denominator) in every label |
-| `00e` | Credit burn | `credits` sampled drops: one span per native credit interval, drawn over its actual start and end, never split at midnight. A span is assigned to the PST day of its end; one that crosses a PST midnight says so. Time between spans is a `missing` gap row. Sampled balance drops are approximate, not billing |
+| `00e` | Credit burn | `credits` sampled drops: one span per native credit interval, drawn over its actual start and end, never split at midnight. A span is assigned to the PST day of its end; one that crosses a PST midnight says so. Each span keeps its basis, recovered exactly from its interval id: `full-balance`, the legacy `extra-only` seed (extra credits only; overall change unknown) or `unknown`, each its own series. Coverage counts PST days with a span ending; the span count is stated in `gaps`. A day with none is a `missing` row. Sampled balance drops are approximate, not billing |
 
 **Repeated observations.** A value repeated across five-minute samples (the
 same slot, metric id, native window and source SHA-256; credit spans by their
@@ -121,8 +125,9 @@ From the latest sample, without new statistics:
 
 - `body-readiness`: every provider (the 17 v1 slots) and the three health slots,
   one cell each, by state. Prerequisites are in the labels.
-- `body-main-ci`: the current main result with its head, run and attempt, or
-  Unknown (a v1 sample is unobserved).
+- `body-main-ci`: the current main result, drawn as its word (`success`,
+  `failure`, `pending`, `cancelled`, `unknown`), with its head, run and attempt
+  in the label, or Unknown (a v1 sample is unobserved).
 - `body-ci-queue-count` (bars) and `body-ci-queue-wait` (limits): counts and
   queued waits per exact pool. No source owns a queue limit: each pool has an
   `Unknown` limit row.
