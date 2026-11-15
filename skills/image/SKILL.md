@@ -174,14 +174,14 @@ as well as colour so the chart remains understandable without colour.
 
 ## Verify
 
-Run the public CLI fixture proofs and the repository's static skills check:
+Run the public CLI fixture proofs below, then the consumer project's own
+static skills check, if its settings name one:
 
 The screenshot proofs prefer an installed `browser-harness` and use the test-only CI bridge only when no installed harness exists.
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/image/tests -v
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/image/references -p 'test_*.py' -v
-cargo test -p openwiz-tests --test checks skills
 ```
 
 The fixture proves responsive screenshot capture and failure handling, not live

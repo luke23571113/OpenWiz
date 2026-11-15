@@ -445,7 +445,9 @@ class Starts(unittest.TestCase):
             'excess_minutes': 1.0, 'excluded': {'gated': 1, 'stale': 1, 'unknown': 1}})
         self.assertEqual(report['builder_start']['measured_ended'], 1)
         self.assertEqual(report['authority'], 'none')
-        self.assertIn('provenance', report)
+        self.assertEqual(report['provenance']['initial_review_handoffs'], 10)
+        self.assertEqual(report['provenance']['green_to_dispatch_pr_hours'], 2.5)
+        self.assertIn('synthetic', report['provenance']['source'])
         with self.assertRaises(ValueError):
             self.api.report(dict(bench, authority='start'))
         # R5: an open miss has no dispatch time yet: it stays in the denominators only.

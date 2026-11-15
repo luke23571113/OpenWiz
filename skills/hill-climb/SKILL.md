@@ -411,9 +411,11 @@ not invent measurements. Use labels/shapes as well as colour.
 
 ## Verify this skill
 
+Run the fixture proofs below, then the consumer project's own static skills
+check, if its settings name one.
+
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/hill-climb/tests -v
-cargo test -p openwiz-tests --test checks skills
 ```
 
 Fixtures prove pair planning, fitting, council scoring, seating and stopping,
