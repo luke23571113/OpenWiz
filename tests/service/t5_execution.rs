@@ -124,7 +124,35 @@ else:sys.exit(2)
                 ["repo", "view", ..] => {
                     json!({"defaultBranchRef":{"name":"main"},"nameWithOwner":"synthetic-owner/synthetic-repo","url":"https://github.invalid/synthetic-owner/synthetic-repo"})
                 }
-                ["api", path, ..] if path.contains("/comments?") => json!(*cs),
+                // #718: the comment read projects each author; these
+                // synthetic records are the factory App's unless a row names
+                // its own (#732).
+                ["api", path, ..] if path.contains("/comments?") => json!(
+                    cs.iter()
+                        .map(|c| {
+                            let mut c = c.clone();
+                            if c.get("author").is_none() {
+                                c["author"] = json!("openwiz[bot]");
+                            }
+                            c
+                        })
+                        .collect::<Vec<_>>()
+                ),
+                // #732: the Record authors setting, read as the tick reads it.
+                ["api", path, ..] if path.contains("/git/ref/heads/main") => {
+                    json!({"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+                }
+                ["api", path, ..] if path.contains("/contents/docs/agents/fleet.md?") => {
+                    let row = if root.join("no-record-authors").exists() {
+                        ""
+                    } else {
+                        "| Record authors | `openwiz[bot]`, `syn-owner` |\n"
+                    };
+                    return Ok(format!(
+                        "## GitHub identity\n| Setting | Value |\n| --- | --- |\n{row}"
+                    )
+                    .into_bytes());
+                }
                 ["issue", "comment", "901", "--body", body] => {
                     let id = 7000 + cs.len() as u64;
                     if !drop_record.load(Ordering::SeqCst) {

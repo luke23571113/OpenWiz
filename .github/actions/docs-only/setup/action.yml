@@ -4,6 +4,9 @@ inputs:
   cache:
     default: cargo-rust
     description: The existing PC/GitHub cargo cache partition
+  fallback:
+    default: ''
+    description: A partition GitHub's cache restores from when this one has no entry yet (#742)
   cargo:
     default: 'false'
     description: Whether this lane uses Cargo
@@ -101,6 +104,7 @@ runs:
         restore-keys: |
           ${{ inputs.cache }}-${{ runner.os }}-${{ inputs.rust-version }}-${{ hashFiles('Cargo.lock') }}-
           ${{ inputs.cache }}-${{ runner.os }}-${{ inputs.rust-version }}-
+          ${{ inputs.fallback && format('{0}-{1}-{2}-{3}-', inputs.fallback, runner.os, inputs.rust-version, hashFiles('Cargo.lock')) || '' }}
     - name: Restore the GitHub npm cache
       if: inputs.npm == 'true' && (inputs.hosted == 'true' || steps.service.outputs.service == 'jog')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

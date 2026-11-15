@@ -36,6 +36,9 @@ RECORDS = HERE.parents[2] / "launch-fleet" / "SKILL.md"
 TOOLS = ["mkdir", "jq", "mktemp", "rm", "cat", "cp", "head", "sed"]
 
 REPO = "example/widgets"
+# The default Record authors setting the fake serves (#717).
+FLEET = ("# Fleet settings\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n"
+         "| Record authors | `openwiz[bot]`, `robin` |\n\n## Standing merge rules\n")
 LEAD = "room/12-widget-store-ab12"   # the builder's branch for ticket #12
 OUTSIDE = "feature/widget-store"      # pull request #32's branch, outside room/12-
 
@@ -583,6 +586,46 @@ def edit_snapshot(change):
         return json.dumps(s)
     return run
 
+
+# #717 catches: --loop-comment excused any comment in a record's form, so a
+# helper, or anyone who can comment on a public ticket, could post a
+# launch-fleet record and have it pass as the loop's. Only the record
+# authors' records are excused; their logins match in any case.
+def add_comment_by(n, cid, body, user):
+    def run(w):
+        w["issues"][str(n)]["comments"].append(dict(comment(cid, body, "2026-11-01T11:00:00Z"), user=user))
+    return run
+
+
+# REST names the App `openwiz[bot]`: a bare `openwiz`, even typed Bot, is
+# never the App on this REST read (orchestrator ruling on #717).
+for user in ({"login": "synthetic-outsider"}, {"login": "openwiz"}, {"login": "openwiz", "type": "Bot"}, None, {}):
+    case(f"717: hit: --loop-comment on a record by {user}", 1, hits("comment 1204 on #12 is new"),
+         after=add_comment_by(12, 1204, "launch-fleet: archived", user), check=["--loop-comment", "1204"])
+case("717: hit: --loop-comment on an outsider's record edited into another record", 1,
+     hits("comment 1205 on #12 was edited"),
+     before=add_comment_by(12, 1205, "launch-fleet: archived", {"login": "synthetic-outsider"}),
+     after=edit_comment(12, 1205, "launch-fleet: told the user"), check=["--loop-comment", "1205"])
+for login in ("openwiz[bot]", "OpenWiz[bot]", "ROBIN"):
+    case(f"717: the factory's record by {login} is excused", 0, CLEAN_B.replace("comments 3", "comments 4"),
+         after=add_comment_by(12, 1204, "launch-fleet: archived", {"login": login}), check=["--loop-comment", "1204"],
+         logs=(["repo view", "issue 12", "refs room/12-", "comments 12"], ["refs room/12-", "comments 12", "fleet"]))
+ROW = "| Record authors | `openwiz[bot]`, `robin` |"
+for name, doc in (("no Record authors row", lambda f: f.replace(ROW, "")),
+                  ("an empty Record authors row", lambda f: f.replace(ROW, "| Record authors | |")),
+                  ("a malformed login", lambda f: f.replace(ROW, "| Record authors | `openwiz[bot]`, robin |")),
+                  ("two Record authors rows", lambda f: f.replace(ROW, ROW + "\n" + ROW)),
+                  ("a cell after the value", lambda f: f.replace(ROW, ROW + " extra |"))):
+    case(f"717: --loop-comment with {name}", 2, err="record authors",
+         before=lambda w, doc=doc: w.update(fleet=doc(FLEET)),
+         after=add_comment(12, 1204, "launch-fleet: archived"), check=["--loop-comment", "1204"])
+case("717: --loop-comment when the record authors can't be read", 2, err="record authors",
+     fault=("check", "fleet=fail"), after=add_comment(12, 1204, "launch-fleet: archived"),
+     check=["--loop-comment", "1204"])
+# A snapshot saved before #717 holds no authors: it must still check, with no
+# comment read as edited only because its author is now known.
+case("717: a snapshot without comment authors still checks", 0, CLEAN_B,
+     snapfile=edit_snapshot(lambda s: [v.pop("author", None) for v in s["comments"].values()]))
 
 case("file: missing", 2, err="no snapshot file", snapfile=lambda text: None)
 case("file: empty, as a failed snapshot leaves it", 2, err="is not a snapshot check-helpers.sh wrote",

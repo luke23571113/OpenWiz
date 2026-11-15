@@ -137,6 +137,11 @@ def now():
     return int(time.time())
 
 
+def today():
+    """The UTC publication day, YYYY-MM-DD."""
+    return datetime.datetime.fromtimestamp(now(), datetime.timezone.utc).date().isoformat()
+
+
 def env():
     value = git_env()
     value.update(GH_HOST='github.com', GH_PROMPT_DISABLED='1')
@@ -213,31 +218,105 @@ def section_hash(text, version):
     raise Refused(f'no section for {version}')
 
 
+def notes_input(data, version):
+    """The notes input: generated from changes/ (`versions`, `excluded`), or RL6's
+    curated changelog (`curated`: its tracked path, its approved `curated_sha256`,
+    the approved release notes' `notes_sha256`, and the `included` versions)."""
+    curated = {'curated', 'curated_sha256', 'notes_sha256', 'included'}
+    require(isinstance(data, dict) and set(data) in ({'versions', 'excluded'}, curated), 'invalid entry input')
+    if 'curated' in data:
+        require(isinstance(data['curated'], str) and re.fullmatch(r'changes/notes/[A-Za-z0-9][A-Za-z0-9._-]*\.md',
+                                                                 data['curated'])
+                and digest(data['curated_sha256']) and digest(data['notes_sha256'])
+                and isinstance(data['included'], list) and data['included'][:1] == [version],
+                'invalid entry input')
+    return data
+
+
+def made_notes(data, version, read, tags, sections):
+    """(release notes, the curated changelog or None) from the notes input; `read`
+    reads a tracked file at the source commit, `sections` generates from changes/.
+    A curated file and its cut notes must be exactly the approved bytes (RL6)."""
+    if 'curated' in data:
+        raw = read(data['curated'])
+        require(sha(raw) == data['curated_sha256'], 'entry: curated notes are not the approved bytes')
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            raise Refused('entry: curated notes are not UTF-8') from None
+        _, released = entry.curated(text, data['included'], tags)
+        require(sha(released.encode('utf-8')) == data['notes_sha256'],
+                'entry: release notes cut from the curated file are not the approved bytes')
+        return released, raw
+    versions = entry.entries(data['versions'], version)
+    return '\n'.join(sections(versions, entry.exclusions(data['excluded']))), None
+
+
+def expected_changelog(published, notes_text, curated, tags):
+    """CHANGELOG.md at the candidate: published history plus these notes, or the
+    curated changelog byte for byte, which must itself keep every published entry."""
+    if curated is None:
+        return entry.compose(published, notes_text, restate=not tags)
+    if tags:
+        newest = max(tags)
+        text = curated.decode('utf-8')
+        cut = next((m.start() for m in re.finditer(r'^## ' + VERSION.pattern + ' ', text, re.M)
+                    if number('.'.join(m.groups()[:3])) <= newest), len(text))
+        new = text[text.index('\n## ') + 1:cut].rstrip('\n') + '\n'
+        require(HEADING.match(new) is not None and entry.prepend(published, new, HEADING.findall(new)[-1][0]) == curated,
+                'entry: the curated changelog must keep the published changelog unchanged')
+    return curated
+
+
+def history(read, tags):
+    """The published changelog CHANGELOG.md builds on: the newest tag's, or with
+    nothing published yet, the fixed public anchor's unpublished history (RL6)."""
+    try:
+        return read(f'refs/tags/{tags[max(tags)]}^{{commit}}' if tags else ANCHOR)
+    except Refused:
+        return b''
+
+
 def notes(args):
-    """Proposed notes from changes/ at the clone's HEAD, J6 caps and recorded exclusions."""
+    """Proposed notes from changes/ at the clone's HEAD, J6 caps and recorded
+    exclusions, or from RL6's curated file there."""
     repo = Path(args.repo).resolve(strict=True)
     require(same_name(repository(repo), PUBLIC), 'notes come from the public repository')
-    data = strict(Path(args.entry).read_bytes())
-    require(isinstance(data, dict) and set(data) == {'versions', 'excluded'}, 'invalid entry input')
-    versions = entry.entries(data['versions'], args.version)
-    excluded = entry.exclusions(data['excluded'])
+    data = notes_input(strict(Path(args.entry).read_bytes()), args.version)
     head = local_git(repo, 'rev-parse', 'HEAD').decode().strip()
     check = argparse.Namespace(args=argparse.Namespace(repo=repo))
-    sections, sources = entry.sections(check, head, versions, excluded)
-    text = '\n'.join(sections)
-    published = latest_changelog(repo)
-    changelog = entry.prepend(published, text, versions[-1]['version'])
+    sources = {}
+
+    def generated(versions, excluded):
+        made, found = entry.sections(check, head, versions, excluded)
+        sources.update(found)
+        return made
+
+    tags = remote_tags(repo)
+    text, curated = made_notes(data, args.version, lambda path: local_git(repo, 'show', f'{head}:{path}'),
+                               set(tags.values()), generated)
+    published = latest_changelog(repo) if tags else history(lambda ref: local_git(repo, 'show', ref + ':CHANGELOG.md'),
+                                                            tags)
+    changelog = expected_changelog(published, text, curated, tags)
     out = Path(args.out)
     require(not out.exists() and out.parent.is_dir(), 'output directory must be new')
     out.mkdir(mode=0o700)
     (out / 'notes.md').write_bytes(text.encode('utf-8'))
     (out / 'CHANGELOG.md').write_bytes(changelog)
-    (out / 'sources.json').write_text(json.dumps({'commit': head, 'versions': sources,
-                                                  'excluded': data['excluded']}, indent=1) + '\n')
-    return {'status': 'proposed', 'commit': head, 'notes_sha256': sha(text.encode('utf-8')),
-            'notes_bytes': len(text.encode('utf-8')),
-            'sections': [{'version': v['version'], 'section_sha256': section_hash(text, v['version']),
-                          'entries': len(sources[v['version']])} for v in versions]}
+    versions = [h[0] for h in HEADING.findall(text)]
+    result = {'status': 'proposed', 'commit': head, 'notes_sha256': sha(text.encode('utf-8')),
+              'notes_bytes': len(text.encode('utf-8')), 'changelog_sha256': sha(changelog),
+              'sections': [{'version': v, 'section_sha256': section_hash(text, v)} for v in versions]}
+    if curated is None:
+        (out / 'sources.json').write_text(json.dumps({'commit': head, 'versions': sources,
+                                                      'excluded': data['excluded']}, indent=1) + '\n')
+        for row in result['sections']:
+            row['entries'] = len(sources[row['version']])
+    else:
+        (out / 'sources.json').write_text(json.dumps({'commit': head, 'curated': data['curated'],
+                                                      'curated_sha256': sha(curated)}, indent=1) + '\n')
+        result['curated_sha256'] = sha(curated)
+    return result
 
 
 def latest_changelog(repo):
@@ -330,7 +409,7 @@ def check_versions(body, cwd, own=None):
         block('version_order')
 
 
-def check_notes(body, work, own=None):
+def check_notes(body, work, own=None, entry_input=None):
     notes_value = body['changelog']
     keys(notes_value, 'utf8 sha256 bytes', 'invalid_changelog')
     text = notes_value['utf8']
@@ -359,19 +438,23 @@ def check_notes(body, work, own=None):
     for item in body['included_versions']:
         if section_hash(text, item['version']) != item['section_sha256']:
             block('section_changed')
-    # The commit's CHANGELOG.md is the published history plus exactly these notes.
-    published = b''
+    # The commit's CHANGELOG.md is the published history plus exactly these notes,
+    # or plus the whole curated file they come from (RL6). With nothing published
+    # yet, that history is the fixed anchor's, and the new text may restate it.
     tags = remote_tags(work, own)
     if tags:
         tag = tags[max(tags)]
         remote_git(work, 'fetch', '-q', '--no-tags', remote_url(PUBLIC), f'refs/tags/{tag}:refs/tags/{tag}')
-        try:
-            published = remote_git(work, 'show', f'refs/tags/{tag}^{{commit}}:CHANGELOG.md')
-        except Refused:
-            published = b''
+    commit = body['source']['commit']
     try:
-        expected = entry.prepend(published, text, wanted[-1])
-        actual = remote_git(work, 'show', body['source']['commit'] + ':CHANGELOG.md')
+        published = history(lambda ref: remote_git(work, 'show', ref + ':CHANGELOG.md'), tags)
+        curated = None
+        if isinstance(entry_input, dict) and 'curated' in entry_input:
+            _, curated = made_notes(notes_input(entry_input, body['release_version']), body['release_version'],
+                                    lambda path: remote_git(work, 'show', f'{commit}:{path}'), set(tags.values()),
+                                    None)
+        expected = expected_changelog(published, text, curated, tags)
+        actual = remote_git(work, 'show', commit + ':CHANGELOG.md')
     except Refused:
         block('changelog_history')
     if actual != expected:
@@ -516,7 +599,7 @@ def prepare(args):
     with tempfile.TemporaryDirectory(prefix='release-candidate-') as scratch:
         work = check_source(repo, body, scratch)
         check_versions(body, scratch)
-        check_notes(body, work)
+        check_notes(body, work, entry_input=inputs['entry'])
         problems = risk_reasons(body, inputs['classification'], work)
         if problems:
             block(*problems)
@@ -812,6 +895,16 @@ def required_check(gate, commit):
     if not trusted or any(not isinstance(r.get('app'), dict) or r['app'].get('slug') != 'github-actions'
                           for r in runs):
         return ['untrusted'], None
+
+    def skipped(workflow):
+        # #18: a run whose own check of this name was only skipped (a main push's
+        # main-light run) is not evidence; the merge-queue run at that commit is.
+        own = [r for r in runs if isinstance(r.get('check_suite'), dict)
+               and r['check_suite'].get('id') == workflow.get('check_suite_id')]
+        return bool(own) and all(r.get('status') == 'completed' and r.get('conclusion') == 'skipped' for r in own)
+    trusted = [w for w in trusted if not skipped(w)]
+    if not trusted:
+        return ['missing'], None
     latest = max(trusted, key=lambda w: (str(w.get('created_at')), w.get('run_attempt') or 0))
     own = [r for r in runs if isinstance(r.get('check_suite'), dict)
            and r['check_suite'].get('id') == latest.get('check_suite_id')]
@@ -908,13 +1001,15 @@ def cutover_reasons():
 
 
 def claims_reasons(body, entry_input, work):
-    """D4: the approved notes are exactly what changes/ at the candidate commit generates."""
+    """D4: the approved notes are exactly what changes/ at the candidate commit
+    generates, or exactly the included sections of its curated file (RL6)."""
+    commit = body['source']['commit']
+    check = argparse.Namespace(args=argparse.Namespace(repo=work))
     try:
-        require(isinstance(entry_input, dict) and set(entry_input) == {'versions', 'excluded'}, 'invalid entry input')
-        versions = entry.entries(entry_input['versions'], body['release_version'])
-        check = argparse.Namespace(args=argparse.Namespace(repo=work))
-        made = '\n'.join(entry.sections(check, body['source']['commit'], versions,
-                                        entry.exclusions(entry_input['excluded']))[0])
+        data = notes_input(entry_input, body['release_version'])
+        made, _ = made_notes(data, body['release_version'], lambda path: remote_git(work, 'show', f'{commit}:{path}'),
+                             set(remote_tags(work).values()),
+                             lambda versions, excluded: entry.sections(check, commit, versions, excluded)[0])
     except (Refused, ValueError, KeyError, TypeError):
         return ['unverified'], None
     if made != body['changelog']['utf8']:
@@ -1090,7 +1185,7 @@ def reasons_for(record, state, repo, own=None, artifacts=None, literals=None, ma
         try:
             work = check_source(repo, body, scratch)
             check_versions(body, scratch, own)
-            check_notes(body, work, own)
+            check_notes(body, work, own, state.read('entry.json') if state.exists('entry.json') else None)
         except Blocked as error:
             reasons += error.reasons
         for kind, target in (('ship', record['candidate_sha256']), ('changelog', body['changelog']['sha256'])):
@@ -1237,6 +1332,13 @@ def ready(body, artifacts, scratch, tag, own=None):
     return data
 
 
+def date_reasons(body):
+    """Every section's date is the publication day, checked before each still-unattempted
+    publication write (the tag push, and release creation after it): refuse, never edit."""
+    dates = [m[5] for m in re.finditer('^' + HEADING.pattern + '$', body['changelog']['utf8'], re.M)]
+    return ['changelog_date'] if any(d != today() for d in dates) else []
+
+
 def publish(args):
     repo = Path(args.repo).resolve(strict=True)
     state = State(args.state)
@@ -1254,7 +1356,8 @@ def publish(args):
                 raise Blocked(['publication_incomplete'], status='incomplete')
         else:
             if attempt is None:
-                reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts), literals=args.literals)
+                reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts),
+                                      literals=args.literals) + date_reasons(body)
                 if reasons:
                     raise Blocked(reasons)
                 ready(body, args.artifacts, scratch, tag)
@@ -1282,7 +1385,8 @@ def publish(args):
                 # The release write is unattempted: re-check every decision, gate and
                 # setting now, excluding only this attempt's own verified tag.
                 own = (tag, attempt['tag_object'], body['source']['commit'])
-                reasons = reasons_for(record, state, repo, own, Path(args.artifacts), args.literals)
+                reasons = (reasons_for(record, state, repo, own, Path(args.artifacts), args.literals)
+                           + date_reasons(body))
                 if reasons:
                     raise Blocked(reasons)
                 data = ready(body, args.artifacts, scratch, tag, own)

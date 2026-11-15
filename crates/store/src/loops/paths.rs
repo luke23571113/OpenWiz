@@ -11,30 +11,48 @@ pub fn inspect(root: &Path) -> Result<(), String> {
     bounded(|| inspect_once(root).map(|_| ()))
 }
 
+/// [`inspect`], keeping why it refused (#753): `Changed` when a safe atomic
+/// save was still in view as the retry budget ran out (a descheduled reader
+/// can spend the budget on one pause), `Refused` for a settled unsafe state.
+/// Neither is a pass: a caller may only wait and inspect again.
+pub(crate) fn inspect_settled(root: &Path) -> Result<(), Failure> {
+    retried(|| inspect_once(root).map(|_| ()))
+}
+
 // Retry only a regular unlinked observation or a checked/opened mismatch.
 // Each attempt starts at the root; no safety verdict crosses an attempt.
 const ATTEMPTS: usize = 8;
 const RETRY_TIME: Duration = Duration::from_millis(100);
 
-enum Failure {
+pub(crate) enum Failure {
     Refused(String),
     Changed(String),
+}
+impl Failure {
+    fn reason(self) -> String {
+        match self {
+            Self::Refused(reason) | Self::Changed(reason) => reason,
+        }
+    }
 }
 impl From<String> for Failure {
     fn from(reason: String) -> Self {
         Self::Refused(reason)
     }
 }
-fn bounded<T>(mut inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, String> {
+fn bounded<T>(inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, String> {
+    retried(inspect).map_err(Failure::reason)
+}
+fn retried<T>(mut inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, Failure> {
     let started = Instant::now();
     let mut reason = "private state inspection: retry time limit reached".to_owned();
     for attempt in 0..ATTEMPTS {
         if attempt > 0 && started.elapsed() >= RETRY_TIME {
-            return Err(reason);
+            return Err(Failure::Changed(reason));
         }
         match inspect() {
             Ok(value) => return Ok(value),
-            Err(Failure::Refused(reason)) => return Err(reason),
+            Err(Failure::Refused(reason)) => return Err(Failure::Refused(reason)),
             Err(Failure::Changed(changed)) => {
                 reason = changed;
                 // Let the replacing writer leave rename before validating
@@ -50,7 +68,7 @@ fn bounded<T>(mut inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, Stri
             }
         }
     }
-    Err(reason)
+    Err(Failure::Changed(reason))
 }
 
 /// Read optional service state through the descriptor bound to its checked

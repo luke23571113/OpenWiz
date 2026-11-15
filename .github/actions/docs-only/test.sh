@@ -375,17 +375,17 @@ LT3_CHECKOUT
 fixture_action="$(awk '/^        name: The reviewed live-check fixture source$/ { print previous } { previous = $0 }' "$WORKFLOW")"
 if [ "$fixture_checkout" = "$want_fixture" ] &&
    [ "$fixture_action" = '      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' ] &&
-   [ "$(printf '%s\n' "$all_checkouts" | grep -c '^job ')" = 16 ]; then
+   [ "$(printf '%s\n' "$all_checkouts" | grep -c '^job ')" = 17 ]; then
   ok "ci.yml: LT3 fixture checkout is the one pinned nightly-only sparse exception, with credentials removed"
 else
-  bad "ci.yml: LT3 fixture checkout must be one exact pinned rust-only exception; all sixteen checkouts required"
+  bad "ci.yml: LT3 fixture checkout must be one exact pinned rust-only exception; all seventeen checkouts required"
 fi
-for job in changes always web-build rust rust-export web web-export site release skills launch-fleet toolkit-nightly select-map ci web-test; do
+for job in changes always web-build rust rust-export web web-export site release skills launch-fleet toolkit-nightly select-map ci web-test main-light; do
   steps="$(printf '%s\n' "$checkouts" | grep -cxF "job $job")"
   with="$(printf '%s\n' "$checkouts" | awk -v j="job $job" '/^job / { on = ($0 == j); next } on')"
   if [ "$steps" = 1 ] && [ "$with" = "$want_with" ]; then ok "ci.yml: $job checks out blobless and sparse, private/ only as ci-reads.txt lists"; else bad "ci.yml: $job has $steps checkout steps, with [$(printf '%s\n' "$with" | sed 's/^ *//' | tr '\n' ';')]"; fi
 done
-if [ "$(printf '%s\n' "$checkouts" | grep -c '^job ')" = 15 ]; then ok "ci.yml: fifteen main checkout steps (X5, launch-fleet's shards and toolkit-nightly)"; else bad "ci.yml: $(printf '%s\n' "$checkouts" | grep -c '^job ') checkout steps"; fi
+if [ "$(printf '%s\n' "$checkouts" | grep -c '^job ')" = 16 ]; then ok "ci.yml: sixteen main checkout steps (X5, launch-fleet's shards, toolkit-nightly and main-light)"; else bad "ci.yml: $(printf '%s\n' "$checkouts" | grep -c '^job ') checkout steps"; fi
 # The patterns as CI uses them: web-build's (the check above holds all three
 # to the same list). Keep this tied to the actual workflow: pending X5's
 # update must remain a failing checkout proof, never a substituted pattern.

@@ -43,8 +43,18 @@ fn check(meta: &fs::Metadata, directory: bool, uid: u32) -> Result<(), Error> {
     }
     Ok(())
 }
+/// #753: the service's own atomic save, still in view when the private-state
+/// inspection's retry budget ran out, is Busy like a held lock: the caller
+/// waits within its deadline and inspects again. A settled unsafe state stays
+/// Unavailable. Neither reads the store.
+fn inspect(root: &Path) -> Result<(), Error> {
+    crate::loops::inspect_settled(root).map_err(|failure| match failure {
+        crate::loops::InspectFailure::Changed(_) => Error::Busy,
+        crate::loops::InspectFailure::Refused(_) => Error::Unavailable,
+    })
+}
 fn boundary(root: &Path) -> Result<(PathBuf, u32), Error> {
-    crate::loops::inspect_state(root).map_err(unavailable)?;
+    inspect(root)?;
     let uid = fs::symlink_metadata(root).map_err(unavailable)?.uid();
     let dir = root.join("service/notifications");
     let meta = fs::symlink_metadata(&dir).map_err(unavailable)?;
@@ -82,7 +92,7 @@ fn acquire(file: &File, read_only: bool) -> Result<(), Error> {
     })
 }
 pub(super) fn initialize(root: &Path) -> Result<(), Error> {
-    crate::loops::inspect_state(root).map_err(unavailable)?;
+    inspect(root)?;
     let dir = root.join("service/notifications");
     match DirBuilder::new().mode(0o700).create(&dir) {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {

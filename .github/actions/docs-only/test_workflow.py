@@ -71,7 +71,8 @@ class Workflow(unittest.TestCase):
     def test_independent_jobs_wait_for_export_only_when_needed(self):
         blocks=jobs()
         self.assertEqual(set(blocks),{'changes','always','web-build','rust','rust-export','web','web-export',
-                                      'site','release','skills','launch-fleet','select-map','ci','web-test','toolkit-nightly'})
+                                      'site','release','skills','launch-fleet','select-map','ci','web-test','toolkit-nightly',
+                                      'main-light'})
         for name in ('always','web-build','rust','web','site','release','skills','launch-fleet'):
             self.assertRegex(blocks[name],r'^    needs: changes\n')
         for name in ('rust-export','web-export'):
@@ -129,11 +130,12 @@ class Workflow(unittest.TestCase):
             self.assertIn('name: ci-selection-${{ github.run_attempt }}',blocks[name])
         self.assertNotIn('uses: ./.github/actions/docs-only\n',workflow)
 
+    # Which events run ci (always on pull requests, merge groups and nightly,
+    # never on a main push) is ci.test.mjs's job-graph simulation (#744).
     def test_final_ci_waits_for_all_jobs_and_always_runs(self):
         block=jobs()['ci']
-        self.assertIn('if: ${{ always() }}',block)
         deps=re.search(r'^    needs: \[(.*)\]$',block,re.M)[1].split(', ')
-        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','toolkit-nightly'})
+        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','toolkit-nightly','main-light'})
         self.assertIn('NEEDS: ${{ toJSON(needs) }}',block)
 
     def test_actual_ci_script_refuses_failure_cancellation_and_missing_lane(self):
@@ -189,7 +191,7 @@ class Security(unittest.TestCase):
                         self.assertEqual(actual,'ubuntu-24.04' if head=='fork/repo' else expected)
 
     def test_runner_choices_keep_small_jobs_independent_and_forks_hosted(self):
-        small={'changes','select-map','ci','web-test'}
+        small={'changes','select-map','ci','web-test','main-light'}
         rust={'always','rust','rust-export','toolkit-nightly'}
         web={'web-build','web','web-export','site','release','skills','launch-fleet'}
         blocks=jobs()
@@ -252,7 +254,7 @@ class Security(unittest.TestCase):
                 self.assertIn('run: sh ci/hosted/guard.sh',steps[1])
                 self.assertIn('HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}',steps[1])
                 self.assertNotIn('        if:',steps[1])
-                if name not in ('changes','ci','select-map','web-test','toolkit-nightly'):
+                if name not in ('changes','ci','select-map','web-test','toolkit-nightly','main-light'):
                     prepare=[s for s in steps if 'uses: ./.github/actions/docs-only/setup\n' in s]
                     self.assertEqual(len(prepare),1,name)
                     self.assertIn('hosted: ${{ steps.guard.outputs.hosted }}',prepare[0])
@@ -293,6 +295,21 @@ class Security(unittest.TestCase):
                         else:self.assertIn("if: steps.guard.outputs.save == 'true'",step)
                     if re.search(r'^        run: sh ci/runner/cache.sh save ',step,re.M):
                         self.assertIn("if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')",step)
+
+    def test_rust_export_saves_and_restores_a_cargo_cache_no_other_job_saves(self):
+        # #742: always saved cargo-rust first, so rust-export's save of the same
+        # key failed ("Unable to reserve cache") and its release build stayed cold.
+        savers={}
+        for name,block in jobs().items():
+            for partition in (re.findall(r'^          key: (cargo-[a-z-]+)-\$\{\{ runner\.os \}\}',block,re.M)
+                              +re.findall(r'^        run: sh ci/runner/cache\.sh save (cargo-[a-z-]+) ',block,re.M)):
+                savers.setdefault(partition,set()).add(name)
+        own={p for p,names in savers.items() if 'rust-export' in names}
+        self.assertEqual(len(own),1,own)
+        partition=own.pop()
+        self.assertEqual(savers[partition],{'rust-export'})
+        prepare=jobs()['rust-export'].split('uses: ./.github/actions/docs-only/setup\n',1)[1].split('      - ',1)[0]
+        self.assertEqual(re.findall(r'^          cache: (\S+)$',prepare,re.M),[partition])
 
     def test_release_pass_does_not_depend_on_absent_cargo_cache_inputs(self):
         block=jobs()['release']

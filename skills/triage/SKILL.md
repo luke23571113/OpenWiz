@@ -51,7 +51,7 @@ Every issue you sort ends with exactly one **category** label and one **state** 
 
 ## Find the triage work
 
-Run `find-work.sh`, beside this file, from the project's root (in this repository, `sh skills/triage/find-work.sh`). It reads every open issue, 100 at a time, and each one's newest comment, and takes the label names from `docs/agents/triage-labels.md`. It lists the triage work oldest first, one line per issue, `#<number> <what>: <title>`:
+Run `find-work.sh`, beside this file, from the project's root (in this repository, `sh skills/triage/find-work.sh`). It reads every open issue, 100 at a time, and each one's newest comment, takes the label names from `docs/agents/triage-labels.md`, and reads the `Record authors` row of `docs/agents/fleet.md` from the default branch, so only the factory's markers and approvals quiet an issue. It lists the triage work oldest first, one line per issue, `#<number> <what>: <title>`:
 
 | `<what>` | The issue |
 | --- | --- |

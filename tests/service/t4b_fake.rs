@@ -100,13 +100,13 @@ fn response(root: &std::path::Path, tool: &str, args: &[&str]) -> Option<Value> 
         ["api", path, ..] => {
             let path = path.strip_prefix("repos/{owner}/{repo}/")?;
             if path.starts_with("git/ref/heads/") { return Some(json!({"sha":base})); }
-            if path.starts_with("contents/docs/agents/fleet.md") { return Some(json!(fs::read_to_string(root.join("rules.md")).unwrap())); }
+            if path.starts_with("contents/docs/agents/fleet.md") { return Some(json!(fs::read_to_string(root.join("rules.md")).unwrap() + RECORD_AUTHORS)); }
             if path.starts_with("issues/comments?") {
                 let mut rows = comments.clone();
                 for row in rows.as_array_mut().unwrap() { row["issue_url"] = json!("https://github.invalid/api/v3/repos/synthetic-owner/synthetic-repo/issues/10"); }
-                return Some(rows);
+                return Some(factory_authored(rows));
             }
-            if path.starts_with("issues/10/comments?") { return Some(comments); }
+            if path.starts_with("issues/10/comments?") { return Some(factory_authored(comments)); }
             if path.starts_with("actions/runs?") { return Some(json!({"total_count":1,"runs":[{"id":110,"head_sha":HEAD,"event":"pull_request","run_attempt":1,"updated":1_700_000_000_000_u64,"prs":[{"number":110,"head":HEAD,"base":base}]}]})); }
             if path.starts_with("actions/runs/110/jobs?") { return Some(json!({"total_count":1,"jobs":[{"id":1100,"name":"rust","status":"completed","conclusion":"success","head_sha":HEAD,"run_id":110}]})); }
             None
@@ -169,7 +169,9 @@ fn completion_response(root: &std::path::Path, tool: &str, args: &[&str]) -> Opt
                 return Some(json!({"sha":"a".repeat(40)}));
             }
             if path.starts_with("contents/docs/agents/fleet.md") {
-                return Some(json!(fs::read_to_string(root.join("rules.md")).unwrap()));
+                return Some(json!(
+                    fs::read_to_string(root.join("rules.md")).unwrap() + RECORD_AUTHORS
+                ));
             }
             if path.starts_with("issues/comments?") {
                 let mut comments = data["comments"].clone();
@@ -178,10 +180,10 @@ fn completion_response(root: &std::path::Path, tool: &str, args: &[&str]) -> Opt
                         "https://github.invalid/api/v3/repos/synthetic-owner/synthetic-repo/issues/9"
                     );
                 }
-                return Some(comments);
+                return Some(factory_authored(comments));
             }
             if path.starts_with("issues/9/comments?") {
-                return Some(data["comments"].clone());
+                return Some(factory_authored(data["comments"].clone()));
             }
             if path.contains("/comments?") || path.contains("/timeline?") {
                 return Some(json!([]));
@@ -212,3 +214,20 @@ fn completion_response(root: &std::path::Path, tool: &str, args: &[&str]) -> Opt
         _ => None,
     }
 }
+
+/// #718: the comment reads project each comment's author; these synthetic
+/// comments are all the factory's App's, and the rules name it.
+fn factory_authored(mut v: Value) -> Value {
+    match &mut v {
+        Value::Array(rows) => rows
+            .iter_mut()
+            .for_each(|r| *r = factory_authored(r.take())),
+        Value::Object(row) if row.contains_key("body") && !row.contains_key("author") => {
+            row.insert("author".into(), "openwiz[bot]".into());
+        }
+        _ => {}
+    }
+    v
+}
+const RECORD_AUTHORS: &str =
+    "## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]` |\n";

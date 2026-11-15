@@ -22,7 +22,9 @@
 #     --own-comment (your own, any number of times) or --loop-comment (a loop
 #     record you read and expected: allowed only when it is one of the forms
 #     launch-fleet's records table lists for a ticket or a pull request, and,
-#     if edited, was one before);
+#     if edited, was one before, and only when one of the record authors
+#     wrote it (#717: the Record authors row of docs/agents/fleet.md on the
+#     default branch, read as launch-fleet reads it);
 #   - a review or a review comment new, edited or deleted;
 #   - PULL merged, closed or reopened.
 # Every agent posts from the same GitHub account, so nothing else can tell a
@@ -132,10 +134,12 @@ def refs($prefix): map(
      and (.object | type) == "object" and .object.type == "commit" and (.object.sha | commit)
   then {key: (.ref | ltrimstr("refs/heads/")), value: .object.sha}
   else error("a branch that is not under \($prefix), or not a commit") end) | no_repeats("a branch");
-# Comments and review comments on $on: {"<kind> <id> on #<on>": {at, body}}.
+# Comments and review comments on $on: {"<kind> <id> on #<on>": {at, author,
+# body}}, the author its login, or null when GitHub names none (#717).
 def comments($kind; $on): map(
   if type == "object" and (.id | num) and (.body | type) == "string" and (.updated_at | type) == "string"
-  then {key: "\($kind) \(.id) on #\($on)", value: {at: .updated_at, body}}
+  then {key: "\($kind) \(.id) on #\($on)", value: {at: .updated_at,
+    author: (.user | if type == "object" and (.login | type) == "string" then .login else null end), body}}
   else error("a \($kind) without its id, body or time") end) | no_repeats("a \($kind)");
 # Reviews on $on: {"review <id> on #<on>": {state, at, body}}.
 def reviews($on): map(
@@ -247,7 +251,11 @@ VALIDATE='
          and ($k.kind == "comment" or $on == $s.pull.number)
          and (.value | type) == "object"
          and (if $k.kind == "review" then (.value | keys) == ["at", "body", "state"] and (.value.state | type) == "string"
-              else (.value | keys) == ["at", "body"] and (.value.at | type) == "string" end)
+              # A snapshot saved before #717 holds no author: it trusts no one.
+              else ((.value | keys) == ["at", "body"]
+                    or ((.value | keys) == ["at", "author", "body"]
+                        and (.value.author == null or (.value.author | type) == "string")))
+                   and (.value.at | type) == "string" end)
          and (.value.body | type) == "string" and ((.value.at | type) == "string" or .value.at == null))
     then . else error("a comment the snapshot should not hold") end
 '
@@ -295,7 +303,27 @@ fi
 # A missing or changed table shape must never grant a loop exemption.
 RECORD_FORMS='[]'
 PRIVATE=false
+AUTHORS='[]'
 if [ -n "$LOOP_IDS" ]; then
+  # #717: a loop record counts only when the factory wrote it. Its identity
+  # is the one "| Record authors | <cell> |" row of fleet.md's "## GitHub
+  # identity" table, read as launch-fleet reads it (picked in jq, as this
+  # script runs no awk): the whole cell backticked logins separated by
+  # commas. No row, an empty one, any malformed or extra entry, or anything
+  # after the value cell stops the check, never keeping only the logins that
+  # did parse.
+  gh api -H 'Accept: application/vnd.github.raw+json' "repos/$REPO/contents/docs/agents/fleet.md" \
+    > "$TMP/fleet.md" 2> /dev/null || die "can't read the record authors from docs/agents/fleet.md"
+  AUTHORS=$(jq -cRse 'split("\n")
+    | reduce .[] as $line ({on: false, rows: []};
+        if $line | startswith("## ") then .on = ($line == "## GitHub identity")
+        elif .on and ($line | test("^[|] *Record authors *[|]")) then .rows += [$line] else . end)
+    | .rows | select(length == 1) | .[0]
+    | split("|") | select(length == 4 and (.[3] | test("^\\s*$"))) | .[2]
+    | "`[A-Za-z0-9](-?[A-Za-z0-9])*(\\[bot\\])?`" as $login
+    | select(test("^\\s*" + $login + "(\\s*,\\s*" + $login + ")*\\s*$"))
+    | [scan("`([^`]*)`") | .[0] | ascii_downcase]' "$TMP/fleet.md" 2> /dev/null) \
+    || die "docs/agents/fleet.md names no record authors (its \"## GitHub identity\" table's \"Record authors\" row)"
   PRIVATE=$(gh repo view "$REPO" --json isPrivate --jq .isPrivate 2>/dev/null) || PRIVATE=false
   [ "$PRIVATE" = true ] || PRIVATE=false
   case $0 in
@@ -336,13 +364,17 @@ fi
 
 jq -r -n --slurpfile b "$TMP/before.json" --slurpfile a "$TMP/now.json" \
   --arg own_branch "$OWN_BRANCH" --arg own_commit "$OWN_COMMIT" --argjson own_comments "$OWN_COMMENTS" \
-  --argjson private "$PRIVATE" --argjson loop_comments "$LOOP_COMMENTS" --argjson record_forms "$RECORD_FORMS" '
+  --argjson private "$PRIVATE" --argjson loop_comments "$LOOP_COMMENTS" --argjson record_forms "$RECORD_FORMS" \
+  --argjson authors "$AUTHORS" '
   $b[0] as $before | $a[0] as $after | $before.ticket as $n
   # A record launch-fleet writes on a ticket or a pull request, in one of the
   # forms its records table lists (skills/launch-fleet/SKILL.md).
   # Fixed records must end their line. Forms with arguments keep the space
   # or hash mark immediately before the placeholder in the Records table.
-  | def record: type == "object" and (.body as $body | (($private or ($body | test("\\bthr_[A-Za-z0-9][A-Za-z0-9_-]*") | not)) and any($record_forms[];
+  # #717: and only one a record author wrote; no author is no one.
+  | def authored: (.author | if type == "string" then ascii_downcase else null end) as $l
+      | $l != null and any($authors[]; . == $l);
+    def record: type == "object" and authored and (.body as $body | (($private or ($body | test("\\bthr_[A-Za-z0-9][A-Za-z0-9_-]*") | not)) and any($record_forms[];
       ("launch-fleet: " + .) as $prefix
       | ($body | startswith($prefix))
         and ((. | endswith(" ")) or (. | endswith("#"))
@@ -360,7 +392,9 @@ jq -r -n --slurpfile b "$TMP/before.json" --slurpfile a "$TMP/now.json" \
       else "pull request #\($p.number) changed: \($o) to \($p)" end ]
   + [ (($before.comments + $after.comments) | keys[]) as $key
     | $before.comments[$key] as $old | $after.comments[$key] as $new
-    | select($old != $new)
+    # A change is in the text or the time; an author is only learnt (#717).
+    | select(($old | if type == "object" then del(.author) else . end)
+             != ($new | if type == "object" then del(.author) else . end))
     | (if $key | startswith("comment ") then $key | split(" ")[1] | tonumber else null end) as $id
     | select(($id != null and ($own_comments | index([$id]) != null)) | not)
     | select(($id != null and ($loop_comments | index([$id]) != null)

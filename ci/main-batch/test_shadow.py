@@ -418,7 +418,8 @@ class Shadow(unittest.TestCase):
         end = workflow.index('\n  # Transition bridge:', start)
         block = workflow[start:end]
         ci = workflow[workflow.index('\n  ci:\n'):start]
-        self.assertIn('    if: ${{ always() }}\n', ci, 'required result always runs')
+        # #744: never on a main push (main-light); every other event always.
+        self.assertIn("    if: ${{ always() && github.event_name != 'push' }}\n", ci, 'required result always runs')
         self.assertIn('    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills, launch-fleet]\n',
                       ci, 'required result dependencies')
         finish = '          python3 -I .github/actions/docs-only/run.py finish "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts"'

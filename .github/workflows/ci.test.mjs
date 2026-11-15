@@ -182,3 +182,76 @@ test('frozen.yml runs the base\'s frozen old code check on GitHub-hosted runners
     }
   }
 });
+
+// #744: which jobs run for each event, simulated over the committed job graph
+// with GitHub's documented job rules: a job runs only when its needs finished
+// and its `if:` holds, and an `if:` without a status function implies
+// success(), which a skipped need fails. A full plan's outputs feed the lanes.
+// catches: a condition that drops a required check (or the full suite) from
+// pull_request or merge_group, where a skipped required check passes silently,
+// and a main push that still runs the full suite the queue already ran.
+function jobGraph(source) {
+  const body = source.slice(source.indexOf('\njobs:\n') + 7);
+  return new Map([...body.matchAll(/^  ([a-z][a-z0-9-]*):\n((?:    .*\n|\n)*)/gm)].map(([, name, block]) => {
+    const needs = block.match(/^    needs: (?:\[(.*)\]|(.*))$/m);
+    const condition = block.match(/^    if: (.+)$/m)?.[1].replace(/^\$\{\{ (.*) \}\}$/, '$1');
+    return [name, { needs: needs ? (needs[1] ?? needs[2]).split(', ') : [], condition }];
+  }));
+}
+
+function simulate(source, event_name, outputs = {}) {
+  const graph = jobGraph(source);
+  const results = {};
+  const github = { event_name, ref: 'refs/heads/main', event: { merge_group: { base_ref: 'refs/heads/main' } } };
+  const settle = (name) => {
+    if (name in results) return results[name];
+    const job = graph.get(name);
+    assert.ok(job, `job ${name} exists`);
+    const needs = Object.fromEntries(job.needs.map((n) => [n, { result: settle(n), outputs: outputs[n] ?? {} }]));
+    const done = Object.values(needs).map((n) => n.result);
+    const success = () => done.every((r) => r === 'success');
+    const condition = job.condition ?? 'success()';
+    const status = /\b(?:always|success|failure|cancelled)\(\)/.test(condition);
+    // GitHub reads hyphenated names with a dot; JavaScript needs brackets.
+    const code = (status ? condition : `success() && (${condition})`).replace(/\.([a-z]+(?:-[a-z]+)+)/g, "['$1']");
+    const runs = runInNewContext(code, {
+      github, needs, always: () => true, cancelled: () => false, success,
+      // GitHub's contains(): a case-insensitive substring test on strings.
+      contains: (a, b) => String(a).toLowerCase().includes(String(b).toLowerCase()),
+      failure: () => done.includes('failure'),
+    }, { timeout: 100 });
+    return (results[name] = runs ? 'success' : 'skipped');
+  };
+  for (const name of graph.keys()) settle(name);
+  return Object.keys(results).filter((name) => results[name] === 'success').sort();
+}
+
+// A full plan (every reason forces one on these events): every lane, both exports.
+const FULL_PLAN = { changes: { rust: 'true', toolkit: 'true', web: 'true', site: 'true',
+  'site-in-release': 'false', release: 'true', skills: '["image","launch-fleet"]', 'skill-jobs': '["image"]', 'build-web': 'true',
+  'export-rust': 'true', 'export-web': 'true', trace: 'false', planted: 'false' } };
+// #743: launch-fleet's sharded job is in it, and like release never runs on a main push.
+const FULL_SUITE = ['always', 'changes', 'ci', 'launch-fleet', 'release', 'rust-export', 'site', 'skills', 'web-build', 'web-export', 'web-test'];
+
+test('pull requests and merge groups run the full suite and every required check; a main push runs only the light check', () => {
+  for (const event of ['pull_request', 'merge_group']) {
+    assert.deepEqual(simulate(workflow, event, FULL_PLAN), FULL_SUITE, event);
+  }
+  assert.deepEqual(simulate(workflow, 'schedule', FULL_PLAN), [...FULL_SUITE, 'toolkit-nightly'].sort(), 'nightly');
+  assert.deepEqual(simulate(workflow, 'push', FULL_PLAN), ['main-light'], 'main push');
+  // The light check is format (privacy runs in privacy.yml on every main push).
+  const light = workflow.match(/^  main-light:\n((?:    .*\n|\n)*)/m)?.[1] ?? '';
+  assert.match(light, /^          cargo fmt --check$/m);
+  const privacy = readFileSync(new URL('./privacy.yml', import.meta.url), 'utf8');
+  for (const event of ['pull_request', 'merge_group', 'push']) {
+    assert.deepEqual(simulate(privacy, event), ['privacy'], `privacy on ${event}`);
+    assert.match(privacy.match(/^on:\n((?:  .*\n|\n)*)/m)?.[1] ?? '', new RegExp(`^  ${event}:`, 'm'));
+  }
+  // The simulator itself: a required check gated to pull requests only is
+  // dropped from merge groups, and one gated off pushes stays on both.
+  const ci = /^  ci:\n    needs: (.*)\n    if: .*$/m;
+  const dropped = workflow.replace(ci, "  ci:\n    needs: $1\n    if: ${{ always() && github.event_name == 'pull_request' }}");
+  assert.ok(!simulate(dropped, 'merge_group', FULL_PLAN).includes('ci'));
+  const kept = workflow.replace(ci, "  ci:\n    needs: $1\n    if: ${{ always() && github.event_name != 'push' }}");
+  assert.ok(simulate(kept, 'merge_group', FULL_PLAN).includes('ci'));
+});

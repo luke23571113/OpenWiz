@@ -36,7 +36,8 @@ RELEASE = ['release:test', 'release:package', 'release:install', 'release:pull',
            'release:ci2-batch-contract', 'release:ci2-batch-shadow',
            'release:ci2-main-batch-admit',
            'release:ci2-overload',
-           'release:product-identity']
+           'release:product-identity',
+           'release:setup-onboard-contract']
 # O16-P-RETIRED (#2429): the retiring CI overflow switch's check is registered
 # only in a tree that carries its command target (ClosedWiz). The public tree
 # leaves tools/ci-overflow/ out, so the literal above stays its exact set. This

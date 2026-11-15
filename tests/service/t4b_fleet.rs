@@ -182,7 +182,9 @@ pub(super) fn response(root: &Path, tool: &str, args: &[&str]) -> Option<Value> 
                 return Some(json!({"sha":"a".repeat(40)}));
             }
             if path.starts_with("contents/docs/agents/fleet.md") {
-                return Some(json!(fs::read_to_string(root.join("rules.md")).unwrap()));
+                return Some(json!(
+                    fs::read_to_string(root.join("rules.md")).unwrap() + RECORD_AUTHORS
+                ));
             }
             if path.starts_with("issues/comments?") {
                 let mut comments = Vec::new();
@@ -195,12 +197,14 @@ pub(super) fn response(root: &Path, tool: &str, args: &[&str]) -> Option<Value> 
                         comments.push(row);
                     }
                 }
-                return Some(json!(comments));
+                return Some(factory_authored(json!(comments)));
             }
             if let Some(rest) = path.strip_prefix("issues/") {
                 let (number, kind) = rest.split_once('/')?;
                 if kind.starts_with("comments?") {
-                    return Some(value["comments"].get(number).cloned().unwrap_or(json!([])));
+                    return Some(factory_authored(
+                        value["comments"].get(number).cloned().unwrap_or(json!([])),
+                    ));
                 }
                 if kind.starts_with("timeline?") {
                     return Some(json!([]));
@@ -573,3 +577,20 @@ fn scheduled_empty_unapproved_or_idle_work_starts_nothing_across_wakes() {
         assert_eq!(posts(&f).len(), 0);
     }
 }
+
+/// #718: the comment reads project each comment's author; these synthetic
+/// comments are all the factory's App's, and the rules name it.
+fn factory_authored(mut v: Value) -> Value {
+    match &mut v {
+        Value::Array(rows) => rows
+            .iter_mut()
+            .for_each(|r| *r = factory_authored(r.take())),
+        Value::Object(row) if row.contains_key("body") && !row.contains_key("author") => {
+            row.insert("author".into(), "openwiz[bot]".into());
+        }
+        _ => {}
+    }
+    v
+}
+const RECORD_AUTHORS: &str =
+    "## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]` |\n";

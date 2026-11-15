@@ -140,6 +140,48 @@ alone (HL1, generic). A source without a version milestone
 refuses unless its exact path and bytes are listed as a recorded exclusion
 that is still unversioned. The output is a proposal, not an approval.
 
+**Moved numbers (RL6, #739).** [`moved.json`](moved.json) lists every
+changelog line moved from ClosedWiz by its old ClosedWiz number, with its
+moved bytes' SHA-256 and the OpenWiz ticket that carries it (the ticket whose
+body says `was ClosedWiz #N`), or `null` when that ticket did not move.
+`changes/closedwiz-<N>.md` (#735) is always old ClosedWiz N; a plain
+`changes/<N>.md` is old ClosedWiz N while N is in the map and no prefixed
+rename exists, and otherwise OpenWiz ticket N. A moved line takes its
+milestone from its OpenWiz ticket, which must still say `was ClosedWiz #N`; it
+never takes the milestone of the unrelated OpenWiz ticket N. A prefixed number
+missing from the map refuses, and so does a moved line whose ticket did not
+move, unless it is a recorded exclusion. A plain `changes/<N>.md` whose bytes
+differ from the moved line's refuses: rename the moved line first, or record
+its new bytes in the map. Files under `changes/notes/` are not changelog lines.
+
+**History (RL6).** With no published tag yet, `CHANGELOG.md` builds on the
+fixed public anchor's `CHANGELOG.md` (its preamble and the 0.0.0-0.0.5
+entries), so nothing older is dropped; once a tag exists, it builds on that
+tag's changelog, whose entries never change.
+
+**Curated notes (RL6, J77, VS9).** In place of the generated sentences,
+`entry.json` can be `{"curated": "changes/notes/<name>.md", "curated_sha256",
+"notes_sha256", "included": [<released versions, newest first>]}`. The curated
+file is the whole changelog: the commit's `CHANGELOG.md` must equal it byte for
+byte, and with a published tag it must be that tag's changelog plus newer
+sections only. The release notes are its leading `included` sections, cut
+before the next version heading, trailing newlines stripped, then one LF.
+`curated_sha256` must be the file's approved bytes and `notes_sha256` the cut
+notes' approved bytes; any other byte refuses. The changelog decision binds
+`notes_sha256` (the contract's `changelog.sha256`). The command checks
+structure, never wording: `# Changelog` and at most one plain paragraph, then
+sections newest first, each `## <version> · <date>`, a bold headline,
+`**What's new for you**` with 2 to 4 lines (none carrying a fixture caveat), one
+footer line with the honest caveat, `**Under the hood**` with 1 to 5 lines, and
+optionally one closing link line. Links are inline only and go only to
+`https://github.com/openwizdev/OpenWiz`, and a release link names only this
+release's tag or a published one. Published sections are not re-checked. At
+publication every section date of the notes must be the UTC publication day:
+otherwise `publish` refuses `changelog_date` before each still-unattempted write
+(the tag push, and release creation when resuming after it) and never edits
+the approved dates. D4 (`claims`) then holds when the notes are exactly that
+cut at the candidate commit.
+
 **Prepare** seals the agent-assembled candidate body. It refuses a non-public
 repository or origin, an anchor other than the fixed public anchor, a commit
 that is not on the public remote's own `main`, a tree mismatch, versions out
@@ -176,7 +218,9 @@ its own reads at every gated effect; no caller receipt or comment counts for the
 
 - **D1, `ci` and `privacy`:** GitHub Actions check runs at the exact public commit,
   belonging to the latest run of the trusted workflow file (`.github/workflows/ci.yml`,
-  `.github/workflows/privacy.yml`) at that commit, all `success`.
+  `.github/workflows/privacy.yml`) at that commit, all `success`. A run whose own
+  check of that name was only skipped (a main push's `main-light` run) is not
+  evidence and is ignored; with no other run, the gate is missing.
 - **D2, artifact privacy:** every archive is staged through the installer's own checks,
   then the existing O3 checker scans the staged runtime and web files with the
   operator's private `--literals` file. Any finding refuses.
@@ -187,7 +231,7 @@ its own reads at every gated effect; no caller receipt or comment counts for the
   no bypass actors, and together they require `ci` and `privacy`. Any other condition
   or pattern form refuses.
 - **D4, `claims`:** the notes are byte-for-byte what `entry.json` generates from
-  `changes/` at the candidate commit.
+  `changes/` at the candidate commit, or its approved curated file's cut (RL6).
 - **D5, kit authority:** `kit.authority` is an unedited, unrevoked
   `Private record: Jake, YYYY-MM-DD` comment with one
   `Release kit authority: scope <scope_sha256>` line naming the kit's exact scope.
@@ -325,7 +369,8 @@ headline and bullets. The independent export reviewer still checks meaning and
 whether roadmap prose describes plans rather than shipped capabilities.
 
 The checker reads tracked `changes/<ticket>.md` at the clean release head and
-looks up each ticket's milestone through read-only `gh api` calls. Missing or
+looks up each ticket's milestone through read-only `gh api` calls; a moved
+line is looked up through its OpenWiz ticket in `moved.json` (RL6). Missing or
 non-version milestones, pull requests, malformed selected files and unknown
 input shapes fail. Different-version lines are excluded. Selected lines follow
 `changes/README.md`, ordered by numeric ticket number; no sentence is rewritten.

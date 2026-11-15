@@ -582,7 +582,8 @@ fn scratch(name: &str) -> PathBuf {
 
 /// A fake `gh` that answers only `gh api graphql` reads, from the pages in
 /// `$FAKE_GH_DIR`: `<issues|prs>-<cursor or first>.json`, and an exit status
-/// in `.code` beside it. It logs every call, any other call exits 91, and
+/// in `.code` beside it; and the one raw read of `docs/agents/fleet.md`
+/// (#717), from `fleet.md` and `fleet.code`. It logs every call, any other call exits 91, and
 /// it answers no more than 50 calls (exit 92), so a looping reader stops.
 /// Shell builtins only, so the checker's `PATH` holds nothing else.
 const FAKE_GH: &str = r#"#!/bin/sh
@@ -590,6 +591,14 @@ printf '%s\n' "$*" >> "$FAKE_GH_DIR/calls"
 calls=0
 while IFS= read -r line; do calls=$((calls + 1)); done < "$FAKE_GH_DIR/calls"
 [ "$calls" -le 50 ] || exit 92
+if [ "$#" -eq 4 ] && [ "$1" = api ] && [ "$2" = -H ] && [ "$3" = 'Accept: application/vnd.github.raw+json' ] \
+  && [ "$4" = 'repos/{owner}/{repo}/contents/docs/agents/fleet.md' ]; then
+  page="$FAKE_GH_DIR/fleet"
+  while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done < "$page.md"
+  code=0
+  [ ! -f "$page.code" ] || read -r code < "$page.code"
+  exit "$code"
+fi
 [ "$1 $2" = "api graphql" ] || exit 91
 shift 2
 kind='' after=first
@@ -1182,6 +1191,10 @@ fn gh_issues(total: u64, next: Option<&str>, nodes: Vec<Value>) -> Value {
             "nodes": nodes}}}}})
 }
 
+/// The factory's identity: the Record authors row launch-fleet reads (#717).
+const FLEET: &str = "# Fleet settings\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n\
+    | Record authors | `openwiz[bot]`, `synthetic-owner` |\n\n## Standing merge rules\n";
+
 /// Spec #9000's sub-issues on two pages, and its open pull requests.
 fn gh_pages(dir: &Path) {
     let pages = dir.join("gh");
@@ -1215,6 +1228,7 @@ fn gh_pages(dir: &Path) {
     let prs = json!({"data": {"repository": {"pullRequests": {"totalCount": 2,
         "pageInfo": {"hasNextPage": false, "endCursor": null},
         "nodes": [{"number": 9102, "title": "#9002: Synthetic"}, {"number": 9103, "title": "#90021 Synthetic"}]}}}});
+    fs::write(pages.join("fleet.md"), FLEET).expect("fleet settings");
     for (name, value) in [
         ("issues-first", first),
         ("issues-Y3Vyc29yOjI=", second),
@@ -1254,10 +1268,15 @@ fn plan_links_checker_reads_a_spec_through_gh() {
     let calls = gh_calls(&dir);
     assert_eq!(
         calls.len(),
-        3,
-        "two pages of tickets, one of pull requests: {calls:?}"
+        4,
+        "the record authors, two pages of tickets, one of pull requests: {calls:?}"
     );
-    for call in &calls {
+    assert_eq!(
+        calls[0],
+        "api -H Accept: application/vnd.github.raw+json repos/{owner}/{repo}/contents/docs/agents/fleet.md"
+    );
+    let calls = &calls[1..];
+    for call in calls {
         assert!(call.starts_with("api graphql -f query=query"), "{call}");
         assert!(call.contains(" -F owner={owner} -F name={repo}"), "{call}");
     }
@@ -1318,6 +1337,22 @@ fn issues_at(v: &mut Value) -> &mut Value {
 #[test]
 fn plan_links_checker_refuses_a_failed_or_partial_gh_read() {
     let bad: Vec<BadPage> = vec![
+        // #717: no record authors, no read: never trust everyone.
+        ("the record authors fail", |d| gh_fails(d, "fleet")),
+        ("no Record authors row", |d| {
+            fs::write(
+                d.join("gh/fleet.md"),
+                FLEET.replace("| Record authors", "| Record writers"),
+            )
+            .expect("fleet settings")
+        }),
+        ("a malformed Record authors row", |d| {
+            fs::write(
+                d.join("gh/fleet.md"),
+                FLEET.replace("`synthetic-owner`", "synthetic-owner"),
+            )
+            .expect("fleet settings")
+        }),
         ("the first page fails", |d| gh_fails(d, "issues-first")),
         ("the second page fails", |d| {
             gh_fails(d, "issues-Y3Vyc29yOjI=")
@@ -1413,7 +1448,7 @@ fn plan_links_checker_refuses_a_failed_or_partial_gh_read() {
         assert_refused_read(&run, "a repeated cursor");
         let calls = gh_calls(&dir);
         assert!(
-            calls.len() <= 3,
+            calls.len() <= 4,
             "a repeated cursor: stops reading: {} calls",
             calls.len()
         );

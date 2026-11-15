@@ -240,6 +240,41 @@ profile. It reads no CloudRoom source and no OpenWiz state.
 - **Catalogue:** `help --agent` lists it as `github.token` (plain text,
   `json: false`; sources `/usr/bin/openssl` and `/usr/bin/curl`).
 
+## Init (0.0.16, T5)
+
+Pinned by [setup-onboard.v1](setup-onboard.v1.md#init) for T5 #635; **not
+shipped**. Until T5 merges, `init` is absent from `help --agent`'s catalogue
+and from human help, and this section grants no command, effect or authority.
+
+```text
+openwiz init [--repository <owner/name>] [--state-dir DIR] [--json]
+openwiz init --yes --operation ID [--repository <owner/name>] [--state-dir DIR] [--json]
+openwiz init --help [--json]
+```
+
+- **Runtime.** Like `engine`, a thin wrapper over the matching package's
+  `runtime/setup/init.py` through absolute `/usr/bin/python3 -I`, with no
+  source checkout, `PATH` fallback, fixture environment or production override.
+  `--help` reads neither source nor state. Options occur once with separate
+  values; unknown, duplicate or non-UTF-8 arguments are refused. No stdin.
+- **Forms.** Without `--yes` it reads and persists one `prepare_project`
+  proposal (setup.v1's durable operation id and fingerprint) and prints its
+  disclosed effects; it changes nothing on GitHub. `--yes --operation ID`
+  applies only that exact current proposal. The repository defaults to the
+  saved project's; there is no placement option or question. JSON output is one
+  setup-onboard.v1 `init_result` or the existing CLI error document.
+- **Effects** (catalogue words once shipped): `source_read` (GitHub's
+  repository identity and visibility, existing companions, links and pull
+  requests), `state_read`, `state_write`, and only with `--yes`, the disclosed
+  GitHub writes of setup-onboard.v1: create the private companion, link it,
+  open the brain's pull request, create the factory label.
+- **Exits**, with the fixed values above: 0 proposal printed or applied; 1
+  read, context or output failure; 2 usage; 5 refused (visibility unknown or
+  ambiguous, denied or conflicting companion, unauthorized apply); 6 uncertain,
+  held for reconciliation against the exact provider resource before any other
+  call; 8 a stale or conflicting operation id; 10 unusable private state.
+  Existing CLI error schemas and numeric meanings remain unchanged.
+
 ## Terminal boundary
 
 [`terminal.v1.md`](terminal.v1.md) pins the future separate executable. JSON

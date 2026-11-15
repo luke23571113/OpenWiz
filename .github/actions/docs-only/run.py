@@ -45,6 +45,7 @@ COMMANDS = {
     'release:ops-live-acceptance': ['python3', '-I', 'tools/ops-live/test_acceptance.py'],
     'release:ci2-overload': ['python3', '-I', 'tools/ci-overload/test.py'],
     'release:product-identity': ['python3', '-I', 'tools/release/test_product_identity.py'],
+    'release:setup-onboard-contract': ['python3', '-I', 'tools/install/tests/setup-onboard-contract/test_contract.py'],
 }
 # This independent job cannot use the Rust job's target/.
 # Its installed-engine proof consumes both debug binaries.

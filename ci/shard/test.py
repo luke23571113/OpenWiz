@@ -481,10 +481,10 @@ class Workflow(Case):
                         f.unlink()
 
     def test_once_only_steps_run_on_the_first_member(self):
-        for name in ('rust', 'rust-export'):
+        for name, cache in (('rust', 'cargo-rust'), ('rust-export', 'cargo-rust-export')):
             block = jobs()[name]
-            for once in ('Build and lint Rust', "The shard balancer's tests", 'Save the cargo-rust cache',
-                         'Save the GitHub cargo-rust cache'):
+            for once in ('Build and lint Rust', "The shard balancer's tests", f'Save the {cache} cache',
+                         f'Save the GitHub {cache} cache'):
                 with self.subTest(job=name, step=once):
                     text, _ = step(block, once)
                     self.assertIsNotNone(re.search(r'^        if: .*&& strategy\.job-index == 0$|^        if: strategy\.job-index == 0$',

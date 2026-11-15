@@ -1,6 +1,8 @@
 #!/bin/sh
 # Validate the posted latest approval's table before labelling or handoff.
 # Read-only: gh issue/repo view and paginated gh api GETs in gh's current repo.
+# Only the record authors' approvals count (#717): the Record authors row of
+# docs/agents/fleet.md, read from the default branch as launch-fleet reads it.
 # Checks the public form and table, not authority, pointer provenance or
 # fingerprint currentness;
 # revision.sh and launch-fleet retain those checks unchanged.
@@ -47,6 +49,22 @@ private_records=$(jq -Rner '
 ' < "$work/tracker.md" 2>/dev/null) || fail 'invalid project private records setting'
 [ -n "$private_records" ] || fail 'invalid project private records setting'
 
+# #717: the factory's identity, read as launch-fleet reads it: the one
+# "| Record authors | <cell> |" row of fleet.md's "## GitHub identity" table,
+# its whole cell backticked logins separated by commas. No row, an empty one,
+# any malformed or extra entry, or anything after the value cell refuses the
+# whole row, never keeping only the logins that did parse.
+gh api -H 'Accept: application/vnd.github.raw+json' \
+  'repos/{owner}/{repo}/contents/docs/agents/fleet.md' > "$work/fleet.md" ||
+  fail 'cannot read the record authors from docs/agents/fleet.md'
+awk '/^## /{on = ($0 == "## GitHub identity")} on && /^[|] *Record authors *[|]/' "$work/fleet.md" > "$work/authors.txt" &&
+  jq -Rse 'split("\n") | map(select(length > 0)) | select(length == 1) | .[0]
+    | split("|") | select(length == 4 and (.[3] | test("^\\s*$"))) | .[2]
+    | "`[A-Za-z0-9](-?[A-Za-z0-9])*(\\[bot\\])?`" as $login
+    | select(test("^\\s*" + $login + "(\\s*,\\s*" + $login + ")*\\s*$"))
+    | [scan("`([^`]*)`") | .[0] | ascii_downcase]' "$work/authors.txt" > "$work/authors.json" 2> /dev/null ||
+  fail 'docs/agents/fleet.md names no record authors (its "## GitHub identity" table'"'"'s "Record authors" row)'
+
 gh issue view "$spec" --json subIssues > "$work/graph" || fail "cannot read spec #$spec's tickets"
 # gh may cap a connection. Never treat a partial graph as a complete row set.
 jq -es '
@@ -80,7 +98,9 @@ fi
 
 # Same latest-record rule as launch-fleet: first nonblank line starts with
 # **Plan graph approved by; greatest comment ID wins, never an older good one.
-jq -er --arg records "$private_records" --argjson private "$private" --slurpfile tickets "$work/tickets" --slurpfile labels "$work/labels.json" '
+# #717: only among the record authors' comments, as launch-fleet drops every
+# other comment, and one with no author, before any rule sees it.
+jq -er --arg records "$private_records" --argjson private "$private" --slurpfile tickets "$work/tickets" --slurpfile labels "$work/labels.json" --slurpfile authors "$work/authors.json" '
   def trim: sub("^\\s+"; "") | sub("\\s+$"; "");
   def public_form:
     . as $lines
@@ -118,7 +138,10 @@ jq -er --arg records "$private_records" --argjson private "$private" --slurpfile
       elif ($line.value | test("^\\s*\\|")) then .rows += [$line]
       else . end)
     | .rows;
-  [.[] | select((.body | split("\n") | map(select(test("\\S"))) | first // "" | sub("^\\s+"; ""))
+  [.[] | select((.user | if type == "object" then .login else null end
+                 | if type == "string" then ascii_downcase else null end) as $l
+                | $l != null and any($authors[0][]; . == $l))
+   | select((.body | split("\n") | map(select(test("\\S"))) | first // "" | sub("^\\s+"; ""))
                 | startswith("**Plan graph approved by"))] | max_by(.id)
   | if . == null then error("no posted plan graph approval") else .body end
   | split("\n") | map(rtrimstr("\r"))

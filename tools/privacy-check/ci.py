@@ -21,6 +21,32 @@ def unique_object(pairs):
     return result
 
 
+def resolves(ref):
+    try:
+        check.commit('.', ref)
+        return True
+    except check.Unreadable:
+        return False
+
+
+def pull_request_range(branch, base):
+    """#757: exactly the PR's commits. The event's base.sha can be older than
+    its base branch (main merged in since), which rescans main's public
+    history and times out. This job's checkout fetched every branch of this
+    repository, all of it already public, so the scan starts after the
+    merge-base with the base branch. Without that branch, after base.sha;
+    without either, from the public anchor: more, never less, never skipped."""
+    if isinstance(branch, str) and re.fullmatch(r'[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*', branch):
+        upstream = 'refs/remotes/origin/' + branch
+        if resolves(upstream):
+            return ['--upstream', upstream]
+    if resolves(base):
+        print('range: from the event base commit')
+        return ['--base', base]
+    print('range: no base branch or base commit, scanning from the public anchor')
+    return []
+
+
 def main():
     if os.environ.get('GITHUB_REPOSITORY', '').lower() == 'jparker2006/closedwiz':
         print('private repository: no public scan')
@@ -49,7 +75,9 @@ def main():
         if not isinstance(title, str) or not isinstance(body, str):
             raise ValueError()
         args = ['--repo', '.', '--git-tree', head, '--head', head]
-        if base.strip('0'):
+        if kind == 'pull_request':
+            args += pull_request_range(pr['base'].get('ref'), base)
+        elif base.strip('0'):
             args += ['--base', base]
         elif kind == 'push' and isinstance(event.get('ref'), str) and event['ref'] != 'refs/heads/main':
             # A new branch: this job's checkout fetched origin/main from the

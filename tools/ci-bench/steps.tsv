@@ -32,6 +32,8 @@ build	Run cargo fmt --check
 build	Run cargo clippy --workspace --all-targets -- -D warnings
 build	Run cargo build --workspace
 build	Run cargo build --release
+# #744: main-light's format check on a push to main. Exact name, no wildcard.
+build	Format
 # #429 (R1 on #957): main's web-build step. Exact name, no wildcard.
 build	Build the public static site
 rust	Run cargo test --workspace

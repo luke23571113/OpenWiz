@@ -79,8 +79,8 @@ impl Executor<'_> {
         // Read afresh: a prior tick may have completed a write after this
         // snapshot, including between a close's reason and the close itself.
         let current = self
-            .gh
-            .comments(id, self.deadline)
+            .world
+            .read_factory(self.gh, id, self.deadline)
             .map_err(|_| fail("comment records unread"))?;
         self.world.comments.insert(id, current.clone());
         let line = text.lines().next().ok_or_else(|| fail("empty record"))?;
@@ -102,8 +102,10 @@ impl Executor<'_> {
             .and_then(|s| records::n(s).ok())
             .ok_or_else(|| uncertain("comment identifier unread"))?;
         let now = crate::SystemClock.now().0.max(0) as u64;
+        // This tick's own record, confirmed written: the factory's, so kept.
         self.world.comments.entry(id).or_default().push(Comment {
             id: id_value,
+            author: None,
             body: text,
             created: now,
             updated: now,
@@ -152,8 +154,8 @@ impl Executor<'_> {
         }
         let result = (|| {
             let comments = self
-                .gh
-                .comments(ticket, self.deadline)
+                .world
+                .read_factory(self.gh, ticket, self.deadline)
                 .map_err(|_| fail("fallback records unread"))?;
             if records::fallback_due(&comments) {
                 return Err(refused("builder fallback already recorded"));

@@ -40,6 +40,13 @@ NOTES = ('## 0.0.99 · 2026-11-20\n\nFixture-tested: You can preview a synthetic
          'Fixture-tested: Synthetic export fixtures pass; live export remains unverified.\n\n'
          '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n')
 
+# RL6 (#739): a curated notes section in VS9's three parts (synthetic wording).
+CURATED = ("## 0.0.99 · 2026-11-20\n\n**Preview an export**\n\n**What's new for you**\n\n"
+           "- You can preview a synthetic export.\n- You can cancel a preview.\n\n"
+           "Tested on synthetic fixtures; a live export is still unverified.\n\n"
+           "**Under the hood**\n\n- The preview reads one synthetic file.\n\n"
+           "[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n")
+
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -90,6 +97,11 @@ def section_sha(text, version):
 # fixture's root commit (the real anchor cannot exist in a synthetic repository).
 LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate; '
           'candidate.ANCHOR = sys.argv.pop(1); '
+          # RL6: a test may give the moved-number map its own synthetic rows.
+          'import json; m = os.environ.get("MOVED"); '
+          'm and setattr(candidate.entry, "MOVED", candidate.entry.moved(json.loads(m))); '
+          # and fix the publication day the notes' dates must equal (RL6).
+          'candidate.today = (lambda: os.environ["TODAY"]) if "TODAY" in os.environ else candidate.today; '
           # A test may fix the tool's clock for one invocation, so interval assertions never race it.
           'candidate.now = (lambda: int(os.environ["AT"])) if "AT" in os.environ else candidate.now; '
           'sys.exit(candidate.main(sys.argv[1:]))')
@@ -196,7 +208,7 @@ class World(unittest.TestCase):
                         GIT_AUTHOR_EMAIL=NOREPLY, GIT_COMMITTER_EMAIL=NOREPLY,
                         PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
                         CALLS=str(self.root / 'calls.jsonl'), PUBLIC_FAKE=str(self.remote),
-                        GH_WORLD=str(self.world_path), RELEASES=str(self.releases))
+                        GH_WORLD=str(self.world_path), RELEASES=str(self.releases), TODAY='2026-11-20')
         self.now = int(time.time())
         self.world = {f'repos/{PUBLIC}': {'full_name': PUBLIC, 'visibility': 'public', 'archived': False,
                                           'default_branch': 'main'},
@@ -494,7 +506,8 @@ class World(unittest.TestCase):
         self.smoke_kit()
         self.artifacts()
         self.made = body or self.body()
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -685,7 +698,8 @@ class Candidate(World):
         # RN6: the public origin in other capitals is the same repository.
         self.git(self.repo, 'remote', 'set-url', 'origin', 'https://github.com/OpenWizDev/OPENWIZ.git')
         self.made = good
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -784,6 +798,26 @@ class Candidate(World):
         self.assertEqual(self.evaluate()[0], 0)
         self.assertEqual(self.writes(), [])
 
+    def test_a_run_whose_ci_job_was_skipped_is_not_evidence(self):
+        """#18: since main pushes run only main-light, the newest ci.yml run at a
+        main commit skips its `ci` job; the older merge-queue run is the evidence."""
+        self.ready()
+        path = f'repos/{PUBLIC}/commits/{self.head}/check-runs?per_page=100'
+        flows = f'repos/{PUBLIC}/actions/runs?head_sha={self.head}&per_page=100'
+        runs, workflows = self.world[path][0]['check_runs'], self.world[flows][0]['workflow_runs']
+        queued = dict(workflows[0], event='merge_group')
+        pushed = dict(workflows[0], id=604, event='push', check_suite_id=504, created_at='2026-11-20T01:00:00Z')
+        skipped = dict(runs[0], id=14, conclusion='skipped', check_suite={'id': 504})
+        self.world[path] = [{'check_runs': runs + [skipped]}]
+        self.world[flows] = [{'workflow_runs': [queued, pushed, workflows[1]]}]
+        self.save()
+        self.assertEqual(self.evaluate()[0], 0)
+        # Every run skipped its ci job: no run concluded ci, so nothing is evidence.
+        self.world[path] = [{'check_runs': [dict(runs[0], conclusion='skipped'), skipped, runs[1]]}]
+        self.save()
+        self.assertEqual(self.blocked(self.publish(), 'ci_missing')['reasons'], ['ci_missing'])
+        self.assertEqual(self.writes(), [])
+
     def test_r1_products_pass_only_through_rl4s_verifiers_of_the_staged_archives(self):
         self.ready()
         self.assertEqual(self.evaluate()[0], 0)
@@ -809,6 +843,39 @@ class Candidate(World):
         self.literals.unlink()
         self.assertEqual(self.blocked(self.publish(), 'privacy_literals_missing')['reasons'],
                          ['privacy_literals_missing'])
+        self.assertEqual(self.writes(), [])
+
+    def curate(self, curated, released=None):
+        """RL6: the candidate commit carries a curated notes file and its CHANGELOG.md."""
+        at = PUBLISHED.index('## ')
+        whole = PUBLISHED[:at] + curated + '\n' + PUBLISHED[at:]  # the curated changelog keeps 0.0.98
+        (self.repo / 'changes/notes').mkdir(exist_ok=True)
+        (self.repo / 'changes/notes/0.0.99.md').write_text(whole)
+        (self.repo / 'CHANGELOG.md').write_text(whole)
+        self.head = self.commit('Synthetic curated notes')
+        self.git(self.repo, 'push', '-q', self.remote, 'HEAD:main')
+        self.notes = curated if released is None else released
+        self.entry = {'curated': 'changes/notes/0.0.99.md', 'curated_sha256': sha(whole.encode()),
+                      'notes_sha256': sha(curated.encode()), 'included': [VERSION]}
+
+    def test_rl6_curated_notes_pass_every_gate_and_publish_exactly(self):
+        # catches: the command refusing the curated file as unverified claims,
+        # publishing anything but its included sections, or publishing on a day
+        # other than the one its approved dates name (it refuses; it never edits them).
+        self.curate(CURATED)
+        self.ready()
+        self.assertEqual(self.evaluate(), (0, {'status': 'ready', 'candidate_sha256': self.record()['candidate_sha256']}))
+        self.assertEqual(self.blocked(self.publish(TODAY='2026-11-21'), 'changelog_date')['reasons'], ['changelog_date'])
+        self.assertEqual(self.writes(), [])
+        self.assertEqual(self.publish()[1]['status'], 'published')
+        self.assertEqual(json.loads((self.releases / ('v' + VERSION) / 'meta.json').read_text())['notes'], CURATED)
+
+    def test_rl6_approved_notes_that_are_not_the_curated_sections_refuse(self):
+        # catches: approved bytes publishing although they differ from the curated
+        # file at the candidate commit (the approval and the file must be one text).
+        self.curate(CURATED, released=CURATED.replace('cancel a preview', 'cancel any preview'))
+        self.ready()
+        self.assertEqual(self.blocked(self.publish(), 'claims_mismatch')['reasons'], ['claims_mismatch'])
         self.assertEqual(self.writes(), [])
 
     def test_d4_notes_must_be_exactly_what_changes_generates_at_the_candidate(self):
@@ -949,7 +1016,8 @@ class Candidate(World):
         self.smoke_kit()
         self.artifacts()
         self.made = self.body()
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.blocked(self.publish(), 'smoke_missing', 'send_live_missing', 'new_live_missing')
@@ -961,7 +1029,8 @@ class Candidate(World):
         self.smoke_kit()
         self.artifacts()
         self.made = self.body()
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         pointer = f'https://github.com/{PRIVATE}/issues/9000#issuecomment-9301'
@@ -1153,6 +1222,20 @@ class Candidate(World):
         self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])  # never a second push
         self.assertEqual(self.record()['publication']['status'], 'complete')
 
+    def test_rl6_a_next_day_resume_after_a_lost_tag_push_refuses_before_creating_the_release(self):
+        # catches PR #746 R1: the publication-date guard ran only on a fresh attempt,
+        # so resuming the next day created the release with yesterday's dates.
+        self.curate(CURATED)
+        self.ready()
+        self.after_push('    sys.exit(42)')
+        self.assertEqual(self.publish(TODAY='2026-11-20')[0], 1)
+        self.assertEqual(self.writes(), ['tag', 'tag-push'])
+        self.assertEqual(self.blocked(self.publish(TODAY='2026-11-21'), 'changelog_date')['reasons'], ['changelog_date'])
+        self.assertEqual(self.writes(), ['tag', 'tag-push'])  # no release, and never a second push
+        code, out = self.publish(TODAY='2026-11-20')
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
+
     def test_r7_a_lost_release_response_settles_published_on_the_first_recovery(self):
         self.ready()
         # The reviewer's R7 probe: the release is created remotely, then its response is lost.
@@ -1253,7 +1336,8 @@ class Candidate(World):
         self.smoke_kit(coverage=coverage, version='0.0.12')
         self.artifacts(version='0.0.12')
         self.made = self.body(version='0.0.12', promises=[(v, [f'synthetic_{v}']) for v in versions])
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -1303,7 +1387,8 @@ class Candidate(World):
                 shutil.rmtree(self.root / 'artifacts')
                 self.artifacts()
         self.made = good
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -1464,6 +1549,221 @@ class Notes(World):
         (code, out), folder = self.generate(('0.0.13',), excluded=[unassigned])
         self.assertEqual(code, 0, out)
         self.assertNotIn('7001', (folder / 'notes.md').read_text())
+
+    def test_a_moved_closedwiz_line_is_never_assigned_by_the_colliding_openwiz_ticket(self):
+        # #735: changes/closedwiz-<N>.md is old ClosedWiz #N, renamed because the
+        # new OpenWiz #N owns changes/<N>.md. OpenWiz #N's milestone must never
+        # place the moved line; until its version is mapped it needs an exclusion.
+        # RL6: ClosedWiz #718's ticket did not move, so its line has no OpenWiz milestone.
+        self.env['MOVED'] = json.dumps({'schema': 'openwiz.moved-changes.v1', 'moved': [
+            {'closedwiz': 718, 'openwiz': None, 'sha256': 'a' * 64}]})
+        self.spec('0.0.13')
+        self.line(718, '0.0.13', 'Fixture-tested: The new ticket line.')
+        moved = self.repo / 'changes/closedwiz-718.md'
+        moved.write_text('kind: fixed\n\nFixture-tested: The moved line.\n')
+        (code, out), _ = self.generate(('0.0.13',))
+        self.assertEqual((code, out['reasons']), (1, [
+            'entry: changes/closedwiz-718.md: ClosedWiz #718 has no OpenWiz ticket: record it as an exclusion']))
+        (code, out), folder = self.generate(('0.0.13',), excluded=[
+            ('changes/closedwiz-718.md', sha(moved.read_bytes()))])
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        self.assertIn('- Fixture-tested: The new ticket line.\n', text)
+        self.assertNotIn('The moved line', text)
+        (code, out), _ = self.generate(('0.0.13',), excluded=[('changes/closedwiz-718.md', 'a' * 64)])
+        self.assertEqual((code, out['reasons']), (1, ['entry: excluded source changed: changes/closedwiz-718.md']))
+        moved.rename(self.repo / 'changes/closedwiz-0718.md')
+        (code, out), _ = self.generate(('0.0.13',))
+        self.assertEqual((code, out['reasons']), (1, ['entry: invalid changelog filename changes/closedwiz-0718.md']))
+
+    # ------------------------------------------------------------ RL6 (#739)
+    def untagged(self, base):
+        """Nothing published yet: the fixed anchor carries the unpublished history."""
+        shutil.rmtree(self.repo)
+        shutil.rmtree(self.remote)
+        self.repo.mkdir()
+        self.git(self.repo, 'init', '-q', '-b', 'main')
+        (self.repo / 'changes').mkdir()
+        (self.repo / 'changes/README.md').write_text('Synthetic contract.\n')
+        (self.repo / 'CHANGELOG.md').write_text(base)
+        self.anchor = self.commit('Synthetic public anchor')
+        self.git(self.root, 'clone', '-q', '--bare', self.repo, self.remote)
+        self.git(self.repo, 'remote', 'add', 'origin', PUBLIC_URL)
+
+    def curated(self, text, included, **hashes):
+        (self.repo / 'changes/notes').mkdir(exist_ok=True)
+        (self.repo / 'changes/notes/release.md').write_text(text)
+        self.commit('Synthetic curated notes')
+        cut = text[text.index('## '):]
+        later = [m.start() for m in re.finditer('^## ', cut, re.M)][len(included):]
+        cut = (cut[:later[0]] if later else cut).rstrip('\n') + '\n'
+        (self.root / 'entry.json').write_text(json.dumps(dict(
+            {'curated': 'changes/notes/release.md', 'curated_sha256': sha(text.encode()),
+             'notes_sha256': sha(cut.encode())}, **hashes, included=included)))
+        out = self.root / f'notes-{len(list(self.root.glob("notes-*")))}'
+        return self.cli('notes', included[0], '--repo', self.repo, '--entry', self.root / 'entry.json',
+                        '--out', out), out
+
+    def test_rl6_with_nothing_published_the_changelog_keeps_the_unpublished_history(self):
+        # catches B4: with no tag, CHANGELOG.md dropped the preamble and every
+        # 0.0.0-0.0.5 entry already on main. A curated file beside changes/ is ignored.
+        self.untagged(HISTORY)
+        (self.repo / 'changes/notes').mkdir()
+        (self.repo / 'changes/notes/release.md').write_text(section('0.0.13'))
+        self.spec('0.0.13')
+        self.line(6001, '0.0.13')
+        (code, out), folder = self.generate(('0.0.13',))
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        at = HISTORY.index('## ')
+        self.assertEqual((folder / 'CHANGELOG.md').read_text(), HISTORY[:at] + text + '\n' + HISTORY[at:])
+
+    def test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history(self):
+        # catches: the release notes not being exactly the included sections cut
+        # from the curated file, CHANGELOG.md not being that file byte for byte,
+        # or either one passing although it is not the approved bytes.
+        self.untagged(HISTORY)
+        text = PREAMBLE + section('0.0.14') + '\n' + section('0.0.13') + '\n' + section('0.0.5')
+        released = section('0.0.14') + '\n' + section('0.0.13')
+        (code, out), folder = self.curated(text, ['0.0.14', '0.0.13'])
+        self.assertEqual(code, 0, out)
+        self.assertEqual((folder / 'notes.md').read_text(), released)
+        self.assertEqual((folder / 'CHANGELOG.md').read_text(), text)
+        self.assertEqual((out['notes_sha256'], out['curated_sha256'], out['changelog_sha256']),
+                         (sha(released.encode()), sha(text.encode()), sha(text.encode())))
+        for name, hashes, reason in (
+                ('curated file', {'curated_sha256': 'a' * 64}, 'entry: curated notes are not the approved bytes'),
+                ('release notes', {'notes_sha256': 'b' * 64},
+                 'entry: release notes cut from the curated file are not the approved bytes')):
+            with self.subTest(case=name):
+                (code, out), _ = self.curated(text, ['0.0.14', '0.0.13'], **hashes)
+                self.assertEqual((code, out['reasons']), (1, [reason]))
+
+    def test_rl6_the_approved_changelog_passes_as_is(self):
+        # catches: a structure check that refuses the approved VS9 bytes, or a cut
+        # that is not the approved 0.0.6-0.0.12 release notes.
+        raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
+        self.assertEqual(sha(raw), '747c312709383a9fbf23844372319ac716e85cbd59fd8cf5bb408869e33e45c6')
+        self.assertEqual((ROOT / 'CHANGELOG.md').read_bytes(), raw)
+        self.untagged(raw.decode())
+        (self.repo / 'changes/notes').mkdir()
+        (self.repo / 'changes/notes/0.0.12.md').write_bytes(raw)
+        (code, out), folder = self.curated(raw.decode(), list(COMBINED))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['notes_sha256'], 'b1230111974137f22d5109559ab6e7bae5a859a96d286f13f69a0906ed7ae98b')
+        self.assertEqual(out['notes_bytes'], 6947)
+        self.assertEqual((folder / 'CHANGELOG.md').read_bytes(), raw)
+
+    def test_rl6_malformed_curated_notes_refuse_with_their_reason(self):
+        good = PREAMBLE + section('0.0.14') + '\n' + section('0.0.13')
+        for name, text, included, reason in (
+                ('missing part', good.replace("**Under the hood**\n\n- Synthetic 0.0.13 internals.\n", ''),
+                 ['0.0.14'], 'entry: 0.0.13 needs Under the hood here'),
+                ('wrong order', PREAMBLE + section('0.0.13') + '\n' + section('0.0.14'), ['0.0.13'],
+                 'entry: curated versions must be newest first, each once'),
+                ('included not leading', good, ['0.0.13'],
+                 'entry: curated notes must start with the included versions, in order'),
+                ('foreign link', good.replace('(https://github.com/openwizdev/OpenWiz/issues/1)',
+                                              '(https://github.com/jparker2006/ClosedWiz/issues/1)'), ['0.0.14'],
+                 'entry: curated link is not to openwizdev/OpenWiz: https://github.com/jparker2006/ClosedWiz/issues/1'),
+                ('bare foreign address', good.replace('Synthetic 0.0.13 internals.',
+                                                      'See github.com/jparker2006/ClosedWiz for internals.'), ['0.0.14'],
+                 'entry: curated link is not to openwizdev/OpenWiz: github.com/jparker2006/ClosedWiz'),
+                ('relative link', good.replace('(https://github.com/openwizdev/OpenWiz/issues/1)', '(docs/x.md)'),
+                 ['0.0.14'], 'entry: curated link is not to openwizdev/OpenWiz: docs/x.md'),
+                ('tag that will not exist', good.replace('Synthetic 0.0.13 internals.',
+                                                         '[0.0.13](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.13).'),
+                 ['0.0.14'], 'entry: curated link to a tag that will not exist: v0.0.13'),
+                ('per-line caveat', good.replace('- You can use 0.0.14 part one.',
+                                                 '- On synthetic fixtures, you can use 0.0.14 part one.'), ['0.0.14'],
+                 "entry: 0.0.14 What's new for you carries a fixture caveat: say it once in the footer"),
+                ('too many lines', good.replace('- You can use 0.0.14 part two.\n', '- You can use 0.0.14 part two.\n' * 4),
+                 ['0.0.14'], "entry: 0.0.14 What's new for you needs 2 to 4 lines"),
+                ('no footer', good.replace('Tested on synthetic 0.0.14 checks.\n\n', ''), ['0.0.14'],
+                 "entry: 0.0.14 needs one footer line after What's new for you"),
+                ('footer twice', good.replace('- Synthetic 0.0.14 internals.', '- Tested on nothing else.'), ['0.0.14'],
+                 'entry: 0.0.14 says how it was tested more than once'),
+                ('no headline', good.replace('**Use 0.0.13**\n\n', ''), ['0.0.14'],
+                 'entry: 0.0.13 needs its bold headline here'),
+                ('no preamble', good.removeprefix(PREAMBLE), ['0.0.14'],
+                 'entry: curated notes start with # Changelog and at most one plain paragraph'),
+                ('CRLF', good.replace('\n', '\r\n'), ['0.0.14'],
+                 'entry: curated notes are LF text ending in one newline')):
+            with self.subTest(case=name):
+                self.setUp()
+                self.untagged(HISTORY)
+                (code, out), _ = self.curated(text, included)
+                self.assertEqual((code, out['reasons']), (1, [reason]))
+
+    def test_rl6_moved_lines_take_their_version_from_the_ticket_they_moved_to(self):
+        # catches G6: a moved line placed by the unrelated OpenWiz ticket that shares
+        # its old ClosedWiz number, and an unmapped or overwritten moved line passing.
+        moved = b'kind: fixed\n\nFixture-tested: The moved line.\n'
+        self.env['MOVED'] = json.dumps({'schema': 'openwiz.moved-changes.v1', 'moved': [
+            {'closedwiz': 718, 'openwiz': 31, 'sha256': sha(moved)},
+            {'closedwiz': 2201, 'openwiz': None, 'sha256': sha(moved)}]})
+        self.spec('0.0.13')
+        self.spec('0.0.14')
+        self.world['repos/{owner}/{repo}/issues/31'] = {
+            'number': 31, 'body': 'Moved ticket, was [ClosedWiz #718](https://example.invalid/718).',
+            'pull': False, 'sub_issues': 0, 'milestone': {'number': self.milestones['0.0.13'], 'title': '0.0.13'}}
+        self.line(718, '0.0.14', 'Fixture-tested: The unrelated OpenWiz 718 line.')
+        (self.repo / 'changes/718.md').write_bytes(moved)
+        (code, out), folder = self.generate(('0.0.14', '0.0.13'))
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        self.assertIn('## 0.0.13 · 2026-11-20\n\nFixture-tested: Version 0.0.13 headline.\n\n'
+                      '- Fixture-tested: The moved line.\n', text)
+        self.assertNotIn('unrelated', text)
+        # #735's prefix: the moved line renamed, OpenWiz #718 writes its own line.
+        (self.repo / 'changes/718.md').rename(self.repo / 'changes/closedwiz-718.md')
+        self.line(718, '0.0.14', 'Fixture-tested: The new OpenWiz 718 line.')
+        (code, out), folder = self.generate(('0.0.14', '0.0.13'))
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        self.assertIn('- Fixture-tested: The moved line.\n', text[text.index('## 0.0.13'):])
+        self.assertIn('- Fixture-tested: The new OpenWiz 718 line.\n', text[:text.index('## 0.0.13')])
+        for name, change, reason in (
+                ('overwritten moved line', lambda: (self.repo / 'changes/closedwiz-718.md').unlink(),
+                 'entry: changes/718.md is not the moved ClosedWiz #718 line: rename the moved line '
+                 'changes/closedwiz-718.md, or record its new bytes in the moved-number map'),
+                ('unmapped prefix', lambda: (self.repo / 'changes/closedwiz-9.md').write_bytes(moved),
+                 'entry: changes/closedwiz-9.md: ClosedWiz #9 is not in the moved-number map'),
+                ('moved ticket that did not move', lambda: (self.repo / 'changes/2201.md').write_bytes(moved),
+                 'entry: changes/2201.md: ClosedWiz #2201 has no OpenWiz ticket: record it as an exclusion'),
+                ('map without the was link', lambda: self.world['repos/{owner}/{repo}/issues/31'].update(body=''),
+                 'entry: OpenWiz #31 does not say it was ClosedWiz #718')):
+            with self.subTest(case=name):
+                state = {p: p.read_bytes() for p in (self.repo / 'changes').iterdir()}
+                world = json.loads(json.dumps(self.world))
+                change()
+                (code, out), _ = self.generate(('0.0.14', '0.0.13'))
+                self.assertEqual((code, out['reasons']), (1, [reason]))
+                for p in (self.repo / 'changes').iterdir():
+                    if p not in state:
+                        p.unlink()
+                for p, data in state.items():
+                    p.write_bytes(data)
+                self.world = world
+        # A moved line whose ticket did not move passes only as a recorded exclusion.
+        (self.repo / 'changes/2201.md').write_bytes(moved)
+        (code, out), _ = self.generate(('0.0.14', '0.0.13'), excluded=[('changes/2201.md', sha(moved))])
+        self.assertEqual(code, 0, out)
+
+
+def section(version):
+    """One synthetic curated section in VS9's three parts."""
+    return (f"## {version} · 2026-11-20\n\n**Use {version}**\n\n**What's new for you**\n\n"
+            f"- You can use {version} part one.\n- You can use {version} part two.\n\n"
+            f"Tested on synthetic {version} checks.\n\n"
+            f"**Under the hood**\n\n- Synthetic {version} internals.\n- See "
+            f"[the ticket](https://github.com/openwizdev/OpenWiz/issues/1).\n")
+
+
+PREAMBLE = '# Changelog\n\nAll synthetic versions, newest first.\n\n'
+HISTORY = ('# Changelog\n\nAll synthetic versions, newest first.\n\n'
+           '## 0.0.5 · 2026-01-05\n\n**Earlier unpublished entry**\n\n- Synthetic 0.0.5 line.\n\n'
+           '## 0.0.4 · 2026-01-04\n\n**Older unpublished entry**\n\n- Synthetic 0.0.4 line.\n')
 
 
 def re_headings(text):

@@ -16,6 +16,10 @@
 //! - `gh pr checks N --json bucket,name`: the latest run of each check;
 //! - `gh pr view N --json comments --jq` [`VERDICTS_JQ`]: only the bodies
 //!   of the comments that start `VERDICT: `, so no author is ever read;
+//! - `gh api repos/{owner}/{repo}/issues/N/comments?per_page=100
+//!   --paginate --jq` [`START_COMMENTS_JQ`]: an issue's comments, oldest
+//!   first, each with its author's `user.login` and `user.type` (#740), so
+//!   a start record the App writes can be told from a user's;
 //! - `gh api repos/{owner}/{repo}/compare/<base>...<commit> --jq`
 //!   [`COMPARE_JQ`]: how many commits `<commit>` has that `<base>` hasn't:
 //!   none means the commit is on the base. `gh` fills `{owner}` and
@@ -68,6 +72,18 @@ pub const CHECK_FIELDS: &str = "bucket,name";
 /// (`review-ticket`'s own read-back, as a list).
 pub const VERDICTS_JQ: &str = r#"[.comments[].body | select(startswith("VERDICT: "))]"#;
 
+/// Each comment's author login and type, and its body: REST gives an App's
+/// login as `name[bot]` with the type `Bot`, which `gh issue view` doesn't.
+pub const START_COMMENTS_JQ: &str = "map({login: .user.login, type: .user.type, body})";
+
+/// The start of an issue's comments path; `gh` fills in the repository.
+const ISSUES_PREFIX: &str = "repos/{owner}/{repo}/issues/";
+
+/// The start-record read's path for issue `n`.
+fn start_comments_path(n: &str) -> String {
+    format!("{ISSUES_PREFIX}{n}/comments?per_page=100")
+}
+
 /// How many commits the compared commit has that the base hasn't.
 pub const COMPARE_JQ: &str = "{ahead_by: .ahead_by}";
 
@@ -84,6 +100,13 @@ fn allows(argv: &[&str]) -> bool {
         ["pr", "checks", n, "--json", fields] => is_number(n) && *fields == CHECK_FIELDS,
         ["pr", "view", n, "--json", "comments", "--jq", jq] => is_number(n) && *jq == VERDICTS_JQ,
         ["api", path, "--jq", jq] => *jq == COMPARE_JQ && compare_path(path).is_some(),
+        ["api", path, "--paginate", "--jq", jq] => {
+            *jq == START_COMMENTS_JQ
+                && path
+                    .strip_prefix(ISSUES_PREFIX)
+                    .and_then(|p| p.strip_suffix("/comments?per_page=100"))
+                    .is_some_and(is_number)
+        }
         _ => false,
     }
 }
@@ -138,6 +161,22 @@ impl Tickets {
         Self::new(crate::PROGRAM)
     }
 
+    /// The record authors on the default branch's head, through the fleet
+    /// tick's existing forms: its repository, its branch and its
+    /// `docs/agents/fleet.md` reads. Unread or malformed is an error.
+    pub fn record_authors(&self, deadline: Instant) -> Result<RecordAuthors, SourceError> {
+        let unread = |_| SourceError::Unavailable {
+            detail: "the record authors setting could not be read".to_owned(),
+        };
+        let reads = crate::tick::TickReads::with_executor(self.executor.clone());
+        let repository = reads.repository(deadline).map_err(unread)?;
+        let head = reads
+            .branch(repository.default.as_str(), deadline)
+            .map_err(unread)?;
+        let settings = reads.rules(&head, deadline).map_err(unread)?;
+        RecordAuthors::read(&settings).map_err(|why| malformed("record authors", why))
+    }
+
     /// Runs one of this module's forms.
     fn run(&self, argv: &[&str], deadline: Instant) -> Result<Vec<u8>, SourceError> {
         let invocation = Invocation::new(argv).ok_or_else(|| SourceError::Unavailable {
@@ -167,7 +206,20 @@ impl GitHub for Tickets {
         deadline: Instant,
     ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
         let n = number.to_string();
-        stock_issue(&self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?)
+        // The setting is read before any comment, as launch-fleet does.
+        let authors = self.record_authors(deadline)?;
+        let issue = self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?;
+        let comments = self.run(
+            &[
+                "api",
+                &start_comments_path(&n),
+                "--paginate",
+                "--jq",
+                START_COMMENTS_JQ,
+            ],
+            deadline,
+        )?;
+        stock_issue(&issue, &comments, &authors)
     }
 
     fn pull_request(&self, number: Number, deadline: Instant) -> Result<PrAnswer, SourceError> {
@@ -348,23 +400,139 @@ pub fn issue(stdout: &[u8]) -> Result<IssueAnswer, SourceError> {
     })
 }
 
-/// Retain stock evidence from the existing strictly decoded issue read.
-/// No new invocation, public fleet field or inferred negative.
+/// The factory's record authors (#641): the lowercase logins of the
+/// `Record authors` row in `docs/agents/fleet.md`'s `## GitHub identity`
+/// table, the factory's App and the account it falls back to. In a public
+/// repository anyone can comment, so a comment is a record only when one of
+/// them wrote it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordAuthors(std::collections::BTreeSet<String>);
+
+impl RecordAuthors {
+    /// Reads the setting by launch-fleet's rules (`grants.py`'s
+    /// `record_authors`, `fleet.sh`'s `settings`): exactly one
+    /// `| Record authors |` row in the section, whose whole value cell is
+    /// backticked logins separated by commas, with nothing after it. No row,
+    /// an empty one, or any malformed or extra entry refuses the whole row:
+    /// it never keeps only the logins that did parse.
+    pub fn read(fleet_md: &str) -> Result<Self, &'static str> {
+        const REFUSED: &str = "docs/agents/fleet.md names no record authors";
+        let mut section = None;
+        let mut rows = vec![];
+        for line in fleet_md.lines() {
+            if line.starts_with("## ") {
+                section = Some(line);
+            } else if section == Some("## GitHub identity") && is_authors_row(line) {
+                rows.push(line);
+            }
+        }
+        let [row] = rows.as_slice() else {
+            return Err(REFUSED);
+        };
+        let cells: Vec<&str> = row.split('|').collect();
+        let [_, _, value, rest] = cells.as_slice() else {
+            return Err(REFUSED);
+        };
+        if !rest.trim().is_empty() {
+            return Err(REFUSED);
+        }
+        let mut logins = std::collections::BTreeSet::new();
+        for entry in value.split(',') {
+            let login = entry
+                .trim()
+                .strip_prefix('`')
+                .and_then(|e| e.strip_suffix('`'))
+                .filter(|l| is_login(l))
+                .ok_or(REFUSED)?;
+            logins.insert(login.to_ascii_lowercase());
+        }
+        Ok(Self(logins))
+    }
+
+    /// Whether a REST comment's author, its `user.login` and `user.type`
+    /// (`None` when it has none), is a record author. Logins compare
+    /// case-insensitively, as GitHub's do; entries match exactly. An App
+    /// entry `name[bot]` matches only a `Bot` whose login is `name[bot]`, and
+    /// any other entry only a `User`: a user-typed login never counts as the
+    /// App, and a Bot never as a user (#740).
+    pub fn wrote(&self, login: Option<&str>, kind: Option<&str>) -> bool {
+        let (Some(login), Some(kind)) = (login, kind) else {
+            return false;
+        };
+        let login = login.to_ascii_lowercase();
+        let app = login.ends_with("[bot]");
+        let typed = match kind {
+            "Bot" => app,
+            "User" => !app,
+            _ => false,
+        };
+        typed && self.0.contains(&login)
+    }
+}
+
+/// `| Record authors |` at the start of a line, spaces allowed inside.
+fn is_authors_row(line: &str) -> bool {
+    line.strip_prefix('|')
+        .map(|l| l.trim_start_matches(' '))
+        .and_then(|l| l.strip_prefix("Record authors"))
+        .is_some_and(|l| l.trim_start_matches(' ').starts_with('|'))
+}
+
+/// A login as the setting writes it: ASCII letters and digits with single
+/// inner hyphens, and an App's `[bot]` suffix.
+fn is_login(login: &str) -> bool {
+    let name = login.strip_suffix("[bot]").unwrap_or(login);
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && !name.contains("--")
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
+/// `stdout` is `gh issue view`'s answer and `comments` the start-record
+/// read's ([`START_COMMENTS_JQ`], one page a line): whether the record
+/// authors' last fifteen comments hold a start record.
 pub fn stock_issue(
     stdout: &[u8],
+    comments: &[u8],
+    authors: &RecordAuthors,
 ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
     let i = issue(stdout)?;
-    // issue() has already refused malformed, duplicate and incomplete wire
-    // objects. A successful bounded read contains the complete comment array.
-    let value: Value = serde_json::from_slice(stdout)
-        .map_err(|_| malformed("issue comments", "invalid document"))?;
-    let comments = array(&value["comments"], "issue comments")?;
-    let started = comments.iter().rev().take(15).any(|c| {
-        c["body"]
-            .as_str()
-            .is_some_and(|body| body.starts_with("launch-fleet: start"))
-    });
+    let started = started(comments, authors)?;
     Ok((i, openwiz_core::model::Fact::Known(started)))
+}
+
+/// Whether the record authors' last fifteen comments, in the start-record
+/// read's pages, hold a start record. Every page must read, and every row
+/// be exactly `login`, `type` (each text or null) and `body` (text):
+/// anything else is malformed and never establishes absence.
+fn started(comments: &[u8], authors: &RecordAuthors) -> Result<bool, SourceError> {
+    let what = "start record comments";
+    let pages = std::str::from_utf8(comments).map_err(|_| malformed(what, "not UTF-8"))?;
+    if pages.lines().next().is_none() {
+        return Err(malformed(what, "no pages"));
+    }
+    let mut rows = vec![];
+    for page in pages.lines() {
+        let page = document(page.as_bytes(), what)?;
+        for row in array(&page, what)? {
+            let o = object(row, &["body", "login", "type"], what)?;
+            let login = text_or_null(&o["login"], what)?;
+            let kind = text_or_null(&o["type"], what)?;
+            rows.push((
+                authors.wrote(login, kind),
+                text(&o["body"], what)?.to_owned(),
+            ));
+        }
+    }
+    // Only the factory's own comments: an outsider's, or one with no
+    // author, is dropped before the window is taken (#716).
+    Ok(rows
+        .into_iter()
+        .filter(|(factory, _)| *factory)
+        .rev()
+        .take(15)
+        .any(|(_, body)| body.starts_with("launch-fleet: start")))
 }
 
 /// Full gh comment objects are checked, but only question/provenance inputs
@@ -791,6 +959,13 @@ mod tests {
             &["api", compare, "--jq", COMPARE_JQ],
             &[
                 "api",
+                "repos/{owner}/{repo}/issues/1234567890/comments?per_page=100",
+                "--paginate",
+                "--jq",
+                START_COMMENTS_JQ,
+            ],
+            &[
+                "api",
                 "repos/{owner}/{repo}/compare/release-0.0.3...aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "--jq",
                 COMPARE_JQ,
@@ -1017,6 +1192,54 @@ mod tests {
                 "query=synthetic".into(),
             ],
         ];
+        // The start-record read: exactly its path, pagination and fields.
+        let comments = |path: &str, flags: &[&str]| -> Vec<String> {
+            let mut argv = vec!["api".to_owned(), path.to_owned()];
+            argv.extend(flags.iter().map(|&f| f.to_owned()));
+            argv
+        };
+        let p1 = "repos/{owner}/{repo}/issues/1/comments?per_page=100";
+        let jq = START_COMMENTS_JQ;
+        let mut refused = refused;
+        refused.extend([
+            comments(p1, &["--jq", jq]),
+            comments(p1, &["--paginate"]),
+            comments(p1, &["--paginate", "--jq", "."]),
+            comments(p1, &["--paginate", "--jq", crate::tick::COMMENTS]),
+            comments(p1, &["--jq", jq, "--paginate"]),
+            comments(p1, &["--paginate", "--jq", jq, "-X", "POST"]),
+            comments(p1, &["-X", "POST", "--paginate", "--jq", jq]),
+            comments(p1, &["--paginate", "--jq", jq, "-f", "body=synthetic"]),
+            comments(&p1.replace("/1/", "/0/"), &["--paginate", "--jq", jq]),
+            comments(&p1.replace("/1/", "/01/"), &["--paginate", "--jq", jq]),
+            comments(&p1.replace("/1/", "/x/"), &["--paginate", "--jq", jq]),
+            comments(&p1.replace("/1/", "//"), &["--paginate", "--jq", jq]),
+            comments(
+                &p1.replace("/1/", "/12345678901/"),
+                &["--paginate", "--jq", jq],
+            ),
+            comments(&p1.replace("=100", "=50"), &["--paginate", "--jq", jq]),
+            comments(
+                &p1.replace("?per_page=100", ""),
+                &["--paginate", "--jq", jq],
+            ),
+            comments(
+                &p1.replace("{owner}/{repo}", "synthetic/other"),
+                &["--paginate", "--jq", jq],
+            ),
+            comments(
+                &p1.replace("issues/1", "pulls/1"),
+                &["--paginate", "--jq", jq],
+            ),
+            comments(
+                "repos/{owner}/{repo}/issues/comments?per_page=100",
+                &["--paginate", "--jq", jq],
+            ),
+            comments(
+                &(p1.to_owned() + "&since=2030-01-01"),
+                &["--paginate", "--jq", jq],
+            ),
+        ]);
         for argv in refused {
             let words: Vec<&str> = argv.iter().map(String::as_str).collect();
             assert!(!(ALLOWLIST.allows)(&words), "{argv:?}");
@@ -1343,40 +1566,194 @@ mod tests {
             assert_eq!(iso_ms(bad), None, "{bad}");
         }
     }
+    /// Synthetic settings: one App login and one fallback account.
+    const SETTINGS: &str = "# Fleet\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n| Fallback | today's account |\n| Record authors | `synthetic-app[bot]`, `Synthetic-Owner` |\n\n## Next\n";
+
+    fn authors() -> RecordAuthors {
+        RecordAuthors::read(SETTINGS).unwrap()
+    }
+
+    /// Catches: the factory's own later comments not pushing an old start
+    /// record out of its last fifteen, a start record counted from a body
+    /// that only contains the prefix, and a malformed start-record read
+    /// being taken as "not started" (#716, #740).
     #[test]
-    fn stock_issue_retains_only_last_fifteen_valid_comments() {
-        let mut value: Value = serde_json::from_str(ISSUE).unwrap();
-        let comment = |body: &str| serde_json::json!({"id":"synthetic-comment","author":null,"authorAssociation":"NONE","body":body,"createdAt":"2030-01-15T09:00:00Z","includesCreatedEdit":false,"isMinimized":false,"minimizedReason":null,"reactionGroups":[],"url":"https://example.invalid/issues/1#synthetic","viewerDidAuthor":false});
-        value["comments"] = serde_json::json!([comment("launch-fleet: started")]);
-        let read = |v: &Value| stock_issue(&serde_json::to_vec(v).unwrap());
-        assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(true)
+    fn stock_issue_counts_only_the_factorys_start_records_in_its_last_fifteen() {
+        let row = |login: &str, kind: &str, body: Value| serde_json::json!({"login": login, "type": kind, "body": body});
+        let factory = |body: &str| row("synthetic-app[bot]", "Bot", body.into());
+        let read = |pages: &[Value]| {
+            let lines: String = pages.iter().map(|p| p.to_string() + "\n").collect();
+            stock_issue(ISSUE.as_bytes(), lines.as_bytes(), &authors())
+        };
+        let started = |rows: &[Value]| {
+            read(&[Value::Array(rows.to_vec())]).unwrap().1
+                == openwiz_core::model::Fact::Known(true)
+        };
+        let mut rows = vec![factory("launch-fleet: started")];
+        rows.extend((0..15).map(|_| row("synthetic-owner", "User", "synthetic progress".into())));
+        assert!(
+            !started(&rows),
+            "the factory's own last fifteen hold no start"
         );
-        for _ in 0..15 {
-            value["comments"]
-                .as_array_mut()
-                .unwrap()
-                .push(comment("synthetic progress"));
+        rows[15] = factory("launch-fleet: start checked");
+        assert!(started(&rows));
+        rows[15] = factory("progress launch-fleet: started");
+        assert!(!started(&rows));
+        // A malformed read never establishes absence.
+        assert!(read(&[]).is_err(), "no pages");
+        for bad in [
+            row("synthetic-app[bot]", "Bot", Value::Null),
+            serde_json::json!({"login": "synthetic-app[bot]", "body": "launch-fleet: started"}),
+            serde_json::json!({"login": "synthetic-app[bot]", "type": "Bot", "body": "x", "extra": 1}),
+            serde_json::json!({"login": 1, "type": "Bot", "body": "x"}),
+        ] {
+            rows[0] = bad.clone();
+            assert!(read(&[Value::Array(rows.clone())]).is_err(), "{bad}");
+        }
+        assert!(read(&[serde_json::json!({})]).is_err(), "a page is a list");
+    }
+
+    /// Catches: a malformed `Record authors` setting being read as some or
+    /// all logins instead of refused. launch-fleet's rules (#641): one row,
+    /// in the `## GitHub identity` section, whose whole value cell is
+    /// backticked logins separated by commas, and nothing after it.
+    #[test]
+    fn record_authors_take_only_the_whole_well_formed_row() {
+        let table = |row: &str| {
+            format!("## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n{row}\n")
+        };
+        let good = RecordAuthors::read(&table(
+            "| Record authors | `synthetic-app[bot]`, `Synthetic-Owner` |",
+        ))
+        .unwrap();
+        // The shared App-login rule (#740), on REST's `user.login` and
+        // `user.type`: `name[bot]` matches only a Bot `name[bot]`; a
+        // user-typed login never counts as the App, nor a Bot as a user.
+        for (login, kind, wrote) in [
+            (Some("synthetic-app[bot]"), Some("Bot"), true),
+            (Some("SYNTHETIC-APP[BOT]"), Some("Bot"), true),
+            (Some("synthetic-app[bot]"), Some("User"), false),
+            (Some("synthetic-app"), Some("Bot"), false),
+            (Some("synthetic-app"), Some("User"), false),
+            (Some("synthetic-owner"), Some("User"), true),
+            (Some("synthetic-owner"), Some("Bot"), false),
+            (Some("synthetic-owner"), Some("Organization"), false),
+            (Some("synthetic-owner"), None, false),
+            (Some("synthetic-owner2"), Some("User"), false),
+            (Some(""), Some("User"), false),
+            (None, Some("Bot"), false),
+        ] {
+            assert_eq!(good.wrote(login, kind), wrote, "{login:?} {kind:?}");
         }
         assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(false)
+            good,
+            authors(),
+            "spacing around cells and other rows don't matter"
         );
-        value["comments"][15]["body"] = serde_json::json!("launch-fleet: start checked");
-        assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(true)
-        );
-        value["comments"][15]["body"] = serde_json::json!("progress launch-fleet: started");
-        assert_eq!(
-            read(&value).unwrap().1,
-            openwiz_core::model::Fact::Known(false)
-        );
-        value["comments"][0]["body"] = serde_json::json!(null);
-        assert!(
-            read(&value).is_err(),
-            "malformed reads cannot establish absence"
-        );
+        for row in [
+            "|Record authors|`a`|",
+            "|  Record authors  |  `a` ,`b-c`  |  ",
+        ] {
+            assert!(RecordAuthors::read(&table(row)).is_ok(), "{row}");
+        }
+        let refused = |text: &str| RecordAuthors::read(text).is_err();
+        for row in [
+            "| Record authors | |",
+            "| Record authors | `` |",
+            "| Record authors | synthetic-app[bot] |",
+            "| Record authors | `synthetic-app[bot]`, |",
+            "| Record authors | `synthetic-app[bot]` `synthetic-owner` |",
+            "| Record authors | `synthetic-app[bot]`, synthetic-owner |",
+            "| Record authors | `-synthetic` |",
+            "| Record authors | `synthetic-` |",
+            "| Record authors | `synthetic--owner` |",
+            "| Record authors | `synthetic owner` |",
+            "| Record authors | ` synthetic` |",
+            "| Record authors | `synthetic[app]` |",
+            "| Record authors | `[bot]` |",
+            "| Record authors | `synthetic_owner` |",
+            "| Record authors | `synthétic` |",
+            "| Record authors | `synthetic-app[bot]` | extra |",
+            "| Record authors | `synthetic-app[bot]` | |",
+            "| Record authors | `synthetic-app[bot]`",
+            "| Record authors | `synthetic-app[bot]` |\n| Record authors | `synthetic-owner` |",
+        ] {
+            assert!(refused(&table(row)), "{row}");
+        }
+        // No row, or the row only outside its section, trusts nobody.
+        assert!(refused("# Fleet\n"));
+        assert!(refused(&table("| Fallback | today's account |")));
+        assert!(refused(
+            "## GitHub identityx\n\n| Record authors | `synthetic-owner` |\n"
+        ));
+        assert!(refused(&format!(
+            "{}## Next\n\n| Record authors | `synthetic-owner` |\n",
+            table("| Fallback | today's account |")
+        )));
+    }
+
+    /// Catches: the start-record reader ignoring the start records the App
+    /// writes (#740), because `gh issue view` reports an App's login
+    /// without `[bot]` and no author type; and, once the type is read, a
+    /// user account named like the App, an outsider or a flood of
+    /// outsiders' comments deciding whether a ticket has started.
+    #[test]
+    fn the_start_record_reader_reads_each_authors_type() {
+        use serde_json::json;
+        let start = "launch-fleet: started";
+        let row = |login: &str, kind: &str, body: &str| json!({"login": login, "type": kind, "body": body});
+        let app = |body: &str| row("synthetic-app[bot]", "Bot", body);
+        let outsider = |body: &str| row("synthetic-outsider", "User", body);
+        let flood: Vec<Value> = (0..15).map(|_| outsider("synthetic progress")).collect();
+        let cases: Vec<(Vec<Vec<Value>>, bool)> = vec![
+            // The App's own start record counts.
+            (vec![vec![app(start)]], true),
+            // A user account with the App's name is never the App.
+            (vec![vec![row("synthetic-app", "User", start)]], false),
+            (vec![vec![row("Synthetic-App[bot]", "User", start)]], false),
+            // An outsider's start record never counts, and outsiders'
+            // comments never push the App's record out of the window.
+            (vec![vec![outsider(start)]], false),
+            (vec![vec![app(start)], flood.clone()], true),
+            (
+                vec![vec![json!({"login": null, "type": null, "body": start})]],
+                false,
+            ),
+        ];
+        for (pages, started) in cases {
+            let rest: String = pages
+                .iter()
+                .map(|page| serde_json::to_string(page).unwrap() + "\n")
+                .collect();
+            let tickets = Tickets::with_executor(process::Executor::supplied(std::sync::Arc::new(
+                move |call: &Invocation, _| {
+                    let argv: Vec<&str> = call.argv().iter().map(String::as_str).collect();
+                    let mut issue: Value = serde_json::from_str(ISSUE).unwrap();
+                    // As `gh issue view` reports the App's record: a plain
+                    // login and no type.
+                    issue["comments"] = json!([{"id":"synthetic-comment","author":{"login":"synthetic-app"},"authorAssociation":"NONE","body":start,"createdAt":"2030-01-15T09:00:00Z","includesCreatedEdit":false,"isMinimized":false,"minimizedReason":null,"reactionGroups":[],"url":"https://example.invalid/issues/1#synthetic","viewerDidAuthor":false}]);
+                    let answer = match argv.as_slice() {
+                        ["repo", "view", ..] => json!({"defaultBranchRef":{"name":"main"},"nameWithOwner":"synthetic/repo","url":"https://example.invalid/synthetic/repo"}).to_string(),
+                        ["api", p, ..] if p.contains("/git/ref/heads/") => json!({"sha":"a".repeat(40)}).to_string(),
+                        ["api", p, ..] if p.contains("/contents/docs/agents/fleet.md") => SETTINGS.to_owned(),
+                        ["issue", "view", "1", ..] => issue.to_string(),
+                        ["api", p, "--paginate", ..] if p.contains("/issues/1/comments") => rest.clone(),
+                        _ => return Err(malformed("synthetic gh", "unexpected call")),
+                    };
+                    Ok(answer.into_bytes())
+                },
+            )));
+            let read = tickets
+                .stock_issue(
+                    Number::new(1).unwrap(),
+                    Instant::now() + std::time::Duration::from_secs(5),
+                )
+                .unwrap();
+            assert_eq!(
+                read.1,
+                openwiz_core::model::Fact::Known(started),
+                "{pages:?}"
+            );
+        }
     }
 }

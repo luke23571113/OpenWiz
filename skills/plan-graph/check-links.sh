@@ -12,8 +12,10 @@
 # Exit 0: pass, the report on stdout. 1: refused, the report on stdout and one
 # line per refusal on stderr. 2: bad arguments, or a failed, partial or
 # invalid read: nothing on stdout, why in one line on stderr. The spec form
-# makes only `gh api graphql` reads (its sub-issues, then the open pull
-# requests), each checked and every page counted; --graph makes no call.
+# reads the Record authors setting (docs/agents/fleet.md on the default
+# branch, #717), then makes only `gh api graphql` reads (its sub-issues, then
+# the open pull requests), each checked and every page counted; --graph makes
+# no call.
 set -f
 LC_ALL=C
 export LC_ALL
@@ -203,12 +205,40 @@ fi
 command -v gh > /dev/null 2>&1 || die 'gh is required'
 command -v date > /dev/null 2>&1 || die 'date is required'
 read_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) || die 'cannot read the time'
-ISSUES='query($owner:String!,$name:String!,$spec:Int!,$after:String){repository(owner:$owner,name:$name){nameWithOwner issue(number:$spec){subIssues(first:50,after:$after){totalCount pageInfo{hasNextPage endCursor} nodes{number title state body labels(first:100){totalCount nodes{name}} milestone{title} parent{number} blockedBy(first:100){totalCount nodes{number state}} comments(last:15){nodes{body}}}}}}}'
+# #717: a start record counts only when the factory wrote it. Its identity is
+# the one "| Record authors | <cell> |" row of fleet.md's "## GitHub identity"
+# table, read as launch-fleet reads it: the whole cell backticked logins
+# separated by commas. No row, an empty one, any malformed or extra entry, or
+# anything after the value cell refuses the read, never keeping only the
+# logins that did parse.
+fleet=$(gh api -H 'Accept: application/vnd.github.raw+json' \
+  'repos/{owner}/{repo}/contents/docs/agents/fleet.md' 2> /dev/null) ||
+  die 'cannot read the record authors from docs/agents/fleet.md'
+# The row is picked as launch-fleet's awk picks it, in jq: this checker uses
+# sh and jq only.
+authors=$(printf '%s\n' "$fleet" \
+  | jq -cRse 'split("\n")
+    | reduce .[] as $line ({on: false, rows: []};
+        if $line | startswith("## ") then .on = ($line == "## GitHub identity")
+        elif .on and ($line | test("^[|] *Record authors *[|]")) then .rows += [$line] else . end)
+    | .rows | select(length == 1) | .[0]
+    | split("|") | select(length == 4 and (.[3] | test("^\\s*$"))) | .[2]
+    | "`[A-Za-z0-9](-?[A-Za-z0-9])*(\\[bot\\])?`" as $login
+    | select(test("^\\s*" + $login + "(\\s*,\\s*" + $login + ")*\\s*$"))
+    | [scan("`([^`]*)`") | .[0] | ascii_downcase]' 2> /dev/null) ||
+  die 'docs/agents/fleet.md names no record authors (its "## GitHub identity" table'"'"'s "Record authors" row)'
+ISSUES='query($owner:String!,$name:String!,$spec:Int!,$after:String){repository(owner:$owner,name:$name){nameWithOwner issue(number:$spec){subIssues(first:50,after:$after){totalCount pageInfo{hasNextPage endCursor} nodes{number title state body labels(first:100){totalCount nodes{name}} milestone{title} parent{number} blockedBy(first:100){totalCount nodes{number state}} comments(last:15){nodes{body author{__typename login}}}}}}}}'
 PULLS='query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:100,after:$after){totalCount pageInfo{hasNextPage endCursor} nodes{number title}}}}'
 PAGE='
 def fail($why): error($why);
 def need(c; $why): if c then . else fail($why) end;
 def count: type == "number" and . == floor and . >= 0;
+# GraphQL names an App without the "[bot]" REST and the setting give it. A
+# comment with no author (a deleted account) is never a record.
+def login: .author | if type == "object" and (.login | type) == "string" then
+  (if .__typename == "Bot" and (.login | endswith("[bot]") | not) then .login + "[bot]" else .login end
+   | ascii_downcase) else null end;
+def authored: login as $l | $l != null and any($authors[]; . == $l);
 def complete($what): need(type == "object" and (.totalCount | count) and (.nodes | type == "array") and (.nodes | length) == .totalCount; "a ticket'"'"'s \($what) were not all read");
 try (
   need(type == "object" and .errors == null and (.data | type == "object") and (.data.repository | type == "object"); "the read failed")
@@ -227,7 +257,7 @@ try (
            | need(.comments | type == "object" and (.nodes | type == "array"); "a ticket'"'"'s comments were not read")
            | {number, title, state, labels: [.labels.nodes[].name], milestone: (.milestone.title // null),
               parent: (.parent.number // null), blocked_by: [.blockedBy.nodes[] | {number, state}], body,
-              start_recorded: any(.comments.nodes[]; .body | type == "string" and startswith("launch-fleet: start"))}
+              start_recorded: any(.comments.nodes[]; authored and (.body | type == "string" and startswith("launch-fleet: start")))}
          end]} | tojson)
 ) catch error("bad")
 '
@@ -247,7 +277,7 @@ read_pages() {
     else
       page=$(gh api graphql -f query="$query" -F owner='{owner}' -F name='{repo}' "$@" -f after="$after" 2> /dev/null) || return 1
     fi
-    info=$(printf '%s\n' "$page" | jq -cr --arg kind "$kind" "$PAGE" 2> /dev/null) || return 1
+    info=$(printf '%s\n' "$page" | jq -cr --arg kind "$kind" --argjson authors "$authors" "$PAGE" 2> /dev/null) || return 1
     case "$info" in *"$nl"*) ;; *) return 1 ;; esac
     first=${info%%"$nl"*}
     cursor=${first%% *} rest=${first#* }

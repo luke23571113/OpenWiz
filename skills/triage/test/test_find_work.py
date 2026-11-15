@@ -34,6 +34,17 @@ PUBLIC_APPROVAL = (
     "Private record: https://github.com/jparker2006/ClosedWiz/issues/9001#issuecomment-9000000001\n\n"
     + MARK + "\n"
 )
+# #717: the factory's identity, the Record authors row launch-fleet reads.
+FLEET = ("# Fleet settings\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n"
+         "| Record authors | `openwiz[bot]`, `synthetic-owner` |\n\n## Standing merge rules\n")
+OUTSIDER = {"__typename": "User", "login": "synthetic-outsider"}
+
+
+def by(author, body):
+    """A comment by a named author, as GraphQL gives it."""
+    return {"body": body, "author": author}
+
+
 ROLES = ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"]
 
 failures = []
@@ -160,6 +171,36 @@ OWN_OUT = ["#2 to sort: Synthetic issue 2", "#3 builder question: Synthetic issu
 QUIET = [issue(n, labels=["needs-triage"], comments=[NOTES]) if n % 2 else issue(n, labels=["ready-for-human"])
          for n in range(1, 151)]
 
+# #717 catches: the newest comment's marker or approval hid an issue from
+# triage whoever wrote it, so anyone could silence an issue's work on a
+# public tracker. Only the record authors' markers count, their logins in
+# any case; a deleted account's is nobody's.
+AUTHORS = [
+    issue(1, labels=["needs-triage"], comments=[by(OUTSIDER, NOTES)]),
+    issue(2, labels=["needs-info", "bug"], comments=["Synthetic report.", by(OUTSIDER, NOTES)]),
+    issue(3, labels=["needs-triage"], comments=[by(OUTSIDER, PUBLIC_APPROVAL)]),
+    issue(4, labels=["ready-for-agent", "needs-info"], milestone=True, parent=99,
+          comments=["Synthetic question from the builder.", by(OUTSIDER, MARK + "\n\nWith the user.")]),
+    issue(6, labels=["needs-triage"], comments=[by(None, NOTES)]),
+    issue(7, labels=["needs-triage"], comments=[by({"__typename": "User", "login": "Synthetic-Owner"}, NOTES)]),
+    issue(9, labels=["needs-triage"], comments=[by({"__typename": "User", "login": "synthetic-owner"}, PUBLIC_APPROVAL)]),
+]
+AUTHORS_OUT = ["#1 to sort: Synthetic issue 1", "#2 reply: Synthetic issue 2", "#3 to sort: Synthetic issue 3",
+               "#4 builder question: Synthetic issue 4", "#6 to sort: Synthetic issue 6"]
+# The App's login (orchestrator ruling on #717) catches: GraphQL names the App
+# `openwiz` where the setting lists `openwiz[bot]`, so a reader comparing
+# logins as given ignores every factory marker; and a reader that accepts the
+# bare name would let a user account called `openwiz` pass as the App. Only a
+# Bot author's bare name counts as `<name>[bot]`; a user's never does.
+APP = [
+    issue(1, labels=["needs-triage"], comments=[by({"__typename": "Bot", "login": "openwiz"}, NOTES)]),
+    issue(2, labels=["needs-info", "bug"], comments=[by({"__typename": "Bot", "login": "OpenWiz"}, NOTES)]),
+    issue(3, labels=["needs-triage"], comments=[by({"__typename": "User", "login": "openwiz"}, NOTES)]),
+    issue(4, labels=["needs-info", "bug"], comments=[by({"login": "openwiz"}, NOTES)]),
+]
+APP_OUT = ["#3 to sort: Synthetic issue 3", "#4 reply: Synthetic issue 4"]
+ROW = "| Record authors | `openwiz[bot]`, `synthetic-owner` |"
+
 CROWDED = [issue(1), issue(2, labels=["needs-triage"] + [f"synthetic-{i}" for i in range(100)]), issue(3)]
 
 # (id, what, issues, fault, labels file or None for none, tools, exit, output, stderr text)
@@ -201,6 +242,18 @@ CASES = [
     ("F20", "jq is not installed", SHAPES, None, DEFAULT, "no jq", 2, [], "jq is not installed"),
     ("F21", "gh prints no pages, with exit 0", SHAPES, {"kind": "no-pages-exit-0", "page": 1}, DEFAULT, "all", 2, [],
      "gh returned no pages"),
+    ("F22", "only the record authors' markers and approvals quiet an issue", AUTHORS, None, DEFAULT, "all", 0,
+     AUTHORS_OUT, None),
+    ("F27", "a GraphQL Bot's bare login is the App; a user's is not", APP, None, DEFAULT, "all", 0, APP_OUT, None),
+    ("F23", "the record authors can't be read", SHAPES, {"kind": "fleet-fail"}, DEFAULT, "all", 2, [],
+     "record authors"),
+    ("F24", "fleet.md has no Record authors row", SHAPES, {"kind": "fleet-doc", "doc": FLEET.replace(ROW, "")},
+     DEFAULT, "all", 2, [], "record authors"),
+    ("F25", "a Record authors row with a malformed login", SHAPES,
+     {"kind": "fleet-doc", "doc": FLEET.replace(ROW, "| Record authors | `openwiz[bot]`, synthetic-owner |")},
+     DEFAULT, "all", 2, [], "record authors"),
+    ("F26", "two Record authors rows", SHAPES, {"kind": "fleet-doc", "doc": FLEET.replace(ROW, ROW + "\n" + ROW)},
+     DEFAULT, "all", 2, [], "record authors"),
 ]
 
 
@@ -221,7 +274,7 @@ def run(case, issues, fault, labels, tools):
                 raise RuntimeError(f"{tool} is not installed here, so the test can't run")
             (bin_dir / tool).symlink_to(real)
         scenario = d / "scenario.json"
-        scenario.write_text(json.dumps({"issues": issues, "fault": fault}))
+        scenario.write_text(json.dumps({"issues": issues, "fault": fault, "fleet": FLEET}))
         args = ["/bin/sh", str(SCRIPT)]
         if labels is not None:
             (d / "labels.md").write_text(labels)

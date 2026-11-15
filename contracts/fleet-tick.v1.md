@@ -24,6 +24,9 @@ a plain decision and the required private-comment pointer on the second line.
 The local JSON action envelope is private execution data: its thread facts are
 needed for dispatch and archiving and must never be copied to GitHub. Its schema
 and dispatch facts are unchanged by this revision.
+A comment counts as a record or a verdict only when one of the rules file's
+record authors wrote it (#718); every other comment, and one with no author, is
+dropped before any record reader or the verdict is read.
 
 Thread resolution uses B4's private start records keyed by repository and ticket,
 or repository, PR and original start commit. Public re-check records add commit
@@ -135,6 +138,7 @@ A section is the lines from its heading line, exactly as written (`## Builder`),
 | `## Reviewer for GPT-built` | The same | The same | `rules.reviewer_gpt`; harness must be `claude-code` |
 | `## CI checks` | `\| Check \| Runs \| Required on \|` | One or more. First cell exactly `` `<name>` `` (letters, digits, `.`, `_` and `-`, starting with a letter or digit); third cell one or more `` `<branch>` `` (letters, digits, `.`, `_`, `-` and `/`, starting with a letter or digit, and maybe a final `*`), separated by `, `, each once | `rules.ci_checks`: `{"name", "required_on"}` each, in the table's order |
 | `## Standing merge rules` | `\| Pull request \| Review \| Merged by, and when \|` | The one row whose first cell starts `A ticket in an approved plan graph` and whose third cell starts `The loop, as soon as the reviewer's APPROVE names that exact commit` | `rules.merge`: `adr_0008` when that row is there; `none` when no row is (every merge waits for the user, `setup`'s default) |
+| `## GitHub identity` | Not read | Exactly one row whose line starts `\|`, spaces, `Record authors`, spaces, `\|`, read as launch-fleet reads it: nothing after its value cell, and that whole cell one or more `` `<login>` `` (letters and digits, single `-` between them, maybe a final `[bot]`) separated by commas. No row, an empty cell, a malformed or extra entry, or two rows refuse the rules file | The record authors, compared case-insensitively |
 
 The display values (the second cells of the agent tables), the `Runs` column, the other merge rows (docs-only, grills, `release-*`) and every paragraph are not read. A `<branch>` in `Required on` may end in `*`, which matches any rest of a branch name (`release-*`); nothing else is a pattern.
 
