@@ -114,6 +114,7 @@
     "tools/ci-overload/alarm.py",
     "tools/ci-overload/fixtures/healthy.json",
     "tools/ci-overload/test.py",
+    "tools/ci2-live/README.md",
     "tools/ci2-live/batch-kit.md",
     "tools/ci2-live/test_batch_kit.py",
     "tools/github-reads/README.md",
