@@ -803,6 +803,61 @@ class Check(unittest.TestCase):
                 for key, _ in config:
                     self.git('config', '--unset-all', key)
 
+    def test_first_push_narrowing_allowlist(self):
+        # The production allowlist, read as the hook reads it: which push URL
+        # and which push environment may ask the destination for its main.
+        # Every refusal here means the full scan from the anchor.
+        hook = self.load_adapter('hook')
+        canonical = 'https://github.com/openwizdev/OpenWiz'
+        for url in ('https://github.com/openwizdev/OpenWiz', 'https://github.com/openwizdev/OpenWiz.git',
+                    'git@github.com:openwizdev/OpenWiz', 'git@github.com:openwizdev/OpenWiz.git',
+                    'https://github.com/openwizdev/openwiz', 'https://github.com/openwizdev/openwiz.git',
+                    'git@github.com:openwizdev/openwiz', 'git@github.com:openwizdev/openwiz.git'):
+            with self.subTest(url=url):
+                self.assertTrue(hook.narrowable(url, {}))
+        for url in ('https://github.com/OpenWizDev/openwiz', 'https://github.com/openwizdev/OPENWIZ',
+                    'https://github.com/openwizdev/openwiz/', 'https://github.com/openwizdev/openwiz.git.git',
+                    'ssh://git@github.com/openwizdev/openwiz.git', 'http://github.com/openwizdev/openwiz',
+                    'https://github.com/openwizdev/openwiz-fork', 'https://github.com/jparker2006/ClosedWiz', ''):
+            with self.subTest(url=url):
+                self.assertFalse(hook.narrowable(url, {}))
+        # Command-scoped config whose every key is a hook.* key (as a sandbox's
+        # commit-message hook sets) picks no repository or transport.
+        def scoped(*keys, **extra):
+            env = {'GIT_CONFIG_COUNT': str(len(keys))}
+            for i, key in enumerate(keys):
+                env['GIT_CONFIG_KEY_%d' % i], env['GIT_CONFIG_VALUE_%d' % i] = key, 'synthetic'
+            return {**env, **extra}
+        allowed = (
+            scoped('hook.synthetic.command', 'hook.synthetic.event', 'hook.synthetic.event'),
+            scoped('hook.synthetic.command', GIT_EXEC_PATH='/synthetic', GIT_PREFIX='', GIT_EDITOR='true'),
+        )
+        for env in allowed:
+            with self.subTest(env=env):
+                self.assertTrue(hook.narrowable(canonical, env))
+        refused = (
+            scoped('core.hooksPath'),
+            scoped('hook.synthetic.command', 'core.sshCommand'),
+            scoped('url.synthetic.insteadOf'),
+            scoped('Hook.synthetic.command'),
+            scoped('xhook.synthetic.command'),
+            scoped('core.hook.synthetic'),
+            scoped('hook'),
+            scoped('hook.synthetic.command', GIT_CONFIG_KEY_1='core.sshCommand', GIT_CONFIG_VALUE_1='synthetic'),
+            {'GIT_CONFIG_KEY_0': 'hook.synthetic.command', 'GIT_CONFIG_VALUE_0': 'synthetic'},
+            {'GIT_CONFIG_COUNT': '1'},
+            {'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'hook.synthetic.command'},
+            {**scoped('hook.synthetic.command'), 'GIT_CONFIG_COUNT': ' 1'},
+            {**scoped('hook.synthetic.command'), 'GIT_CONFIG_COUNT': '+1'},
+            {'GIT_CONFIG_PARAMETERS': "'hook.synthetic.command'='synthetic'"},
+            scoped('hook.synthetic.command', GIT_CONFIG_GLOBAL='/synthetic'),
+            scoped('hook.synthetic.command', GIT_SSH_COMMAND='synthetic'),
+            {'GIT_DIR': '/synthetic'},
+        )
+        for env in refused:
+            with self.subTest(env=env):
+                self.assertFalse(hook.narrowable(canonical, env))
+
     def test_ci_new_ref_push_scans_from_merge_base_with_main(self):
         self.published_main()
         adapter = self.load_adapter('ci')
