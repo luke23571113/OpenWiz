@@ -242,7 +242,7 @@ profile. It reads no CloudRoom source and no OpenWiz state.
 
 ## Init (0.0.16, T5)
 
-Pinned by [setup-onboard.v1](setup-onboard.v1.md#init) for T5 #2943; **not
+Pinned by [setup-onboard.v1](setup-onboard.v1.md#init) for T5 #635; **not
 shipped**. Until T5 merges, `init` is absent from `help --agent`'s catalogue
 and from human help, and this section grants no command, effect or authority.
 

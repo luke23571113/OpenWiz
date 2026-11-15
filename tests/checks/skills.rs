@@ -4270,7 +4270,7 @@ fn install_keeps_its_order_and_gates() {
     assert_eq!(files, ["SKILL.md", "agents/openai.yaml"]);
 }
 
-// #2940: the setup-onboard contract's offline consistency checks run in the
+// #632: the setup-onboard contract's offline consistency checks run in the
 // checks binary, so CI's always-run set executes them on every run.
 #[test]
 fn setup_onboard_contract_passes() {

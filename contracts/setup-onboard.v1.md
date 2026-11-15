@@ -1,13 +1,13 @@
 # Setup to first merge, version 1 (`openwiz.setup-onboard.v1`)
 
-The shared interface of spec #2920 (0.0.16, ticket T1 #2940): one install
+The shared interface of spec [#625](https://github.com/openwizdev/openwiz/issues/625) (0.0.16, ticket T1 [#632](https://github.com/openwizdev/openwiz/issues/632)): one install
 instruction to the first merged implementation pull request on the user's own
 repository. It pins the shapes that the later tickets build against: the
-selected GitHub identity and the explicit App skip (T2 #2941), the user's
+selected GitHub identity and the explicit App skip (T2 #633), the user's
 private App versus the factory's explicit public App and the protected key
-delivery (T3 #2868), visibility-aware `openwiz init` and the brain reference
-(T5 #2943), the joined continuation (T6 #2944) and the 0.0.16 timing and action
-receipt (T7 #2945, T9 #2947). The schema is
+delivery (T3 #606), visibility-aware `openwiz init` and the brain reference
+(T5 #635), the joined continuation (T6 #636) and the 0.0.16 timing and action
+receipt (T7 #637, T9 #639). The schema is
 [setup-onboard.v1.schema.json](setup-onboard.v1.schema.json). Synthetic cases
 are in [fixtures/setup-onboard/cases.json](fixtures/setup-onboard/cases.json);
 the checks are in `tools/install/tests/setup-onboard-contract/`.
@@ -15,7 +15,7 @@ the checks are in `tools/install/tests/setup-onboard-contract/`.
 **This contract grants nothing.** It authorizes no sign-in, App registration or
 installation, secret save or paste, repository creation, pull request, label,
 live read or write, spending, merge, release or publication. Each stays with its
-own ticket, its existing approval and T8 #2946's exact live-kit authorization. A
+own ticket, its existing approval and T8 #638's exact live-kit authorization. A
 document that follows this contract proves only what its proof class and
 evidence show; a fixture or recording pass shows the shape is consistent, never
 that an absent runtime works. It changes no once-only, authorization,
@@ -33,12 +33,12 @@ One document is one JSON object with `schema` equal to
 
 | Kind | What it is | Implemented by |
 | --- | --- | --- |
-| `identity_selection` | Which GitHub identity acts for the factory on the selected repository, and why it is ready | T2 #2941 (login, skip), T3 #2868 (the App) |
-| `secret_capability` | How the App key reached the protected CloudRoom secret, and what it cost the owner | T3 #2868 |
-| `init_request` | One `openwiz init` call: preview or an authorized apply | T5 #2943 |
-| `init_result` | What `openwiz init` read, chose, proposed and did | T5 #2943 |
-| `brain_reference` | Where settings consumers find the brain | T5 #2943, read by T6 #2944 |
-| `first_merge_receipt` | The 0.0.16 result: under 30 minutes and at most five owner actions | T7 #2945 (validator), T9 #2947 (live record) |
+| `identity_selection` | Which GitHub identity acts for the factory on the selected repository, and why it is ready | T2 #633 (login, skip), T3 #606 (the App) |
+| `secret_capability` | How the App key reached the protected CloudRoom secret, and what it cost the owner | T3 #606 |
+| `init_request` | One `openwiz init` call: preview or an authorized apply | T5 #635 |
+| `init_result` | What `openwiz init` read, chose, proposed and did | T5 #635 |
+| `brain_reference` | Where settings consumers find the brain | T5 #635, read by T6 #636 |
+| `first_merge_receipt` | The 0.0.16 result: under 30 minutes and at most five owner actions | T7 #637 (validator), T9 #639 (live record) |
 
 Objects have exactly the schema's keys, each once: no missing, extra or
 duplicate keys, integers as JSON integers, times as nonnegative millisecond
@@ -116,7 +116,7 @@ cloudroom_agent_save_secret`) to ship a supported interface. Its `state` is
 observed) establishes `observed_supported`; `test_stand_in`, `documentation`
 and `patch_prepared` never do. This contract names no command for it: the
 interface is pinned when it is observed, through plan-graph change control. T4
-#2942's prepared patch alone enables nothing.
+#634's prepared patch alone enables nothing.
 
 | `route` | When | Converted key | Owner steps | Key file |
 | --- | --- | --- | --- | --- |
@@ -346,12 +346,12 @@ tickets load it by path and report its codes (`check(document)` and
 
 | Seam | For | Today |
 | --- | --- | --- |
-| `identity_selection` producer: setup store `identity` field, server reasons, page | T2 #2941 | Pending: no field is written or served |
-| User App manifest and owner-bound token paths; `secret_capability` producer | T3 #2868 | Pending: the manifest is still the factory's public App |
-| `cloudroom_agent_save_secret` interface | T4 #2942, then a plan change | Not shipped; no command is named |
-| `openwiz init`, `init_request`/`init_result`, setup store `brain` field | T5 #2943 | Pending: not in the shipped catalogue |
-| Continuation carrying identity and brain into onboard | T6 #2944 | Pending |
-| Receipt validation inside the installed journey and live kit | T7 #2945 | Pending; this checker is its contract-level core |
+| `identity_selection` producer: setup store `identity` field, server reasons, page | T2 #633 | Pending: no field is written or served |
+| User App manifest and owner-bound token paths; `secret_capability` producer | T3 #606 | Pending: the manifest is still the factory's public App |
+| `cloudroom_agent_save_secret` interface | T4 #634, then a plan change | Not shipped; no command is named |
+| `openwiz init`, `init_request`/`init_result`, setup store `brain` field | T5 #635 | Pending: not in the shipped catalogue |
+| Continuation carrying identity and brain into onboard | T6 #636 | Pending |
+| Receipt validation inside the installed journey and live kit | T7 #637 | Pending; this checker is its contract-level core |
 
 ## Privacy
 

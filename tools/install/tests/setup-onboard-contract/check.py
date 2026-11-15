@@ -1,9 +1,9 @@
-"""The cross-field checks of contracts/setup-onboard.v1.md (#2940).
+"""The cross-field checks of contracts/setup-onboard.v1.md (#632).
 
 `check(document)` and `check_text(text)` return a Report of three sorted lists of codes:
 problems (the document is refused), failures (the attempt failed) and unproven (not
 proven yet). The contract's code table names every code. Stdlib only. This is the
-contract-level seam that T2 #2941, T3 #2868, T5 #2943 and T7 #2945 load by path; it
+contract-level seam that T2 #633, T3 #606, T5 #635 and T7 #637 load by path; it
 implements no runtime and observes nothing.
 
 `schema_errors` evaluates the JSON Schema keywords both setup schemas use (the test

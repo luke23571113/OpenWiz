@@ -82,7 +82,7 @@ It never decides the first-hour verdict, and the hour never decides it.
 
 ## The separate 0.0.16 receipt
 
-Spec #2920 adds a stricter result beside this one, never in place of it: the
+Spec #625 adds a stricter result beside this one, never in place of it: the
 `first_merge_receipt` of [setup-onboard.v1](setup-onboard.v1.md#the-0016-receipt).
 It binds the SHA-256 of the same attempt's `result` document and the same
 candidate, repository and merge, and adds a limit strictly below 30 minutes,

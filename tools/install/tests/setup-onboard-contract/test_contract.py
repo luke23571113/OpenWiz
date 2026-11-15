@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""#2940 (P1-P7 at the shared interface only): contracts/setup-onboard.v1 refuses what it says.
+"""#632 (P1-P7 at the shared interface only): contracts/setup-onboard.v1 refuses what it says.
 
 Every expected code comes from contracts/fixtures/setup-onboard/cases.json, written by
 hand from the contract's rules. The values are synthetic. These tests prove interface

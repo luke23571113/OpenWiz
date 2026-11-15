@@ -166,7 +166,7 @@ They are still never written into this contract or its fixtures.
 
 ## Each user's own App and the factory's (0.0.16)
 
-Spec #2920's [setup-onboard.v1](setup-onboard.v1.md) extends this contract
+Spec #625's [setup-onboard.v1](setup-onboard.v1.md) extends this contract
 compatibly; the pin above is unchanged and still describes the **factory's**
 App. J48 (Jake, 2026-11-14) settles that each user's own OpenWiz App is private
 by default and installable only on its owner's account, while the current

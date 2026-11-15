@@ -58,7 +58,7 @@ origin, callback, content-type, request-id and once-only write guards. Denied,
 expired and foreign requests cannot reach an effect. Setup does not fabricate
 spec confirmation or plan approval, and install permission never starts work.
 
-## 0.0.16 expansion: selected identity and brain (#2940)
+## 0.0.16 expansion: selected identity and brain (#632)
 
 [setup-onboard.v1](setup-onboard.v1.md) pins the shapes; this section is the
 compatible change to `openwiz.setup.v1`. The schema name, component ids, states,
@@ -86,8 +86,8 @@ compatible change to `openwiz.setup.v1`. The schema name, component ids, states,
 - **Old and new readers.** Readers are strict, so a reader that predates these
   fields refuses a response carrying either field as unreadable, rather than
   ignoring it; it never shows a partial or upgraded state. A producer emits
-  them only in a package whose reader accepts them (T2 #2941 ships the server
-  and page together; T5 #2943 adds `brain`). A new reader accepts both the old
+  them only in a package whose reader accepts them (T2 #633 ships the server
+  and page together; T5 #635 adds `brain`). A new reader accepts both the old
   and the new form and applies the rule that form selects.
 - **No effect.** `GET /api/v1/setup` still creates nothing and calls no
   CloudRoom or GitHub executable; sign-in, skip and init are separate,
