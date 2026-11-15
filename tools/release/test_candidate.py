@@ -1465,6 +1465,30 @@ class Notes(World):
         self.assertEqual(code, 0, out)
         self.assertNotIn('7001', (folder / 'notes.md').read_text())
 
+    def test_a_moved_closedwiz_line_is_never_assigned_by_the_colliding_openwiz_ticket(self):
+        # #735: changes/closedwiz-<N>.md is old ClosedWiz #N, renamed because the
+        # new OpenWiz #N owns changes/<N>.md. OpenWiz #N's milestone must never
+        # place the moved line; until its version is mapped it needs an exclusion.
+        self.spec('0.0.13')
+        self.line(718, '0.0.13', 'Fixture-tested: The new ticket line.')
+        moved = self.repo / 'changes/closedwiz-718.md'
+        moved.write_text('kind: fixed\n\nFixture-tested: The moved line.\n')
+        (code, out), _ = self.generate(('0.0.13',))
+        self.assertEqual((code, out['reasons']), (1, [
+            'entry: changes/closedwiz-718.md is old ClosedWiz #718, not an OpenWiz ticket: '
+            'record it as an exclusion']))
+        (code, out), folder = self.generate(('0.0.13',), excluded=[
+            ('changes/closedwiz-718.md', sha(moved.read_bytes()))])
+        self.assertEqual(code, 0, out)
+        text = (folder / 'notes.md').read_text()
+        self.assertIn('- Fixture-tested: The new ticket line.\n', text)
+        self.assertNotIn('The moved line', text)
+        (code, out), _ = self.generate(('0.0.13',), excluded=[('changes/closedwiz-718.md', 'a' * 64)])
+        self.assertEqual((code, out['reasons']), (1, ['entry: excluded source changed: changes/closedwiz-718.md']))
+        moved.rename(self.repo / 'changes/closedwiz-0718.md')
+        (code, out), _ = self.generate(('0.0.13',))
+        self.assertEqual((code, out['reasons']), (1, ['entry: invalid changelog filename changes/closedwiz-0718.md']))
+
 
 def re_headings(text):
     return [line for line in text.splitlines() if line.startswith('## ')]

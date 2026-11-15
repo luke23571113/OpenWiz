@@ -8,7 +8,8 @@ This file is the contract for those writers, reviewers and readers.
 ## Format
 
 - **Product change:** a change to the product's code, web app or contracts; skills, CI, docs, tests and evidence are not product changes and use the label instead.
-- **File:** `changes/<ticket>.md`, where `<ticket>` is the positive decimal ticket number without leading zeroes, not the pull request number; one file per product ticket.
+- **File:** `changes/<ticket>.md`, where `<ticket>` is the positive decimal OpenWiz ticket number without leading zeroes, not the pull request number; one file per product ticket.
+- **Moved files:** files moved from ClosedWiz keep their old number. When a new OpenWiz ticket's `changes/<N>.md` collides with a moved file, rename only that moved file to `changes/closedwiz-<N>.md`, where `<N>` is its old ClosedWiz ticket number written the same way; there is no sweep. The release tools read `closedwiz-<N>` as old ClosedWiz ticket N, never as OpenWiz ticket N, so its version cannot come from an OpenWiz milestone: until the release records which version it belongs to, it is left out only as a recorded exclusion. New files never use the prefix.
 - **Fields:** UTF-8 text: `kind: <kind>` on the first line, one blank line, then the `sentence` on one physical line, ending with a newline; no frontmatter delimiters, extra fields, headings, bullets or additional lines.
 - **Kinds:** exactly one lowercase value: `added` (new capability), `changed` (existing behaviour changes), `fixed` (a bug corrected), `removed` (a capability removed), `security` (a privacy or security correction).
 - **Version:** the ticket's milestone supplies the version; there is no version field in the file, and the filename carries no version. A missing or non-version milestone cannot assign a product line to a release: ask on the ticket rather than guess.
