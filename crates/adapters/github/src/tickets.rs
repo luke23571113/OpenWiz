@@ -138,6 +138,22 @@ impl Tickets {
         Self::new(crate::PROGRAM)
     }
 
+    /// The record authors on the default branch's head, through the fleet
+    /// tick's existing forms: its repository, its branch and its
+    /// `docs/agents/fleet.md` reads. Unread or malformed is an error.
+    pub fn record_authors(&self, deadline: Instant) -> Result<RecordAuthors, SourceError> {
+        let unread = |_| SourceError::Unavailable {
+            detail: "the record authors setting could not be read".to_owned(),
+        };
+        let reads = crate::tick::TickReads::with_executor(self.executor.clone());
+        let repository = reads.repository(deadline).map_err(unread)?;
+        let head = reads
+            .branch(repository.default.as_str(), deadline)
+            .map_err(unread)?;
+        let settings = reads.rules(&head, deadline).map_err(unread)?;
+        RecordAuthors::read(&settings).map_err(|why| malformed("record authors", why))
+    }
+
     /// Runs one of this module's forms.
     fn run(&self, argv: &[&str], deadline: Instant) -> Result<Vec<u8>, SourceError> {
         let invocation = Invocation::new(argv).ok_or_else(|| SourceError::Unavailable {
@@ -167,9 +183,11 @@ impl GitHub for Tickets {
         deadline: Instant,
     ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
         let n = number.to_string();
+        // The setting is read before any comment, as launch-fleet does.
+        let authors = self.record_authors(deadline)?;
         stock_issue(
             &self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?,
-            &RecordAuthors(std::collections::BTreeSet::new()),
+            &authors,
         )
     }
 
@@ -355,38 +373,101 @@ pub fn issue(stdout: &[u8]) -> Result<IssueAnswer, SourceError> {
 /// No new invocation, public fleet field or inferred negative.
 /// The factory's record authors (#641): the lowercase logins of the
 /// `Record authors` row in `docs/agents/fleet.md`'s `## GitHub identity`
-/// table.
+/// table, the factory's App and the account it falls back to. In a public
+/// repository anyone can comment, so a comment is a record only when one of
+/// them wrote it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordAuthors(std::collections::BTreeSet<String>);
 
 impl RecordAuthors {
-    /// Red stub: not read yet.
-    pub fn read(_fleet_md: &str) -> Result<Self, &'static str> {
-        Ok(Self(std::collections::BTreeSet::new()))
+    /// Reads the setting by launch-fleet's rules (`grants.py`'s
+    /// `record_authors`, `fleet.sh`'s `settings`): exactly one
+    /// `| Record authors |` row in the section, whose whole value cell is
+    /// backticked logins separated by commas, with nothing after it. No row,
+    /// an empty one, or any malformed or extra entry refuses the whole row:
+    /// it never keeps only the logins that did parse.
+    pub fn read(fleet_md: &str) -> Result<Self, &'static str> {
+        const REFUSED: &str = "docs/agents/fleet.md names no record authors";
+        let mut section = None;
+        let mut rows = vec![];
+        for line in fleet_md.lines() {
+            if line.starts_with("## ") {
+                section = Some(line);
+            } else if section == Some("## GitHub identity") && is_authors_row(line) {
+                rows.push(line);
+            }
+        }
+        let [row] = rows.as_slice() else {
+            return Err(REFUSED);
+        };
+        let cells: Vec<&str> = row.split('|').collect();
+        let [_, _, value, rest] = cells.as_slice() else {
+            return Err(REFUSED);
+        };
+        if !rest.trim().is_empty() {
+            return Err(REFUSED);
+        }
+        let mut logins = std::collections::BTreeSet::new();
+        for entry in value.split(',') {
+            let login = entry
+                .trim()
+                .strip_prefix('`')
+                .and_then(|e| e.strip_suffix('`'))
+                .filter(|l| is_login(l))
+                .ok_or(REFUSED)?;
+            logins.insert(login.to_ascii_lowercase());
+        }
+        Ok(Self(logins))
     }
 
-    /// Red stub: trusts everyone, as the reader did before #716.
-    pub fn wrote(&self, _login: Option<&str>) -> bool {
-        true
+    /// Whether `login` (a comment's author, `None` when it has none) is a
+    /// record author, compared case-insensitively as GitHub's logins are.
+    pub fn wrote(&self, login: Option<&str>) -> bool {
+        login.is_some_and(|l| self.0.contains(&l.to_ascii_lowercase()))
     }
+}
+
+/// `| Record authors |` at the start of a line, spaces allowed inside.
+fn is_authors_row(line: &str) -> bool {
+    line.strip_prefix('|')
+        .map(|l| l.trim_start_matches(' '))
+        .and_then(|l| l.strip_prefix("Record authors"))
+        .is_some_and(|l| l.trim_start_matches(' ').starts_with('|'))
+}
+
+/// A login as the setting writes it: ASCII letters and digits with single
+/// inner hyphens, and an App's `[bot]` suffix.
+fn is_login(login: &str) -> bool {
+    let name = login.strip_suffix("[bot]").unwrap_or(login);
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && !name.contains("--")
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
 pub fn stock_issue(
     stdout: &[u8],
     authors: &RecordAuthors,
 ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
-    let _ = authors;
     let i = issue(stdout)?;
     // issue() has already refused malformed, duplicate and incomplete wire
     // objects. A successful bounded read contains the complete comment array.
     let value: Value = serde_json::from_slice(stdout)
         .map_err(|_| malformed("issue comments", "invalid document"))?;
     let comments = array(&value["comments"], "issue comments")?;
-    let started = comments.iter().rev().take(15).any(|c| {
-        c["body"]
-            .as_str()
-            .is_some_and(|body| body.starts_with("launch-fleet: start"))
-    });
+    // Only the factory's own comments: an outsider's, or one with no
+    // author, is dropped before the window is taken (#716).
+    let started = comments
+        .iter()
+        .filter(|c| authors.wrote(c["author"]["login"].as_str()))
+        .rev()
+        .take(15)
+        .any(|c| {
+            c["body"]
+                .as_str()
+                .is_some_and(|body| body.starts_with("launch-fleet: start"))
+        });
     Ok((i, openwiz_core::model::Fact::Known(started)))
 }
 
