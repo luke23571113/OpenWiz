@@ -7,10 +7,10 @@ M: `measure` on fixtures/window, a synthetic window of six runs whose every
 number is worked out by hand in the comments below, never the way bench.py
 computes it. C: `collect` on the fake `gh` (fixtures/gh) and a synthetic
 GitHub built here: the exact reads, the exact files, and a refusal for each
-read it can't trust. K: `chart`. B: the 2026-11-01 baseline's recorded
-jobs.jsonl (private/evidence/infra-ci-scale/bench/baseline/), whose expected
-numbers come from the baseline's own bench.json and from the orchestrator's
-answer on #332. BENCH_PY=<file> runs the same cases against another script.
+read it can't trust. K: `chart`. B: `measure` on fixtures/baseline, a
+synthetic baseline (#677) whose expected point.json and every number below are
+worked out by hand in its README.md. BENCH_PY=<file> runs the same cases
+against another script.
 """
 import calendar
 import contextlib
@@ -33,10 +33,9 @@ SCRIPT = Path(os.environ.get("BENCH_PY", HERE / "bench.py")).resolve()
 WINDOW = HERE / "fixtures" / "window"
 FAKE_GH = HERE / "fixtures" / "gh"
 ROOT = HERE.parent.parent
-BASELINE = ROOT / "private" / "evidence" / "infra-ci-scale" / "bench" / "baseline"
-# The sha256 of private/evidence/infra-ci-scale/baseline/jobs.jsonl at
-# 934fc9123de0f1666a78ec91cf123d1cc7c26df5 (branch room/ci-bench-baseline).
-BASELINE_SHA256 = "d171800227907c0285813e4d0376ec79f5d135a6f85a33b137cf2f8c5d9f4b6f"
+# Synthetic, public (#677): its inputs, assumptions and hand arithmetic are in
+# fixtures/baseline/README.md. The historical baseline stays private.
+BASELINE = HERE / "fixtures" / "baseline"
 
 CODE_RULE = ("successful code runs: push and pull_request runs that succeeded and in which"
              " `Run npm test`, `Run cargo test --workspace` or `Run npm run build` succeeded;"
@@ -762,15 +761,28 @@ class Chart(unittest.TestCase):
                 self.assertLessEqual(fills, PALETTE)
 
     def test_k2_the_baseline_is_the_first_point_by_default(self):
+        # The default baseline is <checkout>/private/evidence/infra-ci-scale/bench/baseline,
+        # found from the script's folder. A test-owned copy of the checkout holds the
+        # synthetic baseline there (#677), so no private file is read.
         with tempfile.TemporaryDirectory() as tmp:
+            tools = Path(tmp) / "checkout" / "tools" / "ci-bench"
+            tools.mkdir(parents=True)
+            shutil.copy(SCRIPT, tools / "bench.py")
+            for name in ("steps.tsv", "prices.tsv", "trends.py"):
+                shutil.copy(HERE / name, tools / name)
+            default = Path(tmp) / "checkout" / "private" / "evidence" / "infra-ci-scale" / "bench" / "baseline"
+            default.mkdir(parents=True)
+            shutil.copy(BASELINE / "point.json", default / "point.json")
             after = measured(tmp, "after", 4, "synthetic after")
             out = Path(tmp) / "charts"
-            r = run(["chart", str(after), "--out", str(out)])
+            r = subprocess.run([sys.executable, "-I", str(tools / "bench.py"), "chart", str(after), "--out", str(out)],
+                               capture_output=True, text=True, timeout=120)
             self.assertEqual(r.returncode, 0, r.stderr)
             got = titles((out / "prs-per-hour.svg").read_text())
-            self.assertTrue(got[1].startswith("2026-11-01 baseline, capacity, reconstructed rule: 17.4 PRs an hour"),
+            # fixtures/baseline/README.md: reconstructed 25.5018 an hour, so 25.5 and 10x 255.0.
+            self.assertTrue(got[1].startswith("2030-02-01 baseline, capacity, reconstructed rule: 25.5 PRs an hour"),
                             got[1])
-            self.assertTrue(got[-1].startswith("10x the baseline: 174.0"), got[-1])
+            self.assertTrue(got[-1].startswith("10x the baseline: 255.0"), got[-1])
 
     def test_k3_bad_point_refused(self):
         cases = {
@@ -789,7 +801,7 @@ class Chart(unittest.TestCase):
                     p = after / "point.json"
                     p.write_text(json.dumps(edit(json.loads(p.read_text()))))
                     out = Path(tmp) / "charts"
-                    r = run(["chart", str(after), "--out", str(out)])
+                    r = run(["chart", "--baseline", str(BASELINE), str(after), "--out", str(out)])
                     self.assertEqual(r.returncode, 1, r.stderr)
                     self.assertIn(message, r.stderr)
                     self.assertNotIn("Traceback", r.stderr)
@@ -824,7 +836,7 @@ class DarkCharts(unittest.TestCase):
 
     def dashboard(self, tmp, minutes, capacity):
         out = Path(tmp) / "dashboard"
-        r = run(["dashboard", *map(str, daily_windows(tmp, minutes, capacity)), "--out", str(out)])
+        r = run(["dashboard", "--baseline", str(BASELINE), *map(str, daily_windows(tmp, minutes, capacity)), "--out", str(out)])
         self.assertEqual(r.returncode, 0, r.stderr)
         return out
 
@@ -916,7 +928,7 @@ class DarkChartsReview(unittest.TestCase):
             with self.subTest(minutes=minutes, capacity=capacity):
                 with tempfile.TemporaryDirectory() as tmp:
                     out = Path(tmp) / "dashboard"
-                    r = run(["dashboard", *map(str, daily_windows(tmp, minutes, capacity)), "--out", str(out)])
+                    r = run(["dashboard", "--baseline", str(BASELINE), *map(str, daily_windows(tmp, minutes, capacity)), "--out", str(out)])
                     self.assertEqual(r.returncode, 0, r.stderr)
                     self.assertNotIn("Traceback", r.stderr)
                     daily = (out / "daily-metrics.svg").read_text()
@@ -933,7 +945,7 @@ class DarkChartsReview(unittest.TestCase):
             with self.subTest(minutes=minutes, capacity=capacity):
                 with tempfile.TemporaryDirectory() as tmp:
                     out = Path(tmp) / "dashboard"
-                    r = run(["dashboard", *map(str, daily_windows(tmp, [minutes], [capacity])), "--out", str(out)])
+                    r = run(["dashboard", "--baseline", str(BASELINE), *map(str, daily_windows(tmp, [minutes], [capacity])), "--out", str(out)])
                     self.assertEqual(r.returncode, 0, r.stderr)
                     daily = (out / "daily-metrics.svg").read_text()
                     self.assertIn(f">Tonight's goal: {latency_text}<", daily)
@@ -959,17 +971,16 @@ class DarkChartsReview(unittest.TestCase):
 
 
 class Baseline(unittest.TestCase):
-    """CS1 on the 2026-11-01 baseline's recorded jobs.jsonl."""
+    """CS1 on fixtures/baseline, a synthetic baseline (#677). Every expected value is a
+    literal worked by hand in fixtures/baseline/README.md, never computed by bench.py."""
 
     def test_b1_reproduces_the_baseline(self):
-        jobs = BASELINE / "jobs.jsonl"
-        self.assertEqual(hashlib.sha256(jobs.read_bytes()).hexdigest(), BASELINE_SHA256)
         with tempfile.TemporaryDirectory() as tmp:
             w = Path(tmp) / "baseline"
             w.mkdir()
             for name in ("jobs.jsonl", "merged.json", "window.json"):
                 shutil.copy(BASELINE / name, w / name)
-            r = run(["measure", str(w), "--robots", "3", "--label", "2026-11-01 baseline"])
+            r = run(["measure", str(w), "--robots", "3", "--label", "2030-02-01 baseline"])
             self.assertEqual(r.returncode, 0, r.stderr)
             point = json.loads((w / "point.json").read_text())
             timing = dict(point)
@@ -977,19 +988,31 @@ class Baseline(unittest.TestCase):
             timing.pop("buckets")
             self.assertEqual(json.loads((BASELINE / "point.json").read_text()), timing)
         legacy, code = point["legacy"], point["code_runs"]
-        # bench.json at 934fc91: 93 runs, total 10.34, per_run, wall_med 8.7.
-        self.assertEqual((legacy["runs"], legacy["robot_seconds"]), (93, 57718))
-        self.assertEqual(round(legacy["robot_minutes_per_run"], 2), 10.34)
-        self.assertEqual({k: round(v, 2) for k, v in legacy["categories"].items()},
-                         {"setup": 2.86, "build": 0.46, "rust": 2.09, "skills": 0.18, "web": 4.75})
-        self.assertEqual(round(legacy["queued_to_done"]["median"], 1), 8.7)
-        # The ticket: "about 17 PRs an hour of capacity" on three robots.
-        self.assertEqual(round(legacy["prs_per_hour"], 1), 17.4)
-        # #332, the orchestrator's answer: 95 runs, 59,091 s, 10.37 (10.366842), 17.36 (180 / 10.366842 = 17.3631).
-        self.assertEqual((code["runs"], code["robot_seconds"]), (95, 59091))
-        self.assertEqual(code["robot_minutes_per_run"], 10.3668)
-        self.assertEqual(code["prs_per_hour"], 17.3631)
-        self.assertEqual((point["runs"], point["jobs"], point["robots"]), (145, 437, 3))
+        # Eligibility: 6 runs, 8 jobs. Code runs 201, 203 (build only), 205 (npm test
+        # exactly 10 s); not 202 (failed), 204 (schedule) or 206 (cancelled). Reconstructed:
+        # 201 and 202 (npm test over 10 s, any result); not 205 (exactly 10 s).
+        self.assertEqual((point["runs"], point["jobs"], point["robots"]), (6, 8, 3))
+        self.assertEqual((point["merged_prs"], point["merged_per_hour"]), (4, 1.3333))
+        # Runner timing: whole jobs on runners, 720 + 180 + 70 = 970 s; the skipped
+        # shard with no runner adds none. Denominator 3 runs: 970 / 180 = 5.38889.
+        self.assertEqual((code["runs"], code["robot_seconds"]), (3, 970))
+        self.assertEqual(code["robot_minutes_per_run"], 5.3889)
+        # 3 robots: 32400 / 970 = 33.40206, from the unrounded minutes.
+        self.assertEqual(code["prs_per_hour"], 33.4021)
+        self.assertEqual(code["categories"],
+                         {"setup": 1.0556, "build": 0.8333, "rust": 1.3333, "skills": 0.1111, "web": 2.0556})
+        self.assertEqual(code["split"], {"waiting": 1.1667, "setup": 1.0556, "running": 4.3333})
+        self.assertEqual(code["queued_to_done"], {"median": 5.0, "p90": 8.0, "max": 8.0})
+        # Step timing: step durations only, 680 + 167 = 847 s, the classifier as setup.
+        # Denominator 2 runs: 847 / 120 = 7.05833; 21600 / 847 = 25.50177.
+        self.assertEqual((legacy["runs"], legacy["robot_seconds"]), (2, 847))
+        self.assertEqual(legacy["robot_minutes_per_run"], 7.0583)
+        self.assertEqual(legacy["prs_per_hour"], 25.5018)
+        self.assertEqual(round(legacy["robot_minutes_per_run"], 2), 7.06)
+        self.assertEqual(round(legacy["prs_per_hour"], 1), 25.5)
+        self.assertEqual(legacy["categories"], {"setup": 1.0583, "build": 0.0, "rust": 2.0, "skills": 0.0, "web": 4.0})
+        self.assertEqual(legacy["split"], {"waiting": 0.75, "setup": 1.0583, "running": 6.0})
+        self.assertEqual(legacy["queued_to_done"], {"median": 5.5, "p90": 8.0, "max": 8.0})
 
 
 # Selector escapes (#1264): `escapes` on the fake gh, then `measure` and
