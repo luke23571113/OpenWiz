@@ -119,7 +119,8 @@ fn runtime_owner_restarts_its_tick_through_the_registered_control() {
 }
 #[test]
 fn runtime_owner_stops_http_before_rebinding_the_same_port() {
-    let mut server = super::server::server(Arc::new(|_| {}));
+    let mut server =
+        super::server::server_on(super::server::rebindable_listener(), Arc::new(|_| {}));
     let addr = server.local_addr();
     let (control, requests) = channel();
     let request = thread::spawn(move || control.restart_server(deadline()));
