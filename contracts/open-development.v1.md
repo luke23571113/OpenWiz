@@ -1,12 +1,12 @@
 # OpenWiz open development contract, version 1 (`openwiz.open-development.v1`)
 
-OpenWiz is built in public, in **openwizdev/openwiz** (the **public repository**). The few things that must stay private stay in **jparker2006/ClosedWiz** (the **private repository**). This contract fixes what is private, where private records live, the public forms that point to them, the fleet's records without thread ids, what the privacy check refuses, what the importer and the ticket mover may carry, and how history stays consistent. Every other ticket of spec #1257 builds on it.
+OpenWiz is built in public, in **openwizdev/OpenWiz** (the **public repository**). The few things that must stay private stay in **jparker2006/ClosedWiz** (the **private repository**). This contract fixes what is private, where private records live, the public forms that point to them, the fleet's records without thread ids, what the privacy check refuses, what the importer and the ticket mover may carry, and how history stays consistent. Every other ticket of spec #1257 builds on it.
 
 **Contract only** (#1270, O2). It changes no code. O3 (#1271) builds the privacy check, O4 (#1272) and O5 (#1273) the fleet's records, O6 (#1274) the planning skills' records, O7 to O10 (#1275 to #1278) the public words, O12 (#1280) the settings, O14 (#1282) the importer, O15 (#1283) the ticket mover and O16 (#1284) the rehearsal. Each proves its own part at its own seam.
 
 Authority: spec #1257 and its confirmed grill (CX5 (a), CX6 (a), CX7 (a)), with the spec's amendment for consistent history; the classes come from O1's reviewed inventory (#1269). The grill and the inventory are private records.
 
-**Examples.** Every example here is synthetic: the decider `Robin`, every issue, pull request and comment number, every date, id, path, email address and word. Only the two repositories' names (`openwizdev/openwiz`, `jparker2006/ClosedWiz`) and the public repository's two anchor commits are real, because the forms need them. A block whose info string is `good` shows a form that is accepted; `bad` shows one that is refused, and the text before it says why. In this file only, the privacy check skips `bad` blocks (they are its planted cases); it scans everything else in this file, `good` blocks included. In any other file a `bad` block is scanned like any text.
+**Examples.** Every example here is synthetic: the decider `Robin`, every issue, pull request and comment number, every date, id, path, email address and word. Only the two repositories' names (`openwizdev/OpenWiz`, `jparker2006/ClosedWiz`) and the public repository's two anchor commits are real, because the forms need them. A block whose info string is `good` shows a form that is accepted; `bad` shows one that is refused, and the text before it says why. In this file only, the privacy check skips `bad` blocks (they are its planted cases); it scans everything else in this file, `good` blocks included. In any other file a `bad` block is scanned like any text.
 
 ## Words
 
@@ -135,7 +135,7 @@ https://github.com/jparker2006/ClosedWiz/blob/main/docs/grills/2030-01-02-synthe
 Bad: a comment on the public repository; it can't hold exact words.
 
 ```bad
-https://github.com/openwizdev/openwiz/issues/4001#issuecomment-4000000001
+https://github.com/openwizdev/OpenWiz/issues/4001#issuecomment-4000000001
 ```
 
 ## Public approval records
@@ -290,8 +290,8 @@ Every moved ticket and pull request links to its original, and every original li
 - **On the private repository**, the original gets exactly one comment, whose whole body is:
 
   ```text
-  moved to [OpenWiz #<M>](https://github.com/openwizdev/openwiz/issues/<M>)
-  moved to [OpenWiz #<M>](https://github.com/openwizdev/openwiz/pull/<M>)
+  moved to [OpenWiz #<M>](https://github.com/openwizdev/OpenWiz/issues/<M>)
+  moved to [OpenWiz #<M>](https://github.com/openwizdev/OpenWiz/pull/<M>)
   ```
 
   Both `<M>` are the new number. A resumed move never posts a second one.
@@ -301,7 +301,7 @@ was [ClosedWiz #9010](https://github.com/jparker2006/ClosedWiz/issues/9010)
 ```
 
 ```good
-moved to [OpenWiz #4010](https://github.com/openwizdev/openwiz/pull/4010)
+moved to [OpenWiz #4010](https://github.com/openwizdev/OpenWiz/pull/4010)
 ```
 
 Bad: a bare `#9010`, which GitHub links to the public repository's own #9010.

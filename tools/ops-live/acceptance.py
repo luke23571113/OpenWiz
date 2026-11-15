@@ -43,7 +43,7 @@ VERDICTS = ("APPROVE", "CHANGES")
 # FR5: the live run's only ordering precondition, checked right before the first effect.
 EXCLUSIVE_WHEN = "checked and recorded right before the first live effect"
 # Never a throwaway: the real repositories under test.
-REAL_REPOSITORIES = ("jparker2006/closedwiz", "openwizdev/openwiz")
+REAL_REPOSITORIES = ("jparker2006/closedwiz", "openwizdev/OpenWiz")
 REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+")
 MEASURES = ("grant_wait_ms", "review_start_delay_ms", "oldest_pending_message_age_ms",
             "release_delay_ms", "recovery_time_ms", "duplicate_starts",
@@ -110,9 +110,9 @@ def check_kit(doc):
         repository = doc["test_repository"]
         heads = doc.get("controls", {}).get("candidates", {}).get("heads", []) \
             if isinstance(doc.get("controls"), dict) else []
-        real = set(REAL_REPOSITORIES) | {h["repository"].lower() for h in heads if isinstance(h, dict)
+        real = {r.lower() for r in REAL_REPOSITORIES} | {h["repository"].lower() for h in heads if isinstance(h, dict)
                                         and isinstance(h.get("repository"), str)} \
-            if isinstance(heads, list) else set(REAL_REPOSITORIES)
+            if isinstance(heads, list) else {r.lower() for r in REAL_REPOSITORIES}
         if not (isinstance(repository, str) and REPOSITORY.fullmatch(repository)) \
                 or repository.lower() in real:
             out.append("test_repository: not a throwaway owner/name repository")

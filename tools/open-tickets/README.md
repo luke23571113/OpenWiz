@@ -14,7 +14,7 @@ python3 -I tools/open-tickets/collect.py --out /private/new-dry-run \
   --checker /private/reviewed/check.py --literals /private/matching-list.txt --check
 ```
 
-The default API target is `openwizdev/openwiz`; `--target OWNER/REPO` overrides
+The default API target is `openwizdev/OpenWiz`; `--target OWNER/REPO` overrides
 it. This dry run never contacts the target. It reads complete open membership,
 counts, source content/metadata/relationships and PR base/head twice. Observed
 snapshot drift retries at most three complete pairs (`--snapshot-attempts 1|2|3`,

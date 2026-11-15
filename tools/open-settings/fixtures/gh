@@ -43,7 +43,7 @@ query = parse_qs(urlsplit(path).query)
 parts = urlsplit(path).path.split("/")
 assert parts[:1] == ["repos"] and len(parts) >= 3, path
 repo = "/".join(parts[1:3])
-assert repo in ("openwizdev/openwiz", "jparker2006/OpenWiz", "jparker2006/ClosedWiz"), repo
+assert repo in ("openwizdev/OpenWiz", "jparker2006/OpenWiz", "jparker2006/ClosedWiz"), repo
 source = repo == "jparker2006/ClosedWiz"
 assert not source or method == "GET", "private source mutation"
 resource = "/".join(parts[3:])

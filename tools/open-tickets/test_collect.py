@@ -54,7 +54,7 @@ class Collection(unittest.TestCase):
             self.assertTrue(row['new']['body'].endswith(f'was [ClosedWiz #{n}]'
                 f'(https://github.com/jparker2006/ClosedWiz/issues/{n})'))
             self.assertEqual(row['original_comment'], 'moved to [OpenWiz #${openwiz:' + str(n) + '}]'
-                '(https://github.com/openwizdev/openwiz/issues/${openwiz:' + str(n) + '})')
+                '(https://github.com/openwizdev/OpenWiz/issues/${openwiz:' + str(n) + '})')
             self.assertNotIn('ready-for-agent', row['new']['labels'])
             self.assertNotIn('ready-for-human', row['new']['labels'])
         self.run_cli('--check')

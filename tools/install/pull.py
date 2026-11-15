@@ -13,7 +13,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from install import Refused, TARGETS, install, manifest_at, private, require, sha, unique
 
-BASE = 'https://github.com/openwizdev/openwiz/releases/'
+BASE = 'https://github.com/openwizdev/OpenWiz/releases/'
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):

@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
-TARGET = "openwizdev/openwiz"
+TARGET = "openwizdev/OpenWiz"
 SOURCE = "jparker2006/ClosedWiz"
 ROOT = f"repos/{TARGET}"
 SRC = f"repos/{SOURCE}"
@@ -294,7 +294,7 @@ class Settings(unittest.TestCase):
                     p = self.run_tool(w, "--apply")
                     self.assertEqual(p.returncode, 1, p.stderr)
                     self.assertEqual(self.writes(), [])
-        w = world(); w["override"] = {"path": ROOT, "raw": '{"full_name":"openwizdev/openwiz","full_name":"openwizdev/openwiz"}'}
+        w = world(); w["override"] = {"path": ROOT, "raw": '{"full_name":"openwizdev/OpenWiz","full_name":"openwizdev/OpenWiz"}'}
         p = self.run_tool(w, "--apply")
         self.assertEqual(p.returncode, 1, p.stderr)
         self.assertEqual(self.writes(), [])
@@ -419,7 +419,7 @@ class Settings(unittest.TestCase):
                 self.assertEqual(out["differences"], [])
                 self.assertEqual(out["blockers"], [])
                 self.assertEqual(self.writes(), [])
-        self.data["repo"]["full_name"] = "openwizdev/OpenWiz"
+        self.data["repo"]["full_name"] = "openwizdev/openwiz"  # GitHub's reply in other capitals
         self.data["rulesets"][0]["enforcement"] = "disabled"
         self.data["calls"] = []
         p = self.run_tool(self.data, "--repo", "jparker2006/OpenWiz", "--apply")

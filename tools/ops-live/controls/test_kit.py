@@ -169,7 +169,7 @@ REFUSALS = [
     ("grant with chat text", put("Jake said yes", "permissions", "spending", "record"),
      ["permissions.spending.record: not a private-record comment pointer"]),
     ("grant with public pointer",
-     put("https://github.com/openwizdev/openwiz/issues/4001#issuecomment-9002",
+     put("https://github.com/openwizdev/OpenWiz/issues/4001#issuecomment-9002",
          "permissions", "spending", "record"),
      ["permissions.spending.record: not a private-record comment pointer"]),
     ("grant with issue link only",

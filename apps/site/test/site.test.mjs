@@ -306,7 +306,7 @@ for (const width of [390, 1440]) test(`#1109/#2293: install line first, then fre
     assert.equal(await first.textContent(), 'Copy the prompt', 'the first action on the page copies the install line');
     await (width === 390 ? first.tap() : first.click());
     await page.waitForSelector('.hero .copy[data-state="copied"]');
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Install OpenWiz from github.com/openwizdev/openwiz');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Install OpenWiz from github.com/openwizdev/OpenWiz');
     const cost = page.locator('.hero .cost');
     assert.equal(normalize(await cost.innerText()), costLine);
     const link = cost.locator('a');

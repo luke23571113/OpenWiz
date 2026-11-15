@@ -2,7 +2,7 @@
 
 ## What this is
 
-OpenWiz is developed in the public repository `openwizdev/openwiz`; ClosedWiz stays private for exact decision words, grills, live evidence, machine details and orchestration state. These instructions are prepared in ClosedWiz until the separately approved cut-over; this edit activates nothing. See the [open development contract](contracts/open-development.v1.md). OpenWiz 0.0.1 is one outcome: a read-only Rust inventory of real CloudRoom sessions, read through `room-cli`.
+OpenWiz is developed in the public repository `openwizdev/OpenWiz`; ClosedWiz stays private for exact decision words, grills, live evidence, machine details and orchestration state. These instructions are prepared in ClosedWiz until the separately approved cut-over; this edit activates nothing. See the [open development contract](contracts/open-development.v1.md). OpenWiz 0.0.1 is one outcome: a read-only Rust inventory of real CloudRoom sessions, read through `room-cli`.
 
 **Build and acceptance are separate.** The 0.0.1 inventory, 0.0.3 send, 0.0.4 new-thread and attachment flows are implemented. 0.0.5 was accepted with recorded gaps ([#106](https://github.com/jparker2006/ClosedWiz/issues/106#issuecomment-6550891204)). Check [STATUS.md](STATUS.md) and each version's acceptance record for its current gates; fixture tests alone never prove live behaviour.
 

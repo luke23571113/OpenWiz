@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 SOURCE = 'jparker2006/ClosedWiz'
-DEFAULT_TARGET = 'openwizdev/openwiz'
+DEFAULT_TARGET = 'openwizdev/OpenWiz'
 SPEC = 1257
 SCHEMA = 'openwiz.ticket-move.inventory.v1'
 HEADER = 'kind\tclosedwiz\topenwiz\n'

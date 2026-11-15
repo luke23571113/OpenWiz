@@ -54,7 +54,7 @@ the contract is wrong and must be fixed.
     {"account": "jparker2006", "repository_selection": "selected",
      "repositories": ["jparker2006/ClosedWiz"]},
     {"account": "openwizdev", "repository_selection": "selected",
-     "repositories": ["openwizdev/openwiz", "openwizdev/WizPlugins", "openwizdev/WizSkills"]}
+     "repositories": ["openwizdev/OpenWiz", "openwizdev/WizPlugins", "openwizdev/WizSkills"]}
   ],
   "secret": {
     "name": "OPENWIZ_GITHUB_APP_KEY",
@@ -117,7 +117,7 @@ account's repositories:
 | Account | Repositories |
 | --- | --- |
 | `jparker2006` (Jake's account) | `jparker2006/ClosedWiz` |
-| `openwizdev` (organisation) | `openwizdev/openwiz`, `openwizdev/WizPlugins`, `openwizdev/WizSkills` |
+| `openwizdev` (organisation) | `openwizdev/OpenWiz`, `openwizdev/WizPlugins`, `openwizdev/WizSkills` |
 
 Each installation has its own request budget. This table is our factory's.
 It binds no one else's, and no other repository is in scope.

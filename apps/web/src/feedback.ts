@@ -5,8 +5,8 @@
 // sends, stores, reads or collects anything: the only effect is one clipboard
 // write of exactly the previewed text, after an explicit copy.
 
-export const DESTINATION = 'openwizdev/openwiz';
-export const SHARE_URL = 'https://github.com/openwizdev/openwiz';
+export const DESTINATION = 'openwizdev/OpenWiz';
+export const SHARE_URL = 'https://github.com/openwizdev/OpenWiz';
 export const TITLE_MAX = 256;
 // GitHub's 65,536-character body, less the blank line and the 59-character
 // marker line the agent adds (contracts/feedback.v1.md, "The issue").

@@ -2,7 +2,7 @@
 
 Paste this one line into the coding agent you already use (Claude Code, Codex or another):
 
-> Install OpenWiz from github.com/openwizdev/openwiz
+> Install OpenWiz from github.com/openwizdev/OpenWiz
 
 The agent follows the [install skill](../skills/install/SKILL.md). This page says what it does, what it may change, and how to recover or remove it.
 

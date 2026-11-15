@@ -40,10 +40,10 @@ class Pull(unittest.TestCase):
         self.assertEqual((f.root / 'current').readlink(), before)
         self.assertTrue((f.root / 'state/service/builds' / ('2' * 40) / 'web/setup.html').exists())
         self.assertEqual(calls, [
-            'https://github.com/openwizdev/openwiz/releases/latest/download/openwiz-x86_64-unknown-linux-gnu.sha256',
-            'https://github.com/openwizdev/openwiz/releases/latest/download/openwiz-x86_64-unknown-linux-gnu.manifest.json',
-            'https://github.com/openwizdev/openwiz/releases/download/v0.0.99/openwiz-0.0.99-x86_64-unknown-linux-gnu.manifest.json',
-            'https://github.com/openwizdev/openwiz/releases/download/v0.0.99/bundle.tar.gz',
+            'https://github.com/openwizdev/OpenWiz/releases/latest/download/openwiz-x86_64-unknown-linux-gnu.sha256',
+            'https://github.com/openwizdev/OpenWiz/releases/latest/download/openwiz-x86_64-unknown-linux-gnu.manifest.json',
+            'https://github.com/openwizdev/OpenWiz/releases/download/v0.0.99/openwiz-0.0.99-x86_64-unknown-linux-gnu.manifest.json',
+            'https://github.com/openwizdev/OpenWiz/releases/download/v0.0.99/bundle.tar.gz',
         ])
         with self.assertRaises(pull.Refused):
             pull.stage(target, '0.0.98', '2' * 40, digest, f.root, f.root / 'state', fetch=fetch)

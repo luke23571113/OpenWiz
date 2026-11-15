@@ -27,8 +27,8 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 REAL_GIT = shutil.which('git')
-PUBLIC = 'openwizdev/openwiz'
-PUBLIC_URL = 'https://github.com/openwizdev/openwiz.git'
+PUBLIC = 'openwizdev/OpenWiz'
+PUBLIC_URL = 'https://github.com/openwizdev/OpenWiz.git'
 PRIVATE = 'jparker2006/ClosedWiz'
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PRODUCTS = ('cli', 'runtime', 'server', 'service', 'web')
@@ -38,7 +38,7 @@ PUBLISHED = '# Changelog\n\n## 0.0.98 · 2026-01-01\n\nContext: Earlier public e
 NOTES = ('## 0.0.99 · 2026-11-20\n\nFixture-tested: You can preview a synthetic export.\n\n'
          '- Fixture-tested: You can save a preview.\n- Fixture-tested: You can cancel a preview.\n\n'
          'Fixture-tested: Synthetic export fixtures pass; live export remains unverified.\n\n'
-         '[Full release on GitHub](https://github.com/openwizdev/openwiz/releases/tag/v0.0.99)\n')
+         '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n')
 
 
 def load(name, path):
@@ -150,7 +150,7 @@ if args[:2] == ["release", "download"]:
     sys.exit(0)
 assert args[0] == "api" and not any(x in args for x in ("--method", "-X", "-f", "-F")), args
 path = next(a for a in args if a.startswith("repos/"))
-if path.startswith("repos/openwizdev/openwiz/releases/tags/"):
+if path.startswith("repos/openwizdev/OpenWiz/releases/tags/"):
     meta = store / path.rsplit("/", 1)[1] / "meta.json"
     if not meta.exists() or plant == "unreadable":
         print("gh: Not Found (HTTP 404)", file=sys.stderr)
@@ -680,7 +680,10 @@ class Candidate(World):
         self.git(self.repo, 'reset', '-q', '--hard', self.head)
         self.git(self.repo, 'remote', 'set-url', 'origin', f'https://github.com/{PRIVATE}.git')
         self.blocked(self.prepare(good), 'private_source')
-        self.git(self.repo, 'remote', 'set-url', 'origin', PUBLIC_URL)
+        self.git(self.repo, 'remote', 'set-url', 'origin', 'https://github.com/openwizdev/openwiz2.git')
+        self.blocked(self.prepare(good), 'private_source')
+        # RN6: the public origin in other capitals is the same repository.
+        self.git(self.repo, 'remote', 'set-url', 'origin', 'https://github.com/OpenWizDev/OPENWIZ.git')
         self.made = good
         self.assertEqual(self.prepare()[0], 0)
         self.decisions()
@@ -691,6 +694,15 @@ class Candidate(World):
 
     def d3_cutover_read_backs_refuse(self):
         """R1/D3: only the command's own cut-over read-backs count."""
+        public = f'repos/{PUBLIC}'
+        for name in ('openwizdev/openwiz', 'openwizdev/OpenWiz', 'OpenWizDev/OPENWIZ'):
+            with self.subTest(full_name=name):  # RN6: GitHub's reply in any capitals
+                self.world[public]['full_name'] = name
+                self.save()
+                code, out = self.evaluate()
+                self.assertEqual(code, 0, out)
+        self.world[public]['full_name'] = PUBLIC
+        self.save()
         rules = f'repos/{PUBLIC}/rulesets/71'
         o16, o17 = f'repos/{PRIVATE}/issues/1284', f'repos/{PRIVATE}/issues/1285'
         held = [{'name': 'held'}]
@@ -700,6 +712,7 @@ class Candidate(World):
                 ('O17 held', o17, {'labels': held}),
                 ('O16 held', o16, {'labels': held}),
                 ('public repository private', f'repos/{PUBLIC}', {'visibility': 'private'}),
+                ('another repository', f'repos/{PUBLIC}', {'full_name': 'openwizdev/openwiz2'}),
                 ('immutable releases off', f'repos/{PUBLIC}/immutable-releases', {'enabled': False}),
                 ('a bypass actor', rules, {'bypass_actors': [{'actor_type': 'RepositoryRole', 'actor_id': 5}]}),
                 ('ruleset disabled', rules, {'enforcement': 'disabled'}),
@@ -1229,7 +1242,7 @@ class Candidate(World):
             f'## {v} · 2026-11-20\n\nFixture-tested: Version {v} headline.\n'
             + ('' if v == '0.0.7' else f'\n- Fixture-tested: Synthetic {v} entry.\n\n'
                f'Fixture-tested: Synthetic {v} checks pass.\n\n'
-               '[Full release on GitHub](https://github.com/openwizdev/openwiz/releases/tag/v0.0.12)\n')
+               '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)\n')
             for v in versions)
         published = '# Changelog\n\n## 0.0.5 · 2026-01-05\n\nContext: Earlier public entry.  \n'
         shutil.rmtree(self.repo)

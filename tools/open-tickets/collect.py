@@ -65,7 +65,7 @@ def collect_source(gh, inv, records):
 def moved_template(n, kind):
     path = 'pull' if kind == 'pull_request' else 'issues'
     slot = '${openwiz:' + str(n) + '}'
-    return f'moved to [OpenWiz #{slot}](https://github.com/openwizdev/openwiz/{path}/{slot})'
+    return f'moved to [OpenWiz #{slot}](https://github.com/openwizdev/OpenWiz/{path}/{slot})'
 
 
 def operations(inv, source, merges, closures, checker, literals, exclusions, aliases=None):
@@ -421,7 +421,7 @@ def build(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--gh', default='gh')
-    p.add_argument('--target', default='openwizdev/openwiz')
+    p.add_argument('--target', default='openwizdev/OpenWiz')
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--checker', type=Path, required=True)
     p.add_argument('--literals', type=Path, required=True)

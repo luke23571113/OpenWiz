@@ -26,7 +26,7 @@ not evidence for later.
 
 | Question | Answer |
 | --- | --- |
-| Destination | One issue on `openwizdev/openwiz`; no other transport |
+| Destination | One issue on `openwizdev/OpenWiz`; no other transport |
 | Who submits | The user's own agent, through the user's own existing GitHub login |
 | Not used | The OpenWiz GitHub App, Jake's or OpenWiz's credentials, a token given to OpenWiz, a new login, a server route |
 | Consent | An exact preview of destination, account, title and whole body (with its visible marker), then one explicit yes for one attempt |

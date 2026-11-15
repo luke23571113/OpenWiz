@@ -31,13 +31,21 @@ from carriage import Patch  # noqa: E402
 from text import CHECKER, SOURCE, check_text, private_record, transform  # noqa: E402
 
 PRIVATE = 'jparker2006/ClosedWiz'
-PUBLIC = 'https://github.com/openwizdev/openwiz'  # the contract's final address; no legacy fallback
+PUBLIC = 'https://github.com/openwizdev/OpenWiz'  # the contract's final address; no legacy fallback
+# RN6: moved comments posted before the capitals changed; read back, never written.
+WRITTEN_BEFORE_CAPITALS = 'https://github.com/openwizdev/openwiz'
 # GitHub's issue list can omit a just-created item for minutes while GET issues/<n>
 # returns it, and it rate-limits rapid content creation (secondary limit).
 CREATE_PAUSE = 1.0      # seconds before each create POST
 CONFIRM_RETRIES = 8     # extra confirming reads after a create POST
 CONFIRM_DELAY = 5.0     # seconds between confirming reads
 DIRECT_READS = 5        # numbers read directly past the highest known one
+
+
+def same_comment(found, body):
+    """The exact comment, or a moved comment naming the repository as it was written before RN6."""
+    return found == body or (body is not None and body.startswith('moved to ')
+                             and found == body.replace(f'({PUBLIC}/', f'({WRITTEN_BEFORE_CAPITALS}/', 1))
 
 
 def canonical(value):
@@ -528,7 +536,7 @@ class Mover:
     @staticmethod
     def matching_comment(existing, body, prefix, complete=False):
         family = [row for row in existing if row['body'].startswith(prefix)]
-        require(all(row['body'] == body for row in family) and len(family) <= 1,
+        require(all(same_comment(row['body'], body) for row in family) and len(family) <= 1,
                 'read-back: conflicting or duplicate migration comments')
         if complete and body is not None:
             require(len(family) == 1, 'read-back: required migration comment absent')
