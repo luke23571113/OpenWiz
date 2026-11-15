@@ -2,11 +2,11 @@
 
 This contract records what discovery actually observed about phone notification delivery. It is the input T4 may build on. **Today it binds nothing:** every element below is unsupported or unverified, so T4 has no positive transport binding and must not start transport work from it. A later discovery replaces it with a new version.
 
-**Source:** the bounded read-only discovery of 2026-11-13 (`docs/spikes/0.0.15-notifications.md`), over the engine's loopback address. Its notification status read refused with `503 state_unavailable`, and the run stopped there.
+**Source:** the bounded read-only discoveries of 2026-11-13 and 2026-11-14 (run 2: packaged candidate, selected and activated-held local engine) (`docs/spikes/0.0.15-notifications.md`), over the engine's loopback address. Its notification status read refused with `503 state_unavailable`, and the run stopped there.
 
 | Element | Status | Basis |
 | --- | --- | --- |
-| Status route | **Present; refuses** | `GET /api/v1/notifications/status` answers `503` `{"error":{"kind":"state_unavailable","message":…}}` while protected notification state is unavailable. It admitted no effect |
+| Status route | **Present; refuses** (also with a selected, activated-held engine) | `GET /api/v1/notifications/status` answers `503` `{"error":{"kind":"state_unavailable","message":…}}` while protected notification state is unavailable. It admitted no effect |
 | Transport invocation and protocol | **Unverified** | No capability was reported; the worker (`/sw.js`) was not read |
 | Subscription and key ownership | **Unverified** | No subscription state was readable; none was created |
 | Permission state | **Unverified** | No browser context was evaluated; no prompt was shown |
