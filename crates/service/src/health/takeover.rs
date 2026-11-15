@@ -51,10 +51,12 @@ pub(super) fn binding(
     {
         return Err("takeover spec is not a unique verified open spec".into());
     }
+    // #732: who wrote the factory's records, read before any comment.
+    let authors = super::observe::record_authors(health, until)?;
     let comments = TickReads::with_executor(health.github.clone())
         .comments(spec, until)
         .map_err(|_| "takeover ownership records are unread")?;
-    let (owner, record) = super::observe::ownership(health, spec, &comments, until)?
+    let (owner, record) = super::observe::ownership(health, spec, &comments, &authors, until)?
         .ok_or("takeover ownership record is absent")?;
     if &owner != thread {
         return Err("takeover ownership changed or is ambiguous".into());

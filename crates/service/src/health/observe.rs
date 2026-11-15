@@ -1,6 +1,9 @@
 //! Bounded observations only. Unknown tool reads never establish absence.
 use super::*;
-use openwiz_adapter_github::fleets::GitHubFleets;
+use openwiz_adapter_github::{
+    fleets::GitHubFleets,
+    tickets::{RecordAuthors, Tickets},
+};
 use openwiz_core::{
     fleet::{fleets::FleetsSource, model::IssueState},
     source::SourceError,
@@ -88,6 +91,8 @@ fn fleets(
     {
         return Err("health repository does not match the config");
     }
+    // #732: who wrote the factory's records, read before any comment.
+    let authors = record_authors(health, deadline)?;
     let list = GitHubFleets::with_executor(health.github.clone())
         .issues(deadline)
         .map_err(|_| "open specs could not be read")?;
@@ -104,7 +109,9 @@ fn fleets(
             return Err("open spec list names a spec twice");
         }
         let comments = gh.comments(issue.number, deadline)?;
-        let Some((thread, record)) = ownership(health, issue.number, &comments, deadline)? else {
+        let Some((thread, record)) =
+            ownership(health, issue.number, &comments, &authors, deadline)?
+        else {
             continue;
         };
         let record = Some(record);
@@ -250,16 +257,44 @@ fn probe(port: u16, timeout: Duration) -> Known<ServerBroken> {
     }
 }
 
+/// #732: the `Record authors` setting on the default branch's head, read by
+/// the fleet tick's rules and reads. Unread or malformed refuses every record.
+pub(super) fn record_authors(
+    health: &Health,
+    deadline: Instant,
+) -> Result<RecordAuthors, &'static str> {
+    Tickets::with_executor(health.github.clone())
+        .record_authors(deadline)
+        .map_err(|_| "record authors are unread or malformed")
+}
+/// True only for a comment a record author wrote; one with no author is
+/// nobody's. The comment read is REST's `user.login`, where an App is always
+/// `name[bot]` and no user login can hold brackets, so the login alone gives
+/// its type, as the tick's own reader assumes.
+fn authored(c: &openwiz_adapter_github::tick::Comment, authors: &RecordAuthors) -> bool {
+    let login = c.author.as_deref();
+    let kind = login.map(|l| {
+        if l.to_ascii_lowercase().ends_with("[bot]") {
+            "Bot"
+        } else {
+            "User"
+        }
+    });
+    authors.wrote(login, kind)
+}
 /// Resolve public ownership privately, then give the exact-loop adapter its
 /// existing thread-bound representation. That representation is never posted.
+/// Only a record author's fleet record counts (#732).
 pub(super) fn ownership(
     health: &Health,
     spec: Number,
     comments: &[openwiz_adapter_github::tick::Comment],
+    authors: &RecordAuthors,
     deadline: Instant,
 ) -> Result<Option<(Id, String)>, &'static str> {
     let Some(line) = comments
         .iter()
+        .filter(|c| authored(c, authors))
         .filter_map(|c| c.body.lines().next())
         .rfind(|s| {
             s.starts_with("launch-fleet: fleet thread ")
