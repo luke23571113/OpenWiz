@@ -3478,8 +3478,8 @@ if [ -s "$tmp/gi1-points.txt" ]; then cat "$tmp/gi1-points.txt"; fi
 # with a fleet thread prints one line to run that thread's own loop, and none
 # of the spec's tick lines; a spec with no fleet thread, or a record that
 # names no loop, or a loop two specs claim, behaves as before GI2.
-GI2_LOOP10=00000000-0000-4000-8000-000000000010
-GI2_LOOP40=00000000-0000-4000-8000-000000000040
+GI2_LOOP10=fleet-10 # E5: the public per-spec handle; the real loop id stays private
+GI2_LOOP40=fleet-40
 GI2_FLEET10="say(10; 1090; \"10:00\"; \"launch-fleet: fleet active, loop $GI2_LOOP10\")"
 GI2_FLEET40="say(40; 4090; \"10:00\"; \"launch-fleet: fleet active, loop $GI2_LOOP40\")"
 expect 'GI2: a wake on a spec with a fleet thread runs its loop, and prints none of its lines' 0 check.json "merge12 | $SPEC40 | $GI2_FLEET10" -- wake 13 <<EOF
