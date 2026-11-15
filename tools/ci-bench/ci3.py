@@ -303,8 +303,6 @@ def result(item, start, table, collected_at):
     if missing:
         return None, "; ".join(missing)
     last = max(checks.values(), key=lambda c: secs(c["end"]))
-    # First slice: the bench's cohort rule, timed from the last attempt.
-    start = utc(min(secs(j["created_at"]) for j in last["attempt"]["jobs"]))
     total = secs(last["end"]) - secs(start)
     if total < 0:
         raise Fail(f"{item.get('sha')}: its result ends before its clock starts")
@@ -368,7 +366,7 @@ def measure(window, label=None, table=None):
             got, why = result(h, h["start"], table, window["collected_at"])
         if got is None:
             missing.append({"pr": h["pr"], "head": h["sha"], "reason": why})
-        elif got["outcome"] == "success":  # first slice: successful results only, as the bench counts
+        else:
             timed.append(got)
     groups, group_missing = [], 0
     for g in window["groups"]:
