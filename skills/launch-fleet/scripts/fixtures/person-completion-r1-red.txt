@@ -1,0 +1,70 @@
+#2888 R1 missing-completion request (synthetic fixtures only)
+Claim: a check of a closed person ticket without completion evidence asks for
+launch-fleet: complete: <evidence>, while keeping its dependent blocked.
+Command: TEST_EXPECTED=10 TEST_ONLY='R1 completion:*' sh skills/launch-fleet/scripts/test.sh </dev/null
+Production before fix: 0a0106c372d07e51f00fb1390ca34080571be4ad
+Exit: 1. Seven prompt assertions fail; the archive line remains unchanged.
+Temporary paths and run timestamps normalized below.
+
+FAIL R1 completion: spec asks for the missing evidence record: unexpected output:
+    --- <fixture-run>/case-1/want.txt
+    +++ <fixture-run>/case-1/out
+    @@ -1 +0,0 @@
+    -look #12: closed person ticket needs launch-fleet: complete: <evidence>
+ok   R1 completion: recorded request is quiet
+ok   R1 completion: adding evidence after the request frees the dependent
+FAIL R1 completion: project check asks for the record: unexpected output:
+    --- <fixture-run>/case-4/want.txt
+    +++ <fixture-run>/case-4/out
+    @@ -1 +0,0 @@
+    -look #12: closed person ticket needs launch-fleet: complete: <evidence>
+FAIL R1 completion: targeted wake asks for the record: unexpected output:
+    --- <fixture-run>/case-5/want.txt
+    +++ <fixture-run>/case-5/out
+    @@ -1 +0,0 @@
+    -look #12: closed person ticket needs launch-fleet: complete: <evidence>
+FAIL R1 completion: person label asks for the record: unexpected output:
+    --- <fixture-run>/case-6/want.txt
+    +++ <fixture-run>/case-6/out
+    @@ -1 +0,0 @@
+    -look #12: closed person ticket needs launch-fleet: complete: <evidence>
+FAIL R1 completion: empty evidence still asks for the record: unexpected output:
+    --- <fixture-run>/case-7/want.txt
+    +++ <fixture-run>/case-7/out
+    @@ -1 +0,0 @@
+    -look #12: closed person ticket needs launch-fleet: complete: <evidence>
+ok   R1 completion: an agent ticket gets no person-completion request
+FAIL R1 completion: unrelated look does not suppress the request: unexpected output:
+    --- <fixture-run>/case-9/want.txt
+    +++ <fixture-run>/case-9/out
+    @@ -1 +0,0 @@
+    -look #12: closed person ticket needs launch-fleet: complete: <evidence>
+FAIL R1 completion: request coexists with archiving its builder: unexpected output:
+    --- <fixture-run>/case-10/want.txt
+    +++ <fixture-run>/case-10/out
+    @@ -1,2 +1 @@
+    -look #12: closed person ticket needs launch-fleet: complete: <evidence>
+     archive #12: closed; archive thr_syn12
+ok   every gh call was one of fleet.sh's reads
+10 cases, 7 failed
+
+External-blocker slice: closed-ticket prompting was already implemented in the
+working tree; a spec/dependent wake still silently missed a blocker outside its
+graph. Admission logic remained unchanged.
+Command: TEST_EXPECTED=3 TEST_ONLY='R1 external:*' sh skills/launch-fleet/scripts/test.sh </dev/null
+Exit: 1. Both request assertions fail; adding evidence still starts the dependent.
+Temporary paths and run timestamps normalized below.
+
+FAIL R1 external: spec asks for a person blocker outside its graph: unexpected output:
+    --- <fixture-run>/case-1/want.txt
+    +++ <fixture-run>/case-1/out
+    @@ -1 +0,0 @@
+    -look #71: closed person ticket needs launch-fleet: complete: <evidence>
+FAIL R1 external: dependent wake asks for its person blocker record: unexpected output:
+    --- <fixture-run>/case-2/want.txt
+    +++ <fixture-run>/case-2/out
+    @@ -1 +0,0 @@
+    -look #71: closed person ticket needs launch-fleet: complete: <evidence>
+ok   R1 external: completion lets the dependent wake proceed
+ok   every gh call was one of fleet.sh's reads
+3 cases, 2 failed

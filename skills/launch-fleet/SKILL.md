@@ -176,7 +176,7 @@ Do every line. Lines of the same kind run **in parallel** (every `start`, once i
 | `resume #N: #B merged ... (wait comment C)` | Claim and deliver the resume in step 3 below |
 | `reconcile resume #N ...` | Reconcile the delivery claim in step 3; never blindly send the same resume again |
 | `needs-info #N` | Its builder asked a question. A narrow same-intent path request goes first to the ops agent's grant evaluation ("Ops passes" below); otherwise, and for every real exception, tell the orchestrator, with a link to the question, and record `launch-fleet: asked the orchestrator` |
-| `person #N` | A person's ticket (a live step) is ready: approved, unblocked and not held. Tell the user (step 6), and record `launch-fleet: told the user` |
+| `person #N` | A person's ticket (a live step) is ready: approved, unblocked and not held. Tell the user (step 6), and record `launch-fleet: told the user`. After the person finishes, the orchestrator or owning fleet thread verifies the result and posts `launch-fleet: complete: <evidence>` as the first nonblank line of a comment on that ticket, before or when it closes. Name the completion proof on that line: a read-back, artifact path or linked result; a live step needs its observed result. If a `look #N` line asks for the record after closure, verify that same evidence and post it then. Without a verified merge, missing or unverified completion evidence keeps its dependents blocked |
 | `re-approve #S` | A ticket could start, but the plan changed since the user approved it, so nothing under the spec starts. Tell the user (step 6) |
 | `spec done #S` | Every planned builder ticket has a verified merge and every planned human ticket is complete. Check the live-check evidence and write the closing summary (step 6); follow-ups never block it |
 | `close spec #S` | Apply the same live-evidence and missing-evidence record procedure as `spec done`, label confirmed follow-ups `polish`, and close the spec issue with a comment saying the planned tickets are done |
@@ -598,6 +598,7 @@ The loop's memory: comments on GitHub, each starting `launch-fleet:`. Edit a cla
 | | `launch-fleet: held for #<P>` / `noted #<P>` | A contract hold, or a builder told of a change |
 | | `launch-fleet: asked the orchestrator` | Its `needs-info` question was passed on |
 | | `launch-fleet: told the user` | A person's ticket is ready, and the user knows |
+| | `launch-fleet: complete: <evidence>` | The orchestrator or owning fleet thread records a person's completed work and names its evidence; with the ticket closed, its dependents may start |
 | | `launch-fleet: waiting for #<B>` / `resume starting <wait comment id> for #<B>` / `resume sent <wait comment id> for #<B>` / `resume failed <wait comment id> for #<B>: <why>` / `resume withdrawn <wait comment id> for #<B>` | The builder waits for a verified merge, or was told to resume that wait |
 | | `launch-fleet: archived` | Its builder and reviewer are archived |
 | | `launch-fleet: old builder archived, start <start comment id>` | The orchestrator archived that builder, from before the spec's fleet thread, so the fleet thread may start its own (a takeover) |
