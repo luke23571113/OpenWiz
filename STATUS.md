@@ -4,7 +4,7 @@
 
 ## In one paragraph
 
-- **Fleet check cost (#2788, 2026-11-14):** R1 restores snapshot priming after changed/expired reads. All nine paired synthetic ticks keep GraphQL commands, modeled requests and points at or below main's, including zero on both immediate recovery ticks, with identical due output. Snapshot packing and tag comparison reduce local process work; merged-PR CI remains excluded while metadata and open-PR CI stay checked. All 14 load proofs and the unchanged 600-second Workload guard pass. See the [R1 proof](tools/fleet-load/evidence/2788-r1.md). Live HTTP costs and latency remain unverified.
+- **Fleet check cost (#598, formerly #2788, 2026-11-15):** OpenWiz main is merged while retaining snapshot reuse and person-completion blocker handling. All 53 scoped shell cases and 14 load proofs pass, with the unchanged 600-second Workload guard. The nine paired synthetic ticks keep GraphQL commands, modeled requests and points at or below main's, including zero on both immediate recovery ticks, with identical due output. All 786 shell cases are retained for CI. See the [merge proof](tools/fleet-load/evidence/598-merge.md) and [original R1 proof](tools/fleet-load/evidence/2788-r1.md). Live HTTP costs and latency remain unverified.
 
 - **EB5 contract preparation (#2176):** versioned journey outcomes, frozen experiment/CF4 bindings, paired replay and numeric live-protocol shapes have synthetic validation proofs. The existing benchmark CI invokes the owning contract proofs. Known builder-start provenance is retained across journey refreshes. Execution remains unavailable. Revision 11 approval preserves separate research, paid-eval, replay, live, activation and publication gates; no speedup or safety result is claimed.
 
