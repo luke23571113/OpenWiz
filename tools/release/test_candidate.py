@@ -41,9 +41,10 @@ NOTES = ('## 0.0.99 · 2026-11-20\n\nFixture-tested: You can preview a synthetic
          '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n')
 
 # RL6 (#739): a curated notes section in VS9's three parts (synthetic wording).
-CURATED = ("## 0.0.99 · 2026-11-20\n\n### What's new for you\n\n- You can preview a synthetic export.\n"
-           "- You can cancel a preview.\n\nTested on synthetic fixtures; a live export is still unverified.\n\n"
-           "### Under the hood\n\n- The preview reads one synthetic file.\n\n"
+CURATED = ("## 0.0.99 · 2026-11-20\n\n**Preview an export**\n\n**What's new for you**\n\n"
+           "- You can preview a synthetic export.\n- You can cancel a preview.\n\n"
+           "Tested on synthetic fixtures; a live export is still unverified.\n\n"
+           "**Under the hood**\n\n- The preview reads one synthetic file.\n\n"
            "[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n")
 
 
@@ -98,7 +99,9 @@ LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate
           'candidate.ANCHOR = sys.argv.pop(1); '
           # RL6: a test may give the moved-number map its own synthetic rows.
           'import json; m = os.environ.get("MOVED"); '
-          'm and hasattr(candidate.entry, "moved") and setattr(candidate.entry, "MOVED", candidate.entry.moved(json.loads(m))); '
+          'm and setattr(candidate.entry, "MOVED", candidate.entry.moved(json.loads(m))); '
+          # and fix the publication day the notes' dates must equal (RL6).
+          'candidate.today = (lambda: os.environ["TODAY"]) if "TODAY" in os.environ else candidate.today; '
           # A test may fix the tool's clock for one invocation, so interval assertions never race it.
           'candidate.now = (lambda: int(os.environ["AT"])) if "AT" in os.environ else candidate.now; '
           'sys.exit(candidate.main(sys.argv[1:]))')
@@ -205,7 +208,7 @@ class World(unittest.TestCase):
                         GIT_AUTHOR_EMAIL=NOREPLY, GIT_COMMITTER_EMAIL=NOREPLY,
                         PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
                         CALLS=str(self.root / 'calls.jsonl'), PUBLIC_FAKE=str(self.remote),
-                        GH_WORLD=str(self.world_path), RELEASES=str(self.releases))
+                        GH_WORLD=str(self.world_path), RELEASES=str(self.releases), TODAY='2026-11-20')
         self.now = int(time.time())
         self.world = {f'repos/{PUBLIC}': {'full_name': PUBLIC, 'visibility': 'public', 'archived': False,
                                           'default_branch': 'main'},
@@ -503,7 +506,8 @@ class World(unittest.TestCase):
         self.smoke_kit()
         self.artifacts()
         self.made = body or self.body()
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -694,7 +698,8 @@ class Candidate(World):
         # RN6: the public origin in other capitals is the same repository.
         self.git(self.repo, 'remote', 'set-url', 'origin', 'https://github.com/OpenWizDev/OPENWIZ.git')
         self.made = good
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -822,21 +827,26 @@ class Candidate(World):
 
     def curate(self, curated, released=None):
         """RL6: the candidate commit carries a curated notes file and its CHANGELOG.md."""
-        (self.repo / 'changes/notes').mkdir(exist_ok=True)
-        (self.repo / 'changes/notes/0.0.99.md').write_text(curated)
         at = PUBLISHED.index('## ')
-        (self.repo / 'CHANGELOG.md').write_text(PUBLISHED[:at] + curated + '\n' + PUBLISHED[at:])
+        whole = PUBLISHED[:at] + curated + '\n' + PUBLISHED[at:]  # the curated changelog keeps 0.0.98
+        (self.repo / 'changes/notes').mkdir(exist_ok=True)
+        (self.repo / 'changes/notes/0.0.99.md').write_text(whole)
+        (self.repo / 'CHANGELOG.md').write_text(whole)
         self.head = self.commit('Synthetic curated notes')
         self.git(self.repo, 'push', '-q', self.remote, 'HEAD:main')
         self.notes = curated if released is None else released
-        self.entry = {'curated': 'changes/notes/0.0.99.md', 'included': [VERSION]}
+        self.entry = {'curated': 'changes/notes/0.0.99.md', 'curated_sha256': sha(whole.encode()),
+                      'notes_sha256': sha(curated.encode()), 'included': [VERSION]}
 
     def test_rl6_curated_notes_pass_every_gate_and_publish_exactly(self):
-        # catches: the command refusing the curated file as unverified claims, or
-        # publishing anything but its included sections.
+        # catches: the command refusing the curated file as unverified claims,
+        # publishing anything but its included sections, or publishing on a day
+        # other than the one its approved dates name (it refuses; it never edits them).
         self.curate(CURATED)
         self.ready()
         self.assertEqual(self.evaluate(), (0, {'status': 'ready', 'candidate_sha256': self.record()['candidate_sha256']}))
+        self.assertEqual(self.blocked(self.publish(TODAY='2026-11-21'), 'changelog_date')['reasons'], ['changelog_date'])
+        self.assertEqual(self.writes(), [])
         self.assertEqual(self.publish()[1]['status'], 'published')
         self.assertEqual(json.loads((self.releases / ('v' + VERSION) / 'meta.json').read_text())['notes'], CURATED)
 
@@ -986,7 +996,8 @@ class Candidate(World):
         self.smoke_kit()
         self.artifacts()
         self.made = self.body()
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.blocked(self.publish(), 'smoke_missing', 'send_live_missing', 'new_live_missing')
@@ -998,7 +1009,8 @@ class Candidate(World):
         self.smoke_kit()
         self.artifacts()
         self.made = self.body()
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         pointer = f'https://github.com/{PRIVATE}/issues/9000#issuecomment-9301'
@@ -1290,7 +1302,8 @@ class Candidate(World):
         self.smoke_kit(coverage=coverage, version='0.0.12')
         self.artifacts(version='0.0.12')
         self.made = self.body(version='0.0.12', promises=[(v, [f'synthetic_{v}']) for v in versions])
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -1340,7 +1353,8 @@ class Candidate(World):
                 shutil.rmtree(self.root / 'artifacts')
                 self.artifacts()
         self.made = good
-        self.assertEqual(self.prepare()[0], 0)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
@@ -1542,11 +1556,16 @@ class Notes(World):
         self.git(self.root, 'clone', '-q', '--bare', self.repo, self.remote)
         self.git(self.repo, 'remote', 'add', 'origin', PUBLIC_URL)
 
-    def curated(self, text, included):
+    def curated(self, text, included, **hashes):
         (self.repo / 'changes/notes').mkdir(exist_ok=True)
         (self.repo / 'changes/notes/release.md').write_text(text)
         self.commit('Synthetic curated notes')
-        (self.root / 'entry.json').write_text(json.dumps({'curated': 'changes/notes/release.md', 'included': included}))
+        cut = text[text.index('## '):]
+        later = [m.start() for m in re.finditer('^## ', cut, re.M)][len(included):]
+        cut = (cut[:later[0]] if later else cut).rstrip('\n') + '\n'
+        (self.root / 'entry.json').write_text(json.dumps(dict(
+            {'curated': 'changes/notes/release.md', 'curated_sha256': sha(text.encode()),
+             'notes_sha256': sha(cut.encode())}, **hashes, included=included)))
         out = self.root / f'notes-{len(list(self.root.glob("notes-*")))}'
         return self.cli('notes', included[0], '--repo', self.repo, '--entry', self.root / 'entry.json',
                         '--out', out), out
@@ -1566,27 +1585,47 @@ class Notes(World):
         self.assertEqual((folder / 'CHANGELOG.md').read_text(), HISTORY[:at] + text + '\n' + HISTORY[at:])
 
     def test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history(self):
-        # catches: the curated file's included sections not being exactly the
-        # release notes, or its restated history dropping older entries.
+        # catches: the release notes not being exactly the included sections cut
+        # from the curated file, CHANGELOG.md not being that file byte for byte,
+        # or either one passing although it is not the approved bytes.
         self.untagged(HISTORY)
-        text = section('0.0.14') + '\n' + section('0.0.13') + '\n' + section('0.0.5')
+        text = PREAMBLE + section('0.0.14') + '\n' + section('0.0.13') + '\n' + section('0.0.5')
+        released = section('0.0.14') + '\n' + section('0.0.13')
         (code, out), folder = self.curated(text, ['0.0.14', '0.0.13'])
         self.assertEqual(code, 0, out)
-        released = section('0.0.14') + '\n' + section('0.0.13')
         self.assertEqual((folder / 'notes.md').read_text(), released)
-        self.assertEqual((out['notes_sha256'], out['curated_sha256']), (sha(released.encode()), sha(text.encode())))
-        # 0.0.5 is restated in its curated words; 0.0.4, older than every curated section, is kept.
-        at = HISTORY.index('## ')
-        self.assertEqual((folder / 'CHANGELOG.md').read_text(),
-                         HISTORY[:at] + text + '\n' + HISTORY[HISTORY.index('## 0.0.4'):])
-        self.assertEqual(out['changelog_sha256'], sha((folder / 'CHANGELOG.md').read_bytes()))
+        self.assertEqual((folder / 'CHANGELOG.md').read_text(), text)
+        self.assertEqual((out['notes_sha256'], out['curated_sha256'], out['changelog_sha256']),
+                         (sha(released.encode()), sha(text.encode()), sha(text.encode())))
+        for name, hashes, reason in (
+                ('curated file', {'curated_sha256': 'a' * 64}, 'entry: curated notes are not the approved bytes'),
+                ('release notes', {'notes_sha256': 'b' * 64},
+                 'entry: release notes cut from the curated file are not the approved bytes')):
+            with self.subTest(case=name):
+                (code, out), _ = self.curated(text, ['0.0.14', '0.0.13'], **hashes)
+                self.assertEqual((code, out['reasons']), (1, [reason]))
+
+    def test_rl6_the_approved_changelog_passes_as_is(self):
+        # catches: a structure check that refuses the approved VS9 bytes, or a cut
+        # that is not the approved 0.0.6-0.0.12 release notes.
+        raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
+        self.assertEqual(sha(raw), '747c312709383a9fbf23844372319ac716e85cbd59fd8cf5bb408869e33e45c6')
+        self.assertEqual((ROOT / 'CHANGELOG.md').read_bytes(), raw)
+        self.untagged(raw.decode())
+        (self.repo / 'changes/notes').mkdir()
+        (self.repo / 'changes/notes/0.0.12.md').write_bytes(raw)
+        (code, out), folder = self.curated(raw.decode(), list(COMBINED))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out['notes_sha256'], 'b1230111974137f22d5109559ab6e7bae5a859a96d286f13f69a0906ed7ae98b')
+        self.assertEqual(out['notes_bytes'], 6947)
+        self.assertEqual((folder / 'CHANGELOG.md').read_bytes(), raw)
 
     def test_rl6_malformed_curated_notes_refuse_with_their_reason(self):
-        good = section('0.0.14') + '\n' + section('0.0.13')
+        good = PREAMBLE + section('0.0.14') + '\n' + section('0.0.13')
         for name, text, included, reason in (
-                ('missing part', good.replace("### Under the hood\n\n- Synthetic 0.0.13 internals.\n", ''),
+                ('missing part', good.replace("**Under the hood**\n\n- Synthetic 0.0.13 internals.\n", ''),
                  ['0.0.14'], 'entry: 0.0.13 needs Under the hood here'),
-                ('wrong order', section('0.0.13') + '\n' + section('0.0.14'), ['0.0.13'],
+                ('wrong order', PREAMBLE + section('0.0.13') + '\n' + section('0.0.14'), ['0.0.13'],
                  'entry: curated versions must be newest first, each once'),
                 ('included not leading', good, ['0.0.13'],
                  'entry: curated notes must start with the included versions, in order'),
@@ -1603,15 +1642,19 @@ class Notes(World):
                  ['0.0.14'], 'entry: curated link to a tag that will not exist: v0.0.13'),
                 ('per-line caveat', good.replace('- You can use 0.0.14 part one.',
                                                  '- On synthetic fixtures, you can use 0.0.14 part one.'), ['0.0.14'],
-                 "entry: 0.0.14 What's new for you carries a fixture caveat: say it once in Tested on"),
+                 "entry: 0.0.14 What's new for you carries a fixture caveat: say it once in the footer"),
                 ('too many lines', good.replace('- You can use 0.0.14 part two.\n', '- You can use 0.0.14 part two.\n' * 4),
                  ['0.0.14'], "entry: 0.0.14 What's new for you needs 2 to 4 lines"),
                 ('no footer', good.replace('Tested on synthetic 0.0.14 checks.\n\n', ''), ['0.0.14'],
-                 'entry: 0.0.14 needs one Tested on footer after What\'s new for you'),
+                 "entry: 0.0.14 needs one footer line after What's new for you"),
                 ('footer twice', good.replace('- Synthetic 0.0.14 internals.', '- Tested on nothing else.'), ['0.0.14'],
-                 'entry: 0.0.14 says Tested on more than once'),
+                 'entry: 0.0.14 says how it was tested more than once'),
+                ('no headline', good.replace('**Use 0.0.13**\n\n', ''), ['0.0.14'],
+                 'entry: 0.0.13 needs its bold headline here'),
+                ('no preamble', good.removeprefix(PREAMBLE), ['0.0.14'],
+                 'entry: curated notes start with # Changelog and at most one plain paragraph'),
                 ('CRLF', good.replace('\n', '\r\n'), ['0.0.14'],
-                 'entry: curated notes are LF text from a version heading to one final newline')):
+                 'entry: curated notes are LF text ending in one newline')):
             with self.subTest(case=name):
                 self.setUp()
                 self.untagged(HISTORY)
@@ -1676,12 +1719,14 @@ class Notes(World):
 
 def section(version):
     """One synthetic curated section in VS9's three parts."""
-    return (f"## {version} · 2026-11-20\n\n### What's new for you\n\n- You can use {version} part one.\n"
-            f"- You can use {version} part two.\n\nTested on synthetic {version} checks.\n\n"
-            f"### Under the hood\n\n- Synthetic {version} internals.\n- See "
+    return (f"## {version} · 2026-11-20\n\n**Use {version}**\n\n**What's new for you**\n\n"
+            f"- You can use {version} part one.\n- You can use {version} part two.\n\n"
+            f"Tested on synthetic {version} checks.\n\n"
+            f"**Under the hood**\n\n- Synthetic {version} internals.\n- See "
             f"[the ticket](https://github.com/openwizdev/OpenWiz/issues/1).\n")
 
 
+PREAMBLE = '# Changelog\n\nAll synthetic versions, newest first.\n\n'
 HISTORY = ('# Changelog\n\nAll synthetic versions, newest first.\n\n'
            '## 0.0.5 · 2026-01-05\n\n**Earlier unpublished entry**\n\n- Synthetic 0.0.5 line.\n\n'
            '## 0.0.4 · 2026-01-04\n\n**Older unpublished entry**\n\n- Synthetic 0.0.4 line.\n')
