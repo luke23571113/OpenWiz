@@ -224,6 +224,22 @@ class Credentials(unittest.TestCase):
                     _at(doc, path[:-1])[path[-1]] = 'Synthetic ' + secret
                     self.assertIn('leaked_credential', report(doc)['problems'])
 
+    def test_app_key_assignments_are_refused_with_any_horizontal_spacing(self):
+        # R3: a nonempty dotenv assignment of the App key is a credential, spaced or
+        # compact; an empty one holds no value. Synthetic value only, built in memory.
+        name, value = 'OPENWIZ_GITHUB_APP_KEY', 'c3ludGhldGlj'
+        nonempty = [f'{name}={value}', f'{name} = {value}', f'{name} ={value}', f'{name}= {value}',
+                    f'{name}   =   {value}', f'export {name} = {value}']
+        empty = [f'{name}=', f'{name} =', f'{name} = ', f'{name}  =  ']
+        for example, path in (('secret-protected-paste', ['delivery', 'evidence', 0, 'detail']),
+                              (RECEIPT, ['idea'])):
+            for text, refused in [(t, True) for t in nonempty] + [(t, False) for t in empty]:
+                with self.subTest(example=example, text=text):
+                    doc = document(example)
+                    _at(doc, path[:-1])[path[-1]] = text
+                    problems = check.check_text(json.dumps(doc)).problems
+                    self.assertEqual(problems, ['leaked_credential'] if refused else [])
+
     def test_committed_contract_and_fixtures_hold_no_credential(self):
         for path in (CASES_PATH, ROOT / 'contracts/setup-onboard.v1.md',
                      ROOT / 'contracts/setup-onboard.v1.schema.json'):
