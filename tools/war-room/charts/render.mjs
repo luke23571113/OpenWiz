@@ -1,0 +1,179 @@
+// WRD2 (#630): draw each prepared figure once with the locked Observable Plot, at build time.
+//
+//   node --permission --allow-fs-read=<tools/war-room> charts/render.mjs < input.json > output.json
+//
+// Reads only the prepared chart input (stdin, already validated by prepare.py) and
+// palette.json. Writes one JSON object, {figures: [{id, svg}]}, to stdout. Every row gets
+// exactly one mark carrying its label as <title>, so build.py can reconcile the picture
+// with the values table. A null value is a labelled text mark, never a zero.
+import { readFileSync } from 'node:fs';
+import * as Plot from '@observablehq/plot';
+import { BuildDocument, serialize } from './dom.mjs';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const palette = JSON.parse(readFileSync(new URL('./palette.json', import.meta.url), 'utf8'));
+const INK = '#e8edf4';
+const WIDTH = 440;
+const FONT = 12;
+
+const colour = (fig, key) => palette.roles[fig.series.find((s) => s.key === key).role];
+const mark = (fig, key) => palette.marks[fig.series.find((s) => s.key === key).role];
+const hollow = (row) => row.state === 'partial';
+const valued = (rows) => rows.filter((r) => r.y !== null);
+const empty = (rows) => rows.filter((r) => r.y === null);
+const title = (r) => r.label;
+const time = (t) => new Date(t);
+const shortValue = (y) => (Number.isInteger(y) ? String(y) : String(Math.round(y * 10) / 10));
+const nullWord = (r) => (r.state === 'missing' ? 'no sample' : 'Unknown');
+// On a shared axis, many null rows can fall on one day: each gets a small stacked glyph
+// (its full words are its title and its values-table row; the page's caption keys the glyph).
+const NULL_GLYPH = '∅';
+
+function seriesStyle(fig, extra = {}) {
+  return {
+    stroke: (r) => colour(fig, r.series),
+    fill: (r) => (hollow(r) ? 'none' : colour(fig, r.series)),
+    symbol: (r) => mark(fig, r.series).symbol,
+    title,
+    ...extra,
+  };
+}
+
+// Null rows as labelled words on the baseline, stacked so two series on one day stay legible.
+function nullMarks(fig, rows, { x, y = () => 0, lineAnchor = 'bottom', dyStep = -11 }) {
+  // Plot takes a constant dy, so one mark per series.
+  return fig.series.map((s, i) => Plot.text(empty(rows).filter((r) => r.series === s.key), {
+    x, y, text: () => NULL_GLYPH, title, fill: fig.series.length > 1 ? palette.roles[s.role] : palette.roles.muted,
+    lineAnchor, dy: -3 + i * dyStep, fontSize: FONT - 1,
+  }));
+}
+
+const DRAW = {
+  'daily-line'(fig) {
+    const lines = fig.series.map((s) => {
+      const rows = fig.domain.map((d) => fig.rows.find((r) => r.series === s.key && r.x === d) ?? { x: d, y: null });
+      return Plot.line(rows, { x: 'x', y: 'y', stroke: palette.roles[s.role], strokeDasharray: palette.marks[s.role].dash ?? undefined, strokeWidth: 1.5 });
+    });
+    return {
+      x: { type: 'point', domain: fig.domain, padding: 0.4, label: null, tickFormat: (d) => d.slice(5) },
+      y: { grid: true, nice: true, zero: true, label: fig.unit },
+      marks: [Plot.ruleY([0], { stroke: palette.roles.muted }), ...lines,
+        Plot.dot(valued(fig.rows), seriesStyle(fig, { x: 'x', y: 'y', r: 3.5, strokeWidth: 1.5 })),
+        ...nullMarks(fig, fig.rows, { x: 'x' })],
+    };
+  },
+  'daily-bar'(fig) {
+    return {
+      x: { type: 'band', domain: fig.domain, padding: 0.2, label: null, tickFormat: (d) => d.slice(5) },
+      y: { grid: true, nice: true, zero: true, label: fig.unit },
+      marks: [
+        Plot.barY(valued(fig.rows), { x: 'x', y: 'y', fill: (r) => colour(fig, r.series), title }),
+        Plot.text(valued(fig.rows), { x: 'x', y: 'y', text: (r) => shortValue(r.y), dy: -7, fill: INK }),
+        Plot.ruleY([0], { stroke: palette.roles.muted }),
+        ...nullMarks(fig, fig.rows, { x: 'x' })],
+    };
+  },
+  spans(fig) {
+    const spans = fig.rows.filter((r) => r.state !== 'missing');
+    const missing = fig.rows.filter((r) => r.state === 'missing');
+    const days = fig.domain.map((d) => time(d + 'T08:00:00Z'));
+    return {
+      x: { type: 'utc', domain: [time(fig.window.since), time(fig.window.until)], ticks: days, tickFormat: (d) => d.toISOString().slice(5, 10), label: 'PST day starts' },
+      y: { grid: true, nice: true, zero: true, label: fig.unit },
+      marks: [
+        Plot.rectY(spans, { x1: (r) => time(r.x), x2: (r) => time(r.x2), y: 'y', fill: (r) => colour(fig, r.series), fillOpacity: 0.85, stroke: palette.roles.primary, strokeWidth: 0.5, inset: 0.5, title }),
+        Plot.text(spans, { x: (r) => new Date((time(r.x).getTime() + time(r.x2).getTime()) / 2), y: 'y', text: (r) => shortValue(r.y), dy: -7, fill: INK }),
+        Plot.ruleY([0], { stroke: palette.roles.muted }),
+        Plot.text(missing, { x: (r) => new Date((time(r.x).getTime() + time(r.x2).getTime()) / 2), y: 0, text: () => NULL_GLYPH, lineAnchor: 'bottom', dy: -3, fill: palette.roles.muted, fontSize: FONT - 1, title }),
+      ],
+    };
+  },
+  bars(fig) {
+    return {
+      height: 64 + 24 * fig.domain.length,
+      marginLeft: Math.min(200, 12 + 6.6 * Math.max(...fig.domain.map((d) => d.length))),
+      y: { type: 'band', domain: fig.domain, label: null, padding: 0.25 },
+      x: { grid: true, nice: true, zero: true, label: fig.unit },
+      marks: [
+        Plot.barX(valued(fig.rows), { y: 'x', x: 'y', fill: (r) => (hollow(r) ? 'none' : colour(fig, r.series)), stroke: (r) => colour(fig, r.series), title }),
+        Plot.text(valued(fig.rows), { y: 'x', x: 'y', text: (r) => shortValue(r.y) + (hollow(r) ? ' (partial)' : ''), textAnchor: 'start', dx: 4, fill: INK }),
+        Plot.text(empty(fig.rows), { y: 'x', x: 0, text: nullWord, textAnchor: 'start', dx: 4, fill: palette.roles.muted, title }),
+        Plot.ruleX([0], { stroke: palette.roles.muted }),
+      ],
+    };
+  },
+  distribution(fig) {
+    return {
+      height: 110,
+      y: { type: 'band', domain: fig.series.map((s) => s.key), label: null, axis: null },
+      x: { grid: true, nice: true, zero: true, label: fig.unit },
+      marks: [
+        Plot.dot(valued(fig.rows), seriesStyle(fig, { x: 'y', y: 'series', r: 4 })),
+        Plot.text(empty(fig.rows), { x: 0, y: 'series', text: nullWord, textAnchor: 'start', fill: palette.roles.muted, title }),
+      ],
+    };
+  },
+  limits(fig) {
+    const limits = fig.rows.filter((r) => r.series === 'limit');
+    const waits = fig.rows.filter((r) => r.series !== 'limit');
+    return {
+      x: { type: 'point', domain: fig.domain, padding: 0.5, label: null },
+      y: { grid: true, nice: true, zero: true, label: fig.unit },
+      marks: [
+        Plot.tickY(valued(limits), { x: 'x', y: 'y', stroke: palette.roles.reference, strokeWidth: 2, strokeDasharray: palette.marks.reference.dash, title }),
+        Plot.dot(valued(waits), seriesStyle(fig, { x: 'x', y: 'y', r: 4, strokeWidth: 1.5 })),
+        Plot.ruleY([0], { stroke: palette.roles.muted }),
+        ...nullMarks(fig, fig.rows, { x: 'x' }),
+      ],
+    };
+  },
+  readiness(fig) {
+    const fill = { known: palette.roles.primary, partial: palette.roles.secondary, unavailable: palette.roles.muted, missing: palette.roles.muted };
+    return {
+      height: 60 + 24 * fig.domain.length,
+      marginLeft: Math.min(200, 12 + 6.6 * Math.max(...fig.domain.map((d) => d.length))),
+      y: { type: 'band', domain: fig.domain, label: null, padding: 0.1 },
+      x: { axis: null },
+      marks: [
+        Plot.cell(fig.rows, { y: 'x', fill: (r) => fill[r.state], inset: 1, title }),
+        Plot.text(fig.rows, { y: 'x', text: 'state', fill: palette.ground, fontWeight: 'bold' }),
+      ],
+    };
+  },
+};
+
+// A key under multi-series figures: each series' own symbol, colour and label. No title:
+// the key is not a plotted value.
+const GLYPH = { circle: '●', square: '■', diamond: '◆', triangle: '▲', times: '×' };
+function key(fig, base) {
+  if (fig.series.length < 2 || !['daily-line', 'limits'].includes(fig.kind)) return { extra: 0, marks: [] };
+  const items = fig.series.map((s, i) => ({ i, text: `${GLYPH[palette.marks[s.role].symbol]} ${s.label}`, fill: palette.roles[s.role] }));
+  return {
+    extra: 15 * items.length,
+    marks: items.map((d) => Plot.text([d], { frameAnchor: 'bottom-left', textAnchor: 'start', dx: -30, dy: base + 15 * d.i, text: 'text', fill: 'fill', fontSize: FONT - 1 })),
+  };
+}
+
+function figureSvg(fig, document) {
+  const spec = DRAW[fig.kind](fig);
+  const legend = key(fig, 40);
+  spec.marks = [...spec.marks, ...legend.marks];
+  const svg = Plot.plot({
+    document, width: WIDTH, height: 220 + legend.extra, marginTop: 22, marginBottom: 34 + legend.extra, marginLeft: 46,
+    marginRight: 16, ariaLabel: fig.title, ariaDescription: fig.caption, style: null, ...spec,
+  });
+  // A self-contained figure: no style element, the page's ground and ink as attributes.
+  for (const child of [...svg.childNodes]) if (child.tagName === 'style') svg.removeChild(child);
+  svg.setAttribute('xmlns', SVG_NS);
+  svg.setAttribute('font-size', String(FONT));
+  svg.setAttribute('color', INK);
+  svg.removeAttribute('class');
+  const ground = document.createElementNS(SVG_NS, 'rect');
+  for (const [k, v] of Object.entries({ width: '100%', height: '100%', fill: palette.ground, 'aria-hidden': 'true' })) ground.setAttribute(k, v);
+  svg.insertBefore(ground, svg.firstChild);
+  return serialize(svg);
+}
+
+const input = JSON.parse(readFileSync(0, 'utf8'));
+const document = new BuildDocument();
+process.stdout.write(JSON.stringify({ figures: input.figures.map((fig) => ({ id: fig.id, svg: figureSvg(fig, document) })) }));

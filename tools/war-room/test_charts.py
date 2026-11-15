@@ -236,12 +236,13 @@ class Charts(unittest.TestCase):
         # day's medians averaged (6.25) instead of its latest observation (6.5), or a day
         # without successful code runs drawn as zero.
         fig = figure(self.bundle, '00c')
-        current, older = 'median|' + CURRENT, 'median|first job created to last job completed'
+        current = 'median|workflow-created-to-last-job-completed'
+        older = 'median|first-job-created-to-last-job-completed'
         self.assertEqual(by_day(fig, current), {'2030-01-01': None, '2030-01-02': 9.0, '2030-01-03': None,
                                                 '2030-01-04': None, '2030-01-05': 8.0, '2030-01-06': 6.5,
                                                 '2030-01-07': 7.5})
         self.assertEqual({d: v for d, v in by_day(fig, older).items() if v is not None}, {'2030-01-01': 10.5})
-        self.assertEqual(by_day(fig, 'p90|' + CURRENT)['2030-01-06'], 9.5)
+        self.assertEqual(by_day(fig, 'p90|workflow-created-to-last-job-completed')['2030-01-06'], 9.5)
         self.assertEqual({s['key']: s['role'] for s in fig['series']}[older], 'older')
         label = next(r['label'] for r in fig['rows'] if r['series'] == current and r['x'] == '2030-01-05')
         self.assertIn('5 successful code runs', label)
@@ -311,11 +312,12 @@ class Charts(unittest.TestCase):
             record = w.sample('2030-01-02T09:00:00Z', [], extra=[evil])
             bundle = build.build(w.history, at=BUILD_AT)
             html = page.render(record, charts=bundle)
-        figures = html[html.index('<section id="figures">'):]
-        for banned in ('<script', 'src=', '<link', 'url(', '@import', 'fetch', 'import ', '<foreignObject',
-                       '<image', ' on', 'href='):
-            self.assertNotIn(banned, figures.lower() if banned != '<foreignObject' else figures)
-        self.assertIn('‹script› alert', figures)
+        start = html.index('<section id="figures">')
+        figures = html[start:html.index('</section>', start)]
+        for banned in ('<script', 'src=', '<link', 'url(', '@import', 'fetch(', '<foreignobject', '<image', 'href='):
+            self.assertNotIn(banned, figures.lower())
+        self.assertNotRegex(figures, r'\son[a-z]+=')
+        self.assertIn('‹script›alert(1)‹/script› &amp; co', figures)
         for fig in bundle['figures']:
             names = {e.tag.removeprefix(SVG) for e in ET.fromstring(fig['svg']).iter()}
             self.assertLessEqual(names, {'svg', 'g', 'path', 'line', 'rect', 'circle', 'text', 'tspan', 'title'})
@@ -393,23 +395,28 @@ class Charts(unittest.TestCase):
 
     def test_charts_survive_a_browser_without_scripts_or_network(self):
         # catches: figures that need JavaScript or a network read to show their marks,
-        # labels and tables. A real browser, scripts disabled, every host unresolvable.
+        # labels and tables. A real browser with every host unresolvable loads the page under
+        # its own CSP; a planted canary script proves no script runs there.
         html = page.render(history.latest(self.world.history), charts=self.bundle)
+        self.assertIn("default-src 'none'", html)
+        self.assertNotIn('script-src', html)
+        canary = html.replace('</body>', '<script>document.body.dataset.ran="yes"</script></body>')
         with tempfile.TemporaryDirectory(prefix='war-room-charts-browser-') as d:
             path = Path(d) / 'page.html'
-            path.write_text(html, encoding='utf-8')
+            path.write_text(canary, encoding='utf-8')
             dom = subprocess.run([publish.chromium(), '--headless=new', '--no-sandbox', '--disable-gpu',
                                   '--user-data-dir=' + os.path.join(d, 'profile'),
-                                  '--blink-settings=scriptEnabled=false', '--host-resolver-rules=MAP * ~NOTFOUND',
-                                  '--proxy-server=127.0.0.1:9', '--window-size=390,844', '--dump-dom',
-                                  path.as_uri()], check=True, capture_output=True, text=True, timeout=90).stdout
+                                  '--host-resolver-rules=MAP * ~NOTFOUND', '--proxy-server=127.0.0.1:9',
+                                  '--window-size=390,844', '--dump-dom', path.as_uri()],
+                                 check=True, capture_output=True, text=True, timeout=90).stdout
+        self.assertIn('<svg', dom)
+        self.assertNotIn('data-ran', dom)
         for fig in self.bundle['figures']:
             with self.subTest(fig['id']):
                 self.assertIn('aria-label="%s"' % fig['title'].replace('&', '&amp;'), dom)
                 self.assertIn('id="figure-%s"' % fig['id'], dom)
         self.assertEqual(dom.count('<svg'), len(self.bundle['figures']))
         self.assertEqual(dom.count('<table class="values"'), len(self.bundle['figures']))
-
 
 if __name__ == '__main__':
     unittest.main()

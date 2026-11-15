@@ -21,6 +21,9 @@ def tick(at, history_root, page_path, read_providers, charts=None):
     Duplicate ticks don't sample again. Out-of-order samples are retained but
     the page always renders the latest saved sample. A failed page write can be
     repaired by repeating the same tick without rewriting or recollecting it.
+    `charts` (WRD2), when given, is called with the history root after the sample is
+    saved and returns the chart bundle the page embeds. It only reads history; if it
+    raises, the error propagates before the page is written, so the last good page stays.
     """
     now = suite._time(at)
     sample_at = now.replace(minute=now.minute // 5 * 5, second=0).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -43,7 +46,7 @@ def tick(at, history_root, page_path, read_providers, charts=None):
     with os.fdopen(lock_fd, 'a') as publication_lock:
         fcntl.flock(publication_lock.fileno(), fcntl.LOCK_EX)
         latest = history.latest(history_root)
-        html = page.render(latest)
+        html = page.render(latest, charts=None if charts is None else charts(history_root))
         fd, name = tempfile.mkstemp(prefix='.page-', dir=target.parent)
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as stream:
