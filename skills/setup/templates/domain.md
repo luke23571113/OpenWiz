@@ -4,7 +4,7 @@ Where this project keeps its words and its decisions, and how every skill reads 
 
 ## Before exploring, read these
 
-- **`GLOSSARY.md`** at the root: the project's words, each defined once. (In a repository with several separate packages, **`GLOSSARY-MAP.md`** at the root points at one `GLOSSARY.md` per package instead; read each one that bears on the work.)
+- **`GLOSSARY.md`** at the root: the project's words, each defined once. (Optional: in a repository with several separate packages, a **`GLOSSARY-MAP.md`** at the root, when present, points at one `GLOSSARY.md` per package instead; read each one that bears on the work. When it is absent, there is no map to read.)
 - **`docs/adr/`**: one short file per hard-to-reverse decision. Read the ones that touch the area you are about to work in.
 - **`docs/grills/` in the private checkout**: one file per grill, with every question and exact answer. Run the grill index there and read its current private PR head when not merged. Read the grill that fed the spec; never create or copy its file into the public checkout.
 
