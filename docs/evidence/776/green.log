@@ -1,0 +1,21 @@
+Scoped local checks at 740de0be4bc6445e61568f1b6c18b70043740a3f
+fmt-ok
+clippy-ok
+== checks
+test result: ok. 144 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 179.25s
+== cli-agent
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.89s
+== proof
+test result: ok. 125 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.32s
+== messaging
+test result: ok. 188 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.75s
+== ci/shard/test.py OK
+== ci/select/test_pick.py OK
+== tools/war-room/test_page_history.py OK
+== tools/live-smoke/test_smoke.py OK
+== tools/live-smoke/test_review.py OK
+== tools/live-smoke/test_receipt.py OK
+== tools/live-smoke/test_restriction.py OK
+{"case": "R7", "head": true, "source_sha256": "6a032dcb05707b72a33c32d6c4df8724adb2b74ef2cb6d2eac821b5e3731f320", "port_cases": "pass"}
+{"fixture_dispatch": "pass", "dry_run": "not_run", "guard_refusal": "pass", "live": "not_run", "initial_fake_reads": 8}
+docs-only rc=0
