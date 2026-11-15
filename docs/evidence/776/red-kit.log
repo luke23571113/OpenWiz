@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_every_openwiz_step_in_the_template_is_a_shipped_command (__main__.ShippedCommands.test_every_openwiz_step_in_the_template_is_a_shipped_command)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/scratch/OpenWiz/tools/live-smoke/test_smoke.py", line 520, in test_every_openwiz_step_in_the_template_is_a_shipped_command
+    self.assertTrue(any(words[:len(c)] == c for c in shipped),
+AssertionError: False is not true : capability: openwiz ui --json is not a shipped command
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

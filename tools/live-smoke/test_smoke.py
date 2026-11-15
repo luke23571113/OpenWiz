@@ -499,5 +499,26 @@ class Smoke(FixtureCase):
             self.assertEqual(self.report(self.invoke(), 3)['reason'], 'missing_credential')
 
 
+
+class ShippedCommands(unittest.TestCase):
+    """#776: a kit step that runs a command the CLI no longer ships passes
+    every fixture test (the fake answers anything) and fails only live."""
+
+    def test_every_openwiz_step_in_the_template_is_a_shipped_command(self):
+        root = RUNNER.resolve().parents[2]
+        catalogue = json.loads((root / 'crates/cli/src/agent-catalogue.json').read_text())
+        shipped = [c['argv'] for c in catalogue['commands']]
+        template = json.loads(RUNNER.with_name('combined.template.json').read_text())
+        for step in template['steps']:
+            argv = step.get('argv')
+            if not isinstance(argv, list):
+                continue
+            self.assertNotIn('@pty_driver', argv, step['id'])
+            if argv[0] != '@openwiz':
+                continue
+            words = [a for a in argv[1:] if not a.startswith(('-', '@'))]
+            self.assertTrue(any(words[:len(c)] == c for c in shipped),
+                            f"{step['id']}: openwiz {' '.join(argv[1:])} is not a shipped command")
+
 if __name__ == '__main__':
     unittest.main()
