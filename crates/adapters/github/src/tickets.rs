@@ -422,8 +422,23 @@ impl RecordAuthors {
 
     /// Whether `login` (a comment's author, `None` when it has none) is a
     /// record author, compared case-insensitively as GitHub's logins are.
-    pub fn wrote(&self, login: Option<&str>) -> bool {
-        login.is_some_and(|l| self.0.contains(&l.to_ascii_lowercase()))
+    /// `bot` is whether the source typed that author as a Bot: GraphQL
+    /// reports an App's login without `[bot]` (REST keeps it), so for a
+    /// `name[bot]` entry the plain `name` counts only with the Bot type,
+    /// and never for a user of that name.
+    pub fn wrote(&self, login: Option<&str>, bot: bool) -> bool {
+        login.is_some_and(|l| {
+            let l = l.to_ascii_lowercase();
+            self.0.contains(&l) || (bot && self.0.contains(&format!("{l}[bot]")))
+        })
+    }
+
+    /// [`wrote`](Self::wrote) for a GraphQL author object as `gh` prints
+    /// it: `login`, and its Bot type as `is_bot: true` or
+    /// `__typename: "Bot"`. Anything else is not a Bot.
+    pub fn wrote_graphql(&self, author: &Value) -> bool {
+        let bot = author["is_bot"] == true || author["__typename"] == "Bot";
+        self.wrote(author["login"].as_str(), bot)
     }
 }
 
@@ -460,7 +475,7 @@ pub fn stock_issue(
     // author, is dropped before the window is taken (#716).
     let started = comments
         .iter()
-        .filter(|c| authors.wrote(c["author"]["login"].as_str()))
+        .filter(|c| authors.wrote_graphql(&c["author"]))
         .rev()
         .take(15)
         .any(|c| {
@@ -1493,8 +1508,13 @@ mod tests {
                 serde_json::json!({"login": "synthetic-app", "__typename": "User"}),
                 false,
             ),
+            // A Bot named like the fallback account is an App, not that user.
             (
                 serde_json::json!({"login": "synthetic-owner", "is_bot": true}),
+                false,
+            ),
+            (
+                serde_json::json!({"login": "synthetic-app[bot]", "is_bot": true}),
                 true,
             ),
             (
@@ -1559,7 +1579,7 @@ mod tests {
             (Some(""), false),
             (None, false),
         ] {
-            assert_eq!(good.wrote(login), wrote, "{login:?}");
+            assert_eq!(good.wrote(login, false), wrote, "{login:?}");
         }
         assert_eq!(
             good,
