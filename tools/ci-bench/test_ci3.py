@@ -80,6 +80,33 @@ class Measure(unittest.TestCase):
         self.assertEqual(rec["result"]["outcomes"]["cancelled"], 1)
         self.assertEqual(rec["result"]["p50_minutes"], 20.0)
         self.assertNotIn(104, [m["pr"] for m in rec["missing"]])
+        # Its critical path still counts (R4): anchored at its last job, the
+        # rust lane: changes 28 s + rust 107 s on a runner, so waiting 25,
+        # setup 10 + 45, running 18 + 62, together its 160 s.
+        self.assertEqual(rec["critical_path"]["results"], 5)
+        w["heads"] = [h4]
+        b = ci3.measure(w)["critical_path"]
+        self.assertEqual([b[k]["p50_seconds"] for k in ("waiting", "setup", "running", "unclassified")],
+                         [25, 55, 80, 0])
+        # With no job at all, the run's own end stands (13:50:20, 3,020 s), all of it waiting.
+        attempt["jobs"] = []
+        b = ci3.measure(w)["critical_path"]
+        self.assertEqual(b["results"], 1)
+        self.assertEqual([b[k]["p50_seconds"] for k in ("waiting", "setup", "running", "unclassified")],
+                         [3020, 0, 0, 0])
+
+    def test_a_job_that_never_got_a_runner_holds_none(self):
+        # Bug (R2): a cancelled job with no runner and no steps is charged as
+        # runner minutes and setup; its time was waiting.
+        w = window()
+        h3 = next(h for h in w["heads"] if h["pr"] == 103)
+        h3["runs"]["ci.yml"]["attempts"][-1]["jobs"].append(
+            {"id": 999999, "name": "queued", "conclusion": "cancelled", "created_at": "2026-01-05T12:25:00Z",
+             "started_at": "2026-01-05T12:25:00Z", "completed_at": "2026-01-05T12:30:00Z", "runner_name": None,
+             "steps": []})
+        rec = ci3.measure(w)
+        self.assertEqual(rec["runner_minutes"]["total"], 153.8)
+        self.assertEqual(rec["critical_path"]["setup"]["p95_seconds"], 58)
 
     def test_critical_path_splits_the_whole_time(self):
         # Bug: a rerun's earlier attempt and the push-to-run gap vanish from
@@ -162,10 +189,10 @@ def jobs(*items):
 B = "repos/{owner}/{repo}"
 
 
-def fake(activity_extra=()):
+def fake(activity_extra=(), head_repo="example/repo", created="2026-01-05T10:05:00Z"):
     repo = {"full_name": "example/repo"}
-    pr = {"number": 9, "created_at": "2026-01-05T10:05:00Z", "updated_at": "2026-01-05T12:00:00Z",
-          "closed_at": None, "head": {"ref": "topic/x", "repo": repo}, "base": {"repo": repo}}
+    pr = {"number": 9, "created_at": created, "updated_at": "2026-01-05T12:00:00Z",
+          "closed_at": None, "head": {"ref": "topic/x", "repo": {"full_name": head_repo}}, "base": {"repo": repo}}
     activity = [
         {"activity_type": "branch_creation", "after": SHA1, "timestamp": "2026-01-05T10:00:00Z"},
         {"activity_type": "push", "after": SHA2, "timestamp": "2026-01-05T11:00:00Z"},
@@ -189,8 +216,8 @@ def fake(activity_extra=()):
                                                             "2026-01-05T10:50:01Z", "2026-01-05T10:59:00Z")),
         f"{B}/actions/runs/4/attempts/1/jobs": jobs(gh_job(41, "ci", "2026-01-05T11:10:00Z", "2026-01-05T11:10:01Z",
                                                             "2026-01-05T11:10:30Z", "failure")),
-        f"{B}/actions/runs/4/attempts/2/jobs": jobs(gh_job(42, "ci", "2026-01-05T11:40:00Z", "2026-01-05T11:40:01Z",
-                                                            "2026-01-05T11:42:00Z")),
+        f"{B}/actions/runs/4/attempts/2/jobs": jobs(dict(gh_job(42, "ci", "2026-01-05T11:40:00Z", "2026-01-05T11:40:01Z",
+                                                                 "2026-01-05T11:42:00Z"), run_attempt=2)),
         f"{B}/actions/runs/5/attempts/1/jobs": jobs(gh_job(51, "privacy", "2026-01-05T11:00:20Z",
                                                             "2026-01-05T11:00:21Z", "2026-01-05T11:03:00Z")),
         f"{B}/actions/workflows/ci.yml/runs?event=merge_group": runs(),
@@ -228,6 +255,28 @@ class Collect(unittest.TestCase):
                  for i in range(100)]
         with self.assertRaises(ci3.Fail):
             self.collect(fake(extra))
+
+    def test_a_fork_pr_in_the_window_is_refused(self):
+        # Bug (R1): a fork's pushes aren't in this repository's activity, so
+        # its heads vanish (heads 0, missing none) and the cohort looks whole.
+        for created in ("2026-01-04T10:05:00Z", "2026-01-05T10:05:00Z"):
+            with self.assertRaisesRegex(ci3.Fail, "PR #9 is from a fork"):
+                self.collect(fake(head_repo="contributor/fork", created=created))
+
+    def test_a_partial_rerun_counts_each_execution_once(self):
+        # Bug (R3): a rerun of failed jobs lists the earlier attempt's
+        # successful job again; it is charged twice and enters the rerun's
+        # critical path as setup.
+        gh = fake()
+        setup = gh_job(43, "setup", "2026-01-05T11:00:20Z", "2026-01-05T11:00:21Z", "2026-01-05T11:05:21Z")
+        for k in (1, 2):
+            gh.answers[f"{B}/actions/runs/4/attempts/{k}/jobs"]["jobs"].append(copy.deepcopy(setup))
+            gh.answers[f"{B}/actions/runs/4/attempts/{k}/jobs"]["total_count"] += 1
+        rec = ci3.measure(self.collect(gh))
+        # 29 + 174 + 29 + 119 + 159 s, plus the 300 s setup job once: 810 s.
+        self.assertEqual(rec["runner_minutes"]["total"], 13.5)
+        # Head 2's path is the rerun's ci job alone (119 s, no steps: setup).
+        self.assertEqual(rec["critical_path"]["setup"]["p95_seconds"], 119)
 
 
 if __name__ == "__main__":
