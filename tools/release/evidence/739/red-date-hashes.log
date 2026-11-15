@@ -1,0 +1,49 @@
+# RL6 (#739) red run for the rules added after the first red: the publication-day date rule and both approved-hash bindings,
+# with each check disabled in tools/release/candidate.py (restored after this run).
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+  require(path.is_file() and not path.is_symlink() and architecture(path.open('rb').read(64), target), 'native binary target mismatch')
+FAIL
+test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history (__main__.Notes.test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history) ... 
+  test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history (__main__.Notes.test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history) (case='curated file') ... ERROR
+  test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history (__main__.Notes.test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history) (case='release notes') ... ERROR
+
+======================================================================
+ERROR: test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history (__main__.Notes.test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history) (case='curated file')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/OpenWiz/tools/release/test_candidate.py", line 1606, in test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history
+    self.assertEqual((code, out['reasons']), (1, [reason]))
+                            ~~~^^^^^^^^^^^
+KeyError: 'reasons'
+
+======================================================================
+ERROR: test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history (__main__.Notes.test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history) (case='release notes')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/OpenWiz/tools/release/test_candidate.py", line 1606, in test_rl6_curated_notes_release_their_leading_sections_over_the_kept_history
+    self.assertEqual((code, out['reasons']), (1, [reason]))
+                            ~~~^^^^^^^^^^^
+KeyError: 'reasons'
+
+======================================================================
+FAIL: test_rl6_curated_notes_pass_every_gate_and_publish_exactly (__main__.Candidate.test_rl6_curated_notes_pass_every_gate_and_publish_exactly)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/OpenWiz/tools/release/test_candidate.py", line 848, in test_rl6_curated_notes_pass_every_gate_and_publish_exactly
+    self.assertEqual(self.blocked(self.publish(TODAY='2026-11-21'), 'changelog_date')['reasons'], ['changelog_date'])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/code/OpenWiz/tools/release/test_candidate.py", line 414, in blocked
+    self.assertEqual(code, 1, out)
+AssertionError: 0 != 1 : {'status': 'published', 'tag': 'v0.0.99', 'tag_object': '84c1fa01a61d60d99ff7c1d0eb0c231f5dc5939d'}
+
+----------------------------------------------------------------------
+Ran 2 tests in 11.421s
+
+FAILED (failures=1, errors=2)
