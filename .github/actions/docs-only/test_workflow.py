@@ -75,7 +75,8 @@ class Workflow(unittest.TestCase):
     def test_independent_jobs_wait_for_export_only_when_needed(self):
         blocks=jobs()
         self.assertEqual(set(blocks),{'changes','always','web-build','rust','rust-export','web','web-export',
-                                      'site','release','skills','select-map','ci','web-test','toolkit-nightly'})
+                                      'site','release','skills','select-map','ci','web-test','toolkit-nightly',
+                                      'main-light'})
         for name in ('always','web-build','rust','web','site','release','skills'):
             self.assertRegex(blocks[name],r'^    needs: changes\n')
         for name in ('rust-export','web-export'):
@@ -132,11 +133,12 @@ class Workflow(unittest.TestCase):
             self.assertIn('name: ci-selection-${{ github.run_attempt }}',blocks[name])
         self.assertNotIn('uses: ./.github/actions/docs-only\n',workflow)
 
+    # Which events run ci (always on pull requests, merge groups and nightly,
+    # never on a main push) is ci.test.mjs's job-graph simulation (#744).
     def test_final_ci_waits_for_all_jobs_and_always_runs(self):
         block=jobs()['ci']
-        self.assertIn('if: ${{ always() }}',block)
         deps=re.search(r'^    needs: \[(.*)\]$',block,re.M)[1].split(', ')
-        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','toolkit-nightly'})
+        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','toolkit-nightly','main-light'})
         self.assertIn('NEEDS: ${{ toJSON(needs) }}',block)
 
     def test_actual_ci_script_refuses_failure_cancellation_and_missing_lane(self):
@@ -192,7 +194,7 @@ class Security(unittest.TestCase):
                         self.assertEqual(actual,'ubuntu-24.04' if head=='fork/repo' else expected)
 
     def test_runner_choices_keep_small_jobs_independent_and_forks_hosted(self):
-        small={'changes','select-map','ci','web-test'}
+        small={'changes','select-map','ci','web-test','main-light'}
         rust={'always','rust','rust-export','toolkit-nightly'}
         web={'web-build','web','web-export','site','release','skills'}
         blocks=jobs()
@@ -255,7 +257,7 @@ class Security(unittest.TestCase):
                 self.assertIn('run: sh ci/hosted/guard.sh',steps[1])
                 self.assertIn('HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}',steps[1])
                 self.assertNotIn('        if:',steps[1])
-                if name not in ('changes','ci','select-map','web-test','toolkit-nightly'):
+                if name not in ('changes','ci','select-map','web-test','toolkit-nightly','main-light'):
                     prepare=[s for s in steps if 'uses: ./.github/actions/docs-only/setup\n' in s]
                     self.assertEqual(len(prepare),1,name)
                     self.assertIn('hosted: ${{ steps.guard.outputs.hosted }}',prepare[0])

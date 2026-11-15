@@ -167,7 +167,7 @@ class Workflow(unittest.TestCase):
         blocks=re.findall(r'^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)',source,re.M|re.S)
         ran=set()
         for name,block in blocks:
-            if name in ('changes','select-map','ci','web-test','toolkit-nightly'): continue
+            if name in ('changes','select-map','ci','web-test','toolkit-nightly','main-light'): continue
             expression=re.search(r'^    if: \$\{\{ (.*) \}\}$',block,re.M)[1]
             expression=re.sub(r'needs\.changes\.outputs\.([a-z-]+)',lambda m:repr(output.get(m[1],'')),expression)
             expression=expression.replace('needs.changes.result',repr('success')).replace('needs.web-build.result',repr(export_result))
