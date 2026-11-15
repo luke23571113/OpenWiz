@@ -129,7 +129,7 @@ test('#633: browser sign-in, the explicit App skip and the acting login, at phon
     scenario({ ...JSON.parse(readFileSync(join(ghDir, 'scenario.json'), 'utf8')), login: 'approve' });
     assert.equal(tool('github_login.py', ['sign-in', '--yes']).code, 'login_verified');
     assert.equal(check(), 'identity_verified');
-    await visit('offer', { login: 'verified', appText: [/not registered/, /skip it/, /synthetic-owner/], note: 'offer' });
+    await visit('offer', { login: 'verified', appText: [/not registered/, /skip it/, /verified personal login then acts/], note: 'offer' });
     // The explicit skip: the App stays missing, the acting login is named.
     tool('github_login.py', ['skip-app', '--yes', '--operation', tool('github_login.py', ['skip-app']).operation_id]);
     assert.equal(check(), 'identity_verified');

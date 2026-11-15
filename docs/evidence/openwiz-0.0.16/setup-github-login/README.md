@@ -29,6 +29,17 @@ synthetic: the login `synthetic-owner` and the repository
   flow, so no owner approval of the picture is needed (image skill). The
   reviewer compares the real page with these targets.
 
+## The real page (screenshots, after the change)
+
+`page-skipped-*.png` and `page-offer-*.png` are the browser proof's own
+screenshots of the built page, on the recording `gh`. They are evidence of the
+HTML; the targets are not. Deviations from the targets: the identity and
+offer notes are ordinary row paragraphs, not bordered boxes, because the setup
+stylesheet is outside this ticket's paths; and the offer does not name the
+login, because the setup response names an acting login only after the skip.
+The skip itself is listed under setup effects with the existing
+`connect_app` label; its effects say that no App is registered.
+
 ## Red runs (each kept from the commit before its fix)
 
 | Log | Proof | How it failed |
