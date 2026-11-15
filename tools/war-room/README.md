@@ -402,8 +402,8 @@ installation, hosting, access rule, account operation or publication is activate
 ## Publish (WR9)
 
 Jake bookmarks **<https://github.com/jparker2006/ClosedWiz/tree/war-room>**: a
-branch `war-room`, never `main`, holding `war-room.png` (the page, 1200 px),
-`war-room-phone.png` (the same page in one 400 px column, drawn at 2x, which a
+branch `war-room`, never `main`, holding `war-room.png` (the page, 1440 px),
+`war-room-phone.png` (the same page in one 390 px column, drawn at 2x, which a
 phone narrower than 700 px shows instead through the README's `<picture>`, as
 the board does), `samples/` (WR2's immutable five-minute envelopes) and a
 `README.md` with the time of the last good render, the pictures and a
