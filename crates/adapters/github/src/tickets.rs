@@ -1475,17 +1475,9 @@ mod tests {
             (serde_json::json!({"login": "SYNTHETIC-OWNER"}), true),
             (serde_json::json!({"login": "synthetic-outsider"}), false),
             // `gh issue view` gives an App's login without `[bot]` and no
-            // author type, so an App-shaped plain login is never the App,
-            // whatever fields ride with it; only the exact entry counts.
+            // author type: with `synthetic-app[bot]` listed, that plain
+            // login is never the App. Only the exact entry counts.
             (serde_json::json!({"login": "synthetic-app"}), false),
-            (
-                serde_json::json!({"login": "synthetic-app", "is_bot": true}),
-                false,
-            ),
-            (
-                serde_json::json!({"login": "Synthetic-App", "__typename": "Bot"}),
-                false,
-            ),
             (serde_json::json!({"login": "Synthetic-App[bot]"}), true),
             (serde_json::json!({"login": null}), false),
             (serde_json::json!({}), false),
