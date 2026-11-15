@@ -54,6 +54,10 @@ def log(line):
         f.write(line + "\n")
 
 
+FLEET = ("# Fleet settings\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n"
+         "| Record authors | `openwiz[bot]`, `robin` |\n\n## Standing merge rules\n")
+
+
 def main(argv):
     world_path = os.environ.get("FAKE_GH_WORLD")
     if not world_path or "FAKE_GH_LOG" not in os.environ:
@@ -71,6 +75,15 @@ def main(argv):
         if fault_at == "repo view":
             die(1, "fake gh: no git remotes found")
         print(repo)
+        return
+    # #717: the one raw read of the Record authors setting, from the world's
+    # "fleet" text (FLEET below unless the world names its own).
+    if argv == ["api", "-H", "Accept: application/vnd.github.raw+json",
+                f"repos/{repo}/contents/docs/agents/fleet.md"]:
+        log("fleet")
+        if fault_at == "fleet":
+            die(1, "gh: Not Found (HTTP 404)")
+        sys.stdout.write(world.get("fleet", FLEET))
         return
     if not argv or argv[0] != "api":
         die(3, f"fake gh: unexpected call: gh {' '.join(argv)}")
@@ -144,7 +157,9 @@ def main(argv):
             die(1, "gh: Not Found (HTTP 404)")
         items = []
         for c in sorted(source, key=lambda c: c["id"]):
-            item = {"id": c["id"], "node_id": f"N_{c['id']}", "user": {"login": "robin"}, "body": c["body"],
+            # A comment names its own "user" (null: a deleted account); else robin's.
+            item = {"id": c["id"], "node_id": f"N_{c['id']}", "user": c.get("user", {"login": "robin"}),
+                    "body": c["body"],
                     "author_association": "OWNER"}
             if what == "reviews":
                 item.update({"state": c["state"], "submitted_at": c["submitted_at"], "commit_id": "a" * 40})
