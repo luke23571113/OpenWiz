@@ -432,6 +432,15 @@ class Layout(Tree):
 
 
 class Suites(Tree):
+    def test_direct_unittest_with_hyphenated_name_runs(self):
+        rel = 'skills/launch-fleet/scripts/test-effects.py'
+        write(self.root / rel, RECORDER.format(rel) + 'import unittest\n'
+              'class T(unittest.TestCase):\n    def test_ok(self):\n        pass\n'
+              'if __name__ == "__main__": unittest.main()\n')
+        code, out = run(self.root)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(ran(self.root), self.suites)
+
     def test_script_style_file_must_run_its_entrypoint(self):
         rel = 'skills/build-ticket/scripts/test/test_check_helpers.py'
         script = self.root / rel
