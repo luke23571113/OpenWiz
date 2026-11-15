@@ -272,8 +272,9 @@ class PageDesign(unittest.TestCase):
                     for c in f['charts']:
                         self.assertGreater(c['w'], 0, f['id'])
                         self.assertGreaterEqual(c['minFont'], MIN_CHART_FONT, f['id'])
-                        if f['id'][4:] in CARDS:  # #759 R1: the headline cards (body charts: T2's renderer, raised separately)
-                            self.assertEqual(c['clipped'], [], f['id'])
+                        # #759 R1 (headline cards) and the body-chart margin fix (#631 comment 6901463537): no chart
+                        # text is cut off at its SVG's edge.
+                        self.assertEqual(c['clipped'], [], f['id'])
                 low = [(t['sample'], round(contrast(t['color'], t['background']), 2)) for t in v['text']
                        if contrast(t['color'], t['background']) < (3 if t['size'] >= 24 or (t['size'] >= 18.66 and t['weight'] >= 700) else 4.5)]
                 self.assertEqual(low, [])
