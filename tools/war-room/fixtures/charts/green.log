@@ -1,0 +1,37 @@
+# WRD2 scoped local checks (synthetic fixtures only)
+
+## python3 -I tools/war-room/test_charts.py
+Ran 16 tests in 3.341s
+
+OK
+
+## python3 -I tools/war-room/test_publish.py
+Ran 14 tests in 11.573s
+
+OK
+
+## python3 -I tools/war-room/test_page_history.py
+Ran 18 tests in 1.094s
+
+OK
+
+## python3 -I tools/war-room/test_gather.py
+Ran 18 tests in 54.515s
+
+OK
+
+## python3 -I tools/war-room/test_health.py
+Ran 22 tests in 9.263s
+
+OK
+
+## python3 -I tools/war-room/test_contract.py
+Ran 19 tests in 0.090s
+
+OK
+
+## node --check charts/render.mjs charts/dom.mjs
+ok
+
+## python3 -I charts/palette.py (exit status)
+exit 0

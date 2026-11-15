@@ -81,8 +81,11 @@ replaced and history is never touched (the build only reads it).
 A row's `label` is its accessible mark title and its values-table text. `y` is
 the plotted number or null. `state` is the source's (`known`, `partial`,
 `unavailable`) or `missing` (no observation for that day or span). A null `y`
-is drawn as a labelled text mark ("no sample", "Unknown"), never as zero.
-`partial` values are lower bounds or partial evidence and are drawn hollow.
+is drawn as a small ∅ mark on the baseline whose title is the row's label (the page
+keys ∅ as "no sample or Unknown"), never as zero. `partial` values are lower bounds or
+partial evidence and are drawn hollow. Multi-series line and limit figures carry a key
+of each series' symbol, colour and label, which has no title because it plots no value.
+A loaded limit is a short horizontal bar at its stage.
 
 Cross-field rules, checked after the schema: unique figure ids, unique row keys
 in a figure, every row's series declared, category rows inside `domain`, at

@@ -32,6 +32,12 @@ jobs:
           persist-credentials: false
       - name: Python
         run: sh tools/ci-bench/python.sh
+      - name: Node for the chart build (WRD2)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: The locked chart build (WRD2; build only)
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/war-room
       - name: The War room publish and gather tests
         run: |
           python3 -I tools/war-room/test_publish.py
@@ -40,6 +46,10 @@ jobs:
         # Runs even when an earlier step failed, so the health proofs always report.
         if: ${{ !cancelled() }}
         run: python3 -I tools/war-room/test_health.py
+      - name: The War room chart proofs (WRD2)
+        # Runs even when an earlier step failed, so the chart proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_charts.py
 
   preview:
     # A pull request ticks and draws on an empty private history, and publishes nothing.
@@ -53,6 +63,12 @@ jobs:
           persist-credentials: false
       - name: Python
         run: sh tools/ci-bench/python.sh
+      - name: Node for the chart build (WRD2)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: The locked chart build (WRD2; build only)
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/war-room
       - name: Tick and draw, no publish
         run: python3 -I tools/war-room/publish.py preview --out "$RUNNER_TEMP/war-room" --at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -80,6 +96,12 @@ jobs:
           persist-credentials: false
       - name: Python
         run: sh tools/ci-bench/python.sh
+      - name: Node for the chart build (WRD2)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: The locked chart build (WRD2; build only; without it the chart build refuses and nothing publishes)
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/war-room
       - name: Tests, then gather the sources (reads only), tick, draw and publish only war-room
         env:
           GH_TOKEN: ${{ github.token }}

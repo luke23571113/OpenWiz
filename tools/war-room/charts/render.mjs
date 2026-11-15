@@ -28,6 +28,7 @@ const nullWord = (r) => (r.state === 'missing' ? 'no sample' : 'Unknown');
 // On a shared axis, many null rows can fall on one day: each gets a small stacked glyph
 // (its full words are its title and its values-table row; the page's caption keys the glyph).
 const NULL_GLYPH = '∅';
+const LIMIT_BAR = { draw(context) { context.moveTo(-14, 0); context.lineTo(14, 0); } };
 
 function seriesStyle(fig, extra = {}) {
   return {
@@ -120,7 +121,8 @@ const DRAW = {
       x: { type: 'point', domain: fig.domain, padding: 0.5, label: null },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [
-        Plot.tickY(valued(limits), { x: 'x', y: 'y', stroke: palette.roles.reference, strokeWidth: 2, strokeDasharray: palette.marks.reference.dash, title }),
+        // A limit is a short horizontal bar on its stage's point (a band-scale tick cannot share this axis).
+        Plot.dot(valued(limits), { x: 'x', y: 'y', symbol: LIMIT_BAR, r: 7, fill: 'none', stroke: palette.roles.reference, strokeWidth: 2.5, title }),
         Plot.dot(valued(waits), seriesStyle(fig, { x: 'x', y: 'y', r: 4, strokeWidth: 1.5 })),
         Plot.ruleY([0], { stroke: palette.roles.muted }),
         ...nullMarks(fig, fig.rows, { x: 'x' }),
