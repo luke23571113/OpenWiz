@@ -123,6 +123,33 @@ def main_ci_provider(at):
     return provider
 
 
+def stage_health_provider():
+    """WRD1's own observation shapes: a loaded limit, a known wait, an open wait and a held one."""
+    read = {'started_at': '2030-01-08T09:20:00Z', 'ended_at': '2030-01-08T09:21:00Z'}
+    tl1 = {'path': 'tools/factory-metrics/limits.conf', 'schema': 'closedwiz.factory-limits.v1', 'sha256': '1' * 64}
+    tl2 = {'path': 'stage-waits.json', 'schema': 'openwiz.stage-waits.v1', 'sha256': '2' * 64}
+    limit = {'minutes': 30, 'owner': 'tools/factory-metrics/limits.conf', 'schema': 'closedwiz.factory-limits.v1',
+             'sha256': '1' * 64, 'read_at': '2030-01-08T09:21:00Z'}
+
+    def wait(key, result, state, value, gaps=()):
+        return health.observation(
+            'wait:' + key, 'Builder start wait: ' + result.replace('_', ' '), state=state, statistic='observation',
+            unit='minutes', result=result, value=value, read=read, source=tl2, point='2030-01-08T09:20:00Z',
+            evidence=[LINK], evidence_class='producer_fact', cohort='tl2-stage-health',
+            identity={'stage': 'builder_start', 'interval': key, 'ticket': 4001},
+            interval={'id': key, 'started_at': '2030-01-08T08:00:00Z',
+                      'ended_at': '2030-01-08T08:12:00Z' if state == 'known' else None},
+            limit=limit, identities=[key], prerequisites=gaps)
+    items = [health.observation('limit:builder_start', 'Builder start limit (TL1 setting)', state='known',
+                                statistic='limit', unit='minutes', value=30, read=read, source=tl1,
+                                point='2030-01-08T09:21:00Z', evidence=[LINK], evidence_class='settings_read',
+                                cohort='tl1-limits', identity={'stage': 'builder_start'}, limit=limit),
+             wait('w1', 'not_missed', 'known', 12),
+             wait('w2', 'missed', 'partial', 45, ['Open at the TL2 read: a lower bound.']),
+             wait('w3', 'gated', 'partial', None, ['TL2 gated: held.'])]
+    return health.provider('stage_health', items, ['Synthetic stage history.'])
+
+
 class World:
     """A synthetic source root and history, written through the real select/compose/save path."""
 
@@ -170,7 +197,7 @@ def full_world(root):
     w.ci('2030-01-08T09:00:00Z', 'd7.json', day_point('2030-01-07', 8, (6, 7.5, 12.0, 9.5)))
     # The last sample: credits and main CI only, so the CI point is carried forward as partial.
     w.sample('2030-01-08T09:30:00Z', [w.entry('credits', 'credits', 'credits.jsonl', CREDITS, '2030-01-08T09:30:00Z')],
-             extra=[main_ci_provider('2030-01-08T09:30:00Z')])
+             extra=[main_ci_provider('2030-01-08T09:30:00Z'), stage_health_provider()])
     board = w.entry('board_history', 'board', 'board-history.jsonl', BOARD, '2030-01-08T09:40:00Z')
     return w, [board]
 
@@ -283,14 +310,20 @@ class Charts(unittest.TestCase):
         self.assertEqual(fig['coverage']['missing'], DAYS[:5])
 
     def test_body_figures_cover_readiness_health_and_old_samples(self):
-        # catches: a v1 sample's missing health read as a green main CI, or a provider
-        # left out of the readiness inventory.
+        # catches: a v1 sample's missing health read as a green main CI, a provider left
+        # out of the readiness inventory, an open wait shown as complete or a held wait as
+        # zero, or a limits figure the renderer cannot draw.
         ready = figure(self.bundle, 'body-readiness')
         self.assertEqual(len(ready['rows']), 20)
         main_ci = figure(self.bundle, 'body-main-ci')
         self.assertEqual([(r['state'], r['x']) for r in main_ci['rows']], [('known', 'main')])
         self.assertIn('success', main_ci['rows'][0]['label'])
         self.assertIn('a1a1a1a', main_ci['rows'][0]['label'])
+        stage = figure(self.bundle, 'body-stage-health')
+        rows = {r['key']: (r['series'], r['y'], r['state']) for r in stage['rows']}
+        self.assertEqual(rows, {'limit:builder_start': ('limit', 30, 'known'), 'wait:w1': ('wait', 12, 'known'),
+                                'wait:w2': ('wait', 45, 'partial'), 'wait:w3': ('wait', None, 'partial')})
+        self.assertIn('at least 45 min', next(r['label'] for r in stage['rows'] if r['key'] == 'wait:w2'))
         with tempfile.TemporaryDirectory() as d:
             old = World(d)
             old.ci('2030-01-02T09:00:00Z', 'd1.json', day_point('2030-01-01', 4))
@@ -322,6 +355,29 @@ class Charts(unittest.TestCase):
             names = {e.tag.removeprefix(SVG) for e in ET.fromstring(fig['svg']).iter()}
             self.assertLessEqual(names, {'svg', 'g', 'path', 'line', 'rect', 'circle', 'text', 'tspan', 'title'})
         self.assertEqual(html.count('<svg '), len(bundle['figures']))
+
+    def test_the_svg_check_refuses_planted_breaks(self):
+        # catches: an allowlist or reconciliation that passes everything, so a script, an
+        # event handler, an external reference, an undrawable position or a dropped mark
+        # would reach the page.
+        fig = figure(self.bundle, '00b')
+        good = fig['svg']
+        build.check_svg(good, fig)
+        first_title = '<title>%s</title>' % fig['rows'][0]['label']
+        planted = {
+            'script': good.replace('</svg>', '<script>alert(1)</script></svg>'),
+            'handler': good.replace('<svg ', '<svg onload="alert(1)" ', 1),
+            'href': good.replace('</svg>', '<a href="https://example.invalid/">x</a></svg>'),
+            'url': good.replace('fill="#101722"', 'fill="url(https://example.invalid/p)"', 1),
+            'nan': good.replace('<svg ', '<svg x="NaN" ', 1),
+            'dropped mark': good.replace(first_title, '', 1),
+            'renamed': good.replace('aria-label="Main merges"', 'aria-label="Other"', 1),
+        }
+        for name, svg in planted.items():
+            with self.subTest(name):
+                self.assertNotEqual(svg, good)
+                with self.assertRaises(ValueError):
+                    build.check_svg(svg, fig)
 
     def test_same_input_builds_the_same_bytes_used_by_page_and_export(self):
         # catches: a nondeterministic id or time in the output, or the page and the image
@@ -380,6 +436,44 @@ class Charts(unittest.TestCase):
             self.assertEqual(page_path.read_bytes(), before_page)
             after = {p.name: p.read_bytes() for p in (w.history / 'samples').glob('*.json')}
             self.assertEqual({k: after[k] for k in before}, before)
+
+    def test_a_refused_chart_build_publishes_nothing(self):
+        # catches: an hourly publication that pushes a page, pictures or sample after its
+        # chart build refused (here: Node, the build prerequisite, is absent), replacing the
+        # war-room branch's last good render.
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            origin = d / 'origin.git'
+            subprocess.run(['git', 'init', '-q', '--bare', str(origin)], check=True)
+            w = World(d / 'w')
+            point = json.dumps(day_point('2030-01-07', 8, (6, 7.5, 12.0, 9.5)))
+            ci = w.entry('ci_bench', 'ci_bench', 'd7.json', point, '2030-01-08T09:00:00Z')
+            board = w.entry('board_history', 'board', 'board-history.jsonl', BOARD, '2030-01-08T09:40:00Z')
+            env = dict(os.environ, PATH=str(HERE / 'fixtures' / 'publish') + os.pathsep + os.environ['PATH'])
+
+            # A PATH with git, python3 and the fake chromium, but no node.
+            bare = d / 'bin'
+            bare.mkdir()
+            (bare / 'git').symlink_to(shutil.which('git'))
+            (bare / 'python3').symlink_to(sys.executable)
+            no_node = dict(env, PATH=str(HERE / 'fixtures' / 'publish') + os.pathsep + str(bare))
+
+            def run(at, selection, env=env):
+                (d / 'selection.json').write_text(json.dumps(selection))
+                return subprocess.run([sys.executable, '-I', str(HERE / 'publish.py'), 'publish', '--remote', str(origin),
+                                       '--at', at, '--source-root', str(w.root), '--selection', str(d / 'selection.json')],
+                                      env=env, capture_output=True, text=True)
+
+            def head():
+                return subprocess.run(['git', '-C', str(origin), 'rev-parse', 'refs/heads/war-room'],
+                                      capture_output=True, text=True).stdout.strip()
+            good = run('2030-01-08T10:00:00Z', [ci, board])
+            self.assertEqual(good.returncode, 0, good.stderr)
+            before = head()
+            bad = run('2030-01-08T11:00:00Z', [ci, board], env=no_node)
+            self.assertEqual(bad.returncode, 1)
+            self.assertIn('the chart build refused', bad.stderr)
+            self.assertEqual(head(), before)
 
     def test_the_palette_survives_colour_vision_simulation(self):
         # catches: a validator that never simulates: red and green differ to normal
