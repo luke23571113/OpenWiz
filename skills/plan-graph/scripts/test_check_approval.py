@@ -45,6 +45,7 @@ def fixture(spec, label="ready-for-agent"):
         "graph": {"subIssues": {"totalCount": 6, "nodes": [{"number": n} for n in numbers]}},
         "comments": [[{"id": 100, "body": body}]],
         "labels_doc": LABELS,
+        "tracker_doc": "# Tracker\n\n- **Private records:** `jparker2006/ClosedWiz`, permanently private.\n",
         "repo": {"isPrivate": False},
     }
 
@@ -79,6 +80,8 @@ if args == ["repo", "view", "--json", "isPrivate"]:
     key = "repo"
 elif args == ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/triage-labels.md"]:
     key = "labels_doc"
+elif args == ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/issue-tracker.md"]:
+    key = "tracker_doc"
 elif args == ["issue", "view", n, "--json", "subIssues"]:
     key = "graph"
 elif args == ["api", "--paginate", "repos/{owner}/{repo}/issues/" + n + "/comments?per_page=100"]:
@@ -89,7 +92,9 @@ if w.get("fail") == key:
     sys.exit("planted read failure")
 if w.get("empty") == key:
     sys.exit(0)
-if key == "labels_doc":
+if key == "tracker_doc":
+    print(w[key], end="")
+elif key == "labels_doc":
     print(Path(os.environ["FAKE_LABELS_FILE"]).read_text() if "FAKE_LABELS_FILE" in os.environ else w[key], end="")
 elif key == "comments":
     for page in w[key]:
@@ -136,6 +141,7 @@ class ApprovalTest(unittest.TestCase):
             self.assertEqual(result.stderr, "")
             self.assertEqual([json.loads(line) for line in (tmp / "calls").read_text().splitlines()], [
                 ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/triage-labels.md"],
+                ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/issue-tracker.md"],
                 ["issue", "view", "172", "--json", "subIssues"],
                 ["api", "--paginate", "repos/{owner}/{repo}/issues/172/comments?per_page=100"],
                 ["repo", "view", "--json", "isPrivate"],
@@ -163,11 +169,33 @@ class ApprovalTest(unittest.TestCase):
             if status == 0:
                 self.assertEqual(calls, [
                     ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/triage-labels.md"],
+                    ["api", "-H", "Accept: application/vnd.github.raw+json", "repos/{owner}/{repo}/contents/docs/agents/issue-tracker.md"],
                     ["issue", "view", str(spec), "--json", "subIssues"],
                     ["api", "--paginate", f"repos/{{owner}}/{{repo}}/issues/{spec}/comments?per_page=100"],
                     ["repo", "view", "--json", "isPrivate"],
                 ])
             return calls
+
+    def test_configured_records_repository_differs_from_current_repository(self):
+        w = fixture(172)
+        w['tracker_doc'] = '# Tracker\n\n- **Private records:** `synthetic-records/archive`, permanently private.\n'
+        w['comments'][0][0]['body'] = w['comments'][0][0]['body'].replace(
+            'jparker2006/ClosedWiz', 'synthetic-records/archive')
+        self.run_check(w)
+        w['comments'][0][0]['body'] = w['comments'][0][0]['body'].replace(
+            'synthetic-records/archive', 'unrelated-owner/archive')
+        self.run_check(w, status=1, reason='public approval form')
+
+    def test_missing_malformed_or_unreadable_records_configuration_refuses(self):
+        for text in ('', '- **Private records:** `owner`\n',
+                     '- **Private records:** `../archive`\n',
+                     '- **Private records:** `owner/repo`\n' * 2):
+            w = fixture(172)
+            w['tracker_doc'] = text
+            self.run_check(w, status=1, reason='private records')
+        w = fixture(172)
+        w['fail'] = 'tracker_doc'
+        self.run_check(w, status=1, reason='private records')
 
     def test_public_and_private_approval_forms(self):
         public = fixture(172)["comments"][0][0]["body"]
