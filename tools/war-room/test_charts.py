@@ -103,10 +103,10 @@ CREDITS = '\n'.join(json.dumps({'at': at, 'credits': used, 'credits_limit': 1000
     ('2030-01-07T20:00:00Z', 170), ('2030-01-08T01:00:00Z', 190)]) + '\n'
 
 
-def main_ci_provider(at):
-    """WRD1's own main_ci over a synthetic success at the head."""
+def main_ci_provider(at, status='completed', conclusion='success'):
+    """WRD1's own main_ci over a synthetic run at the head (a success unless told otherwise)."""
     head = 'a1' * 20
-    run = {'id': 77, 'run_attempt': 1, 'status': 'completed', 'conclusion': 'success', 'head_sha': head,
+    run = {'id': 77, 'run_attempt': 1, 'status': status, 'conclusion': conclusion, 'head_sha': head,
            'head_branch': 'main', 'event': 'push', 'created_at': '2030-01-08T09:00:00Z'}
     api = 'repos/' + REPO
 
@@ -146,7 +146,8 @@ def stage_health_provider():
                                 cohort='tl1-limits', identity={'stage': 'builder_start'}, limit=limit),
              wait('w1', 'not_missed', 'known', 12),
              wait('w2', 'missed', 'partial', 45, ['Open at the TL2 read: a lower bound.']),
-             wait('w3', 'gated', 'partial', None, ['TL2 gated: held.'])]
+             wait('w3', 'gated', 'partial', None, ['TL2 gated: held.']),
+             wait('w4', 'gated', 'partial', None, ['TL2 gated: held.'])]
     return health.provider('stage_health', items, ['Synthetic stage history.'])
 
 
@@ -296,7 +297,8 @@ class Charts(unittest.TestCase):
 
     def test_credit_spans_keep_their_actual_length_and_are_never_split(self):
         # catches: a span cut at the PST midnight, spans summed into an invented daily
-        # billing total, or the sampled/not-billing qualification dropped.
+        # billing total, the sampled/not-billing qualification dropped, or a coverage that
+        # counts spans against days (R4: "4 of 7" when only 2 days were observed).
         fig = figure(self.bundle, '00e')
         spans = [(r['x'], r['x2'], r['y']) for r in fig['rows'] if r['state'] != 'missing']
         self.assertEqual(spans, [('2030-01-06T20:00:00Z', '2030-01-07T02:00:00Z', 30),
@@ -308,11 +310,14 @@ class Charts(unittest.TestCase):
         self.assertIn('8 h', crossing['label'])
         self.assertIn('not billing', fig['caption'])
         self.assertEqual(fig['coverage']['missing'], DAYS[:5])
+        # R4: four spans end on two PST days; coverage counts days, never spans against days.
+        self.assertEqual(fig['coverage']['observed'], 2)
 
     def test_body_figures_cover_readiness_health_and_old_samples(self):
         # catches: a v1 sample's missing health read as a green main CI, a provider left
         # out of the readiness inventory, an open wait shown as complete or a held wait as
-        # zero, or a limits figure the renderer cannot draw.
+        # zero, a limits figure the renderer cannot draw, or two held waits on one stage
+        # sharing a label so the whole build refuses (R3).
         ready = figure(self.bundle, 'body-readiness')
         self.assertEqual(len(ready['rows']), 20)
         main_ci = figure(self.bundle, 'body-main-ci')
@@ -322,7 +327,8 @@ class Charts(unittest.TestCase):
         stage = figure(self.bundle, 'body-stage-health')
         rows = {r['key']: (r['series'], r['y'], r['state']) for r in stage['rows']}
         self.assertEqual(rows, {'limit:builder_start': ('limit', 30, 'known'), 'wait:w1': ('wait', 12, 'known'),
-                                'wait:w2': ('wait', 45, 'partial'), 'wait:w3': ('wait', None, 'partial')})
+                                'wait:w2': ('wait', 45, 'partial'), 'wait:w3': ('wait', None, 'partial'),
+                                'wait:w4': ('wait', None, 'partial')})
         self.assertIn('at least 45 min', next(r['label'] for r in stage['rows'] if r['key'] == 'wait:w2'))
         with tempfile.TemporaryDirectory() as d:
             old = World(d)
@@ -474,6 +480,68 @@ class Charts(unittest.TestCase):
             self.assertEqual(bad.returncode, 1)
             self.assertIn('the chart build refused', bad.stderr)
             self.assertEqual(head(), before)
+
+    def test_main_ci_result_is_visible_without_hover(self):
+        # catches (R1): success, failure, pending and cancelled drawn as the same "known"
+        # cell, so a picture of a failing or pending main looks green.
+        shapes = {}
+        for status, conclusion, word in (('completed', 'success', 'success'), ('completed', 'failure', 'failure'),
+                                         ('in_progress', None, 'pending'), ('completed', 'cancelled', 'cancelled')):
+            with self.subTest(word), tempfile.TemporaryDirectory() as d:
+                w = World(d)
+                w.sample('2030-01-08T09:30:00Z', [], extra=[main_ci_provider('2030-01-08T09:30:00Z', status, conclusion)])
+                tree = ET.fromstring(figure(build.build(w.history, at=BUILD_AT), 'body-main-ci')['svg'])
+                for parent in tree.iter():
+                    for child in [c for c in parent if c.tag == SVG + 'title']:
+                        parent.remove(child)
+                visible = [''.join(e.itertext()) for e in tree.iter(SVG + 'text')]
+                self.assertIn(word, visible)
+                shapes[word] = ET.tostring(tree)
+        self.assertEqual(len(set(shapes.values())), 4)
+
+    def test_a_gathered_projected_board_feeds_ready_and_building(self):
+        # catches (R2): gather selects the board as a projected provider over its raw
+        # history, and the chart build ignored it, so 00a was Unknown on the normal path.
+        import gather
+        with tempfile.TemporaryDirectory() as d:
+            staging = Path(d) / 'root'
+            staging.mkdir()
+            root = gather.Root(staging, REPO, 'https://github.com/synthetic-owner/work/actions/runs/9', BUILD_AT)
+            raw = BOARD.encode()
+            s = {'path': 'board/history.jsonl', 'sha256': root.write('board/history.jsonl', raw),
+                 'observed_at': '2030-01-08T09:40:00Z', 'evidence': [LINK]}
+            root.projected(gather.board_provider(s, raw, None, None), s['observed_at'])
+            self.assertEqual([e['kind'] for e in root.selection], ['projected'])
+            (Path(d) / 'selection.json').write_text(json.dumps(root.selection))
+            w = World(Path(d) / 'w')
+            bundle = publish.chart_builder(staging, Path(d) / 'selection.json', BUILD_AT)(w.history)
+            fig = figure(bundle, '00a')
+            self.assertEqual(by_day(fig, 'ready')['2030-01-07'], 9)
+            self.assertEqual(fig['sources'][0]['sha256'], s['sha256'])
+            # The projected provider names the raw history; tampered raw bytes still refuse.
+            (staging / 'board/history.jsonl').write_bytes(raw + b'\n')
+            with self.assertRaises(publish.Fail):
+                publish.chart_builder(staging, Path(d) / 'selection.json', BUILD_AT)(w.history)
+
+    def test_credit_seed_spans_keep_their_extra_only_basis(self):
+        # catches (R5): an extra-only seed span merged into the full-balance series, so an
+        # unchanged extra balance reads as zero overall credit burn.
+        rows = [{'at': '2030-01-07T00:00:00Z', 'extra_credits': 100, 'only': 'extra_credits'},
+                {'at': '2030-01-07T06:00:00Z', 'credits': 800, 'credits_limit': 1000, 'extra_credits': 100,
+                 'extra_credits_total': 100},
+                {'at': '2030-01-07T12:00:00Z', 'credits': 850, 'credits_limit': 1000, 'extra_credits': 100,
+                 'extra_credits_total': 100}]
+        with tempfile.TemporaryDirectory() as d:
+            w = World(d)
+            text = '\n'.join(map(json.dumps, rows)) + '\n'
+            w.sample('2030-01-08T09:30:00Z', [w.entry('credits', 'credits', 'credits.jsonl', text, '2030-01-08T09:30:00Z')])
+            fig = figure(build.build(w.history, at=BUILD_AT), '00e')
+        spans = {r['x']: (r['series'], r['y']) for r in fig['rows'] if r['state'] != 'missing'}
+        self.assertEqual(spans, {'2030-01-07T00:00:00Z': ('drop:extra-only', 0),
+                                 '2030-01-07T06:00:00Z': ('drop:full-balance', 50)})
+        seed = next(r for r in fig['rows'] if r['x'] == '2030-01-07T00:00:00Z')
+        self.assertIn('extra-only seed; overall balance change unknown', seed['label'])
+        self.assertIn('Extra-only seed spans compare extra credits only', ' '.join(fig['gaps']))
 
     def test_the_palette_survives_colour_vision_simulation(self):
         # catches: a validator that never simulates: red and green differ to normal

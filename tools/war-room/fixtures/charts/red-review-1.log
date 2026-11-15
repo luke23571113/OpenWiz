@@ -1,0 +1,24 @@
+== R3 at a482ae0 (test_charts.py, second held wait):
+ValueError: two marks with one label
+Ran 0 tests in 0.326s
+FAILED (errors=1)
+
+== R1, R2, R4, R5 at a482ae0 (the same tests without the R3 row):
+ERROR: test_a_gathered_projected_board_feeds_ready_and_building (__main__.Charts.test_a_gathered_projected_board_feeds_ready_and_building)
+KeyError: '2030-01-07'
+FAIL: test_main_ci_result_is_visible_without_hover (__main__.Charts.test_main_ci_result_is_visible_without_hover) [success]
+AssertionError: 'success' not found in ['main', 'known']
+FAIL: test_main_ci_result_is_visible_without_hover (__main__.Charts.test_main_ci_result_is_visible_without_hover) [failure]
+AssertionError: 'failure' not found in ['main', 'known']
+FAIL: test_main_ci_result_is_visible_without_hover (__main__.Charts.test_main_ci_result_is_visible_without_hover) [pending]
+AssertionError: 'pending' not found in ['main', 'known']
+FAIL: test_main_ci_result_is_visible_without_hover (__main__.Charts.test_main_ci_result_is_visible_without_hover) [cancelled]
+AssertionError: 'cancelled' not found in ['main', 'known']
+FAIL: test_main_ci_result_is_visible_without_hover (__main__.Charts.test_main_ci_result_is_visible_without_hover)
+AssertionError: 0 != 4
+FAIL: test_credit_spans_keep_their_actual_length_and_are_never_split (__main__.Charts.test_credit_spans_keep_their_actual_length_and_are_never_split)
+AssertionError: 4 != 2
+FAIL: test_credit_seed_spans_keep_their_extra_only_basis (__main__.Charts.test_credit_seed_spans_keep_their_extra_only_basis)
+AssertionError: {'203[21 chars]'drop', 0), '2030-01-07T06:00:00Z': ('drop', 50)} != {'203[21 chars]'drop:extra-only', 0), '2030-01-07T06:00:00Z':[22 chars] 50)}
+Ran 4 tests in 1.274s
+FAILED (failures=7, errors=1)
