@@ -2,6 +2,7 @@
 // registered here by their owning tickets, without pending ignore markers.
 mod contract;
 mod durable;
+mod held_store;
 mod journey;
 mod policy;
 mod stock;
