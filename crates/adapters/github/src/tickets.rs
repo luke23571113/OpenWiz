@@ -425,11 +425,16 @@ impl RecordAuthors {
     /// `bot` is whether the source typed that author as a Bot: GraphQL
     /// reports an App's login without `[bot]` (REST keeps it), so for a
     /// `name[bot]` entry the plain `name` counts only with the Bot type,
-    /// and never for a user of that name.
+    /// and never for a user of that name. A Bot is always an App: it never
+    /// counts as a user entry, even one with its plain name.
     pub fn wrote(&self, login: Option<&str>, bot: bool) -> bool {
         login.is_some_and(|l| {
             let l = l.to_ascii_lowercase();
-            self.0.contains(&l) || (bot && self.0.contains(&format!("{l}[bot]")))
+            if bot && !l.ends_with("[bot]") {
+                self.0.contains(&format!("{l}[bot]"))
+            } else {
+                self.0.contains(&l)
+            }
         })
     }
 
