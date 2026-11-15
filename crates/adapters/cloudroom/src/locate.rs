@@ -1221,6 +1221,48 @@ mod mid_update_tests {
         f
     }
 
+    // An external shell must not turn indirect cross-root ancestry into
+    // BX1's required direct GUI -> bridge edge, even with valid identities.
+    // Red (#2989, 2026-11-14): remove `root == index &&`, then run
+    // cargo test -p openwiz-adapter-cloudroom --lib a_bridge_launched_through_a_shell
+    // exit 101: left Ok(<synthetic bridge launcher>), right Err(Ambiguous).
+    #[test]
+    fn a_bridge_launched_through_a_shell_under_the_gui_is_refused() {
+        let f = Fixture::new(&[OLD, NEW]);
+        f.runs("100", "", "synthetic-shell", Some("1"));
+        f.app("201", OLD, "100");
+        f.runs("400", "", "synthetic-shell", Some("201"));
+        f.app("301", NEW, "201");
+        let identity = |pid: &str, parent: &str, start: u64| {
+            fs::write(
+                f.0.join("proc").join(pid).join("stat"),
+                format!(
+                    "{pid} (synthetic (app)) S {parent} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 {start} 0\n"
+                ),
+            )
+            .unwrap();
+        };
+        identity("201", "100", 100);
+        identity("400", "201", 110);
+        identity("301", "201", 120);
+        let appimage = f.0.join("Synthetic.AppImage");
+        fs::write(&appimage, "synthetic AppImage\n").unwrap();
+        for (pid, mount) in [("100", OLD), ("301", NEW)] {
+            fs::write(
+                f.0.join("proc").join(pid).join("environ"),
+                format!(
+                    "APPDIR={}\0APPIMAGE={}\0",
+                    f.0.join(mount).display(),
+                    appimage.display()
+                ),
+            )
+            .unwrap();
+        }
+        assert_eq!(f.resolve(), Ok(f.cli(NEW)), "direct pair baseline");
+        identity("301", "400", 120);
+        assert_eq!(f.resolve(), Err(LocateError::Ambiguous));
+    }
+
     fn gui_on_old_mount_supervising_bridge_on_new_mount_is_refused() {
         assert_eq!(mid_update().resolve(), Err(LocateError::Ambiguous));
     }
