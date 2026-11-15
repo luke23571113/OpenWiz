@@ -90,8 +90,10 @@ struct Seen {
 /// One scripted GitHub answer: status and body; `None` is a lost reply.
 type Answer = Option<(u16, Vec<u8>)>;
 
-/// GitHub's two answers, scripted; `None` is a lost reply.
+/// GitHub's answers, scripted; `None` is a lost reply. `app` answers the
+/// user App's owner lookup (J48, #606).
 struct Fake {
+    app: Answer,
     lookup: Option<(u16, Vec<u8>)>,
     mint: Option<(u16, Vec<u8>)>,
     seen: Mutex<Vec<Seen>>,
@@ -102,6 +104,7 @@ impl Exchange for Fake {
     }
     fn github(&self, call: &Call<'_>, jwt: &str, _: Instant) -> Result<(u16, Vec<u8>), Error> {
         let (name, body, answer) = match call {
+            Call::App => ("app".to_owned(), None, &self.app),
             Call::Installation { repository } => {
                 (format!("installation {repository}"), None, &self.lookup)
             }
@@ -118,6 +121,32 @@ impl Exchange for Fake {
         });
         answer.clone().ok_or(Error)
     }
+}
+
+/// GitHub's App object, owned by `owner`.
+fn app_owned_by(owner: &str) -> Answer {
+    Some((
+        200,
+        json!({"id": 1001, "slug": "synthetic-app", "owner": {"login": owner, "type": "User"},
+               "permissions": serde_json::from_str::<Value>(WRITE).unwrap()})
+        .to_string()
+        .into_bytes(),
+    ))
+}
+
+/// The seam calls made, by name.
+fn calls(run: &Run) -> Vec<&str> {
+    run.seen.iter().map(|s| s.call.as_str()).collect()
+}
+
+/// What the mint asked for.
+fn mint_body(run: &Run) -> &Value {
+    let seen = run
+        .seen
+        .iter()
+        .find(|s| s.call.starts_with("access_tokens"));
+    seen.and_then(|s| s.body.as_ref())
+        .expect("a mint was asked for")
 }
 
 fn installation(id: u64, account: &str, selection: &str) -> Vec<u8> {
@@ -149,10 +178,22 @@ fn run_with(
     fake: Fake,
     now: u64,
 ) -> Run {
+    run_mode(args, secret, app_id, None, fake, now)
+}
+
+fn run_mode(
+    args: &[&str],
+    secret: Option<&str>,
+    app_id: Option<&str>,
+    mode: Option<&str>,
+    fake: Fake,
+    now: u64,
+) -> Run {
     let fake = Arc::new(fake);
     let context = Context {
         secret: secret.map(OsString::from),
         app_id: app_id.map(OsString::from),
+        mode: mode.map(OsString::from),
         exchange: fake.clone(),
         clock: Arc::new(Fixed(now)),
     };
@@ -170,6 +211,7 @@ fn run_with(
 
 fn run(args: &[&str], lookup: Option<(u16, Vec<u8>)>, mint: Option<(u16, Vec<u8>)>) -> Run {
     let fake = Fake {
+        app: app_owned_by("synthetic-owner"),
         lookup,
         mint,
         seen: Mutex::new(Vec::new()),
@@ -237,6 +279,7 @@ fn gi_p6_each_fixture_case_gives_its_exit_stdout_stderr_and_exact_request() {
         let inst = &case["installation"];
         let token = case["answer"]["token"].as_str().unwrap();
         let fake = Fake {
+            app: app_owned_by(inst["account"].as_str().unwrap()),
             lookup: Some((
                 200,
                 installation(
@@ -265,19 +308,19 @@ fn gi_p6_each_fixture_case_gives_its_exit_stdout_stderr_and_exact_request() {
         if let Some(stderr) = case["stderr"].as_str() {
             assert_eq!(result.stderr, stderr, "{argv:?}");
         }
-        // Exactly two calls: the lookup for that repository, then the mint
-        // for the installation found, asking exactly the fixture's request.
-        let calls: Vec<&str> = result.seen.iter().map(|s| s.call.as_str()).collect();
+        // Exactly three calls: the user App's owner, the lookup for that
+        // repository, then the mint for the installation found, asking
+        // exactly the fixture's request.
         assert_eq!(
-            calls,
-            ["installation synthetic-owner/work", "access_tokens 2002"],
+            calls(&result),
+            [
+                "app",
+                "installation synthetic-owner/work",
+                "access_tokens 2002"
+            ],
             "{argv:?}"
         );
-        assert_eq!(
-            result.seen[1].body.as_ref().unwrap(),
-            &case["request"],
-            "{argv:?}"
-        );
+        assert_eq!(mint_body(&result), &case["request"], "{argv:?}");
         if exit != 0 {
             assert_secret_free(&result, &[token]);
         } else {
@@ -303,7 +346,7 @@ fn gi_p6_read_asks_for_exactly_the_read_profile_and_write_for_the_apps() {
             )),
         );
         assert_eq!(result.code, 0, "{args:?}: {}", result.stderr);
-        let asked = result.seen[1].body.as_ref().unwrap();
+        let asked = mint_body(&result);
         assert_eq!(
             asked["permissions"],
             serde_json::from_str::<Value>(profile).unwrap()
@@ -345,8 +388,9 @@ fn gi_p6_the_jwt_authenticates_as_the_app_for_an_installation_token() {
         )),
     );
     assert_eq!(result.code, 0, "{}", result.stderr);
-    // One App JWT, used for both calls; issued by this App id, at the clock.
-    assert_eq!(result.seen[0].jwt, result.seen[1].jwt);
+    // One App JWT, used for every call; issued by this App id, at the clock.
+    assert_eq!(result.seen.len(), 3);
+    assert!(result.seen.iter().all(|s| s.jwt == result.seen[0].jwt));
     let parts: Vec<&str> = result.seen[0].jwt.split('.').collect();
     assert_eq!(parts.len(), 3);
     let claims: Value = serde_json::from_slice(&base64url_decode(parts[1])).unwrap();
@@ -485,6 +529,7 @@ fn gi_p6_a_missing_or_unreadable_secret_or_app_id_exits_1_before_any_call() {
     ];
     for (secret, app_id) in cases {
         let fake = Fake {
+            app: app_owned_by("synthetic-owner"),
             lookup: Some((200, installation(2002, "synthetic-owner", "selected"))),
             mint: Some((
                 201,
@@ -520,8 +565,7 @@ fn gi_p6_an_unknown_repository_exits_3_and_never_mints() {
         (result.code, result.stdout.as_str(), result.stderr.as_str()),
         (3, "", NOT_INSTALLED)
     );
-    let calls: Vec<&str> = result.seen.iter().map(|s| s.call.as_str()).collect();
-    assert_eq!(calls, ["installation synthetic-owner/work"]);
+    assert_eq!(calls(&result), ["app", "installation synthetic-owner/work"]);
 }
 
 #[test]
@@ -529,17 +573,17 @@ fn gi_p6_a_refused_exchange_or_an_answer_outside_the_contract_exits_5() {
     let good_lookup = || Some((200, installation(2002, "synthetic-owner", "selected")));
     let token = "synthetic-refused-token";
     let cases: Vec<(&str, Answer, Answer, usize)> = vec![
-        ("lookup refused", Some((403, b"{}".to_vec())), None, 1),
-        ("installation of all repositories", Some((200, installation(2002, "synthetic-owner", "all"))), None, 1),
-        ("another account's installation", Some((200, installation(2002, "synthetic-other", "selected"))), None, 1),
-        ("another App's installation", Some((200, br#"{"id":2002,"app_id":1002,"account":{"login":"synthetic-owner"},"repository_selection":"selected"}"#.to_vec())), None, 1),
-        ("duplicate installation id", Some((200, br#"{"id":2002,"id":2003,"app_id":1001,"account":{"login":"synthetic-owner"},"repository_selection":"selected"}"#.to_vec())), None, 1),
-        ("mint refused", good_lookup(), Some((403, format!(r#"{{"message":"{token}"}}"#).into_bytes())), 2),
-        ("mint answered 200, not 201", good_lookup(), Some((200, answer(token, 4600, "synthetic-owner/work", WRITE))), 2),
-        ("another repository granted", good_lookup(), Some((201, answer(token, 4600, "synthetic-owner/other", WRITE))), 2),
-        ("wider permissions granted", good_lookup(), Some((201, answer(token, 4600, "synthetic-owner/work", r#"{"metadata":"read","contents":"write","issues":"write","pull_requests":"write","checks":"read","actions":"read","administration":"write"}"#))), 2),
-        ("no repositories in the answer", good_lookup(), Some((201, json!({"token": token, "expires_at": iso(4600), "permissions": serde_json::from_str::<Value>(WRITE).unwrap()}).to_string().into_bytes())), 2),
-        ("not JSON", good_lookup(), Some((201, format!("{token}\n").into_bytes())), 2),
+        ("lookup refused", Some((403, b"{}".to_vec())), None, 2),
+        ("installation of all repositories", Some((200, installation(2002, "synthetic-owner", "all"))), None, 2),
+        ("another account's installation", Some((200, installation(2002, "synthetic-other", "selected"))), None, 2),
+        ("another App's installation", Some((200, br#"{"id":2002,"app_id":1002,"account":{"login":"synthetic-owner"},"repository_selection":"selected"}"#.to_vec())), None, 2),
+        ("duplicate installation id", Some((200, br#"{"id":2002,"id":2003,"app_id":1001,"account":{"login":"synthetic-owner"},"repository_selection":"selected"}"#.to_vec())), None, 2),
+        ("mint refused", good_lookup(), Some((403, format!(r#"{{"message":"{token}"}}"#).into_bytes())), 3),
+        ("mint answered 200, not 201", good_lookup(), Some((200, answer(token, 4600, "synthetic-owner/work", WRITE))), 3),
+        ("another repository granted", good_lookup(), Some((201, answer(token, 4600, "synthetic-owner/other", WRITE))), 3),
+        ("wider permissions granted", good_lookup(), Some((201, answer(token, 4600, "synthetic-owner/work", r#"{"metadata":"read","contents":"write","issues":"write","pull_requests":"write","checks":"read","actions":"read","administration":"write"}"#))), 3),
+        ("no repositories in the answer", good_lookup(), Some((201, json!({"token": token, "expires_at": iso(4600), "permissions": serde_json::from_str::<Value>(WRITE).unwrap()}).to_string().into_bytes())), 3),
+        ("not JSON", good_lookup(), Some((201, format!("{token}\n").into_bytes())), 3),
     ];
     for (why, lookup, mint, calls) in cases {
         let result = run(&WORK, lookup, mint);
@@ -553,20 +597,208 @@ fn gi_p6_a_refused_exchange_or_an_answer_outside_the_contract_exits_5() {
 
 #[test]
 fn gi_p6_a_lost_reply_is_a_failure_exit_1_never_a_token() {
-    for (lookup, mint, calls) in [
-        (None, None, 1),
+    for (app, lookup, mint, calls) in [
+        (None, None, None, 1),
+        (app_owned_by("synthetic-owner"), None, None, 2),
         (
+            app_owned_by("synthetic-owner"),
             Some((200, installation(2002, "synthetic-owner", "selected"))),
             None,
-            2,
+            3,
         ),
     ] {
-        let result = run(&WORK, lookup, mint);
+        let fake = Fake {
+            app,
+            lookup,
+            mint,
+            seen: Mutex::new(Vec::new()),
+        };
+        let result = run_with(&WORK, Some(&key().1), Some(APP_ID), fake, 1000);
         assert_eq!(
             (result.code, result.stdout.as_str(), result.stderr.as_str()),
             (1, "", UNREACHABLE)
         );
         assert_eq!(result.seen.len(), calls);
+    }
+}
+
+// --- C-G1/J48 (#606): a user App mints only on its owner's account ---
+
+/// The identity contract's pinned factory installations: (account, repository).
+fn factory_installations() -> Vec<(String, String)> {
+    let text = include_str!("../../contracts/github-identity.v1.md");
+    let start = text.find("```json\n").unwrap() + 8;
+    let end = start + text[start..].find("\n```").unwrap();
+    let pin: Value = serde_json::from_str(&text[start..end]).unwrap();
+    let mut found = Vec::new();
+    for i in pin["installations"].as_array().unwrap() {
+        for r in i["repositories"].as_array().unwrap() {
+            found.push((
+                i["account"].as_str().unwrap().to_owned(),
+                r.as_str().unwrap().to_owned(),
+            ));
+        }
+    }
+    found
+}
+
+#[test]
+fn j48_a_user_app_mints_only_on_its_owners_account_and_the_factory_only_when_explicit() {
+    let named = factory_installations();
+    let factory_owner = named.last().unwrap().0.clone();
+    let cross = named
+        .iter()
+        .find(|(a, _)| *a != factory_owner)
+        .unwrap()
+        .clone();
+    let token = "synthetic-bound-token";
+    // (mode, App owner, installation account, repository, exit, calls)
+    let mut cases: Vec<(Option<&str>, &str, String, String, i32, Vec<&str>)> = vec![
+        (
+            None,
+            "synthetic-owner",
+            "synthetic-owner".into(),
+            "synthetic-owner/work".into(),
+            0,
+            vec!["app", "installation", "access_tokens"],
+        ),
+        (
+            Some("user"),
+            "synthetic-owner",
+            "synthetic-owner".into(),
+            "synthetic-owner/work".into(),
+            0,
+            vec!["app", "installation", "access_tokens"],
+        ),
+        // The repository's owner installed it, but the App is another account's.
+        (
+            None,
+            "synthetic-elsewhere",
+            "synthetic-owner".into(),
+            "synthetic-owner/work".into(),
+            5,
+            vec!["app", "installation"],
+        ),
+        (
+            Some("user"),
+            "Synthetic-Elsewhere",
+            "synthetic-owner".into(),
+            "synthetic-owner/work".into(),
+            5,
+            vec!["app", "installation"],
+        ),
+        // The factory's cross-account installation without the explicit setting.
+        (
+            None,
+            &factory_owner,
+            cross.0.clone(),
+            cross.1.clone(),
+            5,
+            vec!["app", "installation"],
+        ),
+        // Factory mode: an unnamed repository on a named account, or an unnamed account.
+        (
+            Some("factory"),
+            &factory_owner,
+            cross.0.clone(),
+            format!("{}/synthetic-unnamed", cross.0),
+            5,
+            vec!["installation"],
+        ),
+        (
+            Some("factory"),
+            &factory_owner,
+            "synthetic-owner".into(),
+            "synthetic-owner/work".into(),
+            5,
+            vec!["installation"],
+        ),
+    ];
+    for (account, repository) in &named {
+        cases.push((
+            Some("factory"),
+            &factory_owner,
+            account.clone(),
+            repository.clone(),
+            0,
+            vec!["installation", "access_tokens"],
+        ));
+    }
+    for (mode, owner, account, repository, exit, expected) in cases {
+        let why = format!("{mode:?} {owner} {account} {repository}");
+        let fake = Fake {
+            app: app_owned_by(owner),
+            lookup: Some((200, installation(2002, &account, "selected"))),
+            mint: Some((201, answer(token, 4600, &repository, WRITE))),
+            seen: Mutex::new(Vec::new()),
+        };
+        let args = ["token", "--repository", repository.as_str()];
+        let result = run_mode(&args, Some(&key().1), Some(APP_ID), mode, fake, 1000);
+        assert_eq!(result.code, exit, "{why}: {}", result.stderr);
+        let names: Vec<&str> = calls(&result)
+            .into_iter()
+            .map(|c| c.split(' ').next().unwrap())
+            .collect();
+        assert_eq!(names, expected, "{why}");
+        if exit == 0 {
+            assert_eq!(result.stdout, format!("{token}\n"), "{why}");
+        } else {
+            assert_eq!(
+                (result.stdout.as_str(), result.stderr.as_str()),
+                ("", REFUSED),
+                "{why}"
+            );
+            assert_secret_free(&result, &[token]);
+        }
+    }
+}
+
+#[test]
+fn j48_an_unreadable_mode_or_a_revoked_or_foreign_app_key_mints_nothing() {
+    let good = || Fake {
+        app: app_owned_by("synthetic-owner"),
+        lookup: Some((200, installation(2002, "synthetic-owner", "selected"))),
+        mint: Some((
+            201,
+            answer(
+                "synthetic-installation-token",
+                4600,
+                "synthetic-owner/work",
+                WRITE,
+            ),
+        )),
+        seen: Mutex::new(Vec::new()),
+    };
+    // Only "user" or "factory" is a setting: anything else is never guessed.
+    for mode in ["", "public", "Factory", "factory "] {
+        let result = run_mode(
+            &WORK,
+            Some(&key().1),
+            Some(APP_ID),
+            Some(mode),
+            good(),
+            1000,
+        );
+        assert_eq!(
+            (result.code, result.stderr.as_str()),
+            (1, CONTEXT),
+            "{mode:?}"
+        );
+        assert!(result.seen.is_empty(), "{mode:?}");
+    }
+    // A revoked key (401), or an App object for another App id or with no owner.
+    for app in [
+        Some((401, br#"{"message":"Bad credentials"}"#.to_vec())),
+        Some((
+            200,
+            br#"{"id":1002,"owner":{"login":"synthetic-owner"}}"#.to_vec(),
+        )),
+        Some((200, br#"{"id":1001}"#.to_vec())),
+    ] {
+        let fake = Fake { app, ..good() };
+        let result = run_with(&WORK, Some(&key().1), Some(APP_ID), fake, 1000);
+        assert_eq!((result.code, result.stderr.as_str()), (5, REFUSED));
+        assert_eq!(calls(&result), ["app"]);
     }
 }
 

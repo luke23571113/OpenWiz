@@ -46,9 +46,12 @@ pub trait Exchange: Send + Sync {
     }
 }
 
-/// GI5's two GitHub calls, in order: find the repository's installation,
-/// then mint that installation's token for exactly that repository.
+/// GI5's GitHub calls, in order: for a user App, read the App's owner
+/// (J48, #606); find the repository's installation; then mint that
+/// installation's token for exactly that repository.
 pub enum Call<'a> {
+    /// `GET /app`: the App the JWT authenticates, for its owner's account.
+    App,
     /// `GET /repos/<owner>/<name>/installation`
     Installation { repository: &'a str },
     /// `POST /app/installations/<id>/access_tokens` with `body`
@@ -310,6 +313,34 @@ fn checked_token(
 
 // GI5 (#2547): `openwiz github token`'s one-shot mint from the Cloudroom secret.
 
+/// Which App the secret holds (J48, #606; contracts/setup-onboard.v1.md). A
+/// user's own App is private and mints only on its owner's account; only the
+/// explicit factory setting accepts the factory's named installations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// Each user's own App, the default: installation and repository on the
+    /// App owner's account only.
+    User,
+    /// The factory's public multi-account App: only the installations
+    /// contracts/github-identity.v1.md names.
+    Factory,
+}
+
+/// The factory's installations, as contracts/github-identity.v1.md pins them:
+/// each account and the selected repositories it names. Nothing else mints
+/// in factory mode.
+pub const FACTORY_INSTALLATIONS: &[(&str, &[&str])] = &[
+    ("jparker2006", &["jparker2006/ClosedWiz"]),
+    (
+        "openwizdev",
+        &[
+            "openwizdev/OpenWiz",
+            "openwizdev/WizPlugins",
+            "openwizdev/WizSkills",
+        ],
+    ),
+];
+
 /// Why no token was minted. No variant carries a provider body, id or secret.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -333,6 +364,7 @@ pub struct Minted {
 pub struct SecretApp {
     key: Key,
     app_id: u64,
+    mode: Mode,
     exchange: Arc<dyn Exchange>,
     clock: Arc<dyn Clock>,
 }
@@ -347,6 +379,7 @@ impl SecretApp {
     pub fn from_secret(
         encoded: &str,
         app_id: u64,
+        mode: Mode,
         exchange: Arc<dyn Exchange>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, Error> {
@@ -369,6 +402,7 @@ impl SecretApp {
         Ok(Self {
             key: piped_key(&pem)?,
             app_id,
+            mode,
             exchange,
             clock,
         })
@@ -891,6 +925,7 @@ impl CurlExchange {
             return Err(Error);
         }
         let (url, post) = match call {
+            Call::App => ("app".to_owned(), String::new()),
             Call::Installation { repository } => {
                 let parsed = openwiz_core::fleet::starts::Repository::parse(repository)
                     .map_err(|_| Error)?;
