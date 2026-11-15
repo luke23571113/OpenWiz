@@ -49,10 +49,23 @@ def fixture():
     return grant, envelope, intent, snap, sources, assessment, changes, []
 
 
-def source_comment(record, number):
+# #641: the factory's record authors; a comment by anyone else confers nothing.
+FACTORY, OUTSIDER = 'synthetic-factory[bot]', 'synthetic-outsider'
+AUTHORS = frozenset({FACTORY, 'synthetic-owner'})
+
+
+def source_comment(record, number, author=FACTORY):
     return dict(id=number, created_at=record['created_at'], updated_at=record['created_at'],
-                repository=record['repository'], subject=copy.deepcopy(record['subject']),
+                repository=record['repository'], subject=copy.deepcopy(record['subject']), author=author,
                 body='```json\n' + json.dumps(record) + '\n```')
+
+
+def collect(*args, **kwargs):
+    return g.collect(*args, **kwargs, authors=AUTHORS)
+
+
+def audit(*args):
+    return g.audit(*args, authors=AUTHORS)
 
 
 class GrantProof(unittest.TestCase):
@@ -213,15 +226,15 @@ class AuditProof(unittest.TestCase):
     def test_pagination_and_failure_do_not_lose_records(self):
         rows = self.records()
         pages = {1: (rows[:2], True), 2: (rows[2:], False)}
-        self.assertEqual(g.collect(pages.__getitem__, 'synthetic/ops', ('issue', 9001)), rows)
+        self.assertEqual(collect(pages.__getitem__, 'synthetic/ops', ('issue', 9001)), rows)
         def broken(page):
             if page == 2:
                 raise OSError('synthetic pagination failure')
             return pages[page]
         with self.assertRaises(OSError):
-            g.collect(broken, 'synthetic/ops', ('issue', 9001))
+            collect(broken, 'synthetic/ops', ('issue', 9001))
         with self.assertRaises(ValueError):
-            g.collect(pages.__getitem__, 'synthetic/ops', ('issue', 9001), page_budget=1)
+            collect(pages.__getitem__, 'synthetic/ops', ('issue', 9001), page_budget=1)
 
     def test_source_metadata_edited_records_and_ambiguity(self):
         for edit in [dict(repository='other/ops'), dict(subject=dict(kind='issue', number=9002)),
@@ -229,18 +242,18 @@ class AuditProof(unittest.TestCase):
             rows = self.records()
             rows[0].update(edit)
             with self.subTest(edit=edit), self.assertRaises(ValueError):
-                g.collect(lambda _: (rows, False), 'synthetic/ops', ('issue', 9001))
+                collect(lambda _: (rows, False), 'synthetic/ops', ('issue', 9001))
         rows = self.records()
         rows.append(copy.deepcopy(rows[0]))
         with self.assertRaises(ValueError):
-            g.collect(lambda _: (rows, False), 'synthetic/ops', ('issue', 9001))
+            collect(lambda _: (rows, False), 'synthetic/ops', ('issue', 9001))
 
     def test_audit_covers_refusal_uncertainty_and_invalid_grant(self):
         rows = self.records()
         # One assessment per decision source, not just per operation: preserve events.
         assessments = {9012: dict(valid=False, final_diff_digest='d'*64),
                        9014: dict(valid=True, final_diff_digest=None)}
-        report = g.audit(self.template(), rows, assessments)
+        report = audit(self.template(), rows, assessments)
         self.assertEqual(report['entries'], [
             dict(operation_key='5ba257bf032b87038f829c66b720028dd994ccd8194e41ca94551cba4bd57a5d',
                  decision='granted', grant_id='grant-1', final_diff_digest='d'*64, remediation='revoke_and_hold'),
@@ -248,21 +261,45 @@ class AuditProof(unittest.TestCase):
                  decision='refused', grant_id='refusal-2', final_diff_digest=None, remediation='none')])
         self.assertTrue(report['complete'])
         rows.pop()  # Intent with no outcome must remain visible as uncertain.
-        report = g.audit(self.template(), rows, {9012: dict(valid=True, final_diff_digest=None)})
+        report = audit(self.template(), rows, {9012: dict(valid=True, final_diff_digest=None)})
         self.assertEqual(report['entries'][-1]['decision'], 'uncertain')
         self.assertEqual(report['entries'][-1]['remediation'], 'escalate')
 
+    def test_only_the_factory_records_confer_anything(self):
+        """#641: a grant by an outsider, or by no one, is an ordinary comment."""
+        decided = {9012: dict(valid=True, final_diff_digest=None), 9014: dict(valid=True, final_diff_digest=None)}
+        for who in (OUTSIDER, None):
+            rows = self.records()
+            rows[1]['author'] = who  # the grant
+            with self.subTest(author=who):
+                entries = audit(self.template(), rows, decided)['entries']
+                self.assertEqual([e['decision'] for e in entries], ['refused', 'uncertain'])
+        self.assertEqual(g.audit(self.template(), self.records(), decided)['entries'], [])
+        rows = self.records()
+        rows[1]['author'] = 'Synthetic-Owner'
+        self.assertEqual([e['decision'] for e in audit(self.template(), rows, decided)['entries']], ['granted', 'refused'])
+
+    def test_record_authors_come_from_the_fleet_settings(self):
+        fleet = json.loads((HERE / 'fixtures/check.json').read_text())['files']['docs/agents/fleet.md']
+        self.assertEqual(g.record_authors(fleet), AUTHORS)
+        for broken in (fleet.replace('| Record authors |', '| Record writers |'),
+                       fleet.replace('`Synthetic-Owner`', '`synthetic owner`'),
+                       fleet.replace('`synthetic-factory[bot]`, `Synthetic-Owner`', 'none'),
+                       fleet.replace('## GitHub identity', '## Elsewhere')):
+            with self.subTest(fleet=broken[-80:]), self.assertRaises(ValueError):
+                g.record_authors(broken)
+
     def test_missing_assessment_and_backwards_cutoff_do_not_advance(self):
-        report = g.audit(self.template(), self.records(), {})
+        report = audit(self.template(), self.records(), {})
         self.assertFalse(report['complete'])
         self.assertEqual(g.protocol.audit_cursor(report), dict(created_at=10, comment=9010))
         template = self.template()
         template['end'] = dict(created_at=9, comment=9009)
         with self.assertRaises(ValueError):
-            g.audit(template, self.records(), {})
+            audit(template, self.records(), {})
 
     def test_persist_report_before_cursor_and_idempotent_replay(self):
-        report = g.audit(self.template(), self.records(), {
+        report = audit(self.template(), self.records(), {
             9012: dict(valid=False, final_diff_digest='d'*64), 9014: dict(valid=True, final_diff_digest=None)})
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp)/'cursor.json').write_text(json.dumps(report['start']))
@@ -287,7 +324,7 @@ class AuditProof(unittest.TestCase):
         rows.append(source_comment(transport, 9015))
         template = self.template()
         template['end'] = dict(created_at=13, comment=9015)
-        report = g.audit(template, rows, {9012: dict(valid=True, final_diff_digest=None),
+        report = audit(template, rows, {9012: dict(valid=True, final_diff_digest=None),
                                         9014: dict(valid=True, final_diff_digest=None),
                                         9015: dict(valid=None, final_diff_digest=None)})
         self.assertEqual(report['entries'][-1]['decision'], 'uncertain')
@@ -305,7 +342,7 @@ class AuditProof(unittest.TestCase):
         rows.append(source_comment(completion, 9016))
         template = self.template()
         template.update(start=dict(created_at=13, comment=9015), end=dict(created_at=14, comment=9016))
-        report = g.audit(template, rows, {9016: dict(valid=True, final_diff_digest=None)})
+        report = audit(template, rows, {9016: dict(valid=True, final_diff_digest=None)})
         self.assertEqual(report['entries'][0]['decision'], 'uncertain')
         self.assertEqual(report['entries'][0]['remediation'], 'escalate')
 
@@ -316,7 +353,7 @@ class AuditProof(unittest.TestCase):
         rows.append(source_comment(revoked, 9015))
         template = self.template()
         template.update(start=dict(created_at=12, comment=9014), end=dict(created_at=14, comment=9015))
-        report = g.audit(template, rows, {9015: dict(valid=True, final_diff_digest=None)})
+        report = audit(template, rows, {9015: dict(valid=True, final_diff_digest=None)})
         self.assertEqual([entry['decision'] for entry in report['entries']], ['revoked'])
         self.assertEqual(report['entries'][0]['grant_id'], 'grant-1')
 
@@ -327,7 +364,7 @@ class AuditProof(unittest.TestCase):
         duplicate['operation_key'] = g.protocol.operation_key(duplicate)
         rows.append(source_comment(duplicate, 9017))
         with self.assertRaises(ValueError):
-            g.audit(self.template(), rows, {})
+            audit(self.template(), rows, {})
 
     def test_corrupt_duplicate_cursor_keys_cannot_advance(self):
         report = self.template()
