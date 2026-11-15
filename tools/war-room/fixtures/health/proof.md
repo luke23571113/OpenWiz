@@ -100,3 +100,19 @@ carries its own private-record pointer) folds the bounded board-reader extractio
 into #629. It goes into the owned `sources.py`, `gather.py`, tests and README, with
 no new file and still only the ten `paths.json` rows. The CI-bench baseline gap is
 #677, outside #629.
+
+## Review round 2 red (R9, OpenWiz)
+
+Committed with the new cases before the fix:
+
+```text
+$ python3 -I tools/war-room/test_gather.py Gather.test_r2_without_a_complete_ticket_enumeration_stage_health_is_not_collected PublicBoardReaders.test_no_private_module_is_loaded_and_each_board_source_still_reads
+ERROR: test_no_private_module_is_loaded_and_each_board_source_still_reads (__main__.PublicBoardReaders.test_no_private_module_is_loaded_and_each_board_source_still_reads)
+TypeError: open_approved() takes 1 positional argument but 2 were given
+FAIL: test_r2_without_a_complete_ticket_enumeration_stage_health_is_not_collected (__main__.Gather.test_r2_without_a_complete_ticket_enumeration_stage_health_is_not_collected) [spec graph]
+AssertionError: Lists differ: [{9001, 9002, 9003, 9004, 9005, 9006, 94}] != []
+FAIL: test_r2_without_a_complete_ticket_enumeration_stage_health_is_not_collected (__main__.Gather.test_r2_without_a_complete_ticket_enumeration_stage_health_is_not_collected) [foreign board graph]
+AssertionError: Lists differ: [{9001, 9002, 9003, 9004, 9005, 9006, 94}] != []
+Ran 2 tests in 4.460s
+FAILED (failures=2, errors=1)
+```

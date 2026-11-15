@@ -81,6 +81,7 @@ def load(name, path):
 
 
 sys.path.insert(0, str(HERE))
+import history  # noqa: E402
 import sources  # noqa: E402
 import suite  # noqa: E402
 import answer_time  # noqa: E402
@@ -193,7 +194,8 @@ class PublicBoardReaders(unittest.TestCase):
                 with self.subTest(kind):
                     provider, entry = self.select(kind, wire)
                     self.assertNotEqual(provider, sources._failed(entry['slot'], None, self.AT))
-            self.assertEqual(gatherer().open_approved(self.inputs['board_graph'].encode()),
+            board = dict(self.graph, source={'kind': 'board'})
+            self.assertEqual(gatherer().open_approved(json.dumps(board).encode(), REPO),
                              [9001, 9002, 9003, 9004, 9005, 9006])
 
     def test_board_graph_measures_and_states_keep_the_source_definitions(self):
@@ -269,6 +271,7 @@ class Gather(unittest.TestCase):
         git(self.tmp, 'init', '-q', '--bare', str(self.origin))
         graph = json.loads((FIX / 'page-history/board-graph.json').read_text())
         graph['repo'] = REPO
+        graph['source'] = {'kind': 'board'}  # the board's own repository-wide read
         self.branch('board', BOARD_AT, {
             'graph.json': json.dumps(graph, indent=2) + '\n',
             'history.jsonl': (FIX / 'gather/history.jsonl').read_text(),
@@ -408,12 +411,17 @@ class Gather(unittest.TestCase):
         # A missing or refused board graph, or failed PR pages, cannot enumerate the unfinished
         # work, so no stage cohort is collected that silently omits it.
         graph = json.loads((FIX / 'page-history/board-graph.json').read_text())
-        graph['repo'] = REPO
+        graph.update(repo=REPO, source={'kind': 'board'})
         board = {'history.jsonl': (FIX / 'gather/history.jsonl').read_text(),
                  'credits.jsonl': (FIX / 'gather/credits.jsonl').read_text()}
         broken = dict(graph, tickets='not a list')
+        # R9: a valid graph of one spec, or another repository's board, enumerates no unfinished work here.
+        spec = dict(graph, source={'kind': 'spec', 'spec': 9000})
+        foreign = dict(graph, repo='synthetic-owner/other')
         cases = {'no graph': (board, None), 'refused graph': (dict(board, **{'graph.json': json.dumps(broken)}), None),
-                 'failed PR pages': (dict(board, **{'graph.json': json.dumps(graph)}), 'graph:prs:')}
+                 'failed PR pages': (dict(board, **{'graph.json': json.dumps(graph)}), 'graph:prs:'),
+                 'spec graph': (dict(board, **{'graph.json': json.dumps(spec)}), None),
+                 'foreign board graph': (dict(board, **{'graph.json': json.dumps(foreign)}), None)}
         for name, (files, drop) in cases.items():
             with self.subTest(name):
                 self.branch('board', BOARD_AT, files)
@@ -430,6 +438,12 @@ class Gather(unittest.TestCase):
                     self.assertTrue(entry['path'].startswith('missing/'))
                     reason = json.loads((root / entry['path']).read_text())['prerequisites'][0]
                     self.assertIn('unfinished', reason)
+                # Collector to history: the saved v2 sample keeps stage health unavailable, with that reason.
+                saved, _ = history.collect(out / 'history', ENDED,
+                                           publish_module().selection_reader(root, out / 'selection.json'))
+                stage = next(h for h in saved['health'] if h['slot'] == 'stage_health')
+                self.assertEqual((stage['state'], stage['observations']), ('unavailable', []))
+                self.assertTrue(any('unfinished' in p for p in stage['prerequisites']))
 
     def test_publish_shows_measured_values_with_provenance(self):
         root, selection = self.gather()
