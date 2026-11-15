@@ -26,6 +26,12 @@ with the finished checker's end-of-string anchoring temporarily undone, the
 trailing-newline case fails three subtests; restored, it passes. It shows the
 checker and JSON Schema refuse the same pattern values.
 
+`red-r3-assignment-spacing.log` is review finding R3's failing-first run on
+OpenWiz: the spaced App-key assignment escaped the guard and the compact empty
+one was wrongly refused, 12 subtests across two document kinds. The fix scans
+decoded strings for a nonempty assignment with optional horizontal spacing;
+`r3-checks.log` records the reviewer's repro and the affected suites passing.
+
 ## Proof mapping
 
 | Ticket criterion | Contract/fixture evidence |

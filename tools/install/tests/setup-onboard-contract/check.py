@@ -33,7 +33,8 @@ CREDENTIALS = [re.compile(p) for p in (
     r'\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}',
     r'\bgithub_pat_[A-Za-z0-9_]{20,}',
     r'\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.',
-    r'OPENWIZ_GITHUB_APP_KEY=\S',
+    # A nonempty dotenv assignment, compact or with horizontal spacing (R3).
+    r'OPENWIZ_GITHUB_APP_KEY[ \t]*=[ \t]*\S',
 )]
 
 P, F, U = 'problem', 'failure', 'unproven'
@@ -174,6 +175,19 @@ def credential_shapes(text):
     return [p.pattern for p in CREDENTIALS if p.search(text)]
 
 
+def _strings(value):
+    """Every decoded string and key: the scan sees values as written, never JSON escapes."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
 def check_text(text):
     try:
         doc = strict_json(text)
@@ -195,7 +209,7 @@ def check(doc):
         p.append('synthetic_unlabelled')
     if live and doc['private_record'] is None:
         p.append('live_without_private_record')
-    if credential_shapes(json.dumps(doc, ensure_ascii=False)):
+    if any(credential_shapes(text) for text in _strings(doc)):
         p.append('leaked_credential')
     {'identity_selection': _identity, 'secret_capability': _secret, 'init_request': _request,
      'init_result': _init, 'brain_reference': lambda d, p, f, u: _brain(d['brain'], p),
