@@ -1425,8 +1425,9 @@ class Waiver(World):
     """APP-1 (a): a recorded App-permission waiver for one release (#18)."""
     FIXTURE = json.dumps([['app_permissions', VERSION]])
 
-    def app_yes(self):
-        """A candidate whose App permissions changed, run with no App receipt."""
+    def app_yes(self, drop=True):
+        """A candidate whose App permissions changed, run with no App receipt
+        (or, with drop=False, with its genuine live App receipt)."""
         self.smoke_kit()
         self.artifacts()
         body = self.body()
@@ -1436,7 +1437,8 @@ class Waiver(World):
         self.decisions()
         self.gates()
         self.assertEqual(self.smoke()[0], 0)
-        self.drop('app_permissions')
+        if drop:
+            self.drop('app_permissions')
 
     def drop(self, gate):
         saved = json.loads((self.state / 'live.json').read_text())
@@ -1523,6 +1525,39 @@ class Waiver(World):
         self.comment(9510, 'Private record: Jake, 2026-11-20.\nRelease waiver revoked: 9500\n', self.now - 60)
         self.blocked(self.evaluate(WAIVABLE=self.FIXTURE), 'waiver_revoked', 'app_permissions_live_missing')
         self.blocked(self.waive(pointer), 'waiver_revoked')
+
+    def test_a_revocation_added_by_editing_an_older_comment_refuses(self):
+        """catches (#816 R1): an existing comment, created before the waiver,
+        edited afterwards to carry `Release waiver revoked: <id>`, ignored
+        because only its creation time was ordered, so publication goes ahead
+        with no App receipt. Any edited comment carrying the line fails closed."""
+        for name, edited_at in (('edited after the waiver', self.now - 60),
+                                ('edited, even before the waiver', self.now - 350)):
+            with self.subTest(name):
+                self.setUp()
+                self.app_yes()
+                self.comment(9499, 'Synthetic earlier note.\n', self.now - 400)
+                pointer = self.waiver(f'Release waiver: app_permissions v{VERSION}', at=self.now - 300)
+                self.assertEqual(self.waive(pointer)[0], 0)
+                self.comments[f'repos/{PRIVATE}/issues/comments/9499'].update(
+                    body='Release waiver revoked: 9500\n', updated_at=iso(edited_at))
+                self.save()
+                self.blocked(self.evaluate(WAIVABLE=self.FIXTURE), 'waiver_revoked', 'app_permissions_live_missing')
+                self.blocked(self.publish(WAIVABLE=self.FIXTURE), 'waiver_revoked')
+                self.assertEqual(self.writes(), [])
+
+    def test_direct_publication_records_the_applied_waiver(self):
+        """catches (#816 R2): publish applying the waiver in its checks but
+        leaving the saved App gate as the earlier live `pass`, when no
+        separate evaluate ran first."""
+        self.app_yes(drop=False)
+        self.assertEqual(self.record()['gates']['app_permissions']['status'], 'pass')
+        self.assertEqual(self.waive(self.waiver(f'Release waiver: app_permissions v{VERSION}'))[0], 0)
+        code, out = self.publish(WAIVABLE=self.FIXTURE)
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        gate = self.record()['gates']['app_permissions']
+        self.assertEqual((gate['status'], gate.get('waiver', {}).get('pointer')),
+                         ('waived', f'https://github.com/{PRIVATE}/issues/9000#issuecomment-9500'))
 
     def test_a_waiver_for_another_version_refuses(self):
         """catches: a waiver applied to a release other than the one it names,
