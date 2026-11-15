@@ -790,9 +790,10 @@ fn only_the_factory_s_fleet_records_name_the_owner() {
         // counts only when a record author wrote it.
         let w = World::new();
         setup(&w);
-        w.comments.lock().unwrap().push(
-            json!({"id":200,"author":author,"body":later,"created":3000,"updated":3000}),
-        );
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":later,"created":3000,"updated":3000}));
         let server = super::super::server::server(Arc::new(|_| {}));
         let observed = engine(&w, w.runtime.clone())
             .observe(server.local_addr().port())
@@ -805,7 +806,11 @@ fn only_the_factory_s_fleet_records_name_the_owner() {
         assert_eq!(rows.len(), 1, "{author}");
         assert_eq!(
             rows[0].thread.as_str(),
-            if counts { "thr_syn_other" } else { "thr_syn_dead" },
+            if counts {
+                "thr_syn_other"
+            } else {
+                "thr_syn_dead"
+            },
             "{author}"
         );
         // Takeover: when this author's record is the only one, it alone may
@@ -813,9 +818,10 @@ fn only_the_factory_s_fleet_records_name_the_owner() {
         let w = World::new();
         setup(&w);
         fs::write(w.f.0.join("ownership"), "Synthetic discussion").unwrap();
-        w.comments.lock().unwrap().push(
-            json!({"id":200,"author":author,"body":RECORD,"created":3000,"updated":3000}),
-        );
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":RECORD,"created":3000,"updated":3000}));
         engine(&w, w.runtime.clone()).pass(&seen(&w), 4000).unwrap();
         assert_eq!(writes(&w).len(), usize::from(counts), "{author}");
         assert_eq!(
