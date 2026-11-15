@@ -33,6 +33,11 @@ const nullWord = (r) => (r.state === 'missing' ? 'no sample' : 'Unknown');
 // (its full words are its title and its values-table row; the page's caption keys the glyph).
 const NULL_GLYPH = '∅';
 const LIMIT_BAR = { draw(context) { context.moveTo(-14, 0); context.lineTo(14, 0); } };
+// Body-chart margins sized to their own labels, so no category or value text is cut off at the
+// SVG edge (#631, comment 6901463537). About 7.2 units per character at the 12-unit font.
+const CHAR = 7.2;
+const leftFor = (labels) => Math.min(240, 18 + CHAR * Math.max(...labels.map((d) => d.length)));
+const valueText = (r) => shortValue(r.y) + (hollow(r) ? ' (partial)' : '');
 
 function seriesStyle(fig, extra = {}) {
   return {
@@ -96,12 +101,13 @@ const DRAW = {
   bars(fig) {
     return {
       height: 64 + 24 * fig.domain.length,
-      marginLeft: Math.min(200, 12 + 6.6 * Math.max(...fig.domain.map((d) => d.length))),
+      marginLeft: leftFor(fig.domain),
+      marginRight: Math.max(16, 10 + CHAR * Math.max(0, ...valued(fig.rows).map((r) => valueText(r).length))),
       y: { type: 'band', domain: fig.domain, label: null, padding: 0.25 },
       x: { grid: true, nice: true, zero: true, label: fig.unit },
       marks: [
         Plot.barX(valued(fig.rows), { y: 'x', x: 'y', fill: (r) => (hollow(r) ? 'none' : colour(fig, r.series)), stroke: (r) => colour(fig, r.series), title }),
-        Plot.text(valued(fig.rows), { y: 'x', x: 'y', text: (r) => shortValue(r.y) + (hollow(r) ? ' (partial)' : ''), textAnchor: 'start', dx: 4, fill: INK }),
+        Plot.text(valued(fig.rows), { y: 'x', x: 'y', text: valueText, textAnchor: 'start', dx: 4, fill: INK }),
         Plot.text(empty(fig.rows), { y: 'x', x: 0, text: nullWord, textAnchor: 'start', dx: 4, fill: palette.roles.muted, title }),
         Plot.ruleX([0], { stroke: palette.roles.muted }),
       ],
@@ -137,7 +143,7 @@ const DRAW = {
     const fill = { known: palette.roles.primary, partial: palette.roles.secondary, unavailable: palette.roles.muted, missing: palette.roles.muted };
     return {
       height: 60 + 24 * fig.domain.length,
-      marginLeft: Math.min(200, 12 + 6.6 * Math.max(...fig.domain.map((d) => d.length))),
+      marginLeft: leftFor(fig.domain),
       y: { type: 'band', domain: fig.domain, label: null, padding: 0.1 },
       x: { axis: null },
       marks: [
