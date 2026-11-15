@@ -32,7 +32,7 @@ SKIP = {'selected': 'personal_login', 'app_choice': 'skip', 'acting_login': 'syn
 
 # The recording gh: `api user`, `api repos/<r>` and `auth login`, from scenario.json.
 FAKE_GH = r'''
-import json, os, sys, time
+import json, os, sys
 from pathlib import Path
 here = Path(os.environ['SYNTHETIC_GH_DIR'])
 scenario = json.loads((here / 'scenario.json').read_text())
@@ -43,8 +43,6 @@ def save():
 args = sys.argv[1:]
 if args[:2] == ['auth', 'login']:
     mode = scenario['login']
-    if mode == 'wait':
-        time.sleep(30)
     if mode in ('approve', 'approve_then_interrupt'):
         scenario['account'] = scenario['approve_as']
         save()
@@ -100,7 +98,7 @@ class Recording(unittest.TestCase):
         return [c for c in self.calls() if c.startswith('auth login')]
 
     def tool(self, *args, ok=True, env=None):
-        result = subprocess.run([sys.executable, '-I', str(TOOL), *args], capture_output=True, text=True,
+        result = subprocess.run([sys.executable, '-I', '-B', str(TOOL), *args], capture_output=True, text=True,
                                 env={**self.env, **(env or {})}, stdin=subprocess.DEVNULL, timeout=60)
         self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
         return json.loads(result.stdout) if ok else result.stderr

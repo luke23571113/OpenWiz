@@ -119,26 +119,49 @@ def gh(path):
     return run([program, 'api', path])
 
 
-def check_identity(project):
-    if project is None:
-        return 'identity_unselected'
+def account():
+    """(failure code or None, login): the signed-in account read from GitHub
+    now (#633). Only a person's own account is a login; a bot, an unreadable
+    answer or a browser that merely returned is not."""
     code, user = gh('user')
-    if code is None:
-        return 'identity_signed_out'
-    if code == 4:  # gh: authentication required
-        return 'identity_signed_out'
+    if code is None or code == 4:  # gh missing or silent, or authentication required
+        return 'identity_signed_out', None
     if code != 0 or type(user) is not dict:
-        return 'identity_unreadable'
+        return 'identity_unreadable', None
     login = user.get('login')
     if user.get('type') != 'User' or not isinstance(login, str) or login.endswith('[bot]'):
-        return 'identity_bot'
-    code, repo = gh(f"repos/{project['repository']}")
+        return 'identity_bot', None
+    if store.LOGIN.fullmatch(login) is None:
+        return 'identity_unreadable', None
+    return None, login
+
+
+def read_back(repository):
+    """(code, login or None): the account and its push access to REPOSITORY,
+    both read from GitHub now. github_login.py reports the same read."""
+    failure, login = account()
+    if failure is not None:
+        return failure, None
+    code, repo = gh(f'repos/{repository}')
     if code != 0 or type(repo) is not dict:
-        return 'identity_no_push' if code == 1 else 'identity_unreadable'
+        return ('identity_no_push' if code == 1 else 'identity_unreadable'), login
     permissions = repo.get('permissions')
     if type(permissions) is dict and permissions.get('push') is True:
-        return 'identity_verified'
-    return 'identity_no_push'
+        return 'identity_verified', login
+    return 'identity_no_push', login
+
+
+def check_identity(project, identity=None):
+    """When the owner skipped the App for this repository (#633), the signed-in
+    account must also be the login they chose to act; any other is refused."""
+    if project is None:
+        return 'identity_unselected'
+    code, login = read_back(project['repository'])
+    saved = identity or {}
+    chosen = saved.get('acting_login') if saved.get('repository') == project['repository'] else None
+    if code == 'identity_verified' and chosen is not None and login.lower() != chosen.lower():
+        return 'identity_account_mismatch'
+    return code
 
 
 # --- Project settings: explicit, checked, never invented ------------------
@@ -497,7 +520,8 @@ def check(args):
             return failed
     results = {'cloudroom': guarded(lambda: check_cloudroom(openwiz, setup.state), 'cloudroom_unreadable'),
                'harness': guarded(lambda: check_harness(openwiz, project), 'harness_unreadable'),
-               'personal_github': guarded(lambda: check_identity(project), 'identity_unreadable'),
+               'personal_github': guarded(lambda: check_identity(project, before.get('identity')),
+                                          'identity_unreadable'),
                'project': guarded(lambda: check_project(openwiz, project, default_runtime(args.runtime)),
                                   'project_unreadable')}
     # Local App files (key, ID, their directory or signing) that cannot be used

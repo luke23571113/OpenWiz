@@ -555,9 +555,15 @@ mod tests {
     fn identity_choice_reads_only_an_explicit_skip_or_nothing() {
         let dir = state();
         let skip = r#""identity":{"selected":"personal_login","app_choice":"skip","acting_login":"synthetic-owner","repository":"synthetic-owner/synthetic-consumer"},"#;
-        let with = |identity: &str| GOOD.replacen(r#""operations""#, &format!(r#"{identity}"operations""#), 1);
+        let with = |identity: &str| {
+            GOOD.replacen(r#""operations""#, &format!(r#"{identity}"operations""#), 1)
+        };
         write(&dir.0, GOOD, 0o600);
-        assert_eq!(read(&dir.0).unwrap().unwrap().identity, None, "an old state");
+        assert_eq!(
+            read(&dir.0).unwrap().unwrap().identity,
+            None,
+            "an old state"
+        );
         write(&dir.0, &with(skip), 0o600);
         let identity = read(&dir.0).unwrap().unwrap().identity.unwrap();
         assert_eq!(
