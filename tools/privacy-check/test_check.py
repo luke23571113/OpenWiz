@@ -724,22 +724,32 @@ class Check(unittest.TestCase):
             self.assertEqual(count, 1)
         policy.write_text(text)
         remotes = self.root / 'remotes'
+        url = lambda name: 'ssh://synthetic.invalid/' + name + '.git'
+        # Test-only destinations: the copy's allowlist names the fixture URLs.
+        adapter = hook / 'tools/privacy-check/hook.py'
+        text, count = re.subn(r'PUBLIC_URLS = \([^)]*\)', 'PUBLIC_URLS = ' + repr(tuple(url(x) for x in ('published', 'fresh', 'empty'))), adapter.read_text())
+        self.assertLessEqual(count, 1)
+        adapter.write_text(text)
         ssh = self.root / 'fake-ssh'
         ssh.write_text('#!/bin/sh\nfor a; do cmd=$a; done\nsub=${cmd%% *}\neval "set -- ${cmd#* }"\n'
                        'exec git "${sub#git-}" "' + str(remotes) + '$1"\n')
         ssh.chmod(0o755)
         self.git('config', 'core.sshCommand', str(ssh))
         published, fresh = self.git('rev-parse', 'refs/remotes/origin/main'), self.anchor
-        for name, main in (('published', published), ('fresh', fresh), ('empty', None)):
+        for name, main in (('published', published), ('fresh', fresh), ('empty', None), ('other', published)):
             subprocess.run(['git', 'init', '-q', '--bare', str(remotes / (name + '.git'))], check=True)
             if main:
                 self.git('push', '-q', str(remotes / (name + '.git')), main + ':refs/heads/main')
-        url = lambda name: 'ssh://synthetic.invalid/' + name + '.git'
-        def push(name):
+        # The push's own environment, as Git hands it to the hook: no GIT_*
+        # override unless a case adds one, and a private HOME for config.
+        (self.root / 'home').mkdir()
+        clean = {**{k: v for k, v in os.environ.items() if not k.startswith('GIT_')},
+                 'HOME': str(self.root / 'home'), 'XDG_CONFIG_HOME': str(self.root / 'home'),
+                 'XDG_CACHE_HOME': str(self.root / 'cache')}
+        def push(name, **env):
             line = 'refs/heads/topic {} refs/heads/topic {}\n'.format(self.git('rev-parse', 'HEAD'), '0' * 40)
             r = subprocess.run(['sh', str(hook / '.githooks/pre-push'), 'origin', url(name)],
-                               cwd=self.repo, input=line, text=True, capture_output=True,
-                               env={**os.environ, **self.git_env, 'XDG_CACHE_HOME': str(self.root / 'cache')})
+                               cwd=self.repo, input=line, text=True, capture_output=True, env={**clean, **env})
             return r.returncode, r.stdout + r.stderr
         # Only the pushed commit is new at the destination, whose main
         # already holds the published history: that history is not rescanned.
@@ -762,6 +772,26 @@ class Check(unittest.TestCase):
             ('URL Git would rewrite', 'empty', [('remote.origin.url', url('empty')),
                                                 ('url.' + url('published') + '.insteadOf', url('empty'))]),
         )
+        # R2 and the allowlist: the destination does hold the planted commit
+        # here, but a command-scoped Git setting or override variable can
+        # make the lookup reach a different repository than the push, and an
+        # off-allowlist URL is never trusted. Fail closed: scan from the anchor.
+        ssh_value = str(ssh)
+        overrides = (
+            ('git -c core.sshCommand', {'GIT_CONFIG_PARAMETERS': "'core.sshcommand'='" + ssh_value + "'"}),
+            ('GIT_CONFIG_COUNT', {'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'core.sshCommand', 'GIT_CONFIG_VALUE_0': ssh_value}),
+            ('GIT_SSH_COMMAND', {'GIT_SSH_COMMAND': ssh_value}),
+            ('GIT_SSH', {'GIT_SSH': ssh_value}),
+            ('GIT_DIR', {'GIT_DIR': str(self.repo / '.git')}),
+        )
+        self.git('config', 'remote.origin.url', url('published'))
+        for case, env in overrides + (('off-allowlist URL', None),):
+            with self.subTest(case=case):
+                rc, out = push('other') if env is None else push('published', **env)
+                self.assertEqual(rc, 1, out)
+                self.assertIn('T1 ', out)
+                self.assertNotIn('range: from the merge-base', out)
+        self.git('config', '--unset-all', 'remote.origin.url')
         for case, name, config in cases:
             with self.subTest(case=case):
                 for key, value in config:
