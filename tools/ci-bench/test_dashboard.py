@@ -2,6 +2,7 @@
 """#1252: public CLI proofs on synthetic data; no network or dependencies."""
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -9,6 +10,7 @@ import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
+BASELINE = HERE / 'fixtures' / 'baseline'  # synthetic (#677); see its README.md
 spec = importlib.util.spec_from_file_location('bench', HERE / 'bench.py')
 bench = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bench)
@@ -162,7 +164,7 @@ class Dashboard(unittest.TestCase):
             self.assertEqual(cost['billed_minutes'], {'jog-8vcpu': 1 + 2 + 37/60})
             self.assertEqual(cost['window_usd'], 0.015913)
             out = root/'dashboard'
-            r = cli('dashboard', w, '--out', out)
+            r = cli('dashboard', '--baseline', BASELINE, w, '--out', out)
             self.assertEqual(r.returncode, 0, r.stderr)
             readme = (out/'README.md').read_text()
             self.assertIn('| synthetic Jog day | jog-8vcpu | 3.6167 | 3.6167 | $0.0159 |', readme)
@@ -202,7 +204,7 @@ class Dashboard(unittest.TestCase):
             root = Path(tmp)
             windows = self.jog_days(root)
             out = root/'dashboard'
-            r = cli('dashboard', *windows, '--out', out)
+            r = cli('dashboard', '--baseline', BASELINE, *windows, '--out', out)
             self.assertEqual(r.returncode, 0, r.stderr)
             # Hand-worked: day 1 $0.0154 / 2 merged = $0.0077; day 2 $0.0308 / 3 merged = $0.010267,
             # shown $0.0103 (its 2 code runs would give $0.0154); change +$0.002567, shown +$0.0026.
@@ -239,7 +241,7 @@ class Dashboard(unittest.TestCase):
                                  label='2030-01-03 PST')
                 path.write_text(json.dumps(point))
                 out = root/'dashboard'
-                r = cli('dashboard', *windows, '--out', out)
+                r = cli('dashboard', '--baseline', BASELINE, *windows, '--out', out)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 svg = (out/'daily-metrics.svg').read_text()
                 self.assertNotIn('+$0.0026', svg)
@@ -255,10 +257,10 @@ class Dashboard(unittest.TestCase):
             w = self.window(root/'day', True)
             self.assertEqual(cli('measure', w, '--robots', '5', '--label', '2030-01-01 PST').returncode, 0)
             out = root/'dashboard'
-            r = cli('dashboard', w, '--out', out)
+            r = cli('dashboard', '--baseline', BASELINE, w, '--out', out)
             self.assertEqual(r.returncode, 0, r.stderr)
             md = (out/'README.md').read_text()
-            for text in ['2026-11-01 baseline', '2030-01-01 PST', 'Tonight', 'This week', 'North star',
+            for text in ['2030-02-01 baseline', '2030-01-01 PST', 'Tonight', 'This week', 'North star',
                          '< 10', '25+', '< 3', '80+', '< 1', '500+', 'unknown', '1.50']:
                 self.assertIn(text, md)
             self.assertIn('| Tonight | < 10 | 25+ | — | — |', md)
@@ -284,7 +286,7 @@ class Dashboard(unittest.TestCase):
             self.assertIsNone(point['cost']['per_code_run_usd'])
             self.assertEqual(point['cost']['window_usd'], 0.024)
             out = root/'dashboard'
-            r = cli('dashboard', w, '--out', out)
+            r = cli('dashboard', '--baseline', BASELINE, w, '--out', out)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn('| empty day | unknown | unknown | $0.0240 | unknown | unknown |', (out/'README.md').read_text())
             self.assertIn('no successful code runs', (out/'README.md').read_text())
@@ -333,15 +335,29 @@ class Dashboard(unittest.TestCase):
             self.assertEqual(point['code_runs']['categories']['setup'], 0.3333)
             self.assertEqual(point['code_runs']['categories']['skills'], 0.1667)
             out = root/'out'
-            r = cli('dashboard', w, '--out', out)
+            r = cli('dashboard', '--baseline', BASELINE, w, '--out', out)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn('&lt;script&gt;\\|newline label', (out/'README.md').read_text())
             self.assertNotIn('<script>', (out/'minutes-per-pr.svg').read_text())
 
     def test_default_baseline_from_another_cwd(self):
+        # The default baseline sits at <checkout>/private/..., found from the script's
+        # own folder, never the working directory. A test-owned copy of the checkout
+        # holds the synthetic baseline there, so no private file is needed (#677).
         with tempfile.TemporaryDirectory() as tmp:
-            r = cli('chart', '--out', Path(tmp)/'charts', cwd=tmp)
+            tools = Path(tmp)/'checkout/tools/ci-bench'
+            tools.mkdir(parents=True)
+            for name in ('bench.py', 'steps.tsv', 'prices.tsv', 'trends.py'):
+                shutil.copy(HERE/name, tools/name)
+            default = Path(tmp)/'checkout/private/evidence/infra-ci-scale/bench/baseline'
+            default.mkdir(parents=True)
+            shutil.copy(BASELINE/'point.json', default/'point.json')
+            elsewhere = Path(tmp)/'elsewhere'
+            elsewhere.mkdir()
+            r = subprocess.run([sys.executable, '-I', str(tools/'bench.py'), 'chart', '--out', 'charts'],
+                               capture_output=True, text=True, cwd=elsewhere, timeout=30)
             self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn('2030-02-01 baseline', (elsewhere/'charts/prs-per-hour.svg').read_text())
 
     def test_pst_day_boundaries(self):
         # Fixed PST is UTC-08:00 even in summer; no DST-day ambiguity.
