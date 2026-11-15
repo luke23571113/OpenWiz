@@ -113,6 +113,12 @@ class PageDesign(unittest.TestCase):
         for fam in inv['families']:
             self.assertTrue(fam['figures'] and set(fam['figures']) <= known, fam['measure'])
         self.assertEqual({fam['section'] for fam in inv['families']}, {s['number'] for s in inv['sections']})
+        # #759 R4: a measure no chart draws maps to an unavailable figure that names it and its prerequisite.
+        unavailable = {f['figure']: f['prerequisite'] for sec in inv['sections'] for f in sec['figures'] if not f['charts']}
+        for measure, word in (('Latency median, p90 and max', 'maximum'), ('Wait, setup and run splits, and step splits', 'setup'),
+                              ('Capacity with its runner assumption', 'runner')):
+            fam = next(x for x in inv['families'] if x['measure'] == measure)
+            self.assertTrue(any(word in unavailable.get(n, '') for n in fam['figures']), measure)
         shown = re.findall(r'<div class="panel" id="figure-([\w-]+)"', self.html)
         self.assertEqual(sorted(shown + CARDS), sorted(f['id'] for f in self.bundle['figures']))
         for number in numbers + CARDS:
@@ -178,6 +184,12 @@ class PageDesign(unittest.TestCase):
                 for gap in f['gaps']:
                     self.assertIn(page.esc(gap), meta)
         self.assertIn('2030-01-07 to 2030-01-13 PST', figure_html(self.html, '00b'))
+        # #759 R3: a body chart has no chart-level window, so its line names its values' own periods.
+        rework = between(outside_details(between(self.html, 'id="figure-body-rework-count"', '</figure>')), '<p class="meta">', '</p>')
+        self.assertIn('2030-01-07 to 2030-01-13 PST', rework)
+        self.assertNotIn('no window', rework)
+        queue = between(outside_details(between(self.html, 'id="figure-body-ci-queue-count"', '</figure>')), '<p class="meta">', '</p>')
+        self.assertIn('read at 2030-01-14T09:50:20Z', queue)
 
     def test_no_cockpit_panel_controls_or_request_wording(self):
         # catches: a waiting-on-Jake panel, an answer control, or a pending request's wording
@@ -243,6 +255,7 @@ class PageDesign(unittest.TestCase):
             with self.subTest(v['name']):
                 self.assertEqual(v['scripts'], 0)
                 self.assertLessEqual(v['scrollWidth'], v['clientWidth'])
+                self.assertLessEqual(v['openWidth']['scrollWidth'], v['openWidth']['clientWidth'])
                 figs = {f['id']: f for f in v['figures']}
                 self.assertEqual(len(figs), 28)
                 cards = [figs['fig-' + n] for n in CARDS]
@@ -258,6 +271,7 @@ class PageDesign(unittest.TestCase):
                     for c in f['charts']:
                         self.assertGreater(c['w'], 0, f['id'])
                         self.assertGreaterEqual(c['minFont'], MIN_CHART_FONT, f['id'])
+                        self.assertEqual(c['clipped'], [], f['id'])
                 low = [(t['sample'], round(contrast(t['color'], t['background']), 2)) for t in v['text']
                        if contrast(t['color'], t['background']) < (3 if t['size'] >= 24 or (t['size'] >= 18.66 and t['weight'] >= 700) else 4.5)]
                 self.assertEqual(low, [])

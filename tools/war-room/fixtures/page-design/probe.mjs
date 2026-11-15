@@ -103,6 +103,11 @@ const MEASURE = `(() => {
       caption: (f.querySelector('figcaption') || {}).textContent || null,
       charts: [...f.querySelectorAll('.chart svg')].map((s) => ({ ...rect(s), label: s.getAttribute('aria-label'),
         marks: s.querySelectorAll('title').length,
+        // Text drawn outside its own SVG box is cut off for the reader (#759 R1).
+        clipped: [...s.querySelectorAll('text')].filter((t) => {
+          const b = t.getBoundingClientRect(), o = s.getBoundingClientRect();
+          return b.width > 0 && (b.left < o.left - 0.5 || b.right > o.right + 0.5);
+        }).map((t) => t.textContent.slice(0, 40)),
         // The font size a reader sees: the SVG's own size scaled by how wide it is drawn.
         minFont: Math.min(...[...s.querySelectorAll('text')].filter(shown)
           .map((t) => parseFloat(getComputedStyle(t).fontSize) * s.getBoundingClientRect().width / s.viewBox.baseVal.width)) })) })),
@@ -140,7 +145,10 @@ for (const v of VIEWPORTS) {
       opened = await evaluate('document.activeElement.parentElement.open');
     }
   }
-  results.push({ ...v, ...measured, focus, opened });
+  // Every disclosure open at once (values, Sources, the inventory audit): still no sideways scroll (#759 R2).
+  const openWidth = await evaluate(`(() => { document.querySelectorAll('details').forEach((d) => { d.open = true; });
+    return { scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }; })()`);
+  results.push({ ...v, ...measured, focus, opened, openWidth });
 }
 writeFileSync(join(out, 'probe.json'), JSON.stringify({ page: pagePath.split('/').pop(), viewports: results }, null, 1));
 clearTimeout(deadline);
