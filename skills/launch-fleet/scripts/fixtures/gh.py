@@ -78,6 +78,17 @@ def fail(msg):
     raise Fail(msg)
 
 
+# #641: who wrote a comment. Every comment is the factory's own (a login the
+# fixture's docs/agents/fleet.md names as a record author) unless it says
+# "author": another login, or null for GitHub's missing user.
+FACTORY = 'synthetic-factory[bot]'
+
+
+def author(c):
+    login = c.get('author', FACTORY) if isinstance(c, dict) else FACTORY
+    return None if login is None else {'login': login, 'type': 'Bot' if login.endswith('[bot]') else 'User'}
+
+
 # --- jq's values, as the shell fake's jq programs treat them ---------------
 
 def compact(v):
@@ -553,6 +564,8 @@ def graphql(w, repo, o, ids, page, answer):
                     t = ticket(i)
                     t['parent'] = None if get(i, 'parent') is None else {'number': get(i, 'parent')}
                     t['subIssuesSummary'] = {'total': subs_total(get(i, 'number'))}
+                    if op == 'Blockers':
+                        t['stateReason'] = i.get('stateReason', 'COMPLETED' if get(i, 'state') == 'CLOSED' else None)
                     nodes.append(t)
         out = {'data': {'nodes': nodes}}
     elif op == 'Specs':
@@ -761,7 +774,8 @@ def rest_read(w, repo, path, page, paginate, include, accept, answer, out):
         if 'commitCommentsResponse' in w:
             out.append(compact(w['commitCommentsResponse']) + '\n')
         else:
-            v = [c for c in each_opt(w.get('commitComments')) if get(c, 'commit_id') == sha]
+            v = [dict({k: x for k, x in c.items() if k != 'author'}, user=author(c))
+                 for c in each_opt(w.get('commitComments')) if get(c, 'commit_id') == sha]
             out.append(pages(v, page) if paginate == 'yes' else compact(v) + '\n')
     elif path.startswith(r + 'contents/'):
         f = path[len(r + 'contents/'):]
@@ -844,7 +858,7 @@ def rest_read(w, repo, path, page, paginate, include, accept, answer, out):
         if not isinstance(cs, list):
             fail('the world is not valid')
         out.append(compact([{'id': get(c, 'id'), 'created_at': get(c, 'at'), 'updated_at': alt(get(c, 'edited'), get(c, 'at')),
-                             'body': get(c, 'body')} for c in old + cs]) + '\n')
+                             'user': author(c), 'body': get(c, 'body')} for c in old + cs]) + '\n')
     elif path == r[:-1]:
         # GI1 (#2543): the repository, as the unchanged probe reads it.
         answer('repository')
