@@ -532,9 +532,6 @@ mod fixture_service;
 #[path = "t5_server.rs"]
 mod server;
 
-#[path = "t5_tick.rs"]
-mod tick;
-
 #[path = "t5_restart.rs"]
 mod restart;
 

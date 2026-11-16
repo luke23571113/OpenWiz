@@ -14,10 +14,6 @@ path = "../../tests/service/t4_unit.rs"
 name = "t4-scheduler"
 path = "../../tests/service/t4_scheduler.rs"
 
-[[test]]
-name = "t4b-tick"
-path = "../../tests/service/t4b_tick.rs"
-
 [lints]
 workspace = true
 

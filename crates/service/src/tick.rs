@@ -1,12 +1,11 @@
-//! The existing fleet tick as one scheduled job, with the service's App login.
+//! The fleet tick's job name, sources and scheduler seam. The service no
+//! longer registers the scheduled fleet tick (#796).
 use crate::{scheduler::Scheduler, state::State};
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
-use openwiz_adapter_github::{process::Executor, tick::TickReads};
-use openwiz_cli::fleet::tick::{self as fleet_tick, Args, Context};
+use openwiz_adapter_github::process::Executor;
 use serde_json::{Value, json};
 use std::{
     num::NonZeroU64,
-    path::Path,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -18,111 +17,6 @@ pub const JOB: &str = "fleet-tick";
 pub struct Sources {
     pub github: Executor,
     pub room: CloudRoomSource,
-}
-
-pub fn register(
-    root: &Path,
-    config: &Value,
-    state: Arc<Mutex<State>>,
-    scheduler: &mut Scheduler,
-) -> Result<(), String> {
-    let app_root = root.to_owned();
-    let app_config = config.to_string();
-    // Open lazily: a missing App key is a failed scheduled run, never a
-    // personal-account fallback or a reason to stop serving local status.
-    // Cache only a successful construction so a later schedule can try again.
-    let client = Mutex::new(None::<crate::app::Client>);
-    let github = Executor::supplied(Arc::new(move |call, deadline| {
-        let unavailable = || openwiz_core::source::SourceError::Unavailable {
-            detail: "tick App request failed (details withheld)".to_owned(),
-        };
-        let app = {
-            let mut client = client.lock().map_err(|_| unavailable())?;
-            if client.is_none() {
-                *client = Some(
-                    crate::app::Client::from_config(&app_root, &app_config)
-                        .map_err(|_| unavailable())?,
-                );
-            }
-            client.as_ref().unwrap().clone()
-        };
-        app.execute(call, deadline).map_err(|_| unavailable())
-    }));
-    register_with_sources(
-        root,
-        config,
-        state,
-        scheduler,
-        Sources {
-            github,
-            room: CloudRoomSource::from_path(),
-        },
-        crate::runtime::now,
-    )
-}
-
-/// Production and recording fixtures share this configured composition. Only
-/// the command sources and clock differ; cadence, context and state are the same.
-pub fn register_with_sources(
-    root: &Path,
-    config: &Value,
-    state: Arc<Mutex<State>>,
-    scheduler: &mut Scheduler,
-    sources: Sources,
-    now: impl Fn() -> u64 + Send + Sync + 'static,
-) -> Result<(), String> {
-    let every = config["tick"]["every_s"]
-        .as_u64()
-        .and_then(NonZeroU64::new)
-        .ok_or("tick schedule is invalid")?;
-    let root = root.to_owned();
-    let orchestrator = config["orchestrator_thread"].as_str().map(str::to_owned);
-    let gh = TickReads::with_executor(sources.github);
-    let project = config["project"]
-        .as_str()
-        .ok_or("tick project is invalid")?
-        .to_owned();
-    let authority = Arc::clone(&state);
-    register_with_control(scheduler, every, state, now, move |stop| {
-        let authority = Arc::clone(&authority);
-        let control = fleet_tick::Control::new(&project, stop)
-            .map_err(str::to_owned)?
-            .with_fleet_authority(move |spec| {
-                authority.lock().is_ok_and(|state| {
-                    state
-                        .snapshot()
-                        .get("retired_loops")
-                        .and_then(Value::as_array)
-                        .is_none_or(|rows| {
-                            rows.iter().all(|row| {
-                                row["spec"].as_u64() != Some(spec.get())
-                                    || row["phase"] != "pause_pending"
-                            })
-                        })
-                })
-            })
-            // #2379: no trusted CP1 reader or Rust-to-Python bridge exists yet,
-            // so every summary/close effect is refused with this fixed reason.
-            .with_completion_verifier(|_| {
-                Err("completion verification is unavailable; orchestrator judgment required: no trusted completion reader is installed")
-            });
-        fleet_tick::run_with_control(
-            Args {
-                due: false,
-                dry_run: false,
-                json: false,
-            },
-            Context {
-                github: &gh,
-                room: &sources.room,
-                state: &root,
-                orchestrator: orchestrator.as_deref(),
-            },
-            &mut std::io::stderr(),
-            &control,
-        )
-        .map_err(str::to_owned)
-    })
 }
 
 /// The scheduler and state seam used by fixture executors and controlled clocks.

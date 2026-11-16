@@ -293,7 +293,7 @@ Settings are read at server startup; restart after an approved setting change.
 
 - `at`: when the report was made.
 - `service`: what is running. `build` is the commit its programs were built from (40 lowercase hex digits), and `since` is when it started.
-- `tick`: `running` is `null` or the run going now (`{"started_at"}`). `last_ended` is `null` or the last run that ended: `started_at`, `ended_at`, and `how`, which is `finished` (it exited 0), `failed` (it exited otherwise) or `stopped` (the service stopped it: `restart_tick`, or the service itself stopping).
+- `tick`: the service runs no scheduled fleet tick (#796), so it starts no run here. `running` is `null`, and `last_ended` is `null` or the last run an earlier build saved: `started_at`, `ended_at`, and `how` (`finished`, `failed` or `stopped`).
 - `server`: `port`, and `running`: `null` or `{"since"}`.
 - `last_pass`: `null` before the first health pass; otherwise `at`, `results` (one for each subject, or an `unread`), `fixes` (the fixes it made due) and `needs_you` (the incidents it made a "Needs you" due for).
 - `incidents`: every open incident, as the state has it.
@@ -310,7 +310,7 @@ Settings are read at server startup; restart after an approved setting change.
 - `tries` (not for `cloudroom`): `first` and `second`, each `null` or `{"at", "outcome", "comment"}`. `outcome` is `null` only while its command runs; `comment` is `null` until the record's comment id is saved;
 - `needs_you`: `null`, or `{"at", "op_id", "comment"}`: `op_id` is the `send` op id of its message (1 to 64 ASCII letters, digits, `_` or `-`, starting with a letter or digit), so a retry never sends it twice; `comment` is `null` until its comment id is saved.
 
-At start, a tick run the state still shows as running was stopped with the service: it is saved as ended, `stopped`.
+At start, a tick run an earlier build's state still shows as running was stopped with the service: it is saved as ended, `stopped`.
 
 ## The self-update
 
@@ -334,7 +334,7 @@ Each attempt writes one record on the service issue, and the status and the stat
 | `service_issue` | The service issue's number (Records, "Where") |
 | `github_app` | `app_id` and `installation_id`: OpenWiz's GitHub App (T7). Ids, not secrets. The key is a file (below) |
 | `loops` | Optional `{approvals, limits}` composition using the LP1 trusted approval and loop-only capacity records below. Both records are required for loop admission; absence enables no loop execution. |
-| `tick` | `every_s`: the tick's schedule |
+| `tick` | `every_s`: no longer a tick schedule, since the service runs no scheduled fleet tick (#796). The reader still requires it, and L12 reuses it as the Runner's polling period |
 | `events` | Optional `{ "hook_id": 4101 }` (synthetic example): the existing repository webhook's positive integer id. Absent means no intake job and no delivery reads; a present malformed object refuses config. The intake polls every ten seconds through the configured App, using only the approved delivery list and detail GETs; it never lists hooks or reads hook configuration |
 | `health` | `every_s`: the health pass's schedule |
 | `server` | `port` (1 to 65535), `allowed_host` (`null`, or the one public host name, as `openwiz-server --allowed-host` takes it), and `probe_timeout_s` (how long the `server` check waits for the health route). The server always serves the web page, from the running build's `web/` (`openwiz-server --web-root`) |

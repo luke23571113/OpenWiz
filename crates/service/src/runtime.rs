@@ -169,7 +169,6 @@ fn run_composed(
         .map_err(|_| "service/status.sock: cannot set private permissions".to_owned())?;
     let state = Arc::new(Mutex::new(state));
     let restart = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    crate::tick::register(root, &config, Arc::clone(&state), &mut scheduler)?;
     crate::events::intake::register(root, &config, &mut scheduler)?;
     // Refused loop authority/capacity never prevents independent service jobs.
     if crate::loops::production::register(root, &config, &mut scheduler).is_err() {
