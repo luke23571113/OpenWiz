@@ -106,7 +106,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs, THREAD_ID_MAX_LEN, ThreadId};
+use openwiz_adapter_cloudroom::allowlist::{
+    Invocation, LoopAgentArgs, LoopCreateArgs, LoopReschedule, LoopTrigger, LoopUpdateArgs,
+    SpawnArgs, THREAD_ID_MAX_LEN, ThreadId,
+};
 use openwiz_core::attachment::{
     AttachmentId, Kind, PromptAttachment, SafeName, Sha256, StagedAttachment, StagedPath,
 };
@@ -258,6 +261,56 @@ const ALLOWED: &[&[&str]] = &[
     &["loop", "list", "--json"],
     &["loop", "resume", "loop_syn_1", "--json"],
     &["loop", "pause", "loop_syn_1", "--json"],
+    // #792 (J109, orchestrator ruling on #792): the loop file writes, in
+    // contracts/loop-cli.v1.md's forms; plan builds them, apply runs them.
+    &[
+        "loop",
+        "create",
+        "--name",
+        "Synthetic [wizloop:syn]",
+        "--prompt-file",
+        "@prompt",
+        "--cron",
+        "0 9 * * *",
+        "--timezone",
+        "UTC",
+        "--new-thread",
+        "--script-file",
+        "@script",
+        "--provider",
+        "syn-provider",
+        "--model",
+        "syn-model",
+        "--reasoning",
+        "medium",
+        "--priority",
+        "3",
+        "--secrets",
+        "none",
+    ],
+    &[
+        "loop",
+        "update",
+        "loop_syn_1",
+        "--name",
+        "Synthetic [wizloop:syn]",
+        "--priority",
+        "2",
+        "--prompt",
+        "Synthetic",
+        "--at",
+        "2030-01-02T03:04:05Z",
+        "--script-file",
+        "@script",
+        "--provider",
+        "syn-provider",
+        "--model",
+        "syn-model",
+        "--reasoning",
+        "medium",
+        "--secrets",
+        "all",
+    ],
 ];
 
 /// Arguments that must never be passed, whatever the invocation.
@@ -280,6 +333,14 @@ const FORBIDDEN: &[&str] = &[
     "send",
     "mark-read",
 ];
+
+fn syn_agent() -> LoopAgentArgs {
+    LoopAgentArgs {
+        provider: "syn-provider".into(),
+        model: "syn-model".into(),
+        reasoning: "medium".into(),
+    }
+}
 
 /// Every invocation the adapter can build. The `match` makes a new variant
 /// a compile error here, as a reminder to add its forms to `all`; it cannot
@@ -356,6 +417,29 @@ fn every_invocation() -> Vec<Invocation> {
         Invocation::LoopList,
         Invocation::LoopResume(ThreadId::parse("loop_syn_1").expect("valid id")),
         Invocation::LoopPause(ThreadId::parse("loop_syn_1").expect("valid id")),
+        Invocation::LoopCreate(LoopCreateArgs {
+            name: "Synthetic [wizloop:syn]".into(),
+            prompt_file: "@prompt".into(),
+            trigger: LoopTrigger::Cron {
+                cron: "0 9 * * *".into(),
+                timezone: "UTC".into(),
+            },
+            new_thread: true,
+            script_file: Some("@script".into()),
+            agent: Some(syn_agent()),
+            priority: "3".into(),
+            secrets: "none".into(),
+        }),
+        Invocation::LoopUpdate(LoopUpdateArgs {
+            loop_id: ThreadId::parse("loop_syn_1").expect("valid id"),
+            name: Some("Synthetic [wizloop:syn]".into()),
+            priority: Some("2".into()),
+            prompt: Some("Synthetic".into()),
+            trigger: Some(LoopReschedule::At("2030-01-02T03:04:05Z".into())),
+            script_file: Some("@script".into()),
+            agent: Some(syn_agent()),
+            secrets: Some("all".into()),
+        }),
     ];
     for invocation in &all {
         match invocation {
@@ -372,7 +456,9 @@ fn every_invocation() -> Vec<Invocation> {
             | Invocation::ThreadArchive(_)
             | Invocation::LoopList
             | Invocation::LoopResume(_)
-            | Invocation::LoopPause(_) => {}
+            | Invocation::LoopPause(_)
+            | Invocation::LoopCreate(_)
+            | Invocation::LoopUpdate(_) => {}
         }
     }
     all
@@ -463,6 +549,29 @@ fn no_invocation_passes_a_forbidden_argument() {
                 assert_eq!(argv[1], "archive");
                 (&argv[..], &["archive"])
             }
+            // #792 (J109): the loop file writes' subcommands, and nothing
+            // else; update's `--prompt` value is the prompt, not an argument.
+            Invocation::LoopCreate(_) => {
+                assert_eq!(argv[1], "create");
+                (&argv[..], &["create"])
+            }
+            Invocation::LoopUpdate(_) => {
+                assert_eq!(argv[1], "update");
+                let prompt = argv.iter().position(|a| a == "--prompt");
+                let checked: Vec<String> = argv
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| prompt.is_none_or(|p| *i != p + 1))
+                    .map(|(_, a)| a.clone())
+                    .collect();
+                for word in &checked {
+                    assert!(
+                        !FORBIDDEN.contains(&word.as_str()) || word == "update",
+                        "{invocation:?} passes {word}"
+                    );
+                }
+                continue;
+            }
             _ => (&argv[..], &[]),
         };
         for word in checked {
@@ -471,9 +580,15 @@ fn no_invocation_passes_a_forbidden_argument() {
                 "{invocation:?} passes {word}"
             );
         }
-        // Every read asks for JSON, except --version, which prints plain text.
+        // Every read asks for JSON, except --version, which prints plain
+        // text; the loop file writes (#792) have no --json form.
         assert!(
-            argv == ["--version"] || argv.iter().any(|a| a == "--json"),
+            argv == ["--version"]
+                || matches!(
+                    invocation,
+                    Invocation::LoopCreate(_) | Invocation::LoopUpdate(_)
+                )
+                || argv.iter().any(|a| a == "--json"),
             "{argv:?}"
         );
     }
@@ -2021,6 +2136,34 @@ fn no_product_source_spells_a_forbidden_argument() {
     for (path, text) in product_sources() {
         let path = path.canonicalize().expect("path");
         for word in FORBIDDEN {
+            // #792 (J109): `loop create` and `loop update`, once each, only
+            // opening their own argv arm in the allowlist.
+            if matches!(*word, "create" | "update") && path == allowlist {
+                let variant = if *word == "create" {
+                    "LoopCreate"
+                } else {
+                    "LoopUpdate"
+                };
+                let header = format!("            Self::{variant}(a) => {{\n");
+                let arm: String = text
+                    .split(&header)
+                    .nth(1)
+                    .and_then(|rest| rest.split("\n            }\n").next())
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .collect();
+                assert_eq!(text.matches(&header).count(), 1, "{path:?}: {variant}");
+                assert_eq!(
+                    text.matches(&format!("\"{word}\"")).count(),
+                    1,
+                    "{path:?}: {word}"
+                );
+                assert!(
+                    arm.starts_with(&format!("letmutw=vec![\"loop\",\"{word}\",")),
+                    "{path:?}: {word} outside {variant}"
+                );
+                continue;
+            }
             if *word == "update" {
                 assert!(
                     service_update_fields_only(&path, &service_reader, &text),
