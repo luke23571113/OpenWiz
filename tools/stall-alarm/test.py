@@ -2,8 +2,8 @@
 """#567, #824: public CLI proofs, synthetic gh/loop/collector snapshots and private state.
 
 `Alarm` runs the alarm through the real war-room collector (MT2's
-`collect_factory.py`) over synthetic GitHub answers: the existing cases,
-unchanged. `CollectorFixtures` feeds it the collector contract's own read
+`collect_factory.py`) over synthetic GitHub answers: the existing cases, with
+only the assertions that named the alarm's own former query rewritten. `CollectorFixtures` feeds it the collector contract's own read
 envelopes (tools/war-room/fixtures/collector/) through a fake collector and
 checks that the alarm itself never runs `gh`.
 """
@@ -19,7 +19,6 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = Path(os.environ.get("STALL_ALARM_SCRIPT", HERE / "alarm.py")).resolve()
-COLLECTOR = HERE.parent / "war-room" / "collect_factory.py"
 FIXTURES = HERE.parent / "war-room" / "fixtures" / "collector"
 NOW = 1793620800  # 2026-11-02T12:00:00Z
 SHA = "a" * 40
@@ -373,11 +372,13 @@ class Alarm(Harness):
                 p = pull()
                 self.github["data"]["search"]["issueCount"] = 1
                 self.github["data"]["repository"]["pullRequests"]["nodes"] = [p]
+                # #824: a new head moves the PR's last commit too; the collector
+                # refuses an answer whose two heads disagree.
                 def activate():
-                    p["headRefOid"] = SHA
+                    p["headRefOid"] = p["commits"]["nodes"][0]["commit"]["oid"] = SHA
                     suffix = ", thread thr_syn_fixture" if kind == "re-check sent" else ""
                     p["comments"]["nodes"] = [comment(f"launch-fleet: {kind} {SHA}{suffix}")]
-                def clear(): p["headRefOid"] = OTHER
+                def clear(): p["headRefOid"] = p["commits"]["nodes"][0]["commit"]["oid"] = OTHER
                 activate()
                 lines, _ = self.run_alarm(-1)
                 self.assertEqual(lines, [])
@@ -815,6 +816,10 @@ class CollectorFixtures(Harness):
                 {"number": 4209, "merged_at": "2030-03-01T11:03:59Z", "base": "main", "tickets": [],
                  "direction": "unknown"})),
             "a PR without its record": edit(lambda a, m, o: o["value"]["pull_requests"][0].pop("record")),
+            "a PR with an unknown field": edit(lambda a, m, o: o["value"]["pull_requests"][0].update(body="x")),
+            "a record with an unknown field": edit(lambda a, m, o: o["value"]["pull_requests"][1]["record"].update(
+                thread="thr_syn_fixture")),
+            "a fact with an unknown field": edit(lambda a, m, o: o.update(stale=True)),
             "not JSON": "synthetic private invalid JSON",
             "a repeated key": '{"schema":"openwiz.war-room.collector.read.v1","schema":"x"}',
         }
