@@ -37,6 +37,9 @@ UPLOAD = "Run actions/upload-artifact@"
 COUNTED = {"success", "failure"}
 
 
+sys.dont_write_bytecode = True
+
+
 def bench():
     spec = importlib.util.spec_from_file_location("ci_bench", HERE / "bench.py")
     module = importlib.util.module_from_spec(spec)
