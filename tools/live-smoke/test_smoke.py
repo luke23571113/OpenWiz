@@ -56,6 +56,7 @@ sys.exit(reply['exit'])
                     'cwd': str(self.root), 'openwiz': str(self.fake),
                     'artifacts': {str(self.fake): self.sha(self.fake)},
                     'env': {}, 'timeout_seconds': 2, 'steps': steps}
+        self.base_kit = json.loads(json.dumps(self.kit))
         self.kit_path = self.root / 'kit.json'
         self.state = self.root / 'state'
 
@@ -231,6 +232,29 @@ class Smoke(FixtureCase):
                     self.assertEqual(self.report(self.invoke(), 2)['reason'], 'retired_command')
                     self.assertEqual(self.report(self.run_tool('--dry-run'), 2)['reason'], 'retired_command')
                     self.assertEqual(self.call_list(), [])
+
+    def test_retired_commands_refuse_through_any_alias_of_the_pinned_program(self):
+        """catches (review R2): a symlink, hardlink or pinned copy of the pinned
+        `openwiz` running `fleet tick` or `engine` as a block read or as the
+        terminating await, repeating a retired write with no attempt record."""
+        aliases = {'symlink': lambda a: a.symlink_to(self.fake),
+                   'hardlink': lambda a: os.link(self.fake, a),
+                   'copy': lambda a: (a.write_bytes(self.fake.read_bytes()), a.chmod(0o700))}
+        forms = {'tick': ['fleet', 'tick', '--json'], 'engine': ['engine', 'activate']}
+        for name, make in aliases.items():
+            alias = self.root / ('alias-' + name)
+            make(alias)
+            for form, args in forms.items():
+                for place in ('block read', 'await'):
+                    with self.subTest(alias=name, form=form, place=place):
+                        self.kit = json.loads(json.dumps(self.base_kit))
+                        self.fleet_block()
+                        self.kit['artifacts'][str(alias)] = self.sha(self.fake)
+                        index = 0 if place == 'block read' else 2
+                        self.kit['steps'][index]['argv'] = [str(alias), *args]
+                        self.state = self.root / ('alias-%s-%s-%s' % (name, form, place.replace(' ', '-')))
+                        self.assertEqual(self.report(self.invoke(), 2)['reason'], 'retired_command')
+                        self.assertEqual(self.call_list(), [])
 
     def test_fleet_block_rereads_once_per_event_until_readback(self):
         """catches: the fleet claim needing a runner write to progress, or a
