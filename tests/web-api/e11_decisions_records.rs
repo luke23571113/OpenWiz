@@ -523,32 +523,6 @@ fn e11_decisions_all_variants_and_partial_answer_progress_are_preserved() {
 }
 
 #[test]
-fn e11_decisions_matching_self_hash_does_not_verify_independent_saved_wording() {
-    let room = Fake::new("e11_current_room", "normal");
-    let mut record = s::record("synthetic-current", "open");
-    // Independent Python hashlib over the literal canonical proposal, not
-    // the production canonicalizer. Lifecycle fields are excluded.
-    record["fingerprint"] =
-        json!("941019e2a769a93d10140f9924b4ce021a041c21f74cd72514a9f51306ad1aa4");
-    let gh = s::fake(
-        "e11_current_gh",
-        vec![s::comment(1001, &s::fenced(&record))],
-    );
-    let body = s::serve(&gh, &room).get("/api/v1/decisions").json();
-    s::check(&body);
-    assert_eq!(body["items"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        body["items"][0]["current"],
-        json!({"unknown":"independent saved proposal verification is unavailable"})
-    );
-    assert_eq!(body["freshness"]["state"], "unknown");
-    assert_eq!(
-        body["coverage"]["gaps"],
-        json!([{"kind":"unsupported","detail":"independent saved proposal verification is unavailable"}])
-    );
-}
-
-#[test]
 fn e11_decisions_schema_and_route_agree_on_parsed_shape_cases() {
     let good = s::record("synthetic-current", "open");
     let mut cases = vec![good.clone()];

@@ -5,10 +5,10 @@
 
 1. #1109's cold-consumer install journey, unchanged
    (tools/install/tests/journey/test_journey.py): the actual install entry, the
-   installed setup tool, the installed engine and the installed onboarding
-   helper. Only its recorded conversation is swapped for first-hour.json: one
-   fresh small idea on the owner's own selected repository (the one setup
-   prepared), not the demo, with no prepared plan.
+   installed setup tool and the installed onboarding helper. Only its recorded
+   conversation is swapped for first-hour.json: one fresh small idea on the
+   owner's own selected repository (the one setup prepared), not the demo,
+   with no prepared plan.
 2. The join this ticket adds: the fleet's builders, independent review, CI and
    the merge, decided at every step by the installed launch-fleet frontier
    (`runtime/skills/launch-fleet/scripts/fleet.sh spec`) reading a recording
@@ -57,7 +57,7 @@ SEAT_HARNESS = {'codex': 'codex', 'claude-code': 'claude_code'}
 ASSUMPTIONS = [
     'Synthetic recording-provider first hour on the installed journey (#2204): every id, digest, time, repository, '
     'thread, pull request and account is invented; GitHub and CloudRoom are recording providers.',
-    "The release, install, setup, engine and onboarding are #1109's fixture journey: no installed candidate was "
+    "The release, install, setup and onboarding are #1109's fixture journey: no installed candidate was "
     'published, no person opened the instruction and no real time was measured, so the clock is unknown.',
     "Builder and reviewer runs are the recording CloudRoom's threads, read back: no real harness login ran.",
 ]
@@ -354,18 +354,16 @@ class Attempt:
     def rules(self):
         return self.j.rules()
 
-    # 2. The fleet: the tick's starts land on CloudRoom and GitHub.
+    # 2. The fleet: the fleet thread's starts land on CloudRoom and GitHub.
     def _fleet(self):
-        runs = self.j.logged('fleet.tick')
-        self.case.assertEqual(len(runs), 1, 'the approved frontier ran once')
-        self.started = [t for t in self.j.tick_plan([t['number'] for t in self.j.tickets if not t['blockers']])['actions']]
+        self.case.assertEqual(len(self.j.spawns()), 1, 'the fleet thread started once')
+        self.started = [t['number'] for t in self.j.tickets if not t['blockers']]
         self.builder_ops = {}
-        for action in self.started:
-            n = action['ticket']
+        for n in self.started:
             op = intent('start_agent', f'{REPO}#{n}:builder')
             self.builder_ops[n] = op
             branch = 'room/%d-%s' % (n, re.sub(r'[^a-z0-9]+', '-', self.ticket(n)['title'].split(': ', 1)[1].lower()).strip('-'))
-            self.cloudroom.start(op, '#%d: %s' % (n, self.ticket(n)['title']), branch, action['facts']['settings']['harness'])
+            self.cloudroom.start(op, '#%d: %s' % (n, self.ticket(n)['title']), branch, self.j.settings['harness'])
             self.github.comment(self.github.issue(n), 'launch-fleet: started', 45)
         self.agents_running = self.frontier('fleet started')
         self._repeat_approval()
@@ -385,7 +383,7 @@ class Attempt:
         op = self.builder_ops[n]
         threads = self.cloudroom.matching('#%d: ' % n)
         return {'operation_id': op, 'kind': 'start_agent', 'phase_before': before, 'phase_after': after,
-                'effect_count': len(threads), 'attempts': len(self.j.logged('fleet.tick')),
+                'effect_count': len(threads), 'attempts': len(self.j.spawns()),
                 'reconciliation': 'provider_read_back'}
 
     def _repeat_approval(self):
@@ -397,12 +395,12 @@ class Attempt:
         again = self.j.helper(['launch', '--spec', str(self.j.spec), '--yes', '--confirm', digest])
         self.notes['repeat_launch'] = (again.returncode, again.stdout)
         if self.mutate.get('second_tick'):
-            self.j.logged = (lambda logged: lambda form=None: logged(form) + ([logged(form)[0]] if form == 'fleet.tick' else []))(self.j.logged)
+            self.j.spawns = (lambda spawns: lambda: spawns() + spawns()[:1])(self.j.spawns)
         after = [self._onboarding_state()] + self._start_work(ops)
         operations = [self.builder_observation(n, 'applied', 'applied') for n in sorted(self.builder_ops)]
         self.cases.append(recovery('repeat_approval', before, after, operations, {
-            'what_happened': 'The approved launch was confirmed again after it had run: the engine ran the reviewed '
-                             'plan once, and the repeat only read progress.',
+            'what_happened': 'The approved launch was confirmed again after it had run: the fleet thread started '
+                             'once, and the repeat only read its record.',
             'took_effect': 'yes',
             'next_action': 'Nothing to repeat: the three builders started once.'}))
 
@@ -438,7 +436,7 @@ class Attempt:
                 work('commit', self.head, self.tree, 'repository_read_back')]
 
     def _process_restart(self, reviewer):
-        """The engine stops just after CloudRoom started the reviewer, before its record; it reconciles by op id."""
+        """The fleet thread stops just after CloudRoom started the reviewer, before its record; it reconciles by op id."""
         pull = self.github.pull(self.PR)
         claim = self.github.comment(pull, 'launch-fleet: review starting %s' % self.head, 50)
         before = self._repository_work() + [self._pending(self.review_op, 'start_agent', self.review_request)]
@@ -465,7 +463,7 @@ class Attempt:
                        'attempts': self.cloudroom.calls[self.review_op],
                        'reconciliation': 'none' if self.mutate.get('blind_restart') else 'provider_read_back'}]
         self.cases.append(recovery('process_restart', before, after, operations, {
-            'what_happened': 'The engine stopped after CloudRoom started the reviewer and before it recorded the '
+            'what_happened': 'The fleet thread stopped after CloudRoom started the reviewer and before it recorded the '
                              'start. On restart it read the reviewer thread back by its title first: it was there, '
                              'so it recorded the start and started nothing again.',
             'took_effect': 'yes',
@@ -607,7 +605,7 @@ class Attempt:
                         'Approved separately, with a fingerprint matching the current plan (comment %d).' % approval['id']),
             self._stage('fleet', 'verified' if len(self.cloudroom.matching('#')) >= 3 else 'missing',
                         [e('agents_running', 45, 'The approved frontier\'s three builders run, read back from CloudRoom.')],
-                        'The engine started the approved frontier once.'),
+                        'The fleet thread started the approved frontier once.'),
         ]
         verdict = self._verdict(pull)
         green = pull['rollup'] == 'SUCCESS' and all(c['conclusion'] == 'SUCCESS' for c in pull['checks'])
@@ -636,7 +634,7 @@ class Attempt:
         operations = self._setup_operations(setup)
         operations += [{'operation_id': self.builder_ops[n], 'kind': 'start_agent', 'phase': 'applied',
                         'effect_count': len(self.cloudroom.matching('#%d: ' % n)),
-                        'attempts': len(self.j.logged('fleet.tick')), 'reconciliation': 'provider_read_back'}
+                        'attempts': len(self.j.spawns()), 'reconciliation': 'provider_read_back'}
                        for n in sorted(self.builder_ops)]
         if self.review_op in self.cloudroom.calls:
             operations.append({'operation_id': self.review_op, 'kind': 'start_agent', 'phase': 'applied',
@@ -705,7 +703,7 @@ class Attempt:
         return [(o, o['fingerprint']) for o in setup['operations']]
 
     def _setup_operations(self, setup):
-        """The setup operations #1109's journey saved (the project, the engine's preview), read back."""
+        """The setup operations #1109's journey saved (setup's prepare and init of the project), read back."""
         return [{'operation_id': o['operation_id'], 'kind': o['kind'], 'phase': o['phase'],
                  'effect_count': 1 if o['phase'] == 'applied' else 0, 'attempts': 1 if o['phase'] == 'applied' else 0,
                  'reconciliation': 'none'} for o in setup['operations'] if o['kind'] != 'configure_access']

@@ -31,7 +31,7 @@ call and read-back counts:
 | Case | Seam on the installed journey |
 | --- | --- |
 | `repeat_approval` | The approved launch confirmed again through the installed onboarding helper: no second tick, no second builder |
-| `process_restart` | The engine stops after CloudRoom started the reviewer, before its record; on restart it reads the thread back by title first and starts nothing again |
+| `process_restart` | The fleet thread stops after CloudRoom started the reviewer, before its record; on restart it reads the thread back by title first and starts nothing again |
 | `revoked_access` | The App's installation removed: GitHub refuses the merge with no effect; the installed setup check says `app_revoked`; reconnecting reads `app_verified` |
 | `lost_reply` | The merge's reply lost after its effect: the pull request is read back (merged at the approved head) before anything else; no second merge |
 | `update_rejected` | A tampered update through the actual install entry after the merge: refused, the last good build stays, the setup, onboarding record and merged branch unchanged |

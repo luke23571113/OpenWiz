@@ -60,7 +60,6 @@ fn copy_product(repo: &Path) {
         "adapters/cloudroom",
         "adapters/github",
         "service",
-        "terminal",
     ] {
         let source = Path::new(ROOT).join("crates").join(name);
         let destination = repo.join("product/crates").join(name);

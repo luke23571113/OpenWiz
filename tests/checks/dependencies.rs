@@ -11,21 +11,6 @@ const CORE: &str = "openwiz-core";
 const ADAPTER: &str = "openwiz-adapter-cloudroom";
 const CLI: &str = "openwiz-cli";
 const APPROVED_DIRECT: &[&str] = &["serde", "serde_json"];
-/// The visual terminal app (0.0.12 T3, #1098): the only crate allowed the
-/// approved visual pair (grill C3).
-const TERMINAL: &str = "openwiz-terminal";
-const VISUAL_PAIR: &[&str] = &["ratatui", "crossterm"];
-/// The agent CLI and the backend: never the visual pair, never the terminal.
-const NON_VISUAL: &[&str] = &[
-    "openwiz-core",
-    "openwiz-adapter-cloudroom",
-    "openwiz-adapter-github",
-    "openwiz-cli",
-    "openwiz-store",
-    "openwiz-server",
-    "openwiz-service",
-];
-
 fn root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
 }
@@ -135,37 +120,6 @@ fn dependencies_point_inward() {
 }
 
 #[test]
-fn the_visual_pair_stays_on_the_visual_side() {
-    let meta = metadata();
-    let g = graph(&meta);
-    let terminal = reachable(&g, TERMINAL);
-    for pair in VISUAL_PAIR {
-        assert!(terminal.contains(*pair), "{TERMINAL} uses {pair}");
-    }
-    for name in NON_VISUAL {
-        let reach = reachable(&g, name);
-        for forbidden in VISUAL_PAIR.iter().chain([&TERMINAL]) {
-            assert!(
-                !reach.contains(*forbidden),
-                "{name} reaches {forbidden} through normal dependencies"
-            );
-        }
-    }
-    // Nothing depends on the terminal crate but the tests, as a dev-dependency.
-    for package in meta["packages"].as_array().unwrap() {
-        for dep in package["dependencies"].as_array().unwrap() {
-            if dep["name"] == TERMINAL {
-                assert_eq!(package["name"], "openwiz-tests");
-                assert_eq!(
-                    dep["kind"], "dev",
-                    "the tests reach it as a dev-dependency only"
-                );
-            }
-        }
-    }
-}
-
-#[test]
 fn serde_and_serde_json_are_the_only_direct_dependencies() {
     let meta = metadata();
     let members: BTreeSet<&str> = meta["workspace_members"]
@@ -181,9 +135,8 @@ fn serde_and_serde_json_are_the_only_direct_dependencies() {
         for dep in package["dependencies"].as_array().unwrap() {
             let name = dep["name"].as_str().unwrap();
             let is_workspace_crate = dep["path"].is_string();
-            let visual = package["name"] == TERMINAL && VISUAL_PAIR.contains(&name);
             assert!(
-                is_workspace_crate || APPROVED_DIRECT.contains(&name) || visual,
+                is_workspace_crate || APPROVED_DIRECT.contains(&name),
                 "{} depends on {name}, which is not approved",
                 package["name"]
             );

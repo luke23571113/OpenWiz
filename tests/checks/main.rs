@@ -11,6 +11,7 @@ mod schema;
 mod dirs;
 
 mod ci_selection;
+mod cli_build_script;
 mod cockpit_schema_conformance;
 mod dependencies;
 mod dir_modes;
@@ -23,6 +24,7 @@ mod plan_links;
 mod public_tree;
 mod schema_conformance;
 mod skills;
+mod strict_json;
 
 // LP1 contract conformance (ClosedWiz#543), using the existing extensions.
 mod loops_schema;
