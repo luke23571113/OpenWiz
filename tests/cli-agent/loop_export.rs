@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use super::{ROOT, Sandbox, fixture_cli, schema};
+use super::{ROOT, Sandbox, dirs, fixture_cli, schema};
 
 const PROJECT: &str = "prj_syn_0001";
 
@@ -332,9 +332,9 @@ fn export_never_replaces_a_file_with_other_bytes() {
 
     // A file, or a link elsewhere, where a check's folder goes: that loop is
     // refused and nothing is written through the link.
-    fs::create_dir_all(room.dir().join("other")).unwrap();
+    dirs::private_dir(room.dir().join("other")).unwrap();
     fs::write(room.dir().join("other/synthetic-hourly-kick"), "a file\n").unwrap();
-    fs::create_dir_all(room.dir().join("elsewhere")).unwrap();
+    dirs::private_dir(room.dir().join("elsewhere")).unwrap();
     std::os::unix::fs::symlink(
         room.dir().join("elsewhere"),
         room.dir().join("other/syn-triage"),
