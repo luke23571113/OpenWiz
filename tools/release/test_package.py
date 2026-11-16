@@ -103,8 +103,6 @@ class Package(unittest.TestCase):
             (scripts / 'platform/runtime.py').write_bytes(b'Synthetic local runtime manager.\n')
             (scripts / 'access').mkdir()
             (scripts / 'access/access.py').write_bytes(b'Synthetic access verifier.\n')
-            (scripts / 'engine').mkdir()
-            (scripts / 'engine/engine.py').write_bytes(b'Synthetic engine preparation.\n')
             (scripts / 'cloudroom').mkdir()  # #2201
             (scripts / 'cloudroom/cloudroom.py').write_bytes(b'Synthetic CloudRoom setup tool.\n')
             self.assertEqual(sorted(SETUP_SOURCES), sorted(SETUP_TOOLS))
@@ -126,8 +124,10 @@ class Package(unittest.TestCase):
                 result = subprocess.run(args, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 assets = {row['path']:row for row in json.loads(identity_file.read_bytes())['assets']}
-                self.assertEqual((output/'runtime/engine/engine.py').read_bytes(), b'Synthetic engine preparation.\n')
-                self.assertEqual(assets['runtime/engine/engine.py']['mode'], '0600')
+                # #874: the engine, handover and activation runtimes are retired;
+                # the build neither needs nor ships them.
+                self.assertEqual([p for p in assets if p.startswith(('runtime/engine/', 'runtime/handover/',
+                                  'runtime/pc_activation/', 'runtime/completion/'))], [])
                 self.assertEqual((output/'runtime/cloudroom/cloudroom.py').read_bytes(), b'Synthetic CloudRoom setup tool.\n')
                 self.assertEqual(assets['runtime/cloudroom/cloudroom.py']['mode'], '0600')
                 self.assertIn('runtime/platform/runtime.py',assets)
