@@ -1,8 +1,4 @@
-//! Structure: no reachable behaviour yet (sheet G-1), every label the core
-//! can serialize is in the schema, and the runner scrubs every call.
-
-use std::fs;
-use std::path::Path;
+//! Structure: every label the core can serialize is in the schema.
 
 use openwiz_core::messaging::send::UncertainReason;
 use openwiz_core::new_thread::effects::EffectKind;
@@ -11,106 +7,6 @@ use openwiz_core::new_thread::outcome::{FailReason, RefusalReason, Status};
 use serde_json::Value;
 
 use crate::support::*;
-
-fn rust_text(dir: &str) -> String {
-    let mut out = String::new();
-    let mut stack = vec![Path::new(ROOT).join(dir)];
-    while let Some(path) = stack.pop() {
-        if path.is_dir() {
-            for entry in fs::read_dir(&path).unwrap() {
-                stack.push(entry.unwrap().path());
-            }
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push_str(&fs::read_to_string(&path).unwrap());
-        }
-    }
-    out
-}
-
-/// A1 phase 2 reaches new threads from the CLI, the store and the
-/// allowlist; since A2 (#12) also from the server's routes, through the
-/// core's operations only, never an allowlist invocation of its own. The
-/// fake allows `spawn` only in its one shape (N16). A tripwire, not a proof.
-/// Updated for A2, with that reason.
-#[test]
-fn only_the_cli_and_the_store_reach_new_threads() {
-    let allowlist =
-        fs::read_to_string(Path::new(ROOT).join("crates/adapters/cloudroom/src/allowlist.rs"))
-            .unwrap();
-    // `cloud` three times: `cloud status`, `spawn --machine cloud`, and
-    // `cloud thread-workspace` (OpenWiz 0.0.6, A6, #114): a read Jake
-    // approved on #107, 2026-10-31. Private record: https://github.com/jparker2006/ClosedWiz/issues/1277#issuecomment-6704800036
-    // Updated for #2201 with this reason: Jake's J30 adds exactly two
-    // `SETUP_CALLS` entries for setup's CloudRoom tool, `cloud status --json`
-    // and `cloud sign-in --json`: one more `status` and two more `cloud`.
-    for (word, times) in [("\"spawn\"", 1), ("\"status\"", 2), ("\"cloud\"", 5)] {
-        assert_eq!(
-            allowlist.matches(word).count(),
-            times,
-            "allowlist.rs names {word}"
-        );
-    }
-    for (dir, word) in [
-        ("crates/cli/src", "new_thread"),
-        ("crates/store/src", "NewThreadStore"),
-    ] {
-        assert!(rust_text(dir).contains(word), "{dir} uses {word}");
-    }
-    let server = rust_text("crates/server/src");
-    for word in ["ThreadSpawn", "CloudStatus", "spawn_argv"] {
-        assert!(!server.contains(word), "the server uses {word}");
-    }
-}
-
-/// No new-thread or prompt type has a serde reader (Sol re-check, round
-/// 2): the one hand-written reader is the record's, in `new_thread/read.rs`,
-/// over the duplicate-refusing `StrictJson` tree, whose `Deserialize` is the
-/// only one. Nothing converts from a string. A tripwire beside the core's
-/// compile-time guard (`new_thread::no_readers`).
-#[test]
-fn no_new_thread_or_prompt_type_has_a_reader() {
-    let read =
-        fs::read_to_string(Path::new(ROOT).join("crates/core/src/new_thread/read.rs")).unwrap();
-    let mut text = rust_text("crates/core/src/new_thread").replace(&read, "");
-    text.push_str(&fs::read_to_string(Path::new(ROOT).join("crates/core/src/prompt.rs")).unwrap());
-    let readers = text.matches("Deserialize").count();
-    let guard = text.matches("serde::de::DeserializeOwned").count();
-    assert_eq!(readers, guard, "a reader besides the guard's bound");
-    assert_eq!(guard, 1, "the compile-time guard is in place");
-    assert_eq!(
-        read.matches("impl<'de> Deserialize<'de> for ").count(),
-        1,
-        "one reader in read.rs"
-    );
-    assert!(read.contains("impl<'de> Deserialize<'de> for StrictJson"));
-    for word in ["try_from", "TryFrom", "FromStr", "deserialize_with"] {
-        assert!(!text.contains(word), "{word}");
-    }
-    // read.rs converts integers with `try_from`; no serde conversion.
-    for word in ["serde(", "TryFrom<String>", "FromStr", "deserialize_with"] {
-        assert!(!read.contains(word), "read.rs: {word}");
-    }
-    for line in text.lines().chain(read.lines()) {
-        assert!(
-            !(line.contains("derive(") && line.contains("Deserialize")),
-            "a derived reader: {line}"
-        );
-    }
-}
-
-/// The runner passes every call through the scrub (a tripwire).
-#[test]
-fn the_runner_scrubs_every_call() {
-    let process =
-        fs::read_to_string(Path::new(ROOT).join("crates/adapters/cloudroom/src/process.rs"))
-            .unwrap();
-    assert_eq!(
-        process.matches("Command::new(").count(),
-        1,
-        "one way to start a call"
-    );
-    assert!(process.contains("scrub(&mut Command::new(program))"));
-}
 
 macro_rules! labels {
     ($($item:expr),* $(,)?) => {

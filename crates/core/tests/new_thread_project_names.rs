@@ -2,6 +2,7 @@
 //! only when no other project answers to it, whether by its literal name or
 //! by the inventory's qualified `name~<last 6 of the id>`. Otherwise it is
 //! refused as ambiguous, so a create can never land in another project.
+//! Moved here from `tests/new-thread/` by #808.
 
 use openwiz_core::model::Fact;
 use openwiz_core::new_thread::ProjectRef;
