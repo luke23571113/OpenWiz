@@ -46,6 +46,10 @@ COMMANDS = {
     'release:ci2-overload': ['python3', '-I', 'tools/ci-overload/test.py'],
     'release:product-identity': ['python3', '-I', 'tools/release/test_product_identity.py'],
     'release:setup-onboard-contract': ['python3', '-I', 'tools/install/tests/setup-onboard-contract/test_contract.py'],
+    'release:test-value': ['python3', '-I', 'tools/test-value/test_measure.py'],
+    'release:test-value-unread-fixtures': ['python3', '-I', 'tools/test-value/test_unread_fixtures.py'],
+    'release:setup-onboard-init': ['python3', '-I', 'tools/install/tests/init/test_init.py'],
+    'release:setup-onboard-login': ['python3', '-I', '-B', 'tools/install/setup/test_github_login.py'],
 }
 # This independent job cannot use the Rust job's target/.
 # Its installed-engine proof consumes both debug binaries.

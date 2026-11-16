@@ -33,10 +33,8 @@ mod decisions;
 mod fleets;
 mod http;
 pub mod loops;
-pub mod notifications;
 pub use self::loops as loop_switches;
 mod new_thread;
-mod notification_target;
 mod plan;
 mod send;
 mod setup;
@@ -68,7 +66,6 @@ use crate::http::{Head, HeadError, Refusal, Reply};
 
 pub use crate::decisions::Decisions;
 pub use crate::fleets::{FleetAgents, Fleets};
-pub use crate::notification_target::{NotificationTargets, ReadTargetMapping, TargetReadError};
 pub use crate::plan::Plan;
 
 pub use crate::web::{
@@ -248,34 +245,6 @@ pub const ROUTES: &[Route] = &[
     Route {
         method: "POST",
         path: loop_switches::ON_ROUTE,
-    },
-    Route {
-        method: "GET",
-        path: notifications::STATUS,
-    },
-    Route {
-        method: "GET",
-        path: notifications::PREFERENCES,
-    },
-    Route {
-        method: "PUT",
-        path: notifications::PREFERENCES,
-    },
-    Route {
-        method: "GET",
-        path: notifications::SUBSCRIPTION,
-    },
-    Route {
-        method: "PUT",
-        path: notifications::SUBSCRIPTION,
-    },
-    Route {
-        method: "DELETE",
-        path: notifications::SUBSCRIPTION,
-    },
-    Route {
-        method: "GET",
-        path: notification_target::ROUTE,
     },
 ];
 
@@ -546,8 +515,6 @@ pub fn bind(port: u16) -> io::Result<TcpListener> {
 }
 
 struct Shared {
-    notification_targets: Option<NotificationTargets>,
-    notifications: Option<notifications::Context>,
     stock_history: Arc<ready_stock::History>,
     stock: Option<Arc<dyn StockSource>>,
     plan: Option<Plan>,
@@ -723,9 +690,7 @@ pub fn start_with_read_sources(
     log: Log,
     reads: ReadSources,
 ) -> io::Result<Server> {
-    start_configured(
-        listener, config, source, clock, log, reads, None, None, None, None,
-    )
+    start_configured(listener, config, source, clock, log, reads, None, None)
 }
 
 /// Start with an independently configured stock-fact provider. It grants no
@@ -749,8 +714,6 @@ pub fn start_with_stock_source(
         reads,
         None,
         Some(stock),
-        None,
-        None,
     )
 }
 
@@ -764,13 +727,9 @@ fn start_configured(
     reads: ReadSources,
     loop_switches: Option<loop_switches::Switching>,
     stock: Option<Arc<dyn StockSource>>,
-    notifications: Option<notifications::Context>,
-    notification_targets: Option<NotificationTargets>,
 ) -> io::Result<Server> {
     let addr = listener.local_addr()?;
     let shared = Arc::new(Shared {
-        notifications,
-        notification_targets,
         stock_history: Arc::new(ready_stock::History::default()),
         stock,
         plan: reads.plan,
@@ -807,33 +766,6 @@ fn start_configured(
     })
 }
 
-/// Embed the protected notification context; no source, job or transport is
-/// inferred from HTTP input. Existing Config/start callers keep their shape.
-#[allow(clippy::too_many_arguments)]
-pub fn start_with_notifications(
-    listener: TcpListener,
-    config: Config,
-    source: Arc<dyn SessionSource>,
-    clock: Arc<dyn Clock>,
-    log: Log,
-    reads: ReadSources,
-    switching: Option<loop_switches::Switching>,
-    context: notifications::Context,
-) -> io::Result<Server> {
-    start_configured(
-        listener,
-        config,
-        source,
-        clock,
-        log,
-        reads,
-        switching,
-        None,
-        Some(context),
-        None,
-    )
-}
-
 /// Explicit trusted loop-switch context. Production attribution wiring is
 /// available through explicit local install wiring; tests inject their context.
 pub fn start_with_loop_switches(
@@ -845,9 +777,7 @@ pub fn start_with_loop_switches(
     reads: ReadSources,
     switching: Option<loop_switches::Switching>,
 ) -> io::Result<Server> {
-    start_configured(
-        listener, config, source, clock, log, reads, switching, None, None, None,
-    )
+    start_configured(listener, config, source, clock, log, reads, switching, None)
 }
 
 /// Decrements a counter when dropped.
@@ -1049,9 +979,6 @@ fn respond(head: &Head, stream: &mut TcpStream, shared: &Shared) -> Reply {
     };
     let web = web_route(path, &shared.config);
     let matched = Matched::of(path);
-    if let Some(Matched::Notification(route)) = &matched {
-        return notifications::respond(head, stream, shared, *route, host, query, deadline);
-    }
     if let Some(Matched::LoopSwitch(target, enabled)) = &matched {
         return loop_switches::respond(
             head,
@@ -1176,20 +1103,6 @@ fn respond(head: &Head, stream: &mut TcpStream, shared: &Shared) -> Reply {
         }
         Some(Matched::Setup) => return setup::run(setup_state()),
         Some(Matched::Health) => return api::health(shared.source.as_ref()),
-        Some(Matched::NotificationTarget(token)) => {
-            if !notification_target::valid_token(&token) {
-                return api::error(400, "invalid_request", "invalid notification reference");
-            }
-            // #2039 R1/R2: the protected mapping is read before a core-run slot.
-            match notification_target::resolve(
-                shared.notification_targets.as_ref(),
-                &token,
-                shared.clock.as_ref(),
-            ) {
-                Ok(reference) => api::Call::NotificationTarget(reference),
-                Err(reply) => return reply,
-            }
-        }
         Some(Matched::Decisions) => api::Call::Decisions,
         Some(Matched::Cockpit) => api::Call::Cockpit,
         Some(Matched::Loops) => return loop_switches::read_route(shared),
@@ -1219,8 +1132,7 @@ fn respond(head: &Head, stream: &mut TcpStream, shared: &Shared) -> Reply {
             api::Call::NewThreadStatus(op_id)
         }
         Some(
-            Matched::Notification(_)
-            | Matched::LoopSwitch(..)
+            Matched::LoopSwitch(..)
             | Matched::Send(_)
             | Matched::Threads(_)
             | Matched::ThreadsPreview(_)
@@ -1235,7 +1147,6 @@ fn respond(head: &Head, stream: &mut TcpStream, shared: &Shared) -> Reply {
 /// What a core run calls, from the server's configuration.
 fn core(shared: &Shared) -> api::Core {
     api::Core {
-        notifications: shared.notifications.clone(),
         stock_history: shared.stock_history.clone(),
         stock: shared.stock.clone(),
         source: shared.source.clone(),
@@ -1484,63 +1395,5 @@ with --json; health is the server's own metadata, with no CLI equivalent and
 no room-cli read. See contracts/web-api.v1.md. One line per request goes to
 stderr: the method, route, status and time only.
 "
-    )
-}
-
-/// #2039 (Q1): the installed service's notification context together with its
-/// protected bound-target reader, so a recorded alert's token opens its item.
-#[allow(clippy::too_many_arguments)]
-pub fn start_with_notifications_and_targets(
-    listener: TcpListener,
-    config: Config,
-    source: Arc<dyn SessionSource>,
-    clock: Arc<dyn Clock>,
-    log: Log,
-    reads: NotificationReadSources,
-    switching: Option<loop_switches::Switching>,
-    context: notifications::Context,
-) -> io::Result<Server> {
-    start_configured(
-        listener,
-        config,
-        source,
-        clock,
-        log,
-        reads.reads,
-        switching,
-        None,
-        Some(context),
-        Some(reads.targets),
-    )
-}
-
-/// Additional bound-navigation sources without changing existing server callers.
-pub struct NotificationReadSources {
-    pub reads: ReadSources,
-    pub targets: NotificationTargets,
-}
-
-/// The installed service supplies its existing loop context and protected reader.
-/// No mapping store or independent proposal authority is created by this entry.
-pub fn start_with_notification_targets(
-    listener: TcpListener,
-    config: Config,
-    source: Arc<dyn SessionSource>,
-    clock: Arc<dyn Clock>,
-    log: Log,
-    reads: NotificationReadSources,
-    switching: Option<loop_switches::Switching>,
-) -> io::Result<Server> {
-    start_configured(
-        listener,
-        config,
-        source,
-        clock,
-        log,
-        reads.reads,
-        switching,
-        None,
-        None,
-        Some(reads.targets),
     )
 }

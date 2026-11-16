@@ -4290,6 +4290,41 @@ fn setup_onboard_contract_passes() {
     );
 }
 
+// #635: installed init's runtime proofs (both visibilities, refusals, lost
+// replies, repeat init and the brain reference) run in the checks binary, so
+// CI's always-run set executes them on every run.
+#[test]
+fn setup_onboard_init_passes() {
+    let result = std::process::Command::new("python3")
+        .args(["-I", "tools/install/tests/init/test_init.py"])
+        .current_dir(ROOT)
+        .output()
+        .expect("run the init runtime proofs");
+    assert!(
+        result.status.success(),
+        "init runtime proofs failed: {}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+// #633: setup's GitHub browser sign-in and explicit App-skip proofs, on a
+// recording gh, run in the checks binary like the contract checks above.
+#[test]
+fn setup_onboard_login_passes() {
+    let result = std::process::Command::new("python3")
+        .args(["-I", "-B", "tools/install/setup/test_github_login.py"])
+        .current_dir(ROOT)
+        .output()
+        .expect("run the setup GitHub login proofs");
+    assert!(
+        result.status.success(),
+        "setup GitHub login proofs failed: {}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
 // #1109 (IF9): one install line. The install skill, the public guide and the
 // README quote the same line, and the setup page names the same upgrade
 // destination. The site lane's own tests (apps/site/test/site.test.mjs) pin

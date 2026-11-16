@@ -1,0 +1,30 @@
+---- init::installed_init_refuses_without_its_runtime_and_on_bad_arguments stdout ----
+
+thread 'init::installed_init_refuses_without_its_runtime_and_on_bad_arguments' (20422) panicked at tests/cli-agent/init.rs:135:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(1)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- init::installed_init_previews_and_applies_through_the_packaged_runtime stdout ----
+
+thread 'init::installed_init_previews_and_applies_through_the_packaged_runtime' (20421) panicked at tests/cli-agent/init.rs:94:5:
+assertion `left == right` failed: openwiz: unknown command init (see openwiz --help)
+
+  left: Some(2)
+ right: Some(0)
+
+---- init::init_help_is_source_free_and_listed_in_agent_discovery stdout ----
+
+thread 'init::init_help_is_source_free_and_listed_in_agent_discovery' (20420) panicked at tests/cli-agent/init.rs:170:5:
+assertion failed: help["text"].as_str().unwrap().contains("no placement question")
+
+
+failures:
+    init::init_help_is_source_free_and_listed_in_agent_discovery
+    init::installed_init_previews_and_applies_through_the_packaged_runtime
+    init::installed_init_refuses_without_its_runtime_and_on_bad_arguments
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 55 filtered out; finished in 7.11s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`

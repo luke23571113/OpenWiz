@@ -1,0 +1,4 @@
+thread 'p08a_allowlist_static::allowlist_source_contracts_preserve_original_cases' (1718) panicked at tests/proof/p08a_allowlist_static.rs:762:9:
+"<repo>/tests/../crates/cli/src/init.rs" starts a process outside the canonical permitted sources
+    p08a_allowlist_static::allowlist_source_contracts_preserve_original_cases
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.63s

@@ -1,0 +1,23 @@
+# #828 R2 scoped checks on the hand-back tree (synthetic fixtures only)
+== python3 -I tools/live-smoke/test_smoke.py
+Ran 23 tests in 14.628s
+
+OK
+== python3 -I tools/live-smoke/test_receipt.py
+Ran 20 tests in 15.986s
+
+OK
+== python3 -I tools/live-smoke/test_review.py
+Ran 2 tests in 4.613s
+
+OK
+== python3 -I tools/live-smoke/test_kit.py
+Ran 6 tests in 1.974s
+
+OK
+== node --check tools/live-smoke/browser.mjs
+ok
+== python3 tools/release/test.py
+Ran 283 tests in 171.414s
+
+OK

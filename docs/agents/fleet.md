@@ -83,6 +83,17 @@ Source: Jake, 2026-10-30: the selected reviewer is never silently swapped. Jake,
 
 **Spec #2622 (WizSkills), an override for its tickets only:** builders are Claude Code, Opus 5.5, Medium (`--provider claude-code --model claude-opus-5-5 --reasoning-level medium`), and reviewers are Codex, Sol 6.1, High (`--provider codex --model gpt-6.1-sol --reasoning-level high`), so the reviewer is still the other family. WZ8 (#2629) and WZ10 (#2638) are Jake's own steps; the export review uses the export-review skill's own reviewer. An agent already assigned keeps its model. Jake, 2026-11-13: approved with revision 1 of the plan graph ([private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6848396003)).
 
+## Fixer
+
+The fresh builder for the review-loops contract's one fresh round (v2's `fresh` state): one per pull request, of the original builder's family, so the other-family reviewer stays valid. Its family is read as the reviewer's is: the branch-matching `start checked` record and that exact thread's provider. An unknown or conflicting family waits; no other model builds the round.
+
+| Builder family | Harness | Model | Effort | `room-cli thread spawn` flags |
+| --- | --- | --- | --- | --- |
+| Claude | Claude Code | Opus 5.5 | High | `--provider claude-code --model claude-opus-5-5 --reasoning-level high` |
+| GPT | Codex | Sol 6.1 | XHigh | `--provider codex --model gpt-6.1-sol --reasoning-level xhigh` |
+
+Source: Jake, 2026-11-15: the fresh round uses Opus 5.5 at High for a Claude-built pull request and Sol 6.1 at XHigh for a GPT-built one, and no other model builds (J119; [private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6906276883)).
+
 ## Builder helpers
 
 A builder's swarm: cheap helpers that find things and do chores for it (search the code, run and read tests, draft tests). The builder keeps every judgment and writes every line. Each helper is a CloudRoom thread the builder starts; how to start, brief, check and archive one is in [helpers.md](helpers.md).
@@ -163,6 +174,22 @@ Source: Jake, 2026-11-01: webhook wakes handle named work immediately, with a sl
 **Independent standby and wakes.** The standby runs outside the PC's failure domain, as a Cloud thread woken by its own scheduled loop, reading GitHub only; builders and reviewers read their pending records on GitHub on their own wakes. Takeover is an admitted next-generation claim, never a timeout. This plan is Unverified: #2244 discovers the access and OB8 (#2190) alone installs or activates it.
 
 **Delegated ops authority and daily audit.** Narrow same-intent path requests are evaluated by the ops agent under the `narrow-grant` rule instead of a blanket escalation; contract, interface, dependency, workflow, scope, live and spending cases, and anything unreadable, still go to the orchestrator. The orchestrator audits every grant daily from its saved cursor and keeps grills, planning and real exceptions.
+
+## Supporting edits
+
+The project's standing supporting-edit rule. Every ticket of every fleet may make these edits without asking, beside its owned paths:
+
+1. **Its own rows in shared registries:** `tools/open-import/paths.json`, the CLI test catalogue in `tests/cli-agent/main.rs`, and CI step lists such as `tools/ci-bench/steps.tsv`.
+2. **Its changelog line** as `changes/<ticket>.md`, whatever its owned paths name.
+3. **Its own evidence folder** under `docs/evidence/`.
+4. **Synthetic answers to test fakes its change breaks,** with no assertion change.
+5. **Updates to byte-identical carried copies** of a file it owns.
+
+- **Own rows and lines only:** never another ticket's rows, lines or logic.
+- **Listed and checked:** the pull request lists each use, with its kind and path, and the reviewer checks each one stayed inside this rule.
+- **Still ask first,** as today, for any contract or schema, workflow, dependency, protected guard or other ticket's logic, and for any edit outside these five kinds.
+
+Source: Jake, 2026-11-15: a standing allowance for these five kinds, each use listed and reviewed, with the same ask-first list (J110; [private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6905144595)).
 
 ## Labels
 

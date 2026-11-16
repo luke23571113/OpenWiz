@@ -13,7 +13,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use openwiz_adapter_github::app::{self, CurlExchange, Exchange, Refusal, SecretApp};
+use openwiz_adapter_github::app::{self, CurlExchange, Exchange, Mode, Refusal, SecretApp};
 
 use crate::{EXIT_NOT_FOUND, EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, UsageError};
 
@@ -21,6 +21,9 @@ use crate::{EXIT_NOT_FOUND, EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, UsageError};
 pub const SECRET: &str = "OPENWIZ_GITHUB_APP_KEY";
 /// The App's public id, written by setup beside the secret.
 pub const APP_ID: &str = "OPENWIZ_GITHUB_APP_ID";
+/// The explicit App setting (J48, #606): unset or `user` for a user's own App,
+/// bound to its owner's account; exactly `factory` for the factory's public App.
+pub const MODE: &str = "OPENWIZ_GITHUB_APP_MODE";
 /// GitHub refused, or the token failed the contract or the expiry guards.
 pub const EXIT_REFUSED: i32 = 5;
 /// The whole command's budget: the installation lookup and the mint.
@@ -30,10 +33,12 @@ pub const USAGE: &str = "  openwiz github token --repository OWNER/NAME [--read]
 pub const HELP: &str = "github token --repository OWNER/NAME [--read]
   Mints one GitHub App installation token (about an hour) for the installation
   that covers OWNER/NAME, from the App key in the OPENWIZ_GITHUB_APP_KEY secret
-  and the App id in OPENWIZ_GITHUB_APP_ID. Prints only the token on stdout and
-  `expires_at <unix seconds>` on stderr; stores nothing. --read asks for the
-  read-only profile. Exits 0 printed, 1 key, App id or GitHub unavailable,
-  2 usage, 3 repository not installed, 5 refused.
+  and the App id in OPENWIZ_GITHUB_APP_ID. A user's own App (the default) mints
+  only on its owner's account; OPENWIZ_GITHUB_APP_MODE=factory is the explicit
+  setting for the factory's App and its named installations. Prints only the
+  token on stdout and `expires_at <unix seconds>` on stderr; stores nothing.
+  --read asks for the read-only profile. Exits 0 printed, 1 key, App id, mode
+  or GitHub unavailable, 2 usage, 3 repository not installed, 5 refused.
 ";
 
 /// `openwiz github token`'s options.
@@ -99,6 +104,8 @@ pub struct Context {
     pub secret: Option<OsString>,
     /// The `OPENWIZ_GITHUB_APP_ID` value, if set.
     pub app_id: Option<OsString>,
+    /// The `OPENWIZ_GITHUB_APP_MODE` value, if set.
+    pub mode: Option<OsString>,
     pub exchange: Arc<dyn Exchange>,
     pub clock: Arc<dyn app::Clock>,
 }
@@ -110,6 +117,7 @@ impl Context {
         Self {
             secret: std::env::var_os(SECRET),
             app_id: std::env::var_os(APP_ID),
+            mode: std::env::var_os(MODE),
             exchange: Arc::new(CurlExchange),
             clock: Arc::new(app::SystemClock),
         }
@@ -151,7 +159,7 @@ pub fn run(
         return say(
             stderr,
             EXIT_READ_FAILED,
-            "the App key or App id is missing or unreadable; no token was minted",
+            "the App key, App id or App mode is missing or unreadable; no token was minted",
         );
     };
     let minted = match app.mint(&token.repository, token.read, deadline) {
@@ -199,6 +207,11 @@ fn secret_app(context: Context) -> Option<SecretApp> {
         return None;
     }
     let app_id = app_id.parse::<u64>().ok()?;
+    let mode = match context.mode.as_deref().map(|m| m.to_str()) {
+        None | Some(Some("user")) => Mode::User,
+        Some(Some("factory")) => Mode::Factory,
+        Some(_) => return None,
+    };
     let secret = context.secret?.into_string().ok()?;
-    SecretApp::from_secret(&secret, app_id, context.exchange, context.clock).ok()
+    SecretApp::from_secret(&secret, app_id, mode, context.exchange, context.clock).ok()
 }

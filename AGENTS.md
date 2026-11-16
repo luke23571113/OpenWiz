@@ -100,7 +100,7 @@ Only a ready PR's first ordinary attempt against `main`, with current live base/
 - All four commands above pass. The pending list is exact.
 - Each claim names its evidence class: fixture test, live observation, or independent review.
 - The builder hands over the exact branch, head and tree, test results, the red run, internal review results and gaps.
-- The 1 + 1 rule: each pull request gets one review plus one re-check; a blocker still open after the re-check goes to the orchestrator's decision, fix once more or log and merge ([review-loops contract](contracts/review-loops.v1.md)). A review binds only to the head it read.
+- The 1 + 1 rule: each pull request gets one review plus one re-check; after it, an open security, privacy or data-loss blocker gets one fresh, stronger fix round and then parks for Jake, and any other open blocker is logged as a follow-up and the pull request merges ([review-loops contract](contracts/review-loops.v2.md)). A review binds only to the head it read.
 
 ## Ask Jake first
 

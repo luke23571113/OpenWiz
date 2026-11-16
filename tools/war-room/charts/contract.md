@@ -138,6 +138,25 @@ From the latest sample, without new statistics:
 - `body-<slot>-<unit>` (bars): every other provider's metrics of one unit, by
   metric id, latest sample only. `factory_metrics`' all-base UTC counts are here.
 
+## PRs an hour against the baseline (MT4, #823)
+
+`body-ci-bench-headline` is ci-bench's headline, read from one collector
+snapshot ([`../collector.v1.md`](../collector.v1.md)), not from history:
+`build.build(..., snapshot=FILE)` or `build.py --snapshot FILE`.
+[`prs_per_hour.py`](prs_per_hour.py) checks the file against
+`collector.v1.schema.json`, refuses one collected after the build or whose
+`factory.prs_per_hour` state disagrees with its value, prerequisites, window or
+source, and draws four `bars` rows in this order: the baseline's capacity and
+merged, then the window's. Values are the snapshot's own numbers, never
+recomputed; labels print them with two decimals, as ci-bench's `bench.md`
+tables do, with robots, successful code runs, robot-minutes and merged PRs.
+An `unavailable` fact or a null baseline is four or two Unknown rows with the
+prerequisite in their labels, never zero, and with no value at all no numeric
+axis is drawn. A `partial` fact's bars are hollow. The figure's window is the
+fact's; the baseline's own window is in its labels. Capacity is not merged
+throughput (a gap on every build). The page claims the figure in Fig. 10
+(`body-ci-bench-*`), first. Without a snapshot there is no such figure.
+
 ## Colour and shape
 
 `palette.json` holds the role colours, dash and symbol. `palette.py` simulates

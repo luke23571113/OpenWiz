@@ -35,7 +35,7 @@ HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 FLEET=${FLEET_SH:-$HERE/fleet.sh}
 FIX=$HERE/fixtures
 NOW=1793534400 # 2026-11-01T12:00:00Z, the fixtures' "now"
-CASES=813      # main's 783 cases, #2788's three snapshot regressions and #641's 27 record-author cases
+CASES=815      # main's 783 cases, #2788's three snapshot regressions, #641's 27 record-author cases, E8's release tree and E5's private map
 fails=0
 cases=0
 ERR=''         # the exact stderr the next case expects, when not the points line
@@ -1304,11 +1304,12 @@ elif mkdir -p "$L/remote/skills/launch-fleet/scripts" "$L/remote/skills/plan-gra
   else
     bad "the loop's script clones the project and runs its check" "$(cat "$L/out1" "$L/out1.err" | head -c 400)"; cases=$((cases + 1))
   fi
+  # E6: the clone refreshes, but its skills/ is never run: the check stays the installed one.
   printf 'echo "the default branch moved"\n' >> "$L/remote/skills/launch-fleet/scripts/fleet.sh"
-  printf 'the default branch moved\n' >> "$L/want"
   if git -C "$L/remote" -c user.name=synthetic -c user.email=synthetic@example.invalid commit -q -am two \
-    && loop_run log2 out2 && cmp -s "$L/want" "$L/out2" && loop_points "$L/out2.err" && ! grep -q 'repo clone' "$L/log2"; then
-    loop_case "the next run updates its clone to the default branch, without cloning again"
+    && loop_run log2 out2 && cmp -s "$L/want" "$L/out2" && loop_points "$L/out2.err" && ! grep -q 'repo clone' "$L/log2" \
+    && grep -q 'the default branch moved' "$L/home/synthetic-owner/synthetic-repo/skills/launch-fleet/scripts/fleet.sh"; then
+    loop_case "the next run updates its clone to the default branch, without cloning again or running its skills"
   else
     bad "the next run updates its clone" "$(cat "$L/out2" "$L/out2.err" | head -c 400)"; cases=$((cases + 1))
   fi
@@ -3434,6 +3435,48 @@ if [ -z "${TEST_ONLY:-}" ] || [ "$TEST_ONLY" = public-records ]; then
   fi
 fi
 
+# E5 (#721 R1): the private map in the shape SKILL.md documents stays readable
+# by records.py: thread entries get synthetic thread ids, any other documented
+# entry a synthetic loop-shaped id, so a non-thread value there is caught.
+if [ -z "${TEST_ONLY:-}" ] || [ "$TEST_ONLY" = private-map ]; then
+  if take; then
+    cases=$((cases + 1))
+    if python3 -I - "$HERE/../SKILL.md" "$tmp/private-map.json" > "$tmp/private-map.log" 2>&1 <<'PY' \
+      && printf '{"specs":[],"singles":[]}' | LAUNCH_FLEET_STATE="$tmp/private-map.json" \
+        python3 -I "$HERE/records.py" synthetic-owner/synthetic-repo false >> "$tmp/private-map.log" 2>&1; then
+import json, re, sys
+text = open(sys.argv[1]).read()
+shape = re.search(r'Its shape is `(\{.*?\}\})`', text).group(1)
+state = json.loads(shape)
+state['repo'] = 'synthetic-owner/synthetic-repo'
+state['threads'] = {k: 'thr_synthetic' if v in ('<thread>', '<sender>', '<fleet>')
+                    else '00000000-0000-4000-8000-000000000010' for k, v in state['threads'].items()}
+json.dump(state, open(sys.argv[2], 'w'))
+PY
+      echo 'ok   private-map'
+    else
+      bad private-map "records.py can't read the private map SKILL.md documents"
+      cat "$tmp/private-map.log"
+    fi
+  fi
+fi
+
+# E8: the carried O10/triage fixture runs in a release-shaped tree, a copy of
+# the carried skills with no Git history, on those carried sources.
+if [ -z "${TEST_ONLY:-}" ] || [ "$TEST_ONLY" = o10-release ]; then
+  if take; then
+    cases=$((cases + 1))
+    rel=$tmp/o10-release
+    if mkdir -p "$rel/skills" && cp -R "$HERE/../../launch-fleet" "$HERE/../../triage" "$HERE/../../plan-graph" "$rel/skills/" \
+      && (cd "$rel" && GIT_CEILING_DIRECTORIES=$tmp python3 -I skills/launch-fleet/scripts/fixtures/test-o10-triage.py) > "$tmp/o10-release.log" 2>&1; then
+      echo 'ok   o10-release'
+    else
+      bad o10-release 'the carried O10/triage fixture needs source Git history'
+      cat "$tmp/o10-release.log"
+    fi
+  fi
+fi
+
 ### The pinned revision.sh is plan-graph's
 
 if [ -z "${TEST_ONLY:-}" ] && take; then
@@ -3614,8 +3657,8 @@ if [ -s "$tmp/gi1-points.txt" ]; then cat "$tmp/gi1-points.txt"; fi
 # with a fleet thread prints one line to run that thread's own loop, and none
 # of the spec's tick lines; a spec with no fleet thread, or a record that
 # names no loop, or a loop two specs claim, behaves as before GI2.
-GI2_LOOP10=00000000-0000-4000-8000-000000000010
-GI2_LOOP40=00000000-0000-4000-8000-000000000040
+GI2_LOOP10=fleet-10 # E5: the public per-spec handle; the real loop id stays private
+GI2_LOOP40=fleet-40
 GI2_FLEET10="say(10; 1090; \"10:00\"; \"launch-fleet: fleet active, loop $GI2_LOOP10\")"
 GI2_FLEET40="say(40; 4090; \"10:00\"; \"launch-fleet: fleet active, loop $GI2_LOOP40\")"
 expect 'GI2: a wake on a spec with a fleet thread runs its loop, and prints none of its lines' 0 check.json "merge12 | $SPEC40 | $GI2_FLEET10" -- wake 13 <<EOF

@@ -1,11 +1,7 @@
-//! Health execution: save each try before effects, outcomes before records.
-//! TK1 takeover persists exact-loop retirement and service-tick ownership.
+//! The loops watchdog's health job (LP4): one report-only pass that saves
+//! its incidents before it posts their records and sends their Needs you.
 pub mod loops;
-mod model;
-mod observe;
 mod records;
-pub mod runtime;
-mod takeover;
 mod watchdog;
 
 /// Trusted embedding supplies complete observations, including authoritative
@@ -18,13 +14,13 @@ use crate::{
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use openwiz_adapter_github::{process::Executor, tick::TickReads};
 use openwiz_core::{
-    health::{self, model::*},
+    health::model::*,
     messaging::{
         OpId,
         send::{self, SendRequest, Status},
         sha256_hex,
     },
-    model::{SessionId, Timestamp},
+    model::SessionId,
 };
 use serde_json::{Value, json};
 use std::{
@@ -65,33 +61,12 @@ impl Sources {
         }
     }
 }
-pub trait RuntimeFixes: Send + Sync {
-    fn restart_tick(&self, deadline: Instant) -> Result<(), String>;
-    fn restart_server(&self, deadline: Instant) -> Result<(), String>;
-    fn current_tick(&self) -> Result<Option<crate::scheduler::TickRun>, String> {
-        Ok(None)
-    }
-    fn restart_stalled_tick(
-        &self,
-        _expected: crate::scheduler::TickRun,
-        _deadline: Instant,
-    ) -> Result<(), String> {
-        Err("generation-checked tick repair is unavailable".into())
-    }
-}
-struct Pending {
-    id: String,
-    slot: &'static str,
-    outcome: Value,
-}
 pub struct Health {
     root: PathBuf,
     config: Value,
     state: Arc<Mutex<State>>,
     room: CloudRoomSource,
     github: Executor,
-    runtime: Arc<dyn RuntimeFixes>,
-    pending: Mutex<Option<Pending>>,
     watchdog: Arc<WatchdogRead>,
 }
 struct PassLock(std::fs::File);
@@ -107,7 +82,6 @@ impl Health {
         state: Arc<Mutex<State>>,
         room: CloudRoomSource,
         github: Executor,
-        runtime: Arc<dyn RuntimeFixes>,
     ) -> Result<Self, String> {
         document::read(Document::Config, &config.to_string())?;
         Ok(Self {
@@ -116,8 +90,6 @@ impl Health {
             state,
             room,
             github,
-            runtime,
-            pending: Mutex::new(None),
             watchdog: watchdog::installed(root, &config),
         })
     }
@@ -127,21 +99,16 @@ impl Health {
         self.watchdog = source;
         self
     }
-    pub fn observe(&self, port: u16) -> Result<Seen, String> {
-        observe::read(self, port)
-    }
     pub fn register(
         self: Arc<Self>,
         scheduler: &mut crate::scheduler::Scheduler,
-        port: u16,
         now: impl Fn() -> u64 + Send + Sync + 'static,
     ) -> Result<(), String> {
         let every =
             std::num::NonZeroU64::new(self.config["health"]["every_s"].as_u64().unwrap()).unwrap();
         scheduler
             .register("health", every, move || {
-                let result = self.observe(port).and_then(|seen| self.pass(&seen, now()));
-                if result.is_err() {
+                if self.pass(now()).is_err() {
                     eprintln!("openwiz-service: health pass incomplete (details withheld)");
                 }
             })
@@ -188,72 +155,11 @@ impl Health {
             Ok(())
         })
     }
-    fn save_outcome(&self, id: &str, slot: &str, outcome: &Value) -> Result<(), String> {
-        self.change(|v| {
-            let index = v["incidents"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .position(|i| i["id"] == id)
-                .ok_or("health incident disappeared")?;
-            if outcome["owner"] == "service_tick" {
-                let spec = v["incidents"][index]["spec"].clone();
-                let thread = v["incidents"][index]["thread"].clone();
-                let row = v["retired_loops"]
-                    .as_array_mut()
-                    .ok_or("takeover reservation missing")?
-                    .iter_mut()
-                    .find(|r| {
-                        r["spec"] == spec
-                            && r["thread"] == thread
-                            && r["loop"] == outcome["retired_loop"]
-                    })
-                    .ok_or("takeover reservation disappeared")?;
-                if row["phase"] != "paused" && row["phase"] != "active" {
-                    return Err("takeover pause was not saved".into());
-                }
-                row["phase"] = json!("active");
-            }
-            v["incidents"][index]["tries"][slot]["outcome"] = outcome.clone();
-            Ok(())
-        })
-    }
-    fn recover(&self) -> Result<(), String> {
-        let mut pending = self
-            .pending
-            .lock()
-            .map_err(|_| "health outcome unavailable")?;
-        if let Some(p) = pending.as_ref() {
-            self.save_outcome(&p.id, p.slot, &p.outcome)?;
-            *pending = None;
-        }
-        // A prior pass has returned and its lock is ours: no command is still
-        // executing. Saved-but-unsettled tries count, and are never replayed.
-        let snapshot = self.snapshot()?;
-        if snapshot["incidents"].as_array().unwrap().iter().any(|i| {
-            ["first", "second"]
-                .iter()
-                .any(|s| !i["tries"][s].is_null() && i["tries"][s]["outcome"].is_null())
-        }) {
-            self.change(|v| {
-                for i in v["incidents"].as_array_mut().unwrap() {
-                    if let Some(tries) = i.get_mut("tries") {
-                        for s in ["first", "second"] {
-                            if !tries[s].is_null() && tries[s]["outcome"].is_null() {
-                                tries[s]["outcome"] = json!({"state":"interrupted"});
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            })?;
-        }
-        Ok(())
-    }
-    pub fn pass(&self, seen: &Seen, now: u64) -> Result<(), String> {
+    /// The watchdog pass: deliver what an earlier pass saved, save this
+    /// pass's watchdog incidents and result, then deliver again.
+    pub fn pass(&self, now: u64) -> Result<(), String> {
         let _lock = PassLock(records::lock(&self.root)?);
         let deadline = Instant::now() + openwiz_core::limits::RUN_BUDGET;
-        self.recover()?;
         let gh = TickReads::with_executor(self.github.clone());
         if !gh
             .repository(deadline)
@@ -266,175 +172,26 @@ impl Health {
         let delivery_pending =
             self.flush_records(deadline)? | records::reconcile(&self.root, &self.github, deadline)?;
         let snapshot = self.snapshot()?;
-        let before = model::incidents(&snapshot)?;
-        let mut retired = takeover::rows(&snapshot)
-            .iter()
-            .map(|r| Id::parse(r["loop"].as_str().unwrap()).unwrap())
-            .collect::<Vec<_>>();
-        let mut seen = seen.clone();
-        let mut bindings = Vec::new();
-        if let Listed::Read(threads) = &mut seen.fleet_threads {
-            for row in threads {
-                if !matches!(row.seen, ThreadSeen::Archived | ThreadSeen::NotFound) {
-                    continue;
-                }
-                match takeover::binding(self, row.spec, &row.thread, deadline) {
-                    Ok(binding) => {
-                        retired.push(binding.loop_id.clone());
-                        if takeover::active(&snapshot, &binding) {
-                            row.seen = ThreadSeen::Present;
-                        } else {
-                            bindings.push(binding);
-                        }
-                    }
-                    Err(_) => {
-                        row.seen = ThreadSeen::Unknown(Unread {
-                            gap: Gap::CommandFailed,
-                            reason: NonEmpty::new("fleet takeover authority is unread or changed")
-                                .unwrap(),
-                        })
-                    }
-                }
-            }
-        }
-        // Fleet reads and HTTP probing may outlive the initially observed run.
-        // Refresh after those reads, immediately before planning/saving a try.
-        let observed_run = self.runtime.current_tick()?;
-        let current = self.snapshot()?;
-        let observed_run = observed_run.filter(|run| {
-            current["tick"]["running"]["started_at"].as_u64() == Some(run.started_at)
-        });
-        seen.tick_running_since = observed_run
-            .map(|run| {
-                i64::try_from(run.started_at)
-                    .map(Timestamp)
-                    .map_err(|_| "tick start is out of range")
-            })
-            .transpose()?;
-        let time = Timestamp(i64::try_from(now).map_err(|_| "health clock is out of range")?);
-        let rules = Rules {
-            repository: self.repository(),
-            tick_every_s: std::num::NonZeroU64::new(
-                self.config["tick"]["every_s"].as_u64().unwrap(),
-            )
-            .unwrap(),
-        };
+        let repository = self.repository();
+        let next_incident = snapshot["next_incident"].clone();
         let mut counter = 0;
         let mut new_id = || {
             counter += 1;
             OpId::parse(&sha256_hex(
                 format!(
                     "openwiz.health.needs-you.v1\n{}\n{}\n{}\n{now}\n{counter}",
-                    rules.repository, self.config["service_issue"], before.next_incident
+                    repository, self.config["service_issue"], next_incident
                 )
                 .as_bytes(),
             ))
             .unwrap()
         };
-        let plan = health::plan_with_retired(&before, &seen, &rules, time, &mut new_id, &retired);
         let loop_observations = (self.watchdog)(now);
         self.change(|v| {
-            v["next_incident"] = json!(plan.incidents.next_incident);
-            v["incidents"] = serde_json::to_value(&plan.incidents.incidents)
-                .map_err(|_| "health incidents could not be encoded")?;
-            v["last_pass"] =
-                serde_json::to_value(&plan.pass).map_err(|_| "health pass could not be encoded")?;
-            watchdog::apply(v, &snapshot, loop_observations, now, &mut new_id)?;
-            for binding in &bindings {
-                if plan.pass.fixes.iter().any(|f|matches!(f,Fix::TakeOverFleetThread{spec,thread,..} if *spec==binding.spec && *thread==binding.thread)){
-                    takeover::reserve(v,binding,now);
-                }
-            }
-            Ok(())
+            v["incidents"] = json!([]);
+            v["last_pass"] = json!({"at":now,"results":[],"fixes":[],"needs_you":[]});
+            watchdog::apply(v, &snapshot, loop_observations, now, &mut new_id)
         })?;
-        // Confirm every due retirement before any shared tick replacement.
-        // A concurrent stalled-tick fix reuses this one bounded replacement.
-        let mut prepared = Vec::new();
-        for binding in &bindings {
-            if plan.pass.fixes.iter().any(|f|matches!(f,Fix::TakeOverFleetThread{spec,thread,..} if *spec==binding.spec && *thread==binding.thread)) {
-                prepared.push(takeover::prepare(self,binding,deadline).is_ok());
-            }
-        }
-        let unconfirmed = takeover::rows(&self.snapshot()?)
-            .iter()
-            .any(|r| r["phase"] == "pause_pending");
-        let takeover_tick = if prepared.is_empty() {
-            None
-        } else {
-            Some(if prepared.iter().all(|ready| *ready) && !unconfirmed {
-                self.runtime.restart_tick(deadline).map_err(|_| ())
-            } else {
-                Err(())
-            })
-        };
-        for fix in &plan.pass.fixes {
-            let (id, attempt, result, reason) = match fix {
-                Fix::ResumeLoop {
-                    incident,
-                    attempt,
-                    subject,
-                } => (
-                    *incident,
-                    *attempt,
-                    self.room
-                        .resume_loop(&subject.id, &rules.repository, deadline)
-                        .map(|()| json!({"state":"done"}))
-                        .map_err(|_| ()),
-                    "OpenWiz could not confirm the loop resume",
-                ),
-                Fix::RestartTick { incident, attempt } => (
-                    *incident,
-                    *attempt,
-                    takeover_tick.unwrap_or_else(|| {
-                        if unconfirmed {Err(())} else {observed_run.ok_or(()).and_then(|run|self.runtime.restart_stalled_tick(run,deadline).map_err(|_|()))}
-                    }).map(|()| json!({"state":"done"})),
-                    "OpenWiz could not confirm the tick restart",
-                ),
-                Fix::RestartServer { incident, attempt } => (
-                    *incident,
-                    *attempt,
-                    self.runtime
-                        .restart_server(deadline)
-                        .map(|()| json!({"state":"done"}))
-                        .map_err(|_| ()),
-                    "OpenWiz could not confirm the server restart",
-                ),
-                Fix::TakeOverFleetThread {
-                    incident,
-                    attempt,
-                    spec,
-                    thread,
-                } => (
-                    *incident,
-                    *attempt,
-                    bindings
-                        .iter()
-                        .find(|b| b.spec == *spec && b.thread == *thread)
-                        .ok_or(())
-                        .and_then(|b|takeover_tick.unwrap_or(Err(())).map(|()| json!({"state":"done","owner":"service_tick","retired_loop":b.loop_id}))),
-                    "OpenWiz could not confirm the fleet takeover",
-                ),
-            };
-            let outcome = result.unwrap_or_else(
-                |()| json!({"state":"failed","gap":"command_failed","reason":reason}),
-            );
-            let slot = if attempt == Try::First {
-                "first"
-            } else {
-                "second"
-            };
-            let mut pending = self
-                .pending
-                .lock()
-                .map_err(|_| "health outcome unavailable")?;
-            *pending = Some(Pending {
-                id: id.to_string(),
-                slot,
-                outcome: outcome.clone(),
-            });
-            self.save_outcome(&id.to_string(), slot, &outcome)?;
-            *pending = None;
-        }
         if self.flush_records(deadline)? || delivery_pending {
             return Err("health record or notification delivery remains unconfirmed; saved identities are retained".into());
         }
@@ -443,47 +200,14 @@ impl Health {
     fn flush_records(&self, deadline: Instant) -> Result<bool, String> {
         let mut pending = false;
         let snapshot = self.snapshot()?;
-        let mut deliveries = snapshot["incidents"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|i| i["check"] != "watchdog")
-            .collect::<Vec<_>>();
-        if let Some(rows) = snapshot
+        let deliveries = snapshot
             .get("watchdog_deliveries")
             .and_then(Value::as_array)
-        {
-            deliveries.extend(rows);
-        }
-        for i in deliveries {
+            .cloned()
+            .unwrap_or_default();
+        let issue = Number::new(self.config["service_issue"].as_u64().unwrap()).unwrap();
+        for i in &deliveries {
             let id = i["id"].as_str().unwrap();
-            let issue = Number::new(if i["check"] == "fleet_thread" {
-                i["spec"].as_u64().unwrap()
-            } else {
-                self.config["service_issue"].as_u64().unwrap()
-            })
-            .unwrap();
-            for slot in ["first", "second"] {
-                let saved = &i["tries"][slot];
-                if saved.is_null() || !saved["comment"].is_null() {
-                    continue;
-                }
-                let Some(body) = records::frozen(
-                    &self.root,
-                    &format!("{issue}/{id}/{}/{slot}/{}", i["opened_at"], saved["at"]),
-                    &records::render(i, Some(slot))?,
-                )?
-                else {
-                    pending = true;
-                    continue;
-                };
-                match records::post(&self.root, &self.github, issue, &body, deadline) {
-                    Ok(comment) => {
-                        self.patch(id, |v| v["tries"][slot]["comment"] = json!(comment))?
-                    }
-                    Err(_) => pending = true,
-                }
-            }
             if i["needs_you"].is_null() {
                 continue;
             }
@@ -540,7 +264,7 @@ impl Health {
             if !matches!(report,Ok(ref report) if matches!(report.status,Status::Queued|Status::Accepted))
             {
                 pending = true;
-            } else if i["check"] == "watchdog" {
+            } else {
                 self.change(|v| {
                     v["watchdog_deliveries"]
                         .as_array_mut()

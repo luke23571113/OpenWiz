@@ -1,0 +1,36 @@
+# WRD5 (#883) red: python3 -I tools/war-room/test_publish.py before publish.py publishes the site (one war-room.html only).
+# Lines cut at 200 characters.
+ERROR: test_a_failed_child_page_publishes_nothing_and_keeps_the_previous_site (__main__.Publish.test_a_failed_child_page_publishes_nothing_and_keeps_the_previous_site)
+subprocess.CalledProcessError: Command '['git', '-C', '/tmp/war-room-publish-p69pnr0h/origin.git', 'show', 'refs/heads/war-room:war-room-cost.html']' returned non-zero exit status 128.
+ERROR: test_a_link_or_odd_mode_on_the_branch_publishes_nothing (__main__.Publish.test_a_link_or_odd_mode_on_the_branch_publishes_nothing) [war-room-health.html] (change='link')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-ag0326m5/link/war-room-health.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [token] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [thread id] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [bearer credential] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [email] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [private key] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [home path] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [cloud id] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) [quoted decision] (target='war-room-cost.html')
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-x7avi4_1/tree/war-room-cost.html'
+ERROR: test_the_first_site_publication_replaces_a_one_page_branch (__main__.Publish.test_the_first_site_publication_replaces_a_one_page_branch)
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/war-room-publish-acy7e1j5/one-page/war-room-cost.html'
+FAIL: test_consecutive_ticks_carry_history_forward (__main__.Publish.test_consecutive_ticks_carry_history_forward)
+AssertionError: Lists differ: ['REA[88 chars]room-phone.png', 'war-room.html', 'war-room.png'] != ['REA[88 chars]room-cost.html', 'war-room-health.html', 'war-[116 chars]png']
+FAIL: test_five_minute_collection_survives_hourly_publication (__main__.Publish.test_five_minute_collection_survives_hourly_publication)
+AssertionError: Lists differ: ['REA[458 chars]room-phone.png', 'war-room.html', 'war-room.png'] != ['REA[458 chars]room-cost.html', 'war-room-health.html', 'war-[116 chars]png']
+FAIL: test_preview_draws_and_publishes_nothing (__main__.Publish.test_preview_draws_and_publishes_nothing)
+AssertionError: Lists differ: ['REA[14 chars]room-phone.png', 'war-room.html', 'war-room.png'] != ['REA[14 chars]room-cost.html', 'war-room-health.html', 'war-[116 chars]png']
+FAIL: test_publish_sh_runs_its_tests_first (__main__.Publish.test_publish_sh_runs_its_tests_first)
+AssertionError: Lists differ: ['REA[14 chars]room-phone.png', 'war-room.html', 'war-room.png'] != ['REA[14 chars]room-cost.html', 'war-room-health.html', 'war-[116 chars]png']
+FAIL: test_publish_writes_only_the_war_room_branch (__main__.Publish.test_publish_writes_only_the_war_room_branch)
+AssertionError: Lists differ: ['REA[51 chars]room-phone.png', 'war-room.html', 'war-room.png'] != ['REA[51 chars]room-cost.html', 'war-room-health.html', 'war-[116 chars]png']
+Ran 16 tests in 14.621s
+FAILED (failures=5, errors=11)

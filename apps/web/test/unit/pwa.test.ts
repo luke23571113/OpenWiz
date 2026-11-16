@@ -16,20 +16,15 @@
 //   worker; a write made offline fails and is never queued, retried or
 //   replayed once the page is back online; online, a write passes the worker
 //   untouched, exactly once;
-// - P6: the worker listens only for install, activate, fetch and, for #2035,
-//   push and notificationclick (no sync, message or background fetch), and the
-//   registration script touches nothing but the worker;
+// - P6: the worker listens only for install, activate and fetch (no push,
+//   notificationclick, sync, message or background fetch; push notifications
+//   are retired, 0.0.17 ER4), and the registration script touches nothing but
+//   the worker;
 // - P7 (#1301 R1): when storing a shell file fails (storage full or
 //   unavailable), the worker still serves the answer the network gave, never
 //   an older cached copy and never a failure;
 // - P8 (#1301 R3): when reading the cache fails, the worker treats it as a
 //   miss and serves the shell file from the network, fetched once;
-// - P9 (#2035, PA4): a push shows one generic notification only for the exact
-//   minimal payload; any other payload is ignored, with no fetch, cache or
-//   storage use;
-// - P10 (#2035, PA4): a tap only navigates to this origin's
-//   `/#notification=<token>`; a malformed tap opens nothing and nothing is
-//   fetched, answered or replayed.
 //
 // Every await of this file comes before its first test, or inside one.
 
@@ -274,11 +269,10 @@ test('P5: offline the shell opens, no API answer comes from the worker, and no w
 
 // ── P6: the worker's and the registration's source ──
 
-test('P6: the worker listens only for install, activate, fetch, push and notificationclick, and the registration only registers /sw.js', () => {
+test('P6: the worker listens only for install, activate and fetch, and the registration only registers /sw.js', () => {
   const worker = readOut('sw.js').toString('utf8');
   const events = [...worker.matchAll(/addEventListener\(\s*'([a-z]+)'/g)].map((m) => m[1]).sort();
-  assert.deepEqual(events, ['activate', 'fetch', 'install', 'notificationclick', 'push']);
-  // #2035: the notification events only show and open; P9 and P10 prove what they do.
+  assert.deepEqual(events, ['activate', 'fetch', 'install']);
   for (const banned of [/\bonsync\b|'sync'|periodicsync|backgroundfetch/i, /pushsubscriptionchange|pushManager|subscribe\(/i, /postMessage|'message'|BroadcastChannel/, /indexedDB|localStorage|importScripts/]) {
     assert.doesNotMatch(worker, banned);
   }
@@ -360,88 +354,4 @@ test('P8: when reading the cache fails, the worker fetches the shell file once a
     { body: 'fresh /fonts/Geist-var.woff2', fetches: 1 },
     { body: 'fresh /icons/icon-192.png', fetches: 1 },
   ]);
-});
-
-// ── P9, P10: notification receipt and tap (#2035) ──
-
-const ORIGIN = 'https://openwiz.example.invalid';
-const TOKEN = 'a'.repeat(63) + '1';
-const exact = (token: string) => `{"title":"OpenWiz needs your attention","target_token":"${token}"}`;
-type Effects = { shown: { title: string; options: Record<string, unknown> }[]; opened: string[]; navigated: string[]; focused: number; fetches: number; cache: number };
-
-/** Runs public/sw.js with fakes that record every effect a notification event could have. */
-function worker(windows: { url: string }[] = []): { fire: (type: string, event: Record<string, unknown>) => Promise<void>; effects: Effects } {
-  const listeners = new Map<string, (event: unknown) => void>();
-  const effects: Effects = { shown: [], opened: [], navigated: [], focused: 0, fetches: 0, cache: 0 };
-  const touched = () => { effects.cache++; return Promise.reject(new Error('cache untouched by notifications')); };
-  const clients = windows.map((w) => ({ ...w, focus: async () => { effects.focused++; return clients[0]; }, navigate: async (url: string) => { effects.navigated.push(url); return clients[0]; } }));
-  const context = {
-    URL,
-    self: {
-      location: { origin: ORIGIN },
-      addEventListener: (type: string, fn: (event: unknown) => void) => listeners.set(type, fn),
-      registration: { showNotification: async (title: string, options: Record<string, unknown>) => { effects.shown.push({ title, options }); } },
-      clients: { matchAll: async () => clients, openWindow: async (url: string) => { effects.opened.push(url); return null; }, claim: async () => {} },
-    },
-    fetch: async () => { effects.fetches++; throw new Error('no fetch from a notification event'); },
-    caches: { open: touched, match: touched, keys: touched, delete: touched },
-  };
-  runInNewContext(readFileSync(join(PUBLIC, 'sw.js'), 'utf8'), context);
-  return {
-    effects,
-    fire: async (type, event) => {
-      const fn = listeners.get(type);
-      assert.ok(fn, `the worker listens for ${type}`);
-      const waits: Promise<unknown>[] = [];
-      fn({ ...event, waitUntil: (p: Promise<unknown>) => { waits.push(p); } });
-      await Promise.all(waits);
-    },
-  };
-}
-const push = (text: string | null) => ({ data: text === null ? null : { text: () => text } });
-const tap = (data: unknown) => {
-  let closed = 0;
-  return { event: { notification: { data, close: () => { closed++; } } }, closed: () => closed };
-};
-
-test('P9: a push shows one generic notification only for the exact minimal payload, and ignores every other payload', async () => {
-  const w = worker();
-  await w.fire('push', push(exact(TOKEN)));
-  assert.deepEqual(w.effects.shown.map((s) => s.title), ['OpenWiz needs your attention']);
-  const options = w.effects.shown[0]?.options ?? {};
-  assert.deepEqual(JSON.parse(JSON.stringify(options['data'])), { token: TOKEN }, 'only the opaque token is kept, for the tap');
-  assert.equal(options['body'], undefined, 'no wording beyond the generic title');
-  const refused = [
-    null, '', 'not json', exact(TOKEN.toUpperCase()), exact(TOKEN.slice(1)), exact(`${TOKEN}0`),
-    `{"target_token":"${TOKEN}","title":"OpenWiz needs your attention"}`,
-    `{"title":"Approve release now","target_token":"${TOKEN}"}`,
-    `{"title":"OpenWiz needs your attention","target_token":"${TOKEN}","url":"https://evil.example/"}`,
-    `{"title":"OpenWiz needs your attention","target_token":"${TOKEN}","target_token":"${'b'.repeat(64)}"}`,
-    ` ${exact(TOKEN)}`, `[${exact(TOKEN)}]`,
-  ];
-  for (const text of refused) await w.fire('push', push(text));
-  assert.equal(w.effects.shown.length, 1, 'malformed or untrusted payloads show nothing');
-  assert.deepEqual([w.effects.fetches, w.effects.cache, w.effects.opened.length, w.effects.navigated.length], [0, 0, 0, 0], 'receipt fetches, caches, opens and answers nothing');
-});
-
-test('P10: a tap opens only this origin\'s /#notification=<token>, and a malformed tap opens nothing', async () => {
-  const want = `${ORIGIN}/#notification=${TOKEN}`;
-  // No open window: one new window at the bound fragment.
-  const fresh = worker();
-  const t1 = tap({ token: TOKEN });
-  await fresh.fire('notificationclick', t1.event);
-  assert.deepEqual([fresh.effects.opened, fresh.effects.navigated, t1.closed()], [[want], [], 1]);
-  // An open app window on this origin is focused and navigated; another origin's window never is.
-  const open = worker([{ url: 'https://other.example.invalid/' }, { url: `${ORIGIN}/` }]);
-  await open.fire('notificationclick', tap({ token: TOKEN }).event);
-  assert.deepEqual([open.effects.navigated, open.effects.focused, open.effects.opened], [[want], 1, []]);
-  // Untrusted tap data: a URL, path, origin or wrong token opens nothing.
-  const bad = worker([{ url: `${ORIGIN}/` }]);
-  for (const data of [null, {}, { token: TOKEN.toUpperCase() }, { token: `${TOKEN}/../x` }, { token: TOKEN, url: 'https://evil.example/' }, { url: 'https://evil.example/' }, 'https://evil.example/', { token: 7 }]) {
-    const t = tap(data);
-    await bad.fire('notificationclick', t.event);
-    assert.equal(t.closed(), 1, 'the notification is closed');
-  }
-  assert.deepEqual([bad.effects.opened, bad.effects.navigated, bad.effects.focused], [[], [], 0]);
-  for (const w of [fresh, open, bad]) assert.deepEqual([w.effects.fetches, w.effects.cache, w.effects.shown.length], [0, 0, 0], 'a tap fetches, caches and answers nothing');
 });

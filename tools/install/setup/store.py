@@ -35,6 +35,11 @@ SETTING = re.compile(r'[A-Za-z0-9_.:/-]{1,128}')
 # C-S1 (#2865): a credential shape at a word start in a harness, model or effort
 # refuses it; setup.rs's `credential_shaped` mirrors this list exactly.
 CREDENTIAL = re.compile(r'(?<![A-Za-z0-9])(?:gh[pousr]_|github_pat_|sk-|xox[abprs]-|AKIA|eyJ)')
+# #633 (setup.v1's 0.0.16 expansion): the owner's identity choice. Only the
+# owner's explicit App skip selects the personal login, and names it.
+LOGIN = re.compile(r'[A-Za-z0-9-]{1,39}')
+SELECTED = ('app', 'personal_login', 'unselected')
+APP_CHOICES = ('create', 'reuse', 'skip', 'undecided')
 
 
 class Refused(Exception):
@@ -85,6 +90,56 @@ def check_project(value):
             re.fullmatch(r'0\.[0-9]{1,10}\.[0-9]{1,10} [0-9a-f]{40}', value['runtime'])), 'invalid runtime pin')
 
 
+def check_identity(value):
+    """#633: the saved identity choice for one repository. `personal_login`
+    exactly when the owner skipped the App, naming the acting login; it never
+    holds a credential, and an App failure has no way to write it."""
+    if value is None:
+        return
+    require(type(value) is dict and set(value) == {'selected', 'app_choice', 'acting_login', 'repository'},
+            'invalid identity choice')
+    require(value['selected'] in SELECTED and value['app_choice'] in APP_CHOICES, 'invalid identity choice')
+    require(isinstance(value['repository'], str) and REPOSITORY.fullmatch(value['repository'])
+            and value['repository'].split('/')[1] not in ('.', '..'), 'invalid repository')
+    skipped = value['selected'] == 'personal_login'
+    require(skipped == (value['app_choice'] == 'skip'), 'only an explicit App skip selects the personal login')
+    require((isinstance(value['acting_login'], str) and LOGIN.fullmatch(value['acting_login']) is not None)
+            if skipped else value['acting_login'] is None, 'invalid acting login')
+
+
+BRAIN = {'location', 'code_repository', 'code_visibility', 'brain_repository', 'brain_visibility',
+         'visibility_basis', 'folder', 'setting', 'decision_repositories'}
+
+
+def check_brain(value):
+    """#635: the optional brain reference (setup-onboard.v1's `brain`). Absent or
+    null is an existing project: no brain is inferred. Placement follows the
+    positively read visibility; a companion is never the code repository."""
+    if value is None:
+        return
+    require(type(value) is dict and set(value) == BRAIN, 'invalid brain reference')
+    code, home = value['code_repository'], value['brain_repository']
+    for name in (code, home):
+        require(isinstance(name, str) and REPOSITORY.fullmatch(name) and name.split('/')[1] not in ('.', '..'),
+                'invalid brain repository')
+    require(value['folder'] == '.openwiz/brain' and value['setting'] == 'brain_location'
+            and value['visibility_basis'] == 'github_repository_read'
+            and value['brain_visibility'] == {'known': 'private'}, 'invalid brain reference')
+    pair = value['decision_repositories']
+    if value['location'] == 'in_repository':
+        require(value['code_visibility'] == 'private' and code.lower() == home.lower() and pair is None,
+                'an in-repository brain must be the private code repository')
+    else:
+        require(value['location'] == 'companion' and value['code_visibility'] == 'public'
+                and code.lower() != home.lower(), 'a companion brain must be a separate repository for public code')
+        role = lambda r: type(r) is dict and set(r) == {'owner', 'name'} and all(isinstance(v, str) for v in r.values())
+        require(type(pair) is dict and set(pair) == {'public', 'private'} and role(pair['public'])
+                and role(pair['private'])
+                and f"{pair['public']['owner']}/{pair['public']['name']}".lower() == code.lower()
+                and f"{pair['private']['owner']}/{pair['private']['name']}".lower() == home.lower(),
+                'the decisions pair must match the companion brain')
+
+
 def check_operation(value):
     require(type(value) is dict and set(value) == {
         'operation_id', 'kind', 'phase', 'fingerprint', 'effects', 'reason'}, 'invalid operation')
@@ -100,7 +155,8 @@ def check_operation(value):
 
 def validate(value):
     required = {'schema', 'revision', 'checks', 'project', 'app', 'observations', 'operations'}
-    require(type(value) is dict and required <= set(value) <= required | {'engine'}, 'invalid setup state')
+    require(type(value) is dict and required <= set(value) <= required | {'engine', 'identity', 'brain'},
+            'invalid setup state')
     require(value['schema'] == SCHEMA, 'unsupported setup state')
     require(type(value['revision']) is int and 0 <= value['revision'] < 2 ** 53, 'invalid revision')
     checks = value['checks']
@@ -108,6 +164,7 @@ def validate(value):
             all(type(checks[k]) is int for k in checks) and
             0 <= checks['committed'] <= checks['started'] < 2 ** 53, 'invalid check generations')
     check_project(value['project'])
+    check_identity(value.get('identity'))
     app = value['app']
     require(app is None or (type(app) is dict and set(app) == {'app_id', 'installation_id'} and
             positive(app['app_id']) and (app['installation_id'] is None or positive(app['installation_id']))),
@@ -124,6 +181,7 @@ def validate(value):
     for operation in operations:
         check_operation(operation)
     require(len({o['operation_id'] for o in operations}) == len(operations), 'duplicate operation id')
+    check_brain(value.get('brain'))
     engine = value.get('engine')
     if engine is not None:
         require(type(engine) is dict and set(engine) == {'location','revision','runtime','operation_id','fingerprint','cost'}, 'invalid engine')

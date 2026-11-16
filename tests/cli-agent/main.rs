@@ -23,6 +23,8 @@ mod schema;
 mod cli_ui;
 
 mod github_token;
+mod init;
+mod loop_contract;
 mod process;
 mod results;
 mod review;
@@ -143,6 +145,10 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("fleet.due", "--github-only --json"),
         ("loop.off", "--json"),
         ("loop.on", "--json"),
+        ("loop.validate", "--catalog --json --help"),
+        ("loop.export", "--project --out --json --help"),
+        ("loop.plan", "--project --adopt --json --help"),
+        ("loop.apply", "--project --from --adopt --json --help"),
         ("ui", "--port --allowed-host --json --help"),
         ("engine.preview", "--json --state-dir --location"),
         (
@@ -151,6 +157,11 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ),
         ("engine.status", "--json --state-dir"),
         ("github.token", "--repository --read --help"),
+        ("init", "--repository --state-dir --json"),
+        (
+            "init.apply",
+            "--repository --state-dir --json --yes --operation",
+        ),
     ];
     let commands = catalogue["commands"].as_array().unwrap();
     assert_eq!(commands.len(), matrix.len());
@@ -242,7 +253,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
                 "loop" | "models" | "fleets" => {}
                 // The packaged Python parser is exercised by the existing
                 // package-proof stage after CI provisions Python.
-                "engine" => {}
+                "engine" | "init" => {}
                 "github" => drop(openwiz_cli::github_token::parse(&args[1..]).unwrap()),
                 other => panic!("unexpected shipped command {other}"),
             }
@@ -482,8 +493,10 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             "ui" => "ui",
             // These three parsers are private; their flags are checked through
             // real processes below, using only trap sources or absent config.
-            "fleets" | "models" | "loop.off" | "loop.on" => continue,
+            "fleets" | "models" | "loop.off" | "loop.on" | "loop.validate" | "loop.export"
+            | "loop.plan" | "loop.apply" => continue,
             "engine.preview" | "engine.activate" | "engine.status" => continue,
+            "init" | "init.apply" => continue,
             "github.token" => {
                 for flag in command["flags"].as_array().unwrap() {
                     let mut args = vec!["token", "--repository", "synthetic-owner/work"];
@@ -669,11 +682,17 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "fleet.due",
             "loop.off",
             "loop.on",
+            "loop.validate",
+            "loop.export",
+            "loop.plan",
+            "loop.apply",
             "ui",
             "engine.preview",
             "engine.activate",
             "engine.status",
-            "github.token"
+            "github.token",
+            "init",
+            "init.apply"
         ]
     );
     assert!(

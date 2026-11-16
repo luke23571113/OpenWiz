@@ -592,5 +592,180 @@ class Charts(unittest.TestCase):
         self.assertEqual(dom.count('<svg'), len(self.bundle['figures']))
         self.assertEqual(dom.count('<table class="values"'), len(self.bundle['figures']))
 
+
+# --- MT4 (#823): PRs an hour against the baseline, from a collector snapshot ------------
+
+COLLECTOR = HERE / 'fixtures' / 'collector'
+HEADLINE = 'body-ci-bench-headline'
+SNAPSHOT_AT = '2030-03-01T12:30:00Z'
+# ci-bench's synthetic baseline (tools/ci-bench/fixtures/baseline/README.md), worked there by hand:
+# 3 robots, 3 successful code runs, 970 s of robot time: 5.3889 robot-minutes a run and
+# 3 × 60 ÷ (970 ÷ 180) = 33.4021 PRs an hour of capacity; 4 PRs merged in 3 hours, 1.3333 an hour.
+# `bench.py chart` prints them as 33.40, 5.39 and 1.33 in bench.md (docs/evidence/823/ci-bench-parity.log).
+CI_BENCH = {'robots': 3, 'code_runs': 3, 'robot_minutes_per_code_run': 5.3889, 'capacity_prs_per_hour': 33.4021,
+            'merged_prs': 4, 'merged_per_hour': 1.3333}
+
+
+def snapshot(name='snapshot.json', change=None):
+    doc = json.loads((COLLECTOR / name).read_text(encoding='utf-8'))
+    if change is not None:
+        change(doc['factory']['prs_per_hour'])
+    return doc
+
+
+def rows_by_key(fig):
+    return {r['key']: r for r in fig['rows']}
+
+
+def visible_text(svg):
+    """The words drawn on the marks and axes, without their hover titles."""
+    tree = ET.fromstring(svg)
+    return [(t.text or '').strip() for t in tree.iter(SVG + 'text')]
+
+
+def mark_words(svg):
+    """Only the words Plot's text marks draw (value labels, Unknown), not axis ticks."""
+    tree = ET.fromstring(svg)
+    return [(t.text or '').strip() for g in tree.iter(SVG + 'g') if g.get('aria-label') == 'text'
+            for t in g.iter(SVG + 'text')]
+
+
+class PrsPerHour(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix='war-room-prs-per-hour-'))
+        cls.world, cls.natives = full_world(cls.tmp / 'full')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def draw(self, doc, name='snapshot.json', history_root=None):
+        path = self.tmp / name
+        path.write_text(json.dumps(doc), encoding='utf-8')
+        bundle = build.build(history_root or self.tmp / 'no-history', at=SNAPSHOT_AT, snapshot=path)
+        ids = [f['id'] for f in bundle['figures']]
+        self.assertIn(HEADLINE, ids)
+        return bundle, figure(bundle, HEADLINE)
+
+    def test_the_snapshot_is_drawn_against_its_baseline_with_a_label_on_every_mark(self):
+        # catches: the baseline dropped or drawn as the window, capacity and merged swapped,
+        # values recomputed instead of read from the snapshot, or a mark without its value word.
+        _, fig = self.draw(snapshot())
+        rows = rows_by_key(fig)
+        self.assertEqual({k: (r['y'], r['state']) for k, r in rows.items()},
+                         {'baseline:capacity': (18.0, 'known'), 'baseline:merged': (0.5, 'known'),
+                          'window:capacity': (15.0, 'known'), 'window:merged': (0.083333, 'known')})
+        self.assertEqual(fig['domain'], ['baseline:capacity', 'baseline:merged', 'window:capacity', 'window:merged'])
+        self.assertEqual(fig['window'], {'since': '2030-02-28T00:00:00Z', 'until': '2030-03-01T00:00:00Z', 'timezone': 'UTC'})
+        self.assertIn('synthetic baseline', rows['baseline:capacity']['label'])
+        self.assertIn('18.00 PRs an hour on 3 robots', rows['baseline:capacity']['label'])
+        self.assertIn('15.00 PRs an hour on 3 robots, 4 successful code runs at 12.00 robot-minutes',
+                      rows['window:capacity']['label'])
+        self.assertIn('0.08 PRs an hour (2 PRs)', rows['window:merged']['label'])
+        self.assertEqual(titles(fig['svg']), Counter(r['label'] for r in fig['rows']))
+        self.assertEqual(sorted(mark_words(fig['svg'])), ['0.1', '0.5', '15', '18'])
+        self.assertEqual(fig['coverage'], {'observed': 4, 'expected': 4, 'missing': []})
+        self.assertEqual([(s['metric'], s['sha256'][:4], s['samples']) for s in fig['sources']],
+                         [('prs_per_hour.baseline', 'aaaa', ['2030-03-01T12:05:00Z']),
+                          ('prs_per_hour', 'aaaa', ['2030-03-01T12:05:00Z'])])
+
+    def test_an_unknown_or_partial_day_stays_unknown_or_hollow_never_zero(self):
+        # catches: an unavailable fact or a missing baseline drawn as 0 PRs an hour, a partial
+        # window drawn as complete, or a prerequisite lost from the chart.
+        _, unknown = self.draw(snapshot('snapshot-unavailable.json'))
+        self.assertEqual({r['key']: (r['y'], r['state']) for r in unknown['rows']},
+                         {k: (None, 'unavailable') for k in
+                          ('baseline:capacity', 'baseline:merged', 'window:capacity', 'window:merged')})
+        self.assertIn('no completed CI window was read', rows_by_key(unknown)['window:capacity']['label'])
+        self.assertIn('PRs per hour unavailable: no completed CI window was read.', unknown['gaps'])
+        self.assertEqual(unknown['coverage']['observed'], 0)
+        self.assertEqual(unknown['window'], None)
+        self.assertEqual(mark_words(unknown['svg']), ['Unknown'] * 4)
+        # No numeric axis pretends to a scale: Unknown is never read as zero.
+        self.assertFalse([w for w in visible_text(unknown['svg']) if any(c.isdigit() for c in w)])
+
+        def partial(fact):
+            fact['state'] = 'partial'
+            fact['prerequisites'] = ['Run 7003 job timing unavailable: 3 of 4 code runs timed.']
+            fact['value']['baseline'] = None
+        _, part = self.draw(snapshot(change=partial))
+        rows = rows_by_key(part)
+        self.assertEqual((rows['window:capacity']['y'], rows['window:capacity']['state']), (15.0, 'partial'))
+        self.assertEqual((rows['window:merged']['y'], rows['window:merged']['state']), (0.083333, 'partial'))
+        self.assertIn('3 of 4 code runs timed', rows['window:capacity']['label'])
+        self.assertEqual([(rows[k]['y'], rows[k]['state']) for k in ('baseline:capacity', 'baseline:merged')],
+                         [(None, 'unavailable')] * 2)
+        self.assertIn('no reviewed baseline', rows['baseline:capacity']['label'])
+        self.assertEqual(sorted(mark_words(part['svg'])), ['0.1 (partial)', '15 (partial)', 'Unknown', 'Unknown'])
+        bars = [r for g in ET.fromstring(part['svg']).iter(SVG + 'g') if g.get('aria-label') == 'bar'
+                for r in g.iter(SVG + 'rect')]
+        self.assertEqual(len(bars), 2)
+        self.assertEqual([(b.get('fill'), b.find(SVG + 'title').text == rows[k]['label']) for b, k in
+                          zip(bars, ('window:capacity', 'window:merged'))], [('none', True), ('none', True)])
+
+    def test_its_numbers_match_ci_bench_on_the_same_data(self):
+        # catches: the chart rounding, recomputing or relabelling ci-bench's headline, so the
+        # war room and ci-bench disagree on the same synthetic baseline.
+        def bench(fact):
+            fact['value'].update(CI_BENCH)
+            fact['value']['baseline'].update({k: CI_BENCH[k] for k in (
+                'robots', 'robot_minutes_per_code_run', 'capacity_prs_per_hour', 'merged_per_hour')})
+        _, fig = self.draw(snapshot(change=bench))
+        rows = rows_by_key(fig)
+        self.assertEqual([rows[k]['y'] for k in fig['domain']], [33.4021, 1.3333, 33.4021, 1.3333])
+        for side in ('baseline', 'window'):
+            with self.subTest(side):
+                self.assertIn('33.40 PRs an hour on 3 robots', rows[side + ':capacity']['label'])
+                self.assertIn('5.39 robot-minutes', rows[side + ':capacity']['label'])
+                self.assertIn('1.33 PRs an hour', rows[side + ':merged']['label'])
+        self.assertEqual(sorted(mark_words(fig['svg'])), ['1.3', '1.3', '33.4', '33.4'])
+
+    def test_a_bad_or_late_snapshot_refuses_the_whole_build(self):
+        # catches: a malformed snapshot, one collected after the build, or a fact whose state
+        # contradicts its value, drawn anyway.
+        def late(doc):
+            doc['collected_at'] = '2030-03-01T13:00:00Z'
+
+        def extra(doc):
+            doc['factory']['prs_per_hour']['value']['guess'] = 1
+
+        def contradiction(doc):
+            doc['factory']['prs_per_hour']['value'] = None
+        def unexplained(doc):
+            doc['factory']['prs_per_hour']['state'] = 'partial'
+        for name, change in (('late', late), ('extra', extra), ('contradiction', contradiction),
+                             ('unexplained', unexplained)):
+            with self.subTest(name):
+                doc = snapshot()
+                change(doc)
+                path = self.tmp / (name + '.json')
+                path.write_text(json.dumps(doc), encoding='utf-8')
+                with self.assertRaises(ValueError):
+                    build.build(self.tmp / 'no-history', at=SNAPSHOT_AT, snapshot=path, out=self.tmp / 'refused')
+                self.assertFalse((self.tmp / 'refused').exists())
+
+    def test_the_page_shows_it_first_in_the_ci_bench_figure_with_its_table(self):
+        # catches: the chart missing from the page, claimed by no figure or by the wrong one,
+        # or shown without the values table behind it.
+        bundle, fig = self.draw(snapshot(), history_root=self.world.history)
+        html = page.render(history.latest(self.world.history), charts=bundle)
+        start = html.index('id="fig-10"')
+        section = html[start:html.index('</figure>', start)]
+        self.assertIn('id="figure-%s"' % HEADLINE, section)
+        self.assertLess(section.index(HEADLINE), section.index('id="figure-body-ci-bench-'
+                                                                + 'prs-per-hour"'))
+        self.assertIn(fig['svg'], section)
+        self.assertIn('2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC', section)
+        for r in fig['rows']:
+            self.assertIn('<td>%s</td>' % page.esc(r['label']), section)
+        # An unknown snapshot names its missing window instead of a period it never had.
+        bundle, _ = self.draw(snapshot('snapshot-unavailable.json'), 'unknown.json', history_root=self.world.history)
+        html = page.render(history.latest(self.world.history), charts=bundle)
+        start = html.index('id="figure-%s"' % HEADLINE)
+        meta = html[html.index('<p class="meta">', start):html.index('</p>', html.index('<p class="meta">', start))]
+        self.assertIn('prs per hour · no completed window read · coverage 0 of 4', meta)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -84,11 +85,12 @@ class PageDesign(unittest.TestCase):
         # catches: cards out of the spec's order, a card after the body, or a headline read
         # from the wrong series or day (the packet's literals: 11 ready / 7 building on
         # 01-13, 39 merges, median 8 / p90 17.5 min, 12.5 min per run, the last 8 h span 40).
-        cards = between(self.html, 'aria-label="Health and throughput"', '<div id="body">')
+        cards = between(self.html, 'aria-label="Health and speed"', '<div id="body">')
         self.assertEqual(re.findall(r'id="fig-(\w+)"', cards), CARDS)
         self.assertLess(self.html.index('id="fig-00e"'), self.html.index('id="fig-01"'))
-        values = {n: re.search(r'<p class="value">([^<]*)</p><p class="stamp">([^<]*)</p>', figure_html(self.html, n)).groups()
-                  for n in CARDS}
+        # WRD5: the value on the card's face, its day behind the card's disclosure.
+        values = {n: re.search(r'<p class="value">([^<]*)</p>.*<p class="detail stamp">Value as of: ([^<]*)</p>',
+                               figure_html(self.html, n), re.S).groups() for n in CARDS}
         self.assertEqual(values, {
             '00a': ('11 / 7', 'ready / building · 2030-01-13'), '00b': ('39 / day', '2030-01-13'),
             '00c': ('8 / 17.5 min', 'median / p90 · 2030-01-13'), '00d': ('12.5 min/run', '2030-01-13'),
@@ -147,7 +149,9 @@ class PageDesign(unittest.TestCase):
         for f in unavailable:
             fig = figure_html(self.html, f['figure'])
             self.assertIn('class="fig unavailable"', fig)
-            self.assertIn(page.esc(f['prerequisite']), outside_details(fig))
+            self.assertIn('<b>Unavailable</b>', outside_details(fig))
+            # WRD5: one short prerequisite line on the face; a longer one behind the figure's disclosure.
+            self.assertIn(page.esc(f['prerequisite']), outside_details(fig) if len(f['prerequisite']) <= page.SHORT else fig)
         bare = page.render(suite.compose('2030-01-14T10:00:00Z'))
         for number in CARDS + ['%02d' % n for n in range(1, 25)]:
             self.assertIn(f'id="fig-{number}"', bare)
@@ -159,16 +163,20 @@ class PageDesign(unittest.TestCase):
         strip = between(self.html, 'class="strip"', '</section>')
         self.assertIn('Main CI failing · Low ready stock · 1 stage limit missed', strip)
         self.assertIn('11 ready / 7 building (2030-01-13) · main CI failure · 2 CI jobs queued', strip)
-        self.assertIn('Fig. 00b: 1 of 7 days missing', strip)
-        empty = between(page.render(suite.compose('2030-01-14T10:00:00Z')), 'class="strip"', '</section>')
+        # WRD5: the strip's gaps fold into one closed disclosure under it, every one kept.
+        gaps = between(self.html, '<details class="gapsd">', '</details>')
+        self.assertIn('Fig. 00b: 1 of 7 days missing', gaps)
+        self.assertNotIn('Fig. 00b: 1 of 7 days missing', outside_details(self.html))
+        bare = page.render(suite.compose('2030-01-14T10:00:00Z'))
+        empty = between(bare, 'class="strip"', '</section>')
         self.assertNotIn('No anomaly observed', empty)
         self.assertIn('Not every signal observed', empty)
-        self.assertIn('Main CI unobserved', empty)
+        self.assertIn('Main CI unobserved', between(bare, '<details class="gapsd">', '</details>'))
 
     def test_default_and_drawn_views_keep_each_charts_qualifying_facts(self):
-        # catches: a unit, date range, coverage, missing day or gap moved into a closed
-        # disclosure or styled away in the published picture, so a chart is shown without
-        # the facts that qualify it.
+        # catches: a unit, date range, coverage, missing day or gap dropped from a figure, or styled
+        # away in the published picture, when WRD5 moved them from the face into the figure's own
+        # values-and-sources disclosure.
         drawn = publish.drawable(self.html, False)
         self.assertEqual(drawn.count('<details class="sources" open id="sources">'), 1)
         style = between(drawn, '<style>', '</style>')
@@ -176,8 +184,12 @@ class PageDesign(unittest.TestCase):
         for f in self.bundle['figures']:
             anchor = f'id="fig-{f["id"]}"' if f['id'] in CARDS else f'id="figure-{f["id"]}"'
             for view in (self.html, drawn):
-                visible = outside_details(between(view, anchor, '</figure>'))
-                meta = between(visible, '<p class="meta">', '</p>')
+                figure = between(view, anchor, '</figure>')
+                hidden = between(figure, '<details>', '</details>')
+                self.assertNotIn('class="meta"', outside_details(figure))
+                # Each chart's facts lead its own values table inside the disclosure.
+                before = hidden[:hidden.index(f'{page.esc(f["title"])}: plotted values')]
+                meta = between(before[before.rindex('<p class="meta">'):], '<p class="meta">', '</p>')
                 self.assertIn(page._unit(f), meta)
                 self.assertIn(f"coverage {f['coverage']['observed']} of", meta)
                 for day in f['coverage']['missing']:
@@ -186,10 +198,10 @@ class PageDesign(unittest.TestCase):
                     self.assertIn(page.esc(gap), meta)
         self.assertIn('2030-01-07 to 2030-01-13 PST', figure_html(self.html, '00b'))
         # #759 R3: a body chart has no chart-level window, so its line names its values' own periods.
-        rework = between(outside_details(between(self.html, 'id="figure-body-rework-count"', '</figure>')), '<p class="meta">', '</p>')
+        rework = between(between(self.html, 'id="fig-02"', '</figure>'), '<p class="meta">', '</p>')
         self.assertIn('2030-01-07 to 2030-01-13 PST', rework)
         self.assertNotIn('no window', rework)
-        queue = between(outside_details(between(self.html, 'id="figure-body-ci-queue-count"', '</figure>')), '<p class="meta">', '</p>')
+        queue = between(between(self.html, 'id="fig-09"', '</figure>'), '<p class="meta">', '</p>')
         self.assertIn('read at 2030-01-14T09:50:20Z', queue)
 
     def test_no_cockpit_panel_controls_or_request_wording(self):
@@ -288,6 +300,62 @@ class PageDesign(unittest.TestCase):
                 oswald = [t for t in v['text'] if t['family'].startswith('"Oswald WR"')]
                 self.assertIn('h1', {t['tag'] for t in oswald})
                 self.assertEqual([t['sample'] for t in oswald if not t['heading']], [])
+
+
+
+class EdgePage(unittest.TestCase):
+    """#631 R and the two granted renderer fixes, on the synthetic edge packet: no board history and no
+    CI bench (cards 00a-00d have no numeric value) and dense hourly credit spans for 00e."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix='war-room-edge-'))
+        cls.html, cls.bundle = packet.render_edge(cls.tmp)
+        out = cls.tmp / 'probe'
+        out.mkdir()
+        run = subprocess.run(['node', str(DESIGN / 'probe.mjs'), publish.chromium(), str(cls.tmp / 'page.html'), str(out)],
+                             capture_output=True, text=True, timeout=180)
+        assert run.returncode == 0, run.stderr
+        cls.probe = json.loads((out / 'probe.json').read_text(encoding='utf-8'))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def card(self, v, fid):
+        return next(f for f in v['figures'] if f['id'] == 'fig-' + fid)
+
+    def test_a_long_card_value_never_squeezes_the_card_title(self):
+        # catches: on a 390 px phone, a long supported value ("Unknown / Unknown") taking the title row
+        # and squeezing "Fig. 00a / Ready & building" into a narrow five-line stack (#631 R).
+        self.assertIn('Unknown / Unknown', self.html)
+        for v in self.probe['viewports']:
+            with self.subTest(v['name']):
+                card = self.card(v, '00a')
+                self.assertLessEqual(card['title']['lines'], 2)
+                self.assertGreaterEqual(card['title']['w'], 0.5 * card['w'])
+
+    def test_a_headline_chart_without_values_draws_no_numeric_scale(self):
+        # catches: a headline chart with no numeric value drawing a numeric axis, grid or a stray
+        # "0.000000" tick, as if Unknown had a scale (granted renderer fix, #631 comment 6903517509).
+        empty = [f for f in self.bundle['figures'] if f['id'] in CARDS and all(r['y'] is None for r in f['rows'])]
+        self.assertEqual([f['id'] for f in empty], ['00a', '00b', '00c', '00d'])
+        ns = '{http://www.w3.org/2000/svg}'
+        for f in empty:
+            with self.subTest(f['id']):
+                axis = 'x' if f['kind'] in ('bars', 'distribution') else 'y'
+                groups = [g.get('aria-label') or '' for g in ET.fromstring(f['svg']).iter(ns + 'g')]
+                self.assertEqual([g for g in groups if g.startswith((axis + '-axis', axis + '-grid'))], [])
+                self.assertNotIn('0.000000', f['svg'])
+
+    def test_dense_credit_spans_keep_headline_text_apart_and_inside(self):
+        # catches: 00e value labels for short adjacent spans drawn over each other, the key over the
+        # axis label, and large tick labels cut off at the card's left edge (granted 00e label fix).
+        for v in self.probe['viewports']:
+            with self.subTest(v['name']):
+                chart = self.card(v, '00e')['charts'][0]
+                self.assertEqual(chart['overlaps'], [])
+                self.assertEqual(chart['clipped'], [])
 
 
 if __name__ == '__main__':
