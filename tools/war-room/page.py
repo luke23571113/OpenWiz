@@ -465,3 +465,18 @@ def render(record, charts=None):
                  'This page reloads every five minutes; only an explicit finite invocation creates a new sample.</footer>')
     parts.append('</main></body></html>')
     return ''.join(parts)
+
+
+# RED STUB (removed in the next commit): today's one page at every route.
+SHORT = 90
+ROUTES = ['', 'speed', 'health', 'cost', 'quality', 'skills']
+child = None
+
+
+def site_files(home):
+    return {r: home if not r else home[:-5] + '-' + r + '.html' for r in ROUTES}
+
+
+def site(record, charts=None):
+    html = render(record, charts)
+    return {r: html for r in ROUTES}

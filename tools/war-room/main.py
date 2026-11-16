@@ -15,7 +15,7 @@ import sources
 import suite
 
 
-def tick(at, history_root, page_path, read_providers, charts=None):
+def tick(at, history_root, page_path, read_providers, charts=None, site=None):
     """Injected virtual clock and source seam. Call once, then exit.
 
     Duplicate ticks don't sample again. Out-of-order samples are retained but
@@ -46,7 +46,12 @@ def tick(at, history_root, page_path, read_providers, charts=None):
     with os.fdopen(lock_fd, 'a') as publication_lock:
         fcntl.flock(publication_lock.fileno(), fcntl.LOCK_EX)
         latest = history.latest(history_root)
-        html = page.render(latest, charts=None if charts is None else charts(history_root))
+        bundle = None if charts is None else charts(history_root)
+        html = page.render(latest, charts=bundle)
+        if site is not None:  # RED STUB
+            Path(site).mkdir(parents=True, exist_ok=True)
+            for r, name in page.site_files('war-room.html').items():
+                (Path(site) / name).write_text(page.site(latest, bundle)[r], encoding='utf-8')
         fd, name = tempfile.mkstemp(prefix='.page-', dir=target.parent)
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as stream:
