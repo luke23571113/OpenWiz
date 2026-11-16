@@ -104,7 +104,7 @@ def build(history_root, *, at, source_root=None, selections=(), out=None, snapsh
     records = history.read_all(history_root) if (Path(history_root) / 'samples').is_dir() else []
     natives = prepare.read_natives(source_root, list(selections), at)
     extra = [] if snapshot is None else [prs_per_hour.figure(prs_per_hour.read(snapshot, at))]
-    doc = prepare.prepare(records, at, natives, [f for f in extra if f is not None])
+    doc = prepare.prepare(records, at, natives, extra)
     svgs = render(doc)
     figures = []
     for f in doc['figures']:

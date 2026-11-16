@@ -618,9 +618,16 @@ def rows_by_key(fig):
 
 
 def visible_text(svg):
-    """The words drawn on the marks (not their hover titles)."""
+    """The words drawn on the marks and axes, without their hover titles."""
     tree = ET.fromstring(svg)
-    return [''.join(t.itertext()) for t in tree.iter(SVG + 'text')]
+    return [(t.text or '').strip() for t in tree.iter(SVG + 'text')]
+
+
+def mark_words(svg):
+    """Only the words Plot's text marks draw (value labels, Unknown), not axis ticks."""
+    tree = ET.fromstring(svg)
+    return [(t.text or '').strip() for g in tree.iter(SVG + 'g') if g.get('aria-label') == 'text'
+            for t in g.iter(SVG + 'text')]
 
 
 class PrsPerHour(unittest.TestCase):
@@ -657,8 +664,7 @@ class PrsPerHour(unittest.TestCase):
                       rows['window:capacity']['label'])
         self.assertIn('0.08 PRs an hour (2 PRs)', rows['window:merged']['label'])
         self.assertEqual(titles(fig['svg']), Counter(r['label'] for r in fig['rows']))
-        self.assertEqual(sorted(w for w in visible_text(fig['svg']) if w in ('18', '0.5', '15', '0.1')),
-                         ['0.1', '0.5', '15', '18'])
+        self.assertEqual(sorted(mark_words(fig['svg'])), ['0.1', '0.5', '15', '18'])
         self.assertEqual(fig['coverage'], {'observed': 4, 'expected': 4, 'missing': []})
         self.assertEqual([(s['metric'], s['sha256'][:4], s['samples']) for s in fig['sources']],
                          [('prs_per_hour.baseline', 'aaaa', ['2030-03-01T12:05:00Z']),
@@ -675,8 +681,9 @@ class PrsPerHour(unittest.TestCase):
         self.assertIn('PRs per hour unavailable: no completed CI window was read.', unknown['gaps'])
         self.assertEqual(unknown['coverage']['observed'], 0)
         self.assertEqual(unknown['window'], None)
-        self.assertEqual(visible_text(unknown['svg']).count('Unknown'), 4)
-        self.assertNotIn('0', visible_text(unknown['svg']))
+        self.assertEqual(mark_words(unknown['svg']), ['Unknown'] * 4)
+        # No numeric axis pretends to a scale: Unknown is never read as zero.
+        self.assertFalse([w for w in visible_text(unknown['svg']) if any(c.isdigit() for c in w)])
 
         def partial(fact):
             fact['state'] = 'partial'
@@ -690,11 +697,12 @@ class PrsPerHour(unittest.TestCase):
         self.assertEqual([(rows[k]['y'], rows[k]['state']) for k in ('baseline:capacity', 'baseline:merged')],
                          [(None, 'unavailable')] * 2)
         self.assertIn('no reviewed baseline', rows['baseline:capacity']['label'])
-        drawn = visible_text(part['svg'])
-        self.assertIn('15 (partial)', drawn)
-        self.assertEqual(drawn.count('Unknown'), 2)
-        hollow = [p for p in ET.fromstring(part['svg']).iter(SVG + 'path') if p.get('fill') == 'none']
-        self.assertGreaterEqual(len(hollow), 2)
+        self.assertEqual(sorted(mark_words(part['svg'])), ['0.1 (partial)', '15 (partial)', 'Unknown', 'Unknown'])
+        bars = [r for g in ET.fromstring(part['svg']).iter(SVG + 'g') if g.get('aria-label') == 'bar'
+                for r in g.iter(SVG + 'rect')]
+        self.assertEqual(len(bars), 2)
+        self.assertEqual([(b.get('fill'), b.find(SVG + 'title').text == rows[k]['label']) for b, k in
+                          zip(bars, ('window:capacity', 'window:merged'))], [('none', True), ('none', True)])
 
     def test_its_numbers_match_ci_bench_on_the_same_data(self):
         # catches: the chart rounding, recomputing or relabelling ci-bench's headline, so the
@@ -711,7 +719,7 @@ class PrsPerHour(unittest.TestCase):
                 self.assertIn('33.40 PRs an hour on 3 robots', rows[side + ':capacity']['label'])
                 self.assertIn('5.39 robot-minutes', rows[side + ':capacity']['label'])
                 self.assertIn('1.33 PRs an hour', rows[side + ':merged']['label'])
-        self.assertEqual(sorted(w for w in visible_text(fig['svg']) if w in ('33.4', '1.3')), ['1.3', '1.3', '33.4', '33.4'])
+        self.assertEqual(sorted(mark_words(fig['svg'])), ['1.3', '1.3', '33.4', '33.4'])
 
     def test_a_bad_or_late_snapshot_refuses_the_whole_build(self):
         # catches: a malformed snapshot, one collected after the build, or a fact whose state
@@ -724,7 +732,10 @@ class PrsPerHour(unittest.TestCase):
 
         def contradiction(doc):
             doc['factory']['prs_per_hour']['value'] = None
-        for name, change in (('late', late), ('extra', extra), ('contradiction', contradiction)):
+        def unexplained(doc):
+            doc['factory']['prs_per_hour']['state'] = 'partial'
+        for name, change in (('late', late), ('extra', extra), ('contradiction', contradiction),
+                             ('unexplained', unexplained)):
             with self.subTest(name):
                 doc = snapshot()
                 change(doc)
@@ -748,6 +759,12 @@ class PrsPerHour(unittest.TestCase):
         self.assertIn('2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC', section)
         for r in fig['rows']:
             self.assertIn('<td>%s</td>' % page.esc(r['label']), section)
+        # An unknown snapshot names its missing window instead of a period it never had.
+        bundle, _ = self.draw(snapshot('snapshot-unavailable.json'), 'unknown.json', history_root=self.world.history)
+        html = page.render(history.latest(self.world.history), charts=bundle)
+        start = html.index('id="figure-%s"' % HEADLINE)
+        meta = html[html.index('<p class="meta">', start):html.index('</p>', html.index('<p class="meta">', start))]
+        self.assertIn('prs per hour · no completed window read · coverage 0 of 4', meta)
 
 
 if __name__ == '__main__':
