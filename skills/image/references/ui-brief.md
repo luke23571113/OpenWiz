@@ -17,8 +17,8 @@ Observed patterns: <what references show, without promoting them to requirements
 Rubric version: <fixed for this hill-climb stretch>
 ```
 
-For OpenWiz, an example source revision is mood-board commit
-`94b8081cd63b5f458b4402148081e3408102d8a2`: the public summary records dark-only
+For OpenWiz, an example source revision is the private mood board as saved on
+2026-11-02: the public summary records dark-only
 as a hard rule; its explicit preferences include Terminal's structure, gold for
 attention, room on PC and compactness on phone. Its landing direction is calm
 space/wizard imagery with constellation lines, orbits and spell circles, never
@@ -144,7 +144,8 @@ above without exposing its private files. No outside prompt, checklist or
 code is transplanted; asset rights remain separate. These are briefing methods,
 not evidence that any particular style improves owner preference.
 
-Research revision: `58865325991b81e36a4202b40d477eb94f8c2625`.
+Research revision: the private 2026-11-02 design-skills research note, kept in
+the private record.
 Jake, 2026-11-02: use the six design-research methods, including a pinned taste
 brief that separates hard rules, explicit preferences and observed patterns
 ([private record][research]).
