@@ -142,3 +142,37 @@ test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; fi
 == carriage guard: carriage guard: all 24 added paths are classified
 == privacy check (branch range, PR title/body): exit 0
 == stray synthetic gh auth children: 0
+
+Merge of origin/main (99f71ce, which carries T3 #606) for the actual conflict, at e1ba556278ec5ab471644bb2e1b58c45434e7195
+== PR #862 read after pushing 52bba5f: mergeable CONFLICTING, DIRTY; git merge-tree against 99f71ce: content conflict only in tools/open-import/paths.json (T3's source row beside this ticket's)
+== resolution: both source rows kept; against main the merge differs only on this branch's paths
+== sh .github/actions/docs-only/test.sh: all ok
+== python3 -I ci/shard/test.py: OK
+== cargo fmt --check
+ok
+== clippy store/server/service/tests -D warnings
+ok
+== store/server setup::, p08a_allowlist_static, m12_allowlist, checks setup_onboard, service t12
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.91s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 0.22s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 144 filtered out; finished in 19.27s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; finished in 91.38s
+== test_github_login.py: OK
+== tools/install/tests/init/test_init.py (T5's): OK
+== tools/github-app/test.py (T3's): OK
+== test_setup_api.mjs: ℹ pass 2 ℹ fail 0 
+== tools/release/test.py: OK
+== tools/release/test_package.py: OK
+== tools/install/test_install.py: OK
+== tools/install/cloudroom/test_cloudroom.py: OK
+== tools/install/access/test_access.py: OK
+== tools/install/handover/test_handover.py: OK
+== tools/install/tests/public-release-security/baseline/test_baseline.py: OK
+== tools/install/tests/public-release-security/test_candidate.py: OK
+== web typecheck/check: check: 56 source files and the stylesheet pass (V1, messaging and new-thread schema parity, V3, V10, W5, W12, U5, U12 to U14, AW7, AW8, the #549 loop switch, types, spacing)
+== apps/web browser (setup-github-login, install-connections): ℹ pass 2 ℹ fail 0 
+== carriage guard: carriage guard: all 24 added paths are classified
+== privacy check (branch range, PR title/body): exit 0
+== stray synthetic gh auth children: 0
