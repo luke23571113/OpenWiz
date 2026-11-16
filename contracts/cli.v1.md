@@ -1,7 +1,7 @@
 # CLI v1
 
-T1 of 0.0.12 (#1096), spec #1092, confirmed grill C1–C5 at
-`037f5ea1dac77586a674a2ee694285525483545a`. This is the compatibility
+T1 of 0.0.12 (#1096), spec #1092, confirmed grill C1–C5 of
+2026-11-05, kept in the private record. This is the compatibility
 boundary for agents. [`cli.v1.schema.json`](cli.v1.schema.json) defines
 `catalogue`, `error`, `help`, `terminal_capability` and `loop_switch`.
 Existing report schemas remain authoritative and unchanged.
