@@ -139,13 +139,15 @@ def marked(providers):
     return providers
 
 
-def marker_pixels(page, png, phone):
-    """How many of the picture's pixels inside the marker's heading have its text and its card's colour."""
+def marker_pixels(page, png, phone, find=None):
+    """How many of the picture's pixels inside the marker (by default the marker card's heading; `find`,
+    a JS expression for a list of elements, picks another) have its text and its card's colour."""
+    find = find or "[...document.querySelectorAll('h4')].filter(e=>e.textContent===%s)" % json.dumps(MARKER)
     found = probed(publish_module().drawable(page, phone), width(phone), (
-        "(()=>{const h=[...document.querySelectorAll('h4')].filter(e=>e.textContent===%s);"
+        "(()=>{const h=%s;"
         "if(h.length!==1)return null;const r=h[0].getBoundingClientRect();"
         "return {box:[r.left,r.top+scrollY,r.width,r.height],text:getComputedStyle(h[0]).color,"
-        "card:getComputedStyle(h[0].closest('article')).backgroundColor}})()") % json.dumps(MARKER))
+        "card:getComputedStyle(h[0].closest('article')||document.body).backgroundColor}})()") % find)
     assert found, 'the marker is not on the drawn page once'
     scale = 2 if phone else 1
     x, y, w, h = (round(v * scale) for v in found['box'])
@@ -533,8 +535,12 @@ class Gather(unittest.TestCase):
             sizes[name] = struct.unpack('>II', data[16:24])
         self.assertEqual(sizes['war-room.png'][0], width(False))
         self.assertEqual(sizes['war-room-phone.png'][0], 2 * width(True))
-        self.assertGreater(sizes['war-room.png'][1], 8000, 'the full page, not a clipped one')
-        self.assertGreater(sizes['war-room-phone.png'][1], 2 * 8000)
+        # #883: the pictures are of the home page, whole, not a clip of it.
+        home = git(self.origin, 'show', 'refs/heads/war-room:war-room.html')
+        for name, phone in (('war-room.png', False), ('war-room-phone.png', True)):
+            whole = probed(publish_module().drawable(home, phone), width(phone), 'document.documentElement.scrollHeight')
+            # Two separate Chromium layouts of one page can differ by a few px (font settling).
+            self.assertLessEqual(abs(sizes[name][1] - (2 if phone else 1) * whole), 2 * 8, name)
         # Every gathered card, with measured values, is on the page that was drawn: all 65 metrics the
         # review counted for this fixture. The board shows its six counts and the startable percent;
         # the fed ratio is undefined with no builders running.
@@ -598,6 +604,8 @@ class Gather(unittest.TestCase):
     def test_a_real_scale_gathered_page_draws_with_real_chromium(self):
         # #2565: the real gathered page grew past the bound (57,625 CSS px; the phone picture 99,818
         # device px), so every main publish refused it. The same page shape, synthetic, must draw.
+        # #883: the pictures are now of the home page; #2586's painted-to-the-bottom check reads its
+        # last line, the footer, since the Sources cards are on the child pages.
         root, _ = self.gather()
         read = publish_module().selection_reader(root, self.tmp / 'out/selection.json')
         out = self.tmp / 'pictures'
@@ -613,11 +621,10 @@ class Gather(unittest.TestCase):
                 drawn, height = struct.unpack('>II', data[16:24])
                 self.assertEqual(drawn, drawn_width)
                 self.assertLessEqual(height, publish_module().MAX_HEIGHT)
-                # #2586: and painted to the bottom: the last card's heading shows its text on its card.
-                pixels = marker_pixels(page, data, phone)
+                # #2586: and painted to the bottom: the home page's last line shows its text.
+                pixels = marker_pixels(page, data, phone, "[...document.querySelectorAll('footer')]")
                 self.assertEqual(pixels['size'], [drawn, height])
-                self.assertGreater(pixels['text'], 50, 'the marker text is not painted')
-                self.assertGreater(pixels['card'], 500, "the marker's card is not painted")
+                self.assertGreater(pixels['text'], 50, 'the footer text is not painted')
 
     def test_a_full_page_past_the_height_bound_still_publishes_pictures_of_home(self):
         # catches (#883 follow-up): every hourly publication refusing with "the page is too tall to
@@ -642,7 +649,8 @@ class Gather(unittest.TestCase):
                 self.assertEqual(drawn, scale * width(phone))
                 self.assertLessEqual(height, publish_module().MAX_HEIGHT)
                 whole = probed(publish_module().drawable(home, phone), width(phone), 'document.documentElement.scrollHeight')
-                self.assertEqual(height, scale * whole, 'the whole home page, not a clip of it')
+                # Two separate Chromium layouts of one page can differ by a few px (font settling).
+                self.assertLessEqual(abs(height - scale * whole), 2 * 8, 'the whole home page, not a clip of it')
 
     def test_a_removed_or_unreadable_source_greys_only_its_own_card(self):
         git(self.origin, 'update-ref', '-d', 'refs/heads/ci-benchmarks')

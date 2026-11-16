@@ -6,7 +6,7 @@ chart build, as static HTML.
 chart cards 00a-00e and every benchmark worst first) and five question-led child pages (Speed,
 Health, Cost, Quality, Skills and evals) holding the numbered body figures and the Sources of
 their benchmarks (benchmarks.json `pages`). `render` is the complete one-document view of the same
-content (every chart once), which main.tick keeps locally and the published pictures draw. Charts
+content (every chart once), which main.tick keeps locally; the published pictures draw home. Charts
 are the chart build's finished SVGs (charts/build.py), embedded byte for byte; no page adds a
 script, font, image or data request. A figure's face is its title, one sentence and its value or
 chart; its dates, coverage, gaps, values and sources are in its native, closed <details>.
