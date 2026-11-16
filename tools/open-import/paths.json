@@ -231,6 +231,8 @@
     "tools/war-room/fixtures/answer-time/pairs.json",
     "tools/war-room/fixtures/answer-time/red-first.log",
     "tools/war-room/fixtures/answer-time/review-r1-red.log",
+    "tools/war-room/fixtures/ci3-weekly/**",
+    "tools/war-room/fixtures/ci3/**",
     "tools/war-room/fixtures/collector-ci/**",
     "tools/war-room/fixtures/collector/**",
     "tools/war-room/fixtures/contract/green.log",

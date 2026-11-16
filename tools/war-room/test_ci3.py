@@ -26,7 +26,7 @@ sys.path.insert(0, str(HERE))
 import ci3  # noqa: E402
 import ci3_check  # noqa: E402
 
-FIXTURES = ROOT / "tools" / "ci-bench" / "fixtures"
+FIXTURES = HERE / "fixtures"
 WINDOW = FIXTURES / "ci3" / "window.json"
 
 
