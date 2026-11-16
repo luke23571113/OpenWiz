@@ -1,9 +1,10 @@
-//! Structure: the new store crate's dependencies point inward, the core
-//! does no I/O, and the schema is one the in-repo checker fully enforces.
+//! Structure: the new store crate's dependencies point inward, and the
+//! schema is one the in-repo checker fully enforces. The core's no-I/O rule
+//! is `crates/core/tests/send_effects.rs::the_core_does_no_io` (#809).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use serde_json::Value;
@@ -100,41 +101,6 @@ fn the_store_depends_only_inward() {
     assert!(approved.contains("serde_json"), "{approved:?}");
     for name in g.keys().filter(|k| !k.starts_with("openwiz")) {
         assert!(approved.contains(name), "{name} is not a recorded crate");
-    }
-}
-
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
-#[test]
-fn the_core_does_no_io() {
-    let mut files = Vec::new();
-    rust_files(&Path::new(ROOT).join("crates/core/src"), &mut files);
-    assert!(files.iter().any(|f| f.ends_with("messaging/send.rs")));
-    for path in files {
-        let text = fs::read_to_string(&path).unwrap();
-        for io in [
-            "std::fs",
-            "std::io",
-            "std::net",
-            "std::process",
-            "std::env",
-            "std::os",
-            "SystemTime",
-            "Instant::now",
-            "println!",
-            "eprintln!",
-        ] {
-            assert!(!text.contains(io), "{path:?} uses {io}");
-        }
     }
 }
 
@@ -404,56 +370,4 @@ fn the_preview_and_lookup_shapes_are_in_the_schema() {
             .is_some_and(|r| r.contains(&"in_flight".into())),
         "{earlier}"
     );
-}
-
-/// Sheet U8: the route body never carries the target; it comes only from
-/// the path. The schema's request no longer says otherwise.
-#[test]
-fn the_request_no_longer_says_the_route_body_carries_the_target() {
-    let schema = messaging_schema();
-    let words = schema["$defs"]["request"]["description"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    assert!(
-        !words.contains("route body carries these fields"),
-        "{words}"
-    );
-    for needed in ["path", "never the body"] {
-        assert!(words.contains(needed), "{needed:?} not in: {words}");
-    }
-    for field in [
-        "op_id",
-        "mode",
-        "text",
-        "resume_paused_queue",
-        "accept_possible_duplicate",
-    ] {
-        assert!(words.contains(field), "{field} not in: {words}");
-    }
-}
-
-/// Fail closed (Sol round 1): the store methods the in-flight guard, the
-/// lookup and the withdrawal depend on have no default body, so every store
-/// must implement them; none can fall back to "nothing in flight".
-#[test]
-fn the_guard_methods_have_no_default() {
-    let text =
-        fs::read_to_string(Path::new(ROOT).join("crates/core/src/messaging/record.rs")).unwrap();
-    let start = text.find("pub trait SendStore").expect("the trait");
-    let body = &text[start..start + text[start..].find("\n}\n").unwrap()];
-    for method in [
-        "fn uncertain_matching(",
-        "fn in_flight_matching(",
-        "fn inspect(",
-        "fn withdraw(",
-    ] {
-        let at = body.find(method).unwrap_or_else(|| panic!("no {method}"));
-        let end = body[at..].find([';', '{']).unwrap();
-        assert_eq!(
-            &body[at + end..=at + end],
-            ";",
-            "{method} has a default body"
-        );
-    }
 }

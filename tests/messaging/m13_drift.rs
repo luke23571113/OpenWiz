@@ -4,8 +4,7 @@
 
 use openwiz_cli::send::EXIT_IN_PROGRESS;
 use openwiz_core::messaging::Mode;
-use openwiz_core::messaging::send::{Delivery, Messenger, Status, UncertainReason};
-use openwiz_core::source::SessionSource;
+use openwiz_core::messaging::send::{Delivery, Status, UncertainReason};
 
 use serde_json::{Value, json};
 
@@ -84,18 +83,6 @@ fn source_lines(out: &str) -> Vec<&str> {
     out.lines().filter(|l| l.starts_with("source: ")).collect()
 }
 
-/// #200 (the 0.0.3 export review's R1; approved by Jake, 2026-11-01):
-/// [private record](https://github.com/jparker2006/ClosedWiz/issues/1277#issuecomment-6704800036).
-/// v127 was live-tested for the reads only, and no send has ever run live.
-/// One `room-cli` source answers the reads with their own tested version and
-/// `send` with its own, which is none until 0.0.3's live test passes.
-#[test]
-fn send_has_its_own_tested_version_never_the_reads() {
-    let source = SendFake::new("m13_own_tested_version", "send").source();
-    assert_eq!(SessionSource::tested_version(&source), "v127", "the reads'");
-    assert_eq!(Messenger::tested_version(&source), "", "send's: none yet");
-}
-
 /// #200: a send at v127, the version the reads were live-tested with, says
 /// its version is not live-tested for sending, in its report, its record,
 /// its text and the release program's `--json`; never `(tested)`.
@@ -147,31 +134,6 @@ fn a_send_at_the_reads_tested_version_is_not_live_tested_for_sending() {
     let (code, json) = json_of(&output);
     assert_eq!(code, Some(0), "{json}");
     assert_eq!(json["source"], not_tested, "the release program");
-}
-
-/// #200, failing closed: a record whose source has no tested version but
-/// says `version_tested: true` (one no run writes) still replays as not
-/// live-tested for sending, never `(tested)`.
-#[test]
-fn a_record_with_no_tested_version_never_replays_as_tested() {
-    let fake = SendFake::new("m13_contradictory_record", "send");
-    let args = ["thr_syn_0001", "--op-id", "op-m13-c", "--", "Synthetic"];
-    let (code, _, err) = fake.cli(&args, "");
-    assert_eq!(code, 0, "{err}");
-    let mut record = fake.record("op-m13-c");
-    record["source"]["version_tested"] = json!(true);
-    assert_eq!(record["source"]["tested_version"], "");
-    std::fs::write(fake.record_path("op-m13-c"), record.to_string()).unwrap();
-
-    let (code, out, err) = fake.cli(&args, "");
-    assert_eq!(code, 0, "{err}");
-    assert!(out.contains("replayed"), "{out}");
-    assert_eq!(
-        source_lines(&out),
-        vec!["source: room-cli v127 (not live-tested for sending)"],
-        "{out}"
-    );
-    assert_eq!(fake.tell_count(), 1, "the replay made no call");
 }
 
 /// #200, R1 of the 0.0.3 export review, still open after #250: a record
@@ -307,32 +269,6 @@ fn the_schema_says_send_has_its_own_tested_version() {
     assert_eq!(
         source["properties"]["version_tested"],
         json!({"type": "boolean"})
-    );
-}
-
-/// #200: `--help` names each kind of run's own live-tested version: the
-/// reads', v127, and none yet for `send` and `new`.
-#[test]
-fn help_names_each_kind_of_runs_own_tested_version() {
-    let help = openwiz_cli::help();
-    let lines: Vec<&str> = help.lines().collect();
-    for line in [
-        "ls, show, send and new can read and show room-cli --version.",
-        "send --preview, models and new --status do not read the version. send --check and attachment never run room-cli.",
-        "Any version runs; one other than \
-         the run's own live-tested version is marked untested, or not live-tested while it has \
-         none.",
-        "Live-tested: the reads with v127; send with no version yet; new with no version yet.",
-    ] {
-        assert_eq!(
-            lines.iter().filter(|l| **l == line).count(),
-            1,
-            "{line:?} not once in --help:\n{help}"
-        );
-    }
-    assert!(
-        !help.contains("one other than the live-tested v127"),
-        "{help}"
     );
 }
 

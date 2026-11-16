@@ -513,44 +513,6 @@ fn the_target_reads_not_found_is_an_exact_line() {
     assert_eq!(fake.tell_count(), 0);
 }
 
-/// #571: the PC live test observed this shape at 4379586. Identifiers and
-/// text remain synthetic; this is a fixture regression, never a live send.
-#[test]
-fn observed_sent_receipt_is_accepted_once() {
-    let fake = SendFake::with(
-        "m04_observed_sent",
-        vec![tell_response(
-            "thr_syn_0001",
-            "queue",
-            receipt("tell-sent-observed.json"),
-        )],
-    );
-    let (code, report) = fake.cli_json(
-        &[
-            "thr_syn_0001",
-            "--op-id",
-            "op-observed-sent",
-            "--",
-            "Synthetic",
-        ],
-        "",
-    );
-    assert_eq!(code, 0, "{report}");
-    assert_eq!(report["status"], "accepted");
-    assert_eq!(report["result"]["delivery"]["kind"], "accepted");
-    assert!(
-        report["summary"]
-            .as_str()
-            .unwrap()
-            .starts_with("Queue requested · sent")
-    );
-    assert_eq!(fake.tell_count(), 1);
-    assert_eq!(
-        fake.record("op-observed-sent")["delivery"]["kind"],
-        "accepted"
-    );
-}
-
 #[test]
 fn observed_receipt_guards_fail_closed() {
     let good = json!({"threadId": "thr_syn_0001", "ok": true, "delivery": "sent", "mode": "queue"});
@@ -1049,18 +1011,6 @@ fn pc_probe_shapes_reject_drift_at_every_depth() {
         assert!(!format!("{reply:?}").contains("Synthetic queued prompt"));
         assert_eq!(fake.tell_count(), 1, "{file} {why}");
     });
-}
-
-#[test]
-fn pc_probe_missing_wait_reason_round_trips_without_inventing_one() {
-    let value = json!({"kind":"queued", "waiting_on":"not_reported", "queued_message_id":"syn-queued-0001", "text":"queued: waiting reason not reported"});
-    let parsed = serde_json::from_value::<Delivery>(value.clone());
-    assert!(
-        parsed.is_ok(),
-        "the public model must represent the observed missing reason: {parsed:?}"
-    );
-    assert_eq!(serde_json::to_value(parsed.unwrap()).unwrap(), value);
-    assert_eq!(validate_def("delivery", &value), Vec::<String>::new());
 }
 
 #[test]

@@ -1,32 +1,13 @@
 //! M11 The inventory is unchanged: P1 to P12 still pass (the `proof` test
-//! binary, unchanged apart from P8(a) for M12), the inventory API keeps its
-//! signatures, and no inventory path can reach the write.
+//! binary, unchanged apart from P8(a) for M12), and no inventory path can
+//! reach the write. The inventory API's signatures need no test of their
+//! own: the CLI and the server call them, so a changed one fails the build.
 
 use std::fs;
 use std::path::Path;
 
-use openwiz_adapter_cloudroom::source::CloudRoomSource;
-use openwiz_core::envelope::Envelope;
-use openwiz_core::model::{Inventory, SessionView};
-use openwiz_core::ops::{self, Clock, ListRequest, OpError, Report, ShowRequest};
-use openwiz_core::source::SessionSource;
 
 use crate::support::*;
-
-/// The inventory operations' signatures, as ClosedWiz#5's server calls them.
-type ListOp<T> = fn(&dyn SessionSource, &dyn Clock, &ListRequest) -> Result<T, OpError>;
-type ShowOp<T> = fn(&dyn SessionSource, &dyn Clock, &ShowRequest) -> Result<T, OpError>;
-
-#[test]
-fn the_inventory_api_keeps_its_signatures() {
-    // A changed signature fails to compile.
-    let _: ListOp<Report<Inventory>> = ops::list_report;
-    let _: ShowOp<Report<SessionView>> = ops::show_report;
-    let _: ListOp<Envelope<Inventory>> = ops::list;
-    let _: ShowOp<Envelope<SessionView>> = ops::show;
-    let _: fn(String) -> CloudRoomSource = |program| CloudRoomSource::new(program);
-    let _: fn() -> CloudRoomSource = CloudRoomSource::from_path;
-}
 
 #[test]
 fn no_inventory_command_reaches_the_write() {
