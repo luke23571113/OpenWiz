@@ -333,11 +333,13 @@ mod composed {
                 ("personal_github", "verified"),
                 ("github_app", "verified"),
                 ("project", "verified"),
-                ("engine", "missing"),
                 ("remote_access", "unknown"),
             ])
         );
-        assert_eq!(report["ready"], false, "no engine is selected");
+        assert_eq!(
+            report["ready"], false,
+            "CloudRoom and the harness are unproven"
+        );
         assert_eq!(report["operations"][0]["phase"], "uncertain");
         let app = &report["components"][3];
         assert!(
@@ -345,6 +347,32 @@ mod composed {
                 .as_str()
                 .unwrap()
                 .contains("selected repositor")
+        );
+    }
+
+    #[test]
+    fn an_old_saved_engine_selection_still_reads_and_shows_no_engine_step() {
+        // #873: setup has no engine step. An old state file that saved an
+        // engine selection still loads, and adds no engine component.
+        let old = observed(&ALL, 3, NOW - 1_000)
+            .replace(r#""runtime":null"#, &format!(r#""runtime":"0.0.9 {}""#, "1".repeat(40)))
+            .replace(r#""kind":"connect_app""#, r#""kind":"activate_engine""#)
+            .replace(
+                r#"]}"#,
+                r#"],"engine":{"location":"local","revision":3,"runtime":"0.0.9 1111111111111111111111111111111111111111","operation_id":"0123456789abcdef0123456789abcdef","fingerprint":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","cost":null}}"#,
+            );
+        let report = super::report_at(Ok(Some(&parse(&old))), NOW);
+        let ids: Vec<String> = states(&report).into_iter().map(|(id, _)| id).collect();
+        assert_eq!(
+            ids,
+            [
+                "cloudroom",
+                "harness",
+                "personal_github",
+                "github_app",
+                "project",
+                "remote_access"
+            ]
         );
     }
 
@@ -432,10 +460,10 @@ mod composed {
         ] {
             let state = parse(&observed(&[("remote_access", code)], 3, NOW - 1_000));
             let report = super::report_at(Ok(Some(&state)), NOW);
-            assert_eq!(report["components"][6]["state"], expected, "{code}");
+            assert_eq!(report["components"][5]["state"], expected, "{code}");
             assert_eq!(
                 report["ready"], false,
-                "phone evidence cannot verify the engine"
+                "phone evidence cannot verify the factory"
             );
         }
         for (revision, at) in [(2, NOW - 1_000), (3, NOW - 3_600_001), (3, NOW + 300_001)] {
@@ -445,12 +473,12 @@ mod composed {
                 at,
             ));
             assert_eq!(
-                super::report_at(Ok(Some(&state)), NOW)["components"][6]["state"],
+                super::report_at(Ok(Some(&state)), NOW)["components"][5]["state"],
                 "unknown"
             );
         }
         assert_eq!(
-            super::report_at(Err(()), NOW)["components"][6]["state"],
+            super::report_at(Err(()), NOW)["components"][5]["state"],
             "unknown"
         );
     }
@@ -581,7 +609,7 @@ mod tests {
         assert_eq!(value["ready"], false);
         assert_eq!(value["engine"], "unselected");
         assert_eq!(value["operations"], serde_json::json!([]));
-        assert_eq!(value["components"].as_array().unwrap().len(), 7);
+        assert_eq!(value["components"].as_array().unwrap().len(), 6);
         assert!(
             value["components"]
                 .as_array()
