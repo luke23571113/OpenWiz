@@ -13,6 +13,9 @@ use std::io::Write;
 
 use crate::response;
 
+#[path = "loop_validate.rs"]
+mod loop_validate;
+
 pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
   openwiz loop export --project <project> [--out <dir>] [--json]
   openwiz loop plan <path>... --project <project> [--adopt <id>=<loop>]... [--json]
@@ -20,8 +23,9 @@ pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
 ";
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
-  (contracts/loop-cli.v1.md). Not built yet: each command refuses with exit 5
-  and reads and changes nothing.
+  (contracts/loop-cli.v1.md). validate checks loop files and names each
+  problem by file and field. export, plan and apply are not built yet: each
+  refuses with exit 5 and reads and changes nothing.
 ";
 
 /// The four loop-file commands.
@@ -221,6 +225,9 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
                     .is_err(),
             )
         }
+        Ok(Parsed::Run(args)) if args.command == Command::Validate => {
+            loop_validate::run(&args, stdout, stderr)
+        }
         Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
@@ -280,10 +287,11 @@ mod tests {
     // contract's `not_built` document, so a caller mistakes it for a report.
     #[test]
     fn each_stub_refuses_with_the_contracts_not_built_result() {
+        // validate's row is gone: it is built (#790), and
+        // tests/cli-agent/loop_validate.rs keeps its behaviour.
         for (args, command, ticket) in [
-            (&["validate", "loops/a.md", "--json"][..], "validate", 790),
             (
-                &["export", "--project", "prj_syn_0001", "--json"],
+                &["export", "--project", "prj_syn_0001", "--json"][..],
                 "export",
                 791,
             ),
