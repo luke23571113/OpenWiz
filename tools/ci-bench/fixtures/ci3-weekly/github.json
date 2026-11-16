@@ -1,0 +1,242 @@
+{
+ "organizations/{owner}/settings/billing/usage?year=2026&month=1": {
+  "usageItems": [
+   {
+    "date": "2026-01-02T00:00:00Z",
+    "product": "actions",
+    "quantity": 30000.0,
+    "sku": "Actions Linux",
+    "unitType": "Minutes"
+   },
+   {
+    "date": "2026-01-03T00:00:00Z",
+    "product": "actions",
+    "quantity": 4000.5,
+    "sku": "Actions Linux Slim",
+    "unitType": "Minutes"
+   },
+   {
+    "date": "2026-01-04T00:00:00Z",
+    "product": "packages",
+    "quantity": 99999.0,
+    "sku": "Packages storage",
+    "unitType": "GigabyteHours"
+   },
+   {
+    "date": "2026-01-05T00:00:00Z",
+    "product": "actions",
+    "quantity": 1000,
+    "sku": "Actions macOS",
+    "unitType": "Minutes"
+   }
+  ]
+ },
+ "repos/{owner}/{repo}/actions/runs/1/attempts/1/jobs": {
+  "jobs": [
+   {
+    "completed_at": "2026-01-05T10:20:30Z",
+    "conclusion": "success",
+    "created_at": "2026-01-05T10:20:00Z",
+    "id": 11,
+    "name": "ci",
+    "run_attempt": 1,
+    "runner_name": "r",
+    "started_at": "2026-01-05T10:20:01Z",
+    "steps": []
+   }
+  ],
+  "total_count": 1
+ },
+ "repos/{owner}/{repo}/actions/runs/2/attempts/1/jobs": {
+  "jobs": [
+   {
+    "completed_at": "2026-01-05T10:08:00Z",
+    "conclusion": "success",
+    "created_at": "2026-01-05T10:05:05Z",
+    "id": 21,
+    "name": "privacy",
+    "run_attempt": 1,
+    "runner_name": "r",
+    "started_at": "2026-01-05T10:05:06Z",
+    "steps": []
+   }
+  ],
+  "total_count": 1
+ },
+ "repos/{owner}/{repo}/actions/runs/4/attempts/1/jobs": {
+  "jobs": [
+   {
+    "completed_at": "2026-01-05T11:10:30Z",
+    "conclusion": "failure",
+    "created_at": "2026-01-05T11:10:00Z",
+    "id": 41,
+    "name": "ci",
+    "run_attempt": 1,
+    "runner_name": "r",
+    "started_at": "2026-01-05T11:10:01Z",
+    "steps": []
+   }
+  ],
+  "total_count": 1
+ },
+ "repos/{owner}/{repo}/actions/runs/4/attempts/2/jobs": {
+  "jobs": [
+   {
+    "completed_at": "2026-01-05T11:42:00Z",
+    "conclusion": "success",
+    "created_at": "2026-01-05T11:40:00Z",
+    "id": 42,
+    "name": "ci",
+    "run_attempt": 2,
+    "runner_name": "r",
+    "started_at": "2026-01-05T11:40:01Z",
+    "steps": []
+   }
+  ],
+  "total_count": 1
+ },
+ "repos/{owner}/{repo}/actions/runs/5/attempts/1/jobs": {
+  "jobs": [
+   {
+    "completed_at": "2026-01-05T11:03:00Z",
+    "conclusion": "success",
+    "created_at": "2026-01-05T11:00:20Z",
+    "id": 51,
+    "name": "privacy",
+    "run_attempt": 1,
+    "runner_name": "r",
+    "started_at": "2026-01-05T11:00:21Z",
+    "steps": []
+   }
+  ],
+  "total_count": 1
+ },
+ "repos/{owner}/{repo}/actions/runs?created=": {
+  "$fail": "gh api failed (exit 1): the estimate is read only when billing can't be"
+ },
+ "repos/{owner}/{repo}/actions/workflows/ci.yml/runs?event=merge_group": {
+  "total_count": 0,
+  "workflow_runs": []
+ },
+ "repos/{owner}/{repo}/actions/workflows/ci.yml/runs?head_sha=1111111111111111111111111111111111111111": {
+  "total_count": 1,
+  "workflow_runs": [
+   {
+    "conclusion": "success",
+    "created_at": "2026-01-05T10:05:10Z",
+    "event": "pull_request",
+    "head_sha": "1111111111111111111111111111111111111111",
+    "id": 1,
+    "run_attempt": 1,
+    "status": "completed",
+    "updated_at": "2026-01-05T10:05:10Z"
+   }
+  ]
+ },
+ "repos/{owner}/{repo}/actions/workflows/ci.yml/runs?head_sha=2222222222222222222222222222222222222222": {
+  "total_count": 1,
+  "workflow_runs": [
+   {
+    "conclusion": "success",
+    "created_at": "2026-01-05T11:00:20Z",
+    "event": "pull_request",
+    "head_sha": "2222222222222222222222222222222222222222",
+    "id": 4,
+    "run_attempt": 2,
+    "status": "completed",
+    "updated_at": "2026-01-05T11:00:20Z"
+   }
+  ]
+ },
+ "repos/{owner}/{repo}/actions/workflows/privacy.yml/runs?event=merge_group": {
+  "total_count": 0,
+  "workflow_runs": []
+ },
+ "repos/{owner}/{repo}/actions/workflows/privacy.yml/runs?head_sha=1111111111111111111111111111111111111111": {
+  "total_count": 1,
+  "workflow_runs": [
+   {
+    "conclusion": "success",
+    "created_at": "2026-01-05T10:05:05Z",
+    "event": "pull_request",
+    "head_sha": "1111111111111111111111111111111111111111",
+    "id": 2,
+    "run_attempt": 1,
+    "status": "completed",
+    "updated_at": "2026-01-05T10:05:05Z"
+   }
+  ]
+ },
+ "repos/{owner}/{repo}/actions/workflows/privacy.yml/runs?head_sha=2222222222222222222222222222222222222222": {
+  "total_count": 1,
+  "workflow_runs": [
+   {
+    "conclusion": "success",
+    "created_at": "2026-01-05T11:00:20Z",
+    "event": "pull_request",
+    "head_sha": "2222222222222222222222222222222222222222",
+    "id": 5,
+    "run_attempt": 1,
+    "status": "completed",
+    "updated_at": "2026-01-05T11:00:20Z"
+   }
+  ]
+ },
+ "repos/{owner}/{repo}/activity?ref=refs/heads/topic/x&": [
+  {
+   "activity_type": "branch_creation",
+   "after": "1111111111111111111111111111111111111111",
+   "timestamp": "2026-01-05T10:00:00Z"
+  },
+  {
+   "activity_type": "push",
+   "after": "2222222222222222222222222222222222222222",
+   "timestamp": "2026-01-05T11:00:00Z"
+  }
+ ],
+ "repos/{owner}/{repo}/issues/780/comments?": [
+  {
+   "body": "Synthetic earlier note.\n<!-- openwiz.ci3-note.v1 {\"actions_minutes\": 20000, \"alert\": false, \"minutes_source\": \"billing\", \"month\": \"2026-01\", \"p50_minutes\": 14.0, \"p95_minutes\": 44.0, \"until\": \"2026-01-03T00:00:00Z\"} -->",
+   "created_at": "2026-01-03T17:10:00Z",
+   "id": 1,
+   "user": {
+    "login": "synthetic-owner"
+   }
+  },
+  {
+   "body": "A comment with no marker.",
+   "created_at": "2026-01-04T17:10:00Z",
+   "id": 2,
+   "user": {
+    "login": "synthetic-owner"
+   }
+  },
+  {
+   "body": "Not a record author.\n<!-- openwiz.ci3-note.v1 {\"actions_minutes\": 1, \"alert\": false, \"minutes_source\": \"billing\", \"month\": \"2026-01\", \"p50_minutes\": 1.0, \"p95_minutes\": 1.0, \"until\": \"2026-01-05T00:00:00Z\"} -->",
+   "created_at": "2026-01-05T17:10:00Z",
+   "id": 3,
+   "user": {
+    "login": "synthetic-stranger"
+   }
+  }
+ ],
+ "repos/{owner}/{repo}/pulls?": [
+  {
+   "base": {
+    "repo": {
+     "full_name": "example/repo"
+    }
+   },
+   "closed_at": null,
+   "created_at": "2026-01-05T10:05:00Z",
+   "head": {
+    "ref": "topic/x",
+    "repo": {
+     "full_name": "example/repo"
+    }
+   },
+   "number": 9,
+   "updated_at": "2026-01-05T12:00:00Z"
+  }
+ ]
+}
