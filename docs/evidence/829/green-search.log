@@ -1,0 +1,3 @@
+# search.sh at 5f563b7d11c5b90be50773c8f724a195b3bc622b
+tools/install/pc_activation/test_activation.py:315:        core = load('pc_schema_checker', HERE.parents[2] / 'tools/live-check/core.py')
+exit 1
