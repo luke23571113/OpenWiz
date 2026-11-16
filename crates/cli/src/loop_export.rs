@@ -16,7 +16,7 @@ use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use openwiz_core::limits::RUN_BUDGET;
 use serde_json::{Value, json};
 
-use crate::loop_files::Args;
+use crate::loop_files::{Args, escape_untrusted};
 
 /// One loop's result in the report.
 struct Outcome {
@@ -186,10 +186,12 @@ fn text(
     stderr: &mut dyn Write,
 ) -> std::io::Result<()> {
     let done = outcomes.iter().filter(|o| o.result != "refused").count();
-    writeln!(
+    line(
         stdout,
-        "Exported {done} of {} loops of project {project} to {out}.",
-        outcomes.len()
+        &format!(
+            "Exported {done} of {} loops of project {project} to {out}.",
+            outcomes.len()
+        ),
     )?;
     for o in outcomes {
         let e = &o.exported;
@@ -199,29 +201,30 @@ fn text(
             .iter()
             .map(|f| PathBuf::from(out).join(f).display().to_string())
             .collect();
-        writeln!(
+        line(
             stdout,
-            "  {} {id}: {} {}",
-            e.loop_id,
-            o.result,
-            files.join(" ")
+            &format!("  {} {id}: {} {}", e.loop_id, o.result, files.join(" ")),
         )?;
         if let Some(binding) = &e.binding {
-            writeln!(
+            line(
                 stdout,
-                "    unmarked: plan and apply need --adopt {binding}={}",
-                e.loop_id
+                &format!(
+                    "    unmarked: plan and apply need --adopt {binding}={}",
+                    e.loop_id
+                ),
             )?;
         }
         if !e.unmapped.is_empty() {
-            writeln!(
+            line(
                 stdout,
-                "    unmapped: the file does not carry {}, which Cloudroom returned and the adapter does not map",
-                e.unmapped.join(", ")
+                &format!(
+                    "    unmapped: the file does not carry {}, which Cloudroom returned and the adapter does not map",
+                    e.unmapped.join(", ")
+                ),
             )?;
         }
         for r in &e.refusals {
-            writeln!(stderr, "{}: {}: {}", r.file, r.field, r.message)?;
+            line(stderr, &format!("{}: {}: {}", r.file, r.field, r.message))?;
         }
     }
     Ok(())
@@ -231,12 +234,12 @@ fn text(
 /// `openwiz.cli-error.v1` document that carries none of room-cli's text.
 fn failed(
     json: bool,
-    line: &str,
+    what: &str,
     message: &str,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let _ = writeln!(stderr, "openwiz: loop export: {line}");
+    let _ = line(stderr, &format!("openwiz: loop export: {what}"));
     if json {
         let doc = json!({
             "schema": "openwiz.cli-error.v1", "command": "loop.export", "exit_code": 1,
@@ -245,4 +248,10 @@ fn failed(
         let _ = writeln!(stdout, "{doc}");
     }
     1
+}
+
+/// Prints one line of human output with every untrusted part escaped: no
+/// line here carries a control of its own, so the whole line is escaped.
+fn line(stream: &mut dyn Write, text: &str) -> std::io::Result<()> {
+    writeln!(stream, "{}", escape_untrusted(text))
 }

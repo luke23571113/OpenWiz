@@ -27,6 +27,14 @@ pub const HELP: &str = "loop validate/export/plan/apply
   with exit 5 and read and change nothing.
 ";
 
+/// Untrusted text (a Cloudroom name, id or key, room-cli's error text, a
+/// path) made safe to print on a terminal: every control, bidi or invisible
+/// format character is replaced, as [`crate::clean`] does for the inventory.
+/// JSON output keeps the original value; only human output goes through this.
+pub fn escape_untrusted(text: &str) -> String {
+    crate::clean(text)
+}
+
 /// The four loop-file commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
@@ -520,6 +528,21 @@ mod tests {
             OsString::from_vec(vec![0xff])
         }];
         assert!(parse(&bad).is_err(), "not UTF-8");
+    }
+
+    // catches: untrusted text printed with its control bytes, so a loop's
+    // name or room-cli's error can clear the screen, spoof a line or set the
+    // clipboard (OSC 52) when export prints it.
+    #[test]
+    fn escape_untrusted_replaces_terminal_controls() {
+        assert_eq!(
+            escape_untrusted("a\u{1b}[2Jb\u{1b}]52;c;eA==\u{7}c\rd\ne\u{202e}f"),
+            "a?[2Jb?]52;c;eA==?c?d?e\u{fffd}f"
+        );
+        assert_eq!(
+            escape_untrusted("Synthetic: plain text"),
+            "Synthetic: plain text"
+        );
     }
 
     // catches: help that reads, fails, or loses its JSON wrapper.

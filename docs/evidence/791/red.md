@@ -86,3 +86,17 @@ test loop_export::export_writes_each_loop_of_the_project_complete_and_secret_fre
   left: ["$.loops[0]: missing required field unmapped", ...]
  right: []
 ```
+
+## Review round, R2: terminal controls in human output
+
+Red, before the fix (`escape_untrusted` returned its input; export printed
+names, ids, keys and room-cli's error text as they came):
+
+```text
+test loop_files::tests::escape_untrusted_replaces_terminal_controls ... FAILED
+  left: "a\u{1b}[2Jb\u{1b}]52;c;eA==\u{7}c\rd\ne\u{202e}f"
+ right: "a?[2Jb?]52;c;eA==?c?d?e�f"
+test loop_export::text_output_never_prints_a_terminal_control ... FAILED
+panicked at tests/cli-agent/loop_export.rs:863:9:
+stdout: Exported 1 of 2 loops of project prj_syn_0001 to ..
+```

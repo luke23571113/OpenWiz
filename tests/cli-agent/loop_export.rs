@@ -839,6 +839,57 @@ fn export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks() {
     }
 }
 
+// catches: a text run that prints a Cloudroom name, loop id, unmapped key or
+// room-cli's error text with its control bytes (screen clearing, spoofed
+// lines, OSC 52 clipboard writes), while JSON keeps the values exactly.
+#[test]
+fn text_output_never_prints_a_terminal_control() {
+    let esc = "\u{1b}[2J\u{1b}]52;c;eA==\u{7}";
+    let room = Room::listing(json!([
+        item(
+            &format!("loop_{esc}1"),
+            &format!("Clear {esc} [wizloop:clear]"),
+            json!({})
+        ),
+        item(
+            "loop_2",
+            "Unmapped key [wizloop:unmapped-key]",
+            json!({format!("max_{esc}"): 5})
+        ),
+    ]));
+    let text = room.export(&[]);
+    assert_eq!(text.status.code(), Some(5));
+    for (stream, bytes) in [("stdout", &text.stdout), ("stderr", &text.stderr)] {
+        assert!(
+            !bytes.iter().any(|b| *b == 0x1b || *b == 0x07),
+            "{stream}: {}",
+            String::from_utf8_lossy(bytes)
+        );
+    }
+    let stderr = String::from_utf8_lossy(&text.stderr);
+    assert!(
+        stderr.contains("Clear ?[2J?]52;c;eA==? [wizloop:clear]: name: "),
+        "{stderr}"
+    );
+    assert!(String::from_utf8_lossy(&text.stdout).contains("max_?[2J?]52;c;eA==?"));
+    let doc = report(&room.export(&["--json"]), 5, "export_report");
+    assert_eq!(
+        doc["loops"][0]["refusals"][0]["file"],
+        format!("Clear {esc} [wizloop:clear]")
+    );
+    assert_eq!(doc["loops"][1]["unmapped"], json!([format!("max_{esc}")]));
+
+    let failed = Room::answering(json!({"argv": ["loop", "list", "--json"], "exit": 1,
+        "stderr": format!("Synthetic error {esc}")}));
+    let text = failed.export(&[]);
+    assert_eq!(text.status.code(), Some(1));
+    assert!(
+        !text.stderr.iter().any(|b| *b == 0x1b || *b == 0x07),
+        "{}",
+        String::from_utf8_lossy(&text.stderr)
+    );
+}
+
 // catches: a failed `loop list` that still writes files, prints a report, or
 // passes room-cli's error text into the JSON result.
 #[test]
