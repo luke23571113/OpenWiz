@@ -267,6 +267,12 @@ def current_runs(repo, since, until, read):
     return answer
 
 
+def ci_facts(repo, *, since, until):
+    """MT3 (#822): a snapshot's five CI facts (collector.v1.md), read now through the collector."""
+    import collect_ci  # it imports gather for current_runs and the privacy scan: import it only here
+    return collect_ci.read(repo, collect_ci.FACTS, since=since, until=until)['ci']
+
+
 def scan_bytes(data):
     """The existing privacy checker and credential/thread-id guard (publish.text_scan) over one artifact."""
     base = sources.native('tools/privacy-check/check.py')
