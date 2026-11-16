@@ -2,7 +2,8 @@
 """CI3 C1 (#782): time budgets that fail, read from real runs.
 
     budgets.py collect --workflow W [--runs 150] [--since T] --out DIR   read W's last completed runs (gh api, GET only)
-    budgets.py table DIR [--fallback DIR] [--after DIR --after-jobs JOB...] [--out budgets.tsv]
+    budgets.py table DIR [--fallback DIR] [--after DIR --after-jobs JOB...] [--derive JOB=TWIN...]
+                     [--unmeasured JOB=MINUTES...] [--out budgets.tsv]
                                                                          each job's p95 and budget, from DIR's runs
     budgets.py apply [--table budgets.tsv] [WORKFLOW...]                 set each job's timeout-minutes from the table
     budgets.py check [--table budgets.tsv] [WORKFLOW...]                 fail on a job with no row or another timeout
@@ -23,7 +24,10 @@ ROOT = HERE.parents[1]
 TABLE = HERE / "budgets.tsv"
 WORKFLOWS = [ROOT / ".github/workflows/ci.yml", ROOT / ".github/workflows/privacy.yml"]
 RUNS, FLOOR, MIN_SAMPLES = 150, 5, 5
-COLUMNS = ["workflow", "job", "mode", "timeout", "p95_seconds", "samples", "runs", "first", "last"]
+COLUMNS = ["workflow", "job", "mode", "timeout", "p95_seconds", "samples", "runs", "first", "last", "source"]
+# measured: from the job's own runs; derived:<job>: from a twin with the same steps, for a job that has
+# never run; unmeasured: today's timeout kept until the job has enough runs (#782 question 4).
+SOURCE = re.compile(r"measured|unmeasured|derived:[A-Za-z0-9_-]+")
 # A job that runs trace.py or planted.py's records in traced and planted runs
 # carries this step; its timeout then has a traced budget and a normal one.
 MARK = "if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'"
@@ -113,6 +117,8 @@ def read_table(path):
         if len(f) != len(COLUMNS):
             raise Fail(f"{path} line {n}: {len(f)} fields, not {len(COLUMNS)}")
         r = dict(zip(COLUMNS, f))
+        if not SOURCE.fullmatch(r["source"]):
+            raise Fail(f"{path} line {n}: source {r['source']!r} is not measured, derived:<job> or unmeasured")
         if r["mode"] not in ("all", "normal", "traced"):
             raise Fail(f"{path} line {n}: mode {r['mode']!r} is not all, normal or traced")
         for k in ("timeout", "p95_seconds", "samples", "runs"):
@@ -153,7 +159,7 @@ def check(table, workflows):
     rows = read_table(table)
     errors = []
     for (wf, key, mode), r in sorted(rows.items()):
-        if r["timeout"] != budget(r["p95_seconds"]):
+        if r["source"] != "unmeasured" and r["timeout"] != budget(r["p95_seconds"]):
             errors.append(f"{wf} {key} {mode}: timeout {r['timeout']}, but 1.5x its p95 of {r['p95_seconds']} s"
                           f" is {budget(r['p95_seconds'])}")
     seen = set()
@@ -316,7 +322,8 @@ def own_runs(got):
     return [g for g in got if g[1] in keep], len(keep), times[0] if times else None, times[-1] if times else None
 
 
-def table(window, fallback, out, workflows, after=None, after_jobs=()):
+def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=None, unmeasured=None):
+    derive, unmeasured = derive or {}, unmeasured or {}
     rows, errors = [], []
     for path in workflows:
         wf = Path(path).name
@@ -327,18 +334,24 @@ def table(window, fallback, out, workflows, after=None, after_jobs=()):
         for key, j in wjobs.items():
             # A job whose shape changed in #743 never reads runs from before
             # the merges: only its own runs after them (#782 question 3).
-            second = after if key in after_jobs else fallback
+            # A job that has never run reads its twin's runs (derive).
+            twin = derive.get(key, key)
+            second = after if twin in after_jobs else fallback
             for mode in (("normal", "traced") if j["marked"] else ("all",)):
                 w, jobs = primary
-                got = samples(jobs, key, mode, primary_traced)
+                got = samples(jobs, twin, mode, primary_traced)
                 runs, first, last = w["runs"], w["first"], w["last"]
                 if len(got) < MIN_SAMPLES and second is not None:
                     if second not in read:
                         _, sjobs = read_window(second, wf)
                         read[second] = (sjobs, traced_runs(sjobs))
                     sjobs, straced = read[second]
-                    got, runs, first, last = own_runs(samples(sjobs, key, mode, straced))
+                    got, runs, first, last = own_runs(samples(sjobs, twin, mode, straced))
                 n = len(got)
+                if key in unmeasured:
+                    rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": unmeasured[key], "p95_seconds": 0,
+                                 "samples": n, "runs": runs, "first": first, "last": last, "source": "unmeasured"})
+                    continue
                 if n < MIN_SAMPLES:
                     errors.append(f"{wf} job {key} {mode} has {n} sample{'' if n == 1 else 's'},"
                                   f" fewer than {MIN_SAMPLES}")
@@ -349,7 +362,8 @@ def table(window, fallback, out, workflows, after=None, after_jobs=()):
                 # The slowest leg's p95: one timeout covers every matrix leg.
                 p95 = max(B.nearest_rank(v, 0.95) for v in legs.values())
                 rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": budget(p95), "p95_seconds": p95,
-                             "samples": n, "runs": runs, "first": first, "last": last})
+                             "samples": n, "runs": runs, "first": first, "last": last,
+                             "source": "measured" if twin == key else f"derived:{twin}"})
     for e in errors:
         print(f"budgets: {e}", file=sys.stderr)
     if errors:
@@ -375,6 +389,8 @@ def main(argv):
     t.add_argument("--fallback")
     t.add_argument("--after")
     t.add_argument("--after-jobs", nargs="+", default=[])
+    t.add_argument("--derive", nargs="+", default=[], metavar="JOB=TWIN")
+    t.add_argument("--unmeasured", nargs="+", default=[], metavar="JOB=MINUTES")
     t.add_argument("--out", default=str(TABLE))
     t.add_argument("--workflows", nargs="+", default=[str(w) for w in WORKFLOWS])
     for name in ("apply", "check"):
@@ -391,7 +407,16 @@ def main(argv):
             collect(a.workflow, a.runs, a.since, a.out, a.per_page)
             return 0
         if a.cmd == "table":
-            return table(a.window, a.fallback, a.out, a.workflows, a.after, a.after_jobs)
+            pairs = {}
+            for name, given in (("--derive", a.derive), ("--unmeasured", a.unmeasured)):
+                pairs[name] = {}
+                for item in given:
+                    k, sep, v = item.partition("=")
+                    if not sep or not k or not v or (name == "--unmeasured" and not re.fullmatch(r"[1-9]\d*", v)):
+                        p.error(f"{name} takes JOB={'TWIN' if name == '--derive' else 'MINUTES'}, not {item!r}")
+                    pairs[name][k] = int(v) if name == "--unmeasured" else v
+            return table(a.window, a.fallback, a.out, a.workflows, a.after, a.after_jobs,
+                         pairs["--derive"], pairs["--unmeasured"])
         return (apply if a.cmd == "apply" else check)(a.table, a.workflows)
     except Fail as e:
         print(f"budgets: {e}", file=sys.stderr)

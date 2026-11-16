@@ -282,14 +282,19 @@ class Table(unittest.TestCase):
         ci = workflow([("always", 60, False), ("rust", 60, True), ("release", 60, False)])
         jobs = self.lanes() + [job(i, "release (1)", 300) for i in (1, 2)]
         older = [job(i, "release", 3000) for i in range(1, 20)] + [job(i, "rust (1)", 1500, traced=True) for i in range(1, 7)]
-        after4 = [job(i, "release (2)", 600 + i) for i in range(1, 5)]
+        def shaped(i):  # a run of the current workflow lists every job, even skipped ones
+            return [job(i, "always", 60), job(i, "rust (1)", 300)]
+        after4 = [x for i in range(1, 5) for x in [job(i, "release (2)", 600 + i)] + shaped(i)]
         r, _ = self.table(jobs, ci=ci, fallback=older, after=after4, after_jobs=["release"])
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("ci.yml job release all has 4 samples, fewer than 5", r.stderr)
-        after6 = [job(i, "release (2)", 600 + i) for i in range(1, 7)]
+        # Run 7 was created after the merges but ran the old workflow: it has
+        # no rust job, and its unsharded release took 3000 s (#782: two such runs).
+        after6 = [x for i in range(1, 7) for x in [job(i, "release (2)", 600 + i)] + shaped(i)]
+        after6 += [job(7, "release", 3000), job(7, "always", 60)]
         r, rows = self.table(jobs, ci=ci, fallback=older, after=after6, after_jobs=["release"])
         self.assertEqual(r.returncode, 0, r.stderr)
-        # Never the older 3000 s runs: 601..606 s, p95 of 6 is 606 s;
+        # Never the older or old-shape 3000 s runs: 601..606 s, p95 of 6 is 606 s;
         # 1.5 x 606 s = 15.15 min -> 16, from those 6 runs.
         self.assertEqual(rows[("ci.yml", "release", "all")], ["16", "606", "6", "6", stamp(3600), stamp(6 * 3600), "measured"])
 
@@ -309,7 +314,7 @@ class Table(unittest.TestCase):
                        ("toolkit-nightly", 360, False)])
         jobs = [j for j in self.lanes()] + [dict(j, name=j["name"].replace("rust", "rust-export"))
                                             for j in self.lanes() if j["name"].startswith("rust")]
-        jobs = [j for j in jobs if not j["name"].startswith("rust (")] + [job(1, "toolkit-nightly", 7200, event="schedule")]
+        jobs = [j for j in jobs if not j["name"].startswith("rust (")] + [job(99, "toolkit-nightly", 7200, event="schedule")]
         r, rows = self.table(jobs, ci=ci, extra=["--derive", "rust=rust-export", "--unmeasured", "toolkit-nightly=360"])
         self.assertEqual(r.returncode, 0, r.stderr)
         # rust-export's numbers (the lanes' rust legs: 11 and 46, worked above), marked as derived.
