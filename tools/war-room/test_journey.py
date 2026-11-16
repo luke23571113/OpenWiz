@@ -650,14 +650,7 @@ class Journey(unittest.TestCase):
                 with self.subTest(command='bench'):
                     self.assertEqual(bench.returncode,0,bench.stderr)
                     self.assertEqual(json.loads(bench.stdout)['outcomes'][0]['defects']['attributable'],1)
-                report=Path(temp)/'report.json';report.write_text('last good')
-                result=subprocess.run([sys.executable,'-I',str(HERE.parent/'ci-bench/trends.py'),'report',
-                    str(root/'out/journeys.json'),'--outcomes',str(root/'out/outcomes.json'),
-                    '--since','2020-01-01T08:00:00Z','--until','2020-01-03T08:00:00Z','--out',str(report)],
-                    text=True,capture_output=True)
-                with self.subTest(command='report'):
-                    self.assertEqual(result.returncode,0,result.stderr)
-                    self.assertEqual(json.loads(report.read_text())['outcomes']['defect_policy']['followup_hours'],hours)
+                # The bench's trends.py report subtest retired with ci-bench (#827): no report reads it now.
                 resumed_result,_,resumed,_=self.cli('collect','--defect-policy',path,'--previous',root/'out',data=data)
                 with self.subTest(command='resume'):
                     self.assertEqual(resumed_result.returncode,0,resumed_result.stderr)
@@ -667,7 +660,7 @@ class Journey(unittest.TestCase):
         import importlib.util
         spec=importlib.util.spec_from_file_location('cf4_receipt_fake',HERE.parent/'skills-eval/fakeworld.py')
         fake=importlib.util.module_from_spec(spec);spec.loader.exec_module(fake)
-        readme=(HERE/'README.md').read_text()
+        readme=(HERE/'factory-numbers.md').read_text()
         capture=readme.split('<!-- EB6 capture -->')[1].split('```sh')[1].split('```')[0]
         publish=readme.split('<!-- EB6 receipt -->')[1].split('```sh')[1].split('```')[0]
         for fail in (False,True):

@@ -28,7 +28,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIX = HERE / 'fixtures'
-TL2 = HERE.parents[1] / 'tools/factory-metrics/fixtures/stage-waits'
+TL2 = HERE / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
 import sources  # noqa: E402

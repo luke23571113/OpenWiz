@@ -23,7 +23,7 @@ import unittest
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
-TL2 = HERE.parents[1] / 'tools/factory-metrics/fixtures/stage-waits'
+TL2 = HERE / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import main  # noqa: E402  (WR2's one tick: history + page)
 import history  # noqa: E402
