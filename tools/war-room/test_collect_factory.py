@@ -429,5 +429,29 @@ class Snapshot(unittest.TestCase):
         self.assertGreaterEqual(snap['collected_at'], max(ends))
 
 
+    # catches (R1, #978 review): the default snapshot (no window) failing in the CI read because
+    # only the factory reader resolved the default day, the two groups read over different bounds,
+    # or half a window accepted after reading something.
+    def test_snapshot_default_window_is_one_window_for_both_groups(self):
+        G = load('gather', HERE / 'gather.py')
+        clock = lambda: '2030-01-03T06:00:00Z'  # noqa: E731  (the default day is then 2030-01-02)
+        with fake_gh('daily-world.json'):
+            default = G.snapshot(DAILY_REPO, clock=clock, usage=FIX / 'daily-usage.json')
+            explicit = G.snapshot(DAILY_REPO, clock=clock, usage=FIX / 'daily-usage.json', since=DAY[0], until=DAY[1])
+        suite._shape(default, SCHEMA, SCHEMA)
+        self.assertEqual(default['factory']['merges']['window'], {'since': DAY[0], 'until': DAY[1], 'timezone': 'UTC'})
+        self.assertEqual([p['number'] for p in default['factory']['merges']['value']['pull_requests']], [31, 32, 33])
+        for name in ('merges', 'stalls', 'cost'):
+            self.assertEqual(default['factory'][name], explicit['factory'][name], name)
+        for name, fact in default['ci'].items():
+            self.assertEqual((fact['state'], fact['window'], fact['prerequisites']),
+                             (explicit['ci'][name]['state'], explicit['ci'][name]['window'],
+                              explicit['ci'][name]['prerequisites']), name)
+        for half in ({'since': DAY[0]}, {'until': DAY[1]}):
+            with self.subTest(half=half), fake_gh('daily-world.json') as (_, calls):
+                with self.assertRaises(ValueError):
+                    G.snapshot(DAILY_REPO, clock=clock, **half)
+                self.assertEqual(calls(), [])
+
 if __name__ == '__main__':
     unittest.main()
