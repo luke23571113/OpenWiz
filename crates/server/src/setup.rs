@@ -7,17 +7,6 @@ use crate::http::{API_HEADERS, Reply};
 use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The components a setup check observes (the store's own list).
-const CHECKED: [&str; 7] = [
-    "cloudroom",
-    "harness",
-    "personal_github",
-    "github_app",
-    "project",
-    "engine",
-    "remote_access",
-];
-
 pub(crate) const ROUTE: &str = "/api/v1/setup";
 
 /// Evidence older than this, or from the future beyond clock drift, is not
@@ -25,9 +14,10 @@ pub(crate) const ROUTE: &str = "/api/v1/setup";
 const CURRENT_MS: u64 = 60 * 60 * 1000;
 const DRIFT_MS: u64 = 5 * 60 * 1000;
 
-/// T1's defaults: nothing checked. Installing bytes alone never proves an
-/// account is ready. T4 (`engine`) and T5 (`remote_access`) replace their own rows.
-const DEFAULTS: [(&str, &str, &str, &str); 7] = [
+/// The components this report shows, each checked, with T1's defaults: nothing
+/// checked. Installing bytes alone never proves an account is ready. Setup has
+/// no engine step (#873): an old state file's engine observation is not shown.
+const DEFAULTS: [(&str, &str, &str, &str); 6] = [
     (
         "cloudroom",
         "unknown",
@@ -57,12 +47,6 @@ const DEFAULTS: [(&str, &str, &str, &str); 7] = [
         "missing",
         "No verified project is configured.",
         "Choose a repository and CloudRoom project, then confirm CI, review and answer routing.",
-    ),
-    (
-        "engine",
-        "missing",
-        "No engine has been selected or activated.",
-        "Choose Cloud or Local after reviewing costs and the proposed effects.",
     ),
     (
         "remote_access",
@@ -186,21 +170,16 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
     let components = DEFAULTS
         .into_iter()
         .map(|(id, state_default, reason, next)| {
-            let checked = CHECKED.contains(&id);
-            let (s, r, n) = if id == "engine" && engine.is_some() {
-                ("unknown", "Engine selection is saved; activation remains closed and no runtime is verified.", "Current login evidence and approved host provisioning are required. Check the saved operation; never retry an uncertain activation.")
-            } else if unreadable && checked {
+            let (s, r, n) = if unreadable {
                 ("unknown", "This host's setup state could not be read safely.", "Check that OpenWiz's state directory is owner-only, then run the setup check again.")
-            } else if checked {
-                component(id, (state_default, reason, next), state, now)
             } else {
-                (state_default, reason, next)
+                component(id, (state_default, reason, next), state, now)
             };
             json!({"id":id,"state":s,"reason":r,"next":n})
         })
         .collect::<Vec<_>>();
-    // Overall readiness: every prerequisite of the selected engine verified.
-    // Phone access is reported, never inferred; T1's engine stays unselected.
+    // Overall readiness: every prerequisite verified. Phone access is
+    // reported, never inferred.
     let ready = components
         .iter()
         .filter(|c| c["id"] != "remote_access")
