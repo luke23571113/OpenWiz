@@ -260,7 +260,8 @@ def validate(receipt_text, result_text, fleet, binding, record):
         if not any(w['kind'] == 'commit' and w['id'] == merge['head'] for w in result['retained_work']):
             out.append("The receipt's merged head is not the first-hour result's commit.")
         ended = result['clock']['ended_at_ms'].get('known')
-        if merge['merged_at_ms'] not in [e['at_ms'] for e in read_back] or ended not in (None, merge['merged_at_ms']):
+        # GitHub's merge time ends both clocks; the read-back that observed it comes at or after it.
+        if merge['merged_at_ms'] > max(e['at_ms'] for e in read_back) or ended not in (None, merge['merged_at_ms']):
             out.append("The receipt's merge time is not the first-hour result's merge read-back.")
     if any(o['kind'] == 'activate_engine' for o in result['operations']) and 'The run activated the engine.' not in out:
         out.append('The run activated the engine.')

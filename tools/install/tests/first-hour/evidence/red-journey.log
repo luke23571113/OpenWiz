@@ -1,0 +1,14 @@
+# Red run (#637) of the journey seam: test_first_merge.py KnownWaysToFail with first_merge_kit.py temporarily at the red commit (contract cores only). The installed journey ran `openwiz fleet tick` beside the fleet thread; nothing refused it. Checkout path sanitized.
+F
+======================================================================
+FAIL: test_a_tick_start_beside_the_fleet_thread_is_refused (__main__.KnownWaysToFail.test_a_tick_start_beside_the_fleet_thread_is_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/first-hour/test_first_merge.py", line 469, in test_a_tick_start_beside_the_fleet_thread_is_refused
+    self.assertIn('The fleet was started by a fleet tick, not launch-fleet.', refusals)
+AssertionError: 'The fleet was started by a fleet tick, not launch-fleet.' not found in []
+
+----------------------------------------------------------------------
+Ran 1 test in 36.657s
+
+FAILED (failures=1)

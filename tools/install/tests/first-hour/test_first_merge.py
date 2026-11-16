@@ -298,5 +298,180 @@ class Eligibility(unittest.TestCase):
                       out.getvalue())
 
 
+
+journey = load('first_merge_journey', HERE / 'journey.py')
+RECORDING = ['candidate_unknown', 'not_live']
+# Written by hand from contracts/first-hour.v1.md for this recording (test_journey.py's own list).
+RESULT_UNPROVEN = sorted(['not_live', 'clock_unknown', 'stage_unverified:connections', 'gap:PR1', 'gap:PR4',
+                          'gate_unresolved:cloudroom_setup'])
+# A recording receipt: no clock, no fresh machine or initial record, a seeded repository; written by hand
+# from contracts/setup-onboard.v1.md.
+RECEIPT_UNPROVEN = sorted(['not_live', 'clock_unknown', 'not_fresh:machine', 'not_fresh:repository', 'seeded_state',
+                           'initial_record_missing'])
+S, O = 'agent_for_owner', 'owner'
+# first-hour.json's own turns, and at its Connect step the installed tools' yeses (skills/install/SKILL.md:
+# every effect waits for the owner's yes), each written by hand.
+BEFORE_CONNECT = [('typed_choice', 'project', O), ('confirmation', 'prepare_project', S)]
+AFTER_CONNECT = [('confirmation', 'init', S), ('tap', 'brain_merge', S), ('typed_choice', 'connect', O),
+                 ('typed_choice', 'grill', O), ('confirmation', 'grill', O), ('typed_choice', 'agents', O),
+                 ('confirmation', 'spec_confirmation', O), ('approval', 'plan_approval', O),
+                 ('spending_approval', 'launch', O)]
+APP_ACTIONS = BEFORE_CONNECT + [
+    ('app_manifest', 'create_app', S), ('app_manifest', 'install_app', S),
+    # The installed protected-paste route's owner steps (tools/github-app/setup.py, setup-onboard.v1), one each.
+    ('key_step', 'open_app_settings', S), ('key_step', 'generate_key', S), ('key_step', 'download_key', S),
+    ('key_step', 'encode_key', S), ('protected_paste', 'paste_protected_prompt', S),
+    ('key_step', 'delete_download', S)] + AFTER_CONNECT
+SKIP_ACTIONS = BEFORE_CONNECT + [('confirmation', 'skip_app', S)] + AFTER_CONNECT
+
+
+def recording_binding(a, receipt):
+    """The kit binding a recording of this attempt would carry: its own candidate, repository, route and logs."""
+    b = fixture('binding.json')
+    known = a.result['candidate']['known']
+    b.update(candidate=known, recorded={'actions': len(receipt['actions']['log']), 'waits': 0, 'help': 0})
+    b['host']['target'] = known['target']
+    b['scope'].update(repository=journey.REPO, app_repositories=[journey.REPO])
+    b['route'] = {k: receipt[k] for k in ('identity', 'app_registration', 'secret_route')}
+    return b
+
+
+def kit_record(route):
+    r = fixture('eligibility.json')
+    if route == 'protected_paste':
+        r['upstream'] = {'state': 'not_shipped', 'evidence': None}
+    return r
+
+
+class Recording(unittest.TestCase):
+    """The installed first hour on recording providers, with the user's App and with the explicit skip."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.holder = unittest.TestCase()
+        cls.app = journey.Attempt(cls.holder)
+        cls.skip = journey.Attempt(cls.holder, {'skip_app': True})
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.holder.doCleanups()
+
+    def kit(self, a):
+        receipt = a.first_merge()
+        return kit.validate(json.dumps(receipt), a.result_text, a.fleet, recording_binding(a, receipt),
+                            kit_record(receipt['secret_route']))
+
+    def test_the_app_path_counts_every_owner_equivalent_step(self):
+        # P1/P7 at the installed seam. Catches an agent stand-in counted as zero, several taps merged into one,
+        # an App or key step left out, and a recording receipt read as live or as a pass.
+        receipt = self.app.first_merge()
+        self.assertEqual([(x['kind'], x['stage'], x['actor']) for x in receipt['actions']['log']], APP_ACTIONS)
+        self.assertEqual(receipt['actions']['count'], {'known': 19})
+        self.assertEqual((receipt['identity'], receipt['app_registration'], receipt['secret_route']),
+                         ('app', 'created', 'protected_paste'))
+        got = journey.receipt_checks.check(receipt)
+        self.assertEqual((got.problems, got.failures, got.unproven),
+                         ([], ['actions_exceeded'], sorted(RECEIPT_UNPROVEN + ['secret_route_unobserved'])))
+        self.assertEqual(receipt['verdict'], 'fail')
+        refusals, outcome, codes = self.kit(self.app)
+        self.assertEqual((refusals, outcome), (['A recording receipt is synthetic proof, not a live observation.'], 'refused'))
+        self.assertEqual(codes['result'], {'problems': [], 'failures': [], 'unproven': RESULT_UNPROVEN})
+
+    def test_the_receipt_binds_this_attempts_result_merge_and_measures(self):
+        # Catches a receipt bound to another document, a merge not read back at the reviewed, green head,
+        # an init-only change, or the hour's or ten-minute measure rewritten into the 30-minute one.
+        a = self.app
+        receipt = a.first_merge()
+        self.assertEqual(receipt['binding']['first_hour_result_sha256'], hashlib.sha256(a.result_text.encode()).hexdigest())
+        self.assertEqual(json.loads(a.result_text), a.result)
+        merge = receipt['binding']['merge']
+        self.assertEqual((merge['pull_request'], merge['head'], merge['reviewed_head'], merge['ci_green_head']),
+                         (journey.Attempt.PR, a.head, a.head, a.head))
+        self.assertEqual((merge['basis'], merge['change']), ('merge_read_back', 'implementation'))
+        self.assertEqual((a.result['clock']['limit_ms'], a.result['ten_minute_fleet']),
+                         (3600000, {'owner': 1110, 'state': 'unmeasured', 'elapsed_ms': None}))
+        self.assertEqual(receipt['clock']['limit_ms'], 1800000)
+        self.assertEqual(receipt['instruction'], 'Install OpenWiz from github.com/openwizdev/OpenWiz')
+        self.assertEqual(receipt['idea'], 'My own repository, synthetic-owner/synthetic-consumer. I want a link checker for its docs.')
+
+    def test_the_first_fleet_is_one_fleet_thread_and_its_loop(self):
+        # J87 Q1 at the installed seam: launch-fleet's one fleet thread and its per-spec check loop.
+        a = self.app
+        a.first_merge()
+        self.assertEqual(a.fleet, {'schema': 'openwiz.first-merge-kit-fleet.v1', 'proof_class': 'recording',
+                                   'private_record': None, 'route': 'launch_fleet', 'fleet_threads': 1,
+                                   'loop': {'spec': 920, 'every_minutes': 10}, 'engine_activations': 0,
+                                   'tick_starts': 0, 'builders': 3, 'reviewers': 1})
+        self.assertFalse(a.c.engine_log.exists(), 'no engine or tick call')
+
+    def test_the_skip_app_continuation_counts_its_own_steps(self):
+        # The separate skip-App check (P2): the explicit skip is its own counted yes; no App or key step
+        # is invented, and no secret route is claimed.
+        receipt = self.skip.first_merge()
+        self.assertEqual([(x['kind'], x['stage'], x['actor']) for x in receipt['actions']['log']], SKIP_ACTIONS)
+        self.assertEqual((receipt['identity'], receipt['app_registration'], receipt['secret_route']),
+                         ('personal_login', 'skipped', 'not_used'))
+        got = journey.receipt_checks.check(receipt)
+        self.assertEqual((got.problems, got.failures, got.unproven), ([], ['actions_exceeded'], RECEIPT_UNPROVEN))
+        saved = json.loads((self.skip.state / 'setup/state.json').read_text())
+        self.assertEqual(saved['identity']['app_choice'], 'skip', "only the owner's skip selects the login")
+        refusals, outcome, codes = self.kit(self.skip)
+        self.assertEqual((refusals, outcome), (['A recording receipt is synthetic proof, not a live observation.'], 'refused'))
+        self.assertEqual(journey.codes(self.skip.result), {'problems': [], 'failures': [], 'unproven': RESULT_UNPROVEN})
+
+    def test_both_secret_routes_at_the_installed_seam_and_no_paste_stays_unverified(self):
+        # P3 at the installed App tool, on this attempt's own state. Catches a missing, partial or foreign key
+        # called stored, the stand-in store taken for the shipped CloudRoom contribution, and a lost key
+        # registering a second App or touching the owner's work.
+        docs = self.app.key_faults()
+        expected = {'none': ('protected_paste', 'uncertain', [], [], ['delivery_unverified', 'key_download_unknown', 'not_live']),
+                    'delivered': ('protected_paste', 'stored', [], [], ['key_download_unknown', 'not_live']),
+                    'foreign_id': ('protected_paste', 'failed', [], ['secret_store_failed'], ['key_download_unknown', 'not_live']),
+                    'key_only': ('protected_paste', 'uncertain', [], [], ['delivery_unverified', 'key_download_unknown', 'not_live']),
+                    'agent_save': ('agent_save', 'uncertain', ['agent_save_unavailable'], [], ['delivery_unverified', 'not_live'])}
+        for name, (route, outcome, problems, failures, unproven) in expected.items():
+            with self.subTest(name):
+                got = journey.receipt_checks.check(docs[name])
+                self.assertEqual((docs[name]['route'], docs[name]['outcome'], got.problems, got.failures, got.unproven),
+                                 (route, outcome, problems, failures, unproven))
+                self.assertEqual(docs[name]['app_registrations'], 1)
+        self.assertEqual(docs['agent_save']['upstream']['state'], 'unknown', 'a stand-in store is never the shipped contribution')
+        notes = self.app.key_notes
+        self.assertEqual(notes['reregister_exit'], 6)
+        self.assertIn('App 1001 is already registered', notes['reregister_said'])
+        self.assertEqual(notes['registrations'], (0, 0), 'no App registration was proposed')
+        self.assertEqual(journey.codes(self.app.key_case), {'problems': [], 'failures': [], 'unproven': RECORDING})
+
+    def test_a_lost_companion_reply_is_reconciled_once(self):
+        # The separate public-code check (P4, P5): installed init on public code makes one private companion,
+        # linked, even when its creation reply is lost. Catches a second companion, a public brain or
+        # private records written to the public code.
+        c = self.app.companion_check()
+        self.assertEqual((c['preview']['outcome'], c['preview']['brain']['location']), ('proposed', 'companion'))
+        self.assertEqual((c['first_exit'], c['phase_after_lost_reply']), (6, 'uncertain'))
+        self.assertEqual((c['final']['outcome'], c['creates']), ('applied', 1))
+        self.assertEqual((c['companion']['full_name'], c['companion']['private']), ('synthetic-owner/synthetic-public-brain', True))
+        self.assertEqual(c['final']['private_content_written'], 'brain_repository', 'never the public code')
+        got = journey.receipt_checks.check(c['final'])
+        self.assertEqual((got.problems, got.failures, got.unproven), ([], [], ['not_live']))
+        self.assertEqual(journey.codes(self.app.companion_case), {'problems': [], 'failures': [], 'unproven': RECORDING})
+
+
+class KnownWaysToFail(unittest.TestCase):
+    def test_a_tick_start_beside_the_fleet_thread_is_refused(self):
+        # J87 Q1, red first at the installed seam: a stale instruction that also runs `openwiz fleet tick`.
+        holder = unittest.TestCase()
+        self.addCleanup(holder.doCleanups)
+        a = journey.Attempt(holder, {'tick_start': True})
+        receipt = a.first_merge()
+        self.assertEqual((a.fleet['route'], a.fleet['tick_starts']), ('fleet_tick', 1))
+        refusals, outcome, _ = self.kit_run(a, receipt)
+        self.assertIn('The fleet was started by a fleet tick, not launch-fleet.', refusals)
+        self.assertIn('The run started work through a fleet tick.', refusals)
+
+    def kit_run(self, a, receipt):
+        return kit.validate(json.dumps(receipt), a.result_text, a.fleet, recording_binding(a, receipt),
+                            kit_record(receipt['secret_route']))
+
 if __name__ == '__main__':
     unittest.main()
