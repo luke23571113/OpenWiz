@@ -322,18 +322,22 @@ def table(window, fallback, out, workflows, after=None, after_jobs=()):
         wf = Path(path).name
         _, wjobs = read_workflow(path)
         primary = read_window(window, wf)
-        older = read_window(fallback, wf) if fallback else None
-        later = read_window(after, wf) if after else None
+        primary_traced = traced_runs(primary[1])
+        read = {}  # a fallback is read only when a job needs it
         for key, j in wjobs.items():
             # A job whose shape changed in #743 never reads runs from before
             # the merges: only its own runs after them (#782 question 3).
-            second = later if key in after_jobs else older
+            second = after if key in after_jobs else fallback
             for mode in (("normal", "traced") if j["marked"] else ("all",)):
                 w, jobs = primary
-                got = samples(jobs, key, mode, traced_runs(jobs))
+                got = samples(jobs, key, mode, primary_traced)
                 runs, first, last = w["runs"], w["first"], w["last"]
                 if len(got) < MIN_SAMPLES and second is not None:
-                    got, runs, first, last = own_runs(samples(second[1], key, mode, traced_runs(second[1])))
+                    if second not in read:
+                        _, sjobs = read_window(second, wf)
+                        read[second] = (sjobs, traced_runs(sjobs))
+                    sjobs, straced = read[second]
+                    got, runs, first, last = own_runs(samples(sjobs, key, mode, straced))
                 n = len(got)
                 if n < MIN_SAMPLES:
                     errors.append(f"{wf} job {key} {mode} has {n} sample{'' if n == 1 else 's'},"
