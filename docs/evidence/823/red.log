@@ -1,0 +1,75 @@
+# MT4 (#823) red run: the proofs before the chart exists (commit: tests and a stub prs_per_hour.figure returning None)
+$ python3 -I tools/war-room/test_charts.py PrsPerHour
+FFFFFFF
+======================================================================
+FAIL: test_a_bad_or_late_snapshot_refuses_the_whole_build (__main__.PrsPerHour.test_a_bad_or_late_snapshot_refuses_the_whole_build) [late]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 733, in test_a_bad_or_late_snapshot_refuses_the_whole_build
+    with self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_a_bad_or_late_snapshot_refuses_the_whole_build (__main__.PrsPerHour.test_a_bad_or_late_snapshot_refuses_the_whole_build) [extra]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 733, in test_a_bad_or_late_snapshot_refuses_the_whole_build
+    with self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_a_bad_or_late_snapshot_refuses_the_whole_build (__main__.PrsPerHour.test_a_bad_or_late_snapshot_refuses_the_whole_build) [contradiction]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 733, in test_a_bad_or_late_snapshot_refuses_the_whole_build
+    with self.assertRaises(ValueError):
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_an_unknown_or_partial_day_stays_unknown_or_hollow_never_zero (__main__.PrsPerHour.test_an_unknown_or_partial_day_stays_unknown_or_hollow_never_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 670, in test_an_unknown_or_partial_day_stays_unknown_or_hollow_never_zero
+    _, unknown = self.draw(snapshot('snapshot-unavailable.json'))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "tools/war-room/test_charts.py", line 641, in draw
+    self.assertIn(HEADLINE, ids)
+AssertionError: 'body-ci-bench-headline' not found in ['00a', '00b', '00c', '00d', '00e']
+
+======================================================================
+FAIL: test_its_numbers_match_ci_bench_on_the_same_data (__main__.PrsPerHour.test_its_numbers_match_ci_bench_on_the_same_data)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 706, in test_its_numbers_match_ci_bench_on_the_same_data
+    _, fig = self.draw(snapshot(change=bench))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "tools/war-room/test_charts.py", line 641, in draw
+    self.assertIn(HEADLINE, ids)
+AssertionError: 'body-ci-bench-headline' not found in ['00a', '00b', '00c', '00d', '00e']
+
+======================================================================
+FAIL: test_the_page_shows_it_first_in_the_ci_bench_figure_with_its_table (__main__.PrsPerHour.test_the_page_shows_it_first_in_the_ci_bench_figure_with_its_table)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 740, in test_the_page_shows_it_first_in_the_ci_bench_figure_with_its_table
+    bundle, fig = self.draw(snapshot(), history_root=self.world.history)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "tools/war-room/test_charts.py", line 641, in draw
+    self.assertIn(HEADLINE, ids)
+AssertionError: 'body-ci-bench-headline' not found in ['00a', '00b', '00c', '00d', '00e', 'body-readiness', 'body-main-ci', 'body-stage-health', 'body-ci-bench-count', 'body-ci-bench-minutes', 'body-ci-bench-prs-per-hour', 'body-ci-bench-robot-minutes-per-code-run']
+
+======================================================================
+FAIL: test_the_snapshot_is_drawn_against_its_baseline_with_a_label_on_every_mark (__main__.PrsPerHour.test_the_snapshot_is_drawn_against_its_baseline_with_a_label_on_every_mark)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 647, in test_the_snapshot_is_drawn_against_its_baseline_with_a_label_on_every_mark
+    _, fig = self.draw(snapshot())
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "tools/war-room/test_charts.py", line 641, in draw
+    self.assertIn(HEADLINE, ids)
+AssertionError: 'body-ci-bench-headline' not found in ['00a', '00b', '00c', '00d', '00e']
+
+----------------------------------------------------------------------
+Ran 5 tests in 1.062s
+
+FAILED (failures=7)
