@@ -5,10 +5,10 @@
 
 1. #1109's cold-consumer install journey, unchanged
    (tools/install/tests/journey/test_journey.py): the actual install entry, the
-   installed setup tool, the installed engine and the installed onboarding
-   helper. Only its recorded conversation is swapped for first-hour.json: one
-   fresh small idea on the owner's own selected repository (the one setup
-   prepared), not the demo, with no prepared plan.
+   installed setup tool and the installed onboarding helper. Only its recorded
+   conversation is swapped for first-hour.json: one fresh small idea on the
+   owner's own selected repository (the one setup prepared), not the demo,
+   with no prepared plan.
 2. The join this ticket adds: the fleet's builders, independent review, CI and
    the merge, decided at every step by the installed launch-fleet frontier
    (`runtime/skills/launch-fleet/scripts/fleet.sh spec`) reading a recording
@@ -57,7 +57,7 @@ SEAT_HARNESS = {'codex': 'codex', 'claude-code': 'claude_code'}
 ASSUMPTIONS = [
     'Synthetic recording-provider first hour on the installed journey (#2204): every id, digest, time, repository, '
     'thread, pull request and account is invented; GitHub and CloudRoom are recording providers.',
-    "The release, install, setup, engine and onboarding are #1109's fixture journey: no installed candidate was "
+    "The release, install, setup and onboarding are #1109's fixture journey: no installed candidate was "
     'published, no person opened the instruction and no real time was measured, so the clock is unknown.',
     "Builder and reviewer runs are the recording CloudRoom's threads, read back: no real harness login ran.",
 ]
@@ -436,7 +436,7 @@ class Attempt:
                 work('commit', self.head, self.tree, 'repository_read_back')]
 
     def _process_restart(self, reviewer):
-        """The engine stops just after CloudRoom started the reviewer, before its record; it reconciles by op id."""
+        """The fleet thread stops just after CloudRoom started the reviewer, before its record; it reconciles by op id."""
         pull = self.github.pull(self.PR)
         claim = self.github.comment(pull, 'launch-fleet: review starting %s' % self.head, 50)
         before = self._repository_work() + [self._pending(self.review_op, 'start_agent', self.review_request)]
@@ -463,7 +463,7 @@ class Attempt:
                        'attempts': self.cloudroom.calls[self.review_op],
                        'reconciliation': 'none' if self.mutate.get('blind_restart') else 'provider_read_back'}]
         self.cases.append(recovery('process_restart', before, after, operations, {
-            'what_happened': 'The engine stopped after CloudRoom started the reviewer and before it recorded the '
+            'what_happened': 'The fleet thread stopped after CloudRoom started the reviewer and before it recorded the '
                              'start. On restart it read the reviewer thread back by its title first: it was there, '
                              'so it recorded the start and started nothing again.',
             'took_effect': 'yes',
@@ -703,7 +703,7 @@ class Attempt:
         return [(o, o['fingerprint']) for o in setup['operations']]
 
     def _setup_operations(self, setup):
-        """The setup operations #1109's journey saved (the project, the engine's preview), read back."""
+        """The setup operations #1109's journey saved (setup's prepare and init of the project), read back."""
         return [{'operation_id': o['operation_id'], 'kind': o['kind'], 'phase': o['phase'],
                  'effect_count': 1 if o['phase'] == 'applied' else 0, 'attempts': 1 if o['phase'] == 'applied' else 0,
                  'reconciliation': 'none'} for o in setup['operations'] if o['kind'] != 'configure_access']
