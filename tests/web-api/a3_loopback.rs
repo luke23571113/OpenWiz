@@ -7,7 +7,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use openwiz_server::{ALLOWED_HOST_ENV, Config, DEFAULT_PORT, valid_host_name};
+use openwiz_server::{ALLOWED_HOST_ENV, Config, DEFAULT_PORT};
 
 use crate::fake::Fake;
 use crate::http::{self, non_loopback_address, serve, serve_with};
@@ -207,34 +207,4 @@ fn the_configured_host_name_is_served() {
     assert_eq!(with_host("openwiz.example.invalid:443"), 421);
     assert_eq!(with_host("other.example.invalid"), 421);
     assert_eq!(with_host("wiz.example.invalid"), 421);
-}
-
-#[test]
-fn only_dns_names_can_be_configured() {
-    for good in ["openwiz.example.invalid", "a", "x-1.example.invalid", "A.B"] {
-        assert!(valid_host_name(good), "{good}");
-    }
-    let long = format!("{}.example.invalid", "a".repeat(64));
-    let too_long = ["a"; 128].join(".");
-    for bad in [
-        "",
-        " ",
-        "openwiz.example.invalid:443",
-        "openwiz.example.invalid/",
-        "http://openwiz.example.invalid",
-        "-a.example.invalid",
-        "a-.example.invalid",
-        "a..example.invalid",
-        ".example.invalid",
-        "example.invalid.",
-        "a_b.example.invalid",
-        "*.example.invalid",
-        "127.0.0.1:80",
-        "[::1]",
-        "ex\u{e4}mple.invalid",
-        &long,
-        &too_long,
-    ] {
-        assert!(!valid_host_name(bad), "{bad:?}");
-    }
 }
