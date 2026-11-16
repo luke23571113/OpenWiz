@@ -11,6 +11,7 @@ mod schema;
 mod dirs;
 
 mod ci_selection;
+mod cli_build_script;
 mod cockpit_schema_conformance;
 mod dependencies;
 mod dir_modes;
@@ -22,6 +23,7 @@ mod plan_links;
 mod public_tree;
 mod schema_conformance;
 mod skills;
+mod strict_json;
 
 // The shared support's own proofs, run once here (#811).
 #[allow(dead_code)]

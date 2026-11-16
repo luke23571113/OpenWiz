@@ -1,7 +1,8 @@
 # Stall alarm (#567)
 
-A small check for the confirmed bottlenecks grill, BN2. It reads GitHub
-and the selected fleet loop, writes only its own local alarm state, and
+A small check for the confirmed bottlenecks grill, BN2. It reads the war
+room collector's factory facts (#824) and the selected fleet loop, writes
+only its own local alarm state, and
 prints one line per new stall. Quiet ticks print nothing and start no agent.
 An alarm still confirmed 30 minutes after its first detection prints one
 additional `JAKE:` line, once. Recovery is silent and rearms the alarm.
@@ -12,8 +13,10 @@ python3 tools/stall-alarm/alarm.py --repo example-owner/example-repo \
   --fleet-loop loop_fixture --state /tmp/stall-alarm-example.json
 ```
 
-Needs Python 3 (standard library only), authenticated `gh`, and the full
-managed local `room-cli loop list --json` on the PC. No package or crate is added.
+Needs Python 3 (standard library only), a checkout holding
+`tools/war-room/collect_factory.py` with an authenticated `gh` for it, and
+the full managed local `room-cli loop list --json` on the PC. No package or
+crate is added.
 The second command is a real read; the tests use isolated fakes only.
 
 The [runtime ruling on #567](https://github.com/jparker2006/ClosedWiz/issues/567#issuecomment-6575288221)
@@ -30,9 +33,9 @@ pending; the builder proves the command boundary with fakes.
 | Alarm | Evidence read at this tick | Clears when |
 | --- | --- | --- |
 | Fleet loop | Selected `automations[].id` is disabled, has nonempty `last_error`, has an overdue `last_run_at`, or never ran before startup grace expired | That loop is enabled, error-free and running within its cadence and grace |
-| No merges | No PR merged to the default base during the last 60 minutes, and at least one open, non-draft PR has its latest `VERDICT: APPROVE at <full SHA>` at the current head, successful required checks at that head, and `MERGEABLE` | A recent merge exists or no PR meets those conditions |
-| Idle agent | Latest fleet record or verdict on an open PR is `findings sent`, `CI failure sent` or `re-check sent`, names its current head, and is at least 60 minutes old | New head, newer record/verdict, or PR closes |
-| Failed read | A source failed, timed out, returned malformed/partial JSON or lacked the selected loop | That source can be read completely again |
+| No merges | `merges` holds no PR merged to the default base during the last 60 minutes, and in `open_prs` at least one open, non-draft PR has its latest verdict `APPROVE` at the current head, a `success` rollup with each required check `success`, and `MERGEABLE` | A recent merge exists or no PR meets those conditions |
+| Idle agent | In `open_prs`, the later of a PR's latest fleet record and latest verdict is a `findings sent`, `CI failure sent` or `re-check sent` record that names its current head, and is at least 60 minutes old | New head, newer record/verdict, or PR closes |
+| Failed read | A source failed, timed out, returned malformed/partial JSON or lacked the selected loop; for GitHub, the collector failed or either fact is not `known` | That source can be read completely again |
 
 Loop read failures retain `read failed: loop status unavailable` and append
 one fixed safe cause when known: `command failed`, `invalid JSON`,
@@ -43,23 +46,59 @@ error text never supply diagnostic text. A cause change remains the same
 `read/loop` episode, with its original deduplication and escalation timer;
 an escalation names the cause observed at that tick.
 
-Fleet records use their first nonblank line and match a pull-request
-or any-item prefix in the fleet skill's Records table. Annotations after
-a recognized prefix are allowed, including on sent records. Unknown kinds
-and incomplete record prefixes fail the read. A record's last edit is its action time; the
-latest record uses that time, then comment ID. A verdict must start the
-comment body; its latest report uses comment ID, matching the fleet. Plain discussion does not
-prove an agent acted. No thread content is read. `UNKNOWN` mergeability
-does not count as conflict-free. Required checks default to `ci`; `--check NAME` repeats to select another exact set.
-`--base` defaults to `main` and must match the repository's default branch.
+## The collector read (#824)
 
-The GitHub read is a GraphQL query, not a search over local branches. It
-paginates open PRs, and asks GitHub's search count for default-base PRs
-merged after the hour's cutoff. Search freshness is GitHub's; live timing
-has not been measured. More than 100 comments or 100 checks on a PR is an
-explicit failed read, never a partial quiet result. GraphQL errors and
-repeated JSON keys are refused. Loop list is a latest snapshot: this cannot
-detect errors that arise and clear between ten-minute ticks.
+The alarm makes no GitHub read of its own. Each tick it runs the war room
+collector once, `python3 -I tools/war-room/collect_factory.py read --repo
+OWNER/NAME --fact merges --fact open_prs --since <tick - 60 min> --until
+<tick> --base <base> --check <check> ...`, and reads the one
+`openwiz.war-room.collector.read.v1` envelope it prints, as the
+[collector contract](../war-room/collector.v1.md) says for the stall alarm:
+on demand, inside the tick's read budget, never from a snapshot. Only the
+CloudRoom loop status stays the alarm's own read.
+
+The collector is `tools/war-room/collect_factory.py` beside this folder, or
+the absolute path in `STALL_ALARM_COLLECTOR`. A copy of the alarm with no
+checkout beside it (the embedded script below) must name one, or its GitHub
+read fails. The envelope must be for this repository, hold exactly `merges`
+and `open_prs`, both `known`, with the requested hour, base and checks;
+anything else, an exit other than 0 or invalid JSON is a failed read, never
+a quiet tick. `merges` counts every base, so only merges into `--base`
+clear the no-merge alarm.
+
+The collector applies the record rules: a fleet record is its first
+nonblank line and matches a pull-request or any-item prefix of the fleet
+skill's Records table (`PR_RECORD` here, which the collector imports).
+Annotations after a recognized prefix are allowed, including on sent
+records. Unknown kinds and incomplete record prefixes make `open_prs`
+unavailable. A record's last edit is its action time; the latest record uses
+that time, then comment ID. A verdict must start the comment body; the latest
+verdict is by comment ID, matching the fleet. Plain discussion does not prove
+an agent acted. No thread content is read. `UNKNOWN` mergeability does not
+count as conflict-free. More than 100 comments or 100 checks on a PR, a
+GraphQL error, a repeated JSON key, or a PR whose head and last commit
+disagree make `open_prs` unavailable. Required checks default to `ci`;
+`--check NAME` repeats to select another exact set. `--base` defaults to
+`main` and must match the repository's default branch.
+
+Two edges differ from the alarm's former own query. The hour is the
+collector's half-open window `[tick - 60 min, tick)`, where the former search
+counted merges strictly after the cutoff. A PR whose head moved during the
+read now fails that tick's read instead of counting as not eligible. Search
+freshness and live timing have not been measured. Loop list is a latest
+snapshot: this cannot detect errors that arise and clear between ten-minute
+ticks.
+
+Fixture proof: `python3 -B -I tools/stall-alarm/test.py`. `Alarm` runs the
+former cases through the real collector over synthetic GitHub answers;
+`CollectorFixtures` reads the contract's
+[`read-stall.json`](../war-room/fixtures/collector/read-stall.json) and its
+variants through a fake collector, and checks that no `gh` runs. The red
+run, against the unchanged alarm, is
+[`evidence/824-red-first.log`](evidence/824-red-first.log); the green run
+is [`evidence/824-green.log`](evidence/824-green.log). CI runs this suite in
+`war-room.yml`'s test step, on every pull request that touches this folder,
+the war room (including the collector) or that workflow.
 
 Fleet liveness uses the selected loop's configured `cron`: minute `*`,
 `*/N`, a single minute, or comma-separated minutes, with `*` in the other
@@ -122,7 +161,9 @@ An edited sent record identifies a new action and gets a fresh escalation
 timer, even if checks missed the interval when it was under 60 minutes old.
 
 Each command gets at most eight seconds inside a shared 40-second read
-budget; a timed-out command and its children are stopped together. No clone,
+budget, except the collector's read, which holds all of the tick's GitHub
+reads and gets the rest of the budget; a timed-out command and its children
+are stopped together. No clone,
 fetch or build runs during a tick. Local state work follows that budget.
 `--deadline` may lower the budget; `--now` supplies a controlled UTC clock
 for proofs. The test runner measures complete fake invocations, including
@@ -143,10 +184,13 @@ or new credential is needed. Substitute the repository, project and fleet
 loop IDs in these examples, and set `PC_HOST` to the PC's CloudRoom host;
 example IDs are synthetic.
 
-First build a self-contained script from the reviewed checkout. It keeps
-its state on the PC outside the checkout, and selects the bundled CLI each
-tick so an app restart's changed mount path can be found. If the app is
-unavailable, its status read fails visibly instead of using an ambient CLI.
+First build the script from the reviewed checkout's root. It embeds the
+alarm, keeps its state on the PC outside the checkout, and selects the
+bundled CLI each tick so an app restart's changed mount path can be found.
+If the app is unavailable, its status read fails visibly instead of using an
+ambient CLI. It names that checkout's collector (#824), so the checkout must
+stay on the PC at that path, updated only to reviewed commits; a missing
+collector fails each tick's GitHub read visibly.
 
 ```sh
 cat > /tmp/stall-alarm-check.sh <<'SH'
@@ -157,6 +201,10 @@ if [ -z "${STALL_ALARM_ROOM_CLI:-}" ]; then
   done
 fi
 export STALL_ALARM_ROOM_CLI
+SH
+printf ': "${STALL_ALARM_COLLECTOR:=%s}"\nexport STALL_ALARM_COLLECTOR\n' \
+  "$PWD/tools/war-room/collect_factory.py" >> /tmp/stall-alarm-check.sh
+cat >> /tmp/stall-alarm-check.sh <<'SH'
 exec python3 - --repo example-owner/example-repo --fleet-loop loop_fixture \
   --state "${STALL_ALARM_STATE:-$HOME/.local/state/stall-alarm/example-owner-example-repo.json}" <<'PY'
 SH

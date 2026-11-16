@@ -32,6 +32,17 @@ const SETUP_APP_REFUSED = setup({ over: { github_app: component('github_app', 'r
 const SETUP_UNCERTAIN = setup({
   operations: [{ operation_id: OP, kind: 'activate_engine', phase: 'uncertain', fingerprint: 'a'.repeat(64), effects: ['Start the local engine'], reason: 'The reply was lost.' }] });
 
+// #636: the identity the owner selected continues to the first idea. An
+// explicitly skipped App stays missing, and setup still reports ready, as the
+// server's rule says (the verified personal login carries the identity part).
+const withIdentity = (report, identity, ready) => JSON.stringify({ ...JSON.parse(report), identity, ...(ready === undefined ? {} : { ready }) });
+const SETUP_SKIPPED = withIdentity(setup({ over: { github_app: component('github_app', 'missing',
+  'Skipped: you chose to act through your personal GitHub login instead. No OpenWiz App is installed or verified.',
+  'Nothing to do for the App. Connecting it later is a separate choice; your personal login acts until then.') } }),
+  { selected: 'personal_login', app_choice: 'skip', acting_login: 'synthetic-owner' }, true);
+const SETUP_APP_SELECTED = withIdentity(setup(),
+  { selected: 'app', app_choice: 'create', acting_login: null });
+
 // ── decisions.v1 ──
 
 const fresh = { state: 'fresh', snapshot_at: { known: NOW - 2_000 } };
@@ -150,6 +161,13 @@ export const STATES = {
   'setup-recovery': { setup: read(SETUP_UNCERTAIN), decisions: read(NO_DECISIONS), fleet: read(null), receipts: [],
     steps: { install: ['done', 't2'], connections: ['check first', 't1'], idea: [W, 't4'], approval: [W, 't4'], progress: [W, 't4'], merge: [W, 't4'] }, merge: 'none',
     text: ['Activate engine: the reply was lost', OP, 'Do not start it again.'], absent: [] },
+  'connections-skipped': { setup: read(SETUP_SKIPPED), decisions: read(NO_DECISIONS), fleet: read(null), receipts: [],
+    steps: { install: ['done', 't2'], connections: ['done', 't2'], idea: ['your turn', 't1'], approval: [W, 't4'], progress: [W, 't4'], merge: [W, 't4'] }, merge: 'none',
+    text: ['Setup reports every connection verified. Acting identity: synthetic-owner, your personal GitHub login. The App is skipped.'],
+    absent: ['Next: OpenWiz GitHub App', 'where the engine runs'] },
+  'connections-app': { setup: read(SETUP_APP_SELECTED), decisions: read(NO_DECISIONS), fleet: read(null), receipts: [],
+    steps: { install: ['done', 't2'], connections: ['done', 't2'], idea: ['your turn', 't1'], approval: [W, 't4'], progress: [W, 't4'], merge: [W, 't4'] }, merge: 'none',
+    text: ['Setup reports every connection verified. Acting identity: your OpenWiz GitHub App.'], absent: ['where the engine runs'] },
   grill: { setup: read(SETUP_READY), decisions: read(decisionsWith(GRILL)), fleet: read(null), receipts: [],
     steps: { install: ['done', 't2'], connections: ['done', 't2'], idea: ['done', 't2'], approval: ['your turn', 't1'], progress: [W, 't4'], merge: [W, 't4'] }, merge: 'none',
     text: ['Grill round 1 waits for your answers in Decisions.', 'CloudRoom and model charges are separate'], absent: [] },

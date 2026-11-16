@@ -18,15 +18,20 @@ six steps, and each step shows only what OpenWiz has actually read:
    connection is checked on its own, and CloudRoom's one sign-in screen is on
    the CloudRoom step. Setup checks your agent harness login. It does not check
    a reviewer from the other model family, so the page shows that reviewer as
-   unknown.
-3. **Give your first idea.** In a thread on your project, give one small idea
-   to the [onboard skill](../skills/onboard/SKILL.md). It explains the steps,
-   then grills you briefly.
+   unknown. Once the connections are verified, the step says which identity
+   acts: your own OpenWiz App, or your personal GitHub login if you chose to
+   skip the App. A skipped App needs nothing more, and there is no engine to
+   choose. The private brain is made by your installing agent (`openwiz init`)
+   and checked as part of the project.
+3. **Give your first idea.** Your installing agent continues into the
+   [onboard skill](../skills/onboard/SKILL.md) with the same repository, or
+   give it one small idea in a thread on your project. It grills you briefly.
 4. **Confirm the spec and approve the plan.** Both happen in **Decisions**, as
    two separate answers. A sent answer counts only once Decisions shows it as
    saved. Approving work does not approve spending.
 5. **Watch the fleet build.** Builders start only after you approve the exact
-   plan. Counts are shown as reported, and a partial read shows as unknown, not
+   plan and say yes to the start: one fleet thread with its own loop starts
+   them. Counts are shown as reported, and a partial read shows as unknown, not
    zero. See [How fleets work](fleets.md).
 6. **First verified merge.** A merge shows as verified only when GitHub reports
    the pull request merged and the merge commit has been read back on its

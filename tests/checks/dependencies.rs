@@ -1,9 +1,8 @@
-//! The approved dependency set and the visual pair's side, from `cargo
-//! metadata`. Dependency direction itself (core, adapter, CLI) needs no test:
-//! each crate uses the one below it, so a dependency pointing back is a cycle
-//! Cargo refuses to build (#811).
+//! The approved dependency set, from `cargo metadata`. Dependency direction
+//! itself (core, adapter, CLI) needs no test: each crate uses the one below
+//! it, so a dependency pointing back is a cycle Cargo refuses to build (#811).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -11,21 +10,6 @@ use std::process::Command;
 use serde_json::Value;
 
 const APPROVED_DIRECT: &[&str] = &["serde", "serde_json"];
-/// The visual terminal app (0.0.12 T3, #1098): the only crate allowed the
-/// approved visual pair (grill C3).
-const TERMINAL: &str = "openwiz-terminal";
-const VISUAL_PAIR: &[&str] = &["ratatui", "crossterm"];
-/// The agent CLI and the backend: never the visual pair, never the terminal.
-const NON_VISUAL: &[&str] = &[
-    "openwiz-core",
-    "openwiz-adapter-cloudroom",
-    "openwiz-adapter-github",
-    "openwiz-cli",
-    "openwiz-store",
-    "openwiz-server",
-    "openwiz-service",
-];
-
 fn root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
 }
@@ -61,83 +45,6 @@ fn metadata() -> Value {
     serde_json::from_slice(&output.stdout).expect("metadata is JSON")
 }
 
-/// Package name to the names it depends on (normal dependencies only),
-/// for the resolved graph.
-fn graph(meta: &Value) -> BTreeMap<String, BTreeSet<String>> {
-    let names: BTreeMap<&str, &str> = meta["packages"]
-        .as_array()
-        .expect("packages")
-        .iter()
-        .map(|p| (p["id"].as_str().unwrap(), p["name"].as_str().unwrap()))
-        .collect();
-    meta["resolve"]["nodes"]
-        .as_array()
-        .expect("resolve nodes")
-        .iter()
-        .map(|node| {
-            let name = names[node["id"].as_str().unwrap()].to_owned();
-            let deps = node["deps"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter(|d| {
-                    d["dep_kinds"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|k| k["kind"].is_null())
-                })
-                .map(|d| names[d["pkg"].as_str().unwrap()].to_owned())
-                .collect();
-            (name, deps)
-        })
-        .collect()
-}
-
-fn reachable(graph: &BTreeMap<String, BTreeSet<String>>, from: &str) -> BTreeSet<String> {
-    let mut seen = BTreeSet::new();
-    let mut stack = vec![from.to_owned()];
-    while let Some(next) = stack.pop() {
-        for dep in graph.get(&next).into_iter().flatten() {
-            if seen.insert(dep.clone()) {
-                stack.push(dep.clone());
-            }
-        }
-    }
-    seen
-}
-
-#[test]
-fn the_visual_pair_stays_on_the_visual_side() {
-    let meta = metadata();
-    let g = graph(&meta);
-    let terminal = reachable(&g, TERMINAL);
-    for pair in VISUAL_PAIR {
-        assert!(terminal.contains(*pair), "{TERMINAL} uses {pair}");
-    }
-    for name in NON_VISUAL {
-        let reach = reachable(&g, name);
-        for forbidden in VISUAL_PAIR.iter().chain([&TERMINAL]) {
-            assert!(
-                !reach.contains(*forbidden),
-                "{name} reaches {forbidden} through normal dependencies"
-            );
-        }
-    }
-    // Nothing depends on the terminal crate but the tests, as a dev-dependency.
-    for package in meta["packages"].as_array().unwrap() {
-        for dep in package["dependencies"].as_array().unwrap() {
-            if dep["name"] == TERMINAL {
-                assert_eq!(package["name"], "openwiz-tests");
-                assert_eq!(
-                    dep["kind"], "dev",
-                    "the tests reach it as a dev-dependency only"
-                );
-            }
-        }
-    }
-}
-
 #[test]
 fn serde_and_serde_json_are_the_only_direct_dependencies() {
     let meta = metadata();
@@ -154,9 +61,8 @@ fn serde_and_serde_json_are_the_only_direct_dependencies() {
         for dep in package["dependencies"].as_array().unwrap() {
             let name = dep["name"].as_str().unwrap();
             let is_workspace_crate = dep["path"].is_string();
-            let visual = package["name"] == TERMINAL && VISUAL_PAIR.contains(&name);
             assert!(
-                is_workspace_crate || APPROVED_DIRECT.contains(&name) || visual,
+                is_workspace_crate || APPROVED_DIRECT.contains(&name),
                 "{} depends on {name}, which is not approved",
                 package["name"]
             );

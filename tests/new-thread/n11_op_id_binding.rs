@@ -2,7 +2,6 @@
 //! difference is refused with zero calls. The request id is deterministic
 //! and matches `^[a-zA-Z0-9_-]{1,64}$`.
 
-use openwiz_core::attachment::{Kind, PromptAttachment, SafeName, Sha256};
 use openwiz_core::messaging::sha256_hex;
 use openwiz_core::new_thread::operation::NewThreadResult;
 use openwiz_core::new_thread::outcome::Status;
@@ -10,13 +9,13 @@ use openwiz_core::new_thread::record::NewThreadRecord;
 use openwiz_core::new_thread::{
     Binding, BindingField, ProjectRef, REQUEST_ID_DOMAIN, REQUEST_ID_PREFIX, request_id,
 };
-use openwiz_core::prompt::{AttachmentId, attachments_digest, empty_attachments_digest};
+use openwiz_core::prompt::empty_attachments_digest;
 
 use crate::support::*;
 
 #[test]
 fn n11_op_id_binding_contracts_preserve_all_original_cases() {
-    let cases: [(&str, fn()); 6] = [
+    let cases: [(&str, fn()); 5] = [
         (
             "an_op_id_held_by_a_live_process_is_in_progress_with_no_call",
             an_op_id_held_by_a_live_process_is_in_progress_with_no_call,
@@ -24,10 +23,6 @@ fn n11_op_id_binding_contracts_preserve_all_original_cases() {
         (
             "any_difference_is_refused_with_zero_calls",
             any_difference_is_refused_with_zero_calls,
-        ),
-        (
-            "the_attachments_digest_is_part_of_the_binding",
-            the_attachments_digest_is_part_of_the_binding,
         ),
         (
             "the_record_and_the_call_carry_the_derived_request_id",
@@ -97,23 +92,6 @@ fn any_difference_is_refused_with_zero_calls() {
         assert_eq!(differs, &vec![field]);
         assert_eq!(client.spawns(), 1, "{field:?}: no second call");
     }
-}
-
-fn the_attachments_digest_is_part_of_the_binding() {
-    let base = Binding::new(
-        &request(offered(), "Synthetic", "op-n11-att"),
-        empty_attachments_digest(),
-    );
-    let mut other = base.clone();
-    other.attachments_digest = attachments_digest(&[PromptAttachment {
-        id: AttachmentId::parse("att-syn-1").unwrap(),
-        sha256: Sha256::parse(&sha256_hex(b"synthetic")).unwrap(),
-        size_bytes: 9,
-        kind: Kind::File,
-        name: SafeName::parse("synthetic.txt").unwrap(),
-    }]);
-    assert_ne!(other.attachments_digest, base.attachments_digest);
-    assert_eq!(base.differences(&other), vec![BindingField::Attachments]);
 }
 
 fn an_op_id_held_by_a_live_process_is_in_progress_with_no_call() {

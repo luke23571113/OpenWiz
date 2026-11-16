@@ -47,7 +47,7 @@ and has these ten steps, nothing else:
 
 A receipt from this kit covers only these steps. Anything a version's notes
 claim beyond them (the fleet, the service, Cockpit, Loops, Decisions, the
-phone reply, the terminal app, App permissions, read safety controls) is
+phone reply, App permissions, read safety controls) is
 **not** live-tested by it; the kit's `release.coverage` names promises only for
 these steps, and its `release.gaps` lists the rest.
 
@@ -205,14 +205,14 @@ and pidfds before launch. Children cannot gain privileges through exec. Timeout/
 children across `setsid`, then reaps them before returning. It uses only this
 runner's child tree and pidfd identities, never a global process-name kill.
 Containment unavailable/failure stops incomplete; process groups alone cannot
-contain the existing PTY driver. State is owner-only,
+contain a child that starts its own session. State is owner-only,
 locked, atomically replaced and fsynced, with only claim states, counts, times,
 and hashes of needed comparison facts. Raw stdout/stderr/transcripts, ids,
 private paths, prompts and credentials never enter reports/checkpoints.
 
-## Browser and terminal observations
+## Browser observations
 
-Runner capability for combined kits; the SHIP-3 sheet has no browser or terminal step.
+Runner capability for combined kits; the SHIP-3 sheet has no browser step.
 
 `browser.mjs` takes one pinned private JSON config: `checkout`, `chromium`,
 `origin` (`http://127.0.0.1:PORT/` only), `viewport` (desktop or 390x844 phone),
@@ -241,12 +241,8 @@ Host/Origin emulation is recorded as a gap for real TLS/radios/WebKit.
   live/release/publish approval. Optional network-cut observations consume no
   extra write and uncertainty stops the run.
 
-PTY input is the existing driver's JSON list (`wait`, `send`, `resize`), **no
-`sleep`**. Explicit `ui --port` visits Home, `s`, Enter/detail, Esc, `f`, detail,
-Esc, small/back resize, `q`. The default no-argument entry would reach 7370 and
-is not a kit step (above).
-Wait for actual named visible states with bounded timeouts; compare every step,
-exit 0 and `restored: true`. No typed send/new in these read-only PTY parts.
+No kit has a terminal claim: the visual terminal app was removed in 0.0.16
+(#776), so no step drives `openwiz ui` or a no-argument `openwiz`.
 The AC6 kit consumes its already approved one phone-composer reply, followed by
 its two individually checkpointed GitHub cleanup operations. Separately the
 0.0.12 kit consumes its two sends (decision answer + CLI message) and one CLI
@@ -255,8 +251,7 @@ existing kits, one create, AC6's scoped fleet actions and its existing T3 cleanu
 no kit gains an extra attempt or retries. The message guard accepts both healthy
 `accepted` and `queued` reports with the same target/op/mode/replay checks; it
 never sends again to turn Queue into acceptance. Ready new-preview expects exit
-12 and creates nothing. A separate extension that
-moves send/create into the TUI must replace those same steps/budget, not add them.
+12 and creates nothing.
 
 ## Candidate-bound receipts
 

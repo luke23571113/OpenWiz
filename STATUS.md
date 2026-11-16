@@ -1,6 +1,6 @@
 # OpenWiz status
 
-**The one place to look.** It is in plain English and kept current by the orchestrating thread after every real change. **Last updated: 2026-11-10 (EB5 contract preparation; other entries retain their dated evidence).**
+**The one place to look.** It is in plain English and kept current by the orchestrating thread after every real change. **Last updated: 2026-11-15 (#776 terminal app removal; other entries retain their dated evidence).**
 
 ## In one paragraph
 
@@ -32,6 +32,8 @@ Written from GitHub's milestones by `tools/roadmap/roadmap.py`: edit the milesto
 <!-- roadmap:versions:end -->
 
 ## Right now
+
+- **The terminal app is removed (#776, 0.0.16):** `openwiz ui` and the no-argument visual launch are gone, with their crate and tests. `openwiz ui` is now a usage error saying so, and `openwiz` with no arguments prints the help in a terminal. Every other command and its JSON is unchanged. The app is recoverable from commit `c2b668d59c31d99e75411f55d9d676a7e33e2c4a`. Fixture proof only.
 
 - **0.0.15 offline notifications (#2229):** the ticket branch implements persisted owner choices, grouped dispatch records, a protected token lookup and guarded preference/subscription/status routes. Synthetic engine/API proofs cover crashes, concurrency, immediate currentness checks, disable and uncertain outcomes without blind resend or CloudRoom work effects. Independent review and CI remain pending. Production source bindings/job registration (#2034), observed delivery (#2035), authenticated target integration (#2036) and live/phone evidence (#2040) remain separate and unverified; no installed delivery or phone receipt is claimed.
 
@@ -99,7 +101,7 @@ Written from GitHub's milestones by `tools/roadmap/roadmap.py`: edit the milesto
 
 - **0.0.9 L4 is merged:** injected review, CI and comment events route from fresh facts to the recorded builder or reviewer, sharing a durable relay record with check-in clients (#804). Duplicate, crash and uncertain outcomes have fixture proof. Production event intake is still [L4b #805](https://github.com/jparker2006/ClosedWiz/issues/805), and fleet-tick consumption is [#694](https://github.com/jparker2006/ClosedWiz/issues/694); live delivery and latency are unverified.
 
-- **0.0.12 T2 is merged:** commands selecting JSON now return structured handled errors and help, with existing outcome shapes and exit meanings retained; fleet due candidates also have JSON ([#1210](https://github.com/jparker2006/ClosedWiz/pull/1210)). T1's agent catalogue was already merged ([#1115](https://github.com/jparker2006/ClosedWiz/pull/1115)). These are fixture claims; the visual terminal app remains later work.
+- **0.0.12 T2 is merged:** commands selecting JSON now return structured handled errors and help, with existing outcome shapes and exit meanings retained; fleet due candidates also have JSON ([#1210](https://github.com/jparker2006/ClosedWiz/pull/1210)). T1's agent catalogue was already merged ([#1115](https://github.com/jparker2006/ClosedWiz/pull/1115)). These are fixture claims. The visual terminal app shipped in 0.0.12 and was removed in 0.0.16 (#776).
 
 - **The evals and CF4 plans are approved:** [bench/evals #1383](https://github.com/jparker2006/ClosedWiz/issues/1383) revision 2 covers one ticket journey, daily trends, builder self-checks and weekly experiments (#1384–#1387). [CF4 #1358](https://github.com/jparker2006/ClosedWiz/issues/1358) revision 3 covers a runnable skills eval and token baseline, fixes before shortening skills, then the weekly cycle (#1361–#1363). Approval and held-plan re-approval are recorded; dependencies still apply. Paid baselines and token counts wait for the approved API-key and spending gate. No improvement or saving is claimed yet.
 

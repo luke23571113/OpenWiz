@@ -8,36 +8,25 @@ answer per call, in order. It logs every call to $FAKE_OPENWIZ_LOG as one JSON
 line. It never delegates to a real openwiz, room-cli or gh. Any other form, or
 a form with no answer left, exits 99 so the test sees the unexpected call.
 
-Forms: `fleet.tick.preview` (fleet tick --dry-run --json), `fleet.tick`
-(fleet tick --expect-plan PATH --json; the log keeps the plan file's SHA-256)
-and `fleet` (fleet <spec> --json). All values are synthetic.
+Forms: `fleet` (fleet <spec> --json), the progress read. Since #636 the
+onboarding never calls the engine or its tick; such a call is logged with no
+form and exits 99. All values are synthetic.
 """
-import hashlib
 import json
 import os
 import sys
 
 
 def form(argv):
-    if argv == ['fleet', 'tick', '--dry-run', '--json']:
-        return 'fleet.tick.preview', None
-    if len(argv) == 5 and argv[:3] == ['fleet', 'tick', '--expect-plan'] and argv[4] == '--json':
-        return 'fleet.tick', argv[3]
     if len(argv) == 3 and argv[0] == 'fleet' and argv[1].isdigit() and argv[2] == '--json':
-        return 'fleet', None
-    return None, None
+        return 'fleet'
+    return None
 
 
 def main():
     argv = sys.argv[1:]
-    name, plan = form(argv)
+    name = form(argv)
     entry = {'argv': argv, 'form': name}
-    if plan is not None:
-        try:
-            with open(plan, 'rb') as handle:
-                entry['plan_sha256'] = hashlib.sha256(handle.read()).hexdigest()
-        except OSError:
-            entry['plan_sha256'] = None
     with open(os.environ['FAKE_OPENWIZ_LOG'], 'a', encoding='utf-8') as log:
         log.write(json.dumps(entry, sort_keys=True) + '\n')
     script_path = os.environ['FAKE_OPENWIZ_SCRIPT']
