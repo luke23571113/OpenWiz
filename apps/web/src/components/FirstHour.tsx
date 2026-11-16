@@ -75,6 +75,9 @@ function connections(setup: FirstHourProps['setup']): Step {
   const next = needed.find((c) => c.state !== 'verified');
   if (next && next.state === 'missing') return step('connections', 't1', 'your turn', `Next: ${componentName(next.id)}. ${next.reason}`, next.next, [REVIEWER]);
   if (next) return step('connections', 't5', 'unknown', `${componentName(next.id)}: ${next.reason}`, next.next, [REVIEWER]);
+  // Only an unselected engine may explain a not-ready report; any other stays unproven.
+  const engineUnverified = view.components.some((c) => c.id === 'engine' && c.state !== 'verified');
+  if (!view.ready && !engineUnverified) return step('connections', 't5', 'unknown', 'Setup does not report ready, though each connection reads verified.', 'Refresh, then run the setup check again.', [REVIEWER]);
   return step('connections', 't2', 'done', `Setup reports every connection verified.${actingIdentity(view)}`, null, [REVIEWER]);
 }
 
