@@ -74,7 +74,10 @@ variable (`git -c`, `GIT_CONFIG_*`, `GIT_SSH*`, `GIT_DIR`, ...; only
 destination names exactly one `main` and that commit is present locally.
 When it is not (main moved on since this clone's last fetch), the hook
 fetches the destination's `main` objects from the same URL first, writing no
-ref (#872); check.py itself still never fetches.
+ref (#872); a failed fetch scans from the anchor. Its lookups reach only the
+push URL: no lazy fetch, no bundle source, no promisor remote a server
+offers, and any `remote.<push URL>.*` setting scans from the anchor.
+check.py itself still never fetches.
 Within one run, each file version (Git blob) is read and checked once for
 each rule set its paths need (workflow, the contract, other text), and that
 verdict is repeated at every later path and commit tree holding it (#761).

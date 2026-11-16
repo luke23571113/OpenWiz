@@ -842,7 +842,7 @@ class Check(unittest.TestCase):
                 reached.unlink(missing_ok=True)
                 try:
                     rc, out = push('ahead')
-                    self.assertNotIn('/other.git', reached.read_text())
+                    self.assertNotIn('/other.git', reached.read_text() if reached.exists() else '')
                     self.assertEqual(self.git('for-each-ref', 'refs/bundles'), '')
                     if case == 'per-URL remote setting':
                         self.assertEqual(rc, 1, out)
