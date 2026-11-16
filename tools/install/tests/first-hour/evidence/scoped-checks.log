@@ -28,3 +28,14 @@ OK
 == python3 -I tools/open-import/guard.py --base origin/main --head HEAD: see the line below
 == guard at 57c14fa: carriage guard: all 7 added paths are classified
 == pre-push hook at 57c14fa: all 4 checks passed in 921 s (cargo fmt --check; cargo clippy --workspace --all-targets -- -D warnings; cargo test -p openwiz-tests --test checks, 663 s; sh .github/actions/docs-only/test.sh)
+
+# Review round (R1, R2) at 56ec557cceeb68305ad835e5353eef7f88004613 (tree 8e60fbe29a351a2cd03d1be090c9ab6e5d7070a1)
+== at 56ec557cceeb68305ad835e5353eef7f88004613: python3 -I tools/install/tests/first-hour/test_first_merge.py
+OK
+== at 56ec557cceeb68305ad835e5353eef7f88004613: python3 -I tools/install/tests/first-hour/test_kit.py
+OK
+== the review's CLI reproduction after the fix:
+R1 validate: 5 refused ["The receipt's start is not the first-hour result's instruction-open start."]
+R2 eligibility: 5
+R2 validate: 5 refused ['The binding allows no App registration for its created App.']
+== the pre-push hook runs fmt, clippy, the full checks binary and docs-only/test.sh on the pushed green head
