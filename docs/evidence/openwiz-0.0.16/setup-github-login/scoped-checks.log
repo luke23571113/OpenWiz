@@ -110,3 +110,35 @@ Final check fixes at a629a5f7cb33c5d79f1b4553bb30a134b99a1651 (R2, R3)
 == carriage guard: carriage guard: all 23 added paths are classified
 == privacy check (branch range, PR title/body): exit 0
 == stray synthetic gh auth children: 0
+
+Merge of origin/main (3ba500e, which carries T5 #635) for the actual conflict, at c0e5d6669bdb652c83811400eabba3d451af4c9e
+== PR #862 read after pushing b2ff51b: mergeable CONFLICTING; git merge-tree against 3ba500e: content conflicts in plan.py, run.py, tests/checks/skills.rs, crates/store/src/setup.rs, tools/install/setup/setup.py and store.py, test_install.py, build_products.py, test_candidate.py
+== resolution: every hunk kept both sides (T5's init/brain lines unchanged, this ticket's identity/sign-in lines added); bootstrap.rs's merged required list holds 22 entries, so its declared length (this ticket's owned row/count) is 22
+== sh .github/actions/docs-only/test.sh: all ok
+== python3 -I ci/shard/test.py: OK
+== cargo fmt --check
+ok
+== clippy store/server/service/tests -D warnings
+ok
+== store/server setup::, p08a_allowlist_static, m12_allowlist, checks setup_onboard, service t12
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.89s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 0.23s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 144 filtered out; finished in 19.71s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 91.38s
+== test_github_login.py: OK
+== tools/install/tests/init/test_init.py (T5's): OK
+== test_setup_api.mjs: ℹ pass 2 ℹ fail 0 
+== tools/release/test.py: OK
+== tools/release/test_package.py: OK
+== tools/install/test_install.py: OK
+== tools/install/cloudroom/test_cloudroom.py: OK
+== tools/install/access/test_access.py: OK
+== tools/install/handover/test_handover.py: OK
+== tools/install/tests/public-release-security/baseline/test_baseline.py: OK
+== web typecheck/check: check: 56 source files and the stylesheet pass (V1, messaging and new-thread schema parity, V3, V10, W5, W12, U5, U12 to U14, AW7, AW8, the #549 loop switch, types, spacing)
+== apps/web browser (setup-github-login, install-connections): ℹ pass 2 ℹ fail 0 
+== carriage guard: carriage guard: all 24 added paths are classified
+== privacy check (branch range, PR title/body): exit 0
+== stray synthetic gh auth children: 0
