@@ -132,6 +132,8 @@ with open(os.environ["CALLS"], "a") as log:
     log.write(json.dumps({"tool": "git", "action": action, "args": args}) + "\n")
 if os.environ.get("FAIL_ACTION") == action:
     sys.exit(42)
+if os.environ.get("FAIL_ACTION") == "fetch" and verb == "fetch":
+    sys.exit(42)
 # Only network operations reach the fake remote; a configured URL stays as written.
 network = verb in verbs
 mapped = [os.environ["PUBLIC_FAKE"] if a == URL and network else a for a in args]
@@ -716,6 +718,83 @@ class Candidate(World):
         self.assertEqual(self.smoke()[0], 0)
         self.assertEqual(self.evaluate()[0], 0)
         self.d3_cutover_read_backs_refuse()
+
+    # ------------------------------------------------------------ #964: a protected public release branch
+    def release_branch(self, name='release-' + VERSION, ruleset=None):
+        """Main has moved on; the candidate is one cherry-picked commit on a public
+        release branch, protected by its own ruleset unless `ruleset` replaces it."""
+        self.git(self.repo, 'checkout', '-q', '-b', 'release')
+        (self.repo / 'README.md').write_text('# Synthetic public repository\n\nSynthetic cherry-picked fix.\n')
+        self.head = self.commit('Synthetic cherry-picked fix')
+        self.git(self.repo, 'push', '-q', self.remote, f'HEAD:refs/heads/{name}')
+        self.git(self.root / 'public.git', 'update-ref', 'refs/heads/main', self.published)  # main moved elsewhere
+        self.world[f'repos/{PUBLIC}/rulesets?per_page=100'] = [[{'id': 71}, {'id': 72}]]
+        self.world[f'repos/{PUBLIC}/rulesets/72'] = ruleset or {
+            'id': 72, 'enforcement': 'active', 'target': 'branch', 'bypass_actors': [],
+            'conditions': {'ref_name': {'include': ['refs/heads/release-*'], 'exclude': []}},
+            'rules': [{'type': 'deletion'}, {'type': 'non_fast_forward'},
+                      {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
+                          {'context': 'ci'}, {'context': 'privacy'}]}}]}
+        self.save()
+
+    def test_964_a_candidate_on_its_protected_release_branch_publishes(self):
+        self.release_branch()
+        self.ready()
+        self.assertEqual(self.evaluate()[0], 0)
+        code, out = self.publish()
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
+        self.assertEqual(self.git(self.remote, 'rev-parse', f'refs/tags/v{VERSION}^{{}}'), self.head)
+        self.assertEqual(self.git(self.remote, 'rev-parse', 'main'), self.published)
+
+    def test_964_each_unproven_release_branch_refuses_with_its_reason(self):
+        self.release_branch()
+        self.smoke_kit()
+        self.artifacts()
+        self.made = self.body()
+        rules = f'repos/{PUBLIC}/rulesets/72'
+        checks = {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
+            {'context': 'ci'}, {'context': 'privacy'}]}}
+        for name, change, reason in (
+                ('force-push allowed', {'rules': [{'type': 'deletion'}, checks]}, 'release_branch_unprotected'),
+                ('deletion allowed', {'rules': [{'type': 'non_fast_forward'}, checks]}, 'release_branch_unprotected'),
+                ('privacy not required', {'rules': [{'type': 'deletion'}, {'type': 'non_fast_forward'}, {
+                    'type': 'required_status_checks', 'parameters': {'required_status_checks': [{'context': 'ci'}]}}]},
+                 'release_branch_unprotected'),
+                ('a bypass actor', {'bypass_actors': [{'actor_type': 'RepositoryRole', 'actor_id': 5}]},
+                 'release_branch_unprotected'),
+                ('ruleset disabled', {'enforcement': 'disabled'}, 'release_branch_unprotected'),
+                ('only main covered', {'conditions': {'ref_name': {'include': ['~DEFAULT_BRANCH'], 'exclude': []}}},
+                 'release_branch_unprotected'),
+                ('branch excluded', {'conditions': {'ref_name': {'include': ['~ALL'],
+                                                                 'exclude': [f'refs/heads/release-{VERSION}']}}},
+                 'release_branch_unprotected'),
+                ('an unevaluable condition', {'conditions': {'ref_name': {'include': ['refs/heads/**']}}},
+                 'release_ruleset_unreadable')):
+            with self.subTest(case=name):
+                before = json.loads(json.dumps(self.world[rules]))
+                self.world[rules].update(change)
+                self.save()
+                self.assertEqual(self.prepare()[1]['reasons'], [reason])
+                self.world[rules] = before
+                self.save()
+        with self.subTest(case='ruleset unreadable'):
+            self.world['_fail'] = [rules]
+            self.save()
+            self.assertEqual(self.prepare()[1]['reasons'], ['release_ruleset_unreadable'])
+            del self.world['_fail']
+            self.save()
+        with self.subTest(case='branch unreadable'):
+            self.assertEqual(self.prepare(FAIL_ACTION='fetch')[1]['reasons'], ['release_branch_unreadable'])
+        branch = f'refs/heads/release-{VERSION}'
+        with self.subTest(case='not reachable from the branch'):
+            self.git(self.remote, 'update-ref', branch, self.published)
+            self.assertEqual(self.prepare()[1]['reasons'], ['not_on_release_branch'])
+        with self.subTest(case='the branch of another version'):
+            self.git(self.remote, 'update-ref', 'refs/heads/release-0.0.98', self.head)
+            self.git(self.remote, 'update-ref', '-d', branch)
+            self.assertEqual(self.prepare()[1]['reasons'], ['release_branch_wrong_version'])
+        self.assertEqual(self.writes(), [])
 
     def d3_cutover_read_backs_refuse(self):
         """R1/D3: only the command's own cut-over read-backs count."""

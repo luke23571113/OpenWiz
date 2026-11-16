@@ -273,9 +273,11 @@ def package(source, commit, output, names, version):
             or market['plugins'][0].get('version', version) != version):
         raise Refusal('Package manifests do not match openwiz.wizskills.v1')
     section = changelog[changelog.index(heading):].split('\n## ')[0]
-    if (not changelog.startswith('# Changelog\n') or changelog.count('{{skills}}\n') != 1
-            or '{{skills}}\n' not in section):
-        raise Refusal('CHANGELOG.md template must hold one {{skills}} line in its latest section')
+    # A first release's {{skills}} line lists every skill; a later release
+    # writes its own lines and has none.
+    if (not changelog.startswith('# Changelog\n') or changelog.count('{{skills}}\n') > 1
+            or changelog.count('{{skills}}\n') != section.count('{{skills}}\n')):
+        raise Refusal('CHANGELOG.md template may hold one {{skills}} line, only in its latest section')
     write_json(output / '.claude-plugin/plugin.json', dict(plugin, skills=['./skills/' + n for n in names]))
     write_json(output / '.claude-plugin/marketplace.json', market)
     (output / 'CHANGELOG.md').write_text(changelog.replace(

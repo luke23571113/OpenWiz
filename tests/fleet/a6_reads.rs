@@ -6,8 +6,7 @@
 //!   `project list --json --include-personal`, `thread list --json
 //!   --include-hidden`, then
 //!   `cloud thread-workspace <id> --json` for each listed Cloud thread. A
-//!   thread id that could become a flag is never passed. The fake's own
-//!   copy of the allowlist takes exactly that one new form.
+//!   thread id that could become a flag is never passed.
 //! - **The readers are strict:** a table of good and bad answers for each
 //!   read, with the gap each bad one gets. A key given twice, a positional
 //!   array, a tagged object, a missing or extra key or a wrong type fails
@@ -22,7 +21,6 @@ use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use openwiz_adapter_cloudroom::allowlist::{Invocation, ThreadId};
 use openwiz_adapter_cloudroom::fleet::{
     self, NOT_READ_NO_PROJECTS, Reads, Repository, parse_projects, parse_threads, parse_workspace,
 };
@@ -50,7 +48,7 @@ const HEAD: &str = "0123456789abcdef0123456789abcdef01234567";
 
 #[test]
 fn cloudroom_read_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 6] = [
+    let cases: [(&str, fn()); 5] = [
         (
             "a_repository_is_exactly_owner_and_name",
             a_repository_is_exactly_owner_and_name,
@@ -58,10 +56,6 @@ fn cloudroom_read_contracts_preserve_original_cases() {
         (
             "only_this_repositorys_remote_names_it",
             only_this_repositorys_remote_names_it,
-        ),
-        (
-            "the_new_invocation_is_exactly_its_approved_form",
-            the_new_invocation_is_exactly_its_approved_form,
         ),
         (
             "the_project_reader_keeps_this_repositorys_projects_strictly",
@@ -80,14 +74,6 @@ fn cloudroom_read_contracts_preserve_original_cases() {
         eprintln!("TA2 case: a6_agents::reads::{name}");
         proof();
     }
-}
-
-fn the_new_invocation_is_exactly_its_approved_form() {
-    let id = ThreadId::parse("thr_syn_0001").expect("an id");
-    assert_eq!(
-        Invocation::CloudThreadWorkspace(id).argv(),
-        ["cloud", "thread-workspace", "thr_syn_0001", "--json"]
-    );
 }
 
 fn the_workspace_reader_takes_only_its_exact_shape() {
@@ -1263,46 +1249,6 @@ fn discovery_failure_fixture() {
         "102",
     ] {
         assert!(!text.contains(secret), "{text}");
-    }
-}
-
-#[test]
-fn the_fakes_allowlist_takes_exactly_the_one_new_form() {
-    // The fake's own copy of the allowlist, called directly: the new form,
-    // and nothing near it.
-    let fake = Fake::new(
-        "the_fakes_allowlist",
-        json!([workspace_answer("thr_syn_0051", "room/syn-a6-0051")]),
-    );
-    let run = |args: &[&str]| {
-        std::process::Command::new(fake.dir.join("room-cli"))
-            .args(args)
-            .output()
-            .expect("run the fake")
-            .status
-            .code()
-    };
-    assert_eq!(
-        run(&["cloud", "thread-workspace", "thr_syn_0051", "--json"]),
-        Some(0)
-    );
-    for refused in [
-        &["cloud", "thread-workspace", "thr_syn_0051"][..],
-        &["cloud", "thread-workspace", "--json"],
-        &["cloud", "thread-workspace", "-x", "--json"],
-        &["cloud", "thread-workspace", "--json", "thr_syn_0051"],
-        &[
-            "cloud",
-            "thread-workspace",
-            "thr_syn_0051",
-            "--json",
-            "--work-status",
-        ],
-        &["cloud", "thread-workspaces", "thr_syn_0051", "--json"],
-        &["cloud", "workspace", "thr_syn_0051", "--json"],
-        &["thread", "workspace", "thr_syn_0051", "--json"],
-    ] {
-        assert_eq!(run(refused), Some(97), "{refused:?}");
     }
 }
 

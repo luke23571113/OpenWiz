@@ -47,7 +47,7 @@ jobs:
   changes:
     if: github.event_name != 'push'
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
       rust: ${{ steps.plan.outputs.rust }}
       toolkit: ${{ steps.plan.outputs.toolkit }}
@@ -306,7 +306,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 13 || 9 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -375,7 +375,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.build-web == 'true' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 5 || 5 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -446,7 +446,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.toolkit == 'true') && needs.changes.outputs.export-rust == 'false' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || 60 }}
+    timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 56 || 22 }}
     # #1266: the Rust tests split across this many members, a setting per
     # runner kind (its runs-on label); a kind not named runs one, so a paid
     # runner never fans out. Traced and planted runs keep one: they run the
@@ -577,7 +577,7 @@ jobs:
     needs: [changes, web-build]
     if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.toolkit == 'true') && needs.changes.outputs.export-rust == 'true' && needs.web-build.result == 'success' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || 60 }}
+    timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 56 || 22 }}
     # #1266: the Rust tests split across this many members, a setting per
     # runner kind (its runs-on label); a kind not named runs one, so a paid
     # runner never fans out. Traced and planted runs keep one: they run the
@@ -717,7 +717,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.web == 'true' && needs.changes.outputs.export-web == 'false' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || 60 }}
+    timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 75 || 16 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -794,7 +794,7 @@ jobs:
     needs: [changes, web-build]
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.web == 'true' && needs.changes.outputs.export-web == 'true' && needs.web-build.result == 'success' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || 60 }}
+    timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 75 || 16 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -875,7 +875,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.site == 'true' && needs.changes.outputs.site-in-release != 'true' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -937,7 +937,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.release == 'true' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 60
+    timeout-minutes: 21
     strategy:
       fail-fast: false
       matrix:
@@ -1003,7 +1003,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.skill-jobs != '[]' && needs.changes.outputs.skill-jobs != '' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 30
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -1059,7 +1059,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && contains(needs.changes.outputs.skills, '"launch-fleet"') }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 60
+    timeout-minutes: 14
     strategy:
       fail-fast: false
       matrix:
@@ -1322,7 +1322,7 @@ jobs:
     continue-on-error: true
     if: ${{ !cancelled() && needs.changes.outputs.trace == 'true' && needs.ci.result == 'success' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1378,7 +1378,7 @@ jobs:
     needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills, launch-fleet]
     if: ${{ always() && github.event_name != 'push' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1469,7 +1469,7 @@ jobs:
     needs: ci
     if: ${{ always() && github.event_name != 'push' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1495,7 +1495,7 @@ jobs:
   main-light:
     if: github.event_name == 'push'
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
