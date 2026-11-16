@@ -208,6 +208,7 @@
     "tools/war-room/README.md",
     "tools/war-room/activity.py",
     "tools/war-room/answer_time.py",
+    "tools/war-room/bench_measure.py",
     "tools/war-room/bench_reads.py",
     "tools/war-room/ci3.py",
     "tools/war-room/ci3_check.py",
