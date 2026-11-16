@@ -7,9 +7,9 @@ rows are sub-proofs a wrapper test ran, which this group cut. A wrapper
 (`…_preserve_…_cases`) is one `#[test]` that runs several named proofs
 (#1259); its row covers them all.
 
-- **Rows:** kept 275, moved 5, deleted 11, merged 5. Without the two
-  sub-proofs (one deleted, one merged): 294 `#[test]`s, of which 275 stay,
-  5 move to their crate's own `tests/` and 14 go.
+- **Rows:** kept 280, deleted 11, merged 5, moved 0. Without the two
+  sub-proofs (one deleted, one merged): 294 `#[test]`s, of which 280 stay
+  and 14 go. No test moved: see "Where the kept tests live".
 - **ER6's tests:** 79 rows (72 in `b5_tick.rs`, `b5_edges.rs` and
   `b5_public.rs`, and the 7 of `pre_effect.rs` and `pre_effect_input.rs`)
   run the executing `fleet tick` or `--expect-plan`. ER1's map
@@ -125,7 +125,7 @@ rows are sub-proofs a wrapper test ran, which this group cut. A wrapper
 | `tests/fleet/a6_agents.rs::a6_placement_contracts_preserve_all_original_cases` | kept | itself | a builder placed from anything but its pull request's exact head branch, or a reason other than the first that applies (14 cases) |
 | `tests/fleet/a6_agents.rs::a_thread_is_placed_at_most_once_and_every_thread_is_listed_once` | kept | itself | a change that breaks: over 2,304 fleets, each thread is at most one builder and listed once in unplaced |
 | `tests/fleet/a6_examples.rs::a6_examples_preserve_all_original_cases` | kept | itself | placement that differs from `contracts/fleet.v1.md`'s complete or partial fleet example |
-| `tests/fleet/a6_reads.rs::cloudroom_read_contracts_preserve_original_cases` | moved | `crates/adapters/cloudroom/tests/fleet_reads.rs::cloudroom_read_contracts_preserve_original_cases` | a CloudRoom fleet reader (workspace, project, thread, repository, remote) that accepts a shape it must refuse, or refuses a good one |
+| `tests/fleet/a6_reads.rs::cloudroom_read_contracts_preserve_original_cases` | kept | itself | a CloudRoom fleet reader (workspace, project, thread, repository, remote) that accepts a shape it must refuse, or refuses a good one |
 | `tests/fleet/a6_reads.rs::every_read_runs_once_in_order_and_only_from_the_allowlist` | kept | itself | a change that breaks: a full read runs exactly 6 calls in order; archived and other-project threads dropped; hidden kept |
 | `tests/fleet/a6_reads.rs::a_failed_workspace_read_says_so_in_openwizs_words` | kept | itself | a change that breaks: exit-1 read gives CommandFailed with no stderr text; bad head gives WrongType with no path; unanswered call gives exit 98 |
 | `tests/fleet/a6_reads.rs::a_thread_id_that_could_become_a_flag_is_never_passed` | kept | itself | a change that breaks: 5 unsafe ids give Malformed and zero fake calls |
@@ -154,10 +154,10 @@ rows are sub-proofs a wrapper test ran, which this group cut. A wrapper
 | `tests/fleet/b3_fake.rs::a_read_back_that_is_not_the_exact_shape_never_confirms_the_write` | kept | itself | a change that breaks: 47 malformed read backs give ReadBackFailed(Malformed) with exact calls |
 | `tests/fleet/b3_fake.rs::a_read_back_that_fails_never_confirms_the_write` | kept | itself | a change that breaks: a failing read back gives sanitized ReadBackFailed; the write is made once |
 | `tests/fleet/b3_fake.rs::an_error_shows_nothing_gh_printed` | kept | itself | a change that breaks: error text for every not-shown and malformed case contains none of 12 leak words |
-| `tests/fleet/b3_writes.rs::github_write_contracts_preserve_original_cases` | moved | `crates/adapters/github/tests/writes.rs::github_write_contracts_preserve_original_cases` | a GitHub write form the allowlist lets through loosely (a near miss, a bad label, body or commit), or a valid value split into two arguments |
-| `tests/fleet/b3_writes.rs::the_writes_source_names_no_forbidden_word` | moved | `crates/adapters/github/tests/writes.rs::the_writes_source_names_no_forbidden_word` | a forbidden flag (`--admin`, `--delete-branch`, `--repo`), a GraphQL mutation or a second runner around the supplied executor in `writes.rs` |
-| `tests/fleet/b3_writes.rs::the_source_rule_catches_a_planted_break` | moved | `crates/adapters/github/tests/writes.rs::the_source_rule_catches_a_planted_break` | a source rule that misses one of the planted breaks, so the check above passes vacuously |
-| `tests/fleet/b4_archive.rs::the_archive_is_built_in_exactly_its_one_shape` | moved | `crates/adapters/cloudroom/tests/archive.rs::the_archive_is_built_in_exactly_its_one_shape` | an archive argv other than `thread archive <id> --json`, or a thread id that could become a flag |
+| `tests/fleet/b3_writes.rs::github_write_contracts_preserve_original_cases` | kept | itself | a GitHub write form the allowlist lets through loosely (a near miss, a bad label, body or commit), or a valid value split into two arguments |
+| `tests/fleet/b3_writes.rs::the_writes_source_names_no_forbidden_word` | kept | itself | a forbidden flag (`--admin`, `--delete-branch`, `--repo`), a GraphQL mutation or a second runner around the supplied executor in `writes.rs` |
+| `tests/fleet/b3_writes.rs::the_source_rule_catches_a_planted_break` | kept | itself | a source rule that misses one of the planted breaks, so the check above passes vacuously |
+| `tests/fleet/b4_archive.rs::the_archive_is_built_in_exactly_its_one_shape` | kept | itself | an archive argv other than `thread archive <id> --json`, or a thread id that could become a flag |
 | `tests/fleet/b4_archive.rs::an_unarchived_thread_is_archived_once_and_read_back` | kept | itself | a change that breaks: show, one archive, show; outcome Archived; invocations exactly [show, archive, show] |
 | `tests/fleet/b4_archive.rs::an_archived_thread_is_done_with_no_call` | kept | itself | a change that breaks: archived thread gives AlreadyArchived; only `thread show` is called |
 | `tests/fleet/b4_archive.rs::a_thread_not_found_is_not_archived` | kept | itself | a change that breaks: 404 line gives NotFound; no archive call |
@@ -302,7 +302,7 @@ rows are sub-proofs a wrapper test ran, which this group cut. A wrapper
 | `tests/fleet/c10_inventory.rs::c10_unreported_start_stays_unknown_in_list_and_show_despite_creation_and_update_times` | kept | itself | a change that breaks: no reported startedAt gives unknown in list and show; updated_at known; both envelopes validate against inventory.v1.schema.json |
 | `tests/fleet/c10_inventory.rs::c10_explicit_start_time_is_preserved_and_unusable_start_times_stay_unknown` | kept | itself | a change that breaks: startedAt is known for nonnegative integers at or before the snapshot; string, float, bool, negative, future, object, null give unknown |
 | `tests/fleet/c10_inventory.rs::c10_long_inventory_keeps_a_start_only_its_detail_read_reports` | kept | itself | a change that breaks: a start only `thread show` reports appears in the long list, not the short one; show always shows it |
-| `tests/fleet/c10_questions.rs::c10_question_fact_contracts_preserve_all_original_cases` | kept | itself | a change that breaks: runs 10 sub-proofs (fns at L119, 149, 170, 194, 210, 223, 412, 438, 448, 497): newest marked comment wins; missing question/risk unknown; exact risk label only; unmarked or wrong-case comments never become questions; equal times ambiguous; 141 comments; null minimizedReason read; malformed comment shapes fail closed |
+| `tests/fleet/c10_questions.rs::c10_question_fact_contracts_preserve_all_original_cases` | kept | itself | a question fact taken from the wrong comment (not the newest marked one, wrong case, unmarked), a risk label other than the exact one, or a malformed comment shape read as a value (10 cases) |
 | `tests/fleet/c10_questions.rs::c10_detail_reads_comment_facts_and_the_fleets_list_keeps_its_query` | kept | itself | a change that breaks: `fleet <spec>` reads the question (wording, link, asked_at, risk known); the fleets list gives unknown wording for the same ticket; exactly 4 gh calls; comment bodies absent from output |
 | `tests/fleet/lock_release.rs::released_claims_are_free_while_other_threads_spawn_children` | kept | itself | a change that breaks: a released StartStore lock is takeable by another handle while 2 threads fork and reap children (up to 20,000 rounds) |
 | `tests/fleet/lock_release.rs::failed_claims_are_free_while_other_threads_spawn_children` | kept | itself | a change that breaks: a corrupt record makes `lock` error; once removed, the lock is free under fork load |
@@ -339,9 +339,22 @@ rows are sub-proofs a wrapper test ran, which this group cut. A wrapper
 
 ## Where the kept tests live
 
-Each kept test that exercises one crate moved to that crate's own
-`tests/` folder. Those that stay in `tests/fleet/` stay for one of these
-reasons, by file:
+No kept test moved. Those that stay in `tests/fleet/` stay for one of
+these reasons, by file:
+
+- **Single-crate, but blocked by the allowlist guards (W1-7 gap):** the
+  five tests that exercise one crate alone, and no program:
+  `a6_reads.rs::cloudroom_read_contracts_preserve_original_cases`
+  (`openwiz-adapter-cloudroom`'s readers), `b3_writes.rs`'s three tests
+  (`openwiz-adapter-github`'s writes) and
+  `b4_archive.rs::the_archive_is_built_in_exactly_its_one_shape`
+  (`openwiz-adapter-cloudroom`'s archive argv). Moved to their crate's
+  `tests/`, each fails the protected allowlist guards
+  `tests/proof/p08a_allowlist_static.rs` and
+  `tests/messaging/m12_allowlist.rs`, which read every file under
+  `crates/` as product source, and these tests spell the flags and words
+  those guards refuse there. They move once the guards skip
+  `crates/*/tests/` (asked of the orchestrator); no guard is edited here.
 
 - **The fake `gh` or the fake `room-cli`** (binaries of `openwiz-tests`,
   which no other package can run): `a3_fake_gh.rs`, `a4_edges.rs`,

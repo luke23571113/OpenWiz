@@ -18,9 +18,8 @@
 //! - `a5_fleet`: A5 (#113), `openwiz fleet <spec>`; until then, its stub's
 //!   proofs.
 //! - `a6_agents`: A6 (#114), a ticket's agents.
-//! - `b3_fake`: spec 2's B3 (#119), the GitHub writes on the recording
-//!   fake `gh`; their static checks are in
-//!   `crates/adapters/github/tests/writes.rs` (TV4, #806).
+//! - `b3_writes`: spec 2's B3 (#119), the GitHub writes, and their
+//!   recording fake `gh` (`b3_fake`, declared from it).
 //! - `b4_starts`: spec 2's B4 (#120), starting builders and reviewers and
 //!   archiving finished agents; its other files are declared from inside it.
 //!
@@ -44,7 +43,7 @@ mod a3_seams;
 mod a4_fleets;
 mod a5_fleet;
 mod a6_agents;
-mod b3_fake;
+mod b3_writes;
 mod b4_starts;
 
 mod b2_planner;

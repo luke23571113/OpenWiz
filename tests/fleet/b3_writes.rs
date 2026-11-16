@@ -7,13 +7,9 @@
 //!   only an issue is closed), the module and the whole allowlist allow
 //!   each, near misses are all refused, bad arguments can't be built, and
 //!   its source names no forbidden word.
-//! - **`tests/fleet/b3_fake.rs`, on the recording fake `gh`:** each write
-//!   makes exactly its call and its read back, and nothing else; a write
-//!   that fails is never read back; a write is confirmed only when its read
-//!   back shows it.
-//!
-//! Moved here from `tests/fleet/b3_writes.rs` by TV4 (#806): it runs no
-//! program, only this crate.
+//! - **`b3_fake`, the recording fake `gh`:** each write makes exactly its
+//!   call and its read back, and nothing else; a write that fails is never
+//!   read back; a write is confirmed only when its read back shows it.
 //!
 //! **Fixtures only.** Every value is synthetic; no test proves live
 //! behaviour (that is B6, #122).
@@ -26,6 +22,9 @@ use openwiz_adapter_github::allowlist::{self, Invocation};
 use openwiz_adapter_github::writes::{self, Body, LABEL_MAX_LEN, Label, Write};
 use openwiz_core::fleet::model::Commit;
 use openwiz_core::messaging::MAX_TEXT_BYTES;
+
+#[path = "b3_fake.rs"]
+mod fake;
 
 /// The synthetic head of the merge form.
 const HEAD: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -1026,7 +1025,10 @@ fn source_problems(text: &str) -> Vec<String> {
     problems
 }
 
-const WRITES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/writes.rs");
+const WRITES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../crates/adapters/github/src/writes.rs"
+);
 
 #[test]
 fn the_writes_source_names_no_forbidden_word() {

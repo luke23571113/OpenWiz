@@ -12,7 +12,7 @@
 use std::fs;
 use std::time::{Duration, Instant};
 
-use openwiz_adapter_cloudroom::allowlist::ThreadId;
+use openwiz_adapter_cloudroom::allowlist::{Invocation, ThreadId};
 use openwiz_adapter_cloudroom::archive::ArchiveOutcome;
 use serde_json::{Value, json};
 
@@ -69,6 +69,15 @@ fn archive_with(fake: &Fake, responses: Vec<Value>) -> ArchiveOutcome {
     fake.respond(responses);
     fake.source()
         .archive_thread(&id(), Instant::now() + Duration::from_secs(10))
+}
+
+#[test]
+fn the_archive_is_built_in_exactly_its_one_shape() {
+    assert_eq!(Invocation::ThreadArchive(id()).argv(), archive());
+    // The id is one argument and never a flag: `ThreadId` can't hold one.
+    for bad in ["", "-x", "--self", "thr syn", "thr;syn"] {
+        assert!(ThreadId::parse(bad).is_err(), "{bad:?}");
+    }
 }
 
 #[test]
