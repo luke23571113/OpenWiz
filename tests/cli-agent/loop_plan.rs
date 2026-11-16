@@ -725,3 +725,41 @@ fn a_refused_checks_params_still_count_as_used() {
         vec![("bad-timeout".into(), "check.timeout".into())]
     );
 }
+
+// catches (LC3's ruling on #791): a live loop carrying a setting the adapter
+// does not map shown as identical to its file, so the setting is lost from
+// view (and an apply would never mention it).
+#[test]
+fn a_live_setting_the_adapter_does_not_map_is_reported() {
+    let row = json!({"id": "loop_syn_8", "project_id": PROJECT, "name": "Synthetic delivery [wizloop:syn-delivery]", "cron": null, "timezone": null, "run_at": null, "webhook": true, "new_thread": true, "script": null, "agent": null, "secrets": [], "priority": 4, "prompt": "Synthetic: route each request that arrived to its owner.", "enabled": true, "budget_synthetic": {"max_runs": 3}});
+    let fake = Fake::answering(
+        json!({"argv": ["loop", "list", "--json"], "stdout": json!({"automations": [row]}).to_string()}),
+    );
+    let (_, text) = ACCOUNT_FILES[2];
+    let path = fake.write("syn-delivery.md", text);
+    let (code, doc) = fake.json(&[path.to_str().unwrap(), "--project", PROJECT]);
+    assert_eq!(code, 0, "{doc:#}");
+    let item = &doc["items"][0];
+    assert_eq!(
+        (&item["action"], &item["differences"]),
+        (&json!("none"), &json!([]))
+    );
+    let notes: Vec<&str> = item["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n.as_str().unwrap())
+        .collect();
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("budget_synthetic") && n.contains("not map")),
+        "{notes:?}"
+    );
+    let output = fake.run(&[path.to_str().unwrap(), "--project", PROJECT]);
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("budget_synthetic")
+    );
+}
