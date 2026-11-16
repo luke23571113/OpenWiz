@@ -9,11 +9,16 @@ and rate-limit values are made up and assert nothing about a real repository.
 | `fake_gh.py` | The synthetic `gh` the tests put on `PATH`: it answers `gh api PATH` from `github.json`, never the network |
 | `red-first.log` | The tests against the red-run stub, before the collector was built |
 | `red-mutations.log` | The two proofs added later, each against the collector with its rule broken |
+| `red-review-r1.log` | Review round 1's R1 and R2 proofs, before their fix |
 | `green.log` | The same tests passing on the built collector, and the contract suite |
 
 A key matches its path exactly, or, when it ends in `?` or `&`, as the path's
 prefix; the first match answers. `{owner}/{repo}` resolve from `GH_REPO`, as
 gh's own placeholders do, so a reader that forgets to pin the repository fails.
+An answer `{"sequence": [A1, A2, ...]}` gives the n-th ask of its path An
+(and the last one after that), so a test can move GitHub on between two reads.
+The tests point `OPENWIZ_COLLECTOR_STORE` at a private temporary store and read
+the kept job records and CI3 window back from it.
 The last two keys answer every other `ci.yml` and `privacy.yml` run listing
 with a complete read of nothing.
 
@@ -79,4 +84,7 @@ the record lists it in `missing` (`ci: no run`) and the fact is `partial`.
   `unknown` (stale) at 61. With one job page unreadable too, the observation
   is incomplete and the guard says `unknown`. A job of another attempt than
   its run's (8301 as attempt 2 of run 7103's attempt 1) is kept, not
-  required, and leaves the observation incomplete.
+  required, and leaves the observation incomplete. So does a run that appears
+  between the two run enumerations that bracket the job reads (run 7104,
+  listed in progress only the second time), or a job that appears between a
+  page's two reads (job 8104).

@@ -14,6 +14,13 @@ Every number comes from the tool that produces it today, unchanged: ci-bench's
 guard's observation, read in the same pass. Every read is a `gh api` GET of
 the named repository. A fact that can't be read is `unavailable` with its
 prerequisite, never zero.
+
+The exact bytes behind `runs`/`minutes` (ci-bench's job records) and `ci3`
+(CI3's private window) are kept, owner-only, in the collector store
+(OPENWIZ_COLLECTOR_STORE, by default ~/.openwiz/war-room/collector) at their
+`source.path`, named by their SHA-256, before the read returns. A source that
+can't be kept leaves its fact unavailable. `activity` and `queue` carry their
+observed bytes in their value.
 """
 import argparse
 import contextlib
@@ -43,7 +50,8 @@ WINDOWED = ('runs', 'minutes', 'ci3')
 QUEUE_BOUND = 60  # seconds: the overload guard's --max-age (collector.v1.md, "Freshness")
 QUEUE_WORKFLOWS = ('ci.yml', 'privacy.yml')
 REQUIRED_EVENTS = ('pull_request', 'merge_group')  # runs the required checks `ci` and `privacy` wait on
-ACTIVE = ('in_progress', 'queued', 'waiting', 'pending', 'requested')
+# Earliest first: a run that moves on while the statuses are listed lands in a later list, never in none.
+PROGRESSION = ('requested', 'waiting', 'pending', 'queued', 'in_progress')
 WAITING = ('queued', 'waiting', 'pending', 'requested')  # a job not yet on a runner
 ROBOTS = 5  # ci-bench's daily default (daily.sh); runs and minutes don't depend on it
 UNAVAILABLE = {
@@ -55,7 +63,9 @@ UNAVAILABLE = {
 }
 UNSETTLED = 'The window has not ended yet: read it once it has.'
 NO_PRICE = 'Some job has no known price or timing: the list-rate totals are unknown.'
-INCOMPLETE_QUEUE = 'The queue read is incomplete: a job page or a job\'s run, attempt or start could not be established.'
+INCOMPLETE_QUEUE = ('The queue read is incomplete: a run or job changed during the read, or a job page or a job\'s '
+                    'run, attempt or start could not be established.')
+NOT_KEPT = 'The read\'s source bytes could not be kept in the collector store, so nothing recoverable stands behind it.'
 
 
 class Refused(Exception):
@@ -112,6 +122,31 @@ def pinned(repo):
             os.environ['GH_REPO'] = before
 
 
+def store():
+    return Path(os.environ.get('OPENWIZ_COLLECTOR_STORE') or Path.home() / '.openwiz' / 'war-room' / 'collector')
+
+
+def keep(kind, data, suffix):
+    """Keep `data` exactly, owner-only, named by its hash; return its source path and hash. OSError if it can't."""
+    sha = digest(data)
+    rel = f'collector/ci/{kind}/{sha}{suffix}'
+    root = store()
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = root / rel
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix='.keep-')  # owner-only
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return rel, sha
+
+
 # ---------------------------------------------------------------- runs and minutes
 
 
@@ -140,8 +175,13 @@ def runs_and_minutes(repo, names, since, until):
     except FAILS:
         bounds = {'started_at': iso(started), 'ended_at': iso(now())}
         return {n: unavailable(n, bounds, window) for n in names}
+    try:
+        path, sha = keep('runs', jobs, '.jsonl')
+    except OSError:
+        bounds = {'started_at': iso(started), 'ended_at': iso(now())}
+        return {n: unavailable(n, bounds, window, NOT_KEPT) for n in names}
     bounds = {'started_at': iso(started), 'ended_at': iso(now())}
-    source = {'path': 'collector/ci/jobs.jsonl', 'schema': 'github.rest.actions.runs', 'sha256': digest(jobs)}
+    source = {'path': path, 'schema': 'github.rest.actions.runs', 'sha256': sha}
     evidence = [runs_link(repo, rid) for rid in run_ids]
     code, cost = point['code_runs'], point['cost']
     out = {}
@@ -177,11 +217,15 @@ def ci3(repo, since, until):
             record = C3.measure(C3.read_window(path))
     except FAILS:
         return unavailable('ci3', {'started_at': iso(started), 'ended_at': iso(now())}, window)
+    try:
+        path, sha = keep('ci3', raw, '.json')
+    except OSError:
+        return unavailable('ci3', {'started_at': iso(started), 'ended_at': iso(now())}, window, NOT_KEPT)
     heads = json.loads(raw)['heads']
     missing = record['missing']
     return fact('ci3', 'partial' if missing else 'known',
                 read={'started_at': iso(started), 'ended_at': record['collected_at']}, window=window,
-                source={'path': 'collector/ci/ci3-window.json', 'schema': C3.WINDOW_SCHEMA, 'sha256': digest(raw)},
+                source={'path': path, 'schema': C3.WINDOW_SCHEMA, 'sha256': sha},
                 evidence=[f'https://github.com/{repo}/pull/{h["pr"]}' for h in heads],
                 prerequisites=[f'{len(missing)} PR heads have no result yet; the record lists them in missing.']
                 if missing else [], value=record)
@@ -220,27 +264,40 @@ def budget(resources, pool):
             'reset_at': B.as_int(item, 'reset', pool), 'retry_after': 0}
 
 
+def active_runs(base):
+    """Every active ci.yml and privacy.yml run: {id: (workflow, attempt, event)}, statuses listed earliest first."""
+    runs = {}
+    for workflow in QUEUE_WORKFLOWS:
+        for status in PROGRESSION:
+            path = f'{base}/workflows/{workflow}/runs?status={status}&per_page={B.PAGE}'
+            for value, where in B.pages(path, 'workflow_runs', 'runs', B.gh):
+                rid = B.as_int(B.as_obj(value, where), 'id', where)
+                run = (workflow, B.as_int(value, 'run_attempt', where), B.as_str(value, 'event', where))
+                if runs.setdefault(rid, run) != run:
+                    raise B.Fail('a run listed twice, as two different runs')
+    return runs
+
+
 def queue(repo):
-    """The overload guard's observation: required ci.yml and privacy.yml jobs and both rate-limit pools."""
+    """The overload guard's observation: required ci.yml and privacy.yml jobs and both rate-limit pools.
+
+    Like WR8's reader, two run enumerations bracket the job reads and each job page is read twice: a run or
+    job that appears, or a run whose attempt or event changes, in between makes the observation incomplete."""
     started = now()
     base = f'repos/{repo}/actions'
     complete, jobs, names, run_ids = True, [], [], set()
     try:
-        runs = {}
-        for workflow in QUEUE_WORKFLOWS:
-            for status in ACTIVE:
-                path = f'{base}/workflows/{workflow}/runs?status={status}&per_page={B.PAGE}'
-                for value, where in B.pages(path, 'workflow_runs', 'runs', B.gh):
-                    rid = B.as_int(B.as_obj(value, where), 'id', where)
-                    if rid in runs:
-                        raise B.Fail('a run listed twice')
-                    runs[rid] = (workflow, B.as_int(value, 'run_attempt', where), B.as_str(value, 'event', where))
+        runs = active_runs(base)
         for rid, (workflow, attempt, event) in sorted(runs.items()):
+            job_path = f'{base}/runs/{rid}/jobs?per_page={B.PAGE}'
             try:
-                page = B.pages(f'{base}/runs/{rid}/jobs?per_page={B.PAGE}', 'jobs', 'jobs', B.gh)
+                page = B.pages(job_path, 'jobs', 'jobs', B.gh)
+                again = B.pages(job_path, 'jobs', 'jobs', B.gh)
             except FAILS:
                 complete = False  # a short page or a changed total: this run's jobs are unknown
                 continue
+            if [v.get('id') for v, _ in page] != [v.get('id') for v, _ in again]:
+                complete = False  # a job came or went between two reads: the run's membership is unknown
             for value, where in page:
                 B.as_obj(value, where)
                 jid, status = B.as_int(value, 'id', where), B.as_str(value, 'status', where)
@@ -261,6 +318,9 @@ def queue(repo):
                 names.append({'job': f'job-{jid}', 'workflow': workflow, 'run_id': rid, 'run_attempt': attempt,
                               'pool': activity.B.activity_pool(labels) if type(labels) is list else None})
                 run_ids.add(rid)
+        after = active_runs(base)
+        if any(runs.get(rid) != run for rid, run in after.items()):
+            complete = False  # a run appeared, or its attempt changed, while its jobs were read
         limits = B.as_obj(B.need(B.as_obj(B.gh('rate_limit'), 'rate_limit'), 'resources', 'rate_limit'), 'resources')
         budgets = {'rest': budget(limits, 'core'), 'graphql': budget(limits, 'graphql')}
     except FAILS:
