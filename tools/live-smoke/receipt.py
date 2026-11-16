@@ -33,6 +33,10 @@ _SPEC.loader.exec_module(smoke)
 
 SCHEMA = 'openwiz.live-smoke-receipts.v1'
 PRESERVE = 'openwiz.live-smoke-evidence.v1'
+# The run's restriction (#828): the runner refuses every `fleet tick` and
+# `engine` step, so no kit step can run the retired engine's tick. A receipt
+# from the old expected-plan runner (`expect-plan`) is stale.
+RESTRICTION = 'no-fleet-tick'
 RISKS = ('send', 'new', 'app_permissions', 'spending')
 RECEIPT = {'candidate_sha256', 'inputs_sha256', 'artifacts_sha256', 'kit_sha256', 'evidence_class',
            'status', 'started_at', 'finished_at', 'evidence', 'coverage', 'gaps'}
@@ -159,8 +163,7 @@ def evidence(state_dir, kit, state):
     if (start['kit'] != smoke.digest(kit) or start['mode'] != kit['mode']
             or start['source'] != (kit['source']['head'] if 'source' in kit else None)):
         raise Refusal('evidence_mismatch')
-    if kit['mode'] == 'live' and (start['runner'] != kit['artifacts'].get(str(Path(smoke.__file__).resolve()))
-                                  or start['restriction'] != kit['artifacts'].get(str(smoke.RESTRICTION))):
+    if kit['mode'] == 'live' and start['runner'] != kit['artifacts'].get(str(Path(smoke.__file__).resolve())):
         raise Refusal('evidence_mismatch')
     if replayed != state:
         raise Refusal('evidence_mismatch')
@@ -239,7 +242,7 @@ def produce(kit_path, state_dir, candidate, record, waiver=None):
     base = {'candidate_sha256': candidate['candidate_sha256'], 'artifacts_sha256': sha(body['artifacts']),
             'kit_sha256': smoke.digest(kit), 'scope_sha256': sha(section['scope']),
             'evidence_class': evidence_class, 'tested_products': tested, 'report_sha256': sha(run_report),
-            'restriction': 'expect-plan', 'gaps': section['gaps'],
+            'restriction': RESTRICTION, 'gaps': section['gaps'],
             'journal_sha256': journal_sha, 'writes_consumed': consumed,
             'steps': [{'id': s['id'], 'claim': s['claim'], 'kind': s['kind'], 'state': item['state']}
                       for s, item in zip(kit['steps'], state['steps'])],
@@ -324,7 +327,7 @@ def accept(gate, doc, candidate, kit_path, state_dir, resolve=None, waiver=None)
             or inputs.get('artifacts_sha256') != found['artifacts_sha256']
             or inputs.get('kit_sha256') != body['kit']['sha256']
             or inputs.get('scope_sha256') != body['kit']['scope_sha256']
-            or inputs.get('restriction') != 'expect-plan'
+            or inputs.get('restriction') != RESTRICTION
             or type(inputs.get('tested_products')) is not list or not inputs['tested_products']
             or any(type(p) is not dict or payloads.get((p.get('product'), p.get('target'))) != p.get('payload_sha256')
                    for p in inputs['tested_products'])

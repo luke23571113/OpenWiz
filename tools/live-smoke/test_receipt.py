@@ -49,15 +49,8 @@ FAKE.chmod(0o700)
 FAKE_SHA = hashlib.sha256(FAKE.read_bytes()).hexdigest()
 RUNNER = HERE / 'smoke.py'
 
-CATALOGUE = {'schema': 'openwiz.cli.v1', 'kind': 'catalogue', 'commands': [
-    {'name': 'fleet.tick', 'argv': ['fleet', 'tick'], 'flags': ['--dry-run', '--expect-plan', '--json']}]}
-SCOPE = {'specs': [9001], 'tickets': [9002, 9003, 9004], 'rules': ['frontier'], 'never_start': [9004]}
-ACTION = {'kind': 'start_builder', 'rule': 'frontier', 'spec': 9001, 'ticket': 9002,
-          'facts': {}, 'outcome': {'state': 'planned'}}
-PLAN = {'schema': 'openwiz.fleet-tick.v1', 'mode': 'dry_run', 'planned_at': 1893542400,
-        'default_branch': 'scratch', 'rules': {}, 'actions': [ACTION]}
 READS = ('swarms', 'service', 'loops', 'cockpit', 'decisions', 'terminal', 'json', 'app', 'read_safety')
-FLEET_ROW = ['fleet_tick'] + list(READS)
+FLEET_ROW = ['fleet_read'] + list(READS)
 GAP = 'Synthetic gap: no real phone radio, WebKit or Mac observation.'
 
 
@@ -73,9 +66,10 @@ class Receipts(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.state = self.root / 'state'
         self.kit_path = self.root / 'kit.json'
-        steps = [{'id': 'fleet_tick', 'claim': 'fleet', 'kind': 'write',
-                  'argv': [str(FAKE), 'fleet', 'tick', '--json'], 'exit': 0,
-                  'checks': [{'path': '/actions', 'actions_in': SCOPE}]}]
+        # The fleet claim is launch-fleet's work read back through the CLI.
+        steps = [{'id': 'fleet_read', 'claim': 'fleet', 'kind': 'read',
+                  'argv': [str(FAKE), 'fleet', '9001', '--json'], 'exit': 0,
+                  'checks': [{'path': '/count', 'equals': 1}]}]
         steps += [{'id': claim, 'claim': claim, 'kind': 'read', 'argv': [str(FAKE), claim],
                    'exit': 0, 'checks': [{'path': '/count', 'equals': 1}]} for claim in READS]
         steps += [{'id': claim + '_once', 'claim': claim, 'kind': 'write', 'argv': [str(FAKE), claim],
@@ -85,7 +79,7 @@ class Receipts(unittest.TestCase):
                     'timeout_seconds': 5, 'steps': steps,
                     'release': {
                         'scope': {'targets': ['synthetic-scratch'],
-                                  'writes': {'fleet': 1, 'send': 1, 'new': 1},
+                                  'writes': {'send': 1, 'new': 1},
                                   'app_permissions': ['issues:write'], 'spending_cents': 0},
                         'products': [{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}],
                         'coverage': [
@@ -98,10 +92,7 @@ class Receipts(unittest.TestCase):
         replies.update({
             'ls --json': {'exit': 0, 'out': json.dumps({'schema': 'openwiz.inventory.v1',
                           'coverage': {'state': 'complete'}, 'gaps': []})},
-            'help --agent': {'exit': 0, 'out': json.dumps(CATALOGUE)},
-            'fleet tick --dry-run': {'exit': 0, 'out': json.dumps(PLAN)},
-            'fleet tick --expect-plan': {'exit': 0, 'out': json.dumps(dict(
-                PLAN, mode='run', actions=[dict(ACTION, outcome={'state': 'done'})]))}})
+            'fleet 9001 --json': {'exit': 0, 'out': '{"count":1}'}})
         (self.root / 'replies.json').write_text(json.dumps(replies))
         with open(ROOT / 'tests/fixtures/release/candidate/synthetic-ready.json', 'rb') as stream:
             self.candidate = json.load(stream)
@@ -121,8 +112,7 @@ class Receipts(unittest.TestCase):
                         'commit', '--allow-empty', '-qm', 'synthetic source'], check=True)
         head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
         self.kit.update(mode='live', source={'checkout': str(source), 'head': head})
-        for pinned in (RUNNER, HERE / 'restriction.py'):
-            self.kit['artifacts'][str(pinned)] = hashlib.sha256(pinned.read_bytes()).hexdigest()
+        self.kit['artifacts'][str(RUNNER)] = hashlib.sha256(RUNNER.read_bytes()).hexdigest()
         self.bind()
 
     def bind(self):
@@ -143,7 +133,7 @@ class Receipts(unittest.TestCase):
             item['state'] = value
         state['times'] = {'started': 1893542400, 'finished': finished}
         state['candidate'] = self.candidate['candidate_sha256']
-        state['writes'] = {'fleet': 1, 'send': 1, 'new': 1}
+        state['writes'] = {'send': 1, 'new': 1}
         smoke.save(self.state, state)
 
     def produce(self, record='synthetic:smoke-run', waiver=None):
@@ -191,9 +181,7 @@ class Receipts(unittest.TestCase):
         code, report = self.execute()
         self.assertEqual((code, report['evidence'], report['verdict']), (0, 'live', 'pass'), report)
         self.assertEqual(self.execute()[0], 0)  # resume repeats nothing
-        ticks = [c for c in map(json.loads, (self.root / 'calls').read_text().splitlines())
-                 if c[:2] == ['fleet', 'tick'] and '--dry-run' not in c]
-        self.assertEqual([c[2] for c in ticks], ['--expect-plan'])
+        self.assertFalse(any(c[:2] == ['fleet', 'tick'] or c[:1] == ['engine'] for c in self.calls()))
         doc = self.produce()
         smoke_gate = doc['gates']['smoke']
         self.assertEqual(smoke_gate['candidate_sha256'], self.candidate['candidate_sha256'])
@@ -216,8 +204,8 @@ class Receipts(unittest.TestCase):
         self.assertEqual(contract_sha(inputs), smoke_gate['inputs_sha256'])
         self.assertEqual(inputs['tested_products'], [
             {'product': 'cli', 'target': 'x86_64-unknown-linux-gnu', 'payload_sha256': FAKE_SHA}])
-        self.assertEqual(inputs['restriction'], 'expect-plan')
-        self.assertEqual(inputs['writes_consumed'], {'fleet': 1, 'new': 1, 'send': 1})
+        self.assertEqual(inputs['restriction'], 'no-fleet-tick')
+        self.assertEqual(inputs['writes_consumed'], {'new': 1, 'send': 1})
         journal = (self.state / 'journal.jsonl').read_bytes()
         self.assertEqual(smoke_gate['evidence']['sha256'], hashlib.sha256(journal).hexdigest())
         self.assertNotIn(str(self.root), json.dumps(doc))
@@ -389,7 +377,7 @@ class Receipts(unittest.TestCase):
         self.bind()
         self.checkpoint()
         self.refused('scope_exceeded', self.produce)
-        self.kit['release']['scope']['writes'] = {'fleet': 1, 'new': 1}
+        self.kit['release']['scope']['writes'] = {'new': 1}
         self.bind()
         self.checkpoint()
         self.refused('scope_exceeded', self.produce)
@@ -467,27 +455,19 @@ class Receipts(unittest.TestCase):
                         str(self.state), '--execute', smoke.digest(self.kit)], capture_output=True, timeout=60)
         self.refused('unbound_run', self.produce)
 
-    def test_r2_live_fleet_writes_are_only_the_canonical_tick_or_reviewed_probes(self):
+    def test_r2_live_fleet_writes_are_only_reviewed_probes(self):
+        """catches: a live fleet write through a pinned wrapper, which could run
+        anything (an old binary's tick included) out of the runner's sight."""
         self.live()
         wrapper = self.root / 'wrapper'
-        wrapper.write_text('#!/bin/sh\nexec %s fleet tick --json\n' % FAKE)
+        wrapper.write_text('#!/bin/sh\nexec %s fleet 9001 --json\n' % FAKE)
         wrapper.chmod(0o700)
         self.kit['artifacts'][str(wrapper)] = hashlib.sha256(wrapper.read_bytes()).hexdigest()
-        self.kit['steps'][0]['argv'] = [str(wrapper)]
+        self.kit['steps'][0].update(kind='write', argv=[str(wrapper)])
         self.bind()
         code, report = self.execute()
         self.assertEqual((code, report['reason']), (2, 'invalid_kit'))
         self.assertEqual(self.calls(), [])
-
-    def test_r3_tick_audit_covers_exactly_the_whole_action_array(self):
-        self.live()
-        for path in ('/actions/0/facts/blockers', '/actions/0', ''):
-            with self.subTest(path=path):
-                self.kit['steps'][0]['checks'] = [{'path': path, 'actions_in': SCOPE}]
-                self.bind()
-                code, report = self.execute()
-                self.assertEqual((code, report['reason']), (2, 'invalid_kit'))
-                self.assertEqual(self.calls(), [])
 
     def test_r4_a_checkpoint_alone_is_not_live_evidence(self):
         self.live()
@@ -510,38 +490,24 @@ class Receipts(unittest.TestCase):
 
     def test_r5_write_scope_bounds_consumed_attempts_before_dispatch(self):
         self.live()
-        self.kit['steps'][1:1] = [
-            {'id': 'tick_event', 'claim': 'fleet', 'kind': 'event'},
-            {'id': 'done', 'claim': 'fleet', 'kind': 'await', 'argv': [str(FAKE), 'done'], 'exit': 0,
-             'checks': [{'path': '/count', 'equals': 1}], 'until': [{'path': '/merged', 'equals': 2}],
-             'again_from': 'fleet_tick'}]
+        self.kit['release']['scope']['writes']['send'] = 0
         self.bind()
-        self.replies(done={'exit': 0, 'out': '{"count":1,"merged":0}'})
-        ticks = lambda: sum('--expect-plan' in c for c in self.calls())
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')
-        self.assertEqual(self.execute()[1]['reason'], 'pending')
-        self.assertEqual(self.execute()[1]['reason'], 'write_limit')  # before a second effect
-        self.assertEqual(ticks(), 1)
+        self.assertEqual(self.execute()[1]['reason'], 'write_limit')  # before any effect
         self.assertEqual(self.execute()[1]['reason'], 'write_limit')
-        self.assertEqual(ticks(), 1)
-        self.kit['release']['scope']['writes']['fleet'] = 2
+        self.assertNotIn(['send'], self.calls())
+        self.kit['release']['scope']['writes']['send'] = 1
         self.bind()
-        self.state = self.root / 'two-ticks'
-        self.replies(done={'exit': 0, 'out': '{"count":1,"merged":0}'})
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')
-        self.assertEqual(self.execute()[1]['reason'], 'pending')
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')
-        self.replies(done={'exit': 0, 'out': '{"count":1,"merged":2}'})
+        self.state = self.root / 'in-scope'
         self.ran()
         doc = self.produce()
-        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'fleet': 2, 'new': 1, 'send': 1})
+        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'new': 1, 'send': 1})
         receipt.accept('smoke', doc, self.candidate, self.kit_path, self.state, self.resolver(doc))
 
     # Review round 2 (R2, R4, R6).
     def test_r2_round2_a_probe_shaped_wrapper_is_not_a_reviewed_probe(self):
         self.live()
         wrapper = self.root / 'wrapper'
-        wrapper.write_text('#!/bin/sh\nexec %s fleet tick --json\n' % FAKE)
+        wrapper.write_text('#!/bin/sh\nexec %s fleet 9001 --json\n' % FAKE)
         wrapper.chmod(0o700)
         python = str(Path(sys.executable).resolve())
         probes = (str(HERE / 'browser.mjs'), str(HERE / 'cleanup.py'))
@@ -559,13 +525,13 @@ class Receipts(unittest.TestCase):
             with self.subTest(case=name):
                 self.state = self.root / ('probe-' + name.replace(' ', '-'))
                 self.kit['artifacts'].update(pins)
-                self.kit['steps'][0].update(argv=argv, checks=[{'path': '/count', 'equals': 1}])
+                self.kit['steps'][0].update(kind='write', argv=argv, checks=[{'path': '/count', 'equals': 1}])
                 self.bind()
                 code, report = self.execute()
                 self.assertEqual((code, report['reason']), (2, 'invalid_kit'))
                 self.assertEqual(self.calls(), [])
         # The whole reviewed invocation under the runner's own interpreter is accepted.
-        self.kit['steps'][0].update(argv=[python] + cleanup)
+        self.kit['steps'][0].update(kind='write', argv=[python] + cleanup)
         self.bind()
         code, report = self.execute('--dry-run')
         self.assertEqual((code, report['verdict']), (0, 'not_run'), report)
@@ -575,18 +541,14 @@ class Receipts(unittest.TestCase):
         self.checkpoint()
         smoke.journal(self.state, dict(kind='start', kit=smoke.digest(self.kit),
                                        candidate=self.candidate['candidate_sha256'], mode='live',
-                                       source=self.kit['source']['head'], runner=smoke.file_hash(RUNNER),
-                                       restriction=smoke.file_hash(smoke.RESTRICTION)))
+                                       source=self.kit['source']['head'], runner=smoke.file_hash(RUNNER)))
         for step in self.kit['steps']:
             if step['kind'] == 'write':
-                smoke.journal(self.state, dict(kind='attempt', id=step['id'], claim=step['claim'],
-                                               sittings=0, fleet_started=0))
+                smoke.journal(self.state, dict(kind='attempt', id=step['id'], claim=step['claim']))
             event = dict(kind='step', id=step['id'], state='pass', facts={}, reason='none', pending=False,
                          exit=step['exit'] if exit_code is None else exit_code, output_sha256='a' * 64)
             if observed:
-                event['observed'] = [{'actions': [dict(ACTION, outcome={'state': 'done'})]}
-                                     if 'actions_in' in c else {'digest': smoke.digest(c['equals'])}
-                                     for c in step['checks']]
+                event['observed'] = [{'digest': smoke.digest(c['equals'])} for c in step['checks']]
             smoke.journal(self.state, event)
         smoke.journal(self.state, {'kind': 'finish'})
         try:  # a consistent forgery also rewrites the checkpoint to match
@@ -613,26 +575,27 @@ class Receipts(unittest.TestCase):
 
     def test_r6_an_interrupted_transition_is_adopted_never_repeated(self):
         self.live()
-        self.kit['release']['scope']['writes']['fleet'] = 2
         self.kit['steps'][1:1] = [
-            {'id': 'tick_event', 'claim': 'fleet', 'kind': 'event'},
+            {'id': 'fleet_event', 'claim': 'fleet', 'kind': 'event'},
             {'id': 'done', 'claim': 'fleet', 'kind': 'await', 'argv': [str(FAKE), 'done'], 'exit': 0,
              'checks': [{'path': '/count', 'equals': 1}], 'until': [{'path': '/merged', 'equals': 2}],
-             'again_from': 'fleet_tick'}]
+             'again_from': 'fleet_read'}]
+        self.kit['release']['coverage'][0]['steps'] = FLEET_ROW + ['done']
         self.bind()
+        reads = lambda: self.calls().count(['fleet', '9001', '--json'])
         self.replies(done={'exit': 0, 'out': '{"count":1,"merged":0}'})
         self.assertEqual(self.execute()[1]['reason'], 'next_event')
         self.assertEqual(self.execute()[1]['reason'], 'pending')
         # The next sitting's readback decided to repeat and journaled it, then stopped
         # before saving the checkpoint. Meanwhile the condition completed.
-        smoke.journal(self.state, {'kind': 'repeat', 'id': 'done', 'again_from': 'fleet_tick',
+        smoke.journal(self.state, {'kind': 'repeat', 'id': 'done', 'again_from': 'fleet_read',
                                    'exit': 0, 'output_sha256': 'a' * 64})
         self.replies(done={'exit': 0, 'out': '{"count":1,"merged":2}'})
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')  # the recorded repeat: one more tick
+        self.assertEqual(self.execute()[1]['reason'], 'next_event')  # the recorded repeat: one more read
         self.ran()
-        self.assertEqual(sum('--expect-plan' in c for c in self.calls()), 2)
+        self.assertEqual(reads(), 2)
         doc = self.produce()
-        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'fleet': 2, 'new': 1, 'send': 1})
+        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'new': 1, 'send': 1})
         receipt.accept('smoke', doc, self.candidate, self.kit_path, self.state, self.resolver(doc))
         # Two unapplied events are not an interruption: refused, nothing runs.
         smoke.journal(self.state, {'kind': 'finish'})

@@ -1,14 +1,19 @@
 # Combined agent live smoke (#1844)
 
-**Every fleet tick runs only as a saved, audited plan.** Review R2 showed that
-preview/output checks cannot restrict the tick: it recovers and replans before
-effects. The runner therefore never launches `openwiz fleet tick --json` itself.
-It establishes #2216's restriction (`restriction.py`) over #1892's
-`--expect-plan`: the installed catalogue must offer it, one dry-run preview must
-pass the step's `actions_in` audit, and the tick then executes that saved plan or
-refuses before any effect, including recovery. If the restriction cannot be
-established the step refuses (`restriction_unavailable`, `invalid_plan`,
-`out_of_scope`, `unsafe_plan_dir`, `plan_exists`) and consumes nothing.
+**The one live-check runner, with no engine tick (#828).** live-smoke is the
+project's single live-check runner: live evidence has this one shape (spec #819).
+The engine retirement removes the executing `openwiz fleet tick`, its
+`--expect-plan` form and `openwiz engine`
+([map](../../contracts/engine-retirement.v1.md), section 9). The runner runs
+none of them, nor the kept `fleet tick --dry-run` preview: a kit step of any
+kind (read, write or await) whose program is the pinned `openwiz` (by path, by
+file identity, so a symlink or hardlink, or by pinned bytes, so a copy) with
+`fleet tick` (any form) or `engine` is refused before any step
+(`retired_command`), and so is one whose program's identity cannot be read. A fleet's own writes (starts, reviews,
+merges, closes) are launch-fleet's. The runner reads them back through the CLI
+(`openwiz fleet <spec> --json`, `openwiz fleet due --github-only`) and the
+reviewed probes below. #2216's expected-plan restriction restricted the
+runner's own tick; with no tick it has nothing to restrict.
 Fixture/dry-run success cannot publish the combined release.
 
 **Prepared, not run live.** ADR 0019, approved on #1844, makes one combined
@@ -46,7 +51,7 @@ phone reply, the terminal app, App permissions, read safety controls) is
 **not** live-tested by it; the kit's `release.coverage` names promises only for
 these steps, and its `release.gaps` lists the rest.
 
-The runner keeps its general capabilities (the fleet-tick restriction, the
+The runner keeps its general capabilities (the fleet read-back block, the
 reviewed browser/cleanup probes) for kits without a `claims` declaration, which
 mean #1844's full combined set. The sections below on those describe the runner,
 not this sheet.
@@ -106,7 +111,7 @@ The 27 inputs, all from existing records, never guessed:
 | `python`, `openwiz`, `install_entry` | Absolute programs: the runner's Python, the installed `<install_build>/openwiz`, and the clean checkout's `tools/install/install` |
 | `install_root`, `install_state`, `install_build` | The normal route's `--root` and `--state-root`, and the `build` its `install` printed |
 | `release_version`, `release_source`, `release_target` | The candidate's version, source commit and target, from its sealed body |
-| `artifacts` | Every program/script absolute path to its previously verified SHA-256: `openwiz` (the candidate's product hash), Python, `tools/install/install`, and `smoke.py` and `restriction.py` themselves; never build during the run |
+| `artifacts` | Every program/script absolute path to its previously verified SHA-256: `openwiz` (the candidate's product hash), Python, `tools/install/install`, and `smoke.py` itself; never build during the run |
 | `source` | `{ "checkout": "/accepted/source", "head": "<40 hex>" }`; clean accepted source, independently matched to the candidate |
 | `expected_catalogue_commands` | The accepted CLI catalogue's `commands`, from the candidate's source, not from the program under test |
 | `send_thread`, `project` | Already approved throwaway thread and throwaway project |
@@ -130,20 +135,19 @@ candidate (`candidate_changed`): a rebuilt candidate needs a new run in a new
 state directory. A run without it can resume but yields no receipts
 (`unbound_run`).
 
-In live mode a fleet-claim write is only the canonical tick or the whole
-reviewed invocation of one of this folder's probes: a real `node` program
-(ELF, not a script) running `browser.mjs` with one config argument, or the
-runner's own Python running `-I cleanup.py --gh <ELF program> --repo R
---ticket T --action unlabel|close`. A wrapper, even one whose arguments name a
-reviewed probe, is refused before any step. Each tick step needs an `actions_in` audit
-at exactly `/actions`, and no audit may name another path. With a `release`
-section, every write attempt, repeats and uncertain attempts included, counts
-against `release.scope.writes` for its claim; the next would-be attempt over
-that bound returns `write_limit` before any preview or effect.
+In live mode a fleet-claim write is only the whole reviewed invocation of one
+of this folder's probes: a real `node` program (ELF, not a script) running
+`browser.mjs` with one config argument, or the runner's own Python running
+`-I cleanup.py --gh <ELF program> --repo R --ticket T --action unlabel|close`.
+A wrapper, even one whose arguments name a reviewed probe, is refused before any
+step. The fleet claim needs no write of its own: its evidence can be reads
+alone. With a `release` section, every write attempt, uncertain attempts
+included, counts against `release.scope.writes` for its claim; the next
+would-be attempt over that bound returns `write_limit` before any effect.
 
 Beside the checkpoint the runner appends `journal.jsonl`: owner-only,
 fsynced, hash-chained lines recording the start (kit, candidate, mode, source
-head, runner and restriction hashes), each attempt, each step outcome with its
+head, runner hash), each attempt, each step outcome with its
 exit code, output digest and bounded observations (per check: a value digest,
 the listed string, or the audited actions; never raw output), each repeat and
 the finish. Every transition is journaled first and then applied by one
@@ -157,7 +161,7 @@ fail the step's own checks.
 Exit 0 with `evidence: live` and every claim `pass` is a live smoke pass at the
 pinned build; only a receipt (below) carries it to the release command. Exit 1 is
 a known wrong comparison, exit 2 a refused input/artifact, exit 3
-incomplete/event/uncertain or an unestablished restriction. All three nonzero
+incomplete/event/uncertain or a reached fleet cap. All three nonzero
 exits block the smoke gate. Execution verifies hashes/source and runs the actual
 `openwiz ls --json` source path before any step. Help/version output does not
 check the bundle.
@@ -167,33 +171,33 @@ is **no RL1 override here**: only the product's reviewed, conditional exception,
 if separately implemented, can make its own guard pass. A version string is
 never a gate. Fixture environment variables are refused for a live kit.
 
-The fixture progression has two bounded fleet blocks. Each executes one tick
-then returns `next_event`. End the turn; the existing tick/orchestrator event
-resumes the same command. The first block stops at two strict merges with T3
-awaiting its phone reply. Then the approved phone reply runs once, its delivery
-is read back, and individually checkpointed `cleanup.py` invocations perform
-`gh issue edit T3 --remove-label needs-info` and `gh issue close T3`, each with a
-separate verified readback. Nested gh readback uses file-backed stdout capped
-before decode by the runner limit and any tighter inherited file limit; stderr
-is discarded. Oversized/failed readback leaves that cleanup attempt uncertain
-and never replays its write. Only then can the second block tick to final summary
-and spec closure. Reply/cleanup are outside both repeat blocks and never replay.
-A failed/unknown cleanup prevents all final ticks.
+A fleet block is launch-fleet's work read back. It runs from a step to an
+`await` step with `again_from` naming that step and `until` checks, and holds
+only fleet-claim reads and at least one `event`. It never holds a write. At the
+event the runner ends the turn (`next_event`) while launch-fleet acts; the
+fleet's own event resumes the same command. The `await` then reads back: once
+its `until` checks hold, the block passes. While they don't, it returns
+`pending`, and on the next event the block's reads run again from `again_from`.
+A wrong invariant in the `checks` is a failure, never pending. For AC6 the first
+block reads back two strict merges with T3 awaiting its phone reply. Then the
+approved phone reply runs once, its delivery is read back, and individually
+checkpointed `cleanup.py` invocations perform `gh issue edit T3 --remove-label
+needs-info` and `gh issue close T3`, each with a separate verified readback.
+Nested gh readback uses file-backed stdout capped before decode by the runner
+limit and any tighter inherited file limit; stderr is discarded.
+Oversized/failed readback leaves that cleanup attempt uncertain and never
+replays its write. Only then can the second block read back the final summary
+and spec closure. Reply/cleanup are outside both blocks and never replay. A
+failed/unknown cleanup stops the run before the second block.
 
-Both blocks share AC6's 60-tick/three-hour cap. Incomplete progress returns at
-once; on another event readback is checked before another tick. Each tick
-re-establishes the restriction: a fresh preview, the scope audit, an exclusive
-owner-only plan file in the state directory, then `fleet tick --expect-plan
-<plan> --json` once; the plan file is removed after the launch. The `attempting`
-checkpoint is saved between the two. A product refusal, a report other than the
-saved plan or any action outcome but `done` consumes the attempt
-(`uncertain_write`) and is never relaunched. A plan file left by an interrupted
-run refuses every later tick (`plan_exists`) rather than being reused. No sleep,
+Both blocks share AC6's cap: 60 sittings (block events passed, journaled) and
+three hours from the first. At the cap no event passes and no block repeats
+(`fleet_limit`); an expired block's final readback is refused too. No sleep,
 watcher or CI polling loop.
 
 A write's `attempting` checkpoint is fsynced **before** dispatch. Interruption,
 timeout, bad output or unknown result permanently consumes that attempt; resume
-returns `uncertain_write` and does not send/create/tick again. The orchestrator
+returns `uncertain_write` and does not send/create/clean up again. The orchestrator
 reconciles via existing lookup/status/strict readback; never delete/edit the
 checkpoint to retry a write. Known completed steps are skipped. A changed kit or
 artifact refuses resume; a failed comparison stays failed. Every command requires Linux child-subreaper support, `/proc` child ownership
@@ -276,7 +280,8 @@ yield the checkpoint's step states and consumed writes exactly
 (`evidence_mismatch`), or consumed writes over the scope (`scope_exceeded`). A
 receipt binds the candidate, artifact inventory and kit digests, its complete
 inputs digest (step states, coverage, tested products, scope, consumed writes,
-journal digest, `expect-plan` restriction) and, as its evidence hash, the
+journal digest, and the `no-fleet-tick` restriction, so a receipt from the old
+expected-plan runner is stale) and, as its evidence hash, the
 journal's digest under the given reference. `produce` also prints the
 `preserve` line (`openwiz.live-smoke-evidence.v1 journal=… candidate=… kit=…`)
 to post in the run's private record once it finishes, with that record's
@@ -333,7 +338,6 @@ python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz 
 python3 -I tools/live-smoke/test_review.py
 python3 -I tools/live-smoke/test_kit.py          # #772: declared claims, owner-only inputs, 7370 refusal
 python3 -I tools/live-smoke/test_receipt.py      # also registered in tools/release/test.py (CI)
-python3 -I tools/live-smoke/test_restriction.py  # #2216's; registered there too
 node --check tools/live-smoke/browser.mjs
 cargo fmt --check
 ```
