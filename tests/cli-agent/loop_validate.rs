@@ -25,9 +25,22 @@ fn validate(sandbox: &Sandbox, contract: &Value, args: &[&str]) -> (i32, Value) 
     let code = output.status.code().unwrap();
     assert!(output.stdout.ends_with(b"\n"), "{args:?}");
     let doc: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(schema::validate(contract, &doc), Vec::<String>::new(), "{args:?}: {doc}");
+    // A report is the loop contract's; an error is the CLI contract's.
+    let schema = if doc["schema"] == "openwiz.cli-error.v1" {
+        &load("contracts/cli.v1.schema.json")
+    } else {
+        contract
+    };
+    assert_eq!(
+        schema::validate(schema, &doc),
+        Vec::<String>::new(),
+        "{args:?}: {doc}"
+    );
     assert_eq!(doc["exit_code"], code, "{args:?}");
-    assert!(!sandbox.0.join("calls").exists(), "{args:?} called room-cli");
+    assert!(
+        !sandbox.0.join("calls").exists(),
+        "{args:?} called room-cli"
+    );
     (code, doc)
 }
 
@@ -42,7 +55,7 @@ fn refusals(expected: &Value, file: &str) -> Value {
                 })
                 .collect()
         })
-        .unwrap_or_default()
+        .unwrap_or_else(|| json!([]))
 }
 
 // catches: a reader that accepts an invalid fixture, refuses a valid one, or
@@ -67,7 +80,11 @@ fn each_pinned_fixture_file_passes_or_refuses_as_expected_json_says() {
         assert_eq!(doc["files"].as_array().unwrap().len(), 1, "{name}");
         assert_eq!(
             (&entry["file"], &entry["result"], &entry["refusals"]),
-            (&json!(path), &expected["result"], &refusals(expected, &path)),
+            (
+                &json!(path),
+                &expected["result"],
+                &refusals(expected, &path)
+            ),
             "{name}"
         );
         if valid {
@@ -160,8 +177,14 @@ fn each_valid_fixture_parses_to_expected_json() {
         }
         let path = Path::new(ROOT).join(FIXTURES).join(name);
         let read = openwiz_adapter_cloudroom::loop_files::read_loop_path(&path).unwrap();
-        let file = read.file.unwrap_or_else(|| panic!("{name}: {:?}", read.refusals));
-        assert_eq!(Value::Object(file.frontmatter), expected["parsed"], "{name}");
+        let file = read
+            .file
+            .unwrap_or_else(|| panic!("{name}: {:?}", read.refusals));
+        assert_eq!(
+            Value::Object(file.frontmatter),
+            expected["parsed"],
+            "{name}"
+        );
         checked += 1;
     }
     assert!(checked >= 15, "{checked}");

@@ -132,11 +132,7 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
         match read_line(line) {
             Ok((key, value)) => {
                 if fields.iter().any(|(k, _)| *k == key) {
-                    refusals.push(Refusal::new(
-                        "duplicate-key",
-                        key,
-                        "appears more than once",
-                    ));
+                    refusals.push(Refusal::new("duplicate-key", key, "appears more than once"));
                 } else {
                     fields.push((key, value));
                 }
@@ -150,7 +146,11 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
                 refusals.push(Refusal::new("json", key, "value is not one JSON value"));
             }
             Err(LineError::Duplicate(path)) => {
-                refusals.push(Refusal::new("duplicate-key", path, "appears more than once"));
+                refusals.push(Refusal::new(
+                    "duplicate-key",
+                    path,
+                    "appears more than once",
+                ));
             }
         }
     }
@@ -200,7 +200,11 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
         if let Some((first, _)) = files[..i].iter().find(|(_, r)| r.id.as_ref() == Some(id)) {
             refusals.push((
                 name.clone(),
-                Refusal::new("duplicate-id", "id", format!("{id} is also the id of {first}")),
+                Refusal::new(
+                    "duplicate-id",
+                    "id",
+                    format!("{id} is also the id of {first}"),
+                ),
             ));
         }
     }
@@ -348,7 +352,9 @@ impl Parser<'_> {
     }
 
     fn eat(&mut self, word: &[u8]) -> Option<()> {
-        self.s[self.i..].starts_with(word).then(|| self.i += word.len())
+        self.s[self.i..]
+            .starts_with(word)
+            .then(|| self.i += word.len())
     }
 
     fn value(&mut self, path: &str) -> Option<Json> {
@@ -676,7 +682,9 @@ impl<'a, 'c> Fields<'a, 'c> {
             Some(Json::String(run)) => {
                 let path_ok = !run.starts_with('/')
                     && !run.contains('\\')
-                    && run.split('/').all(|s| !s.is_empty() && s != "." && s != "..");
+                    && run
+                        .split('/')
+                        .all(|s| !s.is_empty() && s != "." && s != "..");
                 if !path_ok {
                     out.push(Refusal::new(
                         "bad-check-path",
@@ -740,7 +748,10 @@ impl<'a, 'c> Fields<'a, 'c> {
             let start = at + n;
             match placeholder(&body[start..]) {
                 Some(name) => {
-                    if declared.as_ref().is_some_and(|d| !d.iter().any(|k| k == name)) {
+                    if declared
+                        .as_ref()
+                        .is_some_and(|d| !d.iter().any(|k| k == name))
+                    {
                         self.refusals.push(Refusal::new(
                             "undeclared-param",
                             "body",
@@ -772,9 +783,9 @@ impl<'a, 'c> Fields<'a, 'c> {
                         ),
                     )),
                     CheckUse::Reference(run) => {
-                        let known = declared.as_ref().map(|d| {
-                            d.iter().find(|k| k.to_ascii_uppercase() == run).cloned()
-                        });
+                        let known = declared
+                            .as_ref()
+                            .map(|d| d.iter().find(|k| k.to_ascii_uppercase() == run).cloned());
                         match known {
                             Some(Some(name)) => used.push(name),
                             Some(None) => self.refusals.push(Refusal::new(
@@ -873,8 +884,8 @@ fn trigger(value: &Json, out: &mut Vec<Refusal>) {
     // `timezone` is unknown only beside one kind that is not `cron`.
     let lone_cron = kinds.len() == 1 && kinds[0] == "cron";
     for (k, _) in pairs {
-        let known = KINDS.contains(&k.as_str())
-            || (k == "timezone" && (lone_cron || kinds.len() != 1));
+        let known =
+            KINDS.contains(&k.as_str()) || (k == "timezone" && (lone_cron || kinds.len() != 1));
         if !known {
             out.push(unknown(format!("trigger.{k}")));
         }
@@ -1212,7 +1223,9 @@ mod tests {
     // order (frontmatter lines, then body, then missing fields last).
     #[test]
     fn several_refusals_come_in_report_order() {
-        let got = read("---\npriority: 9\nbudget: 1\ntrigger: {\"at\": \"soon\", \"timezone\": \"UTC\"}\n---\n {{x}} {{\n");
+        let got = read(
+            "---\npriority: 9\nbudget: 1\ntrigger: {\"at\": \"soon\", \"timezone\": \"UTC\"}\n---\n {{x}} {{\n",
+        );
         assert_eq!(
             got,
             [
