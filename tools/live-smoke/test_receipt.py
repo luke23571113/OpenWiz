@@ -49,16 +49,25 @@ FAKE.chmod(0o700)
 FAKE_SHA = hashlib.sha256(FAKE.read_bytes()).hexdigest()
 RUNNER = HERE / 'smoke.py'
 
-CATALOGUE = {'schema': 'openwiz.cli.v1', 'kind': 'catalogue', 'commands': [
-    {'name': 'fleet.tick', 'argv': ['fleet', 'tick'], 'flags': ['--dry-run', '--expect-plan', '--json']}]}
-SCOPE = {'specs': [9001], 'tickets': [9002, 9003, 9004], 'rules': ['frontier'], 'never_start': [9004]}
-ACTION = {'kind': 'start_builder', 'rule': 'frontier', 'spec': 9001, 'ticket': 9002,
-          'facts': {}, 'outcome': {'state': 'planned'}}
-PLAN = {'schema': 'openwiz.fleet-tick.v1', 'mode': 'dry_run', 'planned_at': 1893542400,
-        'default_branch': 'scratch', 'rules': {}, 'actions': [ACTION]}
 READS = ('swarms', 'service', 'loops', 'cockpit', 'decisions', 'terminal', 'json', 'app', 'read_safety')
-FLEET_ROW = ['fleet_tick'] + list(READS)
+FLEET_ROW = ['fleet_read'] + list(READS)
 GAP = 'Synthetic gap: no real phone radio, WebKit or Mac observation.'
+LIVE_NOTES = ('## 0.0.99 · 2030-01-02\n\n**Synthetic patch**\n\n'
+              'Live-checked in this release\'s smoke test, run by agents: the synthetic steps.\n')
+# The v0.0.12 notes' shape (#18): seven versions, only 0.0.12's section live-checked;
+# each other version's promise is its section's headline, carried as a not-live gap.
+HEADLINES = [('0.0.12', 'Scripts and agents can drive OpenWiz'),
+             ('0.0.11', 'Make every decision in one place, and see the whole plan'),
+             ('0.0.10', 'A cockpit for your phone and PC'),
+             ('0.0.9', 'All your loops in one place'),
+             ('0.0.8', 'OpenWiz keeps running on your PC'),
+             ('0.0.7', 'Helpers for builders and reviewers, and a "where are we?" report'),
+             ('0.0.6', 'Fleets run inside OpenWiz')]
+COMBINED_NOTES = ''.join(
+    f'## {v} · 2030-01-02\n\n**{p}**\n\n'
+    + ('Live-checked in this release\'s smoke test, run by agents: install, send and new.\n\n' if v == '0.0.12'
+       else 'Tested on synthetic fixtures only; the whole flow is still unverified.\n\n')
+    for v, p in HEADLINES).rstrip('\n') + '\n'
 
 
 def contract_sha(value):
@@ -73,9 +82,10 @@ class Receipts(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.state = self.root / 'state'
         self.kit_path = self.root / 'kit.json'
-        steps = [{'id': 'fleet_tick', 'claim': 'fleet', 'kind': 'write',
-                  'argv': [str(FAKE), 'fleet', 'tick', '--json'], 'exit': 0,
-                  'checks': [{'path': '/actions', 'actions_in': SCOPE}]}]
+        # The fleet claim is launch-fleet's work read back through the CLI.
+        steps = [{'id': 'fleet_read', 'claim': 'fleet', 'kind': 'read',
+                  'argv': [str(FAKE), 'fleet', '9001', '--json'], 'exit': 0,
+                  'checks': [{'path': '/count', 'equals': 1}]}]
         steps += [{'id': claim, 'claim': claim, 'kind': 'read', 'argv': [str(FAKE), claim],
                    'exit': 0, 'checks': [{'path': '/count', 'equals': 1}]} for claim in READS]
         steps += [{'id': claim + '_once', 'claim': claim, 'kind': 'write', 'argv': [str(FAKE), claim],
@@ -85,7 +95,7 @@ class Receipts(unittest.TestCase):
                     'timeout_seconds': 5, 'steps': steps,
                     'release': {
                         'scope': {'targets': ['synthetic-scratch'],
-                                  'writes': {'fleet': 1, 'send': 1, 'new': 1},
+                                  'writes': {'send': 1, 'new': 1},
                                   'app_permissions': ['issues:write'], 'spending_cents': 0},
                         'products': [{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}],
                         'coverage': [
@@ -98,14 +108,12 @@ class Receipts(unittest.TestCase):
         replies.update({
             'ls --json': {'exit': 0, 'out': json.dumps({'schema': 'openwiz.inventory.v1',
                           'coverage': {'state': 'complete'}, 'gaps': []})},
-            'help --agent': {'exit': 0, 'out': json.dumps(CATALOGUE)},
-            'fleet tick --dry-run': {'exit': 0, 'out': json.dumps(PLAN)},
-            'fleet tick --expect-plan': {'exit': 0, 'out': json.dumps(dict(
-                PLAN, mode='run', actions=[dict(ACTION, outcome={'state': 'done'})]))}})
+            'fleet 9001 --json': {'exit': 0, 'out': '{"count":1}'}})
         (self.root / 'replies.json').write_text(json.dumps(replies))
         with open(ROOT / 'tests/fixtures/release/candidate/synthetic-ready.json', 'rb') as stream:
             self.candidate = json.load(stream)
         self.candidate['candidate']['included_versions'][0]['promises'] = ['synthetic_fleet', 'synthetic_send']
+        self.notes(LIVE_NOTES)
         self.candidate['candidate']['risk']['send'] = {'required': 'yes', 'reason': 'Synthetic send change.'}
         self.candidate['candidate']['risk']['new'] = {'required': 'yes', 'reason': 'Synthetic new change.'}
         for product in self.candidate['candidate']['products']:
@@ -121,8 +129,7 @@ class Receipts(unittest.TestCase):
                         'commit', '--allow-empty', '-qm', 'synthetic source'], check=True)
         head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
         self.kit.update(mode='live', source={'checkout': str(source), 'head': head})
-        for pinned in (RUNNER, HERE / 'restriction.py'):
-            self.kit['artifacts'][str(pinned)] = hashlib.sha256(pinned.read_bytes()).hexdigest()
+        self.kit['artifacts'][str(RUNNER)] = hashlib.sha256(RUNNER.read_bytes()).hexdigest()
         self.bind()
 
     def bind(self):
@@ -135,6 +142,12 @@ class Receipts(unittest.TestCase):
     def reseal(self):
         self.candidate['candidate_sha256'] = contract_sha(self.candidate['candidate'])
 
+    def notes(self, text):
+        """The candidate's approved notes: which sections carry a live-checked line."""
+        raw = text.encode('utf-8')
+        self.candidate['candidate']['changelog'] = {'utf8': text, 'sha256': hashlib.sha256(raw).hexdigest(),
+                                                    'bytes': len(raw)}
+
     def checkpoint(self, states=None, finished=1893542580):
         """A runner checkpoint for this kit, as smoke.py saves it."""
         self.state.mkdir(mode=0o700, exist_ok=True)
@@ -143,7 +156,7 @@ class Receipts(unittest.TestCase):
             item['state'] = value
         state['times'] = {'started': 1893542400, 'finished': finished}
         state['candidate'] = self.candidate['candidate_sha256']
-        state['writes'] = {'fleet': 1, 'send': 1, 'new': 1}
+        state['writes'] = {'send': 1, 'new': 1}
         smoke.save(self.state, state)
 
     def produce(self, record='synthetic:smoke-run', waiver=None):
@@ -191,9 +204,7 @@ class Receipts(unittest.TestCase):
         code, report = self.execute()
         self.assertEqual((code, report['evidence'], report['verdict']), (0, 'live', 'pass'), report)
         self.assertEqual(self.execute()[0], 0)  # resume repeats nothing
-        ticks = [c for c in map(json.loads, (self.root / 'calls').read_text().splitlines())
-                 if c[:2] == ['fleet', 'tick'] and '--dry-run' not in c]
-        self.assertEqual([c[2] for c in ticks], ['--expect-plan'])
+        self.assertFalse(any(c[:2] == ['fleet', 'tick'] or c[:1] == ['engine'] for c in self.calls()))
         doc = self.produce()
         smoke_gate = doc['gates']['smoke']
         self.assertEqual(smoke_gate['candidate_sha256'], self.candidate['candidate_sha256'])
@@ -216,8 +227,8 @@ class Receipts(unittest.TestCase):
         self.assertEqual(contract_sha(inputs), smoke_gate['inputs_sha256'])
         self.assertEqual(inputs['tested_products'], [
             {'product': 'cli', 'target': 'x86_64-unknown-linux-gnu', 'payload_sha256': FAKE_SHA}])
-        self.assertEqual(inputs['restriction'], 'expect-plan')
-        self.assertEqual(inputs['writes_consumed'], {'fleet': 1, 'new': 1, 'send': 1})
+        self.assertEqual(inputs['restriction'], 'no-fleet-tick')
+        self.assertEqual(inputs['writes_consumed'], {'new': 1, 'send': 1})
         journal = (self.state / 'journal.jsonl').read_bytes()
         self.assertEqual(smoke_gate['evidence']['sha256'], hashlib.sha256(journal).hexdigest())
         self.assertNotIn(str(self.root), json.dumps(doc))
@@ -389,7 +400,7 @@ class Receipts(unittest.TestCase):
         self.bind()
         self.checkpoint()
         self.refused('scope_exceeded', self.produce)
-        self.kit['release']['scope']['writes'] = {'fleet': 1, 'new': 1}
+        self.kit['release']['scope']['writes'] = {'new': 1}
         self.bind()
         self.checkpoint()
         self.refused('scope_exceeded', self.produce)
@@ -467,27 +478,19 @@ class Receipts(unittest.TestCase):
                         str(self.state), '--execute', smoke.digest(self.kit)], capture_output=True, timeout=60)
         self.refused('unbound_run', self.produce)
 
-    def test_r2_live_fleet_writes_are_only_the_canonical_tick_or_reviewed_probes(self):
+    def test_r2_live_fleet_writes_are_only_reviewed_probes(self):
+        """catches: a live fleet write through a pinned wrapper, which could run
+        anything (an old binary's tick included) out of the runner's sight."""
         self.live()
         wrapper = self.root / 'wrapper'
-        wrapper.write_text('#!/bin/sh\nexec %s fleet tick --json\n' % FAKE)
+        wrapper.write_text('#!/bin/sh\nexec %s fleet 9001 --json\n' % FAKE)
         wrapper.chmod(0o700)
         self.kit['artifacts'][str(wrapper)] = hashlib.sha256(wrapper.read_bytes()).hexdigest()
-        self.kit['steps'][0]['argv'] = [str(wrapper)]
+        self.kit['steps'][0].update(kind='write', argv=[str(wrapper)])
         self.bind()
         code, report = self.execute()
         self.assertEqual((code, report['reason']), (2, 'invalid_kit'))
         self.assertEqual(self.calls(), [])
-
-    def test_r3_tick_audit_covers_exactly_the_whole_action_array(self):
-        self.live()
-        for path in ('/actions/0/facts/blockers', '/actions/0', ''):
-            with self.subTest(path=path):
-                self.kit['steps'][0]['checks'] = [{'path': path, 'actions_in': SCOPE}]
-                self.bind()
-                code, report = self.execute()
-                self.assertEqual((code, report['reason']), (2, 'invalid_kit'))
-                self.assertEqual(self.calls(), [])
 
     def test_r4_a_checkpoint_alone_is_not_live_evidence(self):
         self.live()
@@ -510,38 +513,24 @@ class Receipts(unittest.TestCase):
 
     def test_r5_write_scope_bounds_consumed_attempts_before_dispatch(self):
         self.live()
-        self.kit['steps'][1:1] = [
-            {'id': 'tick_event', 'claim': 'fleet', 'kind': 'event'},
-            {'id': 'done', 'claim': 'fleet', 'kind': 'await', 'argv': [str(FAKE), 'done'], 'exit': 0,
-             'checks': [{'path': '/count', 'equals': 1}], 'until': [{'path': '/merged', 'equals': 2}],
-             'again_from': 'fleet_tick'}]
+        self.kit['release']['scope']['writes']['send'] = 0
         self.bind()
-        self.replies(done={'exit': 0, 'out': '{"count":1,"merged":0}'})
-        ticks = lambda: sum('--expect-plan' in c for c in self.calls())
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')
-        self.assertEqual(self.execute()[1]['reason'], 'pending')
-        self.assertEqual(self.execute()[1]['reason'], 'write_limit')  # before a second effect
-        self.assertEqual(ticks(), 1)
+        self.assertEqual(self.execute()[1]['reason'], 'write_limit')  # before any effect
         self.assertEqual(self.execute()[1]['reason'], 'write_limit')
-        self.assertEqual(ticks(), 1)
-        self.kit['release']['scope']['writes']['fleet'] = 2
+        self.assertNotIn(['send'], self.calls())
+        self.kit['release']['scope']['writes']['send'] = 1
         self.bind()
-        self.state = self.root / 'two-ticks'
-        self.replies(done={'exit': 0, 'out': '{"count":1,"merged":0}'})
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')
-        self.assertEqual(self.execute()[1]['reason'], 'pending')
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')
-        self.replies(done={'exit': 0, 'out': '{"count":1,"merged":2}'})
+        self.state = self.root / 'in-scope'
         self.ran()
         doc = self.produce()
-        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'fleet': 2, 'new': 1, 'send': 1})
+        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'new': 1, 'send': 1})
         receipt.accept('smoke', doc, self.candidate, self.kit_path, self.state, self.resolver(doc))
 
     # Review round 2 (R2, R4, R6).
     def test_r2_round2_a_probe_shaped_wrapper_is_not_a_reviewed_probe(self):
         self.live()
         wrapper = self.root / 'wrapper'
-        wrapper.write_text('#!/bin/sh\nexec %s fleet tick --json\n' % FAKE)
+        wrapper.write_text('#!/bin/sh\nexec %s fleet 9001 --json\n' % FAKE)
         wrapper.chmod(0o700)
         python = str(Path(sys.executable).resolve())
         probes = (str(HERE / 'browser.mjs'), str(HERE / 'cleanup.py'))
@@ -559,13 +548,13 @@ class Receipts(unittest.TestCase):
             with self.subTest(case=name):
                 self.state = self.root / ('probe-' + name.replace(' ', '-'))
                 self.kit['artifacts'].update(pins)
-                self.kit['steps'][0].update(argv=argv, checks=[{'path': '/count', 'equals': 1}])
+                self.kit['steps'][0].update(kind='write', argv=argv, checks=[{'path': '/count', 'equals': 1}])
                 self.bind()
                 code, report = self.execute()
                 self.assertEqual((code, report['reason']), (2, 'invalid_kit'))
                 self.assertEqual(self.calls(), [])
         # The whole reviewed invocation under the runner's own interpreter is accepted.
-        self.kit['steps'][0].update(argv=[python] + cleanup)
+        self.kit['steps'][0].update(kind='write', argv=[python] + cleanup)
         self.bind()
         code, report = self.execute('--dry-run')
         self.assertEqual((code, report['verdict']), (0, 'not_run'), report)
@@ -575,18 +564,14 @@ class Receipts(unittest.TestCase):
         self.checkpoint()
         smoke.journal(self.state, dict(kind='start', kit=smoke.digest(self.kit),
                                        candidate=self.candidate['candidate_sha256'], mode='live',
-                                       source=self.kit['source']['head'], runner=smoke.file_hash(RUNNER),
-                                       restriction=smoke.file_hash(smoke.RESTRICTION)))
+                                       source=self.kit['source']['head'], runner=smoke.file_hash(RUNNER)))
         for step in self.kit['steps']:
             if step['kind'] == 'write':
-                smoke.journal(self.state, dict(kind='attempt', id=step['id'], claim=step['claim'],
-                                               sittings=0, fleet_started=0))
+                smoke.journal(self.state, dict(kind='attempt', id=step['id'], claim=step['claim']))
             event = dict(kind='step', id=step['id'], state='pass', facts={}, reason='none', pending=False,
                          exit=step['exit'] if exit_code is None else exit_code, output_sha256='a' * 64)
             if observed:
-                event['observed'] = [{'actions': [dict(ACTION, outcome={'state': 'done'})]}
-                                     if 'actions_in' in c else {'digest': smoke.digest(c['equals'])}
-                                     for c in step['checks']]
+                event['observed'] = [{'digest': smoke.digest(c['equals'])} for c in step['checks']]
             smoke.journal(self.state, event)
         smoke.journal(self.state, {'kind': 'finish'})
         try:  # a consistent forgery also rewrites the checkpoint to match
@@ -613,26 +598,27 @@ class Receipts(unittest.TestCase):
 
     def test_r6_an_interrupted_transition_is_adopted_never_repeated(self):
         self.live()
-        self.kit['release']['scope']['writes']['fleet'] = 2
         self.kit['steps'][1:1] = [
-            {'id': 'tick_event', 'claim': 'fleet', 'kind': 'event'},
+            {'id': 'fleet_event', 'claim': 'fleet', 'kind': 'event'},
             {'id': 'done', 'claim': 'fleet', 'kind': 'await', 'argv': [str(FAKE), 'done'], 'exit': 0,
              'checks': [{'path': '/count', 'equals': 1}], 'until': [{'path': '/merged', 'equals': 2}],
-             'again_from': 'fleet_tick'}]
+             'again_from': 'fleet_read'}]
+        self.kit['release']['coverage'][0]['steps'] = FLEET_ROW + ['done']
         self.bind()
+        reads = lambda: self.calls().count(['fleet', '9001', '--json'])
         self.replies(done={'exit': 0, 'out': '{"count":1,"merged":0}'})
         self.assertEqual(self.execute()[1]['reason'], 'next_event')
         self.assertEqual(self.execute()[1]['reason'], 'pending')
         # The next sitting's readback decided to repeat and journaled it, then stopped
         # before saving the checkpoint. Meanwhile the condition completed.
-        smoke.journal(self.state, {'kind': 'repeat', 'id': 'done', 'again_from': 'fleet_tick',
+        smoke.journal(self.state, {'kind': 'repeat', 'id': 'done', 'again_from': 'fleet_read',
                                    'exit': 0, 'output_sha256': 'a' * 64})
         self.replies(done={'exit': 0, 'out': '{"count":1,"merged":2}'})
-        self.assertEqual(self.execute()[1]['reason'], 'next_event')  # the recorded repeat: one more tick
+        self.assertEqual(self.execute()[1]['reason'], 'next_event')  # the recorded repeat: one more read
         self.ran()
-        self.assertEqual(sum('--expect-plan' in c for c in self.calls()), 2)
+        self.assertEqual(reads(), 2)
         doc = self.produce()
-        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'fleet': 2, 'new': 1, 'send': 1})
+        self.assertEqual(doc['inputs']['smoke']['writes_consumed'], {'new': 1, 'send': 1})
         receipt.accept('smoke', doc, self.candidate, self.kit_path, self.state, self.resolver(doc))
         # Two unapplied events are not an interruption: refused, nothing runs.
         smoke.journal(self.state, {'kind': 'finish'})
@@ -658,6 +644,7 @@ class Receipts(unittest.TestCase):
         body = self.candidate['candidate']
         body['release_version'] = version
         body['included_versions'][0]['version'] = version
+        self.notes(LIVE_NOTES.replace('0.0.99', version))
         body['risk']['app_permissions'] = {'required': 'yes', 'reason': 'Synthetic App permission change.'}
         self.live()
         self.ran()
@@ -708,6 +695,99 @@ class Receipts(unittest.TestCase):
         self.candidate['candidate']['risk']['spending'] = {'required': 'yes', 'reason': 'Synthetic spending change.'}
         self.ship3()
         self.refused('risk_missing', self.produce, 'synthetic:smoke-run', self.WAIVER)
+
+    """#18: versions with no live-checked line in the notes are recorded not-live gaps."""
+
+    def combined(self, rows=None, notes=COMBINED_NOTES):
+        """The v0.0.12 shape: seven included versions, the one live 0.0.12 row in the kit."""
+        body = self.candidate['candidate']
+        template = body['included_versions'][0]
+        body['release_version'] = '0.0.12'
+        body['included_versions'] = [dict(template, version=v, promises=[p]) for v, p in HEADLINES]
+        self.notes(notes)
+        every = [s['id'] for s in self.kit['steps']]
+        self.kit['release']['coverage'] = rows or [{'version': '0.0.12', 'promise': HEADLINES[0][1], 'steps': every}]
+        self.live()
+        self.ran()
+
+    def not_live_gaps(self):
+        return [f'Not live-checked in this release: {v} {p}' for v, p in HEADLINES[1:]]
+
+    def test_the_one_row_kit_covers_the_live_version_and_names_every_other_as_a_gap(self):
+        """catches: the one-row v0.0.12 kit refused as coverage_mismatch against the
+        seven-version candidate, or the six fixture-only versions dropped silently."""
+        self.combined()
+        doc = self.produce()
+        live = [{'version': '0.0.12', 'promise': HEADLINES[0][1], 'outcome': 'pass'}]
+        for gate in ('smoke', 'send', 'new'):
+            self.assertEqual(doc['gates'][gate]['coverage'], live, gate)
+            self.assertEqual([g for g in doc['gates'][gate]['gaps'] if g.startswith('Not live-checked')],
+                             self.not_live_gaps(), gate)
+            receipt.accept(gate, doc, self.candidate, self.kit_path, self.state, self.resolver(doc))
+
+    def test_a_not_live_version_is_never_counted_as_covered(self):
+        """catches: a kit row recording a fixture-only version as live-checked, or
+        an included version with no notes section passing as neither."""
+        every = [s['id'] for s in self.kit['steps']]
+        self.combined(rows=[{'version': v, 'promise': p, 'steps': every} for v, p in HEADLINES])
+        self.refused('not_live_covered', self.produce)
+        self.state = self.root / 'state-unlisted'
+        self.combined()
+        body = self.candidate['candidate']
+        body['included_versions'].append(dict(body['included_versions'][-1], version='0.0.5', promises=['Unlisted']))
+        self.reseal()
+        self.refused('coverage_mismatch', self.produce)
+
+    def test_a_receipt_that_drops_a_not_live_gap_is_refused(self):
+        """catches: accept() passing a smoke receipt whose gaps omit a not-live
+        version, or that lists one as a passing coverage row."""
+        self.combined()
+        doc = self.produce()
+        dropped = copy.deepcopy(doc)
+        dropped['gates']['smoke']['gaps'].remove(self.not_live_gaps()[0])
+        self.refused('gaps_missing', receipt.accept, 'smoke', dropped, self.candidate, self.kit_path,
+                     self.state, self.resolver(dropped))
+        claimed = copy.deepcopy(doc)
+        claimed['gates']['smoke']['coverage'].append(
+            {'version': '0.0.11', 'promise': HEADLINES[1][1], 'outcome': 'pass'})
+        self.refused('coverage_mismatch', receipt.accept, 'smoke', claimed, self.candidate, self.kit_path,
+                     self.state, self.resolver(claimed))
+
+    def test_a_non_lf_line_separator_in_the_notes_refuses_in_produce_and_accept(self):
+        """catches (#915 R1): a U+2028-style separator inside 0.0.12's headline
+        moving its Live-checked line onto 0.0.11, so a kit row for the not-live
+        0.0.11 is accepted and the live 0.0.12 becomes a gap."""
+        every = [s['id'] for s in self.kit['steps']]
+        injected = '**Scripts and agents can drive OpenWiz**'
+        for separator in (' ', ' ', '\x85', '\r', '\x0b', '\x0c', '\x1c', '\x1d', '\x1e'):
+            with self.subTest(separator=hex(ord(separator))):
+                self.state = self.root / f'state-{ord(separator)}'
+                self.combined(rows=[{'version': '0.0.11', 'promise': HEADLINES[1][1], 'steps': every}],
+                              notes=COMBINED_NOTES.replace(injected, f'**Scripts{separator}## 0.0.11 · injected**'))
+                self.refused('invalid_notes', self.produce)
+        # accept() reads the sealed candidate itself: a receipt rebound to such notes refuses too.
+        self.state = self.root / 'state-accept'
+        self.combined()
+        doc = self.produce()
+        self.notes(COMBINED_NOTES.replace(injected, '**Scripts ## 0.0.11 · injected**'))
+        self.reseal()
+        for gate in ('smoke', 'send', 'new'):
+            doc['gates'][gate]['candidate_sha256'] = doc['inputs'][gate]['candidate_sha256'] = \
+                self.candidate['candidate_sha256']
+            doc['gates'][gate]['inputs_sha256'] = contract_sha(doc['inputs'][gate])
+            self.refused('invalid_notes', receipt.accept, gate, doc, self.candidate, self.kit_path,
+                         self.state, self.resolver(doc))
+
+    def test_the_approved_v0_0_12_notes_split_into_one_live_promise_and_six_gaps(self):
+        """catches: the separator refusal (or the LF-only split) rejecting or
+        re-partitioning the approved LF-only v0.0.12 notes (sha256 27135ed4…)."""
+        whole = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
+        notes = whole[whole.index('## 0.0.12 · '):whole.index('## 0.0.5 · ')].rstrip('\n') + '\n'
+        self.assertEqual(hashlib.sha256(notes.encode()).hexdigest(),
+                         '27135ed4d22479e17d6f02806ccb9e8a8b33e2ef37a970e1a216800da4af9191')
+        live, not_live = receipt.split_promises({'changelog': {'utf8': notes}, 'included_versions': [
+            {'version': v, 'promises': [p]} for v, p in HEADLINES]})
+        self.assertEqual((live, not_live), (HEADLINES[:1], HEADLINES[1:]))
 
 
 if __name__ == '__main__':

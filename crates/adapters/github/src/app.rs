@@ -46,9 +46,12 @@ pub trait Exchange: Send + Sync {
     }
 }
 
-/// GI5's two GitHub calls, in order: find the repository's installation,
-/// then mint that installation's token for exactly that repository.
+/// GI5's GitHub calls, in order: for a user App, read the App's owner
+/// (J48, #606); find the repository's installation; then mint that
+/// installation's token for exactly that repository.
 pub enum Call<'a> {
+    /// `GET /app`: the App the JWT authenticates, for its owner's account.
+    App,
     /// `GET /repos/<owner>/<name>/installation`
     Installation { repository: &'a str },
     /// `POST /app/installations/<id>/access_tokens` with `body`
@@ -75,6 +78,7 @@ pub struct Identity {
 pub struct App {
     root: PathBuf,
     identity: Identity,
+    mode: Mode,
     event_reads: bool,
     gh: PathBuf,
     exchange: Arc<dyn Exchange>,
@@ -93,9 +97,31 @@ struct Cached {
     expires: u64,
 }
 impl App {
+    /// The App in the mode the explicit setting names (`OPENWIZ_GITHUB_APP_MODE`,
+    /// J48, #606): unset or `user`, the user's own App; exactly `factory`, the
+    /// factory's named installations. Any other value refuses.
     pub fn open(
         root: &Path,
         identity: Identity,
+        gh: PathBuf,
+        exchange: Arc<dyn Exchange>,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self, Error> {
+        let mode = match std::env::var_os("OPENWIZ_GITHUB_APP_MODE")
+            .as_deref()
+            .map(|m| m.to_str())
+        {
+            None | Some(Some("user")) => Mode::User,
+            Some(Some("factory")) => Mode::Factory,
+            Some(_) => return Err(Error),
+        };
+        Self::open_mode(root, identity, mode, gh, exchange, clock)
+    }
+    /// The App in an explicit mode; `open` reads the mode from the setting.
+    pub fn open_mode(
+        root: &Path,
+        identity: Identity,
+        mode: Mode,
         gh: PathBuf,
         exchange: Arc<dyn Exchange>,
         clock: Arc<dyn Clock>,
@@ -113,6 +139,7 @@ impl App {
         Ok(Self {
             root: root.to_owned(),
             identity,
+            mode,
             event_reads: false,
             gh,
             exchange,
@@ -204,6 +231,7 @@ impl App {
     }
     fn mint(&self, key: &Key, now: u64, deadline: Instant) -> Result<Cached, Error> {
         let jwt = app_jwt(key, self.identity.app_id, now, deadline)?;
+        self.owner_bound(&jwt, deadline)?;
         let body = token_body(&self.identity.repository, &self.requested_permissions())?;
         let raw = self.exchange.exchange(
             self.identity.installation_id,
@@ -218,6 +246,36 @@ impl App {
             self.event_reads,
             now,
         )
+    }
+}
+
+impl App {
+    /// C-G1/J48 (#606 review R3): the configured installation must be this
+    /// App's, for a repository its account owns, selected only; and for a user
+    /// App on the App owner's account, or in factory mode one the identity
+    /// contract names. Read before any token exists, on every mint.
+    fn owner_bound(&self, jwt: &str, deadline: Instant) -> Result<(), Error> {
+        let repository = self.identity.repository.as_str();
+        let (owner, _) = repository.split_once('/').ok_or(Error)?;
+        let answer = |call: Call<'_>| match self.exchange.github(&call, jwt, deadline)? {
+            (200, body) if body.len() <= 1024 * 1024 => Ok(body),
+            _ => Err(Error),
+        };
+        let allowed = match self.mode {
+            Mode::User => owner.eq_ignore_ascii_case(
+                &app_owner(&answer(Call::App)?, self.identity.app_id).ok_or(Error)?,
+            ),
+            Mode::Factory => factory_named(owner, repository),
+        };
+        let installation = installation_for(
+            &answer(Call::Installation { repository })?,
+            self.identity.app_id,
+            owner,
+        )
+        .ok_or(Error)?;
+        (allowed && installation == self.identity.installation_id)
+            .then_some(())
+            .ok_or(Error)
     }
 }
 
@@ -310,6 +368,44 @@ fn checked_token(
 
 // GI5 (#2547): `openwiz github token`'s one-shot mint from the Cloudroom secret.
 
+/// Which App the secret holds (J48, #606; contracts/setup-onboard.v1.md). A
+/// user's own App is private and mints only on its owner's account; only the
+/// explicit factory setting accepts the factory's named installations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// Each user's own App, the default: installation and repository on the
+    /// App owner's account only.
+    User,
+    /// The factory's public multi-account App: only the installations
+    /// contracts/github-identity.v1.md names.
+    Factory,
+}
+
+/// The factory's installations, as contracts/github-identity.v1.md pins them:
+/// each account and the selected repositories it names. Nothing else mints
+/// in factory mode.
+pub const FACTORY_INSTALLATIONS: &[(&str, &[&str])] = &[
+    ("jparker2006", &["jparker2006/ClosedWiz"]),
+    (
+        "openwizdev",
+        &[
+            "openwizdev/OpenWiz",
+            "openwizdev/WizPlugins",
+            "openwizdev/WizSkills",
+        ],
+    ),
+];
+
+/// Is `repository`, on `account`, one of the factory's named installations?
+fn factory_named(account: &str, repository: &str) -> bool {
+    FACTORY_INSTALLATIONS.iter().any(|(named, repositories)| {
+        named.eq_ignore_ascii_case(account)
+            && repositories
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(repository))
+    })
+}
+
 /// Why no token was minted. No variant carries a provider body, id or secret.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -333,6 +429,7 @@ pub struct Minted {
 pub struct SecretApp {
     key: Key,
     app_id: u64,
+    mode: Mode,
     exchange: Arc<dyn Exchange>,
     clock: Arc<dyn Clock>,
 }
@@ -347,6 +444,7 @@ impl SecretApp {
     pub fn from_secret(
         encoded: &str,
         app_id: u64,
+        mode: Mode,
         exchange: Arc<dyn Exchange>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, Error> {
@@ -369,6 +467,7 @@ impl SecretApp {
         Ok(Self {
             key: piped_key(&pem)?,
             app_id,
+            mode,
             exchange,
             clock,
         })
@@ -397,8 +496,25 @@ impl SecretApp {
             Ok((404, _)) if matches!(call, Call::Installation { .. }) => Err(Refusal::NotInstalled),
             Ok(_) => Err(Refusal::Refused),
         };
+        // J48 (#606): a user App's owner, read from GitHub with this App's JWT.
+        let app_owner = match self.mode {
+            Mode::User => {
+                let raw = call(Call::App, 200)?;
+                Some(app_owner(&raw, self.app_id).ok_or(Refusal::Refused)?)
+            }
+            Mode::Factory => None,
+        };
         let raw = call(Call::Installation { repository }, 200)?;
         let installation = installation_for(&raw, self.app_id, owner).ok_or(Refusal::Refused)?;
+        let allowed = match &app_owner {
+            // The installation's account is the repository's owner (checked
+            // above), and must also be the App owner's.
+            Some(app_owner) => owner.eq_ignore_ascii_case(app_owner),
+            None => factory_named(owner, repository),
+        };
+        if !allowed {
+            return Err(Refusal::Refused);
+        }
         let body = token_body(repository, &wanted).map_err(|_| Refusal::Refused)?;
         let raw = call(
             Call::AccessToken {
@@ -419,6 +535,21 @@ impl SecretApp {
             expires_at: minted.expires,
         })
     }
+}
+
+/// The owner's login from GitHub's App object, only when it is this App's.
+fn app_owner(raw: &[u8], app_id: u64) -> Option<String> {
+    let value = serde_json::from_slice::<Unique>(raw).ok()?.0;
+    (value.get("id")?.as_u64()? == app_id)
+        .then(|| {
+            value
+                .get("owner")?
+                .get("login")?
+                .as_str()
+                .map(str::to_owned)
+        })
+        .flatten()
+        .filter(|login| !login.is_empty())
 }
 
 /// The installation id from GitHub's installation object, only when it is
@@ -891,6 +1022,7 @@ impl CurlExchange {
             return Err(Error);
         }
         let (url, post) = match call {
+            Call::App => ("app".to_owned(), String::new()),
             Call::Installation { repository } => {
                 let parsed = openwiz_core::fleet::starts::Repository::parse(repository)
                     .map_err(|_| Error)?;

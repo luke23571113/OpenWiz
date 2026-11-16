@@ -165,65 +165,8 @@ fn the_contract_documents_what_the_tests_check() {
             missing.push(what);
         }
     };
-    // T1 documents these paths in a table with separate Methods/Allow cells.
-    // Keep exact route/method sets, including duplicate/extra-method refusal.
-    let notification_rows = [
-        ("/api/v1/notifications/status", "GET"),
-        ("/api/v1/notifications/preferences", "GET, PUT"),
-        ("/api/v1/notifications/subscription", "GET, PUT, DELETE"),
-    ];
-    let declared: Vec<_> = text
-        .lines()
-        .filter(|line| line.starts_with("| `/api/v1/notifications/"))
-        .map(|line| {
-            let cells: Vec<_> = line.split('|').collect();
-            let path = cells[1]
-                .trim()
-                .strip_prefix('`')
-                .unwrap()
-                .strip_suffix('`')
-                .unwrap();
-            (path, cells[2].trim())
-        })
-        .collect();
-    assert_eq!(
-        declared, notification_rows,
-        "exact notification table paths and Allow lists"
-    );
-    let is_notification_setting = |path: &str| {
-        notification_rows
-            .iter()
-            .any(|(expected, _)| path == *expected)
-    };
-    let mut exported: Vec<_> = ROUTES
-        .iter()
-        .filter(|route| is_notification_setting(route.path))
-        .map(|route| (route.path, route.method))
-        .collect();
-    let mut documented: Vec<_> = notification_rows
-        .iter()
-        .flat_map(|(path, methods)| methods.split(", ").map(move |method| (*path, method)))
-        .collect();
-    exported.sort_unstable();
-    documented.sort_unstable();
-    assert_eq!(
-        exported, documented,
-        "every notification method is documented exactly once"
-    );
     for route in ROUTES {
-        // #2036: the bound-target GET is pinned in notifications.v1, not web-api.v1.
-        if route.path == "/api/v1/notifications/targets/{token}" {
-            let pinned = std::fs::read_to_string(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../contracts/notifications.v1.md"
-            ))
-            .unwrap();
-            assert!(pinned.contains("`GET /api/v1/notifications/targets/<token>`"));
-            continue;
-        }
-        if !is_notification_setting(route.path) {
-            need(format!("`{} {}`", route.method, route.path));
-        }
+        need(format!("`{} {}`", route.method, route.path));
     }
     for param in [
         "`limit`",

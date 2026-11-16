@@ -47,6 +47,7 @@ COMMANDS = {
     'release:product-identity': ['python3', '-I', 'tools/release/test_product_identity.py'],
     'release:setup-onboard-contract': ['python3', '-I', 'tools/install/tests/setup-onboard-contract/test_contract.py'],
     'release:test-value-unread-fixtures': ['python3', '-I', 'tools/test-value/test_unread_fixtures.py'],
+    'release:setup-onboard-init': ['python3', '-I', 'tools/install/tests/init/test_init.py'],
 }
 # This independent job cannot use the Rust job's target/.
 # Its installed-engine proof consumes both debug binaries.
