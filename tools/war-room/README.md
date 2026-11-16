@@ -791,6 +791,65 @@ link and the board graph's `repo` check. The board, credits and CI-bench commit 
 links name `OWNER/REPO` when `URL` is exactly `https://github.com/OWNER/REPO` or
 `https://github.com/OWNER/REPO.git`, and `--repo` otherwise, as before.
 
+## Small static site (WRD5)
+
+The War room is six static pages on the same private address
+([`web/contract.md`](web/contract.md)): **home** (`/`) answers health and speed, with the
+status strip, the five headline cards and **every benchmark, worst first**; five child pages
+hold the detail, one question each: **Speed** (`/speed`: flow, latency, throughput, PR rate
+and answer time), **Health** (`/health`: main CI, queue, stage waits and stalls, overload,
+readiness), **Cost** (`/cost`: usage, cost per merged PR), **Quality** (`/quality`: rework,
+review rounds, defects, tests) and **Skills and evals** (`/skills`: skills eval, EB6 to EB9,
+skill tokens). Navigation is plain links; every disclosure is native `<details>`; no page
+has a script.
+
+**Inventory.** `benchmarks.json` `pages` lists each child page's slug, title, question and
+body figures in order; each headline card names the child page that holds its benches'
+values and sources (`page`). `page.membership` refuses the site when a body figure is on no
+page or two, a card names no page, or a bench or health signal has no single home figure,
+so a new benchmark is never silently left off. Figure numbers and ids are unchanged.
+
+**Figures.** A figure's face is its title, its one-sentence caption and its value or chart.
+Its unit, dates, coverage, missing days, gap notes, values table and source note are first
+in its closed **Values and sources** disclosure. An unavailable figure says Unavailable,
+with its prerequisite on the face only when it is one short line (`page.SHORT`, 90
+characters); a longer one opens the disclosure. The status strip keeps its flag and fact
+line; its gaps fold into one closed disclosure. Chart SVGs, data and marks are unchanged.
+
+**Every benchmark, worst first.** One row per bench and health signal (20): its name, linked
+to its Sources entry on its child page (`health#bench-main_ci`; the browser opens the
+closed Sources disclosure), one state word and its existing headline value. States, in
+order: **off limit** (its own evidence shows an existing limit or goal missed: a failed main
+CI run, a missed stage limit, ready stock below the board's goal), **partial**, **healthy**
+(measured, with no limit missed) and **not measured** (unavailable). Ties keep inventory
+order. No threshold is invented, Unknown is never zero and an unavailable bench says
+Unavailable. The order is rebuilt with each hourly publication; no page sorts or fetches.
+
+**Build.** `page.site(record, charts)` returns the six pages, all rendered before anything
+is returned; `page.render` stays the complete one-document view of the same content (every
+chart once, the whole Sources appendix), which `main.tick` keeps at its page path and the
+pictures draw. `main.tick(..., site=DIR)` writes the six pages (`page.site_files`) beside
+it from the same saved sample and chart bundle, rendering every page before writing any.
+`publish.py publish` publishes the six pages, the pictures and the README in one commit
+after scanning them all; a failed child, scan, write or push publishes nothing, and the
+branch keeps its previous complete site. The first site publication replaces WRD4's
+one-page branch. `web/serve.py fetch` switches all six routes to a new site at once, or
+keeps the last good site. Publish the site before switching the adapter: a folder WRD4
+filled serves nothing until its first good site fetch.
+
+**Verification.** `python3 -I tools/war-room/test_site.py` builds the synthetic packet's six
+pages: one page per figure and bench, the refusal of unplaced figures and benches, the
+worst-first rows with the packet's literals (and a real zero against an Unknown), the
+low-text faces with every qualifying fact behind the disclosure, marks reconciled with
+values tables, every site link landing, and a failed child page keeping the previous site.
+`test_publish.py` proves the six-page commit, all-or-last-good publication over a failed
+child or a planted value, and the replacement of a one-page branch; `test_web.py` serves
+the six routes only, refuses a site with one bad or missing page, and reads every page in
+Chromium with scripts off at 1440 and 390 px (navigation by keyboard, a home row landing on
+its opened Sources, a figure deep link, disclosures, no sideways scroll). The design targets
+were HTML prototypes ([`design/site/prototype/`](design/site/prototype/)). Fixture results
+are not live delivery: the private rollout and its read-only checks are separate.
+
 ## Review loops bench (RL0)
 
 `review_loops.py` measures the [review-loops contract](../../contracts/review-loops.v1.md)
