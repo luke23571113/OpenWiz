@@ -38,6 +38,9 @@ import suite  # noqa: E402
 
 BRANCH = 'war-room'
 PICTURES = ('war-room.png', 'war-room-phone.png')
+# WRD4 (#877): the original page, byte for byte as rendered, published in the same commit as its
+# pictures and served privately (tools/war-room/web/contract.md). Never the drawable transform.
+PAGE = 'war-room.html'
 SAMPLE = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z\.json')
 PNG = b'\x89PNG\r\n\x1a\n'
 # WRD3: the v3 page's own desktop and phone widths, in CSS px (the phone picture is drawn at 2x).
@@ -179,7 +182,7 @@ def scan(tree, page_html):
         if name in PICTURES:
             if path.read_bytes()[:8] != PNG:
                 raise Fail('a picture is not a picture')
-        elif name == 'README.md':
+        elif name in ('README.md', PAGE):
             text_scan(path.read_text(encoding='utf-8'), checker)
         elif name.startswith('samples/') and SAMPLE.fullmatch(name[8:]):
             text_scan(path.read_text(encoding='utf-8'), checker)
@@ -240,6 +243,7 @@ def render(out, history, at, read, charts=None):
     page_path = tick(history, at, read, charts)
     record = main.history.latest(history)
     html = page_path.read_text(encoding='utf-8')
+    Path(out, PAGE).write_bytes(page_path.read_bytes())
     draw(drawable(html, False), os.path.join(out, PICTURES[0]), WIDTH)
     draw(drawable(html, True), os.path.join(out, PICTURES[1]), PHONE_WIDTH, scale=2)
     saved = len(main.history.read_all(history))
@@ -268,7 +272,7 @@ def publish(remote, at, read, draw_page=True, charts=None):
                     continue
                 meta, name = entry.split('\t', 1)
                 if meta.split()[:2] != ['100644', 'blob'] or not (
-                        name in ('README.md', *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
+                        name in ('README.md', PAGE, *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
                     raise Fail('the branch holds an unexpected file')
                 names.append(name)
             # A saved sample is immutable: changed, removed or renamed in any commit, merges

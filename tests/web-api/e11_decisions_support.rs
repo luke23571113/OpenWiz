@@ -197,49 +197,6 @@ pub fn serve_source(
     }
 }
 
-pub fn serve_targets(
-    gh: &FakeGh,
-    room: &Fake,
-    targets: openwiz_server::NotificationTargets,
-) -> TestServer {
-    serve_targets_with_clock(gh, room, targets, Arc::new(fake::clock()))
-}
-
-pub fn serve_targets_with_clock(
-    gh: &FakeGh,
-    room: &Fake,
-    targets: openwiz_server::NotificationTargets,
-    clock: Arc<dyn openwiz_core::ops::Clock>,
-) -> TestServer {
-    let listener = openwiz_server::bind(0).unwrap();
-    let log = Arc::new(Mutex::new(Vec::new()));
-    let lines = log.clone();
-    let server = openwiz_server::start_with_notification_targets(
-        listener,
-        Config::default(),
-        Arc::new(room.source()),
-        clock,
-        Arc::new(move |line| lines.lock().unwrap().push(line.to_owned())),
-        openwiz_server::NotificationReadSources {
-            reads: ReadSources {
-                decisions: Some(Decisions {
-                    github: GitHubDecisions::with_program(gh.program()),
-                    target: Ok(None),
-                }),
-                ..ReadSources::default()
-            },
-            targets,
-        },
-        None,
-    )
-    .unwrap();
-    TestServer {
-        addr: server.local_addr(),
-        server,
-        log,
-    }
-}
-
 // Synthetic immutable PR-head file reads. The saved human source deliberately
 // contains no request block; each test supplies the independent saved source.
 pub const GRILL_HEAD: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

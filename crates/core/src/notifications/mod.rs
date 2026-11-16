@@ -1,8 +1,4 @@
-//! Transport-independent notification interfaces (0.0.15 T1).
-//! No scheduler, provider, subscription creation or work effects.
-//! T3 adds policy/grouping; T6 adds stock, each in its own module.
-pub mod boundary;
-pub mod grouping;
+//! The notification types the ready stock and Decisions still read (0.0.15 T1, T6).
+//! Push notifications are retired (0.0.17 ER4); only these two modules stay.
 pub mod model;
-pub mod policy;
 pub mod stock;

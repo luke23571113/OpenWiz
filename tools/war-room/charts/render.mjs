@@ -87,6 +87,35 @@ const DRAW = {
     const spans = fig.rows.filter((r) => r.state !== 'missing');
     const missing = fig.rows.filter((r) => r.state === 'missing');
     const days = fig.domain.map((d) => time(d + 'T08:00:00Z'));
+    const mid = (r) => new Date((time(r.x).getTime() + time(r.x2).getTime()) / 2);
+    if (card(fig)) {
+      // 00e at card width (#631 grant, comment 6903517509): the left margin fits the largest tick
+      // label, and a span's value label is drawn only where it fits inside the plot without overlapping
+      // a larger value's label. Every value stays in its mark's title and the values table.
+      const maxY = Math.max(0, ...valued(spans).map((r) => r.y));
+      const marginLeft = Math.max(46, 16 + CHAR * Math.round(maxY * 1.25).toLocaleString('en-US').length);
+      const t0 = time(fig.window.since).getTime();
+      const t1 = time(fig.window.until).getTime();
+      const right = CARD.width - 16;
+      const kept = [];
+      for (const r of [...valued(spans)].sort((a, b) => b.y - a.y)) {
+        const c = marginLeft + ((mid(r).getTime() - t0) / (t1 - t0)) * (right - marginLeft);
+        const half = (CHAR * shortValue(r.y).length) / 2 + 2;
+        if (c - half < marginLeft || c + half > right || kept.some((k) => c - half < k.hi && c + half > k.lo)) continue;
+        kept.push({ r, lo: c - half, hi: c + half });
+      }
+      return {
+        marginLeft,
+        x: { type: 'utc', domain: [time(fig.window.since), time(fig.window.until)], ticks: days, tickFormat: (d) => dayTick(fig)(d.toISOString().slice(0, 10)), label: 'PST day starts', labelOffset: 34 },
+        y: { grid: true, nice: true, zero: true, label: fig.unit },
+        marks: [
+          Plot.rectY(spans, { x1: (r) => time(r.x), x2: (r) => time(r.x2), y: 'y', fill: (r) => colour(fig, r.series), fillOpacity: 0.85, stroke: palette.roles.primary, strokeWidth: 0.5, inset: 0.5, title }),
+          Plot.text(kept.map((k) => k.r), { x: mid, y: 'y', text: (r) => shortValue(r.y), dy: -7, fill: INK }),
+          Plot.ruleY([0], { stroke: palette.roles.muted }),
+          Plot.text(missing, { x: mid, y: 0, text: () => NULL_GLYPH, lineAnchor: 'bottom', dy: -3, fill: palette.roles.muted, fontSize: FONT - 1, title }),
+        ],
+      };
+    }
     return {
       x: { type: 'utc', domain: [time(fig.window.since), time(fig.window.until)], ticks: days, tickFormat: (d) => dayTick(fig)(d.toISOString().slice(0, 10)), label: 'PST day starts' },
       y: { grid: true, nice: true, zero: true, label: fig.unit },
@@ -195,7 +224,16 @@ function cardKey(items, base) {
 
 function figureSvg(fig, document) {
   const spec = DRAW[fig.kind](fig);
-  const legend = key(fig, 40);
+  // A headline card with no numeric value draws no numeric axis, grid or ticks: Unknown has no
+  // scale (#631 grant, comment 6903517509). Its marks, titles and values are unchanged.
+  if (card(fig) && valued(fig.rows).length === 0) {
+    const axis = ['bars', 'distribution'].includes(fig.kind) ? 'x' : 'y';
+    spec[axis] = { ...(spec[axis] || {}), axis: null, grid: false, label: null };
+  }
+  // 00e's key starts below its x-axis label, so the two never overlap (#631 grant).
+  const base = card(fig) && fig.kind === 'spans' ? 56 : 40;
+  const legend = key(fig, base);
+  legend.extra += base - 40;
   spec.marks = [...spec.marks, ...legend.marks];
   const svg = Plot.plot({
     document, width: card(fig) ? CARD.width : WIDTH, height: (card(fig) ? CARD.height : 220) + legend.extra, marginTop: 22, marginBottom: 34 + legend.extra, marginLeft: 46,

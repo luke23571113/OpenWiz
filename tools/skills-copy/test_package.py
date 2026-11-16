@@ -249,6 +249,33 @@ class InstallTests(Fixture):
             '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
         self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
 
+    def test_bsd_mv_failed_move_back_is_refused_and_reported(self):
+        # WZ17 finding 6: with the emulated BSD mv, a directory appears just
+        # before the plain rename and moving the install back out fails. The
+        # installer must refuse, say this run's files were left inside that
+        # directory, and leave everything the other process made untouched.
+        real_mv = shutil.which('mv')
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
+                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
+                           'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           'if sys.argv[-1] == str(dest) and not dest.exists():\n'
+                           '    dest.mkdir(mode=0o750)\n'
+                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           'if sys.argv[1].startswith(str(dest) + "/"):\n'
+                           '    sys.exit(1)  # the move back out of that directory fails\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        p = self.install(code=1)
+        self.assertIn('could not move this install back out', p.stderr)
+        left = [p.name for p in self.dest.iterdir() if p.name.startswith('.wizskills-install.')]
+        self.assertEqual(len(left), 1)
+        self.assertTrue((self.dest / left[0] / 'skills/alpha/SKILL.md').is_file())
+        foreign = {k: v for k, v in snapshot(self.dest).items() if not k.startswith(left[0])}
+        self.assertEqual(foreign, {'.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
+
     def test_concurrent_destination_and_release_child_survive_publication(self):
         # Inject the race at the real publication syscall boundary, after the
         # installer's last absence check. The wrapper then invokes the real mv.

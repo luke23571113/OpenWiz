@@ -131,16 +131,17 @@ class ReadGithub(unittest.TestCase):
             name: {'state': 'read', 'items': EXPECTED[name]} for name in ENDPOINTS})
 
     def test_broad_fixture_fits_without_dropping_status_records(self):
-        # Match the review's collection counts, using invented records and 1 MiB
-        # of bodies. This proves a representative fixture, not a universal cap.
+        # Invented collection sizes (not counts from any real project), large
+        # enough to need a second issues page, with about 1 MiB of bodies. This
+        # proves a representative fixture, not a universal cap.
         milestones = [dict(copy.deepcopy(SOURCES['milestones'][0]), number=n)
-                      for n in range(1, 11)]
+                      for n in range(1, 8)]
         issues = [dict(copy.deepcopy(SOURCES['issues'][0]), number=n,
-                       body='PRIVATE_BODY_SENTINEL' + 'x' * 8192) for n in range(1, 126)]
+                       body='PRIVATE_BODY_SENTINEL' + 'x' * 8192) for n in range(1, 132)]
         duplicates = [{'number': n, 'pull_request': {}, 'body': 'DUPLICATE_PR_SENTINEL'}
-                      for n in range(201, 230)]
+                      for n in range(301, 324)]
         pulls = [dict(copy.deepcopy(SOURCES['pulls'][0]), number=n,
-                      body='PRIVATE_BODY_SENTINEL' + 'x' * 8192) for n in range(201, 230)]
+                      body='PRIVATE_BODY_SENTINEL' + 'x' * 8192) for n in range(301, 324)]
         result, calls = self.run_collector({
             ENDPOINTS['milestones']: [milestones],
             ENDPOINTS['issues']: [issues[:100], issues[100:] + duplicates],
@@ -152,9 +153,9 @@ class ReadGithub(unittest.TestCase):
         self.assertNotIn('PRIVATE_BODY_SENTINEL', result.stdout)
         self.assertNotIn('DUPLICATE_PR_SENTINEL', result.stdout)
         data = json.loads(result.stdout)
-        self.assertEqual([item['number'] for item in data['milestones']['items']], list(range(1, 11)))
-        self.assertEqual([item['number'] for item in data['issues']['items']], list(range(1, 126)))
-        self.assertEqual([item['number'] for item in data['pulls']['items']], list(range(201, 230)))
+        self.assertEqual([item['number'] for item in data['milestones']['items']], list(range(1, 8)))
+        self.assertEqual([item['number'] for item in data['issues']['items']], list(range(1, 132)))
+        self.assertEqual([item['number'] for item in data['pulls']['items']], list(range(301, 324)))
 
     def test_malformed_selected_fields_leave_only_their_source_unconfirmed(self):
         for source, field, value in [

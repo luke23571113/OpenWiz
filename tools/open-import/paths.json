@@ -176,9 +176,13 @@
     "tools/ops-live/acceptance.py",
     "tools/ops-live/kit.json",
     "tools/ops-live/test_acceptance.py",
+    "tools/test-value/test_unread_fixtures.py",
+    "tools/test-value/unread_fixtures.py",
     "tools/war-room/README.md",
     "tools/war-room/activity.py",
     "tools/war-room/answer_time.py",
+    "tools/war-room/collector.v1.md",
+    "tools/war-room/collector.v1.schema.json",
     "tools/war-room/contract.md",
     "tools/war-room/cost.py",
     "tools/war-room/fixtures/activity/fake_gh.py",
@@ -196,6 +200,7 @@
     "tools/war-room/fixtures/answer-time/pairs.json",
     "tools/war-room/fixtures/answer-time/red-first.log",
     "tools/war-room/fixtures/answer-time/review-r1-red.log",
+    "tools/war-room/fixtures/collector/**",
     "tools/war-room/fixtures/contract/green.log",
     "tools/war-room/fixtures/contract/known.json",
     "tools/war-room/fixtures/contract/partial.json",
@@ -328,7 +333,10 @@
     "tools/war-room/benchmarks.json",
     "tools/war-room/design/**",
     "tools/war-room/fixtures/page-design/**",
-    "tools/war-room/test_page_design.py"
+    "tools/war-room/test_page_design.py",
+    "tools/war-room/web/contract.md",
+    "tools/war-room/web/serve.py",
+    "tools/war-room/test_web.py"
   ],
   "keep": [
     "docs/grills/README.md",
