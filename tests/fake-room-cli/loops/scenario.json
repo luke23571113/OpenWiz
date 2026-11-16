@@ -1,0 +1,15 @@
+{
+  "description": "Synthetic room-cli loop answers for openwiz loop export, plan and apply (spec #785, contracts/loop-cli.v1.md). Project prj_syn_0001 has a marked cron loop with a check, an agent and named secrets; a webhook loop; a loop with every secret (secrets null); a paused same-thread at loop; and an unmarked loop. prj_syn_0002 has one loop carrying the same marker as the first, which a project-scoped read must ignore.",
+  "synthetic_assumptions": [
+    "loop list --json: the {\"automations\": [...]} shape and keys follow contracts/wizloops-cloudroom.v1.md and room-cli loop --help (cloudroom 0.1.111); no live list was captured for this fixture",
+    "run_at's spelling (fractional seconds, Z) is assumed",
+    "loop create and loop update: their stdout is not observed; these answers are synthetic placeholders",
+    "a webhook create prints its address once; the address here is under example.invalid"
+  ],
+  "responses": [
+    {"argv": ["loop", "list", "--json"], "stdout_file": "list.json"},
+    {"any_loop_write": "create", "webhook": true, "stdout": "Synthetic loop created: loop_syn_7\nhttps://example.invalid/synthetic/hook\n"},
+    {"any_loop_write": "create", "stdout": "Synthetic loop created: loop_syn_7\n"},
+    {"any_loop_write": "update", "stdout": "Synthetic loop updated\n"}
+  ]
+}

@@ -31,6 +31,10 @@ use openwiz_store::{AttachmentStore, FileStore, NewThreadFileStore, default_stat
 #[path = "ui.rs"]
 mod ui;
 
+// `loop validate|export|plan|apply` (contracts/loop-cli.v1.md, #789).
+#[path = "loop_files.rs"]
+mod loop_files;
+
 fn main() -> ExitCode {
     dispatch(openwiz_adapter_cloudroom::locate::Discovery::system())
 }
@@ -112,6 +116,9 @@ fn dispatch_args(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Wri
         Some("attachment") => run_attachment(&args[1..], stdout, stderr),
         Some("fleets") => openwiz_cli::fleets::run(&args[1..], stdout, stderr),
         Some("fleet") => openwiz_cli::fleet::run(&args[1..], stdout, stderr),
+        Some("loop") if loop_files::handles(args.get(1).and_then(|a| a.to_str())) => {
+            loop_files::run(&args[1..], stdout, stderr)
+        }
         Some("loop") => openwiz_cli::loops::run_local(&args[1..], &SystemClock, stdout, stderr),
         Some("models") => match utf8(&args[1..], "nothing was read", stderr) {
             Some(args) => new_thread::run_models(
