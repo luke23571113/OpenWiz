@@ -108,6 +108,13 @@ and labelled for triage; its number is required:
   User path: a cook exports twice in one day; the second export silently replaces the first, and the first is lost.
 ```
 
+`Logged as follow-up #<n>` logs a blocker only as its status (the text
+right after the finding's id) or as the last sentence of its first line.
+The same words anywhere else (quoted in a finding, a `User path:` or its
+evidence) log nothing, and the blocker stays open. v1's log forms
+(`logged as polish`, `follow-up`, `Polish issue:`) never close a blocker in
+a v2 report.
+
 In a report that uses any v2 form, every open or logged blocker restates its
 `User path:` or `Risk:` line, so the outcome can be read from the report
 alone. A `Risk:` blocker is never logged: it goes to the fresh round or
@@ -155,6 +162,8 @@ description with no such section lists no ruling. It refuses:
   ruling it does not list;
 - a logged blocker with no follow-up issue number, a logged polish finding,
   or a logged `Risk:` blocker;
+- a blocker closed by v1's `logged as polish`, `follow-up` or `Polish issue:`
+  status (and, for a `Risk:` blocker, that it was logged at all);
 - an open or logged blocker without its `User path:` or `Risk:` line;
 - a `fresh` or `park` line that names a blocker with no `Risk:` line, or that
   does not name exactly the open blockers;

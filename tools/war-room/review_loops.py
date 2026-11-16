@@ -345,7 +345,10 @@ GRADES = {'blocking': 'blocking', 'polish': 'polish', 'high': 'blocking', 'mediu
 MARK = re.compile(r'- \*\*Ruling ([1-9][0-9]*)\*\* (?:upheld|overturned as (R[1-9][0-9]*)): \S.*')
 MARK_START = re.compile(r'- \*\*Ruling(?: ([1-9][0-9]*)\*\*)?')
 NO_RULINGS = 'Rulings: none.'
-LOGGED = re.compile(r'Logged as follow-up(?: #([1-9][0-9]*)\b)?')
+# A blocker is logged only by its status, or by its first line's last sentence; never by quoted prose.
+LOGGED_STATUS = re.compile(r'Logged as follow-up(?: #([1-9][0-9]*))?\b')
+LOGGED_LAST = re.compile(r'.*\. Logged as follow-up(?: #([1-9][0-9]*))?\.')
+V1_LOGS = ('follow-up', 'Polish issue:', 'logged as polish')
 RULING = re.compile(r'([1-9][0-9]*)\. \S.*? Why: \S.*? Cost if wrong: (?:high|low): \S.*')
 
 
@@ -368,7 +371,7 @@ def parse_report(text):
         status = next((s for s in STATUSES if rest.startswith(s)), None)
         user = any(USER.fullmatch(x) for x in more)
         risk = next((RISK.fullmatch(x)[1] for x in more if RISK.fullmatch(x)), None)
-        logged = LOGGED.search(' '.join([rest] + more))
+        logged = LOGGED_STATUS.match(rest) or LOGGED_LAST.fullmatch(rest)
         findings.append({'id': m[1], 'grade': m[2], 'class': GRADES.get(m[2]), 'new': bool(J.NEW.match(rest)),
                          'status': status, 'user_path': user, 'risk': risk,
                          'polish': bool(POLISH.search(' '.join([rest] + more))),
@@ -492,6 +495,12 @@ def _check_v2(r, listed, listed_problems):
     """v2's ruling marks and logged blockers (contracts/review-loops.v2.md, "The check")."""
     problems = []
     for f in r['findings']:
+        if f['class'] == 'blocking' and f['status'] in V1_LOGS and not f['new']:
+            problems.append(f'{f["id"]}: a v2 report logs a blocker only as Logged as follow-up #<n>, '
+                            f'not "{f["status"]}"')
+            if f['risk']:
+                problems.append(f'{f["id"]}: a Risk: blocker is never logged; it goes to the fresh round or parks')
+            continue
         if f['logged'] and f['class'] != 'blocking':
             problems.append(f'{f["id"]}: only a blocking finding is logged')
             continue
