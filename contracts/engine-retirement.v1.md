@@ -317,7 +317,26 @@ Run on scratch worktrees of `192f6e4` (ER3's revised section: `3228599`), nothin
 | ER4 alone | pass | pass | `web-api` 354/354 (after the route-catalogue edits; 347/354 before); `checks` 145/145; `notifications` (stock only) 7/7; `loops` `l6_api` 9/9 (after its edit); unit tests of core, store, server and service pass; `apps/web` `typecheck`, `check` and `build` pass |
 | ER6 alone on `main` | **fails**: `crates/service/src/tick.rs` needs the executor (P1) | none | none |
 | ER6 after ER2 | pass | pass | `proof` 125/125; `fleet` 216 pass, 71 fail (the list above); `cli-agent` 50 pass, 5 fail (the path gap above) |
-| ER2, ER3, ER4 and ER6 together | pass | pass | none (each part ran above); 111 files changed, about 30,900 lines deleted. Run with ER3's first cut, before R1; **not rerun** with the revised ER3, which deletes less |
+| ER2, ER3 (revised), ER4 and ER6 together | pass, no warnings | pass | see "The combined build" below |
 
 On `main` itself, `loops`'s `l6_config::real_cli_uses_install_operator_and_refuses_unconfigured_or_caller_identity`
 also fails unless `openwiz` is built first (its own message says so). It is unrelated to this map.
+
+### The combined build (R6)
+
+The four current lists together: ER2, ER3 keeping the loop watchdog (section 4), ER4 and ER6, with `fleet tick --dry-run` kept (D1).
+
+- **Base:** `main` at `c51c009`. `main` has changed nothing under `crates/` or `tests/` since `3228599`, where ER3's section was checked.
+- **Map revision:** this file at PR #855 head `e50631f` (sections 4 to 7 unchanged since).
+- **How:** a scratch worktree, nothing committed. The scratch changes were applied in this order: ER3's revised cut, then ER2 and ER6, then ER4. The two overlaps were resolved as the map says. In `crates/service/src/runtime.rs`, ER3's `register(&mut scheduler, now)` stays and ER4's notification job goes. In `crates/store/src/loops/paths.rs`, `inspect_settled` goes. Then `cargo fmt`. Result: 109 files changed, 89 insertions, 29,182 deletions.
+- **Build:**
+  - `cargo check --workspace --all-targets`: pass, no warnings.
+  - `cargo clippy --workspace --all-targets -- -D warnings`: pass.
+  - `cargo fmt --check`: pass.
+  - In `apps/web`, `npm ci --ignore-scripts`, `npm run typecheck`, `npm run check` and `npm run build` all pass.
+- **Scoped tests run, `openwiz-service` only:**
+  - Pass: lib 13/13, `l10-approval` 15/15, `l11-limits` 14/14, `l3-runner` 58/58, `l4-events` 25/25, `l4b-intake` 24/24, `l5-watchdog` 7/7, `l5b-watchdog` 12/12, `l6-switches` 10/10, `t4-paths` 1/1, `t4-scheduler` 7/7, `t4-service` 19/19, `t4-unit` 9/9, `t6-update` 46/46, `t7-app` 15/15.
+  - Two found in this run:
+    - `l12-registration` failed 3 of 17. These three tests wait for `status["tick"]["last_ended"]`, which never comes once ER2 removes the scheduled tick; the watchdog-only pass did complete. This is polish #867 (R4): ER2 drops that one wait. With it dropped: 17/17.
+    - `t4-reader` failed 1 of 3. Its cases `health_pass_must_include_a_tick_result` and `state_reader_requires_cloudroom_as_the_first_health_result` test the S1 rules ER3 relaxes (section 4, `document.rs`). ER3 deletes those two cases along with the rules (`tests/service/t4_reader.rs`, same intent as D4). With them deleted: 3/3. Clippy passes again with both edits.
+- **Not run locally:** the other test targets (`docs/agents/fleet.md`: never the full workspace or browser suites locally). CI runs the full set on each removal's pull request. ER6's own test changes (section 7) were not applied, so `fleet` and `cli-agent` would still fail as that section lists.
