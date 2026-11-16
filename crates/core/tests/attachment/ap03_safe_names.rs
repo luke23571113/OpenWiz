@@ -326,4 +326,15 @@ fn an_invalid_name_from_a_record_is_refused() {
     }
     assert!(SafeName::parse(&"a".repeat(SAFE_NAME_MAX_BYTES + 1)).is_err());
     assert!(SafeName::parse(&"a".repeat(SAFE_NAME_MAX_BYTES)).is_ok());
+    // Deserializing goes through the check (serde's own string reader, as
+    // this crate has no `serde_json`).
+    use serde::Deserialize;
+    use serde::de::value::{Error, StringDeserializer};
+    let read =
+        |name: &str| SafeName::deserialize(StringDeserializer::<Error>::new(name.to_owned()));
+    assert!(
+        read("../x").is_err(),
+        "deserializing goes through the check"
+    );
+    assert_eq!(read("synthetic.txt").unwrap().as_str(), "synthetic.txt");
 }
