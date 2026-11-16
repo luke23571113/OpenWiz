@@ -48,6 +48,11 @@ MARKER = "openwiz.ci3-note.v1"
 MARKED = re.compile(r"<!-- openwiz\.ci3-note\.v1 (\{[^\n]*?\}) -->")
 NOTE_KEYS = {"measure", "until", "p50_minutes", "p95_minutes", "month", "actions_minutes", "minutes_source", "alert"}
 WORKERS = 4
+# A run's jobs can run long after the run was created: GitHub reruns a run up
+# to 30 days after it started, a job may queue for a day and runs at most 6
+# hours on a hosted runner. So the estimate reads runs created from 32 days
+# before the month, and counts only each job's time inside the month.
+LOOKBACK_DAYS = 32
 
 
 def utc(seconds):
@@ -163,30 +168,34 @@ def billing_minutes(read, year, month):
     return math.ceil(total)
 
 
-def job_minutes(job, now, where):
-    """One job's time on a runner, rounded up to a minute as GitHub bills it; a job still running counts to now."""
+def job_minutes(job, month_start, now, where):
+    """One job's time on a runner inside the month, rounded up to a minute as GitHub bills it;
+    a job still running counts to now, and its time before the month counts for none."""
     as_obj(job, where)
     started, completed = as_time(job, "started_at", where, null=True), as_time(job, "completed_at", where, null=True)
     as_str(job, "runner_name", where, null=True), as_list(need(job, "steps", where), where)
     if started is None or bench.never_ran(job):
         return 0
-    return math.ceil(max(0, secs(completed or now) - secs(started)) / 60)
+    start, end = max(secs(started), secs(month_start)), min(secs(completed or now), secs(now))
+    return math.ceil(max(0, end - start) / 60)
 
 
 def estimate_minutes(read, month_start, now, workers=1):
-    """This repository's job times this month: every run created since the month began, every attempt's jobs."""
+    """This repository's job times this month: every run that can have run in it, every attempt's jobs,
+    each counted only for its time inside the month."""
+    since = utc(secs(month_start) - LOOKBACK_DAYS * 86400)
     ids = set()
-    for run, where in bench.pages(f"repos/{{owner}}/{{repo}}/actions/runs?created={month_start}..{now}"
+    for run, where in bench.pages(f"repos/{{owner}}/{{repo}}/actions/runs?created={since}..{now}"
                                   f"&per_page={bench.PAGE}", "workflow_runs", "runs", read):
         as_obj(run, where)
-        if secs(month_start) <= secs(as_time(run, "created_at", where)) < secs(now):
+        if secs(since) <= secs(as_time(run, "created_at", where)) < secs(now):
             ids.add(as_int(run, "id", where))
 
     def run_minutes(rid):
         jobs = {}
         for job, where in bench.pages(f"repos/{{owner}}/{{repo}}/actions/runs/{rid}/jobs?filter=all"
                                       f"&per_page={bench.PAGE}", "jobs", "jobs", read):
-            jobs[as_int(as_obj(job, where), "id", where)] = job_minutes(job, now, f"{where} job")
+            jobs[as_int(as_obj(job, where), "id", where)] = job_minutes(job, month_start, now, f"{where} job")
         return sum(jobs.values())
 
     if workers == 1:

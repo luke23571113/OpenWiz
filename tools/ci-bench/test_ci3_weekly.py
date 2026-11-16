@@ -173,17 +173,18 @@ class Check(unittest.TestCase):
         self.assertEqual(lines[-2], "Actions minutes in 2026-01 so far: 33, an estimate (this repository's job"
                                     " times, each rounded up to a minute; billing: gh api failed (exit 1): HTTP 403).")
         self.assertEqual((marker(lines)["actions_minutes"], marker(lines)["minutes_source"]), (33, "estimate"))
-        # Runs created up to 30 days before the month can still run in it (R2).
-        self.assertIn(f"{B}/actions/runs?created=2025-12-02T00:00:00Z..2026-01-06T02:30:00Z&per_page=100&page=1",
+        # Runs created up to 32 days before the month can still run in it (R2).
+        self.assertIn(f"{B}/actions/runs?created=2025-11-30T00:00:00Z..2026-01-06T02:30:00Z&per_page=100&page=1",
                       gh.asked)
 
     def test_the_estimate_counts_execution_in_the_month_not_creation(self):
         # Bug (R2): runs are picked by creation date, so a run created on the
         # last day of January that runs in February (queued, or a later
         # attempt) is left out, and February's estimate is low; or a run's
-        # January execution is charged to February. GitHub reruns a run up to
-        # 30 days after it started, so runs created from 30 days before the
-        # month are read, and only each job's time inside the month counts.
+        # January execution is charged to February. A run can be rerun up to
+        # 30 days after it started, then queue a day and run 6 hours, so runs
+        # created from 32 days before the month are read, and only each job's
+        # time inside the month counts.
         now = "2026-02-02T17:00:00Z"
         def job(i, started, completed):
             return {"id": i, "name": "j", "conclusion": "success", "created_at": started, "started_at": started,
@@ -208,7 +209,7 @@ class Check(unittest.TestCase):
         })
         minutes, source, _ = ci3_weekly.read_minutes(gh, now)
         self.assertEqual((minutes, source), (99, "estimate"))
-        self.assertIn(f"{B}/actions/runs?created=2026-01-02T00:00:00Z..{now}&per_page=100&page=1", gh.asked)
+        self.assertIn(f"{B}/actions/runs?created=2025-12-31T00:00:00Z..{now}&per_page=100&page=1", gh.asked)
 
     def test_a_failed_read_still_prints_the_note(self):
         # Bug: one failed read (a fork PR in the window, the comments) silences

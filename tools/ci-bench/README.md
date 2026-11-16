@@ -657,9 +657,11 @@ and prints the note's numbers for the agent:
   running.
 - **The month's Actions minutes:** GitHub's billing usage for the
   organisation (`organizations/{owner}/settings/billing/usage`), rounded up;
-  if that can't be read, this repository's job times this month, each rounded
-  up to a minute, marked as an estimate (it reads at most the API's 1,000
-  runs: a busier month is unknown); if neither, **unknown**, never a low
+  if that can't be read, this repository's job times inside the month, each
+  rounded up to a minute, marked as an estimate. It reads every run created
+  from 32 days before the month (a rerun up to 30 days later, a day's queue,
+  6 hours' run) and counts only the time each job ran inside the month, at
+  most the API's 1,000 runs: a busier stretch is unknown; if neither, **unknown**, never a low
   number. Over 50,000 the finding leads with `ALERT:`.
 - **The marker line** the note ends with, so the next run finds it.
 
