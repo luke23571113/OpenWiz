@@ -580,7 +580,7 @@ class Receipts(unittest.TestCase):
             {'id': 'done', 'claim': 'fleet', 'kind': 'await', 'argv': [str(FAKE), 'done'], 'exit': 0,
              'checks': [{'path': '/count', 'equals': 1}], 'until': [{'path': '/merged', 'equals': 2}],
              'again_from': 'fleet_read'}]
-        self.kit['release']['coverage'][0]['steps'] += ['done']
+        self.kit['release']['coverage'][0]['steps'] = FLEET_ROW + ['done']
         self.bind()
         reads = lambda: self.calls().count(['fleet', '9001', '--json'])
         self.replies(done={'exit': 0, 'out': '{"count":1,"merged":0}'})

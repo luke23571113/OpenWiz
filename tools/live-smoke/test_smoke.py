@@ -349,6 +349,10 @@ class Smoke(FixtureCase):
                 else:
                     self.rewrite_journal(lambda e: dict(e, at=1) if e.get('id') == 'fleet_event' else e)
                 before = self.fleet_reads()
+                if field == 'sittings':
+                    # The sixtieth sitting's own readback still runs; no repeat follows it.
+                    self.assertEqual(self.report(self.invoke(), 3)['reason'], 'pending')
+                self.assertEqual(self.report(self.invoke(), 3)['reason'], 'fleet_limit')
                 self.assertEqual(self.report(self.invoke(), 3)['reason'], 'fleet_limit')
                 self.assertEqual(self.fleet_reads(), before)
 
