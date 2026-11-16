@@ -9,7 +9,7 @@
       4870
     ],
     "openwiz-cli": [
-      1840,
+      1863,
       8961
     ],
     "openwiz-core": [
@@ -22,11 +22,11 @@
     ],
     "openwiz-service": [
       0,
-      7645
+      7653
     ],
     "openwiz-store": [
       276,
-      4168
+      4171
     ],
     "openwiz-terminal": [
       21,
@@ -34,11 +34,11 @@
     ]
   },
   "schema": "openwiz.test-value.measure.v1",
-  "seconds": 26.3,
+  "seconds": 25.7,
   "size": {
-    "bytes": 124372,
-    "files": 6,
-    "lines": 3496
+    "bytes": 344580,
+    "files": 17,
+    "lines": 9133
   },
   "targets": [
     "openwiz-tests:cli-agent"

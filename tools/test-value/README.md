@@ -125,10 +125,12 @@ in the after run.
   same machine.
 - **Repeatable:** on an unchanged tree, two runs print the same coverage,
   test count and size. The baseline below was measured twice to show it.
-  The one known exception is socket timing in two server loops,
-  `crates/server/src/http.rs:350` and `crates/server/src/send.rs:241-248`
-  (1 or 2 lines under `loops` and `web-api`). A group whose drop is confined
-  to those lines reruns its measure before calling the drop real (#892).
+  The known exceptions are race branches whose execution depends on timing:
+  socket reads in the server (`crates/server/src/http.rs:350`,
+  `crates/server/src/send.rs:241-248`) and concurrent requests in the store
+  (`crates/store/src/lib.rs:238`, `568-572`), 1 or 2 lines under `loops` or
+  `web-api`. A group whose drop is confined to those lines reruns its measure
+  before calling the drop real (#892).
 
 ## The baseline
 

@@ -17,16 +17,16 @@
       9682
     ],
     "openwiz-server": [
-      5325,
+      5327,
       6530
     ],
     "openwiz-service": [
       0,
-      7645
+      7653
     ],
     "openwiz-store": [
-      1858,
-      4168
+      1861,
+      4171
     ],
     "openwiz-terminal": [
       0,
@@ -34,11 +34,11 @@
     ]
   },
   "schema": "openwiz.test-value.measure.v1",
-  "seconds": 94.9,
+  "seconds": 79.7,
   "size": {
-    "bytes": 818477,
-    "files": 60,
-    "lines": 22469
+    "bytes": 961313,
+    "files": 73,
+    "lines": 26531
   },
   "targets": [
     "openwiz-tests:web-api"

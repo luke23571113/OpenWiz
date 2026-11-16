@@ -22,11 +22,11 @@
     ],
     "openwiz-service": [
       0,
-      7645
+      7653
     ],
     "openwiz-store": [
-      959,
-      4168
+      962,
+      4171
     ],
     "openwiz-terminal": [
       0,
@@ -34,11 +34,11 @@
     ]
   },
   "schema": "openwiz.test-value.measure.v1",
-  "seconds": 3.2,
+  "seconds": 3.3,
   "size": {
-    "bytes": 112364,
-    "files": 13,
-    "lines": 3544
+    "bytes": 103864,
+    "files": 12,
+    "lines": 3303
   },
   "targets": [
     "openwiz-tests:loops"

@@ -3,9 +3,18 @@
 The campaign's starting numbers: one `measure.py` result per test target in
 `tests/` (`tests/Cargo.toml`'s twelve `[[test]]` targets), each measured on
 its own, as `<target>.json`. The measured `tests/`, `crates/`, `apps/`,
-`Cargo.toml` and `Cargo.lock` are byte for byte `main` at `192f6e4`; only
-`tools/test-value/` and two CI registration rows differ. Measured on one
+`Cargo.toml` and `Cargo.lock` are byte for byte `main` at `69f0e72` (after
+TV2's fixture prune, #853); only `tools/test-value/`, CI registration rows and
+`paths.json` rows differ. Measured on one
 Linux aarch64 sandbox with Rust 1.99.1 and `cargo-llvm-cov` 0.9.1.
+
+Size is the group's compiled Rust sources (README, "Size"), so it counts
+only files rustc reads. `service`, for one, compiles 14 files: its
+`main.rs` names three modules, and 56 of the 66 `.rs` files in
+`tests/service/` are read by no build of the workspace (no test target, bin
+or example); TV11 (#813) decides them. Coverage counts children a test starts with a cleared environment
+(service's installed-service startup: `crates/service/src/bootstrap.rs`,
+`main.rs`).
 
 Each group still measures its own before at its pull request's base: this
 table is the reference, not every group's before. Coverage is all crates'
@@ -14,18 +23,18 @@ up or compare one row with another (README, "The coverage method").
 
 | Target | Tests | Files | Bytes | Lines | Coverage (lines) | Seconds |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `attachments` | 67 | 25 | 238627 | 6655 | 2132/50164 (4.25%) | 19.2 |
-| `checks` | 145 | 15 | 419776 | 11590 | 248/50133 (0.49%) | 184.3 |
-| `cli-agent` | 55 | 6 | 124372 | 3496 | 5562/50133 (11.09%) | 26.3 |
-| `fleet` | 294 | 55 | 913713 | 24706 | 10364/50148 (20.67%) | 75.2 |
-| `loops` | 32 | 13 | 112364 | 3544 | 2225/50133 (4.44%) | 3.2 |
-| `messaging` | 189 | 23 | 360999 | 10094 | 5453/50137 (10.88%) | 23.4 |
-| `new-thread` | 113 | 35 | 362920 | 10116 | 6932/50137 (13.83%) | 22.1 |
-| `notifications` | 23 | 7 | 82672 | 2236 | 1191/50133 (2.38%) | 41.7 |
-| `proof` | 125 | 16 | 312686 | 8478 | 2144/50136 (4.28%) | 36.5 |
-| `service` | 65 | 68 | 1188089 | 31379 | 6300/50138 (12.57%) | 100.2 |
-| `terminal` | 104 | 29 | 320400 | 9483 | 9495/50133 (18.94%) | 23.0 |
-| `web-api` | 360 | 60 | 818477 | 22469 | 18460/50179 (36.79%) | 94.9 |
+| `attachments` | 67 | 26 | 259813 | 7235 | 2132/50175 (4.25%) | 18.6 |
+| `checks` | 145 | 18 | 457840 | 12654 | 248/50144 (0.49%) | 180.5 |
+| `cli-agent` | 55 | 17 | 344580 | 9133 | 5585/50144 (11.14%) | 25.7 |
+| `fleet` | 294 | 38 | 865194 | 24109 | 10364/50159 (20.66%) | 75.3 |
+| `loops` | 32 | 12 | 103864 | 3303 | 2228/50144 (4.44%) | 3.3 |
+| `messaging` | 189 | 28 | 395635 | 11045 | 5453/50148 (10.87%) | 23.1 |
+| `new-thread` | 113 | 40 | 397556 | 11067 | 6932/50148 (13.82%) | 21.1 |
+| `notifications` | 23 | 8 | 105990 | 2886 | 1536/50144 (3.06%) | 40.2 |
+| `proof` | 125 | 25 | 541179 | 14526 | 2144/50147 (4.28%) | 35.5 |
+| `service` | 65 | 14 | 278435 | 7327 | 7163/50149 (14.28%) | 100.2 |
+| `terminal` | 104 | 16 | 328383 | 9054 | 10025/50144 (19.99%) | 23.2 |
+| `web-api` | 360 | 73 | 961313 | 26531 | 18465/50190 (36.79%) | 79.7 |
 
 ## The repeat run
 
@@ -33,17 +42,22 @@ Every target was measured a second time on the same tree, straight after
 the first pass; [`repeat.txt`](repeat.txt) holds `measure.py compare` for
 each pair.
 
-- **Identical coverage, test count and size (10):** `attachments` (19.2 s, then 18.7 s), `checks` (184.3 s, then 189.4 s), `cli-agent` (26.3 s, then 26.3 s), `fleet` (75.2 s, then 75.3 s), `messaging` (23.4 s, then 23.0 s), `new-thread` (22.1 s, then 21.1 s), `notifications` (41.7 s, then 40.5 s), `proof` (36.5 s, then 36.9 s), `service` (100.2 s, then 100.3 s), `terminal` (23.0 s, then 23.3 s).
-- **Not identical (2):** `loops` covers one `openwiz-server` line fewer the
-  second time, and `web-api` two more. Run time differs everywhere, as the
-  README says it will.
+- **Identical coverage, test count and size (11):** `attachments` (18.6 s, then 18.3 s), `checks` (180.5 s, then 180.5 s), `cli-agent` (25.7 s, then 24.2 s), `fleet` (75.3 s, then 75.5 s), `loops` (3.3 s, then 3.1 s), `messaging` (23.1 s, then 22.8 s), `new-thread` (21.1 s, then 21.0 s), `notifications` (40.2 s, then 40.2 s), `proof` (35.5 s, then 35.0 s), `service` (100.2 s, then 100.0 s), `terminal` (23.2 s, then 23.0 s).
+- **Not identical (1):** `web-api` (79.7 s, then 75.0 s): `web-api` covers one `openwiz-store`
+  line fewer the second time. Run time differs everywhere, as the README says
+  it will.
 
-The two are socket timing in the server, not the script. Three runs of
-`loops` differ only in `crates/server/src/http.rs:350` (the drain loop after
-a response) and `crates/server/src/send.rs:241-248` (the body-read loop): they
-run or not depending on whether a request body arrives in one TCP read.
-`web-api`'s two lines are also in `openwiz-server`; their exact lines were
-not traced.
+These are race branches whose execution depends on timing, not the script:
+
+- **This baseline:** three runs of `web-api` differ only in
+  `crates/store/src/lib.rs:238` (a directory another request made first) and
+  `crates/store/src/lib.rs:568-572` (waiting on a lock another request holds).
+- **The first baseline (before #884's R2 and R3 fixes):** `loops` and
+  `web-api` varied in `openwiz-server` instead; three runs of `loops` differed
+  only in `crates/server/src/http.rs:350` (the drain loop after a response)
+  and `crates/server/src/send.rs:241-248` (the body-read loop), which run or
+  not depending on whether a request body arrives in one TCP read. Neither
+  varied this time, but they can.
 
 **Ruling** (orchestrator, 2026-11-16, on #803): the repeat criterion is met for
 the script, with this variance written down. Any group whose coverage drop

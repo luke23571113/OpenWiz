@@ -191,6 +191,7 @@
     "tools/test-value/evidence/baseline/service.json",
     "tools/test-value/evidence/baseline/terminal.json",
     "tools/test-value/evidence/baseline/web-api.json",
+    "tools/test-value/evidence/red/r2-r3.log",
     "tools/test-value/evidence/red/test_measure.log",
     "tools/test-value/measure.py",
     "tools/test-value/test_measure.py",

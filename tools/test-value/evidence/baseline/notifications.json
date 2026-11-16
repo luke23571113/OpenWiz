@@ -1,7 +1,7 @@
 {
   "coverage": {
     "openwiz-adapter-cloudroom": [
-      0,
+      18,
       3221
     ],
     "openwiz-adapter-github": [
@@ -21,12 +21,12 @@
       6530
     ],
     "openwiz-service": [
-      0,
-      7645
+      308,
+      7653
     ],
     "openwiz-store": [
-      465,
-      4168
+      484,
+      4171
     ],
     "openwiz-terminal": [
       0,
@@ -34,11 +34,11 @@
     ]
   },
   "schema": "openwiz.test-value.measure.v1",
-  "seconds": 41.7,
+  "seconds": 40.2,
   "size": {
-    "bytes": 82672,
-    "files": 7,
-    "lines": 2236
+    "bytes": 105990,
+    "files": 8,
+    "lines": 2886
   },
   "targets": [
     "openwiz-tests:notifications"
