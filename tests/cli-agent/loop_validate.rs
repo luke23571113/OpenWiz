@@ -272,7 +272,11 @@ fn control_characters_in_paths_never_reach_the_terminal() {
     let missing = missing.to_str().unwrap();
     let output = sandbox.run(&["loop", "validate", missing]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(!output.stderr.contains(&0x1b), "stderr: {:?}", output.stderr);
+    assert!(
+        !output.stderr.contains(&0x1b),
+        "stderr: {:?}",
+        output.stderr
+    );
     let (code, doc) = validate(&sandbox, &contract, &[missing]);
     assert_eq!(code, 1);
     let message = doc["error"]["message"].as_str().unwrap();

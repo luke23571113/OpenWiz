@@ -10,7 +10,7 @@ use std::path::Path;
 use openwiz_adapter_cloudroom::loop_files::{self, FileRead, Refusal};
 use serde_json::{Value, json};
 
-use super::Args;
+use super::{Args, escape_untrusted};
 
 /// One loop file in the report.
 struct Entry {
@@ -84,16 +84,24 @@ fn text(
     folder_refusals: &[(String, Refusal)],
     out: &mut dyn Write,
 ) -> std::io::Result<()> {
+    // Names come from the caller's paths and folders: every character
+    // unsafe for a terminal is escaped here; the JSON report keeps them.
+    let line =
+        |file: &str, r: &Refusal| escape_untrusted(&format!("{file}: {}: {}", r.field, r.message));
     for entry in files {
         if entry.read.refusals.is_empty() {
-            writeln!(out, "{}: valid", entry.file)?;
+            writeln!(
+                out,
+                "{}",
+                escape_untrusted(&format!("{}: valid", entry.file))
+            )?;
         }
         for r in &entry.read.refusals {
-            writeln!(out, "{}: {}: {}", entry.file, r.field, r.message)?;
+            writeln!(out, "{}", line(&entry.file, r))?;
         }
     }
     for (file, r) in folder_refusals {
-        writeln!(out, "{file}: {}: {}", r.field, r.message)?;
+        writeln!(out, "{}", line(file, r))?;
     }
     Ok(())
 }
@@ -106,7 +114,7 @@ fn unreadable(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let message = format!("Could not read {given}: {error}.");
+    let message = escape_untrusted(&format!("Could not read {given}: {error}."));
     let _ = writeln!(stderr, "openwiz: loop validate: {message}");
     if json {
         let doc = json!({

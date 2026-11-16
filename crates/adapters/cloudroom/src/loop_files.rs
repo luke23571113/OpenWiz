@@ -184,7 +184,12 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
                 "a file name is not UTF-8",
             ));
         };
-        if name.ends_with(".md") && name != "README.md" && entry.path().is_file() {
+        // A selected name whose metadata cannot be read fails the read,
+        // never drops the file; a folder named `*.md` is not a loop file.
+        if name.ends_with(".md")
+            && name != "README.md"
+            && std::fs::metadata(entry.path())?.is_file()
+        {
             names.push(name.to_owned());
         }
     }

@@ -34,7 +34,19 @@ pub const HELP: &str = "loop validate/export/plan/apply
 /// `\` as `\\`, so the shown text is unambiguous and never controls the
 /// terminal. JSON reports keep the original text as data.
 pub(crate) fn escape_untrusted(text: &str) -> String {
-    text.to_owned()
+    let mut out = String::with_capacity(text.len());
+    let mut one = [0; 4];
+    for c in text.chars() {
+        let c_text: &str = c.encode_utf8(&mut one);
+        if c == '\\' {
+            out.push_str("\\\\");
+        } else if crate::clean(c_text) == c_text {
+            out.push(c);
+        } else {
+            out.push_str(&format!("\\u{{{:x}}}", u32::from(c)));
+        }
+    }
+    out
 }
 
 /// The four loop-file commands.
