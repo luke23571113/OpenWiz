@@ -67,21 +67,16 @@ line, only one line went from covered to uncovered.
 15 cut, 1 merged into its keeper, and 8 moved to their crates (the moved
 files count in the after size: 29 files against 28).
 
-Time: the target is about as fast as before: the measure's plain runs took
-8.1 s and 7.2 s. Checked again by hand, the plain `cargo test -p
-openwiz-tests --test messaging`, run twice on each side on a quiet machine,
-each from a worktree, took 7.8 and 8.0 s at the base and 7.8 and 7.6 s at
-the head (libtest's own times). The deleted tests were mostly cheap; the one
-slow one, `b8`, ran beside slower real-time proofs, which all stay. A head
-run from the plain clone took 20 s: in a clone without `.git/commondir` the
-release fixture rebuilds on every run, as TV3 found, so compare times only
-between worktrees. This pull request claims no time saving.
+Time: this pull request claims no run time and no time saving. Under the
+orchestrator's ruling on spec #787, run time is judged only from CI's own
+job durations, before and after, on the same lane; the `seconds` line in
+`compare.txt` above is the measure's sandbox run, kept as the tool prints
+it, and is not a claim.
 
-The after measure ran twice on the same tree: once from the plain clone
-(beside the keeper breaks in another worktree) and once from a worktree.
-Coverage, test count and size were identical; only the time differed
-(31.2 s, then 7.2 s). `after.json` is the worktree run. The line view
-above comes from the first run's profiles.
+The after measure ran twice on the same tree, once from the plain clone and
+once from a worktree. Coverage, test count and size were identical.
+`after.json` is the worktree run. The line view above comes from the first
+run's profiles.
 
 ## Moves
 
