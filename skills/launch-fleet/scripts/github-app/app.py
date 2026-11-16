@@ -22,23 +22,15 @@ SERVICE = dict(PERMISSIONS, contents="write", issues="write", pull_requests="wri
 # J48 (#606): the explicit setting for the factory's public multi-account App.
 # Unset (or "user") is each user's own private App, bound to its owner's account.
 MODE = "OPENWIZ_GITHUB_APP_MODE"
-PIN = re.compile(r"```json\n(.*?)\n```", re.S)
+# contracts/github-identity.v1.md's pinned installations, carried with the tool
+# so the installed runtime needs no contracts/ folder (review R1): each account
+# and the repository names it selects. test.py holds this to the pin exactly.
+FACTORY = {"jparker2006": ("ClosedWiz",), "openwizdev": ("OpenWiz", "WizPlugins", "WizSkills")}
 
 
 def factory_installations():
-    """contracts/github-identity.v1.md's pinned installations, the only ones
-    factory mode accepts: {account: {repository, ...}}, lower case. Read from
-    the checkout holding this tool; without that contract, factory mode refuses."""
-    for root in Path(__file__).resolve().parents:
-        contract = root / "contracts" / "github-identity.v1.md"
-        if contract.is_file():
-            pin = parse_json(PIN.search(contract.read_text()).group(1))
-            found = {}
-            for entry in pin["installations"]:
-                require(entry["repository_selection"] == "selected")
-                found[entry["account"].lower()] = {r.lower() for r in entry["repositories"]}
-            return found
-    raise ValueError("App safety check failed")
+    """The only installations factory mode accepts: {account: {owner/name, ...}}, lower case."""
+    return {account: {f"{account}/{name}".lower() for name in names} for account, names in FACTORY.items()}
 
 
 def require(condition):

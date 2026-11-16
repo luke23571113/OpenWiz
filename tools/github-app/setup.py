@@ -275,9 +275,12 @@ def agent_run(args, account, program, template, setup, directory):
                "permissions": app.SERVICE,
                "reconcile": existing[0] if reconcile else None, "store": program is not None,
                "after": None if reconcile else args.after_uncertain}
-    # Review R1: a registration, once applied, stands; a reconciliation never
-    # does, so every run reads GitHub again and offers the install again.
-    stands = (lambda value: False) if reconcile else (lambda value: True)
+    # Review R1: a registration, once applied, stands while its App id is
+    # recorded here (#606 review R2: after the documented cleanup of a refused
+    # registration it no longer does, so only a fresh proposal can register);
+    # a reconciliation never stands, so every run reads GitHub again and offers
+    # the install again.
+    stands = (lambda value: False) if reconcile else (lambda value: saved_app(directory) is not None)
     if not args.yes:
         operation = setup.propose("connect_app", request, agent_effects(
             account, args.organization, request["reconcile"], program is not None, args.factory),
