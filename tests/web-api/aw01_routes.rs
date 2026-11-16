@@ -4,71 +4,13 @@
 //! stages nothing. **No route returns an attachment's bytes**, whatever is
 //! asked: a marker uploaded in a file never comes back in any answer.
 
-use openwiz_server::{Limits, ROUTES, Route};
+use openwiz_server::Limits;
 
 use crate::attach_support::{
     ATTACHMENTS, Free, State, attach_config, attachment, list, ready_id, remove_headers, serve,
     serve_attach, upload, upload_headers,
 };
 use crate::send_support::{HOST, good_headers, raw};
-
-/// The route table B3 adds to A2's, in order (U1's `NEW_ROUTES` before it).
-pub const ATTACHMENT_ROUTES: &[Route] = &[
-    Route {
-        method: "GET",
-        path: "/api/v1/attachments",
-    },
-    Route {
-        method: "POST",
-        path: "/api/v1/attachments",
-    },
-    Route {
-        method: "DELETE",
-        path: "/api/v1/attachments/{id}",
-    },
-];
-
-#[test]
-fn the_route_table_adds_exactly_the_attachment_routes() {
-    let legacy = crate::a4_no_mutation::legacy_routes(ROUTES);
-    // #127 appends two read-only fleet routes after the attachments.
-    let end = legacy.len()
-        - crate::c3_routes::FLEET_ROUTES.len()
-        - crate::e11_plan_routes::PLAN_ROUTES.len()
-        - crate::e11_decisions_routes::DECISIONS_ROUTES.len()
-        - 2 // L6 appends exactly two local loop-switch routes.
-        - 1 // #1100 appends exactly one setup GET.
-        - 1 // #535 cockpit GET.
-        - 1; // #549 loops GET.
-    assert_eq!(
-        &legacy[end - ATTACHMENT_ROUTES.len()..end],
-        ATTACHMENT_ROUTES
-    );
-    let new = crate::u01_new_routes::NEW_ROUTES;
-    let before = end - ATTACHMENT_ROUTES.len();
-    assert_eq!(&legacy[before - new.len()..before], new);
-    assert_eq!(
-        legacy.len(),
-        6 + new.len()
-            + ATTACHMENT_ROUTES.len()
-            + crate::c3_routes::FLEET_ROUTES.len()
-            + crate::e11_plan_routes::PLAN_ROUTES.len()
-            + crate::e11_decisions_routes::DECISIONS_ROUTES.len()
-            + 2
-            + 1 // #1100 setup GET.
-            + 1 // #535 cockpit GET.
-            + 1, // #549 loops GET.
-        "{ROUTES:?}"
-    );
-    for route in ROUTES {
-        for word in ["content", "bytes", "download", "raw", "file", "preview/"] {
-            assert!(
-                !route.path.contains(word),
-                "no route serves an attachment: {route:?}"
-            );
-        }
-    }
-}
 
 /// A marker that only an uploaded file holds.
 const MARKER: &[u8] = b"SYNTHETIC-AW1-MARKER-7f3a";

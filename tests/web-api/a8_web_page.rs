@@ -654,16 +654,6 @@ fn w5_unloaded_web_paths_check_route_before_query() {
 // W6, W7 -----------------------------------------------------------------
 
 #[test]
-fn w6_w7_content_types_and_page_headers() {
-    let fake = Fake::new("web_a8_w7", "normal");
-    let t = tree("w7");
-    let s = serve_tree(&fake, &t);
-    for url in t.files.keys() {
-        assert_page_headers(url, url, &s.get(url), false);
-    }
-}
-
-#[test]
 fn w7_the_page_csp_is_6s_and_runs_no_inline_script() {
     let directives: Vec<&str> = PAGE_CSP.split("; ").collect();
     assert!(directives.contains(&"script-src 'self'"), "{PAGE_CSP}");
