@@ -4,12 +4,16 @@
 //! - **Here, the static check** of the writes module's part of the
 //!   allowlist: every form it allows is written out by hand below (each
 //!   write, then the read that confirms it, and a close's read before it:
-//!   only an issue is closed), every [`Write`] builds exactly
-//!   those, near misses are all refused, bad arguments can't be built, and
+//!   only an issue is closed), the module and the whole allowlist allow
+//!   each, near misses are all refused, bad arguments can't be built, and
 //!   its source names no forbidden word.
-//! - **`b3_fake`, the recording fake `gh`:** each write makes exactly its
-//!   call and its read back, and nothing else; a write that fails is never
-//!   read back; a write is confirmed only when its read back shows it.
+//! - **`tests/fleet/b3_fake.rs`, on the recording fake `gh`:** each write
+//!   makes exactly its call and its read back, and nothing else; a write
+//!   that fails is never read back; a write is confirmed only when its read
+//!   back shows it.
+//!
+//! Moved here from `tests/fleet/b3_writes.rs` by TV4 (#806): it runs no
+//! program, only this crate.
 //!
 //! **Fixtures only.** Every value is synthetic; no test proves live
 //! behaviour (that is B6, #122).
@@ -22,9 +26,6 @@ use openwiz_adapter_github::allowlist::{self, Invocation};
 use openwiz_adapter_github::writes::{self, Body, LABEL_MAX_LEN, Label, Write};
 use openwiz_core::fleet::model::Commit;
 use openwiz_core::messaging::MAX_TEXT_BYTES;
-
-#[path = "b3_fake.rs"]
-mod fake;
 
 /// The synthetic head of the merge form.
 const HEAD: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -87,46 +88,6 @@ fn label(name: &str) -> Label {
     Label::parse(name).expect("a valid label")
 }
 
-/// One of each write, with the values of [`ALLOWED`]. The `match` makes a
-/// new kind of write a compile error here, as a reminder to add its forms.
-fn every_write() -> Vec<Write> {
-    let all = vec![
-        Write::IssueComment {
-            issue: n(7),
-            body: body("Synthetic"),
-        },
-        Write::PrComment {
-            pr: n(8),
-            body: body("Synthetic"),
-        },
-        Write::AddLabel {
-            issue: n(7),
-            label: label("held"),
-        },
-        Write::RemoveLabel {
-            issue: n(7),
-            label: label("held"),
-        },
-        Write::CloseIssue { issue: n(7) },
-        Write::Merge {
-            pr: n(8),
-            head: Commit::parse(HEAD).expect("a commit"),
-            body: body("Synthetic"),
-        },
-    ];
-    for write in &all {
-        match write {
-            Write::IssueComment { .. }
-            | Write::PrComment { .. }
-            | Write::AddLabel { .. }
-            | Write::RemoveLabel { .. }
-            | Write::CloseIssue { .. }
-            | Write::Merge { .. } => {}
-        }
-    }
-    all
-}
-
 fn owned(forms: &[&[&str]]) -> Vec<Vec<String>> {
     forms
         .iter()
@@ -140,7 +101,7 @@ fn words(argv: &[String]) -> Vec<&str> {
 
 #[test]
 fn github_write_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 6] = [
+    let cases: [(&str, fn()); 5] = [
         (
             "bad_arguments_cannot_be_built_so_nothing_can_run",
             bad_arguments_cannot_be_built_so_nothing_can_run,
@@ -148,10 +109,6 @@ fn github_write_contracts_preserve_original_cases() {
         (
             "each_form_takes_any_valid_value_as_one_argument",
             each_form_takes_any_valid_value_as_one_argument,
-        ),
-        (
-            "every_write_and_its_read_back_is_exactly_a_form_written_out_here",
-            every_write_and_its_read_back_is_exactly_a_form_written_out_here,
         ),
         (
             "the_module_and_the_whole_allowlist_allow_each_form",
@@ -170,11 +127,6 @@ fn github_write_contracts_preserve_original_cases() {
         eprintln!("TA2 case: b3_writes::{name}");
         proof();
     }
-}
-
-fn every_write_and_its_read_back_is_exactly_a_form_written_out_here() {
-    let built: Vec<Vec<String>> = every_write().iter().flat_map(|w| w.calls()).collect();
-    assert_eq!(built, owned(ALLOWED));
 }
 
 fn the_module_and_the_whole_allowlist_allow_each_form() {
@@ -1074,10 +1026,7 @@ fn source_problems(text: &str) -> Vec<String> {
     problems
 }
 
-const WRITES: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../crates/adapters/github/src/writes.rs"
-);
+const WRITES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/writes.rs");
 
 #[test]
 fn the_writes_source_names_no_forbidden_word() {

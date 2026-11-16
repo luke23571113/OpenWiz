@@ -8,10 +8,9 @@
 //! `#[path = "a4_more.rs"] mod more;`, never here:
 //! - `a3_seams`, `a3_commands`, `a3_fake_gh` and `a3_model`: A3's
 //!   proofs, which stay true when later tickets fill their files. The
-//!   seams exist, the new crate's dependencies point inward, each command
-//!   is wired to its own file, the fake `gh` behaves as
-//!   `tests/fake-gh/main.rs` says, and the core's fleet model types match
-//!   the contract.
+//!   new crate's dependencies point inward, `openwiz --help` carries each
+//!   command's lines, the fake `gh` answers only its scenario, and the
+//!   core's fleet model types match the contract.
 //! - `support`: the fakes and the release `openwiz`, and `schema`: the
 //!   fleet schema's checker, for every ticket's tests.
 //! - `a4_fleets`: A4 (#112), `openwiz fleets`; until then, its stub's
@@ -19,7 +18,9 @@
 //! - `a5_fleet`: A5 (#113), `openwiz fleet <spec>`; until then, its stub's
 //!   proofs.
 //! - `a6_agents`: A6 (#114), a ticket's agents.
-//! - `b3_writes`: spec 2's B3 (#119), the GitHub writes.
+//! - `b3_fake`: spec 2's B3 (#119), the GitHub writes on the recording
+//!   fake `gh`; their static checks are in
+//!   `crates/adapters/github/tests/writes.rs` (TV4, #806).
 //! - `b4_starts`: spec 2's B4 (#120), starting builders and reviewers and
 //!   archiving finished agents; its other files are declared from inside it.
 //!
@@ -43,7 +44,7 @@ mod a3_seams;
 mod a4_fleets;
 mod a5_fleet;
 mod a6_agents;
-mod b3_writes;
+mod b3_fake;
 mod b4_starts;
 
 mod b2_planner;

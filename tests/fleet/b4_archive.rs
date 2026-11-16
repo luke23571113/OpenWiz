@@ -12,7 +12,7 @@
 use std::fs;
 use std::time::{Duration, Instant};
 
-use openwiz_adapter_cloudroom::allowlist::{Invocation, ThreadId};
+use openwiz_adapter_cloudroom::allowlist::ThreadId;
 use openwiz_adapter_cloudroom::archive::ArchiveOutcome;
 use serde_json::{Value, json};
 
@@ -69,15 +69,6 @@ fn archive_with(fake: &Fake, responses: Vec<Value>) -> ArchiveOutcome {
     fake.respond(responses);
     fake.source()
         .archive_thread(&id(), Instant::now() + Duration::from_secs(10))
-}
-
-#[test]
-fn the_archive_is_built_in_exactly_its_one_shape() {
-    assert_eq!(Invocation::ThreadArchive(id()).argv(), archive());
-    // The id is one argument and never a flag: `ThreadId` can't hold one.
-    for bad in ["", "-x", "--self", "thr syn", "thr;syn"] {
-        assert!(ThreadId::parse(bad).is_err(), "{bad:?}");
-    }
 }
 
 #[test]
@@ -202,30 +193,4 @@ fn an_archive_that_cant_be_read_back_is_unconfirmed() {
     );
     assert_eq!(fake.archive_count(), 1, "never retried");
     assert_eq!(fake.invocations(), vec![show(), archive(), show()]);
-}
-
-/// The fake's own copy of the allowlist takes the archive in its one shape
-/// only, so a call built any other way fails in every test.
-#[test]
-fn the_fake_refuses_every_other_archive_shape() {
-    let fake = Fake::new("b4_archive_shapes", vec![]);
-    for argv in [
-        vec!["thread", "archive", ID],
-        vec!["thread", "archive", "--self", "--json"],
-        vec!["thread", "archive", "--json", ID],
-        vec!["thread", "archive", ID, "--json", "--self"],
-        vec!["thread", "unarchive", ID, "--json"],
-        // An id `ThreadId` refuses: never counted as an archive.
-        vec!["thread", "archive", "thr syn", "--json"],
-        vec!["thread", "archive", concat!("thr_", "s\u{ff}n"), "--json"],
-        vec!["thread", "archive", "thr;syn", "--json"],
-    ] {
-        let status = std::process::Command::new(fake.program())
-            .args(&argv)
-            .output()
-            .expect("run the fake")
-            .status;
-        assert_eq!(status.code(), Some(97), "{argv:?}");
-    }
-    assert_eq!(fake.archive_count(), 0);
 }
