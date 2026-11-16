@@ -119,6 +119,14 @@ def setup_state(identity='personal_login', brain='in_repository', overrides=None
                           'brain_repository': repository, 'brain_visibility': {'known': 'private'},
                           'visibility_basis': 'github_repository_read', 'folder': '.openwiz/brain',
                           'setting': 'brain_location', 'decision_repositories': None}
+    elif brain == 'companion':
+        home = repository + '-brain'
+        value['brain'] = {'location': 'companion', 'code_repository': repository, 'code_visibility': 'public',
+                          'brain_repository': home, 'brain_visibility': {'known': 'private'},
+                          'visibility_basis': 'github_repository_read', 'folder': '.openwiz/brain',
+                          'setting': 'brain_location',
+                          'decision_repositories': {'public': dict(zip(('owner', 'name'), repository.split('/'))),
+                                                    'private': dict(zip(('owner', 'name'), home.split('/')))}}
     elif brain == 'other':
         value['brain'] = dict(setup_state(brain='in_repository', repository='synthetic-owner/synthetic-other')['brain'])
     return STORE.validate(value)
@@ -181,6 +189,13 @@ class Journey:
         path = folder / 'state.json'
         path.write_text(json.dumps(value))
         path.chmod(0o600)
+
+    def write_config(self, value):
+        """The private service settings (service/config.json) beside the setup store."""
+        folder = self.setup_dir / 'service'
+        folder.mkdir(parents=True, mode=0o700, exist_ok=True)
+        (folder / 'config.json').write_text(json.dumps(value))
+        (folder / 'config.json').chmod(0o600)
 
     def plan(self, plan):
         spec = plan['spec']
@@ -422,6 +437,37 @@ class Continuation(unittest.TestCase):
         self.assertEqual(moved.returncode, 5, moved.stdout)
         self.assertIn('setup selected %s' % other, moved.stdout)
 
+    def test_a_failed_refresh_withdraws_the_carried_setup_but_keeps_the_choices(self):
+        # Review R4: catches an old carried setup staying eligible after setup refuses.
+        j, result = self.carried(setup_state())
+        self.assertEqual(j.helper(['choose', '--from-setup', '--agents', 'cloud']).returncode, 0)
+        j.write_setup(setup_state(overrides={'personal_github': 'identity_no_push'}))
+        refused = j.helper(['continue'])
+        self.assertEqual(refused.returncode, 5, refused.stdout)
+        saved = json.loads(j.state.read_text())
+        self.assertNotIn('setup', saved, 'the refused refresh withdraws the carried setup')
+        self.assertEqual(saved['choices']['agents'], 'cloud', "the owner's choices stay")
+
+    def test_a_companion_brain_reaches_decisions_only_through_its_configured_pair(self):
+        # Review R5: catches a public repository's private companion carried while
+        # Decisions' existing repository-pair setting (service/config.json) does not name it.
+        pair = setup_state(brain='companion')['brain']['decision_repositories']
+        for name, config, code in (('no settings file', None, 5),
+                                   ('another pair', {'decision_repositories': {'public': pair['public'],
+                                                     'private': {'owner': 'synthetic-owner', 'name': 'elsewhere'}}}, 5),
+                                   ('the companion pair', {'decision_repositories': pair}, 0)):
+            with self.subTest(name):
+                j = Journey(self)
+                j.write_setup(setup_state(brain='companion'))
+                if config is not None:
+                    j.write_config(config)
+                result = j.helper(['continue'])
+                self.assertEqual(result.returncode, code, result.stdout)
+                if code:
+                    self.assertIn('Decisions repository pair', result.stdout)
+                else:
+                    self.assertIn('Private brain: %s-brain (companion)' % REPO, result.stdout)
+
     def test_the_prepared_agents_are_reused_only_when_offered(self):
         j = Journey(self)
         self.assertEqual(j.helper(['choose', '--from-setup', '--agents', 'cloud']).returncode, 5, 'nothing carried yet')
@@ -496,6 +542,61 @@ class Launch(unittest.TestCase):
         self.assertEqual(third.returncode, 0, third.stdout)
         self.assertIn('has its fleet record', third.stdout)
         self.assertEqual(len(j.spawns()), 1, 'never a second start')
+
+    def test_a_start_cut_short_before_its_outcome_settles_on_its_record(self):
+        # Review R1: catches a start interrupted after the spawn and before its
+        # outcome was saved staying pending for ever, even once its fleet record exists.
+        j = Journey(self)
+        j.replay(until='launch')
+        self.assertEqual(j.tool(PREVIEW).returncode, 12)
+        j.room_script.write_text(json.dumps({'spawn': [{'exit': 0, 'stdout': '', 'kill_caller': True}]}))
+        cut = j.helper([*YES['tool'][:4], '--confirm', j.confirmation()])
+        self.assertNotEqual(cut.returncode, 0)
+        self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'pending')
+        waiting = j.tool(YES)
+        self.assertEqual(waiting.returncode, 6, waiting.stdout)
+        j.fleet_record()
+        settled = j.tool(YES)
+        self.assertEqual(settled.returncode, 0, settled.stdout)
+        self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'started')
+        self.assertEqual(len(j.spawns()), 1, 'never a second start')
+
+    def test_a_start_that_could_not_run_is_refused_and_previewed_again(self):
+        # Review R2: catches a known no-dispatch (room-cli not found) recorded as
+        # uncertain, which would block every later start.
+        j = Journey(self)
+        j.replay(until='launch')
+        self.assertEqual(j.tool(PREVIEW).returncode, 12)
+        room = j.dir / 'bin/room-cli'
+        moved = j.dir / 'room-cli.away'
+        room.rename(moved)
+        missing = j.tool(YES)
+        self.assertEqual(missing.returncode, 5, missing.stdout)
+        self.assertIn('nothing started', missing.stdout)
+        self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'refused')
+        moved.rename(room)
+        stale = j.tool(YES)
+        self.assertEqual(stale.returncode, 5, 'the old yes needs a fresh preview')
+        self.assertEqual(j.tool(PREVIEW).returncode, 12)
+        self.assertEqual(j.tool(YES).returncode, 0)
+        self.assertEqual(len(j.spawns()), 1)
+
+    def test_a_preview_is_void_once_setup_no_longer_verifies(self):
+        # Review R4: catches an old preview starting a fleet after setup refuses a
+        # prerequisite or its checks expire.
+        stale = int(time.time() * 1000) - 2 * 60 * 60 * 1000
+        for name, state in (('login lost push access', setup_state(overrides={'personal_github': 'identity_no_push'})),
+                            ('checks expired', setup_state(at=stale))):
+            with self.subTest(name):
+                j = Journey(self)
+                j.replay(until='launch')
+                self.assertEqual(j.tool(PREVIEW).returncode, 12)
+                j.write_setup(state)
+                result = j.tool(YES)
+                self.assertEqual(result.returncode, 5, result.stdout)
+                self.assertIn('nothing started', result.stdout)
+                self.assertEqual(j.spawns(), [])
+                self.assertNotIn('setup', json.loads(j.state.read_text()), 'run continue again')
 
     def test_missing_or_stale_approval_starts_nothing(self):
         for change in ('missing', 'stale'):

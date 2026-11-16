@@ -5,10 +5,13 @@ It answers only `thread spawn`, the one CloudRoom call the onboarding helper
 makes (launch-fleet's "Starting one" form), from a scripted queue in
 $FAKE_ROOM_SCRIPT (JSON: {"spawn": [{"exit": N, "stdout": text}, ...]}), and logs
 every call to $FAKE_ROOM_LOG as one JSON line. Any other call, or a spawn with
-no answer left, exits 99 so the test sees it. All values are synthetic.
+no answer left, exits 99 so the test sees it. An answer with "kill_caller"
+stops the calling process (SIGKILL) after the start is recorded, as an agent
+interrupted mid-start. All values are synthetic.
 """
 import json
 import os
+import signal
 import sys
 
 
@@ -25,6 +28,8 @@ def main(argv):
     answer = queue.pop(0)
     with open(path, 'w', encoding='utf-8') as handle:
         json.dump(script, handle)
+    if answer.get('kill_caller'):
+        os.kill(os.getppid(), signal.SIGKILL)
     sys.stdout.write(answer.get('stdout', ''))
     return answer['exit']
 
