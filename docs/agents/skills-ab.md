@@ -10,7 +10,7 @@ review, required CI and verified merges remain mandatory.
 
 ## Offline controls
 
-`tools/factory-metrics/experiments/controls.py` consumes explicit validated EB5
+`tools/war-room/experiments/controls.py` consumes explicit validated EB5
 bundles and bound journey v1 snapshots. It reuses their formats, frozen hashes,
 CF4 references and append-only transition validator; it collects nothing and
 starts nothing. The EB5 execution stubs remain unavailable. Its public seams:
@@ -90,16 +90,16 @@ an efficacy stop. A non-stopped analysis before the horizon refuses.
 Run the tool explicitly on synthetic local files:
 
 ```sh
-python3 -I tools/factory-metrics/experiments/run.py init \
+python3 -I tools/war-room/experiments/run.py init \
   --bundle SYNTHETIC_BUNDLE.json --journey SYNTHETIC_JOURNEY.json \
   --checkpoint SYNTHETIC_CHECKPOINT.json
-python3 -I tools/factory-metrics/experiments/run.py assign \
+python3 -I tools/war-room/experiments/run.py assign \
   --checkpoint SYNTHETIC_CHECKPOINT.json --ticket 4301 \
   --facts SYNTHETIC_FACTS.json --at 2030-01-05T00:00:00Z
-python3 -I tools/factory-metrics/experiments/run.py advance \
+python3 -I tools/war-room/experiments/run.py advance \
   --checkpoint SYNTHETIC_CHECKPOINT.json --bundle NEXT_SYNTHETIC_BUNDLE.json \
   --journey NEXT_SYNTHETIC_JOURNEY.json --at 2030-01-06T00:00:00Z
-python3 -I tools/factory-metrics/experiments/run.py analyze \
+python3 -I tools/war-room/experiments/run.py analyze \
   --checkpoint SYNTHETIC_CHECKPOINT.json --at 2030-02-01T00:00:00Z
 ```
 
@@ -209,9 +209,9 @@ statistical limitations; no synthetic result claims real improvement.
 ## Offline verification
 
 ```sh
-python3 -I tools/factory-metrics/experiments/test_controls.py
-python3 -I tools/factory-metrics/experiments/test_analysis.py
-python3 -I tools/factory-metrics/experiments/test_checkpoint.py
+python3 -I tools/war-room/experiments/test_controls.py
+python3 -I tools/war-room/experiments/test_analysis.py
+python3 -I tools/war-room/experiments/test_checkpoint.py
 ```
 
 The proofs reuse EB5/precheck fixtures unchanged, keep failing-first evidence,

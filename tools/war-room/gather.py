@@ -6,7 +6,7 @@
 
 Before a publish: one source root and `DIR/selection.json` in WR2's
 `sources.select` form, each artifact pinned by sha256, observed time and
-evidence. The `board` and `ci-benchmarks` branches are fetched, never pushed;
+evidence. The `board` branch is fetched, never pushed;
 WR8's current CI/throughput and the merged cohort's journeys come from the
 existing read-only `gh` readers. A source that cannot be read gives only its
 own card a precise reason; a privacy hit anywhere in the root refuses the
@@ -56,8 +56,8 @@ REASONS = {
              'prerequisite: the hourly board publish (.github/workflows/board.yml) writing a valid history row.',
     'credits': 'Credits unavailable: credits.jsonl on the board branch is missing, unreadable or invalid; '
                'prerequisite: the CloudRoom credit sampler appending valid samples (board.py sample).',
-    'ci_bench': 'CI bench unavailable: no valid windows/*/point.json on the ci-benchmarks branch; '
-                'prerequisite: the daily CI bench publish (tools/ci-bench/daily.sh).',
+    'ci_bench': 'CI bench retired (#827): its daily publish no longer runs, so no point is read; '
+                'PRs an hour against the baseline is drawn from a collector snapshot (charts/build.py --snapshot).',
     'activity': 'Current CI and throughput unavailable: the read-only gh reads of ci.yml runs/jobs and merged PRs failed; '
                 'prerequisite: gh with actions, issues and pull-requests read access (WR8 activity.project).',
     'journey': 'Ticket journeys unavailable: journey.py collect over the merged cohort failed or found no cohort; '
@@ -66,8 +66,8 @@ REASONS = {
               'prerequisite: read-only gh access and a merged PR closing a ticket in the latest complete UTC hours.',
     'answer_time': 'Answer time unavailable: the supplied answer_time projection is unreadable or invalid; '
                    'prerequisite: WR5 answer_time.project output over source-linked recorded requests.',
-    'cost': 'Cost readiness unavailable: neither the journeys nor the CI bench point could be read (WR4 cost.project); '
-            'prerequisite: ticket journeys from journey.py collect or a ci-benchmarks point.',
+    'cost': 'Cost readiness unavailable: the journeys could not be read (WR4 cost.project); '
+            'prerequisite: ticket journeys from journey.py collect.',
     'main_ci': 'Main CI unavailable: the read of the main head and its ci.yml push runs could not be selected; '
                'prerequisite: read-only gh access to the branch and its Actions runs (health.main_ci).',
     'ci_queue': 'CI queue unavailable: the current ci.yml run/job read could not be selected; '
@@ -338,8 +338,8 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
            stage=None, data_remote=None):
     """Write out/root and out/selection.json, or raise Fail and select nothing.
 
-    `data_remote` (WRD4) is the repository holding the board and ci-benchmarks data
-    branches, when they are not on `remote`; their commit evidence then links it.
+    `data_remote` (WRD4) is the repository holding the board data branch, when it
+    is not on `remote`; its commit evidence then links it.
 
     `stage` is an existing directory holding TL2's journeys.json and stage-waits.json;
     without it they are collected for the open approved and merged cohort tickets."""
@@ -357,7 +357,6 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         work = Path(tmp) / 'git'
         git(Path(tmp), 'init', '-q', '--bare', str(work))
         board = branch(work, data_remote or remote, 'board')
-        bench = branch(work, data_remote or remote, 'ci-benchmarks')
 
         # Current CI and throughput (WR8), and the merged cohort's journeys, through the existing gh readers.
         prs = None
@@ -452,22 +451,8 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         else:
             root.missing('credits', REASONS['credits'])
 
-        # The latest completed CI bench window on ci-benchmarks.
-        point = None
-        if bench:
-            windows = []
-            for name, read in bench[0].items():
-                if re.fullmatch(r'windows/[A-Za-z0-9_.-]+/point\.json', name):
-                    try:
-                        windows.append((suite._decode(read().decode('utf-8'))['until'], name, read))
-                    except (ValueError, KeyError, TypeError, UnicodeError):
-                        continue
-            if windows:
-                until, name, read = max(windows, key=lambda w: (str(w[0]), w[1]))
-                point = root.select('ci_bench', 'ci_bench', 'ci-bench/point.json', read(), bench[2],
-                                    [commit_link % bench[1]])
-        if point is None and not any(e['slot'] == 'ci_bench' for e in root.selection):
-            root.missing('ci_bench', REASONS['ci_bench'])
+        # The CI bench retired (#827): its slot is an explained gap, never a stale point.
+        root.missing('ci_bench', REASONS['ci_bench'])
 
         if wr8 is not None:
             provider, wire = wr8
@@ -513,7 +498,7 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         else:
             root.missing('rework', REASONS['rework'])
         selections = {}
-        for key, entry in (('journey', journey), ('ci', point)):
+        for key, entry in (('journey', journey),):
             if entry is not None:
                 selections[key] = {'path': str(staging / entry['path']), 'source_path': entry['path'],
                                    'observed_at': entry['observed_at'], 'evidence': entry['evidence']}
@@ -568,9 +553,9 @@ def snapshot(repository, *, clock=now, **reads):
 
 def main(argv):
     parser = argparse.ArgumentParser(description='Gather the War room sources (WR10). Reads only.')
-    parser.add_argument('--remote', required=True, help='the repository to fetch board and ci-benchmarks from')
-    parser.add_argument('--data-remote', help='the repository holding the board and ci-benchmarks data branches; '
-                        'default: --remote. A https://github.com/OWNER/REPO[.git] value also names their evidence links')
+    parser.add_argument('--remote', required=True, help='the repository to fetch board from')
+    parser.add_argument('--data-remote', help='the repository holding the board data branch; '
+                        'default: --remote. A https://github.com/OWNER/REPO[.git] value also names its evidence links')
     parser.add_argument('--repo', required=True, help='OWNER/REPO for the read-only gh reads and links')
     parser.add_argument('--run-url', required=True, help='the GitHub run performing the reads (evidence)')
     parser.add_argument('--out', required=True, type=Path, help='a new directory')

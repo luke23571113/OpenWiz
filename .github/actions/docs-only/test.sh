@@ -183,14 +183,14 @@ site skips changes/1251.md
 site skips changes/README.md
 site skips tests/service/t4_service.rs tests/fleet/b2_cases.rs tests/cli-agent/main.rs
 site skips tests/newdir/x.rs
-site skips tools/factory-metrics/test.py tools/review-relay/test.py tools/ci-bench/steps.tsv
+site skips tools/war-room/test_gather.py tools/review-relay/test.py tools/war-room/steps.tsv
 site skips changes/1102.md tests/service/t4_paths.rs
 site runs changes/1251.md apps/site/index.html
 site runs tests/fixtures/release/clean/README.md tests/service/t4_service.rs
-site runs tools/release/README.md tools/ci-bench/steps.tsv
+site runs tools/release/README.md tools/war-room/steps.tsv
 jobs "$ALL" changes/1251.md
 jobs "$ALL" tests/service/t4_service.rs
-jobs "$ALL" tools/factory-metrics/test.py
+jobs "$ALL" tools/war-room/test_gather.py
 # The step mode leaves the jobs' own answers alone.
 jobs "$ALL" crates/core/src/lib.rs
 jobs "web-build web-test" apps/site/index.html

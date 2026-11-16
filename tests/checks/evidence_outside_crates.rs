@@ -12,19 +12,6 @@ fn root() -> PathBuf {
     Path::new(ROOT).to_path_buf()
 }
 
-/// The crate names with an `evidence/` folder on disk.
-fn evidence_folders() -> Vec<String> {
-    let mut out = Vec::new();
-    for entry in fs::read_dir(root().join("crates")).expect("crates/") {
-        let entry = entry.expect("crates/ entry");
-        if entry.file_type().expect("type").is_dir() && entry.path().join("evidence").is_dir() {
-            out.push(entry.file_name().to_string_lossy().into_owned());
-        }
-    }
-    out.sort();
-    out
-}
-
 /// The Git-tracked files, one relative path each. The pre-push hook supplies
 /// the pushed commit's NUL-delimited manifest before cutting off Git access.
 /// A supplied manifest must be readable; never fall back to another tree.
@@ -57,15 +44,6 @@ fn tracked() -> BTreeSet<String> {
         );
     }
     tracked
-}
-
-#[test]
-fn no_product_crate_keeps_an_evidence_folder() {
-    assert_eq!(
-        evidence_folders(),
-        Vec::<String>::new(),
-        "move build evidence out of the product crates and update its links"
-    );
 }
 
 #[test]

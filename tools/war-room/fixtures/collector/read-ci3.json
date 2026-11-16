@@ -20,7 +20,7 @@
       "fresh_until": null,
       "freshness": "unknown",
       "source": {
-        "path": "tools/ci-bench/fixtures/ci3/window.json",
+        "path": "tools/war-room/fixtures/ci3/window.json",
         "schema": "openwiz.ci3.window.v1",
         "sha256": "e4fb1fee46727fbac37b9c2584ac3469f70a4412da1424d494f85785fb096e63"
       },

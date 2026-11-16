@@ -1,4 +1,0 @@
-# Green run, #701, at 831154de4b3d986093c6569fa5b9913c065536ca (unmutated bench.py)
-# Command: python3 -I -m unittest discover -s tools/ci-bench -p 'test*.py'
-Ran 115 tests in <time>
-OK

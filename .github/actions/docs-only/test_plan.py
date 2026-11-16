@@ -52,7 +52,7 @@ class Plans(unittest.TestCase):
             'ci/hosted/guard.sh': '# synthetic guard\n',
             **{p: '# synthetic existing input\n' for p in ('docs/github-app.md', 'docs/ROADMAP.md',
                 'tools/roadmap/generate.py', 'tools/privacy-check/check.py',
-                'tools/factory-metrics/report.py', 'loops/synthetic.json', 'tools/open-tickets/test.sh',
+                'tools/war-room/report.py', 'loops/synthetic.json', 'tools/open-tickets/test.sh',
                 'tools/ops-live/controls/kit.py', 'tools/ci-overload/alarm.py',
                 'tools/ops-live/acceptance.py')},
             '.github/actions/docs-only/classify.sh': (HERE / 'classify.sh').read_text(),
@@ -216,7 +216,7 @@ class Plans(unittest.TestCase):
         # Existing modified inputs are not map-owned; the release suites,
         # rather than the Rust map, own this observable dependency contract.
         for path in ('docs/github-app.md', 'docs/ROADMAP.md', 'tools/roadmap/generate.py',
-                     'tools/privacy-check/check.py', 'tools/factory-metrics/report.py', 'loops/synthetic.json',
+                     'tools/privacy-check/check.py', 'tools/war-room/report.py', 'loops/synthetic.json',
                      'tools/open-tickets/test.sh'):
             with self.subTest(path=path):
                 git(self.root, 'checkout', '-q', '--detach', self.base)
