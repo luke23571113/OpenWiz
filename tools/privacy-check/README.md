@@ -72,6 +72,9 @@ variable (`git -c`, `GIT_CONFIG_*`, `GIT_SSH*`, `GIT_DIR`, ...; only
 `HOOK_GIT_VARIABLES` may be set, plus a complete `GIT_CONFIG_COUNT`/`KEY_<i>`/
 `VALUE_<i>` set whose every key starts `hook.`), Git would not rewrite that URL, the
 destination names exactly one `main` and that commit is present locally.
+When it is not (main moved on since this clone's last fetch), the hook
+fetches the destination's `main` objects from the same URL first, writing no
+ref (#872); check.py itself still never fetches.
 Within one run, each file version (Git blob) is read and checked once for
 each rule set its paths need (workflow, the contract, other text), and that
 verdict is repeated at every later path and commit tree holding it (#761).

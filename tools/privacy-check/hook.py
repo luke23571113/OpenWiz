@@ -76,24 +76,29 @@ def destination_main(repo, url):
     command-scoped Git setting or override variable, so the lookup runs with
     the push's own configuration; Git would not rewrite the URL (insteadOf);
     and the destination names exactly one main. Anything else, or any
-    failure, returns None: scan from the anchor. That commit must also exist
-    locally, or check.py scans from the anchor too.
+    failure, returns None: scan from the anchor. When that commit is not in
+    this clone yet (main moved on since its last fetch, #872), fetch main's
+    objects from the same URL, writing no ref; if the commit is still
+    missing, check.py scans from the anchor.
     """
     if not narrowable(url, os.environ):
         return None
     env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
-    def run(*args):
-        result = subprocess.run(['git', '-C', str(repo), 'ls-remote', *args], env=env, stdin=subprocess.DEVNULL,
-                                capture_output=True, text=True, timeout=60)
+    def run(*args, timeout=60):
+        result = subprocess.run(['git', '-C', str(repo), *args], env=env, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=timeout)
         return result.stdout if result.returncode == 0 else None
     try:
-        if run('--get-url', url) != url + '\n':
+        if run('ls-remote', '--get-url', url) != url + '\n':
             return None
-        listed = run('--refs', url, 'refs/heads/main')
+        listed = run('ls-remote', '--refs', url, 'refs/heads/main')
+        mains = [line.split('\t')[0] for line in (listed or '').splitlines() if line.endswith('\trefs/heads/main')]
+        if len(mains) != 1 or not re.fullmatch(r'[0-9a-f]{40}', mains[0]):
+            return None
+        if run('cat-file', '-e', mains[0] + '^{commit}') is None:
+            run('fetch', '--quiet', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head',
+                '--no-auto-maintenance', url, 'refs/heads/main', timeout=300)
     except (OSError, subprocess.SubprocessError, UnicodeError):
-        return None
-    mains = [line.split('\t')[0] for line in (listed or '').splitlines() if line.endswith('\trefs/heads/main')]
-    if len(mains) != 1 or not re.fullmatch(r'[0-9a-f]{40}', mains[0]):
         return None
     return mains[0]
 
