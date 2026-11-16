@@ -1,5 +1,5 @@
 Command: python3 -I tools/war-room/test_collect_factory.py
-At: 6d452dde3432e78aa113816c20f4e453f7df3205
+At: bc4d68d4be2fe578fbcdf385da30675fc36518e4
 
 test_check_results_keep_their_meaning (__main__.CapacityAndOpenPrs.test_check_results_keep_their_meaning) ... ok
 test_open_prs_and_the_hour_match_read_stall (__main__.CapacityAndOpenPrs.test_open_prs_and_the_hour_match_read_stall) ... ok
@@ -22,6 +22,6 @@ test_snapshot_and_read_agree (__main__.Snapshot.test_snapshot_and_read_agree) ..
 test_validate_contract_rules (__main__.Validate.test_validate_contract_rules) ... ok
 
 ----------------------------------------------------------------------
-Ran 19 tests in 7.228s
+Ran 19 tests in 6.586s
 
 OK
