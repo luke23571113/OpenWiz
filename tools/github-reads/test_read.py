@@ -108,6 +108,13 @@ def recording_github():
 
         def do_GET(self):
             self.record()
+            # The mint's owner-bound reads (C-G1/J48, #606): this App, owned by
+            # the installation's account.
+            if self.path == '/app':
+                return self.send(200, json.dumps({'id': 1001, 'owner': {'login': 'synthetic-owner'}}).encode())
+            if self.path == '/app/installations/2002':
+                return self.send(200, json.dumps({'id': 2002, 'app_id': 1001, 'account': {'login': 'synthetic-owner'},
+                                                  'repository_selection': 'selected'}).encode())
             if self.path == '/rate_limit':
                 time.sleep(state['rate_delay'])
                 rate = state['rate']

@@ -141,9 +141,17 @@ seam. No live App, installation, key, secret prompt or token was used.
 
 - The no-paste route stays unverified until the real CloudRoom interface ships
   and is observed (T4, then a plan change).
-- A factory host that mints for a cross-account installation must set
-  `OPENWIZ_GITHUB_APP_MODE=factory`. `docs/agents/fleet.md`'s identity table
-  and `contracts/cli.v1.md` are outside this ticket's paths and do not name the
-  setting yet.
+- **Factory compatibility needs the setting.** The factory's App is owned by
+  `openwizdev`. Without `OPENWIZ_GITHUB_APP_MODE=factory`, its mints for the
+  cross-account installation the identity contract names (`jparker2006`, for
+  `jparker2006/ClosedWiz`) are refused: exit 5 from `openwiz github token`,
+  exit 1 from `mint-token.py`. Mints for `openwizdev`'s own named repositories
+  still work as user-mode mints, because `openwizdev` owns both the App and
+  those repositories. The available fallback is the existing one: launch-fleet's
+  identity block says on stderr that it acts as today's account, and the
+  migrated reads refuse rather than using the user's quota. Nothing switches
+  identity silently. The orchestrator sets the variable on factory hosts; this
+  ticket changes no shared factory configuration. `docs/agents/fleet.md` and
+  `contracts/cli.v1.md` are outside this ticket's paths and do not name it yet.
 - A user App name can still collide with someone else's App on GitHub; the
   owner would then have to edit the name on GitHub's page.
