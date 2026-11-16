@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -288,6 +289,62 @@ class PageDesign(unittest.TestCase):
                 oswald = [t for t in v['text'] if t['family'].startswith('"Oswald WR"')]
                 self.assertIn('h1', {t['tag'] for t in oswald})
                 self.assertEqual([t['sample'] for t in oswald if not t['heading']], [])
+
+
+
+class EdgePage(unittest.TestCase):
+    """#631 R and the two granted renderer fixes, on the synthetic edge packet: no board history and no
+    CI bench (cards 00a-00d have no numeric value) and dense hourly credit spans for 00e."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix='war-room-edge-'))
+        cls.html, cls.bundle = packet.render_edge(cls.tmp)
+        out = cls.tmp / 'probe'
+        out.mkdir()
+        run = subprocess.run(['node', str(DESIGN / 'probe.mjs'), publish.chromium(), str(cls.tmp / 'page.html'), str(out)],
+                             capture_output=True, text=True, timeout=180)
+        assert run.returncode == 0, run.stderr
+        cls.probe = json.loads((out / 'probe.json').read_text(encoding='utf-8'))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def card(self, v, fid):
+        return next(f for f in v['figures'] if f['id'] == 'fig-' + fid)
+
+    def test_a_long_card_value_never_squeezes_the_card_title(self):
+        # catches: on a 390 px phone, a long supported value ("Unknown / Unknown") taking the title row
+        # and squeezing "Fig. 00a / Ready & building" into a narrow five-line stack (#631 R).
+        self.assertIn('Unknown / Unknown', self.html)
+        for v in self.probe['viewports']:
+            with self.subTest(v['name']):
+                card = self.card(v, '00a')
+                self.assertLessEqual(card['title']['lines'], 2)
+                self.assertGreaterEqual(card['title']['w'], 0.5 * card['w'])
+
+    def test_a_headline_chart_without_values_draws_no_numeric_scale(self):
+        # catches: a headline chart with no numeric value drawing a numeric axis, grid or a stray
+        # "0.000000" tick, as if Unknown had a scale (granted renderer fix, #631 comment 6903517509).
+        empty = [f for f in self.bundle['figures'] if f['id'] in CARDS and all(r['y'] is None for r in f['rows'])]
+        self.assertEqual([f['id'] for f in empty], ['00a', '00b', '00c', '00d'])
+        ns = '{http://www.w3.org/2000/svg}'
+        for f in empty:
+            with self.subTest(f['id']):
+                axis = 'x' if f['kind'] in ('bars', 'distribution') else 'y'
+                groups = [g.get('aria-label') or '' for g in ET.fromstring(f['svg']).iter(ns + 'g')]
+                self.assertEqual([g for g in groups if g.startswith((axis + '-axis', axis + '-grid'))], [])
+                self.assertNotIn('0.000000', f['svg'])
+
+    def test_dense_credit_spans_keep_headline_text_apart_and_inside(self):
+        # catches: 00e value labels for short adjacent spans drawn over each other, the key over the
+        # axis label, and large tick labels cut off at the card's left edge (granted 00e label fix).
+        for v in self.probe['viewports']:
+            with self.subTest(v['name']):
+                chart = self.card(v, '00e')['charts'][0]
+                self.assertEqual(chart['overlaps'], [])
+                self.assertEqual(chart['clipped'], [])
 
 
 if __name__ == '__main__':
