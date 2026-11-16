@@ -934,6 +934,7 @@ fn gi_p6_the_openwiz_program_routes_github_token_and_refuses_without_the_secret(
 
 /// The service's key exchanges, recorded; the owner-bound reads are scripted.
 struct ServiceFake {
+    repository: String,
     app: Answer,
     lookup: Answer,
     exchanges: Mutex<u32>,
@@ -945,17 +946,14 @@ impl Exchange for ServiceFake {
         Ok(answer(
             "synthetic-service-token",
             4600,
-            "synthetic-owner/work",
+            &self.repository,
             WRITE,
         ))
     }
     fn github(&self, call: &Call<'_>, _: &str, _: Instant) -> Result<(u16, Vec<u8>), Error> {
         match call {
             Call::App => self.app.clone().ok_or(Error),
-            Call::Installation { repository } => {
-                assert_eq!(*repository, "synthetic-owner/work");
-                self.lookup.clone().ok_or(Error)
-            }
+            Call::Installation { .. } => self.lookup.clone().ok_or(Error),
             Call::AccessToken { .. } => panic!("the service mints through exchange"),
         }
     }
@@ -964,7 +962,7 @@ impl Exchange for ServiceFake {
 #[test]
 fn r3_the_service_app_never_exchanges_for_another_owners_or_another_installation() {
     use openwiz_adapter_github::allowlist::Invocation;
-    use openwiz_adapter_github::app::{App, Identity};
+    use openwiz_adapter_github::app::{App, Identity, Mode};
     let root = std::env::temp_dir().join(format!("ow-606-r3-{}", std::process::id()));
     super::dirs::private_dir_all(&root.join("service/app")).unwrap();
     let key_path = root.join("service/app/private-key.pem");
@@ -1022,6 +1020,7 @@ fn r3_the_service_app_never_exchanges_for_another_owners_or_another_installation
     ];
     for (why, app, lookup, exchanged) in cases {
         let fake = Arc::new(ServiceFake {
+            repository: "synthetic-owner/work".into(),
             app,
             lookup,
             exchanges: Mutex::new(0),
@@ -1032,9 +1031,68 @@ fn r3_the_service_app_never_exchanges_for_another_owners_or_another_installation
             repository: "synthetic-owner/work".into(),
         };
         // A gh that never succeeds: only the mint before it is under test.
-        let client = App::open(
+        let client = App::open_mode(
             &root,
             identity,
+            Mode::User,
+            "/nonexistent/gh".into(),
+            fake.clone(),
+            Arc::new(Fixed(1000)),
+        )
+        .unwrap();
+        let call = Invocation::new(&["issue", "view", "901", "--json", "comments"]).unwrap();
+        assert!(
+            client
+                .execute(&call, Instant::now() + std::time::Duration::from_secs(10))
+                .is_err(),
+            "{why}"
+        );
+        assert_eq!(*fake.exchanges.lock().unwrap(), exchanged, "{why}");
+    }
+    // Factory mode, only by the explicit setting: the identity contract's named
+    // installations, including the factory App's cross-account one, and nothing else.
+    let named = factory_installations();
+    let factory_owner = named.last().unwrap().0.clone();
+    let (cross_account, cross_repository) = named
+        .iter()
+        .find(|(a, _)| *a != factory_owner)
+        .unwrap()
+        .clone();
+    for (why, mode, repository, exchanged) in [
+        (
+            "a named cross-account installation, factory mode",
+            Mode::Factory,
+            cross_repository.clone(),
+            1,
+        ),
+        (
+            "the same installation without the setting",
+            Mode::User,
+            cross_repository.clone(),
+            0,
+        ),
+        (
+            "an unnamed repository, factory mode",
+            Mode::Factory,
+            format!("{cross_account}/synthetic-unnamed"),
+            0,
+        ),
+    ] {
+        let fake = Arc::new(ServiceFake {
+            repository: repository.clone(),
+            app: app_owned_by(&factory_owner),
+            lookup: Some((200, installation(2002, &cross_account, "selected"))),
+            exchanges: Mutex::new(0),
+        });
+        let identity = Identity {
+            app_id: 1001,
+            installation_id: 2002,
+            repository,
+        };
+        let client = App::open_mode(
+            &root,
+            identity,
+            mode,
             "/nonexistent/gh".into(),
             fake.clone(),
             Arc::new(Fixed(1000)),

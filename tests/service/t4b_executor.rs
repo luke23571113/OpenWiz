@@ -53,8 +53,31 @@ impl Clock for FixedClock {
         1_893_456_000
     }
 }
-struct Token(String);
+/// The repository name, and its owner for the owner-bound reads (#606 review R3).
+struct Token(String, String);
 impl Exchange for Token {
+    /// #606 review R3: the service mint's owner-bound reads, answered with this
+    /// fixture's synthetic App (1001), the configured owner and installation (2002).
+    fn github(
+        &self,
+        call: &openwiz_adapter_github::app::Call<'_>,
+        _: &str,
+        _: std::time::Instant,
+    ) -> Result<(u16, Vec<u8>), Error> {
+        match call {
+            openwiz_adapter_github::app::Call::App => Ok((
+                200,
+                json!({"id":1001,"owner":{"login":self.1}}).to_string().into_bytes(),
+            )),
+            openwiz_adapter_github::app::Call::Installation { .. } => Ok((
+                200,
+                json!({"id":2002,"app_id":1001,"account":{"login":self.1},"repository_selection":"selected"})
+                    .to_string()
+                    .into_bytes(),
+            )),
+            _ => Err(Error),
+        }
+    }
     fn exchange(
         &self,
         installation: u64,
@@ -125,6 +148,7 @@ fn executor(f: &Fixture) -> Executor {
                 .as_str()
                 .unwrap()
                 .to_ascii_lowercase(),
+            config["repository"]["owner"].as_str().unwrap().to_owned(),
         )),
         Arc::new(FixedClock),
     )

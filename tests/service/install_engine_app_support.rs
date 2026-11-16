@@ -26,8 +26,31 @@ impl Clock for FixedTime {
         1_893_456_000
     }
 }
-struct Tokens(String);
+/// The repository name, and its owner for the owner-bound reads (#606 review R3).
+struct Tokens(String, String);
 impl Exchange for Tokens {
+    /// #606 review R3: the service mint's owner-bound reads, answered with this
+    /// fixture's synthetic App (1001), the configured owner and installation (2002).
+    fn github(
+        &self,
+        call: &openwiz_adapter_github::app::Call<'_>,
+        _: &str,
+        _: std::time::Instant,
+    ) -> Result<(u16, Vec<u8>), Error> {
+        match call {
+            openwiz_adapter_github::app::Call::App => Ok((
+                200,
+                json!({"id":1001,"owner":{"login":self.1}}).to_string().into_bytes(),
+            )),
+            openwiz_adapter_github::app::Call::Installation { .. } => Ok((
+                200,
+                json!({"id":2002,"app_id":1001,"account":{"login":self.1},"repository_selection":"selected"})
+                    .to_string()
+                    .into_bytes(),
+            )),
+            _ => Err(Error),
+        }
+    }
     fn exchange(
         &self,
         installation: u64,
@@ -240,12 +263,13 @@ pub(super) fn expected_repository(root: &Path) -> String {
 }
 pub(super) fn client(root: &Path, config: &str) -> Result<Client, Error> {
     let repository = expected_repository(root);
-    let name = repository.split_once('/').unwrap().1.to_owned();
+    let (owner, name) = repository.split_once('/').unwrap();
+    let (owner, name) = (owner.to_owned(), name.to_owned());
     Client::with_exchange(
         root,
         config,
         root.join("gh"),
-        Arc::new(Tokens(name)),
+        Arc::new(Tokens(name, owner)),
         Arc::new(FixedTime),
     )
 }

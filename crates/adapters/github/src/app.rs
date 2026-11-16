@@ -78,6 +78,7 @@ pub struct Identity {
 pub struct App {
     root: PathBuf,
     identity: Identity,
+    mode: Mode,
     event_reads: bool,
     gh: PathBuf,
     exchange: Arc<dyn Exchange>,
@@ -96,9 +97,31 @@ struct Cached {
     expires: u64,
 }
 impl App {
+    /// The App in the mode the explicit setting names (`OPENWIZ_GITHUB_APP_MODE`,
+    /// J48, #606): unset or `user`, the user's own App; exactly `factory`, the
+    /// factory's named installations. Any other value refuses.
     pub fn open(
         root: &Path,
         identity: Identity,
+        gh: PathBuf,
+        exchange: Arc<dyn Exchange>,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self, Error> {
+        let mode = match std::env::var_os("OPENWIZ_GITHUB_APP_MODE")
+            .as_deref()
+            .map(|m| m.to_str())
+        {
+            None | Some(Some("user")) => Mode::User,
+            Some(Some("factory")) => Mode::Factory,
+            Some(_) => return Err(Error),
+        };
+        Self::open_mode(root, identity, mode, gh, exchange, clock)
+    }
+    /// The App in an explicit mode; `open` reads the mode from the setting.
+    pub fn open_mode(
+        root: &Path,
+        identity: Identity,
+        mode: Mode,
         gh: PathBuf,
         exchange: Arc<dyn Exchange>,
         clock: Arc<dyn Clock>,
@@ -116,6 +139,7 @@ impl App {
         Ok(Self {
             root: root.to_owned(),
             identity,
+            mode,
             event_reads: false,
             gh,
             exchange,
@@ -207,6 +231,7 @@ impl App {
     }
     fn mint(&self, key: &Key, now: u64, deadline: Instant) -> Result<Cached, Error> {
         let jwt = app_jwt(key, self.identity.app_id, now, deadline)?;
+        self.owner_bound(&jwt, deadline)?;
         let body = token_body(&self.identity.repository, &self.requested_permissions())?;
         let raw = self.exchange.exchange(
             self.identity.installation_id,
@@ -221,6 +246,36 @@ impl App {
             self.event_reads,
             now,
         )
+    }
+}
+
+impl App {
+    /// C-G1/J48 (#606 review R3): the configured installation must be this
+    /// App's, for a repository its account owns, selected only; and for a user
+    /// App on the App owner's account, or in factory mode one the identity
+    /// contract names. Read before any token exists, on every mint.
+    fn owner_bound(&self, jwt: &str, deadline: Instant) -> Result<(), Error> {
+        let repository = self.identity.repository.as_str();
+        let (owner, _) = repository.split_once('/').ok_or(Error)?;
+        let answer = |call: Call<'_>| match self.exchange.github(&call, jwt, deadline)? {
+            (200, body) if body.len() <= 1024 * 1024 => Ok(body),
+            _ => Err(Error),
+        };
+        let allowed = match self.mode {
+            Mode::User => owner.eq_ignore_ascii_case(
+                &app_owner(&answer(Call::App)?, self.identity.app_id).ok_or(Error)?,
+            ),
+            Mode::Factory => factory_named(owner, repository),
+        };
+        let installation = installation_for(
+            &answer(Call::Installation { repository })?,
+            self.identity.app_id,
+            owner,
+        )
+        .ok_or(Error)?;
+        (allowed && installation == self.identity.installation_id)
+            .then_some(())
+            .ok_or(Error)
     }
 }
 
@@ -341,6 +396,16 @@ pub const FACTORY_INSTALLATIONS: &[(&str, &[&str])] = &[
     ),
 ];
 
+/// Is `repository`, on `account`, one of the factory's named installations?
+fn factory_named(account: &str, repository: &str) -> bool {
+    FACTORY_INSTALLATIONS.iter().any(|(named, repositories)| {
+        named.eq_ignore_ascii_case(account)
+            && repositories
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(repository))
+    })
+}
+
 /// Why no token was minted. No variant carries a provider body, id or secret.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -445,12 +510,7 @@ impl SecretApp {
             // The installation's account is the repository's owner (checked
             // above), and must also be the App owner's.
             Some(app_owner) => owner.eq_ignore_ascii_case(app_owner),
-            None => FACTORY_INSTALLATIONS.iter().any(|(account, repositories)| {
-                account.eq_ignore_ascii_case(owner)
-                    && repositories
-                        .iter()
-                        .any(|named| named.eq_ignore_ascii_case(repository))
-            }),
+            None => factory_named(owner, repository),
         };
         if !allowed {
             return Err(Refusal::Refused);
