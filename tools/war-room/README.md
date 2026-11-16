@@ -484,7 +484,7 @@ as text a phone reads natively.
   hourly loop stops.
 - **Cost basis, per run:** one GitHub-hosted Linux job of about a minute,
   billed per job rounded up to the minute at the list rate in
-  [`tools/ci-bench/prices.tsv`](../ci-bench/prices.tsv) (`github-hosted`,
+  [`tools/war-room/prices.tsv`](prices.tsv) (`github-hosted`,
   $0.006/minute, verified 2026-11-05): 24 dispatched plus 4 backup runs is about
   28 minutes, about $0.17 a day before any included minutes. A pull request
   run is two jobs. Each publish also adds pictures to the branch's history:
