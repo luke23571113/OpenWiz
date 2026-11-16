@@ -100,3 +100,15 @@ test loop_export::text_output_never_prints_a_terminal_control ... FAILED
 panicked at tests/cli-agent/loop_export.rs:863:9:
 stdout: Exported 1 of 2 loops of project prj_syn_0001 to ..
 ```
+
+## Review round, R1: a check folder swapped for a link after it was checked
+
+Red, with the check created by pathname inside its folder (`Folder::entry`
+returned `<folder path>/check`), so a swap after the folder was opened
+redirected the check:
+
+```text
+test loop_files::loop_export::tests::a_held_folder_keeps_the_check_inside_it_after_a_swap ... FAILED
+panicked at crates/cli/src/loop_export.rs:419:9:
+the check went through the link
+```

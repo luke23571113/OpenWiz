@@ -7,7 +7,8 @@
 //! the others are still written.
 
 use std::fs;
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -79,39 +80,83 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
 
 /// Writes one loop's files under `out`, never replacing one with other
 /// bytes. Every file is checked before any is written, so a refused loop
-/// writes nothing.
+/// writes nothing. A check is read and created only through its folder held
+/// open ([`Folder`]), so swapping that folder for a link between the check
+/// and the write cannot put the check anywhere else.
 fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
     if !exported.refusals.is_empty() {
-        return Ok(Outcome {
-            exported,
-            result: "refused",
-            files: Vec::new(),
-        });
+        return Ok(refused(exported, Vec::new()));
     }
-    let mut missing = Vec::new();
+    let files = exported.files.clone();
     let mut exists = Vec::new();
-    for (rel, text) in &exported.files {
-        let path = out.join(rel);
-        // A check's folder must be a real folder or nothing yet: never a
-        // file, and never a link that would put the check elsewhere.
-        if let Some((folder, _)) = rel.split_once('/') {
-            match fs::symlink_metadata(out.join(folder)) {
-                Err(e) if e.kind() == ErrorKind::NotFound => {}
-                Err(e) => return Err(e),
-                Ok(meta) if meta.is_dir() => {}
-                Ok(_) => {
-                    exists.push(out.join(folder));
-                    continue;
+    let mut missing = Vec::new();
+    let mut held = None;
+    for (rel, text) in &files {
+        match rel.split_once('/') {
+            None => match state(&out.join(rel), text)? {
+                State::Missing => missing.push(rel.clone()),
+                State::Same => {}
+                State::Other => exists.push(out.join(rel)),
+            },
+            Some((dir, name)) => match Folder::open(&out.join(dir))? {
+                Held::Missing => missing.push(rel.clone()),
+                Held::NotFolder => exists.push(out.join(dir)),
+                Held::Folder(folder) => {
+                    match state(&folder.entry(name)?, text)? {
+                        State::Missing => missing.push(rel.clone()),
+                        State::Same => {}
+                        State::Other => exists.push(out.join(rel)),
+                    }
+                    held = Some(folder);
+                }
+            },
+        }
+    }
+    if !exists.is_empty() {
+        return Ok(refused(exported, exists));
+    }
+    if !missing.is_empty() {
+        fs::create_dir_all(out)?;
+    }
+    // The check first: if its folder turns out to be a link, nothing of this
+    // loop has been written yet.
+    for (rel, text) in files.iter().rev().filter(|(rel, _)| missing.contains(rel)) {
+        let Some((dir, name)) = rel.split_once('/') else {
+            create_new(&out.join(rel), text)?;
+            continue;
+        };
+        let folder = match held.take() {
+            Some(folder) => folder,
+            None => {
+                match fs::create_dir(out.join(dir)) {
+                    Err(e) if e.kind() != ErrorKind::AlreadyExists => return Err(e),
+                    _ => {}
+                }
+                match Folder::open(&out.join(dir))? {
+                    Held::Folder(folder) => folder,
+                    Held::Missing | Held::NotFolder => {
+                        exported.files.clear();
+                        return Ok(refused(exported, vec![out.join(dir)]));
+                    }
                 }
             }
-        }
-        match fs::symlink_metadata(&path) {
-            Err(e) if e.kind() == ErrorKind::NotFound => missing.push(rel.clone()),
-            Err(e) => return Err(e),
-            Ok(meta) if meta.is_file() && fs::read(&path)? == text.as_bytes() => {}
-            Ok(_) => exists.push(path),
-        }
+        };
+        create_new(&folder.entry(name)?, text)?;
     }
+    let result = if missing.is_empty() {
+        "unchanged"
+    } else {
+        "written"
+    };
+    Ok(Outcome {
+        files: files.into_iter().map(|(rel, _)| rel).collect(),
+        exported,
+        result,
+    })
+}
+
+/// The loop refused, with an `export-exists` refusal for each path.
+fn refused(mut exported: Exported, exists: Vec<PathBuf>) -> Outcome {
     for path in exists {
         exported.refusals.push(Refusal {
             file: exported.name.clone(),
@@ -123,44 +168,142 @@ fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
             ),
         });
     }
-    if !exported.refusals.is_empty() {
-        return Ok(Outcome {
-            exported,
-            result: "refused",
-            files: Vec::new(),
-        });
-    }
-    for (rel, text) in exported
-        .files
-        .iter()
-        .filter(|(rel, _)| missing.contains(rel))
-    {
-        let path = out.join(rel);
-        fs::create_dir_all(out)?;
-        if let Some((folder, _)) = rel.split_once('/') {
-            match fs::create_dir(out.join(folder)) {
-                Err(e) if e.kind() != ErrorKind::AlreadyExists => return Err(e),
-                _ => {}
-            }
-        }
-        // `create_new`: never through a file or link that appeared meanwhile.
-        fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)?
-            .write_all(text.as_bytes())?;
-    }
-    let files = exported.files.iter().map(|(rel, _)| rel.clone()).collect();
-    let result = if missing.is_empty() {
-        "unchanged"
-    } else {
-        "written"
-    };
-    Ok(Outcome {
+    Outcome {
         exported,
-        result,
-        files,
+        result: "refused",
+        files: Vec::new(),
+    }
+}
+
+/// `O_NOFOLLOW | O_NONBLOCK` (and, on macOS, `O_NOFOLLOW_ANY`), and
+/// `O_DIRECTORY`: Linux UAPI asm-generic, or arch/arm{,64} for ARM; XNU
+/// bsd/sys/fcntl.h for macOS. As `crates/store/src/setup.rs` spells them.
+fn no_follow() -> i32 {
+    if cfg!(target_vendor = "apple") {
+        0x0100 | 0x0004 | 0x2000_0000
+    } else if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
+        0o100000 | 0o4000
+    } else {
+        0o400000 | 0o4000
+    }
+}
+
+fn directory() -> i32 {
+    if cfg!(target_vendor = "apple") {
+        0x0010_0000
+    } else if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
+        0o40000
+    } else {
+        0o200000
+    }
+}
+
+/// What is at a file's path now.
+enum State {
+    Missing,
+    Same,
+    Other,
+}
+
+/// Compares the file at `path` with `text`, never following a link there
+/// and reading at most one byte more than `text`.
+fn state(path: &Path, text: &str) -> std::io::Result<State> {
+    let file = match fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(no_follow())
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(State::Missing),
+        // A link, or anything else that cannot be opened as a plain file.
+        Err(e) => {
+            return match fs::symlink_metadata(path) {
+                Ok(_) => Ok(State::Other),
+                Err(_) => Err(e),
+            };
+        }
+    };
+    let meta = file.metadata()?;
+    if !meta.is_file() || meta.len() != text.len() as u64 {
+        return Ok(State::Other);
+    }
+    let mut bytes = Vec::with_capacity(text.len() + 1);
+    file.take(text.len() as u64 + 1).read_to_end(&mut bytes)?;
+    Ok(if bytes == text.as_bytes() {
+        State::Same
+    } else {
+        State::Other
     })
+}
+
+/// Creates `path` with `text`; never through a file or link already there.
+fn create_new(path: &Path, text: &str) -> std::io::Result<()> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(no_follow())
+        .open(path)?
+        .write_all(text.as_bytes())
+}
+
+/// A check's folder, held open: opened without following a link, so every
+/// later read and write of the check goes to this folder, whatever its path
+/// points to by then.
+struct Folder {
+    file: fs::File,
+    path: PathBuf,
+}
+
+enum Held {
+    Missing,
+    /// A link, a file or anything else that is not a folder.
+    NotFolder,
+    Folder(Folder),
+}
+
+impl Folder {
+    fn open(path: &Path) -> std::io::Result<Held> {
+        let file = match fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(no_follow() | directory())
+            .open(path)
+        {
+            Ok(file) => file,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Held::Missing),
+            Err(e) => {
+                return match fs::symlink_metadata(path) {
+                    Ok(_) => Ok(Held::NotFolder),
+                    Err(_) => Err(e),
+                };
+            }
+        };
+        if !file.metadata()?.is_dir() {
+            return Ok(Held::NotFolder);
+        }
+        Ok(Held::Folder(Folder {
+            file,
+            path: path.to_owned(),
+        }))
+    }
+
+    /// The path of `name` inside this held folder. On Linux it goes through
+    /// the open handle (`/proc/self/fd/<fd>`), as the GitHub App key reader
+    /// does. On macOS it is the folder's real path, and every open of it
+    /// adds `O_NOFOLLOW_ANY`, so a link anywhere on it refuses. Elsewhere a
+    /// check is not written.
+    fn entry(&self, name: &str) -> std::io::Result<PathBuf> {
+        if cfg!(target_os = "linux") {
+            use std::os::fd::AsRawFd;
+            Ok(PathBuf::from(format!("/proc/self/fd/{}", self.file.as_raw_fd())).join(name))
+        } else if cfg!(target_vendor = "apple") {
+            Ok(fs::canonicalize(&self.path)?.join(name))
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::Unsupported,
+                "this system cannot hold a check's folder open",
+            ))
+        }
+    }
 }
 
 fn entry(outcome: &Outcome) -> Value {
@@ -254,4 +397,69 @@ fn failed(
 /// line here carries a control of its own, so the whole line is escaped.
 fn line(stream: &mut dyn Write, text: &str) -> std::io::Result<()> {
     writeln!(stream, "{}", escape_untrusted(text))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::DirBuilderExt;
+
+    fn scratch(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("openwiz-lc3-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for dir in ["out/syn", "elsewhere"] {
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(root.join(dir))
+                .unwrap();
+        }
+        root
+    }
+
+    // catches: a check created by pathname after its folder was checked, so
+    // swapping the folder for a link in between writes the check outside
+    // --out (review R1, the window after the folder is opened).
+    #[test]
+    fn a_held_folder_keeps_the_check_inside_it_after_a_swap() {
+        let root = scratch("swap");
+        let Held::Folder(folder) = Folder::open(&root.join("out/syn")).unwrap() else {
+            panic!("a real folder opens");
+        };
+        fs::rename(root.join("out/syn"), root.join("out/moved")).unwrap();
+        std::os::unix::fs::symlink(root.join("elsewhere"), root.join("out/syn")).unwrap();
+        create_new(&folder.entry("check").unwrap(), "#!/bin/sh\nexit 0\n").unwrap();
+        assert!(
+            !root.join("elsewhere/check").exists(),
+            "the check went through the link"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("out/moved/check")).unwrap(),
+            "#!/bin/sh\nexit 0\n"
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    // catches: a folder opened through a link that appeared before it was
+    // opened (review R1, the window between the check and the open).
+    #[test]
+    fn a_folder_is_never_opened_through_a_link() {
+        let root = scratch("link");
+        fs::remove_dir(root.join("out/syn")).unwrap();
+        std::os::unix::fs::symlink(root.join("elsewhere"), root.join("out/syn")).unwrap();
+        assert!(matches!(
+            Folder::open(&root.join("out/syn")).unwrap(),
+            Held::NotFolder
+        ));
+        fs::write(root.join("out/file"), "x").unwrap();
+        assert!(matches!(
+            Folder::open(&root.join("out/file")).unwrap(),
+            Held::NotFolder
+        ));
+        assert!(matches!(
+            Folder::open(&root.join("out/none")).unwrap(),
+            Held::Missing
+        ));
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
