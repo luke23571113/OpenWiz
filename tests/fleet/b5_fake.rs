@@ -122,10 +122,6 @@ impl World {
         serde_json::from_slice(&fs::read(self.dir.join("world.json")).unwrap()).unwrap()
     }
 
-    /// Waits for this world's submitted workers to finish, without cancelling.
-    pub fn settle(&self) {
-        assert_eq!(self.server.control(&self.dir, "--settled"), Some(vec![]));
-    }
     pub fn save(&self, v: &Value) {
         fs::write(self.dir.join("world.json"), serde_json::to_vec(v).unwrap()).unwrap();
     }
@@ -157,33 +153,6 @@ impl World {
     }
     pub fn run(&self, args: &[&str]) -> Output {
         self.command(args).output().unwrap()
-    }
-    pub fn tick(&self) -> Value {
-        self.tick_with(&[])
-    }
-    /// [`World::tick`], with more variables for the fixture `openwiz`.
-    pub fn tick_with(&self, vars: &[(&str, &str)]) -> Value {
-        let o = self
-            .command(&["fleet", "tick", "--json"])
-            .envs(vars.iter().copied())
-            .output()
-            .unwrap();
-        if !o.stderr.is_empty() {
-            eprintln!("{}", String::from_utf8_lossy(&o.stderr));
-        }
-        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-        let doc: Value = serde_json::from_slice(&o.stdout).unwrap();
-        let schema: Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../contracts/fleet-tick.v1.schema.json"
-        )))
-        .unwrap();
-        assert_eq!(
-            crate::schema::validate(&schema, &doc),
-            Vec::<String>::new(),
-            "{doc}"
-        );
-        doc
     }
     pub fn pr(&self, ticket: u64) {
         self.change(|s|{

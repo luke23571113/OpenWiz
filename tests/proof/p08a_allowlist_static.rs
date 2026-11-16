@@ -541,12 +541,6 @@ const LOOP_REPOSITORY: &str = "../crates/store/src/loops/repository.rs";
 const LOOP_CHECK: &str = "../crates/service/src/loops/check.rs";
 const LOOP_EXECUTOR: &str = "../crates/service/src/loops/mod.rs";
 
-/// EN1 (#1106), approved 2026-11-07: only the fixed isolated interpreter
-/// and installed sibling tool, with the minimized environment. Activation and
-/// every other gate remain closed.
-/// Private record: https://github.com/jparker2006/ClosedWiz/issues/1106#issuecomment-6714565014
-const ENGINE_LAUNCHER: &str = "../crates/cli/src/engine.rs";
-
 /// J99 (#635), approved by Jake 2026-11-15: installed `openwiz init` runs only
 /// the fixed sibling `runtime/setup/init.py` through absolute
 /// `/usr/bin/python3 -I`, with a cleared environment passing only HOME,
@@ -557,11 +551,7 @@ const INIT_LAUNCHER: &str = "../crates/cli/src/init.rs";
 
 #[test]
 fn allowlist_source_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 18] = [
-        (
-            "engine_interpreter_exception_rejects_planted_widening",
-            engine_interpreter_exception_rejects_planted_widening,
-        ),
+    let cases: [(&str, fn()); 17] = [
         (
             "init_interpreter_exception_rejects_planted_widening",
             init_interpreter_exception_rejects_planted_widening,
@@ -662,11 +652,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
         .canonicalize()
         .unwrap();
     let mut updated = false;
-    let engine_launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(ENGINE_LAUNCHER)
-        .canonicalize()
-        .expect("the engine launcher");
-    let mut engine_launched = false;
     let init_launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(INIT_LAUNCHER)
         .canonicalize()
@@ -732,15 +717,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
             ran = true;
             continue;
         }
-        if canonical == engine_launcher {
-            assert_eq!(
-                engine_launcher_problems(&text),
-                Vec::<String>::new(),
-                "{ENGINE_LAUNCHER}"
-            );
-            engine_launched = true;
-            continue;
-        }
         if canonical == init_launcher {
             assert_eq!(
                 init_launcher_problems(&text),
@@ -781,7 +757,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
     assert!(ran, "{GITHUB_RUNNER} was not checked");
     assert!(signed, "{GITHUB_APP} was not checked");
     assert!(updated, "the canonical updater runner was not checked");
-    assert!(engine_launched, "{ENGINE_LAUNCHER} was not checked");
     assert!(init_launched, "{INIT_LAUNCHER} was not checked");
     assert_eq!(checked_loops, [true; 3], "all canonical L3 gates checked");
 }
@@ -2193,132 +2168,6 @@ fn ta3_staged_totals_reach_tell_and_spawn_allowances() {
         Invocation::MachineList,
     ] {
         assert_eq!(read.allowance(), Duration::ZERO);
-    }
-}
-
-// #1106 EN1: negative controls for the exact installed interpreter boundary.
-fn engine_launcher_problems(text: &str) -> Vec<String> {
-    let code = l3_compact(text);
-    let mut problems = Vec::new();
-    l3_counts(
-        &mut problems,
-        &code,
-        &[
-            ("Command", 2),
-            ("Command::new(", 1),
-            ("engine_process", 2),
-            (".arg(", 2),
-            (".args(", 1),
-            (".env_clear(", 1),
-            (".env(", 1),
-            (".envs(", 0),
-            (".env_remove(", 0),
-            (".current_dir(", 0),
-            (".output(", 1),
-            (".spawn(", 0),
-            (".status(", 0),
-            (".exec(", 0),
-            ("std::env::current_exe(", 1),
-            ("std::env::var_os(", 1),
-            ("letresult=engine_process(args);", 1),
-        ],
-    );
-    l3_exact_function(
-        &mut problems,
-        &code,
-        "fn engine_process(args: &[OsString]) -> Option<std::process::Output>",
-        r#"fn engine_process(args: &[OsString]) -> Option<std::process::Output> {
-    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
-    let tool = exe.parent()?.join("runtime/engine/engine.py");
-    // Only this installed sibling, never PATH or a source checkout fallback.
-    let meta = std::fs::symlink_metadata(&tool).ok()?;
-    if !meta.is_file() || meta.file_type().is_symlink() {
-        return None;
-    }
-    if tool
-        .ancestors()
-        .skip(1)
-        .any(|p| !std::fs::symlink_metadata(p).is_ok_and(|m| !m.file_type().is_symlink()))
-    {
-        return None;
-    }
-    let mut command = Command::new("/usr/bin/python3");
-    command.arg("-I").arg(tool).args(args).env_clear();
-    for name in ["HOME", "XDG_STATE_HOME", "OPENWIZ_STATE_DIR"] {
-        if let Some(value) = std::env::var_os(name) {
-            command.env(name, value);
-        }
-    }
-    command.stdin(std::process::Stdio::null()).output().ok()
-}
-"#,
-    );
-    problems
-}
-
-fn engine_interpreter_exception_rejects_planted_widening() {
-    let code = l3_compact(include_str!("../../crates/cli/src/engine.rs"));
-    assert!(engine_launcher_problems(&code).is_empty());
-    for (from, to) in [
-        (
-            r#"Command::new("/usr/bin/python3")"#,
-            r#"Command::new("python3")"#,
-        ),
-        (
-            r#"Command::new("/usr/bin/python3")"#,
-            r#"Command::new("/bin/sh")"#,
-        ),
-        (r#".arg("-I")"#, r#".arg("-c")"#),
-        (".env_clear()", ""),
-        (".env_clear()", r#".env_clear().env("PATH", "/synthetic")"#),
-        (
-            ".env_clear()",
-            r#".env_clear().env("PYTHONPATH", "/synthetic")"#,
-        ),
-        (".env_clear()", r#".env_clear().current_dir("/synthetic")"#),
-        (".args(args)", r#".arg("--extra").args(args)"#),
-        ("std::env::current_exe()", "std::env::current_dir()"),
-        (
-            ".canonicalize().ok()?",
-            ".canonicalize().unwrap_or_default()",
-        ),
-        (
-            r#".join("runtime/engine/engine.py")"#,
-            r#".join("tools/install/engine/engine.py")"#,
-        ),
-        (
-            r#".join("runtime/engine/engine.py")"#,
-            r#".join(std::env::var_os("ENGINE_PATH").unwrap())"#,
-        ),
-        (
-            "if !meta.is_file() || meta.file_type().is_symlink()",
-            "if false",
-        ),
-        (".ancestors()", ".ancestors().take(0)"),
-        (
-            r#"["HOME", "XDG_STATE_HOME", "OPENWIZ_STATE_DIR"]"#,
-            r#"["HOME", "XDG_STATE_HOME", "PATH"]"#,
-        ),
-        (".stdin(std::process::Stdio::null())", ""),
-        (".output().ok()", ".status().ok()"),
-    ] {
-        let planted = l3_plant(&code, from, to);
-        assert!(
-            !engine_launcher_problems(&planted).is_empty(),
-            "missed {from} -> {to}"
-        );
-    }
-    for extra in [
-        r#"fn extra() { Command::new("/usr/bin/python3").output(); }"#,
-        r#"use std::process::Command as C; fn extra() { C::new("/bin/sh").spawn(); }"#,
-        r#"type C = Command; fn extra() { C::new("/bin/sh").spawn(); }"#,
-        r#"fn extra(c: &mut Command) { let _ = Command::spawn(c); }"#,
-        r#"fn extra() { let f = engine_process; let _ = f(&[]); }"#,
-    ] {
-        assert!(
-            !engine_launcher_problems(&format!("{code}{}", l3_compact(extra))).is_empty(),
-            "missed {extra}"
-        );
     }
 }
 

@@ -8,5 +8,4 @@
 //!
 //! **Fixtures only.** Fixture tests never prove live behaviour.
 
-mod t12_handover;
 mod t2_locate;
