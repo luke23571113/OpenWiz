@@ -509,7 +509,7 @@ function parseSetupText(text: string): SetupView | null {
     if (state !== 'verified' && state !== 'missing' && state !== 'refused' && state !== 'unknown') return null;
     components.push({ id, state, reason: item.reason, next: item.next });
   }
-  if (v.ready && (components.some((component) => component.id !== 'remote_access' && component.state !== 'verified'))) return null;
+  if (v.ready && components.some((component) => component.id !== 'remote_access' && component.state !== 'verified')) return null;
   const c = v.cost;
   if (!setupObject(c) || !setupKeys(c, ['provenance', 'credits', 'window_s', 'monthly_projection', 'free_allowance', 'reason']) || !setupText(c.reason) || !setupNumber(c.credits) || !setupNumber(c.window_s) || !setupNumber(c.monthly_projection) || !setupNumber(c.free_allowance)) return null;
   if (c.provenance !== 'unknown' && c.provenance !== 'measured' && c.provenance !== 'estimated') return null;
