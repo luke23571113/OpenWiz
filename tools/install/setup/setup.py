@@ -496,6 +496,17 @@ def check_app(state_path, project, recorded, base):
     mine = [i for i in installations if type(i) is dict and i.get('app_id') == app_id
             and isinstance((i.get('account') or {}).get('login'), str)
             and i['account']['login'].lower() == owner.lower()]
+    if len(mine) == 1:
+        # C-G1/J48 (#606 review R3): the user's own App is verified only on its owner's
+        # account; another account's App installed by the repository owner is not.
+        status, found = request(base, 'GET', '/app', jwt)
+        if status == 401:
+            return 'app_key_rejected', None
+        if status != 200 or type(found) is not dict or found.get('id') != app_id:
+            return 'app_unreadable', None
+        app_owner = (found.get('owner') or {}).get('login')
+        if not isinstance(app_owner, str) or app_owner.lower() != owner.lower():
+            mine = []
     if len(mine) != 1 or not store.positive(mine[0].get('id')):
         had = recorded is not None and recorded.get('installation_id') is not None
         return ('app_revoked' if had else 'app_not_installed'), {'app_id': app_id, 'installation_id': None}

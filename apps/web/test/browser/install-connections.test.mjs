@@ -46,6 +46,8 @@ async function fakeGitHub(publicKey) {
       const [header, payload, signature] = (request.headers.authorization ?? '').replace(/^Bearer /, '').split('.');
       const signed = header && verify('sha256', Buffer.from(`${header}.${payload}`), publicKey, Buffer.from(signature ?? '', 'base64url'));
       if (!signed || app.keyRejected || JSON.parse(Buffer.from(payload, 'base64url')).iss !== '1001') return reply(401, { message: 'synthetic: bad credentials' });
+      // The setup check's App-owner read (#606 review R3): this synthetic App is synthetic-owner's own.
+      if (request.method === 'GET' && request.url === '/app') return reply(200, { id: 1001, owner: { login: 'synthetic-owner' } });
       if (request.method === 'GET' && request.url === '/app/installations') {
         return reply(200, app.installations.map((i) => ({ id: i.id, app_id: 1001, account: { login: i.owner },
           permissions: i.permissions, repository_selection: i.selection, suspended_at: i.suspended ? '2026-11-06T00:00:00Z' : null })));
