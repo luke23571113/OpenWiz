@@ -681,6 +681,7 @@ class Receipts(unittest.TestCase):
         body = self.candidate['candidate']
         body['release_version'] = version
         body['included_versions'][0]['version'] = version
+        self.notes(LIVE_NOTES.replace('0.0.99', version))
         body['risk']['app_permissions'] = {'required': 'yes', 'reason': 'Synthetic App permission change.'}
         self.live()
         self.ran()
@@ -767,6 +768,7 @@ class Receipts(unittest.TestCase):
         every = [s['id'] for s in self.kit['steps']]
         self.combined(rows=[{'version': v, 'promise': p, 'steps': every} for v, p in HEADLINES])
         self.refused('not_live_covered', self.produce)
+        self.state = self.root / 'state-unlisted'
         self.combined()
         body = self.candidate['candidate']
         body['included_versions'].append(dict(body['included_versions'][-1], version='0.0.5', promises=['Unlisted']))
