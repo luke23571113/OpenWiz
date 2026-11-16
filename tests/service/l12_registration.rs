@@ -380,7 +380,6 @@ fn runtime_case(scenario: &str) {
         if let Ok(status) = openwiz_service::runtime::status(&f.state)
             && f.state.join("other-job").exists()
             && !status["last_pass"].is_null()
-            && !status["tick"]["last_ended"].is_null()
             && loop_ready
         {
             assert_eq!(
