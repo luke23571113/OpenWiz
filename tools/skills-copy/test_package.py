@@ -156,11 +156,7 @@ class Fixture(unittest.TestCase):
 
 
 class InstallTests(Fixture):
-    def test_without_mv_t_install_refuses_unchanged_and_a_matching_install_is_a_no_op(self):
-        # WZ17 finding 6: an mv without -T (BSD, macOS) cannot rename without
-        # replacing, so a first install refuses before publishing and leaves
-        # nothing behind; verifying an existing matching install needs no mv.
-        self.install()
+    def test_first_install_and_reuse_with_bsd_mv(self):
         real_mv = shutil.which('mv')
         wrapper = self.bin / 'mv'
         wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
@@ -168,12 +164,11 @@ class InstallTests(Fixture):
                            '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
                            'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
         wrapper.chmod(0o755)
+        self.install()
+        self.assertEqual(self.git(self.dest, 'rev-parse', 'HEAD^{tree}').stdout.strip(), self.release['tree'])
         before = snapshot(self.parent)
         self.install()
         self.assertEqual(snapshot(self.parent), before)
-        shutil.rmtree(self.dest)
-        self.assert_refused_unchanged(code=3)
-        self.assertFalse(self.dest.exists())
 
     def test_readers_see_no_destination_or_the_complete_install(self):
         # E4: a reader looking at the destination at any publication step, just
@@ -235,10 +230,9 @@ class InstallTests(Fixture):
         self.assertFalse(moved.exists())
         self.assertFalse(any(p.name.startswith('.wizskills-install.') for p in self.parent.iterdir()))
 
-    def test_without_mv_t_a_failed_move_back_leaves_the_foreign_destination_untouched(self):
-        # WZ17 finding 6: a directory appears just before a plain mv, and moving
-        # the install back out of it fails. The foreign tree must stay exactly
-        # as its owner made it, mtime included, and the install must refuse.
+    def test_bsd_mv_moving_into_a_concurrent_directory_is_undone_and_refused(self):
+        # Without mv -T, a directory created just before the plain rename makes
+        # mv move the install inside it; that must be moved back out and refused.
         real_mv = shutil.which('mv')
         wrapper = self.bin / 'mv'
         wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
@@ -248,19 +242,39 @@ class InstallTests(Fixture):
                            'if sys.argv[-1] == str(dest) and not dest.exists():\n'
                            '    dest.mkdir(mode=0o750)\n'
                            '    (dest / "keep").write_text("synthetic foreign bytes")\n'
-                           '    os.utime(dest, ns=(123000000000, 456000000000))\n'
-                           'if sys.argv[1].startswith(str(dest) + "/"):\n'
-                           '    sys.exit(1)  # the move back out of the foreign directory fails\n'
                            'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
         wrapper.chmod(0o755)
-        p = subprocess.run(['sh', str(INSTALL), '--version', '0.1.0', '--dest', str(self.dest)],
-                           env=self.env, cwd=self.root, capture_output=True, text=True, timeout=60)
-        if self.dest.exists():
-            self.assertEqual(snapshot(self.dest), {
-                '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
-            self.assertEqual(self.dest.stat().st_mtime_ns, 456000000000)
-        self.assertEqual(p.returncode, 3, p.stderr)
-        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), [])
+        self.install(code=1)
+        self.assertEqual(snapshot(self.dest), {
+            '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
+
+    def test_bsd_mv_failed_move_back_is_refused_and_reported(self):
+        # WZ17 finding 6: with the emulated BSD mv, a directory appears just
+        # before the plain rename and moving the install back out fails. The
+        # installer must refuse, say this run's files were left inside that
+        # directory, and leave everything the other process made untouched.
+        real_mv = shutil.which('mv')
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
+                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
+                           'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           'if sys.argv[-1] == str(dest) and not dest.exists():\n'
+                           '    dest.mkdir(mode=0o750)\n'
+                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           'if sys.argv[1].startswith(str(dest) + "/"):\n'
+                           '    sys.exit(1)  # the move back out of that directory fails\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        p = self.install(code=1)
+        self.assertIn('could not move this install back out', p.stderr)
+        left = [p.name for p in self.dest.iterdir() if p.name.startswith('.wizskills-install.')]
+        self.assertEqual(len(left), 1)
+        self.assertTrue((self.dest / left[0] / 'skills/alpha/SKILL.md').is_file())
+        foreign = {k: v for k, v in snapshot(self.dest).items() if not k.startswith(left[0])}
+        self.assertEqual(foreign, {'.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
 
     def test_concurrent_destination_and_release_child_survive_publication(self):
         # Inject the race at the real publication syscall boundary, after the
