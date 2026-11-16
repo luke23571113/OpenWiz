@@ -238,6 +238,33 @@ class Plan:
             return False
         return self.companion_repo.get('homepage') == link(self.repository)
 
+    def destination(self):
+        """R1: the brain repository as GitHub shows it now, read before any
+        content write and before success: its canonical name, private
+        visibility and, for a companion, this project's marker. Anything else
+        refuses; a lost read stays uncertain."""
+        b = self.brain['brain_repository']
+        status, value = self.gh.call('GET', f'repos/{b}')
+        if status is None:
+            raise Unread()
+        if (status != 200 or type(value) is not dict or visibility_of(b, value) != 'private'
+                or not isinstance(value.get('default_branch'), str)
+                or (self.brain['location'] == 'companion' and value.get('description') != marker(self.repository))):
+            raise Refusal('brain_not_private', f"{b} no longer reads back as this project's private brain; "
+                          'nothing more was written.')
+        return value
+
+    def proposal(self):
+        """R2: the brain proposal read now. Only an open or merged one counts;
+        a closed one is the owner's decision and is never reopened or replaced."""
+        found = self.pull()
+        if found is None:
+            raise Unread()
+        if found['state'] == 'closed':
+            raise Refusal('proposal_closed', f"The brain proposal on {self.brain['brain_repository']} was closed; "
+                          'init does not reopen or replace it.')
+        return found
+
     def label(self):
         status, _ = self.gh.call('GET', f'repos/{self.repository}/labels/{LABEL}')
         if status in (200, 404):
@@ -396,12 +423,25 @@ def preview(setup, plan):
             journal['operations'][operation['operation_id']] = entry
             journal_write(setup, journal)
     phase = operation['phase']
+    if phase == 'applied':
+        return current(plan, operation, entry)
     if phase == 'uncertain':
         raise Exit(6, result(plan, operation, 'uncertain', 'effect_uncertain',
                              'An earlier apply is uncertain; apply the same operation to reconcile it.', entry))
-    if phase == 'applied':
-        return result(plan, operation, 'applied', 'brain_current', report(plan.brain), entry)
     return result(plan, operation, 'proposed', 'brain_previewed', report(plan.brain), entry)
+
+
+def current(plan, operation, entry):
+    """An applied operation's result stands only while its destination and
+    proposal still read back (R1, R2); otherwise it is refused, never cached."""
+    try:
+        plan.destination()
+        entry['pull'] = plan.proposal()
+    except Refusal as refusal:
+        raise Exit(5, result(plan, operation, 'refused', refusal.code, refusal.line, entry))
+    except Unread:
+        raise error(1, 'read_failed', 'GitHub did not answer a read; nothing was written.')
+    return result(plan, operation, 'applied', 'brain_current', report(plan.brain), entry)
 
 
 def apply(setup, plan, operation_id):
@@ -420,7 +460,7 @@ def apply(setup, plan, operation_id):
         entry = journal['operations'].get(operation_id)
         store.require(entry is not None, 'the init journal lost this operation; preview again')
         if operation['phase'] == 'applied':
-            return result(plan, operation, 'applied', 'brain_current', report(plan.brain), entry)
+            return current(plan, operation, entry)
 
         def save(phase=None, reason=None, brain=False):
             if phase is not None:
@@ -453,17 +493,31 @@ def apply(setup, plan, operation_id):
             if done is None:
                 stop(6, 'uncertain', 'effect_uncertain',
                      'A GitHub reply was lost; apply the same operation to reconcile it before anything else.')
-        if entry['pull'] is None:
-            entry['pull'] = plan.pull()
+        try:  # success only on what GitHub shows now (R1, R2)
+            plan.destination()
+            entry['pull'] = plan.proposal()
+        except Refusal as refusal:
+            stop(5, 'refused', refusal.code, refusal.line)
+        except Unread:
+            stop(6, 'uncertain', 'effect_uncertain',
+                 'A GitHub read was lost; apply the same operation to reconcile it before anything else.')
         save('applied', 'Brain proposed. Merge its pull request to accept it.', brain=True)
         return result(plan, operation, 'applied', 'brain_proposed', report(plan.brain), entry)
+
+
+def proposed(plan):
+    """Whether the proposal exists; a closed one refuses (R2)."""
+    found = plan.pull()
+    if found is not None and found['state'] == 'closed':
+        plan.proposal()
+    return found is not None
 
 
 def effect(plan, row, entry, journal, save):
     """Make one row's effect once. True when done, None when uncertain.
     Reads the exact resource back first; a retry follows only a read-back."""
     present = {'create_companion': plan.companion, 'link_companion': plan.linked,
-               'create_label': plan.label, 'open_pull_request': lambda: plan.pull() is not None}[row['kind']]
+               'create_label': plan.label, 'open_pull_request': lambda: proposed(plan)}[row['kind']]
     if row['attempts'] > 0:
         row['reconciliation'] = 'provider_read_back'
     if present():
@@ -512,10 +566,7 @@ def write(plan, row, entry, save):
                        {'name': LABEL, 'color': '5319e7', 'description': 'OpenWiz specs and tickets'})[0]
     # open_pull_request: branch, the brain's files, then the pull request. Each
     # step is read first; an existing file with other content is owner work.
-    status, repo = gh.call('GET', f'repos/{b}')
-    if status != 200 or type(repo) is not dict or not isinstance(repo.get('default_branch'), str):
-        return None
-    base = repo['default_branch']
+    base = plan.destination()['default_branch']  # R1: before any content write
     status, ref = gh.call('GET', f'repos/{b}/git/ref/heads/{quote(BRANCH)}')
     if status == 404:
         status, head = gh.call('GET', f'repos/{b}/git/ref/heads/{quote(base)}')

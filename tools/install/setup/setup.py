@@ -219,12 +219,15 @@ def fleet_settings_usable(text):
     return bool(rows) or waits
 
 
-def check_brain(brain):
-    """#635: the saved brain reference, resolved on GitHub. None is an existing
-    project: nothing is inferred and the check is unchanged. Otherwise the brain
+def check_brain(brain, repository):
+    """#635: the saved brain reference, resolved on GitHub. None, or a brain
+    for another repository (kept as it is), is an existing project: nothing is
+    inferred and the check is unchanged. Otherwise the brain
     repository must read back private and hold its merged settings record
     naming this placement; a proposal that is not merged yet is still missing."""
-    if brain is None:
+    # R3: a brain retained for another repository is not this project's: the
+    # selected repository is an existing project and its check is unchanged.
+    if brain is None or brain['code_repository'].lower() != repository.lower():
         return 'project_verified'
     home = brain['brain_repository']
     code, repo = gh(f'repos/{home}')
@@ -278,7 +281,7 @@ def check_project(openwiz, project, runtime, brain=None):
     group = (thread.get('data') or {}).get('session', {}).get('group', {})
     if group.get('kind') != 'project' or group.get('id') != project['project']:
         return 'project_answer_refused'
-    return check_brain(brain)
+    return check_brain(brain, project['repository'])
 
 
 # --- OpenWiz's App, through GitHub's App API ------------------------------
