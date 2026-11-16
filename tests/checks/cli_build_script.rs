@@ -81,7 +81,7 @@ fn repo(scratch: &Scratch) -> PathBuf {
     fs::copy(script, cli.join("build.rs")).unwrap();
     fs::write(
         cli.join("Cargo.toml"),
-        "[package]\nname = \"openwiz-cli\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
+        "[package]\nname = \"openwiz-cli\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[workspace]\n",
     )
     .unwrap();
     fs::write(

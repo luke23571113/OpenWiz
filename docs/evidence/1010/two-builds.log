@@ -1,0 +1,28 @@
+# #1010: two consecutive builds of the three programs in a plain clone on a branch
+# cargo build -v -p openwiz-cli -p openwiz-server -p openwiz-service, twice; lines filtered to these three packages
+# before: main's crates/cli/build.rs
+## build 1
+       Dirty openwiz-cli v0.0.1-dev : the file `crates/cli/build.rs` has changed
+       Dirty openwiz-server v0.0.1-dev : the file `crates/server/../cli/build.rs` has changed
+     Running `target/debug/build/openwiz-server-b7f31b22293adb22/build-script-build`
+     Running `target/debug/build/openwiz-cli-7aa30a8ebffaf635/build-script-build`
+     Running `target/debug/build/openwiz-service-44bc27b0782505f8/build-script-build`
+## build 2
+       Dirty openwiz-server v0.0.1-dev : the file `crates/server/../../.git/commondir` is missing
+       Dirty openwiz-cli v0.0.1-dev : the file `crates/cli/../../.git/commondir` is missing
+     Running `target/debug/build/openwiz-server-b7f31b22293adb22/build-script-build`
+       Dirty openwiz-service v0.0.1-dev : the file `crates/service/../../.git/commondir` is missing
+     Running `target/debug/build/openwiz-cli-7aa30a8ebffaf635/build-script-build`
+     Running `target/debug/build/openwiz-service-44bc27b0782505f8/build-script-build`
+# after: this branch's crates/cli/build.rs (touched first, so build 1 reruns all three)
+## build 1
+       Dirty openwiz-cli v0.0.1-dev : the file `crates/cli/build.rs` has changed
+       Dirty openwiz-server v0.0.1-dev : the file `crates/server/../cli/build.rs` has changed
+       Dirty openwiz-service v0.0.1-dev : the file `crates/service/../cli/build.rs` has changed
+     Running `target/debug/build/openwiz-service-44bc27b0782505f8/build-script-build`
+     Running `target/debug/build/openwiz-server-b7f31b22293adb22/build-script-build`
+     Running `target/debug/build/openwiz-cli-7aa30a8ebffaf635/build-script-build`
+## build 2
+       Fresh openwiz-server v0.0.1-dev 
+       Fresh openwiz-cli v0.0.1-dev 
+       Fresh openwiz-service v0.0.1-dev 
