@@ -468,6 +468,202 @@ fn plan_of_the_accounts_own_files_shows_no_difference() {
     assert!(text.ends_with("Nothing was changed.\n"), "{text}");
 }
 
+/// Every file under `dir`, relative and sorted, with its bytes; the fake's
+/// `bin/` (its binaries and its own logs, checked through `calls` and
+/// `loop-writes.log`) is left out.
+fn files_under(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path == root.join("bin") {
+                continue;
+            }
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let rel = path.strip_prefix(root).unwrap().display().to_string();
+                out.push((rel, fs::read(&path).unwrap_or_default()));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+// catches (C5, spec #785's one round-trip test): export's list-to-file
+// mapping and plan's file-to-list comparison disagreeing on any field
+// (trigger, check and its preamble, agent, secrets, thread, priority, body),
+// so a freshly exported account shows differences, refusals or a create;
+// export's binding for an unmarked loop not being one plan accepts; either
+// command calling anything but `loop list` or writing outside `--out`; or a
+// live setting the adapter does not map vanishing on the way, so its loop
+// reads as identical to its file.
+// Linux only: export writes checks, which only Linux can (LC3's R1).
+#[cfg(target_os = "linux")]
+#[test]
+fn export_then_plan_shows_no_difference() {
+    let list: Value = serde_json::from_str(
+        &fs::read_to_string(Path::new(ROOT).join("tests/fake-room-cli/loops/list.json")).unwrap(),
+    )
+    .unwrap();
+    // The synthetic account, plus one marked loop carrying a key the adapter
+    // does not map.
+    let mut automations = list["automations"].as_array().unwrap().clone();
+    let mut budget = automations
+        .iter()
+        .find(|a| a["id"] == "loop_syn_3")
+        .unwrap()
+        .clone();
+    budget["id"] = json!("loop_syn_8");
+    budget["name"] = json!("Synthetic budget [wizloop:syn-budget]");
+    budget["prompt"] = json!("Synthetic: report the budget.");
+    budget["budget_synthetic"] = json!({"max_runs": 3});
+    automations.push(budget);
+    let fake = Fake::answering(json!({
+        "argv": ["loop", "list", "--json"],
+        "stdout": json!({"automations": automations}).to_string(),
+    }));
+    let out = fake.dir().join("exported");
+    super::dirs::private_dir_all(&out).unwrap();
+    let before = files_under(fake.dir());
+
+    let export = fake.0.run(&[
+        "loop",
+        "export",
+        "--project",
+        PROJECT,
+        "--out",
+        "exported",
+        "--json",
+    ]);
+    assert_eq!(
+        export.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&export.stderr)
+    );
+    let report: Value = serde_json::from_slice(&export.stdout).unwrap();
+    let mut against = contract("loop-cli.v1.schema.json");
+    against["$ref"] = json!("#/$defs/export_report");
+    assert_eq!(schema::validate(&against, &report), Vec::<String>::new());
+    let exported = report["loops"].as_array().unwrap();
+    assert_eq!(exported.len(), 6, "{report:#}");
+    assert!(
+        exported.iter().all(|l| l["result"] == "written"),
+        "{report:#}"
+    );
+    let unmapped: Vec<(&Value, &Value)> = exported
+        .iter()
+        .filter(|l| l["unmapped"] != json!([]))
+        .map(|l| (&l["id"], &l["unmapped"]))
+        .collect();
+    assert_eq!(
+        unmapped,
+        [(&json!("syn-budget"), &json!(["budget_synthetic"]))]
+    );
+    // Export wrote only under --out.
+    let after_export = files_under(fake.dir());
+    assert!(
+        after_export
+            .iter()
+            .filter(|f| !before.contains(f))
+            .all(|(rel, _)| rel.starts_with("exported/")),
+        "{:?}",
+        after_export.iter().map(|f| &f.0).collect::<Vec<_>>()
+    );
+    let bindings: Vec<String> = exported
+        .iter()
+        .filter(|l| !l["binding"].is_null())
+        .map(|l| {
+            format!(
+                "{}={}",
+                l["binding"]["id"].as_str().unwrap(),
+                l["binding"]["loop"].as_str().unwrap()
+            )
+        })
+        .collect();
+    assert_eq!(bindings, ["synthetic-hourly-kick=loop_syn_5"]);
+
+    let (code, doc) = fake.json(&[
+        out.to_str().unwrap(),
+        "--project",
+        PROJECT,
+        "--adopt",
+        &bindings[0],
+    ]);
+    assert_eq!(code, 0, "{doc:#}");
+    // Export and plan each made one `loop list`, and nothing else ran.
+    assert_eq!(
+        fake.calls(),
+        vec![
+            json!(["loop", "list", "--json"]),
+            json!(["loop", "list", "--json"])
+        ]
+    );
+    assert!(!fake.dir().join("bin/loop-writes.log").exists());
+    assert_eq!(files_under(fake.dir()), after_export, "plan wrote a file");
+
+    let items = doc["items"].as_array().unwrap();
+    assert_eq!(items.len(), 6, "{doc:#}");
+    for item in items {
+        assert_eq!(
+            (&item["differences"], &item["refusals"]),
+            (&json!([]), &json!([])),
+            "{item:#}"
+        );
+    }
+    for (file, live) in [
+        ("syn-budget.md", "loop_syn_8"),
+        ("syn-delivery.md", "loop_syn_2"),
+        ("syn-nightly.md", "loop_syn_3"),
+        ("syn-reminder.md", "loop_syn_4"),
+        ("syn-triage.md", "loop_syn_1"),
+    ] {
+        let item = item(&doc, &format!("/{file}"));
+        assert_eq!(
+            (&item["action"], &item["loop"], &item["commands"]),
+            (&json!("none"), &json!(live), &json!([])),
+            "{file}"
+        );
+    }
+    // The unmarked loop gains only its marker, through export's binding.
+    let kick = item(&doc, "/synthetic-hourly-kick.md");
+    assert_eq!(
+        kick["commands"],
+        json!([{"argv": ["loop", "update", "loop_syn_5", "--name", "Synthetic hourly kick [wizloop:synthetic-hourly-kick]"], "files": {}}])
+    );
+    assert_eq!(
+        (&doc["unmanaged"], &doc["orphans"]),
+        (&json!([]), &json!([]))
+    );
+    // The unmapped key is not identical: the plan names it, and only on that
+    // loop (the contract's `differences` has no field for it).
+    for item in items {
+        let named = item["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n.as_str().unwrap().contains("budget_synthetic"));
+        assert_eq!(named, item["id"] == "syn-budget", "{item:#}");
+    }
+    let text = fake.run(&[
+        out.to_str().unwrap(),
+        "--project",
+        PROJECT,
+        "--adopt",
+        &bindings[0],
+    ]);
+    assert_eq!(text.status.code(), Some(0));
+    let text = String::from_utf8(text.stdout).unwrap();
+    let budget_lines: Vec<&str> = text
+        .lines()
+        .filter(|l| l.contains("budget_synthetic"))
+        .collect();
+    assert_eq!(budget_lines.len(), 1, "{text}");
+}
+
 // catches: a difference missed or invented (a reordered secret list, an
 // instant spelled differently), the wrong value on either side, or an
 // update carrying flags for fields that did not change.

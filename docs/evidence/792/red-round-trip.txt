@@ -1,0 +1,87 @@
+# #792 C5 round-trip red runs, at 092841d plus the new test export_then_plan_shows_no_difference.
+# Export and plan already agree on main, so each red run is a throwaway break in that agreement, reverted after the run.
+
+## Break 1: plan renders a check's string param in double quotes, unlike export's preamble (crates/adapters/cloudroom/src/loop_files.rs, plan's rendered script)
+
+running 1 test
+test loop_plan::export_then_plan_shows_no_difference ... FAILED
+
+failures:
+
+---- loop_plan::export_then_plan_shows_no_difference stdout ----
+
+thread 'loop_plan::export_then_plan_shows_no_difference' panicked at tests/cli-agent/loop_plan.rs:611:9:
+assertion `left == right` failed: {
+  "action": "update",
+  "commands": [
+    {
+      "argv": [
+        "loop",
+        "update",
+        "loop_syn_1",
+        "--script-file",
+        "@script"
+      ],
+      "files": {
+        "@script": "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO=\"synthetic-org/synthetic-repo\"\n# wizloop: the check\n# Synthetic check: prints the due items in $WIZLOOP_PARAM_REPO, nothing when none is due.\nif [ -f due.txt ]; then cat due.txt; fi\nexit 0\n"
+      }
+    }
+  ],
+  "differences": [
+    {
+      "field": "check",
+      "file": "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO=\"synthetic-org/synthetic-repo\"\n# wizloop: the check\n# Synthetic check: prints the due items in $WIZLOOP_PARAM_REPO, nothing when none is due.\nif [ -f due.txt ]; then cat due.txt; fi\nexit 0\n",
+      "live": "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO='synthetic-org/synthetic-repo'\n# wizloop: the check\n# Synthetic check: prints the due items in $WIZLOOP_PARAM_REPO, nothing when none is due.\nif [ -f due.txt ]; then cat due.txt; fi\nexit 0\n"
+    }
+  ],
+  "file": "/tmp/openwiz-cp1-561748-0/exported/syn-triage.md",
+  "id": "syn-triage",
+  "loop": "loop_syn_1",
+  "notes": [],
+  "paused": false,
+  "refusals": []
+}
+  left: (Array [Object {"field": String("check"), "file": String("#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO=\"synthetic-org/synthetic-repo\"\n# wizloop: the check\n# Synthetic check: prints the due items in $WIZLOOP_PARAM_REPO, nothing when none is due.\nif [ -f due.txt ]; then cat due.txt; fi\nexit 0\n"), "live": String("#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO='synthetic-org/synthetic-repo'\n# wizloop: the check\n# Synthetic check: prints the due items in $WIZLOOP_PARAM_REPO, nothing when none is due.\nif [ -f due.txt ]; then cat due.txt; fi\nexit 0\n")}], Array [])
+ right: (Array [], Array [])
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    loop_plan::export_then_plan_shows_no_difference
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 84 filtered out; finished in 1.93s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`
+
+## Break 2: plan drops its note for a live key the adapter does not map, so that loop reads as identical
+
+running 1 test
+test loop_plan::export_then_plan_shows_no_difference ... FAILED
+
+failures:
+
+---- loop_plan::export_then_plan_shows_no_difference stdout ----
+
+thread 'loop_plan::export_then_plan_shows_no_difference' panicked at tests/cli-agent/loop_plan.rs:649:9:
+assertion `left == right` failed: {
+  "action": "none",
+  "commands": [],
+  "differences": [],
+  "file": "/tmp/openwiz-cp1-563128-0/exported/syn-budget.md",
+  "id": "syn-budget",
+  "loop": "loop_syn_8",
+  "notes": [],
+  "paused": false,
+  "refusals": []
+}
+  left: false
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    loop_plan::export_then_plan_shows_no_difference
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 84 filtered out; finished in 0.43s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`
