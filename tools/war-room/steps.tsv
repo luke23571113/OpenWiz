@@ -88,16 +88,5 @@ skills	The shard balancer's tests
 build	Build and lint Rust
 skills	The always-run checks
 web	The release proofs
-# #242: initial fixture preparation is setup; toolkit proofs are helper tests.
-setup	Private live-check fixture destination
-setup	The reviewed live-check fixture source
-setup	Post The reviewed live-check fixture source
-setup	Seal the live-check fixture source
-skills	The live-check toolkit (fixtures only)
-setup	Record passed toolkit
-# #2081: retain historical names above; selection is setup, nightly proofs are skills.
-setup	Whether the toolkit can be affected
-skills	The live-check toolkit (nightly fixtures and mutants)
-setup	Keep the nightly toolkit evidence
 setup	Preserve incomplete combined-main evidence
 setup	Keep the incomplete combined-main evidence
