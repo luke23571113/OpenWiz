@@ -342,9 +342,6 @@ def facts(gh, context, packet):
          'missing or mixed Rust matrix member')
     for job in rust:
         successful(job)
-        steps = [s for s in job.get('steps', []) if s.get('name') == 'The live-check toolkit (fixtures only)']
-        need(len(steps) == 1, 'missing toolkit step')
-        successful(steps[0])
     web = [name for name in ('web', 'web-export') if name in by_name and by_name[name].get('conclusion') != 'skipped']
     need(len(web) == 1, 'missing or ambiguous web result'); one(web[0])
     sharded = executor.planner.skills.SHARDED

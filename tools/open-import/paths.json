@@ -81,7 +81,6 @@
     "docs/cli-parts/**",
     "docs/decisions/public-offer.md",
     "docs/live-checks/**",
-    "tools/live-check/**",
     "tools/scale-50/**",
     "tools/skills-eval/**",
     "ci/main-batch/README.md",
