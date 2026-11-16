@@ -763,3 +763,108 @@ fn a_live_setting_the_adapter_does_not_map_is_reported() {
             .contains("budget_synthetic")
     );
 }
+
+// catches (#980 R1): untrusted text from a loop file, a path or the live list
+// reaching the terminal with its control bytes, so a previewed file could
+// clear the screen and forge the plan the owner reads; or the escaping
+// changing what JSON says or what the printed command passes to room-cli.
+#[test]
+fn human_output_escapes_terminal_controls_and_json_keeps_them() {
+    const ESC: char = '\u{1b}';
+    let mut list: Value = serde_json::from_str(
+        &fs::read_to_string(Path::new(ROOT).join("tests/fake-room-cli/loops/list.json")).unwrap(),
+    )
+    .unwrap();
+    list["automations"][4]["name"] = json!("Synthetic \u{1b}[2J\u{1b}[Hkick");
+    let fake =
+        Fake::answering(json!({"argv": ["loop", "list", "--json"], "stdout": list.to_string()}));
+    let body = "Synthetic: \u{1b}[2J\u{1b}[Hforged\nsecond \u{202e}line.";
+    let nightly = fake.write(
+        "loops/syn-nightly.md",
+        &format!("---\nid: \"syn-nightly\"\nname: \"Synthetic nightly note\"\ntrigger: {{\"cron\": \"0 5 * * *\", \"timezone\": \"America/Los_Angeles\"}}\nthread: \"new\"\nsecrets: \"all\"\n---\n{body}"),
+    );
+    let hook = fake.write(
+        &format!("loops/hook{ESC}[2J.md"),
+        &format!("---\nid: \"hook\"\nname: \"Synthetic hook\"\ntrigger: {{\"webhook\": true}}\nthread: \"new\"\n---\n{body}\n"),
+    );
+    let args = [
+        nightly.to_str().unwrap(),
+        hook.to_str().unwrap(),
+        "--project",
+        PROJECT,
+    ];
+    let output = fake.run(&args);
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !text.contains(ESC) && !text.contains('\u{202e}'),
+        "{text:?}"
+    );
+    assert!(
+        text.contains("forged\nsecond"),
+        "a preview keeps its line breaks: {text:?}"
+    );
+    // The printed update, run by sh, passes exactly the JSON's argv.
+    let (_, doc) = fake.json(&args);
+    let nightly_item = item(&doc, "/syn-nightly.md");
+    assert_eq!(
+        nightly_item["commands"][0]["argv"][4], body,
+        "JSON keeps the original"
+    );
+    assert_eq!(
+        item(&doc, "[2J.md")["commands"][0]["files"]["@prompt"],
+        format!("{body}\n")
+    );
+    assert!(doc["unmanaged"][0]["name"].as_str().unwrap().contains(ESC));
+    let start = text.find("  room-cli 'loop' 'update'").unwrap() + "  room-cli ".len();
+    let command = &text[start..start + text[start..].find("\nNothing was changed.").unwrap()];
+    let command = command.split("\nunmanaged: ").next().unwrap();
+    let script = fake.write(
+        "argv.sh",
+        &format!("set -- {command}\nprintf '%s\\0' \"$@\"\n"),
+    );
+    let run = std::process::Command::new("/bin/sh")
+        .arg(&script)
+        .output()
+        .unwrap();
+    let words: Vec<String> = String::from_utf8(run.stdout)
+        .unwrap()
+        .split_terminator('\0')
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        json!(words),
+        nightly_item["commands"][0]["argv"],
+        "{command:?}"
+    );
+    // A diagnostic naming an untrusted path is escaped too.
+    let missing = fake.dir().join(format!("gone{ESC}[2J.md"));
+    let output = fake.run(&[missing.to_str().unwrap(), "--project", PROJECT]);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("gone") && !stderr.contains(ESC),
+        "{stderr:?}"
+    );
+}
+
+// catches (#980 R2): a delay ending in a multibyte character crashing plan,
+// so no report and no plan of the other files, instead of `bad-in`.
+#[test]
+fn a_multibyte_delay_is_refused_and_the_other_files_still_plan() {
+    let fake = Fake::new();
+    let bad = fake.write("example.md", "---\nid: \"example\"\nname: \"Synthetic\"\ntrigger: {\"in\": \"30分\"}\nthread: \"same\"\n---\nSynthetic.");
+    let good = fake.write("good.md", "---\nid: \"good\"\nname: \"Synthetic good\"\ntrigger: {\"webhook\": true}\nthread: \"new\"\n---\nSynthetic.");
+    let (code, doc) = fake.json(&[
+        bad.to_str().unwrap(),
+        good.to_str().unwrap(),
+        "--project",
+        PROJECT,
+    ]);
+    assert_eq!(code, 5);
+    assert_eq!(
+        codes(&doc["items"][0]),
+        vec![("bad-in".into(), "trigger.in".into())]
+    );
+    assert_eq!(doc["items"][1]["action"], "create");
+}
