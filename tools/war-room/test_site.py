@@ -156,6 +156,42 @@ class Site(unittest.TestCase):
         self.assertEqual(got['Rework rate'], ('healthy', '0 review rounds'))
         self.assertEqual(got['Orchestrator answer time'], ('partial', 'Unknown'))
 
+    def test_row_states_follow_each_producers_own_results(self):
+        # catches (#926 R1, R2): a measured stage-limit miss (fix or answer stage, which stage health
+        # does not cover) left as merely partial, a zero miss count read as a breach, and a
+        # pending or cancelled main CI run, with no current result, labelled healthy. Real producers on
+        # their own synthetic fixtures: TL2's stage waits and the main-CI collector's runs. A stage whose
+        # measured misses are all zero is not off limit.
+        stage = load('wrd5_stage_proof', HERE / 'test_stage_waits.py')
+        case = stage.StageWaits()
+        case.setUp()
+        try:
+            provider = case.provider()
+        finally:
+            case.doCleanups()
+        misses = {m['dimensions']['stage']: m['value'] for m in provider['metrics'] if m['id'].startswith('miss:')}
+        self.assertTrue(misses.get('fix_after_changes') and misses.get('builder_question_answer'), misses)
+        row = lambda record, slot: next((st, v) for _, n, st, v in rows(page.site(record)['']) if n == page.NAMES[slot])  # noqa: E731
+        with self.subTest('measured stage misses'):
+            self.assertEqual(row(suite.compose(stage.AT, [provider], assembled_at=stage.AT), 'stage_waits')[0], 'off limit')
+        cleared = copy.deepcopy(provider)
+        for m in cleared['metrics']:
+            if m['id'].startswith('miss:'):
+                m['value'] = 0
+        with self.subTest('no measured miss'):
+            self.assertEqual(row(suite.compose(stage.AT, [cleared], assembled_at=stage.AT), 'stage_waits')[0], 'partial')
+        health = load('wrd5_health_proof', HERE / 'test_health.py')
+        for status, conclusion, want in (('completed', 'success', ('healthy', 'Success')),
+                                         ('completed', 'failure', ('off limit', 'Failure')),
+                                         ('in_progress', None, ('partial', 'Pending')),
+                                         ('completed', 'cancelled', ('partial', 'Cancelled'))):
+            with self.subTest(conclusion or status):
+                main, _ = health.health().main_ci(health.REPO, health.main_world(
+                    listed=[health.run(501, status=status, conclusion=conclusion)]), health.Clock('2030-03-01T12:05:01Z'))
+                record = suite.compose('2030-03-01T12:05:00Z', [main], assembled_at='2030-03-01T12:09:00Z')
+                self.assertEqual(row(record, 'main_ci'), want)
+        self.assertEqual(row(suite.compose('2030-03-01T12:05:00Z'), 'main_ci'), ('not measured', 'Unavailable'))
+
     def test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure(self):
         # catches: dates, coverage, missing days, gap notes, unit notes or provenance left on a figure's
         # face, or moved behind its disclosure and lost; an unavailable figure that stops saying so.

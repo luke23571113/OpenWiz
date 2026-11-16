@@ -7,6 +7,7 @@ disabled, reads it at 1440 and 390 CSS px. Synthetic input only.
 """
 import hashlib
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.dont_write_bytecode = True
@@ -140,6 +142,14 @@ clearTimeout(deadline);
 ws.close(); browser.kill('SIGKILL');
 rmSync(profile, { recursive: true, force: true });
 """
+
+
+def load_serve():
+    """A fresh copy of the adapter module, so a test can interleave its own calls."""
+    spec = importlib.util.spec_from_file_location('wrd5_serve', SERVE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def git(cwd, *args):
@@ -301,6 +311,33 @@ class Web(unittest.TestCase):
         self.assertNotEqual(newer['/'], good)
         for route, data in newer.items():
             self.assertEqual(self.request(port, route)[2], data, route)
+
+    def test_overlapping_refreshes_never_serve_a_deleted_site(self):
+        # catches (#926 R3): one refresh's cleanup deleting another refresh's staged generation just
+        # before it becomes current, so both report success while every route answers 503. Refresh B
+        # starts exactly when A is about to switch; it may finish only after A's switch.
+        self.assertEqual(self.publish().returncode, 0)
+        serve = load_serve()
+        serve.fetch(str(self.origin), self.served)
+        original, results, other = serve.os.replace, [], []
+
+        def interleave(source, destination):
+            if Path(destination) == self.served / serve.CURRENT and not other:
+                other.append(threading.Thread(target=lambda: results.append(serve.fetch(str(self.origin), self.served))))
+                other[0].start()
+                other[0].join(5)  # unserialized, B switches and cleans up here, before A's switch
+            return original(source, destination)
+        serve.os.replace = interleave
+        try:
+            outer = serve.fetch(str(self.origin), self.served)
+        finally:
+            serve.os.replace = original
+        other[0].join(60)
+        self.assertEqual(results, [outer])
+        self.assertTrue((self.served / serve.CURRENT).exists(), 'current points at a deleted generation')
+        port = self.start()
+        for route, data in self.site().items():
+            self.assertEqual(self.request(port, route)[:3:2], (200, data), route)
 
     def test_real_browser_reads_the_served_site_without_scripts(self):
         # catches: a served page that needs a script or a remote fetch to show its charts and values;

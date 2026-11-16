@@ -1,0 +1,15 @@
+# #926 R1-R3 red at 8763e64 + new checks; lines cut at 220 characters.
+## python3 -I tools/war-room/test_site.py Site.test_row_states_follow_each_producers_own_results
+FAIL: test_row_states_follow_each_producers_own_results (__main__.Site.test_row_states_follow_each_producers_own_results) [measured stage misses]
+AssertionError: 'partial' != 'off limit'
+FAIL: test_row_states_follow_each_producers_own_results (__main__.Site.test_row_states_follow_each_producers_own_results) [in_progress]
+AssertionError: Tuples differ: ('healthy', 'Pending') != ('partial', 'Pending')
+FAIL: test_row_states_follow_each_producers_own_results (__main__.Site.test_row_states_follow_each_producers_own_results) [cancelled]
+AssertionError: Tuples differ: ('healthy', 'Cancelled') != ('partial', 'Cancelled')
+Ran 1 test in 1.313s
+FAILED (failures=3)
+## python3 -I tools/war-room/test_web.py Web.test_overlapping_refreshes_never_serve_a_deleted_site
+FAIL: test_overlapping_refreshes_never_serve_a_deleted_site (__main__.Web.test_overlapping_refreshes_never_serve_a_deleted_site)
+AssertionError: False is not true : current points at a deleted generation
+Ran 1 test in 0.565s
+FAILED (failures=1)

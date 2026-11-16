@@ -428,8 +428,9 @@ class Publish(unittest.TestCase):
         # The run time comes from the clock here, so the one sample's name does too.
         files = self.files()
         self.assertEqual([f for f in files if not f.startswith('samples/')], PAGES)
-        files = [f for f in files if f.startswith('samples/')] * 2
-        self.assertRegex(files[1], r'^samples/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-00Z\.json$')
+        samples = [f for f in files if f.startswith('samples/')]
+        self.assertEqual(len(samples), 1, samples)
+        self.assertRegex(samples[0], r'^samples/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-00Z\.json$')
         self.assertEqual({k: v for k, v in self.refs().items() if k != 'refs/heads/war-room'}, self.before)
 
     def test_preview_draws_and_publishes_nothing(self):
