@@ -30,7 +30,7 @@ impl Installed {
         let root = std::env::temp_dir().join(format!("openwiz-init-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         dirs::private_dir_all(root.join("bin")).unwrap();
-        fs::copy(openwiz(), root.join("openwiz")).unwrap();
+        place::place(&openwiz(), &root.join("openwiz"));
         if with_runtime {
             dirs::private_dir_all(root.join("runtime/setup")).unwrap();
             for file in ["init.py", "store.py"] {
@@ -41,13 +41,10 @@ impl Installed {
                 .unwrap();
             }
         }
-        let gh = root.join("bin/gh");
-        fs::copy(
-            Path::new(ROOT).join("tools/install/tests/init/fake_gh.py"),
-            &gh,
-        )
-        .unwrap();
-        fs::set_permissions(&gh, fs::Permissions::from_mode(0o700)).unwrap();
+        place::place(
+            &Path::new(ROOT).join("tools/install/tests/init/fake_gh.py"),
+            &root.join("bin/gh"),
+        );
         let world = serde_json::json!({"user":{"login":"synthetic-owner","type":"User"},"faults":[],"log":[],
             "repos":{"synthetic-owner/synthetic-app":{"full_name":"synthetic-owner/synthetic-app","private":true,
             "visibility":"private","default_branch":"main","permissions":{"push":true},
