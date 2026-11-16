@@ -15,6 +15,8 @@ use crate::response;
 
 #[path = "loop_export.rs"]
 mod loop_export;
+#[path = "loop_plan.rs"]
+mod loop_plan;
 #[path = "loop_validate.rs"]
 mod loop_validate;
 
@@ -26,8 +28,9 @@ pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
   (contracts/loop-cli.v1.md). validate checks loop files and names each
-  problem by file and field. plan and apply are not built yet: each
-  refuses with exit 5 and reads and changes nothing.
+  problem by file and field. plan prints the exact room-cli commands and the
+  differences against room-cli loop list, and changes nothing. apply is not
+  built yet: it refuses with exit 5 and reads and changes nothing.
 ";
 
 /// Untrusted text (a Cloudroom name, id or key, room-cli's error text, a
@@ -241,6 +244,9 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         Ok(Parsed::Run(args)) if args.command == Command::Export => {
             loop_export::run(&args, stdout, stderr)
         }
+        Ok(Parsed::Run(args)) if args.command == Command::Plan => {
+            loop_plan::run(&args, stdout, stderr)
+        }
         Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
@@ -297,49 +303,43 @@ mod tests {
         )
     }
 
+    // plan (#792) is built; its keeper is tests/cli-agent/loop_plan.rs.
     // catches: a stub that succeeds, reads, or prints a result that is not the
     // contract's `not_built` document, so a caller mistakes it for a report.
     #[test]
     fn each_stub_refuses_with_the_contracts_not_built_result() {
         // validate's row is gone: it is built (#790), and
         // tests/cli-agent/loop_validate.rs keeps its behaviour.
-        for (args, command, ticket) in [
-            // export (#791) is built: its keeper is
-            // tests/cli-agent/loop_export.rs, which checks its real report.
-            (
-                &["plan", "loops", "--project", "prj_syn_0001", "--json"][..],
-                "plan",
-                792,
-            ),
-            (
-                &["apply", "nightly", "--project", "prj_syn_0001", "--json"],
-                "apply",
-                793,
-            ),
-        ] {
-            let (code, out, err) = run_args(args);
-            assert_eq!(code, 5, "{args:?}");
-            assert!(err.is_empty(), "{args:?}: {err}");
-            assert!(out.ends_with('\n') && out.lines().count() == 1, "{out:?}");
-            let doc: Value = serde_json::from_str(&out).unwrap();
-            assert_eq!(
-                doc,
-                serde_json::json!({
-                    "schema": "openwiz.loop-not-built.v1", "command": command,
-                    "exit_code": 5, "status": "not_built", "ticket": ticket,
-                    "message": format!("openwiz loop {command} is not built yet; nothing was read or changed"),
-                })
-            );
-            let text: Vec<&str> = args.iter().copied().filter(|a| *a != "--json").collect();
-            let (code, out, err) = run_args(&text);
-            assert_eq!((code, out.as_str()), (5, ""));
-            assert_eq!(
-                err,
-                format!(
-                    "openwiz: loop {command} is not built yet (#{ticket}); nothing was read or changed\n"
-                )
-            );
-        }
+        // export (#791) is built: its keeper is
+        // tests/cli-agent/loop_export.rs, which checks its real report.
+        // apply (#793) is the one stub left.
+        let (args, command, ticket) = (
+            &["apply", "nightly", "--project", "prj_syn_0001", "--json"],
+            "apply",
+            793,
+        );
+        let (code, out, err) = run_args(args);
+        assert_eq!(code, 5, "{args:?}");
+        assert!(err.is_empty(), "{args:?}: {err}");
+        assert!(out.ends_with('\n') && out.lines().count() == 1, "{out:?}");
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            doc,
+            serde_json::json!({
+                "schema": "openwiz.loop-not-built.v1", "command": command,
+                "exit_code": 5, "status": "not_built", "ticket": ticket,
+                "message": format!("openwiz loop {command} is not built yet; nothing was read or changed"),
+            })
+        );
+        let text: Vec<&str> = args.iter().copied().filter(|a| *a != "--json").collect();
+        let (code, out, err) = run_args(&text);
+        assert_eq!((code, out.as_str()), (5, ""));
+        assert_eq!(
+            err,
+            format!(
+                "openwiz: loop {command} is not built yet (#{ticket}); nothing was read or changed\n"
+            )
+        );
     }
 
     // catches: a parser that accepts a form the contract refuses (so a later

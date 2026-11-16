@@ -25,42 +25,34 @@ fn the_stubs_print_the_schemas_not_built_document_and_read_nothing() {
     assert_eq!(schema::lint(&contract), Vec::<String>::new());
     // validate is built (#790): loop_validate.rs checks its real output
     // against the same schema and that it reads no source.
-    for args in [
-        // export (#791) is built: its keeper is loop_export.rs, which checks
-        // its real output against export_report in the same schema.
-        &[
-            "loop",
-            "plan",
-            "loops",
-            "--project",
-            "project-synthetic",
-            "--json",
-        ][..],
-        &[
-            "loop",
-            "apply",
-            "nightly",
-            "--project",
-            "project-synthetic",
-            "--json",
-        ],
-    ] {
-        let sandbox = Sandbox::new();
-        let output = sandbox.run(args);
-        assert_eq!(output.status.code(), Some(5), "{args:?}");
-        let doc: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(
-            schema::validate(&contract, &doc),
-            Vec::<String>::new(),
-            "{args:?}"
-        );
-        assert_eq!(doc["schema"], "openwiz.loop-not-built.v1");
-        assert!(
-            !sandbox.0.join("calls").exists(),
-            "{args:?} called a source"
-        );
-        assert!(!sandbox.0.join("state").exists(), "{args:?} touched state");
-    }
+    // export (#791) is built: its keeper is loop_export.rs, which checks
+    // its real output against export_report in the same schema.
+    // plan (#792) is built: its keeper is tests/cli-agent/loop_plan.rs,
+    // whose every document is checked against this schema.
+    // apply (#793) is the one stub left.
+    let args = &[
+        "loop",
+        "apply",
+        "nightly",
+        "--project",
+        "project-synthetic",
+        "--json",
+    ];
+    let sandbox = Sandbox::new();
+    let output = sandbox.run(args);
+    assert_eq!(output.status.code(), Some(5), "{args:?}");
+    let doc: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        schema::validate(&contract, &doc),
+        Vec::<String>::new(),
+        "{args:?}"
+    );
+    assert_eq!(doc["schema"], "openwiz.loop-not-built.v1");
+    assert!(
+        !sandbox.0.join("calls").exists(),
+        "{args:?} called a source"
+    );
+    assert!(!sandbox.0.join("state").exists(), "{args:?} touched state");
 }
 
 // catches: a pinned WizLoops file that drifts from the pinned commit (an

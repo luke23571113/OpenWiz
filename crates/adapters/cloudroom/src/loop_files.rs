@@ -19,6 +19,13 @@
 //! to a loop file and its check, or refuses it. [`marker_id`],
 //! [`derive_id`] and [`render_script`] are the adapter's identity and
 //! params rules, which plan and apply use in the other direction.
+//!
+//! LC4 (#792, plan) builds on that reader: [`read_paths`] reads the paths
+//! `plan` is given, [`parse_loop_list`] reads `room-cli loop list` with the
+//! same strict JSON parser, and [`plan`] maps each valid file to its
+//! `room-cli loop create` or `update` command and compares it with its
+//! managed loop, as `contracts/wizloops-cloudroom.v1.md` says. Nothing here
+//! writes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -26,9 +33,16 @@ use std::path::Path;
 use std::time::Instant;
 
 use openwiz_core::source::SourceError;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
-use crate::{allowlist::Invocation, process, source::CloudRoomSource};
+use crate::{
+    allowlist::{
+        Invocation, LoopAgentArgs, LoopCreateArgs, LoopReschedule, LoopTrigger, LoopUpdateArgs,
+        ThreadId,
+    },
+    process,
+    source::CloudRoomSource,
+};
 
 /// One refusal, as the format's tables write it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -362,8 +376,11 @@ impl Parser<'_> {
         self.s.get(self.i).copied()
     }
 
+    /// JSON's whitespace. A frontmatter line never holds a line feed (lines
+    /// end there) or a carriage return (step 1 refuses it), so only `loop
+    /// list`'s document (LC4) meets those two.
     fn space(&mut self) {
-        while matches!(self.peek(), Some(b' ' | b'\t')) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
             self.i += 1;
         }
     }
@@ -1204,6 +1221,1198 @@ fn params(value: &Json, out: &mut Vec<Refusal>) {
     }
 }
 
+// ---- LC4 (#792): plan ----
+
+// ------------------------------------------------------------ the loop model
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Trigger {
+    Cron { cron: String, timezone: String },
+    At(String),
+    In(String),
+    Webhook,
+}
+
+impl Trigger {
+    /// The trigger in the loop file's shape.
+    pub fn to_json(&self) -> Value {
+        match self {
+            Trigger::Cron { cron, timezone } => json!({"cron": cron, "timezone": timezone}),
+            Trigger::At(at) => json!({"at": at}),
+            Trigger::In(delay) => json!({"in": delay}),
+            Trigger::Webhook => json!({"webhook": true}),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Check {
+    pub run: String,
+    pub timeout: i64,
+    /// The check script's text, read from beside the loop file.
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Agent {
+    pub provider: String,
+    pub model: String,
+    pub reasoning: String,
+}
+
+impl Agent {
+    fn to_json(&self) -> Value {
+        json!({"provider": self.provider, "model": self.model, "reasoning": self.reasoning})
+    }
+}
+
+/// `secrets`: every secret, or the names listed (empty for none).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Secrets {
+    All,
+    List(Vec<String>),
+}
+
+impl Secrets {
+    fn to_json(&self) -> Value {
+        match self {
+            Secrets::All => json!("all"),
+            Secrets::List(items) => json!(items),
+        }
+    }
+
+    /// `--secrets`' value: `none`, `all`, or the names joined by `,`.
+    fn flag(&self) -> String {
+        match self {
+            Secrets::All => "all".into(),
+            Secrets::List(items) if items.is_empty() => "none".into(),
+            Secrets::List(items) => items.join(","),
+        }
+    }
+
+    /// Equal as the adapter compares: a list as a set; `all` only to `all`.
+    fn same(&self, other: &Secrets) -> bool {
+        match (self, other) {
+            (Secrets::All, Secrets::All) => true,
+            (Secrets::List(a), Secrets::List(b)) => {
+                a.iter().collect::<BTreeSet<_>>() == b.iter().collect::<BTreeSet<_>>()
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanParam {
+    Str(String),
+    /// An integer, as its decimal digits.
+    Int(String),
+}
+
+/// One valid loop file in the adapter's terms, from LC2's [`LoopFile`]:
+/// what plan maps to `room-cli` and compares with a [`LiveLoop`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Loop {
+    pub id: String,
+    pub name: String,
+    pub trigger: Trigger,
+    pub check: Option<Check>,
+    /// `thread`: `"new"` is true, `"same"` false.
+    pub new_thread: bool,
+    pub agent: Option<Agent>,
+    pub secrets: Secrets,
+    pub priority: i64,
+    /// In byte order of name.
+    pub params: Vec<(String, PlanParam)>,
+    pub body: String,
+}
+
+/// A file LC2's reader accepted, as a [`Loop`]. `None` only for a shape
+/// the reader refuses, which a valid file never has.
+fn adapter_loop(file: &LoopFile) -> Option<Loop> {
+    let get = |key: &str| file.frontmatter.get(key);
+    let text = |v: &Value| v.as_str().map(str::to_owned);
+    let trigger = get("trigger")?;
+    let trigger = if let Some(cron) = trigger.get("cron") {
+        Trigger::Cron {
+            cron: text(cron)?,
+            timezone: text(trigger.get("timezone")?)?,
+        }
+    } else if let Some(at) = trigger.get("at") {
+        Trigger::At(text(at)?)
+    } else if let Some(delay) = trigger.get("in") {
+        Trigger::In(text(delay)?)
+    } else {
+        trigger.get("webhook")?;
+        Trigger::Webhook
+    };
+    let check = match get("check") {
+        None => None,
+        Some(check) => Some(Check {
+            run: text(check.get("run")?)?,
+            timeout: check.get("timeout")?.as_i64()?,
+            text: file.check.clone()?,
+        }),
+    };
+    let agent = match get("agent") {
+        None => None,
+        Some(agent) => Some(Agent {
+            provider: text(agent.get("provider")?)?,
+            model: text(agent.get("model")?)?,
+            reasoning: text(agent.get("reasoning")?)?,
+        }),
+    };
+    let secrets = match get("secrets")? {
+        Value::Array(items) => Secrets::List(items.iter().map(text).collect::<Option<_>>()?),
+        _ => Secrets::All,
+    };
+    let params = get("params")?
+        .as_object()?
+        .iter()
+        .map(|(name, value)| match value {
+            Value::String(s) => Some((name.clone(), PlanParam::Str(s.clone()))),
+            Value::Number(n) => Some((name.clone(), PlanParam::Int(n.to_string()))),
+            _ => None,
+        })
+        .collect::<Option<_>>()?;
+    Some(Loop {
+        id: text(get("id")?)?,
+        name: text(get("name")?)?,
+        trigger,
+        check,
+        new_thread: get("thread")?.as_str()? == "new",
+        agent,
+        secrets,
+        priority: get("priority")?.as_i64()?,
+        params,
+        body: file.body.clone(),
+    })
+}
+
+/// Reads each path `plan` is given with LC2's reader: a loop file, or a
+/// folder, whose files are shown as the folder's path, `/` and the name,
+/// each with its folder refusals. `Err` names the first path that can't be
+/// read.
+pub fn read_paths(paths: &[String]) -> Result<Vec<(String, FileRead)>, String> {
+    let mut files = Vec::new();
+    for path in paths {
+        let failed = |e: io::Error| format!("{path}: {e}");
+        if !std::fs::metadata(path).map_err(failed)?.is_dir() {
+            files.push((
+                path.clone(),
+                read_loop_path(Path::new(path)).map_err(failed)?,
+            ));
+            continue;
+        }
+        let mut folder = read_loop_folder(Path::new(path), false).map_err(failed)?;
+        for (name, refusal) in folder.refusals {
+            if let Some((_, read)) = folder.files.iter_mut().find(|(n, _)| *n == name) {
+                read.refusals.push(refusal);
+                read.file = None;
+            }
+        }
+        let shown = path.strip_suffix('/').unwrap_or(path);
+        files.extend(
+            folder
+                .files
+                .into_iter()
+                .map(|(name, read)| (format!("{shown}/{name}"), read)),
+        );
+    }
+    Ok(files)
+}
+
+impl Json {
+    fn get(&self, key: &str) -> Option<&Json> {
+        match self {
+            Json::Object(pairs) => pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    fn as_str(&self) -> Option<&str> {
+        match self {
+            Json::String(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
+/// One whole JSON document (`loop list`), keys in order, or `None` for
+/// anything else or a repeated key. `serde_json` checks it first, so its
+/// nesting limit bounds the order-keeping parser's recursion.
+fn parse_document(bytes: &[u8]) -> Option<Json> {
+    serde_json::from_slice::<Value>(bytes).ok()?;
+    let mut parser = Parser {
+        s: bytes,
+        i: 0,
+        duplicate: None,
+    };
+    parser.space();
+    let value = parser.value("")?;
+    parser.space();
+    (parser.i == bytes.len() && parser.duplicate.is_none()).then_some(value)
+}
+
+/// Each cron field's allowed values, or `None` when the cron is not the
+/// format's five fields.
+fn cron_fields(cron: &str) -> Option<Vec<BTreeSet<u32>>> {
+    let fields: Vec<&str> = cron.split(' ').collect();
+    if fields.len() != 5 {
+        return None;
+    }
+    let ranges = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)];
+    fields
+        .iter()
+        .zip(ranges)
+        .map(|(field, (min, max))| cron_field(field, min, max))
+        .collect()
+}
+
+fn cron_number(text: &str, min: u32, max: u32) -> Option<u32> {
+    if text.is_empty()
+        || !text.bytes().all(|b| b.is_ascii_digit())
+        || (text.len() > 1 && text.starts_with('0'))
+    {
+        return None;
+    }
+    text.parse().ok().filter(|n| (min..=max).contains(n))
+}
+
+fn cron_field(field: &str, min: u32, max: u32) -> Option<BTreeSet<u32>> {
+    if field == "*" {
+        return Some((min..=max).collect());
+    }
+    let mut values = BTreeSet::new();
+    for item in field.split(',') {
+        let (base, step) = match item.split_once('/') {
+            Some((base, step)) => (base, Some(cron_number(step, 1, u32::MAX)?)),
+            None => (item, None),
+        };
+        let (from, to) = if base == "*" {
+            step?;
+            (min, max)
+        } else if let Some((a, b)) = base.split_once('-') {
+            let (a, b) = (cron_number(a, min, max)?, cron_number(b, min, max)?);
+            if a > b {
+                return None;
+            }
+            (a, b)
+        } else {
+            let n = cron_number(base, min, max)?;
+            (n, if step.is_some() { max } else { n })
+        };
+        let step = step.unwrap_or(1) as usize;
+        values.extend((from..=to).step_by(step));
+    }
+    Some(values)
+}
+
+/// An RFC 3339 time with seconds and an offset, as seconds since the epoch
+/// and its fraction's digits (trailing zeros dropped), so that two
+/// spellings of one instant are equal.
+pub fn instant(time: &str) -> Option<(i64, String)> {
+    let b = time.as_bytes();
+    let digits = |range: std::ops::Range<usize>| -> Option<i64> {
+        let part = b.get(range)?;
+        if !part.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        std::str::from_utf8(part).ok()?.parse().ok()
+    };
+    if b.len() < 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || !matches!(b[10], b'T' | b't')
+        || b[13] != b':'
+        || b[16] != b':'
+    {
+        return None;
+    }
+    let (year, month, day) = (digits(0..4)?, digits(5..7)?, digits(8..10)?);
+    let (hour, minute, second) = (digits(11..13)?, digits(14..16)?, digits(17..19)?);
+    let mut at = 19;
+    let mut fraction = String::new();
+    if b[at] == b'.' {
+        at += 1;
+        let start = at;
+        while b.get(at).is_some_and(u8::is_ascii_digit) {
+            at += 1;
+        }
+        if at == start {
+            return None;
+        }
+        fraction = time[start..at].trim_end_matches('0').to_owned();
+    }
+    let offset = match b.get(at..)? {
+        [b'Z' | b'z'] => 0,
+        [sign @ (b'+' | b'-'), _, _, b':', _, _] => {
+            let hh = digits(at + 1..at + 3)?;
+            let mm = digits(at + 4..at + 6)?;
+            if hh > 23 || mm > 59 {
+                return None;
+            }
+            let minutes = hh * 60 + mm;
+            if *sign == b'+' { minutes } else { -minutes }
+        }
+        _ => return None,
+    };
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    if !(1..=12).contains(&month)
+        || day < 1
+        || day > month_days[(month - 1) as usize]
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    // Days from the civil date (Howard Hinnant's algorithm).
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    let seconds = days * 86_400 + hour * 3600 + minute * 60 + second - offset * 60;
+    Some((seconds, fraction))
+}
+
+// ------------------------------------------------------- the adapter's maps
+
+/// The marker the adapter writes at the end of a managed loop's name.
+pub fn marker(id: &str) -> String {
+    format!("[wizloop:{id}]")
+}
+
+/// A Cloudroom name's id and display name, when it ends with a marker.
+pub fn split_marker(name: &str) -> Option<(&str, &str)> {
+    let open = name.rfind(" [wizloop:")?;
+    let id = name[open + " [wizloop:".len()..].strip_suffix(']')?;
+    is_id(id).then(|| (id, &name[..open]))
+}
+
+/// The id export derives from an unmarked loop's name.
+pub fn derived_id(name: &str) -> String {
+    let mut id = String::new();
+    for c in name.to_lowercase().chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            id.push(c);
+        } else if !id.ends_with('-') {
+            id.push('-');
+        }
+    }
+    let id: String = id.trim_matches('-').chars().take(64).collect();
+    id.trim_end_matches('-').to_owned()
+}
+
+fn param_text(param: &PlanParam) -> &str {
+    match param {
+        PlanParam::Str(s) | PlanParam::Int(s) => s,
+    }
+}
+
+/// The body with its placeholders replaced: Cloudroom's `prompt`.
+pub fn rendered_body(file: &Loop) -> String {
+    let mut out = String::new();
+    let mut at = 0;
+    while let Some(start) = file.body[at..].find("{{").map(|i| at + i) {
+        out.push_str(&file.body[at..start]);
+        match placeholder(&file.body[start..]).and_then(|name| {
+            let end = start + name.len() + 4;
+            Some((file.params.iter().find(|(n, _)| n == name)?, end))
+        }) {
+            Some(((_, param), end)) => {
+                out.push_str(param_text(param));
+                at = end;
+            }
+            None => {
+                out.push_str("{{");
+                at = start + 2;
+            }
+        }
+    }
+    out.push_str(&file.body[at..]);
+    out
+}
+
+/// The params a check uses, in byte order of their names.
+fn carried_params(file: &Loop, check: &Check) -> Vec<(String, PlanParam)> {
+    let runs: BTreeSet<String> = check_uses(&check.text)
+        .into_iter()
+        .filter_map(|r| match r {
+            CheckUse::Reference(run) => Some(run),
+            CheckUse::Placeholder(_) => None,
+        })
+        .collect();
+    let mut carried: Vec<(String, PlanParam)> = file
+        .params
+        .iter()
+        .filter(|(name, _)| runs.contains(&name.to_ascii_uppercase()))
+        .cloned()
+        .collect();
+    carried.sort_by(|a, b| a.0.cmp(&b.0));
+    carried
+}
+
+/// The check with its params preamble: Cloudroom's `script`. Call it only
+/// for a check the adapter accepts (see [`file_refusals`]).
+pub fn rendered_script(file: &Loop, check: &Check) -> String {
+    let carried = carried_params(file, check);
+    if carried.is_empty() {
+        return check.text.clone();
+    }
+    let (first, rest) = check.text.split_once('\n').unwrap_or((&check.text, ""));
+    let mut out = format!("{first}\n{PREAMBLE_START}\n");
+    for (name, param) in carried {
+        let value = match param {
+            PlanParam::Int(digits) => digits,
+            PlanParam::Str(s) => format!("'{}'", s.replace('\'', "'\\''")),
+        };
+        out.push_str(&format!(
+            "export WIZLOOP_PARAM_{}={value}\n",
+            name.to_ascii_uppercase()
+        ));
+    }
+    out.push_str(PREAMBLE_END);
+    out.push('\n');
+    out.push_str(rest);
+    out
+}
+
+/// Minutes of the day a cron's minute and hour fields allow, checked for
+/// two runs less than 15 minutes apart (across midnight too).
+fn too_frequent(cron: &str) -> bool {
+    let Some(fields) = cron_fields(cron) else {
+        return false;
+    };
+    let minutes: Vec<u32> = fields[1]
+        .iter()
+        .flat_map(|h| fields[0].iter().map(move |m| h * 60 + m))
+        .collect();
+    let gaps = minutes.windows(2).map(|w| w[1] - w[0]);
+    let wrap = minutes
+        .first()
+        .zip(minutes.last())
+        .map(|(first, last)| first + 1440 - last);
+    gaps.chain(wrap).any(|gap| gap < 15)
+}
+
+/// The adapter's refusals of a file, whatever the live loop: its limits.
+pub fn file_refusals(file: &Loop) -> Vec<Refusal> {
+    let mut refusals = Vec::new();
+    if let Trigger::Cron { cron, .. } = &file.trigger
+        && file.check.is_none()
+        && too_frequent(cron)
+    {
+        refusals.push(Refusal::new(
+            "cf-too-frequent",
+            "trigger.cron",
+            "Cloudroom runs a loop without a check at most every 15 minutes",
+        ));
+    }
+    if let Some(check) = &file.check {
+        if !carried_params(file, check).is_empty()
+            && !SHELLS.iter().any(|s| check.text.starts_with(s))
+        {
+            refusals.push(Refusal::new("cf-check-shell", "check.run", "Cloudroom passes params to a check through a shell preamble; its first line must be #!/bin/sh, #!/bin/bash, #!/usr/bin/env sh or #!/usr/bin/env bash"));
+        }
+        if check.text.split('\n').nth(1) == Some(PREAMBLE_START) {
+            refusals.push(Refusal::new(
+                "cf-check-preamble",
+                "check.run",
+                "the check's second line is the adapter's preamble line; change that line",
+            ));
+        }
+        if check.timeout != 60 {
+            refusals.push(Refusal::new(
+                "cf-check-timeout",
+                "check.timeout",
+                "Cloudroom runs a check for exactly 60 seconds; set the timeout to 60",
+            ));
+        }
+    }
+    if !file.new_thread && file.agent.is_some() {
+        refusals.push(Refusal::new(
+            "cf-agent-same-thread",
+            "agent",
+            "Cloudroom sets an agent only for new-thread loops",
+        ));
+    }
+    refusals
+}
+
+/// One `room-cli` call, built by the allowlist and never run here. Its
+/// `@prompt` and `@script` operands stand for the files apply writes;
+/// `files` holds their text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoomCommand {
+    pub invocation: Invocation,
+    pub files: Vec<(String, String)>,
+}
+
+impl RoomCommand {
+    /// The arguments after `room-cli`, exactly as the allowlist builds them.
+    pub fn argv(&self) -> Vec<String> {
+        self.invocation.argv()
+    }
+
+    pub fn to_json(&self) -> Value {
+        let files: Map<String, Value> = self
+            .files
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect();
+        json!({"argv": self.argv(), "files": files})
+    }
+}
+
+fn agent_args(agent: &Agent) -> LoopAgentArgs {
+    LoopAgentArgs {
+        provider: agent.provider.clone(),
+        model: agent.model.clone(),
+        reasoning: agent.reasoning.clone(),
+    }
+}
+
+/// The adapter's `room-cli loop create` for a file.
+pub fn create_command(file: &Loop) -> RoomCommand {
+    let mut files = vec![("@prompt".to_owned(), rendered_body(file))];
+    let script_file = file.check.as_ref().map(|check| {
+        files.push(("@script".into(), rendered_script(file, check)));
+        "@script".to_owned()
+    });
+    let trigger = match &file.trigger {
+        Trigger::Cron { cron, timezone } => LoopTrigger::Cron {
+            cron: cron.clone(),
+            timezone: timezone.clone(),
+        },
+        Trigger::At(at) => LoopTrigger::At(at.clone()),
+        Trigger::In(delay) => LoopTrigger::In(delay.clone()),
+        Trigger::Webhook => LoopTrigger::Webhook,
+    };
+    let invocation = Invocation::LoopCreate(LoopCreateArgs {
+        name: format!("{} {}", file.name, marker(&file.id)),
+        prompt_file: "@prompt".into(),
+        trigger,
+        new_thread: file.new_thread,
+        script_file,
+        agent: file.agent.as_ref().map(agent_args),
+        priority: file.priority.to_string(),
+        secrets: file.secrets.flag(),
+    });
+    RoomCommand { invocation, files }
+}
+
+// ------------------------------------------------------- `room-cli loop list`
+
+/// One Cloudroom loop from `loop list`, with the keys the adapter maps.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveLoop {
+    pub loop_id: String,
+    /// The same id, as `room-cli loop update` takes it.
+    pub address: ThreadId,
+    pub project_id: String,
+    pub name: String,
+    /// The trigger in the file's shape, or the `cf-export-trigger` case.
+    pub trigger: Option<Trigger>,
+    pub new_thread: bool,
+    pub script: Option<String>,
+    pub agent: Option<Agent>,
+    pub secrets: Secrets,
+    pub priority: i64,
+    pub prompt: String,
+    pub enabled: bool,
+    /// Keys `list` gave that the adapter neither maps nor knows as run
+    /// state (`agent.<key>` inside the agent), in the order given.
+    pub unmapped: Vec<String>,
+}
+
+/// Every key of a `list` loop the adapter knows: the mapped ones, its own
+/// identifiers and the run state it leaves out of a file.
+const LIST_KEYS: [&str; 19] = [
+    "id",
+    "project_id",
+    "session_id",
+    "name",
+    "cron",
+    "timezone",
+    "run_at",
+    "webhook",
+    "new_thread",
+    "script",
+    "agent",
+    "secrets",
+    "priority",
+    "prompt",
+    "enabled",
+    "last_error",
+    "last_run_at",
+    "next_run_at",
+    "runs",
+];
+
+impl CloudRoomSource {
+    /// `room-cli loop list --json`, read once: every loop on the account.
+    pub fn loop_files_list(&self, deadline: Instant) -> Result<Vec<LiveLoop>, SourceError> {
+        let out = process::run(self.program(), &Invocation::LoopList, deadline)?;
+        parse_loop_list(&out).map_err(|detail| SourceError::Malformed { detail })
+    }
+}
+
+/// `{"automations": [...]}`, each loop with every key the adapter maps.
+/// Strict: a duplicate key, a missing key or a wrong type refuses the whole
+/// list, so plan never compares against part of an account.
+pub fn parse_loop_list(stdout: &[u8]) -> Result<Vec<LiveLoop>, String> {
+    let bad = |what: &str| {
+        format!("loop list is not the expected {{\"automations\": [...]}} JSON: {what}")
+    };
+    let doc =
+        parse_document(stdout).ok_or_else(|| bad("not one JSON document with unique keys"))?;
+    let Some(Json::Array(items)) = doc.get("automations") else {
+        return Err(bad("no automations array"));
+    };
+    let mut seen = BTreeSet::new();
+    items
+        .iter()
+        .map(|item| {
+            let loop_id = item
+                .get("id")
+                .and_then(Json::as_str)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| bad("a loop without an id"))?;
+            if !seen.insert(loop_id.to_owned()) {
+                return Err(bad("two loops with one id"));
+            }
+            let field = |key: &str| {
+                item.get(key)
+                    .ok_or_else(|| bad(&format!("{loop_id} has no {key}")))
+            };
+            let string = |key: &str| {
+                field(key)?
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| bad(&format!("{loop_id}'s {key} is not a string")))
+            };
+            let optional = |key: &str| match field(key)? {
+                Json::Null => Ok(None),
+                Json::String(s) => Ok(Some(s.clone())),
+                _ => Err(bad(&format!("{loop_id}'s {key} is not a string or null"))),
+            };
+            let boolean = |key: &str| match field(key)? {
+                Json::Bool(b) => Ok(*b),
+                _ => Err(bad(&format!("{loop_id}'s {key} is not a boolean"))),
+            };
+            let cron = optional("cron")?;
+            let timezone = optional("timezone")?;
+            let run_at = optional("run_at")?;
+            let webhook = boolean("webhook")?;
+            let trigger = match (cron, run_at, webhook) {
+                (Some(cron), None, false) => {
+                    timezone.map(|timezone| Trigger::Cron { cron, timezone })
+                }
+                (None, Some(at), false) => Some(Trigger::At(at)),
+                (None, None, true) => Some(Trigger::Webhook),
+                _ => None,
+            };
+            let agent = match field("agent")? {
+                Json::Null => None,
+                agent @ Json::Object(_) => {
+                    let part = |key: &str| {
+                        agent
+                            .get(key)
+                            .and_then(Json::as_str)
+                            .map(str::to_owned)
+                            .ok_or_else(|| bad(&format!("{loop_id}'s agent has no {key}")))
+                    };
+                    Some(Agent {
+                        provider: part("provider")?,
+                        model: part("model")?,
+                        reasoning: part("reasoning")?,
+                    })
+                }
+                _ => return Err(bad(&format!("{loop_id}'s agent is not an object or null"))),
+            };
+            let secrets = match field("secrets")? {
+                Json::Null => Secrets::All,
+                Json::Array(items) => Secrets::List(
+                    items
+                        .iter()
+                        .map(|s| s.as_str().map(str::to_owned))
+                        .collect::<Option<_>>()
+                        .ok_or_else(|| bad(&format!("{loop_id}'s secrets are not strings")))?,
+                ),
+                _ => return Err(bad(&format!("{loop_id}'s secrets are not a list or null"))),
+            };
+            let priority = field("priority")?
+                .integer()
+                .ok_or_else(|| bad(&format!("{loop_id}'s priority is not an integer")))?;
+            let mut unmapped: Vec<String> = Vec::new();
+            if let Json::Object(members) = item {
+                for (key, _) in members {
+                    if !LIST_KEYS.contains(&key.as_str()) {
+                        unmapped.push(key.clone());
+                    }
+                }
+            }
+            if let Some(Json::Object(members)) = item.get("agent") {
+                for (key, _) in members {
+                    if !["provider", "model", "reasoning"].contains(&key.as_str()) {
+                        unmapped.push(format!("agent.{key}"));
+                    }
+                }
+            }
+            Ok(LiveLoop {
+                unmapped,
+                loop_id: loop_id.to_owned(),
+                address: ThreadId::parse(loop_id).map_err(|_| {
+                    bad(&format!("{loop_id} is not an id that can be passed safely"))
+                })?,
+                project_id: string("project_id")?,
+                name: string("name")?,
+                trigger,
+                new_thread: boolean("new_thread")?,
+                script: optional("script")?,
+                agent,
+                secrets,
+                priority,
+                prompt: string("prompt")?,
+                enabled: boolean("enabled")?,
+            })
+        })
+        .collect()
+}
+
+// ------------------------------------------------------------------- plan
+
+/// One difference: the field, the file's value and the live value, both in
+/// the loop file's shape.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Difference {
+    pub field: &'static str,
+    pub file: Value,
+    pub live: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Create,
+    Update,
+    None,
+    Refused,
+}
+
+impl Action {
+    /// `none` or `refused`; `create` and `update` are their command's
+    /// subcommand, as the allowlist spells it (see [`PlanItem::action_word`]).
+    fn quiet_word(self) -> Option<&'static str> {
+        match self {
+            Action::None => Some("none"),
+            Action::Refused => Some("refused"),
+            Action::Create | Action::Update => None,
+        }
+    }
+}
+
+/// One file's plan.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanItem {
+    pub file: String,
+    pub id: Option<String>,
+    pub action: Action,
+    pub loop_id: Option<String>,
+    pub paused: bool,
+    pub commands: Vec<RoomCommand>,
+    pub differences: Vec<Difference>,
+    pub refusals: Vec<Refusal>,
+    pub notes: Vec<String>,
+}
+
+impl PlanItem {
+    /// The contract's `action`: a create or an update is named by its one
+    /// command's subcommand, so the word is spelled once, in the allowlist.
+    pub fn action_word(&self) -> String {
+        match (self.action.quiet_word(), self.commands.first()) {
+            (Some(word), _) => word.to_owned(),
+            (None, Some(command)) => command.argv()[1].clone(),
+            (None, None) => "refused".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Plan {
+    pub items: Vec<PlanItem>,
+    /// `(loop, name)` for each loop of the project with no marker and no binding.
+    pub unmanaged: Vec<(String, String)>,
+    /// `(loop, id)` for each managed loop with no file.
+    pub orphans: Vec<(String, String)>,
+}
+
+const SAME_THREAD_NOTE: &str =
+    "a same-thread run keeps its thread's own environment, whatever secrets says";
+
+/// Plans every file against the project's loops, as the adapter's "How plan
+/// compares" says. `now` is the current time in seconds since the epoch,
+/// for `cf-at-past`. Reads and writes nothing.
+pub fn plan(
+    files: &[(String, FileRead)],
+    live: &[LiveLoop],
+    project: &str,
+    bindings: &[(String, String)],
+    now: i64,
+) -> Plan {
+    let in_project: Vec<&LiveLoop> = live.iter().filter(|l| l.project_id == project).collect();
+    let managed = |id: &str| -> Vec<&LiveLoop> {
+        in_project
+            .iter()
+            .copied()
+            .filter(|l| split_marker(&l.name).is_some_and(|(m, _)| m == id))
+            .collect()
+    };
+    // Earlier files claim an id; a later file with the same id is refused.
+    let mut claimed: BTreeMap<String, String> = BTreeMap::new();
+    let mut bound: BTreeSet<String> = BTreeSet::new();
+    let mut items = Vec::new();
+    for (shown, read) in files {
+        let mut item = PlanItem {
+            file: shown.clone(),
+            id: read.id.clone(),
+            action: Action::Refused,
+            loop_id: None,
+            paused: false,
+            commands: Vec::new(),
+            differences: Vec::new(),
+            refusals: Vec::new(),
+            notes: Vec::new(),
+        };
+        let Some(file) = read.file.as_ref().and_then(adapter_loop) else {
+            item.refusals = read.refusals.clone();
+            items.push(item);
+            continue;
+        };
+        let file = &file;
+        if let Some(other) = claimed.get(&file.id) {
+            item.refusals.push(Refusal::new(
+                "duplicate-id",
+                "id",
+                format!("{} is also the id of {other}", file.id),
+            ));
+            items.push(item);
+            continue;
+        }
+        claimed.insert(file.id.clone(), shown.clone());
+        let marked = managed(&file.id);
+        let binding: Vec<&String> = bindings
+            .iter()
+            .filter(|(id, _)| *id == file.id)
+            .map(|(_, l)| l)
+            .collect();
+        let adopt_refusal = |loop_id: &str, reason: &str| {
+            Refusal::new(
+                "cf-adopt-binding",
+                "id",
+                format!("the binding to Cloudroom loop {loop_id} cannot be used: {reason}"),
+            )
+        };
+        let mut adopted = false;
+        let target: Option<&LiveLoop> = if marked.len() > 1 {
+            item.refusals.push(Refusal::new(
+                "cf-duplicate-marker",
+                "id",
+                format!(
+                    "two Cloudroom loops in this project carry {}",
+                    marker(&file.id)
+                ),
+            ));
+            None
+        } else if let Some(loop_id) = binding.first() {
+            let subject = in_project.iter().find(|l| l.loop_id == **loop_id);
+            let reason = if binding.len() > 1 {
+                Some("the id is bound more than once")
+            } else if bindings.iter().filter(|(_, l)| l == *loop_id).count() > 1 {
+                Some("another binding names the same loop")
+            } else if subject.is_none() {
+                Some("it is not a loop in this project")
+            } else if subject.is_some_and(|l| split_marker(&l.name).is_some()) {
+                Some("it already carries a marker")
+            } else if !marked.is_empty() {
+                Some("a loop in this project already carries this file's marker")
+            } else {
+                None
+            };
+            match reason {
+                Some(reason) => {
+                    item.refusals.push(adopt_refusal(loop_id, reason));
+                    None
+                }
+                None => {
+                    adopted = true;
+                    bound.insert((*loop_id).clone());
+                    subject.copied()
+                }
+            }
+        } else {
+            marked.first().copied()
+        };
+        if !item.refusals.is_empty() {
+            items.push(item);
+            continue;
+        }
+        if target.is_none()
+            && in_project
+                .iter()
+                .any(|l| split_marker(&l.name).is_none() && derived_id(&l.name) == file.id)
+        {
+            item.refusals.push(Refusal::new("cf-unmarked-match", "id", "an unmarked Cloudroom loop in this project has this name; adopt it or choose another id"));
+            items.push(item);
+            continue;
+        }
+        if !file.new_thread {
+            item.notes.push(SAME_THREAD_NOTE.into());
+        }
+        match target {
+            None => plan_create(&mut item, file, now),
+            Some(live) => plan_update(&mut item, file, live, adopted),
+        }
+        items.push(item);
+    }
+    let ids: BTreeSet<&str> = files.iter().filter_map(|(_, f)| f.id.as_deref()).collect();
+    let unmanaged = in_project
+        .iter()
+        .filter(|l| split_marker(&l.name).is_none() && !bound.contains(&l.loop_id))
+        .map(|l| (l.loop_id.clone(), l.name.clone()))
+        .collect();
+    let orphans = in_project
+        .iter()
+        .filter_map(|l| split_marker(&l.name).map(|(id, _)| (l, id)))
+        .filter(|(_, id)| !ids.contains(id))
+        .map(|(l, id)| (l.loop_id.clone(), id.to_owned()))
+        .collect();
+    Plan {
+        items,
+        unmanaged,
+        orphans,
+    }
+}
+
+fn plan_create(item: &mut PlanItem, file: &Loop, now: i64) {
+    let mut refusals = Vec::new();
+    if let Trigger::At(at) = &file.trigger
+        && instant(at).is_some_and(|(seconds, _)| seconds < now)
+    {
+        refusals.push(Refusal::new(
+            "cf-at-past",
+            "trigger.at",
+            "the time has passed",
+        ));
+    }
+    refusals.extend(file_refusals(file));
+    if !refusals.is_empty() {
+        item.refusals = refusals;
+        return;
+    }
+    if matches!(file.trigger, Trigger::In(_)) {
+        item.notes.push("an in trigger becomes a fixed run time when the loop is created; plan it again with that at time".into());
+    }
+    item.action = Action::Create;
+    item.commands.push(create_command(file));
+}
+
+fn same_trigger(file: &Trigger, live: &Trigger) -> bool {
+    match (file, live) {
+        (Trigger::At(a), Trigger::At(b)) => instant(a).is_some() && instant(a) == instant(b),
+        _ => file == live,
+    }
+}
+
+fn plan_update(item: &mut PlanItem, file: &Loop, live: &LiveLoop, adopted: bool) {
+    item.loop_id = Some(live.loop_id.clone());
+    item.paused = !live.enabled;
+    let mut refusals = Vec::new();
+    if matches!(file.trigger, Trigger::In(_)) {
+        refusals.push(Refusal::new(
+            "cf-in-existing",
+            "trigger.in",
+            "an in trigger can only create a loop; write the at time instead",
+        ));
+    }
+    refusals.extend(file_refusals(file));
+    let Some(live_trigger) = &live.trigger else {
+        refusals.push(Refusal::new(
+            "cf-export-trigger",
+            "trigger",
+            "the loop has no cron, run time or webhook",
+        ));
+        item.refusals = refusals;
+        return;
+    };
+    if (file.trigger == Trigger::Webhook) != (*live_trigger == Trigger::Webhook) {
+        refusals.push(Refusal::new(
+            "cf-update-webhook",
+            "trigger",
+            "Cloudroom cannot change a loop to or from a webhook",
+        ));
+    }
+    if file.new_thread != live.new_thread {
+        refusals.push(Refusal::new(
+            "cf-update-thread",
+            "thread",
+            "Cloudroom cannot change a loop's thread",
+        ));
+    }
+    if file.check.is_none() && live.script.is_some() {
+        refusals.push(Refusal::new(
+            "cf-update-remove-check",
+            "check",
+            "Cloudroom cannot remove a loop's check",
+        ));
+    }
+    if file.agent.is_none() && live.agent.is_some() {
+        refusals.push(Refusal::new(
+            "cf-update-remove-agent",
+            "agent",
+            "Cloudroom cannot return a loop to the caller's agent",
+        ));
+    }
+    if !refusals.is_empty() {
+        item.refusals = refusals;
+        return;
+    }
+    let live_name = if adopted {
+        live.name.as_str()
+    } else {
+        split_marker(&live.name).map_or(live.name.as_str(), |(_, name)| name)
+    };
+    let body = rendered_body(file);
+    let script = file.check.as_ref().map(|c| rendered_script(file, c));
+    let thread = |new: bool| json!(if new { "new" } else { "same" });
+    let agent = |a: &Option<Agent>| a.as_ref().map_or(Value::Null, Agent::to_json);
+    let mut differences = Vec::new();
+    let mut differ = |field: &'static str, same: bool, file: Value, live: Value| {
+        if !same {
+            differences.push(Difference { field, file, live });
+        }
+    };
+    differ(
+        "name",
+        file.name == live_name,
+        json!(file.name),
+        json!(live_name),
+    );
+    differ(
+        "trigger",
+        same_trigger(&file.trigger, live_trigger),
+        file.trigger.to_json(),
+        live_trigger.to_json(),
+    );
+    differ(
+        "thread",
+        file.new_thread == live.new_thread,
+        thread(file.new_thread),
+        thread(live.new_thread),
+    );
+    differ(
+        "agent",
+        file.agent == live.agent,
+        agent(&file.agent),
+        agent(&live.agent),
+    );
+    differ(
+        "priority",
+        file.priority == live.priority,
+        json!(file.priority),
+        json!(live.priority),
+    );
+    differ(
+        "secrets",
+        file.secrets.same(&live.secrets),
+        file.secrets.to_json(),
+        live.secrets.to_json(),
+    );
+    differ("body", body == live.prompt, json!(body), json!(live.prompt));
+    differ(
+        "check",
+        script == live.script,
+        json!(script),
+        json!(live.script),
+    );
+    let has = |field: &str| differences.iter().any(|d| d.field == field);
+    let mut files = Vec::new();
+    let script_file = match script {
+        Some(script) if has("check") => {
+            files.push(("@script".to_owned(), script));
+            Some("@script".to_owned())
+        }
+        _ => None,
+    };
+    let update = LoopUpdateArgs {
+        loop_id: live.address.clone(),
+        name: (has("name") || adopted).then(|| format!("{} {}", file.name, marker(&file.id))),
+        priority: has("priority").then(|| file.priority.to_string()),
+        prompt: has("body").then_some(body),
+        trigger: match &file.trigger {
+            _ if !has("trigger") => None,
+            Trigger::Cron { cron, timezone } => Some(LoopReschedule::Cron {
+                cron: cron.clone(),
+                timezone: timezone.clone(),
+            }),
+            Trigger::At(at) => Some(LoopReschedule::At(at.clone())),
+            // Refused above: an `in` file, and a change to or from a webhook.
+            Trigger::In(_) | Trigger::Webhook => None,
+        },
+        script_file,
+        agent: file.agent.as_ref().filter(|_| has("agent")).map(agent_args),
+        secrets: has("secrets").then(|| file.secrets.flag()),
+    };
+    let changes = update.name.is_some()
+        || update.priority.is_some()
+        || update.prompt.is_some()
+        || update.trigger.is_some()
+        || update.script_file.is_some()
+        || update.agent.is_some()
+        || update.secrets.is_some();
+    item.differences = differences;
+    if !live.unmapped.is_empty() {
+        item.notes.push(format!(
+            "Cloudroom loop {} carries settings the adapter does not map, so plan cannot compare them and the file does not hold them: {}",
+            live.loop_id,
+            live.unmapped.join(", ")
+        ));
+    }
+    if adopted {
+        item.notes.push(format!(
+            "adopts Cloudroom loop {}: its name gains the marker {}",
+            live.loop_id,
+            marker(&file.id)
+        ));
+    }
+    if changes {
+        item.action = Action::Update;
+        item.commands.push(RoomCommand {
+            invocation: Invocation::LoopUpdate(update),
+            files,
+        });
+    } else {
+        item.action = Action::None;
+    }
+}
+
 /// The preamble's first line, after the check's first line.
 pub const PREAMBLE_START: &str = "# wizloop: params from the loop file, as data";
 /// The line that ends the preamble.
@@ -2010,5 +3219,98 @@ mod tests {
                 ("missing-field", "thread".to_owned()),
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod plan_tests {
+    use super::*;
+
+    // catches: a JSON reader that collapses a repeated key, accepts a value
+    // that is not exactly one JSON value, or reads 2.0 as an integer.
+    #[test]
+    fn the_strict_json_reader_keeps_order_and_refuses_duplicates() {
+        assert_eq!(
+            parse_document(r#"{"b": 1, "a": [2.0, "xé"]}"#.as_bytes()),
+            Some(Json::Object(vec![
+                (
+                    "b".into(),
+                    Json::Number {
+                        text: "1".into(),
+                        integer: true
+                    }
+                ),
+                (
+                    "a".into(),
+                    Json::Array(vec![
+                        Json::Number {
+                            text: "2.0".into(),
+                            integer: false
+                        },
+                        Json::String("xé".into()),
+                    ])
+                ),
+            ]))
+        );
+        assert_eq!(parse_document(br#"{"a": {"b": 1, "b": 2}}"#), None);
+        for bad in [
+            "",
+            "01",
+            "[1,]",
+            "\"a\" \"b\"",
+            "{'a': 1}",
+            "1.",
+            "tru",
+            "\"\t\"",
+        ] {
+            assert_eq!(parse_document(bad.as_bytes()), None, "{bad}");
+        }
+    }
+
+    // catches: two spellings of one instant compared as different, or an
+    // invalid date taken as a time.
+    #[test]
+    fn instants_compare_across_spellings() {
+        assert_eq!(
+            instant("2030-01-02T03:04:05Z"),
+            instant("2030-01-02T03:04:05.000+00:00")
+        );
+        assert_eq!(
+            instant("2030-01-02T03:04:05Z"),
+            instant("2030-01-01T19:04:05-08:00")
+        );
+        assert_eq!(instant("1970-01-01T00:00:00Z"), Some((0, String::new())));
+        assert_ne!(
+            instant("2030-01-02T03:04:05.5Z"),
+            instant("2030-01-02T03:04:05Z")
+        );
+        for bad in [
+            "2030-01-02T03:04:05",
+            "2030-02-30T03:04:05Z",
+            "2030-01-02T03:04Z",
+            "2030-01-02 03:04:05Z",
+        ] {
+            assert_eq!(instant(bad), None, "{bad}");
+        }
+    }
+
+    // catches: the 15-minute rule missing a gap across midnight or an
+    // hour boundary, or refusing a loop that is due rarely enough.
+    #[test]
+    fn the_fifteen_minute_rule_reads_minute_and_hour() {
+        for (cron, refused) in [
+            ("*/5 * * * *", true),
+            ("*/15 * * * *", false),
+            ("0,50 * * * *", true),
+            ("59 23 * * *", false),
+            ("50 * * * *", false),
+            ("0,10 9 * * *", true),
+            ("55 23,0 * * *", false),
+            ("0 0,23 * * *", false),
+            ("50 23 * * *", false),
+            ("5,55 0,23 * * *", true),
+        ] {
+            assert_eq!(too_frequent(cron), refused, "{cron}");
+        }
     }
 }
