@@ -93,3 +93,13 @@ staging-short-read
   keeper: ap04_ready::each_step_is_durable_before_the_next_and_ready_comes_last
   result: FAILED (keeper catches the break)
   first:  thread 'ap04_ready::each_step_is_durable_before_the_next_and_ready_comes_last' panicked at tests/attachments/ap04_ready.rs:122:9:
+
+# Rerun after merging origin/main (8e988e2): TV8 (#810) moved this keeper to
+# crates/store/tests/attachments/ap04_ready.rs (openwiz-store's attachments target).
+
+staging-short-read
+  cut:    tests/messaging/b8_memory.rs::b8_the_fakes_peak_memory_grows_with_the_dispatchs_total_bytes (its one lost line, crates/store/src/attachments.rs:1338)
+  break:  crates/store/src/attachments.rs: Ok(n) => piece.truncate(n),
+  keeper: ap04_ready::each_step_is_durable_before_the_next_and_ready_comes_last
+  result: FAILED (keeper catches the break)
+  first:  thread 'ap04_ready::each_step_is_durable_before_the_next_and_ready_comes_last' panicked at crates/store/tests/attachments/ap04_ready.rs:118:9:

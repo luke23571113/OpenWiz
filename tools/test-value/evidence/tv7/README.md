@@ -48,8 +48,9 @@ line, only one line went from covered to uncovered.
   `Ok(n) => piece.truncate(n)`, reached only when a staged file is longer
   than one copy piece. In this group only `b8_memory.rs`'s 1 to 25 MiB files
   reached it. The behaviour stays and has its keeper in the attachments
-  group: `tests/attachments/ap04_ready.rs::each_step_is_durable_before_the_next_and_ready_comes_last`
-  stages a file of three pieces and more. Breaking that line made the keeper
+  group: `crates/store/tests/attachments/ap04_ready.rs::each_step_is_durable_before_the_next_and_ready_comes_last`
+  (moved there from `tests/attachments/` by TV8, #810) stages a file of
+  three pieces and more. Breaking that line made the keeper
   fail ([`keepers.txt`](keepers.txt), `staging-short-read`).
 - **The other 13 are the new binaries, not lost lines.** The per-file
   summaries differ in `crates/core/src/messaging/effects.rs` (77 to 73 of 80
