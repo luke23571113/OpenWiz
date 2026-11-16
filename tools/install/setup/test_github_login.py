@@ -61,6 +61,16 @@ enterprise = scenario.get('enterprise_account')
 host = os.environ.get('GH_HOST') or ('github.com' if scenario['account'] is not None or enterprise is None
                                      else 'enterprise.example')
 account = scenario['account'] if host == 'github.com' else enterprise
+failure = scenario.get('failure')
+if failure is not None:  # another failed read: gh's own error line, exit 1
+    print(failure, file=sys.stderr)
+    sys.exit(1)
+if account is None and enterprise is not None:
+    # Real gh with a credential only for another server: it asks the selected
+    # host anyway, GitHub answers 401, and gh exits 1 (not 4).
+    print('{"message":"Requires authentication","status":"401"}')
+    print('gh: Requires authentication (HTTP 401)', file=sys.stderr)
+    sys.exit(1)
 if account is None:
     print('To get started with GitHub CLI, please run:  gh auth login', file=sys.stderr)
     sys.exit(4)
@@ -235,6 +245,11 @@ class SignIn(Recording):
         child = int(marker.read_text())
         os.kill(child, 0)  # the browser sign-in is still waiting for the owner
         self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_in_progress')
+        # Final check R2: the record's age never outweighs a positively living
+        # sign-in child; only an unprovable record ages out.
+        record = self.state / 'setup/github-login-pending.json'
+        old = record.stat().st_mtime - 3 * 3600
+        os.utime(record, (old, old))
         self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_in_progress')
         self.assertEqual(len(self.sign_ins()), 1, 'no second browser sign-in while the first is pending')
         stop_pending(self.gh_dir)
@@ -304,6 +319,16 @@ class ForeignHost(Recording):
                 done = self.tool('sign-in', '--yes', env=env)
                 self.assertEqual((done['code'], done['login']), ('login_verified', 'synthetic-owner'))
         self.assertNotIn('identity', store.Store(str(self.state)).read())
+
+    def test_only_githubs_own_authentication_answer_opens_the_browser_sign_in(self):
+        # Final check R3: other failed reads stay refused and open nothing.
+        self.prepare()
+        for failure in ('gh: Server Error (HTTP 500)', 'gh: Not Found (HTTP 404)',
+                        'error connecting to api.github.com', 'gh: Requires authentication (HTTP 401) via proxy'):
+            with self.subTest(failure=failure):
+                self.update_scenario(account=None, enterprise_account='synthetic-enterprise', failure=failure)
+                self.assertEqual(self.tool('sign-in', '--yes')['code'], 'identity_unreadable')
+        self.assertEqual(self.sign_ins(), [])
 
 
 class SkipApp(Recording):
