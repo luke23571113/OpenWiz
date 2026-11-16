@@ -549,17 +549,16 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
 
 
 # The collector snapshot (collector.v1.md): every fact once, composed from both groups' reads.
-CI_FACTS = ('runs', 'minutes', 'ci3', 'activity', 'queue')
-CI_PENDING = 'CI facts are not collected yet: collect_ci.py (MT3, #822) gathers them.'
-
-
 def snapshot(repository, *, clock=now, **reads):
     """One `openwiz.war-room.collector.v1` snapshot, or raise Fail on a privacy hit (nothing kept).
 
-    `reads` are collect_factory.read's keywords (window, usage, robots, tickets, base, checks)."""
+    `reads` are collect_factory.read's keywords (window, usage, robots, tickets, base, checks);
+    the CI group is read over the same window."""
     factory = collect_factory.read(repository, collect_factory.FACTS, clock=clock, **reads)['factory']  # MT2's call
-    ci = {name: collect_factory.unavailable(name, CI_PENDING) for name in CI_FACTS}  # MT3's call
-    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repository, 'collected_at': clock(),
+    ci = ci_facts(repository, since=reads.get('since'), until=reads.get('until'))  # MT3's call
+    # The collection's end: at or after every fact's read, whichever clock each reader used.
+    ends = [f['read']['ended_at'] for group in (factory, ci) for f in group.values() if f['read']]
+    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repository, 'collected_at': max([clock(), *ends]),
            'factory': factory, 'ci': ci}
     scan_bytes(json.dumps(doc, sort_keys=True).encode())
     return doc
