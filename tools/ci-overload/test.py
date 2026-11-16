@@ -502,45 +502,51 @@ class Supplier(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.fake, self.r = collector_fake(self.root)
-        self.input = self.root / 'observation.json'
+        self.input = self.root / 'observation.json'  # the caller's own input, used only without a supplier
 
-    def admit(self, action, supply=True, now=None, state='pause.json'):
-        """One `fleet.sh overload <action>`; a fresh state file per call unless named."""
-        env = self.fake.env(GH_REPO=REPO, LAUNCH_FLEET_OVERLOAD_INPUT=str(self.input),
-                            LAUNCH_FLEET_OVERLOAD_STATE=str(self.root / state))
-        env.pop('LAUNCH_FLEET_NOW', None)
-        env.pop('LAUNCH_FLEET_OVERLOAD_SUPPLY', None)
-        if supply:
-            env['LAUNCH_FLEET_OVERLOAD_SUPPLY'] = str(HERE / 'supply.py')
+    def env(self, fake=None, supplier=HERE / 'supply.py', now=None, state='pause.json', **extra):
+        env = (fake or self.fake).env(GH_REPO=REPO, LAUNCH_FLEET_OVERLOAD_INPUT=str(self.input),
+                                      LAUNCH_FLEET_OVERLOAD_STATE=str(self.root / state), **extra)
+        for name in ('LAUNCH_FLEET_NOW', 'LAUNCH_FLEET_OVERLOAD_SUPPLY'):
+            env.pop(name, None)
+        if supplier is not None:
+            env['LAUNCH_FLEET_OVERLOAD_SUPPLY'] = str(supplier)
         if now is not None:
             env['LAUNCH_FLEET_NOW'] = str(now)
+        return env
+
+    def admit(self, action, **options):
+        """One `fleet.sh overload <action>`, with the supplier unless `supplier=None`."""
         asked = len(self.fake.asked())
         result = subprocess.run(['sh', str(HERE.parents[1] / 'skills/launch-fleet/scripts/fleet.sh'),
-                                 'overload', action], env=env, capture_output=True, text=True, timeout=60)
+                                 'overload', action], env=self.env(**options), capture_output=True, text=True,
+                                timeout=60)
         self.assertIn(result.returncode, (0, 1), result.stderr)
         answer = json.loads(result.stdout)
         self.assertEqual(result.returncode, 0 if answer['allowed'] else 1)
         return answer, self.fake.asked()[asked:]
 
-    def without_queued_jobs(self):
-        jobs = self.fake.answer(self.r + '/actions/runs/7101/jobs?')
+    def supply(self):
+        """The supplier on its own, writing the caller's input; returns the observation."""
+        result = subprocess.run([sys.executable, '-I', str(HERE / 'supply.py'), '--repository', REPO,
+                                 '--output', str(self.input)], env=self.env(supplier=None),
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual((result.returncode, result.stdout), (0, ''), result.stderr)
+        return json.loads(self.input.read_text())
+
+    def without_queued_jobs(self, fake=None):
+        fake = fake or self.fake
+        jobs = fake.answer(self.r + '/actions/runs/7101/jobs?')
         jobs['jobs'] = [j for j in jobs['jobs'] if j['status'] != 'queued']
         jobs['total_count'] = len(jobs['jobs'])
-        self.fake.drop(self.r + '/actions/workflows/privacy.yml/runs?status=queued&')
+        fake.drop(self.r + '/actions/workflows/privacy.yml/runs?status=queued&')
 
     def test_the_guard_decides_on_the_collector_s_queue_read_now(self):
         # catches: a supplier that never reads the collector (the guard keeps refusing every run on
-        # a missing input), reads it without the required queued jobs, or restamps observed_at.
+        # a missing input) or reads it without the required queued jobs.
         # job-8101 has queued since 12:03:20 on 2026-01-05 (the fixture's README): the guard escalates.
-        before = int(time.time())
         answer, asked = self.admit('merge-batch')
-        after = int(time.time())
         self.assertIn('rate_limit', asked)
-        observation = json.loads(self.input.read_text())
-        self.assertEqual(observation['repository'], REPO)
-        self.assertTrue(before <= observation['observed_at'] <= after)
-        self.assertEqual([j['id'] for j in observation['queue']['jobs'] if j['status'] == 'queued'],
-                         ['job-8101', 'job-8201'])
         self.assertEqual((answer['level'], answer['allowed'], answer['escalation']),
                          ('escalate', False, 'due_not_sent'))
         self.assertEqual(answer['oldest_wait_seconds'], answer['pause']['observed_at'] - 1767614600)
@@ -554,25 +560,69 @@ class Supplier(unittest.TestCase):
         self.assertEqual((answer['level'], answer['allowed']), ('unknown', False))
         answer, _ = self.admit('merge-batch')
         self.assertEqual((answer['level'], answer['allowed']), ('healthy', True))
-        observed = json.loads(self.input.read_text())['observed_at']
+        before = int(time.time())
+        observed = self.supply()['observed_at']
+        self.assertTrue(before <= observed <= int(time.time()))
         for age, allowed in ((60, True), (61, False)):
             with self.subTest(age=age):
-                answer, asked = self.admit('merge-batch', supply=False, now=observed + age,
+                answer, asked = self.admit('merge-batch', supplier=None, now=observed + age,
                                            state='age-%d.json' % age)
                 self.assertEqual(asked, [])
                 self.assertEqual(answer['allowed'], allowed)
                 self.assertEqual(answer['level'], 'healthy' if allowed else 'unknown')
 
-    def test_a_failed_read_leaves_no_older_observation_to_admit_on(self):
-        # catches: a failed collector read that leaves the last observation (still under 60 s old)
-        # as the guard's input, or writes an empty queue, so new work is admitted on unread data.
+    def test_a_failed_supply_never_admits_on_an_older_observation(self):
+        # catches (R1): a supplier that can't start, can't import the collector or reads nothing, while
+        # the caller's earlier healthy observation (under 60 s old) is still there: the guard admits on it.
         self.without_queued_jobs()
-        answer, _ = self.admit('merge-batch', state='first.json')
-        self.assertEqual(answer['allowed'], True)
-        self.fake.drop('rate_limit')
-        answer, _ = self.admit('merge-batch', state='second.json')
-        self.assertEqual((answer['level'], answer['allowed']), ('unknown', False))
-        self.assertFalse(self.input.exists())
+        self.supply()
+        lone = self.root / 'lone'  # a copy of the supplier without the war room beside it
+        lone.mkdir()
+        shutil.copyfile(HERE / 'supply.py', lone / 'supply.py')
+        for case, supplier in (('missing', self.root / 'missing-checkout/supply.py'),
+                               ('no collector', lone / 'supply.py'), ('read fails', HERE / 'supply.py')):
+            if case == 'read fails':
+                self.fake.drop('rate_limit')
+            for action in ('merge-batch', 'automatic-refresh', 'nonessential-poll'):
+                with self.subTest(case=case, action=action):
+                    state = '%s-%s.json' % (case.replace(' ', '-'), action)
+                    answer, _ = self.admit(action, supplier=supplier, state=state)
+                    self.assertEqual((answer['level'], answer['allowed'], answer['state_saved']),
+                                     ('unknown', False, True))
+                    self.assertEqual(json.loads((self.root / state).read_text())['level'], 'unknown')
+
+    def test_an_observed_escalation_is_kept_when_another_admission_reads_healthy_first(self):
+        # catches (R2): two admissions sharing one observation path, so a later healthy read replaces an
+        # earlier escalating one before its guard opens it: both admit and no pause is kept.
+        (self.root / 'b').mkdir()
+        recovered, _ = collector_fake(self.root / 'b')
+        self.without_queued_jobs(recovered)
+        ready, release = self.root / 'ready', self.root / 'release'
+        os.mkfifo(ready)
+        os.mkfifo(release)
+        held = self.root / 'held.py'  # the real supplier, then a hold before fleet.sh's guard runs
+        held.write_text('import os, subprocess, sys\n'
+                        "rc = subprocess.run([sys.executable, '-I', os.environ['REAL_SUPPLY'], *sys.argv[1:]]).returncode\n"
+                        "with open(os.environ['HOLD_READY'], 'w') as f: f.write(str(rc))\n"
+                        "with open(os.environ['HOLD_RELEASE']) as f: f.read()\n"
+                        'sys.exit(rc)\n')
+        fleet = ['sh', str(HERE.parents[1] / 'skills/launch-fleet/scripts/fleet.sh'), 'overload', 'merge-batch']
+        first = subprocess.Popen(fleet, env=self.env(supplier=held, REAL_SUPPLY=str(HERE / 'supply.py'),
+                                                     HOLD_READY=str(ready), HOLD_RELEASE=str(release)),
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            with open(ready) as f:
+                self.assertEqual(f.read(), '0')
+            second = subprocess.run(fleet, env=self.env(fake=recovered), capture_output=True, text=True,
+                                    timeout=60)
+            self.assertEqual((second.returncode, json.loads(second.stdout)['level']), (0, 'healthy'))
+        finally:
+            with open(release, 'w') as f:
+                f.write('go')
+            out, err = first.communicate(timeout=60)
+        answer = json.loads(out)
+        self.assertEqual((first.returncode, answer['level'], answer['allowed']), (1, 'escalate', False), err)
+        self.assertEqual(json.loads((self.root / 'pause.json').read_text())['level'], 'escalate')
 
     def test_a_partial_read_still_hands_the_guard_its_known_exhaustion(self):
         # catches: a supplier that drops an incomplete observation, losing the exhausted pool the
@@ -581,10 +631,9 @@ class Supplier(unittest.TestCase):
         self.fake.drop(self.r + '/actions/runs/7103/jobs?')
         self.fake.answer('rate_limit')['resources']['core']['remaining'] = 0
         answer, _ = self.admit('merge-batch')
-        self.assertEqual(json.loads(self.input.read_text())['complete'], False)
         self.assertEqual((answer['level'], answer['allowed'], answer['escalation']),
                          ('escalate', False, 'due_not_sent'))
-        self.assertIn('rest_exhausted', answer['causes'])
+        self.assertEqual(sorted(answer['causes']), ['observation_unknown', 'rest_exhausted'])
 
     def test_completion_and_reconciliation_spend_no_read_and_stay_allowed(self):
         # catches: essential actions made to wait on, or spend API reads for, a fresh collector read
@@ -594,7 +643,6 @@ class Supplier(unittest.TestCase):
                 answer, asked = self.admit(action, state=action + '.json')
                 self.assertEqual(asked, [])
                 self.assertEqual(answer['allowed'], True)
-
 
 if __name__ == '__main__':
     unittest.main()
