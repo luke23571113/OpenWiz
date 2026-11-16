@@ -246,12 +246,13 @@ fn projects_are_read_with_their_kind_and_remote() {
         Fact::Known("personal".to_owned())
     );
     // Drift: a missing or mistyped field is unknown, so the project is
-    // refused; a row without an id can't be named.
+    // refused; a row without an id, or with an empty one, can't be named.
     let drift = json!([
         {"id": "prj_syn_0011", "kind": "standard", "name": "Synthetic a"},
         {"id": "prj_syn_0012", "kind": 3, "name": "Synthetic b", "gitRemoteUrl": github("0012")},
         {"id": "prj_syn_0013", "kind": "standard", "name": "Synthetic c", "gitRemoteUrl": 7},
         {"kind": "standard", "name": "Synthetic d", "gitRemoteUrl": github("0014")},
+        {"id": "", "kind": "standard", "name": "Synthetic e", "gitRemoteUrl": github("0015")},
         "not a row",
     ]);
     let rows = parse_projects(drift.to_string().as_bytes()).expect("parsed");
