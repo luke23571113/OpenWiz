@@ -105,6 +105,8 @@ def binding_errors(b):
     if not (exact(n, COUNTS) and all(integer(n[k]) for k in COUNTS) and n['fleet_threads'] == 1 and n['loops'] == 1
             and n['app_registrations'] <= 1 and n['companions'] <= 1):
         out.append('The counts are unbound: one fleet thread, one loop, at most one App registration and one companion.')
+    elif isinstance(r, dict) and r.get('app_registration') == 'created' and n['app_registrations'] < 1:
+        out.append('The binding allows no App registration for its created App.')
     if not integer(b['credit_bound'], 1):
         out.append('The credit bound must be a positive number of Cloud Credits.')
     rec = b['recorded']
@@ -250,6 +252,9 @@ def validate(receipt_text, result_text, fleet, binding, record):
     if (receipt['identity'], receipt['app_registration'], receipt['secret_route']) != (
             route['identity'], route['app_registration'], route['secret_route']):
         out.append('The receipt reports another identity or secret route than the bound one.')
+    # Both clocks start when the same public instruction is opened: one start, read once, or none at all.
+    if receipt['clock']['started_at_ms'].get('known') != result['clock']['started_at_ms'].get('known'):
+        out.append("The receipt's start is not the first-hour result's instruction-open start.")
     # The merge: the first-hour result's own read-back, at the receipt's head and time.
     merge = bound['merge']
     stage = next(s for s in result['stages'] if s['id'] == 'merge')
