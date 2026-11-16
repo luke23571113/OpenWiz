@@ -12,6 +12,14 @@ sh skills/launch-fleet/scripts/fleet.sh overload automatic-refresh
 sh skills/launch-fleet/scripts/fleet.sh overload nonessential-poll
 ```
 
+In an OpenWiz checkout, set `LAUNCH_FLEET_OVERLOAD_SUPPLY` to the absolute
+path of its `tools/ci-overload/supply.py` (MT6, #825) to have `fleet.sh overload`
+read the war room collector's queue fact now and write it to
+`LAUNCH_FLEET_OVERLOAD_INPUT` (absolute) before `merge-batch`,
+`automatic-refresh` and `nonessential-poll`; a failed read leaves no input, so
+the guard refuses new work as unknown. `completion` and `reconciliation` read
+nothing more. See [`tools/ci-overload/README.md`](../../tools/ci-overload/README.md).
+
 The actions are `merge-batch`, `automatic-refresh`, `nonessential-poll`,
 `completion` and `reconciliation`. The output is one JSON decision. Exit 0
 admits that action, 1 refuses it, and 2 means invalid invocation. Errors never

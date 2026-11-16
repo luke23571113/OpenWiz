@@ -82,6 +82,19 @@ if [ "$cmd" = overload ]; then
   [ $# -eq 1 ] || die "overload needs one action"
   [ -n "${GH_REPO:-}" ] && [ -n "${LAUNCH_FLEET_OVERLOAD_STATE:-}" ] \
     || die "overload needs GH_REPO and LAUNCH_FLEET_OVERLOAD_STATE"
+  # MT6 (#825): with LAUNCH_FLEET_OVERLOAD_SUPPLY (an OpenWiz checkout's
+  # absolute tools/ci-overload/supply.py), new work first reads the collector's
+  # queue now into the input; a failed read leaves no input, so it refuses.
+  # Completion and reconciliation read nothing more.
+  case $1 in merge-batch | automatic-refresh | nonessential-poll)
+    if [ -n "${LAUNCH_FLEET_OVERLOAD_SUPPLY:-}" ]; then
+      case $LAUNCH_FLEET_OVERLOAD_SUPPLY:${LAUNCH_FLEET_OVERLOAD_INPUT:-} in /*:/*) ;;
+        *) die "the overload supplier needs absolute LAUNCH_FLEET_OVERLOAD_SUPPLY and LAUNCH_FLEET_OVERLOAD_INPUT" ;;
+      esac
+      python3 -I "$LAUNCH_FLEET_OVERLOAD_SUPPLY" --repository "$GH_REPO" \
+        --output "$LAUNCH_FLEET_OVERLOAD_INPUT" < /dev/null > /dev/null 2>&1 || :
+    fi ;;
+  esac
   exec python3 -I "$(dirname "$0")/carried/alarm.py" \
     --repository "$GH_REPO" --state "$LAUNCH_FLEET_OVERLOAD_STATE" \
     --input "${LAUNCH_FLEET_OVERLOAD_INPUT:-/nonexistent-overload-observation}" \

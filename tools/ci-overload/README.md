@@ -47,6 +47,32 @@ is an input-validity check, not a new resume threshold. A caller assertion of
 completeness is not authenticated live evidence. This ticket adds no API
 collector, credential profile, transport or new schema to the fleet contracts.
 
+## The supplier: the collector's queue read (MT6)
+
+```sh
+python3 -I tools/ci-overload/supply.py --repository synthetic-owner/synthetic-repo \
+  --output /absolute/private/observation.json
+```
+
+`supply.py` reads the war room collector's `queue` fact on demand
+(`collect_ci.read(repository, ['queue'])`,
+[`tools/war-room/collector.v1.md`](../war-room/collector.v1.md)) and writes
+its `value.observation`, unchanged, as this guard's `--input`: owner-only and
+replaced atomically. It never reads a saved snapshot, and `observed_at` stays
+the read's end, so the guard's 60-second bound and every refusal above are
+unchanged. A partial read is written as it is (`complete` false): the guard
+keeps any alarm it can still establish and otherwise says unknown. The output
+is removed before the read, so an unavailable fact or a refused read leaves
+no input at all (exit 1) and the guard refuses new work as unknown. Exit 0
+means an observation was written, 2 an invalid invocation. It prints nothing
+on stdout and no API answer on stderr.
+
+`fleet.sh overload` runs it, before the guard, for `merge-batch`,
+`automatic-refresh` and `nonessential-poll` when `LAUNCH_FLEET_OVERLOAD_SUPPLY`
+names it (absolute, with an absolute `LAUNCH_FLEET_OVERLOAD_INPUT`);
+`completion` and `reconciliation` read nothing more. Without the variable the
+input stays the caller's, as before.
+
 ## Decision and durable pause
 
 | Observation | Decision |
@@ -100,7 +126,8 @@ payloads stay private. Offline tests never send a page.
 ## Proof
 
 `python3 -I tools/ci-overload/test.py` owns the observer and fleet-action boundary
-proofs. `python3 -I tools/ci-overload/test.py Fleet Scheduled` runs the fleet
+proofs; its `Supplier` slice runs the supplier through `fleet.sh overload` on
+the collector's synthetic gh (`tools/war-room/fixtures/collector-ci/`). `python3 -I tools/ci-overload/test.py Fleet Scheduled` runs the fleet
 slice, including source and bundled scheduled entrypoints. `loop.sh` checks
 `automatic-refresh` before clone/fetch/checkout, then rechecks `nonessential-poll`
 before its broad fleet read. Both checks use the invoking installation or pinned

@@ -549,6 +549,9 @@ class Supplier(unittest.TestCase):
         # catches: the supplier's observation stamped with the guard's clock or the file's write time,
         # or a looser bound on the supplied path, so the guard admits on an observation past 60 s.
         self.without_queued_jobs()
+        before = int(time.time())
+        answer, _ = self.admit('merge-batch', now=before + 120, state='late.json')  # 2 min after the read began
+        self.assertEqual((answer['level'], answer['allowed']), ('unknown', False))
         answer, _ = self.admit('merge-batch')
         self.assertEqual((answer['level'], answer['allowed']), ('healthy', True))
         observed = json.loads(self.input.read_text())['observed_at']
