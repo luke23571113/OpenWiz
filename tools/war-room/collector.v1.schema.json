@@ -44,6 +44,7 @@
       "runs",
       "minutes",
       "ci3",
+      "activity",
       "queue"
     ]
   },
@@ -358,8 +359,14 @@
     "stage_waits_value": {
       "type": "object",
       "properties": {
+        "journey": {
+          "description": "The closedwiz.journey.v1 document TL2's sidecar is bound to, unchanged."
+        },
+        "sidecar": {
+          "description": "TL2's stage-waits sidecar, unchanged: journey.validate_stage_waits(sidecar, journey) checks it and its binding."
+        },
         "bench": {
-          "description": "TL2's closedwiz.journey.stage-bench.v1 output, verbatim; journey.py validates it."
+          "description": "journey.stage_bench(sidecar, settings) for the limits below, unchanged."
         },
         "limits": {
           "type": "object",
@@ -388,6 +395,8 @@
         }
       },
       "required": [
+        "journey",
+        "sidecar",
         "bench",
         "limits"
       ],
@@ -544,10 +553,17 @@
                 ]
               },
               "rollup": {
-                "enum": [
-                  "success",
-                  "failure",
-                  "pending"
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "enum": [
+                      "success",
+                      "failure",
+                      "pending"
+                    ]
+                  }
                 ]
               },
               "checks": {
@@ -936,7 +952,14 @@
           "$ref": "#/$defs/by_kind"
         },
         "unknown_minutes": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
         },
         "window_usd": {
           "anyOf": [
@@ -967,10 +990,24 @@
                 "$ref": "#/$defs/text"
               },
               "compute_usd_per_minute": {
-                "type": "number"
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
               },
               "platform_usd_per_minute": {
-                "type": "number"
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
               },
               "source_url": {
                 "$ref": "#/$defs/text"
@@ -1528,7 +1565,7 @@
         "observation": {
           "$ref": "#/$defs/guard_observation"
         },
-        "pools": {
+        "jobs": {
           "type": "array",
           "items": {
             "type": "object",
@@ -1536,6 +1573,20 @@
               "job": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9_-]{1,100}(?![\\s\\S])"
+              },
+              "workflow": {
+                "enum": [
+                  "ci.yml",
+                  "privacy.yml"
+                ]
+              },
+              "run_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "run_attempt": {
+                "type": "integer",
+                "minimum": 1
               },
               "pool": {
                 "anyOf": [
@@ -1550,6 +1601,9 @@
             },
             "required": [
               "job",
+              "workflow",
+              "run_id",
+              "run_attempt",
               "pool"
             ],
             "additionalProperties": false
@@ -1559,7 +1613,46 @@
       },
       "required": [
         "observation",
-        "pools"
+        "jobs"
+      ],
+      "additionalProperties": false
+    },
+    "activity_value": {
+      "description": "WR8's current ci.yml observation, carried: what the activity slot and health ci_queue read.",
+      "type": "object",
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "current": {
+          "description": "bench.current_activity's output for ci.yml (runs, jobs with run/attempt/status/pool, cost_jobs, cost), unchanged."
+        },
+        "created_at": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "job": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "created_at": {
+                "$ref": "#/$defs/time"
+              }
+            },
+            "required": [
+              "job",
+              "created_at"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "window",
+        "current",
+        "created_at"
       ],
       "additionalProperties": false
     },
@@ -2583,6 +2676,108 @@
       ],
       "additionalProperties": false
     },
+    "fact_activity": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "activity"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/activity_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
     "fact_queue": {
       "type": "object",
       "properties": {
@@ -2733,6 +2928,9 @@
         "ci3": {
           "$ref": "#/$defs/fact_ci3"
         },
+        "activity": {
+          "$ref": "#/$defs/fact_activity"
+        },
         "queue": {
           "$ref": "#/$defs/fact_queue"
         }
@@ -2741,6 +2939,7 @@
         "runs",
         "minutes",
         "ci3",
+        "activity",
         "queue"
       ],
       "additionalProperties": false
@@ -2797,6 +2996,9 @@
             },
             "ci3": {
               "$ref": "#/$defs/fact_ci3"
+            },
+            "activity": {
+              "$ref": "#/$defs/fact_activity"
             },
             "queue": {
               "$ref": "#/$defs/fact_queue"

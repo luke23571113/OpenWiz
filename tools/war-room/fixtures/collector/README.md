@@ -8,7 +8,8 @@ those files' real hash, so a reader can check the binding:
 
 | Carried value | From |
 | --- | --- |
-| `stage_waits.value.bench` | `tools/factory-metrics/fixtures/stage-waits/bench.json` (TL2's demonstration); `limits` hashes `tools/factory-metrics/limits.conf` |
+| `stage_waits.value.journey`, `sidecar`, `bench` | `tools/factory-metrics/fixtures/stage-waits/journeys.json`, `stage-waits.json` and `bench.json` (TL2's demonstration). `source` hashes the sidecar; `limits` hashes `tools/factory-metrics/limits.conf`. `journey.validate_stage_waits(sidecar, journey)` accepts them, and `journey.stage_bench(sidecar, limits.read(limits.conf))` equals the carried bench |
+| `activity.value.current.cost`, `read-minutes-partial.json`'s `minutes` | `bench.costs` on synthetic jobs, priced from the real `tools/ci-bench/prices.tsv` as `bench.read_prices` reads it (its `unknown` row has null rates) |
 | `journeys.value.document` | `tools/war-room/fixtures/rework/journeys.json` (WR6's three-PR cohort plus one) |
 | `ci3.value` | `python3 tools/ci-bench/ci3.py measure tools/ci-bench/fixtures/ci3/window.json` (no label), worked by hand in [its README](../../../ci-bench/fixtures/ci3/README.md) |
 
@@ -21,6 +22,8 @@ those files' real hash, so a reader can check the binding:
 | `read-stall.json` | `openwiz.war-room.collector.read.v1` | The stall alarm's on-demand read at a 12:04:00Z tick (MT5) |
 | `read-queue.json` | `openwiz.war-room.collector.read.v1` | The overload guard's on-demand read (MT6) |
 | `read-ci3.json` | `openwiz.war-room.collector.read.v1` | The CI3 loop's on-demand read of a settled window (MT7) |
+| `read-minutes-partial.json` | `openwiz.war-room.collector.read.v1` | A `minutes` fact with one job's timing unavailable: known minutes kept, totals unknown (MT3) |
+| `red-review-r1.log` | log | Review round 1's fixtures against the schema before its fix: each of R2–R5 refused at its own rule |
 
 ## Worked values in `snapshot.json`
 
@@ -42,9 +45,15 @@ The windowed facts cover the UTC day 2030-02-28.
 - **`runs` and `minutes`:** 6 completed `ci.yml` runs, 14 jobs, 4 code runs;
   queued-to-done median 9.5, p90 14.0 minutes. 60 runner minutes (40 GitHub,
   20 PC); 41 billed GitHub minutes × $0.006 = **$0.246**; the PC is $0.
-- **`open_prs`:** see `read-stall.json` below (the same three PRs).
-- **`queue`:** job-8001 queued at 12:03:20 and job-8002 running, read to
-  12:04:50, so `fresh_until` is 12:05:50. REST 4000/5000, GraphQL 4800/5000.
+- **`open_prs`:** see `read-stall.json` below (the same four PRs).
+- **`activity`:** today so far, `ci.yml` only: run 7100's job 8000 completed
+  (10 minutes on GitHub's Ubuntu: 10 billed × $0.006 = **$0.06**,
+  `cost_jobs` [8000]); run 7101's job 8001 queued since 12:03:20 and job 8002
+  running on the PC since its creation at 12:02:00.
+- **`queue`:** job-8001 queued at 12:03:20 and job-8002 running (both
+  `ci.yml` run 7101), and job-8004 queued at 12:04:00 (`privacy.yml` run
+  7102, which `activity` does not cover), read to 12:04:50, so `fresh_until`
+  is 12:05:50. REST 4000/5000, GraphQL 4800/5000.
 
 ## `read-stall.json`: two alarms
 
@@ -57,6 +66,17 @@ nothing.
 - **Idle agent:** #4211's latest fleet record is `findings sent` at its
   current head, at 10:50: 74 minutes old, at least 60: the alarm fires.
 - #4212 is a draft: neither alarm counts it.
+- #4213's rollup is null (no check has reported): it is not eligible for the
+  no-merge alarm, but its `findings sent` record at its head is 66 minutes
+  old, so the idle-agent alarm fires for it too.
+
+## `read-minutes-partial.json`: unknowns kept
+
+One job ran 10.5 minutes on GitHub's Ubuntu (billed 11); another job's timing
+is unavailable. `runner_minutes` keeps the 10.5 and `billed_minutes` the 11.
+`unknown_minutes` is null, because the unknown job's minutes are themselves
+unknown. `window_usd` and `per_code_run_usd` are null, and the fact is
+`partial`. `prices` keeps the table's `unknown` row with null rates.
 
 ## `read-queue.json`: the 60-second bound
 

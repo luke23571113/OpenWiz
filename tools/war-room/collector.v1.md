@@ -23,10 +23,10 @@ CI facts. Nothing here is a live observation.
 
 | Word | Meaning here |
 | --- | --- |
-| **Fact** | One named thing the collector gathers, with its read bounds, its own time (a point or a window), its freshness, its source and its value. The registry below names all eleven |
+| **Fact** | One named thing the collector gathers, with its read bounds, its own time (a point or a window), its freshness, its source and its value. The registry below names all twelve |
 | **Snapshot** | One complete collection: every fact once, saved as one `openwiz.war-room.collector.v1` document. The five-minute collection and the hourly publish use it |
 | **On-demand read** | A fresh read of named facts, now, for one reader: an `openwiz.war-room.collector.read.v1` document. Never served from a saved snapshot |
-| **Carried fact** | A fact whose value is another producer's own validated record, kept unchanged (the same JSON value that producer wrote) (TL2's stage bench, the journey document, the CI3 record). The collector adds the read, time and freshness around it; it never recomputes the record |
+| **Carried fact** | A fact whose value is another producer's own validated record, kept unchanged (the same JSON value that producer wrote) (TL2's stage sidecar and bench, the journey document, the CI3 record, WR8's current CI observation). The collector adds the read, time and freshness around it; it never recomputes the record |
 
 ## The snapshot
 
@@ -40,7 +40,7 @@ CI facts. Nothing here is a live observation.
   `read.ended_at`. It is the collection's identity, never a fact's time.
 - `factory` holds exactly `merges`, `prs_per_hour`, `stage_waits`, `stalls`,
   `open_prs`, `journeys` and `cost`; `ci` holds exactly `runs`, `minutes`,
-  `ci3` and `queue`. Every fact is present, in a snapshot, even when it could
+  `ci3`, `activity` and `queue`. Every fact is present, in a snapshot, even when it could
   not be read: an absent source is an `unavailable` fact with its
   prerequisite, never a missing key and never zero.
 - A failed fact greys only itself; the others are kept. A privacy hit in any
@@ -85,7 +85,7 @@ for its own facts (the schema checks only the shape):
 | --- | --- | --- | --- | --- |
 | factory | `merges` | window | Every PR merged in the window across **all** base branches: number, time, base, closing tickets and direction | factory-metrics, ci-bench (main only), stall alarm (count in the last hour), war room WR8 |
 | factory | `prs_per_hour` | window | ci-bench's headline: PRs an hour of CI capacity (robots × 60 ÷ robot-minutes per successful code run) and merged into `main`, with the baseline | ci-bench, war room `ci_bench` slot |
-| factory | `stage_waits` | point | TL2's stage bench, carried, with the TL1 limits read that judged it | war room WR3 and `stage_health`, via factory-metrics |
+| factory | `stage_waits` | point | TL2's stage sidecar, the journey it is bound to and its stage bench, carried, with the TL1 limits read that judged it | war room WR3 and `stage_health`, via factory-metrics |
 | factory | `stalls` | window | Recorded idle agent-minutes: every fleet-record gap, by hour, with its tickets | factory-metrics |
 | factory | `open_prs` | point | Open PRs now: head, draft, base, mergeable, required-check results at the head, the latest verdict and the latest fleet record | stall alarm |
 | factory | `journeys` | window | The merged cohort's journey document, carried, with its outcome sidecar | ci-bench trends, war room rework, cost and review loops |
@@ -93,7 +93,8 @@ for its own facts (the schema checks only the shape):
 | ci | `runs` | window | `ci.yml`'s completed runs (latest attempt): runs, jobs, successful code runs and their queued-to-done latency | ci-bench, war room `ci_bench` slot |
 | ci | `minutes` | window | Runner minutes and billed minutes by runner kind, and the list-rate estimate with its prices | ci-bench, war room cost |
 | ci | `ci3` | window | The CI3 measure: [`contracts/ci3.v1.md`](../../contracts/ci3.v1.md)'s record, carried | ci-bench `ci3.py`, `docs/ci3.md` |
-| ci | `queue` | point | The overload guard's observation, exactly: required jobs and both rate-limit pools, with each job's pool | overload guard (supplied file), war room `ci_queue` |
+| ci | `activity` | window | WR8's current `ci.yml` observation, carried: today's runs, every job with its run, attempt, status and pool, each active job's creation time, and the latest completed jobs' list-rate cost with their job ids | war room `activity` slot and health `ci_queue`, through ci-bench's `current_activity` |
+| ci | `queue` | point | The overload guard's observation, exactly: required `ci.yml` and `privacy.yml` jobs and both rate-limit pools, with each job's workflow, run, attempt and pool | overload guard (supplied file) |
 
 ### Factory values
 
@@ -112,12 +113,18 @@ for its own facts (the schema checks only the shape):
   label, window, robots, numbers and source, or null when no reviewed
   baseline is available (O16: the public baseline needs its own review; the
   private one stays private). Capacity is not merged throughput.
-- **`stage_waits`:** `bench` is TL2's `closedwiz.journey.stage-bench.v1`
-  output, verbatim, checked by `journey.validate_stage_waits` and produced by
-  `journey.stage_bench`; `limits` is `{schema, path, sha256, read_at}` of the
-  one TL1 settings file that judged it, read at or after TL2's `read_at`
-  (v2's rule). `point` is TL2's `read_at`. TL2's history is unknown, so the
-  fact is never `known`.
+- **`stage_waits`:** `journey` is the `closedwiz.journey.v1` document TL2's
+  sidecar is bound to, and `sidecar` is TL2's stage-waits sidecar, both
+  unchanged: `journey.validate_stage_waits(sidecar, journey)` checks the
+  sidecar and its binding. They keep every native wait endpoint, which
+  `stage_waits.py`, `health.stage_health` and the weekly report's
+  completion-week assignment read. `bench` is
+  `journey.stage_bench(sidecar, settings)` for the settings below, unchanged:
+  its endpoints are source ids and durations, so it never stands in for the
+  sidecar. `limits` is `{schema, path, sha256, read_at}` of the one TL1
+  settings file that judged it, read at or after TL2's `read_at` (v2's rule).
+  `point` is TL2's `read_at`; `source` names the sidecar. TL2's history is
+  unknown, so the fact is never `known`.
 - **`stalls`:** factory-metrics' gap rules, unchanged (its README, "What the
   numbers mean"): `idle_minutes`, `hours` (`{start, idle_minutes}` per whole
   UTC hour of the window), `stalls` (`{tickets, pull_request, kind, from,
@@ -129,7 +136,11 @@ for its own facts (the schema checks only the shape):
   judged) and `pull_requests`, each `{number, draft, base, head, mergeable,
   rollup, checks, verdict, record}`. `rollup` is the head's status rollup
   (`SUCCESS` is `success`, `FAILURE` and `ERROR` are `failure`, `PENDING` and
-  `EXPECTED` are `pending`; any other state, or none, fails the read).
+  `EXPECTED` are `pending`). An explicit null rollup (no checks have reported
+  yet) is `null`, with no `checks`: that PR is never eligible for the
+  no-merge alarm, and its verdict and record are kept, so its idle-agent
+  alarm still fires. Any other state, or an absent or malformed rollup field,
+  fails the read, as the stall alarm does today.
   `checks` are `{name, result}` at the head (`success`, `failure`, `pending`,
   `other`). `verdict` is the latest comment
   starting `VERDICT:` by comment id: `{verdict, head, comment_id, at}`.
@@ -156,12 +167,17 @@ for its own facts (the schema checks only the shape):
   `code_runs` (ci-bench's successful code-run rule), `latency_basis`, and
   `queued_to_done_minutes` (`median`, nearest-rank `p90`, `max`; null with no
   code run). Only completed runs, latest attempt, as ci-bench reads them.
-- **`minutes`:** `runner_minutes` and `billed_minutes` as
-  `[{runner_kind, minutes}]`, `unknown_minutes`, `window_usd` and
-  `per_code_run_usd` (list-rate estimates, null when any price or timing is
-  unknown), and `prices` (`{runner_kind, compute_usd_per_minute,
-  platform_usd_per_minute, source_url, verified_on}`). Estimates are not
-  invoices; billing is `cost`'s.
+- **`minutes`:** `bench.costs`' record, with its per-kind maps as lists:
+  `runner_minutes` and `billed_minutes` as `[{runner_kind, minutes}]` for
+  every job with known timing; `unknown_minutes`, the minutes of jobs with no
+  known price (null when a job's timing itself is unavailable, so the unknown
+  amount is unknown too); `window_usd` and `per_code_run_usd`, list-rate
+  estimates, null when any price or timing is unknown; and `prices`
+  (`{runner_kind, compute_usd_per_minute, platform_usd_per_minute,
+  source_url, verified_on}`), the table as read, where a rate the table says
+  is `unknown` is null. Known runner minutes stay when the totals are
+  unknown: such a fact is `partial`. Estimates are not invoices; billing is
+  `cost`'s.
 - **`ci3`:** the `openwiz.ci3.v1` record, exactly as `ci3.py measure` prints
   it: the measure, its cohort, `missing`, the critical path, the merge queue
   and runner minutes. `window` is the record's `since`/`until`;
@@ -169,13 +185,25 @@ for its own facts (the schema checks only the shape):
   and its versions stay CI3's (#780); the collector only carries it. Its raw
   window file stays private: `source` names it by hash. A record with missing
   heads is `partial`, its missing heads listed in the record.
+- **`activity`:** `window` is today's UTC day so far (to the read's end);
+  `current` is `bench.current_activity`'s output for `ci.yml`, unchanged:
+  `runs`, `jobs` (`{id, run, attempt, status, pool}`), `cost_jobs` (the
+  completed jobs the estimate covers) and `cost` (`bench.costs`' record for
+  them). `created_at` is each active job's `created_at` from the same job
+  pages, `{job, created_at}`. This is the cohort the page's `activity` slot
+  and health `ci_queue` read: `ci.yml` only, with each job's run and attempt
+  for evidence and wait identity, and the cost's sample identities. A failed,
+  short or changing page makes the whole fact `unavailable`, never zero.
 - **`queue`:** `observation` is the overload guard's input,
   [`tools/ci-overload/README.md`](../ci-overload/README.md)'s shape exactly:
   `repository`, `observed_at` (Unix seconds, the read's end), `complete`,
   `queue` (`complete`, `jobs` of `{id, required, status, queued_at,
   started_at}`) and `budgets` (`rest` and `graphql`, each `{remaining, limit,
-  reset_at, retry_after}`). `pools` names each job's exact pool (WR8's
-  selectors), or null, for the page. A job is `required` when it is a job of
+  reset_at, retry_after}`). `jobs` names each observation job's `workflow`
+  (`ci.yml` or `privacy.yml`), `run_id`, `run_attempt` and exact pool (WR8's
+  selectors, or null). `queue` is the guard's cohort, not `activity`'s: it
+  adds `privacy.yml` and counts only required jobs. The collector derives it
+  separately, in the same read pass, and neither stands in for the other. A job is `required` when it is a job of
   a current attempt of a `ci.yml` or `privacy.yml` pull request or merge
   group run: the required checks `ci` and `privacy` wait on it. A job whose
   run, attempt or requiredness can't be established, a short page or a
@@ -237,7 +265,8 @@ collector's facts replace the native artifacts their adapters read today:
 | `factory_metrics` (merges by hour, idle minutes, stalls, costs) | `merges`, `stalls`, `cost` |
 | `stage_waits`, health `stage_health` | `stage_waits` |
 | `journey`, `rework`, `cost`, `eb6` | `journeys`, with `cost` and `minutes` for the cost slot |
-| `activity` throughput, health `ci_queue` | `merges` (direction), `queue` |
+| `activity` throughput | `merges` (direction) |
+| `activity` current CI counts and cost today, health `ci_queue` | `activity` (its cost with `cost_jobs` as the sample; the same day's list-rate estimate, never `minutes`' completed window) |
 
 The slot names `ci_bench` and `factory_metrics` are part of the immutable v1
 registry and stay, even after both tools retire: saved samples are never
@@ -248,7 +277,7 @@ answer-time and experiment slots keep their existing sources.
 
 [`fixtures/collector/`](fixtures/collector/README.md) is synthetic: a full
 snapshot, an all-unavailable snapshot, and on-demand reads for the stall
-alarm, the guard and the CI3 loop, each with its worked values. Every fixture
+alarm, the guard, the CI3 loop and a partial cost, each with its worked values. Every fixture
 conforms to the schema under the war room's own stdlib checker
 (`suite._shape`), which is why the schema uses only that checker's
 vocabulary (booleans are `true`/`false` constants; objects are closed).
@@ -265,6 +294,7 @@ dropped. A drop loses no reader: the last column names who still has it.
 | --- | --- |
 | `collect`: `ci.yml` runs created in the window, completed; each run's latest-attempt jobs and steps; the run reread | `runs`, `minutes`, `prs_per_hour` |
 | `collect`: closed PRs into `main`, merged in the window | `merges` (base `main`) |
+| `current_activity` (read by the war room's WR8 and WRD1): today's `ci.yml` runs, every page of their jobs read twice, each run reread, the completed jobs' timing and labels for the estimate | `activity` (unchanged), and the job pages behind `queue` |
 | `measure`: `steps.tsv` (step categories) | A rules table, not a fact. It still classifies CI3's critical path (`contracts/ci3.v1.md`) and `check-steps`; it needs a home before MT8 (see Gaps) |
 | `measure`: `prices.tsv` (USD per minute) | `minutes.prices`, the prices each estimate used. The table itself is a rules table, as `steps.tsv` |
 | `chart`/`dashboard`: the baseline point (`--baseline`, private by default) | `prs_per_hour.baseline` |
