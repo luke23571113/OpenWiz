@@ -417,6 +417,38 @@ class BoundedReads(unittest.TestCase):
         self.assertTrue(world.log[1:] and set(world.log[1:]) <= first and len(set(world.log)) == len(world.log),
                         world.log)
 
+    def test_a_failure_after_another_run_succeeds_still_admits_no_further_run(self):
+        # catches: admission that trusts a stale wait() snapshot (review R1). Run 201 succeeds and
+        # wait() returns it; run 202 then fails before the scheduler looks again. Run 205 must
+        # still never start. The real wait() is used; only this legal interleaving is pinned.
+        let_fail, let_others, real_wait, calls = threading.Event(), threading.Event(), B.wait, []
+
+        def gate(path, nth):
+            if nth == 1 and path == jobs_path(202):
+                self.assertTrue(let_fail.wait(10))
+                raise OSError('synthetic transport failure')
+            if nth == 1 and path in (jobs_path(203), jobs_path(204)):
+                self.assertTrue(let_others.wait(10))
+
+        def pinned(futures, **how):
+            finished, pending = real_wait(futures, **how)
+            calls.append(len(finished))
+            if len(calls) == 1:  # only run 201 can have finished: let 202 fail, then return the old answer
+                let_fail.set()
+                failed, _ = real_wait(pending, **how)
+                self.assertTrue(all(f.exception() is not None for f in failed))
+                let_others.set()
+            return finished, pending
+        world = Runs(gate=gate)
+        try:
+            with patch.object(B, 'wait', pinned), self.assertRaises(OSError):
+                world.observe()
+        finally:
+            let_fail.set()
+            let_others.set()
+        self.assertEqual(world.now, 0)  # every admitted read ended before the call returned
+        self.assertFalse([p for p in world.log if any(f'/runs/{rid}' in p for rid in range(205, 209))], world.log)
+
 
 if __name__ == '__main__':
     unittest.main()
