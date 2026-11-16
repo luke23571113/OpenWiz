@@ -9,6 +9,7 @@ and rate-limit values are made up and assert nothing about a real repository.
 | `fake_gh.py` | The synthetic `gh` the tests put on `PATH`: it answers `gh api PATH` from `github.json`, never the network |
 | `red-first.log` | The tests against the red-run stub, before the collector was built |
 | `red-mutations.log` | The two proofs added later, each against the collector with its rule broken |
+| `green.log` | The same tests passing on the built collector, and the contract suite |
 
 A key matches its path exactly, or, when it ends in `?` or `&`, as the path's
 prefix; the first match answers. `{owner}/{repo}` resolve from `GH_REPO`, as
