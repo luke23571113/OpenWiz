@@ -244,7 +244,7 @@ class SignIn(Recording):
         def recorded_child():
             if not marker.exists() or not record.exists():
                 return False
-            return json.loads(record.read_text())['pid'] == int(marker.read_text())
+            return str(json.loads(record.read_text())['pid']) == marker.read_text()
 
         # The child's marker precedes the wrapper's durable PID write. Killing
         # at the marker alone can leave pid=null; ageing that record would

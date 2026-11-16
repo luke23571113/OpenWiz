@@ -1,7 +1,7 @@
-test_a_restart_while_approval_is_pending_starts_no_second_browser (test_github_login.SignIn.test_a_restart_while_approval_is_pending_starts_no_second_browser) ... Before ageing pending record: durable pid=4134, living child=4134
+test_a_restart_while_approval_is_pending_starts_no_second_browser (test_github_login.SignIn.test_a_restart_while_approval_is_pending_starts_no_second_browser) ... Before ageing pending record: durable pid=20286, living child=20286
 ok
 
 ----------------------------------------------------------------------
-Ran 1 test in 18.646s
+Ran 1 test in 21.862s
 
 OK

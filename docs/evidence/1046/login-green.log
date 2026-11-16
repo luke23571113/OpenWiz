@@ -15,6 +15,6 @@ test_preview_saves_nothing_then_confirmation_saves_the_choice_once (__main__.Ski
 test_the_check_refuses_another_account_and_lost_access (__main__.SkipApp.test_the_check_refuses_another_account_and_lost_access) ... ok
 
 ----------------------------------------------------------------------
-Ran 15 tests in 27.201s
+Ran 15 tests in 28.758s
 
 OK
