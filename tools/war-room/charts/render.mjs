@@ -226,7 +226,8 @@ function figureSvg(fig, document) {
   const spec = DRAW[fig.kind](fig);
   // A headline card with no numeric value draws no numeric axis, grid or ticks: Unknown has no
   // scale (#631 grant, comment 6903517509). Its marks, titles and values are unchanged.
-  if (card(fig) && valued(fig.rows).length === 0) {
+  // MT4 (#823): the PRs-an-hour headline follows the same rule when its snapshot has no value.
+  if ((card(fig) || fig.id === 'body-ci-bench-headline') && valued(fig.rows).length === 0) {
     const axis = ['bars', 'distribution'].includes(fig.kind) ? 'x' : 'y';
     spec[axis] = { ...(spec[axis] || {}), axis: null, grid: false, label: null };
   }

@@ -2,15 +2,22 @@
 // Display only: every state comes from GET /api/v1/setup.
 import { useState } from 'react';
 import type { SetupView } from '../api.ts';
-import { componentName, componentTier, nextComponent, operationName } from '../setup.ts';
+import { componentName, componentTier, identityNote, nextComponent, operationName } from '../setup.ts';
 import { CloudRoomSetup } from './CloudRoomSetup.tsx';
 import { StatusGlyph } from './StatusMark.tsx';
 import { SoftPanel } from './Ui.tsx';
 
 export function SetupComponents({ view }: { view: SetupView }) {
   return <>{view.components.map((component) => <section key={component.id} data-setup-component={component.id}>
-    <details><summary className="setup-component-head" aria-label={`${componentName(component.id)}: ${component.state}. Read reason and next step`}><StatusGlyph tier={componentTier(component.state)} /><span className="setup-component-name">{componentName(component.id)}</span><span className="setup-state">{component.state}</span></summary><p>{component.reason}</p><p>{component.next}</p>{component.id === 'cloudroom' && <CloudRoomSetup component={component} />}{component.id === 'remote_access' && <SetupAccess />}</details>
+    <details><summary className="setup-component-head" aria-label={`${componentName(component.id)}: ${component.state}. Read reason and next step`}><StatusGlyph tier={componentTier(component.state)} /><span className="setup-component-name">{componentName(component.id)}</span><span className="setup-state">{component.state}</span></summary><p>{component.reason}</p><p>{component.next}</p><SetupIdentity view={view} id={component.id} />{component.id === 'cloudroom' && <CloudRoomSetup component={component} />}{component.id === 'remote_access' && <SetupAccess />}</details>
   </section>)}</>;
+}
+
+/** #633: which GitHub identity acts, or the explicit skip on offer. Display only:
+ * skipping is the owner's choice through their installing agent, never this page's. */
+function SetupIdentity({ view, id }: { view: SetupView; id: SetupView['components'][number]['id'] }) {
+  const note = identityNote(view, id);
+  return note && <p data-setup-identity={note.kind}><span className="word">{note.text}</span></p>;
 }
 
 /** T5: guidance only. Choosing a route never authorizes or activates it. */

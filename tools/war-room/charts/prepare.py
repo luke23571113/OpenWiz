@@ -634,11 +634,12 @@ def check(doc):
     return doc
 
 
-def prepare(records, at, natives=()):
+def prepare(records, at, natives=(), extra=()):
+    """`extra`: figures built elsewhere in this folder (MT4's PRs an hour), checked like the rest."""
     suite._time(at)
     records = sorted(records, key=lambda r: r['sample_id'])
     figures = [ready_building(natives, at), main_merges(records, at), ci_latency(records, at),
-               runner_time(records, at), credit_burn(records, at)]
+               runner_time(records, at), credit_burn(records, at)] + list(extra)
     if records:
         figures += body_figures(records[-1])
     for f in figures:

@@ -9,7 +9,7 @@
 //! all refuse the whole file.
 
 use crate::{Area, StoreError, io_error};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -60,10 +60,45 @@ pub struct SetupState {
     pub operations: Vec<Operation>,
     #[serde(default)]
     pub engine: Option<Engine>,
+    /// #633 (setup.v1's 0.0.16 expansion): the owner's identity choice for
+    /// one repository. Absent in an old state: no selection, so the App rule.
+    #[serde(default)]
+    pub identity: Option<Identity>,
     /// #635: where settings consumers find the brain (setup-onboard.v1's
     /// `brain`). Absent or null is an existing project: no brain is inferred.
     #[serde(default)]
     pub brain: Option<Brain>,
+}
+
+/// `personal_login` exactly when the owner explicitly skipped the App, naming
+/// the acting login; `store.py`'s `check_identity` refuses the same values.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Identity {
+    pub selected: Selected,
+    pub app_choice: AppChoice,
+    pub acting_login: Option<String>,
+    pub repository: String,
+}
+
+/// setup.v1's `selected`, read only as its plain string (the shape check in
+/// `read` refuses a tagged object).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Selected {
+    App,
+    PersonalLogin,
+    Unselected,
+}
+
+/// setup.v1's `app_choice`, the same way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppChoice {
+    Create,
+    Reuse,
+    Skip,
+    Undecided,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -315,6 +350,18 @@ impl SetupState {
                 return Err("invalid project settings");
             }
         }
+        if let Some(i) = &self.identity {
+            let skipped = i.selected == Selected::PersonalLogin;
+            let ok = skipped == (i.app_choice == AppChoice::Skip)
+                && repository(&i.repository)
+                && match &i.acting_login {
+                    Some(login) => skipped && word(login, 39, b"-"),
+                    None => !skipped,
+                };
+            if !ok {
+                return Err("invalid identity choice");
+            }
+        }
         if let Some(app) = &self.app
             && (!(1..=ID_MAX).contains(&app.app_id)
                 || app
@@ -461,6 +508,11 @@ pub fn read(state_dir: &Path) -> Result<Option<SetupState>, StoreError> {
         && shape["operations"]
             .as_array()
             .is_some_and(|a| a.iter().all(serde_json::Value::is_object))
+        && object_or_null(&shape["identity"])
+        && (shape["identity"].is_null()
+            || (shape["identity"].get("acting_login").is_some()
+                && shape["identity"]["selected"].is_string()
+                && shape["identity"]["app_choice"].is_string()))
         && object_or_null(&shape["engine"])
         && (shape["engine"].is_null()
             || (shape["engine"].get("cost").is_some() && object_or_null(&shape["engine"]["cost"])))
@@ -591,6 +643,58 @@ mod tests {
         fs::set_permissions(dir.0.join("setup"), fs::Permissions::from_mode(0o755)).unwrap();
         write(&dir.0, GOOD, 0o600);
         assert!(read(&dir.0).is_err(), "open setup directory");
+    }
+
+    /// #633: catches a saved identity choice the Python store refuses (no
+    /// explicit skip, no acting login, a missing key) reaching the server, and
+    /// an old state without the field no longer reading.
+    #[test]
+    fn identity_choice_reads_only_an_explicit_skip_or_nothing() {
+        let dir = state();
+        let skip = r#""identity":{"selected":"personal_login","app_choice":"skip","acting_login":"synthetic-owner","repository":"synthetic-owner/synthetic-consumer"},"#;
+        let with = |identity: &str| {
+            GOOD.replacen(r#""operations""#, &format!(r#"{identity}"operations""#), 1)
+        };
+        write(&dir.0, GOOD, 0o600);
+        assert_eq!(
+            read(&dir.0).unwrap().unwrap().identity,
+            None,
+            "an old state"
+        );
+        write(&dir.0, &with(skip), 0o600);
+        let identity = read(&dir.0).unwrap().unwrap().identity.unwrap();
+        assert_eq!(
+            (identity.selected, identity.app_choice),
+            (Selected::PersonalLogin, AppChoice::Skip)
+        );
+        assert_eq!(identity.acting_login.as_deref(), Some("synthetic-owner"));
+        for good in [
+            r#""identity":null,"#,
+            r#""identity":{"selected":"unselected","app_choice":"undecided","acting_login":null,"repository":"synthetic-owner/synthetic-consumer"},"#,
+        ] {
+            write(&dir.0, &with(good), 0o600);
+            assert!(read(&dir.0).is_ok(), "{good}");
+        }
+        for bad in [
+            skip.replace(r#""skip""#, r#""reuse""#),
+            skip.replace(r#""skip""#, r#""Skip""#),
+            skip.replace(r#""skip""#, r#"{"skip":null}"#),
+            skip.replace(r#""personal_login""#, r#""unselected""#),
+            skip.replace(r#""personal_login""#, r#""app""#),
+            skip.replace(r#""synthetic-owner","#, "null,"),
+            skip.replace(r#""acting_login":"synthetic-owner","#, ""),
+            skip.replace(r#""synthetic-owner","#, &format!(r#""ghp_{}","#, "A".repeat(36))),
+            skip.replace(r#""synthetic-owner","#, r#""synthetic/owner","#),
+            skip.replace(r#""synthetic-owner","#, &format!(r#""{}","#, "x".repeat(40))),
+            skip.replace(r#""synthetic-owner/synthetic-consumer""#, r#""synthetic-owner/..""#),
+            skip.replace(r#""repository""#, r#""token":"x","repository""#),
+            skip.replace(r#""personal_login""#, r#""fallback""#),
+            r#""identity":["personal_login","skip","synthetic-owner","synthetic-owner/synthetic-consumer"],"#.to_owned(),
+            r#""identity":{"selected":"app","app_choice":"reuse","acting_login":"synthetic-owner","repository":"synthetic-owner/synthetic-consumer"},"#.to_owned(),
+        ] {
+            write(&dir.0, &with(&bad), 0o600);
+            assert!(read(&dir.0).is_err(), "{bad}");
+        }
     }
 
     /// #635: the optional brain reference. An existing state without it still

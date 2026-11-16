@@ -74,6 +74,9 @@ rl4.PACKAGED['tools/install/cloudroom/cloudroom.py'] = 'runtime/cloudroom/cloudr
 # #635: installed openwiz init's runtime, which the installer requires, and its packaged path.
 RUNTIME['tools/install/setup/init.py'] = b'# Synthetic init runtime.\n'
 rl4.PACKAGED['tools/install/setup/init.py'] = 'runtime/setup/init.py'
+# #633: setup's GitHub sign-in helper, which the installer requires, and its packaged path.
+RUNTIME['tools/install/setup/github_login.py'] = b'# Synthetic GitHub sign-in helper.\n'
+rl4.PACKAGED['tools/install/setup/github_login.py'] = 'runtime/setup/github_login.py'
 LINUX = 'x86_64-unknown-linux-gnu'
 
 
