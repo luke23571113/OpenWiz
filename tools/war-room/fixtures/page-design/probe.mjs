@@ -140,7 +140,7 @@ for (const v of VIEWPORTS) {
   // Keyboard: Tab from the top; the first disclosure reached opens with Enter.
   const focus = [];
   let opened = null;
-  for (let i = 0; i < 4 && opened === null; i++) {
+  for (let i = 0; i < 20 && opened === null; i++) {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
     const at = await evaluate(`(() => { const a = document.activeElement; return { tag: a.tagName.toLowerCase(),

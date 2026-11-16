@@ -400,6 +400,38 @@ class Gather(unittest.TestCase):
         # board and ci-benchmarks are only read: every ref of the origin is unchanged.
         self.assertEqual(self.refs(), self.refs_before)
 
+    def test_data_branches_on_a_second_remote_are_read_with_data_remote(self):
+        # WRD4 (#877): the code repository has no board or ci-benchmarks branch; they live on a
+        # second (private) repository. Without --data-remote they stay unavailable, as before;
+        # with it they are read from there, only read, and their evidence names that repository.
+        data = self.tmp / 'data.git'
+        git(self.tmp, 'clone', '-q', '--bare', str(self.origin), str(data))
+        for name in ('board', 'ci-benchmarks'):
+            git(self.origin, 'update-ref', '-d', 'refs/heads/' + name)
+        before = (self.refs(), git(data, 'for-each-ref', '--format=%(objectname) %(refname)'))
+        _, selection = self.gather(out=self.tmp / 'code-only')
+        missing = {s['slot'] for s in selection if s['path'].startswith('missing/')}
+        self.assertLessEqual({'board', 'credits', 'ci_bench'}, missing)
+        # A GitHub-shaped data remote, mapped onto the local bare repository by git's own config.
+        url = 'https://github.com/synthetic-owner/private-data.git'
+        mapped = {'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'url.%s.insteadOf' % data, 'GIT_CONFIG_VALUE_0': url}
+        with patch.dict(os.environ, mapped):
+            root, selection = self.gather(out=self.tmp / 'with-data', data_remote=url)
+        by_slot = {s['slot']: s for s in selection}
+        self.assertFalse(by_slot['board']['path'].startswith('missing/'))
+        for slot in ('credits', 'ci_bench'):
+            with self.subTest(slot):
+                self.assertFalse(by_slot[slot]['path'].startswith('missing/'))
+                self.assertRegex(by_slot[slot]['evidence'][0],
+                                 r'^https://github\.com/synthetic-owner/private-data/commit/[0-9a-f]{40}$')
+        self.assertEqual(by_slot['board']['observed_at'], BOARD_AT)
+        self.assertEqual(by_slot['ci_bench']['observed_at'], BENCH_AT)
+        # Every other source still reads and links the code repository.
+        self.assertEqual(by_slot['activity']['evidence'][0], RUN)
+        providers = {p['slot']: p for p in sources.select(root, selection, ENDED)}
+        self.assertTrue(self.values(providers['credits']))
+        self.assertEqual(before, (self.refs(), git(data, 'for-each-ref', '--format=%(objectname) %(refname)')))
+
     def test_stage_reads_cover_open_approved_work_and_the_merged_cohort(self):
         # WRD1: TL2 is collected for unfinished work too: the board graph's six open
         # ready-for-agent tickets (9001-9006, blocked ones included) and ticket 94, which
@@ -488,7 +520,7 @@ class Gather(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         files = git(self.origin, 'ls-tree', '-r', '--name-only', 'refs/heads/war-room').split()
         self.assertEqual(sorted(files), ['README.md', 'samples/2030-01-02T12-30-00Z.json',
-                                         'war-room-phone.png', 'war-room.png'])
+                                         'war-room-phone.png', 'war-room.html', 'war-room.png'])
         sizes = {}
         for name in ('war-room.png', 'war-room-phone.png'):
             data = subprocess.run(['git', '-C', str(self.origin), 'show', 'refs/heads/war-room:' + name],
