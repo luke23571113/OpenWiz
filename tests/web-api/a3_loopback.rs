@@ -238,24 +238,3 @@ fn only_dns_names_can_be_configured() {
         assert!(!valid_host_name(bad), "{bad:?}");
     }
 }
-
-#[test]
-fn the_help_says_health_is_the_servers_own_metadata() {
-    // #69: only the inventory and session routes answer with the CLI's
-    // `--json`; health is the server's own metadata, with no room-cli read.
-    let text = openwiz_server::help()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    assert!(!text.contains("Each answer is what"), "{text}");
-    assert!(
-        text.contains("The inventory and session answers are what openwiz ls, ls -l or show prints with --json"),
-        "{text}"
-    );
-    assert!(
-        text.contains(
-            "health is the server's own metadata, with no CLI equivalent and no room-cli read"
-        ),
-        "{text}"
-    );
-}

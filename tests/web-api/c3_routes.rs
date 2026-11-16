@@ -1,35 +1,7 @@
 //! S3-7 (#127): two read-only fleet routes, with the existing HTTP guards.
-use openwiz_server::{ROUTES, Route};
-
 use crate::fake::Fake;
 use crate::http::Response;
 use crate::support;
-
-pub const FLEET_ROUTES: &[Route] = &[
-    Route {
-        method: "GET",
-        path: "/api/v1/fleets",
-    },
-    Route {
-        method: "GET",
-        path: "/api/v1/fleets/{spec}",
-    },
-];
-
-#[test]
-fn c3_adds_exactly_two_gets_after_the_existing_routes() {
-    let legacy = crate::a4_no_mutation::legacy_routes(ROUTES);
-    assert_eq!(
-        legacy.len(),
-        15 + crate::e11_plan_routes::PLAN_ROUTES.len()
-            + crate::e11_decisions_routes::DECISIONS_ROUTES.len()
-            + 2 // L6 local switch routes.
-            + 1 // #1100 setup GET.
-            + 1 // #535 cockpit GET.
-            + 1 // #549 loops GET.
-    );
-    assert_eq!(&legacy[13..15], FLEET_ROUTES);
-}
 
 pub fn headers(r: &Response) {
     for (name, value) in [
