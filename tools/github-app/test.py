@@ -1164,7 +1164,7 @@ class AgentSetupTests(KeyFixture):
         self.pin = json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
 
     def command(self, endpoint, extra=(), account=("--agent-for", "synthetic-owner"), store=True):
-        return ["python3", str(HERE / "setup.py"), "--state-dir", str(self.state), "--api-base", endpoint,
+        return ["python3", str(getattr(self, "tool", HERE) / "setup.py"), "--state-dir", str(self.state), "--api-base", endpoint,
                 "--port", "0", *account, *(("--secret-store", str(self.store)) if store else ()), *extra]
 
     def stored(self, delivered, app_id="1001"):
@@ -1602,6 +1602,22 @@ class AgentSetupTests(KeyFixture):
             self.assertEqual(again.returncode, 6, again.stderr)
             self.assertEqual([c[0] for c in calls], ["/app-manifests/synthetic-code/conversions"])
             self.assert_nothing_left(line, page, answer, stdout, stderr, again.stderr)
+            # Review R2: after the documented cleanup (the foreign App deleted on
+            # GitHub, its recorded id removed), a fresh proposal and confirmation
+            # offer Create again; the refused registration's old id authorizes nothing.
+            refused = self.operation
+            (self.app / "app.json").unlink()
+            fresh = self.agent_preview(endpoint)
+            self.assertNotEqual(fresh["operation_id"], refused)
+            old = self.agent_run(endpoint, ("--yes", "--operation", refused))
+            self.assertNotEqual(old.returncode, 0)
+            self.assertEqual(old.stdout, b"")
+            behavior["app_owner"] = "synthetic-owner"
+            process, line, (status, _headers, page), form, base = self.agent_start(endpoint)
+            self.assertEqual(status, 200)
+            self.assertTrue(form.action.startswith("https://github.com/settings/apps/new?"), form.action)
+            process.kill()
+            process.communicate(timeout=10)
 
     def test_agent_reconcile_is_bound_to_the_owner_unless_the_factory_setting_is_explicit(self):
         """C-G1/J48 (#606): a delivered key's App must be the named account's own;
@@ -1670,6 +1686,46 @@ class AgentSetupTests(KeyFixture):
                 self.assertEqual(document["app_registrations"], 1 if registered else 0)
                 self.assertEqual(self.records(), [])  # reads only: no store call
                 self.assert_nothing_left(result.stdout, result.stderr)
+
+    def test_agent_factory_reconcile_works_from_the_installed_runtime(self):
+        """Review R1 (#606): the installed runtime ships no contracts/ folder, so
+        the factory's named installations must travel with the tool itself; the
+        same --factory reconciliation works there as from the checkout, and an
+        unnamed account is still refused."""
+        runtime = Path(self.tmp.name) / "installed/current/runtime"
+        for source, name in ((HERE / "setup.py", "github-app/setup.py"), (HERE / "app.py", "github-app/app.py"),
+                             (HERE / "manifest.json", "github-app/manifest.json"),
+                             (HERE.parent / "install/setup/store.py", "setup/store.py")):
+            (runtime / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(source, runtime / name)
+        self.tool = runtime / "github-app"
+        named = [i["account"] for i in self.pin["installations"]]
+        for account, read_back in ((named[0], True), ("synthetic-owner", False)):
+            with self.subTest(account=account), fake_github(self.pem) as (endpoint, calls, behavior):
+                shutil.rmtree(self.state / "setup", ignore_errors=True)
+                (self.app / "app.json").unlink(missing_ok=True)
+                behavior.update(app_owner=named[-1], installations={2002: account})
+                flags, env = ("--agent-for", account, "--factory"), self.stored(True)
+                if not read_back:
+                    operation = self.agent_preview(endpoint, flags, env)["operation_id"]
+                    result = self.agent_run(endpoint, ("--yes", "--operation", operation), flags, env)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual([c[0] for c in calls], ["/app"])
+                    continue
+                process, _line, _page, base, state = self.reconcile_start(endpoint, flags, env)
+                self.installed(base, state)
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stderr)
+                self.assertIn(f"Installation 2002 read back: {account}".encode(), stdout)
+
+    def test_factory_installations_are_exactly_the_identity_contracts_pin(self):
+        """Review R1 (#606): the tool's own factory allowlist is the reviewed pin,
+        so factory mode accepts no installation the contract dropped and refuses
+        none it added."""
+        sys.path.insert(0, str(HERE))
+        import app as tool  # noqa: E402
+        pinned = {i["account"].lower(): {r.lower() for r in i["repositories"]} for i in self.pin["installations"]}
+        self.assertEqual(tool.factory_installations(), pinned)
 
     def test_agent_mode_needs_a_valid_account_and_store(self):
         relative = ("--secret-store", "fake-secret-store")
