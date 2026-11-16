@@ -260,7 +260,7 @@ class Journey:
 
     def helper(self, args):
         argv = [sys.executable, '-I', str(HELPER), *args, '--state', str(self.state)]
-        if args[0] == 'continue':
+        if args[0] in ('continue', 'decisions'):
             argv += ['--setup-state', str(self.setup_dir)]
         if args[0] == 'choose':
             argv += ['--options', str(self.options)]
@@ -467,6 +467,42 @@ class Continuation(unittest.TestCase):
                     self.assertIn('Decisions repository pair', result.stdout)
                 else:
                     self.assertIn('Private brain: %s-brain (companion)' % REPO, result.stdout)
+
+    def test_the_decisions_pair_is_written_once_and_only_on_yes(self):
+        # Review R5 (ruling: option A): catches a writer that changes or drops
+        # another settings key, writes on a preview, or rewrites on a second run.
+        pair = setup_state(brain='companion')['brain']['decision_repositories']
+        for name, existing in (('no settings file', None),
+                               ('an existing settings file', {'schema': 'synthetic', 'server': {'port': 7370},
+                                                              'decision_repositories': {'public': pair['public'],
+                                                              'private': {'owner': 'synthetic-owner', 'name': 'old'}}})):
+            with self.subTest(name):
+                j = Journey(self)
+                j.write_setup(setup_state(brain='companion'))
+                path = j.setup_dir / 'service/config.json'
+                if existing is not None:
+                    j.write_config(existing)
+                before = path.read_bytes() if path.exists() else None
+                shown = j.helper(['decisions'])
+                self.assertEqual(shown.returncode, 12, shown.stdout)
+                self.assertIn('public %s, private %s-brain' % (REPO, REPO), shown.stdout)
+                self.assertEqual(path.read_bytes() if path.exists() else None, before, 'a preview writes nothing')
+                done = j.helper(['decisions', '--yes'])
+                self.assertEqual(done.returncode, 0, done.stdout)
+                written = json.loads(path.read_text())
+                kept = {k: v for k, v in (existing or {}).items() if k != 'decision_repositories'}
+                self.assertEqual(written, dict(kept, decision_repositories=pair), 'only that key changes')
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                first = (path.read_bytes(), path.stat().st_mtime_ns)
+                again = j.helper(['decisions', '--yes'])
+                self.assertEqual(again.returncode, 0, again.stdout)
+                self.assertIn('already reads', again.stdout)
+                self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), first, 'a second run changes nothing')
+                self.assertEqual(j.helper(['continue']).returncode, 0, 'the companion is then carried')
+        private = Journey(self)
+        private.write_setup(setup_state())
+        self.assertEqual(private.helper(['decisions', '--yes']).returncode, 5, 'no companion, nothing to connect')
+        self.assertFalse((private.setup_dir / 'service/config.json').exists())
 
     def test_the_prepared_agents_are_reused_only_when_offered(self):
         j = Journey(self)
