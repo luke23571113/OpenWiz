@@ -83,6 +83,17 @@ Source: Jake, 2026-10-30: the selected reviewer is never silently swapped. Jake,
 
 **Spec #2622 (WizSkills), an override for its tickets only:** builders are Claude Code, Opus 5.5, Medium (`--provider claude-code --model claude-opus-5-5 --reasoning-level medium`), and reviewers are Codex, Sol 6.1, High (`--provider codex --model gpt-6.1-sol --reasoning-level high`), so the reviewer is still the other family. WZ8 (#2629) and WZ10 (#2638) are Jake's own steps; the export review uses the export-review skill's own reviewer. An agent already assigned keeps its model. Jake, 2026-11-13: approved with revision 1 of the plan graph ([private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6848396003)).
 
+## Fixer
+
+The fresh builder for the review-loops contract's one fresh round (v2's `fresh` state): one per pull request, of the original builder's family, so the other-family reviewer stays valid. Its family is read as the reviewer's is: the branch-matching `start checked` record and that exact thread's provider. An unknown or conflicting family waits; no other model builds the round.
+
+| Builder family | Harness | Model | Effort | `room-cli thread spawn` flags |
+| --- | --- | --- | --- | --- |
+| Claude | Claude Code | Opus 5.5 | High | `--provider claude-code --model claude-opus-5-5 --reasoning-level high` |
+| GPT | Codex | Sol 6.1 | XHigh | `--provider codex --model gpt-6.1-sol --reasoning-level xhigh` |
+
+Source: Jake, 2026-11-15: the fresh round uses Opus 5.5 at High for a Claude-built pull request and Sol 6.1 at XHigh for a GPT-built one, and no other model builds (J119; [private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6906276883)).
+
 ## Builder helpers
 
 A builder's swarm: cheap helpers that find things and do chores for it (search the code, run and read tests, draft tests). The builder keeps every judgment and writes every line. Each helper is a CloudRoom thread the builder starts; how to start, brief, check and archive one is in [helpers.md](helpers.md).
