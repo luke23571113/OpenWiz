@@ -347,7 +347,8 @@ class BoundedReads(unittest.TestCase):
             (2021, 202, 'queued', 'ubuntu-slim'), (2030, 203, 'completed', 'ubuntu-24.04'),
             (2040, 204, 'in_progress', 'ubuntu-24.04'), (2041, 204, 'queued', 'ubuntu-slim'),
             (2050, 205, 'completed', 'ubuntu-24.04'), (2060, 206, 'in_progress', 'ubuntu-24.04'),
-            (2061, 206, 'queued', 'ubuntu-slim'), (2070, 207, 'completed', 'ubuntu-24.04')])
+            (2061, 206, 'queued', 'ubuntu-slim'), (2070, 207, 'completed', 'ubuntu-24.04'),
+            (2080, 208, 'in_progress', 'ubuntu-24.04'), (2081, 208, 'queued', 'ubuntu-slim')])
         self.assertEqual(seen['cost_jobs'], [2010, 2030, 2050, 2070])
         # Four completed jobs of 61 s, each billed as 2 minutes at 0.006 USD.
         self.assertEqual((seen['cost']['billed_minutes'], seen['cost']['window_usd']), ({'github-hosted': 8}, 0.048))
@@ -373,22 +374,31 @@ class BoundedReads(unittest.TestCase):
             answer['total_count'] = 2  # the empty second page then falls short of it
             return answer
 
+        def unknown(answer):
+            for r in answer.get('workflow_runs', [answer]):
+                if r['id'] == 205:
+                    r['status'] = 'synthetic-unknown'
+            return answer
+
         def other_run(answer, jid=None, rid=None):
             answer['jobs'][0].update({'id': jid or answer['jobs'][0]['id'], 'run_id': rid or answer['jobs'][0]['run_id']})
             return answer
         cases = {
-            'first jobs read differs': (jobs_path(204), 1, lambda a: status(a, 'queued')),
-            'second jobs read differs': (jobs_path(206), 2, lambda a: status(a, 'queued')),
-            'attempt changed on reread': (f'{ROOT}/actions/runs/205', 1, lambda a: {**a, 'run_attempt': 2}),
-            'status changed on reread': (f'{ROOT}/actions/runs/202', 1, lambda a: {**a, 'status': 'completed'}),
-            'outer run set changed': (LIST, 2, outer),
-            'late jobs page short of total_count': (jobs_path(207), 1, short),
-            'duplicate job across runs': (jobs_path(208), 1, lambda a: other_run(a, jid=2010)),
-            'job of another run': (jobs_path(203), 1, lambda a: other_run(a, rid=201)),
+            'first jobs read differs': ((jobs_path(204),), 1, lambda a: status(a, 'queued')),
+            'second jobs read differs': ((jobs_path(206),), 2, lambda a: status(a, 'queued')),
+            'attempt changed on reread': ((f'{ROOT}/actions/runs/205',), 1, lambda a: {**a, 'run_attempt': 2}),
+            'status changed on reread': ((f'{ROOT}/actions/runs/202',), 1, lambda a: {**a, 'status': 'completed'}),
+            'outer run set changed': ((LIST,), 2, outer),
+            'unknown run status': ((LIST, f'{ROOT}/actions/runs/205'), None, unknown),
+            # These four change every read of the page, so only their own check can refuse them.
+            'late jobs page short of total_count': ((jobs_path(207),), None, short),
+            'duplicate job across runs': ((jobs_path(208),), None, lambda a: other_run(a, jid=2010)),
+            'job of another run': ((jobs_path(203),), None, lambda a: other_run(a, rid=201)),
         }
         for name, (where, when, change) in cases.items():
             with self.subTest(name):
-                world = Runs(edit=lambda path, nth, answer: change(answer) if (path, nth) == (where, when) else answer)
+                world = Runs(edit=lambda path, nth, answer: change(answer) if path in where and when in (None, nth)
+                             else answer)
                 with self.assertRaises(B.Fail):
                     world.observe()
 

@@ -6,7 +6,9 @@ Copied unchanged from tools/ci-bench/bench.py at its retirement's start: its
 observation (WR8), runner kinds, the price table and its list-rate costs, and
 the reader of a saved ci-benchmarks `point.json`. The war room's modules
 import these from here, so they no longer reach into tools/ci-bench/, which
-MT8 (#827) retires. Python 3 standard library only, and gh.
+MT8 (#827) retires. Since #1027, current_activity alone differs from that copy:
+it reads up to WORKERS runs at once, with every check unchanged. Python 3
+standard library only, and gh.
 """
 import csv
 from functools import lru_cache
@@ -15,7 +17,9 @@ import importlib.util
 import math
 import re
 import subprocess
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone, timedelta
+from itertools import islice
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -25,6 +29,7 @@ WORKFLOW = "ci.yml"
 
 PAGE = 100
 API_LIMIT = 1000
+WORKERS = 4  # current_activity reads at most this many CI runs at once (#1027); fixed, no setting
 
 CATEGORIES = ["web", "setup", "rust", "build", "skills"]
 
@@ -193,6 +198,8 @@ def current_activity(since, until, *, repo, read):
     All ci.yml runs (including old active ones), bounded by the existing API
     limit. Two equal enumerations bracket jobs; two equal job reads and a run
     reread reject changing attempts/membership/status rather than infer a pool.
+    Up to WORKERS runs are read at once, so `read` must be safe to call from
+    several threads; results merge in run order, as a serial read gives them.
     No runner inventory endpoint, clock, output file or implicit live reader.
     """
     base = f"repos/{repo}"
@@ -214,16 +221,13 @@ def current_activity(since, until, *, repo, read):
                 raise Fail("current run created after observation")
         return result
 
-    before, seen, jobs, priced, cost_ids = runs(), set(), [], [], []
-    for rid, run in sorted(before.items()):
-        if run["status"] == "completed" and not since <= run["created_at"] < until:
-            continue
-        if run["status"] not in ("completed", "in_progress", "queued", "waiting", "pending", "requested"):
-            raise Fail("current run status unavailable")
+    def facts(rid, run):
+        """One run's two jobs reads and its reread, in their existing order and checks."""
         job_path = f"{base}/actions/runs/{rid}/jobs?per_page={PAGE}"
         rows = pages(job_path, "jobs", "jobs", read)
         if [v for v, _ in rows] != [v for v, _ in pages(job_path, "jobs", "jobs", read)]:
             raise Fail("current jobs changed during observation")
+        seen, jobs, priced = set(), [], []
         for value, where in rows:
             as_obj(value, where)
             jid = as_int(value, "id", where)
@@ -252,11 +256,45 @@ def current_activity(since, until, *, repo, read):
                     if (item["started_at"] is None or item["completed_at"] is None
                             or item["completed_at"] < item["started_at"] or item["completed_at"] > until):
                         raise Fail("completed current job timing unavailable")
-                priced.append(item)
-                cost_ids.append(jid)
+                priced.append((jid, item))
         again = as_obj(read(f"{base}/actions/runs/{rid}"), "current run reread")
         if any(again.get(k) != v for k, v in run.items()):
             raise Fail("current run changed during observation")
+        return jobs, priced
+
+    before = runs()
+    todo = []
+    for rid, run in sorted(before.items()):
+        if run["status"] == "completed" and not since <= run["created_at"] < until:
+            continue
+        if run["status"] not in ("completed", "in_progress", "queued", "waiting", "pending", "requested"):
+            raise Fail("current run status unavailable")
+        todo.append((rid, run))
+    # #1027: at most WORKERS runs are read at once, only after the first enumeration and all
+    # finished before the second. A failure admits no further run; the runs already in flight
+    # finish (nothing is left running), their results are dropped and the first failure is raised.
+    done, flying = {}, {}
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        queue = iter(todo)
+        while True:
+            for rid, run in islice(queue, WORKERS - len(flying)):
+                flying[pool.submit(facts, rid, run)] = rid
+            if not flying:
+                break
+            finished, _ = wait(flying, return_when=FIRST_COMPLETED)
+            for future in sorted(finished, key=flying.get):
+                done[flying.pop(future)] = future.result()
+    # Merged in run order, as the serial read produced it; job ids stay unique across runs.
+    seen, jobs, priced, cost_ids = set(), [], [], []
+    for rid in sorted(done):
+        run_jobs, run_priced = done[rid]
+        for j in run_jobs:
+            if j["id"] in seen:
+                raise Fail("current jobs: duplicate or invalid identity")
+            seen.add(j["id"])
+        jobs += run_jobs
+        priced += [item for _, item in run_priced]
+        cost_ids += [jid for jid, _ in run_priced]
     if runs() != before:
         raise Fail("current run enumeration changed during observation")
     prices = read_prices(HERE / "prices.tsv")
