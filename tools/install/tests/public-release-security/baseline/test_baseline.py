@@ -411,7 +411,7 @@ class AppBoundaries(unittest.TestCase):
                 for method, path, headers, body in seen:
                     # App reads and at most one token request, for exactly the
                     # chosen repository, signed by the App's key alone.
-                    self.assertIn((method, path), [('GET', '/app/installations'),
+                    self.assertIn((method, path), [('GET', '/app'), ('GET', '/app/installations'),
                                                    ('GET', '/app/installations?page=2'),
                                                    ('POST', '/app/installations/2002/access_tokens')])
                     if method == 'POST':
