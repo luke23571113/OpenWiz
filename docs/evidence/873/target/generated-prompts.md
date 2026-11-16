@@ -4,7 +4,7 @@ Method: built-in OpenAI image_gen.imagegen; each matching source screenshot pass
 
 ## setup-desktop.png
 
-Reference: /tmp/b873/target/ref/setup-desktop-main.png
+Reference: ref/setup-desktop-main.png
 
 ```text
 Use case: ui-mockup. Produce a faithful dark OpenWiz web UI screenshot target, matching the supplied screenshot's fonts, colors, panel shapes and spacing. The input image is a REFERENCE for existing design, not an edit target. Render sharp exact readable text, no invented UI or prices, no clipping. The forbidden word 'engine' must not appear anywhere in the output. No panels or rows with that word.
@@ -23,7 +23,7 @@ Desktop 1440 x 900 CSS pixel composition. Reference: setup-desktop-main.png. Pre
 
 ## setup-phone.png
 
-Reference: /tmp/b873/target/ref/setup-phone-main.png
+Reference: ref/setup-phone-main.png
 
 ```text
 Use case: ui-mockup. Produce a faithful dark OpenWiz web UI screenshot target, matching the supplied screenshot's fonts, colors, panel shapes and spacing. The input image is a REFERENCE for existing design, not an edit target. Render sharp exact readable text, no invented UI or prices, no clipping. The forbidden word 'engine' must not appear anywhere in the output. No panels or rows with that word.
@@ -42,7 +42,7 @@ Phone 390 CSS px wide, tall full page composition. Reference: setup-phone-main.p
 
 ## first-hour-desktop.png
 
-Reference: /tmp/b873/target/ref/first-hour-desktop-main.png
+Reference: ref/first-hour-desktop-main.png
 
 ```text
 Use case: ui-mockup. Generate a faithful dark OpenWiz First hour web UI target. Input screenshot is a REFERENCE for existing design, not an edit target. Preserve its typography, colors, flat near-black backgrounds, soft rounded panels, navigation, header and spacing. Exact legible text, no clipping, no invented panels or prices. Forbidden word "engine" must not appear.
@@ -71,7 +71,7 @@ No obsolete instruction about choosing where anything runs. Do not clip any text
 
 ## first-hour-phone.png
 
-Reference: /tmp/b873/target/ref/first-hour-phone-main.png
+Reference: ref/first-hour-phone-main.png
 
 ```text
 Use case: ui-mockup. Generate a faithful dark OpenWiz First hour web UI target. Input screenshot is a REFERENCE for existing design, not an edit target. Preserve its typography, colors, flat near-black backgrounds, soft rounded panels, navigation, header and spacing. Exact legible text, no clipping, no invented panels or prices. Forbidden word "engine" must not appear.
