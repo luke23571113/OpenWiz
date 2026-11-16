@@ -111,6 +111,19 @@ CSS = (
     'margin:0;text-align:right}.card .stamp{text-align:right}'
     'h2{font-size:44px}.figs{grid-template-columns:1fr}.panels{grid-template-columns:1fr}}'
 )
+# WRD4 (#877): the top section links, native anchors only; they wrap on a phone.
+NAV_CSS = ('.toc{border-bottom:2px solid var(--rule);padding:10px 0}.toc ol{display:flex;flex-wrap:wrap;gap:4px 18px;'
+           'margin:0;padding:0;list-style:none;font-size:13px;text-transform:uppercase;letter-spacing:.06em}'
+           '.toc a{display:inline-block;padding:4px 0}'
+           '#figures,.section,#sources,#inventory{scroll-margin-top:8px}')
+
+
+def nav_html():
+    """WRD4: one link per real page section: the figures, each numbered section, Sources and the inventory."""
+    links = [('figures', 'Figures')] + [('s' + x['number'], x['number'] + ' ' + x['title']) for x in INVENTORY['sections']]
+    links += [('sources', 'Sources'), ('inventory', 'Inventory')]
+    return ('<nav class="toc" aria-label="Sections"><ol>'
+            + ''.join(f'<li><a href="#{esc(i)}">{esc(t)}</a></li>' for i, t in links) + '</ol></nav>')
 
 
 def esc(value):
@@ -426,7 +439,7 @@ def render(record, charts=None):
              '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; font-src data:; base-uri \'none\'; form-action \'none\'">',
              '<meta http-equiv="refresh" content="300"><meta name="theme-color" content="#000000">'
              '<title>OpenWiz War room</title>',
-             f'<style>{FONT}{CSS}{ART}</style></head><body><a class="skip" href="#body">Skip to the figures</a><main>',
+             f'<style>{FONT}{CSS}{ART}{NAV_CSS}</style></head><body><a class="skip" href="#body">Skip to the figures</a><main>',
              '<header class="mast"><div class="brand"><h1><span class="kicker">OpenWiz</span>War room</h1>',
              f'<p class="when">{esc(span)} · sample {esc(record["sample_at"])}</p></div>',
              '<div class="art" aria-hidden="true"><i class="ring r2"></i><i class="ring"></i><i class="planet"></i>'
@@ -434,7 +447,7 @@ def render(record, charts=None):
              f'<section class="strip" aria-label="Status"><h2 class="flag{"" if alarm else " calm"}">{esc(flag)}</h2>'
              f'<p class="facts">{esc(" · ".join(facts) or "No signal observed")}</p>'
              + (f'<ul class="gaps">{"".join(f"<li>{esc(g)}</li>" for g in gaps)}</ul>' if gaps else '')
-             + '</section></header>',
+             + '</section></header>' + nav_html(),
              # One section holds every chart figure, as the chart seam expects (charts/contract.md).
              '<section id="figures"><div class="cards" role="region" aria-label="Health and throughput">']
     for card in INVENTORY['cards']:
