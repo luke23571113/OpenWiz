@@ -8,7 +8,8 @@
 # commit, tree), the tagged tree, plugin.json and CHANGELOG.md, then publishes a
 # detached checkout at <dir> in one rename. An existing <dir> must already be that exact,
 # clean release: matching is a no-op, anything else is refused unchanged.
-# Needs a POSIX shell and Git. Never defaults to latest or main, never forces,
+# Needs a POSIX shell, Git and an mv with -T (GNU coreutils); without -T it
+# refuses before publishing. Never defaults to latest or main, never forces,
 # never retries, never changes the caller's Git configuration.
 #
 # Exit codes: 0 installed or verified no-op; 1 verification or state refusal;
@@ -258,27 +259,16 @@ if [ $existing -eq 0 ]; then
     fi
     # GNU mv -T -n renames without replacing anything and never moves into a
     # directory that appeared meanwhile (renameat2 RENAME_NOREPLACE).
+    # There is no plain-mv fallback: a plain mv moves into a directory that
+    # appears just before it, and moving back out can fail, so it cannot
+    # promise to leave that directory untouched. Without -T (BSD, macOS),
+    # refuse here, before any publication move.
     mv -T -n "$work" "$dest" 2>/dev/null
     if [ -e "$work" ] || [ -L "$work" ]; then
-        # Not renamed: a destination appeared, or this mv lacks -T (BSD).
         if [ -e "$dest" ] || [ -L "$dest" ]; then
             fail 1 'destination appeared during installation'
         fi
-        # A plain mv renames to a missing destination in one step. If a
-        # directory appeared just before it, mv moved the install inside it:
-        # move it straight back and refuse, leaving that directory as it was.
-        mv "$work" "$dest" 2>/dev/null
-        if [ -e "$work" ] || [ -L "$work" ]; then
-            if [ -e "$dest" ] || [ -L "$dest" ]; then
-                fail 1 'destination appeared during installation'
-            fi
-            fail 3 'cannot publish the installation'
-        fi
-        inner=$dest/${work##*/}
-        if [ "$(inode "$dest")" != "$staged" ] && [ "$(inode "$inner")" = "$staged" ]; then
-            mv "$inner" "$work" 2>/dev/null || :
-            fail 1 'destination appeared during installation'
-        fi
+        fail 3 'cannot publish the installation; needs mv -T'
     fi
     [ "$(inode "$dest")" = "$staged" ] || fail 1 'destination appeared during installation'
     exit 0

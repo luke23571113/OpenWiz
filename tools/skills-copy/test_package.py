@@ -156,7 +156,11 @@ class Fixture(unittest.TestCase):
 
 
 class InstallTests(Fixture):
-    def test_first_install_and_reuse_with_bsd_mv(self):
+    def test_without_mv_t_install_refuses_unchanged_and_a_matching_install_is_a_no_op(self):
+        # WZ17 finding 6: an mv without -T (BSD, macOS) cannot rename without
+        # replacing, so a first install refuses before publishing and leaves
+        # nothing behind; verifying an existing matching install needs no mv.
+        self.install()
         real_mv = shutil.which('mv')
         wrapper = self.bin / 'mv'
         wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
@@ -164,11 +168,12 @@ class InstallTests(Fixture):
                            '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
                            'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
         wrapper.chmod(0o755)
-        self.install()
-        self.assertEqual(self.git(self.dest, 'rev-parse', 'HEAD^{tree}').stdout.strip(), self.release['tree'])
         before = snapshot(self.parent)
         self.install()
         self.assertEqual(snapshot(self.parent), before)
+        shutil.rmtree(self.dest)
+        self.assert_refused_unchanged(code=3)
+        self.assertFalse(self.dest.exists())
 
     def test_readers_see_no_destination_or_the_complete_install(self):
         # E4: a reader looking at the destination at any publication step, just
@@ -229,25 +234,6 @@ class InstallTests(Fixture):
         self.assertEqual(self.dest.stat().st_mtime_ns, 456000000000)
         self.assertFalse(moved.exists())
         self.assertFalse(any(p.name.startswith('.wizskills-install.') for p in self.parent.iterdir()))
-
-    def test_bsd_mv_moving_into_a_concurrent_directory_is_undone_and_refused(self):
-        # Without mv -T, a directory created just before the plain rename makes
-        # mv move the install inside it; that must be moved back out and refused.
-        real_mv = shutil.which('mv')
-        wrapper = self.bin / 'mv'
-        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
-                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
-                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
-                           'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
-                           'if sys.argv[-1] == str(dest) and not dest.exists():\n'
-                           '    dest.mkdir(mode=0o750)\n'
-                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
-                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
-        wrapper.chmod(0o755)
-        self.install(code=1)
-        self.assertEqual(snapshot(self.dest), {
-            '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
-        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
 
     def test_without_mv_t_a_failed_move_back_leaves_the_foreign_destination_untouched(self):
         # WZ17 finding 6: a directory appears just before a plain mv, and moving
