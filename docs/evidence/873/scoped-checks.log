@@ -1,0 +1,24 @@
+# #873 scoped local checks at dc77b7b4680c7d3c6a817a1ac95a627962cca098
+## cargo fmt --check
+ok
+## cargo clippy -p openwiz-server --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
+## cargo test -p openwiz-server --lib setup
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+## tools/install: python3 -m unittest tests/setup-onboard-contract/test_contract.py
+
+OK
+## node --test tools/install/test_setup_api.mjs
+ℹ pass 1
+ℹ fail 0
+## apps/web: npm run typecheck && npm run check
+typecheck ok
+check: 59 source files and the stylesheet pass (V1, messaging and new-thread schema parity, V3, V10, W5, W12, U5, U12 to U14, AW7, AW8, the #549 loop switch, types, spacing)
+## apps/web: node --test test/unit/first-hour-*.test.ts
+ℹ pass 46
+ℹ fail 0
+## apps/web: npm run build, then run-browser --only the six setup and first-hour files
+build ok
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0

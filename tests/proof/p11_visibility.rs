@@ -1,8 +1,8 @@
 //! P11 Visibility: hidden sessions are excluded unless `--hidden` is given;
-//! archived sessions unless `-a` is given.
+//! archived sessions unless `-a` is given. The core's own exclusion, with no
+//! adapter or client, is in `crates/core/tests/inventory.rs` (#805).
 
 use openwiz_core::model::Fact;
-use openwiz_core::ops::ListRequest;
 
 use crate::support::*;
 
@@ -58,23 +58,6 @@ fn archived_sessions_appear_only_with_a() {
                 && !a.iter().any(|w| w == "--include-hidden")),
         "{:?}",
         fake.invocations()
-    );
-}
-
-#[test]
-fn hidden_or_archived_rows_are_excluded_even_if_the_source_returns_them() {
-    let mut hidden = scripted_record(1);
-    hidden.hidden = Fact::Known(true);
-    let mut archived = scripted_record(2);
-    archived.archived = Fact::Known(true);
-    let visible = scripted_record(3);
-    let source = ScriptedSource::with_records(vec![hidden, archived, visible]);
-    let env = list_scripted(&source, &ListRequest::default()).expect("list");
-    assert_eq!(ids(&env), ["thr_syn_0003"]);
-    let c = env.coverage.counts.as_ref().expect("counts");
-    assert_eq!(
-        (c.listed, c.excluded_hidden, c.excluded_archived, c.matched),
-        (3, 1, 1, 1)
     );
 }
 

@@ -60,6 +60,7 @@ jobs:
           python3 -I tools/ci-bench/test_trends.py
           python3 -I tools/ci-bench/test_required.py
           python3 -I tools/ci-bench/test_ci3.py
+          python3 -I tools/ci-bench/test_ci3_weekly.py
 
   publish:
     needs: proof

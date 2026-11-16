@@ -39,6 +39,8 @@ NAMES = {'activity': 'Current activity', 'stage_waits': 'Stage waits',
          'answer_time': 'Orchestrator answer time', 'rework': 'Rework rate',
          'eb6': 'EB6', 'eb7': 'EB7', 'eb8': 'EB8', 'eb9': 'EB9',
          'main_ci': 'Main CI', 'ci_queue': 'CI queue', 'stage_health': 'Stage health'}
+# MT4 (#823): ci-bench's headline from the collector snapshot (charts/prs_per_hour.py), in Fig. 10.
+PRS_PER_HOUR = 'body-ci-bench-headline'
 NO_BUILD = 'Chart build not run for this page: render it through charts/build.py (publish.py does).'
 
 # Ground, ink and the one blue. Measured pairs are in design/brief.md and test_page_design.py.
@@ -278,6 +280,8 @@ def periods(f, record):
     a value with no period says so."""
     if f['window'] is not None:
         return [_pst_days(f['window'])]
+    if f['id'] == PRS_PER_HOUR:
+        return ['no completed window read']  # MT4: its baseline's own window is in each baseline label
     found = {(p['slot'], m['id']): m for p in record['providers'] for m in p['metrics']}
     found.update({(p['slot'], o['id']): o for p in suite.health(record) for o in p['observations']})
     out = []

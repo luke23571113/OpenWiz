@@ -1,0 +1,35 @@
+# MT3 (#822) revision 4 move, after merging main, at 80837b2dbe831d2206a7892e77ec5021d8836540
+# cmp tools/ci-bench/prices.tsv tools/war-room/prices.tsv: identical; tools/ci-bench/bench.py and trends.py unchanged by the merge
+## python3 -I tools/war-room/test_activity.py
+Ran 14 tests in 4.740s
+OK
+## python3 -I tools/war-room/test_cost.py
+Ran 16 tests in 0.735s
+OK
+## python3 -I tools/war-room/test_review_loops.py
+Ran 39 tests in 6.375s
+OK
+## python3 -I tools/war-room/test_weekly.py
+Ran 23 tests in 104.684s
+OK
+## python3 -I tools/war-room/test_health.py
+Ran 22 tests in 9.409s
+OK
+## python3 -I tools/war-room/test_contract.py
+Ran 19 tests in 0.095s
+OK
+## python3 -I tools/war-room/test_rework.py
+Ran 8 tests in 0.198s
+OK
+## python3 -I tools/war-room/test_stage_waits.py
+Ran 11 tests in 2.434s
+OK
+## python3 -I tools/war-room/test_answer_time.py
+Ran 10 tests in 0.186s
+OK
+## python3 -I tools/war-room/test_collect_ci.py
+Ran 17 tests in 12.976s
+OK
+## python3 -I tools/war-room/test_page_history.py
+Ran 18 tests in 1.006s
+OK
