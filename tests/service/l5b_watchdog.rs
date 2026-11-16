@@ -3,10 +3,10 @@
 mod dirs;
 #[path = "l5b_observation.rs"]
 mod observation;
-use openwiz_core::{health::model::*, messaging::OpId};
+use openwiz_core::messaging::OpId;
 use openwiz_service::{
     health::{
-        Health, RuntimeFixes,
+        Health,
         loops::{Checking, Evidence, Observation},
     },
     state::State,
@@ -21,17 +21,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Instant,
 };
-struct Runtime;
-impl RuntimeFixes for Runtime {
-    fn restart_tick(&self, _: Instant) -> Result<(), String> {
-        panic!("watchdog cannot repair")
-    }
-    fn restart_server(&self, _: Instant) -> Result<(), String> {
-        panic!("watchdog cannot repair")
-    }
-}
 struct World {
     root: PathBuf,
     config: Value,
@@ -66,15 +56,6 @@ fn healthy() -> Observation {
         next_due_at_ms: Evidence::Known(None),
         checking: Evidence::Known(vec![]),
         disabled_by_failures: Evidence::Known(false),
-    }
-}
-fn seen() -> Seen {
-    Seen {
-        cloudroom: CloudRoomSeen::Running,
-        loops: Listed::Read(vec![]),
-        tick_running_since: None,
-        fleet_threads: Listed::Read(vec![]),
-        server: Known::Healthy,
     }
 }
 impl World {
@@ -189,7 +170,6 @@ else: sys.exit(2)
             self.state.clone(),
             openwiz_adapter_cloudroom::source::CloudRoomSource::new(self.root.join("room")),
             github,
-            Arc::new(Runtime),
         )
         .unwrap()
         .with_watchdog_source(Arc::new(move |_| source.lock().unwrap().clone()))
@@ -211,28 +191,28 @@ else: sys.exit(2)
 #[test]
 fn each_problem_notifies_once_across_reload_and_recovers_immediately() {
     let mut w = World::new();
-    w.engine().pass(&seen(), 1101).unwrap();
+    w.engine().pass(1101).unwrap();
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
     w.reload();
-    w.engine().pass(&seen(), 1200).unwrap();
+    w.engine().pass(1200).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
     let mut changed = row();
     changed.next_due_at_ms = Evidence::Known(Some(1050));
     *w.source.lock().unwrap() = Evidence::Known(vec![changed]);
-    w.engine().pass(&seen(), 1250).unwrap();
+    w.engine().pass(1250).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 4);
     assert_eq!(w.tells(), 4);
     *w.source.lock().unwrap() = Evidence::Unknown;
-    w.engine().pass(&seen(), 1300).unwrap();
+    w.engine().pass(1300).unwrap();
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
-    w.engine().pass(&seen(), 1400).unwrap();
+    w.engine().pass(1400).unwrap();
     assert_eq!(w.snapshot()["incidents"], json!([]));
     *w.source.lock().unwrap() = Evidence::Known(vec![row()]);
-    w.engine().pass(&seen(), 1500).unwrap();
+    w.engine().pass(1500).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 7);
     assert_eq!(w.tells(), 7);
 }
@@ -240,12 +220,12 @@ fn each_problem_notifies_once_across_reload_and_recovers_immediately() {
 fn changed_problem_notifies_and_uncertain_delivery_survives_healing() {
     let mut w = World::new();
     w.lose.store(true, Ordering::SeqCst);
-    let first = w.engine().pass(&seen(), 1101);
+    let first = w.engine().pass(1101);
     assert!(first.is_err());
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
     w.reload();
-    w.engine().pass(&seen(), 1200).unwrap();
+    w.engine().pass(1200).unwrap();
     assert_eq!(w.snapshot()["incidents"], json!([]));
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
@@ -254,7 +234,7 @@ fn changed_problem_notifies_and_uncertain_delivery_survives_healing() {
     changed.checking = Evidence::Known(vec![]);
     changed.disabled_by_failures = Evidence::Known(false);
     *w.source.lock().unwrap() = Evidence::Known(vec![changed]);
-    w.engine().pass(&seen(), 1300).unwrap();
+    w.engine().pass(1300).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 4);
     assert_eq!(w.snapshot()["incidents"][0]["broken"]["due_at_ms"], 1050);
 }
@@ -283,26 +263,12 @@ fn service_reader_accepts_exact_watchdog_faults_without_repairs() {
 #[test]
 fn registered_health_job_runs_the_watchdog() {
     let w = World::new();
-    let server = openwiz_server::start(
-        std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap(),
-        openwiz_server::Config::default(),
-        Arc::new(openwiz_adapter_cloudroom::source::CloudRoomSource::new(
-            "/bin/false",
-        )),
-        Arc::new(openwiz_server::SystemClock),
-        Arc::new(|_| {}),
-    )
-    .unwrap();
     let mut scheduler = openwiz_service::scheduler::Scheduler::default();
     Arc::new(w.engine())
-        .register(&mut scheduler, server.local_addr().port(), || 1101)
+        .register(&mut scheduler, || 1101)
         .unwrap();
     assert_eq!(scheduler.poll(60).unwrap(), ["health"]);
     scheduler.wait("health").unwrap();
-    server
-        .shutdown(Instant::now() + std::time::Duration::from_secs(3))
-        .unwrap();
-    server.join();
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
@@ -332,17 +298,17 @@ fn durable_reader_refuses_reusing_one_notification_for_distinct_problems() {
 fn failed_cloudroom_delivery_remains_pending_after_healing_and_restart() {
     let mut w = World::new();
     fs::write(w.root.join("fail-tell"), "synthetic failed delivery").unwrap();
-    assert!(w.engine().pass(&seen(), 1101).is_err());
+    assert!(w.engine().pass(1101).is_err());
     assert_eq!(w.tells(), 3);
     let pending = w.snapshot()["watchdog_deliveries"].clone();
     assert_eq!(pending.as_array().unwrap().len(), 3);
     *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
     w.reload();
-    assert!(w.engine().pass(&seen(), 1200).is_err());
+    assert!(w.engine().pass(1200).is_err());
     assert_eq!(w.snapshot()["incidents"], json!([]));
     assert_eq!(w.snapshot()["watchdog_deliveries"], pending);
     w.reload();
-    assert!(w.engine().pass(&seen(), 1300).is_err());
+    assert!(w.engine().pass(1300).is_err());
     assert_eq!(w.snapshot()["incidents"], json!([]));
     assert_eq!(w.snapshot()["watchdog_deliveries"], pending);
     assert_eq!(w.comments.lock().unwrap().len(), 3);
