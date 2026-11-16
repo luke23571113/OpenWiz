@@ -1,0 +1,6 @@
+# #883 follow-up red at 3378070 + the new check: pictures drawn from the complete page refuse past the bound.
+## python3 -I tools/war-room/test_gather.py Gather.test_a_full_page_past_the_height_bound_still_publishes_pictures_of_home
+ERROR: test_a_full_page_past_the_height_bound_still_publishes_pictures_of_home (__main__.Gather.test_a_full_page_past_the_height_bound_still_publishes_pictures_of_home)
+publish.Fail: the page is too tall to draw
+Ran 1 test in 34.932s
+FAILED (errors=1)

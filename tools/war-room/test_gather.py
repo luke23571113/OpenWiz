@@ -46,17 +46,20 @@ HEALTH = {'main_ci', 'ci_queue', 'stage_waits', 'stage_health'}
 # each incomplete metric's prerequisites and each measured metric's evidence links. Real chromium
 # measured that page at 57,625 CSS px (1200 wide) and 49,909 (400 wide, drawn 2x). Its journey
 # card's 8 metrics are left out: the fixture's journey card has none to copy.
+# #883 follow-up: REAL_SCALE times this puts the complete page's phone picture past MAX_HEIGHT.
+TALL = 3
 REAL_SCALE = {'activity': (12, 0, 18), 'board': (8, 1, 1), 'ci_bench': (7, 0, 1),
               'cost': (74, 5, 1), 'credits': (25, 1, 1), 'rework': (7, 6, 48)}
 
 
-def real_scale(providers):
-    """The gathered fixture's providers grown to REAL_SCALE with synthetic copies."""
+def real_scale(providers, times=1):
+    """The gathered fixture's providers grown to REAL_SCALE (times `times` metrics) with synthetic copies."""
     providers, n = copy.deepcopy(providers), 0
     for p in providers:
         if p['slot'] not in REAL_SCALE or not p['metrics']:
             continue
         count, prerequisites, links = REAL_SCALE[p['slot']]
+        count *= times
         base = list(p['metrics'])
         while len(p['metrics']) < count:
             k = len(p['metrics'])
@@ -615,6 +618,31 @@ class Gather(unittest.TestCase):
                 self.assertEqual(pixels['size'], [drawn, height])
                 self.assertGreater(pixels['text'], 50, 'the marker text is not painted')
                 self.assertGreater(pixels['card'], 500, "the marker's card is not painted")
+
+    def test_a_full_page_past_the_height_bound_still_publishes_pictures_of_home(self):
+        # catches (#883 follow-up): every hourly publication refusing with "the page is too tall to
+        # draw" once the complete one-document page outgrew the picture bound, so the site went stale.
+        # The pictures are of the home page, whole, within the unchanged bound.
+        root, _ = self.gather()
+        read = publish_module().selection_reader(root, self.tmp / 'out/selection.json')
+        out = self.tmp / 'pictures'
+        out.mkdir()
+        history = self.tmp / 'private' / 'history'
+        home = publish_module().render(out, history, PUBLISH_AT,
+                                       lambda at, previous: real_scale(read(at, previous), times=TALL))
+        self.assertEqual(home, (out / 'war-room.html').read_text(encoding='utf-8'))
+        complete = (history.parent / 'page' / 'page.html').read_text(encoding='utf-8')
+        tall = probed(publish_module().drawable(complete, True), width(True), 'document.documentElement.scrollHeight')
+        self.assertGreater(2 * tall, publish_module().MAX_HEIGHT, 'the complete page is past the bound')
+        for name, phone in (('war-room.png', False), ('war-room-phone.png', True)):
+            with self.subTest(name):
+                data = (out / name).read_bytes()
+                drawn, height = struct.unpack('>II', data[16:24])
+                scale = 2 if phone else 1
+                self.assertEqual(drawn, scale * width(phone))
+                self.assertLessEqual(height, publish_module().MAX_HEIGHT)
+                whole = probed(publish_module().drawable(home, phone), width(phone), 'document.documentElement.scrollHeight')
+                self.assertEqual(height, scale * whole, 'the whole home page, not a clip of it')
 
     def test_a_removed_or_unreadable_source_greys_only_its_own_card(self):
         git(self.origin, 'update-ref', '-d', 'refs/heads/ci-benchmarks')
