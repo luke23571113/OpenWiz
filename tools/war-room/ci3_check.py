@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """CI3's loop every 3 days (#784): the check that finds the note's numbers, and its gate.
 
-    ci3_weekly.py check [--now T] [--record FILE]   the loop's check: the note's finding on stdout, every run
-    ci3_weekly.py due [--now T]                     the Cloudroom gate: one line on every third day, else nothing
+    ci3_check.py check [--now T] [--record FILE]   the loop's check: the note's finding on stdout, every run
+    ci3_check.py due [--now T]                     the Cloudroom gate: one line on every third day, else nothing
 
 T is a UTC time, YYYY-MM-DDTHH:MM:SSZ (default: now). `check` reads GitHub
 only through the CI bench's reader (`gh api <path>`, GET): the CI3 measure
@@ -30,8 +30,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
-import bench  # noqa: E402
 import ci3  # noqa: E402
+
+bench = ci3.bench  # the bench's reader and checks, as CI3 reads them
 
 from bench import Fail, as_int, as_list, as_obj, as_str, as_time, need, secs  # noqa: E402
 
@@ -219,7 +220,7 @@ def read_minutes(read, now, workers=1):
 
 
 def read_measure(read, since, until, now, workers=1):
-    with tempfile.TemporaryDirectory(prefix="ci3-weekly-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="ci3-check-") as tmp:
         out = Path(tmp) / "window.json"
         ci3.collect(since, until, out, workers, read=read, now=now)
         return ci3.measure(ci3.read_window(out), label=f"AFTER {until[:10]}")
@@ -365,7 +366,7 @@ def due(now, definition=DEFINITION):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="ci3_weekly.py", description=__doc__.split("\n\n")[0])
+    p = argparse.ArgumentParser(prog="ci3_check.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check")
     c.add_argument("--now")
@@ -381,11 +382,11 @@ def main(argv=None):
         if args.cmd == "check":
             sys.stdout.write(check(now, record=args.record, workers=WORKERS))
         elif due(now, args.definition):
-            print("CI3 note due: run `python3 -I tools/ci-bench/ci3_weekly.py check`.")
+            print("CI3 note due: run `python3 -I tools/war-room/ci3_check.py check`.")
     except Fail as e:
         # 2, not 1: Cloudroom skips a gate that exits 1 with no output silently,
         # and counts 2 as a failure (three in a row pause the loop).
-        print(f"ci3_weekly: {e}", file=sys.stderr)
+        print(f"ci3_check: {e}", file=sys.stderr)
         return 2
     return 0
 
