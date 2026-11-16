@@ -17,11 +17,6 @@ SMOKE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(SMOKE)
 CLAIMS = ['fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
           'terminal', 'json', 'send', 'new', 'app', 'read_safety']
-CATALOGUE = {'schema': 'openwiz.cli.v1', 'kind': 'catalogue', 'commands': [
-    {'name': 'fleet.tick', 'argv': ['fleet', 'tick'], 'flags': ['--dry-run', '--expect-plan', '--json']}]}
-SCOPE = {'specs': [9001], 'tickets': [9002, 9003, 9004], 'rules': ['frontier'], 'never_start': [9004]}
-ACTION = {'kind': 'start_builder', 'rule': 'frontier', 'spec': 9001, 'ticket': 9002,
-          'facts': {}, 'outcome': {'state': 'planned'}}
 
 
 class FixtureCase(unittest.TestCase):
@@ -61,6 +56,7 @@ sys.exit(reply['exit'])
                     'cwd': str(self.root), 'openwiz': str(self.fake),
                     'artifacts': {str(self.fake): self.sha(self.fake)},
                     'env': {}, 'timeout_seconds': 2, 'steps': steps}
+        self.base_kit = json.loads(json.dumps(self.kit))
         self.kit_path = self.root / 'kit.json'
         self.state = self.root / 'state'
 
@@ -78,22 +74,27 @@ sys.exit(reply['exit'])
     def invoke(self):
         return self.run_tool('--fixture')
 
-    def restricted_tick(self, step, actions=(ACTION,), extra=()):
-        """Make `step` the fleet tick; the fake offers #1892's restriction."""
-        step['argv'] = [str(self.fake), 'fleet', 'tick', '--json']
-        step['checks'] = [{'path': '/actions', 'actions_in': SCOPE}, *extra]
-        plan = {'schema': 'openwiz.fleet-tick.v1', 'mode': 'dry_run', 'planned_at': 1893542400,
-                'default_branch': 'scratch', 'rules': {}, 'actions': list(actions)}
-        self.replies['help --agent'] = {'exit': 0, 'out': json.dumps(CATALOGUE)}
-        self.replies['fleet tick --dry-run'] = {'exit': 0, 'out': json.dumps(plan)}
-        self.replies['fleet'] = {'exit': 0, 'out': json.dumps(dict(
-            plan, mode='run', actions=[dict(a, outcome={'state': 'done'}) for a in actions]))}
-        return plan
+    def fleet_block(self):
+        """The fleet claim as launch-fleet leaves it to the runner: a CLI read,
+        an event (launch-fleet acts between sittings) and a readback that
+        repeats the block until the fleet's merges show."""
+        self.kit['steps'][0].update(kind='read', argv=[str(self.fake), 'fleet', '9001', '--json'])
+        wait = {'id': 'fleet_done', 'claim': 'fleet', 'kind': 'await',
+                'argv': [str(self.fake), 'done'], 'exit': 0,
+                'checks': [{'path': '/safe', 'equals': True}],
+                'until': [{'path': '/merged', 'equals': 2}], 'again_from': 'fleet'}
+        self.replies['fleet 9001 --json'] = {'exit': 0, 'out': '{"count":1,"known":true}'}
+        self.replies['done'] = {'exit': 0, 'out': '{"merged":0,"safe":true}'}
+        self.kit['steps'][1:1] = [{'id': 'fleet_event', 'claim': 'fleet', 'kind': 'event'}, wait]
 
-    def rewrite_journal(self, edit):
+    def fleet_reads(self):
+        return self.call_list().count(['fleet', '9001', '--json'])
+
+    def rewrite_journal(self, edit, events=None):
         """Rewrite the journal's events (re-chained) and save their replay as the
         checkpoint: a consistent synthetic state, never a bare checkpoint edit."""
-        _, events = SMOKE.read_journal(self.state)
+        if events is None:
+            _, events = SMOKE.read_journal(self.state)
         events = [edit(dict(e)) for e in events]
         prev, lines = '0' * 64, []
         for seq, event in enumerate(events):
@@ -102,10 +103,6 @@ sys.exit(reply['exit'])
             prev = hashlib.sha256(line).hexdigest()
         (self.state / 'journal.jsonl').write_bytes(b''.join(lines))
         SMOKE.save(self.state, SMOKE.replay(json.loads(self.kit_path.read_text()), events))
-
-    def ticks(self):
-        """Every executing tick: only the pinned form may ever appear."""
-        return [c for c in self.call_list() if c[:2] == ['fleet', 'tick'] and '--dry-run' not in c]
 
     def call_list(self):
         return [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
@@ -218,37 +215,90 @@ class Smoke(FixtureCase):
         self.assertEqual(self.call_list(), [])
 
 
-    def test_fleet_continues_one_tick_per_event_until_readback(self):
-        self.restricted_tick(self.kit['steps'][0])
-        wait = {'id': 'fleet_done', 'claim': 'fleet', 'kind': 'await',
-                'argv': [str(self.fake), 'done'], 'exit': 0,
-                'checks': [{'path': '/safe', 'equals': True}],
-                'until': [{'path': '/merged', 'equals': 2}], 'again_from': 'fleet'}
-        self.replies['done'] = {'exit': 0, 'out': '{"merged":0,"safe":true}'}
-        self.kit['steps'][1:1] = [{'id': 'tick_event', 'claim': 'fleet', 'kind': 'event'}, wait]
+    def test_retired_engine_commands_refuse_before_any_step(self):
+        """catches: a kit that still runs `openwiz fleet tick` (any form, the
+        reviewed-plan one included) or `openwiz engine`, which the engine
+        retirement removes: the runner must refuse it before any step runs."""
+        forms = {'tick': ['fleet', 'tick', '--json'],
+                 'pinned tick': ['fleet', 'tick', '--expect-plan', '/synthetic/plan.json', '--json'],
+                 'tick preview': ['fleet', 'tick', '--dry-run', '--json'],
+                 'engine status': ['engine', 'status', '--json'],
+                 'engine activate': ['engine', 'activate']}
+        for name, args in forms.items():
+            for kind in ('write', 'read'):
+                with self.subTest(form=name, kind=kind):
+                    self.state = self.root / ('retired-' + name.replace(' ', '-') + '-' + kind)
+                    self.kit['steps'][0].update(kind=kind, argv=[str(self.fake), *args])
+                    self.assertEqual(self.report(self.invoke(), 2)['reason'], 'retired_command')
+                    self.assertEqual(self.report(self.run_tool('--dry-run'), 2)['reason'], 'retired_command')
+                    self.assertEqual(self.call_list(), [])
+
+    def test_retired_commands_refuse_through_any_alias_of_the_pinned_program(self):
+        """catches (review R2): a symlink, hardlink or pinned copy of the pinned
+        `openwiz` running `fleet tick` or `engine` as a block read or as the
+        terminating await, repeating a retired write with no attempt record."""
+        aliases = {'symlink': lambda a: a.symlink_to(self.fake),
+                   'hardlink': lambda a: os.link(self.fake, a),
+                   'copy': lambda a: (a.write_bytes(self.fake.read_bytes()), a.chmod(0o700))}
+        forms = {'tick': ['fleet', 'tick', '--json'], 'engine': ['engine', 'activate']}
+        for name, make in aliases.items():
+            alias = self.root / ('alias-' + name)
+            make(alias)
+            for form, args in forms.items():
+                for place in ('block read', 'await'):
+                    with self.subTest(alias=name, form=form, place=place):
+                        self.kit = json.loads(json.dumps(self.base_kit))
+                        self.fleet_block()
+                        self.kit['artifacts'][str(alias)] = self.sha(self.fake)
+                        index = 0 if place == 'block read' else 2
+                        self.kit['steps'][index]['argv'] = [str(alias), *args]
+                        self.state = self.root / ('alias-%s-%s-%s' % (name, form, place.replace(' ', '-')))
+                        self.assertEqual(self.report(self.invoke(), 2)['reason'], 'retired_command')
+                        self.assertEqual(self.call_list(), [])
+        # An identity that cannot be read is refused as the same program.
+        self.kit = json.loads(json.dumps(self.base_kit))
+        missing = str(self.root / 'missing-program')
+        self.kit['artifacts'][missing] = '0' * 64
+        self.kit['steps'][0]['argv'] = [missing, 'fleet', 'tick', '--json']
+        self.state = self.root / 'alias-unreadable'
+        self.assertEqual(self.report(self.invoke(), 2)['reason'], 'retired_command')
+        self.assertEqual(self.call_list(), [])
+
+    def test_fleet_block_rereads_once_per_event_until_readback(self):
+        """catches: the fleet claim needing a runner write to progress, or a
+        block re-running anything but its reads between launch-fleet's events."""
+        self.fleet_block()
         self.assertEqual(self.report(self.invoke(), 3)['reason'], 'next_event')
         self.assertEqual(self.report(self.invoke(), 3)['reason'], 'pending')
         self.assertEqual(self.report(self.invoke(), 3)['reason'], 'next_event')
-        self.assertEqual(len(self.ticks()), 2)
+        self.assertEqual(self.fleet_reads(), 2)
         self.replies['done']['out'] = '{"merged":2,"safe":true}'
-        self.report(self.invoke(), 0)
-        self.assertEqual(len(self.ticks()), 2)
-        self.assertTrue(all(t[2] == '--expect-plan' for t in self.ticks()))
+        doc = self.report(self.invoke(), 0)
+        self.assertEqual(doc['claims']['fleet'], 'pass')
+        self.assertEqual(self.fleet_reads(), 2)
+        self.assertEqual(self.call_list().count(['send']), 1)
+        self.assertFalse(any(c[:2] == ['fleet', 'tick'] for c in self.call_list()))
 
-    def test_only_fleet_tick_can_be_repeated(self):
+    def test_no_write_can_be_repeated(self):
+        """catches: a repeat block that would re-send a message or re-run a
+        fleet write (a cleanup, a reply) on a later event."""
         self.kit['steps'].append({'id': 'repeat_send', 'claim': 'send', 'kind': 'await',
                                  'argv': [str(self.fake), 'send'], 'exit': 0,
                                  'checks': [{'path': '/count', 'equals': 2}],
                                  'again_from': 'send'})
         self.report(self.invoke(), 2)
         self.assertEqual(self.call_list(), [])
+        self.kit['steps'].pop()
+        self.fleet_block()
+        self.kit['steps'][0]['kind'] = 'write'
+        self.assertEqual(self.report(self.invoke(), 2)['reason'], 'invalid_kit')
+        self.assertEqual(self.call_list(), [])
 
     def test_attempting_checkpoint_refuses_without_any_execution(self):
         self.kit['steps'].insert(0, {'id': 'event', 'claim': 'fleet', 'kind': 'event'})
         self.report(self.invoke(), 3)
         # Interrupted after the fsynced attempt, before anything else was saved.
-        SMOKE.journal(self.state, {'kind': 'attempt', 'id': 'fleet', 'claim': 'fleet',
-                                   'sittings': 0, 'fleet_started': 0})
+        SMOKE.journal(self.state, {'kind': 'attempt', 'id': 'fleet', 'claim': 'fleet'})
         before = self.call_list()
         self.assertEqual(self.report(self.invoke(), 3)['reason'], 'uncertain_write')
         self.assertEqual(self.report(self.invoke(), 3)['reason'], 'uncertain_write')
@@ -311,126 +361,45 @@ class Smoke(FixtureCase):
                 thread.join(timeout=5)
                 self.assertFalse(thread.is_alive())
 
-    def test_uncertain_tick_stops_even_when_exit_and_selected_facts_pass(self):
-        plan = self.restricted_tick(self.kit['steps'][0],
-                                    extra=[{'path': '/schema', 'equals': 'openwiz.fleet-tick.v1'}])
-        self.replies['fleet']['out'] = json.dumps(dict(plan, mode='run', actions=[
-            dict(ACTION, outcome={'state': 'uncertain', 'reason': 'synthetic'})]))
-        self.assertEqual(self.report(self.invoke(), 3)['reason'], 'uncertain_write')
-        self.report(self.invoke(), 3)
-        self.assertEqual(len(self.ticks()), 1)
-        self.assertNotIn(['send'], self.call_list())
-
-    def test_fleet_sitting_and_time_caps_allow_no_more_ticks(self):
-        self.restricted_tick(self.kit['steps'][0])
-        wait = {'id': 'fleet_done', 'claim': 'fleet', 'kind': 'await',
-                'argv': [str(self.fake), 'done'], 'exit': 0,
-                'checks': [{'path': '/safe', 'equals': True}],
-                'until': [{'path': '/merged', 'equals': 2}], 'again_from': 'fleet'}
-        self.replies['done'] = {'exit': 0, 'out': '{"merged":0,"safe":true}'}
-        self.kit['steps'][1:1] = [{'id': 'tick_event', 'claim': 'fleet', 'kind': 'event'}, wait]
-        for field, value in [('sittings', 60), ('started', 1)]:
+    def test_fleet_sitting_and_time_caps_allow_no_more_sittings(self):
+        """catches: a fleet block re-reading past AC6's 60 sittings or three
+        hours, or a final readback accepted after the cap expired."""
+        self.fleet_block()
+        for field in ('sittings', 'started'):
             with self.subTest(field=field):
                 self.state = self.root / ('capped-' + field)
-                self.report(self.invoke(), 3)
-                self.report(self.invoke(), 3)
-                key = 'fleet_started' if field == 'started' else field
-                self.rewrite_journal(lambda e: dict(e, **{key: value}) if e['kind'] == 'attempt' else e)
-                before = self.call_list()
+                for reason in ('next_event', 'pending', 'next_event'):
+                    self.assertEqual(self.report(self.invoke(), 3)['reason'], reason)
+                if field == 'sittings':
+                    # Journal 58 more real sittings: readback, repeat, read, event.
+                    self.rewrite_journal(lambda e: e)
+                    _, events = SMOKE.read_journal(self.state)
+                    events = events + events[3:7] * 58
+                    self.rewrite_journal(lambda e: e, events)
+                    state = json.loads((self.state / 'checkpoint.json').read_text())
+                    self.assertEqual(state['fleet']['sittings'], 60)
+                else:
+                    self.rewrite_journal(lambda e: dict(e, at=1) if e.get('id') == 'fleet_event' else e)
+                before = self.fleet_reads()
+                if field == 'sittings':
+                    # The sixtieth sitting's own readback still runs; no repeat follows it.
+                    self.assertEqual(self.report(self.invoke(), 3)['reason'], 'pending')
                 self.assertEqual(self.report(self.invoke(), 3)['reason'], 'fleet_limit')
-                # Not even the restriction's read-only preview runs at the cap.
-                new = self.call_list()[len(before):]
-                self.assertTrue(set(map(tuple, new)) <= {('ls', '--json'), ('done',)}, new)
+                self.assertEqual(self.report(self.invoke(), 3)['reason'], 'fleet_limit')
+                self.assertEqual(self.fleet_reads(), before)
 
-        # Expiry also bounds the final observation, not only the next write.
+        # Expiry also bounds the final observation, not only the next sitting.
         self.state = self.root / 'expired-but-merged'
         self.report(self.invoke(), 3)
-        self.rewrite_journal(lambda e: dict(e, fleet_started=1) if e['kind'] == 'attempt' else e)
+        self.rewrite_journal(lambda e: dict(e, at=1) if e.get('id') == 'fleet_event' else e)
         self.replies['done']['out'] = '{"merged":2,"safe":true}'
         self.assertEqual(self.report(self.invoke(), 3)['reason'], 'fleet_limit')
 
-    def test_fleet_tick_executes_only_the_saved_expected_plan(self):
-        self.restricted_tick(self.kit['steps'][0])
-        self.report(self.invoke(), 0)
-        calls = self.call_list()
-        self.assertEqual(calls[1:4], [['help', '--agent'], ['fleet', 'tick', '--dry-run', '--json'],
-                                      ['fleet', 'tick', '--expect-plan',
-                                       str(self.state / 'fleet-expected-plan.json'), '--json']])
-        self.assertNotIn(['fleet', 'tick', '--json'], calls)
-        self.assertFalse((self.state / 'fleet-expected-plan.json').exists())
-
-    def test_unestablished_restriction_refuses_before_any_tick(self):
-        cases = {
-            'restriction_unavailable': ('help --agent', dict(CATALOGUE, commands=[
-                {'name': 'fleet.tick', 'argv': ['fleet', 'tick'], 'flags': ['--dry-run', '--json']}])),
-            'out_of_scope': ('fleet tick --dry-run', None),
-            'invalid_plan': ('fleet tick --dry-run', 'run'),
-        }
-        for reason, (key, change) in cases.items():
-            with self.subTest(reason=reason):
-                self.state = self.root / ('refused-' + reason)
-                plan = self.restricted_tick(self.kit['steps'][0])
-                if reason == 'out_of_scope':
-                    change = dict(plan, actions=[dict(ACTION, ticket=9004)])
-                elif reason == 'invalid_plan':
-                    change = dict(plan, mode='run')
-                self.replies[key] = {'exit': 0, 'out': json.dumps(change)}
-                before, sends = len(self.ticks()), self.call_list().count(['send'])
-                self.assertEqual(self.report(self.invoke(), 3)['reason'], reason)
-                self.assertEqual(len(self.ticks()), before)
-                self.assertEqual(self.call_list().count(['send']), sends)
-                self.assertFalse((self.state / 'fleet-expected-plan.json').exists())
-                # Nothing was consumed: once the restriction holds, the same command ticks once.
-                self.restricted_tick(self.kit['steps'][0])
-                self.report(self.invoke(), 0)
-                self.assertEqual(len(self.ticks()), before + 1)
-
-    def test_tick_that_departs_from_the_saved_plan_consumes_the_attempt(self):
-        plan = self.restricted_tick(self.kit['steps'][0])
-        self.replies['fleet']['out'] = json.dumps(dict(plan, mode='run', actions=[
-            dict(ACTION, ticket=9003, outcome={'state': 'done'})]))
-        self.assertEqual(self.report(self.invoke(), 3)['reason'], 'uncertain_write')
-        self.assertEqual(self.report(self.invoke(), 3)['reason'], 'uncertain_write')
-        self.assertEqual(len(self.ticks()), 1)
-        self.assertEqual(self.call_list().count(['fleet', 'tick', '--dry-run', '--json']), 1)
-
-    def test_relative_state_directory_still_pins_the_plan(self):
-        self.restricted_tick(self.kit['steps'][0])
-        self.kit_path.write_text(json.dumps(self.kit))
-        (self.root / 'replies.json').write_text(json.dumps(self.replies))
-        result = subprocess.run([sys.executable, '-I', str(RUNNER), '--kit', str(self.kit_path),
-                                 '--state', 'relative-state', '--fixture'],
-                                cwd=self.root, capture_output=True, text=True, timeout=10)
-        self.report(result, 0)
-        self.assertEqual(self.ticks(), [['fleet', 'tick', '--expect-plan',
-                                         str(self.root / 'relative-state' / 'fleet-expected-plan.json'), '--json']])
-
-    def test_tick_without_a_scope_audit_refuses(self):
-        self.restricted_tick(self.kit['steps'][0])
-        self.kit['steps'][0]['checks'] = [{'path': '/mode', 'equals': 'run'}]
-        self.report(self.invoke(), 2)
-        self.assertEqual(self.call_list(), [])
-
-    def test_scope_allowlist_accepts_due_actions_and_refuses_extra_destinations(self):
-        plan = {'id': 'scope', 'claim': 'fleet', 'kind': 'read',
-            'argv': [str(self.fake), 'plan'], 'exit': 0,
-            'checks': [{'path': '/actions', 'actions_in': {
-                'specs': [9001], 'tickets': [9002, 9003, 9004],
-                'rules': ['frontier', 'adr_0008'], 'never_start': [9004]}}]}
-        self.kit['steps'].insert(0, plan)
-        action = {'kind': 'start_builder', 'rule': 'frontier', 'spec': 9001,
-                  'ticket': 9002, 'facts': {}, 'outcome': {'state': 'planned'}}
-        self.replies['plan'] = {'exit': 0, 'out': json.dumps({'actions': [action]})}
-        self.report(self.invoke(), 0)
-        for key, value in [('spec', 9999), ('ticket', 9999), ('ticket', 9004),
-                           ('rule', 'publish'), ('kind', 'publish'), ('ticket', 9002)]:
-            with self.subTest(key=key, value=value):
-                self.state = self.root / ('scope-' + key + str(value))
-                changed = dict(action, **{key: value})
-                self.replies['plan']['out'] = json.dumps({'actions': [action, changed]})
-                before = self.call_list().count(['fleet'])
-                self.report(self.invoke(), 1)
-                self.assertEqual(self.call_list().count(['fleet']), before)
+        # A journal claiming a 61st sitting is not one the runner could write.
+        self.state = self.root / 'capped-sittings'
+        _, events = SMOKE.read_journal(self.state)
+        with self.assertRaises(SMOKE.Refusal):
+            SMOKE.replay(json.loads(self.kit_path.read_text()), events + events[3:7])
 
     def test_app_step_selects_installation_token_without_owner_fallback(self):
         text = self.fake.read_text().replace("print(reply['out'])", "if case == 'app':\n    import os\n    reply['out'] = json.dumps({'selected': os.environ.get('GH_TOKEN'), 'fallback': 'GITHUB_TOKEN' in os.environ})\nprint(reply['out'])")

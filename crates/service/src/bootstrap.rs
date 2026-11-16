@@ -22,7 +22,7 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
     ];
     const PROGRAMS: [&str; 3] = ["openwiz", "openwiz-service", "openwiz-server"];
     // tools/install/install.py REQUIRED; the t12 proof reads the installer's list.
-    const REQUIRED: [&str; 21] = [
+    const REQUIRED: [&str; 22] = [
         "openwiz",
         "openwiz-service",
         "openwiz-server",
@@ -44,6 +44,7 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
         "runtime/github-app/app.py",
         "runtime/github-app/manifest.json",
         "runtime/cloudroom/cloudroom.py",
+        "runtime/setup/init.py",
     ];
     const EFFECTS: &str = "Enable and start the owner user unit openwiz.service.";
     const REASON: &str = "Reconcile the exact PC activation and App record before continuing.";

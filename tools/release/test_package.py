@@ -23,7 +23,8 @@ SETUP_SOURCES = {'runtime/setup/setup.py': 'tools/install/setup/setup.py',
                  'runtime/setup/github_login.py': 'tools/install/setup/github_login.py',  # #633
                  'runtime/github-app/setup.py': 'tools/github-app/setup.py',
                  'runtime/github-app/app.py': 'tools/github-app/app.py',
-                 'runtime/github-app/manifest.json': 'tools/github-app/manifest.json'}
+                 'runtime/github-app/manifest.json': 'tools/github-app/manifest.json',
+                 'runtime/setup/init.py': 'tools/install/setup/init.py'}  # #635
 
 
 class Package(unittest.TestCase):

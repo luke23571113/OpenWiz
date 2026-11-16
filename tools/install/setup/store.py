@@ -107,6 +107,39 @@ def check_identity(value):
             if skipped else value['acting_login'] is None, 'invalid acting login')
 
 
+BRAIN = {'location', 'code_repository', 'code_visibility', 'brain_repository', 'brain_visibility',
+         'visibility_basis', 'folder', 'setting', 'decision_repositories'}
+
+
+def check_brain(value):
+    """#635: the optional brain reference (setup-onboard.v1's `brain`). Absent or
+    null is an existing project: no brain is inferred. Placement follows the
+    positively read visibility; a companion is never the code repository."""
+    if value is None:
+        return
+    require(type(value) is dict and set(value) == BRAIN, 'invalid brain reference')
+    code, home = value['code_repository'], value['brain_repository']
+    for name in (code, home):
+        require(isinstance(name, str) and REPOSITORY.fullmatch(name) and name.split('/')[1] not in ('.', '..'),
+                'invalid brain repository')
+    require(value['folder'] == '.openwiz/brain' and value['setting'] == 'brain_location'
+            and value['visibility_basis'] == 'github_repository_read'
+            and value['brain_visibility'] == {'known': 'private'}, 'invalid brain reference')
+    pair = value['decision_repositories']
+    if value['location'] == 'in_repository':
+        require(value['code_visibility'] == 'private' and code.lower() == home.lower() and pair is None,
+                'an in-repository brain must be the private code repository')
+    else:
+        require(value['location'] == 'companion' and value['code_visibility'] == 'public'
+                and code.lower() != home.lower(), 'a companion brain must be a separate repository for public code')
+        role = lambda r: type(r) is dict and set(r) == {'owner', 'name'} and all(isinstance(v, str) for v in r.values())
+        require(type(pair) is dict and set(pair) == {'public', 'private'} and role(pair['public'])
+                and role(pair['private'])
+                and f"{pair['public']['owner']}/{pair['public']['name']}".lower() == code.lower()
+                and f"{pair['private']['owner']}/{pair['private']['name']}".lower() == home.lower(),
+                'the decisions pair must match the companion brain')
+
+
 def check_operation(value):
     require(type(value) is dict and set(value) == {
         'operation_id', 'kind', 'phase', 'fingerprint', 'effects', 'reason'}, 'invalid operation')
@@ -122,7 +155,8 @@ def check_operation(value):
 
 def validate(value):
     required = {'schema', 'revision', 'checks', 'project', 'app', 'observations', 'operations'}
-    require(type(value) is dict and required <= set(value) <= required | {'engine', 'identity'}, 'invalid setup state')
+    require(type(value) is dict and required <= set(value) <= required | {'engine', 'identity', 'brain'},
+            'invalid setup state')
     require(value['schema'] == SCHEMA, 'unsupported setup state')
     require(type(value['revision']) is int and 0 <= value['revision'] < 2 ** 53, 'invalid revision')
     checks = value['checks']
@@ -147,6 +181,7 @@ def validate(value):
     for operation in operations:
         check_operation(operation)
     require(len({o['operation_id'] for o in operations}) == len(operations), 'duplicate operation id')
+    check_brain(value.get('brain'))
     engine = value.get('engine')
     if engine is not None:
         require(type(engine) is dict and set(engine) == {'location','revision','runtime','operation_id','fingerprint','cost'}, 'invalid engine')

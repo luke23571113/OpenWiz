@@ -4290,6 +4290,24 @@ fn setup_onboard_contract_passes() {
     );
 }
 
+// #635: installed init's runtime proofs (both visibilities, refusals, lost
+// replies, repeat init and the brain reference) run in the checks binary, so
+// CI's always-run set executes them on every run.
+#[test]
+fn setup_onboard_init_passes() {
+    let result = std::process::Command::new("python3")
+        .args(["-I", "tools/install/tests/init/test_init.py"])
+        .current_dir(ROOT)
+        .output()
+        .expect("run the init runtime proofs");
+    assert!(
+        result.status.success(),
+        "init runtime proofs failed: {}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
 // #633: setup's GitHub browser sign-in and explicit App-skip proofs, on a
 // recording gh, run in the checks binary like the contract checks above.
 #[test]

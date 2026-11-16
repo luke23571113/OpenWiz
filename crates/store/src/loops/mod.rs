@@ -6,7 +6,6 @@ pub mod repository;
 pub mod storage;
 pub use paths::inspect as inspect_state;
 pub use paths::read_service_state;
-pub(crate) use paths::{Failure as InspectFailure, inspect_settled};
 
 use serde_json::Value;
 use std::{

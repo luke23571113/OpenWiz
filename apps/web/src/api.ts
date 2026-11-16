@@ -4,8 +4,6 @@
 // It turns every response into one outcome, so the page can tell signed out,
 // disconnected, busy and the core's own errors apart (V6).
 
-import { parseNotificationStatus, parseNotificationPreferences } from './notifications.ts';
-import type { NotificationStatus, NotificationPreferences, NotificationPreferenceWrite } from './notifications.ts';
 
 import { parseApiError } from './envelope.ts';
 import type { ApiError, Envelope } from './envelope.ts';
@@ -18,8 +16,6 @@ import type { Decisions } from './decisions.ts';
 import { readFleet, readFleets } from './fleets.ts';
 import { readLoopsText } from './loops.ts';
 import type { LoopsView } from './loops.ts';
-import { readTargetText, targetUrl } from './notificationTarget.ts';
-import type { TargetResult } from './notificationTarget.ts';
 import type { FleetsEnvelope } from './fleets.ts';
 import type { FleetEnvelope } from './fleetGraph.ts';
 
@@ -551,30 +547,3 @@ export function readSetup(fetchImpl: FetchLike, signal: AbortSignal): Promise<{ 
   return readText(fetchImpl, '/api/v1/setup', parseSetupText, signal);
 }
 
-/** Exact bound-item read only; receiving a notification is never an answer. */
-export async function readNotificationTarget(fetchImpl: FetchLike, token: string, signal: AbortSignal): Promise<{ kind: 'ok'; envelope: TargetResult } | Failure | 'stopped'> {
-  const url = targetUrl(token);
-  return url === null ? { kind: 'error', status: 400, error: null } : readText(fetchImpl, url, readTargetText, signal);
-}
-
-// Notification preference/status calls (#2230); #2035 supplies the real UI
-// integration. These functions never request permission or register subscriptions.
-export function readNotificationStatus(fetchImpl: FetchLike, signal: AbortSignal): Promise<{ kind: 'ok'; envelope: NotificationStatus } | Failure | 'stopped'> {
-  return readText(fetchImpl, '/api/v1/notifications/status', parseNotificationStatus, signal);
-}
-export function readNotificationPreferences(fetchImpl: FetchLike, signal: AbortSignal): Promise<{ kind: 'ok'; envelope: NotificationPreferences } | Failure | 'stopped'> {
-  return readText(fetchImpl, '/api/v1/notifications/preferences', parseNotificationPreferences, signal);
-}
-/** One explicit owner's operation; the caller retains its id/body. No retry. */
-export async function writeNotificationPreferences(fetchImpl: FetchLike, write: NotificationPreferenceWrite, signal: AbortSignal): Promise<{ kind: 'ok'; envelope: NotificationPreferences } | Failure> {
-  let res: ResponseLike;
-  let body = '';
-  try {
-    res = await fetchImpl('/api/v1/notifications/preferences', { method: 'PUT', headers: SEND_HEADERS, credentials: 'same-origin', redirect: 'manual', cache: 'no-store', signal,
-      body: JSON.stringify({ schema: 'openwiz.notifications.v1', record: { preference_write: write } }) });
-    if (res.type !== 'opaqueredirect') body = await res.text();
-  } catch {
-    return { kind: 'disconnected', cause: signal.aborted ? 'timeout' : 'network', status: null };
-  }
-  return classify(res, body, parseNotificationPreferences);
-}
