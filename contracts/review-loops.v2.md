@@ -143,8 +143,9 @@ v2:
 
 `review_loops.py check-report FILE [--description PR]` applies v1's checks to
 every report and, to a report that uses any v2 form (a ruling mark,
-`Rulings: none.`, a logged blocker, or a `fresh` or `park` line), these too.
-It refuses:
+`Rulings: none.`, a logged blocker, or a `fresh` or `park` line) or is
+checked against a description with a `## Rulings` section, these too. A
+description with no such section lists no ruling. It refuses:
 
 - a ruling mark that is malformed, repeated, or leaves a gap in the numbers;
   `Rulings: none.` beside a mark; an overturned ruling whose finding is not

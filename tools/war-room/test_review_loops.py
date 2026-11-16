@@ -431,6 +431,13 @@ class ReportsV2(unittest.TestCase):
             ('a ruling line with no cost level', b, d.replace('Cost if wrong: high:', 'Cost if wrong:'),
              ['description: malformed ruling line: ' + next(
                  x for x in d.splitlines() if x.startswith('2. ')).replace('Cost if wrong: high:', 'Cost if wrong:')]),
+            ('an empty ## Rulings section', b.replace(mark1, '').replace(mark2, ''),
+             d.replace(d.split('## Rulings\n\n')[1].split('\n\n')[0] + '\n\n', ''),
+             ['description: ## Rulings lists no ruling and is not none']),
+            ('a gap in the ruling numbers', b.replace('Ruling 2**', 'Ruling 3**'), d.replace('\n2. ', '\n3. '),
+             ['description: rulings are numbered from 1 with no gap']),
+            ('two ## Rulings sections', b, d + '\n## Rulings\n\nnone\n',
+             ['description: more than one ## Rulings section']),
             ('Risk: blocker logged at the re-check',
              f.replace('VERDICT: CHANGES', 'VERDICT: APPROVE').replace(
                  'still written on the error path.', 'still written on the error path. Logged as follow-up #4311.')
@@ -464,6 +471,13 @@ class ReportsV2(unittest.TestCase):
             with self.subTest(name):
                 self.assertTrue(text not in (b, f, p, m) or description not in (None, d), 'a real change')
                 self.assertEqual(expected, self.problems(text, description))
+
+    def test_a_quoted_example_is_not_the_section(self):
+        quoted = self.DESCRIPTION.replace('## Rulings', '```md\n## Rulings\n\nnone\n```\n\n## Rulings', 1)
+        self.assertEqual(2, quoted.count('## Rulings'))
+        self.assertEqual([], self.problems(self.text('builder'), quoted))
+        unfenced = quoted.replace('```md\n', '').replace('none\n```\n', 'none\n')
+        self.assertIn('description: more than one ## Rulings section', self.problems(self.text('builder'), unfenced))
 
     def test_v1_reports_pass_unchanged(self):
         self.assertEqual([], self.problems((FIX / 'report-ok.md').read_text()))

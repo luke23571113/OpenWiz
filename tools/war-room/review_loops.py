@@ -5,7 +5,7 @@ Reads already collected inputs only and starts nothing: no GitHub read, no
 clock, no write except the files `project` is told to write.
 
   bench --cohort F --journey F --outcomes F --findings F [--reports F] [--watchdog F]
-  check-report FILE
+  check-report FILE [--description PR]   (v1, and v2 as contracts/review-loops.v2.md pins it)
   compare BEFORE AFTER [--safety-escapes F]
   project BENCH --journey F --source-path P --bench-path P --observed-at T --evidence URL --out DIR
 
@@ -337,7 +337,16 @@ NEXT = {'builder': rf'Next: the builder fixes or disputes ({IDS}) once, then one
         'final': rf'Next: the orchestrator logs ({IDS}) and merges, or asks Jake for a security, privacy, '
                  r'live, spending or publishing call\.',
         'merge': r"Next: none open\. It merges by the project's merge rules\."}
+NEXT_V2 = {'builder': NEXT['builder'],
+           'fresh': rf'Next: a fresh, stronger builder fixes ({IDS}) once, then one final check\.',
+           'park': rf'Next: park ({IDS}) as a decision for Jake\.',
+           'merge': NEXT['merge']}
 GRADES = {'blocking': 'blocking', 'polish': 'polish', 'high': 'blocking', 'medium': 'blocking', 'low': 'polish'}
+MARK = re.compile(r'- \*\*Ruling ([1-9][0-9]*)\*\* (?:upheld|overturned as (R[1-9][0-9]*)): \S.*')
+MARK_START = re.compile(r'- \*\*Ruling(?: ([1-9][0-9]*)\*\*)?')
+NO_RULINGS = 'Rulings: none.'
+LOGGED = re.compile(r'Logged as follow-up(?: #([1-9][0-9]*)\b)?')
+RULING = re.compile(r'([1-9][0-9]*)\. \S.*? Why: \S.*? Cost if wrong: (?:high|low): \S.*')
 
 
 def parse_report(text):
@@ -359,12 +368,25 @@ def parse_report(text):
         status = next((s for s in STATUSES if rest.startswith(s)), None)
         user = any(USER.fullmatch(x) for x in more)
         risk = next((RISK.fullmatch(x)[1] for x in more if RISK.fullmatch(x)), None)
+        logged = LOGGED.search(' '.join([rest] + more))
         findings.append({'id': m[1], 'grade': m[2], 'class': GRADES.get(m[2]), 'new': bool(J.NEW.match(rest)),
                          'status': status, 'user_path': user, 'risk': risk,
-                         'polish': bool(POLISH.search(' '.join([rest] + more)))})
+                         'polish': bool(POLISH.search(' '.join([rest] + more))),
+                         'logged': bool(logged), 'follow_up': logged[1] if logged else None})
+    marks, bad_marks = [], []
+    for raw in lines:
+        start = MARK_START.match(raw.strip())
+        if not start:
+            continue
+        m = MARK.fullmatch(raw.strip())
+        if m:
+            marks.append((int(m[1]), m[2]))
+        else:
+            bad_marks.append((int(start[1]) if start[1] else None, raw.strip()))
     nexts = [x.strip() for x in lines if x.strip().startswith('Next:')]
     return {'verdict': verdict[1] if verdict else None, 'findings': findings,
-            'next': nexts[-1] if nexts else None}
+            'next': nexts[-1] if nexts else None, 'marks': marks, 'bad_marks': bad_marks,
+            'no_rulings': any(x.strip() == NO_RULINGS for x in lines)}
 
 
 def open_blocking(report):
@@ -372,8 +394,47 @@ def open_blocking(report):
             (f['new'] or f['status'] in OPEN)]
 
 
-def check_report(text):
-    """Every way the report breaks the contract's lines; empty when it passes."""
+def description_rulings(text):
+    """The ruling numbers a PR description's `## Rulings` section lists (v2), and its problems.
+
+    None when the description has no such section."""
+    lines, fenced, fence = text.splitlines(), [], False
+    for x in lines:  # a heading inside a code fence (a quoted example) is not a heading
+        if x.lstrip().startswith(('```', '~~~')):
+            fence = not fence
+            fenced.append(True)
+        else:
+            fenced.append(fence)
+    heads = [i for i, x in enumerate(lines) if x.strip() == '## Rulings' and not fenced[i]]
+    if not heads:
+        return None, []
+    problems = ['description: more than one ## Rulings section'] if len(heads) > 1 else []
+    body = []
+    for i in range(heads[0] + 1, len(lines)):
+        if re.match(r'#{1,2} ', lines[i]) and not fenced[i]:
+            break
+        if lines[i].strip():
+            body.append(lines[i].strip())
+    if body == ['none']:
+        return [], problems
+    numbers = []
+    for x in body:
+        n = re.match(r'([1-9][0-9]*)\. ', x)
+        if n:
+            numbers.append(int(n[1]))
+        if not RULING.fullmatch(x):
+            problems.append(f'description: malformed ruling line: {x}')
+    if not body:
+        problems.append('description: ## Rulings lists no ruling and is not none')
+    if numbers != list(range(1, len(numbers) + 1)):
+        problems.append('description: rulings are numbered from 1 with no gap')
+    return numbers, problems
+
+
+def check_report(text, description=None):
+    """Every way the report breaks the contract's lines (v1, and v2 when it uses a v2 form); empty when it passes.
+
+    `description` is the PR description; its `## Rulings` section names the rulings the report must mark."""
     r = parse_report(text)
     problems, seen = [], set()
     for f in r['findings']:
@@ -384,31 +445,86 @@ def check_report(text):
             problems.append(f'{f["id"]}: unknown grade {f["grade"]}')
         elif f['grade'] not in ('blocking', 'polish'):
             problems.append(f'{f["id"]}: old grade {f["grade"]}; use blocking or polish')
-        elif not f['new'] and f['status'] is None:
+        elif not f['new'] and f['status'] is None and not f['logged']:
             problems.append(f'{f["id"]}: neither a new finding nor a status')
         elif f['new'] and f['class'] == 'blocking' and not (f['user_path'] or f['risk']):
             problems.append(f'{f["id"]}: a blocking finding needs a User path: or Risk: line')
         elif f['new'] and f['class'] == 'polish' and not f['polish']:
             problems.append(f'{f["id"]}: a polish finding needs its Polish issue: #<n>')
+    listed, listed_problems = description_rulings(description) if description is not None else (None, [])
+    next_line = r['next'] or ''
+    v2 = bool(r['marks'] or r['bad_marks'] or r['no_rulings'] or listed is not None or
+              any(f['logged'] for f in r['findings']) or
+              any(re.fullmatch(NEXT_V2[s], next_line) for s in ('fresh', 'park')))
+    if v2:  # a description with no ## Rulings section lists no ruling
+        problems += _check_v2(r, [] if description is not None and listed is None else listed, listed_problems)
     if r['verdict'] is None:
         problems.append('no VERDICT line')
-    opened = open_blocking(r)
+    logged = {f['id'] for f in r['findings'] if f['logged']}
+    opened = [i for i in open_blocking(r) if i not in logged]
     if r['verdict'] is not None and (r['verdict'] == 'CHANGES') != bool(opened):
         problems.append('the verdict is CHANGES only while a blocking finding is open')
     if r['next'] is None:
         problems.append('no Next: line')
+    elif v2 and any(re.fullmatch(NEXT[s], next_line) for s in ('orchestrator', 'final')):
+        problems.append('a v2 report never uses the v1 orchestrator or final Next: line')
     else:
         ok = False
-        for state, pattern in NEXT.items():
-            m = re.fullmatch(pattern, r['next'])
+        risky = {f['id'] for f in r['findings'] if f['risk']}
+        for state, pattern in (NEXT_V2 if v2 else NEXT).items():
+            m = re.fullmatch(pattern, next_line)
             if m and state == 'merge':
                 ok = not opened
             elif m:
-                ok = set(re.findall(r'R[1-9][0-9]*', m[1])) == set(opened)
+                named = re.findall(r'R[1-9][0-9]*', m[1])
+                if state in ('fresh', 'park'):
+                    problems += [f'{i}: only a Risk: blocker goes to the fresh round or parks; log it'
+                                 for i in named if i not in risky]
+                ok = set(named) == set(opened)
             if m:
                 break
         if not ok:
             problems.append('Next: names no contract state for the open blocking findings')
+    return problems
+
+
+def _check_v2(r, listed, listed_problems):
+    """v2's ruling marks and logged blockers (contracts/review-loops.v2.md, "The check")."""
+    problems = []
+    for f in r['findings']:
+        if f['logged'] and f['class'] != 'blocking':
+            problems.append(f'{f["id"]}: only a blocking finding is logged')
+            continue
+        if f['logged'] and f['follow_up'] is None:
+            problems.append(f'{f["id"]}: a logged blocker names its follow-up issue: Logged as follow-up #<n>')
+        if f['logged'] and f['risk']:
+            problems.append(f'{f["id"]}: a Risk: blocker is never logged; it goes to the fresh round or parks')
+        if (f['class'] == 'blocking' and not f['new'] and (f['logged'] or f['status'] in OPEN)
+                and not (f['user_path'] or f['risk'])):
+            problems.append(f'{f["id"]}: an open or logged blocker restates its User path: or Risk: line')
+    problems += [f'malformed ruling mark: {line}' for _, line in r['bad_marks']]
+    numbers = [n for n, _ in r['marks']] + [n for n, _ in r['bad_marks'] if n is not None]
+    for n in sorted({n for n in numbers if numbers.count(n) > 1}):
+        problems.append(f'Ruling {n}: marked twice')
+    if r['no_rulings'] and numbers:
+        problems.append(f'{NO_RULINGS} stands beside a ruling mark')
+    ids = {f['id'] for f in r['findings']}
+    named = [i for _, i in r['marks'] if i]
+    for n, i in r['marks']:
+        if i and i not in ids:
+            problems.append(f'Ruling {n}: overturned as {i}, which is not a finding in the report')
+    for i in sorted({i for i in named if named.count(i) > 1}):
+        problems.append(f'{i}: named by two overturned rulings')
+    problems += listed_problems
+    marked = set(numbers)
+    if listed is None:
+        problems += [f'Ruling {n}: unmarked; marks run from 1 with no gap'
+                     for n in range(1, max(marked, default=0)) if n not in marked]
+    else:
+        problems += [f'Ruling {n}: the description lists it, but the report leaves it unmarked'
+                     for n in listed if n not in marked]
+        problems += [f'Ruling {n}: marked, but the description lists no such ruling'
+                     for n in sorted(marked - set(listed))]
     return problems
 
 
@@ -567,6 +683,7 @@ def main(argv=None):
     b.add_argument('--watchdog', type=Path)
     r = sub.add_parser('check-report')
     r.add_argument('report', type=Path)
+    r.add_argument('--description', type=Path)
     c = sub.add_parser('compare')
     c.add_argument('before', type=Path)
     c.add_argument('after', type=Path)
@@ -582,7 +699,8 @@ def main(argv=None):
     a = parser.parse_args(argv)
     try:
         if a.command == 'check-report':
-            problems = check_report(a.report.read_text(encoding='utf-8'))
+            problems = check_report(a.report.read_text(encoding='utf-8'),
+                                    a.description.read_text(encoding='utf-8') if a.description else None)
             for problem in problems:
                 print(problem, file=sys.stderr)
             if problems:
