@@ -727,7 +727,7 @@ class Check(unittest.TestCase):
         url = lambda name: 'ssh://synthetic.invalid/' + name + '.git'
         # Test-only destinations: the copy's allowlist names the fixture URLs.
         adapter = hook / 'tools/privacy-check/hook.py'
-        text, count = re.subn(r'PUBLIC_URLS = \([^)]*\)', 'PUBLIC_URLS = ' + repr(tuple(url(x) for x in ('published', 'fresh', 'empty'))), adapter.read_text())
+        text, count = re.subn(r'PUBLIC_URLS = \([^)]*\)', 'PUBLIC_URLS = ' + repr(tuple(url(x) for x in ('published', 'fresh', 'empty', 'ahead'))), adapter.read_text())
         self.assertLessEqual(count, 1)
         adapter.write_text(text)
         ssh = self.root / 'fake-ssh'
@@ -802,6 +802,21 @@ class Check(unittest.TestCase):
                 self.assertIn('T1 ', out)
                 for key, _ in config:
                     self.git('config', '--unset-all', key)
+        # #872: the destination's main moved on after this clone last
+        # fetched, so its commit is not here yet. The push still narrows,
+        # and the pushed commits themselves are still scanned.
+        ahead = str(remotes / 'ahead.git')
+        subprocess.run(['git', 'init', '-q', '--bare', ahead], check=True)
+        self.git('push', '-q', ahead, published + ':refs/heads/main')
+        moved = subprocess.run(['git', '-C', ahead, 'commit-tree', published + '^{tree}', '-p', published, '-m', 'merged later'],
+                               check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(['git', '-C', ahead, 'update-ref', 'refs/heads/main', moved], check=True)
+        self.git('config', 'remote.origin.url', url('ahead'))
+        rc, out = push('ahead')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('range: from the merge-base with upstream', out)
+        self.git('commit', '--allow-empty', '-qm', 'pushed\n\n' + THREAD)
+        self.assertEqual(push('ahead')[0], 1)
 
     def test_first_push_narrowing_allowlist(self):
         # The production allowlist, read as the hook reads it: which push URL
