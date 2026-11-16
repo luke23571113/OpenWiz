@@ -137,9 +137,14 @@ the project in `loop list` order: `loop` (the Cloudroom id), `id` (the
 file's id, or null when refused before one exists), `result` (`written`,
 `unchanged` when identical files already exist, or `refused`), `files` (the
 paths written or found unchanged, relative to `out`), `binding` (for an
-unmarked loop, `{"id", "loop"}`, the `--adopt` it needs; otherwise null)
-and `refusals`. Export never writes a webhook address or a secret's value:
-`loop list` holds neither, and only `list`'s mapped keys reach a file.
+unmarked loop, `{"id", "loop"}`, the `--adopt` it needs; otherwise null),
+`refusals`, and `unmapped`: each key of the loop's `list` item that the
+adapter rules do not name (`agent.<key>` inside the agent), in byte order,
+as a recorded gap. A loop with an unmapped key is still written and
+flagged, never refused or skipped; its file does not carry that key, and a
+text run says so in one line. Export never writes a webhook address or a
+secret's value: `loop list` holds neither, and only `list`'s mapped keys
+reach a file.
 
 **`plan_report`**: `project`, and `items`, one per loop file in the order
 read: `file`, `id`, `action` (`create`, `update`, `none` or `refused`),

@@ -174,6 +174,7 @@ fn entry(outcome: &Outcome) -> Value {
         "refusals": e.refusals.iter().map(|r| json!({
             "file": r.file, "code": r.code, "field": r.field, "message": r.message,
         })).collect::<Vec<_>>(),
+        "unmapped": e.unmapped,
     })
 }
 
@@ -210,6 +211,13 @@ fn text(
                 stdout,
                 "    unmarked: plan and apply need --adopt {binding}={}",
                 e.loop_id
+            )?;
+        }
+        if !e.unmapped.is_empty() {
+            writeln!(
+                stdout,
+                "    unmapped: the file does not carry {}, which Cloudroom returned and the adapter does not map",
+                e.unmapped.join(", ")
             )?;
         }
         for r in &e.refusals {

@@ -219,7 +219,7 @@ fn export_writes_each_loop_of_the_project_complete_and_secret_free() {
     );
     let written = |loop_: &str, id: &str, files: &[&str], binding: Value| {
         json!({"loop": loop_, "id": id, "result": "written", "files": files,
-               "binding": binding, "refusals": []})
+               "binding": binding, "refusals": [], "unmapped": []})
     };
     assert_eq!(
         doc,
@@ -319,7 +319,7 @@ fn export_never_replaces_a_file_with_other_bytes() {
     assert_eq!(
         doc["loops"][0],
         json!({"loop": "loop_syn_1", "id": "syn-triage", "result": "refused", "files": [],
-               "binding": null, "refusals": [{
+               "binding": null, "unmapped": [], "refusals": [{
                    "file": "Synthetic triage every ten minutes [wizloop:syn-triage]",
                    "code": "export-exists", "field": "file",
                    "message": "exported/syn-triage/check already exists with other bytes; nothing was written for this loop"}]})
@@ -387,7 +387,7 @@ fn item(id: &str, name: &str, over: Value) -> Value {
 
 fn refused(loop_: &str, id: Value, file: &str, refusals: &[(&str, &str, &str)]) -> Value {
     json!({"loop": loop_, "id": id, "result": "refused", "files": [], "binding": null,
-           "refusals": refusals.iter().map(|(code, field, message)| json!({
+           "unmapped": [], "refusals": refusals.iter().map(|(code, field, message)| json!({
                "file": file, "code": code, "field": field, "message": message})).collect::<Vec<_>>()})
 }
 
@@ -686,28 +686,11 @@ fn export_reports_each_loop_it_cannot_represent_and_writes_the_rest() {
                 )],
             ),
         ),
-        (
-            item(
-                "loop_q",
-                "New setting [wizloop:new-setting]",
-                json!({"max_runs": 5}),
-            ),
-            refused(
-                "loop_q",
-                json!("new-setting"),
-                "New setting [wizloop:new-setting]",
-                &[(
-                    "export-unknown-key",
-                    "max_runs",
-                    "Cloudroom returned max_runs, which the adapter does not map; nothing was written for this loop",
-                )],
-            ),
-        ),
         // A good loop among them is still written.
         (
             item("loop_z", "Still written [wizloop:still-written]", json!({})),
             json!({"loop": "loop_z", "id": "still-written", "result": "written", "files": ["still-written.md"],
-                "binding": null, "refusals": []}),
+                "binding": null, "refusals": [], "unmapped": []}),
         ),
     ];
     let room = Room::listing(Value::Array(cases.iter().map(|(i, _)| i.clone()).collect()));
@@ -725,6 +708,62 @@ fn export_reports_each_loop_it_cannot_represent_and_writes_the_rest() {
     assert_eq!(
         room.read("still-written.md"),
         "---\nid: \"still-written\"\nname: \"Still written\"\ntrigger: {\"cron\": \"0 9 * * 1\", \"timezone\": \"UTC\"}\nthread: \"new\"\nsecrets: []\npriority: 3\n---\nSynthetic: a weekly note."
+    );
+}
+
+// catches: a `loop list` key the adapter rules do not name (a new
+// Cloudroom setting, at the top or in the agent) that export drops without a
+// word, or that makes it refuse or skip the loop instead of writing it and
+// naming the key.
+#[test]
+fn export_writes_a_loop_with_an_unmapped_key_and_names_the_key() {
+    let room = Room::listing(json!([
+        item(
+            "loop_q",
+            "New setting [wizloop:new-setting]",
+            json!({"max_runs": 5})
+        ),
+        item(
+            "loop_r",
+            "Agent tier [wizloop:agent-tier]",
+            json!({
+            "agent": {"provider": "synthetic-provider", "model": "synthetic-model",
+                      "reasoning": "medium", "service_tier": "synthetic"}})
+        ),
+    ]));
+    let doc = report(&room.export(&["--json"]), 0, "export_report");
+    assert_eq!(
+        doc["loops"],
+        json!([
+            {"loop": "loop_q", "id": "new-setting", "result": "written", "files": ["new-setting.md"],
+             "binding": null, "refusals": [], "unmapped": ["max_runs"]},
+            {"loop": "loop_r", "id": "agent-tier", "result": "written", "files": ["agent-tier.md"],
+             "binding": null, "refusals": [], "unmapped": ["agent.service_tier"]},
+        ])
+    );
+    let file = room.read("new-setting.md");
+    assert!(file.starts_with("---\nid: \"new-setting\"\n"), "{file}");
+    assert!(!file.contains("max_runs"));
+    assert!(room.read("agent-tier.md").contains(
+        "agent: {\"provider\": \"synthetic-provider\", \"model\": \"synthetic-model\", \"reasoning\": \"medium\"}\n"
+    ));
+    let text = Room::listing(json!([item(
+        "loop_q",
+        "New setting [wizloop:new-setting]",
+        json!({"max_runs": 5})
+    )]))
+    .export(&[]);
+    assert_eq!(text.status.code(), Some(0));
+    let lines: Vec<String> = String::from_utf8_lossy(&text.stdout)
+        .lines()
+        .filter(|l| l.contains("max_runs"))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "    unmapped: the file does not carry max_runs, which Cloudroom returned and the adapter does not map"
+        ]
     );
 }
 

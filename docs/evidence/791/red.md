@@ -71,3 +71,18 @@ assertion `left == right` failed: stderr: openwiz: loop export: could not write 
   left: Some(1)
  right: Some(5)
 ```
+
+## Third slice: an unmapped `loop list` key is written and named (orchestrator ruling on Q4)
+
+Red, with `unmapped` added to `export_report`'s schema and the tests, before
+the code (export still refused the loop with `export-unknown-key`):
+
+```text
+test loop_export::export_writes_a_loop_with_an_unmapped_key_and_names_the_key ... FAILED
+panicked at tests/cli-agent/loop_export.rs:100:5:
+  left: Some(5)
+ right: Some(0)
+test loop_export::export_writes_each_loop_of_the_project_complete_and_secret_free ... FAILED
+  left: ["$.loops[0]: missing required field unmapped", ...]
+ right: []
+```

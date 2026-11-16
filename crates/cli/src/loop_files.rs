@@ -23,8 +23,8 @@ pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
 ";
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
-  (contracts/loop-cli.v1.md). Not built yet: each command refuses with exit 5
-  and reads and changes nothing.
+  (contracts/loop-cli.v1.md). Not built yet: validate, plan and apply refuse
+  with exit 5 and read and change nothing.
 ";
 
 /// The four loop-file commands.
@@ -224,6 +224,9 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
                     .is_err(),
             )
         }
+        Ok(Parsed::Run(args)) if args.command == Command::Export => {
+            loop_export::run(&args, stdout, stderr)
+        }
         Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
@@ -285,11 +288,8 @@ mod tests {
     fn each_stub_refuses_with_the_contracts_not_built_result() {
         for (args, command, ticket) in [
             (&["validate", "loops/a.md", "--json"][..], "validate", 790),
-            (
-                &["export", "--project", "prj_syn_0001", "--json"],
-                "export",
-                791,
-            ),
+            // export (#791) is built: its keeper is
+            // tests/cli-agent/loop_export.rs, which checks its real report.
             (
                 &["plan", "loops", "--project", "prj_syn_0001", "--json"],
                 "plan",

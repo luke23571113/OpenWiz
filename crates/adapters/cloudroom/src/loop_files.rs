@@ -101,6 +101,10 @@ pub struct Exported {
     pub binding: Option<String>,
     /// Empty when exported.
     pub refusals: Vec<Refusal>,
+    /// Each key of the `list` item the adapter rules do not name
+    /// (`agent.<key>` inside the agent), in byte order: a recorded gap, not
+    /// a refusal. The file does not carry it.
+    pub unmapped: Vec<String>,
 }
 
 fn malformed(detail: &str) -> SourceError {
@@ -586,17 +590,22 @@ fn export_one(
         },
     };
 
-    // A key the adapter does not map, at the top or in the agent.
-    for key in object.keys() {
-        if !MAPPED.contains(&key.as_str()) && !NOT_MAPPED.contains(&key.as_str()) {
-            r.unknown_key(key);
-        }
-    }
+    // A key the adapter does not map, at the top or in the agent: named,
+    // never refused, so a new Cloudroom setting is seen rather than lost.
+    let mut unmapped: Vec<String> = object
+        .keys()
+        .filter(|k| !MAPPED.contains(&k.as_str()) && !NOT_MAPPED.contains(&k.as_str()))
+        .cloned()
+        .collect();
     if let Some(agent) = item.agent {
-        for key in agent.keys().filter(|k| !AGENT_KEYS.contains(&k.as_str())) {
-            r.unknown_key(&format!("agent.{key}"));
-        }
+        unmapped.extend(
+            agent
+                .keys()
+                .filter(|k| !AGENT_KEYS.contains(&k.as_str()))
+                .map(|k| format!("agent.{k}")),
+        );
     }
+    unmapped.sort();
 
     // The file itself must be UTF-8 with LF line ends and no NUL.
     if item.prompt.contains(['\r', '\0']) {
@@ -757,6 +766,7 @@ fn export_one(
             files: Vec::new(),
             binding: None,
             refusals: r.list,
+            unmapped,
         };
     };
     let mut lines = vec![
@@ -801,6 +811,7 @@ fn export_one(
         files,
         binding,
         refusals: r.list,
+        unmapped,
     }
 }
 
@@ -829,17 +840,6 @@ impl Refusals<'_> {
             "cf-export-invalid",
             field,
             format!("would be refused by the format as {code}"),
-        );
-    }
-
-    /// A key the adapter rules do not name, so export cannot keep it.
-    fn unknown_key(&mut self, key: &str) {
-        self.refuse(
-            "export-unknown-key",
-            key,
-            format!(
-                "Cloudroom returned {key}, which the adapter does not map; nothing was written for this loop"
-            ),
         );
     }
 }
