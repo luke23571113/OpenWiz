@@ -829,8 +829,8 @@ Unavailable. The order is rebuilt with each hourly publication; no page sorts or
 
 **Build.** `page.site(record, charts)` returns the six pages, all rendered before anything
 is returned; `page.render` stays the complete one-document view of the same content (every
-chart once, the whole Sources appendix), which `main.tick` keeps at its page path and the
-pictures draw. `main.tick(..., site=DIR)` writes the six pages (`page.site_files`) beside
+chart once, the whole Sources appendix), which `main.tick` keeps at its page path; the
+published pictures are drawn from the home page, no longer from `page.render`. `main.tick(..., site=DIR)` writes the six pages (`page.site_files`) beside
 it from the same saved sample and chart bundle, rendering every page before writing any.
 `publish.py publish` publishes the six pages, the pictures and the README in one commit
 after scanning them all; a failed child, scan, write or push publishes nothing, and the

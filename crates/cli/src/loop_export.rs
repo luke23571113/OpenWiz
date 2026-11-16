@@ -12,7 +12,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use openwiz_adapter_cloudroom::loop_files::{self, Exported, Refusal};
+use openwiz_adapter_cloudroom::loop_files::{self, ExportRefusal, Exported};
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use openwiz_core::limits::RUN_BUDGET;
 use serde_json::{Value, json};
@@ -174,7 +174,7 @@ fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
 /// The loop refused, with an `export-exists` refusal for each path.
 fn refused(mut exported: Exported, exists: Vec<PathBuf>) -> Outcome {
     for path in exists {
-        exported.refusals.push(Refusal {
+        exported.refusals.push(ExportRefusal {
             file: exported.name.clone(),
             code: "export-exists".into(),
             field: "file".into(),

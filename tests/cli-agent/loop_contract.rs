@@ -23,8 +23,9 @@ fn the_stubs_print_the_schemas_not_built_document_and_read_nothing() {
     )
     .unwrap();
     assert_eq!(schema::lint(&contract), Vec::<String>::new());
+    // validate is built (#790): loop_validate.rs checks its real output
+    // against the same schema and that it reads no source.
     for args in [
-        &["loop", "validate", "loops/a.md", "--json"][..],
         // export (#791) is built: its keeper is loop_export.rs, which checks
         // its real output against export_report in the same schema.
         &[
@@ -34,7 +35,7 @@ fn the_stubs_print_the_schemas_not_built_document_and_read_nothing() {
             "--project",
             "project-synthetic",
             "--json",
-        ],
+        ][..],
         &[
             "loop",
             "apply",
