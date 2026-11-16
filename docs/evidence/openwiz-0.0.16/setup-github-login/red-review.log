@@ -1,0 +1,14 @@
+Review R1/R2 red, run at c6a41a1 (the proofs) on the reviewed code of e93911e, before the fixes.
+ERROR: test_a_restart_while_approval_is_pending_starts_no_second_browser (__main__.SignIn.test_a_restart_while_approval_is_pending_starts_no_second_browser)
+  File "<checkout>/tools/install/setup/test_github_login.py", line 237, in test_a_restart_while_approval_is_pending_starts_no_second_browser
+  File "/usr/lib/python3.11/subprocess.py", line 1207, in communicate
+  File "/usr/lib/python3.11/subprocess.py", line 2060, in _communicate
+FAIL: test_another_servers_login_never_reuses_selects_or_verifies (__main__.ForeignHost.test_another_servers_login_never_reuses_selects_or_verifies) (env={'GH_HOST': 'enterprise.example'})
+  File "<checkout>/tools/install/setup/test_github_login.py", line 298, in test_another_servers_login_never_reuses_selects_or_verifies
+AssertionError: 'login_reused' != 'login_needed'
+FAIL: test_another_servers_login_never_reuses_selects_or_verifies (__main__.ForeignHost.test_another_servers_login_never_reuses_selects_or_verifies) (env={})
+  File "<checkout>/tools/install/setup/test_github_login.py", line 298, in test_another_servers_login_never_reuses_selects_or_verifies
+AssertionError: 'login_reused' != 'login_needed'
+Ran 9 tests in 61.615s
+FAILED (failures=2, errors=1)
+R2's ERROR is the resumed sign-in --yes starting a second gh auth login child and waiting inside it until the test's 60-second limit; a second recording child was left running and killed by its pid.
