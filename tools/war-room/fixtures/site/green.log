@@ -1,8 +1,8 @@
-# WRD5 (#883) scoped local checks at 99eaffb22f408dd54f516a3cfabab2a8f068c227 (python3 -I tools/war-room/<test>.py; last line of each run).
-test_site: Ran 7 tests OK
+# WRD5 (#883) scoped local checks at 3153fb7bfd2f4e5d4faed03fcfbfb5749b8e7c7b (python3 -I tools/war-room/<test>.py; last line of each run).
+test_site: Ran 8 tests OK
 test_page_design: Ran 14 tests OK
 test_publish: Ran 16 tests OK
-test_web: Ran 4 tests OK
+test_web: Ran 5 tests OK
 test_page_history: Ran 18 tests OK
 test_gather: Ran 19 tests OK
 test_charts: Ran 19 tests OK
@@ -15,4 +15,4 @@ test_cost: Ran 16 tests OK
 test_rework: Ran 8 tests OK
 test_review_loops: Ran 30 tests OK
 test_weekly: Ran 23 tests OK
-tools/open-import/guard.py --base origin/main --head 99eaffb22f408dd54f516a3cfabab2a8f068c227: carriage guard: all 20 added paths are classified
+tools/open-import/guard.py --base origin/main --head 3153fb7bfd2f4e5d4faed03fcfbfb5749b8e7c7b: carriage guard: all 22 added paths are classified
