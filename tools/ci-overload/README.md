@@ -69,9 +69,13 @@ on stdout and no API answer on stderr.
 
 `fleet.sh overload` runs it, before the guard, for `merge-batch`,
 `automatic-refresh` and `nonessential-poll` when `LAUNCH_FLEET_OVERLOAD_SUPPLY`
-names it (absolute, with an absolute `LAUNCH_FLEET_OVERLOAD_INPUT`);
-`completion` and `reconciliation` read nothing more. Without the variable the
-input stays the caller's, as before.
+names it (absolute). Each call supplies into its own private temporary file,
+which only that call's guard reads and which is removed afterwards, so
+concurrent admissions never read each other's observations; the caller's
+`LAUNCH_FLEET_OVERLOAD_INPUT` is not used then. A supplier that exits nonzero,
+or can't start or import the collector, leaves the guard a missing input, so it
+refuses as unknown and keeps that pause. `completion` and `reconciliation` read
+nothing more. Without the variable the input stays the caller's, as before.
 
 ## Decision and durable pause
 
