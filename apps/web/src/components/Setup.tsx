@@ -25,14 +25,14 @@ function SetupAccess() {
     </select>
     <h3>Before you begin</h3>
     {route === 'cloudflare'
-      ? <><p>Cloudflare account, managed domain, Zero Trust and cloudflared on the engine host.</p><p>No account or domain? Choose Tailscale or review those prerequisites first. No hidden purchase.</p></>
-      : <><p>Tailscale account, Tailscale on your phone and engine host, and permission to set owner-only access rules and enable HTTPS.</p><p>A managed domain is not required. Review current account limits and any cost before agreeing. No hidden purchase.</p></>}
+      ? <><p>Cloudflare account, managed domain, Zero Trust and cloudflared on the host running OpenWiz.</p><p>No account or domain? Choose Tailscale or review those prerequisites first. No hidden purchase.</p></>
+      : <><p>Tailscale account, Tailscale on your phone and the host running OpenWiz, and permission to set owner-only access rules and enable HTTPS.</p><p>A managed domain is not required. Review current account limits and any cost before agreeing. No hidden purchase.</p></>}
     <h3>Set up with your installing agent</h3>
     <ol>
       <li>Review effects and approve the exact setup operation before making account or network changes.</li>
       {route === 'cloudflare'
         ? <><li>Create a named tunnel and an owner-only Access policy for all paths. No Bypass or Service Auth policy.</li><li>Route only the HTTPS hostname to loopback and require Access at the origin, with the correct team and application audience. Cloudflare handles traffic at its edge. No quick tunnel.</li></>
-        : <><li>Use private Tailscale Serve with HTTPS to the loopback server. Keep Funnel off.</li><li>Restrict access rules to your owner identity and selected engine host. Tailscale&apos;s default allow-all policy does not establish owner-only access.</li></>}
+        : <><li>Use private Tailscale Serve with HTTPS to the loopback server. Keep Funnel off.</li><li>Restrict access rules to your owner identity and the host running OpenWiz. Tailscale&apos;s default allow-all policy does not establish owner-only access.</li></>}
       <li>Keep the server&apos;s allowed HTTPS host, same-origin, request and once-only write checks.</li>
       <li>Verify owner access and refusal for unauthenticated, expired and foreign sessions before reporting phone access ready. Denied requests must never reach a write.</li>
     </ol>
@@ -62,7 +62,7 @@ export function SetupNext({ view }: { view: SetupView | null }) {
       && !view.components.some((c) => c.state === 'verified'))
       ? <><h2>Start with CloudRoom</h2><p>Ask your installing agent to check CloudRoom and your chosen harness.</p></>
       : next ? <><h2>Next: {componentName(next.id)}</h2><p>{next.next}</p></>
-        : <><h2>Connections verified</h2><p>Choose where the engine runs next. Nothing starts without your approval.</p></>}
+        : <><h2>Connections verified</h2><p>Next, give one small idea to the OpenWiz onboarding skill. Nothing starts without your approval.</p></>}
   </SoftPanel><SetupCost /></>;
 }
 

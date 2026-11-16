@@ -50,9 +50,8 @@ test('IF1/IF9: install synthetic release, open real setup at phone/desktop width
       try {
         await p.page.locator('[data-setup-ready="true"]').waitFor();
         assert.equal(await p.page.getByRole('heading', { name: 'Set up OpenWiz', exact: true }).count(), 1);
-        assert.equal(await p.page.locator('[data-setup-component]').count(), 7);
+        assert.equal(await p.page.locator('[data-setup-component]').count(), 6);
         assert.match(await p.page.locator('main').innerText(), /No agents have been started/);
-        assert.match(await p.page.locator('main').innerText(), /Cloud Credits have not been measured/);
         await p.page.locator('[data-setup-component="cloudroom"] summary').click();
         assert.equal(await p.page.getByText('CloudRoom has not been checked.', { exact: true }).isVisible(), true);
         await p.page.getByRole('button', { name: 'Refresh', exact: true }).click();

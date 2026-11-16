@@ -449,7 +449,8 @@ export function deleteAttachment(fetchImpl: FetchLike, id: string, signal: Abort
 }
 
 // Setup is a separate read-only report, never an account or engine action.
-export type SetupComponentId = 'cloudroom' | 'harness' | 'personal_github' | 'github_app' | 'project' | 'engine' | 'remote_access';
+// Setup has no engine step (#873): six components, and ready needs no engine.
+export type SetupComponentId = 'cloudroom' | 'harness' | 'personal_github' | 'github_app' | 'project' | 'remote_access';
 export type SetupComponent = { id: SetupComponentId; state: 'verified' | 'missing' | 'refused' | 'unknown'; reason: string; next: string };
 export type SetupView = {
   schema: 'openwiz.setup.v1'; ready: boolean; components: SetupComponent[];
@@ -494,21 +495,21 @@ function setupUniqueKeys(text: string): boolean {
 function parseSetupText(text: string): SetupView | null {
   if (!setupUniqueKeys(text)) return null;
   const v = parseJson(text);
-  if (!setupObject(v) || !setupKeys(v, ['schema', 'ready', 'components', 'engine', 'cost', 'operations']) || v.schema !== 'openwiz.setup.v1' || typeof v.ready !== 'boolean' || !Array.isArray(v.components) || v.components.length !== 7 || !Array.isArray(v.operations)) return null;
+  if (!setupObject(v) || !setupKeys(v, ['schema', 'ready', 'components', 'engine', 'cost', 'operations']) || v.schema !== 'openwiz.setup.v1' || typeof v.ready !== 'boolean' || !Array.isArray(v.components) || v.components.length !== 6 || !Array.isArray(v.operations)) return null;
   if (v.engine !== 'unselected' && v.engine !== 'cloud' && v.engine !== 'local') return null;
   const components: SetupComponent[] = [];
   const seen = new Set<string>();
   for (const item of v.components) {
     if (!setupObject(item) || !setupKeys(item, ['id', 'state', 'reason', 'next']) || !setupText(item.reason) || !setupText(item.next)) return null;
     const id = item.id;
-    if (id !== 'cloudroom' && id !== 'harness' && id !== 'personal_github' && id !== 'github_app' && id !== 'project' && id !== 'engine' && id !== 'remote_access') return null;
+    if (id !== 'cloudroom' && id !== 'harness' && id !== 'personal_github' && id !== 'github_app' && id !== 'project' && id !== 'remote_access') return null;
     if (seen.has(id)) return null;
     seen.add(id);
     const state = item.state;
     if (state !== 'verified' && state !== 'missing' && state !== 'refused' && state !== 'unknown') return null;
     components.push({ id, state, reason: item.reason, next: item.next });
   }
-  if (v.ready && (v.engine === 'unselected' || components.some((component) => component.id !== 'remote_access' && component.state !== 'verified'))) return null;
+  if (v.ready && (components.some((component) => component.id !== 'remote_access' && component.state !== 'verified'))) return null;
   const c = v.cost;
   if (!setupObject(c) || !setupKeys(c, ['provenance', 'credits', 'window_s', 'monthly_projection', 'free_allowance', 'reason']) || !setupText(c.reason) || !setupNumber(c.credits) || !setupNumber(c.window_s) || !setupNumber(c.monthly_projection) || !setupNumber(c.free_allowance)) return null;
   if (c.provenance !== 'unknown' && c.provenance !== 'measured' && c.provenance !== 'estimated') return null;
