@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -481,6 +482,115 @@ class Scheduled(unittest.TestCase):
                     shutil.rmtree(self.install)
                 self.assertEqual(self.run_loop(mode, folder, env),
                                  'git fetch\ngit checkout\n')
+
+
+
+def collector_fake(folder):
+    """MT3's synthetic gh and its answers (tools/war-room's collector-ci fixture), unchanged."""
+    spec = importlib.util.spec_from_file_location(
+        'test_collect_ci', HERE.parents[1] / 'tools/war-room/test_collect_ci.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Fake(folder), module.R
+
+
+class Supplier(unittest.TestCase):
+    """MT6 (#825): `fleet.sh overload` with the supplier reads the collector's queue on demand."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.fake, self.r = collector_fake(self.root)
+        self.input = self.root / 'observation.json'
+
+    def admit(self, action, supply=True, now=None, state='pause.json'):
+        """One `fleet.sh overload <action>`; a fresh state file per call unless named."""
+        env = self.fake.env(GH_REPO=REPO, LAUNCH_FLEET_OVERLOAD_INPUT=str(self.input),
+                            LAUNCH_FLEET_OVERLOAD_STATE=str(self.root / state))
+        env.pop('LAUNCH_FLEET_NOW', None)
+        env.pop('LAUNCH_FLEET_OVERLOAD_SUPPLY', None)
+        if supply:
+            env['LAUNCH_FLEET_OVERLOAD_SUPPLY'] = str(HERE / 'supply.py')
+        if now is not None:
+            env['LAUNCH_FLEET_NOW'] = str(now)
+        asked = len(self.fake.asked())
+        result = subprocess.run(['sh', str(HERE.parents[1] / 'skills/launch-fleet/scripts/fleet.sh'),
+                                 'overload', action], env=env, capture_output=True, text=True, timeout=60)
+        self.assertIn(result.returncode, (0, 1), result.stderr)
+        answer = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 0 if answer['allowed'] else 1)
+        return answer, self.fake.asked()[asked:]
+
+    def without_queued_jobs(self):
+        jobs = self.fake.answer(self.r + '/actions/runs/7101/jobs?')
+        jobs['jobs'] = [j for j in jobs['jobs'] if j['status'] != 'queued']
+        jobs['total_count'] = len(jobs['jobs'])
+        self.fake.drop(self.r + '/actions/workflows/privacy.yml/runs?status=queued&')
+
+    def test_the_guard_decides_on_the_collector_s_queue_read_now(self):
+        # catches: a supplier that never reads the collector (the guard keeps refusing every run on
+        # a missing input), reads it without the required queued jobs, or restamps observed_at.
+        # job-8101 has queued since 12:03:20 on 2026-01-05 (the fixture's README): the guard escalates.
+        before = int(time.time())
+        answer, asked = self.admit('merge-batch')
+        after = int(time.time())
+        self.assertIn('rate_limit', asked)
+        observation = json.loads(self.input.read_text())
+        self.assertEqual(observation['repository'], REPO)
+        self.assertTrue(before <= observation['observed_at'] <= after)
+        self.assertEqual([j['id'] for j in observation['queue']['jobs'] if j['status'] == 'queued'],
+                         ['job-8101', 'job-8201'])
+        self.assertEqual((answer['level'], answer['allowed'], answer['escalation']),
+                         ('escalate', False, 'due_not_sent'))
+        self.assertEqual(answer['oldest_wait_seconds'], answer['pause']['observed_at'] - 1767614600)
+
+    def test_an_observation_older_than_the_bound_still_refuses(self):
+        # catches: the supplier's observation stamped with the guard's clock or the file's write time,
+        # or a looser bound on the supplied path, so the guard admits on an observation past 60 s.
+        self.without_queued_jobs()
+        answer, _ = self.admit('merge-batch')
+        self.assertEqual((answer['level'], answer['allowed']), ('healthy', True))
+        observed = json.loads(self.input.read_text())['observed_at']
+        for age, allowed in ((60, True), (61, False)):
+            with self.subTest(age=age):
+                answer, asked = self.admit('merge-batch', supply=False, now=observed + age,
+                                           state='age-%d.json' % age)
+                self.assertEqual(asked, [])
+                self.assertEqual(answer['allowed'], allowed)
+                self.assertEqual(answer['level'], 'healthy' if allowed else 'unknown')
+
+    def test_a_failed_read_leaves_no_older_observation_to_admit_on(self):
+        # catches: a failed collector read that leaves the last observation (still under 60 s old)
+        # as the guard's input, or writes an empty queue, so new work is admitted on unread data.
+        self.without_queued_jobs()
+        answer, _ = self.admit('merge-batch', state='first.json')
+        self.assertEqual(answer['allowed'], True)
+        self.fake.drop('rate_limit')
+        answer, _ = self.admit('merge-batch', state='second.json')
+        self.assertEqual((answer['level'], answer['allowed']), ('unknown', False))
+        self.assertFalse(self.input.exists())
+
+    def test_a_partial_read_still_hands_the_guard_its_known_exhaustion(self):
+        # catches: a supplier that drops an incomplete observation, losing the exhausted pool the
+        # collector did read: the guard then pauses as unknown and never says escalation is due.
+        self.without_queued_jobs()
+        self.fake.drop(self.r + '/actions/runs/7103/jobs?')
+        self.fake.answer('rate_limit')['resources']['core']['remaining'] = 0
+        answer, _ = self.admit('merge-batch')
+        self.assertEqual(json.loads(self.input.read_text())['complete'], False)
+        self.assertEqual((answer['level'], answer['allowed'], answer['escalation']),
+                         ('escalate', False, 'due_not_sent'))
+        self.assertIn('rest_exhausted', answer['causes'])
+
+    def test_completion_and_reconciliation_spend_no_read_and_stay_allowed(self):
+        # catches: essential actions made to wait on, or spend API reads for, a fresh collector read
+        # while the pools may be exhausted; they must finish whatever the observation says.
+        for action in ('completion', 'reconciliation'):
+            with self.subTest(action=action):
+                answer, asked = self.admit(action, state=action + '.json')
+                self.assertEqual(asked, [])
+                self.assertEqual(answer['allowed'], True)
 
 
 if __name__ == '__main__':
