@@ -149,10 +149,12 @@ class Site(unittest.TestCase):
         rework = next(p for p in record['providers'] if p['slot'] == 'rework')
         next(m for m in rework['metrics'] if m['id'] == 'review-rounds')['value'] = 0
         answer = next(p for p in record['providers'] if p['slot'] == 'answer_time')
-        next(m for m in answer['metrics'] if m['id'] == 'answer-median')['value'] = None
+        answer.update(state='partial', prerequisites=['A synthetic median read.'])
+        next(m for m in answer['metrics'] if m['id'] == 'answer-median').update(
+            state='unavailable', value=None, prerequisites=['A synthetic median read.'])
         got = {name: (state, value) for _, name, state, value in rows(page.site(record, charts=self.bundle)[''])}
         self.assertEqual(got['Rework rate'], ('healthy', '0 review rounds'))
-        self.assertEqual(got['Orchestrator answer time'][1], 'Unknown')
+        self.assertEqual(got['Orchestrator answer time'], ('partial', 'Unknown'))
 
     def test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure(self):
         # catches: dates, coverage, missing days, gap notes, unit notes or provenance left on a figure's
@@ -166,9 +168,9 @@ class Site(unittest.TestCase):
                     face = outside_details(fig)
                     entry = inventory[number]
                     self.assertIn(page.esc(entry['caption']), face)
-                    self.assertNotIn('class="meta"', face)
-                    self.assertNotIn('coverage', face)
-                    self.assertNotIn('SHA-256', face)
+                    words = re.sub(r'<svg.*?</svg>|<figcaption.*?</figcaption>', '', face, flags=re.S)
+                    self.assertNotIn('class="meta"', words)
+                    self.assertNotRegex(words, r'coverage [0-9]+ of|SHA-256|PST|Value as of|Gap')
                     self.assertNotIn('<details', face)
                     self.assertEqual(fig.count('<details'), fig.count('</details>'))
                     self.assertLessEqual(fig.count('<details'), 1)
