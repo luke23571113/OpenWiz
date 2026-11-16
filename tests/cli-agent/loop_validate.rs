@@ -242,7 +242,7 @@ fn a_folder_whose_files_cannot_be_looked_up_fails_the_run() {
     let contract = load("contracts/loop-cli.v1.schema.json");
     let sandbox = Sandbox::new();
     let locked = sandbox.0.join("locked");
-    fs::create_dir(&locked).unwrap();
+    super::dirs::private_dir(&locked).unwrap();
     fs::copy(
         Path::new(ROOT).join(FIXTURES).join("valid/at-same.md"),
         locked.join("a.md"),
@@ -283,7 +283,7 @@ fn control_characters_in_paths_never_reach_the_terminal() {
     assert!(!message.contains('\u{1b}'), "{message:?}");
 
     let folder = sandbox.0.join("loops");
-    fs::create_dir(&folder).unwrap();
+    super::dirs::private_dir(&folder).unwrap();
     fs::copy(
         Path::new(ROOT).join(FIXTURES).join("valid/at-same.md"),
         folder.join("x\u{1b}[2J.md"),
