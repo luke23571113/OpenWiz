@@ -11,6 +11,9 @@
 //! any other keyword, any other form of
 //! `additionalProperties` and any `$ref` that does not resolve, so the
 //! schema cannot rely on a rule this checker ignores.
+//!
+//! Its own test is in `tests/checks/support_proofs.rs`, so it runs once, not
+//! once per target that includes this file (#811).
 
 use serde_json::Value;
 
@@ -590,61 +593,4 @@ fn matches_pattern(atoms: &[Atom], text: &str) -> bool {
         positions = next;
     }
     positions.contains(&chars.len())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{lint, validate};
-    use serde_json::json;
-
-    // Messaging's exact parity reproducer uses this checker. Accepting a
-    // keyword without enforcing it would silently accept invalid requests.
-    #[test]
-    fn shared_text_keywords_are_linted_and_enforced() {
-        let schema = json!({
-            "$ref": "#/$defs/text",
-            "$defs": {"text": {
-                "type": "string", "pattern": "^[A-Z][A-Za-zé]*$", "maxUtf8Bytes": 4
-            }}
-        });
-        assert_eq!(lint(&schema), Vec::<String>::new());
-        for (text, expected) in [
-            ("A", true),
-            ("Aé", true),
-            ("AZZZ", true),
-            ("Aéé", false),
-            ("AZZZZ", false),
-            ("abc", false),
-            ("", false),
-        ] {
-            assert_eq!(
-                validate(&schema, &json!(text)).is_empty(),
-                expected,
-                "{text:?}"
-            );
-        }
-        let branches = json!({"oneOf": [
-            {"type": "string", "pattern": "^A$"},
-            {"type": "string", "pattern": "^B$"}
-        ]});
-        for (text, expected) in [("A", true), ("B", true), ("C", false)] {
-            assert_eq!(
-                validate(&branches, &json!(text)).is_empty(),
-                expected,
-                "{text:?}"
-            );
-        }
-        for bad in [
-            json!({"type": "string", "pattern": "^.$"}),
-            json!({"type": "string", "pattern": 3}),
-            json!({"type": "integer", "pattern": "^A$"}),
-            json!({"type": "string", "maxUtf8Bytes": -1}),
-            json!({"type": "integer", "maxUtf8Bytes": 4}),
-            json!({"type": "array", "uniqueItems": false}),
-            json!({"type": "array", "minItems": -1}),
-            json!({"type": "string", "unknownRule": true}),
-        ] {
-            assert!(!lint(&bad).is_empty(), "unchecked rule: {bad}");
-        }
-    }
 }

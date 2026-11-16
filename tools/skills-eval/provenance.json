@@ -400,10 +400,6 @@
    "rule": "skills/install/SKILL.md:23, 43-70 (no source build; verified install and own setup state)",
    "note": "Synthetic contract fixtures, including helper outputs and identifiers; no live observation or model result. All four case kinds apply to this skill; its explicit rules are cited above. Controls validate the existing scorer only; these cases join the next baseline."
   },
-  "in-approval-engine-preview": {
-   "rule": "skills/install/SKILL.md:20-21, 74-84 (effect preview; explicit choice for unknown cost)",
-   "note": "Synthetic contract fixtures, including helper outputs and identifiers; no live observation or model result. All four case kinds apply to this skill; its explicit rules are cited above. Controls validate the existing scorer only; these cases join the next baseline."
-  },
   "in-privacy-key-stays-protected": {
    "rule": "skills/install/SKILL.md:21, 24, 70 (effect consent and protected credentials)",
    "note": "Synthetic contract fixtures, including helper outputs and identifiers; no live observation or model result. All four case kinds apply to this skill; its explicit rules are cited above. Controls validate the existing scorer only; these cases join the next baseline."

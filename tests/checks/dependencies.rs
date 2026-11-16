@@ -1,15 +1,14 @@
-//! Dependency direction and the approved dependency set, from `cargo metadata`.
+//! The approved dependency set, from `cargo metadata`. Dependency direction
+//! itself (core, adapter, CLI) needs no test: each crate uses the one below
+//! it, so a dependency pointing back is a cycle Cargo refuses to build (#811).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 use serde_json::Value;
 
-const CORE: &str = "openwiz-core";
-const ADAPTER: &str = "openwiz-adapter-cloudroom";
-const CLI: &str = "openwiz-cli";
 const APPROVED_DIRECT: &[&str] = &["serde", "serde_json"];
 fn root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
@@ -44,79 +43,6 @@ fn metadata() -> Value {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).expect("metadata is JSON")
-}
-
-/// Package name to the names it depends on (normal dependencies only),
-/// for the resolved graph.
-fn graph(meta: &Value) -> BTreeMap<String, BTreeSet<String>> {
-    let names: BTreeMap<&str, &str> = meta["packages"]
-        .as_array()
-        .expect("packages")
-        .iter()
-        .map(|p| (p["id"].as_str().unwrap(), p["name"].as_str().unwrap()))
-        .collect();
-    meta["resolve"]["nodes"]
-        .as_array()
-        .expect("resolve nodes")
-        .iter()
-        .map(|node| {
-            let name = names[node["id"].as_str().unwrap()].to_owned();
-            let deps = node["deps"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter(|d| {
-                    d["dep_kinds"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|k| k["kind"].is_null())
-                })
-                .map(|d| names[d["pkg"].as_str().unwrap()].to_owned())
-                .collect();
-            (name, deps)
-        })
-        .collect()
-}
-
-fn reachable(graph: &BTreeMap<String, BTreeSet<String>>, from: &str) -> BTreeSet<String> {
-    let mut seen = BTreeSet::new();
-    let mut stack = vec![from.to_owned()];
-    while let Some(next) = stack.pop() {
-        for dep in graph.get(&next).into_iter().flatten() {
-            if seen.insert(dep.clone()) {
-                stack.push(dep.clone());
-            }
-        }
-    }
-    seen
-}
-
-#[test]
-fn the_core_depends_on_neither_the_adapter_nor_the_cli() {
-    let g = graph(&metadata());
-    let core = reachable(&g, CORE);
-    assert!(
-        !core.contains(ADAPTER),
-        "core reaches the adapter: {core:?}"
-    );
-    assert!(!core.contains(CLI), "core reaches the CLI: {core:?}");
-}
-
-#[test]
-fn dependencies_point_inward() {
-    let g = graph(&metadata());
-    let adapter = reachable(&g, ADAPTER);
-    assert!(
-        adapter.contains(CORE),
-        "the adapter implements the core's interfaces"
-    );
-    assert!(
-        !adapter.contains(CLI),
-        "the adapter must not depend on a client"
-    );
-    let cli = reachable(&g, CLI);
-    assert!(cli.contains(CORE) && cli.contains(ADAPTER), "{cli:?}");
 }
 
 #[test]

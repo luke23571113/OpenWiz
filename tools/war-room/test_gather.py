@@ -2,8 +2,7 @@
 """WR10: gather the real War room sources into one pinned WR2 selection.
 
 A local bare origin holds a synthetic `board` branch (graph, history,
-credits.jsonl) and a synthetic `ci-benchmarks` branch; a synthetic gh answers
-WR8's reads (fixtures/activity/fake_gh.py); journeys, their cohort and an
+credits.jsonl); a synthetic gh answers WR8's reads (fixtures/activity/fake_gh.py); journeys, their cohort and an
 answer-time projection are fixture artifacts. No network, no live read.
 """
 import base64
@@ -34,12 +33,14 @@ REPO = 'synthetic-owner/work'
 RUN = 'https://github.com/synthetic-owner/work/actions/runs/9001'
 STARTED, ENDED = '2030-01-02T12:29:00Z', '2030-01-02T12:30:00Z'
 PUBLISH_AT = '2030-01-02T12:33:00Z'
-BOARD_AT, BENCH_AT = '2030-01-02T12:20:00Z', '2030-01-02T12:10:00Z'
+BOARD_AT = '2030-01-02T12:20:00Z'
 LISTED = 'repos/synthetic-owner/work/actions/workflows/ci.yml/runs?'
 ACTIVE = ('in_progress', 'queued', 'waiting', 'pending', 'requested')
 STATUS = LISTED + 'status=%s&per_page=100&page=1'
 DONE = LISTED + 'created=2030-01-02T00:00:00Z..' + ENDED + '&status=completed&per_page=100&page=1'
-GATHERED = {'activity', 'board', 'ci_bench', 'journey', 'cost', 'credits', 'answer_time', 'rework'}
+GATHERED = {'activity', 'board', 'journey', 'cost', 'credits', 'answer_time', 'rework'}
+# #827: the CI bench retired; its slot is always an explained gap, never a stale point.
+RETIRED = {'ci_bench'}
 # WRD1: also selected, with explicit reasons where this world has no source.
 HEALTH = {'main_ci', 'ci_queue', 'stage_waits', 'stage_health'}
 # #2565: the shape of the real gathered page of 2026-11-13, counts only: per card, its metrics,
@@ -287,12 +288,6 @@ class Gather(unittest.TestCase):
             'history.jsonl': (FIX / 'gather/history.jsonl').read_text(),
             'credits.jsonl': (FIX / 'gather/credits.jsonl').read_text(),
             'README.md': 'synthetic board\n'})
-        point = (FIX / 'cost/ci/point.json').read_text()
-        older = json.loads(point)
-        older.update(since='2029-12-31T08:00:00Z', until='2030-01-01T08:00:00Z', merged_prs=5,
-                     merged_per_hour=0.208333)
-        self.branch('ci-benchmarks', BENCH_AT, {'windows/aaaa/point.json': point,
-                                                'windows/bbbb/point.json': json.dumps(older)})
         self.refs_before = self.refs()
         # WR8's synthetic gh, answering WR8's own fixture reads.
         bin_dir = self.tmp / 'bin'
@@ -372,7 +367,7 @@ class Gather(unittest.TestCase):
 
     def test_gather_writes_a_selection_sources_select_accepts(self):
         root, selection = self.gather()
-        self.assertEqual({s['slot'] for s in selection}, GATHERED | HEALTH)
+        self.assertEqual({s['slot'] for s in selection}, GATHERED | HEALTH | RETIRED)
         for s in selection:
             with self.subTest(s['slot']):
                 # Pinned by sha256 of the gathered bytes and an observed time no later than the read.
@@ -381,16 +376,15 @@ class Gather(unittest.TestCase):
                 self.assertTrue(s['evidence'])
         by_slot = {s['slot']: s for s in selection}
         self.assertEqual(by_slot['credits']['kind'], 'credits')
-        self.assertEqual(by_slot['ci_bench']['kind'], 'ci_bench')
         self.assertEqual(by_slot['journey']['kind'], 'journey')
         self.assertEqual(by_slot['board']['observed_at'], BOARD_AT)
         self.assertEqual(by_slot['credits']['observed_at'], BOARD_AT)
-        self.assertEqual(by_slot['ci_bench']['observed_at'], BENCH_AT)
         self.assertEqual(by_slot['activity']['observed_at'], ENDED)
         self.assertEqual(by_slot['rework']['observed_at'], '2030-01-02T12:00:00Z')
         self.assertRegex(by_slot['credits']['evidence'][0], r'^https://github\.com/synthetic-owner/work/commit/[0-9a-f]{40}$')
-        # The latest completed CI bench window, not an older one.
-        self.assertEqual(json.loads((root / by_slot['ci_bench']['path']).read_text())['until'], '2030-01-02T08:00:00Z')
+        # catches (#827): a retired CI bench point selected as if it were current.
+        self.assertTrue(by_slot['ci_bench']['path'].startswith('missing/'))
+        self.assertIn('CI bench retired (#827)', json.loads((root / by_slot['ci_bench']['path']).read_text())['prerequisites'][0])
         providers = sources.select(root, selection, ENDED)
         for s, p in zip(selection, providers):
             with self.subTest(s['slot']):
@@ -402,16 +396,16 @@ class Gather(unittest.TestCase):
         self.assertEqual(queue['queued:ubuntu-24.04'], activity['ci-queued-ubuntu-24.04'])
         self.assertEqual(queue['running:ubuntu-slim'], activity['ci-running-ubuntu-slim'])
         self.assertEqual(chosen['main_ci']['state'], 'unavailable')  # this world answers no main reads
-        # board and ci-benchmarks are only read: every ref of the origin is unchanged.
+        # board is only read: every ref of the origin is unchanged.
         self.assertEqual(self.refs(), self.refs_before)
 
     def test_data_branches_on_a_second_remote_are_read_with_data_remote(self):
-        # WRD4 (#877): the code repository has no board or ci-benchmarks branch; they live on a
+        # WRD4 (#877): the code repository has no board branch; it lives on a
         # second (private) repository. Without --data-remote they stay unavailable, as before;
         # with it they are read from there, only read, and their evidence names that repository.
         data = self.tmp / 'data.git'
         git(self.tmp, 'clone', '-q', '--bare', str(self.origin), str(data))
-        for name in ('board', 'ci-benchmarks'):
+        for name in ('board',):
             git(self.origin, 'update-ref', '-d', 'refs/heads/' + name)
         before = (self.refs(), git(data, 'for-each-ref', '--format=%(objectname) %(refname)'))
         _, selection = self.gather(out=self.tmp / 'code-only')
@@ -424,13 +418,12 @@ class Gather(unittest.TestCase):
             root, selection = self.gather(out=self.tmp / 'with-data', data_remote=url)
         by_slot = {s['slot']: s for s in selection}
         self.assertFalse(by_slot['board']['path'].startswith('missing/'))
-        for slot in ('credits', 'ci_bench'):
+        for slot in ('credits',):
             with self.subTest(slot):
                 self.assertFalse(by_slot[slot]['path'].startswith('missing/'))
                 self.assertRegex(by_slot[slot]['evidence'][0],
                                  r'^https://github\.com/synthetic-owner/private-data/commit/[0-9a-f]{40}$')
         self.assertEqual(by_slot['board']['observed_at'], BOARD_AT)
-        self.assertEqual(by_slot['ci_bench']['observed_at'], BENCH_AT)
         # Every other source still reads and links the code repository.
         self.assertEqual(by_slot['activity']['evidence'][0], RUN)
         providers = {p['slot']: p for p in sources.select(root, selection, ENDED)}
@@ -494,12 +487,12 @@ class Gather(unittest.TestCase):
         self.assertEqual((board['open-approved'], board['can-start'], board['ready-stock'],
                           board['builders-running'], board['startable-percent']), (6, 2, 2, 0, 33))
         self.assertEqual(sorted(self.values(cards['credits']).values()), [15, 30])
-        self.assertEqual(self.values(cards['ci_bench'])['merged'], 2)
         self.assertEqual(self.values(cards['activity'])['ci-queued-ubuntu-24.04'], 1)
         self.assertEqual(self.values(cards['rework'])['review-changes-share'], 0.5)
         self.assertEqual(self.values(cards['answer_time'])['answer-coverage'], 1 / 3)
-        self.assertEqual(self.values(cards['cost'])['ci-estimate'], 0.2)
-        for slot in GATHERED - {'journey'}:
+        # #827: cost reads journeys only now; without a CI bench point its CI share is Unknown, explained.
+        self.assertTrue(all(m['value'] is None and m['prerequisites'] for m in cards['cost']['metrics']))
+        for slot in GATHERED - {'journey', 'cost'}:
             with self.subTest(slot):
                 shown = [m for m in cards[slot]['metrics'] if m['value'] is not None]
                 self.assertTrue(shown, slot + ' shows no measured value')
@@ -551,22 +544,16 @@ class Gather(unittest.TestCase):
             cells = [c.strip() for c in line.strip('|').split('|')]
             if len(cells) == 3 and ' of ' in cells[2]:
                 rows[cells[0]] = [int(n) for n in cells[2].split(' of ')]
-        cards = ('Board', 'Credits', 'CI bench', 'Current activity', 'Rework rate', 'Orchestrator answer time',
-                 'All-in cost per merged PR')
+        cards = ('Board', 'Credits', 'Current activity', 'Rework rate', 'Orchestrator answer time')
         self.assertTrue(all(rows[card][0] > 0 for card in cards), rows)
-        self.assertEqual(sum(rows[card][1] for card in cards), 65)
+        self.assertEqual(sum(rows[card][1] for card in cards), 36)
+        # #827: the retired CI bench draws nothing, and cost without its point is Unknown, never zero.
+        self.assertEqual((rows['CI bench'], rows['All-in cost per merged PR']), ([0, 0], [0, 25]))
 
     def test_each_picture_card_shows_what_tells_it_apart(self):
-        # #2565 R1: cards can share a label (a credit drop per interval; CI median and p90), so
+        # #2565 R1: cards can share a label (a credit drop per interval), so
         # each picture card shows its window, freshness, statistic and dimensions; its long
         # provenance and evidence links stay in the published sample.
-        point = json.loads((FIX / 'cost/ci/point.json').read_text())
-        point['code_runs'] = {'rule': 'synthetic successful code runs', 'runs': 2, 'robot_seconds': 240,
-                              'robot_minutes_per_run': 2, 'prs_per_hour': 150,
-                              'categories': dict.fromkeys(('web', 'setup', 'rust', 'build', 'skills'), 0),
-                              'split': {'waiting': 1, 'setup': 1, 'running': 1},
-                              'queued_to_done': {'median': 7, 'p90': 9, 'max': 9}}
-        self.branch('ci-benchmarks', BENCH_AT, {'windows/aaaa/point.json': json.dumps(point)})
         root, _ = self.gather()
         read = publish_module().selection_reader(root, self.tmp / 'out/selection.json')
         page = publish_module().tick(self.tmp / 'private' / 'history', PUBLISH_AT, read).read_text(encoding='utf-8')
@@ -576,7 +563,7 @@ class Gather(unittest.TestCase):
             for m in p['metrics']:
                 labels.setdefault((p['slot'], m['label']), []).append(m)
         shared = {slot for (slot, _), ms in labels.items() if len(ms) > 1}
-        self.assertLessEqual({'credits', 'ci_bench'}, shared, 'cards that share a label: credit drops, CI median and p90')
+        self.assertLessEqual({'credits'}, shared, 'cards that share a label: credit drops')
         # The page shows the cards group by group; the same order, rebuilt from the record.
         metrics = [m for g in suite.GROUPS for p, d in zip(record['providers'], suite.PROVIDERS)
                    if g in d['groups'] for m in p['metrics'] if m['group'] == g]
@@ -613,7 +600,7 @@ class Gather(unittest.TestCase):
         page = publish_module().render(out, self.tmp / 'private' / 'history', PUBLISH_AT,
                                        lambda at, previous: marked(real_scale(read(at, previous))))
         record = suite.load(next((self.tmp / 'private' / 'history' / 'samples').glob('*.json')))
-        self.assertEqual(sum(len(p['metrics']) for p in record['providers'] if p['slot'] in REAL_SCALE), 133)
+        self.assertEqual(sum(len(p['metrics']) for p in record['providers'] if p['slot'] in REAL_SCALE), 126)
         for name, drawn_width, phone in (('war-room.png', width(False), False), ('war-room-phone.png', 2 * width(True), True)):
             with self.subTest(name):
                 data = (out / name).read_bytes()
@@ -653,13 +640,12 @@ class Gather(unittest.TestCase):
                 self.assertLessEqual(abs(height - scale * whole), 2 * 8, 'the whole home page, not a clip of it')
 
     def test_a_removed_or_unreadable_source_greys_only_its_own_card(self):
-        git(self.origin, 'update-ref', '-d', 'refs/heads/ci-benchmarks')
         self.branch('board', BOARD_AT, {'history.jsonl': (FIX / 'gather/history.jsonl').read_text(),
                                         'credits.jsonl': 'not a credit sample\n'})
         root, selection = self.gather()
         cards = self.publish(root, self.tmp / 'out/selection.json')
         for slot, source, prerequisite in (
-                ('ci_bench', 'ci-benchmarks', 'tools/ci-bench/daily.sh'),
+                ('ci_bench', 'CI bench retired (#827)', 'collector snapshot'),
                 ('credits', 'credits.jsonl', 'credit sampler')):
             with self.subTest(slot):
                 self.assertEqual(cards[slot]['state'], 'unavailable')

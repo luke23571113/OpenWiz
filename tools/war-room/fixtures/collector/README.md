@@ -8,10 +8,10 @@ those files' real hash, so a reader can check the binding:
 
 | Carried value | From |
 | --- | --- |
-| `stage_waits.value.journey`, `sidecar`, `bench` | `tools/factory-metrics/fixtures/stage-waits/journeys.json`, `stage-waits.json` and `bench.json` (TL2's demonstration). `source` hashes the sidecar; `limits` hashes `tools/factory-metrics/limits.conf`. `journey.validate_stage_waits(sidecar, journey)` accepts them, and `journey.stage_bench(sidecar, limits.read(limits.conf))` equals the carried bench |
-| `activity.value.current.cost`, `read-minutes-partial.json`'s `minutes` | `bench.costs` on synthetic jobs, priced from the real `tools/ci-bench/prices.tsv` as `bench.read_prices` reads it (its `unknown` row has null rates) |
+| `stage_waits.value.journey`, `sidecar`, `bench` | `tools/war-room/fixtures/stage-waits/journeys.json`, `stage-waits.json` and `bench.json` (TL2's demonstration). `source` hashes the sidecar; `limits` hashes `tools/war-room/limits.conf` (byte-identical to the retired factory-metrics copy). `journey.validate_stage_waits(sidecar, journey)` accepts them, and `journey.stage_bench(sidecar, limits.read(limits.conf))` equals the carried bench |
+| `activity.value.current.cost`, `read-minutes-partial.json`'s `minutes` | `bench.costs` on synthetic jobs, priced from the real `tools/war-room/prices.tsv` as `bench.read_prices` reads it (its `unknown` row has null rates) |
 | `journeys.value.document` | `tools/war-room/fixtures/rework/journeys.json` (WR6's three-PR cohort plus one) |
-| `ci3.value` | `python3 tools/ci-bench/ci3.py measure tools/ci-bench/fixtures/ci3/window.json` (no label), worked by hand in [its README](../../../ci-bench/fixtures/ci3/README.md) |
+| `ci3.value` | `python3 tools/war-room/ci3.py measure tools/war-room/fixtures/ci3/window.json` (no label), worked by hand in [its README](../ci3/README.md) |
 
 ## Files
 

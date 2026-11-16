@@ -123,7 +123,7 @@
       "fresh_until": null,
       "freshness": "unknown",
       "source": {
-        "path": "tools/factory-metrics/fixtures/stage-waits/stage-waits.json",
+        "path": "tools/war-room/fixtures/stage-waits/stage-waits.json",
         "schema": "closedwiz.journey.stage-waits.v1",
         "sha256": "e61183831d963575fef15c701b047ede54e809af9edcd1c933b3f5a723d67096"
       },
@@ -2593,7 +2593,7 @@
       "fresh_until": null,
       "freshness": "unknown",
       "source": {
-        "path": "tools/ci-bench/fixtures/ci3/window.json",
+        "path": "tools/war-room/fixtures/ci3/window.json",
         "schema": "openwiz.ci3.window.v1",
         "sha256": "e4fb1fee46727fbac37b9c2584ac3469f70a4412da1424d494f85785fb096e63"
       },

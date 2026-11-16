@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """ci-bench's collect and measure, moved here (#826, orchestrator ruling on #826).
 
-The code tools/war-room/collect_ci.py and ci3.py load from tools/ci-bench/bench.py:
+The code tools/war-room/collect_ci.py and ci3.py loaded from ci-bench's bench.py:
 its window `collect` and its point `measure`, with every definition they reach
 that bench_reads.py (#822) doesn't already carry. Each definition below is
-copied byte-identical from tools/ci-bench/bench.py; the shared ones come from
+copied byte-identical from ci-bench's bench.py; the shared ones come from
 bench_reads.py, where they are already identical. HERE is the war room, so the
 step table and the prices are tools/war-room/steps.tsv and prices.tsv,
-byte-identical to ci-bench's. MT8 (#827) retires the rest of ci-bench.
+byte-identical to ci-bench's. MT8 (#827) retired the rest of ci-bench;
+budgets.py and collect_factory.py load this module too.
 Python 3 standard library only, and gh.
 """
 from concurrent.futures import ThreadPoolExecutor

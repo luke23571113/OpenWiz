@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The ci-bench trend code the war room reads with, moved here (#822, spec #819 revision 4).
 
-Copied unchanged from tools/ci-bench/trends.py at its retirement's start: the
+Copied unchanged from ci-bench's trends.py at its retirement's start: the
 CF4 score reader, journey distributions, the outcome cohort and the journey
-report check that a saved ci-benchmarks point carries. The journey module (J)
+report check that a saved CI bench point carries. The journey module (J)
 is the war room's own copy, moved from factory-metrics by MT2 (#821).
 """
 from collections import Counter
