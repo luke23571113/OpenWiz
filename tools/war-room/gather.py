@@ -83,7 +83,7 @@ REASONS = {
                       'is shown; prerequisite: a valid board-wide graph.json of this repository on the board branch '
                       '(source kind board) and complete PR pages.',
 }
-LIMITS = sources.ROOT / 'tools/factory-metrics/limits.conf'  # TL1's one settings source
+LIMITS = sources.ROOT / 'tools/war-room/limits.conf'  # TL1's one settings source
 
 
 class Fail(Exception):

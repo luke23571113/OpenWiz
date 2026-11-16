@@ -33,7 +33,7 @@ COLLECTOR = HERE / 'fixtures' / 'collector'
 SCRIPT = HERE / 'collect_factory.py'
 DAILY_REPO, OPEN_REPO = 'example/factory', 'synthetic-owner/synthetic-repo'
 DAY = ('2030-01-02T00:00:00Z', '2030-01-03T00:00:00Z')
-C_LIMITS = 'tools/factory-metrics/limits.conf'  # TL1's settings file, which collect_factory reads
+C_LIMITS = 'tools/war-room/limits.conf'  # TL1's settings file, which collect_factory reads
 FACTS = ['merges', 'prs_per_hour', 'stage_waits', 'stalls', 'open_prs', 'journeys', 'cost']
 
 
@@ -237,8 +237,7 @@ class CarriedJourneys(unittest.TestCase):
             side = (tmp / 'out' / 'stage-waits.json').read_bytes()
             journey = json.loads((tmp / 'out' / 'journeys.json').read_text())
             bench = subprocess.run([sys.executable, '-I', str(HERE / 'journey.py'), 'bench',
-                                    str(tmp / 'out' / 'journeys.json'), '--stage-waits', str(tmp / 'out' / 'stage-waits.json'),
-                                    '--settings', str(ROOT / C_LIMITS)],
+                                    str(tmp / 'out' / 'journeys.json'), '--stage-waits', str(tmp / 'out' / 'stage-waits.json')],
                                    capture_output=True, text=True, timeout=60)
         self.assertEqual(fact['value']['sidecar'], json.loads(side))
         self.assertEqual(fact['value']['journey'], journey)

@@ -20,7 +20,7 @@ PAIRS = {
     'healthy.json': 'tools/ci-overload/fixtures/healthy.json',
     'read.py': 'tools/github-reads/read.py',
     'limits.py': 'tools/war-room/limits.py',
-    'limits.conf': 'tools/factory-metrics/limits.conf',
+    'limits.conf': 'tools/war-room/limits.conf',
     # read.py finds these through its own parents[1]: scripts/github-app/ beside carried/.
     '../github-app/app.py': 'tools/github-app/app.py',
     '../github-app/mint-token.py': 'tools/github-app/mint-token.py',

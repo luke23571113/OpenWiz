@@ -330,6 +330,7 @@
     "tools/war-room/gather.py",
     "tools/war-room/history.py",
     "tools/war-room/journey.py",
+    "tools/war-room/limits.conf",
     "tools/war-room/limits.py",
     "tools/war-room/main.py",
     "tools/war-room/metrics.py",

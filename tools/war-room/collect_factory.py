@@ -51,7 +51,7 @@ J = _module('collect_factory_journey', HERE / 'journey.py')
 M = J.M  # journey.py's own metrics module: one ReadError for every read below
 A = _module('collect_factory_stall_alarm', ROOT / 'tools/stall-alarm/alarm.py')
 BENCH = ROOT / 'tools/ci-bench/bench.py'
-LIMITS = 'tools/factory-metrics/limits.conf'  # TL1's one settings file
+LIMITS = 'tools/war-room/limits.conf'  # TL1's one settings file
 SCHEMA = suite._decode((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))
 FACTS = tuple(SCHEMA['x-facts']['factory'])
 READ, SNAPSHOT = 'openwiz.war-room.collector.read.v1', 'openwiz.war-room.collector.v1'
