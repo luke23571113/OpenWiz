@@ -9,7 +9,7 @@
 //! all refuse the whole file.
 
 use crate::{Area, StoreError, io_error};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -71,10 +71,30 @@ pub struct SetupState {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Identity {
-    pub selected: String,
-    pub app_choice: String,
+    pub selected: Selected,
+    pub app_choice: AppChoice,
     pub acting_login: Option<String>,
     pub repository: String,
+}
+
+/// setup.v1's `selected`, read only as its plain string (the shape check in
+/// `read` refuses a tagged object).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Selected {
+    App,
+    PersonalLogin,
+    Unselected,
+}
+
+/// setup.v1's `app_choice`, the same way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppChoice {
+    Create,
+    Reuse,
+    Skip,
+    Undecided,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -264,10 +284,8 @@ impl SetupState {
             }
         }
         if let Some(i) = &self.identity {
-            let skipped = i.selected == "personal_login";
-            let ok = ["app", "personal_login", "unselected"].contains(&i.selected.as_str())
-                && ["create", "reuse", "skip", "undecided"].contains(&i.app_choice.as_str())
-                && skipped == (i.app_choice == "skip")
+            let skipped = i.selected == Selected::PersonalLogin;
+            let ok = skipped == (i.app_choice == AppChoice::Skip)
                 && repository(&i.repository)
                 && match &i.acting_login {
                     Some(login) => skipped && word(login, 39, b"-"),
@@ -421,7 +439,10 @@ pub fn read(state_dir: &Path) -> Result<Option<SetupState>, StoreError> {
             .as_array()
             .is_some_and(|a| a.iter().all(serde_json::Value::is_object))
         && object_or_null(&shape["identity"])
-        && (shape["identity"].is_null() || shape["identity"].get("acting_login").is_some())
+        && (shape["identity"].is_null()
+            || (shape["identity"].get("acting_login").is_some()
+                && shape["identity"]["selected"].is_string()
+                && shape["identity"]["app_choice"].is_string()))
         && object_or_null(&shape["engine"])
         && (shape["engine"].is_null()
             || (shape["engine"].get("cost").is_some() && object_or_null(&shape["engine"]["cost"])));
@@ -567,8 +588,8 @@ mod tests {
         write(&dir.0, &with(skip), 0o600);
         let identity = read(&dir.0).unwrap().unwrap().identity.unwrap();
         assert_eq!(
-            (identity.selected.as_str(), identity.app_choice.as_str()),
-            ("personal_login", "skip")
+            (identity.selected, identity.app_choice),
+            (Selected::PersonalLogin, AppChoice::Skip)
         );
         assert_eq!(identity.acting_login.as_deref(), Some("synthetic-owner"));
         for good in [
@@ -579,7 +600,9 @@ mod tests {
             assert!(read(&dir.0).is_ok(), "{good}");
         }
         for bad in [
-            skip.replace(r#""skip""#, r#""create""#),
+            skip.replace(r#""skip""#, r#""reuse""#),
+            skip.replace(r#""skip""#, r#""Skip""#),
+            skip.replace(r#""skip""#, r#"{"skip":null}"#),
             skip.replace(r#""personal_login""#, r#""unselected""#),
             skip.replace(r#""personal_login""#, r#""app""#),
             skip.replace(r#""synthetic-owner","#, "null,"),
