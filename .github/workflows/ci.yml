@@ -56,6 +56,7 @@ jobs:
       site-in-release: ${{ steps.plan.outputs.site-in-release }}
       release: ${{ steps.plan.outputs.release }}
       skills: ${{ steps.plan.outputs.skills }}
+      skill-jobs: ${{ steps.plan.outputs.skill-jobs }}
       build-web: ${{ steps.plan.outputs.build-web }}
       export-rust: ${{ steps.plan.outputs.export-rust }}
       export-web: ${{ steps.plan.outputs.export-web }}
@@ -928,11 +929,19 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # #743: the release proofs split across this many members by measured
+  # time (ci/shard/lanes.py, ci/shard/lanes.tsv), a setting per runner kind
+  # as for the Rust lane: a kind not named runs one, so a paid runner never
+  # fans out. The ci job checks every unit ran exactly once, then stamps.
   release:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.release == 'true' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(fromJSON('{"ubuntu-24.04":"[1,2,3]"}')[github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04'] || '[1]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -968,34 +977,37 @@ jobs:
           name: ci-selection-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-plan
       - name: The release proofs
-        run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" release
+        env:
+          SHARDS: ${{ strategy.job-total }}
+          SHARD: ${{ matrix.shard }}
+        run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" release --shard "$SHARD/$SHARDS" "$RUNNER_TEMP/shard-ran/release-$SHARD.json"
       - name: Save the npm cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') && strategy.job-index == 0
         run: sh ci/runner/cache.sh save npm "$HOME/.npm"
       - name: Save the GitHub npm cache
-        if: steps.guard.outputs.save == 'true'
+        if: steps.guard.outputs.save == 'true' && strategy.job-index == 0
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
-      - name: Record passed lane
-        run: python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" release "$RUNNER_TEMP/receipts"
+      # Only once its share passed: the ci job checks these records.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: lane-release-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/receipts/*.json
+          name: shard-ran-${{ github.run_attempt }}-release-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-ran/release-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 30
 
+  # Every selected skill suite but launch-fleet's (its own job, below).
   skills:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.skills != '[]' && needs.changes.outputs.skills != '' }}
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.skill-jobs != '[]' && needs.changes.outputs.skill-jobs != '' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ matrix.skill == 'launch-fleet' && 60 || 30 }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        skill: ${{ fromJSON(needs.changes.outputs.skills) }}
+        skill: ${{ fromJSON(needs.changes.outputs.skill-jobs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1037,6 +1049,64 @@ jobs:
         with:
           name: lane-skill-${{ matrix.skill }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/receipts/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # #743: launch-fleet's suites split across members by measured time, its
+  # test.sh by group (TEST_SHARD), a setting per runner kind as for release.
+  # The ci job checks every unit ran once and the case counts add up.
+  launch-fleet:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.result == 'success' && contains(needs.changes.outputs.skills, '"launch-fleet"') }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(fromJSON('{"ubuntu-24.04":"[1,2,3,4]"}')[github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04'] || '[1]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/private/
+      - name: The runner guard
+        id: guard
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: sh ci/hosted/guard.sh
+      - name: Prune unused inputs
+        run: sh .github/actions/docs-only/prune.sh .github/actions/docs-only/ci-reads.txt rust
+      - name: Prepare lane
+        uses: ./.github/actions/docs-only/setup
+        with:
+          hosted: ${{ steps.guard.outputs.hosted }}
+          save: ${{ steps.guard.outputs.save }}
+          rust-version: ${{ env.RUST_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          cargo: 'false'
+          npm: 'false'
+          browser: 'false'
+      - name: Python for the offline installer and release proofs
+        run: sh .github/actions/docs-only/python.sh
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ci-selection-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-plan
+      - name: The launch-fleet tests
+        env:
+          SHARDS: ${{ strategy.job-total }}
+          SHARD: ${{ matrix.shard }}
+        run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" skill:launch-fleet --shard "$SHARD/$SHARDS" "$RUNNER_TEMP/shard-ran/launch-fleet-$SHARD.json"
+      # Only once its share passed: the ci job checks these records.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-ran-${{ github.run_attempt }}-launch-fleet-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-ran/launch-fleet-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 30
 
@@ -1305,7 +1375,7 @@ jobs:
           key: ci-select-map-${{ github.run_id }}-${{ github.run_attempt }}
 
   ci:
-    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills]
+    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills, launch-fleet]
     if: ${{ always() && github.event_name != 'push' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 10
@@ -1349,6 +1419,25 @@ jobs:
         run: |
           python3 -I ci/shard/shard.py check "$RUNNER_TEMP/ci-plan/ci-selection.json" "$RUNNER_TEMP"/rust-ran/ran-*.txt
           python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" rust "$RUNNER_TEMP/receipts"
+      # #743: the same for the release and launch-fleet lanes' members: every
+      # unit exactly once, and each counted script's shard case counts summed
+      # to its total, before the lane's receipt is written.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.release.result == 'success' || needs.launch-fleet.result == 'success'
+        with:
+          pattern: shard-ran-${{ github.run_attempt }}-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/shard-ran
+      - name: Every release unit ran exactly once
+        if: needs.release.result == 'success'
+        run: |
+          python3 -I .github/actions/docs-only/run.py check-shards "$RUNNER_TEMP/ci-plan" release "$RUNNER_TEMP"/shard-ran/release-*.json
+          python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" release "$RUNNER_TEMP/receipts"
+      - name: Every launch-fleet case ran exactly once
+        if: needs.launch-fleet.result == 'success'
+        run: |
+          python3 -I .github/actions/docs-only/run.py check-shards "$RUNNER_TEMP/ci-plan" skill:launch-fleet "$RUNNER_TEMP"/shard-ran/launch-fleet-*.json
+          python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" skill:launch-fleet "$RUNNER_TEMP/receipts"
       - name: Every planned lane passed
         env:
           NEEDS: ${{ toJSON(needs) }}

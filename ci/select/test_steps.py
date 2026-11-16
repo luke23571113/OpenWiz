@@ -172,18 +172,21 @@ class Workflow(unittest.TestCase):
             expression=re.sub(r'needs\.changes\.outputs\.([a-z-]+)',lambda m:repr(output.get(m[1],'')),expression)
             expression=expression.replace('needs.changes.result',repr('success')).replace('needs.web-build.result',repr(export_result))
             expression=expression.replace('!cancelled()','True').replace('&&',' and ').replace('||',' or ')
-            if eval(expression,{'__builtins__':{}},{}): ran.add(name)
+            if eval(expression,{'__builtins__':{}},{'contains':lambda a,b:b in a}): ran.add(name)
         return ran
 
     def test_skill_only_full_conditional_export_and_missing_answers(self):
         full=dict.fromkeys(('rust','web','site','release','build-web','export-rust','export-web'),'true')
         full['skills']='["triage","launch-fleet"]'
-        self.assertEqual(self.scheduled(full),{'always','web-build','rust-export','web-export','site','release','skills'})
+        full['skill-jobs']='["triage"]'
+        self.assertEqual(self.scheduled(full),{'always','web-build','rust-export','web-export','site','release','skills','launch-fleet'})
         direct=dict(full,**{'export-rust':'false','export-web':'false'})
-        self.assertEqual(self.scheduled(direct),{'always','web-build','rust','web','site','release','skills'})
-        self.assertEqual(self.scheduled(dict(skills='["launch-fleet"]')),{'always','skills'})
+        self.assertEqual(self.scheduled(direct),{'always','web-build','rust','web','site','release','skills','launch-fleet'})
+        # #743: launch-fleet alone starts only its own sharded job, never an empty skills matrix.
+        self.assertEqual(self.scheduled({'skills':'["launch-fleet"]','skill-jobs':'[]'}),{'always','launch-fleet'})
+        self.assertEqual(self.scheduled({'skills':'["triage"]','skill-jobs':'["triage"]'}),{'always','skills'})
         self.assertEqual(self.scheduled({}),{'always'})
-        self.assertEqual(self.scheduled(full,'failure'),{'always','web-build','site','release','skills'})
+        self.assertEqual(self.scheduled(full,'failure'),{'always','web-build','site','release','skills','launch-fleet'})
         # A missing answer does not certify skipped work: final-job fixture
         # tests require each plan-named job and every matrix receipt.
 

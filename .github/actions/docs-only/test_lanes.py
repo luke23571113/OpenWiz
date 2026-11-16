@@ -28,7 +28,7 @@ class Lanes(unittest.TestCase):
                          'plan_sha256': self.sha}
         (self.path / 'ci-dispatch.json').write_text(json.dumps(self.dispatch))
         self.needs = {k: {'result': 'success'} for k in
-                      ('changes','always','web-build','rust-export','web-export','site','release','skills')}
+                      ('changes','always','web-build','rust-export','web-export','site','release','skills','launch-fleet')}
         self.needs.update({k: {'result': 'skipped'} for k in ('rust','web')})
         self.expected = {k: self.plan['lanes'][k]['tests'] for k in ('always','rust','web')}
         self.expected.update(site=['site:build','site:test'], release=['release:package'])
@@ -134,7 +134,7 @@ class Lanes(unittest.TestCase):
 
     def test_actual_job_failure_cancellation_and_absence_fail(self):
         original = json.loads(json.dumps(self.needs))
-        for job in ('changes','always','web-build','rust-export','web-export','site','release','skills'):
+        for job in ('changes','always','web-build','rust-export','web-export','site','release','skills','launch-fleet'):
             for state in ('failure','cancelled','skipped',None):
                 with self.subTest(job=job,state=state):
                     self.needs = json.loads(json.dumps(original))
@@ -167,6 +167,70 @@ class Lanes(unittest.TestCase):
         result = self.run_finish()
         self.assertEqual(result.returncode,1,result.stderr)
         self.assertIn('plan',result.stderr)
+
+
+    def check_shards(self, kind, records):
+        paths = []
+        for i, entry in enumerate(records):
+            path = self.path / f'ran-{i}.json'
+            path.write_text(json.dumps(entry))
+            paths.append(str(path))
+        env = dict(os.environ, GITHUB_RUN_ID=str(self.plan['run']['id']),
+                   GITHUB_RUN_ATTEMPT=str(self.plan['run']['attempt']), GITHUB_EVENT_NAME=self.plan['run']['event'])
+        return subprocess.run([sys.executable, '-I', str(HERE / 'run.py'), 'check-shards', str(self.path), kind, *paths],
+                              cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
+
+    def test_shard_records_must_run_every_unit_once_and_add_up_to_the_total(self):
+        # catches (#743): a shard that silently drops cases or units, a member
+        # that never reported, a unit run twice, or a record from another plan.
+        script = 'skill:launch-fleet:skills/launch-fleet/scripts/test.sh'
+        def member(k, units, cases):
+            return {'lane': 'skill:launch-fleet', 'shard': k, 'shards': 3, 'plan_sha256': self.sha,
+                    'units': dict.fromkeys(units, 1.0), 'counts': {script: {'cases': cases, 'total': 10, 'groups': 4}}}
+        others = ['skill:launch-fleet:' + p for p in ('skills/launch-fleet/test/ops-protocol/test_protocol.py',
+            'skills/launch-fleet/scripts/test-effects.py', 'skills/launch-fleet/scripts/test-grants.py',
+            'skills/launch-fleet/scripts/test-inbox.py', 'tools/review-relay/test_inbox.py')]
+        def fleet():
+            return [member(1, [script + ':group:1', script + ':group:2', *others[:2]], 5),
+                    member(2, [script + ':group:3', *others[2:4]], 3),
+                    member(3, [script + ':group:4', others[4]], 2)]
+        result = self.check_shards('skill:launch-fleet', fleet())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('5 + 3 + 2 = 10 of 10 cases', result.stdout)
+        def drop_group(r):
+            del r[2]['units'][script + ':group:4']; r[2]['counts'][script]['cases'] = 0
+        def short(r): r[1]['counts'][script]['cases'] = 2
+        def twice(r): r[1]['units'][others[0]] = 1.0
+        def missing(r): del r[2]
+        def foreign(r): r[0]['plan_sha256'] = '0' * 64
+        for name, change, wants in [('dropped group', drop_group, ['group:4: never ran', 'not 10']),
+                                    ('short count', short, ['9 cases ran across the shards, not 10']),
+                                    ('twice', twice, ['test_protocol.py: ran 2 times']),
+                                    ('missing member', missing, ['shard 3 of 3 reported 0 times']),
+                                    ('foreign plan', foreign, ['another lane or plan'])]:
+            with self.subTest(name):
+                records = fleet(); change(records)
+                result = self.check_shards('skill:launch-fleet', records)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                for want in wants:
+                    self.assertIn(want, result.stderr)
+        # The release lane's open-tickets parts are units too: a dropped part fails.
+        self.plan['lanes']['site']['tests'] = ['site:build', 'site:test', 'release:package', 'release:open-tickets']
+        raw = json.dumps(self.plan); self.sha = hashlib.sha256(raw.encode()).hexdigest()
+        (self.path / 'ci-selection.json').write_text(raw)
+        (self.path / 'ci-dispatch.json').write_text(json.dumps(dict(self.dispatch, plan_sha256=self.sha)))
+        parts = subprocess.run(['sh', 'tools/open-tickets/test.sh', '--list'], cwd=ROOT,
+                               capture_output=True, text=True, check=True).stdout.split()
+        units = ['release:package', *('release:open-tickets:' + p for p in parts)]
+        for dropped in ([], ['release:open-tickets:carriage']):
+            with self.subTest(dropped=dropped):
+                ran = [u for u in units if u not in dropped]
+                result = self.check_shards('release', [
+                    {'lane': 'release', 'shard': k, 'shards': 2, 'plan_sha256': self.sha,
+                     'units': dict.fromkeys(ran[k - 1::2], 1.0), 'counts': {}} for k in (1, 2)])
+                self.assertEqual(result.returncode, 1 if dropped else 0, result.stderr)
+                if dropped:
+                    self.assertIn('release:open-tickets:carriage: never ran', result.stderr)
 
 
 if __name__=='__main__': unittest.main()

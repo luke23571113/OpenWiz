@@ -72,6 +72,13 @@ variable (`git -c`, `GIT_CONFIG_*`, `GIT_SSH*`, `GIT_DIR`, ...; only
 `HOOK_GIT_VARIABLES` may be set, plus a complete `GIT_CONFIG_COUNT`/`KEY_<i>`/
 `VALUE_<i>` set whose every key starts `hook.`), Git would not rewrite that URL, the
 destination names exactly one `main` and that commit is present locally.
+Within one run, each file version (Git blob) is read and checked once for
+each rule set its paths need (workflow, the contract, other text), and that
+verdict is repeated at every later path and commit tree holding it (#761).
+The key also holds the checker's code, its decider list and the literals;
+only a finished check is kept, nothing is cached across runs, and path rules,
+local workflow targets, messages and identities are still checked for every
+path and commit. A staged directory is never cached.
 `ci.py` passes `origin/main`, fetched from the destination in that job, for a
 new branch, never for a new `main`. There is no command
 option or environment override for the root, anchor or decider list. Tests

@@ -54,6 +54,10 @@ jobs:
         # Runs even when an earlier step failed, so the page proofs always report.
         if: ${{ !cancelled() }}
         run: python3 -I tools/war-room/test_page_design.py
+      - name: The War room private HTML serving proofs (WRD4, synthetic)
+        # Runs even when an earlier step failed, so the serving proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_web.py
 
   preview:
     # A pull request ticks and draws on an empty private history, and publishes nothing.

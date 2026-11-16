@@ -32,7 +32,7 @@ class UIGuidance(unittest.TestCase):
         brief = self.section("image/references/ui-brief.md", "Project taste brief")
         self.contains(brief, "Source revision:", "Hard rules:",
                       "Explicit preferences:", "Observed patterns:",
-                      "94b8081cd63b5f458b4402148081e3408102d8a2")
+                      "private mood board")
         image = self.section("image/SKILL.md", "Prepare a UI design")
         self.contains(image, "references/ui-brief.md", "before generating")
         setup = self.section("hill-climb/SKILL.md", "Set up the run")
@@ -93,7 +93,7 @@ class UIGuidance(unittest.TestCase):
         for name in ("ui-brief.md", "ui-craft.md"):
             with self.subTest(reference=name):
                 sources = self.section(f"image/references/{name}", "Sources")
-                self.contains(sources, "58865325991b81e36a4202b40d477eb94f8c2625",
+                self.contains(sources, "Research revision: the private 2026-11-02",
                               "12af471f627f866411b4bd785b19646d3672784c")
                 self.assertFalse(
                     bool(re.search(r"https://github\.com/[^\s)]+/(?:private|docs/grills)/", sources)),

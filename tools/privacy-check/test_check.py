@@ -982,6 +982,71 @@ class Check(unittest.TestCase):
         self.history(base=self.public_root)
 
 
+    def commit_files(self, message, files):
+        # files: name -> bytes to write, or None to delete.
+        for name, data in files.items():
+            path = self.repo / name
+            if data is None:
+                path.unlink()
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        self.git('add', '-A')
+        self.git('commit', '-qm', message)
+
+    def scan_range(self):
+        out = io.StringIO()
+        with patch.multiple(self.checker, PUBLIC_ROOT=self.public_root, PUBLIC_ANCHOR=self.anchor), contextlib.redirect_stdout(out):
+            rc = self.checker.main(['--repo', str(self.repo), '--base', self.anchor, '--head', 'HEAD'])
+        return rc, out.getvalue()
+
+    def test_range_reads_each_unchanged_blob_once(self):
+        # #761: every commit tree of a range used to re-read and re-check all
+        # of its files, so a long PR hit Privacy's time cap. A blob seen once
+        # in this run is not read again; every commit is still scanned.
+        self.make_repo()
+        self.commit_files('synthetic files', {'a.md': b'synthetic a', 'b.md': b'synthetic b', 'same.md': b'synthetic b'})
+        for n in range(4):
+            self.commit_files('synthetic edit', {'c.md': b'synthetic edit ' + str(n).encode()})
+        reads, read = [], self.checker.BlobReader.read
+        def counted(reader, sha):
+            reads.append(sha)
+            return read(reader, sha)
+        with patch.object(self.checker.BlobReader, 'read', counted):
+            self.assertEqual(self.scan_range(), (0, 'literals: not used\n'))
+        self.assertEqual(len(reads), len(set(reads)), 'a blob was read again in the same run')
+        # a, b (also at same.md) and the four versions of c.
+        self.assertEqual(len(reads), 6)
+
+    def test_range_findings_repeat_for_every_commit_and_path(self):
+        # #761's cache must not change any verdict: a forbidden blob added
+        # early refuses in every commit tree and at every path holding it,
+        # and a blob's verdict is never reused for a path checked under other
+        # rules (workflows, the contract's bad examples) or for a workflow
+        # whose local target is gone. The expected lines were written by hand.
+        self.make_repo()
+        planted = (THREAD + '\n').encode()
+        bad = ('```bad\n' + THREAD + '\n```\n').encode()
+        runner = b'jobs:\n  test:\n    runs-on: self-hosted\n'
+        caller = b'jobs:\n  test:\n    uses: ./.github/workflows/local.yml\n'
+        local = b'jobs:\n  reusable:\n    runs-on: ubuntu-latest\n'
+        self.commit_files('synthetic 1', {'planted.md': planted, 'contracts/open-development.v1.md': bad,
+                                          'docs/runner.yml': runner, '.github/workflows/caller.yml': caller})
+        self.commit_files('synthetic 2', {'copy.md': planted, 'other.md': bad,
+                                          '.github/workflows/runner.yml': runner,
+                                          '.github/workflows/local.yml': local})
+        self.commit_files('synthetic 3', {'planted.md': None, 'copy.md': None, 'other.md': None,
+                                          '.github/workflows/runner.yml': None})
+        self.assertEqual(self.scan_range(), (1,
+            # commit-tree-1 is HEAD (synthetic 3); -2 is synthetic 2; -3 is synthetic 1.
+            'F2 commit-tree-2:".github/workflows/runner.yml":1\n'
+            'T1 commit-tree-2:"copy.md":1\n'
+            'T1 commit-tree-2:"other.md":2\n'
+            'T1 commit-tree-2:"planted.md":1\n'
+            'T1 commit-tree-3:"planted.md":1\n'
+            'F2 commit-tree-3:".github/workflows/caller.yml":1\n'
+            'literals: not used\n'))
+
     def test_matrix_block_scalar_cannot_hide_include_override(self):
         self.workflow('jobs:\n  test:\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n        os: [ubuntu-latest]\n        include:\n          - note: |\n              ordinary note\n            os: self-hosted\n', 'F2')
 
