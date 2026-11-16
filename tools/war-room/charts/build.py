@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """WRD2 (#630): the War room chart build. Validated history in, finished static SVG out.
 
-    python3 -I charts/build.py --history DIR --at UTC [--source-root DIR --selection FILE] --out DIR
+    python3 -I charts/build.py --history DIR --at UTC [--source-root DIR --selection FILE] [--snapshot FILE] --out DIR
 
 prepare.py selects the values; render.mjs draws each figure once with the locked
 Observable Plot under Node (build time only); this module refuses any SVG outside the
@@ -27,6 +27,7 @@ sys.path.insert(0, str(TOOL))
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
 import prepare  # noqa: E402
+import prs_per_hour  # noqa: E402
 import suite  # noqa: E402
 
 MANIFEST = 'openwiz.war-room.charts-manifest.v1'
@@ -96,11 +97,14 @@ def _sha(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
-def build(history_root, *, at, source_root=None, selections=(), out=None):
-    """The bundle {figures, manifest, values}; with `out`, also its files. Raises ValueError."""
+def build(history_root, *, at, source_root=None, selections=(), out=None, snapshot=None):
+    """The bundle {figures, manifest, values}; with `out`, also its files. Raises ValueError.
+
+    `snapshot` (MT4) is one collector snapshot file: it adds PRs an hour against the baseline."""
     records = history.read_all(history_root) if (Path(history_root) / 'samples').is_dir() else []
     natives = prepare.read_natives(source_root, list(selections), at)
-    doc = prepare.prepare(records, at, natives)
+    extra = [] if snapshot is None else [prs_per_hour.figure(prs_per_hour.read(snapshot, at))]
+    doc = prepare.prepare(records, at, natives, [f for f in extra if f is not None])
     svgs = render(doc)
     figures = []
     for f in doc['figures']:
@@ -143,12 +147,14 @@ def main(argv=None):
     parser.add_argument('--at', required=True, help='explicit UTC build time; no wall clock is read')
     parser.add_argument('--source-root', type=Path)
     parser.add_argument('--selection', type=Path)
+    parser.add_argument('--snapshot', type=Path, help='one collector snapshot (collector.v1.md): PRs an hour')
     parser.add_argument('--out', required=True, type=Path)
     a = parser.parse_args(argv)
     try:
         chosen = [] if a.selection is None else suite._decode(a.selection.read_text(encoding='utf-8'))
         chosen = prepare.chart_selections(chosen)
-        bundle = build(a.history, at=a.at, source_root=a.source_root, selections=chosen, out=a.out)
+        bundle = build(a.history, at=a.at, source_root=a.source_root, selections=chosen, out=a.out,
+                       snapshot=a.snapshot)
     except (ValueError, OSError, UnicodeError, RecursionError) as error:
         print('war-room charts: %s; nothing written' % (error if isinstance(error, ValueError) else type(error).__name__),
               file=sys.stderr)
