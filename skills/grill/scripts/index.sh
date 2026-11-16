@@ -7,11 +7,19 @@
 # one `Status:` (`**open**.`, or `**parked**` or `**confirmed**` by <User>,
 # <YYYY-MM-DD>) and a `Feeds` sentence. Fails closed: a file it can't read that
 # way is named on stderr, with every other bad file, and nothing is printed.
-# Exit 0: the table; 1: a bad file; 2: a folder or a file it can't read.
+# The default folder is the consumer project's own and optional: when it is
+# absent, nothing is read and it says so on stderr, printing no table. A DIR
+# that is named must exist.
+# Exit 0: the table (or no default folder); 1: a bad file; 2: a folder or a
+# file it can't read.
 # Test: sh skills/grill/scripts/test.sh
 set -u
 LC_ALL=C
 export LC_ALL
+if [ $# = 0 ] && [ ! -e docs/grills ] && [ ! -L docs/grills ]; then
+  echo "index.sh: this project has no docs/grills folder, so there is no grill index" >&2
+  exit 0
+fi
 dir="${1:-docs/grills}"
 [ -d "$dir" ] && [ -r "$dir" ] && [ -x "$dir" ] || { echo "index.sh: cannot read the folder $dir" >&2; exit 2; }
 

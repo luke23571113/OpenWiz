@@ -1,0 +1,51 @@
+# WRD3 R scoped checks at 13b26120ddb1ec9345216141779018dc7f1d527f (R + granted renderer fixes, on main 998c293)
+## python3 -I tools/war-room/test_activity.py
+Ran 14 tests in 4.458s
+OK
+## python3 -I tools/war-room/test_answer_time.py
+Ran 10 tests in 0.180s
+OK
+## python3 -I tools/war-room/test_charts.py
+Ran 19 tests in 5.413s
+OK
+## python3 -I tools/war-room/test_contract.py
+Ran 19 tests in 0.089s
+OK
+## python3 -I tools/war-room/test_cost.py
+Ran 16 tests in 0.908s
+OK
+## python3 -I tools/war-room/test_gather.py
+Ran 18 tests in 51.264s
+OK
+## python3 -I tools/war-room/test_health.py
+Ran 22 tests in 8.827s
+OK
+## python3 -I tools/war-room/test_page_design.py
+Ran 14 tests in 5.664s
+OK
+## python3 -I tools/war-room/test_page_history.py
+Ran 18 tests in 0.950s
+OK
+## python3 -I tools/war-room/test_publish.py
+Ran 14 tests in 11.516s
+OK
+## python3 -I tools/war-room/test_review_loops.py
+Ran 30 tests in 5.472s
+OK
+## python3 -I tools/war-room/test_rework.py
+Ran 8 tests in 0.187s
+OK
+## python3 -I tools/war-room/test_stage_waits.py
+Ran 11 tests in 2.375s
+OK
+## python3 -I tools/war-room/test_weekly.py
+Ran 23 tests in 105.047s
+OK
+## python3 -I tools/open-import/guard.py --base=origin/main --head=HEAD
+carriage guard: all 1 added paths are classified
+## python3 -I tools/open-import/test_guard.py
+Ran 11 tests in 1.163s
+OK
+## python3 -I tools/privacy-check/check.py --repo . --base origin/main --head HEAD
+literals: not used
+exit 0

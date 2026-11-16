@@ -1,0 +1,29 @@
+✔ setup reader accepts independent unknowns and refuses malformed or falsely ready reports (2.555565ms)
+✖ setup reader takes the optional identity and its revised ready rule, and nothing looser (1.008469ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 136.239803
+
+✖ failing tests:
+
+test at tools/install/test_setup_api.mjs:60:1
+✖ setup reader takes the optional identity and its revised ready rule, and nothing looser (1.008469ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  'error' !== 'ok'
+  
+      at TestContext.<anonymous> (file://<checkout>/tools/install/test_setup_api.mjs:63:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'error',
+    expected: 'ok',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

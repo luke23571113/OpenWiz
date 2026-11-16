@@ -2,7 +2,7 @@
 
 All OpenWiz versions, newest first. How versions work: [RELEASING.md](https://github.com/openwizdev/OpenWiz/blob/main/RELEASING.md).
 
-## 0.0.12 · 2026-11-15
+## 0.0.12 · 2026-11-16
 
 **Scripts and agents can drive OpenWiz**
 
@@ -11,7 +11,7 @@ All OpenWiz versions, newest first. How versions work: [RELEASING.md](https://gi
 - Run `openwiz help --agent` to get every command, option and result format in one list. It reads nothing and changes nothing.
 - Add `--json` to any command for one clean result, and a clear error when something goes wrong.
 
-Tested on synthetic fixtures and in this release's live smoke test, run by agents; the terminal app was never live-checked on a Mac.
+Live-checked in this release's smoke test, run by agents: installing this release, `openwiz help --agent`, `ls --json` and `show --json`, one send to a throwaway thread, and one new thread in a throwaway project. Everything else here is tested on synthetic fixtures only; the terminal app was never live-checked on a Mac.
 
 **Under the hood**
 
@@ -21,7 +21,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 
 [Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)
 
-## 0.0.11 · 2026-11-15
+## 0.0.11 · 2026-11-16
 
 **Make every decision in one place, and see the whole plan**
 
@@ -31,7 +31,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 - Anything live, release or publishing asks you twice before it goes.
 - A Plan page shows each version's tickets by state, what holds up the most work, and what any ticket waits on.
 
-Tested on synthetic fixtures and in this release's live smoke test, run by agents; a whole day of real decisions on these pages is still unverified.
+Tested on synthetic fixtures only; a whole day of real decisions on these pages is still unverified.
 
 **Under the hood**
 
@@ -42,7 +42,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 
 [Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)
 
-## 0.0.10 · 2026-11-15
+## 0.0.10 · 2026-11-16
 
 **A cockpit for your phone and PC**
 
@@ -53,7 +53,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 - A command bar to move around fast: `ls`, `cd`, `next`, `blockers`, or an item's number.
 - Each item shows its question, a link, when it was asked and how risky it is.
 
-Tested on synthetic fixtures and in this release's live smoke test, run by agents; the cockpit on a real phone and PC is still unverified.
+Tested on synthetic fixtures only; the cockpit on a real phone and PC is still unverified.
 
 **Under the hood**
 
@@ -62,7 +62,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 
 [Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)
 
-## 0.0.9 · 2026-11-15
+## 0.0.9 · 2026-11-16
 
 **All your loops in one place**
 
@@ -73,7 +73,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 - No 100-loop limit: tests plan 200 loops within the shared limits.
 - OpenWiz tells you when a loop check is missed or stuck, and stays quiet until that changes.
 
-Tested on synthetic fixtures and in this release's live smoke test, run by agents; a whole day of real loops run from the phone is still unverified.
+Tested on synthetic fixtures only; a whole day of real loops run from the phone is still unverified.
 
 **Under the hood**
 
@@ -84,7 +84,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 
 [Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)
 
-## 0.0.8 · 2026-11-15
+## 0.0.8 · 2026-11-16
 
 **OpenWiz keeps running on your PC**
 
@@ -94,7 +94,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 - It checks its own health and recovers its loops, fleet runs and the web server when they fail.
 - It updates itself from tested builds, and goes back to the last good one if a new one won't start.
 
-Tested on synthetic fixtures and in this release's live smoke test, run by agents; a whole day with the Mac shut is still unverified.
+Tested on synthetic fixtures only; a whole day with the Mac shut is still unverified.
 
 **Under the hood**
 
@@ -105,7 +105,7 @@ Tested on synthetic fixtures and in this release's live smoke test, run by agent
 
 [Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)
 
-## 0.0.7 · 2026-11-15
+## 0.0.7 · 2026-11-16
 
 **Helpers for builders and reviewers, and a "where are we?" report**
 
@@ -125,7 +125,7 @@ Helper swarms ran for real and "where are we?" was used for real; whether helper
 
 [Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)
 
-## 0.0.6 · 2026-11-15
+## 0.0.6 · 2026-11-16
 
 **Fleets run inside OpenWiz**
 
@@ -135,7 +135,7 @@ Helper swarms ran for real and "where are we?" was used for real; whether helper
 - `openwiz fleet due --github-only` tells a loop whether there may be work for it.
 - See your fleets with `openwiz fleets` and on the web page's fleets screen.
 
-Tested on synthetic fixtures and in this release's live smoke test, run by agents; a real fleet run by OpenWiz itself, followed on a phone, is still unverified.
+Tested on synthetic fixtures only; a real fleet run by OpenWiz itself, followed on a phone, is still unverified.
 
 **Under the hood**
 

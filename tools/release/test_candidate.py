@@ -37,13 +37,13 @@ NOREPLY = '123+fixture@users.noreply.github.com'
 PUBLISHED = '# Changelog\n\n## 0.0.98 · 2026-01-01\n\nContext: Earlier public entry.  \n'
 NOTES = ('## 0.0.99 · 2026-11-20\n\nFixture-tested: You can preview a synthetic export.\n\n'
          '- Fixture-tested: You can save a preview.\n- Fixture-tested: You can cancel a preview.\n\n'
-         'Fixture-tested: Synthetic export fixtures pass; live export remains unverified.\n\n'
+         'Live-checked: Synthetic export smoke passes; a real export remains unverified.\n\n'
          '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n')
 
 # RL6 (#739): a curated notes section in VS9's three parts (synthetic wording).
 CURATED = ("## 0.0.99 · 2026-11-20\n\n**Preview an export**\n\n**What's new for you**\n\n"
            "- You can preview a synthetic export.\n- You can cancel a preview.\n\n"
-           "Tested on synthetic fixtures; a live export is still unverified.\n\n"
+           "Live-checked: a synthetic export smoke; a real export is still unverified.\n\n"
            "**Under the hood**\n\n- The preview reads one synthetic file.\n\n"
            "[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.99)\n")
 
@@ -71,6 +71,12 @@ RUNTIME = dict(rl4.RUNTIME, **{f'skills/{name}': f'Synthetic {name}.\n'.encode()
 # #2201: setup's CloudRoom tool, which the installer requires, and its packaged path.
 RUNTIME['tools/install/cloudroom/cloudroom.py'] = b'# Synthetic CloudRoom setup tool.\n'
 rl4.PACKAGED['tools/install/cloudroom/cloudroom.py'] = 'runtime/cloudroom/cloudroom.py'
+# #635: installed openwiz init's runtime, which the installer requires, and its packaged path.
+RUNTIME['tools/install/setup/init.py'] = b'# Synthetic init runtime.\n'
+rl4.PACKAGED['tools/install/setup/init.py'] = 'runtime/setup/init.py'
+# #633: setup's GitHub sign-in helper, which the installer requires, and its packaged path.
+RUNTIME['tools/install/setup/github_login.py'] = b'# Synthetic GitHub sign-in helper.\n'
+rl4.PACKAGED['tools/install/setup/github_login.py'] = 'runtime/setup/github_login.py'
 LINUX = 'x86_64-unknown-linux-gnu'
 
 
@@ -104,6 +110,11 @@ LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate
           'candidate.today = (lambda: os.environ["TODAY"]) if "TODAY" in os.environ else candidate.today; '
           # A test may fix the tool's clock for one invocation, so interval assertions never race it.
           'candidate.now = (lambda: int(os.environ["AT"])) if "AT" in os.environ else candidate.now; '
+          # APP-1: a test may scope the one-release waiver table to its fixture version.
+          # The receipt tool checks the same table again, so the test scopes both.
+          'w = os.environ.get("WAIVABLE"); w = w and {tuple(x) for x in json.loads(w)}; '
+          'w and setattr(candidate, "WAIVABLE", w); load = candidate.smoke_module; '
+          'w and setattr(candidate, "smoke_module", lambda: (lambda m: (setattr(m, "WAIVABLE", w), m)[1])(load())); '
           'sys.exit(candidate.main(sys.argv[1:]))')
 
 FAKE_GIT = r'''#!/usr/bin/env python3
@@ -120,6 +131,8 @@ elif verb == "tag" and "-a" in args:
 with open(os.environ["CALLS"], "a") as log:
     log.write(json.dumps({"tool": "git", "action": action, "args": args}) + "\n")
 if os.environ.get("FAIL_ACTION") == action:
+    sys.exit(42)
+if os.environ.get("FAIL_ACTION") == "fetch" and verb == "fetch":
     sys.exit(42)
 # Only network operations reach the fake remote; a configured URL stays as written.
 network = verb in verbs
@@ -706,6 +719,83 @@ class Candidate(World):
         self.assertEqual(self.evaluate()[0], 0)
         self.d3_cutover_read_backs_refuse()
 
+    # ------------------------------------------------------------ #964: a protected public release branch
+    def release_branch(self, name='release-' + VERSION, ruleset=None):
+        """Main has moved on; the candidate is one cherry-picked commit on a public
+        release branch, protected by its own ruleset unless `ruleset` replaces it."""
+        self.git(self.repo, 'checkout', '-q', '-b', 'release')
+        (self.repo / 'README.md').write_text('# Synthetic public repository\n\nSynthetic cherry-picked fix.\n')
+        self.head = self.commit('Synthetic cherry-picked fix')
+        self.git(self.repo, 'push', '-q', self.remote, f'HEAD:refs/heads/{name}')
+        self.git(self.root / 'public.git', 'update-ref', 'refs/heads/main', self.published)  # main moved elsewhere
+        self.world[f'repos/{PUBLIC}/rulesets?per_page=100'] = [[{'id': 71}, {'id': 72}]]
+        self.world[f'repos/{PUBLIC}/rulesets/72'] = ruleset or {
+            'id': 72, 'enforcement': 'active', 'target': 'branch', 'bypass_actors': [],
+            'conditions': {'ref_name': {'include': ['refs/heads/release-*'], 'exclude': []}},
+            'rules': [{'type': 'deletion'}, {'type': 'non_fast_forward'},
+                      {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
+                          {'context': 'ci'}, {'context': 'privacy'}]}}]}
+        self.save()
+
+    def test_964_a_candidate_on_its_protected_release_branch_publishes(self):
+        self.release_branch()
+        self.ready()
+        self.assertEqual(self.evaluate()[0], 0)
+        code, out = self.publish()
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
+        self.assertEqual(self.git(self.remote, 'rev-parse', f'refs/tags/v{VERSION}^{{}}'), self.head)
+        self.assertEqual(self.git(self.remote, 'rev-parse', 'main'), self.published)
+
+    def test_964_each_unproven_release_branch_refuses_with_its_reason(self):
+        self.release_branch()
+        self.smoke_kit()
+        self.artifacts()
+        self.made = self.body()
+        rules = f'repos/{PUBLIC}/rulesets/72'
+        checks = {'type': 'required_status_checks', 'parameters': {'required_status_checks': [
+            {'context': 'ci'}, {'context': 'privacy'}]}}
+        for name, change, reason in (
+                ('force-push allowed', {'rules': [{'type': 'deletion'}, checks]}, 'release_branch_unprotected'),
+                ('deletion allowed', {'rules': [{'type': 'non_fast_forward'}, checks]}, 'release_branch_unprotected'),
+                ('privacy not required', {'rules': [{'type': 'deletion'}, {'type': 'non_fast_forward'}, {
+                    'type': 'required_status_checks', 'parameters': {'required_status_checks': [{'context': 'ci'}]}}]},
+                 'release_branch_unprotected'),
+                ('a bypass actor', {'bypass_actors': [{'actor_type': 'RepositoryRole', 'actor_id': 5}]},
+                 'release_branch_unprotected'),
+                ('ruleset disabled', {'enforcement': 'disabled'}, 'release_branch_unprotected'),
+                ('only main covered', {'conditions': {'ref_name': {'include': ['~DEFAULT_BRANCH'], 'exclude': []}}},
+                 'release_branch_unprotected'),
+                ('branch excluded', {'conditions': {'ref_name': {'include': ['~ALL'],
+                                                                 'exclude': [f'refs/heads/release-{VERSION}']}}},
+                 'release_branch_unprotected'),
+                ('an unevaluable condition', {'conditions': {'ref_name': {'include': ['refs/heads/**']}}},
+                 'release_ruleset_unreadable')):
+            with self.subTest(case=name):
+                before = json.loads(json.dumps(self.world[rules]))
+                self.world[rules].update(change)
+                self.save()
+                self.assertEqual(self.prepare()[1]['reasons'], [reason])
+                self.world[rules] = before
+                self.save()
+        with self.subTest(case='ruleset unreadable'):
+            self.world['_fail'] = [rules]
+            self.save()
+            self.assertEqual(self.prepare()[1]['reasons'], ['release_ruleset_unreadable'])
+            del self.world['_fail']
+            self.save()
+        with self.subTest(case='branch unreadable'):
+            self.assertEqual(self.prepare(FAIL_ACTION='fetch')[1]['reasons'], ['release_branch_unreadable'])
+        branch = f'refs/heads/release-{VERSION}'
+        with self.subTest(case='not reachable from the branch'):
+            self.git(self.remote, 'update-ref', branch, self.published)
+            self.assertEqual(self.prepare()[1]['reasons'], ['not_on_release_branch'])
+        with self.subTest(case='the branch of another version'):
+            self.git(self.remote, 'update-ref', 'refs/heads/release-0.0.98', self.head)
+            self.git(self.remote, 'update-ref', '-d', branch)
+            self.assertEqual(self.prepare()[1]['reasons'], ['release_branch_wrong_version'])
+        self.assertEqual(self.writes(), [])
+
     def d3_cutover_read_backs_refuse(self):
         """R1/D3: only the command's own cut-over read-backs count."""
         public = f'repos/{PUBLIC}'
@@ -941,13 +1031,17 @@ class Candidate(World):
             path = f'repos/{PRIVATE}/issues/comments/{number}'
             for name, created, expected in (
                     ('earlier', iso(decided - 60), None),
+                    # #816 R1: an earlier comment edited to carry the line fails closed.
+                    ('earlier, then edited', iso(decided - 60), f'{reason}_revoked'),
                     ('later', iso(decided + 60), f'{reason}_revoked'),
                     ('same second', iso(decided), f'{reason}_unreadable'),
                     ('unreadable time', 'synthetic-not-a-time', f'{reason}_unreadable'),
                     ('no time', None, f'{reason}_unreadable')):
                 with self.subTest(record=reason, case=name):
                     self.comment(number, f'Release decision revoked: {target}\n', decided)
-                    self.comments[path]['created_at'] = created
+                    # Unedited unless the case says so: its update time is its creation time.
+                    self.comments[path].update(created_at=created,
+                                               updated_at=iso(decided) if 'edited' in name else created)
                     self.save()
                     if expected is None:
                         self.assertEqual(self.evaluate()[0], 0)
@@ -1324,15 +1418,16 @@ class Candidate(World):
         sections = '\n'.join(
             f'## {v} · 2026-11-20\n\nFixture-tested: Version {v} headline.\n'
             + ('' if v == '0.0.7' else f'\n- Fixture-tested: Synthetic {v} entry.\n\n'
-               f'Fixture-tested: Synthetic {v} checks pass.\n\n'
+               f'Live-checked: Synthetic {v} checks pass.\n\n'
                '[Full release on GitHub](https://github.com/openwizdev/OpenWiz/releases/tag/v0.0.12)\n')
             for v in versions)
         published = '# Changelog\n\n## 0.0.5 · 2026-01-05\n\nContext: Earlier public entry.  \n'
         shutil.rmtree(self.repo)
         shutil.rmtree(self.remote)
         self.history(notes=sections, published=published, published_version='0.0.5')
+        # #18: headline-only 0.0.7 has no live-checked line, so it is a named not-live gap.
         coverage = [{'version': v, 'promise': f'synthetic_{v}', 'steps': receipts_fixture.FLEET_ROW + ['send_once', 'new_once']}
-                    for v in versions]
+                    for v in versions if v != '0.0.7']
         self.smoke_kit(coverage=coverage, version='0.0.12')
         self.artifacts(version='0.0.12')
         self.made = self.body(version='0.0.12', promises=[(v, [f'synthetic_{v}']) for v in versions])
@@ -1414,6 +1509,176 @@ COMBINED = ('0.0.12', '0.0.11', '0.0.10', '0.0.9', '0.0.8', '0.0.7', '0.0.6')
 # J6's recorded per-section counts for the settled combined release (synthetic lines).
 SETTLED = {'0.0.12': 6, '0.0.11': 6, '0.0.10': 4, '0.0.9': 11, '0.0.8': 7, '0.0.7': 0, '0.0.6': 17}
 BASE_05 = '# Changelog\n\n## 0.0.5 · 2026-01-05\n\nContext: Earlier public entry.  \n'
+
+
+class Waiver(World):
+    """APP-1 (a): a recorded App-permission waiver for one release (#18)."""
+    FIXTURE = json.dumps([['app_permissions', VERSION]])
+
+    def app_yes(self, drop=True):
+        """A candidate whose App permissions changed, run with no App receipt
+        (or, with drop=False, with its genuine live App receipt)."""
+        self.smoke_kit()
+        self.artifacts()
+        body = self.body()
+        body['risk']['app_permissions'] = {'required': 'yes', 'reason': 'Synthetic App permission change.'}
+        self.made = body
+        self.assertEqual(self.prepare()[0], 0)
+        self.decisions()
+        self.gates()
+        self.assertEqual(self.smoke()[0], 0)
+        if drop:
+            self.drop('app_permissions')
+
+    def drop(self, gate):
+        saved = json.loads((self.state / 'live.json').read_text())
+        saved['doc']['gates'][gate] = None
+        (self.state / 'live.json').write_text(json.dumps(saved))
+
+    def waiver(self, line, number=9500, at=None, first='Private record: Jake, 2026-11-20, synthetic waiver.'):
+        return self.comment(number, f'{first}\n{line}\n', self.now - 300 if at is None else at)
+
+    def waive(self, pointer, table=None):
+        return self.cli('decide', '--state', self.state, '--waiver', pointer, WAIVABLE=table or self.FIXTURE)
+
+    def test_app_permissions_waiver_stands_in_for_only_that_live_receipt_as_waived(self):
+        """catches: app_permissions=yes publishing with neither its live receipt
+        nor a waiver, a waiver that is not accepted in its place, or one
+        recorded as a pass instead of a waiver."""
+        self.app_yes()
+        self.assertEqual(self.blocked(self.evaluate(WAIVABLE=self.FIXTURE), 'app_permissions_live_missing')['reasons'],
+                         ['app_permissions_live_missing'])
+        pointer = self.waiver(f'Release waiver: app_permissions v{VERSION}')
+        self.assertEqual(self.waive(pointer), (0, {'status': 'recorded', 'decision': 'waiver',
+                                                   'waived': 'app_permissions'}))
+        code, out = self.evaluate(WAIVABLE=self.FIXTURE)
+        self.assertEqual((code, out), (0, {'status': 'ready', 'candidate_sha256': self.record()['candidate_sha256'],
+                                           'waived': ['app_permissions']}))
+        gate = self.record()['gates']['app_permissions']
+        self.assertEqual(gate['status'], 'waived')
+        self.assertEqual(gate['waiver']['pointer'], pointer)
+        self.assertNotIn('pass', json.dumps(gate))
+        # The live receipts made after the waiver record the App gate as waived too.
+        run = f'https://github.com/{PRIVATE}/issues/9000#issuecomment-9301'
+        self.assertEqual(self.cli('live', '--state', self.state, '--kit', self.helper.kit_path,
+                                  '--smoke-state', self.helper.state, '--record', run, WAIVABLE=self.FIXTURE),
+                         (0, {'status': 'recorded', 'gates': {'smoke': 'pass', 'send': 'pass', 'new': 'pass',
+                                                              'app_permissions': 'waived', 'spending': None}}))
+        self.assertEqual(self.evaluate(WAIVABLE=self.FIXTURE)[0], 0)
+
+    def test_a_waiver_never_stands_in_for_another_risks_receipt(self):
+        """catches: the App waiver excusing send's (or any other risk's) missing live receipt."""
+        self.app_yes()
+        self.assertEqual(self.waive(self.waiver(f'Release waiver: app_permissions v{VERSION}'))[0], 0)
+        self.drop('send')
+        self.assertEqual(self.blocked(self.evaluate(WAIVABLE=self.FIXTURE))['reasons'], ['send_live_missing'])
+        self.assertEqual(self.writes(), [])
+
+    def test_no_waiver_line_or_an_unrecorded_one_is_never_a_waiver(self):
+        """catches: a comment without the waiver line, or a waiver line outside
+        the orchestrator's private-record form (no record line, another author)."""
+        self.app_yes()
+        for name, pointer, change in (
+                ('no line', self.waiver('Synthetic: no waiver here.', 9501), {}),
+                ('no record line', self.waiver(f'Release waiver: app_permissions v{VERSION}', 9502,
+                                               first='Synthetic note.'), {}),
+                ('other author', self.waiver(f'Release waiver: app_permissions v{VERSION}', 9503),
+                 {'user': {'login': 'someone-else'}})):
+            with self.subTest(name):
+                self.comments[f'repos/{PRIVATE}/issues/comments/{pointer.rsplit("-", 1)[1]}'].update(change)
+                self.save()
+                self.blocked(self.waive(pointer), 'waiver_not_a_record')
+        self.blocked(self.evaluate(WAIVABLE=self.FIXTURE), 'app_permissions_live_missing')
+
+    def test_an_edited_waiver_refuses(self):
+        """catches: a waiver whose text was changed after it was recorded,
+        before or after the command saved it."""
+        self.app_yes()
+        pointer = self.waiver(f'Release waiver: app_permissions v{VERSION}')
+        path = f'repos/{PRIVATE}/issues/comments/9500'
+        self.comments[path]['updated_at'] = iso(self.now - 100)
+        self.save()
+        self.blocked(self.waive(pointer), 'waiver_not_a_record')
+        self.comments[path]['updated_at'] = self.comments[path]['created_at']
+        self.save()
+        self.assertEqual(self.waive(pointer)[0], 0)
+        self.comments[path]['updated_at'] = iso(self.now - 100)
+        self.save()
+        self.blocked(self.evaluate(WAIVABLE=self.FIXTURE), 'waiver_not_a_record', 'app_permissions_live_missing')
+
+    def test_a_revoked_waiver_refuses(self):
+        """catches: a waiver still standing in after a later
+        `Release waiver revoked: <comment id>` line."""
+        self.app_yes()
+        pointer = self.waiver(f'Release waiver: app_permissions v{VERSION}')
+        self.assertEqual(self.waive(pointer)[0], 0)
+        self.comment(9510, 'Private record: Jake, 2026-11-20.\nRelease waiver revoked: 9500\n', self.now - 60)
+        self.blocked(self.evaluate(WAIVABLE=self.FIXTURE), 'waiver_revoked', 'app_permissions_live_missing')
+        self.blocked(self.waive(pointer), 'waiver_revoked')
+
+    def test_a_revocation_added_by_editing_an_older_comment_refuses(self):
+        """catches (#816 R1): an existing comment, created before the waiver,
+        edited afterwards to carry `Release waiver revoked: <id>`, ignored
+        because only its creation time was ordered, so publication goes ahead
+        with no App receipt. Any edited comment carrying the line fails closed."""
+        for name, edited_at in (('edited after the waiver', self.now - 60),
+                                ('edited, even before the waiver', self.now - 350)):
+            with self.subTest(name):
+                self.setUp()
+                self.app_yes()
+                self.comment(9499, 'Synthetic earlier note.\n', self.now - 400)
+                pointer = self.waiver(f'Release waiver: app_permissions v{VERSION}', at=self.now - 300)
+                self.assertEqual(self.waive(pointer)[0], 0)
+                self.comments[f'repos/{PRIVATE}/issues/comments/9499'].update(
+                    body='Release waiver revoked: 9500\n', updated_at=iso(edited_at))
+                self.save()
+                self.blocked(self.evaluate(WAIVABLE=self.FIXTURE), 'waiver_revoked', 'app_permissions_live_missing')
+                self.blocked(self.publish(WAIVABLE=self.FIXTURE), 'waiver_revoked')
+                self.assertEqual(self.writes(), [])
+
+    def test_direct_publication_records_the_applied_waiver(self):
+        """catches (#816 R2): publish applying the waiver in its checks but
+        leaving the saved App gate as the earlier live `pass`, when no
+        separate evaluate ran first."""
+        self.app_yes(drop=False)
+        self.assertEqual(self.record()['gates']['app_permissions']['status'], 'pass')
+        self.assertEqual(self.waive(self.waiver(f'Release waiver: app_permissions v{VERSION}'))[0], 0)
+        code, out = self.publish(WAIVABLE=self.FIXTURE)
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        gate = self.record()['gates']['app_permissions']
+        self.assertEqual((gate['status'], gate.get('waiver', {}).get('pointer')),
+                         ('waived', f'https://github.com/{PRIVATE}/issues/9000#issuecomment-9500'))
+
+    def test_a_waiver_for_another_version_refuses(self):
+        """catches: a waiver applied to a release other than the one it names,
+        or to any release but 0.0.12 (the real table, not the fixture's)."""
+        self.app_yes()
+        self.blocked(self.waive(self.waiver('Release waiver: app_permissions v0.0.98', 9520)), 'waiver_wrong_version')
+        # The shipped table waives 0.0.12 only; this candidate is 0.0.99.
+        real = self.waiver(f'Release waiver: app_permissions v{VERSION}', 9521)
+        self.blocked(self.cli('decide', '--state', self.state, '--waiver', real), 'waiver_wrong_version')
+        self.blocked(self.waive(self.waiver('Release waiver: app_permissions v0.0.12', 9522)), 'waiver_wrong_version')
+
+    def test_a_waiver_for_another_risk_refuses(self):
+        """catches: the one-release waiver used for send, new or spending."""
+        self.app_yes()
+        for number, risk in enumerate(('send', 'new', 'spending')):
+            with self.subTest(risk):
+                pointer = self.waiver(f'Release waiver: {risk} v{VERSION}', 9530 + number)
+                self.blocked(self.waive(pointer), 'waiver_wrong_risk')
+
+    def test_a_waiver_naming_several_risks_or_a_range_refuses(self):
+        """catches: one line read as waiving several risks or versions."""
+        self.app_yes()
+        for number, line in enumerate((f'Release waiver: app_permissions,send v{VERSION}',
+                                       f'Release waiver: app_permissions send v{VERSION}',
+                                       f'Release waiver: app_permissions v0.0.98-v{VERSION}',
+                                       'Release waiver: app_permissions v0.0.*',
+                                       f'Release waiver: app_permissions v{VERSION} v0.0.98')):
+            with self.subTest(line):
+                self.blocked(self.waive(self.waiver(line, 9540 + number)), 'waiver_invalid')
+        two = self.waiver(f'Release waiver: app_permissions v{VERSION}\nRelease waiver: app_permissions v{VERSION}', 9549)
+        self.blocked(self.waive(two), 'waiver_invalid')
 
 
 class Notes(World):
@@ -1643,15 +1908,15 @@ class Notes(World):
         # catches: a structure check that refuses the approved VS9 bytes, or a cut
         # that is not the approved 0.0.6-0.0.12 release notes.
         raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
-        self.assertEqual(sha(raw), '747c312709383a9fbf23844372319ac716e85cbd59fd8cf5bb408869e33e45c6')
+        self.assertEqual(sha(raw), 'e690a1652787865d67cb557fc1a2a59588b87a21a067b2e547b90a709f5e6e3d')
         self.assertEqual((ROOT / 'CHANGELOG.md').read_bytes(), raw)
         self.untagged(raw.decode())
         (self.repo / 'changes/notes').mkdir()
         (self.repo / 'changes/notes/0.0.12.md').write_bytes(raw)
         (code, out), folder = self.curated(raw.decode(), list(COMBINED))
         self.assertEqual(code, 0, out)
-        self.assertEqual(out['notes_sha256'], 'b1230111974137f22d5109559ab6e7bae5a859a96d286f13f69a0906ed7ae98b')
-        self.assertEqual(out['notes_bytes'], 6947)
+        self.assertEqual(out['notes_sha256'], '27135ed4d22479e17d6f02806ccb9e8a8b33e2ef37a970e1a216800da4af9191')
+        self.assertEqual(out['notes_bytes'], 6896)
         self.assertEqual((folder / 'CHANGELOG.md').read_bytes(), raw)
 
     def test_rl6_malformed_curated_notes_refuse_with_their_reason(self):

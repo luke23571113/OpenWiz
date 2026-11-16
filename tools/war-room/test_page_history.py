@@ -180,8 +180,8 @@ class PageHistory(unittest.TestCase):
         page = module('page')
         record = suite.compose(AT, [provider()])
         html = page.render(record)
-        positions = [html.index('id="' + group + '"') for group in suite.GROUPS]
-        self.assertEqual(positions, sorted(positions))
+        # WRD3: the page is laid out by figure (test_page_design.py owns its order); every
+        # provider's state, prerequisite and provenance rows stay reachable under its figure.
         for slot in ('cost', 'answer_time', 'rework', 'stage_waits', 'credits',
                      'claude_usage', 'eb6', 'eb7', 'eb8', 'eb9'):
             self.assertIn('data-slot="' + slot + '"', html)
@@ -362,7 +362,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_daily_usage_is_separate_from_pr_attribution(self):
         # A saved daily report already has usage totals. Omitting them loses
         # existing evidence; the separate owner-export test does not cover this.
-        M = module('sources').native('tools/factory-metrics/metrics.py')
+        M = module('sources').native('tools/war-room/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)
@@ -397,7 +397,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_artifact_refuses_undeclared_fields(self):
         # This output has no standalone native validator. The projection must
         # reject unknown fields rather than silently accepting a changed schema.
-        M = module('sources').native('tools/factory-metrics/metrics.py')
+        M = module('sources').native('tools/war-room/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)

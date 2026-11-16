@@ -1,5 +1,5 @@
 //! LP5 command seam, explicit trusted fixture context only.
-use super::l6_switches::Fixture;
+use super::fixture::Fixture;
 use openwiz_core::{model::Timestamp, ops::Clock};
 use std::{ffi::OsString, time::Instant};
 pub struct FixedClock;

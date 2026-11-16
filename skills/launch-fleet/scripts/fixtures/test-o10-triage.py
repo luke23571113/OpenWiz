@@ -2,8 +2,10 @@
 """O5/O10 consumer seam: actual batch template → fleet and triage readers.
 
 Runs only the two existing batch cases and the affected triage shape cases.
-All endpoints are synthetic. The O10 source is extracted at an explicit pin;
-no checkout, branch merge, publication, or live command is performed.
+All endpoints are synthetic. The O10 source is the carried skills/triage
+beside this skill, so a release tree without Git history runs it; with
+--o10-revision it is extracted at that explicit pin instead. No checkout,
+branch merge, publication, or live command is performed.
 """
 import argparse
 import copy
@@ -20,10 +22,19 @@ import types
 HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--o10-revision', required=True)
+parser.add_argument('--o10-revision')
 args = parser.parse_args()
-pin = subprocess.check_output(['git', 'rev-parse', args.o10_revision + '^{commit}'], cwd=ROOT, text=True).strip()
-print('O10 source:', pin, flush=True)
+pin = None
+if args.o10_revision:
+    pin = subprocess.check_output(['git', 'rev-parse', args.o10_revision + '^{commit}'], cwd=ROOT, text=True).strip()
+print('O10 source:', pin or 'carried skills/triage', flush=True)
+
+
+def o10_source(relative):
+    if pin is None:
+        return (ROOT / 'skills/triage' / relative).read_bytes()
+    return subprocess.check_output(['git', 'show', pin + ':skills/triage/' + relative], cwd=ROOT)
+
 
 with tempfile.TemporaryDirectory(prefix='1273-o10-') as directory:
     root = Path(directory)
@@ -33,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='1273-o10-') as directory:
     for relative in ['SKILL.md', 'find-work.sh', 'test/test_find_work.py', 'test/fake_gh.py']:
         target = triage / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(subprocess.check_output(['git', 'show', pin + ':skills/triage/' + relative], cwd=ROOT))
+        target.write_bytes(o10_source(relative))
     revision = root / 'skills/plan-graph/revision.sh'
     revision.parent.mkdir(parents=True)
     revision.write_bytes((HERE.parent.parent / 'plan-graph/revision.sh').read_bytes())

@@ -5,3 +5,4 @@
 /tools/war-room/node_modules/
 /apps/web/out/
 /apps/web/.next/
+/tools/**/__pycache__/

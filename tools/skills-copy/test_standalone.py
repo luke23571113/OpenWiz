@@ -17,7 +17,10 @@ FIXTURES = ROOT / 'contracts/fixtures/wizskills'
 spec = importlib.util.spec_from_file_location('standalone', TOOL)
 standalone = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(standalone)
-SETTINGS = ['docs/agents/*.md', 'changes/README.md', 'GLOSSARY.md', 'AGENTS.md', 'CLAUDE.md', 'docs/adr/*.md']
+SETTINGS = ['docs/agents/*.md', 'changes/README.md', 'GLOSSARY.md', 'AGENTS.md', 'CLAUDE.md', 'docs/adr/*.md',
+            'GLOSSARY-MAP.md', '.out-of-scope/*.md', 'docs/grills/*.md',
+            '.github/workflows/*.yml', '.github/workflows/*.yaml', 'pnpm-workspace.yaml', 'package.json',
+            'packages/*/src']
 UP = '../../../'  # from skills/alpha/<folder>/ to above the package root
 
 
@@ -244,13 +247,40 @@ class ReviewRound1(Base):
         self.assertEqual(self.refused(), [refusal('script', md, n) for n in (3, 6, 9, 10, 15, 21, 22, 24, 26, 27)])
 
     def test_wz15_project_settings_are_reads_only(self):
-        for target in ('AGENTS.md', 'CLAUDE.md', 'docs/adr/0001-example.md'):
+        # E2/E3/E7 (J73) and WZ17 finding 5: the optional consumer paths are
+        # reads too, never code.
+        for target in ('AGENTS.md', 'CLAUDE.md', 'docs/adr/0001-example.md', 'GLOSSARY-MAP.md',
+                       '.out-of-scope/dark-mode.md', 'docs/grills/2030-01-02-synthetic.md',
+                       '.github/workflows/synthetic.yml', '.github/workflows/synthetic.yaml',
+                       'pnpm-workspace.yaml', 'package.json', 'packages/synthetic/src'):
             with self.subTest(target=target):
                 f = 'skills/alpha/scripts/settings.py'
                 self.write(f, 'from pathlib import Path\nPath(' + repr(target) + ').read_text()\n')
                 self.assertEqual(self.refused(), [])
                 self.write(f, 'import runpy\nrunpy.run_path(' + repr(target) + ')\n')
                 self.assertEqual(self.refused(), [refusal('import', f, 2)])
+
+    def test_wz17_optional_consumer_paths_grant_no_wider_tree(self):
+        # WZ17 finding 5: the workflow and package-layout entries are exact
+        # shapes, not a grant to read consumer source or other CI files.
+        # packages/*/src is the first folder-shaped entry: matching it as a
+        # prefix would grant every consumer source file under it.
+        for target in ('packages/synthetic/src/index.ts', '.github/workflows/nested/synthetic.yml',
+                       'private/synthetic-state/handoff.md'):
+            with self.subTest(target=target):
+                f = 'skills/alpha/scripts/settings.py'
+                self.write(f, 'from pathlib import Path\nPath(' + repr(target) + ').read_text()\n')
+                self.assertEqual(self.refused(), [refusal('read', f, 2)])
+
+    def test_e1_consumer_project_setup_code_is_refused(self):
+        # E1 (J73): setup may run only the installed OpenWiz's setup.py; one in
+        # the consumer project is never a permitted read, import or script.
+        f = 'skills/alpha/SKILL.md'
+        self.write(f, '# Alpha\n```sh\npython3 setup.py --agent-for synthetic\n```\n')
+        self.assertEqual(self.refused(), [refusal('script', f, 3)])
+        g = 'skills/alpha/scripts/app.py'
+        self.write(g, 'import runpy\nrunpy.run_path("setup.py")\n')
+        self.assertEqual(self.refused(), [refusal('script', f, 3), refusal('import', g, 2)])
 
     def test_wz15_openwiz_cargo_requirement_is_refused_without_echoing_it(self):
         f = 'skills/alpha/SKILL.md'

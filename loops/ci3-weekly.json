@@ -1,0 +1,43 @@
+{
+  "schema": "openwiz.loops.v1",
+  "kind": "definition",
+  "id": "loop-ci3-every-3-days",
+  "name": "CI3: a note to Jake every 3 days",
+  "owner": "Jake",
+  "wake": {
+    "kind": "interval",
+    "every_ms": 259200000,
+    "anchor_ms": 1794848400000
+  },
+  "check": {
+    "argv": [
+      "python3",
+      "-I",
+      "tools/war-room/ci3_check.py",
+      "check"
+    ],
+    "timeout_ms": 1800000
+  },
+  "action": {
+    "project": {
+      "kind": "name",
+      "value": "OpenWiz"
+    },
+    "harness": "claude-code",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "brief": "You are CI3's loop (spec #780, ticket #784), woken every 3 days to tell Jake whether a PR's result got faster.\n\nYour finding is what `python3 -I tools/war-room/ci3_check.py check` printed. If no finding came with this brief, run that command yourself first, in a clone of openwizdev/OpenWiz, and use what it prints (it takes a few minutes).\n\n1. Read the CI bench (`tools/ci-bench`, and its `ci-benchmarks` branch when it exists) and the war room (`tools/war-room`, and its `war-room` branch when it exists). Say in the note which of them you could not read.\n2. Name the biggest bucket (waiting, setup or running) on the result's critical path: the finding's `biggest:`, checked against the bench and the war room. If you name another, say why.\n3. File at most two improvement issues, both aimed at that bucket; none when nothing new is worth filing. First read every open CI issue (#743, #761, #747 and any filed since), and file nothing one of them already covers. Each issue: the `needs-triage` label and no other; its before numbers, from the finding; the measure it moves (the time to a PR's result at p50 and p95, through that bucket); and that Jake approves it on its own (ADR 0010).\n4. Post one comment on spec #780, the before-and-after note. When the finding has an `ALERT:` line, the note leads with it. Then the time to a PR's result against BEFORE and the last note, any `REGRESSION:` line, the biggest bucket, the issues you filed (or none), and the month's Actions minutes as the finding gives them (an estimate stays an estimate; unknown stays unknown). Its last line is the finding's `<!-- openwiz.ci3-note.v1 ... -->` line, exactly.\n5. Notify Jake. With an `ALERT:` line report needs-you; otherwise report done, with the note's link (on Cloudroom: `room-cli loop report`). Leave the thread open with that verdict.\n\nYour authority is only that: read GitHub, the CI bench and the war room; post that one comment on spec #780; file at most two `needs-triage` issues; notify Jake. Never label a ticket ready or change another issue's labels, edit CI (workflows, scripts, settings or the ruleset), push, open a pull request, merge, or close anything. Public text carries aggregates and technical facts only: no run ids, thread ids or private words. The off switch is pausing or deleting the loop."
+  },
+  "authority": {
+    "approved_by": "Jake",
+    "approval_ref": "openwizdev/OpenWiz#780 plan graph revision 2, 2026-11-15 (private record: https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6902602736)",
+    "scope": "Every 3 days at 09:00 Pacific: read GitHub, the CI bench and the war room; post one comment on spec #780; file at most two needs-triage issues; notify Jake. Never label a ticket ready, edit CI or merge. Off switch: pause or delete the loop."
+  },
+  "budget": {
+    "window_ms": 259200000,
+    "max_agent_starts": 1
+  },
+  "enabled": false,
+  "mode": "shadow",
+  "priority": "normal"
+}

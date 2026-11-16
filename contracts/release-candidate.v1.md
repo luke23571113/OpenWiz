@@ -33,7 +33,7 @@ commits/trees. Hashes establish byte integrity, not a signed publisher identity.
 
 | Candidate field | Required meaning |
 | --- | --- |
-| `source` | Exactly `openwizdev/OpenWiz`, selected commit and tree, descending from the contract's fixed public anchor through its own history. Read the remote identity, tree and ancestry; a matching tree copied from private history is insufficient. |
+| `source` | Exactly `openwizdev/OpenWiz`, selected commit and tree, descending from the contract's fixed public anchor through its own history, and reachable from public `main` or from the protected public `release-<version>` branch of exactly the release version (#964). Read the remote identity, tree and ancestry; a matching tree copied from private history is insufficient. |
 | `build_id` | SHA-256 of the immutable build-provenance record identifying the clean source job(s), commands and exact complete product inventories; not an arbitrary label chosen while packaging. |
 | `release_version` | Highest included version; the tag is `v<release_version>`. |
 | `included_versions` | Unique versions, newest first by numeric minor/patch, each newer than all already published versions. Each retains one dated changelog section and a nonempty list of unique promise IDs used by the smoke kit. Single-version patches use the same shape. |
@@ -150,8 +150,12 @@ at or after start. Receipt inputs are canonical JSON of the complete gate inputs
 | smoke | Kit and scope digest, end-to-end exercise of every included version/promise on the combined candidate, tested product hashes, restriction inputs and bounded observations; live |
 | each required risk | The classification diff/reason, matching bounded kit steps, existing grant/allowlist/count/spending authority and results for that category; live |
 
-`coverage` in smoke is exactly one row for every (included version, promise),
-all pass, with no extra/duplicate/omitted rows. A smoke coverage row passes only
+`coverage` in smoke is exactly one row for every included (version, promise)
+whose approved notes section carries a live-checked line (a line starting
+`Live-checked`), all pass, with no extra/duplicate/omitted rows. Every other
+included version is carried in the receipt's `gaps` as one named not-live gap
+per (version, promise), `Not live-checked in this release: <version> <promise>`,
+never as a coverage row, and none is omitted (#18). A smoke coverage row passes only
 when its live evidence proves the complete user flow for that promise was
 exercised end to end on the combined candidate. A partial check cannot satisfy
 the row. The receipt's inputs identify the bounded kit steps and observations

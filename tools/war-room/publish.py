@@ -38,9 +38,16 @@ import suite  # noqa: E402
 
 BRANCH = 'war-room'
 PICTURES = ('war-room.png', 'war-room-phone.png')
+# WRD4 (#877): the original page, byte for byte as rendered, published in the same commit as its
+# pictures and served privately (tools/war-room/web/contract.md). Never the drawable transform.
+PAGE = 'war-room.html'
+# WRD5 (#883): the whole site is published in that one commit: home (PAGE) and its five child pages,
+# exactly these names ({route: file}). Never a partial site: every page is rendered and scanned first.
+SITE = page.site_files(PAGE)
 SAMPLE = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z\.json')
 PNG = b'\x89PNG\r\n\x1a\n'
-WIDTH, PHONE_WIDTH = 1200, 400
+# WRD3: the v3 page's own desktop and phone widths, in CSS px (the phone picture is drawn at 2x).
+WIDTH, PHONE_WIDTH = 1440, 390
 # Device px: the drawn picture's height (CSS height times scale). A full gathered page is over
 # 20,000 CSS px; headless chromium drew and painted 45,626 device px whole (#2432 R1), so this
 # bound leaves room and still refuses a runaway page.
@@ -52,17 +59,21 @@ TILE_MEMORY = '--force-gpu-mem-available-mb=4096'
 # The same credential/id forms sources.safe_record refuses inside a record.
 TOKEN = re.compile(r'(?i)(?:\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9_-]{8,}|authorization\s*:|bearer\s+'
                    r'|-----BEGIN .*PRIVATE KEY|\bthr_[A-Za-z0-9_-]+)')
-# A picture has no links to follow, and a closed <details> would hide the bench inventory.
-# #2565: each value's card keeps what tells it from a card with the same label (its window,
-# freshness, statistic and dimensions); its provenance, interval, prerequisites and evidence links
-# stay in its published sample. The full gathered page was 57,625 CSS px tall with them, far past
-# MAX_HEIGHT on the phone picture.
-DRAW_CSS = 'nav,.metric .source,.metric .interval,.metric .prerequisite,.metric .links{display:none}'
-# One column a phone reads at a glance: the same content, tighter.
-PHONE_CSS = ('body{font-size:14px;line-height:1.35}main{padding:14px}h1{font-size:26px}'
-             'h2{font-size:19px;margin:22px 0 6px}h3{font-size:15px;margin:0 0 4px}'
-             'article,.provider{padding:10px;margin:8px 0}.metric strong{font-size:20px}'
-             '.detail{font-size:11px;margin:2px 0;line-height:1.3}header p{margin:6px 0}')
+# WRD3: a picture has no links to follow, so the skip link goes. Every figure's unit, dates,
+# coverage and gaps are in its visible caption line, never in a disclosure, so the picture keeps
+# them. The Sources appendix is drawn open, and (#2565) each value's card keeps what tells it from a
+# card with the same label (its window, freshness, statistic and dimensions); its provenance,
+# interval, prerequisites and evidence links stay in its published sample. Values tables stay
+# folded. The phone picture is the page's own phone layout (its media query).
+DRAW_CSS = ('.skip,.metric .source,.metric .interval,.metric .prerequisite,.metric .links{display:none}')
+# Headless chromium never lays a window out narrower than 500 CSS px, so a 390 px screenshot of a
+# 390 px window was a crop of a 500 px layout, its right side cut off. The phone picture's body is
+# held to the phone width, so the layout and the drawn picture are the same 390 px.
+# Its Sources cards are drawn compact, as #2565's one-column picture was, to stay within MAX_HEIGHT.
+PHONE_CSS = ('html,body{width:%dpx;max-width:%dpx;overflow-x:hidden}'
+             '.sources .detail{font-size:10px;line-height:1.2;margin:0}.sources .metric,.sources .observation{padding:2px 0}'
+             '.sources h4{font-size:11px}.sources strong{font-size:12px}.sources .provider h3{font-size:15px;margin:6px 0 2px}'
+             '.sources h2{font-size:24px;margin:10px 0 4px}' % (PHONE_WIDTH, PHONE_WIDTH))
 
 
 class Fail(Exception):
@@ -86,12 +97,14 @@ def chromium():
 
 
 def drawable(html, phone):
-    """The page as drawn: no refresh, the inventory open, a height probe allowed."""
+    """The page as drawn: no refresh, a Sources appendix (if the page has one) open, a height probe
+    allowed. #883: the published pictures are of the home page, which has no Sources appendix."""
     edits = [('<meta http-equiv="refresh" content="300">', ''),
              ("default-src 'none';", "default-src 'none'; script-src 'unsafe-inline';"),
-             ('<details>', '<details open>'),
              ('</style>', DRAW_CSS + (PHONE_CSS if phone else '') + '</style>'),
              ('</body>', '<script>onload=()=>document.body.dataset.h=document.documentElement.scrollHeight</script></body>')]
+    if '<details class="sources"' in html:
+        edits.append(('<details class="sources"', '<details class="sources" open'))
     for old, new in edits:
         if html.count(old) != 1:
             raise Fail('the page changed shape')
@@ -143,7 +156,7 @@ def readme(record, saved, at):
         'On a phone, [the one-column picture](war-room-phone.png).', '',
         '## Benches', '',
         'Every bench in the saved sample, with its state and how many of its values are measured. '
-        'Unknown is never zero; the picture names each bench\'s prerequisite, and each value\'s '
+        'Unknown is never zero; each bench\'s figure on its child page names its prerequisite, and each value\'s '
         'prerequisites, provenance and evidence are in its saved sample.', '',
         '| Bench | State | Measured |', '| --- | --- | --- |', *rows, '',
         'Saved samples are in `samples/`, one per five-minute boundary sampled; a boundary not sampled stays absent.', ''])
@@ -156,7 +169,7 @@ def text_scan(text, checker):
 
 
 def scan(tree, page_html):
-    """Every published file, and the page the pictures are drawn from, or Fail."""
+    """Every published file, and the page the pictures are drawn from (home), or Fail."""
     base = sources.native('tools/privacy-check/check.py')
 
     class Quiet(base.Checker):
@@ -174,7 +187,7 @@ def scan(tree, page_html):
         if name in PICTURES:
             if path.read_bytes()[:8] != PNG:
                 raise Fail('a picture is not a picture')
-        elif name == 'README.md':
+        elif name == 'README.md' or name in SITE.values():
             text_scan(path.read_text(encoding='utf-8'), checker)
         elif name.startswith('samples/') and SAMPLE.fullmatch(name[8:]):
             text_scan(path.read_text(encoding='utf-8'), checker)
@@ -221,20 +234,30 @@ def chart_builder(source_root, selection, at):
     return build
 
 
+def site_folder(history):
+    return Path(history).parent / 'site'
+
+
 def tick(history, at, read, charts=None):
-    """One WR2 tick on `history`. The page's path."""
+    """One WR2 tick on `history`. The complete page's path; WRD5: the site pages are in
+    site_folder(history), from the same saved sample and chart bundle."""
     page_path = Path(history).parent / 'page' / 'page.html'
-    main.tick(at, history, page_path, read, charts=charts)
+    main.tick(at, history, page_path, read, charts=charts, site=site_folder(history))
     return page_path
 
 
 def render(out, history, at, read, charts=None):
-    """One tick on `history`, then README.md and both pictures in `out`. The page's HTML.
-    With `charts` (WRD2) the page embeds that build's finished SVG figures, and both
-    pictures are drawn from it."""
-    page_path = tick(history, at, read, charts)
+    """One tick on `history`, then the six site pages, README.md and both pictures in `out`. The
+    home page's HTML (the pictures' source). With `charts` (WRD2) the pages embed that build's
+    finished SVG figures, and both pictures are drawn from the home page."""
+    tick(history, at, read, charts)
+    site = site_folder(history)
     record = main.history.latest(history)
-    html = page_path.read_text(encoding='utf-8')
+    for name in SITE.values():
+        Path(out, name).write_bytes((site / name).read_bytes())
+    # #883: the pictures are of the home page; the complete one-document page outgrew the height
+    # bound, and the six-page site carries the detail. The bound itself is unchanged.
+    html = (site / PAGE).read_text(encoding='utf-8')
     draw(drawable(html, False), os.path.join(out, PICTURES[0]), WIDTH)
     draw(drawable(html, True), os.path.join(out, PICTURES[1]), PHONE_WIDTH, scale=2)
     saved = len(main.history.read_all(history))
@@ -263,7 +286,7 @@ def publish(remote, at, read, draw_page=True, charts=None):
                     continue
                 meta, name = entry.split('\t', 1)
                 if meta.split()[:2] != ['100644', 'blob'] or not (
-                        name in ('README.md', *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
+                        name in ('README.md', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
                     raise Fail('the branch holds an unexpected file')
                 names.append(name)
             # A saved sample is immutable: changed, removed or renamed in any commit, merges

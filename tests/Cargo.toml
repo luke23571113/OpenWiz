@@ -96,7 +96,7 @@ path = "loops/main.rs"
 name = "cli-agent"
 path = "cli-agent/main.rs"
 
-# 0.0.15 T1: notification contract fixtures; later owners add proof modules.
+# 0.0.15 T6: the kept ready-stock module's tests (push notifications retired, 0.0.17 ER4).
 [[test]]
 name = "notifications"
 path = "notifications/main.rs"

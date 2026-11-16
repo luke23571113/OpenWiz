@@ -7,17 +7,6 @@ use crate::http::{API_HEADERS, Reply};
 use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The components a setup check observes (the store's own list).
-const CHECKED: [&str; 7] = [
-    "cloudroom",
-    "harness",
-    "personal_github",
-    "github_app",
-    "project",
-    "engine",
-    "remote_access",
-];
-
 pub(crate) const ROUTE: &str = "/api/v1/setup";
 
 /// Evidence older than this, or from the future beyond clock drift, is not
@@ -25,9 +14,10 @@ pub(crate) const ROUTE: &str = "/api/v1/setup";
 const CURRENT_MS: u64 = 60 * 60 * 1000;
 const DRIFT_MS: u64 = 5 * 60 * 1000;
 
-/// T1's defaults: nothing checked. Installing bytes alone never proves an
-/// account is ready. T4 (`engine`) and T5 (`remote_access`) replace their own rows.
-const DEFAULTS: [(&str, &str, &str, &str); 7] = [
+/// The components this report shows, each checked, with T1's defaults: nothing
+/// checked. Installing bytes alone never proves an account is ready. Setup has
+/// no engine step (#873): an old state file's engine observation is not shown.
+const DEFAULTS: [(&str, &str, &str, &str); 6] = [
     (
         "cloudroom",
         "unknown",
@@ -59,12 +49,6 @@ const DEFAULTS: [(&str, &str, &str, &str); 7] = [
         "Choose a repository and CloudRoom project, then confirm CI, review and answer routing.",
     ),
     (
-        "engine",
-        "missing",
-        "No engine has been selected or activated.",
-        "Choose Cloud or Local after reviewing costs and the proposed effects.",
-    ),
-    (
         "remote_access",
         "unknown",
         "Authenticated phone access has not been verified.",
@@ -77,7 +61,7 @@ const CHECK_AGAIN: &str = "Ask your installing agent to run the setup check agai
 /// Every observation code the setup check writes, its component and state,
 /// and fixed public text. A code not listed here is unknown, never trusted.
 #[rustfmt::skip]
-const CODES: [(&str, &str, &str, &str, &str); 53] = [
+const CODES: [(&str, &str, &str, &str, &str); 54] = [
     ("cloudroom", "cloudroom_reachable", "unknown", "CloudRoom answered a live read, but no check here proves your CloudRoom login is current.", "Keep CloudRoom open and signed in. No current login evidence is available to this check yet."),
     ("cloudroom", "cloudroom_missing", "missing", "The installed OpenWiz CLI or CloudRoom's room-cli was not found on this host.", "Install CloudRoom and sign in, then check again."),
     ("cloudroom", "cloudroom_unreadable", "unknown", "CloudRoom could not be read; the check got no usable answer.", "Open CloudRoom and sign in, then check again."),
@@ -102,10 +86,12 @@ const CODES: [(&str, &str, &str, &str, &str); 53] = [
     ("harness", "harness_unreadable", "unknown", "CloudRoom's harness options could not be read.", CHECK_AGAIN),
     ("personal_github", "identity_verified", "verified", "Your agents' own GitHub login can push to the selected repository.", "Nothing to do."),
     ("personal_github", "identity_unselected", "missing", "No repository is selected yet.", "Save your project settings with a repository."),
-    ("personal_github", "identity_signed_out", "missing", "No GitHub login is available to your agents on this host.", "Sign in to GitHub for your agents (gh auth login), then check again."),
+    ("personal_github", "identity_signed_out", "missing", "No GitHub login is available to your agents on this host.", "Ask your installing agent to open GitHub's browser sign-in, approve it there, then check again. You never paste a token."),
     ("personal_github", "identity_bot", "refused", "Your agents' GitHub login is an App or bot account, not your own identity.", "Sign your agents in with your own GitHub account, separate from OpenWiz's App."),
     ("personal_github", "identity_no_push", "refused", "Your agents' GitHub login cannot push to the selected repository.", "Give that login write access to the repository, then check again."),
     ("personal_github", "identity_unreadable", "unknown", "GitHub did not answer the identity check.", CHECK_AGAIN),
+    // #633: the signed-in account differs from the login the owner chose to act when skipping the App.
+    ("personal_github", "identity_account_mismatch", "refused", "The signed-in GitHub login is not the personal login you chose to act for the factory.", "Sign in as the login you chose, or ask your installing agent to choose again, then check again."),
     ("github_app", "app_verified", "verified", "OpenWiz's App is installed on selected repositories with its service permissions and issued a token for the selected repository.", "Nothing to do."),
     ("github_app", "app_missing", "missing", "OpenWiz's GitHub App is not registered on this host.", "Connect OpenWiz's App to only the repositories you choose, then verify its permissions."),
     ("github_app", "app_not_installed", "missing", "OpenWiz's App is registered but not installed for the selected repository's owner.", "Install the App on only the selected repositories, then check again."),
@@ -169,6 +155,39 @@ fn component(
     }
 }
 
+/// Overall readiness (setup.v1, #633): every prerequisite verified (no engine
+/// since #873). The App is one, unless the owner explicitly skipped it;
+/// then the verified personal login carries the identity part on its own.
+fn ready(components: &[Value], skipped: bool) -> bool {
+    components
+        .iter()
+        .filter(|c| c["id"] != "remote_access" && !(skipped && c["id"] == "github_app"))
+        .all(|c| c["state"] == "verified")
+}
+
+/// A skipped App stays truthfully missing: never verified, whatever an
+/// earlier check saw.
+const SKIPPED_APP: (&str, &str, &str) = (
+    "missing",
+    "Skipped: you chose to act through your personal GitHub login instead. No OpenWiz App is installed or verified.",
+    "Nothing to do for the App. Connecting it later is a separate choice; your personal login acts until then.",
+);
+
+/// The saved identity choice that applies to the selected repository: an old
+/// state has none (the App rule); another repository's choice selects nothing.
+fn identity(state: &SetupState) -> Option<Value> {
+    let saved = state.identity.as_ref()?;
+    let here = state
+        .project
+        .as_ref()
+        .is_some_and(|p| p.repository == saved.repository);
+    Some(if here {
+        json!({"selected":saved.selected,"app_choice":saved.app_choice,"acting_login":saved.acting_login})
+    } else {
+        json!({"selected":"unselected","app_choice":"undecided","acting_login":null})
+    })
+}
+
 /// The report from the setup state read at `now` (Unix ms). Readiness needs
 /// every prerequisite verified by current evidence for the current selection;
 /// an unreadable state is unknown, never an error body.
@@ -183,28 +202,26 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
                 && s.project.as_ref().and_then(|p| p.runtime.as_deref()) == Some(e.runtime.as_str())
         })
     });
+    let identity = state.and_then(identity);
+    let skipped = identity
+        .as_ref()
+        .is_some_and(|i| i["selected"] == "personal_login" && i["app_choice"] == "skip");
     let components = DEFAULTS
         .into_iter()
         .map(|(id, state_default, reason, next)| {
-            let checked = CHECKED.contains(&id);
-            let (s, r, n) = if id == "engine" && engine.is_some() {
-                ("unknown", "Engine selection is saved; activation remains closed and no runtime is verified.", "Current login evidence and approved host provisioning are required. Check the saved operation; never retry an uncertain activation.")
-            } else if unreadable && checked {
+            let (s, r, n) = if id == "github_app" && skipped {
+                SKIPPED_APP
+            } else if unreadable {
                 ("unknown", "This host's setup state could not be read safely.", "Check that OpenWiz's state directory is owner-only, then run the setup check again.")
-            } else if checked {
-                component(id, (state_default, reason, next), state, now)
             } else {
-                (state_default, reason, next)
+                component(id, (state_default, reason, next), state, now)
             };
             json!({"id":id,"state":s,"reason":r,"next":n})
         })
         .collect::<Vec<_>>();
-    // Overall readiness: every prerequisite of the selected engine verified.
-    // Phone access is reported, never inferred; T1's engine stays unselected.
-    let ready = components
-        .iter()
-        .filter(|c| c["id"] != "remote_access")
-        .all(|c| c["state"] == "verified");
+    // Overall readiness: every prerequisite verified. Phone access is
+    // reported, never inferred.
+    let ready = ready(&components, skipped);
     let operations = state
         .map(|s| {
             s.operations
@@ -220,6 +237,9 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
         "engine":"unselected","cost":{"provenance":"unknown","credits":null,
         "window_s":null,"monthly_projection":null,"free_allowance":null,
         "reason":"Cloud Credits have not been measured."},"operations":operations});
+    if let Some(identity) = identity {
+        report["identity"] = identity;
+    }
     if let Some(engine) = engine {
         report["engine"] = json!(engine.location);
         report["cost"]["reason"] = json!(
@@ -333,11 +353,13 @@ mod composed {
                 ("personal_github", "verified"),
                 ("github_app", "verified"),
                 ("project", "verified"),
-                ("engine", "missing"),
                 ("remote_access", "unknown"),
             ])
         );
-        assert_eq!(report["ready"], false, "no engine is selected");
+        assert_eq!(
+            report["ready"], false,
+            "CloudRoom and the harness are unproven"
+        );
         assert_eq!(report["operations"][0]["phase"], "uncertain");
         let app = &report["components"][3];
         assert!(
@@ -345,6 +367,32 @@ mod composed {
                 .as_str()
                 .unwrap()
                 .contains("selected repositor")
+        );
+    }
+
+    #[test]
+    fn an_old_saved_engine_selection_still_reads_and_shows_no_engine_step() {
+        // #873: setup has no engine step. An old state file that saved an
+        // engine selection still loads, and adds no engine component.
+        let old = observed(&ALL, 3, NOW - 1_000)
+            .replace(r#""runtime":null"#, &format!(r#""runtime":"0.0.9 {}""#, "1".repeat(40)))
+            .replace(r#""kind":"connect_app""#, r#""kind":"activate_engine""#)
+            .replace(
+                r#"]}"#,
+                r#"],"engine":{"location":"local","revision":3,"runtime":"0.0.9 1111111111111111111111111111111111111111","operation_id":"0123456789abcdef0123456789abcdef","fingerprint":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","cost":null}}"#,
+            );
+        let report = super::report_at(Ok(Some(&parse(&old))), NOW);
+        let ids: Vec<String> = states(&report).into_iter().map(|(id, _)| id).collect();
+        assert_eq!(
+            ids,
+            [
+                "cloudroom",
+                "harness",
+                "personal_github",
+                "github_app",
+                "project",
+                "remote_access"
+            ]
         );
     }
 
@@ -404,6 +452,108 @@ mod composed {
         }
     }
 
+    /// The same state with the owner's identity choice saved.
+    fn chosen(codes: &[(&str, &str)], revision: u64, identity: &str) -> String {
+        observed(codes, revision, NOW - 1_000).replacen(
+            r#""operations""#,
+            &format!(r#""identity":{identity},"operations""#),
+            1,
+        )
+    }
+    const SKIP: &str = r#"{"selected":"personal_login","app_choice":"skip","acting_login":"synthetic-owner","repository":"synthetic-owner/synthetic-consumer"}"#;
+
+    /// #633: catches a skipped App shown verified or blocking the identity, the
+    /// acting login going unnamed, and a choice for another repository applying.
+    #[test]
+    fn an_explicit_skip_names_the_login_and_keeps_the_app_truthfully_missing() {
+        let state = parse(&chosen(&ALL, 3, SKIP));
+        let report = super::report_at(Ok(Some(&state)), NOW);
+        assert_eq!(
+            report["identity"],
+            serde_json::json!({"selected":"personal_login","app_choice":"skip","acting_login":"synthetic-owner"})
+        );
+        let app = &report["components"][3];
+        assert_eq!(
+            app["state"], "missing",
+            "app_verified is never shown for a skipped App"
+        );
+        assert!(app["reason"].as_str().unwrap().starts_with("Skipped"));
+        assert_eq!(report["components"][2]["state"], "verified");
+        // Another repository's choice selects nothing here: the App rule.
+        let elsewhere = SKIP.replace("synthetic-consumer", "synthetic-other");
+        let report = super::report_at(Ok(Some(&parse(&chosen(&ALL, 3, &elsewhere)))), NOW);
+        assert_eq!(report["identity"]["selected"], "unselected");
+        assert_eq!(report["identity"]["acting_login"], serde_json::Value::Null);
+        assert_eq!(report["components"][3]["state"], "verified");
+        // An old state carries no identity field at all.
+        let old = parse(&observed(&ALL, 3, NOW - 1_000));
+        assert!(
+            super::report_at(Ok(Some(&old)), NOW)
+                .get("identity")
+                .is_none()
+        );
+    }
+
+    /// #633: catches an App failure, revocation or unknown identity silently
+    /// becoming the personal-login path, and a different signed-in account or
+    /// an old check counting for the chosen login.
+    #[test]
+    fn no_failure_or_stale_check_selects_or_satisfies_the_personal_login() {
+        let mut codes = ALL;
+        for app in [
+            "app_revoked",
+            "app_key_rejected",
+            "app_unreadable",
+            "app_missing",
+        ] {
+            codes[3] = ("github_app", app);
+            let report = super::report_at(Ok(Some(&parse(&observed(&codes, 3, NOW - 1_000)))), NOW);
+            assert!(report.get("identity").is_none(), "{app}");
+            assert_ne!(report["components"][3]["state"], "verified", "{app}");
+        }
+        codes[2] = ("personal_github", "identity_account_mismatch");
+        let report = super::report_at(Ok(Some(&parse(&chosen(&codes, 3, SKIP)))), NOW);
+        assert_eq!(report["components"][2]["state"], "refused");
+        assert!(
+            report["components"][2]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("not the personal login you chose")
+        );
+        let stale =
+            parse(&chosen(&ALL, 3, SKIP).replace(r#""revision":3,"at""#, r#""revision":2,"at""#));
+        assert_eq!(
+            super::report_at(Ok(Some(&stale)), NOW)["components"][2]["state"],
+            "unknown"
+        );
+    }
+
+    /// #633, setup.v1's revised ready rule: catches the identity part being
+    /// satisfied without the owner's skip, or the skip excusing anything else.
+    #[test]
+    fn ready_needs_the_app_unless_the_owner_skipped_it() {
+        let rows = |app: &str, login: &str| {
+            [
+                ("cloudroom", "verified"),
+                ("harness", "verified"),
+                ("personal_github", login),
+                ("github_app", app),
+                ("project", "verified"),
+                ("remote_access", "unknown"),
+            ]
+            .map(|(id, state)| serde_json::json!({"id":id,"state":state}))
+        };
+        assert!(super::ready(&rows("verified", "verified"), false));
+        assert!(super::ready(&rows("missing", "verified"), true));
+        assert!(!super::ready(&rows("missing", "verified"), false));
+        assert!(!super::ready(&rows("refused", "verified"), false));
+        assert!(!super::ready(&rows("missing", "refused"), true));
+        assert!(!super::ready(&rows("missing", "unknown"), true));
+        let mut harness = rows("missing", "verified");
+        harness[1]["state"] = "unknown".into();
+        assert!(!super::ready(&harness, true));
+    }
+
     #[test]
     fn unreadable_state_reports_unknown_never_an_error_body() {
         let report = super::report_at(Err(()), NOW);
@@ -432,10 +582,10 @@ mod composed {
         ] {
             let state = parse(&observed(&[("remote_access", code)], 3, NOW - 1_000));
             let report = super::report_at(Ok(Some(&state)), NOW);
-            assert_eq!(report["components"][6]["state"], expected, "{code}");
+            assert_eq!(report["components"][5]["state"], expected, "{code}");
             assert_eq!(
                 report["ready"], false,
-                "phone evidence cannot verify the engine"
+                "phone evidence cannot verify the factory"
             );
         }
         for (revision, at) in [(2, NOW - 1_000), (3, NOW - 3_600_001), (3, NOW + 300_001)] {
@@ -445,12 +595,12 @@ mod composed {
                 at,
             ));
             assert_eq!(
-                super::report_at(Ok(Some(&state)), NOW)["components"][6]["state"],
+                super::report_at(Ok(Some(&state)), NOW)["components"][5]["state"],
                 "unknown"
             );
         }
         assert_eq!(
-            super::report_at(Err(()), NOW)["components"][6]["state"],
+            super::report_at(Err(()), NOW)["components"][5]["state"],
             "unknown"
         );
     }
@@ -581,7 +731,7 @@ mod tests {
         assert_eq!(value["ready"], false);
         assert_eq!(value["engine"], "unselected");
         assert_eq!(value["operations"], serde_json::json!([]));
-        assert_eq!(value["components"].as_array().unwrap().len(), 7);
+        assert_eq!(value["components"].as_array().unwrap().len(), 6);
         assert!(
             value["components"]
                 .as_array()

@@ -29,7 +29,8 @@ REPO = HERE.parents[1]
 REAL_TOOLS = ('tools/skills-copy/standalone.py', 'tools/privacy-check/check.py')
 # WZ14 (#2891): what the copy writes into check/ beside WZ7's entrypoint.
 GENERATED_CHECK = {'check/standalone.py', 'check/wizskills.v1.json', 'check/redact.py'}
-VERSION = '0.1.0'
+# The package's own version, so a release bump needs no test edit.
+VERSION = json.loads((HERE / 'package/plugin.json').read_text())['version']
 # A synthetic upstream notice, carried by a skill, as the real skills carry theirs.
 NOTICE = ('Copyright (c) 2030 Synthetic Author\n\nPermission is hereby granted, free of charge, '
           'to any person obtaining a copy.\n\nTHE SOFTWARE IS PROVIDED "AS IS". IN NO EVENT SHALL '
@@ -192,13 +193,11 @@ class CopyTests(unittest.TestCase):
         self.assertNotIn('version', market['plugins'][0])
         changelog = (output / 'CHANGELOG.md').read_text().split('\n')
         self.assertEqual(changelog[:2], ['# Changelog', ''])
-        self.assertRegex(changelog[2], r'^## 0\.1\.0 - 20[0-9]{2}-[01][0-9]-[0-3][0-9]$')
+        self.assertRegex(changelog[2], r'^## ' + VERSION.replace('.', r'\.') + r' - 20[0-9]{2}-[01][0-9]-[0-3][0-9]$')
         datetime.date.fromisoformat(changelog[2][-10:])
-        section = changelog[4:changelog.index('', 4)]
-        self.assertEqual(section, ["- First public release of OpenWiz's skills, one line per skill below."]
-                         + [f'- `{n}`: first public release.' for n in skills])
+        self.assertNotIn('{{', '\n'.join(changelog))
         readme = (output / 'README.md').read_text()
-        for pinned in ('https://github.com/openwizdev/WizSkills.git#v0.1.0', '--version 0.1.0'):
+        for pinned in (f'https://github.com/openwizdev/WizSkills.git#v{VERSION}', f'--version {VERSION}'):
             self.assertIn(pinned, readme)
         self.assertNotIn('{{', readme)
         self.assertEqual((output / 'install.sh').read_bytes(), (HERE / 'package/install.sh').read_bytes())
@@ -226,11 +225,14 @@ class CopyTests(unittest.TestCase):
         package = 'tools/skills-copy/package/'
         plugin = (self.source / package / 'plugin.json').read_text()
         changelog = (self.source / package / 'CHANGELOG.md').read_text()
-        cases = (('input', {}, '0.1.1'),
-                 ('plugin', {'plugin.json': plugin.replace('"0.1.0"', '"0.2.0"')}, VERSION),
-                 ('changelog', {'CHANGELOG.md': changelog.replace('## 0.1.0 ', '## 0.2.0 ', 1)}, VERSION),
-                 ('both moved', {'plugin.json': plugin.replace('"0.1.0"', '"0.2.0"'),
-                                 'CHANGELOG.md': changelog.replace('## 0.1.0 ', '## 0.2.0 ', 1)}, VERSION))
+        moved_plugin = plugin.replace(f'"{VERSION}"', '"9.0.0"')
+        moved_changelog = changelog.replace(f'## {VERSION} ', '## 9.0.0 ', 1)
+        self.assertNotIn(VERSION, moved_plugin)
+        self.assertNotEqual(moved_changelog, changelog)
+        cases = (('input', {}, '9.0.0'),
+                 ('plugin', {'plugin.json': moved_plugin}, VERSION),
+                 ('changelog', {'CHANGELOG.md': moved_changelog}, VERSION),
+                 ('both moved', {'plugin.json': moved_plugin, 'CHANGELOG.md': moved_changelog}, VERSION))
         for name, edits, version in cases:
             with self.subTest(case=name):
                 for file, data in edits.items(): self.write(package + file, data)
@@ -245,6 +247,33 @@ class CopyTests(unittest.TestCase):
                     self.write(package + 'plugin.json', plugin)
                     self.write(package + 'CHANGELOG.md', changelog)
                     self.commit()
+
+    # WZ19 (#965): only a first release lists every skill; a later section's
+    # lines are the release's own, and older sections stay as published.
+    def test_changelog_skills_line_fills_only_a_first_release(self):
+        package = 'tools/skills-copy/package/'
+        plugin = (self.source / package / 'plugin.json').read_text()
+        first = '# Changelog\n\n## 0.1.0 - 2030-01-02\n\n- First release.\n{{skills}}\n'
+        listed = '- First release.\n- `alpha`: first public release.\n- `board`: first public release.\n'
+        later = ('# Changelog\n\n## 0.1.1 - 2030-01-03\n\n- `alpha`: a synthetic change.\n\n'
+                 '## 0.1.0 - 2030-01-02\n\n' + listed)
+        rows = (('first release', '0.1.0', first, '# Changelog\n\n## 0.1.0 - 2030-01-02\n\n' + listed),
+                ('later release', '0.1.1', later, later),
+                ('two skills lines', '0.1.0', first + '{{skills}}\n', None),
+                ('skills line in an older section', '0.1.1',
+                 later.replace('- `alpha`: first public release.\n', '{{skills}}\n'), None))
+        for name, version, template, expected in rows:
+            with self.subTest(case=name):
+                self.write(package + 'plugin.json', plugin.replace(f'"{VERSION}"', f'"{version}"'))
+                self.write(package + 'CHANGELOG.md', template)
+                self.commit()
+                output = self.root / name.replace(' ', '-')
+                p = self.run_copy('--output', str(output), version=version, ok=expected is not None)
+                if expected is None:
+                    self.assertIn('{{skills}}', p.stderr)
+                    self.assertFalse(output.exists())
+                else:
+                    self.assertEqual((output / 'CHANGELOG.md').read_text(), expected)
 
     def test_version_input_is_required_and_strict(self):
         for version in (None, 'v0.1.0', '0.01.0', '0.0.1', 'main', '0.1.0\n'):

@@ -6,19 +6,22 @@ and cannot activate an engine. It returns `openwiz.setup.v1`: `ready`, the
 ordered `components` array, `engine`, `cost` and `operations`.
 
 Each component has `id`, `state`, `reason` and `next`. The fixed independent ids
-are `cloudroom`, `harness`, `personal_github`, `github_app`, `project`, `engine`
-and `remote_access`. States are `verified`, `missing`, `refused`, `unknown`.
+are `cloudroom`, `harness`, `personal_github`, `github_app`, `project` and
+`remote_access`. Setup has no engine step (0.0.17, #873): there is no `engine`
+component, and a reader refuses a report that carries one. States are `verified`, `missing`, `refused`, `unknown`.
 Only positive, current evidence for the selected repository/host establishes
 verified. Saved config, successful inventory reads and artifact download alone
 never do. A refusal is distinct from a missing connection; unavailable evidence
 is unknown. Reasons and next steps are public plain text, never credential or
-provider response dumps. Overall ready requires every prerequisite for the
-selected engine to be independently verified; phone readiness remains explicit
+provider response dumps. Overall ready requires every component except
+`remote_access` to be independently verified; phone readiness remains explicit
 and is never inferred from local readiness. T1's unconfigured slice returns
 ready false and missing/unknown prerequisites. Later connection tickets supply
 real observations, through explicit composition rather than fixture env flags.
 
-Engine is `unselected`, `cloud` or `local`. Cloud engine and fleet agents have
+The top-level `engine` field stays for saved state written before 0.0.17. It
+reports an old saved selection, or `unselected`, and never gates ready. The
+rest of this paragraph describes that retired engine. Engine is `unselected`, `cloud` or `local`. Cloud engine and fleet agents have
 separate location choices. A Cloud engine is one durable CloudRoom Loop invoking
 the packaged mechanical tick; an idle or unapproved plan starts no builders.
 Local supervision and signing must be supported and verified on the chosen OS.
@@ -70,8 +73,8 @@ compatible change to `openwiz.setup.v1`. The schema name, component ids, states,
   `personal_login` needs `app_choice: skip` and names its login. `brain` is
   `null` or `location` (`in_repository`, `companion`), `brain_repository` and
   `folder` (`.openwiz/brain`). Both carry public identifiers only.
-- **Revised ready rule.** Ready still requires every other prerequisite of the
-  selected engine verified. It requires `github_app` verified unless `identity`
+- **Revised ready rule.** Ready still requires every other prerequisite
+  verified (no engine since 0.0.17, #873). It requires `github_app` verified unless `identity`
   says the owner explicitly selected the personal login and skipped the App;
   then `github_app` stays truthfully `missing` (reason: skipped) and the
   `personal_github` login's positive account and repository checks establish

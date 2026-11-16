@@ -28,8 +28,8 @@ def _module(name, path):
 
 
 S = _module('wr4_suite', HERE / 'suite.py')
-J = _module('wr4_journey', HERE.parent / 'factory-metrics/journey.py')
-B = _module('wr4_ci', HERE.parent / 'ci-bench/bench.py')
+J = _module('wr4_journey', HERE / 'journey.py')
+B = _module('wr4_ci', HERE / 'bench_reads.py')
 COMPONENTS = ('models', 'shared_parent', 'helpers', 'sandbox', 'ci')
 require = S.require
 

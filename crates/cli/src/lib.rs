@@ -24,6 +24,8 @@ pub mod engine;
 pub mod fleet;
 pub mod fleets;
 pub mod github_token;
+pub mod init;
+pub mod loop_files;
 pub mod loops;
 pub mod new_thread;
 pub mod response;
@@ -136,7 +138,7 @@ Usage:
   openwiz attachment add [--json] [--] <path>...
   openwiz attachment ls [--json]
   openwiz attachment rm [--json] <id>...
-{fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{engine_usage}{github_usage}  openwiz help --agent
+{fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{loop_files_usage}{engine_usage}{init_usage}{github_usage}  openwiz help --agent
   openwiz help
   openwiz --help
 
@@ -269,7 +271,7 @@ attachment rm <id>...
   send's text is sent as text, never attached; send and new attach with --attach and
   --attachment. --json prints openwiz.attachment-add.v1,
   openwiz.attachment-list.v1 or openwiz.attachment-remove.v1.
-{loops_help}{fleets_help}{fleet_help}{tick_help}{github_help}
+{loops_help}{loop_files_help}{fleets_help}{fleet_help}{tick_help}{github_help}
 Exit codes:
   0  a result was printed, complete or partial
   0  send: queued, or sent (the provider accepted the message, not that the work completed)
@@ -337,13 +339,16 @@ attachment does the same: a usage error (2), or a store that can't be opened (10
         send_tested = live_tested_with(SEND_TESTED_VERSION),
         new_tested = live_tested_with(NEW_TESTED_VERSION),
         loops_usage = loops::USAGE,
+        loop_files_usage = loop_files::USAGE,
         engine_usage = engine::USAGE,
+        init_usage = init::USAGE,
         github_usage = github_token::USAGE,
         github_help = github_token::HELP,
         fleets_usage = fleets::USAGE,
         fleet_usage = fleet::USAGE,
         tick_usage = fleet::tick::USAGE,
         loops_help = loops::HELP,
+        loop_files_help = loop_files::HELP,
         fleets_help = fleets::HELP,
         fleet_help = fleet::HELP,
         tick_help = fleet::tick::HELP,

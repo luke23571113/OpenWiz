@@ -547,12 +547,24 @@ const LOOP_EXECUTOR: &str = "../crates/service/src/loops/mod.rs";
 /// Private record: https://github.com/jparker2006/ClosedWiz/issues/1106#issuecomment-6714565014
 const ENGINE_LAUNCHER: &str = "../crates/cli/src/engine.rs";
 
+/// J99 (#635), approved by Jake 2026-11-15: installed `openwiz init` runs only
+/// the fixed sibling `runtime/setup/init.py` through absolute
+/// `/usr/bin/python3 -I`, with a cleared environment passing only HOME,
+/// XDG_STATE_HOME, OPENWIZ_STATE_DIR, PATH and GH_CONFIG_DIR (the last two
+/// only locate the existing gh login), and stdin null. No GH_TOKEN or PYTHONPATH.
+/// Private record: https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6904873199
+const INIT_LAUNCHER: &str = "../crates/cli/src/init.rs";
+
 #[test]
 fn allowlist_source_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 17] = [
+    let cases: [(&str, fn()); 18] = [
         (
             "engine_interpreter_exception_rejects_planted_widening",
             engine_interpreter_exception_rejects_planted_widening,
+        ),
+        (
+            "init_interpreter_exception_rejects_planted_widening",
+            init_interpreter_exception_rejects_planted_widening,
         ),
         (
             "l3_check_admission_rejects_removed_approval_or_limits",
@@ -655,6 +667,11 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
         .canonicalize()
         .expect("the engine launcher");
     let mut engine_launched = false;
+    let init_launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(INIT_LAUNCHER)
+        .canonicalize()
+        .expect("the init launcher");
+    let mut init_launched = false;
     let canonical_loop = |file| {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(file)
@@ -724,6 +741,15 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
             engine_launched = true;
             continue;
         }
+        if canonical == init_launcher {
+            assert_eq!(
+                init_launcher_problems(&text),
+                Vec::<String>::new(),
+                "{INIT_LAUNCHER}"
+            );
+            init_launched = true;
+            continue;
+        }
         if canonical == app {
             assert_eq!(
                 app_source_problems(&text),
@@ -756,6 +782,7 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
     assert!(signed, "{GITHUB_APP} was not checked");
     assert!(updated, "the canonical updater runner was not checked");
     assert!(engine_launched, "{ENGINE_LAUNCHER} was not checked");
+    assert!(init_launched, "{INIT_LAUNCHER} was not checked");
     assert_eq!(checked_loops, [true; 3], "all canonical L3 gates checked");
 }
 
@@ -2290,6 +2317,144 @@ fn engine_interpreter_exception_rejects_planted_widening() {
     ] {
         assert!(
             !engine_launcher_problems(&format!("{code}{}", l3_compact(extra))).is_empty(),
+            "missed {extra}"
+        );
+    }
+}
+
+fn init_launcher_problems(text: &str) -> Vec<String> {
+    let code = l3_compact(text);
+    let mut problems = Vec::new();
+    l3_counts(
+        &mut problems,
+        &code,
+        &[
+            ("Command", 2),
+            ("Command::new(", 1),
+            ("init_process", 2),
+            (".arg(", 2),
+            (".args(", 1),
+            (".env_clear(", 1),
+            (".env(", 1),
+            (".envs(", 0),
+            (".env_remove(", 0),
+            (".current_dir(", 0),
+            (".output(", 1),
+            (".spawn(", 0),
+            (".status(", 0),
+            (".exec(", 0),
+            ("std::env::current_exe(", 1),
+            ("std::env::var_os(", 1),
+            ("letSome(result)=init_process(args)else", 1),
+        ],
+    );
+    l3_exact_function(
+        &mut problems,
+        &code,
+        "fn init_process(args: &[OsString]) -> Option<std::process::Output>",
+        r#"fn init_process(args: &[OsString]) -> Option<std::process::Output> {
+    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    let tool = exe.parent()?.join("runtime/setup/init.py");
+    let meta = std::fs::symlink_metadata(&tool).ok()?;
+    if !meta.is_file() || meta.file_type().is_symlink() {
+        return None;
+    }
+    if tool
+        .ancestors()
+        .skip(1)
+        .any(|p| !std::fs::symlink_metadata(p).is_ok_and(|m| !m.file_type().is_symlink()))
+    {
+        return None;
+    }
+    let mut command = Command::new("/usr/bin/python3");
+    command.arg("-I").arg(tool).args(args).env_clear();
+    for name in [
+        "HOME",
+        "XDG_STATE_HOME",
+        "OPENWIZ_STATE_DIR",
+        "PATH",
+        "GH_CONFIG_DIR",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    command.stdin(std::process::Stdio::null()).output().ok()
+}
+"#,
+    );
+    problems
+}
+
+fn init_interpreter_exception_rejects_planted_widening() {
+    let code = l3_compact(include_str!("../../crates/cli/src/init.rs"));
+    assert!(init_launcher_problems(&code).is_empty());
+    let list = r#"["HOME","XDG_STATE_HOME","OPENWIZ_STATE_DIR","PATH","GH_CONFIG_DIR",]"#;
+    for (from, to) in [
+        (
+            r#"Command::new("/usr/bin/python3")"#,
+            r#"Command::new("python3")"#,
+        ),
+        (
+            r#"Command::new("/usr/bin/python3")"#,
+            r#"Command::new("/bin/sh")"#,
+        ),
+        (r#".arg("-I")"#, r#".arg("-c")"#),
+        (".env_clear()", ""),
+        (
+            ".env_clear()",
+            r#".env_clear().env("PYTHONPATH", "/synthetic")"#,
+        ),
+        (".env_clear()", r#".env_clear().current_dir("/synthetic")"#),
+        (".args(args)", r#".arg("--extra").args(args)"#),
+        ("std::env::current_exe()", "std::env::current_dir()"),
+        (
+            ".canonicalize().ok()?",
+            ".canonicalize().unwrap_or_default()",
+        ),
+        (
+            r#".join("runtime/setup/init.py")"#,
+            r#".join("tools/install/setup/init.py")"#,
+        ),
+        (
+            r#".join("runtime/setup/init.py")"#,
+            r#".join(std::env::var_os("INIT_PATH").unwrap())"#,
+        ),
+        (
+            "if !meta.is_file() || meta.file_type().is_symlink()",
+            "if false",
+        ),
+        (".ancestors()", ".ancestors().take(0)"),
+        (
+            list,
+            r#"["HOME","XDG_STATE_HOME","OPENWIZ_STATE_DIR","PATH","GH_CONFIG_DIR","GH_TOKEN",]"#,
+        ),
+        (
+            list,
+            r#"["HOME","XDG_STATE_HOME","OPENWIZ_STATE_DIR","PATH","GH_CONFIG_DIR","PYTHONPATH",]"#,
+        ),
+        (
+            list,
+            r#"["HOME","XDG_STATE_HOME","OPENWIZ_STATE_DIR","PATH","GH_CONFIG_DIR","GH_HOST",]"#,
+        ),
+        (".stdin(std::process::Stdio::null())", ""),
+        (".output().ok()", ".status().ok()"),
+    ] {
+        let planted = l3_plant(&code, from, to);
+        assert!(
+            !init_launcher_problems(&planted).is_empty(),
+            "missed {from} -> {to}"
+        );
+    }
+    for extra in [
+        r#"fn extra() { Command::new("/usr/bin/python3").output(); }"#,
+        r#"use std::process::Command as C; fn extra() { C::new("/bin/sh").spawn(); }"#,
+        r#"type C = Command; fn extra() { C::new("/bin/sh").spawn(); }"#,
+        r#"fn extra(c: &mut Command) { let _ = Command::spawn(c); }"#,
+        r#"fn extra() { let f = init_process; let _ = f(&[]); }"#,
+    ] {
+        assert!(
+            !init_launcher_problems(&format!("{code}{}", l3_compact(extra))).is_empty(),
             "missed {extra}"
         );
     }

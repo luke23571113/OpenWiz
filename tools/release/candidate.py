@@ -18,7 +18,8 @@ waits: missing evidence returns `blocked` with its reasons, and the next event
 runs it again. Decisions are read from their actual private comments, never
 from a caller's flag. Publication creates only the annotated tag and the
 immutable release with its complete assets, from a commit already on public
-`main`, and reads every byte back. An interrupted write is never repeated.
+`main` or on the protected public `release-<version>` branch, and reads every
+byte back. An interrupted write is never repeated.
 """
 import argparse
 import datetime
@@ -63,6 +64,12 @@ POINTER = re.compile(r'https://github\.com/' + re.escape(PRIVATE) + r'/(?:issues
                      r'#issuecomment-([1-9][0-9]*)')
 DECISION = re.compile(r'Release decision: (ship|changelog) ([0-9a-f]{64})')
 REVOKED = re.compile(r'Release decision revoked: ([1-9][0-9]*)')
+# APP-1 (a), Jake, 2026-11-15 (private record ClosedWiz #325, comment 6902318590):
+# the App-permission live check is waived for 0.0.12 only. A recorded waiver
+# names one risk and one exact version; nothing else is waivable.
+WAIVABLE = {('app_permissions', '0.0.12')}
+WAIVER = re.compile(r'Release waiver: ([a-z_]+) v(0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))')
+WAIVER_REVOKED = re.compile(r'Release waiver revoked: ([1-9][0-9]*)')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 HEADING = re.compile(r'## (' + VERSION.pattern + r') · ([0-9]{4}-[0-9]{2}-[0-9]{2})')
 TARGET_MET = 1800
@@ -379,7 +386,7 @@ def check_source(repo, body, scratch):
         remote_git(work, 'cat-file', '-e', source['commit'] + '^{commit}')
         remote_git(work, 'merge-base', '--is-ancestor', source['commit'], 'HEAD')
     except Refused:
-        block('not_on_public_main')
+        release_source(work, body)
     try:
         remote_git(work, 'merge-base', '--is-ancestor', ANCHOR, source['commit'])
     except Refused:
@@ -387,6 +394,40 @@ def check_source(repo, body, scratch):
     if remote_git(work, 'rev-parse', source['commit'] + '^{tree}').decode().strip() != source['tree']:
         block('tree_mismatch')
     return work
+
+
+def release_heads(work):
+    """#964: every public `release-*` branch head, fetched into `refs/release/`."""
+    remote_git(work, 'fetch', '-q', '--no-tags', remote_url(PUBLIC), '+refs/heads/release-*:refs/release/release-*')
+    return remote_git(work, 'for-each-ref', '--format=%(refname)', 'refs/release/').decode().split()
+
+
+def release_source(work, body):
+    """#964: a commit not on public main is accepted only at or below the head of
+    the public `release-<version>` branch, exactly the candidate's version, while
+    that branch is protected (D3's ruleset read)."""
+    commit, version = body['source']['commit'], body.get('release_version')
+    if not isinstance(version, str) or VERSION.fullmatch(version) is None:
+        block('not_on_public_main')
+    try:
+        heads = release_heads(work)
+    except Refused:
+        block('release_branch_unreadable')
+    own = 'refs/release/release-' + version
+
+    def reaches(head):
+        try:
+            remote_git(work, 'merge-base', '--is-ancestor', commit, head)
+            return True
+        except Refused:
+            return False
+    if own not in heads or not reaches(own):
+        if any(reaches(head) for head in heads if head != own):
+            block('release_branch_wrong_version')
+        block('not_on_release_branch' if own in heads else 'not_on_public_main')
+    reasons = release_protection('refs/heads/release-' + version)
+    if reasons:
+        block(*reasons)
 
 
 def check_versions(body, cwd, own=None):
@@ -670,9 +711,12 @@ def epoch(text):
         block('unreadable')
 
 
-def revoked(issue, comment_id, decided_at):
+def revoked(issue, comment_id, decided_at, pattern=REVOKED):
     """A later operative revocation line for this record; an earlier one does not
-    revoke it, and one whose order against the record cannot be read refuses."""
+    revoke it, and one whose order against the record cannot be read refuses.
+    A comment carrying the line that was ever edited revokes it whatever its
+    times say (#816 R1): its creation time does not date the line, so it fails
+    closed rather than trusting an older comment edited to revoke."""
     try:
         rows = strict(gh('api', '--paginate', '--slurp', f'repos/{PRIVATE}/issues/{issue}/comments?per_page=100'))
     except (Refused, ValueError):
@@ -681,8 +725,10 @@ def revoked(issue, comment_id, decided_at):
     later = False
     for c in rows:
         if (isinstance(c, dict) and isinstance(c.get('body'), str)
-                and any((m := REVOKED.fullmatch(line)) and m[1] == comment_id for line in c['body'].splitlines())):
+                and any((m := pattern.fullmatch(line)) and m[1] == comment_id for line in c['body'].splitlines())):
             at = epoch(c.get('created_at'))
+            if c.get('updated_at') != c.get('created_at'):
+                return True
             if at == decided_at:
                 block('unreadable')
             later = later or at > decided_at
@@ -707,9 +753,63 @@ def resolve_decision(kind, pointer):
             'decided_at': epoch(data['created_at']), 'binding_sha256': bindings[0]}
 
 
+def resolve_waiver(pointer, body):
+    """Jake's recorded one-release waiver, in the same unedited private record
+    form as the release decisions: exactly one waiver line, one risk, one version."""
+    issue, comment_id, data = comment(pointer)
+    text = data['body']
+    lines = text.splitlines()
+    if (data['user'].get('login') != OWNER or not lines
+            or not re.match(r'Private record: Jake, [0-9]{4}-[0-9]{2}-[0-9]{2}', lines[0])
+            or data.get('updated_at') != data['created_at']):
+        block('waiver_not_a_record')
+    named = [line for line in lines if line.startswith('Release waiver:')]
+    if not named:
+        block('waiver_not_a_record')
+    found = [WAIVER.fullmatch(line) for line in named]
+    if len(named) != 1 or not found[0]:
+        block('waiver_invalid')  # several lines, several risks or a range
+    risk, version = found[0][1], found[0][2]
+    if risk not in {r for r, _ in WAIVABLE}:
+        block('waiver_wrong_risk')
+    if version != body['release_version'] or (risk, version) not in WAIVABLE:
+        block('waiver_wrong_version')
+    if revoked(issue, comment_id, epoch(data['created_at']), WAIVER_REVOKED):
+        block('waiver_revoked')
+    return {'pointer': pointer, 'record_sha256': sha(text.encode('utf-8')),
+            'decided_at': epoch(data['created_at']), 'risk': risk, 'version': version}
+
+
+def current_waiver(record):
+    """The saved waiver if it still resolves unchanged for this candidate, else
+    its reasons. No saved waiver: (None, [])."""
+    saved = record['decisions'].get('waiver')
+    if saved is None:
+        return None, []
+    try:
+        current = resolve_waiver(saved['pointer'], record['candidate'])
+    except Blocked as error:
+        return None, error.reasons
+    return (current, []) if current == saved else (None, ['waiver_changed'])
+
+
+def applied_waiver(record):
+    """The saved waiver when it still resolves and its risk is classified yes;
+    otherwise None (its problems are reported by evaluate)."""
+    waiver, _ = current_waiver(record)
+    if waiver is not None and record['candidate']['risk'][waiver['risk']]['required'] == 'yes':
+        return waiver
+    return None
+
+
 def decide(args):
     state = State(args.state)
     record = state.read()
+    if args.waiver:
+        waiver = resolve_waiver(args.waiver, record['candidate'])
+        record['decisions']['waiver'] = waiver
+        state.write('record.json', record)
+        return {'status': 'recorded', 'decision': 'waiver', 'waived': waiver['risk']}
     kind, pointer = ('ship', args.ship) if args.ship else ('changelog', args.changelog)
     decision = resolve_decision(kind, pointer)
     target = record['candidate_sha256'] if kind == 'ship' else record['candidate']['changelog']['sha256']
@@ -958,9 +1058,10 @@ def ref_matches(pattern, ref, default):
     return re.fullmatch('[^/]*'.join(map(re.escape, pattern.split('*'))), ref) is not None
 
 
-def ruleset_applies(detail, default):
-    """D3: an active branch ruleset whose include matches the default branch and
-    whose exclude does not. A ref matching any exclude is outside the ruleset."""
+def ruleset_applies(detail, default, ref=None):
+    """D3: an active branch ruleset whose include matches `ref` (the default
+    branch unless named) and whose exclude does not. A ref matching any exclude
+    is outside the ruleset."""
     if detail.get('enforcement') != 'active' or detail.get('target') != 'branch':
         return False
     conditions = detail.get('conditions')
@@ -968,9 +1069,38 @@ def ruleset_applies(detail, default):
     names = conditions['ref_name']
     require(isinstance(names, dict) and set(names) <= {'include', 'exclude'}
             and all(isinstance(names.get(k, []), list) for k in ('include', 'exclude')), 'unevaluable ruleset conditions')
-    ref = 'refs/heads/' + default
+    ref = ref or 'refs/heads/' + default
     return (any(ref_matches(p, ref, default) for p in names.get('include', []))
             and not any(ref_matches(p, ref, default) for p in names.get('exclude', [])))
+
+
+def branch_rulesets(ref=None):
+    """D3's read: the public repository, and every active branch ruleset that
+    applies to `ref` (its default branch unless named). Anything unreadable raises."""
+    meta = gh_json(f'repos/{PUBLIC}')
+    sets = [gh_json(f"repos/{PUBLIC}/rulesets/{r['id']}") for r in pages(f'repos/{PUBLIC}/rulesets?per_page=100')]
+    default = meta.get('default_branch')
+    require(isinstance(default, str) and re.fullmatch(r'[A-Za-z0-9._/-]+', default) is not None,
+            'unreadable default branch')
+    return meta, [d for d in sets if ruleset_applies(d, default, ref)]
+
+
+def required_contexts(rulesets):
+    return {c.get('context') for d in rulesets for rule in d.get('rules') or [] if rule.get('type') ==
+            'required_status_checks' for c in (rule.get('parameters') or {}).get('required_status_checks') or []}
+
+
+def release_protection(ref):
+    """#964: the release branch's rulesets require ci and privacy, have no bypass
+    actors, and block force-pushes and deletion; anything unreadable refuses."""
+    try:
+        _, applied = branch_rulesets(ref)
+        types = {rule.get('type') for d in applied for rule in d.get('rules') or []}
+        ok = (applied and {'ci', 'privacy'} <= required_contexts(applied) and {'non_fast_forward', 'deletion'} <= types
+              and all(d.get('bypass_actors') == [] for d in applied))
+    except (Blocked, Refused, ValueError, AttributeError, KeyError, TypeError):
+        return ['release_ruleset_unreadable']
+    return [] if ok else ['release_branch_unprotected']
 
 
 def cutover_reasons():
@@ -980,15 +1110,9 @@ def cutover_reasons():
 
         def held(issue):
             return any(isinstance(label, dict) and label.get('name') == 'held' for label in issue.get('labels', []))
-        meta = gh_json(f'repos/{PUBLIC}')
         immutable = gh_json(f'repos/{PUBLIC}/immutable-releases')
-        sets = [gh_json(f"repos/{PUBLIC}/rulesets/{r['id']}") for r in pages(f'repos/{PUBLIC}/rulesets?per_page=100')]
-        default = meta.get('default_branch')
-        require(isinstance(default, str) and re.fullmatch(r'[A-Za-z0-9._/-]+', default) is not None,
-                'unreadable default branch')
-        main = [d for d in sets if ruleset_applies(d, default)]
-        contexts = {c.get('context') for d in main for rule in d.get('rules') or [] if rule.get('type') ==
-                    'required_status_checks' for c in (rule.get('parameters') or {}).get('required_status_checks') or []}
+        meta, main = branch_rulesets()
+        contexts = required_contexts(main)
         ok = (o17.get('state') == 'closed' and o17.get('state_reason') == 'completed' and not held(o17)
               and not held(o16) and same_name(meta.get('full_name'), PUBLIC) and meta.get('visibility') == 'public'
               and meta.get('archived') is False and immutable.get('enabled') is True and main
@@ -1107,8 +1231,9 @@ def live(args):
     state = State(args.state)
     record = state.read()
     receipts = smoke_module()
+    waiver = applied_waiver(record)
     try:
-        doc = receipts.produce(Path(args.kit), Path(args.smoke_state), record, args.record)
+        doc = receipts.produce(Path(args.kit), Path(args.smoke_state), record, args.record, waiver)
     except (receipts.Refusal, receipts.smoke.Refusal) as error:
         block(f'smoke_{error}')
     state.write('live.json', {'doc': doc, 'kit': str(Path(args.kit).resolve()),
@@ -1119,7 +1244,10 @@ def live(args):
     return {'status': 'recorded', 'gates': {g: (doc['gates'][g] or {}).get('status') for g in ('smoke',) + RISKS}}
 
 
-def live_reasons(record, saved):
+def live_reasons(record, saved, waiver=None):
+    """Every live gate's reasons. A risk in `waived` needs no live receipt: its
+    resolved waiver stands in, recorded as waived, never as passed."""
+    waived = (waiver['risk'],) if waiver else ()
     reasons = []
     risk = record['candidate']['risk']
     for name in RISKS:
@@ -1127,14 +1255,15 @@ def live_reasons(record, saved):
             reasons.append(f'{name}_unknown')
     if saved is None:
         reasons.append('smoke_missing')
-        reasons += [f'{n}_live_missing' for n in RISKS if risk[n]['required'] == 'yes']
+        reasons += [f'{n}_live_missing' for n in RISKS if risk[n]['required'] == 'yes' and n not in waived]
         return reasons
     receipts = smoke_module()
     for gate in ('smoke',) + RISKS:
-        if gate != 'smoke' and risk[gate]['required'] != 'yes':
+        if gate != 'smoke' and (risk[gate]['required'] != 'yes' or gate in waived):
             continue
         try:
-            receipts.accept(gate, saved['doc'], record, Path(saved['kit']), Path(saved['state']), preserved)
+            receipts.accept(gate, saved['doc'], record, Path(saved['kit']), Path(saved['state']), preserved,
+                            waiver=waiver)
         except receipts.Refusal as error:
             reason = str(error)
             reasons.append(f'{gate}_live_missing' if gate != 'smoke' and reason in ('missing', 'risk_missing')
@@ -1228,7 +1357,11 @@ def reasons_for(record, state, repo, own=None, artifacts=None, literals=None, ma
                 continue
             inputs = state.read(f'inputs/{name}.json') if state.exists(f'inputs/{name}.json') else None
             reasons += [f'{name}_{r}' for r in gate_reasons(record, name, receipt, inputs, ctx)]
-    reasons += live_reasons(record, live_doc(state))
+    reasons += current_waiver(record)[1]
+    waiver = applied_waiver(record)
+    if waiver is not None:
+        made[waiver['risk']] = {'status': 'waived', 'waiver': waiver}
+    reasons += live_reasons(record, live_doc(state), waiver)
     return reasons
 
 
@@ -1244,7 +1377,9 @@ def evaluate(args):
     state.write('record.json', record)
     if reasons:
         raise Blocked(reasons)
-    return {'status': 'ready', 'candidate_sha256': record['candidate_sha256']}
+    waived = sorted(g for g, r in made.items() if r and r.get('status') == 'waived')
+    return dict({'status': 'ready', 'candidate_sha256': record['candidate_sha256']},
+                **({'waived': waived} if waived else {}))
 
 
 # ---------------------------------------------------------------- publication
@@ -1339,6 +1474,15 @@ def date_reasons(body):
     return ['changelog_date'] if any(d != today() for d in dates) else []
 
 
+def record_waived(record, state, made):
+    """Save each gate the publication checks applied a waiver to as `waived`,
+    before any publication effect (#816 R2): never left as an earlier pass."""
+    waived = {g: r for g, r in made.items() if r and r.get('status') == 'waived'}
+    if waived:
+        record['gates'].update(waived)
+        state.write('record.json', record)
+
+
 def publish(args):
     repo = Path(args.repo).resolve(strict=True)
     state = State(args.state)
@@ -1356,14 +1500,20 @@ def publish(args):
                 raise Blocked(['publication_incomplete'], status='incomplete')
         else:
             if attempt is None:
+                made = {}
                 reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts),
-                                      literals=args.literals) + date_reasons(body)
+                                      literals=args.literals, made=made) + date_reasons(body)
                 if reasons:
                     raise Blocked(reasons)
+                record_waived(record, state, made)
                 ready(body, args.artifacts, scratch, tag)
                 work = Path(scratch) / 'main.git'
                 remote_git(scratch, 'clone', '-q', '--bare', '--no-local', '--no-tags', '--single-branch',
                            '--branch', 'main', remote_url(PUBLIC), work)
+                try:
+                    remote_git(work, 'cat-file', '-e', body['source']['commit'] + '^{commit}')
+                except Refused:
+                    release_heads(work)  # #964: the commit reasons_for just found on its release branch
                 name, email = tagger(work, body['source']['commit'])
                 # The annotated tag object is made locally first, so the attempt persists it as
                 # the intended effect; only that object settles the push.
@@ -1385,10 +1535,12 @@ def publish(args):
                 # The release write is unattempted: re-check every decision, gate and
                 # setting now, excluding only this attempt's own verified tag.
                 own = (tag, attempt['tag_object'], body['source']['commit'])
-                reasons = (reasons_for(record, state, repo, own, Path(args.artifacts), args.literals)
+                made = {}
+                reasons = (reasons_for(record, state, repo, own, Path(args.artifacts), args.literals, made)
                            + date_reasons(body))
                 if reasons:
                     raise Blocked(reasons)
+                record_waived(record, state, made)
                 data = ready(body, args.artifacts, scratch, tag, own)
                 notes_file = Path(scratch) / 'notes.md'
                 notes_file.write_bytes(body['changelog']['utf8'].encode('utf-8'))
@@ -1497,6 +1649,7 @@ def main(argv=None):
     which = made.add_mutually_exclusive_group(required=True)
     which.add_argument('--ship')
     which.add_argument('--changelog')
+    which.add_argument('--waiver', help="a recorded one-release waiver (APP-1): 'Release waiver: RISK vX.Y.Z'")
     made = sub.add_parser('gate')
     for name in ('state', 'gate', 'receipt', 'inputs'):
         made.add_argument('--' + name, required=True)

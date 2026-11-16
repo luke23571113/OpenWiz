@@ -727,11 +727,13 @@ class Check(unittest.TestCase):
         url = lambda name: 'ssh://synthetic.invalid/' + name + '.git'
         # Test-only destinations: the copy's allowlist names the fixture URLs.
         adapter = hook / 'tools/privacy-check/hook.py'
-        text, count = re.subn(r'PUBLIC_URLS = \([^)]*\)', 'PUBLIC_URLS = ' + repr(tuple(url(x) for x in ('published', 'fresh', 'empty'))), adapter.read_text())
+        text, count = re.subn(r'PUBLIC_URLS = \([^)]*\)', 'PUBLIC_URLS = ' + repr(tuple(url(x) for x in ('published', 'fresh', 'empty', 'ahead'))), adapter.read_text())
         self.assertLessEqual(count, 1)
         adapter.write_text(text)
         ssh = self.root / 'fake-ssh'
+        reached = self.root / 'reached'
         ssh.write_text('#!/bin/sh\nfor a; do cmd=$a; done\nsub=${cmd%% *}\neval "set -- ${cmd#* }"\n'
+                       'echo "$1" >> "' + str(reached) + '"\n'
                        'exec git "${sub#git-}" "' + str(remotes) + '$1"\n')
         ssh.chmod(0o755)
         self.git('config', 'core.sshCommand', str(ssh))
@@ -802,6 +804,54 @@ class Check(unittest.TestCase):
                 self.assertIn('T1 ', out)
                 for key, _ in config:
                     self.git('config', '--unset-all', key)
+        # #872: the destination's main moved on after this clone last
+        # fetched, so its commit is not here yet. The push still narrows,
+        # and the pushed commits themselves are still scanned.
+        ahead = str(remotes / 'ahead.git')
+        subprocess.run(['git', 'init', '-q', '--bare', ahead], check=True)
+        self.git('push', '-q', ahead, published + ':refs/heads/main')
+        moved = self.git('-C', ahead, 'commit-tree', published + '^{tree}', '-p', published, '-m', 'merged later')
+        self.git('-C', ahead, 'update-ref', 'refs/heads/main', moved)
+        self.git('config', 'remote.origin.url', url('ahead'))
+        rc, out = push('ahead')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('range: from the merge-base with upstream', out)
+        self.git('commit', '--allow-empty', '-qm', 'pushed\n\n' + THREAD)
+        self.assertEqual(push('ahead')[0], 1)
+        self.git('reset', '-q', '--hard', 'HEAD~1')
+        # The lookup and fetch reach the push URL and nothing else: no lazy
+        # fetch from a promisor remote, no configured bundle source, and no
+        # per-URL remote settings (which fall back to the full scan).
+        other = remotes / 'other.git'
+        bundle = self.root / 'other.bundle'
+        self.git('-C', str(other), 'bundle', 'create', '-q', str(bundle), 'refs/heads/main')
+        (self.root / 'bundles').write_text('[bundle]\n\tversion = 1\n\tmode = all\n\theuristic = creationToken\n'
+                                           '[bundle "b"]\n\turi = ' + bundle.as_uri() + '\n\tcreationToken = 1\n')
+        side_cases = (
+            ('promisor remote', [('core.repositoryformatversion', '1'), ('extensions.partialClone', 'spy'),
+                                 ('remote.spy.url', url('other')), ('remote.spy.promisor', 'true')]),
+            ('bundle source', [('fetch.bundleURI', (self.root / 'bundles').as_uri())]),
+            ('per-URL remote setting', [('remote.' + url('ahead') + '.promisor', 'true')]),
+        )
+        for n, (case, config) in enumerate(side_cases):
+            with self.subTest(case=case):
+                step = self.git('-C', ahead, 'commit-tree', published + '^{tree}', '-p', moved, '-m', 'merged %d' % n)
+                self.git('-C', ahead, 'update-ref', 'refs/heads/main', step)
+                for key, value in config:
+                    self.git('config', key, value)
+                reached.unlink(missing_ok=True)
+                try:
+                    rc, out = push('ahead')
+                    self.assertNotIn('/other.git', reached.read_text() if reached.exists() else '')
+                    self.assertEqual(self.git('for-each-ref', 'refs/bundles'), '')
+                    if case == 'per-URL remote setting':
+                        self.assertEqual(rc, 1, out)
+                        self.assertIn('T1 ', out)
+                finally:
+                    for key, _ in reversed(config):
+                        self.git('config', '--unset-all', key)
+                    for ref in self.git('for-each-ref', '--format=%(refname)', 'refs/bundles').split():
+                        self.git('update-ref', '-d', ref)
 
     def test_first_push_narrowing_allowlist(self):
         # The production allowlist, read as the hook reads it: which push URL
@@ -981,6 +1031,71 @@ class Check(unittest.TestCase):
         self.git('commit', '--allow-empty', '-qm', 'clean')
         self.history(base=self.public_root)
 
+
+    def commit_files(self, message, files):
+        # files: name -> bytes to write, or None to delete.
+        for name, data in files.items():
+            path = self.repo / name
+            if data is None:
+                path.unlink()
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        self.git('add', '-A')
+        self.git('commit', '-qm', message)
+
+    def scan_range(self):
+        out = io.StringIO()
+        with patch.multiple(self.checker, PUBLIC_ROOT=self.public_root, PUBLIC_ANCHOR=self.anchor), contextlib.redirect_stdout(out):
+            rc = self.checker.main(['--repo', str(self.repo), '--base', self.anchor, '--head', 'HEAD'])
+        return rc, out.getvalue()
+
+    def test_range_reads_each_unchanged_blob_once(self):
+        # #761: every commit tree of a range used to re-read and re-check all
+        # of its files, so a long PR hit Privacy's time cap. A blob seen once
+        # in this run is not read again; every commit is still scanned.
+        self.make_repo()
+        self.commit_files('synthetic files', {'a.md': b'synthetic a', 'b.md': b'synthetic b', 'same.md': b'synthetic b'})
+        for n in range(4):
+            self.commit_files('synthetic edit', {'c.md': b'synthetic edit ' + str(n).encode()})
+        reads, read = [], self.checker.BlobReader.read
+        def counted(reader, sha):
+            reads.append(sha)
+            return read(reader, sha)
+        with patch.object(self.checker.BlobReader, 'read', counted):
+            self.assertEqual(self.scan_range(), (0, 'literals: not used\n'))
+        self.assertEqual(len(reads), len(set(reads)), 'a blob was read again in the same run')
+        # a, b (also at same.md) and the four versions of c.
+        self.assertEqual(len(reads), 6)
+
+    def test_range_findings_repeat_for_every_commit_and_path(self):
+        # #761's cache must not change any verdict: a forbidden blob added
+        # early refuses in every commit tree and at every path holding it,
+        # and a blob's verdict is never reused for a path checked under other
+        # rules (workflows, the contract's bad examples) or for a workflow
+        # whose local target is gone. The expected lines were written by hand.
+        self.make_repo()
+        planted = (THREAD + '\n').encode()
+        bad = ('```bad\n' + THREAD + '\n```\n').encode()
+        runner = b'jobs:\n  test:\n    runs-on: self-hosted\n'
+        caller = b'jobs:\n  test:\n    uses: ./.github/workflows/local.yml\n'
+        local = b'jobs:\n  reusable:\n    runs-on: ubuntu-latest\n'
+        self.commit_files('synthetic 1', {'planted.md': planted, 'contracts/open-development.v1.md': bad,
+                                          'docs/runner.yml': runner, '.github/workflows/caller.yml': caller})
+        self.commit_files('synthetic 2', {'copy.md': planted, 'other.md': bad,
+                                          '.github/workflows/runner.yml': runner,
+                                          '.github/workflows/local.yml': local})
+        self.commit_files('synthetic 3', {'planted.md': None, 'copy.md': None, 'other.md': None,
+                                          '.github/workflows/runner.yml': None})
+        self.assertEqual(self.scan_range(), (1,
+            # commit-tree-1 is HEAD (synthetic 3); -2 is synthetic 2; -3 is synthetic 1.
+            'F2 commit-tree-2:".github/workflows/runner.yml":1\n'
+            'T1 commit-tree-2:"copy.md":1\n'
+            'T1 commit-tree-2:"other.md":2\n'
+            'T1 commit-tree-2:"planted.md":1\n'
+            'T1 commit-tree-3:"planted.md":1\n'
+            'F2 commit-tree-3:".github/workflows/caller.yml":1\n'
+            'literals: not used\n'))
 
     def test_matrix_block_scalar_cannot_hide_include_override(self):
         self.workflow('jobs:\n  test:\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n        os: [ubuntu-latest]\n        include:\n          - note: |\n              ordinary note\n            os: self-hosted\n', 'F2')

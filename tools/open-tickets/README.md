@@ -258,6 +258,8 @@ case/colon variants and repeated-keyword syntax follow
 
 ```sh
 sh tools/open-tickets/test.sh /private/reviewed/O3/check.py /private/reviewed/O14/import.py
+sh tools/open-tickets/test.sh --list                 # its seven parts, one a line
+sh tools/open-tickets/test.sh --only carriage        # one part (CI's release shards, #743)
 ```
 
 CI runs this runner with merged public O3/O14 and synthetic lists, no live GitHub

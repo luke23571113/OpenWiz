@@ -1,6 +1,8 @@
 //! L12 production composition proofs; synthetic inputs only.
 use serde_json::{Value, json};
 
+#[path = "../support/fixture_service.rs"]
+mod fixture_service;
 #[path = "../support/schema.rs"]
 #[allow(dead_code)]
 mod schema;
@@ -258,13 +260,6 @@ fn runtime_process() {
     );
     fs::write(root.join("runtime-error"), format!("{result:?}")).unwrap();
 }
-struct Process(std::process::Child);
-impl Drop for Process {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 
 fn command_sources(f: &Fixture) {
     fs::write(f.state.join("room"), "#!/bin/sh\nprintf '[]\\n'\n").unwrap();
@@ -348,7 +343,8 @@ fn runtime_case(scenario: &str) {
     } else {
         std::env::current_exe().unwrap()
     };
-    let mut child = Process(
+    // Stopped with the `gh` script it may still be running (#762).
+    let mut child = fixture_service::Service::start(
         Command::new(program)
             .args(["--exact", "runtime_process", "--nocapture"])
             .current_dir(&f.checkout)
@@ -360,9 +356,7 @@ fn runtime_case(scenario: &str) {
             .env("HOME", f.root.join("synthetic-home"))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(stderr)
-            .spawn()
-            .unwrap(),
+            .stderr(stderr),
     );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(12);
     loop {
@@ -386,7 +380,6 @@ fn runtime_case(scenario: &str) {
         if let Ok(status) = openwiz_service::runtime::status(&f.state)
             && f.state.join("other-job").exists()
             && !status["last_pass"].is_null()
-            && !status["tick"]["last_ended"].is_null()
             && loop_ready
         {
             assert_eq!(

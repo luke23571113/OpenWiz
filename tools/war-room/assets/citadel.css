@@ -1,0 +1,27 @@
+/* WRD3 (#631): the masthead engraving, drawn in CSS for this repository (no image, font or
+   request; the page CSP is unchanged). An original citadel under a ringed planet: navy sky with
+   cobalt stipple and streaks, a hatched planet, orbital rings, a hatched skyline with lit windows,
+   two domes and an engraved ground. Decoration only: aria-hidden on the page. */
+.art{position:relative;overflow:hidden;background:
+ radial-gradient(circle,#cfe3ff 0 .9px,transparent 1.4px) 13px 7px/97px 61px,
+ radial-gradient(circle,#3d6fe6 0 .7px,transparent 1.1px) 0 0/7px 9px,
+ repeating-linear-gradient(-10deg,transparent 0 23px,rgba(45,95,220,.32) 23px 24px),
+ linear-gradient(#030a24,#0a1f63 70%,#0b2a8a)}
+.art::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#000,transparent 18%)}
+.art i{position:absolute;display:block}
+.art .planet{left:8%;top:9%;width:15%;aspect-ratio:1;border-radius:50%;border:1.5px solid #9cc3ff;background:
+ radial-gradient(circle at 35% 30%,rgba(207,227,255,.35),transparent 45%),
+ repeating-linear-gradient(70deg,#0a2a8f 0 3px,#4d86ff 3px 4px)}
+.art .ring{left:-2%;right:-6%;top:34%;height:44%;border-radius:50%;border:2px solid #8fb8ff;transform:rotate(-5deg)}
+.art .ring.r2{top:31%;height:50%;opacity:.55;border-width:1.2px}
+.art .ground{left:0;right:0;bottom:0;height:24%;background:
+ repeating-linear-gradient(0deg,transparent 0 5px,rgba(36,86,214,.6) 5px 6px),#04103a;
+ border-top:1.5px solid #cfe3ff}
+.art .city{left:34%;right:0;bottom:23%;height:62%;filter:drop-shadow(1px 0 0 #9cc3ff) drop-shadow(-1px 0 0 #9cc3ff) drop-shadow(0 -1px 0 #9cc3ff)}
+.art .city::before{content:"";position:absolute;inset:0;clip-path:polygon(0% 100%, 0.0% 59.7%, 1.4% 45.7%, 2.8% 59.7%, 2.8% 96%, 3.6% 96%, 3.6% 31.3%, 5.8% 31.3%, 5.8% 96%, 6.6% 96%, 6.6% 35.9%, 8.0% 18.2%, 9.4% 35.9%, 9.4% 51.9%, 11.0% 51.9%, 11.0% 58.1%, 12.1% 49.9%, 13.2% 58.1%, 13.2% 66.2%, 14.9% 50.8%, 16.6% 66.2%, 16.6% 96%, 17.0% 96%, 17.0% 73.1%, 19.8% 73.1%, 19.8% 96%, 20.2% 96%, 20.2% 60.2%, 23.6% 60.2%, 23.6% 96%, 24.0% 96%, 24.0% 47.4%, 25.7% 29.5%, 27.4% 47.4%, 27.4% 96%, 28.2% 96%, 28.2% 53.5%, 31.0% 53.5%, 31.0% 96%, 31.8% 96%, 31.8% 67.6%, 33.5% 52.3%, 35.2% 67.6%, 35.2% 96%, 36.0% 96%, 36.0% 50.6%, 39.4% 50.6%, 39.4% 96%, 40.2% 96%, 40.2% 12.6%, 42.4% 12.6%, 42.4% 57.9%, 44.1% 46.2%, 45.8% 57.9%, 45.8% 96%, 46.6% 96%, 46.6% 37.2%, 47.7% 22.1%, 48.8% 37.2%, 48.8% 96%, 49.2% 96%, 49.2% 64.0%, 50.0% 53.3%, 50.8% 64.0%, 50.8% 39.7%, 51.9% 29.4%, 53.0% 39.7%, 53.0% 66.7%, 55.8% 66.7%, 55.8% 96%, 56.6% 96%, 56.6% 34.8%, 57.7% 19.2%, 58.8% 34.8%, 58.8% 96%, 59.6% 96%, 59.6% 38.4%, 62.4% 38.4%, 62.4% 96%, 63.2% 96%, 63.2% 46.9%, 66.6% 46.9%, 66.6% 96%, 67.0% 96%, 67.0% 15.6%, 69.2% 15.6%, 69.2% 96%, 70.0% 96%, 70.0% 58.2%, 72.8% 58.2%, 72.8% 60.3%, 75.6% 60.3%, 75.6% 30.4%, 77.2% 30.4%, 77.2% 96%, 77.6% 96%, 77.6% 37.8%, 79.8% 37.8%, 79.8% 96%, 80.2% 96%, 80.2% 40.5%, 81.0% 27.3%, 81.8% 40.5%, 81.8% 96%, 82.6% 96%, 82.6% 73.1%, 84.3% 63.6%, 86.0% 73.1%, 86.0% 96%, 86.8% 96%, 86.8% 66.9%, 88.5% 55.0%, 90.2% 66.9%, 90.2% 96%, 90.6% 96%, 90.6% 36.7%, 92.2% 36.7%, 92.2% 96%, 93.0% 96%, 93.0% 58.4%, 94.4% 46.1%, 95.8% 58.4%, 95.8% 42.6%, 98.6% 42.6%, 98.6% 40.5%, 100.3% 28.7%, 102.0% 40.5%, 100% 100%);background:
+ radial-gradient(circle,#d6e7ff 0 1px,transparent 1.5px) 2px 4px/8px 11px,
+ repeating-linear-gradient(90deg,#081c63 0 2px,#2f66e8 2px 3px)}
+.art .dome{bottom:23%;aspect-ratio:2/1;border-radius:999px 999px 0 0;border:1.4px solid #cfe3ff;border-bottom:0;background:
+ repeating-conic-gradient(from -90deg at 50% 100%,#0d3199 0 13deg,#7fb0ff 13deg 14deg),#0d3199}
+.art .dome.d1{left:58%;width:13%}.art .dome.d2{left:70%;width:10%}
+.art .near{left:-2%;right:-6%;top:34%;height:44%;border-radius:50%;border:2px solid transparent;border-bottom-color:#cfe3ff;transform:rotate(-5deg)}

@@ -1,7 +1,7 @@
 //! LP5: real scheduler, synthetic checks and never a live provider.
-#[path = "l6_switches.rs"]
-mod fixtures;
-use fixtures::Fixture;
+#[path = "fixture.rs"]
+mod fixture;
+use fixture::Fixture;
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use openwiz_core::{
     loops::{Capacity, Limits},

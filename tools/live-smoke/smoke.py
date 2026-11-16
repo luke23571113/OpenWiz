@@ -4,7 +4,6 @@ import argparse
 import ctypes
 import fcntl
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,44 +16,97 @@ import tempfile
 import time
 
 CLAIMS = ('fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
-          'json', 'send', 'new', 'app', 'read_safety')
+          'json', 'send', 'new', 'app', 'read_safety', 'install')
+# A kit without a `claims` declaration is #1844's combined sheet: all of these.
+COMBINED = CLAIMS[:11]
+
+
+def kit_claims(kit):
+    """The claims this kit checks: its declaration, exactly (#772)."""
+    return tuple(kit['claims']) if 'claims' in kit else COMBINED
 LIMIT = 32 * 1024 * 1024
-RULE_KINDS = {
-    'frontier': 'start_builder', 'first_review': 'start_reviewer',
-    'fresh_review': 'start_reviewer', 're_check': 'start_reviewer',
-    'review_findings': 'send_findings', 'ci_failed': 'send_findings',
-    'contract_changed': 'send_findings', 'adr_0008': 'merge',
-    'merged': 'close', 'all_closed': 'close', 'contract_hold': 'hold',
-    'release': 'hold', 'finished': 'archive', 'builder_refused': 'log_refused_start',
-    'reviewer_refused': 'log_refused_start', 'needs_info': 'wake',
-    'disputed': 'wake', 'diagnosis': 'wake', 'look': 'wake',
-    'held': 'needs_you', 're_approve': 'needs_you', 'person_ready': 'needs_you',
-    'spec_summary': 'needs_you', 'restart': 'wake',
-}
+# AC6's bound on one fleet block: sittings (block events passed) and seconds.
+SITTINGS, FLEET_SECONDS = 60, 10800
 
 
 class Refusal(Exception):
     pass
 
 
-# #2216's expected-plan restriction, loaded by path: under `python3 -I` this
-# folder is not on sys.path, and its http.py must never shadow the stdlib.
-RESTRICTION = Path(__file__).resolve().with_name('restriction.py')
-_SPEC = importlib.util.spec_from_file_location('live_smoke_restriction', RESTRICTION)
-restriction = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(restriction)
-
-
 JOURNAL = 'journal.jsonl'
-# The reviewed probe scripts a live fleet-claim write may run besides the
-# canonical tick (the AC6 phone reply and T3 cleanup). Anything else, such as
-# a wrapper that could run an unpinned tick, is refused before any step.
+# The reviewed probe scripts a live fleet-claim write may run (the AC6 phone
+# reply and T3 cleanup). launch-fleet makes the fleet's own writes; the runner
+# only reads them back. Anything else, such as a wrapper, is refused before any step.
 PROBES = (str(Path(__file__).resolve().with_name('browser.mjs')),
           str(Path(__file__).resolve().with_name('cleanup.py')))
 
 
-def is_tick(kit, step):
-    return step.get('kind') == 'write' and step.get('argv') == [kit['openwiz'], 'fleet', 'tick', '--json']
+# my.openwiz.dev's server owns 7370 on the PC (#772): no step may reach it.
+# The no-argument TUI always connects there, so it can never be a kit step.
+RESERVED_PORT = 7370
+
+
+def refuse_reserved_port(kit, argv):
+    """Refuse 7370 wherever a step's argv reaches a loopback port: `--port N`,
+    the HTTP probe's port and a browser probe config's origin. A launch that would fall back to
+    the default port (bare `openwiz`, `openwiz ui`, bare `openwiz-terminal`)
+    is refused as if it named 7370."""
+    ports = []
+    for index, arg in enumerate(argv):
+        following = argv[index + 1] if index + 1 < len(argv) else None
+        if arg == '--port' and following is not None:
+            ports.append(following)
+        elif arg.startswith('--port='):
+            ports.append(arg[len('--port='):])
+        elif Path(arg).is_absolute() and Path(arg).name == 'http.py' and following is not None:
+            ports.append(following)
+        elif Path(arg).is_absolute() and Path(arg).name == 'browser.mjs' and following is not None:
+            try:
+                if not Path(following).is_absolute():
+                    raise OSError()
+                config = decode(Path(following).read_bytes())
+            except (OSError, Refusal) as error:
+                raise Refusal('invalid_kit') from error
+            match = re.fullmatch(r'http://127\.0\.0\.1:([0-9]{1,5})/', config.get('origin', '')
+                                 if type(config) is dict and type(config.get('origin')) is str else '')
+            if not match:
+                raise Refusal('invalid_kit')
+            ports.append(match.group(1))
+        rest = argv[index + 1:]
+        explicit = any(r == '--port' or r.startswith('--port=') for r in rest)
+        if ((arg == kit['openwiz'] and (not rest or (rest[0] == 'ui' and rest != ['ui', '--json'] and not explicit)))
+                or (Path(arg).name == 'openwiz-terminal' and not explicit)):
+            raise Refusal('reserved_port')
+    if any(re.fullmatch('[0-9]{1,5}', port) and int(port) == RESERVED_PORT for port in ports):
+        raise Refusal('reserved_port')
+
+
+def retired(kit, argv):
+    """`openwiz fleet tick` in any form, and `openwiz engine`: the engine
+    retirement removes them (contracts/engine-retirement.v1.md, section 9).
+
+    The program is the pinned `openwiz` by its path, by file identity (a
+    symlink or hardlink to it) or by its pinned bytes (a pinned copy). The
+    CLI dispatches on its arguments, never its name. An identity that cannot
+    be read counts as the same program: fail closed (review R2)."""
+    if argv[1:3] != ['fleet', 'tick'] and argv[1:2] != ['engine']:
+        return False
+    if argv[0] == kit['openwiz']:
+        return True
+    try:
+        if os.path.samefile(argv[0], kit['openwiz']):
+            return True
+    except (OSError, TypeError, ValueError):
+        return True
+    pinned = kit['artifacts'].get(argv[0])
+    return pinned is not None and pinned == kit['artifacts'].get(kit['openwiz'])
+
+
+def in_block(kit, index):
+    """Whether step `index` is inside a fleet repeat block."""
+    ids = {s['id']: i for i, s in enumerate(kit['steps'])}
+    return any('again_from' in s and ids.get(s['again_from'], i) <= index < i
+               for i, s in enumerate(kit['steps']))
 
 
 def _elf(path, name=None):
@@ -150,9 +202,16 @@ def pointer(value, path):
 
 def load_kit(path):
     kit = decode(path.read_bytes())
+    # The old no-argument TUI key could only mean 7370 (#772).
+    if type(kit) is dict and 'default_terminal_port' in kit:
+        raise Refusal('reserved_port')
     base = {'schema', 'mode', 'cwd', 'openwiz', 'artifacts', 'env', 'timeout_seconds', 'steps'}
     if (type(kit) is not dict or not base <= set(kit)
-            or not set(kit) - base <= {'source', 'default_terminal_port', 'release'}):
+            or not set(kit) - base <= {'source', 'claims', 'release'}):
+        raise Refusal('invalid_kit')
+    if 'claims' in kit and (type(kit['claims']) is not list or not kit['claims']
+                            or any(c not in CLAIMS for c in kit['claims'])
+                            or len(set(kit['claims'])) != len(kit['claims'])):
         raise Refusal('invalid_kit')
     if kit['schema'] != 'openwiz.live-smoke-kit.v1' or kit['mode'] not in ('fixture', 'live'):
         raise Refusal('invalid_kit')
@@ -160,10 +219,6 @@ def load_kit(path):
         raise Refusal('invalid_kit')
     if not integer(kit['timeout_seconds'], 1, 70):
         raise Refusal('invalid_kit')
-    if 'default_terminal_port' in kit:
-        port = kit['default_terminal_port']
-        if type(port) is not str or not re.fullmatch('[0-9]{1,5}', port) or not 1 <= int(port) <= 65535:
-            raise Refusal('invalid_kit')
     if type(kit['artifacts']) is not dict or not kit['artifacts']:
         raise Refusal('invalid_kit')
     for name, sha in kit['artifacts'].items():
@@ -189,8 +244,7 @@ def load_kit(path):
     if kit['mode'] == 'live':
         if any(k.startswith('OPENWIZ_FIXTURE') for k in os.environ.keys() | kit['env'].keys()):
             raise Refusal('fixture_environment')
-        if ({str(Path(__file__).resolve()), str(RESTRICTION)} - kit['artifacts'].keys()
-                or 'source' not in kit):
+        if str(Path(__file__).resolve()) not in kit['artifacts'] or 'source' not in kit:
             raise Refusal('invalid_kit')
         exact(kit['source'], {'checkout', 'head'})
         if not Path(kit['source']['checkout']).is_absolute() or not re.fullmatch('[0-9a-f]{40}', kit['source']['head']):
@@ -217,19 +271,22 @@ def load_kit(path):
             argv = step['argv']
             if type(argv) is not list or not argv or any(not isinstance(a, str) or '\0' in a for a in argv):
                 raise Refusal('invalid_kit')
+            if retired(kit, argv):
+                raise Refusal('retired_command')
             if argv[0] not in kit['artifacts'] or not os.access(argv[0], os.X_OK):
                 raise Refusal('invalid_kit')
             # Pin scripts and private probe inputs as well as their interpreters.
             for arg in argv[1:]:
                 if Path(arg).is_absolute() and Path(arg).is_file() and arg not in kit['artifacts']:
                     raise Refusal('invalid_kit')
+            refuse_reserved_port(kit, argv)
             if not integer(step['exit'], 0, 255) or type(step['checks']) is not list or not step['checks']:
                 raise Refusal('invalid_kit')
             if 'until' in step and (step['kind'] != 'await' or type(step['until']) is not list or not step['until']):
                 raise Refusal('invalid_kit')
             for check in step['checks'] + step.get('until', []):
                 if type(check) is not dict or set(check) not in (
-                    {'path', 'equals'}, {'path', 'same_as'}, {'path', 'actions_in'}, {'path', 'one_of'}
+                    {'path', 'equals'}, {'path', 'same_as'}, {'path', 'one_of'}
                 ):
                     raise Refusal('invalid_kit')
                 validate_pointer(check['path'])
@@ -243,27 +300,8 @@ def load_kit(path):
                     if check['same_as']['step'] not in ids:
                         raise Refusal('invalid_kit')
                     validate_pointer(check['same_as']['path'])
-                if 'actions_in' in check:
-                    scope = check['actions_in']
-                    exact(scope, {'specs', 'tickets', 'rules', 'never_start'})
-                    for field in ('specs', 'tickets', 'never_start'):
-                        values = scope[field]
-                        if (type(values) is not list or any(not integer(v, 1, 2**53) for v in values)
-                                or len(values) != len(set(values))):
-                            raise Refusal('invalid_kit')
-                    if (not scope['specs'] or not scope['tickets'] or type(scope['rules']) is not list
-                            or not scope['rules'] or any(r not in RULE_KINDS for r in scope['rules'])
-                            or not set(scope['never_start']) <= set(scope['tickets'])):
-                        raise Refusal('invalid_kit')
-            # A tick runs only as the saved plan the scope audit accepted; the
-            # audit covers the whole ordered action array, never a part of it.
-            if is_tick(kit, step) and not any('actions_in' in c and c['path'] == '/actions'
-                                              for c in step['checks']):
-                raise Refusal('invalid_kit')
-            if any('actions_in' in c and c['path'] != '/actions' for c in step['checks']):
-                raise Refusal('invalid_kit')
             if (kit['mode'] == 'live' and step['claim'] == 'fleet' and step['kind'] == 'write'
-                    and not is_tick(kit, step) and not reviewed_probe(step['argv'])):
+                    and not reviewed_probe(step['argv'])):
                 raise Refusal('invalid_kit')
             claims.add(step['claim'])
         ids.add(step['id'])
@@ -271,23 +309,17 @@ def load_kit(path):
             if step['kind'] != 'await' or 'until' not in step or step['claim'] != 'fleet' or step['again_from'] not in ids - {step['id']}:
                 raise Refusal('invalid_kit')
             start = next(i for i, s in enumerate(kit['steps']) if s['id'] == step['again_from'])
+            # A block is launch-fleet's work read back: its own event(s), where
+            # launch-fleet acts, and reads. No write is ever repeated.
             block = kit['steps'][start:kit['steps'].index(step)]
-            writes = [s for s in block if s['kind'] == 'write']
-            if (any(s['claim'] != 'fleet' or 'again_from' in s for s in block)
-                    or len(writes) != 1
-                    or writes[0]['argv'] != [kit['openwiz'], 'fleet', 'tick', '--json']
+            if (any(s['claim'] != 'fleet' or 'again_from' in s or s['kind'] == 'write' for s in block)
                     or not any(s['kind'] == 'event' for s in block)):
                 raise Refusal('invalid_kit')
-    if claims != set(CLAIMS):
+    if claims != set(kit_claims(kit)):
         raise Refusal('missing_claim')
-    for claim in ('fleet', 'send', 'new'):
+    for claim in {'send', 'new'} & claims:
         if not any(s['claim'] == claim and s['kind'] == 'write' for s in kit['steps']):
             raise Refusal('missing_write')
-    if 'default_terminal_port' in kit:
-        service = next((i for i, s in enumerate(kit['steps']) if s['id'] == 'service_before'), None)
-        first_write = next(i for i, s in enumerate(kit['steps']) if s['kind'] == 'write')
-        if service is None or service >= first_write or kit['steps'][service]['kind'] != 'read':
-            raise Refusal('invalid_kit')
     return kit
 
 
@@ -457,8 +489,6 @@ def observe(doc, checks):
         value = pointer(doc, check['path'])
         if 'one_of' in check:
             seen.append({'value': value})
-        elif 'actions_in' in check:
-            seen.append({'actions': value})
         else:
             seen.append({'digest': digest(value)})
     return seen
@@ -479,9 +509,12 @@ def apply(kit, state, event):
     if kind == 'attempt':
         item['state'] = 'attempting'
         state['writes'][step['claim']] = state['writes'].get(step['claim'], 0) + 1
-        state['fleet'].update(sittings=event['sittings'], started=event['fleet_started'])
     elif kind == 'step':
         item.update(state=event['state'], facts=event['facts'])
+        # Each block event passed is one fleet sitting; the first starts the clock.
+        if step['kind'] == 'event' and in_block(kit, index):
+            state['fleet'].update(sittings=state['fleet']['sittings'] + 1,
+                                  started=state['fleet']['started'] or event['at'])
         state['reason'] = event['reason']
         state['fleet']['pending'] = event['pending']
     elif kind == 'repeat':
@@ -501,11 +534,6 @@ def _evaluates(kit, step, observed, state):
             return False
         if 'one_of' in check:
             if set(seen) != {'value'} or type(seen['value']) is not str or seen['value'] not in check['one_of']:
-                return False
-        elif 'actions_in' in check:
-            try:
-                compare({'actions': seen.get('actions')}, [check], state, ids)
-            except Refusal:
                 return False
         elif 'equals' in check:
             if seen != {'digest': digest(check['equals'])}:
@@ -530,7 +558,7 @@ def replay(kit, events):
         if (n == 0) != (kind == 'start'):
             raise Refusal('evidence_mismatch')
         if kind == 'start':
-            if set(event) != {'kind', 'kit', 'candidate', 'mode', 'runner', 'restriction', 'source', 'at'}:
+            if set(event) != {'kind', 'kit', 'candidate', 'mode', 'runner', 'source', 'at'}:
                 raise Refusal('evidence_mismatch')
             apply(kit, state, event)
             continue
@@ -548,10 +576,9 @@ def replay(kit, events):
         before = all(i['state'] == 'pass' for i in state['steps'][:index])
         pending = state['fleet']['pending']
         if kind == 'attempt':
-            if (set(event) != {'kind', 'id', 'claim', 'sittings', 'fleet_started', 'at'}
+            if (set(event) != {'kind', 'id', 'claim', 'at'}
                     or step['kind'] != 'write' or event['claim'] != step['claim'] or item['state'] != 'not_run'
-                    or not before or pending or not integer(event['sittings'], 0, 60)
-                    or not integer(event['fleet_started'], 0, 2**53)):
+                    or not before or pending):
                 raise Refusal('evidence_mismatch')
         elif kind == 'step':
             if (not {'kind', 'id', 'state', 'facts', 'reason', 'pending', 'at'} <= set(event)
@@ -569,7 +596,8 @@ def replay(kit, events):
                 # A read or await that ended incomplete is simply run again.
                 ok = item['state'] in ('not_run', 'incomplete') and before and not pending
             if step['kind'] == 'event':
-                ok = ok and event['state'] == 'pass'
+                ok = (ok and event['state'] == 'pass'
+                      and not (in_block(kit, index) and state['fleet']['sittings'] >= SITTINGS))
             elif event['state'] == 'pass':
                 ok = (ok and event.get('exit') == step['exit'] and type(event.get('exit')) is int
                       and sha.fullmatch(str(event.get('output_sha256')))
@@ -655,7 +683,7 @@ def load_state(path, kit):
     if (not all(integer(state['times'][k], 0, 2**53) for k in ('started', 'finished'))
             or (state['times']['finished'] and state['times']['finished'] < state['times']['started'])):
         raise Refusal('invalid_state')
-    if (not integer(state['fleet']['sittings'], 0, 60)
+    if (not integer(state['fleet']['sittings'], 0, SITTINGS)
             or not integer(state['fleet']['started'], 0, 2**53)
             or type(state['fleet']['pending']) is not bool):
         raise Refusal('invalid_state')
@@ -677,7 +705,7 @@ def load_state(path, kit):
         raise Refusal('invalid_state')
     if state['reason'] not in ('none', 'comparison', 'uncertain_write', 'missing_fact',
                                 'invalid_json', 'command_failed', 'timeout', 'output_limit', 'pending',
-                                'missing_credential', 'default_terminal_port',
+                                'missing_credential',
                                 'process_containment_unavailable', 'process_containment_failed'):
         raise Refusal('invalid_state')
     return state
@@ -685,7 +713,7 @@ def load_state(path, kit):
 
 def report(kit, state, verdict, reason):
     claims = {}
-    for claim in CLAIMS:
+    for claim in kit_claims(kit):
         items = [item['state'] for step, item in zip(kit['steps'], state['steps'])
                  if step['claim'] == claim and step['kind'] != 'event']
         claims[claim] = ('fail' if 'fail' in items else 'pass' if all(s == 'pass' for s in items)
@@ -702,31 +730,6 @@ def compare(doc, checks, state, ids):
             if type(value) is not str or value not in check['one_of']:
                 raise Refusal('comparison')
             continue
-        if 'actions_in' in check:
-            scope = check['actions_in']
-            if type(value) is not list:
-                raise Refusal('missing_fact')
-            builders = set()
-            for action in value:
-                if (type(action) is not dict or set(action) != {'kind', 'rule', 'spec', 'ticket', 'facts', 'outcome'}
-                        or type(action['facts']) is not dict or type(action['outcome']) is not dict):
-                    raise Refusal('missing_fact')
-                if (type(action['spec']) is not int or action['spec'] not in scope['specs']
-                        or (action['ticket'] is not None and (type(action['ticket']) is not int
-                            or action['ticket'] not in scope['tickets']))
-                        or not isinstance(action['rule'], str) or action['rule'] not in scope['rules']
-                        or action['kind'] != RULE_KINDS[action['rule']]
-                        or (action['kind'] == 'start_builder' and action['ticket'] is None)
-                        or (action['kind'] == 'start_builder' and action['ticket'] in scope['never_start'])):
-                    raise Refusal('comparison')
-                if action['kind'] == 'start_builder':
-                    key = (action['spec'], action['ticket'])
-                    if key in builders:
-                        raise Refusal('comparison')
-                    builders.add(key)
-                if type(doc) is dict and doc.get('mode') == 'dry_run' and action['outcome'] != {'state': 'planned'}:
-                    raise Refusal('comparison')
-            continue
         actual = digest(value)
         if 'equals' in check:
             expected = digest(check['equals'])
@@ -739,15 +742,6 @@ def compare(doc, checks, state, ids):
             expected = other['facts'][key]
         if actual != expected:
             raise Refusal('comparison')
-
-
-def audit(plan, step, state, ids):
-    """The step's scope allowlist, applied to the preview before it is saved."""
-    try:
-        compare(plan, [c for c in step['checks'] if 'actions_in' in c], state, ids)
-    except Refusal:
-        return False
-    return True
 
 
 def assess(doc, step, state, ids):
@@ -787,10 +781,6 @@ def reconcile(path, kit, state):
 
 
 def run(kit, path, candidate=None):
-    # The default-port guard (named for 0.0.12's removed terminal steps, #776):
-    # a kit declaring it uses 7370 and never a different service.
-    if kit.get('default_terminal_port', '7370') != '7370':
-        return report(kit, initial(kit), 'incomplete', 'default_terminal_port'), 3
     private_dir(path)
     fd = os.open(path / 'lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, 'r+') as lock:
@@ -808,7 +798,7 @@ def run(kit, path, candidate=None):
         if not started:
             record(path, kit, state, {
                 'kind': 'start', 'kit': digest(kit), 'candidate': bound, 'mode': kit['mode'],
-                'runner': file_hash(Path(__file__).resolve()), 'restriction': file_hash(RESTRICTION),
+                'runner': file_hash(Path(__file__).resolve()),
                 'source': kit['source']['head'] if 'source' in kit else None})
         if any(s['state'] == 'fail' for s in state['steps']):
             return report(kit, state, 'fail', 'comparison'), 1
@@ -831,11 +821,11 @@ def run(kit, path, candidate=None):
         if (state['fleet']['started']
                 and any('again_from' in s and item['state'] != 'pass'
                         for s, item in zip(kit['steps'], state['steps']))
-                and not 0 <= int(time.time()) - state['fleet']['started'] < 10800):
+                and not 0 <= int(time.time()) - state['fleet']['started'] < FLEET_SECONDS):
             return report(kit, state, 'incomplete', 'fleet_limit'), 3
-        # A completed, known tick may be followed by another tick on a later
-        # event. Check its readback first: a merge that arrived between sittings
-        # must not cause an unnecessary tick. No other write is repeatable.
+        # A pending readback is checked first on the next event: once
+        # launch-fleet's work shows, the block is done; otherwise its reads run
+        # again, within AC6's cap. The block holds no write to repeat.
         if state['fleet']['pending']:
             index = next(i for i, s in enumerate(kit['steps'])
                          if 'again_from' in s and state['steps'][i]['state'] == 'incomplete')
@@ -853,6 +843,8 @@ def run(kit, path, candidate=None):
                     return report(kit, state, 'fail', 'comparison'), 1
                 if str(error) != 'pending':
                     return report(kit, state, 'incomplete', str(error)), 3
+                if state['fleet']['sittings'] >= SITTINGS:
+                    return report(kit, state, 'incomplete', 'fleet_limit'), 3
                 record(path, kit, state, dict(seen, kind='repeat', id=step['id'], again_from=step['again_from']))
             else:
                 record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts={},
@@ -863,65 +855,26 @@ def run(kit, path, candidate=None):
             if item['state'] == 'pass':
                 continue
             if step['kind'] == 'event':
+                if in_block(kit, index) and state['fleet']['sittings'] >= SITTINGS:
+                    return report(kit, state, 'incomplete', 'fleet_limit'), 3
                 record(path, kit, state, {'kind': 'step', 'id': step['id'], 'state': 'pass', 'facts': {},
                                           'reason': state['reason'], 'pending': False})
                 return report(kit, state, 'incomplete', 'next_event'), 3
             if item['state'] == 'incomplete' and step['kind'] == 'write':
                 return report(kit, state, 'incomplete', 'uncertain_write'), 3
             verify_artifacts(kit)
-            pinned, seen = None, {}
+            seen = {}
             if step['kind'] == 'write':
-                # The approved scope bounds consumed attempts, repeats included.
+                # The approved scope bounds consumed attempts.
                 if ('release' in kit and state['writes'].get(step['claim'], 0)
                         >= kit['release']['scope']['writes'].get(step['claim'], 0)):
                     return report(kit, state, 'incomplete', 'write_limit'), 3
-                repeated = any(s.get('again_from') in ids
-                               and ids[s['again_from']] <= index < i
-                               for i, s in enumerate(kit['steps']))
-                fleet, now = state['fleet'], int(time.time())
-                if repeated and (fleet['sittings'] >= 60
-                                 or (fleet['started'] and not 0 <= now - fleet['started'] < 10800)):
-                    return report(kit, state, 'incomplete', 'fleet_limit'), 3
-                if is_tick(kit, step):
-                    # Before any effect: the binary must offer --expect-plan and
-                    # its one preview must pass the step's scope audit; otherwise
-                    # refuse here, consuming nothing. The saved plan then
-                    # constrains the tick itself, including recovery (#1892, #2216).
-                    try:
-                        pinned = restriction.establish(
-                            kit['openwiz'], Path(os.path.abspath(path)),
-                            lambda argv: launch(kit, argv, step.get('token_env')),
-                            lambda plan: audit(plan, step, state, ids))
-                    except (Refusal, restriction.Refused) as error:
-                        return report(kit, state, 'incomplete', str(error)), 3
-                    except subprocess.TimeoutExpired:
-                        return report(kit, state, 'incomplete', 'timeout'), 3
                 # Durable BEFORE any effect; this attempt is never replayed.
-                record(path, kit, state, {
-                    'kind': 'attempt', 'id': step['id'], 'claim': step['claim'],
-                    'sittings': fleet['sittings'] + (1 if repeated else 0),
-                    'fleet_started': (fleet['started'] or now) if repeated else fleet['started']})
+                record(path, kit, state, {'kind': 'attempt', 'id': step['id'], 'claim': step['claim']})
             try:
-                if pinned:
-                    def observed(argv):
-                        code, raw = launch(kit, argv, step.get('token_env'))
-                        seen.update(exit=code, output_sha256=hashlib.sha256(raw).hexdigest())
-                        return code, raw
-                    code, doc = 0, restriction.execute(pinned, observed)
-                else:
-                    code, doc = command(kit, step['argv'], step.get('token_env'), seen)
+                code, doc = command(kit, step['argv'], step.get('token_env'), seen)
                 if code != step['exit']:
                     raise Refusal('command_failed')
-                if 'default_terminal_port' in kit and step['id'] == 'service_before':
-                    if (pointer(doc, '/schema') != 'openwiz.service-status.v1'
-                            or pointer(doc, '/server/port') != 7370):
-                        raise Refusal('default_terminal_port')
-                if is_tick(kit, step):
-                    if (type(doc) is not dict or doc.get('schema') != 'openwiz.fleet-tick.v1'
-                            or doc.get('mode') != 'run' or type(doc.get('actions')) is not list
-                            or any(type(a) is not dict or a.get('outcome') != {'state': 'done'}
-                                   for a in doc['actions'])):
-                        raise Refusal('uncertain_write')
                 assess(doc, step, state, ids)
                 # Retain only hashes of facts later comparisons require.
                 facts = {}
@@ -933,9 +886,9 @@ def run(kit, path, candidate=None):
                 record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts=facts,
                                               reason='none', pending=False,
                                               observed=observe(doc, step['checks'] + step.get('until', []))))
-            except (Refusal, restriction.Refused, subprocess.TimeoutExpired) as error:
-                # A restricted tick that refused or departed from its plan has
-                # still consumed its attempt: it is never launched again.
+            except (Refusal, subprocess.TimeoutExpired) as error:
+                # A write that failed or timed out has still consumed its
+                # attempt: it is never launched again.
                 reason = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else str(error)
                 if step['kind'] == 'write' and reason != 'comparison':
                     reason = 'uncertain_write'
@@ -969,6 +922,9 @@ def main():
         if args.execute and (kit['mode'] != 'live' or args.execute != digest(kit)):
             raise Refusal('approval_mismatch')
         if args.dry_run:
+            # A dry run given the candidate checks it carries this kit (#772).
+            if args.candidate:
+                bind_candidate(kit, decode(args.candidate.read_bytes()))
             doc, code = report(kit, initial(kit), 'not_run', 'dry_run'), 0
         else:
             candidate = decode(args.candidate.read_bytes()) if args.candidate else None

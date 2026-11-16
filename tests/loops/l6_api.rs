@@ -1,5 +1,5 @@
 //! LP5 HTTP seam, private fixtures with explicit trusted operator context.
-use super::{l6_cli::FixedClock, l6_switches::Fixture};
+use super::{fixture::Fixture, l6_cli::FixedClock};
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use openwiz_server::{Config, ReadSources, Server, loops::Switching};
 use std::{
@@ -196,7 +196,7 @@ fn api_refuses_unknown_foreign_and_missing_trusted_context() {
 
 #[test]
 fn installed_api_attributes_to_local_operator_and_refuses_missing_invalid_or_foreign_context() {
-    use super::{l6_config::config, l6_switches::git};
+    use super::{fixture::git, l6_config::config};
     use serde_json::{Value, json};
     use std::fs;
     let f = Fixture::new();
@@ -298,58 +298,6 @@ fn installed_api_attributes_to_local_operator_and_refuses_missing_invalid_or_for
         "synthetic-second-installed-operator"
     );
     assert_eq!(f.saved()["events"].as_array().unwrap().len(), 2);
-}
-
-#[test]
-fn route_inventory_appends_exactly_the_two_local_switch_writes() {
-    use openwiz_server::{ROUTES, Route};
-    let notification_routes = [
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/status",
-        },
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/preferences",
-        },
-        Route {
-            method: "PUT",
-            path: "/api/v1/notifications/preferences",
-        },
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/subscription",
-        },
-        Route {
-            method: "PUT",
-            path: "/api/v1/notifications/subscription",
-        },
-        Route {
-            method: "DELETE",
-            path: "/api/v1/notifications/subscription",
-        },
-        // #2036: the bound-target GET pinned in notifications.v1.
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/targets/{token}",
-        },
-    ];
-    assert_eq!(ROUTES.len(), 22 + notification_routes.len());
-    let (legacy, appended) = ROUTES.split_at(22);
-    assert_eq!(appended, notification_routes);
-    assert_eq!(
-        &legacy[20..],
-        &[
-            Route {
-                method: "POST",
-                path: "/api/v1/loops/{name}/off"
-            },
-            Route {
-                method: "POST",
-                path: "/api/v1/loops/{name}/on"
-            },
-        ]
-    );
 }
 
 #[test]

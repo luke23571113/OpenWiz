@@ -1,0 +1,178 @@
+Scoped local checks at 58ff7a9d4a1be8b59e2ac297214540d5b3da0e01
+== cargo fmt --check
+ok
+== python3 -I -B tools/install/setup/test_github_login.py
+Ran 12 tests in 2.478s
+
+OK
+== node --test tools/install/test_setup_api.mjs
+ℹ pass 2
+ℹ fail 0
+== cargo test -p openwiz-store --lib setup::
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.01s
+== cargo test -p openwiz-server --lib setup::
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+== cargo clippy (store, server, service, tests) -D warnings
+ok
+== apps/web npm run typecheck && npm run check
+check: 59 source files and the stylesheet pass (V1, messaging and new-thread schema parity, V3, V10, W5, W12, U5, U12 to U14, AW7, AW8, the #549 loop switch, types, spacing)
+== apps/web browser: test/browser/setup-github-login.test.mjs
+✔ #633: browser sign-in, the explicit App skip and the acting login, at phone and desktop widths (7970.614665ms)
+== packaging: test_install, test_package, cloudroom, handover
+tools/install/test_install.py: OK
+tools/release/test_package.py: OK (rerun after rebuilding the debug CLI and service at this head; the first run read binaries built at an earlier commit, so their identity query named an older source)
+tools/install/cloudroom/test_cloudroom.py: OK
+tools/install/handover/test_handover.py: OK
+
+Carriage-guard correction at a6432d04b523e43a463997a52dfbd549a843e43e (adds only the granted paths.json row)
+== python3 -I tools/open-import/test_guard.py
+OK
+== python3 -I tools/open-import/guard.py --base=<merge-base with main> --head=HEAD
+carriage guard: all 20 added paths are classified
+== python3 -I tools/open-import/test_import.py / test_frozen.py
+OK / OK
+== python3 -I tools/privacy-check/test_check.py
+OK
+== python3 -I tools/privacy-check/check.py --git-tree HEAD --base <merge-base> --head HEAD (+ PR title and body)
+exit 0 (literals: not used)
+
+CI fix at 881c0c7ea1a39997ae16cf4ea3f7bd2d769261f0 (typed identity enums; granted release fixture rows)
+== red at c3ea31f (reproduced locally)
+"<checkout>/crates/store/src/setup.rs" contains "create"
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 124 filtered out; finished in 0.48s
+"<checkout>/crates/store/src/setup.rs" contains "create"
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 188 filtered out; finished in 0.22s
+python3 tools/release/test.py: FAILED (35 of 286 tests) (install.Refused: incomplete programs, web or skill runtime)
+== after
+== cargo fmt --check
+ok
+== store/server setup, p08a_allowlist_static, m12_allowlist
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.01s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.88s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 0.24s
+== clippy store/server -D warnings
+ok
+== python3 tools/release/test.py
+Ran 286 tests in 138.452s
+OK
+== test_package.py / test_install.py
+OK (rerun after rebuilding the debug CLI and service at this head; the first run read binaries from an earlier commit, whose identity query names an older source: test_compiled_programs_answer_their_identity_query_without_effects)
+OK
+== carriage guard
+carriage guard: all 20 added paths are classified
+== privacy check (branch range, PR title/body)
+exit 0
+
+Review fixes at a26e6eabafd163caafbeab7002b068461ce649f0 (R1, R2)
+== python3 -I -B tools/install/setup/test_github_login.py
+Ran 14 tests in 3.446s
+OK
+== tools/install/tests/public-release-security/baseline/test_baseline.py: OK
+== tools/install/cloudroom/test_cloudroom.py: OK
+== tools/install/access/test_access.py: OK
+== tools/install/test_install.py: OK
+== apps/web browser: setup-github-login, install-connections: pass 2, fail 0 (run at the fix's working tree, identical to a26e6eabafd163caafbeab7002b068461ce649f0)
+== carriage guard: carriage guard: all 22 added paths are classified
+== privacy check (branch range, PR title/body): exit 0
+== stray synthetic gh auth children after the runs: 0
+
+Merge of origin/main (c83de51) for the actual conflict, at 87f4a5d0a6452c30df9d31232109cbfdd494e9a6
+== PR #862 read before merging: mergeable CONFLICTING, mergeStateStatus DIRTY at eede6e2; git merge-tree: content conflicts in .github/actions/docs-only/plan.py and run.py only
+== resolution: both rows kept (main's release:test-value-unread-fixtures, then this ticket's release:setup-onboard-login); paths.json and test_candidate.py auto-merged with only this ticket's granted rows differing from main
+== sh .github/actions/docs-only/test.sh: all ok
+== python3 -I ci/shard/test.py: OK
+== cargo fmt --check
+ok
+== store/server setup::, p08a_allowlist_static, m12_allowlist
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.88s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 0.24s
+== test_github_login.py: OK
+== test_setup_api.mjs: ℹ fail 0
+== tools/release/test.py: OK
+== tools/release/test_package.py: OK
+== tools/install/test_install.py: OK
+== tools/install/cloudroom/test_cloudroom.py: OK
+== tools/install/tests/public-release-security/baseline/test_baseline.py: OK
+== carriage guard: carriage guard: all 23 added paths are classified
+== privacy check (branch range, PR title/body): exit 0
+== stray synthetic gh auth children: 0
+
+Final check fixes at a629a5f7cb33c5d79f1b4553bb30a134b99a1651 (R2, R3)
+== test_github_login.py: OK
+== tools/install/tests/public-release-security/baseline/test_baseline.py: OK
+== tools/install/cloudroom/test_cloudroom.py: OK
+== tools/install/access/test_access.py: OK
+== tools/install/test_install.py: OK
+== apps/web browser (setup-github-login, install-connections): ℹ pass 2 ℹ fail 0 
+== carriage guard: carriage guard: all 23 added paths are classified
+== privacy check (branch range, PR title/body): exit 0
+== stray synthetic gh auth children: 0
+
+Merge of origin/main (3ba500e, which carries T5 #635) for the actual conflict, at c0e5d6669bdb652c83811400eabba3d451af4c9e
+== PR #862 read after pushing b2ff51b: mergeable CONFLICTING; git merge-tree against 3ba500e: content conflicts in plan.py, run.py, tests/checks/skills.rs, crates/store/src/setup.rs, tools/install/setup/setup.py and store.py, test_install.py, build_products.py, test_candidate.py
+== resolution: every hunk kept both sides (T5's init/brain lines unchanged, this ticket's identity/sign-in lines added); bootstrap.rs's merged required list holds 22 entries, so its declared length (this ticket's owned row/count) is 22
+== sh .github/actions/docs-only/test.sh: all ok
+== python3 -I ci/shard/test.py: OK
+== cargo fmt --check
+ok
+== clippy store/server/service/tests -D warnings
+ok
+== store/server setup::, p08a_allowlist_static, m12_allowlist, checks setup_onboard, service t12
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.89s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 0.23s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 144 filtered out; finished in 19.71s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 91.38s
+== test_github_login.py: OK
+== tools/install/tests/init/test_init.py (T5's): OK
+== test_setup_api.mjs: ℹ pass 2 ℹ fail 0 
+== tools/release/test.py: OK
+== tools/release/test_package.py: OK
+== tools/install/test_install.py: OK
+== tools/install/cloudroom/test_cloudroom.py: OK
+== tools/install/access/test_access.py: OK
+== tools/install/handover/test_handover.py: OK
+== tools/install/tests/public-release-security/baseline/test_baseline.py: OK
+== web typecheck/check: check: 56 source files and the stylesheet pass (V1, messaging and new-thread schema parity, V3, V10, W5, W12, U5, U12 to U14, AW7, AW8, the #549 loop switch, types, spacing)
+== apps/web browser (setup-github-login, install-connections): ℹ pass 2 ℹ fail 0 
+== carriage guard: carriage guard: all 24 added paths are classified
+== privacy check (branch range, PR title/body): exit 0
+== stray synthetic gh auth children: 0
+
+Merge of origin/main (99f71ce, which carries T3 #606) for the actual conflict, at e1ba556278ec5ab471644bb2e1b58c45434e7195
+== PR #862 read after pushing 52bba5f: mergeable CONFLICTING, DIRTY; git merge-tree against 99f71ce: content conflict only in tools/open-import/paths.json (T3's source row beside this ticket's)
+== resolution: both source rows kept; against main the merge differs only on this branch's paths
+== sh .github/actions/docs-only/test.sh: all ok
+== python3 -I ci/shard/test.py: OK
+== cargo fmt --check
+ok
+== clippy store/server/service/tests -D warnings
+ok
+== store/server setup::, p08a_allowlist_static, m12_allowlist, checks setup_onboard, service t12
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.91s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 0.22s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 144 filtered out; finished in 19.27s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; finished in 91.38s
+== test_github_login.py: OK
+== tools/install/tests/init/test_init.py (T5's): OK
+== tools/github-app/test.py (T3's): OK
+== test_setup_api.mjs: ℹ pass 2 ℹ fail 0 
+== tools/release/test.py: OK
+== tools/release/test_package.py: OK
+== tools/install/test_install.py: OK
+== tools/install/cloudroom/test_cloudroom.py: OK
+== tools/install/access/test_access.py: OK
+== tools/install/handover/test_handover.py: OK
+== tools/install/tests/public-release-security/baseline/test_baseline.py: OK
+== tools/install/tests/public-release-security/test_candidate.py: OK
+== web typecheck/check: check: 56 source files and the stylesheet pass (V1, messaging and new-thread schema parity, V3, V10, W5, W12, U5, U12 to U14, AW7, AW8, the #549 loop switch, types, spacing)
+== apps/web browser (setup-github-login, install-connections): ℹ pass 2 ℹ fail 0 
+== carriage guard: carriage guard: all 24 added paths are classified
+== privacy check (branch range, PR title/body): exit 0
+== stray synthetic gh auth children: 0

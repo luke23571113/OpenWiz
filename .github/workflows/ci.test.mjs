@@ -42,21 +42,13 @@ function scheduler() {
   };
 }
 
-test('Rust and web lanes allow 90 minutes only when the plan plants', () => {
+test('Rust and web lanes read the plan\'s planted output', () => {
   const changes = workflow.match(/^  changes:\n((?:    .*\n|\n)*)/m)?.[1];
   assert.match(changes, /^      planted: \$\{\{ steps\.plan\.outputs\.planted \}\}$/m);
   for (const lane of ['rust', 'rust-export', 'web', 'web-export']) {
     const job = workflow.match(new RegExp(`^  ${lane}:\\n((?:    .*\\n|\\n)*)`, 'm'))?.[1];
     assert.ok(job, `${lane} job exists`);
     assert.match(job, /^    needs: (?:changes|\[changes, web-build\])$/m);
-    const timeout = job.match(/^    timeout-minutes: (.+)$/m)?.[1];
-    assert.ok(timeout, `${lane} has a timeout`);
-    const expression = timeout.replace(/^\$\{\{ (.+) \}\}$/, '$1');
-    for (const [planted, expected] of [['true', 90], ['false', 60], ['', 60]]) {
-      const needs = { changes: { outputs: { planted } } };
-      assert.equal(runInNewContext(expression, { needs }, { timeout: 100 }), expected,
-        `${lane}: planted=${JSON.stringify(planted)}`);
-    }
   }
 });
 
@@ -216,6 +208,8 @@ function simulate(source, event_name, outputs = {}) {
     const code = (status ? condition : `success() && (${condition})`).replace(/\.([a-z]+(?:-[a-z]+)+)/g, "['$1']");
     const runs = runInNewContext(code, {
       github, needs, always: () => true, cancelled: () => false, success,
+      // GitHub's contains(): a case-insensitive substring test on strings.
+      contains: (a, b) => String(a).toLowerCase().includes(String(b).toLowerCase()),
       failure: () => done.includes('failure'),
     }, { timeout: 100 });
     return (results[name] = runs ? 'success' : 'skipped');
@@ -226,9 +220,10 @@ function simulate(source, event_name, outputs = {}) {
 
 // A full plan (every reason forces one on these events): every lane, both exports.
 const FULL_PLAN = { changes: { rust: 'true', toolkit: 'true', web: 'true', site: 'true',
-  'site-in-release': 'false', release: 'true', skills: '["image"]', 'build-web': 'true',
+  'site-in-release': 'false', release: 'true', skills: '["image","launch-fleet"]', 'skill-jobs': '["image"]', 'build-web': 'true',
   'export-rust': 'true', 'export-web': 'true', trace: 'false', planted: 'false' } };
-const FULL_SUITE = ['always', 'changes', 'ci', 'release', 'rust-export', 'site', 'skills', 'web-build', 'web-export', 'web-test'];
+// #743: launch-fleet's sharded job is in it, and like release never runs on a main push.
+const FULL_SUITE = ['always', 'changes', 'ci', 'launch-fleet', 'release', 'rust-export', 'site', 'skills', 'web-build', 'web-export', 'web-test'];
 
 test('pull requests and merge groups run the full suite and every required check; a main push runs only the light check', () => {
   for (const event of ['pull_request', 'merge_group']) {

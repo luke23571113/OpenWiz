@@ -1,0 +1,25 @@
+# MT6 (#825) review R1/R2 scoped checks at b1ca744.
+# python3 -I tools/ci-overload/test.py  (17 existing guard proofs unchanged + 6 Supplier proofs)
+Ran 23 tests in 11.209s
+
+OK
+# python3 -I tools/war-room/test_collect_ci.py
+Ran 17 tests in 11.731s
+
+OK
+# python3 -I ci/main-batch/test_admit.py
+Ran 19 tests in 0.369s
+
+OK
+# python3 -I tools/open-import/test_guard.py
+Ran 11 tests in 1.218s
+
+OK
+# TEST_ONLY=loop / fleet-loop sh skills/launch-fleet/scripts/test.sh (every case that runs fleet.sh overload)
+4 cases, 0 failed
+2 cases, 0 failed
+# Mutations at b1ca744 (each reverted after its run): python3 -I tools/ci-overload/test.py Supplier
+R1 a failed supply falls back to the caller's input: FAIL: test_a_failed_supply_never_admits_on_an_older_observation 
+R2 every call supplies into the one shared input: FAIL: test_an_observed_escalation_is_kept_when_another_admission_reads_healthy_first 
+the supplier is never called: FAIL: test_a_partial_read_still_hands_the_guard_its_known_exhaustion FAIL: test_an_observation_older_than_the_bound_still_refuses FAIL: test_an_observed_escalation_is_kept_when_another_admission_reads_healthy_first FAIL: test_the_guard_decides_on_the_collector_s_queue_read_now 
+the supplier also runs for essential actions: FAIL: test_completion_and_reconciliation_spend_no_read_and_stay_allowed 

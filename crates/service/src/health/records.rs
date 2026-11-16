@@ -1,7 +1,8 @@
 //! Contract record formatting and conservative, durable comment reconciliation.
 use openwiz_adapter_github::{
     process::Executor,
-    tick::TickReads,
+    tick::{Comment, TickReads},
+    tickets::{RecordAuthors, Tickets},
     writes::{self, Body, Confirmed, Write},
 };
 use openwiz_core::{health::model::Number, messaging::sha256_hex};
@@ -200,15 +201,15 @@ pub fn post(
     let dir = root.join("service/health");
     checked(&dir, true)?;
     let digest = sha256_hex(format!("{issue}\n{body}").as_bytes());
+    // #770: an unread or malformed setting makes no earlier copy a delivery;
+    // the claim below still refuses a second post after an uncertain one.
+    let authors = record_authors(executor, deadline).ok();
     let gh = TickReads::with_executor(executor.clone());
     let comments = gh
         .comments(issue, deadline)
         .map_err(|_| "health comment records are unread")?;
-    let matches = comments
-        .iter()
-        .filter(|c| c.body == body)
-        .collect::<Vec<_>>();
-    match matches.as_slice() {
+    let earlier = authors.map_or_else(Vec::new, |a| delivered(&comments, body, &a));
+    match earlier.as_slice() {
         [c] => {
             confirm(&dir, &digest, c.id)?;
             return Ok(c.id);
@@ -253,6 +254,35 @@ pub fn post(
     Ok(id)
 }
 
+/// #770: the `Record authors` setting on the default branch's head, read by
+/// the same rules as the health observation (#732). Unread or malformed
+/// confirms no delivery.
+fn record_authors(executor: &Executor, deadline: Instant) -> Result<RecordAuthors, String> {
+    Tickets::with_executor(executor.clone())
+        .record_authors(deadline)
+        .map_err(|_| "record authors are unread or malformed".into())
+}
+/// The exact copies of `body` a record author wrote, by the observation's own
+/// author check. Anyone else's copy, or one with no author, is not a delivery.
+fn delivered<'a>(comments: &'a [Comment], body: &str, authors: &RecordAuthors) -> Vec<&'a Comment> {
+    comments
+        .iter()
+        .filter(|c| c.body == body && authored(c, authors))
+        .collect()
+}
+/// Whether a record author wrote `c` (#732): a login ending `[bot]` is the
+/// App's kind, any other a user's.
+fn authored(c: &Comment, authors: &RecordAuthors) -> bool {
+    let login = c.author.as_deref();
+    let kind = login.map(|l| {
+        if l.to_ascii_lowercase().ends_with("[bot]") {
+            "Bot"
+        } else {
+            "User"
+        }
+    });
+    authors.wrote(login, kind)
+}
 fn confirmed(dir: &Path, digest: &str) -> Result<bool, String> {
     let path = dir.join(format!("confirmed-{digest}"));
     if !path
@@ -308,6 +338,8 @@ pub fn reconcile(root: &Path, executor: &Executor, deadline: Instant) -> Result<
     checked(&dir, true)?;
     let entries = fs::read_dir(&dir).map_err(|_| "health delivery journal cannot be read")?;
     let gh = TickReads::with_executor(executor.clone());
+    // #770: read once per pass; unread leaves every claim pending.
+    let authors = record_authors(executor, deadline);
     let mut pending = false;
     for entry in entries {
         let entry = entry.map_err(|_| "health delivery journal entry cannot be read")?;
@@ -343,14 +375,11 @@ pub fn reconcile(root: &Path, executor: &Executor, deadline: Instant) -> Result<
             if digest != sha256_hex(format!("{issue}\n{body}").as_bytes()) {
                 return Err("health claim binding differs".into());
             }
+            let authors = authors.as_ref().map_err(String::clone)?;
             let comments = gh
                 .comments(issue, deadline)
                 .map_err(|_| "health claim readback is unread")?;
-            let matches = comments
-                .iter()
-                .filter(|c| c.body == body)
-                .collect::<Vec<_>>();
-            match matches.as_slice() {
+            match delivered(&comments, body, authors).as_slice() {
                 [c] => confirm(&dir, &digest, c.id),
                 _ => Err("health claim delivery remains unconfirmed".into()),
             }
