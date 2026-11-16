@@ -929,3 +929,125 @@ fn gi_p6_the_openwiz_program_routes_github_token_and_refuses_without_the_secret(
             .starts_with("openwiz: github token: ")
     );
 }
+
+// --- #606 review R3: the service's App mints only for its owner's installation ---
+
+/// The service's key exchanges, recorded; the owner-bound reads are scripted.
+struct ServiceFake {
+    app: Answer,
+    lookup: Answer,
+    exchanges: Mutex<u32>,
+}
+impl Exchange for ServiceFake {
+    fn exchange(&self, installation: u64, _: &str, _: &[u8], _: Instant) -> Result<Vec<u8>, Error> {
+        assert_eq!(installation, 2002);
+        *self.exchanges.lock().unwrap() += 1;
+        Ok(answer(
+            "synthetic-service-token",
+            4600,
+            "synthetic-owner/work",
+            WRITE,
+        ))
+    }
+    fn github(&self, call: &Call<'_>, _: &str, _: Instant) -> Result<(u16, Vec<u8>), Error> {
+        match call {
+            Call::App => self.app.clone().ok_or(Error),
+            Call::Installation { repository } => {
+                assert_eq!(*repository, "synthetic-owner/work");
+                self.lookup.clone().ok_or(Error)
+            }
+            Call::AccessToken { .. } => panic!("the service mints through exchange"),
+        }
+    }
+}
+
+#[test]
+fn r3_the_service_app_never_exchanges_for_another_owners_or_another_installation() {
+    use openwiz_adapter_github::allowlist::Invocation;
+    use openwiz_adapter_github::app::{App, Identity};
+    let root = std::env::temp_dir().join(format!("ow-606-r3-{}", std::process::id()));
+    super::dirs::private_dir_all(&root.join("service/app")).unwrap();
+    let key_path = root.join("service/app/private-key.pem");
+    std::fs::write(&key_path, &key().0).unwrap();
+    std::fs::set_permissions(
+        &key_path,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .unwrap();
+    let foreign_app = br#"{"id":2002,"app_id":1002,"account":{"login":"synthetic-owner"},"repository_selection":"selected"}"#;
+    // (why, App lookup, installation lookup, exchanged)
+    let cases: Vec<(&str, Answer, Answer, u32)> = vec![
+        (
+            "its owner's own installation",
+            app_owned_by("synthetic-owner"),
+            Some((200, installation(2002, "synthetic-owner", "selected"))),
+            1,
+        ),
+        (
+            "an App owned by another account",
+            app_owned_by("synthetic-elsewhere"),
+            Some((200, installation(2002, "synthetic-owner", "selected"))),
+            0,
+        ),
+        (
+            "another installation than the configured one",
+            app_owned_by("synthetic-owner"),
+            Some((200, installation(2003, "synthetic-owner", "selected"))),
+            0,
+        ),
+        (
+            "every repository",
+            app_owned_by("synthetic-owner"),
+            Some((200, installation(2002, "synthetic-owner", "all"))),
+            0,
+        ),
+        (
+            "another App's installation",
+            app_owned_by("synthetic-owner"),
+            Some((200, foreign_app.to_vec())),
+            0,
+        ),
+        (
+            "a revoked key",
+            Some((401, b"{}".to_vec())),
+            Some((200, installation(2002, "synthetic-owner", "selected"))),
+            0,
+        ),
+        (
+            "a lost App answer",
+            None,
+            Some((200, installation(2002, "synthetic-owner", "selected"))),
+            0,
+        ),
+    ];
+    for (why, app, lookup, exchanged) in cases {
+        let fake = Arc::new(ServiceFake {
+            app,
+            lookup,
+            exchanges: Mutex::new(0),
+        });
+        let identity = Identity {
+            app_id: 1001,
+            installation_id: 2002,
+            repository: "synthetic-owner/work".into(),
+        };
+        // A gh that never succeeds: only the mint before it is under test.
+        let client = App::open(
+            &root,
+            identity,
+            "/nonexistent/gh".into(),
+            fake.clone(),
+            Arc::new(Fixed(1000)),
+        )
+        .unwrap();
+        let call = Invocation::new(&["issue", "view", "901", "--json", "comments"]).unwrap();
+        assert!(
+            client
+                .execute(&call, Instant::now() + std::time::Duration::from_secs(10))
+                .is_err(),
+            "{why}"
+        );
+        assert_eq!(*fake.exchanges.lock().unwrap(), exchanged, "{why}");
+    }
+    std::fs::remove_dir_all(&root).unwrap();
+}

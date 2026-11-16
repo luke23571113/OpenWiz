@@ -194,6 +194,12 @@ def fake_github(pem):
                 status, result = 200, {"id": 1001, "slug": "synthetic-app",
                                        "owner": {"login": behavior.get("app_owner", "synthetic-owner")},
                                        "permissions": behavior.get("app_permissions", SERVICE)}
+            elif self.path == "/app/installations":
+                # The setup check's installation list (tools/install/setup/setup.py).
+                status, result = 200, [{"id": i, "app_id": 1001, "account": {"login": login},
+                                        "repository_selection": behavior.get("selection", "selected"),
+                                        "permissions": SERVICE}
+                                       for i, login in behavior["installations"].items()]
             elif found and int(found.group(1)) in behavior["installations"]:
                 status, result = 200, {"id": int(found.group(1)), "app_id": 1001, "account": {
                     "login": behavior["installations"][int(found.group(1))]},
@@ -564,6 +570,31 @@ class GuardTests(KeyFixture):
             self.assertEqual(result.stdout, b"")
             self.assertEqual([c[0] for c in calls], OWNER_READS + ["/app/installations/2002/access_tokens"])
             self.assert_no_key(result.stderr)
+
+
+class SetupCheckOwnerBoundary(KeyFixture):
+    """#606 review R3: the setup check verifies an App only on its owner's own
+    installation, never another account's App installed by the repository owner."""
+
+    def check(self, endpoint):
+        spec = importlib.util.spec_from_file_location("install_setup_606", HERE.parent / "install/setup/setup.py")
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+        return setup.check_app(self.state, {"repository": "synthetic-owner/synthetic-repo"}, None, endpoint)
+
+    def test_the_setup_check_verifies_only_the_app_owners_installation(self):
+        soon = (datetime.now(timezone.utc) + timedelta(minutes=50)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for owner, verified in (("synthetic-owner", True), ("synthetic-elsewhere", False)):
+            with self.subTest(owner=owner), fake_github(self.pem) as (endpoint, calls, behavior):
+                behavior.update(app_owner=owner, permissions=SERVICE, expires_at=soon, read_profile={
+                    "repository_selection": "selected",
+                    "repositories": [{"full_name": "synthetic-owner/synthetic-repo"}]})
+                code, ids = self.check(endpoint)
+                if verified:
+                    self.assertEqual((code, ids), ("app_verified", {"app_id": 1001, "installation_id": 2002}))
+                else:
+                    self.assertEqual(code, "app_not_installed")
+                    self.assertEqual(mints(calls), [])  # refused before any token exists
 
 
 class Form(HTMLParser):
