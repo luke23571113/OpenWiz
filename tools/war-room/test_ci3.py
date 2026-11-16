@@ -288,6 +288,24 @@ class Collect(unittest.TestCase):
         self.assertEqual(rec["critical_path"]["setup"]["p95_seconds"], 119)
 
 
+class Steps(unittest.TestCase):
+    def test_check_steps_covers_ci_and_refuses_a_step_with_no_row(self):
+        # catches: a CI step with no row in the war room's step table, whose
+        # time CI3's critical path then counts as unclassified unseen; or a
+        # check that passes anything. Moved with the table from ci-bench (#826).
+        workflow = ROOT / ".github" / "workflows" / "ci.yml"
+        ok = cli("check-steps")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertRegex(ok.stdout, r"^covered [1-9][0-9]* CI steps\n$")
+        with tempfile.TemporaryDirectory() as tmp:
+            planted = Path(tmp) / "ci.yml"
+            planted.write_text(workflow.read_text() + "\n      - name: A newly planted unknown CI step\n        run: true\n")
+            bad = cli("check-steps", "--workflow", str(planted))
+        self.assertEqual((bad.returncode, bad.stdout), (1, ""))
+        self.assertEqual(bad.stderr, f"ci3: step 'A newly planted unknown CI step' (job {planted}) matches no row"
+                                     f" of {HERE / 'steps.tsv'}\n")
+
+
 # ---------------------------------------------------------------- the loop's check (#784)
 
 FIX = FIXTURES / "ci3-weekly"
@@ -351,8 +369,62 @@ def record(p50, p95):
     return path
 
 
+REPO = "synthetic-owner/synthetic-repo"
+# A synthetic `gh` for the collector's own reads: it answers `gh api PATH` as FakeWeek does, from the
+# same answers, and logs each path it is asked. It never reaches the network.
+FAKE_GH = """import json, os, sys
+path = sys.argv[2] if sys.argv[1:2] == ["api"] and len(sys.argv) == 3 else None
+with open(os.environ["CI3_TEST_LOG"], "a") as log:
+    log.write(json.dumps(path) + "\\n")
+answers = json.load(open(os.environ["CI3_TEST_ANSWERS"]))
+for prefix in sorted(answers, key=len, reverse=True):
+    if path is not None and path.startswith(prefix):
+        answer = answers[prefix]
+        if isinstance(answer, dict) and "$fail" in answer:
+            sys.exit(answer["$fail"])
+        print(json.dumps(answer))
+        sys.exit(0)
+sys.exit("synthetic gh: unexpected read")
+"""
+
+
+class Collector:
+    """FakeWeek's answers behind a synthetic `gh` on PATH, for the war room's collector, with its own
+    private store; on exit every path the collector asked joins the fake's `asked`."""
+
+    def __init__(self, gh):
+        self.gh = gh
+
+    def __enter__(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="test-ci3-collector-")
+        root = Path(self.tmp.name)
+        (root / "bin").mkdir()
+        fake = root / "bin" / "gh"
+        fake.write_text(f"#!{sys.executable} -I\n" + FAKE_GH)
+        fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+        (root / "answers.json").write_text(json.dumps(self.gh.answers))
+        self.store, self.log = root / "store", root / "gh.log"
+        self.env = dict(os.environ)
+        os.environ.update(PATH=f"{root / 'bin'}{os.pathsep}{os.environ['PATH']}", GH_REPO=REPO,
+                          CI3_TEST_ANSWERS=str(root / "answers.json"), CI3_TEST_LOG=str(self.log),
+                          OPENWIZ_COLLECTOR_STORE=str(self.store))
+        return self
+
+    def __exit__(self, *exc):
+        os.environ.clear()
+        os.environ.update(self.env)
+        asked = [json.loads(p) for p in self.log.read_text().splitlines()] if self.log.exists() else []
+        self.gh.asked += asked
+        self.kept = sorted(p.relative_to(self.store).as_posix() for p in self.store.rglob("*.json")) \
+            if self.store.exists() else []
+        self.windows = [json.loads((self.store / p).read_text()) for p in self.kept]
+        self.tmp.cleanup()
+
+
 def check(gh=None, rec=RECORD):
-    return ci3_check.check(NOW, read=gh or github(), record=rec, authors=AUTHORS).splitlines()
+    gh = gh or github()
+    with Collector(gh):
+        return ci3_check.check(NOW, read=gh, record=rec, authors=AUTHORS).splitlines()
 
 
 def billing(*quantities):
@@ -487,12 +559,29 @@ class Check(unittest.TestCase):
         fork.answers[f"{B}/issues/780/comments?"] = FAIL
         lines = check(fork)
         self.assertEqual(lines[0], NORMAL[0])
-        self.assertTrue(lines[1].startswith("Time to a PR's result: unknown (PR #9 is from a fork"), lines[1])
+        # The collector's own words for a window it can't read whole (collector.v1, `ci3`).
+        self.assertEqual(lines[1], "Time to a PR's result: unknown (CI3 unavailable: the window's PR heads"
+                                   " and runs could not be read whole.).")
         self.assertTrue(lines[2].startswith("Against the last note: unknown (gh api failed"), lines[2])
         self.assertEqual(lines[3:], [NORMAL[8], '<!-- openwiz.ci3-note.v1 {"actions_minutes": 35001, "alert": false,'
                                      ' "measure": "ci3.v1", "minutes_source": "billing", "month": "2026-01",'
                                      ' "p50_minutes": null,'
                                      ' "p95_minutes": null, "until": "2026-01-06T00:00:00Z"} -->'])
+
+    def test_the_measure_is_the_collectors_ci3_fact(self):
+        # catches: the loop measuring CI3 on its own, beside the war room's
+        # collector, so the note's numbers can differ from the page's (spec
+        # #819, story 3). The collector keeps the window it measured, privately,
+        # named by its hash: one window, the note's seven days.
+        gh = github()
+        with Collector(gh) as collector:
+            lines = ci3_check.check(NOW, read=gh, record=RECORD, authors=AUTHORS).splitlines()
+        self.assertEqual(lines, NORMAL)
+        self.assertEqual(len(collector.kept), 1, collector.kept)
+        self.assertTrue(collector.kept[0].startswith("collector/ci/ci3/"), collector.kept)
+        window = collector.windows[0]
+        self.assertEqual((window["since"], window["until"], len(window["heads"])),
+                         ("2025-12-30T00:00:00Z", "2026-01-06T00:00:00Z", 2))
 
     def test_the_real_before_record_reads(self):
         # Bug: docs/ci3.md's BEFORE block changes form and every note compares
