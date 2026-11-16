@@ -26,3 +26,15 @@ python3 -I ci/shard/test.py
 **The times.** `times.tsv` is the median over the 5 latest untraced green runs that ran every Rust test at once (its header names them and how they were picked). `times` reads traced `== trace: <id>` sections, `== rust-tests: <target>` sections, and the `crates` section by package (each library's `Running unittests src/lib.rs` line starts its package's tests; its `Doc-tests` come at the end). A log that times no Rust test, or one test twice, is refused. Refresh it with `times` over newer logs; `test.py` fails while any Rust test the tree has is unmeasured.
 
 **Exit codes.** 0 done; 1 a plan, record, times file or log refused (why on stderr, nothing on stdout); 2 a bad command line.
+
+## The release and launch-fleet lanes (#743)
+
+`lanes.py` splits these two lanes the same way. Their units, named by `run.py`: each planned release proof (`release:<id>`), each part of `tools/open-tickets/test.sh` (`release:open-tickets:<part>`, from its `--list`), the combined `site` work when it rides on release, each launch-fleet suite command (`skill:launch-fleet:<path>`) and each of launch-fleet `test.sh`'s groups (`…/test.sh:group:<n>`). `lanes.tsv` times them; the rule is the Rust one above (`shard.lpt`), with an unmeasured unit counted as the longest and a group past the file's last row given to shard ((n - 1) mod N) + 1, so stale times cost only balance.
+
+```sh
+python3 -I .github/actions/docs-only/run.py execute PLAN release --shard K/N RAN      # a member: its share, recorded in RAN
+python3 -I .github/actions/docs-only/run.py check-shards PLAN release RAN...           # the ci job, before it stamps
+python3 -I ci/shard/lanes.py times RAN...                                             # lanes.tsv's rows from members' records
+```
+
+**In CI.** `release` and `launch-fleet` are matrices (`[1,2,3]` and `[1,2,3,4]` on `ubuntu-24.04`, one member on any other runner kind). Each member runs its share and uploads `shard-ran-<attempt>-<lane>-<k>`: the units it ran with their seconds, and for launch-fleet `test.sh` (run with `TEST_SHARD=K/N` and the group map) its case count, the run's total and its group count. Only after every member passed does the `ci` job run `check-shards`: each shard 1 to N reported once, every unit ran exactly once, and the members' case counts add up to `test.sh`'s total (printed `a + b + c + d = 813 of 813 cases`); then it stamps the lane's receipt, so `finish` fails on a missing receipt otherwise.

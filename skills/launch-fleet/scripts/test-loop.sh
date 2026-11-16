@@ -93,6 +93,20 @@ run
 ! grep -q 'repo clone' "$work/gh.log"
 echo 'ok   later runs refresh the consumer while keeping the packaged helpers'
 
+# E6: the installed loop.sh run directly (no bundle) uses its own installed
+# fleet and revision helpers, never the consumer clone's hostile skills/.
+mkdir -p "$work/installed/skills/launch-fleet/scripts/carried" "$work/installed/skills/plan-graph"
+cp "$HERE/loop.sh" "$HERE/fleet.sh" "$HERE/records.py" "$work/installed/skills/launch-fleet/scripts/"
+cp "$HERE/../../plan-graph/revision.sh" "$work/installed/skills/plan-graph/"
+cp "$HERE/carried/alarm.py" "$work/installed/skills/launch-fleet/scripts/carried/"
+rm -rf "$work/cache"
+status=0
+sh "$work/installed/skills/launch-fleet/scripts/loop.sh" > "$work/out" 2> "$work/err" || status=$?
+[ "$status" = 0 ] || { cat "$work/err" >&2; exit 1; }
+cmp "$work/want" "$work/out"
+[ -z "$(ls -A "$work/runtime")" ]
+echo 'ok   a direct installed loop runs its installed helpers, not the consumer skills/'
+
 # GI7 (#2549): the check reads GitHub as the App when the loop has the key's
 # secret, and as today's account, saying so, when it is missing or the mint
 # fails. No token reaches the output or a process argument.

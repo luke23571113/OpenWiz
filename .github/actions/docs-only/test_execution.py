@@ -34,6 +34,7 @@ class Execution(unittest.TestCase):
             selection=over.pop('selection','full')
             checks_only=over.pop('checks_only',False)
             mode=over.pop('mode','execute')
+            extra=over.pop('args',[])
             if selection=='selected' or checks_only:
                 record['selection']={'mode':'selected'}
                 record['run'].update(event='pull_request',action='synchronize',base='1'*40,pull_request=909)
@@ -60,6 +61,8 @@ class Execution(unittest.TestCase):
 import os,sys,subprocess,json
 sys.dont_write_bytecode=True
 line=os.path.basename(sys.argv[0])+' '+' '.join(sys.argv[1:])
+if line=='sh tools/open-tickets/test.sh --list':
+    os.execv('/bin/sh',['/bin/sh',os.path.join(os.environ['REAL_ROOT'],'tools/open-tickets/test.sh'),'--list'])
 with open(os.environ['CALLS'],'a') as f: f.write(line+'\\n')
 if os.environ.get('RELEASE_SMOKE') and 'tools/release/test.py' in sys.argv:
     os.chdir(os.environ['REAL_ROOT'])
@@ -90,10 +93,36 @@ if os.environ.get('FAIL') and os.environ['FAIL'] in line: sys.exit(9)
                 (bin/name).write_text(fake); (bin/name).chmod(0o755)
             env=dict(os.environ,PATH=str(bin)+os.pathsep+os.environ['PATH'],CALLS=str(tmp/'calls'),
                      RUNNER_TEMP=str(tmp),GITHUB_RUN_ID=str(record['run']['id']),GITHUB_RUN_ATTEMPT='1',GITHUB_EVENT_NAME=record['run']['event'],REAL_ROOT=str(ROOT),REAL_NODE=shutil.which('node'),REAL_INTERPRETER=sys.executable,**over)
-            result=subprocess.run([sys.executable,'-I',str(HERE/'run.py'),mode,str(tmp),*([kind] if mode=='execute' else [])],
+            result=subprocess.run([sys.executable,'-I',str(HERE/'run.py'),mode,str(tmp),*([kind] if mode=='execute' else []),*extra],
                                   cwd=tmp,env=env,capture_output=True,text=True)
             calls=(tmp/'calls').read_text().splitlines() if (tmp/'calls').exists() else []
+            if over.get('KEEP_RAN'):
+                for ran in tmp.glob('ran-*.json'): shutil.copy(ran,over['KEEP_RAN'])
             return result.returncode,calls,result.stderr
+
+    def test_release_shards_together_run_every_command_once_with_its_build(self):
+        # catches (#743): a member split that drops or doubles a release proof
+        # or open-tickets part, or runs the package proof without its build.
+        tests=['release:package','release:install','release:open-tickets','release:test','release:ci-runner']
+        code,whole,err=self.execute('release',trace=False,release_tests=tests)
+        self.assertEqual(code,0,err)
+        parts=[c for c in whole if c.startswith('sh tools/open-tickets/test.sh')]
+        self.assertEqual(parts,['sh tools/open-tickets/test.sh'])
+        listed=subprocess.run(['sh',str(ROOT/'tools/open-tickets/test.sh'),'--list'],capture_output=True,text=True,check=True).stdout.split()
+        want=sorted([c for c in whole if c not in parts]+['sh tools/open-tickets/test.sh --only '+p for p in listed])
+        with tempfile.TemporaryDirectory() as keep:
+            ran=[]
+            for k in (1,2,3):
+                code,calls,err=self.execute('release',trace=False,release_tests=tests,KEEP_RAN=keep,
+                    args=['--shard',f'{k}/3',f'ran-{k}.json'])
+                self.assertEqual(code,0,err)
+                calls=[c for c in calls if not c.endswith('--list')]
+                if any('test_package.py' in c for c in calls):
+                    build=calls.index('cargo build --locked --jobs 2 -p openwiz-cli -p openwiz-service --bins')
+                    self.assertEqual(calls[build+1],'python3 -I tools/release/test_package.py')
+                ran+=calls
+            self.assertEqual(sorted(ran),want)
+            self.assertEqual(len(list(Path(keep).glob('ran-*.json'))),3)
 
     def test_trace_failures_fallback_and_planted_edits_for_both_lanes(self):
         for kind in ('rust','web'):

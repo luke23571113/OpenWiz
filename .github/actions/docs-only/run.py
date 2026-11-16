@@ -11,12 +11,15 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import plan as planner
 import gate
+sys.path.insert(0, str(HERE.parents[2] / 'ci/shard'))
+import lanes
 
 COMMANDS = {
     'release:ci2-read-contract': ['python3', '-I', 'tools/github-reads/test_contract.py'],
@@ -44,7 +47,15 @@ COMMANDS = {
     'release:product-identity': ['python3', '-I', 'tools/release/test_product_identity.py'],
     'release:setup-onboard-contract': ['python3', '-I', 'tools/install/tests/setup-onboard-contract/test_contract.py'],
     'release:test-value': ['python3', '-I', 'tools/test-value/test_measure.py'],
+    'release:test-value-unread-fixtures': ['python3', '-I', 'tools/test-value/test_unread_fixtures.py'],
 }
+# This independent job cannot use the Rust job's target/.
+# Its installed-engine proof consumes both debug binaries.
+PACKAGE_BUILD = ['cargo','build','--locked','--jobs','2','-p','openwiz-cli','-p','openwiz-service','--bins']
+# #743: the lanes CI splits across members (ci/shard/lanes.py), and the
+# scripts among their units that split themselves by group and count cases.
+SHARDED = {'release'} | {'skill:' + s for s in planner.skills.SHARDED}
+COUNTED = {'skills/launch-fleet/scripts/test.sh'}
 
 
 def load(folder):
@@ -88,9 +99,90 @@ def tests_for(record, kind):
     return [t for t in tests if t.startswith(kind+':')] if kind in ('site','release') else tests
 
 
-def call(args, cwd=None):
+def call(args, cwd=None, env=None):
     print('+ ' + ' '.join(args), flush=True)
-    subprocess.run(args, cwd=cwd, check=True)
+    subprocess.run(args, cwd=cwd, check=True, env=env)
+
+
+def units(record, kind):
+    """A sharded lane's units in its run order: (id, [(command, cwd)...]).
+    A COUNTED script's id is the lane's and its path; its groups are its units."""
+    if kind.startswith('skill:'):
+        return [(kind + ':' + c[-1], [(c, None)]) for c in planner.skills.SUITES[kind[6:]]]
+    out = []
+    if planner.combine_site_release(record):
+        out.append(('site', [(COMMANDS[t], 'apps/site') for t in tests_for(record, 'site')]))
+    for test in tests_for(record, kind):
+        if test not in COMMANDS: raise ValueError('unknown planned test: '+test)
+        if test == 'release:open-tickets':
+            listed = subprocess.run([*COMMANDS[test], '--list'], check=True, capture_output=True, text=True).stdout.split()
+            if not listed or len(set(listed)) != len(listed): raise ValueError('open-tickets lists no parts, or one twice')
+            out += [(test + ':' + p, [([*COMMANDS[test], '--only', p], None)]) for p in listed]
+        elif test == 'release:package':
+            out.append((test, [(PACKAGE_BUILD, None), (COMMANDS[test], None)]))
+        else:
+            out.append((test, [(COMMANDS[test], None)]))
+    return out
+
+
+def counted(unit):
+    return unit.split(':', 2)[-1] in COUNTED
+
+
+def shares(record, kind, n, timed):
+    """Every member's units: a COUNTED script's groups by its measured times."""
+    ids = []
+    for unit, _ in units(record, kind):
+        ids += sorted((u for u in timed if u.startswith(unit + ':group:')), key=lambda u: int(u.rsplit(':', 1)[1])) \
+            if counted(unit) else [unit]
+    return lanes.split(ids, timed, n)
+
+
+def execute_shard(folder, kind, spec, ran):
+    """Member K of N (`execute PLAN KIND --shard K/N RAN`) runs its share of a
+    sharded lane and records it in RAN, for the ci job's check-shards."""
+    record, dispatch = load(folder)
+    if kind not in SHARDED or (kind != 'release' and kind[6:] not in dispatch['skills']) \
+            or (kind == 'release' and not dispatch['release']):
+        raise ValueError('lane is not planned or not sharded: ' + kind)
+    k, n = (int(x) for x in spec.split('/'))
+    if not 1 <= k <= n: raise ValueError('bad shard ' + spec)
+    timed = lanes.times()
+    split, loads = shares(record, kind, n, timed)
+    mine = set(split[k - 1])
+    print(f'{kind} shard {k} of {n}: {len(mine)} units, about {loads[k - 1]:.0f} s', flush=True)
+    done, counts = {}, {}
+    for unit, commands in units(record, kind):
+        if counted(unit):
+            tmp = Path(os.environ['RUNNER_TEMP'])
+            groups = {u.rsplit(':', 1)[1]: i for i, share in enumerate(split, 1) for u in share
+                      if u.startswith(unit + ':group:')}
+            (tmp / 'shard-map.txt').write_text(''.join(f'{g} {i}\n' for g, i in groups.items()))
+            env = dict(os.environ, TEST_SHARD=spec, TEST_SHARD_MAP=str(tmp / 'shard-map.txt'),
+                       TEST_SHARD_RAN=str(tmp / 'shard-ran.txt'))
+            for command, cwd in commands: call(command, cwd, env)
+            fields = {}
+            for line in (tmp / 'shard-ran.txt').read_text().splitlines():
+                key, *rest = line.split()
+                if key == 'group': done[f'{unit}:group:{rest[0]}'] = int(rest[1]) / 1000
+                else: fields[key] = int(rest[0])
+            counts[unit] = {'cases': fields['cases'], 'total': fields['total'], 'groups': fields['groups']}
+        elif unit in mine:
+            start = time.monotonic()
+            for command, cwd in commands: call(command, cwd)
+            done[unit] = round(time.monotonic() - start, 2)
+            print(f'== lane unit: {unit} {done[unit]:.0f} s', flush=True)
+    Path(ran).parent.mkdir(parents=True, exist_ok=True)
+    Path(ran).write_text(json.dumps(lanes.record(kind, k, n, dispatch['plan_sha256'], done, counts)))
+
+
+def check_shards(folder, kind, *ran):
+    """The ci job: every unit of a sharded lane ran exactly once, counts add up."""
+    record, dispatch = load(folder)
+    expected = [u for u, _ in units(record, kind) if not counted(u)]
+    problems = lanes.check(kind, dispatch['plan_sha256'], expected,
+                           [gate.escapes.strict_json(Path(p).read_text()) for p in ran])
+    if problems: raise ValueError('shard check failed:\n' + '\n'.join(problems))
 
 
 def trace(kind, selected, dispatch, full=False):
@@ -158,10 +250,7 @@ def execute(folder, kind):
         for test in tests:
             if test not in COMMANDS: raise ValueError('unknown planned test: '+test)
             if test=='release:package':
-                # This independent job cannot use the Rust job's target/.
-                # Its installed-engine proof consumes both debug binaries.
-                call(['cargo','build','--locked','--jobs','2','-p','openwiz-cli',
-                      '-p','openwiz-service','--bins'])
+                call(PACKAGE_BUILD)
             call(COMMANDS[test],cwd='apps/site' if test.startswith('site:') else None)
 
 
@@ -239,7 +328,9 @@ def finish(folder, needs_path, receipts):
     result('site', dispatch['site'] and not planner.combine_site_release(record))
     result('release', dispatch['release'])
     outcomes['site'] = 'success' if dispatch['site'] or dispatch['release'] else 'skipped'
-    result('skills',bool(dispatch['skills']))
+    sharded = [s for s in dispatch['skills'] if s in planner.skills.SHARDED]
+    result('skills',len(dispatch['skills'])>len(sharded))
+    for skill in planner.skills.SHARDED: result(skill,skill in sharded)
     expected = {k: tests_for(record,k) for k in ('always','rust','web','site','release') if tests_for(record,k)}
     expected.update({'skill:'+s: tests_for(record,'skill:'+s) for s in dispatch['skills']})
     if dispatch['build-web']: expected['build:web_export']=[]
@@ -267,7 +358,9 @@ def finish(folder, needs_path, receipts):
 if __name__=='__main__':
     try:
         mode,*args=sys.argv[1:]
-        if mode=='execute': execute(*args)
+        if mode=='execute' and len(args)==5 and args[2]=='--shard': execute_shard(args[0],args[1],args[3],args[4])
+        elif mode=='execute': execute(*args)
+        elif mode=='check-shards': check_shards(*args)
         elif mode=='lint': lint(*args)
         elif mode=='lint-always': lint_always(*args)
         elif mode=='stamp': stamp(*args)

@@ -59,6 +59,7 @@ jobs:
           python3 -I tools/factory-metrics/test_experiment_contract.py
           python3 -I tools/ci-bench/test_trends.py
           python3 -I tools/ci-bench/test_required.py
+          python3 -I tools/ci-bench/test_ci3.py
 
   publish:
     needs: proof

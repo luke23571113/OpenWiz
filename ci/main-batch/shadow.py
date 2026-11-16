@@ -321,8 +321,16 @@ def facts(gh, context, packet):
         need(name in by_name, 'missing actual job: '+name)
         successful(by_name[name])
         return by_name[name]
-    for name in ('changes', 'always', 'web-build', 'site', 'release'):
+    for name in ('changes', 'always', 'web-build', 'site'):
         one(name)
+    # #743: release and each sharded skill run as members 1 to N of a matrix.
+    def members(prefix):
+        names = [j['name'] for j in jobs if re.fullmatch(re.escape(prefix)+r' \([1-9][0-9]*\)', j['name'])]
+        need(sorted(int(n[len(prefix)+2:-1]) for n in names) == list(range(1, len(names)+1)) and names,
+             'missing '+prefix+' matrix member')
+        for name in names:
+            one(name)
+    members('release')
     plan = strict_json(packet['plan'])
     exact(packet['rust'], 'job shares')
     need(packet['rust']['job'] in ('rust', 'rust-export'), 'unknown Rust job')
@@ -339,7 +347,10 @@ def facts(gh, context, packet):
         successful(steps[0])
     web = [name for name in ('web', 'web-export') if name in by_name and by_name[name].get('conclusion') != 'skipped']
     need(len(web) == 1, 'missing or ambiguous web result'); one(web[0])
-    skills = {f"skills ({s['skill']})" for s in plan['lanes']['skills']}
+    sharded = executor.planner.skills.SHARDED
+    for skill in sorted({s['skill'] for s in plan['lanes']['skills']} & set(sharded)):
+        members(skill)
+    skills = {f"skills ({s['skill']})" for s in plan['lanes']['skills'] if s['skill'] not in sharded}
     need({j['name'] for j in jobs if j['name'].startswith('skills (')} == skills,
          'missing or foreign skill matrix member')
     for name in skills:

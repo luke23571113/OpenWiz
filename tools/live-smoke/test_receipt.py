@@ -146,8 +146,9 @@ class Receipts(unittest.TestCase):
         state['writes'] = {'fleet': 1, 'send': 1, 'new': 1}
         smoke.save(self.state, state)
 
-    def produce(self, record='synthetic:smoke-run'):
-        return receipt.produce(self.kit_path, self.state, self.candidate, record)
+    def produce(self, record='synthetic:smoke-run', waiver=None):
+        return receipt.produce(self.kit_path, self.state, self.candidate, record,
+                               *(() if waiver is None else (waiver,)))
 
     def refused(self, reason, call, *args):
         with self.assertRaises(receipt.Refusal) as caught:
@@ -639,6 +640,74 @@ class Receipts(unittest.TestCase):
         before = len(self.calls())
         self.assertEqual(self.execute()[1]['reason'], 'invalid_state')
         self.assertEqual(len(self.calls()), before)
+
+    # APP-1 (a): the recorded App-permission waiver, end to end in the receipts (#18).
+    """APP-1 (a): the recorded App-permission waiver, end to end in the receipts (#18)."""
+    WAIVER = {'pointer': 'https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-9500',
+              'record_sha256': 'a' * 64, 'decided_at': 1893542000,
+              'risk': 'app_permissions', 'version': '0.0.12'}
+
+    def ship3(self, version='0.0.12'):
+        """The SHIP-3 kit's receipt-visible shape: no App step and no App scope,
+        for a candidate whose App permissions changed."""
+        release = self.kit['release']
+        release['risk']['app_permissions'] = []
+        release['scope']['app_permissions'] = []
+        for row in release['coverage']:
+            row['version'] = version
+        body = self.candidate['candidate']
+        body['release_version'] = version
+        body['included_versions'][0]['version'] = version
+        body['risk']['app_permissions'] = {'required': 'yes', 'reason': 'Synthetic App permission change.'}
+        self.live()
+        self.ran()
+
+    def test_the_ship3_kit_with_the_scoped_waiver_gives_a_waived_app_gate(self):
+        """catches: the SHIP-3 kit (no App step) refusing risk_missing even with
+        the recorded 0.0.12 waiver, or the waiver recorded as a passed receipt."""
+        self.ship3()
+        self.refused('risk_missing', self.produce)
+        doc = self.produce(waiver=self.WAIVER)
+        self.assertEqual(doc['gates']['app_permissions'], {
+            'status': 'waived', 'waiver': {'pointer': self.WAIVER['pointer'],
+                                           'record_sha256': self.WAIVER['record_sha256']}})
+        self.assertIsNone(doc['inputs']['app_permissions'])
+        self.assertEqual(doc['gates']['smoke']['status'], 'pass')
+        for gate in ('smoke', 'send', 'new'):
+            receipt.accept(gate, doc, self.candidate, self.kit_path, self.state, self.resolver(doc),
+                           waiver=self.WAIVER)
+        # A waived gate is never accepted as a live pass.
+        with self.assertRaises(receipt.Refusal) as caught:
+            receipt.accept('app_permissions', doc, self.candidate, self.kit_path, self.state,
+                           self.resolver(doc), waiver=self.WAIVER)
+        self.assertEqual(str(caught.exception), 'waived')
+        # Once the waiver is gone, the smoke receipt produced under it no longer verifies.
+        with self.assertRaises(receipt.Refusal) as caught:
+            receipt.accept('smoke', doc, self.candidate, self.kit_path, self.state, self.resolver(doc))
+        self.assertEqual(str(caught.exception), 'risk_missing')
+
+    def test_a_waiver_outside_its_scope_refuses(self):
+        """catches: the waiver used for another release, another risk, a
+        version the candidate is not, or in another shape."""
+        self.ship3()
+        for name, waiver in (('another risk', dict(self.WAIVER, risk='send')),
+                             ('another version', dict(self.WAIVER, version='0.0.13')),
+                             ('extra field', dict(self.WAIVER, scope='all')),
+                             ('not an object', 'app_permissions v0.0.12')):
+            with self.subTest(name):
+                self.refused('waiver_out_of_scope', self.produce, 'synthetic:smoke-run', waiver)
+
+    def test_the_waiver_applies_only_to_0_0_12(self):
+        """catches: a waiver naming the candidate's own version honoured for any
+        release but 0.0.12."""
+        self.ship3(version='0.0.99')
+        self.refused('waiver_out_of_scope', self.produce, 'synthetic:smoke-run', dict(self.WAIVER, version='0.0.99'))
+
+    def test_the_waiver_never_excuses_another_risk(self):
+        """catches: the App waiver letting a changed spending risk (no kit step) through."""
+        self.candidate['candidate']['risk']['spending'] = {'required': 'yes', 'reason': 'Synthetic spending change.'}
+        self.ship3()
+        self.refused('risk_missing', self.produce, 'synthetic:smoke-run', self.WAIVER)
 
 
 if __name__ == '__main__':

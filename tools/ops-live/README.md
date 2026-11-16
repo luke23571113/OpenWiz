@@ -1,5 +1,7 @@
 # Bounded ops acceptance kit (#2190, OB8)
 
+**Kept (MT11, #830):** it tests OB8's bounded ops acceptance: `acceptance.py` gates the prepared kit and refuses impossible live results, and open #439 (OB8) owns this folder for its live run, with follow-ups #548 and #659.
+
 The prepared kit for spec #2185's agent-run acceptance and its offline result
 validator. Python 3 standard library only.
 
