@@ -625,3 +625,72 @@ prints the same record. Window files hold run ids and job records: keep them
 private; the public record carries aggregates only. The fixture is
 [`fixtures/ci3/`](fixtures/ci3/README.md), synthetic, its numbers worked out by
 hand.
+
+## Weekly loop: CI3's note every 3 days (#784)
+
+Every 3 days at 09:00 Pacific, CI3's loop tells Jake whether a PR's result got
+faster: a short before-and-after note on spec #780, at most two improvement
+issues aimed at the biggest bucket, and an alert when GitHub Actions minutes
+pass 50,000 in a month. The files keep `weekly` from the spec's first
+revision; Jake changed the cadence to every 3 days on 2026-11-15
+([private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6902602736)).
+
+```sh
+python3 -I tools/ci-bench/ci3_weekly.py check [--now T] [--record FILE]   # the finding, on stdout, every run; read-only, a few minutes
+python3 -I tools/ci-bench/ci3_weekly.py due [--now T]                     # the Cloudroom gate: one line every third day, else nothing; offline
+python3 -I tools/ci-bench/test_ci3_weekly.py                              # its tests: synthetic weeks, fake gh
+```
+
+`check` reads GitHub only through the bench's reader (`gh api <path>`, GET)
+and prints the note's numbers for the agent:
+
+- **The CI3 measure** for the last 7 days, through `ci3.py`'s collect and
+  measure; the window ends on the hour, two hours before the read, so its
+  heads have their results (`ci3.v1`, cohort rule 4).
+- **Against BEFORE** (the block in [`docs/ci3.md`](../../docs/ci3.md)) and
+  **the last note**: the newest comment on spec #780 that carries an
+  `openwiz.ci3-note.v1` marker, written by a record author
+  (`docs/agents/fleet.md`, #641); anyone else's marker is ignored. Points of
+  different measure versions are never compared. `REGRESSION:` means p50 or
+  p95 is slower than BEFORE.
+- **The critical path's buckets** and the biggest of waiting, setup and
+  running.
+- **The month's Actions minutes:** GitHub's billing usage for the
+  organisation (`organizations/{owner}/settings/billing/usage`), rounded up;
+  if that can't be read, this repository's job times this month, each rounded
+  up to a minute, marked as an estimate (it reads at most the API's 1,000
+  runs: a busier month is unknown); if neither, **unknown**, never a low
+  number. Over 50,000 the finding leads with `ALERT:`.
+- **The marker line** the note ends with, so the next run finds it.
+
+Every run is due for its note: a read that fails is said in the finding
+(`unknown (<why>)`), and `check` still exits 0 with the rest. Only a bad
+command line or an unreadable definition exits 2, with nothing on stdout.
+
+The definition is [`loops/ci3-weekly.json`](../../loops/ci3-weekly.json), in
+the `loops.v1` form, **disabled and in shadow**, so WizLoops can take it over:
+every 3 days from 2026-11-16 09:00 PST, the check above, and the brief and
+authority Jake approved: read GitHub, the CI bench and the war room; post one
+comment on spec #780; file at most two `needs-triage` issues; notify Jake.
+Never label a ticket ready, edit CI or merge. Off switch: pause or delete the
+loop.
+
+Until WizLoops ships, the orchestrator starts the Cloudroom loop on merge,
+from a clone of `openwizdev/OpenWiz` in the Cloudroom project that holds it.
+Cloudroom's cron has no every-3-days form and its gate script may take 60
+seconds, so the loop wakes daily at 09:00 Pacific, `due` lets one day in
+three through, and the agent runs `check` itself:
+
+```sh
+room-cli loop create --name 'CI3 note every 3 days' \
+  --cron '0 9 * * *' --timezone America/Los_Angeles --new-thread \
+  --script 'python3 -I tools/ci-bench/ci3_weekly.py due' \
+  --prompt "$(python3 -I -c 'import json; print(json.load(open("loops/ci3-weekly.json"))["action"]["brief"])')" \
+  --provider claude-code --model claude-sonnet-5-5 --reasoning medium --secrets none
+```
+
+Off switch: `room-cli loop pause <id>` or `room-cli loop delete <id>`. The
+fixtures are [`fixtures/ci3-weekly/`](fixtures/ci3-weekly/README.md),
+synthetic, their numbers worked out by hand. Tests prove the check on
+synthetic weeks only; the first real note on spec #780, after merge, is the
+loop's live proof.

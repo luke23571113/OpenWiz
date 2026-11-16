@@ -42,8 +42,9 @@ NORMAL = [
     "Merge queue: p50 none, p95 none (0 groups, 0 missing).",
     "Runner minutes in the window (ci and privacy, PR heads and merge queue): 8.5.",
     "Actions minutes in 2026-01 so far: 35,001 (GitHub billing usage, the organisation).",
-    '<!-- openwiz.ci3-note.v1 {"actions_minutes": 35001, "alert": false, "minutes_source": "billing",'
-    ' "month": "2026-01", "p50_minutes": 15.5, "p95_minutes": 42.0, "until": "2026-01-06T00:00:00Z"} -->',
+    '<!-- openwiz.ci3-note.v1 {"actions_minutes": 35001, "alert": false, "measure": "ci3.v1",'
+    ' "minutes_source": "billing", "month": "2026-01", "p50_minutes": 15.5, "p95_minutes": 42.0,'
+    ' "until": "2026-01-06T00:00:00Z"} -->',
 ]
 
 
@@ -70,12 +71,16 @@ def github(**changes):
     return FakeGitHub(answers)
 
 
+TMP = tempfile.TemporaryDirectory(prefix="test-ci3-weekly-")  # removed at exit
+
+
 def record(p50, p95):
-    tmp = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False)
-    tmp.write(RECORD.read_text().replace('"p50_minutes": 20.0', f'"p50_minutes": {p50}')
-              .replace('"p95_minutes": 45.0', f'"p95_minutes": {p95}'))
-    tmp.close()
-    return tmp.name
+    """A copy of the synthetic record with another BEFORE, in this run's own folder."""
+    fd, path = tempfile.mkstemp(suffix=".md", dir=TMP.name)
+    with os.fdopen(fd, "w") as f:
+        f.write(RECORD.read_text().replace('"p50_minutes": 20.0', f'"p50_minutes": {p50}')
+                .replace('"p95_minutes": 45.0', f'"p95_minutes": {p95}'))
+    return path
 
 
 def check(gh=None, rec=RECORD):
@@ -102,12 +107,26 @@ class Check(unittest.TestCase):
     def test_slower_than_before_is_flagged(self):
         # Bug: only p50 is compared, or a faster result is flagged.
         both = check(rec=record(10.0, 30.0))
-        self.assertEqual(both[1], "REGRESSION: slower than BEFORE: p50 15.5 min against 10.0, p95 42.0 min against 30.0.")
+        self.assertEqual(both[1], "REGRESSION: slower than BEFORE: p50 15.5 min against 10.0,"
+                                  " p95 42.0 min against 30.0.")
         self.assertEqual(both[0], NORMAL[0])
         p95 = check(rec=record(20.0, 40.0))
         self.assertEqual(p95[1], "REGRESSION: slower than BEFORE: p95 42.0 min against 40.0.")
         self.assertEqual(len(p95), len(NORMAL) + 1)
         self.assertNotIn("REGRESSION", "\n".join(check(rec=record(15.5, 42.0))))
+
+    def test_points_of_another_measure_version_are_never_compared(self):
+        # Bug: a note or BEFORE of another ci3 version is compared, so a changed
+        # definition passes for a faster result (ci3.v1, Versions).
+        gh = github()
+        for c in gh.answers[f"{B}/issues/780/comments?"]:
+            c["body"] = c["body"].replace('"measure": "ci3.v1"', '"measure": "ci3.v2"')
+        rec = record(10.0, 30.0)
+        Path(rec).write_text(Path(rec).read_text().replace('"measure": "ci3.v1"', '"measure": "ci3.v2"'))
+        lines = check(gh, rec)
+        self.assertEqual(lines[3:5], ["Against BEFORE: not compared (BEFORE is ci3.v2, this is ci3.v1).",
+                                      "Against the last note: not compared (it is ci3.v2, this is ci3.v1)."])
+        self.assertNotIn("REGRESSION", "\n".join(lines))
 
     def test_over_50000_minutes_leads_with_the_alert(self):
         # Bug: the alert is missing, buried below the numbers, raised at exactly
@@ -168,7 +187,8 @@ class Check(unittest.TestCase):
         self.assertTrue(lines[1].startswith("Time to a PR's result: unknown (PR #9 is from a fork"), lines[1])
         self.assertTrue(lines[2].startswith("Against the last note: unknown (gh api failed"), lines[2])
         self.assertEqual(lines[3:], [NORMAL[8], '<!-- openwiz.ci3-note.v1 {"actions_minutes": 35001, "alert": false,'
-                                     ' "minutes_source": "billing", "month": "2026-01", "p50_minutes": null,'
+                                     ' "measure": "ci3.v1", "minutes_source": "billing", "month": "2026-01",'
+                                     ' "p50_minutes": null,'
                                      ' "p95_minutes": null, "until": "2026-01-06T00:00:00Z"} -->'])
 
     def test_the_real_before_record_reads(self):
@@ -219,6 +239,19 @@ class Due(unittest.TestCase):
             self.assertEqual(bool(run.stdout), fires, now)
             if fires:
                 self.assertEqual(run.stdout, "CI3 note due: run `python3 -I tools/ci-bench/ci3_weekly.py check`.\n")
+
+    def test_a_gate_that_cannot_read_its_definition_fails_loudly(self):
+        # Bug: a broken definition exits 1 with no output, which Cloudroom
+        # treats as "nothing due", so the loop stops without a word.
+        with tempfile.TemporaryDirectory() as tmp:
+            for text in ("{", json.dumps({"wake": {"kind": "interval", "every_ms": 129600000, "anchor_ms": 0}})):
+                bad = Path(tmp) / "loop.json"
+                bad.write_text(text)
+                run = subprocess.run([sys.executable, "-I", str(HERE / "ci3_weekly.py"), "due", "--now",
+                                      "2026-11-16T17:00:00Z", "--definition", str(bad)],
+                                     capture_output=True, text=True, timeout=30)
+                self.assertEqual((run.returncode, run.stdout), (2, ""), text)
+                self.assertTrue(run.stderr.startswith("ci3_weekly: "), run.stderr)
 
 
 def records_module():
