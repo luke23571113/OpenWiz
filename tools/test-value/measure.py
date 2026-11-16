@@ -148,13 +148,22 @@ def resolve(spec, packages):
     raise MeasureError(f"no test target {package}:{name}")
 
 
-def size(src):
-    """A target's own sources: its folder when its root is main.rs or mod.rs,
-    otherwise its one file."""
-    files = sorted(p for p in src.parent.rglob("*") if p.is_file()) \
-        if src.name in ("main.rs", "mod.rs") else [src]
-    data = [p.read_bytes() for p in files]
-    return {"files": len(files), "bytes": sum(len(d) for d in data),
+def sources(depinfos, root):
+    """Red stub (#884 R2): the old rule, from each dep-info's entrypoint."""
+    out = []
+    for text in depinfos:
+        deps = text.split("\n", 1)[0].partition(": ")[2].split()
+        if not deps:
+            raise MeasureError("no sources")
+        src = Path(deps[0])
+        out += sorted(p for p in src.parent.rglob("*") if p.is_file()) \
+            if src.name in ("main.rs", "mod.rs") else [src]
+    return out
+
+
+def size(files):
+    data = [Path(p).read_bytes() for p in files]
+    return {"files": len(data), "bytes": sum(len(d) for d in data),
             "lines": sum(d.count(b"\n") for d in data)}
 
 
@@ -193,6 +202,14 @@ def stray_profiles(root):
     out = run(["git", "ls-files", "--others", "--exclude-standard", "-z", "--", "*.profraw"],
               root).stdout
     return {name for name in out.split("\0") if name}
+
+
+def collect_profiles(root, before, dest):
+    """Red stub (#884 R3): today's behaviour, deleting them."""
+    gone = stray_profiles(root) - before
+    for name in gone:
+        (root / name).unlink(missing_ok=True)
+    return 0
 
 
 def measure(root, specs, env):

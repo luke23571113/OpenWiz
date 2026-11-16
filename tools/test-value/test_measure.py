@@ -5,7 +5,9 @@ Run: python3 -I tools/test-value/test_measure.py
 """
 import importlib.util
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.dont_write_bytecode = True
@@ -90,6 +92,77 @@ class Compare(unittest.TestCase):
             result(self.TOOLS, {"openwiz-core": [40, 60], "openwiz-store": [3, 12]}, tests=7))
         self.assertIn("drops: openwiz-cli, openwiz-store", lines)
         self.assertIn("tests: 10 -> 7 (-3)", lines)
+
+
+def write(root, rel, text):
+    path = Path(root) / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    return str(path)
+
+
+def depinfo(binary, *deps):
+    return f"{binary}: " + " ".join(d.replace(" ", "\\ ") for d in deps) + "\n" + "".join(f"\n{d}:\n" for d in deps)
+
+
+class Size(unittest.TestCase):
+    ENTRY = "mod cases;\n"            # 11 bytes, 1 line
+    CASES = "#[test] fn kept() {}\n"  # 21 bytes, 1 line
+
+    # catches: a group that moves its retained tests into a crate's named
+    # target (crates/<crate>/tests/<name>.rs plus its modules) reported as
+    # smaller, because only the entrypoint of a non-main.rs target counted.
+    def test_a_moved_target_keeps_its_size(self):
+        with tempfile.TemporaryDirectory() as root:
+            before = depinfo(f"{root}/target/debug/deps/fleet-1",
+                             write(root, "tests/fleet/main.rs", self.ENTRY),
+                             write(root, "tests/fleet/cases.rs", self.CASES))
+            write(root, "tests/fleet/README.md", "notes, not a source\n")
+            after = depinfo(f"{root}/target/debug/deps/fleet_detail-2",
+                            write(root, "crates/cli/tests/fleet_detail.rs", self.ENTRY),
+                            write(root, "crates/cli/tests/fleet_detail/cases.rs", self.CASES))
+            want = {"files": 2, "bytes": 32, "lines": 2}
+            self.assertEqual(measure.size(measure.sources([before], root)), want)
+            self.assertEqual(measure.size(measure.sources([after], root)), want)
+
+    # catches: a support module two targets of one group share counted twice,
+    # and generated, dependency or non-Rust inputs counted as the group's.
+    def test_a_group_counts_each_own_rust_source_once(self):
+        with tempfile.TemporaryDirectory() as root:
+            shared = write(root, "tests/support/mod.rs", "pub fn x() {}\n")
+            spaced = write(root, "tests/a b/main.rs", "mod support;\n")
+            other = write(root, "tests/c/main.rs", "mod support;\n")
+            fixture = write(root, "tests/fixtures/case.json", "{}\n")
+            built = write(root, "target/debug/build/out/gen.rs", "\n")
+            outside = "/elsewhere/registry/serde/src/lib.rs"
+            got = measure.sources([depinfo(f"{root}/target/debug/deps/a-1", spaced, shared, fixture, built, outside),
+                                   depinfo(f"{root}/target/debug/deps/c-2", other, shared)], root)
+            self.assertEqual([str(Path(p).relative_to(root)) for p in got],
+                             ["tests/a b/main.rs", "tests/c/main.rs", "tests/support/mod.rs"])
+
+    def test_refuses_a_dep_info_without_sources(self):
+        with tempfile.TemporaryDirectory() as root, self.assertRaises(measure.MeasureError):
+            measure.sources([depinfo(f"{root}/target/debug/deps/a-1")], root)
+
+
+class Profiles(unittest.TestCase):
+    # catches: raw profiles of instrumented children that a test starts with
+    # a cleared environment (so they land in its working folder) deleted
+    # instead of merged, which drops their real coverage (service startup);
+    # or a profile that was there before the run taken or removed.
+    def test_moves_only_new_profiles_into_the_report_folder(self):
+        with tempfile.TemporaryDirectory() as root:
+            subprocess.run(["git", "init", "-q", root], check=True)
+            old = write(root, "old.profraw", "before the run")
+            before = measure.stray_profiles(Path(root))
+            write(root, "tests/default_1_42.profraw", "child profile")
+            dest = Path(root) / "target/test-value-cov"
+            dest.mkdir(parents=True)
+            self.assertEqual(measure.collect_profiles(Path(root), before, dest), 1)
+            self.assertEqual([p.name for p in dest.iterdir()], ["default_1_42.profraw"])
+            self.assertEqual((dest / "default_1_42.profraw").read_text(), "child profile")
+            self.assertFalse((Path(root) / "tests/default_1_42.profraw").exists())
+            self.assertEqual(Path(old).read_text(), "before the run")
 
 
 if __name__ == "__main__":
