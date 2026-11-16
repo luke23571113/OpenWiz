@@ -88,3 +88,4 @@ the record lists it in `missing` (`ci: no run`) and the fact is `partial`.
   between the two run enumerations that bracket the job reads (run 7104,
   listed in progress only the second time), or a job that appears between a
   page's two reads (job 8104).
+| `green-move.log` | Revision 4's move (#822's second pull request): every war-room suite that now reads the moved ci-bench code, passing |
