@@ -1,0 +1,53 @@
+# MT6 (#825) red run at caa6589 plus the new Supplier proofs, before supply.py exists.
+# python3 -I tools/ci-overload/test.py Supplier
+FEF.F
+======================================================================
+ERROR: test_a_partial_read_still_hands_the_guard_its_known_exhaustion (__main__.Supplier.test_a_partial_read_still_hands_the_guard_its_known_exhaustion)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/ci-overload/test.py", line 581, in test_a_partial_read_still_hands_the_guard_its_known_exhaustion
+    self.assertEqual(json.loads(self.input.read_text())['complete'], False)
+                                ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/pathlib.py", line 1059, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/pathlib.py", line 1045, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '<tmp>/observation.json'
+
+======================================================================
+FAIL: test_a_failed_read_leaves_no_older_observation_to_admit_on (__main__.Supplier.test_a_failed_read_leaves_no_older_observation_to_admit_on)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/ci-overload/test.py", line 568, in test_a_failed_read_leaves_no_older_observation_to_admit_on
+    self.assertEqual(answer['allowed'], True)
+AssertionError: False != True
+
+======================================================================
+FAIL: test_an_observation_older_than_the_bound_still_refuses (__main__.Supplier.test_an_observation_older_than_the_bound_still_refuses)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/ci-overload/test.py", line 553, in test_an_observation_older_than_the_bound_still_refuses
+    self.assertEqual((answer['level'], answer['allowed']), ('healthy', True))
+AssertionError: Tuples differ: ('unknown', False) != ('healthy', True)
+
+First differing element 0:
+'unknown'
+'healthy'
+
+- ('unknown', False)
++ ('healthy', True)
+
+======================================================================
+FAIL: test_the_guard_decides_on_the_collector_s_queue_read_now (__main__.Supplier.test_the_guard_decides_on_the_collector_s_queue_read_now)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/ci-overload/test.py", line 538, in test_the_guard_decides_on_the_collector_s_queue_read_now
+    self.assertIn('rate_limit', asked)
+AssertionError: 'rate_limit' not found in []
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.402s
+
+FAILED (failures=3, errors=1)

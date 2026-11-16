@@ -2,11 +2,14 @@
 //! was written before the behaviour, and its first failing run is kept
 //! in B1's phase 1 and phase 2 evidence records.
 //!
-//! **Phase 1** (the model in the core, no I/O): AP1 to AP3, AP10 and AP11's
-//! schema half; `rules` holds the readiness, retention and free-disk rules.
-//! **Phase 2** (staging in the store, `openwiz attachment add, ls, rm`):
-//! AP4 to AP9, AP11's CLI half, AP12, AP2's store half and AP10 again; the
-//! streaming SHA-256 staging hashes with (`sha256_stream`).
+//! **Phase 1** (the model in the core, no I/O): AP10 and AP11's schema
+//! half. AP1, AP2's model half, AP3, the readiness, retention and
+//! free-disk rules and the streaming SHA-256 need only the core, so they
+//! are in its own `attachment` target (`crates/core/tests/attachment/`,
+//! #810). **Phase 2** (staging in the store, `openwiz attachment add, ls,
+//! rm`): AP4 to AP9, AP11's CLI half, AP12, AP2's store half and AP10
+//! again. The staging cases that need only the store are in its own
+//! `attachments` target (`crates/store/tests/attachments/`, #810).
 //!
 //! **Fixtures only.** The synthetic files are written at test time into a
 //! private directory outside the repository (never committed); nothing
@@ -39,9 +42,7 @@ mod forks;
 // `pattern`, for the attachment schema only (Sol round 1, finding 3).
 mod pattern;
 
-mod ap01_kind;
 mod ap02_limits;
-mod ap03_safe_names;
 mod ap04_ready;
 mod ap05_originals;
 mod ap06_streaming;
@@ -54,8 +55,6 @@ mod ap11_schema;
 mod ap12_logs;
 mod parity;
 mod program;
-mod rules;
-mod sha256_stream;
 
 // B2 (ClosedWiz#15): the rules and static checks of attachments in send
 // and new_thread; their end-to-end proofs are in the messaging and

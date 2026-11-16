@@ -47,11 +47,11 @@ def _module(name, path):
     return module
 
 
-J = _module('collect_factory_journey', ROOT / 'tools/factory-metrics/journey.py')
+J = _module('collect_factory_journey', HERE / 'journey.py')
 M = J.M  # journey.py's own metrics module: one ReadError for every read below
 A = _module('collect_factory_stall_alarm', ROOT / 'tools/stall-alarm/alarm.py')
 BENCH = ROOT / 'tools/ci-bench/bench.py'
-LIMITS = 'tools/factory-metrics/limits.conf'  # TL1's one settings file
+LIMITS = 'tools/war-room/limits.conf'  # TL1's one settings file
 SCHEMA = suite._decode((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))
 FACTS = tuple(SCHEMA['x-facts']['factory'])
 READ, SNAPSHOT = 'openwiz.war-room.collector.read.v1', 'openwiz.war-room.collector.v1'
@@ -446,6 +446,18 @@ UNREADABLE = {
 }
 
 
+def window(since, until, requested):
+    """The read's window as (since, until) UTC text: both given, or neither for the last whole UTC day
+    before REQUESTED. Raise ValueError for half a window or one that ends after REQUESTED. The one
+    decision gather.snapshot and read both use, so the factory and CI groups get the same bounds."""
+    suite.require((since is None) == (until is None), 'since and until go together')
+    if since is None:
+        end = when(requested).replace(hour=0, minute=0, second=0)
+        since, until = iso(end - timedelta(days=1)), iso(end)
+    suite.require(when(since) < when(until) <= when(requested), 'the window must end by the read')
+    return since, until
+
+
 def read(repository, facts, *, since=None, until=None, usage=None, robots=ROBOTS, tickets=None, base=None,
          checks=('ci',), clock=now):
     """One on-demand read envelope of FACTS (collector.v1.md, "The on-demand read")."""
@@ -453,14 +465,8 @@ def read(repository, facts, *, since=None, until=None, usage=None, robots=ROBOTS
     facts = list(facts)
     suite.require(facts and len(set(facts)) == len(facts) and set(facts) <= set(FACTS), 'invalid facts')
     suite.require(type(robots) is int and robots >= 1, 'invalid robots')
-    suite.require((since is None) == (until is None), 'since and until go together')
     requested = clock()
-    if since is None:
-        until = when(requested).replace(hour=0, minute=0, second=0)
-        since = until - timedelta(days=1)
-    else:
-        since, until = when(since), when(until)
-    suite.require(since < until <= when(requested), 'the window must end by the read')
+    since, until = (when(t) for t in window(since, until, requested))
     r = Read(repository, since, until, clock, None if usage is None else Path(usage), robots, tickets, base, tuple(checks))
     out = {}
     for name in FACTS:

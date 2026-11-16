@@ -3,7 +3,7 @@
 CI improvement 3 (spec #780) watches one number: how long a pull request
 waits for its result. This contract defines it once, with the cohort, the
 numbers reported beside it, the record it is reported in, and the ways to game
-it that are forbidden. [`tools/ci-bench/ci3.py`](../tools/ci-bench/ci3.py)
+it that are forbidden. [`tools/war-room/ci3.py`](../tools/war-room/ci3.py)
 computes it; [`docs/ci3.md`](../docs/ci3.md) holds the BEFORE record and every
 later point.
 
@@ -65,7 +65,7 @@ Reported beside the measure, never instead of it:
   that never reported, the attempt's last job; with no job, the path is
   empty and the whole time is waiting), then the job that finished last
   before it was created, and so on back. Each job's steps split into **setup** and **running** by the
-  CI bench's step table (`tools/ci-bench/steps.tsv`: `setup` rows are setup,
+  war room's step table (`tools/war-room/steps.tsv`: `setup` rows are setup,
   every other category is running; a job's time no step covers is setup), a
   step the table doesn't name is **unclassified**, and **waiting** is the
   rest of the result's time: push to run, job created to started, the gaps

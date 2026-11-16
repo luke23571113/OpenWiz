@@ -22,7 +22,7 @@ The ledger is [ledger.md](ledger.md); the keeper checks are
 - **After:** this branch, the same two targets.
 - Same Linux aarch64 sandbox, Rust 1.99.1, `cargo-llvm-cov` 0.9.1.
 
-[`compare.txt`](compare.txt):
+[`compare.txt`](compare.txt), without its sandbox `seconds` line (see "Size, count and time"):
 
 ```text
 before: openwiz-tests:checks, openwiz-tests:cli-agent
@@ -39,7 +39,6 @@ coverage openwiz-server: 0/6140 (0.00%) -> 0/6140 (0.00%), covered +0
 coverage openwiz-service: 0/5276 (0.00%) -> 0/5276 (0.00%), covered +0
 coverage openwiz-store: 276/3643 (7.58%) -> 276/3643 (7.58%), covered +0
 coverage openwiz-terminal: 59/5093 (1.16%) -> 59/5093 (1.16%), covered +0
-seconds: 225.4 -> 216.6 (not compared exactly)
 drops: none
 ```
 
@@ -58,9 +57,11 @@ Coverage is the same in every crate: no drop to explain.
 - **Runs elsewhere:** each support test ran once per including target (from
   source: `schema.rs` has 12 include sites, `forks.rs` 4, `real_time.rs`
   3); each now runs once. Those targets were not measured here.
-- **Time:** 225.4 s to 216.6 s on the same machine, the two runs one after
-  the other; the kit reports time outside its repeat check. No time saving
-  is claimed.
+- **Time:** not claimed. Under the orchestrator's ruling on spec #787
+  (2026-11-16), run time is judged only from CI's own job durations, before
+  and after, on the same lane. The `seconds` line in `compare.txt` and the
+  two JSON files is the kit's sandbox reading, kept as the tool printed it,
+  and is not evidence of a time change.
 
 ## Keeper checks
 

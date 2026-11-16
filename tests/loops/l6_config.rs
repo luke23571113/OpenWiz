@@ -1,5 +1,5 @@
 //! Operator comes from install config, not a definition or HTTP caller.
-use super::l6_switches::{Fixture, git};
+use super::fixture::{Fixture, git};
 use serde_json::{Value, json};
 use std::fs;
 pub(super) fn config(f: &Fixture) -> Value {

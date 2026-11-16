@@ -16,7 +16,7 @@ def _load(name, path):
     return module
 
 
-C = _load('promotion_experiment', HERE.parents[1] / 'factory-metrics/experiment_contract.py')
+C = _load('promotion_experiment', HERE.parents[1] / 'war-room/experiment_contract.py')
 PRECHECK = _load('promotion_precheck', HERE.parent / 'precheck/test_contract.py')
 
 # Technical instructions only. Historical finding text never enters a case.
