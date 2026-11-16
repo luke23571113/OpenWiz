@@ -35,7 +35,7 @@ def _load(name, path):
     return result
 
 
-trends = _load('war_room_weekly_trends', HERE.parent / 'ci-bench' / 'trends.py')
+trends = _load('war_room_weekly_trends', HERE / 'trends_reads.py')
 
 SCHEMA = 'openwiz.war-room.weekly.v1'
 PST = 'PST-fixed-UTC-08:00'

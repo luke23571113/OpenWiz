@@ -36,7 +36,7 @@ def _module(name, path):
     return module
 
 
-T = _module('review_loops_trends', HERE.parent / 'ci-bench/trends.py')
+T = _module('review_loops_trends', HERE / 'trends_reads.py')
 J = T.J
 W = _module('review_loops_rework', HERE / 'rework.py')
 
