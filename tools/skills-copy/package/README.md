@@ -39,6 +39,8 @@ Installing does not pin a marketplace that is already registered at another
 ref: remove that registration first. Check that `claude plugin marketplace list`
 shows the `wizskills` marketplace at `v{{version}}` and that
 `claude plugin list` shows `openwiz@wizskills` at version {{version}}.
+Then start a new Claude Code session so the `openwiz:` skills load: a plugin
+installed during a session is not available in that session.
 
 ## Get the installer
 
@@ -96,7 +98,8 @@ mkdir -p .agents/skills
 ```
 
 Check that `"$HOME/wizskills/.claude-plugin/plugin.json"` shows version
-{{version}}, then ask Codex to read the exact skill, for example
+{{version}}. Then start a new Codex session so the linked OpenWiz skills load,
+and ask Codex to read the exact skill, for example
 `.agents/skills/build-ticket/SKILL.md`.
 
 ## Any other agent

@@ -2,6 +2,7 @@
 """Read-only privacy check for openwiz.open-development.v1."""
 import argparse
 from contextlib import closing
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -41,17 +42,35 @@ class Unreadable(Exception):
     pass
 
 
+def source_version():
+    """The checker's code, for #761's verdict cache key; None disables it."""
+    try:
+        here = Path(__file__).resolve().parent
+        return hashlib.sha256(b''.join((here / x).read_bytes() for x in ('check.py', 'workflow.py'))).hexdigest()
+    except OSError:
+        return None
+
+
+SOURCE_VERSION = source_version()
+
+
 class Checker:
     def __init__(self, literals=()):
         self.literals = literals
         self.findings = 0
         self.references = []
+        # #761: one run's blob verdicts, so a commit range checks each file
+        # version once. In memory only, never across runs.
+        self.verdicts = {}
+        self.recording = None
 
     def refuse(self, rule, place, line=1):
         # No source snippets, paths, job names, Git stderr or exception text:
         # even a file name or an error can itself contain a private value.
         print(f'{rule} {place}:{line}')
         self.findings += 1
+        if self.recording is not None:
+            self.recording.append((rule, line))
 
     def text(self, text, place, contract=False):
         skip = False
@@ -95,10 +114,39 @@ class Checker:
         if skip:
             self.refuse('READ', place)
 
-    def file(self, name, data, place):
+    def file(self, name, data, place, blob=None):
+        """Check one path. DATA is its bytes, or a function returning them.
+        BLOB is its Git object id: a blob whose contents were already checked
+        under the same rules, checker code, policy and literals in this run
+        replays that verdict at this place instead of being read again."""
         if name == 'private' or name.startswith('private/') or (name.startswith('docs/grills/') and name != 'docs/grills/README.md'):
             self.refuse('F1', place)
         self.text(name, place + '-path')
+        # Contents are checked under one of three rule sets, chosen by path.
+        rules = 'workflow' if is_workflow(name) else 'contract' if name == 'contracts/open-development.v1.md' else 'text'
+        key = None
+        if SOURCE_VERSION and isinstance(blob, str) and re.fullmatch(r'[0-9a-f]{40}', blob):
+            key = (SOURCE_VERSION, tuple(DECIDERS), tuple(self.literals), rules, blob)
+        verdict = self.verdicts.get(key) if key else None
+        if verdict is not None:
+            refusals, targets = verdict
+            for rule, line in refusals:
+                self.refuse(rule, place, line)
+            self.references.extend((target, place) for target in targets)
+            return
+        if callable(data):
+            data = data()
+        refusals, start = [], len(self.references)
+        self.recording = refusals
+        try:
+            self.contents(name, data, place)
+        finally:
+            self.recording = None
+        # Only a check that finished is kept; an error leaves nothing behind.
+        if key:
+            self.verdicts[key] = (tuple(refusals), tuple(x for x, _ in self.references[start:]))
+
+    def contents(self, name, data, place):
         if b'\0' in data:
             if is_workflow(name):
                 self.refuse('F2', place)
@@ -339,7 +387,7 @@ def git_files(repo, ref, blobs):
         mode, kind, sha = info.decode().split()
         if kind != 'blob' or mode not in {'100644', '100755', '120000'}:
             raise Unreadable()
-        yield name.decode('utf-8'), blobs.read(sha)
+        yield name.decode('utf-8'), (lambda sha=sha: blobs.read(sha)), sha
 
 
 def main(argv=None):
@@ -378,7 +426,7 @@ def main(argv=None):
         blobs = BlobReader(args.repo)
         trees = []
         if args.tree:
-            trees.append(('staged', directory_files(args.tree)))
+            trees.append(('staged', ((name, data, None) for name, data in directory_files(args.tree))))
         if args.git_tree:
             trees.append(('tree', git_files(args.repo, args.git_tree, blobs)))
         # A later deletion does not remove material from published history.
@@ -391,9 +439,9 @@ def main(argv=None):
                 input_role = 'tree' if tree_place == 'staged' else 'input'
                 known = set()
                 checker.references = []
-                for index, (name, data) in enumerate(entries, 1):
+                for name, data, blob in entries:
                     known.add(name)
-                    checker.file(name, data, tree_place + ':' + safe_place(name, checker.literals))
+                    checker.file(name, data, tree_place + ':' + safe_place(name, checker.literals), blob)
                 for target, place in checker.references:
                     if target not in known:
                         checker.refuse('F2', place)

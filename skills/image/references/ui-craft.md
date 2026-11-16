@@ -105,7 +105,8 @@ is transplanted. Contrast calculation and example thresholds follow the
 [WCAG contrast definition][contrast] and [non-text contrast criterion][nontext];
 these measurements cover the named pairs only.
 
-Research revision: `58865325991b81e36a4202b40d477eb94f8c2625`.
+Research revision: the private 2026-11-02 design-skills research note, kept in
+the private record.
 Jake, 2026-11-02: use separate screenshot critique passes and dark-interface craft
 from the six approved design-research methods ([private record][research]).
 

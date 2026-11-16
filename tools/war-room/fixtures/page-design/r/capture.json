@@ -1,0 +1,186 @@
+{
+ "schema": "openwiz.war-room.page-capture.v1",
+ "note": "#631 R and the granted renderer fixes: packet = the frozen synthetic packet; edge = no board history, no CI bench, dense credit spans",
+ "pages": {
+  "packet": [
+   {
+    "name": "desktop",
+    "viewport": [
+     1440,
+     7316
+    ],
+    "scroll_width": 1440,
+    "open_disclosures_scroll_width": 1440,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 0,
+    "card_00a_title_lines": 2,
+    "min_chart_font_px": 10.12,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   },
+   {
+    "name": "phone",
+    "viewport": [
+     390,
+     12283
+    ],
+    "scroll_width": 390,
+    "open_disclosures_scroll_width": 390,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 9,
+    "card_00a_title_lines": 1,
+    "min_chart_font_px": 8.75,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   },
+   {
+    "name": "desktop-target",
+    "viewport": [
+     1440,
+     7316
+    ],
+    "scroll_width": 1440,
+    "open_disclosures_scroll_width": 1440,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 0,
+    "card_00a_title_lines": 2,
+    "min_chart_font_px": 10.12,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   },
+   {
+    "name": "phone-target",
+    "viewport": [
+     390,
+     12283
+    ],
+    "scroll_width": 390,
+    "open_disclosures_scroll_width": 390,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 9,
+    "card_00a_title_lines": 1,
+    "min_chart_font_px": 8.75,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   }
+  ],
+  "edge": [
+   {
+    "name": "desktop",
+    "viewport": [
+     1440,
+     5663
+    ],
+    "scroll_width": 1440,
+    "open_disclosures_scroll_width": 1440,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 0,
+    "card_00a_title_lines": 2,
+    "min_chart_font_px": 10.12,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   },
+   {
+    "name": "phone",
+    "viewport": [
+     390,
+     10096
+    ],
+    "scroll_width": 390,
+    "open_disclosures_scroll_width": 390,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 0,
+    "card_00a_title_lines": 1,
+    "min_chart_font_px": 9.55,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   },
+   {
+    "name": "desktop-target",
+    "viewport": [
+     1440,
+     5663
+    ],
+    "scroll_width": 1440,
+    "open_disclosures_scroll_width": 1440,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 0,
+    "card_00a_title_lines": 2,
+    "min_chart_font_px": 10.12,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   },
+   {
+    "name": "phone-target",
+    "viewport": [
+     390,
+     10096
+    ],
+    "scroll_width": 390,
+    "open_disclosures_scroll_width": 390,
+    "figures": 29,
+    "clipped_chart_text": 0,
+    "headline_overlaps": 0,
+    "card_00a_title_lines": 1,
+    "min_chart_font_px": 9.55,
+    "min_text_contrast": 7.1,
+    "fonts": [
+     {
+      "family": "Oswald WR",
+      "weight": "700",
+      "status": "loaded"
+     }
+    ]
+   }
+  ]
+ }
+}

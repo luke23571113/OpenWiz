@@ -271,7 +271,7 @@ pub(super) fn record_authors(
 /// nobody's. The comment read is REST's `user.login`, where an App is always
 /// `name[bot]` and no user login can hold brackets, so the login alone gives
 /// its type, as the tick's own reader assumes.
-fn authored(c: &openwiz_adapter_github::tick::Comment, authors: &RecordAuthors) -> bool {
+pub(super) fn authored(c: &openwiz_adapter_github::tick::Comment, authors: &RecordAuthors) -> bool {
     let login = c.author.as_deref();
     let kind = login.map(|l| {
         if l.to_ascii_lowercase().ends_with("[bot]") {

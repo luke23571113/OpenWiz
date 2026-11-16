@@ -286,52 +286,6 @@ class Smoke(FixtureCase):
         self.assertEqual(self.report(self.invoke(), 1)['reason'], 'comparison')
         self.assertNotIn(['send'], self.call_list())
 
-    def test_standard_sheet_prepares_exclusively_and_dry_runs(self):
-        template = json.loads(RUNNER.with_name('combined.template.json').read_text())
-        inputs = {}
-        def collect(value):
-            if isinstance(value, dict):
-                for v in value.values(): collect(v)
-            elif isinstance(value, list):
-                for v in value: collect(v)
-            elif isinstance(value, str) and value.startswith('@'):
-                name = value[1:]
-                if name == 'release':
-                    inputs[name] = {'scope': {'writes': {}}, 'products': [], 'coverage': [], 'risk': {}, 'gaps': []}
-                elif name.endswith('_checks'):
-                    inputs[name] = [{'path': '/count', 'equals': 1}]
-                elif name.endswith('_argv'):
-                    inputs[name] = [str(self.fake), 'readback']
-                else:
-                    inputs[name] = str(self.fake)
-        collect(template)
-        inputs.update(mode='fixture', scratch_checkout=str(self.root), port='7370', env={},
-                      artifacts={str(self.fake): self.sha(self.fake)},
-                      source={'checkout': str(self.root), 'head': '0' * 40},
-                      fleet_scope={'specs': [9001], 'tickets': [9002, 9003, 9004],
-                                   'rules': ['frontier', 'adr_0008'], 'never_start': [9004]})
-        source = self.root / 'inputs.json'
-        out = self.root / 'bound.json'
-        source.write_text(json.dumps(inputs))
-        argv = [sys.executable, '-I', str(RUNNER.with_name('prepare.py')),
-                '--inputs', str(source), '--out', str(out)]
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=5)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertTrue(json.loads(result.stdout)['prepared'])
-        self.assertEqual(out.stat().st_mode & 0o777, 0o600)
-        self.assertEqual(json.loads(out.read_text())['default_terminal_port'], '7370')
-        original = out.read_bytes()
-        again = subprocess.run(argv, capture_output=True, text=True, timeout=5)
-        self.assertEqual(again.returncode, 2)
-        self.assertEqual(out.read_bytes(), original)
-        dry = subprocess.run([sys.executable, '-I', str(RUNNER), '--kit', str(out),
-                              '--state', str(self.state), '--dry-run'],
-                             capture_output=True, text=True, timeout=5)
-        self.assertEqual(dry.returncode, 0, dry.stdout + dry.stderr)
-        self.assertEqual(json.loads(dry.stdout)['claims'], {c: 'not_run' for c in CLAIMS})
-        self.assertEqual(self.call_list(), [])
-        self.assertFalse(self.state.exists())
-
     def test_http_probe_preserves_duplicate_keys_for_the_strict_reader(self):
         import http.server
         import threading

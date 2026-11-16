@@ -244,6 +244,38 @@ def world(root):
     return w, [board]
 
 
+# The edge packet (WRD3 R and the two granted renderer fixes): no board history and no CI bench,
+# so cards 00a-00d have no numeric value at all, and dense hourly credit samples, the first span a
+# legacy extra-credits-only seed, so 00e has many short spans with 30,000-scale drops.
+def dense_credits():
+    rows = [{'at': '2030-01-13T08:00:00Z', 'extra_credits': 50000, 'only': 'extra_credits'}]
+    used = 10000
+    for hour, drop in enumerate((31000, 0, 2500, 21500, 900, 1200, 0, 7300, 450, 12000, 3000, 600)):
+        used += drop
+        rows.append({'at': '2030-01-13T%02d:00:00Z' % (9 + hour), 'credits': used, 'credits_limit': 400000,
+                     'extra_credits': 50000, 'extra_credits_total': 50000})
+    return '\n'.join(json.dumps(r) for r in rows) + '\n'
+
+
+def edge_world(root):
+    w = World(root)
+    at = '2030-01-14T09:55:00Z'
+    w.sample(at, [w.entry('credits', 'credits', 'credits.jsonl', dense_credits(), at)])
+    return w
+
+
+def render_edge(out):
+    """The edge packet's page and chart bundle (no natives selected)."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='war-room-edge-') as tmp:
+        w = edge_world(tmp)
+        bundle = native_build().build(w.history, at=AT, source_root=w.root, selections=[], out=out / 'charts')
+        html = page.render(history.latest(w.history), charts=bundle)
+    (out / 'page.html').write_text(html, encoding='utf-8')
+    return html, bundle
+
+
 def render(out):
     """The packet's page: the real chart build, then page.render over the latest sample."""
     out = Path(out)

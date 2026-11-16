@@ -68,7 +68,7 @@ CSS = (
     '.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;padding:18px 0;'
     'border-bottom:2px solid var(--rule)}'
     '.fig{border:2px solid var(--rule);padding:12px 12px 10px;margin:0;min-width:0;display:flex;flex-direction:column}'
-    '.fig h3{font-size:22px}'
+    '.fig h3{font-size:22px}.card-head{display:contents}'
     '.card .value{font-size:32px;margin:8px 0 2px}.card .stamp{font-size:12px;color:var(--soft);margin:0 0 6px;'
     'text-transform:uppercase;letter-spacing:.06em}'
     '.chart{margin:6px 0 0}.chart svg{display:block;width:100%;height:auto}'
@@ -107,8 +107,9 @@ CSS = (
     '.strip .flag{font-size:32px}.facts{border:0;padding:4px 0 0}'
     '.cards{grid-template-columns:1fr;gap:12px;padding:12px 0}'
     '.card{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px}'
-    '.card>*{grid-column:1/-1}.card h3{grid-column:1;font-size:18px}.card .value{grid-column:2;grid-row:1;font-size:26px;'
-    'margin:0;text-align:right}.card .stamp{text-align:right}'
+    '.card>*{grid-column:1/-1}.card-head{display:flex;flex-wrap:wrap;gap:4px 10px}'
+    '.card h3{flex:1 0 160px;font-size:18px}.card .value{flex:1 0 auto;font-size:26px;'
+    'margin:0;text-align:right}.card .stamp{flex-basis:100%;text-align:right}'
     'h2{font-size:44px}.figs{grid-template-columns:1fr}.panels{grid-template-columns:1fr}}'
 )
 
@@ -374,8 +375,8 @@ def card_html(card, f, record):
         body = f'<div class="chart" id="figure-{esc(f["id"])}">{f["svg"]}</div>' + meta_html(f, record)
     inner = (values_html(f) if f is not None else '') + source_note(card['providers'])
     return (f'<figure class="fig card" id="fig-{esc(card["figure"])}" aria-labelledby="t-{esc(card["figure"])}">'
-            f'<h3 id="t-{esc(card["figure"])}"><span class="no">Fig. {esc(card["figure"])}</span> / {esc(card["title"])}</h3>'
-            f'<p class="value">{esc(value)}</p><p class="stamp">{esc(stamp)}</p>{body}'
+            f'<div class="card-head"><h3 id="t-{esc(card["figure"])}"><span class="no">Fig. {esc(card["figure"])}</span> / {esc(card["title"])}</h3>'
+            f'<p class="value">{esc(value)}</p><p class="stamp">{esc(stamp)}</p></div>{body}'
             f'<figcaption class="cap">{esc(card["caption"])}</figcaption>'
             + (f'<details><summary>Values and sources</summary>{inner}</details>' if inner else '') + '</figure>')
 

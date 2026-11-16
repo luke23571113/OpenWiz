@@ -37,6 +37,24 @@ RISKS = ('send', 'new', 'app_permissions', 'spending')
 RECEIPT = {'candidate_sha256', 'inputs_sha256', 'artifacts_sha256', 'kit_sha256', 'evidence_class',
            'status', 'started_at', 'finished_at', 'evidence', 'coverage', 'gaps'}
 GATES = ('smoke',) + RISKS
+# APP-1 (a), Jake, 2026-11-15: one recorded waiver may stand in for one risk's
+# live receipt of one release. tools/release/candidate.py resolves the private
+# record (unedited, unrevoked) and passes it here; this checks its scope again.
+WAIVABLE = {('app_permissions', '0.0.12')}
+WAIVER_KEYS = {'pointer', 'record_sha256', 'decided_at', 'risk', 'version'}
+
+
+def _waived(waiver, body):
+    """The one risk a resolved, in-scope waiver covers for this candidate."""
+    if waiver is None:
+        return None
+    if (type(waiver) is not dict or set(waiver) != WAIVER_KEYS
+            or (waiver['risk'], waiver['version']) not in WAIVABLE
+            or waiver['version'] != body['release_version']
+            or type(waiver['pointer']) is not str or not RECORD.fullmatch(waiver['pointer'])
+            or type(waiver['record_sha256']) is not str or not re.fullmatch('[0-9a-f]{64}', waiver['record_sha256'])):
+        raise Refusal('waiver_out_of_scope')
+    return waiver['risk']
 # The kit claim whose steps can check each risk. This kit has no spending
 # check, so a candidate that changes spending refuses as `risk_missing`.
 RISK_CLAIM = {'send': 'send', 'new': 'new', 'app_permissions': 'app', 'spending': None}
@@ -154,13 +172,15 @@ def preserved_line(journal_sha, candidate_sha, kit_sha):
     return f'{PRESERVE} journal={journal_sha} candidate={candidate_sha} kit={kit_sha}'
 
 
-def produce(kit_path, state_dir, candidate, record):
-    """The smoke receipt and every required risk receipt, or a refusal."""
+def produce(kit_path, state_dir, candidate, record, waiver=None):
+    """The smoke receipt and every required risk receipt, or a refusal. A
+    resolved in-scope `waiver` stands in for its one risk's receipt, as `waived`."""
     if type(record) is not str or not RECORD.fullmatch(record):
         raise Refusal('invalid_record')
     if not _sealed(candidate):
         raise Refusal('invalid_candidate')
     body = candidate['candidate']
+    waived = _waived(waiver, body)
     try:
         kit = smoke.load_kit(Path(kit_path))
         smoke.verify_artifacts(kit)
@@ -187,7 +207,7 @@ def produce(kit_path, state_dir, candidate, record):
         required = body['risk'][category]['required']
         if required not in ('yes', 'no'):
             raise Refusal('risk_unknown')
-        if required == 'yes' and not section['risk'][category]:
+        if required == 'yes' and not section['risk'][category] and category != waived:
             raise Refusal('risk_missing')
 
     state_dir = Path(state_dir)
@@ -245,6 +265,12 @@ def produce(kit_path, state_dir, candidate, record):
         if body['risk'][category]['required'] == 'no':
             gates[category] = inputs[category] = None
             continue
+        if category == waived:
+            # Waived, never passed: no live receipt, only the waiver's record.
+            gates[category] = {'status': 'waived', 'waiver': {'pointer': waiver['pointer'],
+                                                              'record_sha256': waiver['record_sha256']}}
+            inputs[category] = None
+            continue
         inputs[category] = dict(base, gate=category, risk_steps=ids,
                                 classification=body['risk'][category])
         covered = [(v, p) for v, p in promises if set(rows[(v, p)]) & set(ids)]
@@ -255,7 +281,7 @@ def produce(kit_path, state_dir, candidate, record):
             if journal_sha else None}
 
 
-def accept(gate, doc, candidate, kit_path, state_dir, resolve=None):
+def accept(gate, doc, candidate, kit_path, state_dir, resolve=None, waiver=None):
     """Return only when `gate`'s receipt satisfies a live gate for `candidate`.
 
     The receipt's own fields are never enough: it must be exactly what its
@@ -275,6 +301,8 @@ def accept(gate, doc, candidate, kit_path, state_dir, resolve=None):
     if gate != 'smoke' and body['risk'][gate]['required'] not in ('yes', 'no'):
         raise Refusal('risk_unknown')
     found, inputs = doc['gates'].get(gate), doc['inputs'].get(gate)
+    if type(found) is dict and found.get('status') == 'waived':
+        raise Refusal('waived')  # a waiver is never a live pass
     if found is None or type(inputs) is not dict:
         raise Refusal('missing')
     if type(found) is not dict or set(found) != RECEIPT or type(found['evidence']) is not dict:
@@ -319,7 +347,7 @@ def accept(gate, doc, candidate, kit_path, state_dir, resolve=None):
         raise Refusal('gaps_missing')
     if kit_path is None or state_dir is None:
         raise Refusal('evidence_mismatch')
-    again = produce(kit_path, state_dir, candidate, found['evidence'].get('record'))
+    again = produce(kit_path, state_dir, candidate, found['evidence'].get('record'), waiver)
     if again['gates'][gate] != found or again['inputs'][gate] != inputs:
         raise Refusal('evidence_mismatch')
     if resolve is None:

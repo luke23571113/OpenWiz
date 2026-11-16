@@ -20,7 +20,13 @@ SUITES = {
                      ['python3', '-I', 'skills/launch-fleet/scripts/test-grants.py'],
                      ['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py'],
                      ['python3', '-I', 'tools/review-relay/test_inbox.py']],
+    # #747: the no-push check's cases (author trust included) and its durable saves.
+    'build-ticket': [['python3', '-I', 'skills/build-ticket/scripts/test/test_check_helpers.py'],
+                     ['python3', '-I', 'skills/build-ticket/scripts/test/test_durable_helpers.py']],
 }
+# #743: suites CI runs as their own job, split across members by
+# ci/shard/lanes.py; the skills job's matrix runs the rest.
+SHARDED = ('launch-fleet',)
 
 
 def valid(value):

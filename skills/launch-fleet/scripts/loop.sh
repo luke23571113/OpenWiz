@@ -4,7 +4,7 @@
 # prints an uploadable script containing this runner and the installed fleet
 # and revision helpers. It refreshes the consumer clone but runs those pinned
 # helpers, so the consumer needs no skills/ and no plugin cache at runtime.
-# Without --bundle, retain the clone's helpers for existing source-only loops.
+# Without --bundle, it runs the helpers installed beside it, never the clone's.
 # A spec's fleet thread's loop (ClosedWiz#192) also sets FLEET_SPEC (or passes
 # the spec's number after --bundle OWNER/REPO): then it runs that spec's check
 # alone (`fleet.sh spec <FLEET_SPEC>`).
@@ -379,13 +379,11 @@ else
   mkdir -p "$(dirname "$dir")" || die "can't make $(dirname "$dir")"
   gh repo clone "$GH_REPO" "$dir" -- -q --depth 1 || die "can't clone $GH_REPO"
 fi
-if [ -n "${LAUNCH_FLEET_RUNTIME:-}" ]; then
-  scripts=$LAUNCH_FLEET_RUNTIME
-  LAUNCH_FLEET_REVISION=$scripts/plan-graph/revision.sh
-  export LAUNCH_FLEET_REVISION
-else
-  scripts=$dir/skills
-fi
+# Always the invoking installation's (or the bundle's pinned) helpers: the
+# consumer clone's skills/ is data to read, never code to run.
+scripts=$guard_scripts
+LAUNCH_FLEET_REVISION=$scripts/plan-graph/revision.sh
+export LAUNCH_FLEET_REVISION
 # Refresh may have overlapped another observation. Recheck before the poll.
 overload nonessential-poll
 if [ -n "$FLEET_SPEC" ]; then exec sh "$scripts/launch-fleet/scripts/fleet.sh" spec "$FLEET_SPEC"; fi

@@ -9,7 +9,7 @@
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd) || exit 1
 INDEX=${INDEX_SH:-$HERE/index.sh}
-CASES=28 # every case below; fewer run means one was skipped
+CASES=30 # every case below; fewer run means one was skipped
 fails=0
 cases=0
 
@@ -172,6 +172,31 @@ else
   expect unreadable-file 2 '' "index.sh: cannot read $tmp/g/2026-01-02-alpha.md"
 fi
 chmod 644 "$tmp/g/2026-01-02-alpha.md"
+
+# --- The default folder, docs/grills, is the consumer's and optional (E7) ---
+
+# expect_default NAME STATUS STDOUT [STDERR]: index.sh with no folder, from $tmp/p.
+expect_default() {
+  cases=$((cases + 1))
+  out=$(cd "$tmp/p" && sh "$INDEX" 2> "$tmp/err")
+  code=$?
+  err=$(cat "$tmp/err")
+  if [ "$code" != "$2" ] || [ "$out" != "$3" ] || [ "$err" != "${4:-}" ]; then
+    fails=$((fails + 1))
+    echo "FAIL $1: exit $code (want $2)"
+    printf '  stdout:\n%s\n  want:\n%s\n  stderr:\n%s\n  want:\n%s\n' "$out" "$3" "$err" "${4:-}"
+  else
+    echo "ok $1"
+  fi
+}
+
+rm -rf "$tmp/p" && mkdir "$tmp/p" || { echo "FAIL setup"; exit 1; }
+expect_default default-absent 0 '' 'index.sh: this project has no docs/grills folder, so there is no grill index'
+
+mkdir -p "$tmp/p/docs/grills" || { echo "FAIL setup"; exit 1; }
+printf '%s\n\n%s\n' '# Grill: alpha (2026-01-02)' "$P Status: **open**. Feeds: the alpha spec." > "$tmp/p/docs/grills/2026-01-02-alpha.md"
+expect_default default-present 0 "$HEAD
+| [alpha](2026-01-02-alpha.md) | **open** | the alpha spec |"
 
 if [ "$cases" -ne "$CASES" ]; then
   echo "FAIL ran $cases cases, want $CASES"

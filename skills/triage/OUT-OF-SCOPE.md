@@ -1,6 +1,6 @@
 # Out of scope
 
-The `.out-of-scope/` folder at the project's root records each request the user has rejected. It keeps the reason after the issue closes, and when the same request comes back, triage shows the earlier decision instead of arguing it again from the start.
+The optional `.out-of-scope/` folder at the project's root, when the project has one, records each request the user has rejected. It keeps the reason after the issue closes, and when the same request comes back, triage shows the earlier decision instead of arguing it again from the start.
 
 ## One file per idea
 
@@ -32,7 +32,7 @@ The reason should still hold in a year: the project's purpose, a technical limit
 
 ## Checking it
 
-In step 1 of "Sort an issue", read every file in `.out-of-scope/`. Match by idea, not by keyword: "night theme" matches `dark-mode.md`. On a match, ask the user: "This looks like `.out-of-scope/dark-mode.md`, rejected because <reason>. Does that still hold?" Then:
+In step 1 of "Sort an issue", if `.out-of-scope/` is present, read every file in it; if it is absent, nothing was rejected before, so sort the issue as usual. Match by idea, not by keyword: "night theme" matches `dark-mode.md`. On a match, ask the user: "This looks like `.out-of-scope/dark-mode.md`, rejected because <reason>. Does that still hold?" Then:
 
 | The user says | Then |
 | --- | --- |

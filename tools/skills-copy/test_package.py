@@ -170,55 +170,111 @@ class InstallTests(Fixture):
         self.install()
         self.assertEqual(snapshot(self.parent), before)
 
-    def test_partial_publication_failure_removes_only_our_installation(self):
+    def test_readers_see_no_destination_or_the_complete_install(self):
+        # E4: a reader looking at the destination at any publication step, just
+        # before or just after each mv or mkdir, must find either nothing or the
+        # complete verified install, never an empty or partly filled directory.
+        seen = self.root / 'observed.jsonl'
+        observe = ('def observe():\n'
+                   '    dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                   '    state = None if not dest.exists() else sorted(\n'
+                   '        p.relative_to(dest).as_posix() for p in dest.rglob("*")\n'
+                   '        if ".git" not in p.relative_to(dest).parts[1:])\n'
+                   '    with open(' + repr(str(seen)) + ', "a") as f: f.write(json.dumps(state) + "\\n")\n')
+        for tool in ('mv', 'mkdir'):
+            real = shutil.which(tool)
+            wrapper = self.bin / tool
+            wrapper.write_text('#!' + sys.executable + '\nimport json, pathlib, subprocess, sys\n' + observe +
+                               'observe()\n'
+                               'code = subprocess.call([' + repr(real) + '] + sys.argv[1:])\n'
+                               'observe()\n'
+                               'sys.exit(code)\n')
+            wrapper.chmod(0o755)
+        self.install()
+        complete = sorted(p.relative_to(self.dest).as_posix() for p in self.dest.rglob('*')
+                          if '.git' not in p.relative_to(self.dest).parts[1:])
+        self.assertIn('skills/alpha/SKILL.md', complete)
+        states = [json.loads(line) for line in seen.read_text().splitlines()]
+        self.assertTrue(states)
+        self.assertEqual([s for s in states if s is not None and s != complete], [])
+
+    def test_failed_publication_leaves_no_destination_or_staging(self):
         real_mv = shutil.which('mv')
-        count = self.root / 'moves'
         wrapper = self.bin / 'mv'
-        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
-                           'count = pathlib.Path(' + repr(str(count)) + ')\n'
-                           'n = int(count.read_text()) + 1 if count.exists() else 1\n'
-                           'count.write_text(str(n))\n'
-                           'if n == 2: sys.exit(1)\n'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
+                           'if sys.argv[-1] == ' + repr(str(self.dest)) + ': sys.exit(1)\n'
                            'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
         wrapper.chmod(0o755)
         self.assert_refused_unchanged(code=3)
         self.assertFalse(self.dest.exists())
 
-    def test_failed_destination_claim_is_io_failure_without_writes(self):
-        real_mkdir = shutil.which('mkdir')
-        wrapper = self.bin / 'mkdir'
-        wrapper.write_text('#!' + sys.executable + '\nimport os,sys\n'
-                           'if sys.argv[-1] == ' + repr(str(self.dest)) + ': sys.exit(1)\n'
-                           'os.execv(' + repr(real_mkdir) + ', [' + repr(real_mkdir) + '] + sys.argv[1:])\n')
-        wrapper.chmod(0o755)
-        self.assert_refused_unchanged(code=3)
-
-    def test_failed_publish_preserves_a_replacement_destination(self):
-        real_mv = shutil.which('mv')
-        count = self.root / 'moves'
-        moved = self.parent / 'claimed-directory-moved'
+    def test_a_destination_appearing_at_a_failed_publish_is_untouched(self):
+        moved = self.root / 'moves'
         wrapper = self.bin / 'mv'
         wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
-                           'count = pathlib.Path(' + repr(str(count)) + ')\n'
-                           'n = int(count.read_text()) + 1 if count.exists() else 1\n'
-                           'count.write_text(str(n))\n'
-                           'if n == 2:\n'
-                           '    dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
-                           '    dest.rename(' + repr(str(moved)) + ')\n'
-                           '    dest.mkdir(mode=0o750)\n'
-                           '    (dest / "release").mkdir(mode=0o710)\n'
-                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
-                           '    os.utime(dest, ns=(123000000000, 456000000000))\n'
+                           'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           'if sys.argv[-1] == str(dest):\n'
+                           '    if not dest.exists():\n'
+                           '        dest.mkdir(mode=0o750)\n'
+                           '        (dest / "release").mkdir(mode=0o710)\n'
+                           '        (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           '        os.utime(dest, ns=(123000000000, 456000000000))\n'
                            '    sys.exit(1)\n'
-                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+                           'os.execv(' + repr(shutil.which('mv')) + ', [' + repr(shutil.which('mv')) + '] + sys.argv[1:])\n')
         wrapper.chmod(0o755)
-        self.install(code=3)
+        self.install(code=1)
         self.assertEqual(snapshot(self.dest), {
             '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes'),
             'release': ('dir', 0o710)})
         self.assertEqual(self.dest.stat().st_mtime_ns, 456000000000)
-        self.assertEqual(list(moved.iterdir()), [])
+        self.assertFalse(moved.exists())
         self.assertFalse(any(p.name.startswith('.wizskills-install.') for p in self.parent.iterdir()))
+
+    def test_bsd_mv_moving_into_a_concurrent_directory_is_undone_and_refused(self):
+        # Without mv -T, a directory created just before the plain rename makes
+        # mv move the install inside it; that must be moved back out and refused.
+        real_mv = shutil.which('mv')
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
+                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
+                           'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           'if sys.argv[-1] == str(dest) and not dest.exists():\n'
+                           '    dest.mkdir(mode=0o750)\n'
+                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        self.install(code=1)
+        self.assertEqual(snapshot(self.dest), {
+            '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
+
+    def test_bsd_mv_failed_move_back_is_refused_and_reported(self):
+        # WZ17 finding 6: with the emulated BSD mv, a directory appears just
+        # before the plain rename and moving the install back out fails. The
+        # installer must refuse, say this run's files were left inside that
+        # directory, and leave everything the other process made untouched.
+        real_mv = shutil.which('mv')
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
+                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
+                           'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           'if sys.argv[-1] == str(dest) and not dest.exists():\n'
+                           '    dest.mkdir(mode=0o750)\n'
+                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           'if sys.argv[1].startswith(str(dest) + "/"):\n'
+                           '    sys.exit(1)  # the move back out of that directory fails\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        p = self.install(code=1)
+        self.assertIn('could not move this install back out', p.stderr)
+        left = [p.name for p in self.dest.iterdir() if p.name.startswith('.wizskills-install.')]
+        self.assertEqual(len(left), 1)
+        self.assertTrue((self.dest / left[0] / 'skills/alpha/SKILL.md').is_file())
+        foreign = {k: v for k, v in snapshot(self.dest).items() if not k.startswith(left[0])}
+        self.assertEqual(foreign, {'.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
 
     def test_concurrent_destination_and_release_child_survive_publication(self):
         # Inject the race at the real publication syscall boundary, after the
@@ -530,6 +586,16 @@ class ReadmeTests(Fixture):
         pinned = [c for c in commands if '#v' in c]
         self.assertEqual(self.blocks()['claude'].split('\n')[:2], pinned + ['claude plugin install openwiz@wizskills --scope project'])
         self.assertIn('install.sh --version <version> --dest <dir>', readme)
+
+    def test_claude_code_and_codex_installs_end_by_starting_a_new_session(self):
+        # A plugin or skill installed into a running session does not load there:
+        # the steps after each install's commands must say to start a new session.
+        readme = self.readme()
+        for heading, agent in (('## Install on Claude Code', 'Claude Code'), ('## Install on Codex', 'Codex')):
+            with self.subTest(agent=agent):
+                section = readme.split(heading + '\n', 1)[1].split('\n## ', 1)[0]
+                after = section.rsplit('```\n', 1)[1]
+                self.assertRegex(after, r'[Ss]tart a new ' + agent + r' session so the [^.]*skills load')
 
     def test_installer_source_install_codex_and_other_agent_blocks_run(self):
         blocks = self.blocks()

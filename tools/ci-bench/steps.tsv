@@ -40,6 +40,7 @@ rust	Run cargo test --workspace
 rust	The pending list
 skills	The triage helper's test
 skills	The skills' tests
+skills	The launch-fleet tests
 skills	The docs-only classifier
 web	Run npm test
 web	The browser proofs
@@ -81,6 +82,8 @@ setup	Legacy checks follow ci
 # #1266 (X8): the Rust shards; each member's share, the ci job's count, and the balancer's own tests.
 setup	The Rust shard
 setup	Every Rust test ran exactly once
+setup	Every release unit ran exactly once
+setup	Every launch-fleet case ran exactly once
 skills	The shard balancer's tests
 build	Build and lint Rust
 skills	The always-run checks
