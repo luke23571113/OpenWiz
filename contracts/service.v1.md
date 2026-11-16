@@ -1,14 +1,13 @@
 # OpenWiz service contract, version 1 (`openwiz.service.v1`)
 
-The shapes of OpenWiz's always-on service on the owner's PC (OpenWiz 0.0.8, spec #262): its status report, its health checks and their fixes, the two-tries rule and the one "Needs you" item, the GitHub record each fix writes, the self-update's record, and its config and state directory. The schema is [`service.v1.schema.json`](service.v1.schema.json). This file adds the check table, the rules a schema can't express, the record forms and examples.
+The shapes of OpenWiz's always-on service on the owner's PC (OpenWiz 0.0.8, spec #262): its status report, its loops watchdog and the one "Needs you" item for each problem it finds, the GitHub record each "Needs you" writes, the self-update's record, and its config and state directory. The schema is [`service.v1.schema.json`](service.v1.schema.json). This file adds the check table, the rules a schema can't express, the record forms and examples.
 
-**Status:** T1 (#265) defines the contract; T4 (#269)'s fixture service prints `openwiz.service-status.v1` through `openwiz-service status --json`. Live acceptance remains unverified. T3 (#268) plans from it, T4 (#269) runs the service and prints its status, T5 (#270) carries out the fixes and writes the records, T6 (#271) owns the clone and the builds, and T7 (#272) the App's key. The original T1 proof checked the examples below, good and bad tables, and the check table; current fixture consumers are in `tests/service/`.
+**Status:** T1 (#265) defines the contract; T4 (#269)'s fixture service prints `openwiz.service-status.v1` through `openwiz-service status --json`. Live acceptance remains unverified. T3 (#268) plans from it, T4 (#269) runs the service and prints its status, T5 (#270) carries out the fixes and writes the records, T6 (#271) owns the clone and the builds, and T7 (#272) the App's key. ER3 (#797, 0.0.17) retired every health check but the watchdog, every fix and TK1 takeover. The original T1 proof checked the examples below, good and bad tables, and the check table; current fixture consumers are in `tests/service/`.
 
 **Always true:**
-- **OpenWiz's own only.** A check observes, and a fix touches, only OpenWiz's own loops, its own fleet threads, its own tick and its own server. No other loop, thread or project is ever touched (spec #262: "It never touches loops, threads or projects that aren't OpenWiz's").
-- **One fix per check, from a fixed list.** A check has at most one fix, and each fix uses only its fixed allowlisted effects (TK1 below adds exact-loop pause before the in-process tick restart). No fix is made up at run time.
-- **Two tries, then one "Needs you" (legacy checks).** Each fix is tried at most twice per incident. Then the incident becomes one "Needs you" item, and the check stays quiet about it until the incident ends.
-- **Every action has a record on GitHub:** each try of a fix, each "Needs you", and each self-update attempt. A record is one new comment in the form below. Records are never edited (#119: the GitHub writes never edit a comment).
+- **OpenWiz's own only.** The watchdog observes only OpenWiz's own loop identities. No other loop, thread or project is ever touched (spec #262: "It never touches loops, threads or projects that aren't OpenWiz's").
+- **Report only.** The health job has no fix: it never resumes, restarts, pauses or takes over anything. The retired checks' fixes, their two tries and TK1 takeover are gone (0.0.17).
+- **Every action has a record on GitHub:** each "Needs you" and each self-update attempt. A record is one new comment in the form below. Records are never edited (#119: the GitHub writes never edit a comment).
 - **Unknown stays unknown.** A check that can't read its subject observes `unknown`. That counts no try, heals nothing and ends nothing.
 - **Private.** The state directory is owner-only. The App's private key is read only from its file, and never appears in the status, a record, a log, an error or a process's arguments. The installation token is held in memory only.
 
@@ -38,83 +37,21 @@ Times are integer milliseconds since the Unix epoch (`at`, `since`, `*_at`). Dur
 
 ## The checks
 
-A **health pass** runs every `health.every_s` seconds (config). It runs each check once, `cloudroom` first, and gives one **result** for each subject.
+A **health pass** runs every `health.every_s` seconds (config). It runs its one check, the `watchdog`, once, and gives that check's one aggregate **result**.
 
 | Check | Subject | Observes | Broken when (`what`) | Fix | Record on | "Needs you" when |
 | --- | --- | --- | --- | --- | --- | --- |
-| `loop` | Each of OpenWiz's loops (below), by its id | Its state in `room-cli loop list` | `paused`: the loop is paused | `resume_loop`: `room-cli loop resume <id>`, a new allowlisted write (T5) | The service issue | At a broken pass after its second try |
-| `tick` | The service's tick | The service's own tick runs | `stalled`: a run is still going when the next run is due, `tick.every_s` after it started | `restart_tick`: stop that run, then start a new one | The service issue | At a broken pass after its second try |
-| `fleet_thread` | Each open spec whose GitHub records name its fleet thread (ADR 0011; FA2, #192, writes that record), by the spec's number | That thread in `room-cli thread show <id>` | `not_found`: CloudRoom says there is no such thread; `archived`: it is archived | `take_over_fleet_thread`: start a new fleet thread for the spec, which takes over from the spec's GitHub records as FA2's fleet threads do | The spec issue | At a broken pass after its second try |
-| `server` | The service's server | `GET http://127.0.0.1:<server.port>/api/v1/health` | `refused`: the connection is refused; `timed_out`: no full answer within `server.probe_timeout_s`; `wrong_answer`: an answer that isn't `200` with the health body naming `openwiz-server` (`contracts/web-api.v1.md`) | `restart_server`: stop the service's server, then start it again with the same config | The service issue | At a broken pass after its second try |
-| `cloudroom` | The PC's CloudRoom | Whether the CloudRoom adapter finds the running app's `room-cli` (T2, #267) | `not_running`: it finds none, or can't tell which | None: no allowlisted command starts the app | The service issue | At its incident's second broken pass |
 | `watchdog` | OpenWiz `loops.v1` identities and exact problems | Independent persisted admissions, immutable limits and explicit failure-disable provenance | `missed`: oldest unadmitted scheduled occurrence is strictly past; `stuck`: check admission is strictly past its immutable time limit; `disabled_by_failures`: authoritative positive evidence | None: report only; no restart or switch | The service issue | Immediately on a new or changed exact problem |
 
-**OpenWiz's loops** are the loops whose name starts `launch-fleet ` and has the configured repository, `<owner>/<name>`, as one of its words, split at each space. That is the name `launch-fleet` gives its loop (step 1: `launch-fleet <owner>/<repo>`). The words are compared exactly, case included, so the config writes the repository as the loops' names do. Every other loop is never a subject: it is never resumed, and it never shows in a result or a record (#265, Q4). With the repository `synthetic-owner/synthetic-repo`:
-
-| Loop name | OpenWiz's? |
-| --- | --- |
-| `launch-fleet synthetic-owner/synthetic-repo` | Yes |
-| `launch-fleet synthetic-owner/synthetic-repo (PC hub)` | Yes |
-| `launch-fleet #900 synthetic-owner/synthetic-repo` | Yes |
-| `launch-fleet synthetic-owner/other-repo` | No: another repository |
-| `launch-fleet synthetic-owner/synthetic-repo-2` | No: no word is the repository |
-| `launch-fleet synthetic-owner/Synthetic-Repo` | No: the case differs |
-| `Launch-fleet synthetic-owner/synthetic-repo` | No: it doesn't start `launch-fleet ` |
-| `nightly launch-fleet synthetic-owner/synthetic-repo` | No: it doesn't start `launch-fleet ` |
-| `launch-fleet` | No: it has no repository |
-
-### TK1: takeover by the service tick (additive)
-
-Jake's TK1 approval and its integration ruling on #270 add service-tick takeover beside the legacy new-fleet-thread outcome. For this path no fleet agent is created, no thread id is invented, and no loop is created or deleted. The existing registered Rust tick uses the repository's `docs/agents/fleet.md` settings through its normal checked reads.
-
-Before acting, re-read the complete open-spec list and the spec's complete ordered comments. The latest `launch-fleet: fleet thread <thread>, loop <loop>` first line must still name the dead thread and one literal checked loop id. Verify that the thread is absent or archived in the configured project, then verify the exact loop's repository ownership. An unread list, changed record, live/foreign thread or ambiguous identity permits no takeover write.
-
-The optional `retired_loops` field in `openwiz.service-state.v1` and `openwiz.service-status.v1` is an array of records with exactly these fields (older state documents may omit it):
-
-```json
-{"owner":"service_tick","spec":900,"thread":"thr_syn_old","loop":"loop_syn_old","phase":"pause_pending","at":1700000000000}
-```
-
-`spec` is the open spec, `thread` and `loop` are the exact old ownership record, `at` is when the durable intent was saved. Each loop id occurs once. `owner` is always `service_tick`. `phase` advances monotonically:
-
-1. `pause_pending`: save this reservation together with the due try, before the pause. This is an intent, not a claim of successful retirement.
-2. `paused`: `room-cli loop pause <loop> --json`, followed by a fresh complete `loop list --json`, confirmed the same owned loop paused. A command timeout or exit alone cannot confirm it. Save this phase before requesting the replacement tick. An already paused owned loop needs no second pause.
-3. `active`: the runtime confirmed completion of the old service tick and started its replacement. Save this phase atomically with the successful try outcome. An uncertain stop/start never becomes active and permits no overlapping replacement. All due retirement pauses are prepared before one shared tick replacement; a simultaneous stalled-tick repair cannot bypass an unconfirmed pause.
-
-The planner never resumes any loop reserved in these records, including after a crash, an incident ending, a changed loop name or a service restart. Full-list ambiguity still stays unread. Other loops keep their existing rules. A saved intent is retained on failed/interrupted attempts: unknown effects are not undone by an automatic resume. Before a later effect, revalidate the latest GitHub ownership and the configured project again. Reusing an existing exact binding can reconcile a confirmed paused loop without a second pause; a different binding for the same loop is refused.
-
-A saved `pause_pending` reservation also fences that spec at every service-tick action dispatch boundary, including normal scheduled runs, pending-start recovery and an already-running tick. The check reads shared durable authority again before dispatch. Other specs continue; an action already dispatched retains its normal readback and outcome recording. Confirming the pause permits dispatch again. Reload preserves the fence.
-
-Stalled-tick repair refreshes the current run after external observations and before planning and saving a try. Its runtime request carries the expected process-local worker generation, separate from the public start timestamp. The scheduler owner compares that generation before requesting a stop: a completed or changed run causes no stop or replacement. Deliberate TK1 replacement remains a separate request with the confirmed-pause prerequisite.
-
-Successful TK1 takeover has this additional `takeover_outcome` shape, on the existing fix record on the spec:
-
-```json
-{"state":"done","owner":"service_tick","retired_loop":"loop_syn_old"}
-```
-
-It never includes a new `thread` field. Its first-line outcome is exactly `done, service tick owns the fleet, retired loop <loop>`. In saved state it must match an active retirement record for the incident's spec and that exact retired loop. The retirement record preserves its original old thread even if the same spec's incident later observes a different dead thread; historical outcomes are never rebound to that newer thread. The legacy `{"state":"done","thread":"thr_syn_new"}` remains readable. Failed/interrupted outcomes, two tries and one Needs you, outcome-before-comment ordering, exact comment readback and saved notification ids retain their existing rules. An active retirement record makes that exact old fleet binding healthy; a later ownership record must be evaluated on its own merits. The service tick's own check still detects a stalled service tick.
-
-**Unknown and unread.** Only `loop` and `fleet_thread` read through `room-cli`, so only they can be unknown:
-
-- When `room-cli loop list` can't be read in full, or the open specs' GitHub records can't, that check gives one `unread` result, with no subject, in place of its subjects' results.
-- When one subject can't be read (a `thread show` that fails), its result is `unknown`.
-- While CloudRoom isn't running, `loop` is `unread` and every `fleet_thread` result is `unknown`, each with the gap `cloudroom_not_running`.
-
-The other three checks observe the service itself, its server and the adapter's search, so they are always known.
+**Retired (0.0.17, ER3):** the `loop`, `tick`, `fleet_thread`, `server` and `cloudroom` checks, their fixes (`resume_loop`, `restart_tick`, `take_over_fleet_thread`, `restart_server`) and TK1's takeover by the service tick. Older state and status documents that hold their results, incidents, tries, fixes or `retired_loops` still read (the schema keeps their shapes). A pass no longer writes any of them: it saves only watchdog incidents, so the first pass after an upgrade drops a retired check's open incident, with no record.
 
 ### A result
 
 ```json
-{"check": "server", "observed": {"state": "broken", "what": "timed_out"}}
+{"check": "watchdog", "open": [], "unknown": [], "snapshot_unknown": false}
 ```
 
-- `check`, and the subject's fields: `loop` has `loop` (`id` and `name`); `fleet_thread` has `spec` (its issue number) and `thread` (the fleet thread's id, as its records name it). `tick`, `server` and `cloudroom` have none.
-- `observed` is one of:
-  - `{"state": "healthy"}`;
-  - `{"state": "broken", "what": <one of the check's ways above>}`. A `tick` also has `run_started_at`: when the stalled run started;
-  - `{"state": "unknown", "gap": <gap>, "reason": <OpenWiz's own words>}`, for `loop` and `fleet_thread` only.
-- An `unread` result is `{"check": "loop" or "fleet_thread", "unread": {"gap": <gap>, "reason": ...}}`.
+The watchdog's one aggregate result, as LP4 below defines it. A retired check's result in an older document keeps its old shape: `check`, its subject's fields, and `observed` (`healthy`, `broken` with its `what`, or `unknown` with a `gap` and `reason`), or one `unread` with its `gap` and `reason`.
 
 A **gap** is one of the inventory's eight (`untested_version`, `command_failed`, `timed_out`, `budget_exhausted`, `malformed`, `missing_field`, `wrong_type`, `not_found`) or `cloudroom_not_running`. A reason is OpenWiz's own words, never a tool's raw output.
 
@@ -140,7 +77,7 @@ limit comes from its recorded immutable definition, never today's definition
 or its update time. Scheduled coverage uses original due time through admission,
 including late admissions; held proposals consume no occurrence.
 
-These are explicit exceptions to the legacy two-tries/one-hour lifecycle:
+Its lifecycle (the retired checks' two tries and one-hour heal do not apply):
 
 - A problem's identity is its `loop_id` and the entire `broken` object. Missed
   has `due_at_ms`; stuck has `run_id`, `started_at_ms`, `timeout_ms`; failure-disabled
@@ -173,44 +110,15 @@ rows for healed problems. Their records are `needs_you` with `loop_id` and
 They use the existing no-fix first-line form and service-issue/orchestrator
 routes. These fixture proofs establish wiring, not live acceptance.
 
-## Incidents and the two-tries rule
+## Incidents
 
-An **incident** is one subject's fault, from its first broken result to its end. A subject has at most one open incident. Its id is `i` and then a number, the state's `next_incident`, which then goes up by one.
+An **incident** is one exact watchdog problem, from the pass that first finds it to the pass with positive healthy evidence (LP4 above). Its id is `i` and then a number, the state's `next_incident`, which then goes up by one.
 
-Each pass, for each result, in this order:
-
-1. **Broken, and no open incident:** open one (`opened_at` is now). The fix's first try is due. A check with no fix has nothing due.
-2. **Broken, and an open incident:** clear its `healthy_since`. Then:
-   - if the fix has fewer than two tries, and its last try has its outcome, the next try is due;
-   - if it has its two tries, each with its outcome (or the check has no fix), and there's no "Needs you" yet, **one "Needs you" is due**;
-   - if it already has its "Needs you", **nothing is due**: the check stays quiet about it.
-3. **Healthy, and an open incident:** set `healthy_since` to now if it isn't set. **The incident ends** at the first healthy pass at least one hour (3,600 s) after `healthy_since`. So a fault that comes back within the hour is the same incident, with the tries it already had.
-4. **Unknown, or unread:** nothing changes. No try is due, nothing heals and nothing ends.
-5. **A subject that is gone** (a loop no longer in `loop list`, or no longer OpenWiz's; a spec that closed, or whose records no longer name a fleet thread): its open incident ends. This holds only when that check's list was read in full, never on `unread`.
-
-An incident that ends is dropped from the state, with no record. A fix's try counts once it is due and saved, whatever its outcome. A try is judged by the next pass, never by the command's own exit.
-
-**Save before you act.** A due try is saved in the state, with its `outcome` `null`, before its command runs. Once the command returns, its outcome is saved, then its record is written, then the record's comment id is saved. A crash at any point never gives a third try, or a second record of one try. At start, a try still saved with `outcome` `null` becomes `{"state": "interrupted"}`: the service stopped before it learned how the try went. A due "Needs you" is likewise saved, with its `send` op id, before its comment and its message.
-
-### A fix that is due
-
-What the planner (T3) returns for one try:
-
-```json
-{"fix": "restart_server", "incident": "i3", "try": 1}
-```
-
-`fix`, `incident` and `try` (`1` or `2`), and the subject's fields: `resume_loop` has `loop`, and `take_over_fleet_thread` has `spec` and `thread` (the one that is gone). Each fix belongs to one check, as the table says, and `cloudroom` has none.
-
-### Its outcome
-
-- `{"state": "done"}`: the command succeeded, and, where its write is read back, the read-back agrees. `take_over_fleet_thread`'s is `{"state": "done", "thread": <the new fleet thread's id>}`.
-- `{"state": "failed", "gap": <gap>, "reason": ...}`: the command refused or failed. `timed_out` says only that it didn't answer in time, never that it had no effect.
-- `{"state": "interrupted"}`: the service stopped before it learned how the try went.
+**Save before you act.** A new incident's "Needs you" is saved in the state, with its `send` op id, before its comment and its message. A crash at any point never gives a second record or a second message of one "Needs you".
 
 ## Records
 
-**Every try of a fix, every "Needs you" and every self-update attempt writes one new comment** on GitHub, as the service's GitHub App (T7). Its body is exactly:
+**Every "Needs you" and every self-update attempt writes one new comment** on GitHub, as the service's GitHub App (T7). Its body is exactly:
 
 ````text
 <the first line>
@@ -220,11 +128,11 @@ What the planner (T3) returns for one try:
 ```
 ````
 
-The record is `openwiz.service-record.v1`. Its first line is worked out from the record alone, by the table below, so the two can't disagree. The service's GitHub App writes this public projection on both repositories. A fleet record carries `spec`, never the old `thread`; a successful legacy takeover projects its outcome to `{"state":"done"}`, including inside either Needs-you try. The service-tick outcome retains its owner and exact retired-loop receipt. Private service state/status retain their operational identities and legacy outcomes; public tests create synthetic state and read this public schema, never private files.
+The record is `openwiz.service-record.v1`. Its first line is worked out from the record alone, by the table below, so the two can't disagree. The service's GitHub App writes this public projection on both repositories. Public tests create synthetic state and read this public schema, never private files.
 
-Before posting or notifying, the service validates the decoded record against the public schema and checks the complete body (decoded JSON strings included) for thread tokens. An intact unsafe frozen body is quarantined from POST and notification, retained privately with its original operation identity, and reported as pending. Other deliveries, repairs and incident healing continue. Invalid journal ownership, structure or checksum remains an error. Reconciliation may confirm an old claim only by unique exact readback of its original body, even when that body is no longer eligible for new public delivery; it never POSTs or notifies. No body or delivery identity is rewritten. This changes no retry or retirement safeguard.
+Before posting or notifying, the service validates the decoded record against the public schema and checks the complete body (decoded JSON strings included) for thread tokens. An intact unsafe frozen body is quarantined from POST and notification, retained privately with its original operation identity, and reported as pending. Other deliveries and incident healing continue. Invalid journal ownership, structure or checksum remains an error. Reconciliation may confirm an old claim only by unique exact readback of its original body, even when that body is no longer eligible for new public delivery; it never POSTs or notifies. No body or delivery identity is rewritten. This changes no retry or retirement safeguard.
 
-**Where:** a `fleet_thread` record goes on its spec's issue (`spec`). Every other record goes on the **service issue**: one standing issue, named in the config (`service_issue`), that Jake creates in T11's setup. A "Needs you" also goes to the orchestrator's thread (config `orchestrator_thread`) as one message through `send`'s write (`room-cli thread tell`), with this text: the comment's first line with its `**Needs you:**` turned into `Needs you:`, then ` Recorded on #<issue>.`.
+**Where:** every record goes on the **service issue**: one standing issue, named in the config (`service_issue`), that Jake creates in T11's setup. A "Needs you" also goes to the orchestrator's thread (config `orchestrator_thread`) as one message through `send`'s write (`room-cli thread tell`), with this text: the comment's first line with its `**Needs you:**` turned into `Needs you:`, then ` Recorded on #<issue>.`.
 
 ### The first line
 
@@ -232,49 +140,23 @@ Before posting or notifying, the service validates the decoded record against th
 
 | Check | `<subject>` |
 | --- | --- |
-| `loop` | `the loop <id> (<name>)` |
-| `tick` | `the tick` |
-| `fleet_thread` | `the fleet thread of #<spec>` |
-| `server` | `the server` |
-| `cloudroom` | `CloudRoom` |
 | `watchdog` | `the OpenWiz loop <loop_id>` |
 
 | `what` | `<broken>` |
 | --- | --- |
-| `paused` | `is paused` |
-| `stalled` | `is stalled` |
-| `not_found` | `is gone (not found)` |
-| `archived` | `is gone (archived)` |
-| `refused` | `is down (refused)` |
-| `timed_out` | `is down (timed out)` |
-| `wrong_answer` | `is down (wrong answer)` |
-| `not_running` | `is not running` |
 | `missed` | `missed its check at <due_at_ms>` |
 | `stuck` | `has stuck run <run_id> (started <started_at_ms>, limit <timeout_ms> ms)` |
 | `disabled_by_failures` | `was switched off by failures` |
 
 | Record | First line |
 | --- | --- |
-| A try that is `done` | `openwiz-service: incident <incident>: <subject> <broken>; try <try> of 2, <fix words>: done` |
-| A takeover that is `done` | `openwiz-service: incident <incident>: <subject> <broken>; try <try> of 2, take it over: done` |
-| A try that `failed` | `openwiz-service: incident <incident>: <subject> <broken>; try <try> of 2, <fix words>: failed (<gap>): <reason>` |
-| A try `interrupted` | `openwiz-service: incident <incident>: <subject> <broken>; try <try> of 2, <fix words>: interrupted` |
-| A "Needs you" after two tries | `**Needs you:** incident <incident>: <subject> <broken>; OpenWiz tried twice and couldn't fix it.` |
 | A "Needs you" with no fix | `**Needs you:** incident <incident>: <subject> <broken>; OpenWiz has no fix for it.` |
 | An update that `switched` | `openwiz-service: update to <to>: switched from <from>` |
 | An update that `kept` the old build | `openwiz-service: update to <to>: kept <from>; the <step> failed: <reason>` |
 
-| Fix | `<fix words>` |
-| --- | --- |
-| `resume_loop` | `resume it` |
-| `restart_tick` | `restart it` |
-| `take_over_fleet_thread` | `take it over` |
-| `restart_server` | `restart it` |
-
 ### The record
 
-- `{"schema": "openwiz.service-record.v1", "kind": "fix", "at", "incident", "check", <the subject's fields>, "broken", "fix", "try", "outcome"}`: one try. `broken` is the broken observation that made it due; `outcome` is never `null` here.
-- `{"schema": "openwiz.service-record.v1", "kind": "needs_you", "at", "incident", "check", <the subject's fields>, "broken", "tries"}`: the "Needs you". `tries` holds the two tries it made, `first` and `second`, each `{"at", "outcome"}`. `cloudroom`'s and `watchdog`'s have no `tries`.
+- `{"schema": "openwiz.service-record.v1", "kind": "needs_you", "at", "incident", "check", "loop_id", "broken"}`: a watchdog "Needs you", with no `tries`. The retired checks' `fix` records and their "Needs you" with `tries` keep their schema shapes for reading only.
 - `{"schema": "openwiz.service-record.v1", "kind": "update", "at", "from", "to", "outcome"}`: one self-update attempt (below).
 
 The optional private `decision_repositories` setting names exact `public` and
@@ -295,7 +177,7 @@ Settings are read at server startup; restart after an approved setting change.
 - `service`: what is running. `build` is the commit its programs were built from (40 lowercase hex digits), and `since` is when it started.
 - `tick`: `running` is `null` or the run going now (`{"started_at"}`). `last_ended` is `null` or the last run that ended: `started_at`, `ended_at`, and `how`, which is `finished` (it exited 0), `failed` (it exited otherwise) or `stopped` (the service stopped it: `restart_tick`, or the service itself stopping).
 - `server`: `port`, and `running`: `null` or `{"since"}`.
-- `last_pass`: `null` before the first health pass; otherwise `at`, `results` (one for each subject, or an `unread`), `fixes` (the fixes it made due) and `needs_you` (the incidents it made a "Needs you" due for).
+- `last_pass`: `null` before the first health pass; otherwise `at`, `results` (the watchdog's one result; an older pass may hold the retired checks' results), `fixes` (always empty since 0.0.17; an older pass may name a retired fix) and `needs_you` (the incidents it made a "Needs you" due for).
 - `incidents`: every open incident, as the state has it.
 - `update`: `null` before the first self-update attempt; otherwise the last one (below).
 - `update_record` is optional and status-only: `{"state", "reason"}` while that saved update attempt has a pending record. `state` is `retrying` when no request was sent and delivery will retry on the next scheduled check, or `uncertain` when delivery is unconfirmed and held without reposting. `reason` is OpenWiz's own explanation. It requires a non-null `update` and is omitted once delivery is confirmed; it never changes the historical attempt or the state/record formats.
@@ -307,7 +189,7 @@ Settings are read at server startup; restart after an approved setting change.
 - `id`, `check`, the subject's fields, `opened_at`;
 - `broken`: its latest broken observation. The subject's fields are those of the same result, so a `fleet_thread` incident names the fleet thread last found gone;
 - `healthy_since`: `null`, or when it was first seen healthy since it was last broken;
-- `tries` (not for `cloudroom`): `first` and `second`, each `null` or `{"at", "outcome", "comment"}`. `outcome` is `null` only while its command runs; `comment` is `null` until the record's comment id is saved;
+- `tries` (retired checks only, in older documents; never for `cloudroom` or `watchdog`): `first` and `second`, each `null` or `{"at", "outcome", "comment"}`. `outcome` is `null` only while its command runs; `comment` is `null` until the record's comment id is saved;
 - `needs_you`: `null`, or `{"at", "op_id", "comment"}`: `op_id` is the `send` op id of its message (1 to 64 ASCII letters, digits, `_` or `-`, starting with a letter or digit), so a retry never sends it twice; `comment` is `null` until its comment id is saved.
 
 At start, a tick run the state still shows as running was stopped with the service: it is saved as ended, `stopped`.
@@ -328,7 +210,7 @@ Each attempt writes one record on the service issue, and the status and the stat
 | Field | What |
 | --- | --- |
 | `repository` | `owner` and `name`: the GitHub repository the fleets run on |
-| `project` | OpenWiz's CloudRoom project on the PC, by id: where a takeover starts its fleet thread |
+| `project` | OpenWiz's CloudRoom project on the PC, by id: the project the watchdog's installation is bound to, and the one a "Needs you" message's thread must be in |
 | `operator` | Optional explicit local operator identity, a nonempty string set at install for the single owner. Omission preserves existing service reads. Both loop switch writes require a nonblank, NUL-free value and refuse when it is absent or invalid. Rechecked from this private config on each switch; never a repository owner, definition owner or HTTP identity |
 | `orchestrator_thread` | The orchestrator's thread, by id: where a "Needs you" message goes |
 | `service_issue` | The service issue's number (Records, "Where") |
@@ -337,7 +219,7 @@ Each attempt writes one record on the service issue, and the status and the stat
 | `tick` | `every_s`: the tick's schedule |
 | `events` | Optional `{ "hook_id": 4101 }` (synthetic example): the existing repository webhook's positive integer id. Absent means no intake job and no delivery reads; a present malformed object refuses config. The intake polls every ten seconds through the configured App, using only the approved delivery list and detail GETs; it never lists hooks or reads hook configuration |
 | `health` | `every_s`: the health pass's schedule |
-| `server` | `port` (1 to 65535), `allowed_host` (`null`, or the one public host name, as `openwiz-server --allowed-host` takes it), and `probe_timeout_s` (how long the `server` check waits for the health route). The server always serves the web page, from the running build's `web/` (`openwiz-server --web-root`) |
+| `server` | `port` (1 to 65535), `allowed_host` (`null`, or the one public host name, as `openwiz-server --allowed-host` takes it), and `probe_timeout_s` (read but unused since the `server` check was retired). The server always serves the web page, from the running build's `web/` (`openwiz-server --web-root`) |
 
 Every duration is at least 1 second. The service refuses to start, and says which rule failed, when its config doesn't read: a schema failure, a port above 65535, or an `allowed_host` the server refuses. It never guesses a value.
 
@@ -489,7 +371,7 @@ The service refuses to start (fail closed), and says which path, when `service/`
 
 Each is part of the contract. `check.py` checks the ones its examples can show.
 
-- **S1** One result for each subject in a pass: no two for one loop id or one spec, one each for `tick`, `server` and `cloudroom`, and an `unread` check has no other result.
+- **S1** One result for each subject in a pass: no two for one subject, and an `unread` check has no other result. Since 0.0.17 a pass needs no `tick`, `server` or `cloudroom` result, and none comes first.
 - **S2** A legacy subject has at most one open incident; LP4 uses one per exact watchdog problem. Incident ids are distinct, and each is below `next_incident`.
 - **S3** An incident's `second` try is set only after its `first`, and a try's `at` is at or after `opened_at`.
 - **S4** Except LP4's immediate watchdog intent, a "Needs you" comes only after both tries (or, with no fix, at the second broken pass), and only once per incident.
@@ -500,7 +382,7 @@ Each is part of the contract. `check.py` checks the ones its examples can show.
 
 ## Examples
 
-All values are synthetic.
+All values are synthetic. The retired checks' examples stay: older documents still read, and tests read these lines. The service no longer writes their results, incidents or records.
 
 The config:
 
@@ -615,7 +497,7 @@ Cargo/npm or silently adopt another channel. Invalid/unavailable artifacts keep
 the last-good selection. Setup/connection/engine effects follow
 [setup.v1.md](setup.v1.md); this channel never marks those prerequisites ready.
 
-TK1 delivery durability: a private immutable claim binds the spec issue and exact comment body before a POST, and an atomically saved receipt holds the confirmed comment id. Claims outlive their incidents. Even after one-hour healing or a restart, an unresolved claim remains reported and is reconciled only by a unique exact GitHub readback; it is never POSTed again. Other health checks and incident healing continue while delivery is pending.
+Record delivery durability: a private immutable claim binds the issue and exact comment body before a POST, and an atomically saved receipt holds the confirmed comment id. Claims outlive their incidents. Even after healing or a restart, an unresolved claim remains reported and is reconciled only by a unique exact GitHub readback; it is never POSTed again. Incident healing continues while delivery is pending.
 
 ## Notification job and protected state (0.0.15 T1, contract only)
 
@@ -667,23 +549,6 @@ no existing send/start/merge/recovery effect. T3/T4 must prove this across resta
 concurrency, disabled/revoked admission and outcome persistence failures. T1's
 recording seam is fixture evidence only and creates no installed runtime.
 
-
-### Public fleet ownership discovery (open development)
-
-The latest `launch-fleet: fleet active, loop <id>` record binds the spec's exact
-loop. Resolve its thread using the existing repository-bound private fleet map:
-`{"repo":"owner/name","threads":{"fleet:<spec>":"<thread>"}}`.
-The service reads `service/fleet-map.json` within its private state directory.
-Configure the existing fleet writers' absolute `LAUNCH_FLEET_STATE` setting to
-that same file; the service never discovers a map through process-global state. The file is an
-owner-only regular file with one link. A missing, malformed, unsafe,
-wrong-repository or unresolved map is an unread check, never an absent fleet.
-The map is re-read when ownership is revalidated for takeover. The service
-builds the old thread-bound representation only in memory for the existing
-exact-loop adapter; it is never a public record. Retirement remains bound to
-the exact repository/spec/thread/loop, with all existing pause and readback guards.
-Legacy thread-bearing ownership records require positively verified private
-GitHub metadata; an unknown or public repository refuses them.
 
 ### LP1: trusted loop approvals
 
