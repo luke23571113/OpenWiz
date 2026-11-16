@@ -1,0 +1,138 @@
+{
+  "schema": "openwiz.war-room.collector.read.v1",
+  "repository": "synthetic-owner/synthetic-repo",
+  "requested_at": "2030-03-01T12:04:00Z",
+  "factory": {
+    "merges": {
+      "fact": "merges",
+      "state": "known",
+      "read": {
+        "started_at": "2030-03-01T12:04:00Z",
+        "ended_at": "2030-03-01T12:04:05Z"
+      },
+      "point": null,
+      "window": {
+        "since": "2030-03-01T11:04:00Z",
+        "until": "2030-03-01T12:04:00Z",
+        "timezone": "UTC"
+      },
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": {
+        "path": "collector/factory/merges.json",
+        "schema": "github.graphql.search",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "evidence": [],
+      "prerequisites": [],
+      "value": {
+        "pull_requests": []
+      }
+    },
+    "open_prs": {
+      "fact": "open_prs",
+      "state": "known",
+      "read": {
+        "started_at": "2030-03-01T12:04:00Z",
+        "ended_at": "2030-03-01T12:04:10Z"
+      },
+      "point": "2030-03-01T12:04:10Z",
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": {
+        "path": "collector/factory/open-prs.json",
+        "schema": "github.graphql.pullRequests",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "evidence": [
+        "https://github.com/synthetic-owner/synthetic-repo/pull/4210",
+        "https://github.com/synthetic-owner/synthetic-repo/pull/4211",
+        "https://github.com/synthetic-owner/synthetic-repo/pull/4212"
+      ],
+      "prerequisites": [],
+      "value": {
+        "default_branch": "main",
+        "base": "main",
+        "checks": [
+          "ci"
+        ],
+        "pull_requests": [
+          {
+            "number": 4210,
+            "draft": false,
+            "base": "main",
+            "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "mergeable": "MERGEABLE",
+            "rollup": "success",
+            "checks": [
+              {
+                "name": "ci",
+                "result": "success"
+              },
+              {
+                "name": "privacy",
+                "result": "success"
+              }
+            ],
+            "verdict": {
+              "verdict": "APPROVE",
+              "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "comment_id": 9101,
+              "at": "2030-03-01T10:30:00Z"
+            },
+            "record": {
+              "kind": "review started",
+              "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "comment_id": 9100,
+              "at": "2030-03-01T10:00:00Z"
+            }
+          },
+          {
+            "number": 4211,
+            "draft": false,
+            "base": "main",
+            "head": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+            "mergeable": "MERGEABLE",
+            "rollup": "success",
+            "checks": [
+              {
+                "name": "ci",
+                "result": "success"
+              }
+            ],
+            "verdict": {
+              "verdict": "CHANGES",
+              "head": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+              "comment_id": 9201,
+              "at": "2030-03-01T10:45:00Z"
+            },
+            "record": {
+              "kind": "findings sent",
+              "head": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+              "comment_id": 9202,
+              "at": "2030-03-01T10:50:00Z"
+            }
+          },
+          {
+            "number": 4212,
+            "draft": true,
+            "base": "main",
+            "head": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+            "mergeable": "UNKNOWN",
+            "rollup": "pending",
+            "checks": [
+              {
+                "name": "ci",
+                "result": "pending"
+              }
+            ],
+            "verdict": null,
+            "record": null
+          }
+        ]
+      }
+    }
+  },
+  "ci": {}
+}

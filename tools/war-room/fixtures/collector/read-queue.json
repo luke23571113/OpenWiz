@@ -1,0 +1,79 @@
+{
+  "schema": "openwiz.war-room.collector.read.v1",
+  "repository": "synthetic-owner/synthetic-repo",
+  "requested_at": "2030-03-01T12:10:00Z",
+  "factory": {},
+  "ci": {
+    "queue": {
+      "fact": "queue",
+      "state": "known",
+      "read": {
+        "started_at": "2030-03-01T12:10:00Z",
+        "ended_at": "2030-03-01T12:10:02Z"
+      },
+      "point": "2030-03-01T12:10:02Z",
+      "window": null,
+      "fresh_until": "2030-03-01T12:11:02Z",
+      "freshness": "fresh",
+      "source": {
+        "path": "collector/ci/queue.json",
+        "schema": "github.rest.actions.jobs+rate_limit",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "evidence": [
+        "https://github.com/synthetic-owner/synthetic-repo/actions/runs/7101"
+      ],
+      "prerequisites": [],
+      "value": {
+        "observation": {
+          "repository": "synthetic-owner/synthetic-repo",
+          "observed_at": 1898597402,
+          "complete": true,
+          "queue": {
+            "complete": true,
+            "jobs": [
+              {
+                "id": "job-8101",
+                "required": true,
+                "status": "queued",
+                "queued_at": 1898597280,
+                "started_at": null
+              },
+              {
+                "id": "job-8102",
+                "required": false,
+                "status": "in_progress",
+                "queued_at": 1898597220,
+                "started_at": 1898597230
+              }
+            ]
+          },
+          "budgets": {
+            "rest": {
+              "remaining": 4000,
+              "limit": 5000,
+              "reset_at": 1898600400,
+              "retry_after": 0
+            },
+            "graphql": {
+              "remaining": 4800,
+              "limit": 5000,
+              "reset_at": 1898600400,
+              "retry_after": 0
+            }
+          }
+        },
+        "pools": [
+          {
+            "job": "job-8101",
+            "pool": "ubuntu-24.04"
+          },
+          {
+            "job": "job-8102",
+            "pool": "closedwiz-pc"
+          }
+        ]
+      }
+    }
+  }
+}
