@@ -444,9 +444,12 @@ class Snapshot(unittest.TestCase):
         for name in ('merges', 'stalls', 'cost'):
             self.assertEqual(default['factory'][name], explicit['factory'][name], name)
         for name, fact in default['ci'].items():
-            self.assertEqual((fact['state'], fact['window'], fact['prerequisites']),
-                             (explicit['ci'][name]['state'], explicit['ci'][name]['window'],
-                              explicit['ci'][name]['prerequisites']), name)
+            self.assertEqual((fact['state'], fact['prerequisites']),
+                             (explicit['ci'][name]['state'], explicit['ci'][name]['prerequisites']), name)
+            # activity's window is today so far, to its read's real end (collector.v1.md), never the read
+            # window; every other CI fact that names a window names exactly the requested one.
+            if name != 'activity' and fact['window'] is not None:
+                self.assertEqual((fact['window']['since'], fact['window']['until']), DAY, name)
         for half in ({'since': DAY[0]}, {'until': DAY[1]}):
             with self.subTest(half=half), fake_gh('daily-world.json') as (_, calls):
                 with self.assertRaises(ValueError):
