@@ -86,12 +86,15 @@ in the after run.
   fixture examples, then each
   target under `cargo test --locked -p PACKAGE --test NAME`, instrumented in
   its own folder, `target/test-value-cov/`. Binaries the tests run as child
-  processes are instrumented too, so their lines count. One exception: a
-  service test runs `<repo>/target/debug/examples/openwiz-server` by its
-  documented path, which is the plain build, so that one child process's
-  lines don't count; nor do those of children a test starts with a cleared
-  environment, whose raw profiles land in the checkout and are deleted after
-  the run. A failed test stops the measure: a red run is never a number.
+  processes are instrumented too, so their lines count. A child a test starts
+  with a cleared environment writes its raw profile into its working folder
+  instead; the script moves each such new profile into the coverage folder
+  after the target's run, so it counts too (service's installed-service
+  startup is one), and leaves any profile that was there before the run. One
+  exception: a service test runs `<repo>/target/debug/examples/openwiz-server`
+  by its documented path, which is the plain build, so that one child
+  process's lines don't count. A failed test stops the measure: a red run is
+  never a number.
 - **Prerequisites,** as for the tests themselves (`AGENTS.md`): zsh, Node
   24.22.1, a user other than root, and for `web-api` the web export
   (`cd apps/web && npm ci --ignore-scripts && npm run build`).
@@ -105,8 +108,13 @@ in the after run.
   never one target's numbers with another's, and never add targets' numbers
   up (measure a group's targets together instead).
 - **Test count:** passed plus ignored, from every libtest result line.
-- **Size:** the target's own sources: its folder when its root is `main.rs`
-  or `mod.rs`, otherwise its one file; files, bytes and lines.
+- **Size:** the group's own Rust sources: every `.rs` file in this tree
+  (outside `target/`) that rustc's dep-info for one of its test binaries
+  lists, so a target's modules count whatever its entrypoint is called or
+  where they live, and a file its targets share counts once; files, bytes
+  and lines. Files the compiler never reads (another file in the folder, a
+  module no `mod` line names, a fixture) are not size. A dep-info with no
+  such file, or one missing the target's own entrypoint, stops the measure.
 - **Run time:** the plain, uninstrumented `cargo test` of each target after
   its build, as CI runs it, in seconds. It is the one number that varies
   between runs, so it is reported, but outside the repeat check below; compare

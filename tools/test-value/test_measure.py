@@ -129,14 +129,17 @@ class Size(unittest.TestCase):
     # and generated, dependency or non-Rust inputs counted as the group's.
     def test_a_group_counts_each_own_rust_source_once(self):
         with tempfile.TemporaryDirectory() as root:
-            shared = write(root, "tests/support/mod.rs", "pub fn x() {}\n")
-            spaced = write(root, "tests/a b/main.rs", "mod support;\n")
+            # rustc names this tree's files relative to the workspace root,
+            # with the `..` of a #[path] module left in (as tests/ does).
+            write(root, "tests/support/mod.rs", "pub fn x() {}\n")
+            shared, shared_too = "tests/a b/../support/mod.rs", "tests/c/../support/mod.rs"
+            spaced = str(Path(write(root, "tests/a b/main.rs", "mod support;\n")).relative_to(root))
             other = write(root, "tests/c/main.rs", "mod support;\n")
             fixture = write(root, "tests/fixtures/case.json", "{}\n")
             built = write(root, "target/debug/build/out/gen.rs", "\n")
             outside = "/elsewhere/registry/serde/src/lib.rs"
             got = measure.sources([depinfo(f"{root}/target/debug/deps/a-1", spaced, shared, fixture, built, outside),
-                                   depinfo(f"{root}/target/debug/deps/c-2", other, shared)], root)
+                                   depinfo(f"{root}/target/debug/deps/c-2", other, shared_too)], root)
             self.assertEqual([str(Path(p).relative_to(root)) for p in got],
                              ["tests/a b/main.rs", "tests/c/main.rs", "tests/support/mod.rs"])
 

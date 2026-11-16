@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -148,17 +149,28 @@ def resolve(spec, packages):
     raise MeasureError(f"no test target {package}:{name}")
 
 
+DEP = re.compile(r"(?:\\.|[^\s\\])+")
+
+
 def sources(depinfos, root):
-    """Red stub (#884 R2): the old rule, from each dep-info's entrypoint."""
-    out = []
+    """A group's own Rust sources, from rustc's dep-info for each test binary:
+    every .rs file the compiler read for it inside this tree, outside target/,
+    whatever its entrypoint is called or where its modules live. A file two
+    targets share counts once. A dep-info naming none is refused."""
+    root = str(root).rstrip("/")
+    out = set()
     for text in depinfos:
-        deps = text.split("\n", 1)[0].partition(": ")[2].split()
-        if not deps:
-            raise MeasureError("no sources")
-        src = Path(deps[0])
-        out += sorted(p for p in src.parent.rglob("*") if p.is_file()) \
-            if src.name in ("main.rs", "mod.rs") else [src]
-    return out
+        rule = text.split("\n", 1)[0].partition(": ")[2]
+        # rustc names this tree's files relative to the workspace root, with
+        # a #[path] module's `..` left in; others are absolute.
+        deps = (os.path.normpath(os.path.join(root, re.sub(r"\\(.)", r"\1", m)))
+                for m in DEP.findall(rule))
+        own = {d for d in deps if d.endswith(".rs") and d.startswith(root + "/")
+               and not d.startswith(root + "/target/")}
+        if not own:
+            raise MeasureError("a test binary's dep-info names none of this tree's sources")
+        out |= own
+    return sorted(out)
 
 
 def size(files):
@@ -198,30 +210,51 @@ def test_run(root, env, select):
 
 def stray_profiles(root):
     """Raw profiles written into the checkout by child processes the tests
-    start with a cleared environment: the report can't use them."""
+    start with a cleared environment (collect_profiles merges them)."""
     out = run(["git", "ls-files", "--others", "--exclude-standard", "-z", "--", "*.profraw"],
               root).stdout
     return {name for name in out.split("\0") if name}
 
 
 def collect_profiles(root, before, dest):
-    """Red stub (#884 R3): today's behaviour, deleting them."""
-    gone = stray_profiles(root) - before
-    for name in gone:
-        (root / name).unlink(missing_ok=True)
-    return 0
+    """Move the raw profiles that appeared since `before` (children a test
+    started with a cleared environment write them into their working folder)
+    into the report's folder, so their coverage counts; leave older files."""
+    names = sorted(stray_profiles(root) - before)
+    for n, name in enumerate(names):
+        src = root / name
+        target = dest / src.name
+        if target.exists():
+            target = dest / f"moved-{n}-{src.name}"
+        shutil.move(str(src), str(target))
+    return len(names)
 
 
 def measure(root, specs, env):
     before = stray_profiles(root)
     try:
-        return measure_once(root, specs, env)
+        return measure_once(root, specs, env, before)
     finally:
         for name in stray_profiles(root) - before:
             (root / name).unlink(missing_ok=True)
 
 
-def measure_once(root, specs, env):
+def dep_info(root, env, select, name):
+    """The dep-info file rustc wrote beside the target's test binary."""
+    out = run(["cargo", "test", "--locked", *select, "--no-run", "--message-format=json"],
+              root, env).stdout
+    for line in out.splitlines():
+        msg = json.loads(line) if line.startswith("{") else {}
+        target = msg.get("target", {})
+        if (msg.get("reason") == "compiler-artifact" and target.get("name") == name
+                and "test" in target.get("kind", []) and msg.get("executable")):
+            path = Path(msg["executable"] + ".d")
+            if path.is_file():
+                return path.read_text()
+    raise MeasureError(f"no dep-info for test target {name}")
+
+
+def measure_once(root, specs, env, before):
     packages = metadata(root, env)
     targets = [resolve(s, packages) for s in specs]
     cov = coverage_env(root, env)
@@ -229,26 +262,27 @@ def measure_once(root, specs, env):
     prebuild(root, cov)
     prebuild(root, env)
     counts = {"passed": 0, "ignored": 0}
-    totals = {"files": 0, "bytes": 0, "lines": 0}
+    depinfos = []
     seconds = 0.0
     for package, name, src in targets:
         select = ["-p", package, "--test", name]
         counted = test_run(root, cov, select)
+        collect_profiles(root, before, Path(cov["CARGO_LLVM_COV_TARGET_DIR"]))
         # Run time is the plain run's, as CI runs it, after its build.
-        run(["cargo", "test", "--locked", *select, "--no-run"], root, env)
+        depinfos.append(dep_info(root, env, select, name))
         start = time.monotonic()
         if test_run(root, env, select) != counted:
             raise MeasureError(f"{package}:{name}: the plain and instrumented runs counted different tests")
         seconds += time.monotonic() - start
         for key, value in counted.items():
             counts[key] += value
-        for key, value in size(src).items():
-            totals[key] += value
+        if os.path.normpath(src) not in sources(depinfos[-1:], root):
+            raise MeasureError(f"{package}:{name}: its dep-info misses its own entrypoint")
     report = json.loads(run(["cargo", "llvm-cov", "report", "--json", "--summary-only"],
                             root, cov).stdout)
     roots = [(p["name"], str(Path(p["manifest_path"]).parent)) for p in packages]
     return {"schema": SCHEMA, "toolchain": toolchain(root, env),
-            "targets": [f"{p}:{n}" for p, n, _ in targets], "tests": counts, "size": totals,
+            "targets": [f"{p}:{n}" for p, n, _ in targets], "tests": counts, "size": size(sources(depinfos, root)),
             "coverage": coverage_by_crate(report, roots), "seconds": round(seconds, 1)}
 
 
