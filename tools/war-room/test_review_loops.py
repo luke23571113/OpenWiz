@@ -472,6 +472,50 @@ class ReportsV2(unittest.TestCase):
                 self.assertTrue(text not in (b, f, p, m) or description not in (None, d), 'a real change')
                 self.assertEqual(expected, self.problems(text, description))
 
+    def test_v1_log_statuses_never_close_a_v2_blocker(self):
+        """Review R1 at 223c90e: v1's log forms skipped v2's logging rules."""
+        risky = self.text('fresh').replace('VERDICT: CHANGES', 'VERDICT: APPROVE').replace(
+            'Next: a fresh, stronger builder fixes R2 once, then one final check.',
+            "Next: none open. It merges by the project's merge rules.")
+        plain = self.text('merge')
+        for status in ('logged as polish', 'follow-up', 'Polish issue:'):
+            with self.subTest(status=status):
+                text = risky.replace('still open after 1 round: the token is still written on the error path.',
+                                     f'{status} #4311, privacy risk remains.')
+                self.assertNotEqual(risky, text)
+                self.assertEqual([f'R2: a v2 report logs a blocker only as Logged as follow-up #<n>, not "{status}"',
+                                  'R2: a Risk: blocker is never logged; it goes to the fresh round or parks'],
+                                 self.problems(text))
+                text = plain.replace('still open after 1 round: a second export still replaces the first. '
+                                     'Logged as follow-up #4310.', f'{status} #4310.')
+                self.assertNotEqual(plain, text)
+                self.assertEqual([f'R1: a v2 report logs a blocker only as Logged as follow-up #<n>, not "{status}"'],
+                                 self.problems(text))
+        for state in ('fresh', 'park'):
+            self.assertEqual([], self.problems(self.text(state)))
+
+    def test_a_quoted_follow_up_sentence_is_not_a_disposition(self):
+        """Review R2 at 223c90e: only the status or the first line's last sentence logs a blocker."""
+        old = ('`src/export.rs:48` (Spec) An existing `cookbook.zip` is overwritten. Fix: open it with '
+               '`create_new(true)`.')
+        b = self.text('builder')
+        for quoted in ('`src/status.rs:20` (Spec) The status command omits the follow-up line; the ticket says it '
+                       'prints `Logged as follow-up #4310.` Fix: print it.',
+                       '`src/status.rs:20` (Spec) The status command should print Logged as follow-up #4310 after '
+                       'the title. Fix: print it.'):
+            with self.subTest(quoted=quoted):
+                text = b.replace(old, quoted)
+                self.assertNotEqual(b, text)
+                self.assertEqual([], self.problems(text))
+                merged = text.replace('VERDICT: CHANGES', 'VERDICT: APPROVE').replace(
+                    'Next: the builder fixes or disputes R1, R2 and R4 once, then one re-check.',
+                    'Next: the builder fixes or disputes R2 and R4 once, then one re-check.')
+                self.assertIn('Next: names no contract state for the open blocking findings', self.problems(merged))
+        evidence = b.replace('the second export silently replaces the first, and the first is lost.',
+                             'the status prints Logged as follow-up #4310.')
+        self.assertNotEqual(b, evidence)
+        self.assertEqual([], self.problems(evidence))
+
     def test_a_quoted_example_is_not_the_section(self):
         quoted = self.DESCRIPTION.replace('## Rulings', '```md\n## Rulings\n\nnone\n```\n\n## Rulings', 1)
         self.assertEqual(2, quoted.count('## Rulings'))
