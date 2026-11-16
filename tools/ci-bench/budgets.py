@@ -35,10 +35,6 @@ TRACED = ("${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.p
           " && %d || %d }}")
 TRACED_RE = re.compile(r"\$\{\{ \(needs\.changes\.outputs\.trace == 'true' \|\| needs\.changes\.outputs\.planted"
                        r" == 'true'\) && (\d+) \|\| (\d+) \}\}")
-# In a traced or planted run, the step right after a lane's tests uploads
-# the trace records; in any other run it is skipped (ci.yml, `MARK`).
-LANE_TESTS = {"Run cargo test --workspace", "Run npm test"}
-UPLOAD = "Run actions/upload-artifact@"
 COUNTED = {"success", "failure"}
 
 
@@ -63,10 +59,32 @@ def budget(p95_seconds):
 
 # ---------------------------------------------------------------- workflows
 
+def step_name(entry):
+    """A step's name as the jobs API shows it: its name, else Run <uses>, else Run <run>."""
+    fields = {}
+    for line in entry:
+        m = re.match(r"^      (?:- |  )(name|uses|run):\s*(.*?)\s*$", line)
+        if m and m[1] not in fields:
+            fields[m[1]] = re.sub(r"\s+#.*$", "", m[2]).strip("\"'")
+    if "name" in fields:
+        return fields["name"]
+    if "uses" in fields:
+        return "Run " + fields["uses"]
+    return "Run " + fields.get("run", "")
+
+
 def read_workflow(path):
-    """Each job's key, its timeout-minutes line (index, value) and whether it carries MARK."""
+    """Each job's key, its timeout-minutes line (index, value), whether it carries MARK, and
+    its MARK steps as (index in the jobs API's step list, API name): "Set up job" comes first."""
+    name = Path(path).name
     lines = B.read_file(path).splitlines(keepends=True)
-    jobs, key, inside = {}, None, False
+    jobs, key, inside, steps, entries = {}, None, False, False, []
+
+    def close():
+        if key is not None:
+            jobs[key]["marks"] = [(i + 1, step_name(e)) for i, e in enumerate(entries)
+                                  if any(x.strip() == MARK for x in e)]
+
     for i, line in enumerate(lines):
         if re.match(r"^jobs:\s*$", line):
             inside = True
@@ -76,20 +94,33 @@ def read_workflow(path):
         if re.match(r"^\S", line):
             inside = False
             continue
-        m = re.match(r"^  ([A-Za-z0-9_-]+):\s*(#.*)?$", line)
-        if m:
-            key = m[1]
-            jobs[key] = {"timeout": None, "marked": False}
+        if re.match(r"^  \S", line) and not line.startswith("  #"):
+            # A job key, bare or quoted (R2); anything else at this depth is refused.
+            m = re.match(r"^  ([\"']?)([A-Za-z0-9_-]+)\1:\s*(#.*)?$", line)
+            if not m:
+                raise Fail(f"{name} line {i + 1}: a job declaration budgets.py can't read")
+            close()
+            key, steps, entries = m[2], False, []
+            if key in jobs:
+                raise Fail(f"{name} line {i + 1}: job {key} is declared twice")
+            jobs[key] = {"timeout": None, "marked": False, "marks": []}
             continue
         if key is None:
             continue
+        if re.match(r"^    [^\s#]", line):
+            steps = bool(re.match(r"^    steps:\s*(#.*)?$", line))
+        elif steps and line.startswith("      - "):
+            entries.append([line])
+        elif steps and entries:
+            entries[-1].append(line)
         m = re.match(r"^    timeout-minutes:\s*(.*?)\s*(#.*)?$", line)
         if m:
             if jobs[key]["timeout"] is not None:
-                raise Fail(f"{Path(path).name} job {key} has two timeout-minutes lines")
+                raise Fail(f"{name} job {key} has two timeout-minutes lines")
             jobs[key]["timeout"] = (i, m[1])
         elif line.strip() == MARK:
             jobs[key]["marked"] = True
+    close()
     if not jobs:
         raise Fail(f"{path}: no jobs found")
     return lines, jobs
@@ -289,26 +320,45 @@ def read_window(d, workflow):
     return w, jobs
 
 
-def traced_runs(jobs):
-    """Runs whose lane tests were followed by a trace upload that ran, and scheduled (nightly) runs."""
-    traced = {j["run"] for j in jobs if j["event"] == "schedule"}
+def run_modes(jobs, wjobs):
+    """(traced runs, unclear runs), from the workflow's own trace steps (MARK).
+
+    Every MARK step tests the same trace/planted flags. One that ran (success
+    or failure) makes its run traced. One skipped after only successful or
+    skipped steps makes it normal. One skipped after a failure, or a step list
+    that doesn't match the workflow, says nothing. A scheduled (nightly) run
+    is traced. A run with no clear answer, or with both, is unclear, and is left
+    out of two-mode jobs rather than guessed (R1)."""
+    yes, no, runs = set(), set(), set()
     for j in jobs:
+        runs.add(j["run"])
+        if j["event"] == "schedule":
+            yes.add(j["run"])
         steps = j["steps"]
-        for a, b in zip(steps, steps[1:]):
-            if a["name"] in LANE_TESTS and b["name"].startswith(UPLOAD) and b["conclusion"] not in (None, "skipped"):
-                traced.add(j["run"])
-    return traced
+        for at, name in wjobs.get(j["name"].split(" (")[0], {}).get("marks", []):
+            if at >= len(steps) or steps[at]["name"] != name:
+                continue
+            if steps[at]["conclusion"] in COUNTED:
+                yes.add(j["run"])
+            elif steps[at]["conclusion"] == "skipped" and all(x["conclusion"] in ("success", "skipped")
+                                                              for x in steps[:at]):
+                no.add(j["run"])
+    scheduled = {j["run"] for j in jobs if j["event"] == "schedule"}
+    unclear = (runs - yes - no) | ((yes & no) - scheduled)
+    return yes - unclear, unclear
 
 
-def samples(jobs, key, mode, traced):
-    """(leg, run, run created, running seconds) for each job named KEY or KEY (matrix values) that ran to success or failure."""
+def samples(jobs, key, mode, modes):
+    """(leg, run, run created, running seconds) for each job named KEY or KEY (matrix values) that ran to
+    success or failure; for a two-mode job, only the runs whose mode (run_modes) is MODE."""
+    traced, unclear = modes
     out = []
     for j in jobs:
         if j["name"] != key and not j["name"].startswith(key + " ("):
             continue
         if j["conclusion"] not in COUNTED or B.never_ran(j):
             continue
-        if mode != "all" and (j["run"] in traced) != (mode == "traced"):
+        if mode != "all" and (j["run"] in unclear or (j["run"] in traced) != (mode == "traced")):
             continue
         out.append((j["name"], j["run"], j.get("run_created_at", j["created_at"]), B.secs(j["completed_at"]) - B.secs(j["started_at"])))
     return out
@@ -335,6 +385,17 @@ def current_shape(jobs, keys):
     return [j for j in jobs if j["run"] in keep], keep
 
 
+def note(wf, jobs, wjobs, unclear):
+    """Say how many runs left out of two-mode jobs had a sample in one."""
+    marked = {k for k, j in wjobs.items() if j["marked"]}
+    hit = {j["run"] for j in jobs if j["run"] in unclear and j["name"].split(" (")[0] in marked
+           and j["conclusion"] in COUNTED and not B.never_ran(j)}
+    if hit:
+        n = len(hit)
+        print(f"budgets: {wf}: {n} run{'' if n == 1 else 's'} with no clear traced or normal mode,"
+              " left out of two-mode jobs")
+
+
 def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=None, unmeasured=None):
     derive, unmeasured = derive or {}, unmeasured or {}
     rows, errors = [], []
@@ -342,7 +403,8 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
         wf = Path(path).name
         _, wjobs = read_workflow(path)
         primary = read_window(window, wf)
-        primary_traced = traced_runs(primary[1])
+        primary_traced = run_modes(primary[1], wjobs)
+        note(wf, primary[1], wjobs, primary_traced[1])
         read = {}  # a fallback is read only when a job needs it
         for key, j in wjobs.items():
             # A job whose shape changed in #743 never reads runs from before
@@ -361,7 +423,8 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
                 if len(got) < MIN_SAMPLES and second is not None:
                     if second not in read:
                         _, sjobs = read_window(second, wf)
-                        read[second] = (sjobs, traced_runs(sjobs))
+                        read[second] = (sjobs, run_modes(sjobs, wjobs))
+                        note(wf, sjobs, wjobs, read[second][1][1])
                     sjobs, straced = read[second]
                     if twin in after_jobs:
                         sjobs = current_shape(sjobs, wjobs)[0]
