@@ -11,14 +11,16 @@ Every expected code and refusal below is written by hand from
 contracts/setup-onboard.v1.md, contracts/first-hour.v1.md and
 first-hour-live-kit.md. Nothing here is live, timed or on a real account.
 """
-import copy
+import contextlib
 import hashlib
 import importlib.util
 import io
 import json
 import re
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.dont_write_bytecode = True
@@ -297,6 +299,23 @@ class Eligibility(unittest.TestCase):
         self.assertIn('Final execution refused: Unsafe cleanup: only bound test-owned resources, with test threads and loops stopped.',
                       out.getvalue())
 
+
+    def test_the_cli_reads_only_strict_json(self):
+        # Catches a repeated key silently replacing an authority pointer, or a fractional count read as an integer.
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder, True)
+        good = (FIXTURES / 'eligibility.json').read_text()
+        spoofed = good.replace('"spending": ', '"spending": "x", "spending": ', 1)
+        fractional = (FIXTURES / 'binding.json').read_text().replace('"credit_bound": 50', '"credit_bound": 50.0')
+        for name, text, binding in (('dup.json', spoofed, FIXTURES / 'binding.json'),
+                                    ('frac.json', good, None)):
+            (folder / name).write_text(text)
+            (folder / 'b.json').write_text(fractional if binding is None else binding.read_text())
+            with self.subTest(name), contextlib.redirect_stdout(io.StringIO()) as said:
+                self.assertEqual(kit.main(['eligibility', str(folder / name), str(folder / 'b.json')]), 5)
+                self.assertIn('not strict JSON', said.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(kit.main(['eligibility', str(FIXTURES / 'eligibility.json'), str(FIXTURES / 'binding.json')]), 0)
 
 
 journey = load('first_merge_journey', HERE / 'journey.py')

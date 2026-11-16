@@ -293,7 +293,15 @@ def validate(receipt_text, result_text, fleet, binding, record):
 
 
 def main(argv):
-    read = lambda path: json.loads(Path(path).read_text())
+    try:
+        return run(argv)
+    except (OSError, ValueError) as error:
+        print('Refused: a file is unreadable or not strict JSON (%s).' % type(error).__name__)
+        return 5
+
+
+def run(argv):
+    read = lambda path: receipt_check.strict_json(Path(path).read_text())  # duplicate keys and fractions refused
     if argv[:1] == ['dry-run'] and len(argv) <= 3:
         return dry_run(*(read(p) for p in argv[1:]))
     if len(argv) == 3 and argv[0] == 'eligibility':
