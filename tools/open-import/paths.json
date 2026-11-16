@@ -176,6 +176,8 @@
     "tools/ops-live/acceptance.py",
     "tools/ops-live/kit.json",
     "tools/ops-live/test_acceptance.py",
+    "tools/test-value/test_unread_fixtures.py",
+    "tools/test-value/unread_fixtures.py",
     "tools/war-room/README.md",
     "tools/war-room/activity.py",
     "tools/war-room/answer_time.py",
