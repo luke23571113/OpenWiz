@@ -1340,7 +1340,7 @@ pub fn marker_id(name: &str) -> Option<(&str, &str)> {
     let rest = name.strip_suffix(']')?;
     let at = rest.rfind(" [wizloop:")?;
     let id = &rest[at + " [wizloop:".len()..];
-    valid_id(id).then_some((id, &name[..at]))
+    is_id(id).then_some((id, &name[..at]))
 }
 
 /// The id export derives from an unmarked loop's name, or `None` when that
@@ -1358,36 +1358,20 @@ pub fn derive_id(name: &str) -> Option<String> {
     }
     let id: String = id.trim_matches('-').chars().take(64).collect();
     let id = id.trim_end_matches('-').to_owned();
-    valid_id(&id).then_some(id)
-}
-
-/// The format's `id`: `^[a-z0-9][a-z0-9-]{0,63}$`.
-pub fn valid_id(id: &str) -> bool {
-    (1..=64).contains(&id.len())
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        && !id.starts_with('-')
+    is_id(&id).then_some(id)
 }
 
 /// The names of the params a check uses, in upper case: each reference
 /// `WIZLOOP_PARAM_<run>`, where the text just before is not a letter, digit
 /// or `_`, gives its whole run, in order (the format's "Params").
-fn references(check: &str) -> Vec<&str> {
-    const PREFIX: &str = "WIZLOOP_PARAM_";
-    let word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
-    let bytes = check.as_bytes();
-    let mut out = Vec::new();
-    let mut from = 0;
-    while let Some(at) = check[from..].find(PREFIX).map(|i| i + from) {
-        let start = at + PREFIX.len();
-        if at == 0 || !word(bytes[at - 1]) {
-            let len = bytes[start..].iter().take_while(|b| word(**b)).count();
-            out.push(&check[start..start + len]);
-        }
-        from = start;
-    }
-    out
+fn references(check: &str) -> Vec<String> {
+    check_uses(check)
+        .into_iter()
+        .filter_map(|found| match found {
+            CheckUse::Reference(name) => Some(name),
+            CheckUse::Placeholder(_) => None,
+        })
+        .collect()
 }
 
 /// Each `{{name}}` placeholder in `text`, in order, and whether any `{{`
@@ -1396,28 +1380,15 @@ fn placeholders(text: &str) -> (Vec<&str>, bool) {
     let (mut names, mut bad) = (Vec::new(), false);
     let mut from = 0;
     while let Some(at) = text[from..].find("{{").map(|i| i + from) {
-        let rest = &text[at + 2..];
-        let len = rest
-            .bytes()
-            .take_while(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_')
-            .count();
-        let name = &rest[..len];
-        if name.starts_with(|c: char| c.is_ascii_lowercase()) && rest[len..].starts_with("}}") {
+        if let Some(name) = placeholder(&text[at..]) {
             names.push(name);
-            from = at + 2 + len + 2;
+            from = at + name.len() + 4;
         } else {
             bad = true;
             from = at + 2;
         }
     }
     (names, bad)
-}
-
-fn param_name(name: &str) -> bool {
-    name.starts_with(|c: char| c.is_ascii_lowercase())
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 /// The rendered script for a check `check` with `params` (the adapter's
@@ -1436,7 +1407,7 @@ pub fn render_script(
     if rest.split('\n').next() == Some(PREAMBLE_START) {
         return Err("cf-check-preamble");
     }
-    let used: BTreeSet<&str> = references(check).into_iter().collect();
+    let used: BTreeSet<String> = references(check).into_iter().collect();
     let carried: Vec<(&String, &Param)> = params
         .iter()
         .filter(|(name, _)| used.contains(name.to_ascii_uppercase().as_str()))
@@ -1493,7 +1464,7 @@ pub fn read_script(script: &str) -> Option<(String, BTreeMap<String, Param>)> {
             .strip_suffix('\n')?
             .split_once('=')?;
         let lower = name.to_ascii_lowercase();
-        if !param_name(&lower) {
+        if !is_name(&lower) {
             return None;
         }
         let value = if let Some(inner) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\''))
@@ -1542,59 +1513,6 @@ fn valid_name(name: &str) -> bool {
     (1..=100).contains(&name.chars().count())
         && !name.chars().any(control)
         && name.chars().any(|c| !c.is_whitespace())
-}
-
-/// A number with no sign and no leading zero, in `range`.
-fn cron_number(s: &str, range: (u32, u32)) -> Option<u32> {
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) || (s.len() > 1 && s.starts_with('0'))
-    {
-        return None;
-    }
-    s.parse().ok().filter(|n| (range.0..=range.1).contains(n))
-}
-
-/// The format's five cron fields.
-fn valid_cron(cron: &str) -> bool {
-    const RANGES: [(u32, u32); 5] = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)];
-    let fields: Vec<&str> = cron.split(' ').collect();
-    fields.len() == 5
-        && fields.iter().zip(RANGES).all(|(field, range)| {
-            *field == "*"
-                || field.split(',').all(|item| {
-                    let (base, step) = match item.split_once('/') {
-                        Some((base, step)) => (base, Some(step)),
-                        None => (item, None),
-                    };
-                    let step_ok = step.is_none_or(|s| {
-                        !s.starts_with('0') && !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) && s.parse::<u32>().is_ok()
-                    });
-                    let base_ok = (base == "*" && step.is_some())
-                        || cron_number(base, range).is_some()
-                        || base.split_once('-').is_some_and(|(a, b)| {
-                            matches!((cron_number(a, range), cron_number(b, range)), (Some(a), Some(b)) if a <= b)
-                        });
-                    step_ok && base_ok
-                })
-        })
-}
-
-/// The format's `timezone`: `UTC` or `Area/City`.
-fn valid_timezone(zone: &str) -> bool {
-    let part = |s: &str| {
-        !s.is_empty()
-            && s.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'+' | b'-'))
-    };
-    if zone == "UTC" {
-        return true;
-    }
-    let mut parts = zone.split('/');
-    let first = parts.next().unwrap_or_default();
-    let rest: Vec<&str> = parts.collect();
-    first.starts_with(|c: char| c.is_ascii_alphabetic())
-        && part(first)
-        && !rest.is_empty()
-        && rest.iter().all(|p| part(p))
 }
 
 /// The format's `at`: an RFC 3339 time with seconds and an explicit offset.
@@ -1820,12 +1738,12 @@ fn export_one(
             None
         }
         (_, Some(cron), _) => {
-            if !valid_cron(cron) {
+            if !is_cron(cron) {
                 r.invalid("trigger.cron", "bad-cron");
             }
             match item.timezone {
                 None => r.invalid("trigger.timezone", "missing-field"),
-                Some(zone) if !valid_timezone(zone) => {
+                Some(zone) if zone != "UTC" && !is_area_city(zone) => {
                     r.invalid("trigger.timezone", "bad-timezone")
                 }
                 Some(_) => {}
@@ -1940,7 +1858,7 @@ fn export_one(
             r.invalid("check", "param-in-check");
         }
         let declared: BTreeSet<String> = params.keys().map(|k| k.to_ascii_uppercase()).collect();
-        if references(text).iter().any(|r| !declared.contains(*r)) {
+        if references(text).iter().any(|r| !declared.contains(r)) {
             r.invalid("check", "undeclared-param");
         }
     }
