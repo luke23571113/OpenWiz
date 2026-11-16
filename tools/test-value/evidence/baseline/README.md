@@ -43,5 +43,10 @@ The two are socket timing in the server, not the script. Three runs of
 a response) and `crates/server/src/send.rs:241-248` (the body-read loop): they
 run or not depending on whether a request body arrives in one TCP read.
 `web-api`'s two lines are also in `openwiz-server`; their exact lines were
-not traced. A group whose drop is confined to those lines reruns its measure
-before calling it a real drop.
+not traced.
+
+**Ruling** (orchestrator, 2026-11-16, on #803): the repeat criterion is met for
+the script, with this variance written down. Any group whose coverage drop
+is confined to `crates/server/src/http.rs:350` or
+`crates/server/src/send.rs:241-248` reruns its measure before calling the
+drop real. Making those paths deterministic under test is #892, not this kit.
