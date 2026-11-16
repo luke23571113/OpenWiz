@@ -68,6 +68,9 @@ NOT_LIVE_GAP = 'Fixture or dry-run evidence: diagnostic only, never a live resul
 LIVE_LINE = 'Live-checked'
 NOT_LIVE = 'Not live-checked in this release: {version} {promise}'
 SECTION = re.compile(r'## (0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)) · ')
+# #915 R1: the approved notes are LF-only. Every other line or paragraph break
+# str.splitlines() honours could move a section boundary, so it refuses.
+OTHER_BREAKS = re.compile('[\r\x0b\x0c\x1c\x1d\x1e\x85  ]')
 RECORD = re.compile(r'(https://github\.com/jparker2006/ClosedWiz/(issues|pull)/[1-9][0-9]*'
                     r'#issuecomment-[1-9][0-9]*|[a-z][a-z0-9-]{0,31}:[A-Za-z0-9._-]{1,128})')
 
@@ -133,9 +136,13 @@ def release_section(kit):
 def split_promises(body):
     """The candidate's (version, promise) pairs, split into the live ones (their
     notes section has a line starting `Live-checked`) and the not-live ones. An
-    included version with no notes section is neither, and refuses."""
+    included version with no notes section is neither, and refuses. Lines are
+    split only on LF; notes holding any other line break refuse."""
+    text = body['changelog']['utf8']
+    if type(text) is not str or OTHER_BREAKS.search(text):
+        raise Refusal('invalid_notes')
     live_versions, sections, current = set(), set(), None
-    for line in body['changelog']['utf8'].splitlines():
+    for line in text.split('\n'):
         heading = SECTION.match(line)
         if heading:
             current = heading[1]

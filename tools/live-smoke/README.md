@@ -274,7 +274,9 @@ section has a line starting `Live-checked` (#18). Every other included promise i
 carried in each receipt's `gaps` as `Not live-checked in this release: <version>
 <promise>`, never as covered and never dropped; a kit row for such a version
 refuses `not_live_covered`, and an included version with no notes section
-`coverage_mismatch`. `produce` also refuses a run bound to another
+`coverage_mismatch`. Notes are split only on LF, their approved line ending;
+notes holding any other line or paragraph break (CR, NEL, U+2028, U+2029 and the
+other breaks `str.splitlines()` honours) refuse `invalid_notes` (#915 R1). `produce` also refuses a run bound to another
 candidate (`candidate_changed`) or to none (`unbound_run`), a missing journal
 (`evidence_missing`), and a journal whose chain, start record or replay does not
 yield the checkpoint's step states and consumed writes exactly
