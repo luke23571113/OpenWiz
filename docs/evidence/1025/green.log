@@ -1,0 +1,56 @@
+# WZ20 green: real copy-tool standalone dry run on the fixed source, with the required private literals list
+# source: 12a10db4eacdb321e86a9e345a635a3c425bfa78; package version 0.1.1
+$ python3 -I tools/skills-copy/copy.py --version 0.1.1 --source . --commit 12a10db4eacdb321e86a9e345a635a3c425bfa78 --literals <private literals list> --output <staged dir>
+{
+  "commit": "12a10db4eacdb321e86a9e345a635a3c425bfa78",
+  "skills": [
+    "ask-wiz",
+    "build-ticket",
+    "diagnose",
+    "feedback",
+    "feedback-triage",
+    "grill",
+    "handoff",
+    "hill-climb",
+    "huntr",
+    "image",
+    "install",
+    "launch-fleet",
+    "onboard",
+    "overnight",
+    "plan-graph",
+    "research",
+    "review-ticket",
+    "setup",
+    "triage",
+    "wayfind",
+    "where-are-we"
+  ],
+  "tree": "38c801ea228514c2cab16271b0d126b80a778414",
+  "files": 340,
+  "bytes": 2963550,
+  "published": null,
+  "mode": "dry-run",
+  "package": {
+    "version": "0.1.1",
+    "check": "carried"
+  },
+  "privacy": {
+    "status": "pass",
+    "result": "literals: used\n"
+  },
+  "standalone": {
+    "status": "pass",
+    "skills": {}
+  },
+  "diff": {
+    "added": 340,
+    "modified": 0,
+    "deleted": 0
+  },
+  "parent": null,
+  "unchanged": false,
+  "proposed_commit": "ecc6205e4a4bb495b0d362f26262b41ee1a577e9"
+}
+exit status: 0
+# diff lists reduced to counts (first copy: every package path is added)
