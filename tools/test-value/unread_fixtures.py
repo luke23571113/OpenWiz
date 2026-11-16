@@ -6,8 +6,10 @@ Run: python3 -I tools/test-value/unread_fixtures.py [--repo DIR] [ROOT ...]
 Each ROOT is a fixture folder, relative to the repository (default:
 tests/fixtures). The script prints, one per line and sorted, every tracked file
 under a ROOT that nothing reads, and exits 1 when it printed any, 0 when none
-(the empty result), and 2 when it could not scan: a missing root, a root with no
-tracked files, a root outside the repository, or no Git checkout. A failed scan
+(the empty result), and 2 when it could not scan: a root with no tracked files,
+a root outside the repository, a tracked file Git has no content for, or no Git
+checkout. Tracked files are read from Git's index, so files deleted from the
+working tree (CI's prune) change nothing. A failed scan
 never prints the empty result.
 
 The reading is static and leans towards keeping. A reader is a tracked code
@@ -42,6 +44,7 @@ keeps the file, so a common name can keep more than it should; a test that
 builds a path some other way is caught by the full suite in CI.
 """
 import argparse
+import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
@@ -62,20 +65,49 @@ class ScanError(Exception):
 
 
 def tracked(repo):
+    """Every tracked file in Git's index, with its text read from the index,
+    never from the working tree: a lane that deletes files it never runs (CI's
+    prune) gets the same answer. Links and submodules carry no text. A file
+    whose content Git can't produce stops the scan: read as empty, it would
+    turn the fixtures it names into deletions. Lazy fetches stay off, so a
+    partial clone never goes to the network for one."""
+    env = dict(os.environ, GIT_NO_LAZY_FETCH='1')
     try:
-        out = subprocess.run(['git', '-C', str(repo), 'ls-files', '-z'],
-                             capture_output=True, check=True).stdout
+        out = subprocess.run(['git', '-C', str(repo), 'ls-files', '-s', '-z'],
+                             capture_output=True, check=True, env=env).stdout
     except (OSError, subprocess.CalledProcessError) as err:
         raise ScanError(f'not a Git checkout: {repo}') from err
-    return [p for p in out.decode('utf-8', 'surrogateescape').split('\0') if p]
+    entries = {}
+    for entry in out.decode('utf-8', 'surrogateescape').split('\0'):
+        if entry:
+            meta, path = entry.split('\t', 1)
+            mode, sha, _ = meta.split()
+            if mode in ('100644', '100755'):
+                entries[path] = sha
+    shas = sorted(set(entries.values()))
+    try:
+        out = subprocess.run(['git', '-C', str(repo), 'cat-file', '--batch'],
+                             input=''.join(s + '\n' for s in shas).encode(),
+                             capture_output=True, check=True, env=env).stdout
+    except (OSError, subprocess.CalledProcessError) as err:
+        raise ScanError('cannot read the tracked files from Git') from err
+    blobs, at = {}, 0
+    for sha in shas:
+        nl = out.index(b'\n', at)
+        header = out[at:nl].split()
+        if len(header) != 3 or header[0].decode() != sha or header[1] != b'blob':
+            path = next(p for p, s in entries.items() if s == sha)
+            raise ScanError(f'cannot read tracked file {path}: Git has no content for it')
+        size = int(header[2])
+        blobs[sha] = out[nl + 1:nl + 1 + size]
+        at = nl + 1 + size + 1
+    return {path: blobs[sha] for path, sha in entries.items()}
 
 
-def normal_root(repo, root):
+def normal_root(root):
     path = PurePosixPath(root.replace('\\', '/'))
     if path.is_absolute() or '..' in path.parts or not path.parts or path.parts == ('.',):
         raise ScanError(f'root must be a folder inside the repository: {root}')
-    if not (repo / path).is_dir():
-        raise ScanError(f'root is not a folder: {root}')
     return str(path)
 
 
@@ -83,30 +115,17 @@ def under(path, roots):
     return any(path.startswith(r + '/') for r in roots)
 
 
-def is_code(repo, path):
+def is_code(path, data):
     name = PurePosixPath(path)
     if path in SELF:
         return False
-    if (repo / path).is_dir():
-        return False  # a tracked link to a folder
     if name.suffix in CODE:
         return True
-    if name.suffix:
-        return False
-    try:
-        with open(repo / path, 'rb') as f:
-            return f.read(2) == b'#!'
-    except OSError as err:
-        raise ScanError(f'cannot read tracked file {path}: {err.strerror}') from err
+    return not name.suffix and data.startswith(b'#!')
 
 
-def read_text(repo, path):
-    """A tracked file's text. One that can't be read stops the scan: read as
-    empty, it would turn the fixtures it names into deletions."""
-    try:
-        return (repo / path).read_text('utf-8', 'replace')
-    except OSError as err:
-        raise ScanError(f'cannot read tracked file {path}: {err.strerror}') from err
+def text(data):
+    return data.decode('utf-8', 'replace')
 
 
 def suffixes(path):
@@ -155,8 +174,10 @@ def boundary(path):
 
 def scan(repo, roots):
     repo = Path(repo).resolve()
+    roots = [normal_root(r) for r in roots]
+    if not repo.is_dir():
+        raise ScanError(f'not a Git checkout: {repo}')
     files = tracked(repo)
-    roots = [normal_root(repo, r) for r in roots]
     fixtures = sorted(p for p in files if under(p, roots))
     for root in roots:
         if not any(p.startswith(root + '/') for p in fixtures):
@@ -165,9 +186,9 @@ def scan(repo, roots):
         if not NAME.fullmatch(PurePosixPath(p).name):
             raise ScanError(f'cannot match this file name in a reader: {p}')
     refs = References()
-    for p in files:
-        if not under(p, roots) and is_code(repo, p):
-            refs.add(read_text(repo, p))
+    for p, data in files.items():
+        if not under(p, roots) and is_code(p, data):
+            refs.add(text(data))
     # Folders count from a fixed boundary, never from the roots given, so a
     # narrower or overlapping root gives the same answer (#853 R1).
     folders = set()
@@ -198,7 +219,7 @@ def scan(repo, roots):
                     or (folder in in_use and folder in anchored
                         and (name in refs.quoted or folder not in scenarios))):
                 read.add(p)
-                siblings.setdefault(folder, set()).update(refs.add(read_text(repo, p)))
+                siblings.setdefault(folder, set()).update(refs.add(text(files[p])))
         if (len(read), len(in_use)) == before:
             break
     return [p for p in fixtures if p not in read]
