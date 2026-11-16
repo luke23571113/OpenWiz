@@ -25,6 +25,7 @@ mod cli_ui;
 mod github_token;
 mod init;
 mod loop_contract;
+mod loop_plan;
 mod process;
 mod results;
 mod review;
