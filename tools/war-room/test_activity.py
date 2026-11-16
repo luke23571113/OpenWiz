@@ -9,6 +9,7 @@ import sys
 sys.dont_write_bytecode = True
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -278,6 +279,133 @@ class ActivityTests(unittest.TestCase):
         metrics = self.project(ci_read=None, pr_read=None, ticket_read=None)
         self.assertTrue(metrics)
         self.assertTrue(all(m['state'] == 'unavailable' and m['value'] is None for m in metrics.values()))
+
+
+DAY = '2030-01-02T00:00:00Z'
+LIST = ROOT + '/actions/workflows/ci.yml/runs?per_page=100&page=1'
+DONE = dict(runner_name='synthetic-runner', started_at='2030-01-02T11:00:00Z', completed_at='2030-01-02T11:01:01Z')
+
+
+def jobs_path(rid, page=1):
+    return f'{ROOT}/actions/runs/{rid}/jobs?per_page=100&page={page}'
+
+
+class Runs:
+    """Eight synthetic ci.yml runs (#1027), read from many threads at once: every read is logged,
+    reads in flight are counted, and `edit` may change one answer at one read."""
+
+    def __init__(self, gate=None, edit=None):
+        self.runs = [{'id': rid, 'run_attempt': 1, 'status': 'completed' if rid % 2 else 'in_progress',
+                      'conclusion': 'success' if rid % 2 else None, 'created_at': '2030-01-02T10:00:00Z'}
+                     for rid in range(201, 209)]
+        self.answers = {LIST: {'total_count': 8, 'workflow_runs': self.runs}}
+        for r in self.runs:
+            jid = 10 * r['id']
+            mine = ([job(jid, 'completed', ['ubuntu-24.04'], run_id=r['id'], **DONE)] if r['id'] % 2 else
+                    [job(jid, 'in_progress', ['ubuntu-24.04'], run_id=r['id']),
+                     job(jid + 1, 'queued', ['ubuntu-slim'], run_id=r['id'])])
+            self.answers[jobs_path(r['id'])] = {'total_count': len(mine), 'jobs': mine}
+            self.answers[jobs_path(r['id'], 2)] = {'total_count': len(mine) + 1, 'jobs': []}  # a late, empty page
+            self.answers[f'{ROOT}/actions/runs/{r["id"]}'] = r
+        self.gate, self.edit, self.lock = gate, edit, threading.Lock()
+        self.log, self.now, self.most = [], 0, 0
+
+    def __call__(self, path):
+        with self.lock:
+            self.log.append(path)
+            nth = self.log.count(path)
+            self.now += 1
+            self.most = max(self.most, self.now)
+        try:
+            if self.gate:
+                self.gate(path, nth)
+            answer = copy.deepcopy(self.answers[path])
+            return self.edit(path, nth, answer) if self.edit else answer
+        finally:
+            with self.lock:
+                self.now -= 1
+
+    def observe(self):
+        return B.current_activity(DAY, AT, repo=REPO, read=self)
+
+
+class BoundedReads(unittest.TestCase):
+    """#1027: current_activity reads up to four runs at once and keeps every per-run check."""
+
+    def test_four_runs_overlap_and_every_check_still_runs(self):
+        # catches: a serial reader (no overlap), an unbounded fan-out (more than four in flight),
+        # and a parallel rewrite that drops a jobs read, the run reread or an outer enumeration,
+        # or merges in completion order instead of run order.
+        meet = threading.Barrier(4, timeout=10)
+        world = Runs(gate=lambda path, nth: meet.wait() if path.endswith('/jobs?per_page=100&page=1') and nth == 1
+                     else None)
+        seen = world.observe()
+        self.assertEqual(world.most, 4)
+        self.assertEqual(seen['runs'], list(range(201, 209)))
+        self.assertEqual([(j['id'], j['run'], j['status'], j['pool']) for j in seen['jobs']], [
+            (2010, 201, 'completed', 'ubuntu-24.04'), (2020, 202, 'in_progress', 'ubuntu-24.04'),
+            (2021, 202, 'queued', 'ubuntu-slim'), (2030, 203, 'completed', 'ubuntu-24.04'),
+            (2040, 204, 'in_progress', 'ubuntu-24.04'), (2041, 204, 'queued', 'ubuntu-slim'),
+            (2050, 205, 'completed', 'ubuntu-24.04'), (2060, 206, 'in_progress', 'ubuntu-24.04'),
+            (2061, 206, 'queued', 'ubuntu-slim'), (2070, 207, 'completed', 'ubuntu-24.04')])
+        self.assertEqual(seen['cost_jobs'], [2010, 2030, 2050, 2070])
+        # Four completed jobs of 61 s, each billed as 2 minutes at 0.006 USD.
+        self.assertEqual((seen['cost']['billed_minutes'], seen['cost']['window_usd']), ({'github-hosted': 8}, 0.048))
+        # The first enumeration ends before any run is read; the second starts after every run is read.
+        self.assertEqual((world.log[0], world.log[-1], len(world.log)), (LIST, LIST, 2 + 3 * 8))
+        for rid in range(201, 209):
+            mine = [p for p in world.log if f'/runs/{rid}' in p]
+            self.assertEqual(mine, [jobs_path(rid), jobs_path(rid), f'{ROOT}/actions/runs/{rid}'], rid)
+
+    def test_a_changed_read_while_other_runs_are_in_flight_refuses_the_observation(self):
+        # catches: a parallel rewrite that loses a per-run check (jobs equality, run reread,
+        # pagination, identity) or the cross-run duplicate-job check, e.g. a duplicate set per worker.
+        def status(answer, value):
+            answer['jobs'][0]['status'] = value
+            return answer
+
+        def outer(answer):
+            answer['workflow_runs'] = answer['workflow_runs'][:-1]
+            answer['total_count'] = 7
+            return answer
+
+        def short(answer):
+            answer['total_count'] = 2  # the empty second page then falls short of it
+            return answer
+
+        def other_run(answer, jid=None, rid=None):
+            answer['jobs'][0].update({'id': jid or answer['jobs'][0]['id'], 'run_id': rid or answer['jobs'][0]['run_id']})
+            return answer
+        cases = {
+            'first jobs read differs': (jobs_path(204), 1, lambda a: status(a, 'queued')),
+            'second jobs read differs': (jobs_path(206), 2, lambda a: status(a, 'queued')),
+            'attempt changed on reread': (f'{ROOT}/actions/runs/205', 1, lambda a: {**a, 'run_attempt': 2}),
+            'status changed on reread': (f'{ROOT}/actions/runs/202', 1, lambda a: {**a, 'status': 'completed'}),
+            'outer run set changed': (LIST, 2, outer),
+            'late jobs page short of total_count': (jobs_path(207), 1, short),
+            'duplicate job across runs': (jobs_path(208), 1, lambda a: other_run(a, jid=2010)),
+            'job of another run': (jobs_path(203), 1, lambda a: other_run(a, rid=201)),
+        }
+        for name, (where, when, change) in cases.items():
+            with self.subTest(name):
+                world = Runs(edit=lambda path, nth, answer: change(answer) if (path, nth) == (where, when) else answer)
+                with self.assertRaises(B.Fail):
+                    world.observe()
+
+    def test_a_failed_worker_stops_admission_and_nothing_is_retried(self):
+        # catches: a pool that keeps feeding queued runs to free workers after a failure, retries a
+        # failed read, or returns a partial observation. All four first reads fail, so no run ever
+        # completes and no timing can admit a fifth.
+        def fail(path, nth):
+            if path in {jobs_path(rid) for rid in range(201, 205)}:
+                raise OSError('synthetic read failure')
+        world = Runs(gate=fail)
+        with self.assertRaises(OSError):
+            world.observe()
+        first = {jobs_path(rid) for rid in range(201, 205)}
+        self.assertEqual(world.log[0], LIST)
+        self.assertTrue(world.log[1:] and set(world.log[1:]) <= first and len(set(world.log)) == len(world.log),
+                        world.log)
 
 
 if __name__ == '__main__':
