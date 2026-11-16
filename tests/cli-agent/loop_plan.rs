@@ -7,6 +7,7 @@
 //! the CLI crate (as LC1's `loop_contract.rs` does).
 use serde_json::{Value, json};
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
@@ -819,14 +820,43 @@ fn human_output_escapes_terminal_controls_and_json_keeps_them() {
     let start = text.find("  room-cli 'loop' 'update'").unwrap() + "  room-cli ".len();
     let command = &text[start..start + text[start..].find("\nNothing was changed.").unwrap()];
     let command = command.split("\nunmanaged: ").next().unwrap();
+    // The shell inherits nothing: its PATH holds only a recorder named
+    // room-cli, so no line of the script can reach an installed CLI, and
+    // any command it runs besides the shell's own builtins is caught.
+    let shell = fake.dir().join("shell");
+    super::dirs::private_dir_all(shell.join("bin")).unwrap();
+    let recorder = shell.join("bin/room-cli");
+    fs::write(
+        &recorder,
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$0.calls\"\nexit 97\n",
+    )
+    .unwrap();
+    fs::set_permissions(&recorder, fs::Permissions::from_mode(0o700)).unwrap();
     let script = fake.write(
-        "argv.sh",
-        &format!("set -- {command}\nprintf '%s\\0' \"$@\"\n"),
+        "shell/argv.sh",
+        &format!(
+            "[ \"$(command -v room-cli)\" = '{}' ] || exit 3\nset -- {command}\nprintf '%s\\0' \"$@\"\n",
+            recorder.display()
+        ),
     );
     let run = std::process::Command::new("/bin/sh")
         .arg(&script)
+        .env_clear()
+        .env("PATH", shell.join("bin"))
+        .env("HOME", &shell)
+        .current_dir(&shell)
+        .stdin(std::process::Stdio::null())
         .output()
         .unwrap();
+    assert_eq!(
+        fs::read_to_string(shell.join("bin/room-cli.calls")).ok(),
+        None,
+        "the script ran room-cli: {command:?}"
+    );
+    assert!(
+        run.status.success() && run.stderr.is_empty(),
+        "{run:?}: {command:?}"
+    );
     let words: Vec<String> = String::from_utf8(run.stdout)
         .unwrap()
         .split_terminator('\0')
