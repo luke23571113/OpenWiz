@@ -808,9 +808,8 @@ class Check(unittest.TestCase):
         ahead = str(remotes / 'ahead.git')
         subprocess.run(['git', 'init', '-q', '--bare', ahead], check=True)
         self.git('push', '-q', ahead, published + ':refs/heads/main')
-        moved = subprocess.run(['git', '-C', ahead, 'commit-tree', published + '^{tree}', '-p', published, '-m', 'merged later'],
-                               check=True, capture_output=True, text=True).stdout.strip()
-        subprocess.run(['git', '-C', ahead, 'update-ref', 'refs/heads/main', moved], check=True)
+        moved = self.git('-C', ahead, 'commit-tree', published + '^{tree}', '-p', published, '-m', 'merged later')
+        self.git('-C', ahead, 'update-ref', 'refs/heads/main', moved)
         self.git('config', 'remote.origin.url', url('ahead'))
         rc, out = push('ahead')
         self.assertEqual(rc, 0, out)
