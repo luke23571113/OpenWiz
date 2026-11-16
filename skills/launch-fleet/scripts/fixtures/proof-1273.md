@@ -13,7 +13,7 @@ What this ticket's fixtures prove, in public form. It proves fixture behaviour o
 
 ## Where the run evidence is
 
-The red-first runs, CI correction, helper reports, no-push checks and policy reads for this ticket are kept in the private record, not here. The red logs and tracebacks once kept beside this file were removed from the public package (WZ17). This file carries no run measurements, timestamps, paths or identifiers, and nothing in it is invented output standing in for a historical run. The `green-*.txt` files beside it are the saved passing outputs.
+The red-first runs, CI correction, helper reports, no-push checks and policy reads for this ticket are kept in the private record, not here. The red logs and tracebacks once kept beside this file were removed from the public package (WZ17). This file carries no run measurements, timestamps, paths or identifiers, and nothing in it is invented output standing in for a historical run. The `green-*.txt` files beside it are the saved passing outputs; the O10 consumer's saved output was removed too, because it named a private source commit, and `test-o10-triage.py` reproduces it.
 
 ## Behaviour the fixtures keep
 
