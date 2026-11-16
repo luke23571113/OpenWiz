@@ -179,7 +179,7 @@ The values are [cli.v1.md](cli.v1.md#fixed-exits-and-existing-results)'s.
 | 0 | every file valid | every loop written or unchanged | printed, no refusal (differences are fine) | `created`, `updated` or `unchanged` |
 | 1 | a path unreadable; output failed | `loop list` failed; output failed | a path unreadable; `loop list` failed; output failed | a read before any write failed; output failed |
 | 2 | usage | usage | usage | usage |
-| 5 | a file or folder refused; `not_built` | a loop refused (the others are still written); `not_built` | a file refused (the others are still planned); `not_built` | `refused`, `failed` or `different`; `not_built` |
+| 5 | a file or folder refused | a loop refused (the others are still written); `not_built` | a file refused (the others are still planned); `not_built` | `refused`, `failed` or `different`; `not_built` |
 | 6 | | | | `unknown` |
 
 ## `room-cli loop` command forms

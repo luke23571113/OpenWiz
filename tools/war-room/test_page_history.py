@@ -362,7 +362,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_daily_usage_is_separate_from_pr_attribution(self):
         # A saved daily report already has usage totals. Omitting them loses
         # existing evidence; the separate owner-export test does not cover this.
-        M = module('sources').native('tools/factory-metrics/metrics.py')
+        M = module('sources').native('tools/war-room/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)
@@ -397,7 +397,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_artifact_refuses_undeclared_fields(self):
         # This output has no standalone native validator. The projection must
         # reject unknown fields rather than silently accepting a changed schema.
-        M = module('sources').native('tools/factory-metrics/metrics.py')
+        M = module('sources').native('tools/war-room/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)

@@ -41,7 +41,7 @@ import health  # noqa: E402
 import sources  # noqa: E402
 import suite  # noqa: E402
 
-C3 = sources.native('tools/ci-bench/ci3.py')
+C3 = sources.native('tools/war-room/ci3.py')
 B = C3.bench  # ci-bench's reader, rules and prices: the numbers ci-bench publishes
 FAILS = (B.Fail, activity.B.Fail, OSError, ValueError, TypeError, KeyError, ArithmeticError)
 SCHEMA = json.loads((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))

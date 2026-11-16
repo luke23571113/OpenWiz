@@ -4,7 +4,7 @@
 Copied unchanged from tools/ci-bench/trends.py at its retirement's start: the
 CF4 score reader, journey distributions, the outcome cohort and the journey
 report check that a saved ci-benchmarks point carries. The journey module (J)
-is still factory-metrics', whose move is MT2's (#821).
+is the war room's own copy, moved from factory-metrics by MT2 (#821).
 """
 from collections import Counter
 import hashlib
@@ -15,7 +15,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-spec = importlib.util.spec_from_file_location('journey_for_bench', HERE.parent/'factory-metrics/journey.py')
+spec = importlib.util.spec_from_file_location('journey_for_bench', HERE/'journey.py')
 J = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(J)
 SCHEMA = 'closedwiz.journey.trends.v1'

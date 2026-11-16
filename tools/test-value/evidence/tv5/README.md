@@ -29,23 +29,23 @@ coverage openwiz-server: 5160/6140 (84.04%) -> 5160/6140 (84.04%), covered +0
 coverage openwiz-service: 0/5276 (0.00%) -> 0/5276 (0.00%), covered +0
 coverage openwiz-store: 1860/3643 (51.06%) -> 1861/3643 (51.08%), covered +1
 coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
-seconds: 58.6 -> 82.3 (not compared exactly)
 drops: none
 ```
+
+(`compare.txt` also holds the measure's sandbox `seconds` line; it is no
+run-time claim, below.)
 
 No crate lost a covered line, so there is no drop to explain. The store's
 `+1` is one of the kit's known race lines (a concurrent request in the
 store, `tools/test-value/README.md`, "Repeatable"), not new coverage.
 
-## Size and time
+## Size and count
 
 24 tests fewer (354 to 330, two of them now in
 `crates/server/tests/host_names.rs`), 701 lines and 23.7 kB less test
-source; one more compiled file (`host_names.rs`). Run time went from
-58.6 s to 82.3 s on the same sandbox, which other work shares; the target's
-time is mostly its real-time proofs (15-second timeouts, slow clients), which
-all stay, and the cut tests were fast. This pull request claims no time
-saving.
+source; one more compiled file (`host_names.rs`). This pull request claims
+no run time: run time is judged only from CI's own job durations, before and
+after, on the same lane (the orchestrator's ruling on #787).
 
 ## What was cut
 

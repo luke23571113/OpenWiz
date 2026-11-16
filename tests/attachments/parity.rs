@@ -85,6 +85,11 @@ fn table() -> Vec<(&'static str, Value, bool)> {
         ("readiness", json!({"state": "ready", "extra": true}), false),
         (
             "readiness",
+            json!({"state": "ready", "reason": "low_disk"}),
+            false,
+        ),
+        (
+            "readiness",
             json!({"state": "removed", "reason": "low_disk"}),
             false,
         ),
@@ -174,6 +179,7 @@ fn table() -> Vec<(&'static str, Value, bool)> {
         ("attachment", with("name", json!("a b")), false),
         ("attachment", with("name", json!("é.txt")), false),
         ("attachment", with("name", json!("a".repeat(180))), false),
+        ("attachment", with("name", json!("")), false),
         ("attachment", with("sha256", json!("z".repeat(64))), false),
         ("attachment", with("sha256", json!("A".repeat(64))), false),
         (
@@ -182,6 +188,7 @@ fn table() -> Vec<(&'static str, Value, bool)> {
             false,
         ),
         ("attachment", with("sha256", json!("0".repeat(63))), false),
+        ("attachment", with("sha256", json!("5a")), false),
     ];
     for field in ["id", "sha256", "size_bytes", "kind", "name", "display_name"] {
         rows.push(("attachment", without(field), false));

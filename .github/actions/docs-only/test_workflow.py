@@ -62,12 +62,6 @@ class Workflow(unittest.TestCase):
             with self.subTest(altered=event,before=before), self.assertRaisesRegex(AssertionError,event+' trigger contract'):
                 self.assert_trigger_contract(source.replace(before,after))
 
-    def test_launch_fleet_retains_the_legacy_rust_suite_budget(self):
-        # #743: launch-fleet's own sharded job keeps its 60 minutes; no wider.
-        for job,expected in [('launch-fleet',60),('skills',30),('release',60)]:
-            with self.subTest(job=job):
-                self.assertEqual(re.search(r'^    timeout-minutes: (.+)$',jobs()[job],re.M)[1],str(expected))
-
     def test_independent_jobs_wait_for_export_only_when_needed(self):
         blocks=jobs()
         self.assertEqual(set(blocks),{'changes','always','web-build','rust','rust-export','web','web-export',

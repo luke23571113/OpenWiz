@@ -20,7 +20,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 FIX = HERE / 'contract-fixtures'
 _spec = importlib.util.spec_from_file_location(
-    'eb5_contract', ROOT / 'tools/factory-metrics/experiment_contract.py')
+    'eb5_contract', ROOT / 'tools/war-room/experiment_contract.py')
 C = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(C)
 
