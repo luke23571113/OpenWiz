@@ -30,7 +30,7 @@ Python 3 (standard library only) and `gh`. [`.github/workflows/ci-escapes.yml`](
 6. **The report:** one issue per escape, labelled `needs-triage`. Each issue names the test, the pull request, the plan's skip reason and the plan's changed paths (the map missed a link from one of them). Its first line is `<!-- openwiz.ci-escape.v1 run=<CI run> attempt=<k> pr=<n> test=<id> -->`, naming the attempt that found it; only the first line counts, as a path quoted below it could hold the same text. Before opening one, the finder reads the issues updated since the last green run. If an issue that `github-actions[bot]` opened already has that pull request and test, the finder opens nothing new, so each escape is reported once. Paths and reasons are put in code spans, so they can't mention anyone or add markup.
 7. **The summary** goes to the run page and stdout, starting with `Result: escapes (n)`, `Result: none` or `Result: unknown`. When anything is unknown, the run fails (exit 1), so it is never read as "no escape". Escapes it did find are still reported.
 
-The bench (`tools/ci-bench`, `bench.py escapes`) counts escapes per day. It uses this workflow's run names (`Selector escapes in CI run <id> attempt <k>`), their conclusions and the issues' marker lines.
+The issues are the escape record. The CI bench's daily count of them (`bench.py escapes`) retired with the bench (#827); the war room's collector does not count escapes.
 
 ## Seams
 
