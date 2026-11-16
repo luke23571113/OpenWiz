@@ -1,0 +1,338 @@
+EEFFFFFFFFFFFFFFFFFFFFFFFFFF
+======================================================================
+ERROR: test_existing_projects_and_valid_references_pass_unsafe_ones_refuse (__main__.BrainReference.test_existing_projects_and_valid_references_pass_unsafe_ones_refuse)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 319, in test_existing_projects_and_valid_references_pass_unsafe_ones_refuse
+    self.store.validate(dict(state, brain=None))
+  File "<repo>/tools/install/setup/store.py", line 103, in validate
+    require(type(value) is dict and required <= set(value) <= required | {'engine'}, 'invalid setup state')
+  File "<repo>/tools/install/setup/store.py", line 50, in require
+    raise Refused(reason)
+store.Refused: invalid setup state
+
+======================================================================
+ERROR: test_the_project_check_resolves_the_brain_reference (__main__.BrainReference.test_the_project_check_resolves_the_brain_reference)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 359, in test_the_project_check_resolves_the_brain_reference
+    self.assertEqual(setup.check_brain(None), 'project_verified')
+                     ^^^^^^^^^^^^^^^^^
+AttributeError: module 'openwiz_setup' has no attribute 'check_brain'
+
+======================================================================
+FAIL: test_apply_acts_only_on_the_exact_current_preview (__main__.Init.test_apply_acts_only_on_the_exact_current_preview)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 267, in test_apply_acts_only_on_the_exact_current_preview
+    self.assertEqual(self.init('--yes', '--operation', '0' * 32, expect=8)['reason_code'], 'operation_stale')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 8 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_denied_companion_creation_stops_before_any_private_content (__main__.Init.test_denied_companion_creation_stops_before_any_private_content)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 196, in test_denied_companion_creation_stops_before_any_private_content
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='lose', path='user/repos')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='lose', path='repos/synthetic-owner/synthetic-app-brain')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='lose', path='repos/synthetic-owner/synthetic-app/labels')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='lose', path='repos/synthetic-owner/synthetic-app-brain/contents/')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='lose', path='repos/synthetic-owner/synthetic-app-brain/pulls')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='drop', path='user/repos')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='drop', path='repos/synthetic-owner/synthetic-app-brain')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='drop', path='repos/synthetic-owner/synthetic-app/labels')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='drop', path='repos/synthetic-owner/synthetic-app-brain/contents/')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Init.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) (mode='drop', path='repos/synthetic-owner/synthetic-app-brain/pulls')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 216, in test_lost_replies_stay_uncertain_until_read_back_then_complete_once
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_private_code_keeps_the_brain_in_repository_through_one_visible_proposal (__main__.Init.test_private_code_keeps_the_brain_in_repository_through_one_visible_proposal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 106, in test_private_code_keeps_the_brain_in_repository_through_one_visible_proposal
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_public_code_gets_a_linked_private_companion_and_no_private_content (__main__.Init.test_public_code_gets_a_linked_private_companion_and_no_private_content)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 130, in test_public_code_gets_a_linked_private_companion_and_no_private_content
+    preview = self.init()
+              ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_repeat_init_reconciles_existing_work_and_never_overwrites_it (__main__.Init.test_repeat_init_reconciles_existing_work_and_never_overwrites_it)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 238, in test_repeat_init_reconciles_existing_work_and_never_overwrites_it
+    first = self.apply(self.init())
+                       ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_the_brain_location_setting_moves_through_the_same_proposal_rules (__main__.Init.test_the_brain_location_setting_moves_through_the_same_proposal_rules)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 278, in test_the_brain_location_setting_moves_through_the_same_proposal_rules
+    self.apply(self.init())
+               ^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 0 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unknown_or_ambiguous_visibility_refuses_before_any_write (__main__.Init.test_unknown_or_ambiguous_visibility_refuses_before_any_write) [internal]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 158, in test_unknown_or_ambiguous_visibility_refuses_before_any_write
+    refused = self.init(expect=5)
+              ^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unknown_or_ambiguous_visibility_refuses_before_any_write (__main__.Init.test_unknown_or_ambiguous_visibility_refuses_before_any_write) [contradictory]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 158, in test_unknown_or_ambiguous_visibility_refuses_before_any_write
+    refused = self.init(expect=5)
+              ^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unknown_or_ambiguous_visibility_refuses_before_any_write (__main__.Init.test_unknown_or_ambiguous_visibility_refuses_before_any_write) [missing]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 158, in test_unknown_or_ambiguous_visibility_refuses_before_any_write
+    refused = self.init(expect=5)
+              ^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unknown_or_ambiguous_visibility_refuses_before_any_write (__main__.Init.test_unknown_or_ambiguous_visibility_refuses_before_any_write) [unreadable]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 158, in test_unknown_or_ambiguous_visibility_refuses_before_any_write
+    refused = self.init(expect=5)
+              ^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unknown_or_ambiguous_visibility_refuses_before_any_write (__main__.Init.test_unknown_or_ambiguous_visibility_refuses_before_any_write) [renamed]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 158, in test_unknown_or_ambiguous_visibility_refuses_before_any_write
+    refused = self.init(expect=5)
+              ^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unknown_or_ambiguous_visibility_refuses_before_any_write (__main__.Init.test_unknown_or_ambiguous_visibility_refuses_before_any_write)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 164, in test_unknown_or_ambiguous_visibility_refuses_before_any_write
+    self.assertEqual(self.init(expect=5)['reason_code'], 'visibility_unknown')
+                     ^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unsafe_or_conflicting_companions_refuse_with_nothing_written (__main__.Init.test_unsafe_or_conflicting_companions_refuse_with_nothing_written) [companion_conflict]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 186, in test_unsafe_or_conflicting_companions_refuse_with_nothing_written
+    refused = self.init(*env_repo, expect=5)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unsafe_or_conflicting_companions_refuse_with_nothing_written (__main__.Init.test_unsafe_or_conflicting_companions_refuse_with_nothing_written) [foreign]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 186, in test_unsafe_or_conflicting_companions_refuse_with_nothing_written
+    refused = self.init(*env_repo, expect=5)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unsafe_or_conflicting_companions_refuse_with_nothing_written (__main__.Init.test_unsafe_or_conflicting_companions_refuse_with_nothing_written) [companion_name_unsafe]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 186, in test_unsafe_or_conflicting_companions_refuse_with_nothing_written
+    refused = self.init(*env_repo, expect=5)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+======================================================================
+FAIL: test_unsafe_or_conflicting_companions_refuse_with_nothing_written (__main__.Init.test_unsafe_or_conflicting_companions_refuse_with_nothing_written) [companion_owner_mismatch]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/tests/init/test_init.py", line 186, in test_unsafe_or_conflicting_companions_refuse_with_nothing_written
+    refused = self.init(*env_repo, expect=5)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/tools/install/tests/init/test_init.py", line 82, in init
+    self.assertEqual(result.returncode, expect, result.stdout + result.stderr)
+AssertionError: 2 != 5 : /usr/bin/python3: can't open file '<repo>/tools/install/setup/init.py': [Errno 2] No such file or directory
+
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.234s
+
+FAILED (failures=26, errors=2)

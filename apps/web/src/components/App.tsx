@@ -24,12 +24,8 @@ import { FLEET_TIMING, TIMING } from '../timing.ts';
 import { connection, isStale, listed, Viewer } from '../viewer.ts';
 import type { Connection } from '../viewer.ts';
 import { Cockpit } from './Cockpit.tsx';
-import { ConnectedNotifications } from './Notifications.tsx';
 import { PlanGraph, PlanIcon } from './PlanGraph.tsx';
 import { Decisions } from './Decisions.tsx';
-import { NotificationTarget } from './NotificationTarget.tsx';
-import { notificationToken } from '../notificationTarget.ts';
-import type { NotificationLanding } from '../notificationTarget.ts';
 import { Loops, LoopsIcon } from './Loops.tsx';
 import { Detail } from './Detail.tsx';
 import { CommandNavigation, CommandTrigger } from './CommandNavigation.tsx';
@@ -332,7 +328,6 @@ function FirstHourScreen({ onConnection }: { onConnection: (c: Connection) => vo
 }
 
 export function App() {
-  const [notification, setNotification] = useState<NotificationLanding>({ kind: 'none' });
   const [commandOpen, setCommandOpen] = useState(false);
   const [screen, setScreen] = useState<'cockpit' | 'home' | 'sessions' | 'fleets' | 'plan' | 'decisions' | 'loops' | 'first-hour'>('sessions');
   const [decisionCount, setDecisionCount] = useState<number | null>(null);
@@ -343,7 +338,7 @@ export function App() {
   // Bounded presentation cache survives switching back to Sessions.
   const fleetSnapshots = useRef<FleetCache>({ list: null, detail: null });
   const sessionsVisible = useRef(true);
-  sessionsVisible.current = notification.kind === 'none' && ((screen !== 'fleets' && screen !== 'cockpit' && screen !== 'plan' && screen !== 'decisions' && screen !== 'loops' && screen !== 'first-hour') || answerTarget !== null);
+  sessionsVisible.current = (screen !== 'fleets' && screen !== 'cockpit' && screen !== 'plan' && screen !== 'decisions' && screen !== 'loops' && screen !== 'first-hour') || answerTarget !== null;
   const [sessionVisibility] = useState<Visibility>(() => ({
     hidden: () => visibility.hidden() || !sessionsVisible.current,
     subscribe: (fn) => {
@@ -352,7 +347,7 @@ export function App() {
       return () => { unsubscribe(); window.removeEventListener('openwiz-viewchange', fn); };
     },
   }));
-  useEffect(() => { window.dispatchEvent(new Event('openwiz-viewchange')); }, [screen, answerTarget, notification.kind]);
+  useEffect(() => { window.dispatchEvent(new Event('openwiz-viewchange')); }, [screen, answerTarget]);
   const [viewer] = useState(() => new Viewer({ fetch: browserFetch, timers, visibility: sessionVisibility, now: () => performance.now(), wall: () => Date.now() }, TIMING));
   const state = useSyncExternalStore(
     (onChange) => viewer.subscribe(onChange),
@@ -375,22 +370,13 @@ export function App() {
 
   useEffect(() => {
     const follow = () => {
-      const landing = notificationToken(window.location.hash);
-      setNotification(landing);
       // #2205: the first-hour guidance's own link, which docs/first-hour.md gives.
-      if (window.location.hash === '#first-hour') setScreen('first-hour');
-      if (landing.kind !== 'none' || window.location.hash === '#first-hour') { setCommandOpen(false); viewer.select(null); setLaunch(null); setAnswerTarget(null); answerFrom.current = null; }
+      if (window.location.hash === '#first-hour') { setScreen('first-hour'); setCommandOpen(false); viewer.select(null); setLaunch(null); setAnswerTarget(null); answerFrom.current = null; }
     };
     follow();
     window.addEventListener('hashchange', follow);
     return () => window.removeEventListener('hashchange', follow);
   }, [viewer]);
-  const clearNotification = () => {
-    if (notification.kind === 'none') return;
-    setNotification({ kind: 'none' });
-    if (window.location.hash.startsWith('#notification')) window.history.replaceState(null, '', window.location.pathname + window.location.search);
-  };
-  const dismissNotification = () => { clearNotification(); requestAnimationFrame(() => sessionsButton.current?.focus()); };
 
   useEffect(() => {
     viewer.start();
@@ -437,7 +423,6 @@ export function App() {
   }, [envelope]);
 
   const select = (id: string) => {
-    clearNotification();
     setAnswerTarget(null);
     answerFrom.current = null;
     setScreen('sessions');
@@ -456,7 +441,6 @@ export function App() {
     viewer.select(id);
   };
   const openLaunch = (project: LaunchProject) => {
-    clearNotification();
     setAnswerTarget(null);
     answerFrom.current = null;
     viewer.select(null);
@@ -494,12 +478,10 @@ export function App() {
 
   const projects = envelope ? groupPage(envelope.data.sessions).filter((g) => g.group.kind === 'project') : [];
   const showSessions = () => {
-    clearNotification();
     if (answerFrom.current !== null) { viewer.select(null); setAnswerTarget(null); answerFrom.current = null; }
     setScreen('sessions');
   };
   const showOverview = (next: 'cockpit' | 'home' | 'fleets' | 'plan' | 'decisions' | 'loops' | 'first-hour') => {
-    clearNotification();
     viewer.select(null); setLaunch(null); setAnswerTarget(null); answerFrom.current = null; setScreen(next);
   };
   const showHome = () => showOverview('home');
@@ -517,7 +499,7 @@ export function App() {
       openLaunch({ id: first.group.id, name: first.group.name, suffix: first.suffix });
     }
   };
-  const awaitingSession = notification.kind === 'none' && screen === 'sessions' && !detail && !launch && !list.failure && (envelope?.data.sessions.length ?? 0) > 0;
+  const awaitingSession = screen === 'sessions' && !detail && !launch && !list.failure && (envelope?.data.sessions.length ?? 0) > 0;
   return (
     <div className={`app${screen === 'home' ? ' home-screen' : ''}${detail || launch ? ' panel-open' : ` mobile-identity${awaitingSession ? ' sessions-idle' : ''}`}`}>
       <aside className="sidebar" aria-label="OpenWiz">
@@ -533,13 +515,13 @@ export function App() {
           <button type="button" className="nav-item nav-first-hour" aria-pressed={screen === 'first-hour'} onClick={showFirstHour}><FileIcon /><span>First hour</span></button>
           <button type="button" className="nav-item nav-new" aria-label="New thread" aria-pressed={launch !== null} disabled={projects.length === 0} onClick={onNew}><PlusIcon /><span className="desktop-new">New thread</span><span className="phone-new">New</span></button>
         </nav>
-        {notification.kind === 'none' && projects.length > 0 ? <nav className="project-nav" aria-label="Projects"><h2 className="section-label">Projects</h2>{projects.map((g) => <a key={g.key} href={`#${groupAnchor(g.key)}`} onClick={() => { setScreen('sessions'); requestAnimationFrame(() => document.getElementById(groupAnchor(g.key))?.scrollIntoView({ block: 'start' })); }}><span className="project-symbol" aria-hidden="true" /><span>{g.group.kind === 'project' ? factText(g.group.name) : 'ungrouped'}</span><span className="project-count">{g.sessions.length}</span></a>)}</nav> : null}
+        {projects.length > 0 ? <nav className="project-nav" aria-label="Projects"><h2 className="section-label">Projects</h2>{projects.map((g) => <a key={g.key} href={`#${groupAnchor(g.key)}`} onClick={() => { setScreen('sessions'); requestAnimationFrame(() => document.getElementById(groupAnchor(g.key))?.scrollIntoView({ block: 'start' })); }}><span className="project-symbol" aria-hidden="true" /><span>{g.group.kind === 'project' ? factText(g.group.name) : 'ungrouped'}</span><span className="project-count">{g.sessions.length}</span></a>)}</nav> : null}
         <footer className="connection-footer"><ConnectionPill connection={screen === 'sessions' ? conn : fleetConnection} read={screen === 'sessions' && envelope ? clockText(envelope.freshness.snapshot_at, now).replace(/:\d\d$/, '') : undefined} /></footer>
       </aside>
       <header className="mobile-top">{launch ? <span className="mobile-title">New thread</span> : !detail ? <div className="mobile-brand"><span className="logo-slot" aria-hidden="true" /><p className="wordmark">OpenWiz</p></div> : null}<CommandTrigger compact onOpen={() => setCommandOpen(true)} /></header>
       <main data-snapshot-seq={seq}>
         <CommandTrigger onOpen={() => setCommandOpen(true)} />
-        {notification.kind !== 'none' ? <NotificationTarget key={notification.kind === 'target' ? notification.token : 'invalid'} landing={notification} onDismiss={dismissNotification} /> : screen === 'cockpit' ? <><Cockpit onConnection={setFleetConnection} onReply={openAnswer} /><ConnectedNotifications /></> : screen === 'plan' ? <PlanGraph onConnection={setFleetConnection} onLoops={showLoops} /> : screen === 'decisions' ? <Decisions onConnection={setFleetConnection} onCount={setDecisionCount} /> : screen === 'loops' ? <Loops onConnection={setFleetConnection} /> : screen === 'first-hour' ? <FirstHourScreen onConnection={setFleetConnection} /> : screen !== 'sessions' ? <FleetScreen key={screen} home={screen === 'home'} live={<HomeLive envelope={envelope} stale={stale} failure={list.failure} now={now} onSelect={select} onRetry={() => viewer.refresh()} />} lane={fleetLane} saved={fleetSnapshots} onOpenThread={select} onConnection={setFleetConnection} onAnswer={openAnswer} onTarget={(target) => setAnswerTarget((id) => id === target ? id : null)} /> : <>
+        {screen === 'cockpit' ? <Cockpit onConnection={setFleetConnection} onReply={openAnswer} /> : screen === 'plan' ? <PlanGraph onConnection={setFleetConnection} onLoops={showLoops} /> : screen === 'decisions' ? <Decisions onConnection={setFleetConnection} onCount={setDecisionCount} /> : screen === 'loops' ? <Loops onConnection={setFleetConnection} /> : screen === 'first-hour' ? <FirstHourScreen onConnection={setFleetConnection} /> : screen !== 'sessions' ? <FleetScreen key={screen} home={screen === 'home'} live={<HomeLive envelope={envelope} stale={stale} failure={list.failure} now={now} onSelect={select} onRetry={() => viewer.refresh()} />} lane={fleetLane} saved={fleetSnapshots} onOpenThread={select} onConnection={setFleetConnection} onAnswer={openAnswer} onTarget={(target) => setAnswerTarget((id) => id === target ? id : null)} /> : <>
         <header className="page-head">
           <h1 ref={sessionsHeading} className="disp m" tabIndex={-1}>Sessions</h1>
           {envelope ? (
@@ -587,7 +569,7 @@ export function App() {
           )}
         </KeepPlace>
         </>}
-        {screen === 'home' && notification.kind === 'none' ? <FeedbackShare /> : null}
+        {screen === 'home' ? <FeedbackShare /> : null}
       </main>
       {awaitingSession ? (
         <div className="session-placeholder">
@@ -595,8 +577,8 @@ export function App() {
         </div>
       ) : null}
       <CommandNavigation open={commandOpen} onOpen={() => setCommandOpen(true)} onClose={() => setCommandOpen(false)}
-        sessions={notification.kind === 'none' ? envelope?.data.sessions ?? [] : []}
-        projects={notification.kind === 'none' ? projects.flatMap((g) => g.group.kind === 'project' ? [{ id: g.group.id, name: g.group.name, suffix: g.suffix }] : []) : []}
+        sessions={envelope?.data.sessions ?? []}
+        projects={projects.flatMap((g) => g.group.kind === 'project' ? [{ id: g.group.id, name: g.group.name, suffix: g.suffix }] : [])}
         onHome={showHome} onFirstHour={showFirstHour} onCockpit={showCockpit} onPlan={showPlan} onSessions={() => { viewer.select(null); setLaunch(null); showSessions(); }} onFleets={showFleets} onSession={select}
         onProject={(project) => { setScreen('sessions'); openLaunch(project); }} />
       <Detail

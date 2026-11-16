@@ -1,0 +1,57 @@
+# ER3 red run: l5b-watchdog after the watchdog-only health pass, before document.rs relaxes S1
+# command: cargo test -p openwiz-service --test l5b-watchdog
+
+running 12 tests
+test durable_reader_refuses_reusing_one_notification_for_distinct_problems ... ok
+test each_problem_notifies_once_across_reload_and_recovers_immediately ... FAILED
+test changed_problem_notifies_and_uncertain_delivery_survives_healing ... FAILED
+test failed_cloudroom_delivery_remains_pending_after_healing_and_restart ... FAILED
+test placing_onto_a_directory_destination_is_refused ... ok
+test placing_a_fake_executable_leaves_no_writer_a_concurrent_fork_could_inherit ... ok
+test registered_health_job_runs_the_watchdog ... FAILED
+test service_reader_accepts_exact_watchdog_faults_without_repairs ... ok
+test the_fifo_proof_fails_when_its_copier_fails_before_the_rendezvous - should panic ... ok
+test observation::l5b_stuck_run_is_read_while_pass_owns_storage ... ok
+test observation::l5b_removed_check_retains_its_immutable_timeout_and_partial_state_is_unknown ... ok
+test the_fifo_proof_reaps_a_copier_that_misses_its_deadline ... ok
+
+failures:
+
+---- each_problem_notifies_once_across_reload_and_recovers_immediately stdout ----
+
+thread 'each_problem_notifies_once_across_reload_and_recovers_immediately' (10796) panicked at crates/service/../../tests/service/l5b_watchdog.rs:194:27:
+called `Result::unwrap()` on an `Err` value: "service document violates cloudroom first"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- changed_problem_notifies_and_uncertain_delivery_survives_healing stdout ----
+
+thread 'changed_problem_notifies_and_uncertain_delivery_survives_healing' (10794) panicked at crates/service/../../tests/service/l5b_watchdog.rs:225:5:
+assertion `left == right` failed
+  left: 0
+ right: 3
+
+---- failed_cloudroom_delivery_remains_pending_after_healing_and_restart stdout ----
+
+thread 'failed_cloudroom_delivery_remains_pending_after_healing_and_restart' (10797) panicked at crates/service/../../tests/service/l5b_watchdog.rs:302:5:
+assertion `left == right` failed
+  left: 0
+ right: 3
+
+---- registered_health_job_runs_the_watchdog stdout ----
+openwiz-service: health pass incomplete (details withheld)
+
+thread 'registered_health_job_runs_the_watchdog' (10823) panicked at crates/service/../../tests/service/l5b_watchdog.rs:272:5:
+assertion `left == right` failed
+  left: 0
+ right: 3
+
+
+failures:
+    changed_problem_notifies_and_uncertain_delivery_survives_healing
+    each_problem_notifies_once_across_reload_and_recovers_immediately
+    failed_cloudroom_delivery_remains_pending_after_healing_and_restart
+    registered_health_job_runs_the_watchdog
+
+test result: FAILED. 8 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.14s
+
+error: test failed, to rerun pass `-p openwiz-service --test l5b-watchdog`

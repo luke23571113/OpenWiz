@@ -1,0 +1,3021 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openwiz:war-room:collector:v1",
+  "title": "War room collector snapshot and on-demand read v1",
+  "description": "Structural shape only, in the stdlib vocabulary suite._shape evaluates. The cross-field rules in collector.v1.md are checked by the collector modules (collect_factory.py, collect_ci.py); conformance certifies no observation.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openwiz.war-room.collector.v1"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?![\\s\\S])"
+    },
+    "collected_at": {
+      "$ref": "#/$defs/time"
+    },
+    "factory": {
+      "$ref": "#/$defs/factory_facts"
+    },
+    "ci": {
+      "$ref": "#/$defs/ci_facts"
+    }
+  },
+  "required": [
+    "schema",
+    "repository",
+    "collected_at",
+    "factory",
+    "ci"
+  ],
+  "additionalProperties": false,
+  "x-facts": {
+    "factory": [
+      "merges",
+      "prs_per_hour",
+      "stage_waits",
+      "stalls",
+      "open_prs",
+      "journeys",
+      "cost"
+    ],
+    "ci": [
+      "runs",
+      "minutes",
+      "ci3",
+      "activity",
+      "queue"
+    ]
+  },
+  "$defs": {
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z(?![\\s\\S])"
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}(?![\\s\\S])"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "boolean": {
+      "anyOf": [
+        {
+          "const": true
+        },
+        {
+          "const": false
+        }
+      ]
+    },
+    "read": {
+      "type": "object",
+      "properties": {
+        "started_at": {
+          "$ref": "#/$defs/time"
+        },
+        "ended_at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "required": [
+        "started_at",
+        "ended_at"
+      ],
+      "additionalProperties": false
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "since": {
+          "$ref": "#/$defs/time"
+        },
+        "until": {
+          "$ref": "#/$defs/time"
+        },
+        "timezone": {
+          "enum": [
+            "UTC",
+            "PST-fixed-UTC-08:00"
+          ]
+        }
+      },
+      "required": [
+        "since",
+        "until",
+        "timezone"
+      ],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*(?![\\s\\S])"
+        },
+        "schema": {
+          "$ref": "#/$defs/text"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "path",
+        "schema",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(?:issues/[1-9][0-9]*|pull/[1-9][0-9]*|actions/runs/[1-9][0-9]*|commit/[0-9a-f]{40})(?:#(?:issuecomment-[1-9][0-9]*|pullrequestreview-[1-9][0-9]*))?(?![\\s\\S])"
+      },
+      "uniqueItems": true
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/text"
+      },
+      "uniqueItems": true
+    },
+    "distribution": {
+      "type": "object",
+      "properties": {
+        "median": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "p90": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "median",
+        "p90",
+        "max"
+      ],
+      "additionalProperties": false
+    },
+    "merges_value": {
+      "description": "Every PR merged in the window, across all base branches.",
+      "type": "object",
+      "properties": {
+        "pull_requests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "merged_at": {
+                "$ref": "#/$defs/time"
+              },
+              "base": {
+                "$ref": "#/$defs/text"
+              },
+              "tickets": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "uniqueItems": true
+              },
+              "direction": {
+                "enum": [
+                  "forward",
+                  "sideways",
+                  "backwards",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "number",
+              "merged_at",
+              "base",
+              "tickets",
+              "direction"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "pull_requests"
+      ],
+      "additionalProperties": false
+    },
+    "prs_per_hour_value": {
+      "description": "ci-bench's headline: PRs an hour of CI capacity and merged into main, with the baseline.",
+      "type": "object",
+      "properties": {
+        "robots": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "code_runs": {
+          "type": "integer"
+        },
+        "robot_minutes_per_code_run": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "capacity_prs_per_hour": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "merged_prs": {
+          "type": "integer"
+        },
+        "merged_per_hour": {
+          "type": "number"
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "$ref": "#/$defs/text"
+                },
+                "window": {
+                  "$ref": "#/$defs/window"
+                },
+                "robots": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "robot_minutes_per_code_run": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "capacity_prs_per_hour": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "merged_per_hour": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "source": {
+                  "$ref": "#/$defs/source"
+                }
+              },
+              "required": [
+                "label",
+                "window",
+                "robots",
+                "robot_minutes_per_code_run",
+                "capacity_prs_per_hour",
+                "merged_per_hour",
+                "source"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "robots",
+        "code_runs",
+        "robot_minutes_per_code_run",
+        "capacity_prs_per_hour",
+        "merged_prs",
+        "merged_per_hour",
+        "baseline"
+      ],
+      "additionalProperties": false
+    },
+    "stage_waits_value": {
+      "type": "object",
+      "properties": {
+        "journey": {
+          "description": "The closedwiz.journey.v1 document TL2's sidecar is bound to, unchanged."
+        },
+        "sidecar": {
+          "description": "TL2's stage-waits sidecar, unchanged: journey.validate_stage_waits(sidecar, journey) checks it and its binding."
+        },
+        "bench": {
+          "description": "journey.stage_bench(sidecar, settings) for the limits below, unchanged."
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "const": "closedwiz.factory-limits.v1"
+            },
+            "path": {
+              "$ref": "#/$defs/text"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+            },
+            "read_at": {
+              "$ref": "#/$defs/time"
+            }
+          },
+          "required": [
+            "schema",
+            "path",
+            "sha256",
+            "read_at"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "journey",
+        "sidecar",
+        "bench",
+        "limits"
+      ],
+      "additionalProperties": false
+    },
+    "stalls_value": {
+      "type": "object",
+      "properties": {
+        "idle_minutes": {
+          "type": "number"
+        },
+        "hours": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "$ref": "#/$defs/time"
+              },
+              "idle_minutes": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "start",
+              "idle_minutes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "stalls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tickets": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "uniqueItems": true
+              },
+              "pull_request": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "findings sent",
+                  "CI failure sent",
+                  "merge blocked",
+                  "review started"
+                ]
+              },
+              "from": {
+                "$ref": "#/$defs/time"
+              },
+              "until": {
+                "$ref": "#/$defs/time"
+              },
+              "minutes": {
+                "type": "number"
+              },
+              "open_at_end": {
+                "$ref": "#/$defs/boolean"
+              }
+            },
+            "required": [
+              "tickets",
+              "pull_request",
+              "kind",
+              "from",
+              "until",
+              "minutes",
+              "open_at_end"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "unlinked_prs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uniqueItems": true
+        },
+        "edited_fleet_comments": {
+          "type": "integer"
+        },
+        "clock_skew_comments": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "idle_minutes",
+        "hours",
+        "stalls",
+        "unlinked_prs",
+        "edited_fleet_comments",
+        "clock_skew_comments"
+      ],
+      "additionalProperties": false
+    },
+    "open_prs_value": {
+      "description": "Open PRs now: what the stall alarm's no-merge and idle-agent alarms read.",
+      "type": "object",
+      "properties": {
+        "default_branch": {
+          "$ref": "#/$defs/text"
+        },
+        "base": {
+          "$ref": "#/$defs/text"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "pull_requests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "draft": {
+                "$ref": "#/$defs/boolean"
+              },
+              "base": {
+                "$ref": "#/$defs/text"
+              },
+              "head": {
+                "$ref": "#/$defs/sha"
+              },
+              "mergeable": {
+                "enum": [
+                  "MERGEABLE",
+                  "CONFLICTING",
+                  "UNKNOWN"
+                ]
+              },
+              "rollup": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "enum": [
+                      "success",
+                      "failure",
+                      "pending"
+                    ]
+                  }
+                ]
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "$ref": "#/$defs/text"
+                    },
+                    "result": {
+                      "enum": [
+                        "success",
+                        "failure",
+                        "pending",
+                        "other"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "result"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "verdict": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "verdict": {
+                        "enum": [
+                          "APPROVE",
+                          "CHANGES",
+                          "other"
+                        ]
+                      },
+                      "head": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "$ref": "#/$defs/sha"
+                          }
+                        ]
+                      },
+                      "comment_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "at": {
+                        "$ref": "#/$defs/time"
+                      }
+                    },
+                    "required": [
+                      "verdict",
+                      "head",
+                      "comment_id",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "record": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "$ref": "#/$defs/text"
+                      },
+                      "head": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "$ref": "#/$defs/sha"
+                          }
+                        ]
+                      },
+                      "comment_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "at": {
+                        "$ref": "#/$defs/time"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "head",
+                      "comment_id",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "number",
+              "draft",
+              "base",
+              "head",
+              "mergeable",
+              "rollup",
+              "checks",
+              "verdict",
+              "record"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "default_branch",
+        "base",
+        "checks",
+        "pull_requests"
+      ],
+      "additionalProperties": false
+    },
+    "journeys_value": {
+      "type": "object",
+      "properties": {
+        "cohort": {
+          "type": "object",
+          "properties": {
+            "window": {
+              "$ref": "#/$defs/window"
+            },
+            "pull_requests": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "window",
+            "pull_requests"
+          ],
+          "additionalProperties": false
+        },
+        "document": {
+          "description": "closedwiz.journey.v1, verbatim; journey.validate checks it."
+        },
+        "outcomes": {
+          "description": "closedwiz.journey.outcomes.v1 export, verbatim, or null."
+        }
+      },
+      "required": [
+        "cohort",
+        "document",
+        "outcomes"
+      ],
+      "additionalProperties": false
+    },
+    "units": {
+      "type": "object",
+      "properties": {
+        "tokens": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "credits": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "tokens",
+        "credits",
+        "usd"
+      ],
+      "additionalProperties": false
+    },
+    "cost_value": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+        },
+        "actions_billing": {
+          "type": "object",
+          "properties": {
+            "minutes": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "usd": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "reason": {
+              "$ref": "#/$defs/text"
+            }
+          },
+          "required": [
+            "minutes",
+            "usd",
+            "reason"
+          ],
+          "additionalProperties": false
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "complete": {
+              "$ref": "#/$defs/boolean"
+            },
+            "claude": {
+              "$ref": "#/$defs/units"
+            },
+            "gpt": {
+              "$ref": "#/$defs/units"
+            },
+            "sandbox": {
+              "type": "object",
+              "properties": {
+                "hours": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "usd": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "hours",
+                "usd"
+              ],
+              "additionalProperties": false
+            },
+            "reason": {
+              "$ref": "#/$defs/text"
+            }
+          },
+          "required": [
+            "complete",
+            "claude",
+            "gpt",
+            "sandbox",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "date",
+        "actions_billing",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "runs_value": {
+      "type": "object",
+      "properties": {
+        "workflow": {
+          "const": "ci.yml"
+        },
+        "runs": {
+          "type": "integer"
+        },
+        "jobs": {
+          "type": "integer"
+        },
+        "unknown_jobs": {
+          "type": "integer"
+        },
+        "code_runs": {
+          "type": "integer"
+        },
+        "latency_basis": {
+          "$ref": "#/$defs/text"
+        },
+        "queued_to_done_minutes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/distribution"
+            }
+          ]
+        }
+      },
+      "required": [
+        "workflow",
+        "runs",
+        "jobs",
+        "unknown_jobs",
+        "code_runs",
+        "latency_basis",
+        "queued_to_done_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "by_kind": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "runner_kind": {
+            "$ref": "#/$defs/text"
+          },
+          "minutes": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "runner_kind",
+          "minutes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "minutes_value": {
+      "type": "object",
+      "properties": {
+        "runner_minutes": {
+          "$ref": "#/$defs/by_kind"
+        },
+        "billed_minutes": {
+          "$ref": "#/$defs/by_kind"
+        },
+        "unknown_minutes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "window_usd": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "per_code_run_usd": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "prices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "runner_kind": {
+                "$ref": "#/$defs/text"
+              },
+              "compute_usd_per_minute": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "platform_usd_per_minute": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "source_url": {
+                "$ref": "#/$defs/text"
+              },
+              "verified_on": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+              }
+            },
+            "required": [
+              "runner_kind",
+              "compute_usd_per_minute",
+              "platform_usd_per_minute",
+              "source_url",
+              "verified_on"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "runner_minutes",
+        "billed_minutes",
+        "unknown_minutes",
+        "window_usd",
+        "per_code_run_usd",
+        "prices"
+      ],
+      "additionalProperties": false
+    },
+    "ci3_split": {
+      "type": "object",
+      "properties": {
+        "p50_minutes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "p95_minutes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "p50_minutes",
+        "p95_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "ci3_outcomes": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "integer"
+        },
+        "failure": {
+          "type": "integer"
+        },
+        "cancelled": {
+          "type": "integer"
+        },
+        "other": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "success",
+        "failure",
+        "cancelled",
+        "other"
+      ],
+      "additionalProperties": false
+    },
+    "ci3_bucket": {
+      "type": "object",
+      "properties": {
+        "share": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "p50_seconds": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "p95_seconds": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "share",
+        "p50_seconds",
+        "p95_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "ci3_value": {
+      "description": "contracts/ci3.v1.md's record, verbatim: the collector carries it, never recomputes it.",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "openwiz.ci3.v1"
+        },
+        "measure": {
+          "const": "ci3.v1"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
+        },
+        "since": {
+          "$ref": "#/$defs/time"
+        },
+        "until": {
+          "$ref": "#/$defs/time"
+        },
+        "collected_at": {
+          "$ref": "#/$defs/time"
+        },
+        "required_checks": {
+          "const": [
+            "ci",
+            "privacy"
+          ]
+        },
+        "heads": {
+          "type": "integer"
+        },
+        "prs": {
+          "type": "integer"
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "p50_minutes": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "p95_minutes": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "timed": {
+              "type": "integer"
+            },
+            "outcomes": {
+              "$ref": "#/$defs/ci3_outcomes"
+            },
+            "by_outcome": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "$ref": "#/$defs/ci3_split"
+                },
+                "failure": {
+                  "$ref": "#/$defs/ci3_split"
+                },
+                "cancelled": {
+                  "$ref": "#/$defs/ci3_split"
+                }
+              },
+              "required": [
+                "success",
+                "failure",
+                "cancelled"
+              ],
+              "additionalProperties": false
+            },
+            "with_reruns": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "p50_minutes",
+            "p95_minutes",
+            "timed",
+            "outcomes",
+            "by_outcome",
+            "with_reruns"
+          ],
+          "additionalProperties": false
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pr": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "head": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/sha"
+                  }
+                ]
+              },
+              "reason": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "required": [
+              "pr",
+              "head",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "critical_path": {
+          "type": "object",
+          "properties": {
+            "results": {
+              "type": "integer"
+            },
+            "waiting": {
+              "$ref": "#/$defs/ci3_bucket"
+            },
+            "setup": {
+              "$ref": "#/$defs/ci3_bucket"
+            },
+            "running": {
+              "$ref": "#/$defs/ci3_bucket"
+            },
+            "unclassified": {
+              "$ref": "#/$defs/ci3_bucket"
+            }
+          },
+          "required": [
+            "results",
+            "waiting",
+            "setup",
+            "running",
+            "unclassified"
+          ],
+          "additionalProperties": false
+        },
+        "merge_queue": {
+          "type": "object",
+          "properties": {
+            "p50_minutes": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "p95_minutes": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "timed": {
+              "type": "integer"
+            },
+            "outcomes": {
+              "$ref": "#/$defs/ci3_outcomes"
+            },
+            "by_outcome": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "$ref": "#/$defs/ci3_split"
+                },
+                "failure": {
+                  "$ref": "#/$defs/ci3_split"
+                },
+                "cancelled": {
+                  "$ref": "#/$defs/ci3_split"
+                }
+              },
+              "required": [
+                "success",
+                "failure",
+                "cancelled"
+              ],
+              "additionalProperties": false
+            },
+            "with_reruns": {
+              "type": "integer"
+            },
+            "groups": {
+              "type": "integer"
+            },
+            "missing": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "p50_minutes",
+            "p95_minutes",
+            "timed",
+            "outcomes",
+            "by_outcome",
+            "with_reruns",
+            "groups",
+            "missing"
+          ],
+          "additionalProperties": false
+        },
+        "runner_minutes": {
+          "type": "object",
+          "properties": {
+            "pr_heads": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "merge_queue": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "per_day": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": [
+            "pr_heads",
+            "merge_queue",
+            "total",
+            "per_day"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "measure",
+        "label",
+        "since",
+        "until",
+        "collected_at",
+        "required_checks",
+        "heads",
+        "prs",
+        "result",
+        "missing",
+        "critical_path",
+        "merge_queue",
+        "runner_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "remaining": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "reset_at": {
+          "type": "integer"
+        },
+        "retry_after": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "remaining",
+        "limit",
+        "reset_at",
+        "retry_after"
+      ],
+      "additionalProperties": false
+    },
+    "guard_observation": {
+      "description": "tools/ci-overload's input observation, exactly: the guard reads it unchanged.",
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?![\\s\\S])"
+        },
+        "observed_at": {
+          "type": "integer"
+        },
+        "complete": {
+          "$ref": "#/$defs/boolean"
+        },
+        "queue": {
+          "type": "object",
+          "properties": {
+            "complete": {
+              "$ref": "#/$defs/boolean"
+            },
+            "jobs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,100}(?![\\s\\S])"
+                  },
+                  "required": {
+                    "$ref": "#/$defs/boolean"
+                  },
+                  "status": {
+                    "enum": [
+                      "queued",
+                      "in_progress",
+                      "completed"
+                    ]
+                  },
+                  "queued_at": {
+                    "type": "integer"
+                  },
+                  "started_at": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "required",
+                  "status",
+                  "queued_at",
+                  "started_at"
+                ],
+                "additionalProperties": false
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "complete",
+            "jobs"
+          ],
+          "additionalProperties": false
+        },
+        "budgets": {
+          "type": "object",
+          "properties": {
+            "rest": {
+              "$ref": "#/$defs/budget"
+            },
+            "graphql": {
+              "$ref": "#/$defs/budget"
+            }
+          },
+          "required": [
+            "rest",
+            "graphql"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "repository",
+        "observed_at",
+        "complete",
+        "queue",
+        "budgets"
+      ],
+      "additionalProperties": false
+    },
+    "queue_value": {
+      "type": "object",
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/guard_observation"
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "job": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,100}(?![\\s\\S])"
+              },
+              "workflow": {
+                "enum": [
+                  "ci.yml",
+                  "privacy.yml"
+                ]
+              },
+              "run_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "run_attempt": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "pool": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/text"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "job",
+              "workflow",
+              "run_id",
+              "run_attempt",
+              "pool"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "observation",
+        "jobs"
+      ],
+      "additionalProperties": false
+    },
+    "activity_value": {
+      "description": "WR8's current ci.yml observation, carried: what the activity slot and health ci_queue read.",
+      "type": "object",
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "current": {
+          "description": "bench.current_activity's output for ci.yml (runs, jobs with run/attempt/status/pool, cost_jobs, cost), unchanged."
+        },
+        "created_at": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "job": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "created_at": {
+                "$ref": "#/$defs/time"
+              }
+            },
+            "required": [
+              "job",
+              "created_at"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "window",
+        "current",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "fact_merges": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "merges"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/merges_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_prs_per_hour": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "prs_per_hour"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/prs_per_hour_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_stage_waits": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "stage_waits"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/stage_waits_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_stalls": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "stalls"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/stalls_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_open_prs": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "open_prs"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/open_prs_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_journeys": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "journeys"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/journeys_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_cost": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "cost"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/cost_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_runs": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "runs"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/runs_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_minutes": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "minutes"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/minutes_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_ci3": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "ci3"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ci3_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_activity": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "activity"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/activity_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "fact_queue": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "queue"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/queue_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "factory_facts": {
+      "type": "object",
+      "properties": {
+        "merges": {
+          "$ref": "#/$defs/fact_merges"
+        },
+        "prs_per_hour": {
+          "$ref": "#/$defs/fact_prs_per_hour"
+        },
+        "stage_waits": {
+          "$ref": "#/$defs/fact_stage_waits"
+        },
+        "stalls": {
+          "$ref": "#/$defs/fact_stalls"
+        },
+        "open_prs": {
+          "$ref": "#/$defs/fact_open_prs"
+        },
+        "journeys": {
+          "$ref": "#/$defs/fact_journeys"
+        },
+        "cost": {
+          "$ref": "#/$defs/fact_cost"
+        }
+      },
+      "required": [
+        "merges",
+        "prs_per_hour",
+        "stage_waits",
+        "stalls",
+        "open_prs",
+        "journeys",
+        "cost"
+      ],
+      "additionalProperties": false
+    },
+    "ci_facts": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "$ref": "#/$defs/fact_runs"
+        },
+        "minutes": {
+          "$ref": "#/$defs/fact_minutes"
+        },
+        "ci3": {
+          "$ref": "#/$defs/fact_ci3"
+        },
+        "activity": {
+          "$ref": "#/$defs/fact_activity"
+        },
+        "queue": {
+          "$ref": "#/$defs/fact_queue"
+        }
+      },
+      "required": [
+        "runs",
+        "minutes",
+        "ci3",
+        "activity",
+        "queue"
+      ],
+      "additionalProperties": false
+    },
+    "read_envelope": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "openwiz.war-room.collector.read.v1"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?![\\s\\S])"
+        },
+        "requested_at": {
+          "$ref": "#/$defs/time"
+        },
+        "factory": {
+          "type": "object",
+          "properties": {
+            "merges": {
+              "$ref": "#/$defs/fact_merges"
+            },
+            "prs_per_hour": {
+              "$ref": "#/$defs/fact_prs_per_hour"
+            },
+            "stage_waits": {
+              "$ref": "#/$defs/fact_stage_waits"
+            },
+            "stalls": {
+              "$ref": "#/$defs/fact_stalls"
+            },
+            "open_prs": {
+              "$ref": "#/$defs/fact_open_prs"
+            },
+            "journeys": {
+              "$ref": "#/$defs/fact_journeys"
+            },
+            "cost": {
+              "$ref": "#/$defs/fact_cost"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "ci": {
+          "type": "object",
+          "properties": {
+            "runs": {
+              "$ref": "#/$defs/fact_runs"
+            },
+            "minutes": {
+              "$ref": "#/$defs/fact_minutes"
+            },
+            "ci3": {
+              "$ref": "#/$defs/fact_ci3"
+            },
+            "activity": {
+              "$ref": "#/$defs/fact_activity"
+            },
+            "queue": {
+              "$ref": "#/$defs/fact_queue"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "repository",
+        "requested_at",
+        "factory",
+        "ci"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

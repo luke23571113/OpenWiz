@@ -332,6 +332,19 @@ class AppApi(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
 
+    def do_GET(self):
+        # The mint's owner-bound reads (C-G1/J48, #606): this App, owned by the
+        # installation's account. Only the token request is recorded in `seen`.
+        found = {'/app': {'id': 1001, 'owner': {'login': OWNER}},
+                 '/app/installations/3003': {'id': 3003, 'app_id': 1001, 'account': {'login': OWNER},
+                                             'repository_selection': 'selected'}}.get(self.path)
+        data = json.dumps(found or {'message': 'synthetic: not found'}).encode()
+        self.send_response(200 if found else 404)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_POST(self):
         size = int(self.headers.get('Content-Length') or 0)
         body = self.rfile.read(size).decode() if size else ''

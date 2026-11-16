@@ -24,6 +24,7 @@ pub mod engine;
 pub mod fleet;
 pub mod fleets;
 pub mod github_token;
+pub mod init;
 pub mod loop_files;
 pub mod loops;
 pub mod new_thread;
@@ -154,7 +155,7 @@ Usage:
   openwiz attachment add [--json] [--] <path>...
   openwiz attachment ls [--json]
   openwiz attachment rm [--json] <id>...
-{fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{loop_files_usage}{engine_usage}{github_usage}{ui_usage}  openwiz help --agent
+{fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{loop_files_usage}{engine_usage}{init_usage}{github_usage}{ui_usage}  openwiz help --agent
   openwiz help
   openwiz --help
 
@@ -357,6 +358,7 @@ attachment does the same: a usage error (2), or a store that can't be opened (10
         loops_usage = loops::USAGE,
         loop_files_usage = loop_files::USAGE,
         engine_usage = engine::USAGE,
+        init_usage = init::USAGE,
         ui_usage = UI_USAGE,
         ui_help = UI_HELP,
         github_usage = github_token::USAGE,

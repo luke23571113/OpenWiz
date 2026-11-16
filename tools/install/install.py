@@ -40,7 +40,8 @@ REQUIRED = PROGRAMS | {'web/openwiz-build.txt', 'runtime/openwiz-build.txt', 'we
     'runtime/skills/launch-fleet/scripts/fleet.sh',
     'runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/github-app/setup.py',
     'runtime/github-app/app.py', 'runtime/github-app/manifest.json',
-    'runtime/cloudroom/cloudroom.py'}  # #2201: setup's CloudRoom install, reuse and sign-in tool
+    'runtime/cloudroom/cloudroom.py',  # #2201: setup's CloudRoom install, reuse and sign-in tool
+    'runtime/setup/init.py'}  # #635: installed openwiz init's packaged runtime
 
 
 class Refused(Exception):

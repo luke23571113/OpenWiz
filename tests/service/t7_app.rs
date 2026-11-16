@@ -46,6 +46,25 @@ struct Endpoint {
     response: Arc<Mutex<String>>,
 }
 impl Exchange for Endpoint {
+    /// #606 review R3: the service mint's owner-bound reads, answered with this
+    /// fixture's synthetic App (1001), owner and installation (2002).
+    fn github(
+        &self,
+        call: &openwiz_adapter_github::app::Call<'_>,
+        _: &str,
+        _: std::time::Instant,
+    ) -> Result<(u16, Vec<u8>), Error> {
+        match call {
+            openwiz_adapter_github::app::Call::App => {
+                Ok((200, br#"{"id":1001,"owner":{"login":"synthetic-owner"}}"#.to_vec()))
+            }
+            openwiz_adapter_github::app::Call::Installation { .. } => Ok((
+                200,
+                br#"{"id":2002,"app_id":1001,"account":{"login":"synthetic-owner"},"repository_selection":"selected"}"#.to_vec(),
+            )),
+            _ => Err(Error),
+        }
+    }
     fn exchange(
         &self,
         installation: u64,

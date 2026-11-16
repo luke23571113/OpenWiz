@@ -1,17 +1,34 @@
 {
   "schema": "openwiz.war-room.benchmarks.v1",
-  "note": "WRD3 (#631): the page's figure inventory. Five headline cards (00a-00e), then numbered body figures in themed sections. Each provider and health signal has exactly one home figure for its values and sources; each chart from the chart build belongs to exactly one figure; each measured family of spec #626 names the figures that show it, or the prerequisite it waits for. Numbers are stable: a new figure takes the next unused number.",
+  "note": "WRD3 (#631): the page's figure inventory. Five headline cards (00a-00e), then numbered body figures in themed sections. Each provider and health signal has exactly one home figure for its values and sources; each chart from the chart build belongs to exactly one figure; each measured family of spec #626 names the figures that show it, or the prerequisite it waits for. Numbers are stable: a new figure takes the next unused number. WRD5 (#883), presentation only: the site's five child pages, each with its question and its body figures in order (every body figure on exactly one page); the headline cards stay on home, and each card names the child page that holds its benches' values and sources. A figure or bench with no page refuses the site.",
   "cards": [
     {"figure": "00a", "title": "Ready & building", "chart": "00a", "providers": ["board"],
+     "page": "speed",
      "caption": "Work supply. Ready should stay at least twice building."},
     {"figure": "00b", "title": "Main merges", "chart": "00b", "providers": [],
+     "page": "speed",
      "caption": "Merged main PRs per full PST day."},
     {"figure": "00c", "title": "CI latency", "chart": "00c", "providers": [],
+     "page": "speed",
      "caption": "Workflow created to last job done, median and p90."},
     {"figure": "00d", "title": "Runner time", "chart": "00d", "providers": [],
+     "page": "cost",
      "caption": "Runner minutes per successful code run."},
     {"figure": "00e", "title": "Credit burn", "chart": "00e", "providers": ["credits"],
+     "page": "cost",
      "caption": "Sampled balance drops over each actual span. Not billing."}
+  ],
+  "pages": [
+    {"slug": "speed", "title": "Speed", "question": "How fast is work moving?",
+     "figures": ["01", "03", "04", "07", "10", "24", "23"]},
+    {"slug": "health", "title": "Health", "question": "Is anything broken or stuck?",
+     "figures": ["08", "09", "05", "06", "11", "20", "21"]},
+    {"slug": "cost", "title": "Cost", "question": "What is it costing?",
+     "figures": ["12", "13", "14"]},
+    {"slug": "quality", "title": "Quality", "question": "Is the work good?",
+     "figures": ["02", "15", "16", "22"]},
+    {"slug": "skills", "title": "Skills and evals", "question": "Are skills and evals improving?",
+     "figures": ["17", "18", "19"]}
   ],
   "sections": [
     {"number": "01", "title": "Flow & latency", "figures": [

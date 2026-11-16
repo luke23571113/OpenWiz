@@ -85,6 +85,17 @@ pub fn dispatch(discovery: openwiz_adapter_cloudroom::locate::Discovery) -> Exit
             .unwrap_or(1),
         );
     }
+    // Init, like engine, owns its complete syntax/JSON boundary (#635).
+    if args.first().is_some_and(|a| a == "init") {
+        return ExitCode::from(
+            u8::try_from(openwiz_cli::init::run(
+                &args[1..],
+                &mut io::stdout().lock(),
+                &mut io::stderr().lock(),
+            ))
+            .unwrap_or(1),
+        );
+    }
     let request = openwiz_cli::response::Request::new(&args);
     let code = openwiz_cli::response::run(
         &request,

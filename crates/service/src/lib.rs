@@ -7,7 +7,6 @@ pub mod document;
 pub mod events;
 pub mod health;
 pub mod loops;
-pub mod notifications;
 pub mod paths;
 pub mod runtime;
 pub mod scheduler;
@@ -15,136 +14,11 @@ pub mod state;
 pub mod tick;
 pub mod update;
 mod web_api;
-pub use web_api::start_notification_api;
 
 /// Injected event entry point. Production transport belongs to #805.
 pub use events::route_next as route_event;
 
 use std::{path::PathBuf, process::ExitCode};
-
-/// The registered notification job's name in the existing scheduler (#2034).
-pub const NOTIFICATION_JOB: &str = "notifications";
-
-/// #2034: construct the one bounded notification pass from configuration.
-/// Absent `notifications` returns None: no store, no job and zero effects. The
-/// scheduler never overlaps a job's runs; each pass ends by its run budget.
-/// Delivery and binding verification are T4's; production passes
-/// `UnavailableDelivery` and a verifier that refuses every binding.
-/// A store briefly busy with an owner's write keeps the job: each pass retries
-/// its safe initialization and submits nothing until it succeeds. Unsafe or
-/// unreadable storage still refuses construction.
-#[allow(clippy::too_many_arguments)]
-pub fn notification_job(
-    root: &std::path::Path,
-    config: &serde_json::Value,
-    state: std::sync::Arc<std::sync::Mutex<state::State>>,
-    decisions: notifications::sources::DecisionsRead,
-    comments: notifications::sources::CommentsRead,
-    delivery: Box<dyn openwiz_core::notifications::boundary::DeliveryBoundary + Send>,
-    binding: notifications::engine::BindingVerifier,
-    clock: std::sync::Arc<dyn openwiz_core::ops::Clock>,
-) -> Result<Option<(std::num::NonZeroU64, impl Fn() + Send + Sync + use<>)>, String> {
-    use openwiz_core::notifications::model::Record;
-    use openwiz_server::notifications::{Api, Read};
-    use serde_json::json;
-    use std::sync::Arc;
-    let Some(job) = config.get("notifications") else {
-        return Ok(None);
-    };
-    let every = job["every_s"]
-        .as_u64()
-        .and_then(std::num::NonZeroU64::new)
-        .ok_or("notifications.every_s is invalid")?;
-    let store = openwiz_store::notifications::Store::new(root);
-    match store.initialize() {
-        Ok(()) | Err(openwiz_store::notifications::Error::Busy) => {}
-        Err(_) => return Err("service/notifications: protected store is unavailable".into()),
-    }
-    let read_state = Arc::clone(&state);
-    let health: notifications::sources::HealthRead = Arc::new(move || {
-        read_state
-            .lock()
-            .map(|s| s.snapshot().clone())
-            .map_err(|_| openwiz_store::notifications::Error::Unavailable)
-    });
-    let sources = Arc::new(
-        notifications::sources::Installed::new(
-            config,
-            decisions,
-            health,
-            comments,
-            Arc::clone(&clock),
-        )?
-        .durable(root),
-    );
-    let ready = std::sync::atomic::AtomicBool::new(false);
-    let engine = notifications::Engine::new(
-        store.clone(),
-        sources.clone(),
-        delivery,
-        Arc::clone(&clock),
-        binding,
-    );
-    Ok(Some((every, move || {
-        let deadline = clock.monotonic() + openwiz_core::limits::RUN_BUDGET;
-        let ran = (|| {
-            // Initialize and remember persisted open groups once, before the
-            // first pass; a busy or unreadable store makes this pass submit
-            // nothing and the next one try again.
-            if !ready.load(std::sync::atomic::Ordering::SeqCst) {
-                store.initialize()?;
-                let saved = store.read()?;
-                sources.seed(
-                    saved
-                        .groups
-                        .iter()
-                        .filter(|g| !g.closed)
-                        .map(|g| &g.observation),
-                );
-                ready.store(true, std::sync::atomic::Ordering::SeqCst);
-            }
-            engine.run(deadline)
-        })();
-        if ran.is_ok() {
-            sources.settle();
-        }
-        let now = u64::try_from(clock.now().0).unwrap_or(0);
-        let status = engine.read(Read::Status, now, deadline).ok();
-        let Ok(mut saved) = state.lock() else {
-            eprintln!("openwiz-service: notification state is unavailable");
-            return;
-        };
-        let previous = saved.snapshot()["notifications"].clone();
-        let (words, generation, reason) = match status.map(|d| d.record) {
-            Some(Record::Status(s)) => (
-                json!(s.state),
-                json!(s.preferences.generation),
-                json!(s.reason),
-            ),
-            _ => (
-                json!("unavailable"),
-                previous
-                    .get("preference_generation")
-                    .cloned()
-                    .unwrap_or(json!(0)),
-                json!("Notification status is unread"),
-            ),
-        };
-        let summary = if ran.is_ok() {
-            json!({"state":words,"preference_generation":generation,"last_pass_at":{"known":now},"reason":reason})
-        } else {
-            let last = match previous.get("last_pass_at") {
-                Some(last) if last["known"].is_u64() => last.clone(),
-                _ => json!({"unknown":"No completed notification source pass"}),
-            };
-            json!({"state":words,"preference_generation":generation,"last_pass_at":last,
-                "reason":"Notification source pass did not complete; no new submission"})
-        };
-        if saved.publish_notifications(summary).is_err() || ran.is_err() {
-            eprintln!("openwiz-service: notification pass incomplete; delivery stays unproven");
-        }
-    })))
-}
 
 /// The commit the service programs were built from, never a guessed identity.
 pub const BUILD: &str = env!("OPENWIZ_SERVICE_BUILD");
@@ -186,42 +60,6 @@ const HELP: &str = "openwiz-service: OpenWiz's PC service\n\nUsage: openwiz-serv
 /// The real program and the test-only example share every dispatch path.
 pub fn dispatch(discovery: openwiz_adapter_cloudroom::locate::Discovery) -> ExitCode {
     dispatch_with_jobs(discovery, scheduler::Scheduler::default())
-}
-
-/// A delivery adapter and its binding verifier, built once per engine.
-pub type DeliveryFactory = std::sync::Arc<
-    dyn Fn() -> (
-            Box<dyn openwiz_core::notifications::boundary::DeliveryBoundary + Send>,
-            notifications::engine::BindingVerifier,
-        ) + Send
-        + Sync,
->;
-static DELIVERY: std::sync::OnceLock<DeliveryFactory> = std::sync::OnceLock::new();
-
-/// #2039 (Q2-A): the job's and the web API's delivery. Only
-/// `dispatch_with_delivery` sets another factory; production uses T4's
-/// `delivery::installed`.
-pub(crate) fn delivery() -> (
-    Box<dyn openwiz_core::notifications::boundary::DeliveryBoundary + Send>,
-    notifications::engine::BindingVerifier,
-) {
-    DELIVERY
-        .get()
-        .map_or_else(notifications::delivery::installed, |factory| factory())
-}
-
-/// Explicit Rust injection of a recording delivery for fixture programs, with
-/// the real dispatch otherwise unchanged. No CLI or environment setting selects it.
-pub fn dispatch_with_delivery(
-    discovery: openwiz_adapter_cloudroom::locate::Discovery,
-    jobs: scheduler::Scheduler,
-    factory: DeliveryFactory,
-) -> ExitCode {
-    if DELIVERY.set(factory).is_err() {
-        eprintln!("openwiz-service: delivery already configured");
-        return ExitCode::FAILURE;
-    }
-    dispatch_with_jobs(discovery, jobs)
 }
 
 /// Registered jobs join the same process runtime. Production starts with none.
