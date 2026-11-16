@@ -33,6 +33,7 @@ COLLECTOR = HERE / 'fixtures' / 'collector'
 SCRIPT = HERE / 'collect_factory.py'
 DAILY_REPO, OPEN_REPO = 'example/factory', 'synthetic-owner/synthetic-repo'
 DAY = ('2030-01-02T00:00:00Z', '2030-01-03T00:00:00Z')
+C_LIMITS = 'tools/factory-metrics/limits.conf'  # TL1's settings file, which collect_factory reads
 FACTS = ['merges', 'prs_per_hour', 'stage_waits', 'stalls', 'open_prs', 'journeys', 'cost']
 
 
@@ -150,7 +151,7 @@ class DailyNumbers(unittest.TestCase):
     # by number, with metrics.py's own report on the same world.
     def test_same_numbers_as_metrics_py(self):
         with run_tool('daily-world.json', lambda tmp: [
-                str(ROOT / 'tools/factory-metrics/metrics.py'), '--date', '2030-01-02', '--repo', DAILY_REPO,
+                str(HERE / 'metrics.py'), '--date', '2030-01-02', '--repo', DAILY_REPO,
                 '--out', str(tmp / 'out'), '--usage', str(FIX / 'daily-usage.json')]) as tmp:
             report = json.loads((tmp / 'out' / 'report.json').read_text())
         merged = self.f['merges']['value']['pull_requests']
@@ -216,7 +217,7 @@ class CarriedJourneys(unittest.TestCase):
         self.assertEqual(fact['value']['cohort'], {'window': {'since': DAY[0], 'until': DAY[1], 'timezone': 'UTC'},
                                                    'pull_requests': [4201, 4202]})
         with run_tool('journey-world.json', lambda tmp: [
-                str(ROOT / 'tools/factory-metrics/journey.py'), 'collect', '--repo', DAILY_REPO,
+                str(HERE / 'journey.py'), 'collect', '--repo', DAILY_REPO,
                 '--ticket', '4101', '--ticket', '4103', '--out', str(tmp / 'out')]) as tmp:
             written = (tmp / 'out' / 'journeys.json').read_bytes()
         self.assertEqual(fact['value']['document'], json.loads(written))
@@ -231,18 +232,19 @@ class CarriedJourneys(unittest.TestCase):
         fact = envelope(p)['factory']['stage_waits']
         self.assertEqual((fact['state'], fact['point']), ('partial', at))
         with run_tool('stage-world.json', lambda tmp: [
-                str(ROOT / 'tools/factory-metrics/journey.py'), 'collect', '--repo', DAILY_REPO, *tickets,
+                str(HERE / 'journey.py'), 'collect', '--repo', DAILY_REPO, *tickets,
                 '--stage-waits', '--as-of', at, '--out', str(tmp / 'out')]) as tmp:
             side = (tmp / 'out' / 'stage-waits.json').read_bytes()
             journey = json.loads((tmp / 'out' / 'journeys.json').read_text())
-            bench = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/factory-metrics/journey.py'), 'bench',
-                                    str(tmp / 'out' / 'journeys.json'), '--stage-waits', str(tmp / 'out' / 'stage-waits.json')],
+            bench = subprocess.run([sys.executable, '-I', str(HERE / 'journey.py'), 'bench',
+                                    str(tmp / 'out' / 'journeys.json'), '--stage-waits', str(tmp / 'out' / 'stage-waits.json'),
+                                    '--settings', str(ROOT / C_LIMITS)],
                                    capture_output=True, text=True, timeout=60)
         self.assertEqual(fact['value']['sidecar'], json.loads(side))
         self.assertEqual(fact['value']['journey'], journey)
         self.assertEqual(fact['source']['sha256'], hashlib.sha256(side).hexdigest())
         self.assertEqual(fact['value']['bench'], json.loads(bench.stdout)['stage_waits'])
-        conf = (ROOT / 'tools/factory-metrics/limits.conf').read_bytes()
+        conf = (ROOT / C_LIMITS).read_bytes()
         self.assertEqual(fact['value']['limits']['sha256'], hashlib.sha256(conf).hexdigest())
         self.assertGreaterEqual(fact['value']['limits']['read_at'], fact['value']['sidecar']['read_at'])
 
@@ -404,7 +406,8 @@ class Validate(unittest.TestCase):
 
 class Snapshot(unittest.TestCase):
     # catches: the snapshot and the on-demand read disagreeing on the same source, a missing
-    # fact or group key, or the CI group invented before its collector exists.
+    # fact or group key, a CI group that is not the CI collector's own read (#819 ruling: the
+    # snapshot calls gather.ci_facts), or a collection time before one of its reads ended.
     def test_snapshot_and_read_agree(self):
         C = load('collect_factory', SCRIPT)
         G = load('gather', HERE / 'gather.py')
@@ -413,15 +416,18 @@ class Snapshot(unittest.TestCase):
         with fake_gh('daily-world.json'):
             snap = G.snapshot(DAILY_REPO, **kw)
             read = C.read(DAILY_REPO, ['merges', 'stalls', 'cost'], **kw)
+            ci = G.ci_facts(DAILY_REPO, since=DAY[0], until=DAY[1])
         suite._shape(snap, SCHEMA, SCHEMA)
         self.assertEqual(list(snap['factory']), FACTS)
         self.assertEqual(list(snap['ci']), ['runs', 'minutes', 'ci3', 'activity', 'queue'])
         for name in ('merges', 'stalls', 'cost'):
             self.assertEqual(snap['factory'][name], read['factory'][name], name)
         for name, fact in snap['ci'].items():
-            self.assertEqual((fact['state'], fact['value']), ('unavailable', None), name)
-        self.assertGreaterEqual(snap['collected_at'], max(f['read']['ended_at'] for f in snap['factory'].values()
-                                                          if f['read']))
+            self.assertEqual((fact['state'], fact['value'], fact['prerequisites']),
+                             (ci[name]['state'], ci[name]['value'], ci[name]['prerequisites']), name)
+        ends = [f['read']['ended_at'] for g in ('factory', 'ci') for f in snap[g].values() if f['read']]
+        self.assertTrue(any(f['read'] for f in snap['ci'].values()), 'the CI collector read nothing')
+        self.assertGreaterEqual(snap['collected_at'], max(ends))
 
 
 if __name__ == '__main__':
