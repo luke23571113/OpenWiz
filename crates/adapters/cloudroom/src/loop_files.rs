@@ -16,7 +16,14 @@ use std::time::Instant;
 use openwiz_core::source::SourceError;
 use serde_json::{Map, Value, json};
 
-use crate::{allowlist::Invocation, process, source::CloudRoomSource};
+use crate::{
+    allowlist::{
+        Invocation, LoopAgentArgs, LoopCreateArgs, LoopReschedule, LoopTrigger, LoopUpdateArgs,
+        ThreadId,
+    },
+    process,
+    source::CloudRoomSource,
+};
 
 // ---------------------------------------------------------------- refusals
 
@@ -1722,81 +1729,66 @@ pub fn file_refusals(file: &LoopFile, shown: &str) -> Vec<Refusal> {
     refusals
 }
 
-/// One `room-cli` call: `argv` after the program name. `@prompt` and
-/// `@script` stand for the files apply writes; `files` holds their text.
+/// One `room-cli` call, built by the allowlist and never run here. Its
+/// `@prompt` and `@script` operands stand for the files apply writes;
+/// `files` holds their text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomCommand {
-    pub argv: Vec<String>,
+    pub invocation: Invocation,
     pub files: Vec<(String, String)>,
 }
 
 impl RoomCommand {
+    /// The arguments after `room-cli`, exactly as the allowlist builds them.
+    pub fn argv(&self) -> Vec<String> {
+        self.invocation.argv()
+    }
+
     pub fn to_json(&self) -> Value {
         let files: Map<String, Value> = self
             .files
             .iter()
             .map(|(k, v)| (k.clone(), Value::String(v.clone())))
             .collect();
-        json!({"argv": self.argv, "files": files})
+        json!({"argv": self.argv(), "files": files})
     }
 }
 
-fn agent_flags(argv: &mut Vec<String>, agent: &Agent) {
-    for (flag, value) in [
-        ("--provider", &agent.provider),
-        ("--model", &agent.model),
-        ("--reasoning", &agent.reasoning),
-    ] {
-        argv.extend([flag.to_owned(), value.clone()]);
+fn agent_args(agent: &Agent) -> LoopAgentArgs {
+    LoopAgentArgs {
+        provider: agent.provider.clone(),
+        model: agent.model.clone(),
+        reasoning: agent.reasoning.clone(),
     }
 }
 
-/// The adapter's `room-cli loop create` for a file, in its flag order.
+/// The adapter's `room-cli loop create` for a file.
 pub fn create_command(file: &LoopFile) -> RoomCommand {
-    let mut argv: Vec<String> = vec![
-        "loop".into(),
-        "create".into(),
-        "--name".into(),
-        format!("{} {}", file.name, marker(&file.id)),
-        "--prompt-file".into(),
-        "@prompt".into(),
-    ];
-    match &file.trigger {
-        Trigger::Cron { cron, timezone } => {
-            argv.extend([
-                "--cron".into(),
-                cron.clone(),
-                "--timezone".into(),
-                timezone.clone(),
-            ]);
-        }
-        Trigger::At(at) => argv.extend(["--at".into(), at.clone()]),
-        Trigger::In(delay) => argv.extend(["--in".into(), delay.clone()]),
-        Trigger::Webhook => argv.push("--webhook".into()),
-    }
-    argv.push(
-        if file.new_thread {
-            "--new-thread"
-        } else {
-            "--same-thread"
-        }
-        .into(),
-    );
     let mut files = vec![("@prompt".to_owned(), rendered_body(file))];
-    if let Some(check) = &file.check {
-        argv.extend(["--script-file".into(), "@script".into()]);
+    let script_file = file.check.as_ref().map(|check| {
         files.push(("@script".into(), rendered_script(file, check)));
-    }
-    if let Some(agent) = &file.agent {
-        agent_flags(&mut argv, agent);
-    }
-    argv.extend([
-        "--priority".into(),
-        file.priority.to_string(),
-        "--secrets".into(),
-        file.secrets.flag(),
-    ]);
-    RoomCommand { argv, files }
+        "@script".to_owned()
+    });
+    let trigger = match &file.trigger {
+        Trigger::Cron { cron, timezone } => LoopTrigger::Cron {
+            cron: cron.clone(),
+            timezone: timezone.clone(),
+        },
+        Trigger::At(at) => LoopTrigger::At(at.clone()),
+        Trigger::In(delay) => LoopTrigger::In(delay.clone()),
+        Trigger::Webhook => LoopTrigger::Webhook,
+    };
+    let invocation = Invocation::LoopCreate(LoopCreateArgs {
+        name: format!("{} {}", file.name, marker(&file.id)),
+        prompt_file: "@prompt".into(),
+        trigger,
+        new_thread: file.new_thread,
+        script_file,
+        agent: file.agent.as_ref().map(agent_args),
+        priority: file.priority.to_string(),
+        secrets: file.secrets.flag(),
+    });
+    RoomCommand { invocation, files }
 }
 
 // ------------------------------------------------------- `room-cli loop list`
@@ -1805,6 +1797,8 @@ pub fn create_command(file: &LoopFile) -> RoomCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveLoop {
     pub loop_id: String,
+    /// The same id, as `room-cli loop update` takes it.
+    pub address: ThreadId,
     pub project_id: String,
     pub name: String,
     /// The trigger in the file's shape, or the `cf-export-trigger` case.
@@ -1916,6 +1910,9 @@ pub fn parse_loop_list(stdout: &[u8]) -> Result<Vec<LiveLoop>, String> {
                 .ok_or_else(|| bad(&format!("{loop_id}'s priority is not an integer")))?;
             Ok(LiveLoop {
                 loop_id: loop_id.to_owned(),
+                address: ThreadId::parse(loop_id).map_err(|_| {
+                    bad(&format!("{loop_id} is not an id that can be passed safely"))
+                })?,
                 project_id: string("project_id")?,
                 name: string("name")?,
                 trigger,
@@ -1951,12 +1948,13 @@ pub enum Action {
 }
 
 impl Action {
-    pub fn word(self) -> &'static str {
+    /// `none` or `refused`; `create` and `update` are their command's
+    /// subcommand, as the allowlist spells it (see [`PlanItem::action_word`]).
+    fn quiet_word(self) -> Option<&'static str> {
         match self {
-            Action::Create => "create",
-            Action::Update => "update",
-            Action::None => "none",
-            Action::Refused => "refused",
+            Action::None => Some("none"),
+            Action::Refused => Some("refused"),
+            Action::Create | Action::Update => None,
         }
     }
 }
@@ -1973,6 +1971,18 @@ pub struct PlanItem {
     pub differences: Vec<Difference>,
     pub refusals: Vec<Refusal>,
     pub notes: Vec<String>,
+}
+
+impl PlanItem {
+    /// The contract's `action`: a create or an update is named by its one
+    /// command's subcommand, so the word is spelled once, in the allowlist.
+    pub fn action_word(&self) -> String {
+        match (self.action.quiet_word(), self.commands.first()) {
+            (Some(word), _) => word.to_owned(),
+            (None, Some(command)) => command.argv()[1].clone(),
+            (None, None) => "refused".to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2285,46 +2295,40 @@ fn plan_update(item: &mut PlanItem, file: &LoopFile, live: &LiveLoop, adopted: b
         json!(live.script),
     );
     let has = |field: &str| differences.iter().any(|d| d.field == field);
-    let mut argv: Vec<String> = vec!["loop".into(), "update".into(), live.loop_id.clone()];
     let mut files = Vec::new();
-    if has("name") || adopted {
-        argv.extend([
-            "--name".into(),
-            format!("{} {}", file.name, marker(&file.id)),
-        ]);
-    }
-    if has("priority") {
-        argv.extend(["--priority".into(), file.priority.to_string()]);
-    }
-    if has("body") {
-        argv.extend(["--prompt".into(), body]);
-    }
-    if has("trigger") {
-        match &file.trigger {
-            Trigger::Cron { cron, timezone } => argv.extend([
-                "--cron".into(),
-                cron.clone(),
-                "--timezone".into(),
-                timezone.clone(),
-            ]),
-            Trigger::At(at) => argv.extend(["--at".into(), at.clone()]),
-            Trigger::In(_) | Trigger::Webhook => {}
+    let script_file = match script {
+        Some(script) if has("check") => {
+            files.push(("@script".to_owned(), script));
+            Some("@script".to_owned())
         }
-    }
-    if has("check")
-        && let Some(script) = script
-    {
-        argv.extend(["--script-file".into(), "@script".into()]);
-        files.push(("@script".to_owned(), script));
-    }
-    if has("agent")
-        && let Some(agent) = &file.agent
-    {
-        agent_flags(&mut argv, agent);
-    }
-    if has("secrets") {
-        argv.extend(["--secrets".into(), file.secrets.flag()]);
-    }
+        _ => None,
+    };
+    let update = LoopUpdateArgs {
+        loop_id: live.address.clone(),
+        name: (has("name") || adopted).then(|| format!("{} {}", file.name, marker(&file.id))),
+        priority: has("priority").then(|| file.priority.to_string()),
+        prompt: has("body").then_some(body),
+        trigger: match &file.trigger {
+            _ if !has("trigger") => None,
+            Trigger::Cron { cron, timezone } => Some(LoopReschedule::Cron {
+                cron: cron.clone(),
+                timezone: timezone.clone(),
+            }),
+            Trigger::At(at) => Some(LoopReschedule::At(at.clone())),
+            // Refused above: an `in` file, and a change to or from a webhook.
+            Trigger::In(_) | Trigger::Webhook => None,
+        },
+        script_file,
+        agent: file.agent.as_ref().filter(|_| has("agent")).map(agent_args),
+        secrets: has("secrets").then(|| file.secrets.flag()),
+    };
+    let changes = update.name.is_some()
+        || update.priority.is_some()
+        || update.prompt.is_some()
+        || update.trigger.is_some()
+        || update.script_file.is_some()
+        || update.agent.is_some()
+        || update.secrets.is_some();
     item.differences = differences;
     if adopted {
         item.notes.push(format!(
@@ -2333,11 +2337,14 @@ fn plan_update(item: &mut PlanItem, file: &LoopFile, live: &LiveLoop, adopted: b
             marker(&file.id)
         ));
     }
-    if argv.len() == 3 {
-        item.action = Action::None;
-    } else {
+    if changes {
         item.action = Action::Update;
-        item.commands.push(RoomCommand { argv, files });
+        item.commands.push(RoomCommand {
+            invocation: Invocation::LoopUpdate(update),
+            files,
+        });
+    } else {
+        item.action = Action::None;
     }
 }
 

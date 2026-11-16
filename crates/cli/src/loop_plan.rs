@@ -105,7 +105,7 @@ fn report(plan: &Plan, project: &str, code: i32) -> Value {
 
 fn item_json(item: &PlanItem) -> Value {
     json!({
-        "file": item.file, "id": item.id, "action": item.action.word(), "loop": item.loop_id,
+        "file": item.file, "id": item.id, "action": item.action_word(), "loop": item.loop_id,
         "paused": item.paused,
         "commands": item.commands.iter().map(RoomCommand::to_json).collect::<Vec<_>>(),
         "differences": item.differences.iter().map(|d| json!({"field": d.field, "file": d.file, "live": d.live})).collect::<Vec<_>>(),
@@ -123,10 +123,10 @@ fn quoted(word: &str) -> String {
 fn text(plan: &Plan) -> String {
     let mut out = String::new();
     for item in &plan.items {
-        let what = match (item.action, &item.loop_id) {
-            (loop_files::Action::Update, Some(l)) => format!("update {l}"),
-            (loop_files::Action::None, Some(l)) => format!("no change to {l}"),
-            (action, _) => action.word().to_owned(),
+        let what = match &item.loop_id {
+            Some(l) if item.action == loop_files::Action::None => format!("no change to {l}"),
+            Some(l) => format!("{} {l}", item.action_word()),
+            None => item.action_word(),
         };
         let paused = if item.paused { " (paused)" } else { "" };
         out.push_str(&format!("{}: {what}{paused}\n", item.file));
@@ -140,7 +140,7 @@ fn text(plan: &Plan) -> String {
             ));
         }
         for command in &item.commands {
-            let argv: Vec<String> = command.argv.iter().map(|a| quoted(a)).collect();
+            let argv: Vec<String> = command.argv().iter().map(|a| quoted(a)).collect();
             out.push_str(&format!("  room-cli {}\n", argv.join(" ")));
             for (name, text) in &command.files {
                 out.push_str(&format!("  {name}:\n{text}"));
