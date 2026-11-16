@@ -217,7 +217,8 @@ def setup_facts(folder):
         assert identity is None or (isinstance(identity, dict) and isinstance(identity['selected'], str)
                                     and (identity['acting_login'] is None or isinstance(identity['acting_login'], str)))
         assert brain is None or (isinstance(brain, dict) and all(
-            isinstance(brain[k], str) for k in ('location', 'code_repository', 'brain_repository')))
+            isinstance(brain[k], str) for k in ('location', 'code_repository', 'brain_repository'))
+            and (brain['decision_repositories'] is None or isinstance(brain['decision_repositories'], dict)))
     except FileNotFoundError:
         raise Exit(5, 'Setup has not run in this OpenWiz state yet; run the setup check first; ' + NOTHING)
     except (OSError, ValueError, KeyError, TypeError, AssertionError):
@@ -256,20 +257,52 @@ def setup_facts(folder):
         problems.append('%s: %s (%s)' % (NAMES['harness'], harness, why))
     if brain is None or brain['code_repository'].lower() != repository.lower():
         problems.append('Private brain: missing (run openwiz init for %s, then the setup check)' % repository)
+    elif brain['location'] == 'companion' and not decisions_pair(folder, brain['decision_repositories']):
+        problems.append("Decisions repository pair: not configured (the private settings' decision_repositories "
+                        'must name %s as public and %s as private, so Decisions reads the companion)'
+                        % (repository, brain['brain_repository']))
     if problems:
         raise Exit(5, 'Setup is not ready for the first fleet: %s; %s' % ('; '.join(problems), NOTHING))
     acting = ('%s, your personal GitHub login (the App is skipped)' % identity['acting_login'] if skipped
               else 'your OpenWiz GitHub App')
-    return {'repository': repository, 'project': project['project'],
+    return {'setup_state': str(folder), 'repository': repository, 'project': project['project'],
             'settings': {k: project[k] for k in ('harness', 'model', 'effort')},
             'identity': {'selected': 'personal_login' if skipped else 'app', 'acting': acting},
             'brain': {'location': brain['location'], 'repository': brain['brain_repository']},
             'harness': harness_line}
 
 
+def decisions_pair(folder, pair):
+    """Whether the existing private settings (service/config.json, decisions.v1's
+    repository roles) name exactly the brain's public/private pair. Read only."""
+    try:
+        settings = strict((Path(folder) / 'service/config.json').read_text(encoding='utf-8'))
+        configured = settings['decision_repositories']
+        name = lambda roles, role: '%s/%s' % (roles[role]['owner'], roles[role]['name'])
+        return all(name(configured, r).lower() == name(pair, r).lower() for r in ('public', 'private'))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def withdraw(state):
+    """A failed refresh withdraws launch eligibility; the owner's choices and work stay."""
+    if 'setup' in state.value:
+        del state.value['setup']
+        state.save()
+
+
+def refreshed(state, folder):
+    """Setup's current facts, or Exit after withdrawing the carried setup."""
+    try:
+        return setup_facts(folder)
+    except Exit:
+        withdraw(state)
+        raise
+
+
 def carry_on(got):
-    facts = setup_facts(got['--setup-state'])
     state = State(got['--state'])
+    facts = refreshed(state, got['--setup-state'])
     if state.value.get('repo') not in (None, facts['repository']):
         raise Exit(5, 'This onboarding is for %s, but setup selected %s; %s' % (
             state.value['repo'], facts['repository'], NOTHING))
@@ -550,7 +583,7 @@ def launch(got):
     previous = state.value.get('launch')
     if previous and previous['spec'] == spec and previous['state'] != 'refused':
         recorded = fleet_recorded(spec, env)
-        if previous['state'] == 'uncertain' and recorded:
+        if previous['state'] in ('pending', 'uncertain') and recorded:
             previous['state'] = 'started'
             state.save()
         settled = previous['state'] == 'started'
@@ -558,6 +591,14 @@ def launch(got):
             spec, 'its fleet thread was started' if settled else 'uncertain: never a retry'))
         print(record_line(spec, recorded))
         return 0 if settled else 6
+    # Review R4: the carried setup must still be what setup verifies now.
+    if not isinstance(carried.get('setup_state'), str):
+        withdraw(state)
+        raise Exit(5, 'The carried setup names no setup state to recheck; run continue again; ' + NOTHING)
+    current = refreshed(state, carried['setup_state'])
+    if any(current[k] != carried.get(k) for k in current):
+        withdraw(state)
+        raise Exit(5, 'Setup changed since it was carried; run continue again; ' + NOTHING)
     if choices['agents'] != 'cloud':
         raise Exit(5, "Local fleet agents are not available yet: launch-fleet starts the fleet thread and its "
                       'builders in the Cloud. Choose Cloud, or stop here; ' + NOTHING)
@@ -599,10 +640,23 @@ def launch(got):
     state.value['launch'] = {'spec': spec, 'state': 'pending', 'effects': digest, 'tickets': starts}
     if not state.save():
         raise Exit(10, 'Could not save the launch record; ' + NOTHING)
-    result = run(['room-cli', 'thread', 'spawn', '--parent-self', '--project', carried['project'],
-                  '--machine', 'cloud', '--provider', builder['harness'], '--model', builder['model'],
-                  '--reasoning-level', builder['effort'], '--title', 'Fleet #%d: %s' % (spec, title),
-                  '--prompt', brief(spec, state.value['repo'])], env)
+    argv = ['room-cli', 'thread', 'spawn', '--parent-self', '--project', carried['project'],
+            '--machine', 'cloud', '--provider', builder['harness'], '--model', builder['model'],
+            '--reasoning-level', builder['effort'], '--title', 'Fleet #%d: %s' % (spec, title),
+            '--prompt', brief(spec, state.value['repo'])]
+    try:
+        result = subprocess.run(argv, capture_output=True, timeout=600, env=env)
+    except (FileNotFoundError, PermissionError):
+        # Review R2: room-cli never ran, so nothing was dispatched. A fresh
+        # preview and yes are needed before another try.
+        state.value['launch']['state'] = 'refused'
+        state.value.pop('preview', None)
+        saved = state.save()
+        raise Exit(5 if saved else 6, 'room-cli could not be run, so no fleet thread was dispatched; nothing started. '
+                   'Fix the CloudRoom installation, then preview again and ask again.' if saved else
+                   'room-cli could not be run, but that could not be saved; the start stays pending until read.')
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
     ended = 'started' if result is not None and result.returncode == 0 else 'uncertain'
     state.value['launch']['state'] = ended
     if not state.save():
