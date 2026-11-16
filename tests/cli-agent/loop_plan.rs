@@ -818,8 +818,7 @@ fn human_output_escapes_terminal_controls_and_json_keeps_them() {
     );
     assert!(doc["unmanaged"][0]["name"].as_str().unwrap().contains(ESC));
     let start = text.find("  room-cli 'loop' 'update'").unwrap() + "  room-cli ".len();
-    let command = &text[start..start + text[start..].find("\nNothing was changed.").unwrap()];
-    let command = command.split("\nunmanaged: ").next().unwrap();
+    let command = shell_command(&text[start..]);
     // The shell inherits nothing: its PATH holds only a recorder named
     // room-cli, so no line of the script can reach an installed CLI, and
     // any command it runs besides the shell's own builtins is caught.
@@ -876,6 +875,29 @@ fn human_output_escapes_terminal_controls_and_json_keeps_them() {
         stderr.contains("gone") && !stderr.contains(ESC),
         "{stderr:?}"
     );
+}
+
+/// The one shell command `text` starts with: up to its first line break
+/// outside quotes, so a quoted line break stays in it and the next printed
+/// line never does. Knows POSIX single and double quotes, backslashes, and
+/// single quotes inside a double-quoted `$(...)`.
+fn shell_command(text: &str) -> &str {
+    let (mut single, mut double, mut inner, mut escaped) = (false, false, false, false);
+    for (i, c) in text.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\'' if single => single = false,
+            _ if single => {}
+            '\'' if double => inner = !inner,
+            _ if inner => {}
+            '\\' => escaped = true,
+            '"' => double = !double,
+            '\'' => single = true,
+            '\n' if !double => return &text[..i],
+            _ => {}
+        }
+    }
+    text
 }
 
 // catches (#980 R2): a delay ending in a multibyte character crashing plan,
