@@ -21,6 +21,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone, timedelta
 from itertools import islice
 from pathlib import Path
+from threading import Event, Lock
 
 HERE = Path(__file__).resolve().parent
 
@@ -271,14 +272,28 @@ def current_activity(since, until, *, repo, read):
             raise Fail("current run status unavailable")
         todo.append((rid, run))
     # #1027: at most WORKERS runs are read at once, only after the first enumeration and all
-    # finished before the second. A failure admits no further run; the runs already in flight
-    # finish (nothing is left running), their results are dropped and the first failure is raised.
+    # finished before the second. A failing worker sets `failed` itself, under the lock each
+    # admission takes, so once any worker has failed no further run starts, whatever wait() last
+    # returned. The runs already in flight finish (nothing is left running), their results are
+    # dropped and the first failure the scheduler sees is raised.
+    lock, failed = Lock(), Event()
+
+    def worker(rid, run):
+        try:
+            return facts(rid, run)
+        except BaseException:
+            with lock:
+                failed.set()
+            raise
+
     done, flying = {}, {}
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         queue = iter(todo)
         while True:
-            for rid, run in islice(queue, WORKERS - len(flying)):
-                flying[pool.submit(facts, rid, run)] = rid
+            with lock:
+                if not failed.is_set():
+                    for rid, run in islice(queue, WORKERS - len(flying)):
+                        flying[pool.submit(worker, rid, run)] = rid
             if not flying:
                 break
             finished, _ = wait(flying, return_when=FIRST_COMPLETED)

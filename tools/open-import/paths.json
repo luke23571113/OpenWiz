@@ -273,6 +273,7 @@
     "tools/war-room/fixtures/activity/review-1-r1-green.log",
     "tools/war-room/fixtures/activity/review-1-r1-red.log",
     "tools/war-room/fixtures/activity/red-1027-bounded.log",
+    "tools/war-room/fixtures/activity/red-1027-r1-stale-admission.log",
     "tools/war-room/fixtures/activity/replay.py",
     "tools/war-room/fixtures/answer-time/README.md",
     "tools/war-room/fixtures/answer-time/pairs.json",
