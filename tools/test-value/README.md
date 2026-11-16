@@ -99,7 +99,11 @@ in the after run.
   `cargo llvm-cov report --json --summary-only`, product sources only. The
   whole `openwiz-tests` package, and every crate's `tests/`, `examples/` and
   `benches/`, are test code and never count, so moving a test changes no
-  number. Dependencies and the standard library never count.
+  number. Dependencies and the standard library never count. A crate's
+  total depends on which of its functions the measured binaries contain, so
+  it differs between targets: compare a group's before with its own after,
+  never one target's numbers with another's, and never add targets' numbers
+  up (measure a group's targets together instead).
 - **Test count:** passed plus ignored, from every libtest result line.
 - **Size:** the target's own sources: its folder when its root is `main.rs`
   or `mod.rs`, otherwise its one file; files, bytes and lines.
