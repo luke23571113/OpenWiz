@@ -48,7 +48,8 @@
       "evidence": [
         "https://github.com/synthetic-owner/synthetic-repo/pull/4210",
         "https://github.com/synthetic-owner/synthetic-repo/pull/4211",
-        "https://github.com/synthetic-owner/synthetic-repo/pull/4212"
+        "https://github.com/synthetic-owner/synthetic-repo/pull/4212",
+        "https://github.com/synthetic-owner/synthetic-repo/pull/4213"
       ],
       "prerequisites": [],
       "value": {
@@ -129,6 +130,22 @@
             ],
             "verdict": null,
             "record": null
+          },
+          {
+            "number": 4213,
+            "draft": false,
+            "base": "main",
+            "head": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+            "mergeable": "MERGEABLE",
+            "rollup": null,
+            "checks": [],
+            "verdict": null,
+            "record": {
+              "kind": "findings sent",
+              "head": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+              "comment_id": 9302,
+              "at": "2030-03-01T10:58:00Z"
+            }
           }
         ]
       }

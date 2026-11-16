@@ -123,9 +123,9 @@
       "fresh_until": null,
       "freshness": "unknown",
       "source": {
-        "path": "tools/factory-metrics/fixtures/stage-waits/bench.json",
-        "schema": "closedwiz.journey.stage-bench.v1",
-        "sha256": "89889a1bc432ac8cbb88c32575dbd0894d30ff32a7dd61eafb1bd89781b26e36"
+        "path": "tools/factory-metrics/fixtures/stage-waits/stage-waits.json",
+        "schema": "closedwiz.journey.stage-waits.v1",
+        "sha256": "e61183831d963575fef15c701b047ede54e809af9edcd1c933b3f5a723d67096"
       },
       "evidence": [
         "https://github.com/synthetic-owner/synthetic-repo/issues/4101"
@@ -134,6 +134,1063 @@
         "TL2's history is unknown: only records GitHub still shows count."
       ],
       "value": {
+        "journey": {
+          "schema": "closedwiz.journey.v1",
+          "repo": "example/factory",
+          "history": "unknown",
+          "duplicates": 0,
+          "specs": [
+            {
+              "spec": 4299,
+              "events": [
+                {
+                  "id": "e1",
+                  "kind": "spec",
+                  "at": "2030-03-01T04:40:00Z",
+                  "source": "s1",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e2",
+                  "kind": "plan_graph",
+                  "at": "2030-03-01T07:30:00Z",
+                  "source": "s2",
+                  "completeness": "complete",
+                  "revision": 1
+                }
+              ],
+              "usage": [
+                {
+                  "provider": "claude",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                }
+              ]
+            }
+          ],
+          "tickets": [
+            {
+              "ticket": 4301,
+              "spec": 4299,
+              "state": "merged",
+              "pull_requests": [
+                4401
+              ],
+              "events": [
+                {
+                  "id": "e3",
+                  "kind": "ticket",
+                  "at": "2030-03-01T06:00:00Z",
+                  "source": "s3",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e4",
+                  "kind": "ready",
+                  "at": "2030-03-01T08:00:00Z",
+                  "source": "s3",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e5",
+                  "kind": "builder_start",
+                  "at": "2030-03-01T09:10:00Z",
+                  "source": "s4",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e6",
+                  "kind": "builder_start",
+                  "at": "2030-03-01T09:40:00Z",
+                  "source": "s5",
+                  "completeness": "complete"
+                }
+              ],
+              "gaps": [
+                "no grill path"
+              ],
+              "usage": [
+                {
+                  "provider": "claude",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                }
+              ]
+            },
+            {
+              "ticket": 4302,
+              "spec": 4299,
+              "state": "open",
+              "pull_requests": [
+                4402
+              ],
+              "events": [
+                {
+                  "id": "e7",
+                  "kind": "ticket",
+                  "at": "2030-03-01T06:00:00Z",
+                  "source": "s6",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e8",
+                  "kind": "builder_start",
+                  "at": "2030-03-01T07:00:00Z",
+                  "source": "s7",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e9",
+                  "kind": "ready",
+                  "at": "2030-03-01T08:00:00Z",
+                  "source": "s6",
+                  "completeness": "complete"
+                }
+              ],
+              "gaps": [
+                "no merge",
+                "no grill path"
+              ],
+              "usage": [
+                {
+                  "provider": "claude",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                }
+              ]
+            },
+            {
+              "ticket": 4303,
+              "spec": 4299,
+              "state": "open",
+              "pull_requests": [],
+              "events": [
+                {
+                  "id": "e10",
+                  "kind": "ticket",
+                  "at": "2030-03-01T06:00:00Z",
+                  "source": "s8",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e11",
+                  "kind": "ready",
+                  "at": "2030-03-01T11:55:00Z",
+                  "source": "s8",
+                  "completeness": "complete"
+                }
+              ],
+              "gaps": [
+                "no builder start record",
+                "no pull request",
+                "no merge",
+                "no grill path"
+              ],
+              "usage": [
+                {
+                  "provider": "claude",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                }
+              ]
+            },
+            {
+              "ticket": 4304,
+              "spec": 4299,
+              "state": "open",
+              "pull_requests": [],
+              "events": [
+                {
+                  "id": "e12",
+                  "kind": "ticket",
+                  "at": "2030-03-01T06:00:00Z",
+                  "source": "s9",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e13",
+                  "kind": "builder_start",
+                  "at": "2030-03-01T08:30:00Z",
+                  "source": "s10",
+                  "completeness": "complete"
+                }
+              ],
+              "gaps": [
+                "no ready label",
+                "no pull request",
+                "no merge",
+                "no grill path"
+              ],
+              "usage": [
+                {
+                  "provider": "claude",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "claude",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "tokens",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "credits",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                },
+                {
+                  "provider": "gpt",
+                  "unit": "usd",
+                  "status": "absent",
+                  "value": null,
+                  "missing_days": [
+                    "2030-03-01"
+                  ],
+                  "attribution": "thread-record"
+                }
+              ]
+            }
+          ],
+          "pull_requests": [
+            {
+              "number": 4401,
+              "tickets": [
+                4301
+              ],
+              "state": "merged",
+              "revisions": {
+                "base": "dddddddddddddddddddddddddddddddddddddddd",
+                "head": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                "merge": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f"
+              },
+              "experiment": null,
+              "events": [
+                {
+                  "id": "e14",
+                  "kind": "pr_opened",
+                  "at": "2030-03-01T09:40:00Z",
+                  "source": "s11",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e15",
+                  "kind": "ci_attempt",
+                  "at": "2030-03-01T09:50:00Z",
+                  "source": "s12",
+                  "completeness": "complete",
+                  "run": 9001,
+                  "attempt": 1,
+                  "head": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+                  "rerun": false,
+                  "conclusion": "success"
+                },
+                {
+                  "id": "e16",
+                  "kind": "verdict",
+                  "at": "2030-03-01T10:30:00Z",
+                  "source": "s13",
+                  "completeness": "complete",
+                  "verdict": "CHANGES",
+                  "head": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+                  "independent": true,
+                  "duplicate_of": null
+                },
+                {
+                  "id": "e17",
+                  "kind": "ci_attempt",
+                  "at": "2030-03-01T11:01:00Z",
+                  "source": "s14",
+                  "completeness": "complete",
+                  "run": 9002,
+                  "attempt": 1,
+                  "head": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                  "rerun": false,
+                  "conclusion": "success"
+                },
+                {
+                  "id": "e18",
+                  "kind": "fix_round",
+                  "at": "2030-03-01T11:02:00Z",
+                  "source": "s15",
+                  "completeness": "complete",
+                  "round": 1,
+                  "after": "e16",
+                  "answers": [
+                    {
+                      "finding": "R1",
+                      "answer": "fixed"
+                    }
+                  ]
+                },
+                {
+                  "id": "e19",
+                  "kind": "verdict",
+                  "at": "2030-03-01T11:31:00Z",
+                  "source": "s16",
+                  "completeness": "complete",
+                  "verdict": "APPROVE",
+                  "head": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                  "independent": true,
+                  "duplicate_of": null
+                },
+                {
+                  "id": "e20",
+                  "kind": "merge",
+                  "at": "2030-03-01T11:36:00Z",
+                  "source": "s11",
+                  "completeness": "complete",
+                  "commit": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "R1",
+                  "severity": "high",
+                  "check": "Spec",
+                  "kind": "unknown",
+                  "kind_evidence": "no marker",
+                  "raised_by": "e16",
+                  "statuses": []
+                }
+              ]
+            },
+            {
+              "number": 4402,
+              "tickets": [
+                4302
+              ],
+              "state": "open",
+              "revisions": {
+                "base": "dddddddddddddddddddddddddddddddddddddddd",
+                "head": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+                "merge": null
+              },
+              "experiment": null,
+              "events": [
+                {
+                  "id": "e21",
+                  "kind": "pr_opened",
+                  "at": "2030-03-01T08:05:00Z",
+                  "source": "s17",
+                  "completeness": "complete"
+                },
+                {
+                  "id": "e22",
+                  "kind": "ci_attempt",
+                  "at": "2030-03-01T08:10:00Z",
+                  "source": "s18",
+                  "completeness": "complete",
+                  "run": 9003,
+                  "attempt": 1,
+                  "head": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+                  "rerun": false,
+                  "conclusion": "success"
+                },
+                {
+                  "id": "e23",
+                  "kind": "verdict",
+                  "at": "2030-03-01T08:23:00Z",
+                  "source": "s19",
+                  "completeness": "complete",
+                  "verdict": "APPROVE",
+                  "head": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+                  "independent": true,
+                  "duplicate_of": null
+                },
+                {
+                  "id": "e24",
+                  "kind": "ci_attempt",
+                  "at": "2030-03-01T08:25:00Z",
+                  "source": "s20",
+                  "completeness": "complete",
+                  "run": 9005,
+                  "attempt": 1,
+                  "head": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+                  "rerun": false,
+                  "conclusion": "success"
+                },
+                {
+                  "id": "e25",
+                  "kind": "ci_attempt",
+                  "at": "2030-03-01T08:40:00Z",
+                  "source": "s21",
+                  "completeness": "complete",
+                  "run": 9004,
+                  "attempt": 1,
+                  "head": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+                  "rerun": false,
+                  "conclusion": "success"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "R1",
+                  "severity": "high",
+                  "check": "Spec",
+                  "kind": "unknown",
+                  "kind_evidence": "no marker",
+                  "raised_by": "e23",
+                  "statuses": []
+                }
+              ]
+            }
+          ],
+          "daily_usage": [],
+          "sources": {
+            "s1": "https://github.com/example/factory/issues/4299",
+            "s2": "https://github.com/example/factory/issues/4299#issuecomment-6001",
+            "s3": "https://github.com/example/factory/issues/4301",
+            "s4": "https://github.com/example/factory/issues/4301#issuecomment-6101",
+            "s5": "https://github.com/example/factory/issues/4301#issuecomment-6105",
+            "s6": "https://github.com/example/factory/issues/4302",
+            "s7": "https://github.com/example/factory/issues/4302#issuecomment-6301",
+            "s8": "https://github.com/example/factory/issues/4303",
+            "s9": "https://github.com/example/factory/issues/4304",
+            "s10": "https://github.com/example/factory/issues/4304#issuecomment-6501",
+            "s11": "https://github.com/example/factory/pull/4401",
+            "s12": "https://github.com/example/factory/actions/runs/9001",
+            "s13": "https://github.com/example/factory/pull/4401#issuecomment-6202",
+            "s14": "https://github.com/example/factory/actions/runs/9002",
+            "s15": "https://github.com/example/factory/pull/4401#issuecomment-6203",
+            "s16": "https://github.com/example/factory/pull/4401#issuecomment-6205",
+            "s17": "https://github.com/example/factory/pull/4402",
+            "s18": "https://github.com/example/factory/actions/runs/9003",
+            "s19": "https://github.com/example/factory/pull/4402#issuecomment-6402",
+            "s20": "https://github.com/example/factory/actions/runs/9005",
+            "s21": "https://github.com/example/factory/actions/runs/9004"
+          }
+        },
+        "sidecar": {
+          "schema": "closedwiz.journey.stage-waits.v1",
+          "repo": "example/factory",
+          "journey_hash": "514c3894c881f00c046065e7c97880aa530bfc3e10fbe57e774b05a177aeefc0",
+          "read_at": "2030-03-01T12:00:00Z",
+          "history": "unknown",
+          "holds": {
+            "4301": [
+              [
+                "2030-03-01T08:05:00Z",
+                "2030-03-01T09:00:00Z"
+              ]
+            ],
+            "4302": [
+              [
+                "2030-03-01T11:00:00Z",
+                null
+              ]
+            ],
+            "4303": [],
+            "4304": null
+          },
+          "intervals": [
+            {
+              "key": "builder_start:t4301",
+              "stage": "builder_start",
+              "tickets": [
+                4301
+              ],
+              "pull_request": null,
+              "head": null,
+              "origin": null,
+              "start": {
+                "at": "2030-03-01T09:00:00Z",
+                "latest": "2030-03-01T09:00:00Z",
+                "source": "s1"
+              },
+              "clock_from": "2030-03-01T09:00:00Z",
+              "end": {
+                "at": "2030-03-01T09:10:00Z",
+                "latest": "2030-03-01T09:10:00Z",
+                "source": "s2"
+              },
+              "support": [],
+              "state": "ended",
+              "folded": 1,
+              "gaps": []
+            },
+            {
+              "key": "builder_question_answer:t4301:c6102",
+              "stage": "builder_question_answer",
+              "tickets": [
+                4301
+              ],
+              "pull_request": null,
+              "head": null,
+              "origin": 6102,
+              "start": {
+                "at": "2030-03-01T09:45:00Z",
+                "latest": "2030-03-01T09:45:00Z",
+                "source": "s3"
+              },
+              "clock_from": "2030-03-01T09:45:00Z",
+              "end": {
+                "at": "2030-03-01T10:01:00Z",
+                "latest": "2030-03-01T10:01:00Z",
+                "source": "s4"
+              },
+              "support": [],
+              "state": "ended",
+              "folded": 1,
+              "gaps": []
+            },
+            {
+              "key": "builder_start:t4302",
+              "stage": "builder_start",
+              "tickets": [
+                4302
+              ],
+              "pull_request": null,
+              "head": null,
+              "origin": null,
+              "start": null,
+              "clock_from": null,
+              "end": {
+                "at": "2030-03-01T07:00:00Z",
+                "latest": "2030-03-01T07:00:00Z",
+                "source": "s5"
+              },
+              "support": [],
+              "state": "unknown",
+              "folded": 0,
+              "gaps": [
+                "start record outside its gate"
+              ]
+            },
+            {
+              "key": "builder_question_answer:t4302:c6302",
+              "stage": "builder_question_answer",
+              "tickets": [
+                4302
+              ],
+              "pull_request": null,
+              "head": null,
+              "origin": 6302,
+              "start": null,
+              "clock_from": null,
+              "end": null,
+              "support": [],
+              "state": "unknown",
+              "folded": 0,
+              "gaps": [
+                "edited record"
+              ]
+            },
+            {
+              "key": "builder_start:t4303",
+              "stage": "builder_start",
+              "tickets": [
+                4303
+              ],
+              "pull_request": null,
+              "head": null,
+              "origin": null,
+              "start": {
+                "at": "2030-03-01T11:55:00Z",
+                "latest": "2030-03-01T11:55:00Z",
+                "source": "s6"
+              },
+              "clock_from": "2030-03-01T11:55:00Z",
+              "end": null,
+              "support": [],
+              "state": "open",
+              "folded": 0,
+              "gaps": []
+            },
+            {
+              "key": "builder_start:t4304",
+              "stage": "builder_start",
+              "tickets": [
+                4304
+              ],
+              "pull_request": null,
+              "head": null,
+              "origin": null,
+              "start": null,
+              "clock_from": null,
+              "end": {
+                "at": "2030-03-01T08:30:00Z",
+                "latest": "2030-03-01T08:30:00Z",
+                "source": "s7"
+              },
+              "support": [],
+              "state": "unknown",
+              "folded": 0,
+              "gaps": [
+                "label history incomplete"
+              ]
+            },
+            {
+              "key": "reviewer_start:p4401:1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a:2030-03-01T10:00:00Z",
+              "stage": "reviewer_start",
+              "tickets": [
+                4301
+              ],
+              "pull_request": 4401,
+              "head": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "origin": null,
+              "start": {
+                "at": "2030-03-01T10:00:00Z",
+                "latest": "2030-03-01T10:00:00Z",
+                "source": "s8"
+              },
+              "clock_from": "2030-03-01T10:00:00Z",
+              "end": {
+                "at": "2030-03-01T10:06:00Z",
+                "latest": "2030-03-01T10:06:00Z",
+                "source": "s9"
+              },
+              "support": [],
+              "state": "ended",
+              "folded": 0,
+              "gaps": []
+            },
+            {
+              "key": "reviewer_start:p4401:2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b:2030-03-01T11:11:00Z",
+              "stage": "reviewer_start",
+              "tickets": [
+                4301
+              ],
+              "pull_request": 4401,
+              "head": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+              "origin": null,
+              "start": {
+                "at": "2030-03-01T11:11:00Z",
+                "latest": "2030-03-01T11:11:00Z",
+                "source": "s10"
+              },
+              "clock_from": "2030-03-01T11:11:00Z",
+              "end": {
+                "at": "2030-03-01T11:15:00Z",
+                "latest": "2030-03-01T11:15:00Z",
+                "source": "s11"
+              },
+              "support": [],
+              "state": "ended",
+              "folded": 0,
+              "gaps": []
+            },
+            {
+              "key": "fix_after_changes:p4401:1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a:c6202",
+              "stage": "fix_after_changes",
+              "tickets": [
+                4301
+              ],
+              "pull_request": 4401,
+              "head": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "origin": 6202,
+              "start": {
+                "at": "2030-03-01T10:30:00Z",
+                "latest": "2030-03-01T10:30:00Z",
+                "source": "s12"
+              },
+              "clock_from": "2030-03-01T10:30:00Z",
+              "end": {
+                "at": "2030-03-01T11:01:00Z",
+                "latest": "2030-03-01T11:01:00Z",
+                "source": "s13"
+              },
+              "support": [
+                "s14"
+              ],
+              "state": "ended",
+              "folded": 0,
+              "gaps": []
+            },
+            {
+              "key": "merge:p4401:2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b:c6205:2030-03-01T11:31:00Z",
+              "stage": "merge",
+              "tickets": [
+                4301
+              ],
+              "pull_request": 4401,
+              "head": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+              "origin": 6205,
+              "start": {
+                "at": "2030-03-01T11:31:00Z",
+                "latest": "2030-03-01T11:31:00Z",
+                "source": "s15"
+              },
+              "clock_from": "2030-03-01T11:31:00Z",
+              "end": {
+                "at": "2030-03-01T11:36:00Z",
+                "latest": "2030-03-01T11:36:00Z",
+                "source": "s16"
+              },
+              "support": [],
+              "state": "ended",
+              "folded": 0,
+              "gaps": []
+            },
+            {
+              "key": "reviewer_start:p4402:3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c:2030-03-01T08:20:00Z",
+              "stage": "reviewer_start",
+              "tickets": [
+                4302
+              ],
+              "pull_request": 4402,
+              "head": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+              "origin": null,
+              "start": {
+                "at": "2030-03-01T08:20:00Z",
+                "latest": "2030-03-01T08:20:00Z",
+                "source": "s17"
+              },
+              "clock_from": null,
+              "end": null,
+              "support": [],
+              "state": "unknown",
+              "folded": 0,
+              "gaps": [
+                "reviewer start unconfirmed"
+              ]
+            },
+            {
+              "key": "reviewer_start:p4402:5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e:2030-03-01T08:35:00Z",
+              "stage": "reviewer_start",
+              "tickets": [
+                4302
+              ],
+              "pull_request": 4402,
+              "head": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+              "origin": null,
+              "start": {
+                "at": "2030-03-01T08:35:00Z",
+                "latest": "2030-03-01T08:35:00Z",
+                "source": "s18"
+              },
+              "clock_from": null,
+              "end": null,
+              "support": [],
+              "state": "stale",
+              "folded": 0,
+              "gaps": [
+                "no longer current"
+              ]
+            },
+            {
+              "key": "reviewer_start:p4402:4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d:2030-03-01T08:50:00Z",
+              "stage": "reviewer_start",
+              "tickets": [
+                4302
+              ],
+              "pull_request": 4402,
+              "head": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+              "origin": null,
+              "start": {
+                "at": "2030-03-01T08:50:00Z",
+                "latest": "2030-03-01T08:50:00Z",
+                "source": "s19"
+              },
+              "clock_from": null,
+              "end": null,
+              "support": [],
+              "state": "gated",
+              "folded": 0,
+              "gaps": [
+                "held"
+              ]
+            },
+            {
+              "key": "merge:p4402:3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c:c6402:2030-03-01T08:23:00Z",
+              "stage": "merge",
+              "tickets": [
+                4302
+              ],
+              "pull_request": 4402,
+              "head": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+              "origin": 6402,
+              "start": {
+                "at": "2030-03-01T08:23:00Z",
+                "latest": "2030-03-01T08:23:00Z",
+                "source": "s20"
+              },
+              "clock_from": null,
+              "end": null,
+              "support": [],
+              "state": "stale",
+              "folded": 0,
+              "gaps": [
+                "no longer current"
+              ]
+            }
+          ],
+          "sources": {
+            "s1": "https://github.com/example/factory/issues/4301",
+            "s2": "https://github.com/example/factory/issues/4301#issuecomment-6101",
+            "s3": "https://github.com/example/factory/issues/4301#issuecomment-6102",
+            "s4": "https://github.com/example/factory/issues/4301#issuecomment-6104",
+            "s5": "https://github.com/example/factory/issues/4302#issuecomment-6301",
+            "s6": "https://github.com/example/factory/issues/4303",
+            "s7": "https://github.com/example/factory/issues/4304#issuecomment-6501",
+            "s8": "https://github.com/example/factory/actions/runs/9001",
+            "s9": "https://github.com/example/factory/pull/4401#issuecomment-6201",
+            "s10": "https://github.com/example/factory/actions/runs/9002",
+            "s11": "https://github.com/example/factory/pull/4401#issuecomment-6204",
+            "s12": "https://github.com/example/factory/pull/4401#issuecomment-6202",
+            "s13": "https://github.com/example/factory/commit/2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+            "s14": "https://github.com/example/factory/pull/4401#issuecomment-6203",
+            "s15": "https://github.com/example/factory/pull/4401#issuecomment-6205",
+            "s16": "https://github.com/example/factory/pull/4401",
+            "s17": "https://github.com/example/factory/actions/runs/9003",
+            "s18": "https://github.com/example/factory/actions/runs/9005",
+            "s19": "https://github.com/example/factory/actions/runs/9004",
+            "s20": "https://github.com/example/factory/pull/4402#issuecomment-6402"
+          }
+        },
         "bench": {
           "schema": "closedwiz.journey.stage-bench.v1",
           "settings": {
@@ -710,7 +1767,8 @@
       "evidence": [
         "https://github.com/synthetic-owner/synthetic-repo/pull/4210",
         "https://github.com/synthetic-owner/synthetic-repo/pull/4211",
-        "https://github.com/synthetic-owner/synthetic-repo/pull/4212"
+        "https://github.com/synthetic-owner/synthetic-repo/pull/4212",
+        "https://github.com/synthetic-owner/synthetic-repo/pull/4213"
       ],
       "prerequisites": [],
       "value": {
@@ -791,6 +1849,22 @@
             ],
             "verdict": null,
             "record": null
+          },
+          {
+            "number": 4213,
+            "draft": false,
+            "base": "main",
+            "head": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+            "mergeable": "MERGEABLE",
+            "rollup": null,
+            "checks": [],
+            "verdict": null,
+            "record": {
+              "kind": "findings sent",
+              "head": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+              "comment_id": 9302,
+              "at": "2030-03-01T10:58:00Z"
+            }
           }
         ]
       }
@@ -1639,6 +2713,150 @@
         "until": "2026-01-06T00:00:00Z"
       }
     },
+    "activity": {
+      "fact": "activity",
+      "state": "known",
+      "read": {
+        "started_at": "2030-03-01T12:04:40Z",
+        "ended_at": "2030-03-01T12:04:50Z"
+      },
+      "point": null,
+      "window": {
+        "since": "2030-03-01T00:00:00Z",
+        "until": "2030-03-01T12:04:50Z",
+        "timezone": "UTC"
+      },
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": {
+        "path": "collector/ci/activity.json",
+        "schema": "openwiz.war-room.activity.v1",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "evidence": [
+        "https://github.com/synthetic-owner/synthetic-repo/actions/runs/7100",
+        "https://github.com/synthetic-owner/synthetic-repo/actions/runs/7101"
+      ],
+      "prerequisites": [],
+      "value": {
+        "window": {
+          "since": "2030-03-01T00:00:00Z",
+          "until": "2030-03-01T12:04:50Z",
+          "timezone": "UTC"
+        },
+        "current": {
+          "runs": [
+            7100,
+            7101
+          ],
+          "jobs": [
+            {
+              "id": 8000,
+              "run": 7100,
+              "attempt": 1,
+              "status": "completed",
+              "pool": "ubuntu-24.04"
+            },
+            {
+              "id": 8001,
+              "run": 7101,
+              "attempt": 1,
+              "status": "queued",
+              "pool": "ubuntu-24.04"
+            },
+            {
+              "id": 8002,
+              "run": 7101,
+              "attempt": 1,
+              "status": "in_progress",
+              "pool": "closedwiz-pc"
+            }
+          ],
+          "cost_jobs": [
+            8000
+          ],
+          "cost": {
+            "runner_minutes": {
+              "github-hosted": 10.0
+            },
+            "billed_minutes": {
+              "github-hosted": 10
+            },
+            "window_usd": 0.06,
+            "per_code_run_usd": null,
+            "unknown_minutes": 0,
+            "prices": [
+              {
+                "runner_kind": "self-hosted",
+                "compute_usd_per_minute": 0.0,
+                "platform_usd_per_minute": 0.0,
+                "source_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+                "verified_on": "2026-11-05"
+              },
+              {
+                "runner_kind": "github-hosted-slim",
+                "compute_usd_per_minute": 0.002,
+                "platform_usd_per_minute": 0.0,
+                "source_url": "https://docs.github.com/en/billing/reference/actions-runner-pricing",
+                "verified_on": "2026-11-05"
+              },
+              {
+                "runner_kind": "github-hosted",
+                "compute_usd_per_minute": 0.006,
+                "platform_usd_per_minute": 0.0,
+                "source_url": "https://docs.github.com/en/billing/reference/actions-runner-pricing",
+                "verified_on": "2026-11-05"
+              },
+              {
+                "runner_kind": "blacksmith-2vcpu-ubuntu-2404",
+                "compute_usd_per_minute": 0.004,
+                "platform_usd_per_minute": 0.0,
+                "source_url": "https://www.blacksmith.sh/pricing",
+                "verified_on": "2026-11-05"
+              },
+              {
+                "runner_kind": "unknown",
+                "compute_usd_per_minute": null,
+                "platform_usd_per_minute": null,
+                "source_url": "https://docs.github.com/en/rest/actions/workflow-jobs",
+                "verified_on": "2026-11-05"
+              },
+              {
+                "runner_kind": "jog-4vcpu",
+                "compute_usd_per_minute": 0.0024,
+                "platform_usd_per_minute": 0.0,
+                "source_url": "https://usejog.com/docs/pricing/",
+                "verified_on": "2026-11-14"
+              },
+              {
+                "runner_kind": "jog-8vcpu",
+                "compute_usd_per_minute": 0.0044,
+                "platform_usd_per_minute": 0.0,
+                "source_url": "https://usejog.com/docs/pricing/",
+                "verified_on": "2026-11-14"
+              },
+              {
+                "runner_kind": "jog-16vcpu",
+                "compute_usd_per_minute": 0.0088,
+                "platform_usd_per_minute": 0.0,
+                "source_url": "https://usejog.com/docs/pricing/",
+                "verified_on": "2026-11-14"
+              }
+            ]
+          }
+        },
+        "created_at": [
+          {
+            "job": 8001,
+            "created_at": "2030-03-01T12:03:20Z"
+          },
+          {
+            "job": 8002,
+            "created_at": "2030-03-01T12:02:00Z"
+          }
+        ]
+      }
+    },
     "queue": {
       "fact": "queue",
       "state": "known",
@@ -1680,6 +2898,13 @@
                 "status": "in_progress",
                 "queued_at": 1898596920,
                 "started_at": 1898596950
+              },
+              {
+                "id": "job-8004",
+                "required": true,
+                "status": "queued",
+                "queued_at": 1898597040,
+                "started_at": null
               }
             ]
           },
@@ -1698,14 +2923,27 @@
             }
           }
         },
-        "pools": [
+        "jobs": [
           {
             "job": "job-8001",
+            "workflow": "ci.yml",
+            "run_id": 7101,
+            "run_attempt": 1,
             "pool": "ubuntu-24.04"
           },
           {
             "job": "job-8002",
+            "workflow": "ci.yml",
+            "run_id": 7101,
+            "run_attempt": 1,
             "pool": "closedwiz-pc"
+          },
+          {
+            "job": "job-8004",
+            "workflow": "privacy.yml",
+            "run_id": 7102,
+            "run_attempt": 1,
+            "pool": "ubuntu-24.04"
           }
         ]
       }

@@ -155,6 +155,21 @@
       ],
       "value": null
     },
+    "activity": {
+      "fact": "activity",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Current CI activity unavailable: the ci.yml run and job pages were incomplete or changed."
+      ],
+      "value": null
+    },
     "queue": {
       "fact": "queue",
       "state": "unavailable",

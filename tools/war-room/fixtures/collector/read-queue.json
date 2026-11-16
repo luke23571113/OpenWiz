@@ -63,14 +63,20 @@
             }
           }
         },
-        "pools": [
+        "jobs": [
           {
             "job": "job-8101",
+            "workflow": "ci.yml",
+            "run_id": 7201,
+            "run_attempt": 1,
             "pool": "ubuntu-24.04"
           },
           {
             "job": "job-8102",
-            "pool": "closedwiz-pc"
+            "workflow": "privacy.yml",
+            "run_id": 7202,
+            "run_attempt": 2,
+            "pool": "ubuntu-24.04"
           }
         ]
       }
