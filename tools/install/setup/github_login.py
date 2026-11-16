@@ -77,24 +77,27 @@ def sign_in_running(pid):
 
 
 def pending(saved):
-    """True while an earlier sign-in may still be waiting for the owner. Bounded
-    by the sign-in's own time limit; an unreadable record counts until then."""
+    """True while an earlier sign-in may still be waiting for the owner. A child
+    positively identified as our living `gh auth login` holds it whatever the
+    record's age (final check R2); only a record that proves nothing (unreadable,
+    saved before its child started, or a platform that cannot say) is bounded
+    by the sign-in's own time limit."""
     path = saved.dir / PENDING
     try:
         info = os.lstat(path)
     except FileNotFoundError:
         return False
-    if time.time() - info.st_mtime > SIGN_IN_TIMEOUT + 60:
-        return False
+    within_bound = time.time() - info.st_mtime <= SIGN_IN_TIMEOUT + 60
     try:
         record = json.loads(path.read_text(), object_pairs_hook=store.unique)
         pid = record['pid']
         store.require(set(record) == {'pid'} and (pid is None or store.positive(pid)), 'invalid pending sign-in')
     except (OSError, ValueError, KeyError, TypeError, store.Refused):
-        return True
+        return within_bound
     if pid is None:
-        return True  # recorded before its child started: wait out the bound
-    return sign_in_running(pid) is not False
+        return within_bound  # recorded before its child started
+    running = sign_in_running(pid)
+    return True if running else (within_bound if running is None else False)
 
 
 def mark_pending(saved, pid):

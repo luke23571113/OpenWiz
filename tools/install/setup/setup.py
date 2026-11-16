@@ -123,18 +123,39 @@ def github_com(path):
     """#633 R1: one gh read bound to github.com, where the browser sign-in
     happens. gh otherwise follows GH_HOST, or defaults to another server when
     that server holds its only login: neither may stand in for github.com."""
+    return github_com_read(path)[:2]
+
+
+# Final check R3: gh's own line for GitHub's 401 answer, exactly. With a
+# credential only for another server, gh still asks github.com, which answers
+# 401, and gh exits 1 (exit 4 means no credential anywhere).
+UNAUTHENTICATED = re.compile(rb'gh: [^\n]* \(HTTP 401\)\n?')
+
+
+def github_com_read(path):
+    """(exit code, parsed JSON or None, whether gh's whole stderr is GitHub's 401
+    line) for one github.com read; anything else is not an authentication answer."""
     program = shutil.which('gh')
     if program is None:
-        return None, None
-    return run([program, 'api', path], env={**os.environ, 'GH_HOST': 'github.com'})
+        return None, None, False
+    try:
+        result = subprocess.run([program, 'api', path], stdin=subprocess.DEVNULL, capture_output=True,
+                                timeout=TIMEOUT, env={**os.environ, 'GH_HOST': 'github.com'})
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None, False
+    try:
+        value = json.loads(result.stdout, object_pairs_hook=store.unique) if len(result.stdout) <= 4 * 1024 * 1024 else None
+    except (ValueError, store.Refused):
+        value = None
+    return result.returncode, value, result.returncode == 1 and UNAUTHENTICATED.fullmatch(result.stderr) is not None
 
 
 def account():
     """(failure code or None, login): the signed-in account read from GitHub
     now (#633). Only a person's own account is a login; a bot, an unreadable
     answer or a browser that merely returned is not."""
-    code, user = github_com('user')
-    if code is None or code == 4:  # gh missing or silent, or authentication required
+    code, user, unauthenticated = github_com_read('user')
+    if code is None or code == 4 or unauthenticated:  # no answer, no credential, or GitHub's 401
         return 'identity_signed_out', None
     if code != 0 or type(user) is not dict:
         return 'identity_unreadable', None
