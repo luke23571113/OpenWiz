@@ -545,6 +545,28 @@ mod tests {
         );
     }
 
+    // catches: a usage error that echoes an argument's control bytes to the
+    // terminal (an unknown option is printed back as given), so an argument
+    // can clear the screen or set the clipboard (OSC 52); JSON keeps it.
+    #[test]
+    fn a_usage_error_never_prints_a_terminal_control() {
+        let bad = "--x\u{1b}]52;c;eA==\u{7}";
+        let (code, out, err) = run_args(&["export", "--project", "prj_syn_0001", bad]);
+        assert_eq!((code, out.as_str()), (2, ""));
+        assert_eq!(
+            err,
+            "openwiz: usage: loop export has no option --x?]52;c;eA==?; nothing was read (see openwiz loop --help)\n"
+        );
+        let (code, out, err) = run_args(&["export", "--json", "--project", "prj_syn_0001", bad]);
+        assert_eq!(code, 2);
+        assert!(!err.contains('\u{1b}'), "{err:?}");
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            doc["error"]["message"],
+            format!("Invalid loop arguments: loop export has no option {bad}.")
+        );
+    }
+
     // catches: help that reads, fails, or loses its JSON wrapper.
     #[test]
     fn help_lists_the_four_commands_and_reads_nothing() {

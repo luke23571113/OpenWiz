@@ -112,3 +112,32 @@ test loop_files::loop_export::tests::a_held_folder_keeps_the_check_inside_it_aft
 panicked at crates/cli/src/loop_export.rs:419:9:
 the check went through the link
 ```
+
+## Fresh round, R1: the macOS route resolved a swapped link by pathname
+
+The re-check found that the macOS route built a check's path from
+`fs::canonicalize(<folder path>)`, which follows a folder swapped for a link
+(`elsewhere/check`). Rust's standard library has no `openat` and the workspace
+allows no unsafe code or `libc`, so the fix refuses a run with a check where
+there is no held-folder route (everything but Linux) before writing anything.
+
+The two proofs are compiled out on Linux or take its other branch, and CI is
+Linux only, so this red is not a native macOS run. At the red commit, old code
+with the new tests, `cargo check --locked --target aarch64-apple-darwin -p
+openwiz-cli -p openwiz-tests --tests` compiles both proofs. By source trace,
+and by the reviewer's reproduction of the same algorithm, on macOS
+`a_held_folder_keeps_the_check_inside_it_after_a_swap` stops at `the check went
+through the link`, and `export_refuses_a_check_where_its_folder_cannot_be_held_open`
+gets the old route's export instead of exit 1 and an empty `--out`. On Linux the
+swap proof passes before and after: the Linux route was already right.
+
+## Usage line through escape_untrusted (orchestrator ruling on #792, question 5)
+
+Red, before the fix (the usage line printed an unknown option as given):
+
+```text
+test loop_files::tests::a_usage_error_never_prints_a_terminal_control ... FAILED
+panicked at crates/cli/src/loop_files.rs:556:9:
+  left: "openwiz: usage: loop export has no option --x\u{1b}]52;c;eA==\u{7}; nothing was read (see openwiz loop --help)\n"
+ right: "openwiz: usage: loop export has no option --x?]52;c;eA==?; nothing was read (see openwiz loop --help)\n"
+```

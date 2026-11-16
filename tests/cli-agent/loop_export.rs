@@ -3,6 +3,9 @@
 //! These read `contracts/` and `tests/fake-room-cli/`, so they live here
 //! rather than in the CLI crate, whose tests also run where only the crates
 //! are copied (the service's update proofs).
+// Off Linux the check-writing tests are compiled out (R1), so their helpers
+// go unused there.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code, unused_imports))]
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -209,6 +212,8 @@ Synthetic: nothing to do."#;
 // identifier, a webhook address or run state into a file, writes anything
 // but the one `loop list --json` read, or loses the binding an unmarked loop
 // needs.
+// Linux only: these write checks, which only Linux can (R1).
+#[cfg(target_os = "linux")]
 #[test]
 fn export_writes_each_loop_of_the_project_complete_and_secret_free() {
     let room = Room::loops();
@@ -283,6 +288,8 @@ fn export_writes_each_loop_of_the_project_complete_and_secret_free() {
 // catches: a second export that replaces a file someone edited, rewrites
 // identical files instead of reporting them unchanged, or stops the other
 // loops when one is refused.
+// Linux only: these write checks, which only Linux can (R1).
+#[cfg(target_os = "linux")]
 #[test]
 fn export_never_replaces_a_file_with_other_bytes() {
     let room = Room::loops();
@@ -394,6 +401,8 @@ fn refused(loop_: &str, id: Value, file: &str, refusals: &[(&str, &str, &str)]) 
 // catches: a loop the adapter cannot write as a valid, faithful file that is
 // written anyway (or silently dropped from the report), a refusal with the
 // wrong code, field or message, or one refused loop that stops the rest.
+// Linux only: these write checks, which only Linux can (R1).
+#[cfg(target_os = "linux")]
 #[test]
 fn export_reports_each_loop_it_cannot_represent_and_writes_the_rest() {
     let cases: Vec<(Value, Value)> = vec![
@@ -771,6 +780,8 @@ fn export_writes_a_loop_with_an_unmapped_key_and_names_the_key() {
 // integer read as a string, the preamble left in the check), checked against
 // the pinned WizLoops fixtures' own checks and params: the adapter rules'
 // stated scripts and prompts for `cron-check.md` and `params-env.md`.
+// Linux only: these write checks, which only Linux can (R1).
+#[cfg(target_os = "linux")]
 #[test]
 fn export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks() {
     let fixtures = Path::new(ROOT).join("contracts/fixtures/wizloops");
@@ -910,4 +921,36 @@ fn a_failed_loop_list_writes_nothing() {
         assert!(text.stdout.is_empty());
         assert!(!room.dir().join("exported").exists());
     }
+}
+
+// catches: an export on a system with no held-folder route (macOS) that
+// writes a loop's check by pathname, which a folder swapped for a link
+// redirects outside --out (review R1), or that writes part of the run before
+// it refuses; and a run with no check that stops being written there.
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn export_refuses_a_check_where_its_folder_cannot_be_held_open() {
+    let room = Room::loops();
+    let doc = report(&room.export(&["--out", "exported", "--json"]), 1, "error");
+    assert_eq!(
+        doc["error"],
+        json!({"kind": "unavailable",
+               "message": "A loop with a check is exported only on Linux; nothing was written."})
+    );
+    let text = room.export(&["--out", "exported"]);
+    assert_eq!(text.status.code(), Some(1));
+    assert!(text.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&text.stderr),
+        "openwiz: loop export: a loop with a check is exported only on Linux: this system cannot write a check through its folder held open, so a folder swapped for a link could put the check outside --out; nothing was written\n"
+    );
+    assert!(!room.dir().join("exported").exists());
+    let plain = Room::listing(json!([item("loop_p", "Plain [wizloop:plain]", json!({}))]));
+    let doc = report(
+        &plain.export(&["--out", "exported", "--json"]),
+        0,
+        "export_report",
+    );
+    assert_eq!(doc["loops"][0]["files"], json!(["plain.md"]));
+    assert_eq!(tree(&plain.dir().join("exported")), ["plain.md"]);
 }

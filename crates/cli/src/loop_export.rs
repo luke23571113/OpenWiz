@@ -419,7 +419,9 @@ mod tests {
 
     // catches: a check created by pathname after its folder was checked, so
     // swapping the folder for a link in between writes the check outside
-    // --out (review R1, the window after the folder is opened).
+    // --out (review R1, the window after the folder is opened). On Linux the
+    // check goes into the held folder; where no held-folder route exists
+    // (macOS), the check is refused, never resolved through the link.
     #[test]
     fn a_held_folder_keeps_the_check_inside_it_after_a_swap() {
         let root = scratch("swap");
@@ -428,15 +430,23 @@ mod tests {
         };
         fs::rename(root.join("out/syn"), root.join("out/moved")).unwrap();
         std::os::unix::fs::symlink(root.join("elsewhere"), root.join("out/syn")).unwrap();
-        create_new(&folder.entry("check").unwrap(), "#!/bin/sh\nexit 0\n").unwrap();
+        let created = folder
+            .entry("check")
+            .and_then(|path| create_new(&path, "#!/bin/sh\nexit 0\n"));
         assert!(
             !root.join("elsewhere/check").exists(),
             "the check went through the link"
         );
-        assert_eq!(
-            fs::read_to_string(root.join("out/moved/check")).unwrap(),
-            "#!/bin/sh\nexit 0\n"
-        );
+        if cfg!(target_os = "linux") {
+            created.unwrap();
+            assert_eq!(
+                fs::read_to_string(root.join("out/moved/check")).unwrap(),
+                "#!/bin/sh\nexit 0\n"
+            );
+        } else {
+            assert_eq!(created.unwrap_err().kind(), ErrorKind::Unsupported);
+            assert!(!root.join("out/moved/check").exists());
+        }
         fs::remove_dir_all(&root).unwrap();
     }
 
