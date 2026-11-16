@@ -610,15 +610,21 @@ class Supplier(unittest.TestCase):
         first = subprocess.Popen(fleet, env=self.env(supplier=held, REAL_SUPPLY=str(HERE / 'supply.py'),
                                                      HOLD_READY=str(ready), HOLD_RELEASE=str(release)),
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Neither end blocks the test: a supplier that never runs fails here, never hangs.
+        signal, hold = os.open(ready, os.O_RDONLY | os.O_NONBLOCK), os.open(release, os.O_RDWR)
         try:
-            with open(ready) as f:
-                self.assertEqual(f.read(), '0')
+            got, deadline = b'', time.monotonic() + 60
+            while not got and first.poll() is None and time.monotonic() < deadline:
+                got = os.read(signal, 16)
+                time.sleep(0.05)
+            self.assertEqual(got, b'0', 'the first admission\'s supplier never returned a read')
             second = subprocess.run(fleet, env=self.env(fake=recovered), capture_output=True, text=True,
                                     timeout=60)
             self.assertEqual((second.returncode, json.loads(second.stdout)['level']), (0, 'healthy'))
         finally:
-            with open(release, 'w') as f:
-                f.write('go')
+            os.write(hold, b'go')
+            os.close(hold)
+            os.close(signal)
             out, err = first.communicate(timeout=60)
         answer = json.loads(out)
         self.assertEqual((first.returncode, answer['level'], answer['allowed']), (1, 'escalate', False), err)
