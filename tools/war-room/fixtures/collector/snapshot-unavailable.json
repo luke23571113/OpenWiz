@@ -1,0 +1,189 @@
+{
+  "schema": "openwiz.war-room.collector.v1",
+  "repository": "synthetic-owner/synthetic-repo",
+  "collected_at": "2030-03-01T12:05:00Z",
+  "factory": {
+    "merges": {
+      "fact": "merges",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Merged PRs unavailable: the pull request read failed."
+      ],
+      "value": null
+    },
+    "prs_per_hour": {
+      "fact": "prs_per_hour",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "PRs per hour unavailable: no completed CI window was read."
+      ],
+      "value": null
+    },
+    "stage_waits": {
+      "fact": "stage_waits",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Stage waits unavailable: TL2's journeys.json and stage-waits.json, or TL1's limits.conf, were refused."
+      ],
+      "value": null
+    },
+    "stalls": {
+      "fact": "stalls",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Stalls unavailable: the fleet record read failed."
+      ],
+      "value": null
+    },
+    "open_prs": {
+      "fact": "open_prs",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Open PRs unavailable: the open pull request read failed."
+      ],
+      "value": null
+    },
+    "journeys": {
+      "fact": "journeys",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Journeys unavailable: no merged cohort was collected."
+      ],
+      "value": null
+    },
+    "cost": {
+      "fact": "cost",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Cost unavailable: no billing or usage source was read."
+      ],
+      "value": null
+    }
+  },
+  "ci": {
+    "runs": {
+      "fact": "runs",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "CI runs unavailable: the ci.yml run read failed."
+      ],
+      "value": null
+    },
+    "minutes": {
+      "fact": "minutes",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "CI minutes unavailable: the ci.yml job read failed."
+      ],
+      "value": null
+    },
+    "ci3": {
+      "fact": "ci3",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "CI3 unavailable: no settled window has been read."
+      ],
+      "value": null
+    },
+    "activity": {
+      "fact": "activity",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Current CI activity unavailable: the ci.yml run and job pages were incomplete or changed."
+      ],
+      "value": null
+    },
+    "queue": {
+      "fact": "queue",
+      "state": "unavailable",
+      "read": null,
+      "point": null,
+      "window": null,
+      "fresh_until": null,
+      "freshness": "unknown",
+      "source": null,
+      "evidence": [],
+      "prerequisites": [
+        "Queue and rate limits unavailable: the Actions or rate-limit read failed."
+      ],
+      "value": null
+    }
+  }
+}

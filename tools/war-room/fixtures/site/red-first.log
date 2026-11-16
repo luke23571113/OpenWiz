@@ -1,0 +1,219 @@
+# WRD5 (#883) red-first: python3 -I tools/war-room/test_site.py against a one-page baseline stub
+# (page.site returns today's single page at all six routes; main.tick(site=) writes it six times).
+# Long HTML in assertion messages is cut at 160 characters.
+ERROR: test_a_benchmark_or_figure_without_a_page_is_refused (__main__.Site.test_a_benchmark_or_figure_without_a_page_is_refused)
+KeyError: 'pages'
+ERROR: test_every_site_link_lands_and_nothing_needs_a_script (__main__.Site.test_every_site_link_lands_and_nothing_needs_a_script) (route='')
+ValueError: substring not found
+ERROR: test_every_site_link_lands_and_nothing_needs_a_script (__main__.Site.test_every_site_link_lands_and_nothing_needs_a_script) (route='speed')
+ValueError: substring not found
+ERROR: test_every_site_link_lands_and_nothing_needs_a_script (__main__.Site.test_every_site_link_lands_and_nothing_needs_a_script) (route='health')
+ValueError: substring not found
+ERROR: test_every_site_link_lands_and_nothing_needs_a_script (__main__.Site.test_every_site_link_lands_and_nothing_needs_a_script) (route='cost')
+ValueError: substring not found
+ERROR: test_every_site_link_lands_and_nothing_needs_a_script (__main__.Site.test_every_site_link_lands_and_nothing_needs_a_script) (route='quality')
+ValueError: substring not found
+ERROR: test_every_site_link_lands_and_nothing_needs_a_script (__main__.Site.test_every_site_link_lands_and_nothing_needs_a_script) (route='skills')
+ValueError: substring not found
+ERROR: test_home_lists_every_benchmark_worst_first (__main__.Site.test_home_lists_every_benchmark_worst_first)
+ValueError: substring not found
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00a" aria-labelledby="t-00a"><div class="card-head"><h3 id="t-00a"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00b" aria-labelledby="t-00b"><div class="card-head"><h3 id="t-00b"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00c" aria-labelledby="t-00c"><div class="card-head"><h3 id="t-00c"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00d" aria-labelledby="t-00d"><div class="card-head"><h3 id="t-00d"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00e" aria-labelledby="t-00e"><div class="card-head"><h3 id="t-00e"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-01" aria-labelledby="t-01"><h3 id="t-01">Fig. 01 / Ready to merge</h3><div cla
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-02" aria-labelledby="t-02"><h3 id="t-02">Fig. 02 / Rework</h3><div class="pane
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-03" aria-labelledby="t-03"><h3 id="t-03">Fig. 03 / Flow now</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-05" aria-labelledby="t-05"><h3 id="t-05">Fig. 05 / Stage waits now</h3><div cl
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-08" aria-labelledby="t-08"><h3 id="t-08">Fig. 08 / Main CI now</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-09" aria-labelledby="t-09"><h3 id="t-09">Fig. 09 / CI queue now</h3><div class
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-10" aria-labelledby="t-10"><h3 id="t-10">Fig. 10 / CI bench</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-15" aria-labelledby="t-15"><h3 id="t-15">Fig. 15 / Review rounds and f
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-17" aria-labelledby="t-17"><h3 id="t-17">Fig. 17 / Skills eval</h3><p 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-20" aria-labelledby="t-20"><h3 id="t-20">Fig. 20 / Bench and signal readiness<
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-23" aria-labelledby="t-23"><h3 id="t-23">Fig. 23 / Answer time</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00a" aria-labelledby="t-00a"><div class="card-head"><h3 id="t-00a"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00b" aria-labelledby="t-00b"><div class="card-head"><h3 id="t-00b"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00c" aria-labelledby="t-00c"><div class="card-head"><h3 id="t-00c"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00d" aria-labelledby="t-00d"><div class="card-head"><h3 id="t-00d"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00e" aria-labelledby="t-00e"><div class="card-head"><h3 id="t-00e"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-01" aria-labelledby="t-01"><h3 id="t-01">Fig. 01 / Ready to merge</h3><div cla
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-02" aria-labelledby="t-02"><h3 id="t-02">Fig. 02 / Rework</h3><div class="pane
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-03" aria-labelledby="t-03"><h3 id="t-03">Fig. 03 / Flow now</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-05" aria-labelledby="t-05"><h3 id="t-05">Fig. 05 / Stage waits now</h3><div cl
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-08" aria-labelledby="t-08"><h3 id="t-08">Fig. 08 / Main CI now</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-09" aria-labelledby="t-09"><h3 id="t-09">Fig. 09 / CI queue now</h3><div class
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-10" aria-labelledby="t-10"><h3 id="t-10">Fig. 10 / CI bench</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-15" aria-labelledby="t-15"><h3 id="t-15">Fig. 15 / Review rounds and f
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-17" aria-labelledby="t-17"><h3 id="t-17">Fig. 17 / Skills eval</h3><p 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-20" aria-labelledby="t-20"><h3 id="t-20">Fig. 20 / Bench and signal readiness<
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-23" aria-labelledby="t-23"><h3 id="t-23">Fig. 23 / Answer time</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00a" aria-labelledby="t-00a"><div class="card-head"><h3 id="t-00a"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00b" aria-labelledby="t-00b"><div class="card-head"><h3 id="t-00b"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00c" aria-labelledby="t-00c"><div class="card-head"><h3 id="t-00c"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00d" aria-labelledby="t-00d"><div class="card-head"><h3 id="t-00d"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00e" aria-labelledby="t-00e"><div class="card-head"><h3 id="t-00e"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-01" aria-labelledby="t-01"><h3 id="t-01">Fig. 01 / Ready to merge</h3><div cla
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-02" aria-labelledby="t-02"><h3 id="t-02">Fig. 02 / Rework</h3><div class="pane
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-03" aria-labelledby="t-03"><h3 id="t-03">Fig. 03 / Flow now</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-05" aria-labelledby="t-05"><h3 id="t-05">Fig. 05 / Stage waits now</h3><div cl
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-08" aria-labelledby="t-08"><h3 id="t-08">Fig. 08 / Main CI now</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-09" aria-labelledby="t-09"><h3 id="t-09">Fig. 09 / CI queue now</h3><div class
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-10" aria-labelledby="t-10"><h3 id="t-10">Fig. 10 / CI bench</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-15" aria-labelledby="t-15"><h3 id="t-15">Fig. 15 / Review rounds and f
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-17" aria-labelledby="t-17"><h3 id="t-17">Fig. 17 / Skills eval</h3><p 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-20" aria-labelledby="t-20"><h3 id="t-20">Fig. 20 / Bench and signal readiness<
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-23" aria-labelledby="t-23"><h3 id="t-23">Fig. 23 / Answer time</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00a" aria-labelledby="t-00a"><div class="card-head"><h3 id="t-00a"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00b" aria-labelledby="t-00b"><div class="card-head"><h3 id="t-00b"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00c" aria-labelledby="t-00c"><div class="card-head"><h3 id="t-00c"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00d" aria-labelledby="t-00d"><div class="card-head"><h3 id="t-00d"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00e" aria-labelledby="t-00e"><div class="card-head"><h3 id="t-00e"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-01" aria-labelledby="t-01"><h3 id="t-01">Fig. 01 / Ready to merge</h3><div cla
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-02" aria-labelledby="t-02"><h3 id="t-02">Fig. 02 / Rework</h3><div class="pane
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-03" aria-labelledby="t-03"><h3 id="t-03">Fig. 03 / Flow now</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-05" aria-labelledby="t-05"><h3 id="t-05">Fig. 05 / Stage waits now</h3><div cl
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-08" aria-labelledby="t-08"><h3 id="t-08">Fig. 08 / Main CI now</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-09" aria-labelledby="t-09"><h3 id="t-09">Fig. 09 / CI queue now</h3><div class
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-10" aria-labelledby="t-10"><h3 id="t-10">Fig. 10 / CI bench</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-15" aria-labelledby="t-15"><h3 id="t-15">Fig. 15 / Review rounds and f
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-17" aria-labelledby="t-17"><h3 id="t-17">Fig. 17 / Skills eval</h3><p 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-20" aria-labelledby="t-20"><h3 id="t-20">Fig. 20 / Bench and signal readiness<
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-23" aria-labelledby="t-23"><h3 id="t-23">Fig. 23 / Answer time</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00a" aria-labelledby="t-00a"><div class="card-head"><h3 id="t-00a"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00b" aria-labelledby="t-00b"><div class="card-head"><h3 id="t-00b"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00c" aria-labelledby="t-00c"><div class="card-head"><h3 id="t-00c"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00d" aria-labelledby="t-00d"><div class="card-head"><h3 id="t-00d"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00e" aria-labelledby="t-00e"><div class="card-head"><h3 id="t-00e"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-01" aria-labelledby="t-01"><h3 id="t-01">Fig. 01 / Ready to merge</h3><div cla
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-02" aria-labelledby="t-02"><h3 id="t-02">Fig. 02 / Rework</h3><div class="pane
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-03" aria-labelledby="t-03"><h3 id="t-03">Fig. 03 / Flow now</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-05" aria-labelledby="t-05"><h3 id="t-05">Fig. 05 / Stage waits now</h3><div cl
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-08" aria-labelledby="t-08"><h3 id="t-08">Fig. 08 / Main CI now</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-09" aria-labelledby="t-09"><h3 id="t-09">Fig. 09 / CI queue now</h3><div class
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-10" aria-labelledby="t-10"><h3 id="t-10">Fig. 10 / CI bench</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-15" aria-labelledby="t-15"><h3 id="t-15">Fig. 15 / Review rounds and f
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-17" aria-labelledby="t-17"><h3 id="t-17">Fig. 17 / Skills eval</h3><p 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-20" aria-labelledby="t-20"><h3 id="t-20">Fig. 20 / Bench and signal readiness<
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-23" aria-labelledby="t-23"><h3 id="t-23">Fig. 23 / Answer time</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00a" aria-labelledby="t-00a"><div class="card-head"><h3 id="t-00a"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00b" aria-labelledby="t-00b"><div class="card-head"><h3 id="t-00b"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00c" aria-labelledby="t-00c"><div class="card-head"><h3 id="t-00c"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00d" aria-labelledby="t-00d"><div class="card-head"><h3 id="t-00d"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig card" id="fig-00e" aria-labelledby="t-00e"><div class="card-head"><h3 id="t-00e"><span 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-01" aria-labelledby="t-01"><h3 id="t-01">Fig. 01 / Ready to merge</h3><div cla
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-02" aria-labelledby="t-02"><h3 id="t-02">Fig. 02 / Rework</h3><div class="pane
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-03" aria-labelledby="t-03"><h3 id="t-03">Fig. 03 / Flow now</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-05" aria-labelledby="t-05"><h3 id="t-05">Fig. 05 / Stage waits now</h3><div cl
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-08" aria-labelledby="t-08"><h3 id="t-08">Fig. 08 / Main CI now</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-09" aria-labelledby="t-09"><h3 id="t-09">Fig. 09 / CI queue now</h3><div class
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-10" aria-labelledby="t-10"><h3 id="t-10">Fig. 10 / CI bench</h3><div class="pa
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-15" aria-labelledby="t-15"><h3 id="t-15">Fig. 15 / Review rounds and f
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'coverage' unexpectedly found in '<figure class="fig unavailable" id="fig-17" aria-labelledby="t-17"><h3 id="t-17">Fig. 17 / Skills eval</h3><p 
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-20" aria-labelledby="t-20"><h3 id="t-20">Fig. 20 / Bench and signal readiness<
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: 'class="meta"' unexpectedly found in '<figure class="fig" id="fig-23" aria-labelledby="t-23"><h3 id="t-23">Fig. 23 / Answer time</h3><div class=
+FAIL: test_each_figure_face_is_title_sentence_and_value_with_facts_behind_its_disclosure (__main__.Site.test_each_figure_face_is_title_sentence_and_value_with_f
+AssertionError: '2030-01-07 to 2030-01-13 PST' unexpectedly found in '<figure class="fig card" id="fig-00b" aria-labelledby="t-00b"><div class="card-head"><h3 i
+FAIL: test_six_pages_place_every_figure_chart_and_benchmark_once (__main__.Site.test_six_pages_place_every_figure_chart_and_benchmark_once)
+AssertionError: Lists differ: ['00a[24 chars]'00e', '01', '02', '03', '04', '05', '06', '07[99 chars]'23'] != ['00a[24 chars]'00e']
+FAIL: test_a_failed_child_page_keeps_the_previous_complete_site (__main__.Tick.test_a_failed_child_page_keeps_the_previous_complete_site)
+AssertionError: ValueError not raised
+Ran 7 tests in 1.890s
+FAILED (failures=99, errors=8)

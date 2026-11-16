@@ -21,7 +21,8 @@ REQUIRED = ['web/openwiz-build.txt', 'runtime/openwiz-build.txt', 'openwiz', 'op
             'runtime/skills/launch-fleet/scripts/fleet.sh', 'runtime/install.py', 'runtime/pull.py']
 # #1105 (R9): the setup and App connection tools an installed consumer runs.
 SETUP_TOOLS = ['runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/github-app/setup.py',
-               'runtime/github-app/app.py', 'runtime/github-app/manifest.json']
+               'runtime/github-app/app.py', 'runtime/github-app/manifest.json',
+               'runtime/setup/init.py']  # #635: installed openwiz init's runtime
 REQUIRED += SETUP_TOOLS
 # #2201: setup's CloudRoom install, reuse and sign-in tool.
 CLOUDROOM_TOOL = 'runtime/cloudroom/cloudroom.py'

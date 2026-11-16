@@ -152,7 +152,6 @@ mod c10_cockpit_support;
 mod lp6_loops_read;
 mod lp6_loops_route;
 
-mod notification_target;
 mod ready_stock;
 
 #[path = "../support/real_time.rs"]

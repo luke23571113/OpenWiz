@@ -488,10 +488,6 @@ fn semantic(kind: Document, value: &Value) -> Result<(), String> {
         let mut unread = BTreeSet::new();
         let mut read = BTreeSet::new();
         let results = pass["results"].as_array().unwrap();
-        require(
-            results.first().is_some_and(|v| v["check"] == "cloudroom"),
-            "cloudroom first",
-        )?;
         for result in results {
             let check = result["check"].as_str().unwrap();
             if check == "watchdog" {
@@ -528,9 +524,6 @@ fn semantic(kind: Document, value: &Value) -> Result<(), String> {
             }
         }
         require(unread.is_disjoint(&read), "S1: unread check has subjects")?;
-        for check in ["cloudroom", "tick", "server"] {
-            require(read.contains(check), "S1: missing service check")?;
-        }
         let mut fixes = BTreeSet::new();
         for fix in pass["fixes"].as_array().unwrap() {
             let incident = incidents

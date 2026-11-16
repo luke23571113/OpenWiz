@@ -1,8 +1,3 @@
-// T1's contract proof. T3 adds policy/durable, T6 stock; their modules are
-// registered here by their owning tickets, without pending ignore markers.
-mod contract;
-mod durable;
-mod held_store;
-mod journey;
-mod policy;
+// The kept core ready-stock module's tests (0.0.15 T6). Push notifications are
+// retired (0.0.17 ER4).
 mod stock;

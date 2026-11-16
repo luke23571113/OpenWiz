@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""The War room page (WRD3, #631): one saved suite record and one chart build, as static HTML.
+"""The War room site (WRD5, #883; the v3 page of WRD3, #631): one saved suite record and one
+chart build, as static HTML.
 
-The v3 composition: an engraved masthead with an evidence-backed status strip, five
-headline chart cards (00a-00e) and every benchmark family as numbered body figures
-(benchmarks.json). Charts are the chart build's finished SVGs (charts/build.py),
-embedded byte for byte; the page adds no script, font, image or data request. Source
-details, values tables and the inventory audit stay reachable through native
-<details>, without a script.
+`site` renders six pages: home (the masthead, the evidence-backed status strip, the five headline
+chart cards 00a-00e and every benchmark worst first) and five question-led child pages (Speed,
+Health, Cost, Quality, Skills and evals) holding the numbered body figures and the Sources of
+their benchmarks (benchmarks.json `pages`). `render` is the complete one-document view of the same
+content (every chart once), which main.tick keeps locally and the published pictures draw. Charts
+are the chart build's finished SVGs (charts/build.py), embedded byte for byte; no page adds a
+script, font, image or data request. A figure's face is its title, one sentence and its value or
+chart; its dates, coverage, gaps, values and sources are in its native, closed <details>.
 """
 import base64
 from datetime import datetime, timedelta
 from html import escape
 import json
 from pathlib import Path
+import re
 
 import suite
 from sources import safe_record
@@ -112,6 +116,38 @@ CSS = (
     'margin:0;text-align:right}.card .stamp{flex-basis:100%;text-align:right}'
     'h2{font-size:44px}.figs{grid-template-columns:1fr}.panels{grid-template-columns:1fr}}'
 )
+# WRD5 (#883): the six-page navigation, native links only; the low-text figure faces (a figure's facts
+# are in its disclosure, so the disclosure carries the figure's closing rule); the every-benchmark list.
+SITE_CSS = (
+    '.site{border-bottom:2px solid var(--rule)}.site ol{display:flex;flex-wrap:wrap;margin:0;padding:0;list-style:none}'
+    '.site li{border-right:2px solid var(--rule)}.site a{display:block;padding:12px 18px;font:700 15px/1 var(--mono);'
+    'text-transform:uppercase;letter-spacing:.06em;color:var(--ink);text-decoration:none}.site a[aria-current]{background:var(--ink);color:#000}'
+    '.site a:hover{color:var(--blue)}'
+    '.q{font-size:20px;text-transform:uppercase;letter-spacing:.06em;margin:6px 0 12px;color:var(--soft)}'
+    '.fig .cap{border:0;margin:6px 0 0;padding:0;text-transform:none;letter-spacing:0;font-size:14px;color:var(--soft)}'
+    '.fig details{margin-top:auto;padding-top:8px;border-top:2px solid var(--rule)}.fig details .meta{margin:4px 0}'
+    '.need{margin:10px 0 6px}.need .short{display:block;color:var(--soft);font-size:13px;margin-top:2px}'
+    '.figs{align-items:start}'
+    '.list{padding:22px 0 18px;border-bottom:2px solid var(--rule)}.list table{font-size:15px;margin:0;max-width:980px}'
+    '.list td,.list th{padding:8px;border-top:1px solid var(--line)}.list th{font-size:12px;color:var(--soft);'
+    'text-transform:uppercase;letter-spacing:.08em;font-weight:400}.list th.v{text-align:right}'
+    '.list .state{white-space:nowrap;text-transform:uppercase;letter-spacing:.06em;font-size:13px}'
+    '.list .v{font-family:var(--cond);font-weight:700;text-align:right}'
+    '.s-off{color:#000;background:var(--ink);padding:1px 6px}.s-partial{border:1px solid var(--ink);padding:0 5px}'
+    '.s-healthy{color:var(--soft)}.s-none{color:var(--muted)}'
+    '.gapsd{grid-column:1;padding:0 0 12px;font-size:13px}.gapsd ul{margin:4px 0 0;padding-left:18px;color:var(--soft)}'
+    '.child .mast{min-height:200px}.child h1{font-size:88px}.child .brand .kicker a{color:var(--ink);text-decoration:none}'
+    '#figures,.section,#benchmarks,#sources,#inventory,.provider{scroll-margin-top:8px}'
+    '@media (max-width:760px){.site ol{display:grid;grid-template-columns:repeat(3,1fr);margin-bottom:-2px}'
+    '.site li{border-bottom:2px solid var(--rule)}.site li:nth-child(3n){border-right:0}'
+    '.site a{padding:10px 6px;font-size:13px;text-align:center}.list table{font-size:13px}'
+    '.list td,.list th{padding:6px 4px}.list .name{overflow-wrap:anywhere}.child h1{font-size:52px}'
+    '.q{font-size:15px;max-width:62%}}'
+)
+# A prerequisite this short stays on an unavailable figure's face; a longer one is in its disclosure.
+SHORT = 90
+STATES = ('off limit', 'partial', 'healthy', 'not measured')
+STATE_CLASS = {'off limit': 's-off', 'partial': 's-partial', 'healthy': 's-healthy', 'not measured': 's-none'}
 
 
 def esc(value):
@@ -165,41 +201,57 @@ GROUP_TITLES = {'throughput': 'Throughput', 'stage_waits': 'Stage waits', 'board
                 'ci': 'CI', 'usage': 'Usage and cost', 'decisions': 'Answer time'}
 
 
-def sources_html(record):
-    """The Sources appendix, after the figures: one disclosure holding every value's card, group by
-    group as the record orders them, then the three health signals. Each card has its window,
-    freshness, statistic, dimensions, provenance and evidence links. Links stay out of the figures
-    section (the chart seam carries no href). The published picture draws it open, provenance hidden."""
+def sources_html(record, slots=None, bench_route=None):
+    """The Sources appendix: one disclosure holding every value's card, group by group as the
+    record orders them, then the three health signals. Each card has its window, freshness,
+    statistic, dimensions, provenance and evidence links. Links stay out of the figures section
+    (the chart seam carries no href). WRD5: a child page holds only its own benches (`slots`);
+    each bench's first block carries the id `bench-<slot>` its home row links to, and a closed
+    disclosure opens when that link is followed."""
     homes = {s: c['figure'] for c in INVENTORY['cards'] for s in c['providers']}
     homes.update({s: f['figure'] for sec in INVENTORY['sections'] for f in sec['figures'] for s in f['providers']})
+    titles = {p['slug']: p['title'] for p in INVENTORY['pages']}
+    seen = set()
 
     def provider(p, items):
         slot = p['slot']
-        out = [f'<div class="provider {esc(p["state"])}" data-slot="{esc(slot)}"><h3>{esc(NAMES[slot])} '
-               f'<span class="badge">{esc(p["state"])}</span> <span class="detail">Fig. {esc(homes[slot])}</span></h3>']
+        anchor = '' if slot in seen else f' id="bench-{esc(slot)}"'
+        seen.add(slot)
+        where = f'Fig. {homes[slot]}' + ('' if bench_route is None else f' · {titles[bench_route[slot]]} page')
+        out = [f'<div class="provider {esc(p["state"])}"{anchor} data-slot="{esc(slot)}"><h3>{esc(NAMES[slot])} '
+               f'<span class="badge">{esc(p["state"])}</span> <span class="detail">{esc(where)}</span></h3>']
         out.extend(f'<p class="detail">Prerequisite: {esc(x)}</p>' for x in p['prerequisites'])
         out.extend(metric_html(m) if 'group' in m else observation_html(m) for m in items)
         if not items:
             out.append('<p class="detail">No measured values. Unknown, never zero.</p>')
         return out + ['</div>']
+    keep = (lambda slot: True) if slots is None else (lambda slot: slot in slots)
     parts = ['<details class="sources" id="sources"><summary>Sources: every value, its window and its evidence</summary>']
     for group in suite.GROUPS:
+        chosen = [(p, d) for p, d in zip(record['providers'], suite.PROVIDERS) if group in d['groups'] and keep(p['slot'])]
+        if not chosen:
+            continue
         parts.append(f'<section id="{esc(group)}"><h2>{esc(GROUP_TITLES[group])}</h2>')
-        for p, definition in zip(record['providers'], suite.PROVIDERS):
-            if group in definition['groups']:
-                parts.extend(provider(p, [m for m in p['metrics'] if m['group'] == group]))
+        for p, _ in chosen:
+            parts.extend(provider(p, [m for m in p['metrics'] if m['group'] == group]))
         parts.append('</section>')
-    parts.append('<section id="health"><h2>Health signals</h2>')
-    for p in suite.health(record):
-        parts.extend(provider(p, p['observations']))
-    return ''.join(parts) + '</section></details>'
+    signals = [p for p in suite.health(record) if keep(p['slot'])]
+    if signals:
+        parts.append('<section id="health"><h2>Health signals</h2>')
+        for p in signals:
+            parts.extend(provider(p, p['observations']))
+        parts.append('</section>')
+    return ''.join(parts) + '</details>'
 
 
-def source_note(slots):
-    """Where a figure's provenance is, in words (no link inside the figures section)."""
+def source_note(slots, bench_route=None):
+    """Where a figure's provenance is, in words (no link inside the figures section): each bench's
+    Sources entry, on its child page."""
     if not slots:
         return ''
-    return f'<p class="detail">Sources and evidence links: {esc(", ".join(NAMES[s] for s in slots))}, under Sources below.</p>'
+    titles = {p['slug']: p['title'] for p in INVENTORY['pages']}
+    where = ', '.join(NAMES[s] + ('' if bench_route is None else f' ({titles[bench_route[s]]} page)') for s in slots)
+    return f'<p class="detail">Sources and evidence links: {esc(where)}, under Sources.</p>'
 
 
 # --- the chart build's figures -------------------------------------------------
@@ -246,8 +298,8 @@ def periods(f, record):
 
 
 def meta_html(f, record):
-    """The facts that qualify a chart, visible by default and in every picture: unit, dates,
-    coverage, missing points and gaps. Never folded into a disclosure."""
+    """The facts that qualify a chart: unit, dates, coverage, missing points and gaps. WRD5: they sit
+    in the figure's values-and-sources disclosure, first, never dropped."""
     cov = f['coverage']
     coverage = f"coverage {cov['observed']} of {'Unknown' if cov['expected'] is None else cov['expected']}"
     missing = f" · missing {', '.join(cov['missing'])}" if cov['missing'] else ''
@@ -367,88 +419,288 @@ def status(record, claimed):
     return ('No anomaly observed' if not gaps else 'Not every signal observed'), False, facts, gaps
 
 
-def card_html(card, f, record):
+def card_html(card, f, record, bench_route=None):
+    """A headline card: title and value, one sentence, the chart; its stamp, facts, values and sources
+    behind its disclosure."""
     value, stamp = headline(f)
     if f is None:
-        body = f'<p class="need"><b>Unavailable</b> {esc(NO_BUILD)}</p>'
+        body = f'<p class="need"><b>Unavailable</b><span class="short">{esc(NO_BUILD)}</span></p>'
+        inner = ''
     else:
-        body = f'<div class="chart" id="figure-{esc(f["id"])}">{f["svg"]}</div>' + meta_html(f, record)
-    inner = (values_html(f) if f is not None else '') + source_note(card['providers'])
+        body = f'<div class="chart" id="figure-{esc(f["id"])}">{f["svg"]}</div>'
+        inner = f'<p class="detail stamp">Value as of: {esc(stamp)}</p>' + meta_html(f, record) + values_html(f)
+    inner += source_note(card['providers'], bench_route)
     return (f'<figure class="fig card" id="fig-{esc(card["figure"])}" aria-labelledby="t-{esc(card["figure"])}">'
             f'<div class="card-head"><h3 id="t-{esc(card["figure"])}"><span class="no">Fig. {esc(card["figure"])}</span> / {esc(card["title"])}</h3>'
-            f'<p class="value">{esc(value)}</p><p class="stamp">{esc(stamp)}</p></div>{body}'
-            f'<figcaption class="cap">{esc(card["caption"])}</figcaption>'
+            f'<p class="value">{esc(value)}</p></div><figcaption class="cap">{esc(card["caption"])}</figcaption>{body}'
             + (f'<details><summary>Values and sources</summary>{inner}</details>' if inner else '') + '</figure>')
 
 
-def body_figure_html(entry, charts, record):
+def body_figure_html(entry, charts, record, bench_route=None):
+    """A body figure: title, one sentence, its chart panels, or Unavailable with a short prerequisite;
+    a longer prerequisite, each chart's facts and values, and its sources behind its disclosure."""
     number = entry['figure']
     head = (f'<figure class="fig{"" if charts else " unavailable"}" id="fig-{esc(number)}" aria-labelledby="t-{esc(number)}">'
-            f'<h3 id="t-{esc(number)}">Fig. {esc(number)} / {esc(entry["title"])}</h3>')
+            f'<h3 id="t-{esc(number)}">Fig. {esc(number)} / {esc(entry["title"])}</h3>'
+            f'<figcaption class="cap">{esc(entry["caption"])}</figcaption>')
+    need = entry['prerequisite']
     if charts:
-        panels = ''.join(f'<div class="panel" id="figure-{esc(f["id"])}"><h4>{esc(f["title"])}</h4>'
-                         f'<div class="chart">{f["svg"]}</div>{meta_html(f, record)}</div>' for f in charts)
-        body = f'<div class="panels">{panels}</div>'
+        many = len(charts) > 1
+        panels = ''.join(f'<div class="panel" id="figure-{esc(f["id"])}">' + (f'<h4>{esc(f["title"])}</h4>' if many else '')
+                         + f'<div class="chart">{f["svg"]}</div></div>' for f in charts)
+        body, inner = f'<div class="panels">{panels}</div>', ''
+    elif len(need) <= SHORT:
+        body, inner = f'<p class="need"><b>Unavailable</b><span class="short">Needs: {esc(need)}</span></p>', ''
     else:
-        body = f'<p class="need"><b>Unavailable · needs</b> {esc(entry["prerequisite"])}</p>'
-    inner = ''.join(values_html(f) for f in charts) + source_note(entry['providers'])
-    return (head + body + f'<figcaption class="cap">{esc(entry["caption"])}</figcaption>'
-            + (f'<details><summary>Values and sources</summary>{inner}</details>' if inner else '') + '</figure>')
+        body, inner = '<p class="need"><b>Unavailable</b></p>', f'<p class="detail need-full">Needs: {esc(need)}</p>'
+    inner += ''.join(meta_html(f, record) + values_html(f) for f in charts) + source_note(entry['providers'], bench_route)
+    return (head + body + (f'<details><summary>Values and sources</summary>{inner}</details>' if inner else '') + '</figure>')
 
 
-def inventory_html(record, claimed):
-    """The audit: every provider, health signal and measured family, and where it is."""
-    states = {p['slot']: p['state'] for p in record['providers'] + suite.health(record)}
-    homes = {s: c['figure'] for c in INVENTORY['cards'] for s in c['providers']}
-    homes.update({s: f['figure'] for sec in INVENTORY['sections'] for f in sec['figures'] for s in f['providers']})
-    rows = ''.join(f'<tr><td>{esc(NAMES[s])}</td><td>{esc(states[s])}</td><td><a href="#fig-{esc(homes[s])}">Fig. {esc(homes[s])}</a></td></tr>'
-                   for s in [p['slot'] for p in suite.PROVIDERS] + [h['slot'] for h in suite.HEALTH])
+def inventory_html(record, claimed, link):
+    """The audit: every measured family and the figures that show it, on whichever page holds them."""
+    _, figure_route = membership()
     titles = {s['number']: s['title'] for s in INVENTORY['sections']}
     fams = ''.join(f'<tr><td>{esc(titles[x["section"]])}</td><td>{esc(x["measure"])}</td><td>'
-                   + ', '.join(f'<a href="#fig-{esc(n)}">Fig. {esc(n)}</a>{"" if n in claimed else " (unavailable)"}'
-                               for n in x['figures']) + '</td></tr>' for x in INVENTORY['families'])
+                   + ', '.join(f'<a href="{esc(link(figure_route[n], "fig-" + n))}">Fig. {esc(n)}</a>'
+                               f'{"" if n in claimed else " (unavailable)"}' for n in x['figures']) + '</td></tr>'
+                   for x in INVENTORY['families'])
     return ('<details class="inventory" id="inventory"><summary>Benchmark inventory audit</summary>'
-            '<table><caption class="detail">Every bench and health signal, and its home figure</caption>'
-            f'<thead><tr><th>Bench</th><th>State</th><th>Figure</th></tr></thead><tbody>{rows}</tbody></table>'
             '<table><caption class="detail">Every measured family and the figures that show it</caption>'
             f'<thead><tr><th>Section</th><th>Measure</th><th>Figures</th></tr></thead><tbody>{fams}</tbody></table></details>')
 
 
-def render(record, charts=None):
-    """The page. `charts`, when given, is a chart build's bundle (charts/build.py)."""
-    safe_record(record)
-    claimed = {} if charts is None else claim(charts['figures'])
+# --- the site --------------------------------------------------------------------
+
+def routes():
+    """'' (home) then each child page's slug, in navigation order."""
+    return [''] + [p['slug'] for p in INVENTORY['pages']]
+
+
+def site_files(home):
+    """{route: file name} for a home file name: war-room.html, war-room-speed.html, ..."""
+    suite.require(home.endswith('.html'), 'the home page is an HTML file')
+    return {r: home if not r else f'{home[:-5]}-{r}.html' for r in routes()}
+
+
+def site_link(route, anchor=None):
+    """A link between the served pages, relative to the site root: './', 'speed', 'speed#fig-01'."""
+    return (route or './') + ('#' + anchor if anchor else '')
+
+
+def view_link(route, anchor=None):
+    """The same link inside the complete one-document view: an in-page anchor."""
+    return '#' + (anchor or ('p-' + route if route else 'figures'))
+
+
+def membership():
+    """({bench slot: child route}, {figure: route}), or refuse. Every body figure is on exactly one
+    child page and every headline card on home; every bench and health signal has exactly one home
+    figure, so exactly one child page holds its values and evidence (a card names its page)."""
+    pages = INVENTORY['pages']
+    slugs = [p['slug'] for p in pages]
+    suite.require(len(set(slugs)) == len(slugs) == 5 and all(re.fullmatch('[a-z]+', s) for s in slugs),
+                  'the site has five uniquely named child pages')
+    body = [f['figure'] for sec in INVENTORY['sections'] for f in sec['figures']]
+    listed = [n for p in pages for n in p['figures']]
+    suite.require(sorted(listed) == sorted(body), 'every body figure belongs to exactly one child page')
+    figure_route = {c['figure']: '' for c in INVENTORY['cards']}
+    figure_route.update({n: p['slug'] for p in pages for n in p['figures']})
+    suite.require(all(c.get('page') in slugs for c in INVENTORY['cards']), 'every headline card names its child page')
+    homes = [(s, c['page']) for c in INVENTORY['cards'] for s in c['providers']]
+    homes += [(s, figure_route[f['figure']]) for sec in INVENTORY['sections'] for f in sec['figures'] for s in f['providers']]
+    slots = [p['slot'] for p in suite.PROVIDERS] + [h['slot'] for h in suite.HEALTH]
+    suite.require(sorted(s for s, _ in homes) == sorted(slots), 'every benchmark has exactly one child page')
+    return dict(homes), figure_route
+
+
+def assessed(record, claimed):
+    """({bench: past its limit}, {benches assessed against a limit or goal by their chart alone}).
+    Past means the bench's own evidence shows an existing limit or goal missed: a failed main CI run,
+    a missed stage limit, ready stock below the board's goal (status's evidenced anomalies)."""
+    off = {p['slot'] for p in suite.health(record) if any(o['result'] in ('failure', 'missed') for o in p['observations'])}
+    # #926 R1: a stage's own measured miss count (TL2's canonical `miss:<stage>` metric, never the
+    # non-counting `miss-ticket:` references), including fix and answer stages stage health omits.
+    off.update(p['slot'] for p in record['providers'] if p['slot'] == 'stage_waits' and any(
+        m['id'].startswith('miss:') and m['state'] != 'unavailable' and (m['value'] or 0) > 0 for m in p['metrics']))
+    charted = set()
+    ready = claimed.get('00a', [None])[0]
+    if ready is not None:
+        (r, _), (goal, _) = _latest(ready, 'ready'), _latest(ready, 'goal')
+        if r is not None and goal is not None:
+            charted.add('board')
+            if r < goal:
+                off.add('board')
+    return off, charted
+
+
+UNIT = {'count': '', 'hours': 'h', 'minutes': 'min', 'prs_per_hour': 'PRs/h', 'credits': 'credits'}
+# A bench's row value: the metric it leads with, and the words after the number.
+ROW = {'activity': ('merged-hour-forward', 'merged forward this hour'), 'ci_bench': ('merged-per-hour', 'merged PRs/h'),
+       'answer_time': ('answer-median', 'min median'), 'rework': ('review-rounds', 'review rounds')}
+
+
+def bench_value(slot, p, claimed):
+    """A row's existing headline value: its card's headline, a health signal's own result or count, or
+    its leading metric. Unknown stays Unknown; an unavailable bench says so."""
+    items = p.get('metrics', p.get('observations', []))
+    card = next((c for c in INVENTORY['cards'] if slot in c['providers']), None)
+    if card is not None and claimed.get(card['figure']):
+        return headline(claimed[card['figure']][0])[0]
+    if p['state'] == 'unavailable':
+        return 'Unavailable'
+    if slot == 'main_ci':
+        return (items[0]['result'] or 'unknown').capitalize() if items else 'Unknown'
+    if slot == 'stage_health':
+        waits = [o for o in items if o['result'] in ('missed', 'not_missed')]
+        return f"{sum(o['result'] == 'missed' for o in waits)} of {len(waits)} waits over limit"
+    if slot == 'ci_queue':
+        queued = [o['value'] for o in items if o['id'].startswith('queued:')]
+        return 'Unknown' if not queued or None in queued else f'{_num(sum(queued))} queued'
+    if slot in ROW:
+        m = next((m for m in items if m['id'] == ROW[slot][0]), None)
+        return 'Unknown' if m is None or m['value'] is None else f'{_num(m["value"])} {ROW[slot][1]}'
+    m = next((m for m in items if m['value'] is not None), None)
+    return 'Unknown' if m is None else f'{_num(m["value"])} {UNIT.get(m["unit"], m["unit"] or "")}'.strip()
+
+
+def bench_rows(record, claimed):
+    """[(state, slot, value)]: every bench and health signal, off limit, then partial, healthy and
+    not measured, each state in inventory order. No threshold is invented: off limit is only an
+    existing limit or goal the evidence shows missed, and unassessed data is never healthy; main CI
+    is healthy only on a successful current-head run."""
+    off, charted = assessed(record, claimed)
+    providers = {p['slot']: p for p in record['providers'] + suite.health(record)}
+    order = [p['slot'] for p in suite.PROVIDERS] + [h['slot'] for h in suite.HEALTH]
+    rows = []
+    for i, slot in enumerate(order):
+        p = providers[slot]
+        value = bench_value(slot, p, claimed)
+        if slot in off:
+            state = 'off limit'
+        elif slot == 'main_ci' and p['state'] != 'unavailable':
+            # #926 R2: only a successful current-head run is healthy; pending or cancelled is no current result.
+            state = 'healthy' if p['observations'][0]['result'] == 'success' else 'partial'
+        elif p['state'] == 'partial':
+            state = 'partial'
+        elif p['state'] == 'known' or slot in charted:
+            state = 'healthy'
+        else:
+            state = 'not measured'
+        rows.append((STATES.index(state), i, state, slot, value))
+    return [(state, slot, value) for _, _, state, slot, value in sorted(rows)]
+
+
+def benchmarks_html(record, claimed, link):
+    bench_route, _ = membership()
+    rows = ''.join(f'<tr class="row"><td class="name"><a href="{esc(link(bench_route[slot], "bench-" + slot))}">'
+                   f'{esc(NAMES[slot])}</a></td><td class="state"><span class="{STATE_CLASS[state]}">{esc(state)}</span></td>'
+                   f'<td class="v">{esc(value)}</td></tr>' for state, slot, value in bench_rows(record, claimed))
+    return ('<section class="list" id="benchmarks" aria-labelledby="hb"><h2 id="hb">Every benchmark, worst first</h2>'
+            '<table><thead><tr><th>Benchmark</th><th>State</th><th class="v">Latest</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table></section>')
+
+
+def head(title):
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; font-src data:; base-uri \'none\'; form-action \'none\'">'
+            '<meta http-equiv="refresh" content="300"><meta name="theme-color" content="#000000">'
+            f'<title>{esc(title)}</title><style>{FONT}{CSS}{ART}{SITE_CSS}</style></head>')
+
+
+ENGRAVING = ('<div class="art" aria-hidden="true"><i class="ring r2"></i><i class="ring"></i><i class="planet"></i>'
+             '<i class="city"></i><i class="dome d1"></i><i class="dome d2"></i><i class="ground"></i><i class="near"></i></div>')
+
+
+def nav(current, link):
+    items = [('', 'Home')] + [(p['slug'], p['title']) for p in INVENTORY['pages']]
+    here = ' aria-current="page"'
+    return ('<nav class="site" aria-label="Pages"><ol>' + ''.join(
+        f'<li><a href="{esc(link(r))}"{here if r == current else ""}>{esc(t)}</a></li>'
+        for r, t in items) + '</ol></nav>')
+
+
+def footer(record):
+    return (f'<footer>Saved sample {esc(record["sample_at"])} · assembled {esc(record["assembled_at"])}. '
+            'Live freshness, complete source history, scheduled operation and hosting are Unverified. '
+            'Pages reload every five minutes; only an explicit finite invocation creates a new sample.</footer>')
+
+
+def masthead(record, claimed):
+    """The home masthead and status strip; the strip's gaps fold into one closed disclosure."""
     flag, alarm, facts, gaps = status(record, claimed)
     windows = [f['window'] for n in ('00a', '00b', '00c', '00d') for f in claimed.get(n, []) if f['window']]
     span = _pst_days({'since': min(w['since'] for w in windows), 'until': max(w['until'] for w in windows),
                       'timezone': 'PST-fixed-UTC-08:00'}) if windows else 'no chart window'
-    parts = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
-             '<meta name="viewport" content="width=device-width, initial-scale=1">',
-             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; font-src data:; base-uri \'none\'; form-action \'none\'">',
-             '<meta http-equiv="refresh" content="300"><meta name="theme-color" content="#000000">'
-             '<title>OpenWiz War room</title>',
-             f'<style>{FONT}{CSS}{ART}</style></head><body><a class="skip" href="#body">Skip to the figures</a><main>',
-             '<header class="mast"><div class="brand"><h1><span class="kicker">OpenWiz</span>War room</h1>',
-             f'<p class="when">{esc(span)} · sample {esc(record["sample_at"])}</p></div>',
-             '<div class="art" aria-hidden="true"><i class="ring r2"></i><i class="ring"></i><i class="planet"></i>'
-             '<i class="city"></i><i class="dome d1"></i><i class="dome d2"></i><i class="ground"></i><i class="near"></i></div>',
-             f'<section class="strip" aria-label="Status"><h2 class="flag{"" if alarm else " calm"}">{esc(flag)}</h2>'
-             f'<p class="facts">{esc(" · ".join(facts) or "No signal observed")}</p>'
-             + (f'<ul class="gaps">{"".join(f"<li>{esc(g)}</li>" for g in gaps)}</ul>' if gaps else '')
-             + '</section></header>',
-             # One section holds every chart figure, as the chart seam expects (charts/contract.md).
-             '<section id="figures"><div class="cards" role="region" aria-label="Health and throughput">']
-    for card in INVENTORY['cards']:
-        parts.append(card_html(card, claimed.get(card['figure'], [None])[0], record))
-    parts.append('</div><div id="body">')
-    for section in INVENTORY['sections']:
-        parts.append(f'<div class="section" role="region" id="s{esc(section["number"])}" aria-labelledby="h{esc(section["number"])}">'
-                     f'<h2 id="h{esc(section["number"])}">{esc(section["number"])} / {esc(section["title"])}</h2><div class="figs">')
-        parts.extend(body_figure_html(f, claimed.get(f['figure'], []), record) for f in section['figures'])
-        parts.append('</div></div>')
-    parts.append('</div></section>' + sources_html(record) + inventory_html(record, claimed))
-    parts.append(f'<footer>Saved sample {esc(record["sample_at"])} · assembled {esc(record["assembled_at"])}. '
-                 'Live freshness, complete source history, scheduled operation and hosting are Unverified. '
-                 'This page reloads every five minutes; only an explicit finite invocation creates a new sample.</footer>')
-    parts.append('</main></body></html>')
+    return ('<header class="mast"><div class="brand"><h1><span class="kicker">OpenWiz</span>War room</h1>'
+            f'<p class="when">{esc(span)} · sample {esc(record["sample_at"])}</p></div>{ENGRAVING}'
+            f'<section class="strip" aria-label="Status"><h2 class="flag{"" if alarm else " calm"}">{esc(flag)}</h2>'
+            f'<p class="facts">{esc(" · ".join(facts) or "No signal observed")}</p></section>'
+            + (f'<details class="gapsd"><summary>{len(gaps)} {"gap" if len(gaps) == 1 else "gaps"} in this sample</summary>'
+               f'<ul class="gaps">{"".join(f"<li>{esc(g)}</li>" for g in gaps)}</ul></details>' if gaps else '')
+            + '</header>')
+
+
+def cards_html(record, claimed, bench_route):
+    return ('<div class="cards" role="region" aria-label="Health and speed">'
+            + ''.join(card_html(c, claimed.get(c['figure'], [None])[0], record, bench_route) for c in INVENTORY['cards'])
+            + '</div>')
+
+
+def figures_of(slug, record, claimed, bench_route):
+    entries = {f['figure']: f for sec in INVENTORY['sections'] for f in sec['figures']}
+    p = next(p for p in INVENTORY['pages'] if p['slug'] == slug)
+    return ''.join(body_figure_html(entries[n], claimed.get(n, []), record, bench_route) for n in p['figures'])
+
+
+def home(record, claimed):
+    bench_route, _ = membership()
+    return (head('OpenWiz War room') + '<body><a class="skip" href="#figures">Skip to the figures</a><main>'
+            + masthead(record, claimed) + nav('', site_link)
+            # The chart seam on every page: one section holds the page's chart figures (charts/contract.md).
+            + '<section id="figures">' + cards_html(record, claimed, bench_route) + '</section>'
+            + benchmarks_html(record, claimed, site_link) + inventory_html(record, claimed, site_link)
+            + footer(record) + '</main></body></html>')
+
+
+def child(slug, record, claimed):
+    """One child page: its question, its figures and the Sources of the benches it holds."""
+    bench_route, _ = membership()
+    p = next(p for p in INVENTORY['pages'] if p['slug'] == slug)
+    mine = {s for s, r in bench_route.items() if r == slug}
+    return (head(f'{p["title"]} · OpenWiz War room')
+            + '<body class="child"><a class="skip" href="#figures">Skip to the figures</a><main>'
+            '<header class="mast"><div class="brand"><h1><span class="kicker"><a href="./">OpenWiz War room</a></span>'
+            f'{esc(p["title"])}</h1><p class="q">{esc(p["question"])}</p></div>{ENGRAVING}</header>'
+            + nav(slug, site_link)
+            + f'<section id="figures"><div class="section"><div class="figs">{figures_of(slug, record, claimed, bench_route)}'
+            '</div></div></section>' + sources_html(record, mine, bench_route) + footer(record) + '</main></body></html>')
+
+
+def site(record, charts=None):
+    """{route: HTML}: home and the five child pages, from one saved sample and one chart bundle.
+    Any refusal raises before anything is returned, so a caller never holds part of a site."""
+    safe_record(record)
+    membership()
+    claimed = {} if charts is None else claim(charts['figures'])
+    return {r: home(record, claimed) if not r else child(r, record, claimed) for r in routes()}
+
+
+def render(record, charts=None):
+    """The complete one-document view of the site: the home masthead, every chart figure once in one
+    figures section (cards, then each child page's figures), every benchmark, the whole Sources
+    appendix and the inventory audit. `charts`, when given, is a chart build's bundle (charts/build.py)."""
+    safe_record(record)
+    bench_route, _ = membership()
+    claimed = {} if charts is None else claim(charts['figures'])
+    parts = [head('OpenWiz War room'), '<body><a class="skip" href="#figures">Skip to the figures</a><main>',
+             masthead(record, claimed), nav('', view_link),
+             '<section id="figures">', cards_html(record, claimed, bench_route), '<div id="body">']
+    for p in INVENTORY['pages']:
+        parts.append(f'<div class="section" role="region" id="p-{esc(p["slug"])}" aria-labelledby="h-{esc(p["slug"])}">'
+                     f'<h2 id="h-{esc(p["slug"])}">{esc(p["title"])}</h2><div class="figs">'
+                     + figures_of(p['slug'], record, claimed, bench_route) + '</div></div>')
+    parts.append('</div></section>' + benchmarks_html(record, claimed, view_link) + sources_html(record, None, bench_route)
+                 + inventory_html(record, claimed, view_link) + footer(record) + '</main></body></html>')
     return ''.join(parts)

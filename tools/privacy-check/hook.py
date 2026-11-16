@@ -76,24 +76,40 @@ def destination_main(repo, url):
     command-scoped Git setting or override variable, so the lookup runs with
     the push's own configuration; Git would not rewrite the URL (insteadOf);
     and the destination names exactly one main. Anything else, or any
-    failure, returns None: scan from the anchor. That commit must also exist
-    locally, or check.py scans from the anchor too.
+    failure, returns None: scan from the anchor. When that commit is not in
+    this clone yet (main moved on since its last fetch, #872), fetch main's
+    objects from the same URL, writing no ref; a failed fetch returns None.
+
+    Every command here reaches the push URL and nothing else: no lazy fetch
+    from a promisor remote, no bundle source (configured or advertised), no
+    promisor remote a server offers, and no remote.<URL>.* setting (Git
+    applies those to the URL itself: its upload-pack, helper, promisor,
+    filter or proxy), which returns None.
     """
     if not narrowable(url, os.environ):
         return None
-    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
-    def run(*args):
-        result = subprocess.run(['git', '-C', str(repo), 'ls-remote', *args], env=env, stdin=subprocess.DEVNULL,
-                                capture_output=True, text=True, timeout=60)
+    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_NO_LAZY_FETCH': '1'}
+    def run(*args, timeout=60):
+        result = subprocess.run(['git', '-C', str(repo), *args], env=env, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=timeout)
         return result.stdout if result.returncode == 0 else None
     try:
-        if run('--get-url', url) != url + '\n':
+        keys = run('config', '--null', '--name-only', '--list')
+        if keys is None or any(k.partition('.')[0].lower() == 'remote' and k.partition('.')[2].rpartition('.')[0] == url
+                               for k in keys.split('\0')):
             return None
-        listed = run('--refs', url, 'refs/heads/main')
+        if run('ls-remote', '--get-url', url) != url + '\n':
+            return None
+        listed = run('ls-remote', '--refs', url, 'refs/heads/main')
+        mains = [line.split('\t')[0] for line in (listed or '').splitlines() if line.endswith('\trefs/heads/main')]
+        if len(mains) != 1 or not re.fullmatch(r'[0-9a-f]{40}', mains[0]):
+            return None
+        if run('cat-file', '-e', mains[0] + '^{commit}') is None and run(
+                '-c', 'fetch.bundleURI=', '-c', 'transfer.bundleURI=false', '-c', 'promisor.acceptFromServer=None',
+                'fetch', '--quiet', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head',
+                '--no-auto-maintenance', '--no-filter', url, 'refs/heads/main', timeout=300) is None:
+            return None
     except (OSError, subprocess.SubprocessError, UnicodeError):
-        return None
-    mains = [line.split('\t')[0] for line in (listed or '').splitlines() if line.endswith('\trefs/heads/main')]
-    if len(mains) != 1 or not re.fullmatch(r'[0-9a-f]{40}', mains[0]):
         return None
     return mains[0]
 
