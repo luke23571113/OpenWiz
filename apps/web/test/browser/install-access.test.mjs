@@ -57,7 +57,7 @@ test('IF7: setup guides each authenticated route and recovery without activating
         await page.screenshot({ path: join(RESULTS_DIR, `install-access-${name}.png`), fullPage: true });
         await route.selectOption('tailscale');
         assert.match(await access.innerText(), /Tailscale account/);
-        assert.match(await access.innerText(), /phone and engine host/);
+        assert.match(await access.innerText(), /phone and the host running OpenWiz/);
         assert.match(await access.innerText(), /owner-only/);
         assert.match(await access.innerText(), /Funnel/);
         assert.match(await access.innerText(), /HTTPS/);
@@ -236,7 +236,7 @@ test('IF7: real setup reads provider results; denied writes and reconnect/restar
         assert.equal(verified.value.operation.operation_id, operation);
         await page.getByRole('button', { name: 'Refresh', exact: true }).click();
         await waitFor(async () => (await page.locator('[data-setup-component="remote_access"] .setup-state').innerText()) === 'verified');
-        assert.equal((await read()).ready, false, 'phone verification cannot authorize an engine');
+        assert.equal((await read()).ready, false, 'phone verification cannot make the factory ready');
         // Each old HTTP guard remains effective behind the authenticated route.
         for (const override of [{ Origin: 'https://foreign.invalid' }, { 'X-OpenWiz-Send': '' }, { 'Content-Type': 'text/plain' }, { Host: 'foreign.invalid' }]) {
           const response = await ask(host.port, '/api/v1/sessions/thr_syn_0001/messages', { method: 'POST', headers: { ...headers, ...override }, body });
