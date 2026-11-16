@@ -57,7 +57,7 @@ REASONS = {
     'credits': 'Credits unavailable: credits.jsonl on the board branch is missing, unreadable or invalid; '
                'prerequisite: the CloudRoom credit sampler appending valid samples (board.py sample).',
     'ci_bench': 'CI bench retired (#827): its daily publish no longer runs, so no point is read; '
-                'PRs an hour against the baseline comes from the collector snapshot (Fig. 10).',
+                'PRs an hour against the baseline is drawn from a collector snapshot (charts/build.py --snapshot).',
     'activity': 'Current CI and throughput unavailable: the read-only gh reads of ci.yml runs/jobs and merged PRs failed; '
                 'prerequisite: gh with actions, issues and pull-requests read access (WR8 activity.project).',
     'journey': 'Ticket journeys unavailable: journey.py collect over the merged cohort failed or found no cohort; '
@@ -334,55 +334,15 @@ def stage_evidence(repo, tickets, clock):
     return ((json.dumps(doc, indent=2) + '\n').encode(), (json.dumps(stages, indent=2) + '\n').encode())
 
 
-def daily_snapshot(saved, repo, clock):
-    """The page's collector snapshot (#827): the one the war-room branch saved this UTC day, else a new one.
-
-    Only the day's first publish pays the collector's reads. A saved snapshot of another day or
-    repository, or one the chart build would refuse, is never reused."""
-    if saved is not None and publish.SNAPSHOT in saved[0]:
-        try:
-            raw = saved[0][publish.SNAPSHOT]()
-            doc = suite._decode(raw.decode('utf-8'))
-            if doc['repository'] == repo and utc(doc['collected_at']).date() == utc(clock()).date():
-                with tempfile.TemporaryDirectory(prefix='war-room-snapshot-') as tmp:
-                    (Path(tmp) / 'snapshot.json').write_bytes(raw)
-                    sources.native('tools/war-room/charts/build.py').prs_per_hour.read(Path(tmp) / 'snapshot.json',
-                                                                                        clock())
-                return raw
-        except (OSError, ValueError, TypeError, KeyError, UnicodeError):
-            pass
-    return (json.dumps(page_snapshot(repo, clock=clock), indent=1, sort_keys=True) + '\n').encode()
-
-
-LEAN = 'Not read for the page (#827): the hourly publish reads only PRs an hour, the one fact its chart draws.'
-
-
-def page_snapshot(repository, *, clock=now):
-    """The page's snapshot (#827): `snapshot`'s form, but only PRs an hour is read; every other
-    fact is unavailable with its reason, so the publish adds one collector read, never all of them."""
-    since, until = collect_factory.window(None, None, clock())
-    factory = collect_factory.read(repository, ['prs_per_hour'], since=since, until=until, clock=clock)['factory']
-    factory = {name: factory.get(name) or collect_factory.unavailable(name, LEAN) for name in collect_factory.FACTS}
-    ci = {name: collect_factory.unavailable(name, LEAN) for name in collect_factory.SCHEMA['x-facts']['ci']}
-    ends = [f['read']['ended_at'] for f in factory.values() if f['read']]
-    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repository, 'collected_at': max([clock(), *ends]),
-           'factory': factory, 'ci': ci}
-    scan_bytes(json.dumps(doc, sort_keys=True).encode())
-    return doc
-
-
 def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None,
-           stage=None, data_remote=None, collector=False):
+           stage=None, data_remote=None):
     """Write out/root and out/selection.json, or raise Fail and select nothing.
 
     `data_remote` (WRD4) is the repository holding the board data branch, when it
     is not on `remote`; its commit evidence then links it.
 
     `stage` is an existing directory holding TL2's journeys.json and stage-waits.json;
-    without it they are collected for the open approved and merged cohort tickets.
-
-    With `collector` (#827), the root also holds the collector snapshot the page's PRs-an-hour
-    chart reads (publish.SNAPSHOT), outside the selection."""
+    without it they are collected for the open approved and merged cohort tickets."""
     out = Path(out)
     suite.require(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) is not None, 'invalid repository')
     suite.require(sources.LINK.fullmatch(run_url) is not None, 'invalid run link')
@@ -565,8 +525,6 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         elif answer_time is None:
             root.projected(wr5.unavailable(), ended)
 
-        if collector:  # the line that hands the collector snapshot to the page (#827)
-            root.write(publish.SNAPSHOT, daily_snapshot(branch(work, remote, publish.BRANCH), repo, clock))
         scan(staging)
         out.mkdir(parents=True)
         shutil.copytree(staging, out / 'root')
@@ -610,7 +568,7 @@ def main(argv):
     try:
         selection = gather(a.out, remote=a.remote, repo=a.repo, run_url=a.run_url, pools=tuple(a.pool or POOLS),
                            journeys=a.journeys, cohort=a.cohort, answer_time=a.answer_time, stage=a.stage,
-                           data_remote=a.data_remote, collector=True)
+                           data_remote=a.data_remote)
     except (Fail, ValueError, OSError, UnicodeError, RecursionError) as e:
         # Only the reason class: a source error can carry a private value.
         print('war-room gather: %s; nothing selected' % (e if isinstance(e, Fail) else type(e).__name__), file=sys.stderr)

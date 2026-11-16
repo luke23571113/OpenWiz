@@ -24,8 +24,8 @@ jobs:
     if: github.event_name == 'pull_request'
     # GitHub-hosted on purpose, never vars.CI_RUNS_ON: the charge shows in GitHub's own billing.
     runs-on: ubuntu-24.04
-    # #827: 10 before it took the CI bench workflow's tests; set from a measured run.
-    timeout-minutes: 20
+    # #827: about 6 minutes measured on a runner with the CI bench workflow's tests; twice that.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,16 +80,3 @@ jobs:
           python3 -I tools/war-room/test_journey.py
           python3 -I tools/war-room/test_limits.py
           python3 -I tools/war-room/test_experiment_contract.py
-      - name: TEMPORARY timing for #827 (removed before hand-back: the page's PRs-an-hour read on a runner)
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cd tools/war-room
-          python3 -I -c "
-          import json, sys, time; sys.path.insert(0, '.'); import gather
-          t = time.monotonic(); d = gather.page_snapshot(sys.argv[1]); s = time.monotonic() - t
-          f = d['factory']['prs_per_hour']
-          print('page_snapshot seconds %.1f state %s code_runs %s' % (s, f['state'], (f['value'] or {}).get('code_runs')))
-          " "${{ github.repository }}"

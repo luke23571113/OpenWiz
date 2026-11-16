@@ -766,45 +766,6 @@ class PrsPerHour(unittest.TestCase):
         meta = html[html.index('<p class="meta">', start):html.index('</p>', html.index('<p class="meta">', start))]
         self.assertIn('prs per hour · no completed window read · coverage 0 of 4', meta)
 
-    def test_the_published_page_draws_it_from_the_gathered_snapshot(self):
-        # catches (#827): the published page without the PRs-an-hour chart because no snapshot
-        # reaches its chart build, or every hourly publish of a UTC day reading the collector again.
-        from unittest.mock import patch
-        import test_gather
-        case = test_gather.Gather()
-        case.setUp()
-        try:
-            doc = snapshot()
-            doc['repository'], doc['collected_at'] = test_gather.REPO, '2030-01-02T06:00:00Z'  # same UTC day
-            saved = json.dumps(doc, indent=1, sort_keys=True) + '\n'
-            case.branch('war-room', '2030-01-02T06:05:00Z', {'collector/snapshot.json': saved})
-            gather = test_gather.gatherer()
-            with patch.object(gather, 'page_snapshot', side_effect=AssertionError('the collector read again')):
-                root, _ = case.gather(collector=True)
-            self.assertEqual((root / 'collector' / 'snapshot.json').read_text(encoding='utf-8'), saved)
-            case.publish(root, case.tmp / 'out' / 'selection.json')
-
-            def shown(name):
-                return subprocess.run(['git', '-C', str(case.origin), 'show', 'refs/heads/war-room:' + name],
-                                      check=True, capture_output=True, text=True).stdout
-            pages = ''.join(shown(name) for name in publish.SITE.values())
-            self.assertIn('id="figure-%s"' % HEADLINE, pages)
-            self.assertIn('2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC', pages)
-            self.assertIn('15.00 PRs an hour on 3 robots', pages)
-            # The branch keeps the snapshot, so the day's later publishes reuse it.
-            self.assertEqual(shown('collector/snapshot.json'), saved)
-            # Another day's saved snapshot is never reused: the collector is read once, afresh.
-            doc['collected_at'] = '2030-01-01T23:00:00Z'
-            case.branch('war-room', '2030-01-01T23:05:00Z', {'collector/snapshot.json': json.dumps(doc)})
-            fresh = dict(snapshot(), repository=test_gather.REPO, collected_at='2030-01-02T12:30:00Z')
-            with patch.object(gather, 'page_snapshot', return_value=fresh) as read:
-                root, _ = case.gather(out=case.tmp / 'next-day', collector=True)
-            read.assert_called_once()
-            self.assertEqual(json.loads((root / 'collector' / 'snapshot.json').read_text())['collected_at'],
-                             '2030-01-02T12:30:00Z')
-        finally:
-            case.doCleanups()
-
 
 if __name__ == '__main__':
     unittest.main()

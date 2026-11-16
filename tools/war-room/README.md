@@ -571,7 +571,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
 | --- | --- | --- |
 | Board | `history.jsonl` on `board`, checked by the board's own row validator. The latest row's six counts are **partial**, in the board's daily window (`[PST day start, min(commit, next PST day))`), each a level at the sample time. The startable percent and fed ratio need ticket identities from a `graph.json` of the same read, so without one they stay Unknown with that prerequisite | The `board` commit's time and link |
 | Credits | `credits.jsonl` on `board`, through WR2's native `credits` adapter | The `board` commit's time and link |
-| CI bench | Retired with the bench (#827): an explained missing slot. PRs an hour against the baseline comes from the collector snapshot (`collector/snapshot.json`, saved on `war-room` and reused for its UTC day) | None |
+| CI bench | Retired with the bench (#827): an explained missing slot. PRs an hour against the baseline is drawn from a collector snapshot by `charts/build.py --snapshot`; the hourly publish does not yet pass one (a gap of #827) | None |
 | Current activity | WR8's `activity.project` with the existing `bench.gh`, `metrics.collect_prs` and `metrics.graphql` readers. `ci.yml`'s whole run history is over the API's 1000-item limit, so its run list is read bounded (`gather.current_runs`): the active runs, one status at a time, and the completed runs created this UTC day, the only runs WR8 uses. Each listing keeps `bench.pages`' checks; a run listed twice or under another status refuses the CI counts. Its observation bytes are kept beside its provider. Pools default to `closedwiz-pc` and `ubuntu-24.04` | The read's end, and this run's link |
 | Ticket journeys, rework, cost | `journey.py`'s `collect` for the tickets closed by the merged cohort, then WR6 `rework.project` and WR4 `cost.project` (journeys and the CI point). The cohort is the PRs merged in the latest complete UTC hour that has a merged PR closing a ticket, looking back up to 6 hours | The read's end, and this run's link |
 | Answer time | WR5's own projection when one is supplied, otherwise `answer_time.unavailable()` and its exact prerequisites. No recorded-answer source exists yet | This run's link |
@@ -590,8 +590,8 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
   nothing is selected or published. The board graph's ticket text is used only
   in memory and never written. The publish's own scan of every published file is
   unchanged.
-- **Reads only.** `board`, and `war-room` for the day's saved collector snapshot, are fetched (depth 1) and never
-  pushed by the gather. The `gh` reads are GETs and fixed GraphQL queries. The publish job adds
+- **Reads only.** `board` is fetched (depth 1) and never
+  pushed. The `gh` reads are GETs and fixed GraphQL queries. The publish job adds
   `actions`, `issues` and `pull-requests` read scopes for them and still
   pushes only `refs/heads/war-room`. It stays on GitHub-hosted `ubuntu-24.04`,
   and its timeout cap rises from 10 to 15 minutes. No dependency, runner,
@@ -786,7 +786,7 @@ is any remote `git fetch` accepts (the caller authenticates git). It governs onl
 read-only, depth-1 fetches of `refs/heads/board` (`history.jsonl`, `credits.jsonl`,
 `graph.json`); nothing is pushed.
 Omitted, it defaults to `--remote`, so behaviour is unchanged. Given, `--remote` (still
-required) is read by the gather only for the saved collector snapshot on `war-room`. `--repo` keeps every `gh` read, run and pull-request
+required) is not read by the gather. `--repo` keeps every `gh` read, run and pull-request
 link and the board graph's `repo` check. The board, credits and CI-bench commit evidence
 links name `OWNER/REPO` when `URL` is exactly `https://github.com/OWNER/REPO` or
 `https://github.com/OWNER/REPO.git`, and `--repo` otherwise, as before.
