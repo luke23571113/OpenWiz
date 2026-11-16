@@ -13,6 +13,9 @@ use std::io::Write;
 
 use crate::response;
 
+#[path = "loop_export.rs"]
+mod loop_export;
+
 pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
   openwiz loop export --project <project> [--out <dir>] [--json]
   openwiz loop plan <path>... --project <project> [--adopt <id>=<loop>]... [--json]

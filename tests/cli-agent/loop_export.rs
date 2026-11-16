@@ -118,7 +118,11 @@ fn report(output: &Output, code: i32, def: &str) -> Value {
     )
     .unwrap();
     contract["$ref"] = json!(format!("#/$defs/{def}"));
-    assert_eq!(schema::validate(&contract, &doc), Vec::<String>::new(), "{doc}");
+    assert_eq!(
+        schema::validate(&contract, &doc),
+        Vec::<String>::new(),
+        "{doc}"
+    );
     assert_eq!(doc["exit_code"], code);
     doc
 }
@@ -260,7 +264,15 @@ fn export_writes_each_loop_of_the_project_complete_and_secret_free() {
     }
     for rel in tree(&room.dir().join("exported")) {
         let text = room.read(&format!("exported/{rel}"));
-        for never in ["loop_syn", "prj_syn", "thr_syn", "example.invalid", "enabled", "last_error", "runs"] {
+        for never in [
+            "loop_syn",
+            "prj_syn",
+            "thr_syn",
+            "example.invalid",
+            "enabled",
+            "last_error",
+            "runs",
+        ] {
             assert!(!text.contains(never), "{rel} holds {never}");
         }
     }
@@ -274,16 +286,36 @@ fn export_writes_each_loop_of_the_project_complete_and_secret_free() {
 #[test]
 fn export_never_replaces_a_file_with_other_bytes() {
     let room = Room::loops();
-    report(&room.export(&["--out", "exported", "--json"]), 0, "export_report");
-    let doc = report(&room.export(&["--out", "exported", "--json"]), 0, "export_report");
-    let results: Vec<&Value> = doc["loops"].as_array().unwrap().iter().map(|l| &l["result"]).collect();
+    report(
+        &room.export(&["--out", "exported", "--json"]),
+        0,
+        "export_report",
+    );
+    let doc = report(
+        &room.export(&["--out", "exported", "--json"]),
+        0,
+        "export_report",
+    );
+    let results: Vec<&Value> = doc["loops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| &l["result"])
+        .collect();
     assert_eq!(results, ["unchanged"; 5]);
-    assert_eq!(doc["loops"][0]["files"], json!(["syn-triage.md", "syn-triage/check"]));
+    assert_eq!(
+        doc["loops"][0]["files"],
+        json!(["syn-triage.md", "syn-triage/check"])
+    );
 
     let edited = "#!/bin/sh\n# edited by hand\nexit 0\n";
     fs::write(room.dir().join("exported/syn-triage/check"), edited).unwrap();
     fs::remove_file(room.dir().join("exported/syn-nightly.md")).unwrap();
-    let doc = report(&room.export(&["--out", "exported", "--json"]), 5, "export_report");
+    let doc = report(
+        &room.export(&["--out", "exported", "--json"]),
+        5,
+        "export_report",
+    );
     assert_eq!(
         doc["loops"][0],
         json!({"loop": "loop_syn_1", "id": "syn-triage", "result": "refused", "files": [],
@@ -337,69 +369,317 @@ fn refused(loop_: &str, id: Value, file: &str, refusals: &[(&str, &str, &str)]) 
 fn export_reports_each_loop_it_cannot_represent_and_writes_the_rest() {
     let cases: Vec<(Value, Value)> = vec![
         // Two loops carry one marker: both refused.
-        (item("loop_a1", "Twin one [wizloop:twin]", json!({})),
-         refused("loop_a1", json!("twin"), "Twin one [wizloop:twin]",
-                 &[("cf-duplicate-marker", "id", "two Cloudroom loops in this project carry [wizloop:twin]")])),
-        (item("loop_a2", "Twin two [wizloop:twin]", json!({})),
-         refused("loop_a2", json!("twin"), "Twin two [wizloop:twin]",
-                 &[("cf-duplicate-marker", "id", "two Cloudroom loops in this project carry [wizloop:twin]")])),
+        (
+            item("loop_a1", "Twin one [wizloop:twin]", json!({})),
+            refused(
+                "loop_a1",
+                json!("twin"),
+                "Twin one [wizloop:twin]",
+                &[(
+                    "cf-duplicate-marker",
+                    "id",
+                    "two Cloudroom loops in this project carry [wizloop:twin]",
+                )],
+            ),
+        ),
+        (
+            item("loop_a2", "Twin two [wizloop:twin]", json!({})),
+            refused(
+                "loop_a2",
+                json!("twin"),
+                "Twin two [wizloop:twin]",
+                &[(
+                    "cf-duplicate-marker",
+                    "id",
+                    "two Cloudroom loops in this project carry [wizloop:twin]",
+                )],
+            ),
+        ),
         // Two unmarked loops derive one id: both refused.
-        (item("loop_b1", "Same Name!", json!({})),
-         refused("loop_b1", Value::Null, "Same Name!",
-                 &[("cf-export-id", "id", "another unmarked loop in this project derives the same id")])),
-        (item("loop_b2", "same  name", json!({})),
-         refused("loop_b2", Value::Null, "same  name",
-                 &[("cf-export-id", "id", "another unmarked loop in this project derives the same id")])),
-        (item("loop_c", "No trigger [wizloop:no-trigger]", json!({"cron": null})),
-         refused("loop_c", json!("no-trigger"), "No trigger [wizloop:no-trigger]",
-                 &[("cf-export-trigger", "trigger", "the loop has no cron, run time or webhook")])),
-        (item("loop_d", "Odd preamble [wizloop:odd-preamble]", json!({"script":
-            "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO=\"x\"\n# wizloop: the check\necho \"$WIZLOOP_PARAM_REPO\"\n"})),
-         refused("loop_d", json!("odd-preamble"), "Odd preamble [wizloop:odd-preamble]",
-                 &[("cf-export-preamble", "check", "the script's params preamble is not one this adapter writes")])),
-        (item("loop_e", "Same with secrets [wizloop:same-secrets]", json!({"new_thread": false, "secrets": ["SYNTHETIC_TOKEN"]})),
-         refused("loop_e", json!("same-secrets"), "Same with secrets [wizloop:same-secrets]",
-                 &[("cf-export-invalid", "secrets", "would be refused by the format as same-thread-secrets")])),
-        (item("loop_f", "Braces [wizloop:braces]", json!({"prompt": "Synthetic: print {{ .title }}."})),
-         refused("loop_f", json!("braces"), "Braces [wizloop:braces]",
-                 &[("cf-export-invalid", "body", "would be refused by the format as bad-placeholder")])),
-        (item("loop_g", &format!("{} [wizloop:long-name]", "n".repeat(101)), json!({})),
-         refused("loop_g", json!("long-name"), &format!("{} [wizloop:long-name]", "n".repeat(101)),
-                 &[("cf-export-invalid", "name", "would be refused by the format as bad-name")])),
-        (item("loop_h", "Spaced agent [wizloop:spaced-agent]", json!({"agent": {"provider": "synthetic-provider", "model": "synthetic model", "reasoning": "medium"}})),
-         refused("loop_h", json!("spaced-agent"), "Spaced agent [wizloop:spaced-agent]",
-                 &[("cf-export-invalid", "agent.model", "would be refused by the format as bad-agent")])),
-        (item("loop_i", "Unset param [wizloop:unset-param]", json!({"script": "#!/bin/sh\necho \"$WIZLOOP_PARAM_REPO\"\n"})),
-         refused("loop_i", json!("unset-param"), "Unset param [wizloop:unset-param]",
-                 &[("cf-export-invalid", "check", "would be refused by the format as undeclared-param")])),
-        (item("loop_j", "Placeholder in check [wizloop:check-placeholder]", json!({"script": "#!/bin/sh\necho {{repo}}\n"})),
-         refused("loop_j", json!("check-placeholder"), "Placeholder in check [wizloop:check-placeholder]",
-                 &[("cf-export-invalid", "check", "would be refused by the format as param-in-check")])),
-        (item("loop_k", "Too low [wizloop:too-low]", json!({"priority": 0})),
-         refused("loop_k", json!("too-low"), "Too low [wizloop:too-low]",
-                 &[("cf-export-invalid", "priority", "would be refused by the format as bad-priority")])),
-        (item("loop_l", "Bad secret [wizloop:bad-secret]", json!({"secrets": ["lower_case"]})),
-         refused("loop_l", json!("bad-secret"), "Bad secret [wizloop:bad-secret]",
-                 &[("cf-export-invalid", "secrets", "would be refused by the format as bad-secret")])),
-        (item("loop_m", "Carriage return [wizloop:carriage]", json!({"prompt": "Synthetic:\r\na note."})),
-         refused("loop_m", json!("carriage"), "Carriage return [wizloop:carriage]",
-                 &[("cf-export-invalid", "file", "would be refused by the format as encoding")])),
-        (item("loop_n", "Bad cron [wizloop:bad-cron]", json!({"cron": "0 9 * * MON"})),
-         refused("loop_n", json!("bad-cron"), "Bad cron [wizloop:bad-cron]",
-                 &[("cf-export-invalid", "trigger.cron", "would be refused by the format as bad-cron")])),
-        (item("loop_o", "Two triggers [wizloop:two-triggers]", json!({"webhook": true})),
-         refused("loop_o", json!("two-triggers"), "Two triggers [wizloop:two-triggers]",
-                 &[("cf-export-invalid", "trigger", "would be refused by the format as trigger-kind")])),
-        (item("loop_p", "!!!", json!({})),
-         refused("loop_p", Value::Null, "!!!",
-                 &[("cf-export-invalid", "id", "would be refused by the format as bad-id")])),
-        (item("loop_q", "New setting [wizloop:new-setting]", json!({"max_runs": 5})),
-         refused("loop_q", json!("new-setting"), "New setting [wizloop:new-setting]",
-                 &[("export-unknown-key", "max_runs", "Cloudroom returned max_runs, which the adapter does not map; nothing was written for this loop")])),
+        (
+            item("loop_b1", "Same Name!", json!({})),
+            refused(
+                "loop_b1",
+                Value::Null,
+                "Same Name!",
+                &[(
+                    "cf-export-id",
+                    "id",
+                    "another unmarked loop in this project derives the same id",
+                )],
+            ),
+        ),
+        (
+            item("loop_b2", "same  name", json!({})),
+            refused(
+                "loop_b2",
+                Value::Null,
+                "same  name",
+                &[(
+                    "cf-export-id",
+                    "id",
+                    "another unmarked loop in this project derives the same id",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_c",
+                "No trigger [wizloop:no-trigger]",
+                json!({"cron": null}),
+            ),
+            refused(
+                "loop_c",
+                json!("no-trigger"),
+                "No trigger [wizloop:no-trigger]",
+                &[(
+                    "cf-export-trigger",
+                    "trigger",
+                    "the loop has no cron, run time or webhook",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_d",
+                "Odd preamble [wizloop:odd-preamble]",
+                json!({"script":
+            "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO=\"x\"\n# wizloop: the check\necho \"$WIZLOOP_PARAM_REPO\"\n"}),
+            ),
+            refused(
+                "loop_d",
+                json!("odd-preamble"),
+                "Odd preamble [wizloop:odd-preamble]",
+                &[(
+                    "cf-export-preamble",
+                    "check",
+                    "the script's params preamble is not one this adapter writes",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_e",
+                "Same with secrets [wizloop:same-secrets]",
+                json!({"new_thread": false, "secrets": ["SYNTHETIC_TOKEN"]}),
+            ),
+            refused(
+                "loop_e",
+                json!("same-secrets"),
+                "Same with secrets [wizloop:same-secrets]",
+                &[(
+                    "cf-export-invalid",
+                    "secrets",
+                    "would be refused by the format as same-thread-secrets",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_f",
+                "Braces [wizloop:braces]",
+                json!({"prompt": "Synthetic: print {{ .title }}."}),
+            ),
+            refused(
+                "loop_f",
+                json!("braces"),
+                "Braces [wizloop:braces]",
+                &[(
+                    "cf-export-invalid",
+                    "body",
+                    "would be refused by the format as bad-placeholder",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_g",
+                &format!("{} [wizloop:long-name]", "n".repeat(101)),
+                json!({}),
+            ),
+            refused(
+                "loop_g",
+                json!("long-name"),
+                &format!("{} [wizloop:long-name]", "n".repeat(101)),
+                &[(
+                    "cf-export-invalid",
+                    "name",
+                    "would be refused by the format as bad-name",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_h",
+                "Spaced agent [wizloop:spaced-agent]",
+                json!({"agent": {"provider": "synthetic-provider", "model": "synthetic model", "reasoning": "medium"}}),
+            ),
+            refused(
+                "loop_h",
+                json!("spaced-agent"),
+                "Spaced agent [wizloop:spaced-agent]",
+                &[(
+                    "cf-export-invalid",
+                    "agent.model",
+                    "would be refused by the format as bad-agent",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_i",
+                "Unset param [wizloop:unset-param]",
+                json!({"script": "#!/bin/sh\necho \"$WIZLOOP_PARAM_REPO\"\n"}),
+            ),
+            refused(
+                "loop_i",
+                json!("unset-param"),
+                "Unset param [wizloop:unset-param]",
+                &[(
+                    "cf-export-invalid",
+                    "check",
+                    "would be refused by the format as undeclared-param",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_j",
+                "Placeholder in check [wizloop:check-placeholder]",
+                json!({"script": "#!/bin/sh\necho {{repo}}\n"}),
+            ),
+            refused(
+                "loop_j",
+                json!("check-placeholder"),
+                "Placeholder in check [wizloop:check-placeholder]",
+                &[(
+                    "cf-export-invalid",
+                    "check",
+                    "would be refused by the format as param-in-check",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_k",
+                "Too low [wizloop:too-low]",
+                json!({"priority": 0}),
+            ),
+            refused(
+                "loop_k",
+                json!("too-low"),
+                "Too low [wizloop:too-low]",
+                &[(
+                    "cf-export-invalid",
+                    "priority",
+                    "would be refused by the format as bad-priority",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_l",
+                "Bad secret [wizloop:bad-secret]",
+                json!({"secrets": ["lower_case"]}),
+            ),
+            refused(
+                "loop_l",
+                json!("bad-secret"),
+                "Bad secret [wizloop:bad-secret]",
+                &[(
+                    "cf-export-invalid",
+                    "secrets",
+                    "would be refused by the format as bad-secret",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_m",
+                "Carriage return [wizloop:carriage]",
+                json!({"prompt": "Synthetic:\r\na note."}),
+            ),
+            refused(
+                "loop_m",
+                json!("carriage"),
+                "Carriage return [wizloop:carriage]",
+                &[(
+                    "cf-export-invalid",
+                    "file",
+                    "would be refused by the format as encoding",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_n",
+                "Bad cron [wizloop:bad-cron]",
+                json!({"cron": "0 9 * * MON"}),
+            ),
+            refused(
+                "loop_n",
+                json!("bad-cron"),
+                "Bad cron [wizloop:bad-cron]",
+                &[(
+                    "cf-export-invalid",
+                    "trigger.cron",
+                    "would be refused by the format as bad-cron",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_o",
+                "Two triggers [wizloop:two-triggers]",
+                json!({"webhook": true}),
+            ),
+            refused(
+                "loop_o",
+                json!("two-triggers"),
+                "Two triggers [wizloop:two-triggers]",
+                &[(
+                    "cf-export-invalid",
+                    "trigger",
+                    "would be refused by the format as trigger-kind",
+                )],
+            ),
+        ),
+        (
+            item("loop_p", "!!!", json!({})),
+            refused(
+                "loop_p",
+                Value::Null,
+                "!!!",
+                &[(
+                    "cf-export-invalid",
+                    "id",
+                    "would be refused by the format as bad-id",
+                )],
+            ),
+        ),
+        (
+            item(
+                "loop_q",
+                "New setting [wizloop:new-setting]",
+                json!({"max_runs": 5}),
+            ),
+            refused(
+                "loop_q",
+                json!("new-setting"),
+                "New setting [wizloop:new-setting]",
+                &[(
+                    "export-unknown-key",
+                    "max_runs",
+                    "Cloudroom returned max_runs, which the adapter does not map; nothing was written for this loop",
+                )],
+            ),
+        ),
         // A good loop among them is still written.
-        (item("loop_z", "Still written [wizloop:still-written]", json!({})),
-         json!({"loop": "loop_z", "id": "still-written", "result": "written", "files": ["still-written.md"],
-                "binding": null, "refusals": []})),
+        (
+            item("loop_z", "Still written [wizloop:still-written]", json!({})),
+            json!({"loop": "loop_z", "id": "still-written", "result": "written", "files": ["still-written.md"],
+                "binding": null, "refusals": []}),
+        ),
     ];
     let room = Room::listing(Value::Array(cases.iter().map(|(i, _)| i.clone()).collect()));
     let doc = report(&room.export(&["--json"]), 5, "export_report");
@@ -433,14 +713,22 @@ fn export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks() {
     let cron_check = "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REPO='example-org/example-repo'\n# wizloop: the check\n# Prints one line per due item in $WIZLOOP_PARAM_REPO; nothing when none is due.\nif [ -f due.txt ]; then cat due.txt; fi\nexit 0\n";
     let params_env = "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_REF='release/\";printf${IFS}WAKE;false${IFS}\"'\nexport WIZLOOP_PARAM_REPO='example-org/example-repo'\nexport WIZLOOP_PARAM_SPEC=7\nexport WIZLOOP_PARAM_TITLE='it'\\''s $(touch marker) `touch marker`'\n# wizloop: the check\n# Reads its params from the environment as data and prints nothing, so no\n# agent starts: $WIZLOOP_PARAM_REPO, $WIZLOOP_PARAM_REF, $WIZLOOP_PARAM_TITLE\n# and $WIZLOOP_PARAM_SPEC.\nexit 0\n";
     let room = Room::listing(json!([
-        item("loop_cc", "Example triage every ten minutes [wizloop:cron-check]", json!({
+        item(
+            "loop_cc",
+            "Example triage every ten minutes [wizloop:cron-check]",
+            json!({
             "cron": "*/10 * * * *", "script": cron_check,
             "agent": {"provider": "example-provider", "model": "example-model", "reasoning": "medium"},
             "secrets": ["EXAMPLE_TOKEN", ".env"], "priority": 2,
-            "prompt": "Triage the due items for spec 42 that the check printed below.\n"})),
-        item("loop_pe", "Params reach the check as data [wizloop:params-env]", json!({
+            "prompt": "Triage the due items for spec 42 that the check printed below.\n"})
+        ),
+        item(
+            "loop_pe",
+            "Params reach the check as data [wizloop:params-env]",
+            json!({
             "cron": "30 6 * * *", "script": params_env,
-            "prompt": "Report the check's output for spec 7 in example-org/example-repo.\n"})),
+            "prompt": "Report the check's output for spec 7 in example-org/example-repo.\n"})
+        ),
     ]));
     let doc = report(&room.export(&["--out", "x", "--json"]), 0, "export_report");
     for (n, id, carried) in [
@@ -453,7 +741,8 @@ fn export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks() {
             fs::read_to_string(fixtures.join(format!("valid/{id}/check.sh"))).unwrap(),
             "{id}"
         );
-        let parsed = &expected["valid/".to_owned() + id + ".md"]["parsed"];
+        let parsed = &expected["fixtures"][format!("valid/{id}.md")]["parsed"];
+        assert!(parsed.is_object(), "{id}");
         let mut params = serde_json::Map::new();
         for name in carried {
             params.insert((*name).to_owned(), parsed["params"][name].clone());
@@ -463,13 +752,21 @@ fn export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks() {
             .lines()
             .find_map(|l| l.strip_prefix("params: "))
             .unwrap_or_else(|| panic!("{id} has no params line"));
-        assert_eq!(serde_json::from_str::<Value>(line).unwrap(), Value::Object(params), "{id}");
+        assert_eq!(
+            serde_json::from_str::<Value>(line).unwrap(),
+            Value::Object(params),
+            "{id}"
+        );
         for key in ["id", "name", "trigger", "thread", "secrets", "priority"] {
             let line = file
                 .lines()
                 .find_map(|l| l.strip_prefix(&format!("{key}: ")))
                 .unwrap_or_else(|| panic!("{id} has no {key}"));
-            assert_eq!(serde_json::from_str::<Value>(line).unwrap(), parsed[key], "{id} {key}");
+            assert_eq!(
+                serde_json::from_str::<Value>(line).unwrap(),
+                parsed[key],
+                "{id} {key}"
+            );
         }
     }
 }
