@@ -115,3 +115,22 @@ Run the added workflow-boundary proofs with `python3 -I ci/select/test_steps.py`
 They execute the actual workflow dispatch and action validation script using
 fake commands only. X5 (#1262) can consume the named requirements and the skill
 dispatcher when moving these existing steps into lanes.
+
+## The deliberate proof (#783, CI3 C5)
+
+One PR hid a real change from the selector, and CI went red on the test that
+catches it.
+
+- **The edit:** `tools/install/setup/setup.py` binds each setup check's
+  observations to `bound + 1` instead of `bound`, so every component reads
+  `unknown`. Only the map reaches this file: no skill or tools suite and no
+  folder rule runs `tools/install`, and the always-run `rust:test:checks`
+  doesn't read it. The map picks `web:browser:install-access` and
+  `web:browser:install-connections`, and the second catches it.
+- **The PR:** PENDING_PR, opened ready (a draft gets no plan) right after a
+  nightly map signing, changing only that line. It was closed unmerged, with no
+  review and no queue.
+- **The red run:** PENDING_RUN. Its `changes` log says `CI selection: selected`
+  and plans `web:browser:install-connections`, which failed.
+- **The case:** the last row of `CASES` in [`planted.py`](planted.py) plants the
+  same edit offline, so the proof keeps holding after the PR closed.
