@@ -26,71 +26,93 @@ ADR 0016 supplies throwaway-only writes and phone emulation. Keep the existing
 AC6 scratch fleet's approval, targets, state and counts. Do not reuse a real
 orchestrator, start another scheduler or run a manual tick beside the service.
 
+## The standard sheet: SHIP-3's scope (#772)
+
+`combined.template.json` is cut to exactly what the first public release's
+live smoke checks (SHIP-3, Jake, 2026-11-15; private record ClosedWiz #325,
+comment 6902037613). It declares `"claims": ["install", "json", "send", "new"]`
+and has these ten steps, nothing else:
+
+| Claim | Steps | What they check |
+| --- | --- | --- |
+| `install` | `install_status` | The build the normal route (`tools/install/install install`) selected: `install status` reports `installed`, the `packaged` channel and the candidate's version, source, target and build |
+| `json` | `catalogue`, `inventory`, `show` | `openwiz help --agent` is the accepted catalogue; `openwiz ls --json` is a complete inventory; `openwiz show <throwaway> --json` reads that session |
+| `send` | `send_preview`, `send_once`, `send_lookup` | One message to one throwaway thread, previewed, sent once and read back by its op id |
+| `new` | `new_preview`, `new_once`, `new_status` | One new Cloud thread in one throwaway project, previewed, created once and read back by its op id |
+
+A receipt from this kit covers only these steps. Anything a version's notes
+claim beyond them (the fleet, the service, Cockpit, Loops, Decisions, the
+phone reply, the terminal app, App permissions, read safety controls) is
+**not** live-tested by it; the kit's `release.coverage` names promises only for
+these steps, and its `release.gaps` lists the rest.
+
+The runner keeps its general capabilities (the fleet-tick restriction, the
+reviewed browser/cleanup probes) for kits without a `claims` declaration, which
+mean #1844's full combined set. The sections below on those describe the runner,
+not this sheet.
+
 ## Prepare once, offline
 
-The Local PC agent supplies the existing kit's private inputs, **outside Git**,
-under an owner-only run directory. `combined.template.json` is the standard run
-sheet. `prepare.py` replaces an entire JSON string `@name` with that named input
-value (including arrays/objects). No shell expansion or string interpolation.
-Missing inputs refuse. The agent checks the bound argv, scope, exact comparisons
-and write counts against its existing version-level standing OK, then records
-the printed kit digest with that approval. This is the digest of canonical JSON,
-not the digest of the pretty-printed file.
+The install happens first, through the normal route, into throwaway
+`--root`/`--state-root` folders from the candidate's verified packages; the kit
+then pins that build's `openwiz` (`<build>/openwiz`) by its candidate hash.
+The Local PC agent supplies the kit's private inputs, **outside Git**, under an
+owner-only run directory. `inputs.py` assembles them: each `--records` file is
+an owner-only JSON object of named values copied from the existing private
+records; records merge, and one name with two different values refuses
+(`conflicting_record`). It writes one new owner-only inputs file outside any Git
+checkout and prints only counts. `prepare.py` replaces an entire JSON string
+`@name` with that named input value (including arrays/objects). No shell
+expansion or string interpolation. It reads the inputs file only by an absolute
+path, owner-only (mode 0600 or tighter, `inputs_not_owner_only`) and outside
+any checkout as the OS resolves the path, symlinked folders before any `..` (`inside_checkout`, also for the kit); a `..` past the deepest existing folder refuses (`unsafe_path`). A missing or unused input
+name refuses and prints only the names (`missing_input`, `unused_input`); a
+GitHub token or private key anywhere in the inputs refuses
+(`credential_in_inputs`). It prints the kit digest and the `release.scope`
+digest the sealed candidate must carry (`scope_sha256`). The agent checks the
+bound argv, scope, exact comparisons and write counts against its existing
+version-level standing OK, then records the printed kit digest with that
+approval. This is the digest of canonical JSON, not the digest of the
+pretty-printed file.
 
 ```sh
 umask 077
+python3 -I tools/live-smoke/inputs.py --records /private/records/a.json --records /private/records/b.json --out /private/run/inputs.json
 python3 -I tools/live-smoke/prepare.py --inputs /private/run/inputs.json --out /private/run/kit.json
-python3 -I tools/live-smoke/smoke.py --kit /private/run/kit.json --state /private/run/checkpoint --dry-run
+python3 -I tools/live-smoke/smoke.py --kit /private/run/kit.json --state /private/run/checkpoint --dry-run --candidate /private/run/candidate.json
 ```
 
-`--dry-run` validates the whole sheet, pinned files and source checkout. It runs
-no product/probe command or API and creates no checkpoint; live-mode provenance
-verification uses local read-only Git commands. Every claim is `not_run`; the
-output is a structure-only plan report. Preparation refuses to overwrite a kit.
-Never put tokens in inputs/kit or argv: use the PC process environment. In
-particular `OPENWIZ_SMOKE_APP_TOKEN` must hold the verified installation token
-for the controlled tick. App/fleet steps select it by the non-secret `token_env`
-name, replace `GH_TOKEN`, and remove the alternative token. Missing means stop;
-there is no personal fallback. The #236 acceptance read retains normal read-only
-owner credentials; it is outside the scratch App installation. Token values
-in the kit environment are refused.
+`--dry-run` validates the whole sheet, pinned files and source checkout; with
+`--candidate` it also checks that candidate carries this kit and scope
+(`candidate_mismatch`). It runs no product/probe command or API and creates no
+checkpoint; live-mode provenance verification uses local read-only Git
+commands. Every declared claim is `not_run`; the output is a structure-only
+plan report. Preparation refuses to overwrite a kit. Never put tokens in
+inputs/kit or argv. This sheet has no App-permission step, so it needs no
+`OPENWIZ_SMOKE_APP_TOKEN`; token values in the kit environment are refused.
 
-Inputs, all resolved from the accepted PC kit rather than guessed:
+**Never 7370 (#772).** On the PC, 7370 is my.openwiz.dev's server. Any step
+that reaches 7370 (`--port 7370`, the HTTP probe's port, a browser config
+origin), the old `default_terminal_port` key, or a launch that falls back to the
+default port (bare `openwiz`, `openwiz ui` without `--port`, bare
+`openwiz-terminal`) refuses before any step (`reserved_port`).
+
+The 27 inputs, all from existing records, never guessed:
 
 | Binding | Source |
 | --- | --- |
 | `mode` | `live` on PC; `fixture` only for synthetic proof |
-| `scratch_checkout`, `env` | Existing approved throwaway checkout and stable absolute `OPENWIZ_STATE_DIR`, `OPENWIZ_ORCHESTRATOR_THREAD_ID`; isolate this kit's products from normal work |
-| `openwiz`, `service`, `room_cli`, `gh`, `python`, `node`, `pty_driver`, `http_probe`, `browser_probe`, `cleanup_probe` | Absolute prebuilt executables/script paths; `pty_driver` is `tests/terminal/pty_drive.py`, the HTTP/browser probes and `cleanup.py` are here |
-| `artifacts` | Object from **every** program/script/probe-input absolute path to its previously verified SHA-256, including CLI's fixed `openwiz-terminal` sibling, browser package/Chromium, and `smoke.py` and `restriction.py` themselves; never build during the run |
-| `source` | `{ "checkout": "/accepted/source", "head": "<40 hex>" }`; clean accepted source, independently matched to the prebuilt artifact provenance |
-| `port`, `control_thread`, `orchestrator_thread`, `send_thread`, `project` | Discovered local port and already approved throwaway/control destinations; port is an argv string. The no-argument TUI additionally requires port 7370 and matching socket-backed service status before any effect; otherwise incomplete |
-| `accepted_236_comments` | Recorded #236 acceptance comments, including W3 **unproven and accepted**, not an invented swarm improvement claim |
-| `service_checks` | JSON-pointer equality checks for current socket-backed service status, expected build/state/config and one tick runner; take field names from that installed binary's reviewed contract |
-| `app_repository_count`, `scratch_repository`, `outside_installation_route` | Exact installation scope and approved existing non-installed synthetic private test repository route; never use an owner's unrelated private repo as a negative target |
-| `scratch_branch`, `fleet_scope` | Reviewed AC6 action allowlist: `{specs: [1], tickets: [2,3,4], rules: ["frontier", ...], never_start: [4]}` with the actual approved numbers/rules. Every tick step needs it: it audits the preview before the plan is saved, and the run report after. The saved plan, not this audit, restricts recovery/replanning |
-| `fleet_progress_argv`, `fleet_progress_checks`, `fleet_ready_for_reply_checks` | Existing AC6 read-only collector: strict T1/T2 merges/closures/archives, current Needs you and safe scope. `until` stops at two merged with T3 awaiting reply, **before** spec closure |
-| `fleet_reply_browser`, `fleet_reply_dom`, `fleet_reply_readback_argv`, `fleet_reply_readback_checks`, `fleet_reply_delivered_checks` | Existing approved emulated-phone composer: exactly one `AC6: ok, continue.` to the test orchestrator, then independent exact-one delivery readback |
-| `t3_ticket` | Existing approved human T3, string issue number; `cleanup.py` separately unlabels and closes it once, with independent state readback after each write |
-| `fleet_readback_argv`, `fleet_readback_checks`, `fleet_complete_checks` | Final read-only collector: strict T1/T2 completion, T3 cleanup, summary delivery and spec closure. Invariant `checks` fail a known wrong fact; `until` describes unfinished progress. Closed issue state alone never proves an exact-head merge |
-| `expected_loops` | Independently worked rows from clean default-branch definitions, run/switch records: problem-first/name/id ordering, next run, last run and exact 24-hour cost; don't copy the response under test |
-| `cockpit_checks` | Independent inventory/project/fleet comparisons of the aggregate: all projects, exact active agent set/placements, Needs you order and honest unknowns/coverage/freshness; do not require obsolete blanket unknowns from older contract prose |
-| `expected_decisions` | Current saved wording/fingerprint at the grill PR/spec head and source comments, including ordinary explicit risk; resolved/superseded omitted, unknown/stale cannot authorize a reply |
-| `loops_browser`, `cockpit_browser`, `answer_browser`, `cockpit_dom`, `loops_dom`, `answer_dom` | Private browser probe config files and independently expected DOM observations, described below |
-| `answer_readback_argv`, `answer_readback_checks`, `answer_saved_checks` | Approved observer's read-only exact-one synthetic answer delivery and saved source-record readback; `answer_saved_checks` supplies `until` progress comparisons. Accepted delivery alone is not a saved answer |
-| `expected_catalogue_commands`, `capability_checks` | Accepted CLI catalogue and installed fixed-sibling capability; JSON success/errors must each be one document |
-| `terminal_steps`, `terminal_results`, `default_steps`, `default_results` | JSON-encoded PTY step arrays and exact boolean result arrays; follow the terminal kit below |
+| `cwd`, `env` | An owner-only working folder outside any checkout, and the stable absolute `OPENWIZ_STATE_DIR` of the throwaway install (`install_state`); isolate it from normal work |
+| `python`, `openwiz`, `install_entry` | Absolute programs: the runner's Python, the installed `<install_build>/openwiz`, and the clean checkout's `tools/install/install` |
+| `install_root`, `install_state`, `install_build` | The normal route's `--root` and `--state-root`, and the `build` its `install` printed |
+| `release_version`, `release_source`, `release_target` | The candidate's version, source commit and target, from its sealed body |
+| `artifacts` | Every program/script absolute path to its previously verified SHA-256: `openwiz` (the candidate's product hash), Python, `tools/install/install`, and `smoke.py` and `restriction.py` themselves; never build during the run |
+| `source` | `{ "checkout": "/accepted/source", "head": "<40 hex>" }`; clean accepted source, independently matched to the candidate |
+| `expected_catalogue_commands` | The accepted CLI catalogue's `commands`, from the candidate's source, not from the program under test |
+| `send_thread`, `project` | Already approved throwaway thread and throwaway project |
 | `send_op`, `new_op`, `harness`, `model`, `effort` | Fresh recorded operation ids and choices actually offered by cloud-options; never reuse an uncertain attempt |
 | `send_preview_checks`, `send_lookup_checks`, `new_preview_checks`, `new_status_checks` | Exact expected target/settings/effects and recorded acceptance/creation plus separately observed start; no paused-queue/duplicate acknowledgement implicit in this kit |
-| `release` | The kit's release section for candidate-bound receipts (below): its existing `scope`, the candidate `products` its pinned programs are, `coverage` and `risk` step lists, and known `gaps`. Inside the approved kit digest |
-
-The collector argv/check bindings reuse the prepared **existing PC AC6 kit**
-(PR #1765 explicitly says its exact startup/collector commands were not exported
-to main). They are data for this runner, not invented CLI subcommands. Hash-pin
-any collector/probe-input files too. If that approved kit, independent expected
-facts, App token binding/isolation or a necessary observed endpoint shape is
-missing, stop incomplete. Do not replace its collector with `true`, an echo of
-expected results, a product fixture, a rebuilt candidate or a self-comparison.
+| `release` | The release section for candidate-bound receipts (below): `scope` (`targets`, `writes` `{"send": 1, "new": 1}`, `app_permissions` `[]`, `spending_cents` 0), the candidate `products` its pinned programs are, `coverage` rows naming only these steps, `risk` step lists and `gaps` naming everything above that this kit does not check |
 
 ## Run and resume: the same one command
 
@@ -186,6 +208,8 @@ private paths, prompts and credentials never enter reports/checkpoints.
 
 ## Browser and terminal observations
 
+Runner capability for combined kits; the SHIP-3 sheet has no browser or terminal step.
+
 `browser.mjs` takes one pinned private JSON config: `checkout`, `chromium`,
 `origin` (`http://127.0.0.1:PORT/` only), `viewport` (desktop or 390x844 phone),
 `allowed_requests` (exact `[method, path]` pairs), `max_writes` (0 or 1), optional
@@ -215,7 +239,8 @@ Host/Origin emulation is recorded as a gap for real TLS/radios/WebKit.
 
 PTY input is the existing driver's JSON list (`wait`, `send`, `resize`), **no
 `sleep`**. Explicit `ui --port` visits Home, `s`, Enter/detail, Esc, `f`, detail,
-Esc, small/back resize, `q`; default no-argument entry visits Home and Ctrl-C.
+Esc, small/back resize, `q`. The default no-argument entry would reach 7370 and
+is not a kit step (above).
 Wait for actual named visible states with bounded timeouts; compare every step,
 exit 0 and `restored: true`. No typed send/new in these read-only PTY parts.
 The AC6 kit consumes its already approved one phone-composer reply, followed by
@@ -306,6 +331,7 @@ python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz 
 python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz --fake target/debug/fake-room-cli --case ready-preview
 python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz --fake target/debug/fake-room-cli --case queued-send
 python3 -I tools/live-smoke/test_review.py
+python3 -I tools/live-smoke/test_kit.py          # #772: declared claims, owner-only inputs, 7370 refusal
 python3 -I tools/live-smoke/test_receipt.py      # also registered in tools/release/test.py (CI)
 python3 -I tools/live-smoke/test_restriction.py  # #2216's; registered there too
 node --check tools/live-smoke/browser.mjs

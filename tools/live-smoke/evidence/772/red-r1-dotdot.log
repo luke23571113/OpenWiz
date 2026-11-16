@@ -1,0 +1,84 @@
+.FFFFFF
+======================================================================
+FAIL: test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs (__main__.Inputs.test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs) [inputs through alias-dotdot]
+catches: prepare accepting a shared or committed inputs file, a stale
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/live-smoke/test_kit.py", line 295, in test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs
+    self.assertEqual(result.returncode, 2)
+AssertionError: 0 != 2
+
+======================================================================
+FAIL: test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs (__main__.Inputs.test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs) [kit through alias-dotdot]
+catches: prepare accepting a shared or committed inputs file, a stale
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/live-smoke/test_kit.py", line 295, in test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs
+    self.assertEqual(result.returncode, 2)
+AssertionError: 0 != 2
+
+======================================================================
+FAIL: test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs (__main__.Inputs.test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs)
+catches: prepare accepting a shared or committed inputs file, a stale
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/live-smoke/test_kit.py", line 301, in test_prepare_prints_kit_and_scope_digests_and_refuses_unsafe_inputs
+    self.assertEqual(list((self.root / name / 'private').iterdir()), [], name)
+AssertionError: Lists differ: [PosixPath('<tmp>/checkout-dots-out/private/kit.json')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('<tmp>/checkout-dots-out/private/kit.json')
+
+- [PosixPath('<tmp>/checkout-dots-out/private/kit.json')]
++ [] : checkout-dots-out
+
+======================================================================
+FAIL: test_records_assemble_one_owner_only_file (__main__.Inputs.test_records_assemble_one_owner_only_file) [records through alias-dotdot]
+catches: a world-readable records or inputs file, conflicting record
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/live-smoke/test_kit.py", line 218, in test_records_assemble_one_owner_only_file
+    self.assertEqual(result.returncode, 2)
+AssertionError: 0 != 2
+
+======================================================================
+FAIL: test_records_assemble_one_owner_only_file (__main__.Inputs.test_records_assemble_one_owner_only_file) [out through alias/.. (the re-check reproduction)]
+catches: a world-readable records or inputs file, conflicting record
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/live-smoke/test_kit.py", line 232, in test_records_assemble_one_owner_only_file
+    self.assertEqual((result.returncode, json.loads(result.stdout)),
+AssertionError: Tuples differ: (0, {'assembled': True, 'names': 27, 'records': 2}) != (2, {'assembled': False, 'reason': 'inside_checkout'})
+
+First differing element 0:
+0
+2
+
+- (0, {'assembled': True, 'names': 27, 'records': 2})
++ (2, {'assembled': False, 'reason': 'inside_checkout'})
+
+======================================================================
+FAIL: test_records_assemble_one_owner_only_file (__main__.Inputs.test_records_assemble_one_owner_only_file) [.. after the deepest existing folder]
+catches: a world-readable records or inputs file, conflicting record
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/live-smoke/test_kit.py", line 232, in test_records_assemble_one_owner_only_file
+    self.assertEqual((result.returncode, json.loads(result.stdout)),
+AssertionError: Tuples differ: (2, {'assembled': False, 'reason': 'invalid_input'}) != (2, {'assembled': False, 'reason': 'unsafe_path'})
+
+First differing element 1:
+{'assembled': False, 'reason': 'invalid_input'}
+{'assembled': False, 'reason': 'unsafe_path'}
+
+- (2, {'assembled': False, 'reason': 'invalid_input'})
+?                                     ^ ^ ^^^ -- ^
+
++ (2, {'assembled': False, 'reason': 'unsafe_path'})
+?                                     ^ ^ ^^  ^ +
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.278s
+
+FAILED (failures=6)
