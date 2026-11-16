@@ -51,6 +51,7 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 LAUNCH_FLEET = Path(__file__).resolve().parents[2] / 'launch-fleet'
@@ -318,16 +319,24 @@ def connect_decisions(got):
         print("Nothing changed. On the user's yes to exactly this, run again with --yes.")
         return 12
     settings['decision_repositories'] = pair
-    temp = path.with_name('config.json.new')
+    temp = None
     try:
         path.parent.mkdir(mode=0o700, exist_ok=True)
-        fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        # Review R6: a staging file of its own for each attempt (owner-only,
+        # created exclusively), so one left by an interrupted attempt never
+        # blocks this one; nothing else in the folder is touched.
+        fd, temp = tempfile.mkstemp(prefix='config.json.', suffix='.new', dir=path.parent)
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             json.dump(settings, handle, sort_keys=True)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp, path)
     except OSError:
+        if temp is not None:
+            try:
+                os.unlink(temp)
+            except OSError:
+                pass
         raise Exit(10, 'Could not write the private settings; nothing changed.')
     print('Decisions now reads the companion. Restart the OpenWiz server, then run continue.')
     return 0
