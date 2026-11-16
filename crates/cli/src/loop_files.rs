@@ -16,7 +16,7 @@ use crate::response;
 pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
   openwiz loop export --project <project> [--out <dir>] [--json]
   openwiz loop plan <path>... --project <project> [--adopt <id>=<loop>]... [--json]
-  openwiz loop apply <id> --project <project> [--file <path>] [--adopt <id>=<loop>] [--json]
+  openwiz loop apply <id> --project <project> [--from <path>] [--adopt <id>=<loop>] [--json]
 ";
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
@@ -69,7 +69,7 @@ impl Command {
             Self::Validate => &["--catalog"],
             Self::Export => &["--project", "--out"],
             Self::Plan => &["--project", "--adopt"],
-            Self::Apply => &["--project", "--file", "--adopt"],
+            Self::Apply => &["--project", "--from", "--adopt"],
         }
     }
 }
@@ -165,7 +165,7 @@ pub fn parse(args: &[OsString]) -> Result<Parsed, String> {
         let slot = match token {
             "--project" => &mut parsed.project,
             "--out" => &mut parsed.out,
-            "--file" => &mut parsed.file,
+            "--from" => &mut parsed.file,
             _ => {
                 let (id, target) = value
                     .split_once('=')
@@ -265,6 +265,12 @@ fn not_built(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32
 #[allow(dead_code)]
 #[path = "../../../tests/support/schema.rs"]
 mod schema;
+
+// OpenWiz's own SHA-256, compiled into the tests only: they start no process.
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../../core/src/messaging/sha256.rs"]
+mod sha256;
 
 #[cfg(test)]
 mod tests {
@@ -412,7 +418,7 @@ mod tests {
                     "a",
                     "--project",
                     "prj_syn_0001",
-                    "--file",
+                    "--from",
                     "x/a.md",
                     "--adopt",
                     "a=loop_syn_1",
@@ -480,7 +486,7 @@ mod tests {
                 "a.md",
                 "--project",
                 "prj_syn_0001",
-                "--file",
+                "--from",
                 "a.md",
             ],
             &["apply", "--project", "prj_syn_0001"],
@@ -502,7 +508,7 @@ mod tests {
                 "a",
                 "--project",
                 "prj_syn_0001",
-                "--file",
+                "--from",
                 "a\tb.md",
             ],
         ] {
@@ -601,16 +607,10 @@ mod tests {
             found, listed,
             "the record lists every pinned file, and only those"
         );
-        let output = std::process::Command::new("sha256sum")
-            .args(&found)
-            .current_dir(root)
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        for line in String::from_utf8(output.stdout).unwrap().lines() {
-            let (hash, path) = line.split_once("  ").unwrap();
+        for path in found {
+            let bytes = std::fs::read(root.join(path)).unwrap();
             assert_eq!(
-                Some(&hash),
+                Some(&super::sha256::sha256_hex(&bytes).as_str()),
                 recorded.get(path),
                 "{path} differs from WizLoops"
             );

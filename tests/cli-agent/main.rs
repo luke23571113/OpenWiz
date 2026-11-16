@@ -146,7 +146,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("loop.validate", "--catalog --json --help"),
         ("loop.export", "--project --out --json --help"),
         ("loop.plan", "--project --adopt --json --help"),
-        ("loop.apply", "--project --file --adopt --json --help"),
+        ("loop.apply", "--project --from --adopt --json --help"),
         ("ui", "--port --allowed-host --json --help"),
         ("engine.preview", "--json --state-dir --location"),
         (

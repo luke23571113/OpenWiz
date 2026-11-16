@@ -38,7 +38,7 @@ live behaviour. Nothing here touches the earlier loop scheduler or
 openwiz loop validate <path>... [--catalog] [--json]
 openwiz loop export --project <project> [--out <dir>] [--json]
 openwiz loop plan <path>... --project <project> [--adopt <id>=<loop>]... [--json]
-openwiz loop apply <id> --project <project> [--file <path>] [--adopt <id>=<loop>] [--json]
+openwiz loop apply <id> --project <project> [--from <path>] [--adopt <id>=<loop>] [--json]
 openwiz loop <command> --help|-h [--json]
 ```
 
@@ -63,9 +63,11 @@ openwiz loop <command> --help|-h [--json]
   directory. Export writes `<id>.md` for each loop, and `<id>/check` for
   each loop with a script. A file that already exists with other bytes is
   never replaced: that loop is refused with `export-exists`.
-- **`<id>` and `--file <path>`.** `apply` changes the one loop with this
-  loop file `id`, from the file `--file` names, default `./<id>.md`. A file
+- **`<id>` and `--from <path>`.** `apply` changes the one loop with this
+  loop file `id`, from the file `--from` names, default `./<id>.md`. A file
   whose `id` is not `<id>` is refused with `apply-id-mismatch`.
+  The option is not `--file`: that is `room-cli`'s attachment flag, which
+  OpenWiz spells only in the adapter's allowlist.
 - **`--adopt <id>=<loop>`.** The adapter's binding (its "Adopting an
   unmarked loop"): the loop file `id` before the first `=`, the Cloudroom
   loop id after it. A binding is given for one run and never stored.
