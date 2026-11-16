@@ -11,6 +11,7 @@ mod schema;
 mod dirs;
 
 mod ci_selection;
+mod cli_build_script;
 mod cockpit_schema_conformance;
 mod dependencies;
 mod dir_modes;
