@@ -173,11 +173,20 @@ class UnreadFixtures(unittest.TestCase):
                 result = tree.run(*roots)
                 self.assertEqual((result.returncode, result.stdout), (2, ''))
                 self.assertTrue(result.stderr.strip())
-        # A reader deleted from the working tree but still in the index would
-        # read as empty and turn its fixture into a deletion.
+        # A tracked reader is read from Git's index, not the working tree: a
+        # lane that prunes files it never runs (CI's release lane) must get the
+        # same answer, never a deletion or a failed scan (#853, CI).
         (tree.root / 'tests/a.rs').unlink()
         result = tree.run()
+        self.assertEqual((result.returncode, result.stdout), (0, ''), result.stderr)
+        # A tracked file whose content Git cannot produce would read as empty
+        # and turn its fixture into a deletion: the scan stops instead.
+        blob = subprocess.run(['git', '-C', str(tree.root), 'rev-parse', ':tests/a.rs'],
+                              capture_output=True, text=True, check=True).stdout.strip()
+        (tree.root / '.git/objects' / blob[:2] / blob[2:]).unlink()
+        result = tree.run()
         self.assertEqual((result.returncode, result.stdout), (2, ''))
+        self.assertTrue(result.stderr.strip())
         with tempfile.TemporaryDirectory() as bare:
             result = subprocess.run([sys.executable, '-I', str(SCRIPT), '--repo', bare],
                                     capture_output=True, text=True)
