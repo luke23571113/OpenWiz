@@ -42,6 +42,7 @@ jobs:
         run: |
           python3 -I tools/war-room/test_publish.py
           python3 -I tools/war-room/test_gather.py
+          python3 -I tools/war-room/test_collect_factory.py
       - name: The War room health and v2 history proofs (WRD1)
         # Runs even when an earlier step failed, so the health proofs always report.
         if: ${{ !cancelled() }}

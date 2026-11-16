@@ -180,6 +180,30 @@ class DailyNumbers(unittest.TestCase):
         self.assertGreaterEqual(self.f['merges']['read']['started_at'], self.doc['requested_at'])
 
 
+class DailyEdges(unittest.TestCase):
+    # catches: an open gap with no later record at all closed at the window's end as if it ended
+    # there (factory-metrics: an open tail is open at midnight).
+    def test_open_tail_with_no_later_record(self):
+        def edit(world):
+            key = next(k for k in world if 'issues/comments' in k)
+            world[key]['stdout'] = json.dumps([c for c in json.loads(world[key]['stdout']) if c['id'] != 13])
+        p, _ = cli('daily-world.json', 'read', '--repo', DAILY_REPO, '--fact', 'stalls', '--since', DAY[0],
+                   '--until', DAY[1], '--now', '2030-01-03T06:00:00Z', edit=edit)
+        tail = next(s for s in envelope(p)['factory']['stalls']['value']['stalls'] if s['pull_request'] == 35)
+        self.assertEqual((tail['minutes'], tail['open_at_end']), (10, True))
+
+    # catches: a direction guessed for a merge whose tickets disagree or that closes none
+    # (the contract says unknown).
+    def test_direction_unknown_when_tickets_disagree_or_none_link(self):
+        def edit(world):
+            key = next(k for k in world if 'number=15' in k and 'milestone' in k)
+            world[key]['stdout'] = world[key]['stdout'].replace('0.0.9', 'Infra')
+        p, _ = cli('daily-world.json', 'read', '--repo', DAILY_REPO, '--fact', 'merges', '--since', DAY[0],
+                   '--until', '2030-01-04T00:00:00Z', '--now', '2030-01-04T06:00:00Z', edit=edit)
+        directions = {m['number']: m['direction'] for m in envelope(p)['factory']['merges']['value']['pull_requests']}
+        self.assertEqual(directions, {31: 'unknown', 32: 'backwards', 33: 'sideways', 34: 'unknown'})
+
+
 class CarriedJourneys(unittest.TestCase):
     """The journeys and stage waits, carried exactly as journey.py collects and benches them."""
 
@@ -279,6 +303,30 @@ class CapacityAndOpenPrs(unittest.TestCase):
         p, _ = cli('open-world.json', 'read', '--repo', OPEN_REPO, '--fact', 'open_prs', edit=edit)
         fact = envelope(p)['factory']['open_prs']
         self.assertEqual((fact['state'], fact['value']), ('unavailable', None))
+
+
+    # catches: a failed, cancelled or pending check read as a success, for check runs and
+    # commit statuses alike.
+    def test_check_results_keep_their_meaning(self):
+        contexts = [{'__typename': 'CheckRun', 'name': 'ci', 'status': 'COMPLETED', 'conclusion': 'FAILURE'},
+                    {'__typename': 'CheckRun', 'name': 'skills', 'status': 'COMPLETED', 'conclusion': 'CANCELLED'},
+                    {'__typename': 'StatusContext', 'context': 'privacy', 'state': 'PENDING'},
+                    {'__typename': 'StatusContext', 'context': 'legacy', 'state': 'ERROR'},
+                    {'__typename': 'StatusContext', 'context': 'old', 'state': 'SUCCESS'}]
+
+        def edit(world):
+            key = next(k for k in world if 'states:OPEN' in k)
+            answer = json.loads(world[key]['stdout'])
+            rollup = answer['data']['repository']['pullRequests']['nodes'][1]['commits']['nodes'][0]['commit'][
+                'statusCheckRollup']
+            rollup['state'], rollup['contexts']['nodes'] = 'FAILURE', contexts
+            world[key]['stdout'] = json.dumps(answer)
+        p, _ = cli('open-world.json', 'read', '--repo', OPEN_REPO, '--fact', 'open_prs', edit=edit)
+        pull = envelope(p)['factory']['open_prs']['value']['pull_requests'][1]
+        self.assertEqual((pull['number'], pull['rollup']), (4211, 'failure'))
+        self.assertEqual([(c['name'], c['result']) for c in pull['checks']],
+                         [('ci', 'failure'), ('skills', 'other'), ('privacy', 'pending'), ('legacy', 'failure'),
+                          ('old', 'success')])
 
 
 class Failures(unittest.TestCase):
