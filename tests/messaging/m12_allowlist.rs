@@ -280,10 +280,6 @@ fn no_product_source_spells_an_excluded_flag_or_another_write() {
         .join("crates/service/src/document.rs")
         .canonicalize()
         .unwrap();
-    let terminal_actions = Path::new(ROOT)
-        .join(TERMINAL_ACTIONS)
-        .canonicalize()
-        .unwrap();
     // `spawn`'s own flags, only inside `ThreadSpawn`'s argv in the allowlist.
     let spawn_arm = |text: &str| {
         text.split("Self::ThreadSpawn(")
@@ -369,11 +365,6 @@ fn no_product_source_spells_an_excluded_flag_or_another_write() {
             if *word == "send" && path.starts_with(Path::new(ROOT).join("crates/cli")) {
                 continue;
             }
-            // #1098 (orchestrator ruling): the Send action's capability id,
-            // once, in the terminal's action seam, and nowhere else there.
-            if *word == "send" && canonical == terminal_actions && send_capability_id_only(&text) {
-                continue;
-            }
             if *word == "spawn" && canonical == allowlist {
                 assert!(spawn_arm(&text).contains(&literal), "spawn outside its arm");
                 continue;
@@ -452,50 +443,6 @@ fn service_update_exception_never_allows_a_command_or_another_file() {
         &reader,
         &format!("{key}\nlet argv = [\"update\"];")
     ));
-}
-
-/// #1098's one terminal exception (as in p08a): the action seam may spell
-/// `"send"` exactly once, as `ActionId::Send`'s capability id.
-const TERMINAL_ACTIONS: &str = "crates/terminal/src/actions/mod.rs";
-
-fn send_capability_id_only(text: &str) -> bool {
-    text.matches("\"send\"").count() == 1 && text.contains("ActionId::Send => \"send\",")
-}
-
-#[test]
-fn m12_the_terminal_send_exception_refuses_any_widening() {
-    let actions = fs::read_to_string(Path::new(ROOT).join(TERMINAL_ACTIONS)).unwrap();
-    assert!(send_capability_id_only(&actions));
-    // A second literal anywhere, or the literal outside the capability arm.
-    for widened in [
-        format!("{actions}\nconst X: &str = \"send\";\n"),
-        actions.replace(
-            "ActionId::Send => \"send\",",
-            "ActionId::Send => \"send\",\n            ActionId::Answer => \"send\",",
-        ),
-        actions.replace(
-            "ActionId::Send => \"send\",",
-            "ActionId::Send => \"message\",",
-        ) + "\nconst X: &str = \"send\";\n",
-    ] {
-        assert_ne!(widened, actions);
-        assert!(!send_capability_id_only(&widened), "{widened}");
-    }
-    // The exception is that file and that word only: every other terminal
-    // source spells no mutating word, and the seam spells no other one.
-    let mut files = Vec::new();
-    rust_files(&Path::new(ROOT).join("crates/terminal"), &mut files);
-    assert!(!files.is_empty());
-    for path in files {
-        let text = fs::read_to_string(&path).unwrap();
-        for word in MUTATING {
-            let literal = format!("\"{word}\"");
-            if *word == "send" && path.ends_with("actions/mod.rs") {
-                continue;
-            }
-            assert!(!text.contains(&literal), "{path:?} contains {literal}");
-        }
-    }
 }
 
 // T5 owns only the canonical LoopResume argv arm, never another write.

@@ -1,6 +1,7 @@
 //! Strict JSON: like `serde_json::from_slice::<Value>`, but a repeated key in
-//! any object is an error rather than "the last one wins" (terminal contract,
-//! "Common bounded reads": duplicate-key JSON is rejected, never data).
+//! any object is an error rather than "the last one wins". Moved unchanged
+//! from the removed terminal crate (#776) for the release-candidate fixture
+//! scan: duplicate-key JSON is rejected, never data.
 
 use std::fmt;
 

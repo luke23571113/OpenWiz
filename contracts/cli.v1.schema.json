@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:openwiz:schema:cli:v1",
   "title": "openwiz.cli.v1",
-  "description": "Agent catalogue, additive CLI errors/help/capability, and the unchanged local loop-switch event. Semantic requirements and implementation boundaries: cli.v1.md.",
+  "description": "Agent catalogue, additive CLI errors/help, and the unchanged local loop-switch event. Semantic requirements and implementation boundaries: cli.v1.md.",
   "oneOf": [
     {"$ref":"#/$defs/engine_report"},
     {
@@ -13,9 +13,6 @@
     },
     {
       "$ref": "#/$defs/help"
-    },
-    {
-      "$ref": "#/$defs/terminal_capability"
     },
     {
       "$ref": "#/$defs/loop_switch"
@@ -390,48 +387,6 @@
         "text": {
           "type": "string",
           "minLength": 1
-        }
-      }
-    },
-    "terminal_capability": {
-      "type": "object",
-      "required": [
-        "schema",
-        "available",
-        "executable",
-        "transport",
-        "actions",
-        "reason"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "schema": {
-          "const": "openwiz.terminal-capability.v1"
-        },
-        "available": {
-          "type": "boolean"
-        },
-        "executable": {
-          "const": "openwiz-terminal"
-        },
-        "transport": {
-          "const": "loopback-http"
-        },
-        "actions": {
-          "type": "array",
-          "items": {
-            "enum": [
-              "answer",
-              "send",
-              "new_thread"
-            ]
-          }
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       }
     },
