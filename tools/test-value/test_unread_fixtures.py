@@ -104,6 +104,46 @@ class UnreadFixtures(unittest.TestCase):
             'tests/readme.rs': 'let docs = "docs"; let name = "README.md";',
         }, ['tests/fixtures/docs/README.md', 'tests/fixtures/notes/send/README.md'])
 
+    def test_a_narrower_or_overlapping_root_gives_the_same_answer(self):
+        # catches (#853 R1): scanning a fixture group by its own folder drops
+        # the named-folder rule for that folder, so files a test walks or
+        # reaches through a computed subfolder name are listed for deletion;
+        # a fixture nothing reads no longer listed under a narrower root.
+        tree = Tree({
+            'tests/fixtures/walked/a.md': 'a',
+            'tests/fixtures/walked/l1/README.md': 'computed',
+            'tests/fixtures/notes/send/README.md': 'docs only',
+            'tests/walk.py': "for p in (ROOT / 'tests/fixtures/walked').iterdir(): p.read_text()",
+            'data/group/a.json': '{}',
+            'data/group/sub/b.json': '{}',
+            'data/other/c.json': '{}',
+            'tools/load.py': "open(ROOT / 'data/group')",
+        })
+        self.addCleanup(tree.close)
+        for roots, expected in [
+            (('tests/fixtures/walked',), []),
+            (('tests/fixtures/walked/l1',), []),
+            (('tests/fixtures', 'tests/fixtures/walked'), ['tests/fixtures/notes/send/README.md']),
+            (('tests/fixtures/notes',), ['tests/fixtures/notes/send/README.md']),
+            (('data/group',), []),
+            (('data/group/sub',), []),
+            (('data',), ['data/other/c.json']),
+        ]:
+            with self.subTest(roots=roots):
+                result = tree.run(*roots)
+                self.assertEqual(result.stdout.splitlines(), expected, result.stderr)
+                self.assertEqual(result.returncode, 1 if expected else 0, result.stderr)
+
+    def test_the_export_review_group_scanned_alone_is_read(self):
+        # catches (#853 R1, this repository): tools/release/test_export_review.py
+        # reads every README under release/export-review, four by a listed
+        # name and three by a computed one; a direct scan of that group listed
+        # all seven for deletion.
+        repo = SCRIPT.parents[2]
+        result = subprocess.run([sys.executable, '-I', str(SCRIPT), '--repo', str(repo),
+                                 'tests/fixtures/release/export-review'], capture_output=True, text=True)
+        self.assertEqual((result.returncode, result.stdout), (0, ''), result.stderr)
+
     def test_only_tracked_files_count_and_other_roots_can_be_named(self):
         # catches: an untracked local file reported, or read as a reader; a
         # second fixture root ignored when a later group names it.
