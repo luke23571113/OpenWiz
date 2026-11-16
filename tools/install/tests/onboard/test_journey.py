@@ -379,6 +379,8 @@ class Continuation(unittest.TestCase):
             'a brain for another repository': (setup_state(brain='other'), 5, 'Private brain: missing'),
             'harness refused': (setup_state(overrides={'harness': 'harness_unavailable'}), 5, 'Agent harness'),
             'unreadable store': ('{"schema": "openwiz.setup-state.v1", "revision": 1, "revision": 2}', 10, 'unreadable'),
+            'a project without its CloudRoom project': (json.dumps(dict(setup_state(), project=dict(
+                setup_state()['project'], project=None))), 10, 'unreadable'),
         }
         for name, (state, code, words) in cases.items():
             with self.subTest(name):
