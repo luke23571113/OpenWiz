@@ -2,7 +2,6 @@
 use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{
@@ -16,6 +15,10 @@ mod dirs;
 #[allow(dead_code)]
 #[path = "../support/schema.rs"]
 mod schema;
+// Placing fixture programs without holding their writer (#811).
+#[allow(dead_code)]
+#[path = "../support/place.rs"]
+mod place;
 
 // The `openwiz` binary's ui module, as the binary compiles it.
 #[allow(dead_code)]
@@ -72,12 +75,10 @@ impl Sandbox {
         dirs::private_dir(root.join("bin")).unwrap();
         // Both possible source programs leave evidence if discovery calls them.
         let program = root.join("bin/room-cli");
-        fs::write(
+        place::place_script(
             &program,
             "#!/bin/sh\nprintf 'unexpected source call\\n' >> \"$CP1_CALLS\"\nexit 99\n",
-        )
-        .unwrap();
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
+        );
         std::os::unix::fs::symlink(&program, root.join("bin/gh")).unwrap();
         Self(root)
     }

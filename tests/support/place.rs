@@ -11,12 +11,24 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-/// Copies the program `src` to `dst` and makes it executable, owner-only.
+/// Copies the program `src` to `dst` and makes it executable, owner-only. A
+/// separate `cp` writes it, so this process never holds its writer.
 pub fn place(src: &Path, dst: &Path) {
-    let mut from = std::fs::File::open(src).unwrap();
-    let mut to = std::fs::File::create(dst).unwrap();
-    std::io::copy(&mut from, &mut to).unwrap_or_else(|e| panic!("copy {}: {e}", dst.display()));
-    drop(to);
+    // `cp` would copy into a directory and succeed (#2721).
+    assert!(!dst.is_dir(), "{} is a directory", dst.display());
+    let out = std::process::Command::new("cp")
+        .arg("--")
+        .arg(src)
+        .arg(dst)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("cp runs");
+    assert!(
+        out.status.success(),
+        "cp {}: {}",
+        dst.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
     std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700)).unwrap();
 }
 

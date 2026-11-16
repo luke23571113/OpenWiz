@@ -217,7 +217,6 @@ fn copy_tree(from: &Path, to: &Path) {
 /// and not `answer`. The sibling beside it is never run.
 #[test]
 fn an_action_registered_in_its_module_appears_in_ui_json() {
-    use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
     let root = Path::new(ROOT);
     let work = Path::new(env!("CARGO_TARGET_TMPDIR"))
@@ -294,10 +293,9 @@ fn an_action_registered_in_its_module_appears_in_ui_json() {
     );
     let install = work.join("install");
     super::dirs::private_dir(&install).unwrap();
-    fs::copy(target.join("debug/openwiz"), install.join("openwiz")).unwrap();
+    super::place::place(&target.join("debug/openwiz"), &install.join("openwiz"));
     let sibling = install.join("openwiz-terminal");
-    fs::write(&sibling, "#!/bin/sh\ntouch \"$(dirname \"$0\")/ran\"\n").unwrap();
-    fs::set_permissions(&sibling, fs::Permissions::from_mode(0o700)).unwrap();
+    super::place::place_script(&sibling, "#!/bin/sh\ntouch \"$(dirname \"$0\")/ran\"\n");
     let out = Command::new(install.join("openwiz"))
         .args(["ui", "--json"])
         .env_clear()

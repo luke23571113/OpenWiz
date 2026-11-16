@@ -641,8 +641,6 @@ fn skill_text(name: &str) -> String {
 
 #[test]
 fn plan_approval_command_runs_the_revision_v2_fixture_proof() {
-    use std::os::unix::fs::PermissionsExt;
-
     let text = skill_text("plan-graph");
     let step = text
         .split_once("\n## Decision records\n")
@@ -690,7 +688,7 @@ fn plan_approval_command_runs_the_revision_v2_fixture_proof() {
     // Synthetic responses at the script's public gh seam. This fake refuses
     // any other command, field or query and needs neither Python nor jq.
     let fake = bin.join("gh");
-    std::fs::write(
+    crate::place::place_script(
         &fake,
         r##"#!/bin/sh
 [ "$#" -eq 7 ] && [ "$1" = issue ] && [ "$2" = view ] &&
@@ -712,9 +710,7 @@ case "$3:$5" in
   *) exit 2 ;;
 esac
 "##,
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
+    );
     let log = work.join("gh.log");
     let output = std::process::Command::new(bin.join("sh"))
         .arg(skill.join(relative_script))
