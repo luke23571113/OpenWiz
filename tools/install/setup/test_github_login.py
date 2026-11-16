@@ -8,6 +8,8 @@ Nothing is signed in, sent or created; every login and repository is synthetic.
   python3 -I tools/install/setup/test_github_login.py
 """
 import fcntl
+import signal
+import time
 import json
 import os
 from pathlib import Path
@@ -31,8 +33,12 @@ SKIP = {'selected': 'personal_login', 'app_choice': 'skip', 'acting_login': 'syn
         'repository': REPOSITORY}
 
 # The recording gh: `api user`, `api repos/<r>` and `auth login`, from scenario.json.
+# Like gh, a read goes to GH_HOST when set; otherwise to github.com, unless the
+# only login on the host is another server's (`enterprise_account`), which gh
+# then uses as its default host. `auth login --hostname github.com` signs in
+# `account`. The `pending` sign-in waits for the owner until it is killed.
 FAKE_GH = r'''
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 here = Path(os.environ['SYNTHETIC_GH_DIR'])
 scenario = json.loads((here / 'scenario.json').read_text())
@@ -43,11 +49,18 @@ def save():
 args = sys.argv[1:]
 if args[:2] == ['auth', 'login']:
     mode = scenario['login']
+    if mode == 'pending':
+        (here / 'auth.pid').write_text(str(os.getpid()))
+        time.sleep(120)
+        sys.exit(1)
     if mode in ('approve', 'approve_then_interrupt'):
         scenario['account'] = scenario['approve_as']
         save()
     sys.exit({'approve': 0, 'callback_only': 0, 'approve_then_interrupt': 130}.get(mode, 1))
-account = scenario['account']
+enterprise = scenario.get('enterprise_account')
+host = os.environ.get('GH_HOST') or ('github.com' if scenario['account'] is not None or enterprise is None
+                                     else 'enterprise.example')
+account = scenario['account'] if host == 'github.com' else enterprise
 if account is None:
     print('To get started with GitHub CLI, please run:  gh auth login', file=sys.stderr)
     sys.exit(4)
@@ -65,6 +78,25 @@ sys.exit(2)
 '''
 
 
+def stop_pending(gh_dir):
+    """Kill the recording `gh auth login` child this test started, if any."""
+    marker = gh_dir / 'auth.pid'
+    if marker.exists():
+        try:
+            os.kill(int(marker.read_text()), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        marker.unlink()
+
+
+def wait_for(condition, what, limit=20.0):
+    deadline = time.monotonic() + limit
+    while not condition():
+        if time.monotonic() > deadline:
+            raise AssertionError(f'timed out waiting for {what}')
+        time.sleep(0.05)
+
+
 class Recording(unittest.TestCase):
     def setUp(self):
         self.base = Path(tempfile.mkdtemp(prefix='openwiz-github-login-'))
@@ -80,6 +112,7 @@ class Recording(unittest.TestCase):
                       push={'synthetic-owner': {REPOSITORY: True}})
 
     def tearDown(self):
+        stop_pending(self.gh_dir)  # own synthetic child only, by its recorded pid
         subprocess.run(['rm', '-rf', str(self.base)], check=True)
 
     def scenario(self, **values):
@@ -186,6 +219,29 @@ class SignIn(Recording):
         self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_reused')
         self.assertEqual(len(self.sign_ins()), 1, 'a restart opens no second browser sign-in')
 
+    def test_a_restart_while_approval_is_pending_starts_no_second_browser(self):
+        # R2: the wrapper dies while the owner has not yet approved; its gh
+        # sign-in child lives on. A resumed request reports that pending flow
+        # until it ends, then a new request may start one.
+        self.prepare()
+        self.update_scenario(login='pending')
+        wrapper = subprocess.Popen([sys.executable, '-I', '-B', str(TOOL), 'sign-in', '--yes'],
+                                   env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
+        marker = self.gh_dir / 'auth.pid'
+        wait_for(marker.exists, 'the pending gh sign-in')
+        wrapper.kill()
+        wrapper.wait()
+        child = int(marker.read_text())
+        os.kill(child, 0)  # the browser sign-in is still waiting for the owner
+        self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_in_progress')
+        self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_in_progress')
+        self.assertEqual(len(self.sign_ins()), 1, 'no second browser sign-in while the first is pending')
+        stop_pending(self.gh_dir)
+        self.update_scenario(login='approve')
+        self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_verified')
+        self.assertEqual(len(self.sign_ins()), 2, 'once the pending flow ended, one new sign-in')
+
     def test_a_repeated_request_while_one_is_open_starts_no_second_browser(self):
         self.prepare()  # creates the owner-only setup directory the lock lives in
         lock = os.open(self.state / 'setup/.github-login.lock', os.O_RDWR | os.O_CREAT, 0o600)
@@ -225,6 +281,29 @@ class Packaged(Recording):
         self.assertEqual(result.returncode, 0, result.stderr)
         answer = json.loads(result.stdout)
         self.assertEqual((answer['code'], answer['repository']), ('login_reused', 'identity_verified'))
+
+
+class ForeignHost(Recording):
+    """R1, catches: a login on another GitHub server (GH_HOST, or gh's
+    default host when it is the only login) reused as the github.com login,
+    authorizing the App skip or verifying the acting identity."""
+
+    def test_another_servers_login_never_reuses_selects_or_verifies(self):
+        self.prepare()
+        for env in ({'GH_HOST': 'enterprise.example'}, {}):
+            with self.subTest(env=env):
+                self.update_scenario(account=None, enterprise_account='synthetic-enterprise', login='approve',
+                                     push={'synthetic-enterprise': {REPOSITORY: True},
+                                           'synthetic-owner': {REPOSITORY: True}})
+                self.assertEqual(self.tool('sign-in', env=env)['code'], 'login_needed')
+                self.assertIn('identity_signed_out', self.tool('skip-app', ok=False, env=env))
+                with mock.patch.dict(os.environ, {**self.env, **env}):
+                    import setup
+                    self.assertEqual(setup.check_identity(PROJECT, None), 'identity_signed_out')
+                # The browser sign-in is github.com's; its read-back is too.
+                done = self.tool('sign-in', '--yes', env=env)
+                self.assertEqual((done['code'], done['login']), ('login_verified', 'synthetic-owner'))
+        self.assertNotIn('identity', store.Store(str(self.state)).read())
 
 
 class SkipApp(Recording):
