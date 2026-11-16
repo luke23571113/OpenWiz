@@ -19,7 +19,7 @@ PAIRS = {
     'alarm.py': 'tools/ci-overload/alarm.py',
     'healthy.json': 'tools/ci-overload/fixtures/healthy.json',
     'read.py': 'tools/github-reads/read.py',
-    'limits.py': 'tools/factory-metrics/limits.py',
+    'limits.py': 'tools/war-room/limits.py',
     'limits.conf': 'tools/factory-metrics/limits.conf',
     # read.py finds these through its own parents[1]: scripts/github-app/ beside carried/.
     '../github-app/app.py': 'tools/github-app/app.py',

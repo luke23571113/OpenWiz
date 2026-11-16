@@ -47,7 +47,7 @@ def _module(name, path):
     return module
 
 
-J = _module('collect_factory_journey', ROOT / 'tools/factory-metrics/journey.py')
+J = _module('collect_factory_journey', HERE / 'journey.py')
 M = J.M  # journey.py's own metrics module: one ReadError for every read below
 A = _module('collect_factory_stall_alarm', ROOT / 'tools/stall-alarm/alarm.py')
 BENCH = ROOT / 'tools/ci-bench/bench.py'
