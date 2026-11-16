@@ -322,6 +322,19 @@ def own_runs(got):
     return [g for g in got if g[1] in keep], len(keep), times[0] if times else None, times[-1] if times else None
 
 
+def current_shape(jobs, keys):
+    """Jobs of the runs that ran today's workflow: every job key it defines, and no other.
+
+    GitHub lists every job of a run, skipped ones too, so a run created after
+    the merges that still ran the old workflow (no launch-fleet job, an
+    unsharded release) lacks a key (#782: two such runs)."""
+    have = {}
+    for j in jobs:
+        have.setdefault(j["run"], set()).add(j["name"].split(" (")[0])
+    keep = {run for run, k in have.items() if k == set(keys)}
+    return [j for j in jobs if j["run"] in keep], keep
+
+
 def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=None, unmeasured=None):
     derive, unmeasured = derive or {}, unmeasured or {}
     rows, errors = [], []
@@ -339,13 +352,19 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
             second = after if twin in after_jobs else fallback
             for mode in (("normal", "traced") if j["marked"] else ("all",)):
                 w, jobs = primary
-                got = samples(jobs, twin, mode, primary_traced)
                 runs, first, last = w["runs"], w["first"], w["last"]
+                if twin in after_jobs:
+                    jobs, kept = current_shape(jobs, wjobs)
+                    created = sorted({j["run_created_at"] for j in jobs})
+                    runs, first, last = len(kept), created[0] if created else None, created[-1] if created else None
+                got = samples(jobs, twin, mode, primary_traced)
                 if len(got) < MIN_SAMPLES and second is not None:
                     if second not in read:
                         _, sjobs = read_window(second, wf)
                         read[second] = (sjobs, traced_runs(sjobs))
                     sjobs, straced = read[second]
+                    if twin in after_jobs:
+                        sjobs = current_shape(sjobs, wjobs)[0]
                     got, runs, first, last = own_runs(samples(sjobs, twin, mode, straced))
                 n = len(got)
                 if key in unmeasured:
