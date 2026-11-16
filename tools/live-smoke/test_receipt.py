@@ -735,13 +735,13 @@ class Receipts(unittest.TestCase):
 
     """#18: versions with no live-checked line in the notes are recorded not-live gaps."""
 
-    def combined(self, rows=None):
+    def combined(self, rows=None, notes=COMBINED_NOTES):
         """The v0.0.12 shape: seven included versions, the one live 0.0.12 row in the kit."""
         body = self.candidate['candidate']
         template = body['included_versions'][0]
         body['release_version'] = '0.0.12'
         body['included_versions'] = [dict(template, version=v, promises=[p]) for v, p in HEADLINES]
-        self.notes(COMBINED_NOTES)
+        self.notes(notes)
         every = [s['id'] for s in self.kit['steps']]
         self.kit['release']['coverage'] = rows or [{'version': '0.0.12', 'promise': HEADLINES[0][1], 'steps': every}]
         self.live()
@@ -789,6 +789,42 @@ class Receipts(unittest.TestCase):
             {'version': '0.0.11', 'promise': HEADLINES[1][1], 'outcome': 'pass'})
         self.refused('coverage_mismatch', receipt.accept, 'smoke', claimed, self.candidate, self.kit_path,
                      self.state, self.resolver(claimed))
+
+    def test_a_non_lf_line_separator_in_the_notes_refuses_in_produce_and_accept(self):
+        """catches (#915 R1): a U+2028-style separator inside 0.0.12's headline
+        moving its Live-checked line onto 0.0.11, so a kit row for the not-live
+        0.0.11 is accepted and the live 0.0.12 becomes a gap."""
+        every = [s['id'] for s in self.kit['steps']]
+        injected = '**Scripts and agents can drive OpenWiz**'
+        for separator in (' ', ' ', '\x85', '\r', '\x0b', '\x0c', '\x1c', '\x1d', '\x1e'):
+            with self.subTest(separator=hex(ord(separator))):
+                self.state = self.root / f'state-{ord(separator)}'
+                self.combined(rows=[{'version': '0.0.11', 'promise': HEADLINES[1][1], 'steps': every}],
+                              notes=COMBINED_NOTES.replace(injected, f'**Scripts{separator}## 0.0.11 · injected**'))
+                self.refused('invalid_notes', self.produce)
+        # accept() reads the sealed candidate itself: a receipt rebound to such notes refuses too.
+        self.state = self.root / 'state-accept'
+        self.combined()
+        doc = self.produce()
+        self.notes(COMBINED_NOTES.replace(injected, '**Scripts ## 0.0.11 · injected**'))
+        self.reseal()
+        for gate in ('smoke', 'send', 'new'):
+            doc['gates'][gate]['candidate_sha256'] = doc['inputs'][gate]['candidate_sha256'] = \
+                self.candidate['candidate_sha256']
+            doc['gates'][gate]['inputs_sha256'] = contract_sha(doc['inputs'][gate])
+            self.refused('invalid_notes', receipt.accept, gate, doc, self.candidate, self.kit_path,
+                         self.state, self.resolver(doc))
+
+    def test_the_approved_v0_0_12_notes_split_into_one_live_promise_and_six_gaps(self):
+        """catches: the separator refusal (or the LF-only split) rejecting or
+        re-partitioning the approved LF-only v0.0.12 notes (sha256 27135ed4…)."""
+        whole = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
+        notes = whole[whole.index('## 0.0.12 · '):whole.index('## 0.0.5 · ')].rstrip('\n') + '\n'
+        self.assertEqual(hashlib.sha256(notes.encode()).hexdigest(),
+                         '27135ed4d22479e17d6f02806ccb9e8a8b33e2ef37a970e1a216800da4af9191')
+        live, not_live = receipt.split_promises({'changelog': {'utf8': notes}, 'included_versions': [
+            {'version': v, 'promises': [p]} for v, p in HEADLINES]})
+        self.assertEqual((live, not_live), (HEADLINES[:1], HEADLINES[1:]))
 
 
 if __name__ == '__main__':
