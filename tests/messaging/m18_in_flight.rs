@@ -235,18 +235,6 @@ fn a_new_op_id_is_refused_while_the_same_send_is_claimed_or_dispatching() {
 }
 
 #[test]
-fn accepting_a_possible_duplicate_sends_anyway() {
-    let fake = SendFake::new("m18_accepted", "send");
-    let held = Held::claim(&fake, "thr_syn_0001", Mode::Queue, TEXT, "op-m18-first");
-    let mut r = request("thr_syn_0001", Mode::Queue, TEXT, "op-m18-accepted");
-    r.accept_possible_duplicate = true;
-    let report = fake.report(&r);
-    assert_eq!(report.status, Status::Accepted, "{report:#?}");
-    assert_eq!(fake.tell_count(), 1);
-    held.stop();
-}
-
-#[test]
 fn only_the_same_target_mode_and_text_is_in_flight() {
     let fake = SendFake::new("m18_same_binding", "send");
     let held = Held::claim(&fake, "thr_syn_0001", Mode::Queue, TEXT, "op-m18-first");

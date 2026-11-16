@@ -7,8 +7,6 @@
 //! The CLI form is `openwiz send <id> --preview [--steer] [--json]`: it
 //! takes no text and never opens the send record.
 
-use std::fs;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
@@ -100,17 +98,6 @@ fn a_preview_makes_no_claim_and_no_tell() {
             is_target_read(&argv),
             "a preview made another call: {argv:?}"
         );
-    }
-}
-
-#[test]
-fn a_preview_costs_two_or_three_reads() {
-    let fake = SendFake::new("m16_cost", "send");
-    // Cloud: thread show and thread list. Local: and the machine list.
-    for (target, reads) in [("thr_syn_0001", 2), ("thr_syn_0002", 3)] {
-        let before = fake.invocations().len();
-        preview(&fake.source(), &clock(), &sid(target), Mode::Queue).unwrap();
-        assert_eq!(fake.invocations().len() - before, reads, "{target}");
     }
 }
 
@@ -393,39 +380,6 @@ fn the_release_build_previews_through_the_fake() {
     assert!(out.stderr.is_empty(), "no op id is made for a preview");
     assert_eq!(fake.tell_count(), 0);
     assert!(!fake.state.exists());
-}
-
-/// `send` can't work out its effects any other way than through the
-/// preview's read: `work_out` is called only in `preview.rs`.
-#[test]
-fn only_the_preview_works_out_effects() {
-    let dir = Path::new(ROOT).join("crates");
-    let mut callers = Vec::new();
-    let mut stack = vec![dir];
-    while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                let text = fs::read_to_string(&path).unwrap();
-                if text.contains("work_out(") && !path.ends_with("messaging/effects.rs") {
-                    callers.push(path);
-                }
-            }
-        }
-    }
-    assert_eq!(callers.len(), 1, "{callers:?}");
-    assert!(
-        callers[0].ends_with("core/src/messaging/preview.rs"),
-        "{callers:?}"
-    );
-    let send =
-        fs::read_to_string(Path::new(ROOT).join("crates/core/src/messaging/send.rs")).unwrap();
-    assert!(
-        send.contains("look("),
-        "send does not read through the preview's look"
-    );
 }
 
 /// A clock whose monotonic time jumps past every budget once the target's

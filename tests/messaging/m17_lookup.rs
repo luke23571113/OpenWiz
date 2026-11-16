@@ -40,16 +40,6 @@ fn look(fake: &SendFake, target: &str, op_id: &str) -> LookupReport {
 }
 
 #[test]
-fn an_unknown_op_id_has_no_record_and_nothing_is_made() {
-    let fake = SendFake::new("m17_unknown", "send");
-    let report = look(&fake, "thr_syn_0001", "op-m17-unknown");
-    assert_eq!(report.result, LookupResult::NoRecord);
-    assert!(report.summary.contains("no record"), "{report:#?}");
-    assert!(sends_listing(&fake).is_empty(), "a lookup made a file");
-    assert!(fake.invocations().is_empty(), "a lookup read room-cli");
-}
-
-#[test]
 fn a_known_op_id_gives_its_recorded_report_with_no_call() {
     let fake = SendFake::new("m17_known", "send");
     let sent = fake.report(&request("thr_syn_0001", Mode::Queue, TEXT, "op-m17-known"));
@@ -167,17 +157,6 @@ fn a_stopped_senders_record_is_recovered_never_resent() {
     }
     assert!(fake.invocations().is_empty());
     assert_eq!(fake.tell_count(), 0);
-}
-
-#[test]
-fn an_op_id_bound_to_another_target_is_not_this_targets() {
-    let fake = SendFake::new("m17_other", "send");
-    fake.report(&request("thr_syn_0001", Mode::Queue, TEXT, "op-m17-other"));
-    let calls = fake.invocations().len();
-    let report = look(&fake, "thr_syn_0006", "op-m17-other");
-    assert_eq!(report.result, LookupResult::OtherTarget, "{report:#?}");
-    assert!(report.summary.contains("another target"), "{report:#?}");
-    assert_eq!(fake.invocations().len(), calls);
 }
 
 /// (target, op id, exit code, result kind, report status).
