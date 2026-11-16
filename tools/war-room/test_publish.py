@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -24,7 +25,11 @@ AT = '2030-01-02T12:03:00Z'
 NEXT = '2030-01-02T13:07:00Z'
 LINK = 'https://github.com/synthetic-owner/work/issues/4001'
 # WRD4 (#877): the original page HTML is published beside its pictures, in the same commit.
-FILES = ['README.md', 'samples/2030-01-02T12-00-00Z.json', 'war-room-phone.png', 'war-room.html', 'war-room.png']
+# WRD5 (#883): the whole site, home (war-room.html) and its five child pages, in that one commit.
+SITE = ['war-room-cost.html', 'war-room-health.html', 'war-room-quality.html', 'war-room-skills.html',
+        'war-room-speed.html', 'war-room.html']
+PAGES = sorted(['README.md', 'war-room-phone.png', 'war-room.png'] + SITE)
+FILES = sorted(PAGES + ['samples/2030-01-02T12-00-00Z.json'])
 
 
 def load(path, name):
@@ -134,8 +139,8 @@ class Publish(unittest.TestCase):
         self.assertEqual(self.publish(NEXT).returncode, 0)
         # The same five-minute boundary again reuses its saved sample; nothing is duplicated.
         self.assertEqual(self.publish('2030-01-02T13:09:59Z').returncode, 0)
-        self.assertEqual(self.files(), FILES[:1] + ['samples/2030-01-02T12-00-00Z.json',
-                                                    'samples/2030-01-02T13-05-00Z.json'] + FILES[2:])
+        self.assertEqual(self.files(), sorted(PAGES + ['samples/2030-01-02T12-00-00Z.json',
+                                                       'samples/2030-01-02T13-05-00Z.json']))
         self.assertEqual(self.show('samples/2030-01-02T12-00-00Z.json'), first)
         changed = git(self.origin, 'log', '--format=', '--name-status', 'refs/heads/war-room', '--', 'samples')
         self.assertEqual(sorted(changed.split()), ['A', 'A', 'samples/2030-01-02T12-00-00Z.json',
@@ -162,6 +167,56 @@ class Publish(unittest.TestCase):
                 self.assertEqual(self.branch(), good)
         self.assertIn('**Last good render:** 2030-01-02T12:03:00Z', self.show('README.md').decode())
         self.assertEqual(self.show('war-room.html'), good_html)
+
+    def test_a_failed_child_page_publishes_nothing_and_keeps_the_previous_site(self):
+        # catches: a publication that fails after one child page (render, then any later step) yet
+        # pushes a new home beside stale or missing children, or touches the saved samples. P11.
+        publish = load(HERE / 'publish.py', 'wrd5_publish')
+        self.assertEqual(self.publish().returncode, 0)
+        good = self.branch()
+        site = {name: self.show(name) for name in SITE}
+        sample = self.show('samples/2030-01-02T12-00-00Z.json')
+        real = publish.page.child
+        calls = []
+
+        def fail_after_one(slug, *args, **kwargs):
+            calls.append(slug)
+            if len(calls) == 2:
+                raise ValueError('synthetic child failure')
+            return real(slug, *args, **kwargs)
+        read = publish.selection_reader(self.sources, self.selection)
+        with mock.patch.dict(os.environ, {'PATH': self.env['PATH'], 'FAKE_CHROMIUM_LOG': str(self.chromium_log)}), \
+                mock.patch.object(publish.page, 'child', side_effect=fail_after_one), self.assertRaises(ValueError):
+            publish.publish(str(self.origin), NEXT, read)
+        self.assertEqual(calls, ['speed', 'health'])
+        self.assertEqual(self.branch(), good)
+        self.assertEqual({name: self.show(name) for name in SITE}, site)
+        self.assertEqual(self.show('samples/2030-01-02T12-00-00Z.json'), sample)
+        # The scan reads every child too: a planted value in one child refuses the whole site.
+        with mock.patch.dict(os.environ, {'PATH': self.env['PATH'], 'FAKE_CHROMIUM_LOG': str(self.chromium_log)}), \
+                mock.patch.object(publish.page, 'child', side_effect=lambda slug, *a, **k: real(slug, *a, **k).replace(
+                    '</main>', ('ghp' + '_' + 'Synthetic0123456789abcdef' if slug == 'skills' else '') + '</main>')), \
+                self.assertRaises(publish.Fail):
+            publish.publish(str(self.origin), NEXT, read)
+        self.assertEqual(self.branch(), good)
+
+    def test_the_first_site_publication_replaces_a_one_page_branch(self):
+        # catches: the first WRD5 publication refusing the existing WRD4 branch (one war-room.html,
+        # no child pages), or leaving its old one-page home beside the new children.
+        self.assertEqual(self.publish().returncode, 0)
+        work = self.tmp / 'one-page'
+        git(self.tmp, 'clone', '-q', '-b', 'war-room', str(self.origin), str(work))
+        for name in SITE[:-1]:
+            (work / name).unlink()
+        (work / 'war-room.html').write_text('<!doctype html><title>one page</title>\n')
+        git(work, 'add', '--all')
+        git(work, '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', 'commit', '-q', '-m', 'one page')
+        git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/war-room')
+        result = self.publish(NEXT)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([f for f in self.files() if not f.startswith('samples/')], PAGES)
+        self.assertNotIn(b'one page', self.show('war-room.html'))
+        self.assertIn(b'<nav class="site"', self.show('war-room-speed.html'))
 
     def test_the_height_bound_is_in_device_pixels(self):
         # #2432 R1: a full gathered page is over 20,000 CSS px tall. The bound is on the drawn
@@ -209,7 +264,7 @@ class Publish(unittest.TestCase):
         result = self.publish('2030-01-02T13:02:00Z')
         self.assertEqual(result.returncode, 0, result.stderr)
         saved = ['samples/%s.json' % n for n in boundaries + ['2030-01-02T13-00-00Z']]
-        self.assertEqual(self.files(), sorted(['README.md', 'war-room-phone.png', 'war-room.html', 'war-room.png'] + saved))
+        self.assertEqual(self.files(), sorted(PAGES + saved))
         self.assertNotIn('samples/2030-01-02T12-25-00Z.json', self.files())
         for n, data in collected.items():
             self.assertEqual(self.show('samples/%s.json' % n), data)
@@ -234,6 +289,8 @@ class Publish(unittest.TestCase):
         record = json.loads(sample)
         record['assembled_at'] = '2030-01-02T12:01:00Z'
         cases = (('unexpected file', 'notes.txt', b'synthetic\n'),
+                 # WRD5: only the six site pages; a seventh page is not part of the site.
+                 ('unexpected page', 'war-room-extra.html', self.show('war-room.html')),
                  ('rewritten sample', 'samples/2030-01-02T12-00-00Z.json',
                   (json.dumps(record, sort_keys=True, separators=(',', ':')) + '\n').encode()),
                  ('malformed sample', 'samples/2030-01-02T12-05-00Z.json', b'{}\n'))
@@ -280,6 +337,7 @@ class Publish(unittest.TestCase):
         good = self.branch()
         outside = self.tmp / 'outside.txt'
         for name, change in (('README.md', 'link'), ('war-room.png', 'link'), ('war-room.html', 'link'),
+                             ('war-room-health.html', 'link'),
                              ('samples/2030-01-02T12-00-00Z.json', 'link'), ('war-room.png', 'executable')):
             with self.subTest(name, change=change):
                 git(self.origin, 'update-ref', 'refs/heads/war-room', good)
@@ -322,13 +380,13 @@ class Publish(unittest.TestCase):
                   'cloud id': 'proj' + '_' + 'Abc123',
                   'quoted decision': 'Ja' + 'ke: ' + '"ship it"'}
         for name, secret in plants.items():
-            for target in ('README.md', 'war-room.html', 'samples/2030-01-02T12-00-00Z.json', 'page'):
+            for target in ('README.md', 'war-room.html', 'war-room-cost.html', 'samples/2030-01-02T12-00-00Z.json', 'page'):
                 with self.subTest(name, target=target):
                     copy = self.tmp / 'copy'
                     shutil.rmtree(copy, ignore_errors=True)
                     shutil.copytree(tree, copy)
                     planted_page = page
-                    if target in ('README.md', 'war-room.html'):
+                    if target.endswith(('.md', '.html')):
                         (copy / target).write_text((tree / target).read_text() + secret + '\n')
                     elif target == 'page':
                         planted_page = page.replace('synthetic page', secret)
@@ -369,8 +427,10 @@ class Publish(unittest.TestCase):
         self.assertEqual(marker.read_text(), 'ran\nran\n')
         # The run time comes from the clock here, so the one sample's name does too.
         files = self.files()
-        self.assertEqual([files[0]] + files[2:], ['README.md', 'war-room-phone.png', 'war-room.html', 'war-room.png'])
-        self.assertRegex(files[1], r'^samples/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-00Z\.json$')
+        self.assertEqual([f for f in files if not f.startswith('samples/')], PAGES)
+        samples = [f for f in files if f.startswith('samples/')]
+        self.assertEqual(len(samples), 1, samples)
+        self.assertRegex(samples[0], r'^samples/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-00Z\.json$')
         self.assertEqual({k: v for k, v in self.refs().items() if k != 'refs/heads/war-room'}, self.before)
 
     def test_preview_draws_and_publishes_nothing(self):
@@ -379,7 +439,7 @@ class Publish(unittest.TestCase):
                                  '--at', AT, '--source-root', str(self.sources), '--selection', str(self.selection)],
                                 env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(sorted(p.name for p in out.iterdir()), ['README.md', 'war-room-phone.png', 'war-room.html', 'war-room.png'])
+        self.assertEqual(sorted(p.name for p in out.iterdir()), PAGES)
         self.assertEqual(self.refs(), self.before)
 
 

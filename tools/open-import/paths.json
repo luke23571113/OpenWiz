@@ -340,7 +340,9 @@
     "tools/war-room/test_page_design.py",
     "tools/war-room/web/contract.md",
     "tools/war-room/web/serve.py",
-    "tools/war-room/test_web.py"
+    "tools/war-room/test_web.py",
+    "tools/war-room/test_site.py",
+    "tools/war-room/fixtures/site/**"
   ],
   "keep": [
     "docs/grills/README.md",

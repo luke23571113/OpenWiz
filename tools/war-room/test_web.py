@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WRD4 (#877), P8: the published page served privately over local HTTP.
+"""WRD4 (#877), P8, and WRD5 (#883), P10/P11: the published site served privately over local HTTP.
 
 The real publisher (with the fake picture drawer) publishes to a local bare `war-room`
 branch; the web adapter fetches it and serves it on loopback; real Chromium, page scripts
@@ -7,6 +7,7 @@ disabled, reads it at 1440 and 390 CSS px. Synthetic input only.
 """
 import hashlib
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.dont_write_bytecode = True
@@ -21,6 +23,9 @@ HERE = Path(__file__).resolve().parent
 FAKES = HERE / 'fixtures' / 'publish'
 SERVE = HERE / 'web' / 'serve.py'
 AT, NEXT = '2030-01-02T12:03:00Z', '2030-01-02T13:07:00Z'
+# WRD5: the six routes and the published files they answer with (web/contract.md).
+ROUTES = {'/': 'war-room.html', '/speed': 'war-room-speed.html', '/health': 'war-room-health.html',
+          '/cost': 'war-room-cost.html', '/quality': 'war-room-quality.html', '/skills': 'war-room-skills.html'}
 sys.path.insert(0, str(HERE))
 import publish  # noqa: E402
 
@@ -30,12 +35,12 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const [chromium, url] = process.argv.slice(2);
+const [chromium, base] = process.argv.slice(2);
 const profile = mkdtempSync(join(tmpdir(), 'war-room-web-probe-'));
 const browser = spawn(chromium, ['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
   '--remote-debugging-port=0', '--user-data-dir=' + profile, 'about:blank'], { stdio: 'ignore' });
 const fail = (why) => { console.error('probe: ' + why); browser.kill('SIGKILL'); process.exit(1); };
-const deadline = setTimeout(() => fail('timed out'), 120000);
+const deadline = setTimeout(() => fail('timed out'), 150000);
 let port = null;
 for (let i = 0; i < 200 && !port; i++) {
   const file = join(profile, 'DevToolsActivePort');
@@ -69,58 +74,82 @@ const key = async (name, code, vk, text) => {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code, windowsVirtualKeyCode: vk, ...(text ? { text } : {}) });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, windowsVirtualKeyCode: vk });
 };
+const settle = async () => { await new Promise((r) => setTimeout(r, 400)); await evaluate('document.fonts.ready.then(() => true)'); };
 const open = async (href) => {
   const loaded = once('Page.loadEventFired');
   await send('Page.navigate', { url: href });
   await loaded;
-  if (href !== 'about:blank') await evaluate('document.fonts.ready.then(() => true)');
+  if (href !== 'about:blank') await settle();
 };
-const top = (id) => `Math.round(document.getElementById(${JSON.stringify(id)}).getBoundingClientRect().top)`;
+const PAGE = `(() => ({ path: location.pathname, hash: location.hash, contentType: document.contentType,
+  scripts: document.scripts.length, scrollWidth: document.documentElement.scrollWidth,
+  clientWidth: document.documentElement.clientWidth, svgs: document.querySelectorAll('figure svg').length,
+  fonts: [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family),
+  selectable: getComputedStyle(document.querySelector('h1')).userSelect,
+  nav: [...document.querySelectorAll('nav.site a')].map((a) => ({ href: a.getAttribute('href'),
+    current: a.getAttribute('aria-current'), shown: a.getBoundingClientRect().width > 0 })),
+  openWidth: (() => { const d = [...document.querySelectorAll('details')]; d.forEach((x) => { x.open = true; });
+    const w = document.documentElement.scrollWidth; d.forEach((x) => { x.open = false; }); return w; })(),
+}))()`;
 const out = [];
 await send('Page.enable');
 await send('Emulation.setScriptExecutionDisabled', { value: true });
 for (const width of [1440, 390]) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
-  await open(url);
-  const page = await evaluate(`(() => ({
-    contentType: document.contentType, scripts: document.scripts.length,
-    scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
-    svgs: document.querySelectorAll('figure svg').length,
-    tables: document.querySelectorAll('details table').length,
-    fonts: [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family),
-    selectable: getComputedStyle(document.querySelector('h1')).userSelect,
-    links: [...document.querySelectorAll('nav.toc a')].map((a) => ({ href: a.getAttribute('href'), text: a.textContent,
-      target: !!document.getElementById(a.getAttribute('href').slice(1)), shown: a.getBoundingClientRect().width > 0 })),
-  }))()`);
-  // Keyboard: Tab from the top reaches the section links; Enter on one brings its section to the top.
+  const pages = [];
+  for (const path of ['/', '/speed', '/health', '/cost', '/quality', '/skills']) {
+    await open(base + path);
+    pages.push(await evaluate(PAGE));
+  }
+  // Keyboard: from the top of home, Tab to the Health page link and follow it with Enter.
+  await open(base + '/');
   const tabs = [];
-  for (let i = 0; i < 3; i++) {
-    await key('Tab', 'Tab', 9);
-    tabs.push(await evaluate(`(() => { const a = document.activeElement; return { href: a.getAttribute('href'), inNav: !!a.closest('nav.toc') }; })()`));
-  }
-  const chosen = (tabs[tabs.length - 1].href || '#').slice(1);
   let followed = null;
-  if (tabs[tabs.length - 1].inNav) {
-    await key('Enter', 'Enter', 13, '\r');
-    await new Promise((r) => setTimeout(r, 300));
-    followed = { id: chosen, top: await evaluate(top(chosen)), hash: await evaluate('location.hash') };
+  for (let i = 0; i < 12 && !followed; i++) {
+    await key('Tab', 'Tab', 9);
+    const at = await evaluate(`(() => { const a = document.activeElement; return { href: a.getAttribute('href'),
+      inNav: !!a.closest('nav.site'), visible: a.matches(':focus-visible') }; })()`);
+    tabs.push(at);
+    if (at.href === 'health') {
+      const loaded = once('Page.loadEventFired');
+      await key('Enter', 'Enter', 13, '\r');
+      await loaded; await settle();
+      followed = await evaluate(`({ path: location.pathname, title: document.querySelector('h1').textContent })`);
+    }
   }
-  // A native disclosure opens from the keyboard and shows its values table.
+  // On the child page, a figure's native disclosure opens from the keyboard and shows its values table.
   await evaluate(`document.querySelector('figure details summary').focus()`);
   await key('Enter', 'Enter', 13, '\r');
   const disclosure = await evaluate(`(() => { const d = document.querySelector('figure details');
     const t = d.querySelector('table'); return { open: d.open, table: !!t && t.getBoundingClientRect().height > 0 }; })()`);
-  // An authenticated deep link: a fresh load of /#sources lands on the Sources section.
+  // A home row: its bench link lands on that bench's Sources on its child page, opened.
+  await open(base + '/');
+  const row = await evaluate(`[...document.querySelectorAll('#benchmarks a')].find((a) => a.textContent === 'Main CI').getAttribute('href')`);
+  await evaluate(`[...document.querySelectorAll('#benchmarks a')].find((a) => a.textContent === 'Main CI').focus()`);
+  const rowLoaded = once('Page.loadEventFired');
+  await key('Enter', 'Enter', 13, '\r');
+  await rowLoaded; await settle();
+  const bench = await evaluate(`(() => { const b = document.getElementById(location.hash.slice(1)); const r = b.getBoundingClientRect();
+    return { path: location.pathname, hash: location.hash, open: b.closest('details').open, top: Math.round(r.top), height: r.height }; })()`);
+  // An authenticated deep link to a figure on a child page lands on it.
   await open('about:blank');
-  await open(url + '#sources');
-  const deep = { top: await evaluate(top('sources')), scrolled: await evaluate('scrollY') };
-  out.push({ width, ...page, tabs, followed, disclosure, deep });
+  await open(base + '/speed#fig-10');
+  const deep = { top: await evaluate(`Math.round(document.getElementById('fig-10').getBoundingClientRect().top)`), scrolled: await evaluate('scrollY') };
+  out.push({ width, pages, tabs, followed, disclosure, row, bench, deep });
 }
 console.log(JSON.stringify(out));
 clearTimeout(deadline);
 ws.close(); browser.kill('SIGKILL');
 rmSync(profile, { recursive: true, force: true });
 """
+
+
+def load_serve():
+    """A fresh copy of the adapter module, so a test can interleave its own calls."""
+    spec = importlib.util.spec_from_file_location('wrd5_serve', SERVE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def git(cwd, *args):
@@ -149,6 +178,10 @@ class Web(unittest.TestCase):
     def published(self):
         return git(self.origin, 'show', 'refs/heads/war-room:war-room.html'), \
             git(self.origin, 'rev-parse', 'refs/heads/war-room').decode().strip()
+
+    def site(self):
+        """{route: the published bytes} for the six routes."""
+        return {route: git(self.origin, 'show', 'refs/heads/war-room:' + name) for route, name in ROUTES.items()}
 
     def start(self):
         server = subprocess.Popen([sys.executable, '-I', str(SERVE), 'serve', '--root', str(self.served), '--port', '0'],
@@ -194,24 +227,37 @@ class Web(unittest.TestCase):
         self.assertEqual(headers['x-war-room-commit'], commit)
         status, headers, body = self.request(port, '/', 'HEAD')
         self.assertEqual((status, body, headers['content-length']), (200, b'', str(len(page))))
+        # WRD5: each child route answers with its own published page, from the same commit.
+        for route, data in self.site().items():
+            with self.subTest(route):
+                status, headers, body = self.request(port, route + '?from=synthetic')
+                self.assertEqual((status, body), (200, data))
+                self.assertEqual(headers['etag'], '"%s"' % hashlib.sha256(data).hexdigest())
+                self.assertEqual(headers['x-war-room-commit'], commit)
+                self.assertEqual(headers['content-type'], 'text/html; charset=utf-8')
+                self.assertTrue(headers['content-security-policy'].endswith("; frame-ancestors 'none'"))
 
-    def test_only_the_page_is_served(self):
+    def test_only_the_site_routes_are_served(self):
         # catches: the origin serving arbitrary branch, sample, identity or controller files,
-        # a path escape, or a write method answered.
+        # a path escape, a route alias or file name standing in for a page (WRD5: only the six
+        # routes), or a write method answered.
         self.assertEqual(self.publish().returncode, 0)
         self.assertEqual(self.fetch().returncode, 0)
         (self.served / 'notes.txt').write_text('synthetic\n')
         port = self.start()
         for path in ('/war-room.html', '/identity.json', '/notes.txt', '/README.md', '/war-room.png',
                      '/samples/2030-01-02T12-00-00Z.json', '/.git/config', '/../served/war-room.html',
-                     '/%2e%2e/served/war-room.html', '/index.html', '/x/../identity.json'):
+                     '/%2e%2e/served/war-room.html', '/index.html', '/x/../identity.json',
+                     '/war-room-speed.html', '/speed/', '/speed.html', '/Speed', '/speed/../identity.json',
+                     '/%73peed', '/current/war-room.html', '/health/x', '//health', '/site', '/home'):
             with self.subTest(path):
                 status, _, body = self.request(port, path)
                 self.assertEqual(status, 404)
                 self.assertNotIn(b'<html', body.lower())
-        for method in ('POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'):
-            with self.subTest(method):
-                status, headers, _ = self.request(port, '/', method)
+        for method, route in (('POST', '/'), ('PUT', '/'), ('DELETE', '/'), ('PATCH', '/'), ('OPTIONS', '/'),
+                              ('POST', '/health'), ('DELETE', '/skills')):
+            with self.subTest(method, route=route):
+                status, headers, _ = self.request(port, route, method)
                 self.assertEqual((status, headers['allow']), (405, 'GET, HEAD'))
 
     def test_a_failed_fetch_or_publication_keeps_the_last_good_page(self):
@@ -219,7 +265,8 @@ class Web(unittest.TestCase):
         # remote replacing or blanking the page already served.
         self.assertEqual(self.publish().returncode, 0)
         self.assertEqual(self.fetch().returncode, 0)
-        good = (self.served / 'war-room.html').read_bytes()
+        good = self.site()['/']
+        site = self.site()
         port = self.start()
         failed = self.publish(NEXT, FAKE_CHROMIUM_FAIL='1')
         self.assertNotEqual(failed.returncode, 0)
@@ -228,66 +275,113 @@ class Web(unittest.TestCase):
         work = self.tmp / 'edit'
         git(self.tmp, 'clone', '-q', '-b', 'war-room', str(self.origin), str(work))
         head = git(work, 'rev-parse', 'HEAD').decode().strip()
-        cases = (('script', lambda p: p.write_bytes(good.replace(b'</body>', b'<script>alert(1)</script></body>'))),
-                 ('no policy', lambda p: p.write_bytes(good.replace(b'Content-Security-Policy', b'X-Policy'))),
+        cases = (('script', lambda p: p.write_bytes(p.read_bytes().replace(b'</body>', b'<script>alert(1)</script></body>'))),
+                 ('no policy', lambda p: p.write_bytes(p.read_bytes().replace(b'Content-Security-Policy', b'X-Policy'))),
                  ('not the page', lambda p: p.write_bytes(b'\x89PNG\r\n\x1a\n')),
                  ('a link', lambda p: (p.unlink(), p.symlink_to('README.md'))),
                  ('removed', lambda p: p.unlink()))
-        for name, change in cases:
-            with self.subTest(name):
+        # WRD5: one bad or missing child refuses the whole new site, so a new home never joins stale
+        # children (the new home here is a changed, valid page).
+        targets = (('war-room.html', False), ('war-room-health.html', True), ('war-room-skills.html', True))
+        for (name, change), (target, new_home) in [(c, t) for c in cases for t in targets]:
+            with self.subTest(name, target=target):
                 git(work, 'reset', '-q', '--hard', head)
-                change(work / 'war-room.html')
+                if new_home:
+                    (work / 'war-room.html').write_bytes(good.replace(b'War room</h1>', b'War room 2</h1>'))
+                change(work / target)
                 git(work, 'add', '--all')
                 git(work, '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid',
                     'commit', '-q', '-m', name)
                 git(work, 'push', '-q', '-f', 'origin', 'HEAD:refs/heads/war-room')
                 result = self.fetch()
                 self.assertEqual(result.returncode, 1)
-                self.assertIn('the last good page stays', result.stderr)
-                self.assertEqual(self.request(port, '/')[2], good)
+                self.assertIn('the last good site stays', result.stderr)
+                for route, data in site.items():
+                    self.assertEqual(self.request(port, route)[2], data, route)
         unreachable = self.fetch(self.tmp / 'absent.git')
         self.assertEqual(unreachable.returncode, 1)
         self.assertNotIn('absent.git', unreachable.stderr)
         self.assertEqual(self.request(port, '/')[2], good)
+        # A good later site replaces every route together.
+        git(work, 'reset', '-q', '--hard', head)
+        git(work, 'push', '-q', '-f', 'origin', 'HEAD:refs/heads/war-room')
+        self.assertEqual(self.publish(NEXT).returncode, 0)
+        self.assertEqual(self.fetch().returncode, 0)
+        newer = self.site()
+        self.assertNotEqual(newer['/'], good)
+        for route, data in newer.items():
+            self.assertEqual(self.request(port, route)[2], data, route)
 
-    def test_real_browser_reads_the_served_page_without_scripts(self):
-        # catches: a served page that needs a script or a remote fetch to show its charts and
-        # values; top section links that are missing, point at no real section, cannot be reached
-        # or followed from the keyboard, or are cut off on a phone; a deep link that does not
-        # land; a disclosure that cannot be opened; sideways scrolling at 390 px.
+    def test_overlapping_refreshes_never_serve_a_deleted_site(self):
+        # catches (#926 R3): one refresh's cleanup deleting another refresh's staged generation just
+        # before it becomes current, so both report success while every route answers 503. Refresh B
+        # starts exactly when A is about to switch; it may finish only after A's switch.
+        self.assertEqual(self.publish().returncode, 0)
+        serve = load_serve()
+        serve.fetch(str(self.origin), self.served)
+        original, results, other = serve.os.replace, [], []
+
+        def interleave(source, destination):
+            if Path(destination) == self.served / serve.CURRENT and not other:
+                other.append(threading.Thread(target=lambda: results.append(serve.fetch(str(self.origin), self.served))))
+                other[0].start()
+                other[0].join(5)  # unserialized, B switches and cleans up here, before A's switch
+            return original(source, destination)
+        serve.os.replace = interleave
+        try:
+            outer = serve.fetch(str(self.origin), self.served)
+        finally:
+            serve.os.replace = original
+        other[0].join(60)
+        self.assertEqual(results, [outer])
+        self.assertTrue((self.served / serve.CURRENT).exists(), 'current points at a deleted generation')
+        port = self.start()
+        for route, data in self.site().items():
+            self.assertEqual(self.request(port, route)[:3:2], (200, data), route)
+
+    def test_real_browser_reads_the_served_site_without_scripts(self):
+        # catches: a served page that needs a script or a remote fetch to show its charts and values;
+        # page links that are missing, point at no real page, cannot be reached or followed from the
+        # keyboard, or are cut off on a phone; a bench row whose link does not land on its opened
+        # Sources; a figure deep link that does not land; a disclosure that cannot be opened; sideways
+        # scrolling at 390 px on any page, with every disclosure closed or open.
         self.assertEqual(self.publish().returncode, 0)
         self.assertEqual(self.fetch().returncode, 0)
         port = self.start()
-        run = subprocess.run(['node', '--input-type=module', '-', publish.chromium(), 'http://127.0.0.1:%d/' % port],
-                             input=PROBE, capture_output=True, text=True, timeout=180)
+        run = subprocess.run(['node', '--input-type=module', '-', publish.chromium(), 'http://127.0.0.1:%d' % port],
+                             input=PROBE, capture_output=True, text=True, timeout=240)
         self.assertEqual(run.returncode, 0, run.stderr)
         views = json.loads(run.stdout)
         self.assertEqual([v['width'] for v in views], [1440, 390])
         for v in views:
             with self.subTest(width=v['width']):
-                self.assertEqual(v['contentType'], 'text/html')
-                self.assertEqual(v['scripts'], 0)
-                self.assertGreater(v['svgs'], 0)
-                self.assertGreater(v['tables'], 0)
-                self.assertIn('Oswald WR', v['fonts'])
-                self.assertNotEqual(v['selectable'], 'none')
-                self.assertLessEqual(v['scrollWidth'], v['clientWidth'])
-                hrefs = [link['href'] for link in v['links']]
-                self.assertEqual(hrefs[:1], ['#figures'])
-                self.assertEqual(hrefs[-2:], ['#sources', '#inventory'])
-                self.assertEqual(len(hrefs), 3 + len(publish.page.INVENTORY['sections']))
-                for link in v['links']:
-                    self.assertTrue(link['target'], link)
-                    self.assertTrue(link['shown'], link)
-                self.assertTrue(all(t['inNav'] for t in v['tabs'][1:]), v['tabs'])
-                self.assertIsNotNone(v['followed'])
-                self.assertEqual(v['followed']['hash'], '#' + v['followed']['id'])
-                self.assertLessEqual(abs(v['followed']['top']), 10, v['followed'])
+                self.assertEqual([p['path'] for p in v['pages']], list(ROUTES))
+                for p, route in zip(v['pages'], ROUTES):
+                    self.assertEqual(p['contentType'], 'text/html')
+                    self.assertEqual(p['scripts'], 0)
+                    if route == '/':
+                        self.assertGreater(p['svgs'], 0, route)  # the cards draw even with no value
+                    self.assertIn('Oswald WR', p['fonts'])
+                    self.assertNotEqual(p['selectable'], 'none')
+                    self.assertLessEqual(p['scrollWidth'], p['clientWidth'], route)
+                    self.assertLessEqual(p['openWidth'], p['clientWidth'], route)
+                    self.assertEqual([a['href'] for a in p['nav']], ['./', 'speed', 'health', 'cost', 'quality', 'skills'])
+                    self.assertEqual([a['current'] for a in p['nav']].count('page'), 1)
+                    self.assertTrue(all(a['shown'] for a in p['nav']), p['nav'])
+                self.assertTrue(all(t['visible'] for t in v['tabs'][1:]), v['tabs'])
+                # Skip link, the status gaps' disclosure, then the page links in order.
+                first = next(i for i, t in enumerate(v['tabs']) if t['inNav'])
+                self.assertLessEqual(first, 2, v['tabs'])
+                self.assertEqual([t['href'] for t in v['tabs'][first:]], ['./', 'speed', 'health'])
+                self.assertEqual(v['followed'], {'path': '/health', 'title': 'OpenWiz War roomHealth'})
                 self.assertEqual(v['disclosure'], {'open': True, 'table': True})
+                self.assertEqual(v['row'], 'health#bench-main_ci')
+                self.assertEqual({k: v['bench'][k] for k in ('path', 'hash', 'open')},
+                                 {'path': '/health', 'hash': '#bench-main_ci', 'open': True})
+                self.assertTrue(0 <= v['bench']['top'] < 900 - 40 and v['bench']['height'] > 0, v['bench'])
                 self.assertGreater(v['deep']['scrolled'], 0)
-                # Sources sits near the page's end, so it lands in view rather than at the very top.
+                # Fig. 10 can sit near its page's end, so it lands in view rather than at the very top.
                 self.assertTrue(0 <= v['deep']['top'] < 900 - 40, v['deep'])
-
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -1,0 +1,38 @@
+# WRD5 (#883) red: python3 -I tools/war-room/test_web.py against the WRD4 one-page adapter (web/serve.py).
+# Lines cut at 200 characters; repeated lines counted.
+      2 AssertionError: 'the last good site stays' not found in 'war-room web: the branch has no plain page; the last good page stays\n'
+      1 AssertionError: 'the last good site stays' not found in 'war-room web: the page has no single security policy; the last good page stays\n'
+      1 AssertionError: 'the last good site stays' not found in 'war-room web: the page is not UTF-8; the last good page stays\n'
+      1 AssertionError: 'the last good site stays' not found in 'war-room web: the page is not the static page; the last good page stays\n'
+     10 AssertionError: 0 != 1
+      1 AssertionError: 1 != 0 : probe: evaluation failed: Uncaught
+      1 AssertionError: Tuples differ: (404, b'not found\n') != (200, b'<!doctype html><html lang="en"><he[31706 chars]ml>')
+      1 AssertionError: Tuples differ: (404, b'not found\n') != (200, b'<!doctype html><html lang="en"><he[33111 chars]ml>')
+      1 AssertionError: Tuples differ: (404, b'not found\n') != (200, b'<!doctype html><html lang="en"><he[33137 chars]ml>')
+      1 AssertionError: Tuples differ: (404, b'not found\n') != (200, b'<!doctype html><html lang="en"><he[36222 chars]ml>')
+      1 AssertionError: Tuples differ: (404, b'not found\n') != (200, b'<!doctype html><html lang="en"><he[50439 chars]ml>')
+      1 AssertionError: b'<!d[28260 chars] room 2</h1><p class="when">no chart window \x[21520 chars]tml>' != b'<!d[28260 chars] room</h1><p class="when">no chart window \xc2[21518 chars]tml>'
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page)
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [a link] (target='war-room-health.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [a link] (target='war-room-skills.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [a link] (target='war-room.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [no policy] (target='war-room-health.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [no policy] (target='war-room-skills.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [no policy] (target='war-room.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [not the page] (target='war-room-health.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [not the page] (target='war-room-skills.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [not the page] (target='war-room.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [removed] (target='war-room-health.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [removed] (target='war-room-skills.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [removed] (target='war-room.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [script] (target='war-room-health.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [script] (target='war-room-skills.html')
+      1 FAIL: test_a_failed_fetch_or_publication_keeps_the_last_good_page (__main__.Web.test_a_failed_fetch_or_publication_keeps_the_last_good_page) [script] (target='war-room.html')
+      1 FAIL: test_real_browser_reads_the_served_site_without_scripts (__main__.Web.test_real_browser_reads_the_served_site_without_scripts)
+      1 FAIL: test_the_published_page_is_served_as_html_over_http (__main__.Web.test_the_published_page_is_served_as_html_over_http) [/cost]
+      1 FAIL: test_the_published_page_is_served_as_html_over_http (__main__.Web.test_the_published_page_is_served_as_html_over_http) [/health]
+      1 FAIL: test_the_published_page_is_served_as_html_over_http (__main__.Web.test_the_published_page_is_served_as_html_over_http) [/quality]
+      1 FAIL: test_the_published_page_is_served_as_html_over_http (__main__.Web.test_the_published_page_is_served_as_html_over_http) [/skills]
+      1 FAIL: test_the_published_page_is_served_as_html_over_http (__main__.Web.test_the_published_page_is_served_as_html_over_http) [/speed]
+      1 FAILED (failures=22)
+      1 Ran 4 tests in 7.070s
