@@ -1,0 +1,27 @@
+# MT3 (#822) green after review round 1: python3 -I tools/war-room/test_collect_ci.py -v at 06b4ca2e716f474ea97a275d8c146d8ca36e2a4d
+test_activity_is_wr8_s_current_observation (__main__.Activity.test_activity_is_wr8_s_current_observation) ... ok
+test_a_head_with_no_result_makes_the_fact_partial (__main__.Ci3.test_a_head_with_no_result_makes_the_fact_partial) ... ok
+test_a_secret_in_a_read_refuses_the_whole_read (__main__.Ci3.test_a_secret_in_a_read_refuses_the_whole_read) ... ok
+test_the_ci3_fact_carries_ci3_s_own_record (__main__.Ci3.test_the_ci3_fact_carries_ci3_s_own_record) ... ok
+test_a_bad_command_line_exits_2_before_any_read (__main__.CommandLine.test_a_bad_command_line_exits_2_before_any_read) ... ok
+test_gather_s_ci_call_reads_every_ci_fact (__main__.Gather.test_gather_s_ci_call_reads_every_ci_fact) ... ok
+test_a_queue_that_cannot_be_read_whole_says_unknown (__main__.Queue.test_a_queue_that_cannot_be_read_whole_says_unknown) ... ok
+test_a_run_or_job_that_moves_on_mid_read_leaves_the_queue_incomplete (__main__.Queue.test_a_run_or_job_that_moves_on_mid_read_leaves_the_queue_incomplete) ... ok
+test_required_jobs_are_the_guard_s_cohort (__main__.Queue.test_required_jobs_are_the_guard_s_cohort) ... ok
+test_the_queue_is_the_guard_s_input_fresh_for_sixty_seconds (__main__.Queue.test_the_queue_is_the_guard_s_input_fresh_for_sixty_seconds) ... ok
+test_a_source_that_cannot_be_kept_makes_its_fact_unavailable (__main__.Retained.test_a_source_that_cannot_be_kept_makes_its_fact_unavailable) ... ok
+test_each_measured_source_is_kept_where_its_hash_points (__main__.Retained.test_each_measured_source_is_kept_where_its_hash_points) ... ok
+test_a_failed_job_s_broken_timing_leaves_the_unknown_amount_unknown (__main__.RunsAndMinutes.test_a_failed_job_s_broken_timing_leaves_the_unknown_amount_unknown) ... ok
+test_a_failed_read_is_unavailable_never_zero (__main__.RunsAndMinutes.test_a_failed_read_is_unavailable_never_zero) ... ok
+test_an_unfinished_window_is_never_read (__main__.RunsAndMinutes.test_an_unfinished_window_is_never_read) ... ok
+test_an_unpriced_job_keeps_its_minutes_and_leaves_the_totals_unknown (__main__.RunsAndMinutes.test_an_unpriced_job_keeps_its_minutes_and_leaves_the_totals_unknown) ... ok
+test_runs_and_minutes_are_ci_bench_s_numbers (__main__.RunsAndMinutes.test_runs_and_minutes_are_ci_bench_s_numbers) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 13.053s
+
+OK
+# python3 -I tools/war-room/test_contract.py at 06b4ca2e716f474ea97a275d8c146d8ca36e2a4d
+Ran 19 tests in 0.095s
+
+OK
