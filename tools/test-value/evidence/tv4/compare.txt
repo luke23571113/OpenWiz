@@ -1,9 +1,9 @@
 before: openwiz-tests:fleet
 after: openwiz-tests:fleet, openwiz-adapter-github:writes, openwiz-adapter-cloudroom:fleet_reads, openwiz-adapter-cloudroom:archive
-tests: 294 -> 279 (-15)
+tests: 294 -> 280 (-14)
 size files: 38 -> 40 (+2)
-size bytes: 865194 -> 851632 (-13562)
-size lines: 24109 -> 23698 (-411)
+size bytes: 865194 -> 852252 (-12942)
+size lines: 24109 -> 23718 (-391)
 coverage openwiz-adapter-cloudroom: 1745/3221 (54.18%) -> 1745/3221 (54.18%), covered +0
 coverage openwiz-adapter-github: 2163/4948 (43.71%) -> 2162/4948 (43.69%), covered -1
 coverage openwiz-cli: 517/9178 (5.63%) -> 517/9178 (5.63%), covered +0
@@ -12,5 +12,5 @@ coverage openwiz-server: 0/6145 (0.00%) -> 0/6145 (0.00%), covered +0
 coverage openwiz-service: 0/5276 (0.00%) -> 0/5276 (0.00%), covered +0
 coverage openwiz-store: 457/3643 (12.54%) -> 457/3643 (12.54%), covered +0
 coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
-seconds: 58.0 -> 73.7 (not compared exactly)
+seconds: 58.0 -> 76.3 (not compared exactly)
 drops: openwiz-adapter-github

@@ -17,16 +17,16 @@ kit (`tools/test-value/README.md`). The ledger is [ledger.md](ledger.md).
 [`compare.txt`](compare.txt):
 
 ```text
-tests: 294 -> 279 (-15)
+tests: 294 -> 280 (-14)
 size files: 38 -> 40 (+2)
-size bytes: 865194 -> 851632 (-13562)
-size lines: 24109 -> 23698 (-411)
+size bytes: 865194 -> 852252 (-12942)
+size lines: 24109 -> 23718 (-391)
 coverage openwiz-adapter-cloudroom: 1745/3221 (54.18%) -> 1745/3221 (54.18%), covered +0
 coverage openwiz-adapter-github: 2163/4948 (43.71%) -> 2162/4948 (43.69%), covered -1
 coverage openwiz-cli: 517/9178 (5.63%) -> 517/9178 (5.63%), covered +0
 coverage openwiz-core: 5483/9047 (60.61%) -> 5483/9047 (60.61%), covered +0
 coverage openwiz-store: 457/3643 (12.54%) -> 457/3643 (12.54%), covered +0
-seconds: 58.0 -> 73.7 (not compared exactly)
+seconds: 58.0 -> 76.3 (not compared exactly)
 drops: openwiz-adapter-github
 ```
 
@@ -54,8 +54,8 @@ no behaviour went with it:
 
 ## Size and time
 
-15 `#[test]`s fewer in total (20 fewer in the fleet target, 5 more in
-crate targets), 411 lines and 13.6 kB less test source. The run time is
+14 `#[test]`s fewer in total (19 fewer in the fleet target, 5 more in
+crate targets), 391 lines and 12.9 kB less test source. The run time is
 not comparable: the after run is four targets, each with its own `cargo
 test` start, against one before. The kit reports time outside its repeat
 check. Size and count are exact.
@@ -64,9 +64,21 @@ check. Size and count are exact.
 
 Each cut test names a keeper. For the cuts whose keeper is a different
 test, the code the cut test guarded was broken in a scratch worktree, and
-the keeper run alone: [`keepers.txt`](keepers.txt). Every keeper failed.
+the keeper run alone: [`keepers.txt`](keepers.txt).
 
-KEEPERS
+- **9 breaks, 9 keepers failed:** both dispatch arms, `fleet`'s help
+  section, the fake `gh`'s `extends` and `hang`, the no-checks
+  diagnostic's branch check, the `cloud thread-workspace` and `thread
+  archive` argv, and a write form.
+- **1 cut withdrawn:** for `a3_fake_gh.rs::it_answers_byte_for_byte`, two
+  breaks of the fake's output (ESC bytes dropped; JSON re-serialized)
+  passed every keeper tried, so it stays, kept.
+- **Not broken, by reading:** `a4_edges.rs::closed_merge_both_facts_fail_discovery`
+  (the reader's `merge.is_some() || merged_at.is_some()` is fully reached
+  by the two one-fact keepers), `a7_scale_unbounded_transport_count` (its
+  run and both assertions are the keeper's fast form), the three compiler
+  re-checks of `a3_seams.rs` (a build failure fails every keeper), and the
+  fake's `PATH` and no-scenario tests (the keepers' call logs).
 
 ## Helpers
 
@@ -77,7 +89,7 @@ checked every item I used against the code.
 
 | Role | Slice | Result | Used | Ignored | Wrong |
 | --- | --- | --- | --- | --- | --- |
-| scout 1 | `a3_*`, `al1_titles`, `lock_release`, `c10_*` (29 tests) | ISSUES | 9 cuts | 4 cut ideas (`a3_commands`' help test, the fake's malformed-scenario test, `a3_model`'s checker tests: kept as the oracle's own proofs) | 0 |
+| scout 1 | `a3_*`, `al1_titles`, `lock_release`, `c10_*` (29 tests) | ISSUES | 8 cuts | 5 cut ideas (`a3_commands`' help test; the fake's byte-for-byte and malformed-scenario tests; `a3_model`'s checker tests, kept as the oracle's own proofs) | 0 |
 | scout 2 | `a4_*` (45) | ISSUES | 2 cuts | 3 move ideas (`a4_allowlist`, the `a7` batch tests: they share `batch_argv` or need the fake `gh`) | 0 |
 | scout 3 | `a5_*` (36) | ISSUES | 2 cuts | the small-world baseline cut and the near-twin merges | 0 |
 | scout 4 | `a6_*` (36) | ISSUES | 2 cuts, 1 move (5 readers) | the vacuous-pass flag on `discovery_failure_fixture` (its parent runs it by exact name) | 0 |
