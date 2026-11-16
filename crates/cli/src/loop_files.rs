@@ -13,6 +13,9 @@ use std::io::Write;
 
 use crate::response;
 
+#[path = "loop_validate.rs"]
+mod loop_validate;
+
 pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
   openwiz loop export --project <project> [--out <dir>] [--json]
   openwiz loop plan <path>... --project <project> [--adopt <id>=<loop>]... [--json]
@@ -20,9 +23,18 @@ pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
 ";
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
-  (contracts/loop-cli.v1.md). Not built yet: each command refuses with exit 5
-  and reads and changes nothing.
+  (contracts/loop-cli.v1.md). validate checks loop files and names each
+  problem by file and field. export, plan and apply are not built yet: each
+  refuses with exit 5 and reads and changes nothing.
 ";
+
+/// Untrusted text (a Cloudroom name, id or key, room-cli's error text, a
+/// path) made safe to print on a terminal: every control, bidi or invisible
+/// format character is replaced, as [`crate::clean`] does for the inventory.
+/// JSON output keeps the original value; only human output goes through this.
+pub fn escape_untrusted(text: &str) -> String {
+    crate::clean(text)
+}
 
 /// The four loop-file commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,6 +233,9 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
                     .is_err(),
             )
         }
+        Ok(Parsed::Run(args)) if args.command == Command::Validate => {
+            loop_validate::run(&args, stdout, stderr)
+        }
         Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
@@ -280,10 +295,11 @@ mod tests {
     // contract's `not_built` document, so a caller mistakes it for a report.
     #[test]
     fn each_stub_refuses_with_the_contracts_not_built_result() {
+        // validate's row is gone: it is built (#790), and
+        // tests/cli-agent/loop_validate.rs keeps its behaviour.
         for (args, command, ticket) in [
-            (&["validate", "loops/a.md", "--json"][..], "validate", 790),
             (
-                &["export", "--project", "prj_syn_0001", "--json"],
+                &["export", "--project", "prj_syn_0001", "--json"][..],
                 "export",
                 791,
             ),
@@ -517,6 +533,21 @@ mod tests {
             OsString::from_vec(vec![0xff])
         }];
         assert!(parse(&bad).is_err(), "not UTF-8");
+    }
+
+    // catches: untrusted text printed with its control bytes, so a loop's
+    // name or room-cli's error can clear the screen, spoof a line or set the
+    // clipboard (OSC 52) when export prints it.
+    #[test]
+    fn escape_untrusted_replaces_terminal_controls() {
+        assert_eq!(
+            escape_untrusted("a\u{1b}[2Jb\u{1b}]52;c;eA==\u{7}c\rd\ne\u{202e}f"),
+            "a?[2Jb?]52;c;eA==?c?d?e\u{fffd}f"
+        );
+        assert_eq!(
+            escape_untrusted("Synthetic: plain text"),
+            "Synthetic: plain text"
+        );
     }
 
     // catches: help that reads, fails, or loses its JSON wrapper.

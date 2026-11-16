@@ -42,21 +42,13 @@ function scheduler() {
   };
 }
 
-test('Rust and web lanes allow 90 minutes only when the plan plants', () => {
+test('Rust and web lanes read the plan\'s planted output', () => {
   const changes = workflow.match(/^  changes:\n((?:    .*\n|\n)*)/m)?.[1];
   assert.match(changes, /^      planted: \$\{\{ steps\.plan\.outputs\.planted \}\}$/m);
   for (const lane of ['rust', 'rust-export', 'web', 'web-export']) {
     const job = workflow.match(new RegExp(`^  ${lane}:\\n((?:    .*\\n|\\n)*)`, 'm'))?.[1];
     assert.ok(job, `${lane} job exists`);
     assert.match(job, /^    needs: (?:changes|\[changes, web-build\])$/m);
-    const timeout = job.match(/^    timeout-minutes: (.+)$/m)?.[1];
-    assert.ok(timeout, `${lane} has a timeout`);
-    const expression = timeout.replace(/^\$\{\{ (.+) \}\}$/, '$1');
-    for (const [planted, expected] of [['true', 90], ['false', 60], ['', 60]]) {
-      const needs = { changes: { outputs: { planted } } };
-      assert.equal(runInNewContext(expression, { needs }, { timeout: 100 }), expected,
-        `${lane}: planted=${JSON.stringify(planted)}`);
-    }
   }
 });
 

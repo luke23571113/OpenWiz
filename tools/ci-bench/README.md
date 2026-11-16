@@ -696,3 +696,27 @@ fixtures are [`fixtures/ci3-weekly/`](fixtures/ci3-weekly/README.md),
 synthetic, their numbers worked out by hand. Tests prove the check on
 synthetic weeks only; the first real note on spec #780, after merge, is the
 loop's live proof.
+
+## Budgets (CI3 C1, #782)
+
+Every job in the CI and Privacy workflows has a time budget that fails. An overrun is a red bug, not lost minutes. A budget is 1.5x the job's p95 running time (started to completed), rounded up to a whole minute, with a floor of 5 minutes. `budgets.tsv` holds one row per job, plus one per mode for a two-mode job. Each row keeps its p95, its sample count and the runs it was read from.
+
+```sh
+# Read-only: each workflow's last 150 completed runs (latest attempt), via gh api GETs.
+python3 -I tools/ci-bench/budgets.py collect --workflow ci.yml --since T --out DIR
+python3 -I tools/ci-bench/budgets.py collect --workflow privacy.yml --since T --out DIR
+# Optional: the same with no --since, for jobs too rare to have samples in DIR.
+python3 -I tools/ci-bench/budgets.py table DIR [--fallback OLDER] # writes budgets.tsv
+python3 -I tools/ci-bench/budgets.py apply                          # sets each timeout-minutes line
+python3 -I tools/ci-bench/budgets.py check                          # CI's guard (ci-bench.yml)
+python3 -I tools/ci-bench/test_budgets.py                           # its proofs, synthetic records only
+```
+
+- **Samples:** every job of the latest attempt that ran to `success` or `failure`. Skipped jobs never ran, and cancelled ones were cut short, so neither counts. A matrix job's legs (`skills (triage)`, `rust-export (2)`) share one `timeout-minutes`, so its p95 is that of its slowest leg.
+- **Traced and planted runs** get their own budget, from their own runs. They run each lane as one shard and upload trace records. Every step that carries the trace/planted `if` tests the same flags. A run is traced when it is a scheduled run, or when any such step ran. It is normal when such a step was skipped after only successful or skipped steps. A run with neither, for example one where every such step was skipped after a failure, is left out of two-mode jobs and counted in a note, never guessed. Jobs whose steps carry the trace/planted `if` get a `normal` and a `traced` row, and their timeout is `${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && T || N }}`. Every other job gets one `all` row.
+- **Too few samples:** `table` refuses any job or mode with fewer than 5 samples. `--fallback` then reads that job's own last 150 runs from an older collection (no `--since`), and its row names those runs. A job listed in `--after-jobs` never reads from before the merges. It reads its own last 150 runs from the `--after` collection instead, which holds every run since the merges, with no 150-run cap. #743 changed the shape of `release`, `launch-fleet` and `skills`, so they are listed (#782 question 3).
+- **Old-shape runs:** GitHub lists every job of a run, skipped ones too. For an `--after-jobs` job, a run counts only if it lists exactly today's job keys. Two `pull_request` runs created after the merges still ran the old workflow, and are left out.
+- **`source`:** `measured` comes from the job's own runs. `derived:<twin>` copies a twin with the same steps, for a job that has never run (`--derive rust=rust-export web=web-export`: the export job adds only the web-app download and its cache). `unmeasured` keeps today's timeout until the job has 5 runs (`--unmeasured toolkit-nightly=360`), then it is re-read in its own PR (#782 question 4).
+- **Job keys:** bare or quoted (`"extra":`). Any other declaration at job depth is refused, so no job escapes the inventory.
+- **The check** fails on: a job with no row, a job with no `timeout-minutes`, a timeout that differs from its row, a measured or derived row whose timeout isn't 1.5x its p95, a source it doesn't know, and a row for a job that no longer exists. It runs in the bench workflow.
+- **No retries and no wider limits.** A job too slow for its budget is a bug to fix, or a budget to re-read from newer runs in its own PR.

@@ -169,7 +169,7 @@ def ci_bench(s, raw):
 
 
 def factory_metrics(s, raw):
-    M = native('tools/factory-metrics/metrics.py')
+    M = native('tools/war-room/metrics.py')
     p = M.load(raw.decode('utf-8'))
     M.exact(p, ('schema', 'date', 'merged_prs', 'merged_per_hour', 'hours', 'idle_minutes',
                 'biggest_stall', 'stalls', 'historical_completeness', 'edited_fleet_comments',
@@ -256,7 +256,7 @@ def factory_metrics(s, raw):
 
 
 def journey(s, raw):
-    J = native('tools/factory-metrics/journey.py')
+    J = native('tools/war-room/journey.py')
     doc = J.M.load(raw.decode('utf-8'))
     J.validate(doc)
     bench = J.bench(doc)
@@ -521,7 +521,7 @@ def credits(s, raw):
 
 
 def claude_usage(s, raw):
-    M = native('tools/factory-metrics/metrics.py')
+    M = native('tools/war-room/metrics.py')
     data = _pinned_file(raw, 'usage.json', lambda path: M.read_usage(path))
     span = day_window(data['date'])
     items = []

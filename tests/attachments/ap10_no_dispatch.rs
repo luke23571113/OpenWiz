@@ -9,7 +9,8 @@
 //! each flag exactly once, inside its one `attachment_args`, and uses the
 //! model's `StagedAttachment` and `Kind` for it; the adapter's `send` and
 //! `new` pass the core's `ReadyPrompt`. AD11
-//! (`tests/attachments/ad_static.rs`) proves there is one builder. The
+//! (`tests/attachments/ad_static.rs`) proves there is one builder, with
+//! each flag once inside it. The
 //! model itself still names no invocation, process or flag, the server
 //! still uses no attachment, and the store and the CLI still dispatch
 //! nothing themselves.
@@ -60,20 +61,6 @@ fn the_model_has_no_dispatch_path_and_no_io() {
                 || line.contains("use serde::"),
             "attachment.rs: {line}"
         );
-    }
-}
-
-#[test]
-fn the_allowlist_names_each_attachment_flag_once_inside_its_one_builder() {
-    let allowlist = read("crates/adapters/cloudroom/src/allowlist.rs");
-    let builder = allowlist
-        .split("pub fn attachment_args(")
-        .nth(1)
-        .and_then(|rest| rest.split("\n}\n").next())
-        .expect("attachment_args");
-    for flag in ["\"--file\"", "\"--image\""] {
-        assert_eq!(allowlist.matches(flag).count(), 1, "{flag} once");
-        assert!(builder.contains(flag), "{flag} outside attachment_args");
     }
 }
 
