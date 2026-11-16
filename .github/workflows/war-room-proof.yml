@@ -24,7 +24,7 @@ jobs:
     if: github.event_name == 'pull_request'
     # GitHub-hosted on purpose, never vars.CI_RUNS_ON: the charge shows in GitHub's own billing.
     runs-on: ubuntu-24.04
-    # #827: 10 before it took ci-bench.yml's tests (about 9 minutes measured locally with them).
+    # #827: 10 before it took the CI bench workflow's tests; set from a measured run.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
