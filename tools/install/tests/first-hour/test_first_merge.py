@@ -197,6 +197,18 @@ class Kit(unittest.TestCase):
         b = Bundle(); b.receipt['binding']['merge']['merged_at_ms'] -= 1000
         b.receipt['clock']['ended_at_ms'] = {'known': b.receipt['binding']['merge']['merged_at_ms']}
         self.assertEqual(self.outcome(b)[0], ["The receipt's merge time is not the first-hour result's merge read-back."])
+        # R1: both clocks start at the same instruction opening. Catches a late receipt start hiding a result
+        # that took exactly 1,800,000 ms, and an unknown start on one side standing beside a known one.
+        late = "The receipt's start is not the first-hour result's instruction-open start."
+        b = Bundle(); b.merge_at(START + 1800000); b.receipt['clock']['started_at_ms'] = {'known': START + 1000}
+        self.assertEqual(self.outcome(b)[:2], ([late], 'refused'))
+        b = Bundle(); b.receipt['clock']['started_at_ms'] = {'unknown': 'synthetic: not read'}; b.receipt['verdict'] = 'unverified'
+        self.assertEqual(self.outcome(b)[:2], ([late], 'refused'))
+        b = Bundle(); b.result['clock']['started_at_ms'] = {'unknown': 'synthetic: not read'}
+        self.assertEqual(self.outcome(b)[:2], ([late], 'refused'))
+        # R2: a created App needs a registration allowance; the kit refuses it before and after the run.
+        b = Bundle(); b.binding['counts']['app_registrations'] = 0
+        self.assertEqual(self.outcome(b)[:2], (['The binding allows no App registration for its created App.'], 'refused'))
 
     def test_every_owner_step_is_its_own_entry_and_a_stand_in_counts(self):
         # Catches collapsed taps, an uncounted stand-in and a missing key, paste or spending step.
@@ -290,6 +302,7 @@ class Eligibility(unittest.TestCase):
                  (lambda b: b['counts'].update(app_registrations=2), 'The counts are unbound: one fleet thread, one loop, at most one App registration and one companion.'),
                  (lambda b: b['counts'].pop('builders'), 'The counts are unbound: one fleet thread, one loop, at most one App registration and one companion.'),
                  (lambda b: b.update(credit_bound=0), 'The credit bound must be a positive number of Cloud Credits.'),
+                 (lambda b: b['counts'].update(app_registrations=0), 'The binding allows no App registration for its created App.'),
                  (lambda b: b['route'].update(identity='personal_login'), 'The route is inconsistent: the skip is personal_login, skipped, not_used.'),
                  (lambda b: b['cleanup'].append({'resource': 'all_repositories', 'action': 'delete'}), 'Unsafe cleanup: only bound test-owned resources, with test threads and loops stopped.'),
                  (lambda b: b['cleanup'].append({'resource': 'raw_evidence', 'action': 'delete'}), 'Unsafe cleanup: only bound test-owned resources, with test threads and loops stopped.'),
@@ -298,6 +311,11 @@ class Eligibility(unittest.TestCase):
             with self.subTest(expected):
                 b = fixture('binding.json'); edit(b)
                 self.assertEqual(kit.eligibility(record, b), [expected])
+        # R2 keeper: reused and skipped Apps register nothing, so zero registrations stays eligible for them.
+        for route in ({'identity': 'app', 'app_registration': 'reused', 'secret_route': 'agent_save'},
+                      {'identity': 'personal_login', 'app_registration': 'skipped', 'secret_route': 'not_used'}):
+            b = fixture('binding.json'); b['route'] = route; b['counts']['app_registrations'] = 0
+            self.assertEqual(kit.eligibility(record, b), [], route)
         out = io.StringIO()
         bad = fixture('binding.json'); bad['cleanup'] = []
         self.assertEqual(kit.dry_run(record, bad, out), 5)
