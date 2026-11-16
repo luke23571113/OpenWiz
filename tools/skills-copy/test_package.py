@@ -249,6 +249,33 @@ class InstallTests(Fixture):
             '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
         self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ['wizskills'])
 
+    def test_without_mv_t_a_failed_move_back_leaves_the_foreign_destination_untouched(self):
+        # WZ17 finding 6: a directory appears just before a plain mv, and moving
+        # the install back out of it fails. The foreign tree must stay exactly
+        # as its owner made it, mtime included, and the install must refuse.
+        real_mv = shutil.which('mv')
+        wrapper = self.bin / 'mv'
+        wrapper.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\n'
+                           'if any(arg.startswith("-") and arg not in ("-f", "-i") for arg in sys.argv[1:]):\n'
+                           '    sys.stderr.write("mv: illegal option\\n"); sys.exit(64)\n'
+                           'dest = pathlib.Path(' + repr(str(self.dest)) + ')\n'
+                           'if sys.argv[-1] == str(dest) and not dest.exists():\n'
+                           '    dest.mkdir(mode=0o750)\n'
+                           '    (dest / "keep").write_text("synthetic foreign bytes")\n'
+                           '    os.utime(dest, ns=(123000000000, 456000000000))\n'
+                           'if sys.argv[1].startswith(str(dest) + "/"):\n'
+                           '    sys.exit(1)  # the move back out of the foreign directory fails\n'
+                           'os.execv(' + repr(real_mv) + ', [' + repr(real_mv) + '] + sys.argv[1:])\n')
+        wrapper.chmod(0o755)
+        p = subprocess.run(['sh', str(INSTALL), '--version', '0.1.0', '--dest', str(self.dest)],
+                           env=self.env, cwd=self.root, capture_output=True, text=True, timeout=60)
+        if self.dest.exists():
+            self.assertEqual(snapshot(self.dest), {
+                '.': ('dir', 0o750), 'keep': ('file', 0o644, b'synthetic foreign bytes')})
+            self.assertEqual(self.dest.stat().st_mtime_ns, 456000000000)
+        self.assertEqual(p.returncode, 3, p.stderr)
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), [])
+
     def test_concurrent_destination_and_release_child_survive_publication(self):
         # Inject the race at the real publication syscall boundary, after the
         # installer's last absence check. The wrapper then invokes the real mv.
