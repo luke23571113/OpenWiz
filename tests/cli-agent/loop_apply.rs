@@ -224,14 +224,14 @@ fn argv(words: &str) -> Value {
 /// The account's own `syn-triage` loop as its file, by hand from
 /// `loops/list.json` and the adapter's "`room-cli loop list` to a file",
 /// with `priority` as given.
-fn triage(room: &Room, priority: u8, thread: &str) -> String {
+fn triage(room: &Room, priority: u8) -> String {
     room.write(
         "loops/syn-triage/check",
         "#!/bin/sh\n# Synthetic check: prints the due items in $WIZLOOP_PARAM_REPO, nothing when none is due.\nif [ -f due.txt ]; then cat due.txt; fi\nexit 0\n",
     );
     room.write(
         "loops/syn-triage.md",
-        &format!("---\nid: \"syn-triage\"\nname: \"Synthetic triage every ten minutes\"\ntrigger: {{\"cron\": \"*/10 * * * *\", \"timezone\": \"UTC\"}}\ncheck: {{\"run\": \"syn-triage/check\", \"timeout\": 60}}\nthread: \"{thread}\"\nagent: {{\"provider\": \"synthetic-provider\", \"model\": \"synthetic-model\", \"reasoning\": \"medium\"}}\nsecrets: [\"SYNTHETIC_TOKEN\", \".env\"]\npriority: {priority}\nparams: {{\"repo\": \"synthetic-org/synthetic-repo\"}}\n---\nSynthetic: triage the due items the check printed below."),
+        &format!("---\nid: \"syn-triage\"\nname: \"Synthetic triage every ten minutes\"\ntrigger: {{\"cron\": \"*/10 * * * *\", \"timezone\": \"UTC\"}}\ncheck: {{\"run\": \"syn-triage/check\", \"timeout\": 60}}\nthread: \"new\"\nagent: {{\"provider\": \"synthetic-provider\", \"model\": \"synthetic-model\", \"reasoning\": \"medium\"}}\nsecrets: [\"SYNTHETIC_TOKEN\", \".env\"]\npriority: {priority}\nparams: {{\"repo\": \"synthetic-org/synthetic-repo\"}}\n---\nSynthetic: triage the due items the check printed below."),
     )
 }
 
@@ -246,7 +246,7 @@ fn apply_runs_only_its_plans_command_then_reads_back() {
         &account(),
         &changed("loop_syn_1", |l| l["priority"] = json!(3)),
     );
-    let file = triage(&room, 3, "new");
+    let file = triage(&room, 3);
     // Another file beside it, which apply must leave alone.
     room.write(
         "loops/syn-nightly.md",
@@ -399,7 +399,7 @@ fn a_created_webhooks_address_reaches_only_the_caller_once() {
 fn a_differing_read_back_is_reported_and_never_retried() {
     // Cloudroom accepts the update, and `loop list` still shows priority 2.
     let room = Room::listing(&account(), &account());
-    let file = triage(&room, 3, "new");
+    let file = triage(&room, 3);
     let (code, doc) = room.json(&["syn-triage", "--from", &file]);
     assert_eq!(code, 5, "{doc:#}");
     assert_eq!(doc["outcome"], "different");
@@ -446,7 +446,7 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
     ];
     for (case, before, after, calls) in cases {
         let room = Room::new(before, after);
-        let file = triage(&room, 3, "new");
+        let file = triage(&room, 3);
         let (code, doc) = room.json_env(
             &["syn-triage", "--from", &file],
             &[("OPENWIZ_FIXTURE_READ_TIMEOUT_MS", "500")],
@@ -483,7 +483,7 @@ fn a_command_cloudroom_refuses_is_failed_with_its_message_unchanged() {
         ],
         vec![],
     );
-    let file = triage(&room, 3, "new");
+    let file = triage(&room, 3);
     let (code, doc) = room.json(&["syn-triage", "--from", &file]);
     assert_eq!(code, 5, "{doc:#}");
     assert_eq!(
@@ -507,7 +507,7 @@ fn a_command_cloudroom_refuses_is_failed_with_its_message_unchanged() {
 fn apply_writes_nothing_it_should_not() {
     let room = Room::listing(&account(), &account());
     // The file's id is not the one asked for: nothing is read at all.
-    let file = triage(&room, 3, "new");
+    let file = triage(&room, 3);
     let (code, doc) = room.json(&["syn-nightly", "--from", &file]);
     assert_eq!(code, 5, "{doc:#}");
     assert_eq!(
@@ -521,20 +521,21 @@ fn apply_writes_nothing_it_should_not() {
     assert_eq!(room.calls(), Vec::<Value>::new());
 
     // The adapter refuses it (Cloudroom cannot change a loop's thread).
-    let file = triage(&room, 2, "same");
-    let (code, doc) = room.json(&["syn-triage", "--from", &file]);
+    let file = room.write(
+        "loops/syn-nightly.md",
+        "---\nid: \"syn-nightly\"\nname: \"Synthetic nightly note\"\ntrigger: {\"cron\": \"0 5 * * *\", \"timezone\": \"America/Los_Angeles\"}\nthread: \"same\"\nsecrets: \"all\"\npriority: 3\n---\nSynthetic: post a short nightly note.",
+    );
+    let (code, doc) = room.json(&["syn-nightly", "--from", &file]);
     assert_eq!(code, 5, "{doc:#}");
     assert_eq!(
         (&doc["outcome"], &doc["action"], &doc["loop"]),
-        (&json!("refused"), &json!("refused"), &json!("loop_syn_1"))
+        (&json!("refused"), &json!("refused"), &json!("loop_syn_3"))
     );
-    let codes: Vec<&Value> = doc["refusals"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| &r["code"])
-        .collect();
-    assert!(codes.contains(&&json!("cf-update-thread")), "{doc:#}");
+    assert_eq!(
+        doc["refusals"],
+        json!([{"file": file, "code": "cf-update-thread", "field": "thread", "message": "Cloudroom cannot change a loop's thread"}])
+    );
+    assert_eq!(room.calls(), vec![json!(LIST)]);
 
     // Nothing differs: unchanged, from `./<id>.md` by default.
     room.write(
@@ -568,7 +569,7 @@ fn a_failed_read_before_any_write_exits_1_and_writes_nothing() {
     assert_eq!(code, 1, "{doc:#}");
     assert_eq!(doc["schema"], "openwiz.cli-error.v1");
     assert_eq!(room.calls(), Vec::<Value>::new());
-    let file = triage(&room, 3, "new");
+    let file = triage(&room, 3);
     let (code, doc) = room.json(&["syn-triage", "--from", &file]);
     assert_eq!(code, 1, "{doc:#}");
     assert_eq!(doc["schema"], "openwiz.cli-error.v1");
@@ -697,7 +698,7 @@ fn text_output_previews_the_command_and_never_prints_a_terminal_control() {
         ],
         vec![],
     );
-    let file = triage(&room, 3, "new");
+    let file = triage(&room, 3);
     let output = room.apply(&["syn-triage", "--from", &file]);
     assert_eq!(output.status.code(), Some(5));
     let text = String::from_utf8(output.stdout).unwrap();

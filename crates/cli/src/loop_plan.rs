@@ -118,7 +118,7 @@ fn item_json(item: &PlanItem) -> Value {
 /// acts on: safe text single-quoted (line breaks included, so a prompt stays
 /// readable), and each other character as `"$(printf '\ooo')"`, the octal of
 /// its UTF-8 bytes. The value itself is never changed.
-fn quoted(word: &str) -> String {
+pub(super) fn quoted(word: &str) -> String {
     let mut out = String::from("'");
     for c in word.chars() {
         let s = c.to_string();
@@ -134,7 +134,7 @@ fn quoted(word: &str) -> String {
 }
 
 /// A block of untrusted text, escaped line by line so its breaks stay.
-fn block(text: &str) -> String {
+pub(super) fn block(text: &str) -> String {
     text.split('\n').map(esc).collect::<Vec<_>>().join("\n")
 }
 

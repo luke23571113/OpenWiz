@@ -24,8 +24,11 @@
 //! `plan` is given, [`parse_loop_list`] reads `room-cli loop list` with the
 //! same strict JSON parser, and [`plan`] maps each valid file to its
 //! `room-cli loop create` or `update` command and compares it with its
-//! managed loop, as `contracts/wizloops-cloudroom.v1.md` says. Nothing here
-//! writes.
+//! managed loop, as `contracts/wizloops-cloudroom.v1.md` says.
+//!
+//! LC5 (#793, apply) runs plan's commands: [`CloudRoomSource::loop_files_write`]
+//! runs one, with the files it names, and [`read_back`] plans the file again
+//! against the `loop list` read after it. Nothing else here writes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -3164,6 +3167,140 @@ fn loop_id(object: &Map<String, Value>) -> String {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_owned()
+}
+
+// ------------------------------------------------------------------- apply
+
+// LC5 (#793): apply runs plan's own commands. Its two pieces here are one
+// write, with the files its `@` operands stand for, and the read-back's
+// comparison. Which commands run, and what each result means, is apply's.
+
+/// What one `room-cli loop create` or `update` did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Written {
+    /// It exited 0: Cloudroom accepted it. Its stdout.
+    Accepted(String),
+    /// It exited with another code: Cloudroom refused it. The first
+    /// non-empty line of its error output, unchanged.
+    Refused(String),
+    /// It timed out, ended without an exit code, or could not be run:
+    /// whether it changed anything is unknown. Why, in words.
+    Unclear(String),
+}
+
+/// Writes `text` to the new file `path`, owner-only.
+fn write_private(path: &Path, text: &str) -> io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?
+        .write_all(text.as_bytes())
+}
+
+impl CloudRoomSource {
+    /// Runs one of plan's commands once, through the allowlist: writes each
+    /// of its files, owner-only, into `dir` (a private folder the caller
+    /// made and removes afterwards), and passes their paths where its
+    /// `@prompt` and `@script` operands stand. Never retried. `Err` when a
+    /// file could not be written, or the command is not a loop write: then
+    /// nothing was run.
+    pub fn loop_files_write(
+        &self,
+        command: &RoomCommand,
+        dir: &Path,
+        deadline: Instant,
+    ) -> io::Result<Written> {
+        let invalid = |what: &str| io::Error::new(io::ErrorKind::InvalidInput, what.to_owned());
+        let mut paths = BTreeMap::new();
+        for (operand, text) in &command.files {
+            let path = dir.join(operand.trim_start_matches('@'));
+            write_private(&path, text)?;
+            let path = path
+                .to_str()
+                .ok_or_else(|| invalid("the temporary folder's path is not UTF-8"))?;
+            paths.insert(operand.as_str(), path.to_owned());
+        }
+        let path = |operand: &mut String| -> io::Result<()> {
+            *operand = paths
+                .get(operand.as_str())
+                .cloned()
+                .ok_or_else(|| invalid("a file operand has no file"))?;
+            Ok(())
+        };
+        let mut invocation = command.invocation.clone();
+        match &mut invocation {
+            Invocation::LoopCreate(a) => {
+                path(&mut a.prompt_file)?;
+                a.script_file.as_mut().map(path).transpose()?;
+            }
+            Invocation::LoopUpdate(a) => {
+                a.script_file.as_mut().map(path).transpose()?;
+            }
+            _ => return Err(invalid("not a loop write")),
+        }
+        Ok(match process::run_spawn(self.program(), &invocation, deadline) {
+            Ok(out) => Written::Accepted(String::from_utf8_lossy(&out).into_owned()),
+            Err(process::SpawnFailure::Exited {
+                exit_code: Some(code),
+                first_line,
+            }) if first_line.is_empty() => {
+                Written::Refused(format!("room-cli exited {code} with no error output"))
+            }
+            Err(process::SpawnFailure::Exited {
+                exit_code: Some(_),
+                first_line,
+            }) => Written::Refused(first_line),
+            Err(process::SpawnFailure::Exited { exit_code: None, .. }) => {
+                Written::Unclear("room-cli ended without an exit code".into())
+            }
+            Err(process::SpawnFailure::Source(e)) => Written::Unclear(format!("room-cli {e}")),
+        })
+    }
+}
+
+/// The address a webhook `create` printed: the first word of its output
+/// that starts with `https://`. The adapter's "A webhook address is shown
+/// once": the caller passes it on once and writes it nowhere.
+pub fn webhook_address(stdout: &str) -> Option<&str> {
+    stdout
+        .split_whitespace()
+        .find(|word| word.starts_with("https://"))
+}
+
+/// The read-back: the file planned again, with no binding, against the
+/// `loop list` read after the last write, as plan compares. An `in` file's
+/// delay became its loop's run time when it was created, so that run time
+/// stands in for it (an `in` file never matches an existing loop).
+pub fn read_back(
+    shown: &str,
+    read: &FileRead,
+    live: &[LiveLoop],
+    project: &str,
+    now: i64,
+) -> PlanItem {
+    let mut read = read.clone();
+    let managed: Vec<&LiveLoop> = live
+        .iter()
+        .filter(|l| {
+            l.project_id == project
+                && split_marker(&l.name).is_some_and(|(id, _)| Some(id) == read.id.as_deref())
+        })
+        .collect();
+    if let (Some(file), [only]) = (read.file.as_mut(), managed.as_slice())
+        && let Some(Trigger::At(at)) = &only.trigger
+        && file
+            .frontmatter
+            .get("trigger")
+            .is_some_and(|t| t.get("in").is_some())
+    {
+        file.frontmatter
+            .insert("trigger".into(), json!({ "at": at }));
+    }
+    let mut items = plan(&[(shown.to_owned(), read)], live, project, &[], now).items;
+    items.remove(0)
 }
 
 #[cfg(test)]
