@@ -40,6 +40,7 @@ rust	Run cargo test --workspace
 rust	The pending list
 skills	The triage helper's test
 skills	The skills' tests
+skills	The launch-fleet tests
 skills	The docs-only classifier
 web	Run npm test
 web	The browser proofs
