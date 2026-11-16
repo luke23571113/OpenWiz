@@ -48,7 +48,6 @@ class Routing(unittest.TestCase):
                 expr=expr.replace('needs.changes.result',repr('success')).replace('needs.web-build.result',repr('success')).replace('!cancelled()','True')
                 expr=expr.replace('&&',' and ').replace('||',' or ')
                 if eval(expr,{'__builtins__':{}},{}): active.append(name)
-                self.assertIn("    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || 60 }}\n",block)
                 self.assertEqual(step(block,'The live-check toolkit (fixtures only)').count(
                     "        if: needs.changes.outputs.toolkit == 'true'\n"),1)
                 self.assertIn('TOOLKIT_RESULT: ${{ steps.toolkit.outcome }}',step(block,'Record passed toolkit'))

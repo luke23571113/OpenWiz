@@ -18,7 +18,7 @@ import sys
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
-TOOLS = HERE.parent / 'factory-metrics'
+TOOLS = HERE
 
 
 def _load(name, path):
