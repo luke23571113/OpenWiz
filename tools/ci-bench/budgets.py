@@ -2,7 +2,8 @@
 """CI3 C1 (#782): time budgets that fail, read from real runs.
 
     budgets.py collect --workflow W [--runs 150] [--since T] --out DIR   read W's last completed runs (gh api, GET only)
-    budgets.py table DIR [--fallback DIR] [--out budgets.tsv]            each job's p95 and budget, from DIR's runs
+    budgets.py table DIR [--fallback DIR] [--after DIR --after-jobs JOB...] [--out budgets.tsv]
+                                                                         each job's p95 and budget, from DIR's runs
     budgets.py apply [--table budgets.tsv] [WORKFLOW...]                 set each job's timeout-minutes from the table
     budgets.py check [--table budgets.tsv] [WORKFLOW...]                 fail on a job with no row or another timeout
 
@@ -294,8 +295,8 @@ def traced_runs(jobs):
 
 
 def samples(jobs, key, mode, traced):
-    """Each leg's running seconds: jobs named KEY or KEY (matrix values) that ran to success or failure."""
-    legs = {}
+    """(leg, run, run created, running seconds) for each job named KEY or KEY (matrix values) that ran to success or failure."""
+    out = []
     for j in jobs:
         if j["name"] != key and not j["name"].startswith(key + " ("):
             continue
@@ -303,31 +304,48 @@ def samples(jobs, key, mode, traced):
             continue
         if mode != "all" and (j["run"] in traced) != (mode == "traced"):
             continue
-        legs.setdefault(j["name"], []).append(B.secs(j["completed_at"]) - B.secs(j["started_at"]))
-    return legs
+        out.append((j["name"], j["run"], j.get("run_created_at", j["created_at"]), B.secs(j["completed_at"]) - B.secs(j["started_at"])))
+    return out
 
 
-def table(window, fallback, out, workflows):
+def own_runs(got):
+    """Only the job's own last RUNS runs, and the runs, first and last that describe them."""
+    created = {run: at for _, run, at, _ in got}
+    keep = set(sorted(created, key=lambda r: (created[r], r))[-RUNS:])
+    times = sorted(created[r] for r in keep)
+    return [g for g in got if g[1] in keep], len(keep), times[0] if times else None, times[-1] if times else None
+
+
+def table(window, fallback, out, workflows, after=None, after_jobs=()):
     rows, errors = [], []
     for path in workflows:
         wf = Path(path).name
         _, wjobs = read_workflow(path)
-        sources = [read_window(window, wf)] + ([read_window(fallback, wf)] if fallback else [])
+        primary = read_window(window, wf)
+        older = read_window(fallback, wf) if fallback else None
+        later = read_window(after, wf) if after else None
         for key, j in wjobs.items():
+            # A job whose shape changed in #743 never reads runs from before
+            # the merges: only its own runs after them (#782 question 3).
+            second = later if key in after_jobs else older
             for mode in (("normal", "traced") if j["marked"] else ("all",)):
-                for w, jobs in sources:
-                    legs = samples(jobs, key, mode, traced_runs(jobs))
-                    n = sum(map(len, legs.values()))
-                    if n >= MIN_SAMPLES:
-                        break
+                w, jobs = primary
+                got = samples(jobs, key, mode, traced_runs(jobs))
+                runs, first, last = w["runs"], w["first"], w["last"]
+                if len(got) < MIN_SAMPLES and second is not None:
+                    got, runs, first, last = own_runs(samples(second[1], key, mode, traced_runs(second[1])))
+                n = len(got)
                 if n < MIN_SAMPLES:
                     errors.append(f"{wf} job {key} {mode} has {n} sample{'' if n == 1 else 's'},"
                                   f" fewer than {MIN_SAMPLES}")
                     continue
+                legs = {}
+                for leg, _, _, seconds in got:
+                    legs.setdefault(leg, []).append(seconds)
                 # The slowest leg's p95: one timeout covers every matrix leg.
                 p95 = max(B.nearest_rank(v, 0.95) for v in legs.values())
                 rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": budget(p95), "p95_seconds": p95,
-                             "samples": n, "runs": w["runs"], "first": w["first"], "last": w["last"]})
+                             "samples": n, "runs": runs, "first": first, "last": last})
     for e in errors:
         print(f"budgets: {e}", file=sys.stderr)
     if errors:
@@ -351,6 +369,8 @@ def main(argv):
     t = sub.add_parser("table")
     t.add_argument("window")
     t.add_argument("--fallback")
+    t.add_argument("--after")
+    t.add_argument("--after-jobs", nargs="+", default=[])
     t.add_argument("--out", default=str(TABLE))
     t.add_argument("--workflows", nargs="+", default=[str(w) for w in WORKFLOWS])
     for name in ("apply", "check"):
@@ -367,7 +387,7 @@ def main(argv):
             collect(a.workflow, a.runs, a.since, a.out, a.per_page)
             return 0
         if a.cmd == "table":
-            return table(a.window, a.fallback, a.out, a.workflows)
+            return table(a.window, a.fallback, a.out, a.workflows, a.after, a.after_jobs)
         return (apply if a.cmd == "apply" else check)(a.table, a.workflows)
     except Fail as e:
         print(f"budgets: {e}", file=sys.stderr)
