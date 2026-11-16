@@ -11,10 +11,11 @@
 //! - **The catalogue:** only sheet A-2's keys are read, each typed, each
 //!   once; every other key is still dropped unread (A-2). Anything else
 //!   offers nothing and dispatches nothing.
+//!
+//! The receipt's reader table moved to the adapter's own tests
+//! (`crates/adapters/cloudroom/tests/new_thread_readers.rs`, #808).
 
-use openwiz_adapter_cloudroom::new_thread::{parse_catalogue, spawn_receipt};
-use openwiz_core::messaging::send::UncertainReason;
-use openwiz_core::new_thread::outcome::SpawnReply;
+use openwiz_adapter_cloudroom::new_thread::parse_catalogue;
 use openwiz_core::source::SourceError;
 use serde_json::{Value, json};
 
@@ -46,112 +47,10 @@ const SOLS_RECEIPT: &str = r#"{"id":"thr_syn_wrong","id":"thr_syn_0021","project
 
 #[test]
 fn boundary_readers_affected_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 2] = [
-        ("the_catalogue_table", the_catalogue_table),
-        ("the_receipt_table", the_receipt_table),
-    ];
+    let cases: [(&str, fn()); 1] = [("the_catalogue_table", the_catalogue_table)];
     for (name, proof) in cases {
         eprintln!("TA2 case: boundary_readers::{name}");
         proof();
-    }
-}
-
-fn the_receipt_table() {
-    let receipt = fixture_json("spawn-receipt-created.json");
-    let text = receipt.to_string();
-    let mut documented = receipt.clone();
-    for (key, value) in [
-        (
-            "purpose",
-            json!({"text": "Synthetic purpose.", "percent": 0}),
-        ),
-        ("activity", json!({"activeGoalCount": 0})),
-        ("runtime", json!({"displayStatus": "idle"})),
-        ("projectCopy", Value::Null),
-        ("queuedWork", json!("none")),
-        ("hasPendingInteraction", json!(false)),
-        ("environmentHostId", Value::Null),
-        ("environmentIsWorktree", Value::Null),
-        ("lastError", Value::Null),
-    ] {
-        documented[key] = value;
-    }
-    let good = [
-        text.clone(),
-        documented.to_string(),
-        // #949: room-cli v155's declared receipt adds keys the old reader refused.
-        String::from_utf8(fixture("spawn-receipt-created-v155.json")).unwrap(),
-        json!({"id": "thr_syn_0021", "projectId": "prj_syn_0001", "status": "pending"}).to_string(),
-        // #949: only id and projectId are read; any other key, of any type,
-        // is not drift (an additive room-cli release must not break new).
-        with(&receipt, "unexpected", json!(true)),
-        with(&receipt, "thread", json!({})),
-        with(
-            &receipt,
-            "syntheticExtraField",
-            json!([{"a": null}, 1.5, "x"]),
-        ),
-        with(&receipt, "createdAt", json!("1700000600000")),
-        with(&receipt, "canSpawnChild", json!("true")),
-        with(&receipt, "title", json!(7)),
-        with(&receipt, "status", Value::Null),
-        with(&receipt, "purpose", json!("Synthetic purpose")),
-    ];
-    for row in &good {
-        assert_eq!(
-            spawn_receipt(row.as_bytes(), "prj_syn_0001"),
-            SpawnReply::Created {
-                thread_id: "thr_syn_0021".to_owned()
-            },
-            "{row}"
-        );
-    }
-    let bad = [
-        SOLS_RECEIPT.to_owned(),
-        twice(&text, "\"id\":", "\"id\":\"thr_syn_0099\",\"id\":"),
-        twice(&text, "\"id\":", "\"id\":\"thr_syn_0021\",\"id\":"),
-        twice(
-            &text,
-            "\"projectId\":",
-            "\"projectId\":\"prj_syn_0002\",\"projectId\":",
-        ),
-        twice(&text, "\"title\":", "\"title\":\"Synthetic\",\"title\":"),
-        twice(
-            &documented.to_string(),
-            "\"percent\":",
-            "\"percent\":1,\"percent\":",
-        ),
-        without(&receipt, "id"),
-        without(&receipt, "projectId"),
-        Value::Array(receipt.as_object().unwrap().values().cloned().collect()).to_string(),
-        json!({"thread": receipt}).to_string(),
-        json!({"created": receipt}).to_string(),
-        with(&receipt, "id", json!(21)),
-        with(&receipt, "projectId", json!({"id": "prj_syn_0001"})),
-        with(&receipt, "id", Value::Null),
-        with(&receipt, "projectId", Value::Null),
-        // #949: a key given twice inside a key OpenWiz does not read.
-        twice(
-            &with(&receipt, "syntheticExtraField", json!({"x": 1})),
-            "\"x\":",
-            "\"x\":2,\"x\":",
-        ),
-    ];
-    for row in &bad {
-        let reply = spawn_receipt(row.as_bytes(), "prj_syn_0001");
-        let SpawnReply::Unclear { reason, gaps } = &reply else {
-            panic!("accepted: {row}\n{reply:?}")
-        };
-        assert_eq!(*reason, UncertainReason::UnexpectedReceipt, "{row}");
-        let shown = format!("{gaps:?}");
-        for echoed in [
-            "thr_syn_wrong",
-            "prj_syn_wrong",
-            "thr_syn_0099",
-            "unexpected",
-        ] {
-            assert!(!shown.contains(echoed), "{echoed} echoed: {shown}");
-        }
     }
 }
 

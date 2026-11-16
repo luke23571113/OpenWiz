@@ -12,9 +12,10 @@
 //! `room-cli-v127/new-thread` stdout files and a private state directory.
 //! Nothing is created live, and fixture tests never prove live behaviour.
 //!
-//! `structure` holds the checks that are not one N case; `project_names`
-//! and `schema_parity` answer Sol's phase 1 round 1 (`pattern` is their
-//! schema checker), and `contract_tables` its round 2.
+//! `structure` holds the checks that are not one N case; `schema_parity`
+//! answers Sol's phase 1 round 1 (`pattern` is its schema checker), and
+//! `contract_tables` its round 2. The project names moved to
+//! `crates/core/tests/` (#808).
 
 mod fake;
 mod harness;
@@ -42,7 +43,6 @@ mod boundary_readers;
 mod contract_tables;
 mod inspect_claim_race;
 mod n01_end_to_end;
-mod n01_exact_invocation;
 mod n02_no_rewrite;
 mod n03_existing_projects;
 mod n04_offered_only;
@@ -63,7 +63,6 @@ mod n18_cli;
 mod n18_report;
 mod n19_status_read_only;
 mod pattern;
-mod project_names;
 mod record_load;
 mod record_store;
 mod schema_parity;
