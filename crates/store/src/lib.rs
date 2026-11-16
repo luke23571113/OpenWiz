@@ -32,7 +32,6 @@
 //! `sync_all` and Unix permissions.
 
 pub mod loops;
-pub mod notifications;
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
