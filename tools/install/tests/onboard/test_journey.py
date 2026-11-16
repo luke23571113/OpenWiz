@@ -504,6 +504,39 @@ class Continuation(unittest.TestCase):
         self.assertEqual(private.helper(['decisions', '--yes']).returncode, 5, 'no companion, nothing to connect')
         self.assertFalse((private.setup_dir / 'service/config.json').exists())
 
+    def test_a_decisions_write_cut_short_before_its_replace_can_be_confirmed_again(self):
+        # Review R6: catches a staging file left by an interrupted write blocking
+        # every later confirmation, so the companion could never be connected.
+        pair = setup_state(brain='companion')['brain']['decision_repositories']
+        for name, existing in (('no settings file', None),
+                               ('an existing settings file', {'schema': 'synthetic', 'server': {'port': 7370}})):
+            with self.subTest(name):
+                j = Journey(self)
+                j.write_setup(setup_state(brain='companion'))
+                path = j.setup_dir / 'service/config.json'
+                if existing is not None:
+                    j.write_config(existing)
+                before = path.read_bytes() if path.exists() else None
+                # The real helper, its process killed (SIGKILL) just before its final replace.
+                cut = subprocess.run(
+                    [sys.executable, '-I', '-c', 'import os, runpy, signal, sys\n'
+                     'os.replace = lambda *a: os.kill(os.getpid(), signal.SIGKILL)\n'
+                     'sys.argv = sys.argv[1:]\nrunpy.run_path(sys.argv[0], run_name="__main__")',
+                     str(HELPER), 'decisions', '--yes', '--state', str(j.state), '--setup-state', str(j.setup_dir)],
+                    env=j.env(), capture_output=True, text=True, cwd=j.dir, timeout=60)
+                self.assertEqual(cut.returncode, -9, cut.stdout + cut.stderr)
+                self.assertEqual(path.read_bytes() if path.exists() else None, before, 'the cut write changed nothing')
+                self.assertEqual(j.helper(['decisions']).returncode, 12)
+                done = j.helper(['decisions', '--yes'])
+                self.assertEqual(done.returncode, 0, done.stdout)
+                self.assertEqual(json.loads(path.read_text()), dict(existing or {}, decision_repositories=pair),
+                                 'connected, every other key kept')
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                first = (path.read_bytes(), path.stat().st_mtime_ns)
+                self.assertEqual(j.helper(['decisions', '--yes']).returncode, 0)
+                self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), first, 'a second run changes nothing')
+                self.assertEqual(j.helper(['continue']).returncode, 0, 'the companion is then carried')
+
     def test_the_prepared_agents_are_reused_only_when_offered(self):
         j = Journey(self)
         self.assertEqual(j.helper(['choose', '--from-setup', '--agents', 'cloud']).returncode, 5, 'nothing carried yet')
