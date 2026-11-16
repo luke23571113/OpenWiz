@@ -78,6 +78,8 @@ fn the_receipt_table() {
     let good = [
         text.clone(),
         documented.to_string(),
+        // #949: room-cli v155's declared receipt adds keys the old reader refused.
+        String::from_utf8(fixture("spawn-receipt-created-v155.json")).unwrap(),
         json!({"id": "thr_syn_0021", "projectId": "prj_syn_0001", "status": "pending"}).to_string(),
     ];
     for row in &good {
