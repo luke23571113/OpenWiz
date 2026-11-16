@@ -260,25 +260,10 @@ fn not_built(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32
     5
 }
 
-// The schema checker the contract tests share (no JSON Schema crate is approved).
-#[cfg(test)]
-#[allow(dead_code)]
-#[path = "../../../tests/support/schema.rs"]
-mod schema;
-
-// OpenWiz's own SHA-256, compiled into the tests only: they start no process.
-#[cfg(test)]
-#[allow(dead_code)]
-#[path = "../../core/src/messaging/sha256.rs"]
-mod sha256;
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value;
-    use std::path::Path;
-
-    const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
     fn run_args(args: &[&str]) -> (i32, String, String) {
         let args: Vec<OsString> = args.iter().map(OsString::from).collect();
@@ -291,17 +276,10 @@ mod tests {
         )
     }
 
-    fn contract_schema() -> Value {
-        let path = Path::new(ROOT).join("contracts/loop-cli.v1.schema.json");
-        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
-    }
-
     // catches: a stub that succeeds, reads, or prints a result that is not the
     // contract's `not_built` document, so a caller mistakes it for a report.
     #[test]
     fn each_stub_refuses_with_the_contracts_not_built_result() {
-        let schema = contract_schema();
-        assert_eq!(schema::lint(&schema), Vec::<String>::new());
         for (args, command, ticket) in [
             (&["validate", "loops/a.md", "--json"][..], "validate", 790),
             (
@@ -325,7 +303,6 @@ mod tests {
             assert!(err.is_empty(), "{args:?}: {err}");
             assert!(out.ends_with('\n') && out.lines().count() == 1, "{out:?}");
             let doc: Value = serde_json::from_str(&out).unwrap();
-            assert_eq!(schema::validate(&schema, &doc), Vec::<String>::new());
             assert_eq!(
                 doc,
                 serde_json::json!({
@@ -554,66 +531,5 @@ mod tests {
         assert_eq!(code, 0);
         let doc: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(doc["schema"], "openwiz.cli-help.v1");
-    }
-
-    // catches: a pinned WizLoops file that drifts from the pinned commit (an
-    // edit in place, or a tool that strips crlf.md's carriage returns), or a
-    // fixture added or lost without re-pinning.
-    #[test]
-    fn the_pinned_wizloops_files_match_their_record() {
-        let root = Path::new(ROOT);
-        let record =
-            std::fs::read_to_string(root.join("contracts/fixtures/wizloops/README.md")).unwrap();
-        assert!(record.contains("`c7c2ed434dd984d3e984df2a45eb66d43bcdf759`"));
-        let block = record
-            .split("```sha256\n")
-            .nth(1)
-            .and_then(|b| b.split("\n```").next())
-            .expect("the sha256 block");
-        let recorded: std::collections::BTreeMap<&str, &str> = block
-            .lines()
-            .map(|l| {
-                let (hash, path) = l.split_once("  ").unwrap();
-                (path, hash)
-            })
-            .collect();
-        let mut pinned = vec![
-            "contracts/wizloops-loop.v1.md".to_owned(),
-            "contracts/wizloops-loop.v1.schema.json".to_owned(),
-            "contracts/wizloops-cloudroom.v1.md".to_owned(),
-        ];
-        fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
-            for entry in std::fs::read_dir(dir).unwrap() {
-                let path = entry.unwrap().path();
-                if path.is_dir() {
-                    walk(&path, root, out);
-                } else if !path.ends_with("contracts/fixtures/wizloops/README.md") {
-                    out.push(
-                        path.strip_prefix(root)
-                            .unwrap()
-                            .to_str()
-                            .unwrap()
-                            .to_owned(),
-                    );
-                }
-            }
-        }
-        walk(&root.join("contracts/fixtures/wizloops"), root, &mut pinned);
-        let mut listed: Vec<&str> = recorded.keys().copied().collect();
-        listed.sort_unstable();
-        let mut found: Vec<&str> = pinned.iter().map(String::as_str).collect();
-        found.sort_unstable();
-        assert_eq!(
-            found, listed,
-            "the record lists every pinned file, and only those"
-        );
-        for path in found {
-            let bytes = std::fs::read(root.join(path)).unwrap();
-            assert_eq!(
-                Some(&super::sha256::sha256_hex(&bytes).as_str()),
-                recorded.get(path),
-                "{path} differs from WizLoops"
-            );
-        }
     }
 }

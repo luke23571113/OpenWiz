@@ -23,6 +23,7 @@ mod schema;
 mod cli_ui;
 
 mod github_token;
+mod loop_contract;
 mod process;
 mod results;
 mod review;
