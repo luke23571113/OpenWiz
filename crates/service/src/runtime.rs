@@ -192,27 +192,6 @@ fn run_composed(
         sources.github,
     )?)
     .register(&mut scheduler, now)?;
-    // #2034: the configured notification pass joins this scheduler. It reads
-    // this service's own decisions route and saved health state. Delivery comes
-    // from T4's one installed factory (#2035), or a fixture's recording one
-    // (#2039); a refusal keeps other jobs.
-    let (delivery, binding) = crate::delivery();
-    match crate::notification_job(
-        root,
-        &config,
-        Arc::clone(&state),
-        crate::notifications::sources::loopback_decisions(port),
-        crate::notifications::sources::installed_comments(&root.join("service/config.json")),
-        delivery,
-        binding,
-        Arc::new(openwiz_server::SystemClock),
-    ) {
-        Ok(Some((every, job))) => scheduler
-            .register(crate::NOTIFICATION_JOB, every, job)
-            .map_err(str::to_owned)?,
-        Ok(None) => {}
-        Err(_) => eprintln!("openwiz-service: notification job refused; delivery stays off"),
-    }
     let ipc_server_since = Arc::clone(&server_since);
     let build = build.to_owned();
     let ipc_state = Arc::clone(&state);

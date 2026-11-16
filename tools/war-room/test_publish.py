@@ -23,7 +23,8 @@ FAKES = HERE / 'fixtures' / 'publish'
 AT = '2030-01-02T12:03:00Z'
 NEXT = '2030-01-02T13:07:00Z'
 LINK = 'https://github.com/synthetic-owner/work/issues/4001'
-FILES = ['README.md', 'samples/2030-01-02T12-00-00Z.json', 'war-room-phone.png', 'war-room.png']
+# WRD4 (#877): the original page HTML is published beside its pictures, in the same commit.
+FILES = ['README.md', 'samples/2030-01-02T12-00-00Z.json', 'war-room-phone.png', 'war-room.html', 'war-room.png']
 
 
 def load(path, name):
@@ -147,7 +148,7 @@ class Publish(unittest.TestCase):
 
     def test_a_failed_read_or_render_publishes_nothing(self):
         self.assertEqual(self.publish().returncode, 0)
-        good = self.branch()
+        good, good_html = self.branch(), self.show('war-room.html')
         bad_selection = self.tmp / 'bad.json'
         bad_selection.write_text('{"not": "a selection"}')
         for name, result in (
@@ -160,6 +161,7 @@ class Publish(unittest.TestCase):
                 self.assertIn('nothing published', result.stderr)
                 self.assertEqual(self.branch(), good)
         self.assertIn('**Last good render:** 2030-01-02T12:03:00Z', self.show('README.md').decode())
+        self.assertEqual(self.show('war-room.html'), good_html)
 
     def test_the_height_bound_is_in_device_pixels(self):
         # #2432 R1: a full gathered page is over 20,000 CSS px tall. The bound is on the drawn
@@ -207,7 +209,7 @@ class Publish(unittest.TestCase):
         result = self.publish('2030-01-02T13:02:00Z')
         self.assertEqual(result.returncode, 0, result.stderr)
         saved = ['samples/%s.json' % n for n in boundaries + ['2030-01-02T13-00-00Z']]
-        self.assertEqual(self.files(), sorted(['README.md', 'war-room-phone.png', 'war-room.png'] + saved))
+        self.assertEqual(self.files(), sorted(['README.md', 'war-room-phone.png', 'war-room.html', 'war-room.png'] + saved))
         self.assertNotIn('samples/2030-01-02T12-25-00Z.json', self.files())
         for n, data in collected.items():
             self.assertEqual(self.show('samples/%s.json' % n), data)
@@ -277,7 +279,7 @@ class Publish(unittest.TestCase):
         self.assertEqual(self.publish().returncode, 0)
         good = self.branch()
         outside = self.tmp / 'outside.txt'
-        for name, change in (('README.md', 'link'), ('war-room.png', 'link'),
+        for name, change in (('README.md', 'link'), ('war-room.png', 'link'), ('war-room.html', 'link'),
                              ('samples/2030-01-02T12-00-00Z.json', 'link'), ('war-room.png', 'executable')):
             with self.subTest(name, change=change):
                 git(self.origin, 'update-ref', 'refs/heads/war-room', good)
@@ -320,13 +322,13 @@ class Publish(unittest.TestCase):
                   'cloud id': 'proj' + '_' + 'Abc123',
                   'quoted decision': 'Ja' + 'ke: ' + '"ship it"'}
         for name, secret in plants.items():
-            for target in ('README.md', 'samples/2030-01-02T12-00-00Z.json', 'page'):
+            for target in ('README.md', 'war-room.html', 'samples/2030-01-02T12-00-00Z.json', 'page'):
                 with self.subTest(name, target=target):
                     copy = self.tmp / 'copy'
                     shutil.rmtree(copy, ignore_errors=True)
                     shutil.copytree(tree, copy)
                     planted_page = page
-                    if target == 'README.md':
+                    if target in ('README.md', 'war-room.html'):
                         (copy / target).write_text((tree / target).read_text() + secret + '\n')
                     elif target == 'page':
                         planted_page = page.replace('synthetic page', secret)
@@ -367,7 +369,7 @@ class Publish(unittest.TestCase):
         self.assertEqual(marker.read_text(), 'ran\nran\n')
         # The run time comes from the clock here, so the one sample's name does too.
         files = self.files()
-        self.assertEqual([files[0]] + files[2:], ['README.md', 'war-room-phone.png', 'war-room.png'])
+        self.assertEqual([files[0]] + files[2:], ['README.md', 'war-room-phone.png', 'war-room.html', 'war-room.png'])
         self.assertRegex(files[1], r'^samples/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-00Z\.json$')
         self.assertEqual({k: v for k, v in self.refs().items() if k != 'refs/heads/war-room'}, self.before)
 
@@ -377,7 +379,7 @@ class Publish(unittest.TestCase):
                                  '--at', AT, '--source-root', str(self.sources), '--selection', str(self.selection)],
                                 env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(sorted(p.name for p in out.iterdir()), ['README.md', 'war-room-phone.png', 'war-room.png'])
+        self.assertEqual(sorted(p.name for p in out.iterdir()), ['README.md', 'war-room-phone.png', 'war-room.html', 'war-room.png'])
         self.assertEqual(self.refs(), self.before)
 
 

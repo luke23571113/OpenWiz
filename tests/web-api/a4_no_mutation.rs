@@ -40,52 +40,11 @@ fn server_sources() -> Vec<(String, String)> {
     out
 }
 
-/// The historical catalog remains an exact prefix; notifications append only
-/// the six method/path pairs pinned by the notification API contract, then
-/// #2036's bound-target GET pinned in notifications.v1.
+/// The historical catalog, exactly. The notification routes that were
+/// appended after it are retired (0.0.17 ER4), so nothing follows it.
 pub fn legacy_routes(routes: &[Route]) -> &[Route] {
-    let notification_routes = [
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/status",
-        },
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/preferences",
-        },
-        Route {
-            method: "PUT",
-            path: "/api/v1/notifications/preferences",
-        },
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/subscription",
-        },
-        Route {
-            method: "PUT",
-            path: "/api/v1/notifications/subscription",
-        },
-        Route {
-            method: "DELETE",
-            path: "/api/v1/notifications/subscription",
-        },
-        // #2036: the bound-target GET pinned in notifications.v1.
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/targets/{token}",
-        },
-    ];
-    assert_eq!(
-        routes.len(),
-        22 + notification_routes.len(),
-        "no missing or extra route"
-    );
-    let (legacy, appended) = routes.split_at(22);
-    assert_eq!(
-        appended, notification_routes,
-        "only the six approved notification pairs and the bound-target GET, exactly once and appended"
-    );
-    legacy
+    assert_eq!(routes.len(), 22, "no missing or extra route");
+    routes
 }
 
 /// A4, updated for #9 (OpenWiz 0.0.3) with this reason: 0.0.2 proved there
@@ -169,22 +128,17 @@ fn the_route_table_is_the_read_routes_the_send_and_the_create() {
             },
         ]
     );
-    // The extension guard itself refuses every malformed catalog shape.
-    for mutation in 0..7 {
+    // The guard itself refuses a missing or an extra route.
+    for mutation in 0..2 {
         let mut bad = ROUTES.to_vec();
         match mutation {
             0 => {
                 bad.pop();
             }
-            1 => bad.push(Route {
+            _ => bad.push(Route {
                 method: "GET",
-                path: "/api/v1/notifications/unknown",
+                path: "/api/v1/unknown",
             }),
-            2 => bad[23] = bad[22],
-            3 => bad[22].method = "POST",
-            4 => bad[22].path = "/api/v1/notifications/unknown",
-            5 => bad.swap(22, 23),
-            _ => bad.push(bad[22]),
         }
         assert!(
             std::panic::catch_unwind(|| legacy_routes(&bad)).is_err(),

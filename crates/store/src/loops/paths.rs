@@ -11,14 +11,6 @@ pub fn inspect(root: &Path) -> Result<(), String> {
     bounded(|| inspect_once(root).map(|_| ()))
 }
 
-/// [`inspect`], keeping why it refused (#753): `Changed` when a safe atomic
-/// save was still in view as the retry budget ran out (a descheduled reader
-/// can spend the budget on one pause), `Refused` for a settled unsafe state.
-/// Neither is a pass: a caller may only wait and inspect again.
-pub(crate) fn inspect_settled(root: &Path) -> Result<(), Failure> {
-    retried(RETRY_TIME, || inspect_once(root).map(|_| ()))
-}
-
 // Retry only a regular unlinked observation or a checked/opened mismatch.
 // Each attempt starts at the root; no safety verdict crosses an attempt.
 const ATTEMPTS: usize = 8;

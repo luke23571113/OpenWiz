@@ -1,16 +1,13 @@
 //! What remains of the health planner after the service's health checks,
 //! repairs and takeover were retired (0.0.17): the ids and repository rule the
-//! kept CloudRoom loop inventory and the Decisions page use, the one rule for
-//! which loops are OpenWiz's, and how long a subject stays healthy.
+//! kept CloudRoom loop inventory and the Decisions page use, and the one rule for
+//! which loops are OpenWiz's.
 //!
 //! [`model`] holds the types, and [`is_openwiz_loop`] the loop rule.
 
 pub mod model;
 
 use model::Repository;
-
-/// How long a subject stays healthy before its incident ends: an hour.
-pub const HEALTHY_FOR_MS: i64 = 3_600_000;
 
 /// The start every OpenWiz loop's name has: `launch-fleet` and a space.
 const LOOP_PREFIX: &str = "launch-fleet ";
