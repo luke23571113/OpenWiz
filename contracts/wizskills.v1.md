@@ -83,10 +83,13 @@ An absent one causes no read, no error and no stand-in; a skill says so
 honestly and carries on. They are reads under the same limits as the settings
 above, never executed or imported.
 
-**Setup's optional consumer reads (WZ17).** Setup reads five more
-consumer-project path shapes, each optional and read only when present, to copy
-the project's test commands and CI checks and to note its package layout:
-workflow files directly in `.github/workflows/` (`.github/workflows/*.yml` and
+**Setup's optional consumer reads (J104).** Jake, 2026-11-15: setup's reads of
+the consumer's workflow files and its other project files are listed as
+optional consumer paths, read only when present, as J73 did
+([private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6904873199)).
+Setup reads five more consumer-project path shapes, each optional and read only
+when present, to copy the project's test commands and CI checks and to note
+its package layout: workflow files directly in `.github/workflows/` (`.github/workflows/*.yml` and
 `.github/workflows/*.yaml`), `pnpm-workspace.yaml`, `package.json` (only its
 `workspaces` field) and `packages/*/src` (only whether each folder exists,
 never its files). Setup also reads the private-state locations, the handoff
