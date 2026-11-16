@@ -32,6 +32,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import activity  # noqa: E402
 import answer_time as wr5  # noqa: E402
+import collect_factory  # noqa: E402
 import cost  # noqa: E402
 import health  # noqa: E402
 import publish  # noqa: E402
@@ -545,6 +546,23 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         (out / 'selection.json').write_text(json.dumps(root.selection, indent=1) + '\n', encoding='utf-8')
     return root.selection
 
+
+
+# The collector snapshot (collector.v1.md): every fact once, composed from both groups' reads.
+CI_FACTS = ('runs', 'minutes', 'ci3', 'activity', 'queue')
+CI_PENDING = 'CI facts are not collected yet: collect_ci.py (MT3, #822) gathers them.'
+
+
+def snapshot(repository, *, clock=now, **reads):
+    """One `openwiz.war-room.collector.v1` snapshot, or raise Fail on a privacy hit (nothing kept).
+
+    `reads` are collect_factory.read's keywords (window, usage, robots, tickets, base, checks)."""
+    factory = collect_factory.read(repository, collect_factory.FACTS, clock=clock, **reads)['factory']  # MT2's call
+    ci = {name: collect_factory.unavailable(name, CI_PENDING) for name in CI_FACTS}  # MT3's call
+    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repository, 'collected_at': clock(),
+           'factory': factory, 'ci': ci}
+    scan_bytes(json.dumps(doc, sort_keys=True).encode())
+    return doc
 
 
 def main(argv):

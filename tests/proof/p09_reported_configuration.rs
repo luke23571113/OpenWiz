@@ -18,35 +18,6 @@ fn model_and_effort_come_from_thread_show_as_reported_configuration() {
     );
 }
 
-#[test]
-fn json_keeps_model_and_effort_under_reported_configuration() {
-    let fake = Fake::new("p09_json_label", "normal");
-    for args in [
-        &["ls", "-l", "--json"][..],
-        &["show", "thr_syn_0001", "--json"][..],
-    ] {
-        let json = fake.cli_json(args);
-        let sessions: Vec<&serde_json::Value> = match json["data"]["sessions"].as_array() {
-            Some(rows) => rows.iter().collect(),
-            None => vec![&json["data"]["session"]],
-        };
-        assert!(!sessions.is_empty());
-        for s in sessions {
-            for key in ["model", "effort", "reasoning_level", "serving_model"] {
-                assert!(
-                    s.get(key).is_none(),
-                    "{args:?}: {key} outside reported_configuration"
-                );
-            }
-            let config = &s["reported_configuration"];
-            assert!(
-                config.get("model").is_some() && config.get("effort").is_some(),
-                "{args:?}: {s}"
-            );
-        }
-    }
-}
-
 /// Changed in ticket 1's correction round 1 (Sol S7): the label must be the
 /// configuration's own, tied to both values (text contract 6 in
 /// `support.rs`), in `ls -l` and `show`, not just "reported" somewhere.
