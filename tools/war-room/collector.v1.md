@@ -26,7 +26,7 @@ CI facts. Nothing here is a live observation.
 | **Fact** | One named thing the collector gathers, with its read bounds, its own time (a point or a window), its freshness, its source and its value. The registry below names all eleven |
 | **Snapshot** | One complete collection: every fact once, saved as one `openwiz.war-room.collector.v1` document. The five-minute collection and the hourly publish use it |
 | **On-demand read** | A fresh read of named facts, now, for one reader: an `openwiz.war-room.collector.read.v1` document. Never served from a saved snapshot |
-| **Carried fact** | A fact whose value is another producer's own validated record, kept byte-for-byte as that producer wrote it (TL2's stage bench, the journey document, the CI3 record). The collector adds the read, time and freshness around it; it never recomputes the record |
+| **Carried fact** | A fact whose value is another producer's own validated record, kept unchanged (the same JSON value that producer wrote) (TL2's stage bench, the journey document, the CI3 record). The collector adds the read, time and freshness around it; it never recomputes the record |
 
 ## The snapshot
 
@@ -317,7 +317,7 @@ ticket of #819 owns it yet.
 | Consumer | What it uses | Owner |
 | --- | --- | --- |
 | `.github/workflows/ci-bench.yml` | Runs both tools' tests, `check-steps`, `daily.sh`; its path filter names both folders | MT8 |
-| `.github/workflows/board.yml`, `ci-escapes.yml`, `war-room.yml` | `sh tools/ci-bench/python.sh` (the pinned Python), 7 steps; `war-room.yml` also fetches `ci-benchmarks` | **not owned** (workflows: need asking) |
+| `.github/workflows/board.yml`, `ci-escapes.yml`, `war-room.yml` | `sh tools/ci-bench/python.sh` (the pinned Python), 8 steps; `ci-escapes.yml`'s header names the bench; `war-room.yml` also fetches `ci-benchmarks` | **not owned** (workflows: need asking) |
 | `.github/actions/docs-only/test.sh`, `test_plan.py` | Classifier cases naming `tools/ci-bench/steps.tsv` and `tools/factory-metrics/*` paths | MT8 (their rows) |
 | `ci/escapes/README.md`, `escapes.py` | Text: the bench counts escapes | MT8 |
 | `ci/main-batch/shadow.py` | Imports `tools/ci-bench` (`bench.py`) | MT8 |

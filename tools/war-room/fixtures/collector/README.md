@@ -3,7 +3,7 @@
 Synthetic only: the repository, PR, ticket, run, job and comment numbers,
 times, heads, hashes and prices are made up and assert nothing about a real
 repository. `aaaa…` source hashes are synthetic placeholders. Three carried
-values are other fixtures' bytes, byte-for-byte, and their `source.sha256` is
+values are other fixtures' JSON, unchanged, and their `source.sha256` is
 those files' real hash, so a reader can check the binding:
 
 | Carried value | From |
