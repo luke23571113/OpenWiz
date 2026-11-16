@@ -1,0 +1,145 @@
+# #791 red run: cargo test --locked -p openwiz-tests --test cli-agent loop_export, before export is built (the stub answers not_built)
+
+```text
+
+running 5 tests
+test loop_export::export_never_replaces_a_file_with_other_bytes ... FAILED
+test loop_export::a_failed_loop_list_writes_nothing ... FAILED
+test loop_export::export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks ... FAILED
+test loop_export::export_reports_each_loop_it_cannot_represent_and_writes_the_rest ... FAILED
+test loop_export::export_writes_each_loop_of_the_project_complete_and_secret_free ... FAILED
+
+failures:
+
+---- loop_export::export_never_replaces_a_file_with_other_bytes stdout ----
+
+thread 'loop_export::export_never_replaces_a_file_with_other_bytes' panicked at tests/cli-agent/loop_export.rs:100:5:
+assertion `left == right` failed: stderr: 
+  left: Some(5)
+ right: Some(0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- loop_export::a_failed_loop_list_writes_nothing stdout ----
+
+thread 'loop_export::a_failed_loop_list_writes_nothing' panicked at tests/cli-agent/loop_export.rs:100:5:
+assertion `left == right` failed: stderr: 
+  left: Some(5)
+ right: Some(1)
+
+---- loop_export::export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks stdout ----
+
+thread 'loop_export::export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks' panicked at tests/cli-agent/loop_export.rs:100:5:
+assertion `left == right` failed: stderr: 
+  left: Some(5)
+ right: Some(0)
+
+---- loop_export::export_reports_each_loop_it_cannot_represent_and_writes_the_rest stdout ----
+
+thread 'loop_export::export_reports_each_loop_it_cannot_represent_and_writes_the_rest' panicked at tests/cli-agent/loop_export.rs:121:5:
+assertion `left == right` failed: {"command":"export","exit_code":5,"message":"openwiz loop export is not built yet; nothing was read or changed","schema":"openwiz.loop-not-built.v1","status":"not_built","ticket":791}
+  left: ["$: missing required field project", "$: missing required field out", "$: missing required field loops", "$: unexpected field message", "$.schema: expected \"openwiz.loop-export.v1\", got \"openwiz.loop-not-built.v1\"", "$: unexpected field status", "$: unexpected field ticket"]
+ right: []
+
+---- loop_export::export_writes_each_loop_of_the_project_complete_and_secret_free stdout ----
+
+thread 'loop_export::export_writes_each_loop_of_the_project_complete_and_secret_free' panicked at tests/cli-agent/loop_export.rs:100:5:
+assertion `left == right` failed: stderr: 
+  left: Some(5)
+ right: Some(0)
+
+
+failures:
+    loop_export::a_failed_loop_list_writes_nothing
+    loop_export::export_never_replaces_a_file_with_other_bytes
+    loop_export::export_reads_the_params_preamble_back_into_the_pinned_fixtures_checks
+    loop_export::export_reports_each_loop_it_cannot_represent_and_writes_the_rest
+    loop_export::export_writes_each_loop_of_the_project_complete_and_secret_free
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 63 filtered out; finished in 1.99s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`
+```
+
+## Second slice: a file or a link where a check's folder goes
+
+Red, before the fix (the loop's folder was checked only while writing, so the
+whole run failed instead of refusing that loop):
+
+```text
+test loop_export::export_never_replaces_a_file_with_other_bytes ... FAILED
+assertion `left == right` failed: stderr: openwiz: loop export: could not write to other: other/syn-triage is not a folder; the loops before it were written
+  left: Some(1)
+ right: Some(5)
+```
+
+## Third slice: an unmapped `loop list` key is written and named (orchestrator ruling on Q4)
+
+Red, with `unmapped` added to `export_report`'s schema and the tests, before
+the code (export still refused the loop with `export-unknown-key`):
+
+```text
+test loop_export::export_writes_a_loop_with_an_unmapped_key_and_names_the_key ... FAILED
+panicked at tests/cli-agent/loop_export.rs:100:5:
+  left: Some(5)
+ right: Some(0)
+test loop_export::export_writes_each_loop_of_the_project_complete_and_secret_free ... FAILED
+  left: ["$.loops[0]: missing required field unmapped", ...]
+ right: []
+```
+
+## Review round, R2: terminal controls in human output
+
+Red, before the fix (`escape_untrusted` returned its input; export printed
+names, ids, keys and room-cli's error text as they came):
+
+```text
+test loop_files::tests::escape_untrusted_replaces_terminal_controls ... FAILED
+  left: "a\u{1b}[2Jb\u{1b}]52;c;eA==\u{7}c\rd\ne\u{202e}f"
+ right: "a?[2Jb?]52;c;eA==?c?d?e�f"
+test loop_export::text_output_never_prints_a_terminal_control ... FAILED
+panicked at tests/cli-agent/loop_export.rs:863:9:
+stdout: Exported 1 of 2 loops of project prj_syn_0001 to ..
+```
+
+## Review round, R1: a check folder swapped for a link after it was checked
+
+Red, with the check created by pathname inside its folder (`Folder::entry`
+returned `<folder path>/check`), so a swap after the folder was opened
+redirected the check:
+
+```text
+test loop_files::loop_export::tests::a_held_folder_keeps_the_check_inside_it_after_a_swap ... FAILED
+panicked at crates/cli/src/loop_export.rs:419:9:
+the check went through the link
+```
+
+## Fresh round, R1: the macOS route resolved a swapped link by pathname
+
+The re-check found that the macOS route built a check's path from
+`fs::canonicalize(<folder path>)`, which follows a folder swapped for a link
+(`elsewhere/check`). Rust's standard library has no `openat` and the workspace
+allows no unsafe code or `libc`, so the fix refuses a run with a check where
+there is no held-folder route (everything but Linux) before writing anything.
+
+The two proofs are compiled out on Linux or take its other branch, and CI is
+Linux only, so this red is not a native macOS run. At the red commit, old code
+with the new tests, `cargo check --locked --target aarch64-apple-darwin -p
+openwiz-cli -p openwiz-tests --tests` compiles both proofs. By source trace,
+and by the reviewer's reproduction of the same algorithm, on macOS
+`a_held_folder_keeps_the_check_inside_it_after_a_swap` stops at `the check went
+through the link`, and `export_refuses_a_check_where_its_folder_cannot_be_held_open`
+gets the old route's result (the checks written by pathname, or a write
+failure where `O_NOFOLLOW_ANY` meets a linked temporary folder) instead of the
+refusal: exit 1, its own message and an empty `--out`. On Linux the
+swap proof passes before and after: the Linux route was already right.
+
+## Usage line through escape_untrusted (orchestrator ruling on #792, question 5)
+
+Red, before the fix (the usage line printed an unknown option as given):
+
+```text
+test loop_files::tests::a_usage_error_never_prints_a_terminal_control ... FAILED
+panicked at crates/cli/src/loop_files.rs:556:9:
+  left: "openwiz: usage: loop export has no option --x\u{1b}]52;c;eA==\u{7}; nothing was read (see openwiz loop --help)\n"
+ right: "openwiz: usage: loop export has no option --x?]52;c;eA==?; nothing was read (see openwiz loop --help)\n"
+```
