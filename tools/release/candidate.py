@@ -678,7 +678,10 @@ def epoch(text):
 
 def revoked(issue, comment_id, decided_at, pattern=REVOKED):
     """A later operative revocation line for this record; an earlier one does not
-    revoke it, and one whose order against the record cannot be read refuses."""
+    revoke it, and one whose order against the record cannot be read refuses.
+    A comment carrying the line that was ever edited revokes it whatever its
+    times say (#816 R1): its creation time does not date the line, so it fails
+    closed rather than trusting an older comment edited to revoke."""
     try:
         rows = strict(gh('api', '--paginate', '--slurp', f'repos/{PRIVATE}/issues/{issue}/comments?per_page=100'))
     except (Refused, ValueError):
@@ -689,6 +692,8 @@ def revoked(issue, comment_id, decided_at, pattern=REVOKED):
         if (isinstance(c, dict) and isinstance(c.get('body'), str)
                 and any((m := pattern.fullmatch(line)) and m[1] == comment_id for line in c['body'].splitlines())):
             at = epoch(c.get('created_at'))
+            if c.get('updated_at') != c.get('created_at'):
+                return True
             if at == decided_at:
                 block('unreadable')
             later = later or at > decided_at
@@ -1410,6 +1415,15 @@ def date_reasons(body):
     return ['changelog_date'] if any(d != today() for d in dates) else []
 
 
+def record_waived(record, state, made):
+    """Save each gate the publication checks applied a waiver to as `waived`,
+    before any publication effect (#816 R2): never left as an earlier pass."""
+    waived = {g: r for g, r in made.items() if r and r.get('status') == 'waived'}
+    if waived:
+        record['gates'].update(waived)
+        state.write('record.json', record)
+
+
 def publish(args):
     repo = Path(args.repo).resolve(strict=True)
     state = State(args.state)
@@ -1427,10 +1441,12 @@ def publish(args):
                 raise Blocked(['publication_incomplete'], status='incomplete')
         else:
             if attempt is None:
+                made = {}
                 reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts),
-                                      literals=args.literals) + date_reasons(body)
+                                      literals=args.literals, made=made) + date_reasons(body)
                 if reasons:
                     raise Blocked(reasons)
+                record_waived(record, state, made)
                 ready(body, args.artifacts, scratch, tag)
                 work = Path(scratch) / 'main.git'
                 remote_git(scratch, 'clone', '-q', '--bare', '--no-local', '--no-tags', '--single-branch',
@@ -1456,10 +1472,12 @@ def publish(args):
                 # The release write is unattempted: re-check every decision, gate and
                 # setting now, excluding only this attempt's own verified tag.
                 own = (tag, attempt['tag_object'], body['source']['commit'])
-                reasons = (reasons_for(record, state, repo, own, Path(args.artifacts), args.literals)
+                made = {}
+                reasons = (reasons_for(record, state, repo, own, Path(args.artifacts), args.literals, made)
                            + date_reasons(body))
                 if reasons:
                     raise Blocked(reasons)
+                record_waived(record, state, made)
                 data = ready(body, args.artifacts, scratch, tag, own)
                 notes_file = Path(scratch) / 'notes.md'
                 notes_file.write_bytes(body['changelog']['utf8'].encode('utf-8'))

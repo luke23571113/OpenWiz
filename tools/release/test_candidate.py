@@ -946,13 +946,17 @@ class Candidate(World):
             path = f'repos/{PRIVATE}/issues/comments/{number}'
             for name, created, expected in (
                     ('earlier', iso(decided - 60), None),
+                    # #816 R1: an earlier comment edited to carry the line fails closed.
+                    ('earlier, then edited', iso(decided - 60), f'{reason}_revoked'),
                     ('later', iso(decided + 60), f'{reason}_revoked'),
                     ('same second', iso(decided), f'{reason}_unreadable'),
                     ('unreadable time', 'synthetic-not-a-time', f'{reason}_unreadable'),
                     ('no time', None, f'{reason}_unreadable')):
                 with self.subTest(record=reason, case=name):
                     self.comment(number, f'Release decision revoked: {target}\n', decided)
-                    self.comments[path]['created_at'] = created
+                    # Unedited unless the case says so: its update time is its creation time.
+                    self.comments[path].update(created_at=created,
+                                               updated_at=iso(decided) if 'edited' in name else created)
                     self.save()
                     if expected is None:
                         self.assertEqual(self.evaluate()[0], 0)
