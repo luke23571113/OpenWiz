@@ -1,0 +1,54 @@
+{
+  "coverage": {
+    "openwiz-adapter-cloudroom": [
+      1761,
+      3221
+    ],
+    "openwiz-adapter-github": [
+      2468,
+      4879
+    ],
+    "openwiz-cli": [
+      1457,
+      8961
+    ],
+    "openwiz-core": [
+      5591,
+      9682
+    ],
+    "openwiz-server": [
+      5325,
+      6530
+    ],
+    "openwiz-service": [
+      0,
+      7645
+    ],
+    "openwiz-store": [
+      1858,
+      4168
+    ],
+    "openwiz-terminal": [
+      0,
+      5093
+    ]
+  },
+  "schema": "openwiz.test-value.measure.v1",
+  "seconds": 94.9,
+  "size": {
+    "bytes": 818477,
+    "files": 60,
+    "lines": 22469
+  },
+  "targets": [
+    "openwiz-tests:web-api"
+  ],
+  "tests": {
+    "ignored": 0,
+    "passed": 360
+  },
+  "toolchain": {
+    "cargo-llvm-cov": "cargo-llvm-cov 0.9.1",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  }
+}

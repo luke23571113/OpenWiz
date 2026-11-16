@@ -1,0 +1,216 @@
+== attachments
+before: openwiz-tests:attachments
+after: openwiz-tests:attachments
+tests: 67 -> 67 (+0)
+size files: 25 -> 25 (+0)
+size bytes: 238627 -> 238627 (+0)
+size lines: 6655 -> 6655 (+0)
+coverage openwiz-adapter-cloudroom: 0/3221 (0.00%) -> 0/3221 (0.00%), covered +0
+coverage openwiz-adapter-github: 0/4870 (0.00%) -> 0/4870 (0.00%), covered +0
+coverage openwiz-cli: 461/8961 (5.14%) -> 461/8961 (5.14%), covered +0
+coverage openwiz-core: 789/9676 (8.15%) -> 789/9676 (8.15%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 882/4168 (21.16%) -> 882/4168 (21.16%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 19.2 -> 18.7 (not compared exactly)
+drops: none
+
+== checks
+before: openwiz-tests:checks
+after: openwiz-tests:checks
+tests: 145 -> 145 (+0)
+size files: 15 -> 15 (+0)
+size bytes: 419776 -> 419776 (+0)
+size lines: 11590 -> 11590 (+0)
+coverage openwiz-adapter-cloudroom: 0/3221 (0.00%) -> 0/3221 (0.00%), covered +0
+coverage openwiz-adapter-github: 117/4870 (2.40%) -> 117/4870 (2.40%), covered +0
+coverage openwiz-cli: 0/8961 (0.00%) -> 0/8961 (0.00%), covered +0
+coverage openwiz-core: 93/9645 (0.96%) -> 93/9645 (0.96%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 0/4168 (0.00%) -> 0/4168 (0.00%), covered +0
+coverage openwiz-terminal: 38/5093 (0.75%) -> 38/5093 (0.75%), covered +0
+seconds: 184.3 -> 189.4 (not compared exactly)
+drops: none
+
+== cli-agent
+before: openwiz-tests:cli-agent
+after: openwiz-tests:cli-agent
+tests: 55 -> 55 (+0)
+size files: 6 -> 6 (+0)
+size bytes: 124372 -> 124372 (+0)
+size lines: 3496 -> 3496 (+0)
+coverage openwiz-adapter-cloudroom: 868/3221 (26.95%) -> 868/3221 (26.95%), covered +0
+coverage openwiz-adapter-github: 1080/4870 (22.18%) -> 1080/4870 (22.18%), covered +0
+coverage openwiz-cli: 1840/8961 (20.53%) -> 1840/8961 (20.53%), covered +0
+coverage openwiz-core: 1477/9645 (15.31%) -> 1477/9645 (15.31%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 276/4168 (6.62%) -> 276/4168 (6.62%), covered +0
+coverage openwiz-terminal: 21/5093 (0.41%) -> 21/5093 (0.41%), covered +0
+seconds: 26.3 -> 26.3 (not compared exactly)
+drops: none
+
+== fleet
+before: openwiz-tests:fleet
+after: openwiz-tests:fleet
+tests: 294 -> 294 (+0)
+size files: 55 -> 55 (+0)
+size bytes: 913713 -> 913713 (+0)
+size lines: 24706 -> 24706 (+0)
+coverage openwiz-adapter-cloudroom: 1744/3221 (54.14%) -> 1744/3221 (54.14%), covered +0
+coverage openwiz-adapter-github: 2163/4870 (44.41%) -> 2163/4870 (44.41%), covered +0
+coverage openwiz-cli: 517/8961 (5.77%) -> 517/8961 (5.77%), covered +0
+coverage openwiz-core: 5483/9660 (56.76%) -> 5483/9660 (56.76%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 457/4168 (10.96%) -> 457/4168 (10.96%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 75.2 -> 75.3 (not compared exactly)
+drops: none
+
+== loops
+before: openwiz-tests:loops
+after: openwiz-tests:loops
+tests: 32 -> 32 (+0)
+size files: 13 -> 13 (+0)
+size bytes: 112364 -> 112364 (+0)
+size lines: 3544 -> 3544 (+0)
+coverage openwiz-adapter-cloudroom: 23/3221 (0.71%) -> 23/3221 (0.71%), covered +0
+coverage openwiz-adapter-github: 0/4870 (0.00%) -> 0/4870 (0.00%), covered +0
+coverage openwiz-cli: 208/8961 (2.32%) -> 208/8961 (2.32%), covered +0
+coverage openwiz-core: 398/9645 (4.13%) -> 398/9645 (4.13%), covered +0
+coverage openwiz-server: 637/6530 (9.75%) -> 636/6530 (9.74%), covered -1
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 959/4168 (23.01%) -> 959/4168 (23.01%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 3.2 -> 3.3 (not compared exactly)
+drops: openwiz-server
+
+== messaging
+before: openwiz-tests:messaging
+after: openwiz-tests:messaging
+tests: 189 -> 189 (+0)
+size files: 23 -> 23 (+0)
+size bytes: 360999 -> 360999 (+0)
+size lines: 10094 -> 10094 (+0)
+coverage openwiz-adapter-cloudroom: 1052/3221 (32.66%) -> 1052/3221 (32.66%), covered +0
+coverage openwiz-adapter-github: 0/4870 (0.00%) -> 0/4870 (0.00%), covered +0
+coverage openwiz-cli: 1081/8961 (12.06%) -> 1081/8961 (12.06%), covered +0
+coverage openwiz-core: 2175/9645 (22.55%) -> 2175/9645 (22.55%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 1145/4172 (27.44%) -> 1145/4172 (27.44%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 23.4 -> 23.0 (not compared exactly)
+drops: none
+
+== new-thread
+before: openwiz-tests:new-thread
+after: openwiz-tests:new-thread
+tests: 113 -> 113 (+0)
+size files: 35 -> 35 (+0)
+size bytes: 362920 -> 362920 (+0)
+size lines: 10116 -> 10116 (+0)
+coverage openwiz-adapter-cloudroom: 1360/3221 (42.22%) -> 1360/3221 (42.22%), covered +0
+coverage openwiz-adapter-github: 0/4870 (0.00%) -> 0/4870 (0.00%), covered +0
+coverage openwiz-cli: 1047/8961 (11.68%) -> 1047/8961 (11.68%), covered +0
+coverage openwiz-core: 2869/9645 (29.75%) -> 2869/9645 (29.75%), covered +0
+coverage openwiz-server: 596/6530 (9.13%) -> 596/6530 (9.13%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 1060/4172 (25.41%) -> 1060/4172 (25.41%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 22.1 -> 21.1 (not compared exactly)
+drops: none
+
+== notifications
+before: openwiz-tests:notifications
+after: openwiz-tests:notifications
+tests: 23 -> 23 (+0)
+size files: 7 -> 7 (+0)
+size bytes: 82672 -> 82672 (+0)
+size lines: 2236 -> 2236 (+0)
+coverage openwiz-adapter-cloudroom: 0/3221 (0.00%) -> 0/3221 (0.00%), covered +0
+coverage openwiz-adapter-github: 0/4870 (0.00%) -> 0/4870 (0.00%), covered +0
+coverage openwiz-cli: 0/8961 (0.00%) -> 0/8961 (0.00%), covered +0
+coverage openwiz-core: 726/9645 (7.53%) -> 726/9645 (7.53%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 465/4168 (11.16%) -> 465/4168 (11.16%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 41.7 -> 40.5 (not compared exactly)
+drops: none
+
+== proof
+before: openwiz-tests:proof
+after: openwiz-tests:proof
+tests: 125 -> 125 (+0)
+size files: 16 -> 16 (+0)
+size bytes: 312686 -> 312686 (+0)
+size lines: 8478 -> 8478 (+0)
+coverage openwiz-adapter-cloudroom: 855/3221 (26.54%) -> 855/3221 (26.54%), covered +0
+coverage openwiz-adapter-github: 0/4870 (0.00%) -> 0/4870 (0.00%), covered +0
+coverage openwiz-cli: 507/8961 (5.66%) -> 507/8961 (5.66%), covered +0
+coverage openwiz-core: 782/9648 (8.11%) -> 782/9648 (8.11%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 0/4168 (0.00%) -> 0/4168 (0.00%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 36.5 -> 36.9 (not compared exactly)
+drops: none
+
+== service
+before: openwiz-tests:service
+after: openwiz-tests:service
+tests: 65 -> 65 (+0)
+size files: 68 -> 68 (+0)
+size bytes: 1188089 -> 1188089 (+0)
+size lines: 31379 -> 31379 (+0)
+coverage openwiz-adapter-cloudroom: 1523/3221 (47.28%) -> 1523/3221 (47.28%), covered +0
+coverage openwiz-adapter-github: 783/4870 (16.08%) -> 783/4870 (16.08%), covered +0
+coverage openwiz-cli: 1522/8961 (16.98%) -> 1522/8961 (16.98%), covered +0
+coverage openwiz-core: 2187/9650 (22.66%) -> 2187/9650 (22.66%), covered +0
+coverage openwiz-server: 0/6530 (0.00%) -> 0/6530 (0.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 285/4168 (6.84%) -> 285/4168 (6.84%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 100.2 -> 100.3 (not compared exactly)
+drops: none
+
+== terminal
+before: openwiz-tests:terminal
+after: openwiz-tests:terminal
+tests: 104 -> 104 (+0)
+size files: 29 -> 29 (+0)
+size bytes: 320400 -> 320400 (+0)
+size lines: 9483 -> 9483 (+0)
+coverage openwiz-adapter-cloudroom: 1172/3221 (36.39%) -> 1172/3221 (36.39%), covered +0
+coverage openwiz-adapter-github: 0/4870 (0.00%) -> 0/4870 (0.00%), covered +0
+coverage openwiz-cli: 0/8961 (0.00%) -> 0/8961 (0.00%), covered +0
+coverage openwiz-core: 2140/9645 (22.19%) -> 2140/9645 (22.19%), covered +0
+coverage openwiz-server: 1241/6530 (19.00%) -> 1241/6530 (19.00%), covered +0
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 362/4168 (8.69%) -> 362/4168 (8.69%), covered +0
+coverage openwiz-terminal: 4580/5093 (89.93%) -> 4580/5093 (89.93%), covered +0
+seconds: 23.0 -> 23.3 (not compared exactly)
+drops: none
+
+== web-api
+before: openwiz-tests:web-api
+after: openwiz-tests:web-api
+tests: 360 -> 360 (+0)
+size files: 60 -> 60 (+0)
+size bytes: 818477 -> 818477 (+0)
+size lines: 22469 -> 22469 (+0)
+coverage openwiz-adapter-cloudroom: 1761/3221 (54.67%) -> 1761/3221 (54.67%), covered +0
+coverage openwiz-adapter-github: 2468/4879 (50.58%) -> 2468/4879 (50.58%), covered +0
+coverage openwiz-cli: 1457/8961 (16.26%) -> 1457/8961 (16.26%), covered +0
+coverage openwiz-core: 5591/9682 (57.75%) -> 5591/9682 (57.75%), covered +0
+coverage openwiz-server: 5325/6530 (81.55%) -> 5327/6530 (81.58%), covered +2
+coverage openwiz-service: 0/7645 (0.00%) -> 0/7645 (0.00%), covered +0
+coverage openwiz-store: 1858/4168 (44.58%) -> 1858/4168 (44.58%), covered +0
+coverage openwiz-terminal: 0/5093 (0.00%) -> 0/5093 (0.00%), covered +0
+seconds: 94.9 -> 77.4 (not compared exactly)
+drops: none
+
