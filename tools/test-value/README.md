@@ -89,8 +89,9 @@ in the after run.
   processes are instrumented too, so their lines count. One exception: a
   service test runs `<repo>/target/debug/examples/openwiz-server` by its
   documented path, which is the plain build, so that one child process's
-  lines don't count. A failed test stops the measure: a red run is never a
-  number.
+  lines don't count; nor do those of children a test starts with a cleared
+  environment, whose raw profiles land in the checkout and are deleted after
+  the run. A failed test stops the measure: a red run is never a number.
 - **Prerequisites,** as for the tests themselves (`AGENTS.md`): zsh, Node
   24.22.1, a user other than root, and for `web-api` the web export
   (`cd apps/web && npm ci --ignore-scripts && npm run build`).

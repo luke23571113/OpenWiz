@@ -187,7 +187,24 @@ def test_run(root, env, select):
     return parse_counts(proc.stdout)
 
 
+def stray_profiles(root):
+    """Raw profiles written into the checkout by child processes the tests
+    start with a cleared environment: the report can't use them."""
+    out = run(["git", "ls-files", "--others", "--exclude-standard", "-z", "--", "*.profraw"],
+              root).stdout
+    return {name for name in out.split("\0") if name}
+
+
 def measure(root, specs, env):
+    before = stray_profiles(root)
+    try:
+        return measure_once(root, specs, env)
+    finally:
+        for name in stray_profiles(root) - before:
+            (root / name).unlink(missing_ok=True)
+
+
+def measure_once(root, specs, env):
     packages = metadata(root, env)
     targets = [resolve(s, packages) for s in specs]
     cov = coverage_env(root, env)
