@@ -71,6 +71,9 @@ RUNTIME = dict(rl4.RUNTIME, **{f'skills/{name}': f'Synthetic {name}.\n'.encode()
 # #2201: setup's CloudRoom tool, which the installer requires, and its packaged path.
 RUNTIME['tools/install/cloudroom/cloudroom.py'] = b'# Synthetic CloudRoom setup tool.\n'
 rl4.PACKAGED['tools/install/cloudroom/cloudroom.py'] = 'runtime/cloudroom/cloudroom.py'
+# #635: installed openwiz init's runtime, which the installer requires, and its packaged path.
+RUNTIME['tools/install/setup/init.py'] = b'# Synthetic init runtime.\n'
+rl4.PACKAGED['tools/install/setup/init.py'] = 'runtime/setup/init.py'
 LINUX = 'x86_64-unknown-linux-gnu'
 
 
