@@ -2,8 +2,8 @@
 
 This folder and three files beside it are an exact copy of the WizLoops
 loop file format. They are pinned from `openwizdev/WizLoops` at commit
-`3847b375cbbf6ab0e88b0f643fa5a4e943183b03`, the WL1 merge (WizLoops pull
-request 11). WizLoops owns the format and the Cloudroom adapter rules;
+`c7c2ed434dd984d3e984df2a45eb66d43bcdf759`, the WL9 merge (WizLoops pull
+request 28). WizLoops owns the format and the Cloudroom adapter rules;
 OpenWiz owns the code that reads and applies them. OpenWiz never edits
 these files in place: it changes them only by pinning a later WizLoops
 commit, and replaces this record in the same change.
@@ -32,11 +32,11 @@ The CLI's tests (`crates/cli/src/loop_files.rs`) read this block and check
 that it covers every file here, with none missing or extra.
 
 ```sha256
-74ad620b70d98c92bc14d3bff2967dbc12235f8fd2522f31020be4431cb619f6  contracts/wizloops-loop.v1.md
-721296695db400d28d649c4562b4f633ddc28990c199fb2515fa2733e67a0bdc  contracts/wizloops-loop.v1.schema.json
-b370d91a74ef6ce27ba7ba7a850236247420522975bce446676de67fa48b54d0  contracts/wizloops-cloudroom.v1.md
+40cecece365e1c192d80d50a5e02a2c018801a4029c615814a59d2e4ae35858b  contracts/wizloops-loop.v1.md
+bd81f810ed67cb8e3a2f43da3d65838a84b8e064da000e1044d434f583e060ee  contracts/wizloops-loop.v1.schema.json
+eba8a969d5ab4bfe085fe3d103ba630a60c14c341c5b4e7926f03d98f13245d6  contracts/wizloops-cloudroom.v1.md
 484ea03b955240a16dc8934857de26c3e153bc2a3a2b63472ce56241d92ecf67  contracts/fixtures/wizloops/catalog/all-secrets.md
-02a4a979354a5579c9569f358b0904d58dc3b0faf1e03d960a9865e07baae280  contracts/fixtures/wizloops/expected.json
+0d121a92788cd8100bb8d8581e2c85f544f9a5e8f707d1049b11764e3cf2523c  contracts/fixtures/wizloops/expected.json
 d0be86b4569fb8ec34d3eaebea9a6ea0ecaed89edfb681984fa9340feb6af90b  contracts/fixtures/wizloops/invalid-folder/duplicate-id/a.md
 d0be86b4569fb8ec34d3eaebea9a6ea0ecaed89edfb681984fa9340feb6af90b  contracts/fixtures/wizloops/invalid-folder/duplicate-id/b.md
 23dc80f932e5d8f6d20f5b7052cc062bd159022865b5acf0a043aece88007f55  contracts/fixtures/wizloops/invalid/agent-space.md
@@ -62,10 +62,13 @@ f3d6759f2129046198f8ef03f9aefb65570f1d39828009f521e9bb94e957b6fb  contracts/fixt
 59e4342591f944b78cd7514c94e06b08b51d2abd54d86bc9a1bae7bbf80e7a07  contracts/fixtures/wizloops/invalid/in-seconds.md
 54c9a778d5a0c963f6bbbb51b630da6ac9856431de10bcb8d2f325ca5c1d6075  contracts/fixtures/wizloops/invalid/missing-thread.md
 b7259aa30a5a5883afbe96a5c145198fb8569e48bf328dbaaf49bd470d62ded1  contracts/fixtures/wizloops/invalid/missing-timezone.md
+dbe4fea7cbd56fdb88be17a823c143e6b76b59f197397673e5384a98acf5e701  contracts/fixtures/wizloops/invalid/multiline-param.md
 1e3bc249b57cdb7dff0a9e8d67303f202844db1e5b9ff50cac54f28ecf64087c  contracts/fixtures/wizloops/invalid/no-frontmatter.md
 b353b774c9431f644effc91805971f20aab4f4f2d1dfb2b6bd900e9846720705  contracts/fixtures/wizloops/invalid/no-space.md
 fe919c2cb2ab76da361ba7d32444a5167c5333b9a8fce41884cd770a7b70c0f7  contracts/fixtures/wizloops/invalid/null-check.md
 90cafdae1b99598037f7d347c4f22abc086f586fe5126233ea3ce98a058a8f88  contracts/fixtures/wizloops/invalid/param-float.md
+6866475d47fc21f7bdc3a79ead505d13de5f09de722eaf03f2d7c7993f662516  contracts/fixtures/wizloops/invalid/param-in-check.md
+33c282d905b65d392fb04561ff54f52162a6402bc43b211a8980bf38f002fa1d  contracts/fixtures/wizloops/invalid/param-in-check/check.sh
 72a031a29f81dc9fcb0fe9e6926339d6ab6b3e26567d76ccf5da62e2974f6ced  contracts/fixtures/wizloops/invalid/priority-five.md
 0aa768938d973bb3c5072d0ec41b5b764399dc7197ea48a8c7902177a6908d8e  contracts/fixtures/wizloops/invalid/priority-float.md
 8bc57eac32573faac0b0a301f6e359cc5f43c5eb2460e4c7d3886672cd4c14da  contracts/fixtures/wizloops/invalid/priority-string.md
@@ -79,6 +82,8 @@ a2c34fb36b89e4c6c53f3b3d2eb94c7d35b09fabac2ac86b5483f49563f6b161  contracts/fixt
 0da754c7b7760b492adb3755724e35af4933bddf2e10416b72a0563d23313c90  contracts/fixtures/wizloops/invalid/unclosed.md
 d62b2f94834bf7eea7615b8fef33b5b8a3af6e922e5957826ad457c47add8ac9  contracts/fixtures/wizloops/invalid/undeclared-param-check.md
 ba976056f94cc42774c79340e3739cbf26a4bfbd71037c0e6c1fe3f0cfb9c839  contracts/fixtures/wizloops/invalid/undeclared-param-check/check.sh
+ad8cbd1e64c54969d52ca96838172abb1f20f1410e58cb8d4a2e8f32aac694cc  contracts/fixtures/wizloops/invalid/undeclared-param-env.md
+111408b803f65d90f2ab327d74c567ac8876be1969b4be70b44ae033dbcda505  contracts/fixtures/wizloops/invalid/undeclared-param-env/check.sh
 73386819718257847aa1496bb05e04415c37f26bc75b239074b0bbc680c61841  contracts/fixtures/wizloops/invalid/undeclared-param.md
 43fdcd34c972c5d0f9bbc69043e17709c0d993525bcc9ed6da029b8e0860f622  contracts/fixtures/wizloops/invalid/unknown-agent-key.md
 85cda9c6355dd3a75e14fae3edbdf42e34bcfa549d40ca28140cb10d760a0870  contracts/fixtures/wizloops/invalid/unknown-field.md
@@ -89,11 +94,15 @@ ba976056f94cc42774c79340e3739cbf26a4bfbd71037c0e6c1fe3f0cfb9c839  contracts/fixt
 250b71d207572f7631668c083c974cb01db0815333064d42cf346ddbf56a43cc  contracts/fixtures/wizloops/valid/all-secrets-same.md
 0f88715372bbe4d355f12a816316935a0e38fbf266dd212942bb2396fcae93a3  contracts/fixtures/wizloops/valid/at-same.md
 cda822c3a2a7d03fcb229f149e6dec3558a8ef7d17acd73851299c9c9278d177  contracts/fixtures/wizloops/valid/cron-check.md
-01bfb2744e54a80ee90e4cf95a25b1f36972d7458685b5b4cd9c43ed147f7b57  contracts/fixtures/wizloops/valid/cron-check/check.sh
+81986e39dc623267dae9a87a2237fc9b05c1174a85a46714d0c2f9ba844b2648  contracts/fixtures/wizloops/valid/cron-check/check.sh
 b5cd05aa5e70b48604f872fddedeaf14416f245158a28c6c94fccb13d0981eca  contracts/fixtures/wizloops/valid/fast-no-check.md
 5eff4ca38129f0f6238864ce97917d9a4561e761b62e5dfac29c028daaa7e011  contracts/fixtures/wizloops/valid/in-same.md
 5153c2756c196167eb1b6d87f0b79003f87fb46113dfd10a94dcecba529a1a9c  contracts/fixtures/wizloops/valid/long-check.md
 3c632f8ba31411dcf35c53d8aeb402e649bb76b00ec5d9eb05f3976edca9d3bb  contracts/fixtures/wizloops/valid/long-check/check.sh
+2309e5ee5aa5c049a8fe5873df265e237fdc9c91b92e03fd7999f66c5715bd39  contracts/fixtures/wizloops/valid/params-env.md
+4cb8f169bd1157beebc92a9e18593d7a4ebcf7152790db3dff8bcc18345c7fe6  contracts/fixtures/wizloops/valid/params-env/check.sh
+5563b5bcaa8169a1da666179f0e5b690d5be51715826225ceb6c32fd5cfd43bb  contracts/fixtures/wizloops/valid/python-check.md
+40dc9949e88e818e02975ac63caf6ba72ae7e711786c9482e92314d0c4887b18  contracts/fixtures/wizloops/valid/python-check/check.py
 659a637362376dfc1af53a31e6dda5d6733005dda371f1ea18e3323696a1f56f  contracts/fixtures/wizloops/valid/same-thread-agent.md
 3c632f8ba31411dcf35c53d8aeb402e649bb76b00ec5d9eb05f3976edca9d3bb  contracts/fixtures/wizloops/valid/same-thread-agent/check.sh
 6cf72fe9e18007672c03b198da7e7113c9d892dfd16ddb4dc6215f11d2f453a0  contracts/fixtures/wizloops/valid/script-only.md

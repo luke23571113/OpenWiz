@@ -1,5 +1,5 @@
 {
-  "description": "Synthetic room-cli loop answers for openwiz loop export, plan and apply (spec #785, contracts/loop-cli.v1.md). Project prj_syn_0001 has a marked cron loop with a check, an agent and named secrets; a webhook loop; a loop with every secret (secrets null); a paused same-thread at loop; and an unmarked loop. prj_syn_0002 has one loop carrying the same marker as the first, which a project-scoped read must ignore.",
+  "description": "Synthetic room-cli loop answers for openwiz loop export, plan and apply (spec #785, contracts/loop-cli.v1.md). Project prj_syn_0001 has a marked cron loop with a check (carrying the adapter's params preamble for one param), an agent and named secrets; a webhook loop; a loop with every secret (secrets null); a paused same-thread at loop; and an unmarked loop. prj_syn_0002 has one loop carrying the same marker as the first, which a project-scoped read must ignore.",
   "synthetic_assumptions": [
     "loop list --json: the {\"automations\": [...]} shape and keys follow contracts/wizloops-cloudroom.v1.md and room-cli loop --help (cloudroom 0.1.111); no live list was captured for this fixture",
     "run_at's spelling (fractional seconds, Z) is assumed",

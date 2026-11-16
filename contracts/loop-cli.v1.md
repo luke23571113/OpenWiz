@@ -8,8 +8,8 @@ command forms, and the plan's difference format. The result shapes are in
 `urn:openwiz:schema:loop-cli:v1`).
 
 The loop file format is WizLoops', pinned byte for byte from
-`openwizdev/WizLoops` commit `3847b375cbbf6ab0e88b0f643fa5a4e943183b03`
-(the WL1 merge):
+`openwizdev/WizLoops` commit `c7c2ed434dd984d3e984df2a45eb66d43bcdf759`
+(the WL9 merge):
 
 - [`wizloops-loop.v1.md`](wizloops-loop.v1.md), the format, and its schema
   [`wizloops-loop.v1.schema.json`](wizloops-loop.v1.schema.json);
@@ -202,8 +202,11 @@ before any write. The forms come from `room-cli loop --help` (cloudroom
   keys the adapter maps. It is the existing T5 read, unchanged.
 - **Files.** `--prompt-file` and `--script-file` name files that `apply`
   writes, owner-only, in a private temporary folder it removes afterwards.
-  They hold the body and the check script with params replaced, byte for
-  byte.
+  `--prompt-file` holds the body with its placeholders replaced.
+  `--script-file` holds the adapter's rendered script: the check's text
+  byte for byte, with the params preamble the check needs after its first
+  line (the adapter's "Params: the body and the check's preamble").
+  Nothing else is substituted into a script.
 - **Never called:** `loop pause`, `resume`, `run`, `delete`, `hook` and
   `report`. There is no `loop show`: a loop is read back only through
   `loop list`.
@@ -228,13 +231,15 @@ the managed loop maps back to, both as JSON in the loop file's shape (as
 the adapter's "How plan compares" reads them):
 
 - `name`: the name without its marker.
-- `trigger`: the whole trigger object.
+- `trigger`: the whole trigger object. An `at` time compares as an
+  instant, so a different spelling of the same instant is no difference.
 - `agent`: the agent object, or null for the caller's agent.
 - `secrets`: `"all"`, or the list. A list compares as a set, and is shown
   in its own order.
-- `body`, `check`: the text after params are replaced, or null for no
-  check. An `at` time compares as an instant, so a different spelling of
-  the same instant is no difference.
+- `body`: the body with its placeholders replaced, against `prompt`.
+- `check`: the rendered script, preamble included, against `script`; null
+  for no check. A changed value of a param the check uses shows here, and
+  one only the body uses shows in `body`.
 
 An item with no difference has `"differences": []`. A text run prints each
 difference as `<file>: <field>: <live> -> <file value>`, with each value
@@ -251,7 +256,8 @@ Example: a managed loop whose priority is 3 while its file says 2:
 `tests/fake-room-cli/` answers `loop list --json`, `loop create` and
 `loop update` from a scenario, as for every other call. Its synthetic
 `loops/` scenario has one project's loops: a marked cron loop with a
-check, an agent and named secrets; a webhook loop; a loop with every secret
+check (its script carries the adapter's params preamble for one param), an
+agent and named secrets; a webhook loop; a loop with every secret
 (`secrets: null`); a paused same-thread `at` loop; an unmarked loop; and a
 loop in another project. The fake refuses any other `loop` form, including
 `show`, as off the allowlist (exit 97). It records each `create` and

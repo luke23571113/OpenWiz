@@ -11,7 +11,7 @@
 use std::ffi::OsString;
 use std::io::Write;
 
-use openwiz_cli::response;
+use crate::response;
 
 pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
   openwiz loop export --project <project> [--out <dir>] [--json]
@@ -558,7 +558,7 @@ mod tests {
         let root = Path::new(ROOT);
         let record =
             std::fs::read_to_string(root.join("contracts/fixtures/wizloops/README.md")).unwrap();
-        assert!(record.contains("`3847b375cbbf6ab0e88b0f643fa5a4e943183b03`"));
+        assert!(record.contains("`c7c2ed434dd984d3e984df2a45eb66d43bcdf759`"));
         let block = record
             .split("```sha256\n")
             .nth(1)
