@@ -239,7 +239,8 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         Err(why) => {
             let _ = writeln!(
                 stderr,
-                "openwiz: usage: {why}; nothing was read (see openwiz loop --help)"
+                "openwiz: usage: {}; nothing was read (see openwiz loop --help)",
+                escape_untrusted(&why)
             );
             if json_selected(args) {
                 let doc = serde_json::json!({

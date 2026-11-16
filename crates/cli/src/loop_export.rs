@@ -38,6 +38,7 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
         Err(why) => {
             return failed(
                 args.json,
+                "read_failed",
                 &format!("room-cli loop list failed: {why}; nothing was written"),
                 "The loop list could not be read; nothing was written.",
                 stdout,
@@ -45,6 +46,20 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
             );
         }
     };
+    if !HOLDS_FOLDERS
+        && exports
+            .iter()
+            .any(|e| e.files.iter().any(|(rel, _)| rel.contains('/')))
+    {
+        return failed(
+            args.json,
+            "unavailable",
+            &format!("{NO_HELD_FOLDER}; nothing was written"),
+            "A loop with a check is exported only on Linux; nothing was written.",
+            stdout,
+            stderr,
+        );
+    }
     let mut outcomes = Vec::new();
     for exported in exports {
         match write(Path::new(out), exported) {
@@ -52,6 +67,7 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
             Err(why) => {
                 return failed(
                     args.json,
+                    "read_failed",
                     &format!("could not write to {out}: {why}; the loops before it were written"),
                     "The export folder could not be written; the loops before it were written.",
                     stdout,
@@ -175,12 +191,22 @@ fn refused(mut exported: Exported, exists: Vec<PathBuf>) -> Outcome {
     }
 }
 
-/// `O_NOFOLLOW | O_NONBLOCK` (and, on macOS, `O_NOFOLLOW_ANY`), and
-/// `O_DIRECTORY`: Linux UAPI asm-generic, or arch/arm{,64} for ARM; XNU
-/// bsd/sys/fcntl.h for macOS. As `crates/store/src/setup.rs` spells them.
+/// Whether a check's folder can be held open and written through: only on
+/// Linux, through `/proc/self/fd/<fd>`. Rust's standard library has no
+/// `openat`, and this workspace allows no unsafe code and no `libc`, so on
+/// macOS (and elsewhere) a check could be written only by pathname, which a
+/// folder swapped for a link redirects (review R1). There a run with a check
+/// is refused before anything is written.
+const HOLDS_FOLDERS: bool = cfg!(target_os = "linux");
+
+const NO_HELD_FOLDER: &str = "a loop with a check is exported only on Linux: this system cannot write a check through its folder held open, so a folder swapped for a link could put the check outside --out";
+
+/// `O_NOFOLLOW | O_NONBLOCK`, and `O_DIRECTORY`: Linux UAPI asm-generic, or
+/// arch/arm{,64} for ARM; XNU bsd/sys/fcntl.h for macOS. As
+/// `crates/store/src/setup.rs` spells them.
 fn no_follow() -> i32 {
     if cfg!(target_vendor = "apple") {
-        0x0100 | 0x0004 | 0x2000_0000
+        0x0100 | 0x0004
     } else if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
         0o100000 | 0o4000
     } else {
@@ -251,7 +277,6 @@ fn create_new(path: &Path, text: &str) -> std::io::Result<()> {
 /// points to by then.
 struct Folder {
     file: fs::File,
-    path: PathBuf,
 }
 
 enum Held {
@@ -280,29 +305,19 @@ impl Folder {
         if !file.metadata()?.is_dir() {
             return Ok(Held::NotFolder);
         }
-        Ok(Held::Folder(Folder {
-            file,
-            path: path.to_owned(),
-        }))
+        Ok(Held::Folder(Folder { file }))
     }
 
-    /// The path of `name` inside this held folder. On Linux it goes through
-    /// the open handle (`/proc/self/fd/<fd>`), as the GitHub App key reader
-    /// does. On macOS it is the folder's real path, and every open of it
-    /// adds `O_NOFOLLOW_ANY`, so a link anywhere on it refuses. Elsewhere a
-    /// check is not written.
+    /// The path of `name` inside this held folder, through the open handle
+    /// (`/proc/self/fd/<fd>`), as the GitHub App key reader does. Only Linux
+    /// has that route ([`HOLDS_FOLDERS`]); elsewhere this refuses, never
+    /// falling back to the folder's pathname.
     fn entry(&self, name: &str) -> std::io::Result<PathBuf> {
-        if cfg!(target_os = "linux") {
-            use std::os::fd::AsRawFd;
-            Ok(PathBuf::from(format!("/proc/self/fd/{}", self.file.as_raw_fd())).join(name))
-        } else if cfg!(target_vendor = "apple") {
-            Ok(fs::canonicalize(&self.path)?.join(name))
-        } else {
-            Err(std::io::Error::new(
-                ErrorKind::Unsupported,
-                "this system cannot hold a check's folder open",
-            ))
+        if !HOLDS_FOLDERS {
+            return Err(std::io::Error::new(ErrorKind::Unsupported, NO_HELD_FOLDER));
         }
+        use std::os::fd::AsRawFd;
+        Ok(PathBuf::from(format!("/proc/self/fd/{}", self.file.as_raw_fd())).join(name))
     }
 }
 
@@ -377,6 +392,7 @@ fn text(
 /// `openwiz.cli-error.v1` document that carries none of room-cli's text.
 fn failed(
     json: bool,
+    kind: &str,
     what: &str,
     message: &str,
     stdout: &mut dyn Write,
@@ -386,7 +402,7 @@ fn failed(
     if json {
         let doc = json!({
             "schema": "openwiz.cli-error.v1", "command": "loop.export", "exit_code": 1,
-            "error": {"kind": "read_failed", "message": message},
+            "error": {"kind": kind, "message": message},
         });
         let _ = writeln!(stdout, "{doc}");
     }

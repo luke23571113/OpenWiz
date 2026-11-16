@@ -128,7 +128,9 @@ openwiz-cli -p openwiz-tests --tests` compiles both proofs. By source trace,
 and by the reviewer's reproduction of the same algorithm, on macOS
 `a_held_folder_keeps_the_check_inside_it_after_a_swap` stops at `the check went
 through the link`, and `export_refuses_a_check_where_its_folder_cannot_be_held_open`
-gets the old route's export instead of exit 1 and an empty `--out`. On Linux the
+gets the old route's result (the checks written by pathname, or a write
+failure where `O_NOFOLLOW_ANY` meets a linked temporary folder) instead of the
+refusal: exit 1, its own message and an empty `--out`. On Linux the
 swap proof passes before and after: the Linux route was already right.
 
 ## Usage line through escape_untrusted (orchestrator ruling on #792, question 5)
