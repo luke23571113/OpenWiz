@@ -875,6 +875,23 @@ fn human_output_escapes_terminal_controls_and_json_keeps_them() {
         stderr.contains("gone") && !stderr.contains(ESC),
         "{stderr:?}"
     );
+    // So is the shared usage line (LC1's parser), which echoes the option
+    // it refuses; its JSON message keeps the original.
+    let option = format!("--kick{ESC}[2J");
+    let output = fake.run(&[&option, "--project", PROJECT, "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("openwiz: usage: ")
+            && stderr.contains("--kick")
+            && !stderr.contains(ESC),
+        "{stderr:?}"
+    );
+    let doc: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        doc["error"]["message"].as_str().unwrap().contains(&option),
+        "{doc}"
+    );
 }
 
 /// The one shell command `text` starts with: up to its first line break
