@@ -3241,23 +3241,25 @@ impl CloudRoomSource {
             }
             _ => return Err(invalid("not a loop write")),
         }
-        Ok(match process::run_spawn(self.program(), &invocation, deadline) {
-            Ok(out) => Written::Accepted(String::from_utf8_lossy(&out).into_owned()),
-            Err(process::SpawnFailure::Exited {
-                exit_code: Some(code),
-                first_line,
-            }) if first_line.is_empty() => {
-                Written::Refused(format!("room-cli exited {code} with no error output"))
-            }
-            Err(process::SpawnFailure::Exited {
-                exit_code: Some(_),
-                first_line,
-            }) => Written::Refused(first_line),
-            Err(process::SpawnFailure::Exited { exit_code: None, .. }) => {
-                Written::Unclear("room-cli ended without an exit code".into())
-            }
-            Err(process::SpawnFailure::Source(e)) => Written::Unclear(format!("room-cli {e}")),
-        })
+        Ok(
+            match process::run_spawn(self.program(), &invocation, deadline) {
+                Ok(out) => Written::Accepted(String::from_utf8_lossy(&out).into_owned()),
+                Err(process::SpawnFailure::Exited {
+                    exit_code: Some(code),
+                    first_line,
+                }) if first_line.is_empty() => {
+                    Written::Refused(format!("room-cli exited {code} with no error output"))
+                }
+                Err(process::SpawnFailure::Exited {
+                    exit_code: Some(_),
+                    first_line,
+                }) => Written::Refused(first_line),
+                Err(process::SpawnFailure::Exited {
+                    exit_code: None, ..
+                }) => Written::Unclear("room-cli ended without an exit code".into()),
+                Err(process::SpawnFailure::Source(e)) => Written::Unclear(format!("room-cli {e}")),
+            },
+        )
     }
 }
 

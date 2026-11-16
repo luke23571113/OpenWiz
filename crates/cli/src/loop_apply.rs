@@ -179,6 +179,25 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
         }
         Action::Create | Action::Update => {}
     }
+    // Revision 3: a live setting the adapter does not map is never dropped.
+    // `update` passes only mapped flags, and nothing shows that Cloudroom
+    // keeps the rest, so such a loop is refused before any write.
+    if let Some(target) = live
+        .iter()
+        .find(|l| Some(&l.loop_id) == item.loop_id.as_ref())
+        .filter(|l| !l.unmapped.is_empty())
+    {
+        report.refusals.push(Refusal {
+            code: "apply-unmapped",
+            field: "file".into(),
+            message: format!(
+                "Cloudroom loop {} carries settings the adapter does not map ({}), and nothing shows that a write keeps them; nothing was written",
+                target.loop_id,
+                target.unmapped.join(", ")
+            ),
+        });
+        return finish(args, project, id, &report, stdout, stderr);
+    }
     // The preview: a text run shows each exact command before it runs.
     if !args.json && stdout.write_all(preview(&report).as_bytes()).is_err() {
         let _ = writeln!(

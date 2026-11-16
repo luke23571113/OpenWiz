@@ -42,8 +42,11 @@ impl Room {
             root.join("before.json").to_str().unwrap(),
         )
         .unwrap();
-        std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-room-cli"), bin.join("fake-room-cli"))
-            .unwrap();
+        std::os::unix::fs::symlink(
+            env!("CARGO_BIN_EXE_fake-room-cli"),
+            bin.join("fake-room-cli"),
+        )
+        .unwrap();
         fs::remove_file(bin.join("room-cli")).unwrap();
         let b = bin.display();
         let after = root.join("after.json");
@@ -61,10 +64,7 @@ impl Room {
     /// `loop list` answers `before`, then `after` once a write is recorded;
     /// every write is accepted.
     fn listing(before: &Value, after: &Value) -> Self {
-        Self::new(
-            vec![list(before), accept()],
-            vec![list(after), accept()],
-        )
+        Self::new(vec![list(before), accept()], vec![list(after), accept()])
     }
 
     fn dir(&self) -> &Path {
@@ -256,9 +256,7 @@ fn apply_runs_only_its_plans_command_then_reads_back() {
 
     // The plan apply runs: printed first, by plan itself.
     let planned = room.run_env(
-        &[
-            "loop", "plan", "loops", "--project", PROJECT, "--json",
-        ],
+        &["loop", "plan", "loops", "--project", PROJECT, "--json"],
         &[],
     );
     let planned: Value = serde_json::from_slice(&planned.stdout).unwrap();
@@ -268,7 +266,10 @@ fn apply_runs_only_its_plans_command_then_reads_back() {
         .iter()
         .find(|i| i["id"] == "syn-triage")
         .unwrap();
-    assert_eq!(triage_item["commands"], json!([{"argv": update, "files": {}}]));
+    assert_eq!(
+        triage_item["commands"],
+        json!([{"argv": update, "files": {}}])
+    );
     assert_eq!(room.calls(), vec![json!(LIST)], "plan only read");
 
     let (code, doc) = room.json(&["syn-triage", "--from", &file]);
@@ -418,7 +419,8 @@ fn a_differing_read_back_is_reported_and_never_retried() {
 #[test]
 fn an_unclear_outcome_is_unknown_and_never_retried() {
     let update = argv("loop|update|loop_syn_1|--priority|3");
-    let cases: [(&str, Vec<Value>, Vec<Value>, Vec<Value>); 3] = [
+    // (case, answers before a write, answers after one, the calls made)
+    let cases = [
         (
             "the write hangs",
             vec![
@@ -440,7 +442,9 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
         (
             "the read-back fails",
             vec![list(&account()), accept()],
-            vec![json!({"argv": LIST, "stderr": "Error: HTTP 503: Service Unavailable", "exit": 1})],
+            vec![
+                json!({"argv": LIST, "stderr": "Error: HTTP 503: Service Unavailable", "exit": 1}),
+            ],
             vec![json!(LIST), update.clone(), json!(LIST)],
         ),
     ];
@@ -511,8 +515,18 @@ fn apply_writes_nothing_it_should_not() {
     let (code, doc) = room.json(&["syn-nightly", "--from", &file]);
     assert_eq!(code, 5, "{doc:#}");
     assert_eq!(
-        (&doc["outcome"], &doc["action"], &doc["commands"], &doc["read_back"]),
-        (&json!("refused"), &json!("refused"), &json!([]), &json!(null))
+        (
+            &doc["outcome"],
+            &doc["action"],
+            &doc["commands"],
+            &doc["read_back"]
+        ),
+        (
+            &json!("refused"),
+            &json!("refused"),
+            &json!([]),
+            &json!(null)
+        )
     );
     assert_eq!(
         doc["refusals"],
@@ -562,7 +576,10 @@ fn apply_writes_nothing_it_should_not() {
 #[test]
 fn a_failed_read_before_any_write_exits_1_and_writes_nothing() {
     let room = Room::new(
-        vec![json!({"argv": LIST, "stderr": "Error: HTTP 503: Service Unavailable", "exit": 1}), accept()],
+        vec![
+            json!({"argv": LIST, "stderr": "Error: HTTP 503: Service Unavailable", "exit": 1}),
+            accept(),
+        ],
         vec![],
     );
     let (code, doc) = room.json(&["syn-triage", "--from", "missing.md"]);
@@ -612,9 +629,8 @@ fn apply_adopts_an_unmarked_loop_by_its_binding() {
         "synthetic-hourly-kick=loop_syn_5",
     ]);
     assert_eq!(code, 0, "{doc:#}");
-    let rename = argv(
-        "loop|update|loop_syn_5|--name|Synthetic hourly kick [wizloop:synthetic-hourly-kick]",
-    );
+    let rename =
+        argv("loop|update|loop_syn_5|--name|Synthetic hourly kick [wizloop:synthetic-hourly-kick]");
     assert_eq!(
         (&doc["outcome"], &doc["loop"], &doc["read_back"]),
         (
@@ -647,7 +663,13 @@ fn apply_refuses_a_loop_with_an_unmapped_setting_and_writes_nothing() {
     dirs::private_dir_all(room.dir().join("exported")).unwrap();
     let export = room.run_env(
         &[
-            "loop", "export", "--project", PROJECT, "--out", "exported", "--json",
+            "loop",
+            "export",
+            "--project",
+            PROJECT,
+            "--out",
+            "exported",
+            "--json",
         ],
         &[],
     );
@@ -666,8 +688,18 @@ fn apply_refuses_a_loop_with_an_unmapped_setting_and_writes_nothing() {
     let (code, doc) = room.json(&["syn-budget", "--from", file]);
     assert_eq!(code, 5, "{doc:#}");
     assert_eq!(
-        (&doc["outcome"], &doc["action"], &doc["loop"], &doc["read_back"]),
-        (&json!("refused"), &json!("update"), &json!("loop_syn_8"), &json!(null))
+        (
+            &doc["outcome"],
+            &doc["action"],
+            &doc["loop"],
+            &doc["read_back"]
+        ),
+        (
+            &json!("refused"),
+            &json!("update"),
+            &json!("loop_syn_8"),
+            &json!(null)
+        )
     );
     assert_eq!(
         doc["commands"],
@@ -716,5 +748,8 @@ fn text_output_previews_the_command_and_never_prints_a_terminal_control() {
         )),
         "{text}"
     );
-    assert!(text.contains(&format!("{file}: failed loop_syn_1\n")), "{text}");
+    assert!(
+        text.contains(&format!("{file}: failed loop_syn_1\n")),
+        "{text}"
+    );
 }

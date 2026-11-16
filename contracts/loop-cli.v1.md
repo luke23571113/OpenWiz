@@ -116,6 +116,7 @@ OpenWiz's own codes:
 | `export-exists` | `file` | `<path> already exists with other bytes; nothing was written for this loop` |
 | `apply-id-mismatch` | `id` | `the file's id is <file id>, not <id>` |
 | `loop-started-thread` | `file` | `apply runs only from an ordinary thread or a terminal, never a thread a loop started` |
+| `apply-unmapped` | `file` | `Cloudroom loop <loop> carries settings the adapter does not map (<keys>), and nothing shows that a write keeps them; nothing was written` |
 
 **`not_built`** (LC1): `{"schema": "openwiz.loop-not-built.v1",
 "command": "<validate|export|plan|apply>", "exit_code": 5, "status":
@@ -174,6 +175,10 @@ loop of the project with no marker and no binding) and `orphans`
 - `webhook_address` appears only for a created webhook loop: `create`'s
   address, passed to the caller this once. Apply writes it to no file, plan
   or log.
+- A loop whose `list` item carries a key the adapter rules do not name
+  (export's `unmapped`) is `refused` with `apply-unmapped` before any write
+  to it: `update` passes only mapped flags, and nothing shows that Cloudroom
+  keeps the rest. Apply never drops such a setting.
 
 ## Exit codes
 
@@ -182,7 +187,7 @@ The values are [cli.v1.md](cli.v1.md#fixed-exits-and-existing-results)'s.
 | Exit | `validate` | `export` | `plan` | `apply` |
 | --- | --- | --- | --- | --- |
 | 0 | every file valid | every loop written or unchanged | printed, no refusal (differences are fine) | `created`, `updated` or `unchanged` |
-| 1 | a path unreadable; output failed | `loop list` failed; output failed | a path unreadable; `loop list` failed; output failed | a read before any write failed; output failed |
+| 1 | a path unreadable; output failed | `loop list` failed; output failed; or the platform has no safe check-write route | a path unreadable; `loop list` failed; output failed | a read before any write failed; output failed |
 | 2 | usage | usage | usage | usage |
 | 5 | a file or folder refused | a loop refused (the others are still written) | a file refused (the others are still planned) | `refused`, `failed` or `different`; `not_built` |
 | 6 | | | | `unknown` |
