@@ -389,7 +389,7 @@ class Access(unittest.TestCase):
         binaries.mkdir()
         web.mkdir()
         (web / 'setup.html').write_text('Synthetic setup page')
-        for name in ('install.py', 'pull.py', 'setup/setup.py', 'setup/store.py', 'platform/runtime.py', 'access/access.py', 'engine/engine.py'):
+        for name in ('install.py', 'pull.py', 'setup/setup.py', 'setup/store.py', 'platform/runtime.py', 'access/access.py'):
             target = source / 'tools/install' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / 'tools/install' / name, target)
