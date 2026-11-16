@@ -25,7 +25,7 @@ def _module(name, path):
 
 
 S = _module('rework_suite', HERE / 'suite.py')
-J = _module('rework_journey', HERE.parent / 'factory-metrics/journey.py')
+J = _module('rework_journey', HERE / 'journey.py')
 
 
 def project(wire, *, source_path, cohort, merged_prs, since, until, observed_at):
