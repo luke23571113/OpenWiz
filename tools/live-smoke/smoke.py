@@ -83,8 +83,23 @@ def refuse_reserved_port(kit, argv):
 
 def retired(kit, argv):
     """`openwiz fleet tick` in any form, and `openwiz engine`: the engine
-    retirement removes them (contracts/engine-retirement.v1.md, section 9)."""
-    return argv[0] == kit['openwiz'] and (argv[1:3] == ['fleet', 'tick'] or argv[1:2] == ['engine'])
+    retirement removes them (contracts/engine-retirement.v1.md, section 9).
+
+    The program is the pinned `openwiz` by its path, by file identity (a
+    symlink or hardlink to it) or by its pinned bytes (a pinned copy). The
+    CLI dispatches on its arguments, never its name. An identity that cannot
+    be read counts as the same program: fail closed (review R2)."""
+    if argv[1:3] != ['fleet', 'tick'] and argv[1:2] != ['engine']:
+        return False
+    if argv[0] == kit['openwiz']:
+        return True
+    try:
+        if os.path.samefile(argv[0], kit['openwiz']):
+            return True
+    except (OSError, TypeError, ValueError):
+        return True
+    pinned = kit['artifacts'].get(argv[0])
+    return pinned is not None and pinned == kit['artifacts'].get(kit['openwiz'])
 
 
 def in_block(kit, index):

@@ -5,9 +5,11 @@ project's single live-check runner: live evidence has this one shape (spec #819)
 The engine retirement removes the executing `openwiz fleet tick`, its
 `--expect-plan` form and `openwiz engine`
 ([map](../../contracts/engine-retirement.v1.md), section 9). The runner runs
-none of them, nor the kept `fleet tick --dry-run` preview: a kit step whose argv
-is the pinned `openwiz` with `fleet tick` (any form) or `engine` is refused
-before any step (`retired_command`). A fleet's own writes (starts, reviews,
+none of them, nor the kept `fleet tick --dry-run` preview: a kit step of any
+kind (read, write or await) whose program is the pinned `openwiz` (by path, by
+file identity, so a symlink or hardlink, or by pinned bytes, so a copy) with
+`fleet tick` (any form) or `engine` is refused before any step
+(`retired_command`), and so is one whose program's identity cannot be read. A fleet's own writes (starts, reviews,
 merges, closes) are launch-fleet's. The runner reads them back through the CLI
 (`openwiz fleet <spec> --json`, `openwiz fleet due --github-only`) and the
 reviewed probes below. #2216's expected-plan restriction restricted the

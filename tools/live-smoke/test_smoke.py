@@ -255,6 +255,14 @@ class Smoke(FixtureCase):
                         self.state = self.root / ('alias-%s-%s-%s' % (name, form, place.replace(' ', '-')))
                         self.assertEqual(self.report(self.invoke(), 2)['reason'], 'retired_command')
                         self.assertEqual(self.call_list(), [])
+        # An identity that cannot be read is refused as the same program.
+        self.kit = json.loads(json.dumps(self.base_kit))
+        missing = str(self.root / 'missing-program')
+        self.kit['artifacts'][missing] = '0' * 64
+        self.kit['steps'][0]['argv'] = [missing, 'fleet', 'tick', '--json']
+        self.state = self.root / 'alias-unreadable'
+        self.assertEqual(self.report(self.invoke(), 2)['reason'], 'retired_command')
+        self.assertEqual(self.call_list(), [])
 
     def test_fleet_block_rereads_once_per_event_until_readback(self):
         """catches: the fleet claim needing a runner write to progress, or a

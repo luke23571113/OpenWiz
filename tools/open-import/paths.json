@@ -49,6 +49,7 @@
     "tools/live-smoke/evidence/772/red-ship3.log",
     "tools/live-smoke/evidence/772/red.log",
     "tools/live-smoke/evidence/828/green.log",
+    "tools/live-smoke/evidence/828/green-r2.log",
     "tools/live-smoke/evidence/828/red-r2.log",
     "tools/live-smoke/evidence/828/red.log",
     "tools/live-smoke/http.py",
