@@ -45,8 +45,6 @@ pub(crate) const ATTACHMENT_ROUTE: &str = "/api/v1/attachments/{id}";
 /// the core as it is: nothing is decoded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Route {
-    NotificationTarget(String),
-    Notification(crate::notifications::Read),
     Setup,
     LoopSwitch(String, bool),
     Decisions,
@@ -82,20 +80,6 @@ pub(crate) enum Route {
 impl Route {
     pub fn of(path: &str) -> Option<Self> {
         match path {
-            _ if path.starts_with(crate::notification_target::PREFIX) => {
-                Some(Self::NotificationTarget(
-                    path[crate::notification_target::PREFIX.len()..].to_owned(),
-                ))
-            }
-            crate::notifications::STATUS => {
-                Some(Self::Notification(crate::notifications::Read::Status))
-            }
-            crate::notifications::PREFERENCES => {
-                Some(Self::Notification(crate::notifications::Read::Preferences))
-            }
-            crate::notifications::SUBSCRIPTION => {
-                Some(Self::Notification(crate::notifications::Read::Subscription))
-            }
             crate::setup::ROUTE => Some(Self::Setup),
             _ if path.starts_with("/api/v1/loops/") => {
                 match path["/api/v1/loops/".len()..]
@@ -163,8 +147,6 @@ impl Route {
     /// The route's template, for the log.
     pub fn template(&self) -> &'static str {
         match self {
-            Self::NotificationTarget(_) => crate::notification_target::LOG_ROUTE,
-            Self::Notification(route) => route.path(),
             Self::Setup => crate::setup::ROUTE,
             Self::LoopSwitch(_, true) => crate::loop_switches::ON_ROUTE,
             Self::LoopSwitch(_, false) => crate::loop_switches::OFF_ROUTE,
@@ -193,8 +175,6 @@ impl Route {
 /// One core run. Identical calls share a run.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Call {
-    NotificationTarget(String),
-    NotificationRead(crate::notifications::Read),
     Decisions,
     /// The cockpit's one read (#535).
     Cockpit,
@@ -343,7 +323,6 @@ pub(crate) fn health(source: &dyn SessionSource) -> Reply {
 /// new-thread provider (when configured), and the clock.
 #[derive(Clone)]
 pub(crate) struct Core {
-    pub notifications: Option<crate::notifications::Context>,
     pub decisions: Option<decisions::Decisions>,
     pub source: Arc<dyn SessionSource>,
     pub messenger: Option<Arc<dyn Messenger>>,
@@ -362,12 +341,6 @@ fn run(call: &Call, core: &Core) -> Reply {
     let messenger = core.messenger.as_deref();
     let creating = core.creating.as_ref();
     let body = match call {
-        Call::NotificationTarget(reference) => {
-            return crate::notification_target::run(core.decisions.as_ref(), reference, clock);
-        }
-        Call::NotificationRead(route) => {
-            return crate::notifications::read(core.notifications.as_ref(), *route, clock.now().0);
-        }
         Call::Decisions => return decisions::run(core.decisions.as_ref(), messenger, clock),
         Call::Cockpit => {
             let configured = core.decisions.as_ref().map(|d| &d.target);

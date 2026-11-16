@@ -58,69 +58,26 @@ pub fn start(
         }),
         ..Config::default()
     };
-    // #2039 (Q1): a tap's token resolves only through the job's protected store;
-    // an unreadable store is unavailable, never another item. A pass holds the
-    // store's lock, so a tap waits for it within the request's deadline.
-    let mapping = openwiz_store::notifications::Store::new(root);
-    let targets = openwiz_server::NotificationTargets {
-        read_mapping: Arc::new(move |token, deadline| {
-            use openwiz_store::notifications::Error;
-            let Some(token) = openwiz_core::notifications::model::Fingerprint::new(token) else {
-                return Ok(None);
-            };
-            loop {
-                match mapping.target(&token) {
-                    Ok(found) => {
-                        return Ok(
-                            found.map(|o| openwiz_core::notifications::policy::reference(&o.fact))
-                        );
-                    }
-                    Err(Error::Busy) if std::time::Instant::now() < deadline => {
-                        std::thread::sleep(
-                            std::time::Duration::from_millis(5)
-                                .min(deadline.saturating_duration_since(std::time::Instant::now())),
-                        );
-                    }
-                    Err(_) => return Err(openwiz_server::TargetReadError::Unavailable),
-                }
-            }
-        }),
-    };
-    openwiz_server::start_with_notifications_and_targets(
+    openwiz_server::start_with_loop_switches(
         listener,
         config,
         Arc::new(CloudRoomSource::from_path()),
         Arc::new(SystemClock),
         Arc::new(|line| eprintln!("openwiz-server: {line}")),
-        openwiz_server::NotificationReadSources {
-            targets,
-            reads: openwiz_server::ReadSources {
-                plan: Some(Plan::with_program(openwiz_adapter_github::PROGRAM)),
-                fleets: Some(Fleets {
-                    list: Arc::new(GitHubFleets::from_path()),
-                    detail: Arc::new(Tickets::from_path()),
-                    agents: Arc::new(FleetAgents(CloudRoomSource::from_path())),
-                }),
-                decisions: Some(Decisions {
-                    github: GitHubDecisions::from_path()
-                        .with_settings(&root.join("service/config.json")),
-                    target,
-                }),
-            },
+        openwiz_server::ReadSources {
+            plan: Some(Plan::with_program(openwiz_adapter_github::PROGRAM)),
+            fleets: Some(Fleets {
+                list: Arc::new(GitHubFleets::from_path()),
+                detail: Arc::new(Tickets::from_path()),
+                agents: Arc::new(FleetAgents(CloudRoomSource::from_path())),
+            }),
+            decisions: Some(Decisions {
+                github: GitHubDecisions::from_path()
+                    .with_settings(&root.join("service/config.json")),
+                target,
+            }),
         },
         openwiz_server::loops::installed(root),
-        // #2035: the same installed delivery factory as the job, over its store
-        // (#2039: through `crate::delivery`, which a fixture may replace).
-        openwiz_server::notifications::Context(Arc::new({
-            let (delivery, binding) = crate::delivery();
-            crate::notifications::Engine::new(
-                openwiz_store::notifications::Store::new(root),
-                Arc::new(crate::notifications::UnavailableSources),
-                delivery,
-                Arc::new(SystemClock),
-                binding,
-            )
-        })),
     )
     .map_err(|_| "cannot start the embedded HTTP server".to_owned())
 }
@@ -143,25 +100,3 @@ fn configured_target(root: &Path) -> Result<Option<String>, ()> {
 #[cfg(test)]
 #[path = "../../../tests/service/install_engine_target.rs"]
 mod target_tests;
-
-/// The installed API implementation with an explicitly injected offline engine.
-/// This starts only the supplied loopback listener; no production intake/job is added.
-pub fn start_notification_api(
-    listener: TcpListener,
-    config: Config,
-    source: Arc<dyn openwiz_core::source::SessionSource>,
-    clock: Arc<dyn openwiz_core::ops::Clock>,
-    log: openwiz_server::Log,
-    engine: Arc<crate::notifications::Engine>,
-) -> std::io::Result<openwiz_server::Server> {
-    openwiz_server::start_with_notifications(
-        listener,
-        config,
-        source,
-        clock,
-        log,
-        openwiz_server::ReadSources::default(),
-        None,
-        openwiz_server::notifications::Context(engine),
-    )
-}
