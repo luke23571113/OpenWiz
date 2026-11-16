@@ -82,11 +82,18 @@ in the after run.
   `cargo llvm-cov --version`; `compare` refuses two results whose toolchains
   differ.
 - **The run:** the builds CI runs before its tests (`cargo build --workspace
-  --bins`, and `ci/rust-tests.sh`'s fixture release `openwiz`), then each
+  --bins`, and `ci/rust-tests.sh`'s fixture release `openwiz`), plus the debug
+  fixture examples, then each
   target under `cargo test --locked -p PACKAGE --test NAME`, instrumented in
   its own folder, `target/test-value-cov/`. Binaries the tests run as child
-  processes are instrumented too, so their lines count. A failed test stops
-  the measure: a red run is never a number.
+  processes are instrumented too, so their lines count. One exception: a
+  service test runs `<repo>/target/debug/examples/openwiz-server` by its
+  documented path, which is the plain build, so that one child process's
+  lines don't count. A failed test stops the measure: a red run is never a
+  number.
+- **Prerequisites,** as for the tests themselves (`AGENTS.md`): zsh, Node
+  24.22.1, a user other than root, and for `web-api` the web export
+  (`cd apps/web && npm ci --ignore-scripts && npm run build`).
 - **Line coverage** per workspace crate: covered and total lines from
   `cargo llvm-cov report --json --summary-only`, product sources only. The
   whole `openwiz-tests` package, and every crate's `tests/`, `examples/` and

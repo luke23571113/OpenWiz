@@ -171,10 +171,13 @@ def coverage_env(root, env):
 
 def prebuild(root, env):
     """The builds CI runs before its tests: ci.yml's workspace binaries and
-    ci/rust-tests.sh's fixture release openwiz, which subprocess tests run."""
+    ci/rust-tests.sh's fixture release openwiz, which subprocess tests run.
+    Also the debug fixture examples, which service's tests build themselves
+    but one runs by its documented path under the default target folder."""
     run(["cargo", "build", "--locked", "--workspace", "--bins"], root, env)
     run(["cargo", "build", "--locked", "--release", "-p", DEFAULT_PACKAGE,
          "--example", "openwiz"], root, env)
+    run(["cargo", "build", "--locked", "-p", DEFAULT_PACKAGE, "--examples"], root, env)
 
 
 def test_run(root, env, select):
