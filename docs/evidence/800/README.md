@@ -106,3 +106,31 @@ Each was checked against a mutation of `crates/cli/src/fleet_tick.rs`:
 expects `fleet tick`, `fleet tick --json` and `fleet tick --expect-plan PATH --json`
 to be refused by the parser. With the new refusal removed from `parse`, it fails:
 [red-parse.log](red-parse.log).
+
+## The installed-engine release proof (grant A on #800)
+
+CI's `release (1)` job failed `Engine.test_verified_installer_carries_real_engine_and_cli_without_build_tools`
+(and `Package.test_installed_engine_preparation`, which only runs it with the real
+CLI and service): it ran `<installed>/openwiz engine preview`, which this ticket
+deletes ([red-engine-cli.log](red-engine-cli.log), reproduced locally at `9efbd8b`).
+Under the orchestrator's grant, only `tools/install/engine/test_engine.py` changes:
+
+- With the real CLI, the test now asserts `openwiz engine preview --location local --json`
+  exits 2 with an `openwiz.cli-error.v1` report and "unknown command engine", and
+  leaves the state directory unchanged; the preview then runs through the installed
+  `runtime/engine/engine.py` directly, as the no-CLI branch already did.
+- The `if service:` start-gate assertions (D2, `bootstrap.rs`) are unchanged.
+
+The dropped `if cli:` block tested `engine.rs`'s wrapper around the runtime. Each
+check and its fate:
+
+| Dropped check | Keeper or behaviour |
+| --- | --- |
+| The wrapper clears `PATH`, `PYTHONPATH`, `OPENWIZ_ENGINE_PROGRAM`, `OPENWIZ_ENGINE_RUNTIME` before running the runtime | gone: no shipped program runs the engine runtime |
+| No source-checkout or `PATH` fallback (the planted `tools/install/engine/engine.py` and `python3` trap) | gone, as above |
+| A missing or symlinked installed runtime refuses | gone, as above |
+| Malformed or unexpected child JSON becomes an `unavailable` CLI error | gone: the CLI no longer reads the runtime's output |
+| A valid report and a usage error pass through unchanged | gone, as above |
+
+The runtime's own behaviour keeps the file's other 22 tests until ER8 (#874)
+retires it.
