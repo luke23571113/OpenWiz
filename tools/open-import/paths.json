@@ -328,7 +328,10 @@
     "tools/war-room/benchmarks.json",
     "tools/war-room/design/**",
     "tools/war-room/fixtures/page-design/**",
-    "tools/war-room/test_page_design.py"
+    "tools/war-room/test_page_design.py",
+    "tools/war-room/web/contract.md",
+    "tools/war-room/web/serve.py",
+    "tools/war-room/test_web.py"
   ],
   "keep": [
     "docs/grills/README.md",
