@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""The War room's private web adapter (WRD4, #877): one published page, served as it is.
+"""The War room's private web adapter (WRD4, #877; WRD5, #883): the published site, served as it is.
 
   python3 -I serve.py fetch --remote URL --into DIR
   python3 -I serve.py serve --root DIR [--port N]
 
-`fetch` reads the private `war-room` branch, read-only, and keeps its `war-room.html`
-only if it is the page; a failed fetch leaves the last good page in place. `serve`
-answers `/` with that page on 127.0.0.1 and nothing else. Access is the tunnel's and
-Access's, never this program's (contract.md).
+`fetch` reads the private `war-room` branch, read-only, and keeps its six site pages only if
+every one is a page; it then switches to them all at once, so a failed fetch leaves the last
+good site in place and a new home never joins old children. `serve` answers the six routes
+with those pages on 127.0.0.1 and nothing else. Access is the tunnel's and Access's, never
+this program's (contract.md).
 """
 import argparse
 import hashlib
@@ -16,12 +17,18 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 
 sys.dont_write_bytecode = True
 BRANCH, PAGE, IDENTITY = 'war-room', 'war-room.html', 'identity.json'
+# WRD5: the exact routes and the published file each answers with (publish.py writes the same names).
+SITE = {'/': PAGE, '/speed': 'war-room-speed.html', '/health': 'war-room-health.html', '/cost': 'war-room-cost.html',
+        '/quality': 'war-room-quality.html', '/skills': 'war-room-skills.html'}
+# The kept site: CURRENT is a link to one complete generation folder, replaced in one rename.
+CURRENT, GENERATION = 'current', 'site-'
 HOST = '127.0.0.1'
 MAX_BYTES = 8 * 1024 * 1024
 POLICY = re.compile(r'<meta http-equiv="Content-Security-Policy" content="([^"<>]+)">')
@@ -66,21 +73,37 @@ def write(path, data):
 
 
 def fetch(remote, into):
+    """Keep the branch's six site pages, all or none: each page is checked, written into a new
+    generation folder with its identity, and CURRENT is switched to it in one rename."""
     into = Path(into)
     into.mkdir(parents=True, exist_ok=True)
+    pages = {}
     with tempfile.TemporaryDirectory(prefix='war-room-web-') as tmp:
         git(tmp, 'init', '-q', '--bare', 'git')
         work = Path(tmp) / 'git'
         git(work, 'fetch', '-q', '--depth=1', '--no-tags', remote, 'refs/heads/%s:refs/web/%s' % (BRANCH, BRANCH))
         ref = 'refs/web/' + BRANCH
         commit = git(work, 'rev-parse', ref).decode().strip()
-        entry = git(work, 'ls-tree', ref, '--', PAGE).decode()
-        if not entry.startswith('100644 blob '):
-            raise Fail('the branch has no plain page')
-        data = git(work, 'cat-file', 'blob', entry.split()[2])
-    check(data)
-    write(into / PAGE, data)
-    write(into / IDENTITY, (json.dumps({'commit': commit, 'sha256': hashlib.sha256(data).hexdigest()}) + '\n').encode())
+        for name in SITE.values():
+            entry = git(work, 'ls-tree', ref, '--', name).decode()
+            if not entry.startswith('100644 blob '):
+                raise Fail('the branch has no plain site')
+            pages[name] = git(work, 'cat-file', 'blob', entry.split()[2])
+    for data in pages.values():
+        check(data)
+    generation = Path(tempfile.mkdtemp(dir=into, prefix=GENERATION))
+    for name, data in pages.items():
+        write(generation / name, data)
+    write(generation / IDENTITY, (json.dumps({'commit': commit, 'sha256': {
+        name: hashlib.sha256(data).hexdigest() for name, data in pages.items()}}, sort_keys=True) + '\n').encode())
+    link = into / ('.' + CURRENT + '.' + generation.name)
+    os.symlink(generation.name, link)
+    previous = os.readlink(into / CURRENT) if (into / CURRENT).is_symlink() else None
+    os.replace(link, into / CURRENT)
+    # Keep the generation just replaced (a request may still be reading it); drop older ones.
+    for old in into.glob(GENERATION + '*'):
+        if old.name not in (generation.name, previous) and old.is_dir() and not old.is_symlink():
+            shutil.rmtree(old, ignore_errors=True)
     return commit
 
 
@@ -102,10 +125,18 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def page(self):
-        if self.path.split('?', 1)[0] != '/':
+        # The request's own target: the standard handler folds a leading '//' into '/', and an
+        # alias is not a route.
+        target = self.requestline.split(' ')[1] if self.requestline.count(' ') == 2 else ''
+        name = SITE.get(target.split('?', 1)[0])
+        if name is None:
             return self.plain(404, 'not found')
         try:
-            data = (self.root / PAGE).read_bytes()
+            # One generation per request: CURRENT is resolved once, and must stay inside the root.
+            generation = (self.root / CURRENT).resolve(strict=True)
+            if generation.parent != self.root or not generation.name.startswith(GENERATION):
+                raise Fail('no kept site')
+            data = (generation / name).read_bytes()
             check(data)
         except (OSError, Fail):
             return self.plain(503, 'no page yet')
@@ -117,10 +148,10 @@ class Handler(BaseHTTPRequestHandler):
                    ('Content-Security-Policy', policy(data.decode('utf-8')) + "; frame-ancestors 'none'"),
                    ('ETag', '"%s"' % digest)]
         try:
-            identity = json.loads((self.root / IDENTITY).read_text(encoding='utf-8'))
-            if identity.get('sha256') == digest and re.fullmatch('[0-9a-f]{40}', str(identity.get('commit'))):
+            identity = json.loads((generation / IDENTITY).read_text(encoding='utf-8'))
+            if identity['sha256'].get(name) == digest and re.fullmatch('[0-9a-f]{40}', str(identity.get('commit'))):
                 headers.append(('X-War-Room-Commit', identity['commit']))
-        except (OSError, ValueError, AttributeError):
+        except (OSError, ValueError, AttributeError, KeyError, TypeError):
             pass
         for name, value in headers:
             self.send_header(name, value)
@@ -146,10 +177,10 @@ def serve(root, port):
 def cli(argv):
     parser = argparse.ArgumentParser(description='The War room private web adapter (WRD4).')
     sub = parser.add_subparsers(dest='cmd', required=True)
-    f = sub.add_parser('fetch', help='read the war-room branch and keep its page, read-only')
+    f = sub.add_parser('fetch', help='read the war-room branch and keep its site, read-only')
     f.add_argument('--remote', required=True)
     f.add_argument('--into', required=True, type=Path)
-    s = sub.add_parser('serve', help='serve the kept page on 127.0.0.1')
+    s = sub.add_parser('serve', help='serve the kept site on 127.0.0.1')
     s.add_argument('--root', required=True, type=Path)
     s.add_argument('--port', type=int, default=7391)
     a = parser.parse_args(argv)
@@ -157,9 +188,9 @@ def cli(argv):
         serve(a.root, a.port)
         return 0
     try:
-        print('kept war-room.html from %s' % fetch(a.remote, a.into))
+        print('kept the war-room site from %s' % fetch(a.remote, a.into))
     except (Fail, OSError) as e:
-        print('war-room web: %s; the last good page stays' % (e if isinstance(e, Fail) else type(e).__name__),
+        print('war-room web: %s; the last good site stays' % (e if isinstance(e, Fail) else type(e).__name__),
               file=sys.stderr)
         return 1
     return 0
