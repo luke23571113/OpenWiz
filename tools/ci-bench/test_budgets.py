@@ -150,7 +150,7 @@ class Check(unittest.TestCase):
 class Table(unittest.TestCase):
     """CI3-B: the budgets are 1.5x each job's measured p95, from the collected runs."""
 
-    def table(self, ci_jobs, ci_runs=150, fallback=None, ci=None):
+    def table(self, ci_jobs, ci_runs=150, fallback=None, ci=None, after=None, after_jobs=()):
         with tempfile.TemporaryDirectory() as temp:
             t = Path(temp)
             (t / "ci.yml").write_text(ci or workflow([("always", 60, False), ("rust", 60, True)]))
@@ -162,6 +162,10 @@ class Table(unittest.TestCase):
                 window(t / "f", "ci.yml", fallback, 150)
                 window(t / "f", "privacy.yml", [], 0)
                 args += ["--fallback", t / "f"]
+            if after is not None:
+                window(t / "a", "ci.yml", after, 999)
+                window(t / "a", "privacy.yml", [], 0)
+                args += ["--after", t / "a", "--after-jobs", *after_jobs]
             r = run(*args)
             rows = {}
             if r.returncode == 0:
@@ -237,8 +241,38 @@ class Table(unittest.TestCase):
         r, rows = self.table(few, fallback=older)
         self.assertEqual(r.returncode, 0, r.stderr)
         # From the fallback alone: 1501..1506 s; p95 of 6 is the 6th, 1506 s;
-        # 1.5 x 1506 s = 37.65 min -> 38; the row names the fallback's runs.
-        self.assertEqual(rows[("ci.yml", "rust", "traced")][:4], ["38", "1506", "6", "150"])
+        # 1.5 x 1506 s = 37.65 min -> 38; the row names the 6 runs it came from.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")], ["38", "1506", "6", "6", stamp(3600), stamp(6 * 3600)])
+
+    # Bug: a rare job's fallback reads the whole older window, or more than
+    # its own last 150 runs, or counts runs in which it never ran.
+    def test_the_fallback_reads_the_jobs_own_last_150_runs(self):
+        few = [j for j in self.lanes() if j["run"] < 22]
+        older = [job(i, "rust (1)", 1000 + i, traced=True) for i in range(1, 153)]
+        older += [job(i, "always", 60) for i in range(200, 211)]
+        r, rows = self.table(few, fallback=older)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Its own last 150 runs are 3..152: 1003..1152 s; nearest-rank p95 is
+        # the 143rd, 1145 s; 1.5 x 1145 s = 28.625 min -> 29.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")],
+                         ["29", "1145", "150", "150", stamp(3 * 3600), stamp(152 * 3600)])
+
+    # Bug: a job whose shape changed in #743 (release, launch-fleet, skills)
+    # gets a budget from runs of its old shape, before the merges (#782 Q3).
+    def test_a_shape_changed_job_reads_only_runs_after_the_merges(self):
+        ci = workflow([("always", 60, False), ("rust", 60, True), ("release", 60, False)])
+        jobs = self.lanes() + [job(i, "release (1)", 300) for i in (1, 2)]
+        older = [job(i, "release", 3000) for i in range(1, 20)] + [job(i, "rust (1)", 1500, traced=True) for i in range(1, 7)]
+        after4 = [job(i, "release (2)", 600 + i) for i in range(1, 5)]
+        r, _ = self.table(jobs, ci=ci, fallback=older, after=after4, after_jobs=["release"])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job release all has 4 samples, fewer than 5", r.stderr)
+        after6 = [job(i, "release (2)", 600 + i) for i in range(1, 7)]
+        r, rows = self.table(jobs, ci=ci, fallback=older, after=after6, after_jobs=["release"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Never the older 3000 s runs: 601..606 s, p95 of 6 is 606 s;
+        # 1.5 x 606 s = 15.15 min -> 16, from those 6 runs.
+        self.assertEqual(rows[("ci.yml", "release", "all")], ["16", "606", "6", "6", stamp(3600), stamp(6 * 3600)])
 
     # Bug: a job in the workflow that never ran in the window is silently
     # left without a row (the check would then fail later, in CI).
