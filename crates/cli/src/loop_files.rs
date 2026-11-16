@@ -28,25 +28,12 @@ pub const HELP: &str = "loop validate/export/plan/apply
   refuses with exit 5 and reads and changes nothing.
 ";
 
-/// Untrusted text (a loop's name, a file name, a key) made safe for a
-/// terminal, shared by the four loop commands' text and diagnostics. Every
-/// character `crate::clean` would replace is written as `\u{<hex>}`, and
-/// `\` as `\\`, so the shown text is unambiguous and never controls the
-/// terminal. JSON reports keep the original text as data.
-pub(crate) fn escape_untrusted(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut one = [0; 4];
-    for c in text.chars() {
-        let c_text: &str = c.encode_utf8(&mut one);
-        if c == '\\' {
-            out.push_str("\\\\");
-        } else if crate::clean(c_text) == c_text {
-            out.push(c);
-        } else {
-            out.push_str(&format!("\\u{{{:x}}}", u32::from(c)));
-        }
-    }
-    out
+/// Untrusted text (a Cloudroom name, id or key, room-cli's error text, a
+/// path) made safe to print on a terminal: every control, bidi or invisible
+/// format character is replaced, as [`crate::clean`] does for the inventory.
+/// JSON output keeps the original value; only human output goes through this.
+pub fn escape_untrusted(text: &str) -> String {
+    crate::clean(text)
 }
 
 /// The four loop-file commands.
@@ -548,25 +535,19 @@ mod tests {
         assert!(parse(&bad).is_err(), "not UTF-8");
     }
 
-    // catches: an escape that lets a control character, a bidi override or
-    // an invisible character through to the terminal (clearing or spoofing
-    // a report), or that changes ordinary text, or that is ambiguous.
+    // catches: untrusted text printed with its control bytes, so a loop's
+    // name or room-cli's error can clear the screen, spoof a line or set the
+    // clipboard (OSC 52) when export prints it.
     #[test]
-    fn escape_untrusted_shows_every_unsafe_character_as_an_escape() {
-        // Ordinary text, Unicode included, is unchanged.
+    fn escape_untrusted_replaces_terminal_controls() {
         assert_eq!(
-            escape_untrusted("loops/nightly report.md"),
-            "loops/nightly report.md"
+            escape_untrusted("a\u{1b}[2Jb\u{1b}]52;c;eA==\u{7}c\rd\ne\u{202e}f"),
+            "a?[2Jb?]52;c;eA==?c?d?e\u{fffd}f"
         );
-        assert_eq!(escape_untrusted("Café ✓ 夜"), "Café ✓ 夜");
-        // Literal expectations: ESC, BEL, CR, LF, tab, C1 CSI, a bidi
-        // override and a zero-width space, each as its code point.
         assert_eq!(
-            escape_untrusted("x\u{1b}[2J\u{7}\r\n\t\u{9b}\u{202e}\u{200b}y"),
-            r"x\u{1b}[2J\u{7}\u{d}\u{a}\u{9}\u{9b}\u{202e}\u{200b}y"
+            escape_untrusted("Synthetic: plain text"),
+            "Synthetic: plain text"
         );
-        // A backslash is doubled, so a written `\u{1b}` reads back as text.
-        assert_eq!(escape_untrusted(r"a\u{1b}"), r"a\\u{1b}");
     }
 
     // catches: help that reads, fails, or loses its JSON wrapper.

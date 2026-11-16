@@ -85,7 +85,7 @@ fn text(
     out: &mut dyn Write,
 ) -> std::io::Result<()> {
     // Names come from the caller's paths and folders: every character
-    // unsafe for a terminal is escaped here; the JSON report keeps them.
+    // unsafe for a terminal is replaced here; the JSON report keeps them.
     let line =
         |file: &str, r: &Refusal| escape_untrusted(&format!("{file}: {}: {}", r.field, r.message));
     for entry in files {
