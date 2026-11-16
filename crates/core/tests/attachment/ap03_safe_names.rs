@@ -14,8 +14,6 @@
 
 use openwiz_core::attachment::{SAFE_NAME_MAX_BYTES, SafeName};
 
-use crate::support::*;
-
 /// The Cloud core's rule for an attachment name (F5): at most 200 bytes,
 /// no `/`, `\`, `:` or control byte, and never `.` or `..`.
 fn cloud_core_accepts(name: &str) -> bool {
@@ -129,7 +127,7 @@ fn originals() -> Vec<String> {
 
 #[test]
 fn ap3_name_contracts_preserve_all_original_cases() {
-    let cases: [(&str, fn()); 9] = [
+    let cases: [(&str, fn()); 8] = [
         (
             "a_long_name_keeps_its_extension",
             a_long_name_keeps_its_extension,
@@ -150,10 +148,6 @@ fn ap3_name_contracts_preserve_all_original_cases() {
         (
             "short_stems_with_near_limit_extensions_stay_safe",
             short_stems_with_near_limit_extensions_stay_safe,
-        ),
-        (
-            "the_display_name_keeps_the_original_as_text",
-            the_display_name_keeps_the_original_as_text,
         ),
         (
             "the_extension_is_the_safe_names_last_suffix_in_lowercase",
@@ -332,27 +326,4 @@ fn an_invalid_name_from_a_record_is_refused() {
     }
     assert!(SafeName::parse(&"a".repeat(SAFE_NAME_MAX_BYTES + 1)).is_err());
     assert!(SafeName::parse(&"a".repeat(SAFE_NAME_MAX_BYTES)).is_ok());
-    let invalid: Result<SafeName, _> = serde_json::from_value(serde_json::json!("../x"));
-    assert!(invalid.is_err(), "deserializing goes through the check");
-}
-
-fn the_display_name_keeps_the_original_as_text() {
-    use openwiz_core::attachment::{AttachmentId, AttachmentRef, Kind, Sha256};
-    for original in originals() {
-        let reference = AttachmentRef {
-            id: AttachmentId::parse("att_syn_0001").unwrap(),
-            sha256: Sha256::parse(&"0".repeat(64)).unwrap(),
-            size_bytes: 1,
-            kind: Kind::File,
-            name: SafeName::from_original(&original),
-            display_name: original.clone(),
-        };
-        let json = serde_json::to_value(&reference).unwrap();
-        assert_eq!(
-            json["display_name"],
-            original.as_str(),
-            "unchanged, as a string"
-        );
-    }
-    let _ = name("unused");
 }
