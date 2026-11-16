@@ -16,9 +16,9 @@ import tempfile
 import time
 
 CLAIMS = ('fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
-          'terminal', 'json', 'send', 'new', 'app', 'read_safety', 'install')
+          'json', 'send', 'new', 'app', 'read_safety', 'install')
 # A kit without a `claims` declaration is #1844's combined sheet: all of these.
-COMBINED = CLAIMS[:12]
+COMBINED = CLAIMS[:11]
 
 
 def kit_claims(kit):

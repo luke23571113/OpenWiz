@@ -7,9 +7,26 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// #1010: Cargo reruns the script on every build while a watched path is
+// missing, so only paths that exist are watched.
 fn watched(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
     println!("cargo:rerun-if-changed={}", path.display());
-    fs::read_to_string(path).ok()
+    Some(text)
+}
+// A loose ref, or else the nearest directory under `refs/` that holds where
+// it would appear, so a ref written after this build still reruns it.
+fn watched_ref(common: &Path, reference: &str) -> Option<String> {
+    let path = common.join(reference);
+    if let Some(text) = watched(&path) {
+        return Some(text);
+    }
+    let refs = common.join("refs");
+    let parent = path.ancestors().skip(1).find(|dir| dir.is_dir());
+    if let Some(dir) = parent.filter(|dir| dir.starts_with(&refs)) {
+        println!("cargo:rerun-if-changed={}", dir.display());
+    }
+    None
 }
 fn valid(commit: &str) -> bool {
     commit.len() == 40
@@ -37,7 +54,7 @@ fn git_commit(root: &Path) -> Option<String> {
     let common = watched(&dir.join("commondir"))
         .map(|v| dir.join(v.trim()))
         .unwrap_or(dir);
-    if let Some(text) = watched(&common.join(reference)) {
+    if let Some(text) = watched_ref(&common, reference) {
         return Some(text.trim().to_owned()).filter(|v| valid(v));
     }
     watched(&common.join("packed-refs"))?

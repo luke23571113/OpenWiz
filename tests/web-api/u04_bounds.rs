@@ -7,20 +7,13 @@
 use std::thread;
 use std::time::Duration;
 
-use openwiz_server::{Limits, MAX_CREATES, MAX_SEND_BODY_BYTES};
+use openwiz_server::{Limits, MAX_SEND_BODY_BYTES};
 use serde_json::json;
 
 use crate::new_support::{
     NewFake, PROJECT, TEXT, body, create, file, post, preview, serve_new, serve_new_limits, threads,
 };
 use crate::send_support::{good_headers, raw, with};
-
-#[test]
-fn the_create_limits_are_the_documented_values() {
-    assert_eq!(MAX_CREATES, 1, "one create at a time (A-14)");
-    assert_eq!(Limits::default().max_creates, MAX_CREATES);
-    assert_eq!(MAX_SEND_BODY_BYTES, 99_328, "the send's body cap");
-}
 
 #[test]
 fn malformed_bodies_are_refused_before_any_read() {

@@ -1448,10 +1448,9 @@ fn scan_text(path: &Path, text: &str) -> Vec<String> {
         return bad; // source code and prose: rule 1 only
     }
     if folder(path) == Folder::ReleaseCandidate {
-        // Reuse the strict reader already available through the test crate's
-        // terminal dependency. No duplicate value is discarded before scanning.
+        // The strict reader: no duplicate value is discarded before scanning.
         // Candidate files dispatch here even when named scenario.json.
-        match openwiz_terminal::json::parse(text.as_bytes()) {
+        match crate::strict_json::parse(text.as_bytes()) {
             Ok(value) => walk_in(&value, "$", &mut bad, Folder::ReleaseCandidate),
             Err(_) => bad
                 .push("release-candidate fixtures require strict JSON with unique keys".to_owned()),

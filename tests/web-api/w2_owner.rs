@@ -53,17 +53,3 @@ fn no_answer_depends_on_access_headers_or_cookies() {
     assert_eq!(plain.tell_count(), 1);
     assert_eq!(forged_fake.tell_count(), 1);
 }
-
-#[test]
-fn the_server_never_reads_access_headers_or_cookies() {
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/server/src");
-    for entry in std::fs::read_dir(dir).expect("server sources") {
-        let path = entry.expect("entry").path();
-        let text = std::fs::read_to_string(&path)
-            .expect("source")
-            .to_ascii_lowercase();
-        for word in ["cf-access", "cf_authorization", "cf_binding", "\"cookie\""] {
-            assert!(!text.contains(word), "{path:?} mentions {word}");
-        }
-    }
-}

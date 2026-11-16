@@ -46,7 +46,6 @@ impl Request {
                 "ls" => matches!(flag, b"--limit" | b"--offset"),
                 "send" => matches!(flag, b"--op-id" | b"--attach" | b"--attachment"),
                 "new" => crate::new_thread::is_value_option(flag),
-                "ui" => matches!(flag, b"--port" | b"--allowed-host"),
                 "fleet" => flag == b"--expect-plan",
                 _ => false,
             };
@@ -100,7 +99,6 @@ impl Request {
                 Some("on") => "loop.on",
                 _ => "unknown",
             },
-            "ui" => "ui",
             "help" if agent => "help.agent",
             "help" | "--help" | "-h" => "help",
             _ => "unknown",

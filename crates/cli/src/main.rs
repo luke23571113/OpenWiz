@@ -7,9 +7,9 @@
 //! [`openwiz_cli::attachment::run_attachment`] (no `room-cli`); and
 //! `fleets` and `fleet`, to [`openwiz_cli::fleets::run`] and
 //! [`openwiz_cli::fleet::run`], given only their arguments and the output
-//! streams, so each command's own file wires whatever it reads. `ui`, and no
-//! arguments in a terminal, run the fixed sibling `openwiz-terminal`
-//! (`ui.rs`).
+//! streams, so each command's own file wires whatever it reads. With no
+//! arguments in a terminal it prints the help; the terminal app was removed
+//! in 0.0.16 (#776), so `ui` is a usage error.
 
 use std::ffi::OsString;
 use std::io::{self, IsTerminal, Write};
@@ -25,11 +25,6 @@ use openwiz_core::new_thread::record::NewThreadStore;
 use openwiz_core::ops::Clock;
 use openwiz_store::attachments::{Claims, Df, NoClaims, RecordedClaims};
 use openwiz_store::{AttachmentStore, FileStore, NewThreadFileStore, default_state_dir};
-
-// The visual app's entry: part of this binary only (see `ui.rs`).
-#[allow(dead_code)]
-#[path = "ui.rs"]
-mod ui;
 
 fn main() -> ExitCode {
     dispatch(openwiz_adapter_cloudroom::locate::Discovery::system())
@@ -113,11 +108,16 @@ pub fn dispatch(discovery: openwiz_adapter_cloudroom::locate::Discovery) -> Exit
 }
 
 fn dispatch_args(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
-    // Only a terminal on both stdin and stdout may open the visual app.
+    // A person at a terminal gets the help; a script keeps the usage error.
     let terminal = io::stdin().is_terminal() && io::stdout().is_terminal();
     match args.first().and_then(|a| a.to_str()) {
-        None if args.is_empty() && terminal => ui::run(&[], true, stdout, stderr),
-        Some("ui") => ui::run(&args[1..], terminal, stdout, stderr),
+        None if args.is_empty() && terminal => openwiz_cli::run(
+            &["--help".to_owned()],
+            &CloudRoomSource::from_path(),
+            &SystemClock,
+            stdout,
+            stderr,
+        ),
         Some("send") => run_send(&args[1..], stdout, stderr),
         Some("new") => run_new(&args[1..], stdout, stderr),
         Some("attachment") => run_attachment(&args[1..], stdout, stderr),

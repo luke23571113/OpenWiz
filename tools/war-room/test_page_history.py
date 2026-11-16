@@ -432,7 +432,7 @@ class PageHistory(unittest.TestCase):
 
     def test_approved_pending_decision_projection(self):
         from datetime import datetime, timezone
-        doc = json.loads((HERE.parents[1] / 'tests/terminal/bodies/decisions.json').read_text())
+        doc = json.loads((HERE / 'fixtures/page-history/decisions.json').read_text())
         epoch = int(datetime(2030, 1, 2, 12, tzinfo=timezone.utc).timestamp()) * 1000
         doc['snapshot_at'] = epoch
         doc['freshness']['snapshot_at']['known'] = epoch
