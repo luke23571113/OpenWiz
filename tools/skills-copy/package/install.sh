@@ -276,8 +276,13 @@ if [ $existing -eq 0 ]; then
         fi
         inner=$dest/${work##*/}
         if [ "$(inode "$dest")" != "$staged" ] && [ "$(inode "$inner")" = "$staged" ]; then
-            mv "$inner" "$work" 2>/dev/null || :
-            fail 1 'destination appeared during installation'
+            # Check the move back too. If it fails, never retry or delete
+            # inside that directory: refuse, and say where this run's files are.
+            if mv "$inner" "$work" 2>/dev/null && [ "$(inode "$work")" = "$staged" ] \
+                && ! [ -e "$inner" ] && ! [ -L "$inner" ]; then
+                fail 1 'destination appeared during installation'
+            fi
+            fail 1 'destination appeared during installation; could not move this install back out, so it is left in a .wizskills-install. folder inside the destination'
         fi
     fi
     [ "$(inode "$dest")" = "$staged" ] || fail 1 'destination appeared during installation'
