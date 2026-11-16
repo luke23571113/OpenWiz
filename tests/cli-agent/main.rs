@@ -24,6 +24,7 @@ mod cli_ui;
 
 mod github_token;
 mod init;
+mod loop_contract;
 mod process;
 mod results;
 mod review;
@@ -144,6 +145,10 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("fleet.due", "--github-only --json"),
         ("loop.off", "--json"),
         ("loop.on", "--json"),
+        ("loop.validate", "--catalog --json --help"),
+        ("loop.export", "--project --out --json --help"),
+        ("loop.plan", "--project --adopt --json --help"),
+        ("loop.apply", "--project --from --adopt --json --help"),
         ("ui", "--port --allowed-host --json --help"),
         ("engine.preview", "--json --state-dir --location"),
         (
@@ -488,7 +493,8 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             "ui" => "ui",
             // These three parsers are private; their flags are checked through
             // real processes below, using only trap sources or absent config.
-            "fleets" | "models" | "loop.off" | "loop.on" => continue,
+            "fleets" | "models" | "loop.off" | "loop.on" | "loop.validate" | "loop.export"
+            | "loop.plan" | "loop.apply" => continue,
             "engine.preview" | "engine.activate" | "engine.status" => continue,
             "init" | "init.apply" => continue,
             "github.token" => {
@@ -676,6 +682,10 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "fleet.due",
             "loop.off",
             "loop.on",
+            "loop.validate",
+            "loop.export",
+            "loop.plan",
+            "loop.apply",
             "ui",
             "engine.preview",
             "engine.activate",

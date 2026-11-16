@@ -66,18 +66,15 @@ function connections(setup: FirstHourProps['setup']): Step {
       'Ask your installing agent to check this operation by its id before trying again. Do not start it again.',
       [['Took effect', 'unknown'], ['Operation', uncertain.operation_id, true]]);
   }
-  // #636: the first fleet starts through launch-fleet, so no engine is chosen;
-  // an App the owner explicitly skipped stays missing and needs nothing.
+  // #636: an App the owner explicitly skipped stays missing and needs nothing.
   const skipped = appSkipped(view);
-  const needed = view.components.filter((c) => c.id !== 'remote_access' && c.id !== 'engine' && !(skipped && c.id === 'github_app'));
+  const needed = view.components.filter((c) => c.id !== 'remote_access' && !(skipped && c.id === 'github_app'));
   const refused = needed.find((c) => c.state === 'refused');
   if (refused) return step('connections', 't1', 'refused', refused.reason, `${refused.next} Your drafts stay.`, [['Took effect', 'no'], REVIEWER]);
   const next = needed.find((c) => c.state !== 'verified');
   if (next && next.state === 'missing') return step('connections', 't1', 'your turn', `Next: ${componentName(next.id)}. ${next.reason}`, next.next, [REVIEWER]);
   if (next) return step('connections', 't5', 'unknown', `${componentName(next.id)}: ${next.reason}`, next.next, [REVIEWER]);
-  // Only an unselected engine may explain a not-ready report; any other stays unproven.
-  const engineUnverified = view.components.some((c) => c.id === 'engine' && c.state !== 'verified');
-  if (!view.ready && !engineUnverified) return step('connections', 't5', 'unknown', 'Setup does not report ready, though each connection reads verified.', 'Refresh, then run the setup check again.', [REVIEWER]);
+  if (!view.ready) return step('connections', 't5', 'unknown', 'Setup does not report ready yet.', 'Ask your installing agent to run the setup check again, then Refresh.', [REVIEWER]);
   return step('connections', 't2', 'done', `Setup reports every connection verified.${actingIdentity(view)}`, null, [REVIEWER]);
 }
 

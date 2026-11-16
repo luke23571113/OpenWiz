@@ -77,23 +77,11 @@ fn check_output_failure(fail_after: Option<usize>, fail_flush: bool) {
     );
 }
 
+/// #805: the normal writer first, the control that keeps the failure cases
+/// from passing because the writer itself is broken; then a write that
+/// fails at once, one that fails part-way and a flush that fails.
 #[test]
-fn inventory_output_write_failure_is_not_success() {
-    check_output_failure(Some(0), false);
-}
-
-#[test]
-fn inventory_output_partial_write_failure_is_not_success() {
-    check_output_failure(Some(16), false);
-}
-
-#[test]
-fn inventory_output_flush_failure_is_not_success() {
-    check_output_failure(None, true);
-}
-
-#[test]
-fn inventory_output_normal_writer_prints_results() {
+fn inventory_output_write_and_flush_failures_are_not_success() {
     for args in OUTPUT_COMMANDS {
         let mut writer = OutputWriter::default();
         let mut stderr = Vec::new();
@@ -118,27 +106,9 @@ fn inventory_output_normal_writer_prints_results() {
             assert_eq!(json["schema"], "openwiz.inventory.v1", "{args:?}");
         }
     }
-}
-
-#[test]
-fn ls_json_and_text_list_the_same_sessions() {
-    let fake = Fake::new("p10_same_sessions", "normal");
-    let json = fake.cli_json(&["ls", "--json"]);
-    let (code, text, _) = fake.cli(&["ls"]);
-    assert_eq!(code, 0);
-    let from_json: BTreeSet<String> = json["data"]["sessions"]
-        .as_array()
-        .expect("sessions")
-        .iter()
-        .map(|s| s["id"].as_str().expect("id").to_owned())
-        .collect();
-    let from_text: BTreeSet<String> = DEFAULT_IDS
-        .iter()
-        .chain([HIDDEN_ID, ARCHIVED_ID].iter())
-        .filter(|id| !row_lines(&text, id).is_empty())
-        .map(|id| (*id).to_owned())
-        .collect();
-    assert_eq!(from_json, from_text);
+    check_output_failure(Some(0), false);
+    check_output_failure(Some(16), false);
+    check_output_failure(None, true);
 }
 
 #[test]

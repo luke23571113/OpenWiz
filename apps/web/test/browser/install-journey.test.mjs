@@ -80,7 +80,7 @@ test('IF1/IF9/#2293: the install entry installs and opens setup; the cost panel 
       try {
         await p.page.locator('[data-setup-ready="true"]').waitFor();
         assert.equal(await p.page.getByRole('heading', { name: 'Set up OpenWiz', exact: true }).count(), 1);
-        assert.match(await p.page.locator('main').innerText(), /No engine or agents have been started/);
+        assert.match(await p.page.locator('main').innerText(), /No agents have been started/);
         const cost = p.page.locator('[data-setup-cost]');
         assert.equal((await cost.innerText()).replace(/\s+/g, ' ').trim(), FIXTURE.upgrade);
         assert.equal(await cost.locator('a').count(), 0, 'the app makes no outbound link');

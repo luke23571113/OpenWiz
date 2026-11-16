@@ -137,7 +137,7 @@ def _pinned_file(raw, filename, read):
 
 
 def ci_bench(s, raw):
-    B = native('tools/ci-bench/bench.py')
+    B = native('tools/war-room/bench_reads.py')
     p = _pinned_file(raw, 'point.json', lambda path: B.read_point(path.parent))
     span = window(p['since'], p['until'], 'PST-fixed-UTC-08:00'
                   if p['hours'] == 24 and p['since'][11:] == p['until'][11:] == '08:00:00Z' else 'UTC')
@@ -278,7 +278,7 @@ def journey(s, raw):
 
 
 def skills_eval(s, raw):
-    T = native('tools/ci-bench/trends.py')
+    T = native('tools/war-room/trends_reads.py')
     result = _pinned_file(raw, 'score.json', lambda path: T.cf4_results([path]))[0]
     # A score/manifest has no run-time window. Do not invent it from revision or
     # file timestamps; keep recorded result readiness separate from measurements.

@@ -1,0 +1,606 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openwiz:schema:loop-cli:v1",
+  "title": "openwiz.loop-cli.v1",
+  "description": "The one JSON document each openwiz loop validate, export, plan and apply run prints with --json (spec #785). contracts/loop-cli.v1.md has the rules this schema can't express; the loop file format is the pinned contracts/wizloops-loop.v1.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/not_built"
+    },
+    {
+      "$ref": "#/$defs/validate_report"
+    },
+    {
+      "$ref": "#/$defs/export_report"
+    },
+    {
+      "$ref": "#/$defs/plan_report"
+    },
+    {
+      "$ref": "#/$defs/apply_report"
+    }
+  ],
+  "$defs": {
+    "refusal": {
+      "type": "object",
+      "required": [
+        "file",
+        "code",
+        "field",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "required": [
+        "argv",
+        "files"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string"
+          }
+        },
+        "files": {
+          "type": "object",
+          "required": [],
+          "additionalProperties": false,
+          "properties": {
+            "@prompt": {
+              "type": "string"
+            },
+            "@script": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "description": "One room-cli call: argv after the program name; @prompt and @script stand for the files apply writes, and files holds their text."
+    },
+    "difference": {
+      "type": "object",
+      "required": [
+        "field",
+        "file",
+        "live"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "enum": [
+            "name",
+            "trigger",
+            "thread",
+            "agent",
+            "priority",
+            "secrets",
+            "body",
+            "check"
+          ]
+        },
+        "file": {},
+        "live": {}
+      }
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "id",
+        "loop"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loop": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "not_built": {
+      "type": "object",
+      "required": [
+        "schema",
+        "command",
+        "exit_code",
+        "status",
+        "ticket",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "openwiz.loop-not-built.v1"
+        },
+        "command": {
+          "enum": [
+            "validate",
+            "export",
+            "plan",
+            "apply"
+          ]
+        },
+        "exit_code": {
+          "const": 5
+        },
+        "status": {
+          "const": "not_built"
+        },
+        "ticket": {
+          "enum": [
+            790,
+            791,
+            792,
+            793
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "LC1's stub result: the command is not built yet; nothing was read or changed."
+    },
+    "validated_file": {
+      "type": "object",
+      "required": [
+        "file",
+        "id",
+        "result",
+        "refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "result": {
+          "enum": [
+            "valid",
+            "refused"
+          ]
+        },
+        "refusals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusal"
+          }
+        }
+      }
+    },
+    "validate_report": {
+      "type": "object",
+      "required": [
+        "schema",
+        "command",
+        "exit_code",
+        "files",
+        "folder_refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "openwiz.loop-validate.v1"
+        },
+        "command": {
+          "const": "validate"
+        },
+        "exit_code": {
+          "enum": [
+            0,
+            5
+          ]
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/validated_file"
+          }
+        },
+        "folder_refusals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusal"
+          }
+        }
+      }
+    },
+    "exported_loop": {
+      "type": "object",
+      "required": [
+        "loop",
+        "id",
+        "result",
+        "files",
+        "binding",
+        "refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "loop": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "result": {
+          "enum": [
+            "written",
+            "unchanged",
+            "refused"
+          ]
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "binding": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/binding"
+            }
+          ]
+        },
+        "refusals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusal"
+          }
+        }
+      }
+    },
+    "export_report": {
+      "type": "object",
+      "required": [
+        "schema",
+        "command",
+        "exit_code",
+        "project",
+        "out",
+        "loops"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "openwiz.loop-export.v1"
+        },
+        "command": {
+          "const": "export"
+        },
+        "exit_code": {
+          "enum": [
+            0,
+            5
+          ]
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "out": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exported_loop"
+          }
+        }
+      }
+    },
+    "plan_item": {
+      "type": "object",
+      "required": [
+        "file",
+        "id",
+        "action",
+        "loop",
+        "paused",
+        "commands",
+        "differences",
+        "refusals",
+        "notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "action": {
+          "enum": [
+            "create",
+            "update",
+            "none",
+            "refused"
+          ]
+        },
+        "loop": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/command"
+          }
+        },
+        "differences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/difference"
+          }
+        },
+        "refusals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusal"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "unmanaged": {
+      "type": "object",
+      "required": [
+        "loop",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "loop": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "orphan": {
+      "type": "object",
+      "required": [
+        "loop",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "loop": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "plan_report": {
+      "type": "object",
+      "required": [
+        "schema",
+        "command",
+        "exit_code",
+        "project",
+        "items",
+        "unmanaged",
+        "orphans"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "openwiz.loop-plan.v1"
+        },
+        "command": {
+          "const": "plan"
+        },
+        "exit_code": {
+          "enum": [
+            0,
+            5
+          ]
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/plan_item"
+          }
+        },
+        "unmanaged": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/unmanaged"
+          }
+        },
+        "orphans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/orphan"
+          }
+        }
+      }
+    },
+    "read_back": {
+      "type": "object",
+      "required": [
+        "differences"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "differences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/difference"
+          }
+        }
+      }
+    },
+    "apply_report": {
+      "type": "object",
+      "required": [
+        "schema",
+        "command",
+        "exit_code",
+        "project",
+        "id",
+        "file",
+        "action",
+        "loop",
+        "commands",
+        "outcome",
+        "read_back",
+        "refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "openwiz.loop-apply.v1"
+        },
+        "command": {
+          "const": "apply"
+        },
+        "exit_code": {
+          "enum": [
+            0,
+            5,
+            6
+          ]
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "enum": [
+            "create",
+            "update",
+            "none",
+            "refused"
+          ]
+        },
+        "loop": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/command"
+          }
+        },
+        "outcome": {
+          "enum": [
+            "created",
+            "updated",
+            "unchanged",
+            "different",
+            "refused",
+            "failed",
+            "unknown"
+          ]
+        },
+        "read_back": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read_back"
+            }
+          ]
+        },
+        "refusals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusal"
+          }
+        },
+        "webhook_address": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

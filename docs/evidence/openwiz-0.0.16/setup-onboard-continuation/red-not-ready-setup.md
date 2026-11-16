@@ -12,3 +12,5 @@ The existing #2516 unit test, unchanged, at head 2ad4d5e (failed in CI's web-exp
 ```
 
 Cause: the connections step stopped reading setup's `ready` flag so that an unselected engine no longer blocks it, but that also counted a report saying not ready, with no unverified component to explain it, as done. Fix: only an unverified engine may explain a not-ready report; any other not-ready report stays unknown, and the first idea waits. The test is unchanged.
+
+**After merging main for the real conflict with #919 (setup has no engine component since 0.0.17):** main's connections step shows any not-ready report as unknown ("Setup does not report ready yet."), which replaces this branch's engine-only rule. The merge keeps #636's two additions: an explicitly skipped App is excluded from the components that must be verified (the server's ready rule already excludes it), and the done line names the acting identity. The unchanged #2516 test passes on the merged tree (13 of 13).

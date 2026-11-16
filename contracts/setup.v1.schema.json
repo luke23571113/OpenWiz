@@ -18,8 +18,8 @@
     },
     "components": {
       "type": "array",
-      "minItems": 7,
-      "maxItems": 7,
+      "minItems": 6,
+      "maxItems": 6,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -37,7 +37,6 @@
               "personal_github",
               "github_app",
               "project",
-              "engine",
               "remote_access"
             ]
           },
@@ -113,18 +112,6 @@
             "properties": {
               "id": {
                 "const": "project"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          }
-        },
-        {
-          "contains": {
-            "properties": {
-              "id": {
-                "const": "engine"
               }
             },
             "required": [
@@ -362,12 +349,6 @@
       },
       "then": {
         "properties": {
-          "engine": {
-            "enum": [
-              "cloud",
-              "local"
-            ]
-          },
           "components": {
             "allOf": [
               {
@@ -423,22 +404,6 @@
                   "properties": {
                     "id": {
                       "const": "project"
-                    },
-                    "state": {
-                      "const": "verified"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "state"
-                  ]
-                }
-              },
-              {
-                "contains": {
-                  "properties": {
-                    "id": {
-                      "const": "engine"
                     },
                     "state": {
                       "const": "verified"

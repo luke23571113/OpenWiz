@@ -1,6 +1,6 @@
 // Setup page wording and status marks (#1105). Pure: no fetch, no effects.
-// T4 (`engine`, `activate_engine`) and T5 (`remote_access`, `configure_access`)
-// change only their own lines here.
+// T5 (`remote_access`, `configure_access`) changes only its own lines here.
+// Setup has no engine step (#873); an old recorded activation keeps its name.
 import type { SetupComponent, SetupComponentId, SetupView } from './api.ts';
 
 export function componentName(id: SetupComponentId): string {
@@ -10,7 +10,6 @@ export function componentName(id: SetupComponentId): string {
     case 'personal_github': return 'Personal GitHub';
     case 'github_app': return 'OpenWiz GitHub App';
     case 'project': return 'Project';
-    case 'engine': return 'Engine';
     case 'remote_access': return 'Phone access';
   }
 }
@@ -31,7 +30,7 @@ export function operationName(kind: SetupView['operations'][number]['kind']): st
 
 /** The first component that needs the owner, in setup order, or null. */
 export function nextComponent(view: SetupView): SetupComponent | null {
-  return view.components.find((c) => c.id !== 'engine' && c.id !== 'remote_access' && c.state !== 'verified') ?? null;
+  return view.components.find((c) => c.id !== 'remote_access' && c.state !== 'verified') ?? null;
 }
 
 /** #633: the owner explicitly skipped the App, so the personal login acts. */

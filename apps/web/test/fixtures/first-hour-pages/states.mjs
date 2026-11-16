@@ -13,33 +13,34 @@ export const MERGE_COMMIT = '9b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c';
 
 // ── setup.v1 ──
 
-const COMPONENTS = ['cloudroom', 'harness', 'personal_github', 'github_app', 'project', 'engine', 'remote_access'];
+const COMPONENTS = ['cloudroom', 'harness', 'personal_github', 'github_app', 'project', 'remote_access'];
 const component = (id, state = 'verified', reason = `Synthetic: ${id} ${state}.`, next = `Synthetic: nothing to do for ${id}.`) => ({ id, state, reason, next });
 const UNKNOWN_COST = { provenance: 'unknown', credits: null, window_s: null, monthly_projection: null, free_allowance: null, reason: 'No measured usage yet.' };
 
 /** A setup report: every component verified unless `over` says otherwise. */
-function setup({ over = {}, engine = 'local', operations = [] } = {}) {
+// #873: no engine component, and no engine selection needed for ready.
+function setup({ over = {}, operations = [] } = {}) {
   const components = COMPONENTS.map((id) => over[id] ?? component(id, id === 'remote_access' ? 'missing' : 'verified'));
-  const ready = engine !== 'unselected' && components.every((c) => c.id === 'remote_access' || c.state === 'verified');
-  return JSON.stringify({ schema: 'openwiz.setup.v1', ready, components, engine, cost: UNKNOWN_COST, operations });
+  const ready = components.every((c) => c.id === 'remote_access' || c.state === 'verified');
+  return JSON.stringify({ schema: 'openwiz.setup.v1', ready, components, engine: 'unselected', cost: UNKNOWN_COST, operations });
 }
 
 const SETUP_READY = setup();
 const SETUP_APP_MISSING = setup({ over: { github_app: component('github_app', 'missing', 'The OpenWiz GitHub App is not installed.', 'Ask your installing agent to install the App on the one repository you choose.') } });
 const SETUP_APP_REFUSED = setup({ over: { github_app: component('github_app', 'refused', `GitHub refused the App's access to ${REPO}.`, 'Grant the App access to that repository, then Refresh.') } });
-const SETUP_UNCERTAIN = setup({ engine: 'unselected', over: { engine: component('engine', 'unknown', 'The engine activation reply was lost.', 'Check the operation before trying again.') },
+// An old state file's uncertain activation still shows truthfully (#873).
+const SETUP_UNCERTAIN = setup({
   operations: [{ operation_id: OP, kind: 'activate_engine', phase: 'uncertain', fingerprint: 'a'.repeat(64), effects: ['Start the local engine'], reason: 'The reply was lost.' }] });
 
-// #636: the joined path selects no engine. With every other connection
-// verified, the identity the owner selected (the explicit App skip, or the App)
-// continues to the first idea; the engine row stays missing and asks nothing.
-const NO_ENGINE = component('engine', 'missing', 'No engine has been selected or activated.', 'Nothing to do.');
-const withIdentity = (report, identity) => JSON.stringify({ ...JSON.parse(report), identity });
-const SETUP_SKIPPED = withIdentity(setup({ engine: 'unselected', over: { engine: NO_ENGINE, github_app: component('github_app', 'missing',
+// #636: the identity the owner selected continues to the first idea. An
+// explicitly skipped App stays missing, and setup still reports ready, as the
+// server's rule says (the verified personal login carries the identity part).
+const withIdentity = (report, identity, ready) => JSON.stringify({ ...JSON.parse(report), identity, ...(ready === undefined ? {} : { ready }) });
+const SETUP_SKIPPED = withIdentity(setup({ over: { github_app: component('github_app', 'missing',
   'Skipped: you chose to act through your personal GitHub login instead. No OpenWiz App is installed or verified.',
   'Nothing to do for the App. Connecting it later is a separate choice; your personal login acts until then.') } }),
-  { selected: 'personal_login', app_choice: 'skip', acting_login: 'synthetic-owner' });
-const SETUP_APP_SELECTED = withIdentity(setup({ engine: 'unselected', over: { engine: NO_ENGINE } }),
+  { selected: 'personal_login', app_choice: 'skip', acting_login: 'synthetic-owner' }, true);
+const SETUP_APP_SELECTED = withIdentity(setup(),
   { selected: 'app', app_choice: 'create', acting_login: null });
 
 // ── decisions.v1 ──
@@ -138,7 +139,7 @@ export const UNKNOWN_FLEETS = {
 export const STATES = {
   start: { setup: read(SETUP_READY), decisions: read(NO_DECISIONS), fleet: read(null), receipts: [],
     steps: { install: ['done', 't2'], connections: ['done', 't2'], idea: ['your turn', 't1'], approval: [W, 't4'], progress: [W, 't4'], merge: [W, 't4'] }, merge: 'none',
-    text: ['give one small idea to the OpenWiz onboarding skill', 'Nothing is created without your yes.', 'Independent reviewer'], absent: ['verified merge on'] },
+    text: ['give one small idea to the OpenWiz onboarding skill', 'Nothing is created without your yes.', 'Independent reviewer'], absent: ['verified merge on', 'engine'] },
   ...Object.fromEntries(Object.entries(UNKNOWN_FLEETS).map(([name, fleet]) => [`fleet-${name}`, {
     setup: read(SETUP_READY), decisions: read(NO_DECISIONS), fleet, receipts: [],
     steps: { install: ['done', 't2'], connections: ['done', 't2'], idea: ['unknown', 't5'], approval: ['unknown', 't5'],
