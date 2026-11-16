@@ -29,6 +29,8 @@ struct World {
     source: Arc<Mutex<Evidence<Vec<Observation>>>>,
     comments: Arc<Mutex<Vec<Value>>>,
     lose: Arc<AtomicBool>,
+    drop_record: Arc<AtomicBool>,
+    posts: Arc<AtomicU64>,
 }
 impl Drop for World {
     fn drop(&mut self) {
@@ -109,11 +111,16 @@ else: sys.exit(2)
             source: Arc::new(Mutex::new(Evidence::Known(vec![row()]))),
             comments: Arc::new(Mutex::new(vec![])),
             lose: Arc::new(AtomicBool::new(false)),
+            drop_record: Arc::new(AtomicBool::new(false)),
+            posts: Arc::new(AtomicU64::new(0)),
         }
     }
     fn engine(&self) -> Health {
         let comments = self.comments.clone();
         let lose = self.lose.clone();
+        let drop_record = self.drop_record.clone();
+        let posts = self.posts.clone();
+        let root = self.root.clone();
         let github = openwiz_adapter_github::process::Executor::supplied(Arc::new(
             move |call, _| {
                 let args = call.argv().iter().map(String::as_str).collect::<Vec<_>>();
@@ -123,12 +130,15 @@ else: sys.exit(2)
                         json!({"defaultBranchRef":{"name":"main"},"nameWithOwner":"synthetic-owner/synthetic-repo","url":"https://github.invalid/synthetic-owner/synthetic-repo"})
                     }
                     // #718: the comment read projects each author; these
-                    // synthetic health records are the factory App's.
+                    // synthetic health records are the factory App's unless a
+                    // row names its own (#732).
                     ["api", path, ..] if path.contains("/comments?") => json!(
                         cs.iter()
                             .map(|c| {
                                 let mut c = c.clone();
-                                c["author"] = json!("openwiz[bot]");
+                                if c.get("author").is_none() {
+                                    c["author"] = json!("openwiz[bot]");
+                                }
                                 c
                             })
                             .collect::<Vec<_>>()
@@ -138,13 +148,26 @@ else: sys.exit(2)
                         json!({"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
                     }
                     ["api", path, ..] if path.contains("/contents/docs/agents/fleet.md?") => {
-                        return Ok(b"## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]` |\n".to_vec());
+                        let row = if root.join("no-record-authors").exists() {
+                            ""
+                        } else {
+                            "| Record authors | `openwiz[bot]`, `syn-owner` |\n"
+                        };
+                        return Ok(format!(
+                            "## GitHub identity\n| Setting | Value |\n| --- | --- |\n{row}"
+                        )
+                        .into_bytes());
                     }
                     ["issue", "list", ..] => json!([]),
                     ["issue", "comment", "901", "--body", body] => {
                         let n = 7000 + cs.len() as u64;
-                        cs.push(json!({"id":n,"body":body,"created":2000,"updated":2000}));
-                        if lose.swap(false, Ordering::SeqCst) {
+                        posts.fetch_add(1, Ordering::SeqCst);
+                        // A lost reply's comment may also never land.
+                        let lost = lose.swap(false, Ordering::SeqCst);
+                        if !(lost && drop_record.load(Ordering::SeqCst)) {
+                            cs.push(json!({"id":n,"body":body,"created":2000,"updated":2000}));
+                        }
+                        if lost {
                             return Err(openwiz_core::source::SourceError::Unavailable {
                                 detail: "synthetic lost reply".into(),
                             });
@@ -179,6 +202,9 @@ else: sys.exit(2)
     }
     fn reload(&mut self) {
         self.state = Arc::new(Mutex::new(State::load(&self.root, 2000).unwrap()));
+    }
+    fn posts(&self) -> u64 {
+        self.posts.load(Ordering::SeqCst)
     }
     fn tells(&self) -> usize {
         fs::read_to_string(self.root.join("room-calls"))
@@ -317,6 +343,218 @@ fn failed_cloudroom_delivery_remains_pending_after_healing_and_restart() {
         3,
         "an uncertain or failed attempted send must not be repeated blindly"
     );
+}
+
+// Moved from the retired health executor's tests (ER3, #797): the record
+// delivery they protect stays, so each now runs on watchdog incidents. A
+// first pass on `row()` opens three, each with one record and one Needs you.
+
+/// #770: only a record author's comment confirms a health delivery, both when
+/// a pass checks for an earlier copy before posting and when it reconciles an
+/// uncertain claim. Catches the read-back counting anyone's exact copy of a
+/// predictable record as delivered (so the factory's own record is never
+/// posted, or an uncertain claim settles on a stranger's comment), matching
+/// logins case-sensitively, taking a user login for the App, trusting a
+/// comment with no author, or confirming without the setting.
+#[test]
+fn only_the_factory_s_comments_confirm_a_health_delivery() {
+    // The exact body a first pass at 1101 posts first, read from a clean world.
+    let w = World::new();
+    w.engine().pass(1101).unwrap();
+    let body = w.comments.lock().unwrap()[0]["body"].clone();
+    for (author, counts) in [
+        (json!("openwiz[bot]"), true),
+        (json!("SYN-Owner"), true),
+        (json!("syn-outsider"), false),
+        (json!("openwiz"), false),
+        (Value::Null, false),
+    ] {
+        // Before posting: an earlier copy counts only when a record author
+        // wrote it; otherwise the factory posts its own.
+        let w = World::new();
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":body,"created":1000,"updated":1000}));
+        w.engine().pass(1101).unwrap();
+        assert_eq!(w.posts(), 3 - u64::from(counts), "{author}");
+        // Reconciling a lost reply: the only exact copy settles the claim
+        // only when a record author wrote it.
+        let w = World::new();
+        w.lose.store(true, Ordering::SeqCst);
+        w.drop_record.store(true, Ordering::SeqCst);
+        assert!(w.engine().pass(1101).is_err());
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":body,"created":1000,"updated":1000}));
+        assert_eq!(w.engine().pass(1200).is_ok(), counts, "{author}");
+        assert_eq!(w.posts(), 3, "{author}: never a second post");
+    }
+    // A stranger's copy beside the factory's leaves the delivery unique.
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(1101).is_err());
+    w.comments
+        .lock()
+        .unwrap()
+        .push(json!({"id":200,"author":"syn-outsider","body":body,"created":1000,"updated":1000}));
+    w.engine().pass(1200).unwrap();
+    assert_eq!(w.posts(), 3);
+    // Without the setting, even the factory's own comment confirms nothing.
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(1101).is_err());
+    fs::write(w.root.join("no-record-authors"), "").unwrap();
+    assert!(w.engine().pass(1200).is_err());
+    assert_eq!(w.posts(), 3);
+}
+
+/// Catches a lost post reply whose comment never landed being posted again.
+#[test]
+fn uncertain_absent_record_never_gets_a_second_post() {
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    w.drop_record.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(1101).is_err());
+    assert!(w.engine().pass(1200).is_err());
+    assert_eq!(w.posts(), 3);
+}
+
+/// A legacy fleet record body: retired takeover wording, and a thread id that
+/// public records never carry, so it is unsafe to post again.
+const LEGACY_FLEET_BODY: &str = "openwiz-service: incident i1: the fleet thread thr_syn_old of #901 is gone (archived); try 1 of 2, take it over: done, new fleet thread thr_syn_new\n\n```json\n{\"schema\":\"openwiz.service-record.v1\",\"kind\":\"fix\",\"at\":2000,\"incident\":\"i1\",\"check\":\"fleet_thread\",\"spec\":901,\"thread\":\"thr_syn_old\",\"broken\":{\"state\":\"broken\",\"what\":\"archived\"},\"fix\":\"take_over_fleet_thread\",\"try\":1,\"outcome\":{\"state\":\"done\",\"thread\":\"thr_syn_new\"}}\n```";
+
+/// Catches an old uncertain claim settling on an ambiguous read-back, or being
+/// posted again, once nothing is open.
+#[test]
+fn legacy_claim_after_healing_gets_its_original_receipt_only_by_unique_readback() {
+    use std::os::unix::fs::DirBuilderExt;
+    let mut w = World::new();
+    *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
+    let dir = w.root.join("service/health");
+    fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+    let digest =
+        openwiz_core::messaging::sha256_hex(format!("901\n{LEGACY_FLEET_BODY}").as_bytes());
+    let claim = dir.join(&digest);
+    let bytes = json!({"issue":901,"body":LEGACY_FLEET_BODY})
+        .to_string()
+        .into_bytes();
+    fs::write(&claim, &bytes).unwrap();
+    fs::set_permissions(&claim, fs::Permissions::from_mode(0o600)).unwrap();
+    let receipt = dir.join(format!("confirmed-{digest}"));
+    assert_eq!(w.snapshot()["incidents"], json!([]));
+    assert!(w.engine().pass(1101).is_err());
+    assert!(!receipt.exists(), "absence is not delivery confirmation");
+    for id in [8001, 8002] {
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":id,"body":LEGACY_FLEET_BODY,"created":2000,"updated":2000}));
+    }
+    assert!(w.engine().pass(1200).is_err());
+    assert!(!receipt.exists(), "ambiguous exact readback stays pending");
+    w.comments.lock().unwrap().pop();
+    w.reload();
+    w.engine()
+        .pass(1300)
+        .expect("the unique original late comment must settle the old claim");
+    let recorded: Value = serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
+    assert_eq!(recorded, json!({"comment":8001}));
+    assert_eq!(
+        fs::read(&claim).unwrap(),
+        bytes,
+        "never rebind the original claim"
+    );
+    assert_eq!(w.posts(), 0, "reconciliation cannot POST again");
+    assert_eq!(w.tells(), 0);
+}
+
+/// R2: a delivery quarantine is not journal corruption. Repeated passes must
+/// still heal a known-healthy watchdog incident while its unsafe retained
+/// Needs you stays pending, never rewritten, posted or sent; a corrupt
+/// retained body stops the pass before anything changes.
+#[test]
+fn quarantined_frozen_delivery_keeps_healing_progressing() {
+    use std::os::unix::fs::DirBuilderExt;
+    for corrupt in [false, true] {
+        let mut w = World::new();
+        *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
+        let incident = json!({"id":"i1","check":"watchdog","loop_id":"loop-synthetic","opened_at":1101,
+            "broken":{"state":"broken","what":"missed","due_at_ms":1000},"healthy_since":null,
+            "needs_you":{"at":1101,"op_id":"synthetic-quarantined-notification","comment":null}});
+        {
+            let mut state = w.state.lock().unwrap();
+            let mut value = state.snapshot().clone();
+            value["incidents"] = json!([incident]);
+            value["watchdog_deliveries"] = json!([incident]);
+            value["next_incident"] = json!(2);
+            state.save(value).unwrap();
+        }
+        let dir = w.root.join("service/health");
+        fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+        let path = dir.join(format!(
+            "body-{}",
+            openwiz_core::messaging::sha256_hex(
+                "901/\"synthetic-quarantined-notification\"".as_bytes()
+            )
+        ));
+        let bytes = json!({"body":LEGACY_FLEET_BODY,"sha256":if corrupt {"0".repeat(64)} else {openwiz_core::messaging::sha256_hex(LEGACY_FLEET_BODY.as_bytes())}}).to_string().into_bytes();
+        fs::write(&path, &bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        for now in [1200, 1300] {
+            let result = w.engine().pass(now);
+            assert!(
+                result.is_err(),
+                "retained delivery remains pending: corrupt={corrupt}, now={now}"
+            );
+            if corrupt {
+                assert!(result.unwrap_err().contains("checksum"));
+            }
+            assert_eq!(
+                fs::read(&path).unwrap(),
+                bytes,
+                "never rewrite the retained body"
+            );
+            let state = w.snapshot();
+            assert_eq!(
+                state["watchdog_deliveries"],
+                json!([incident]),
+                "the operation binding stays unchanged"
+            );
+            assert_eq!(
+                state["incidents"],
+                if corrupt {
+                    json!([incident])
+                } else {
+                    json!([])
+                },
+                "a healthy loop heals unless storage is corrupt"
+            );
+            w.reload();
+        }
+        assert_eq!(w.posts(), 0);
+        assert_eq!(w.tells(), 0, "unsafe notification is never sent");
+        let unsafe_claim =
+            openwiz_core::messaging::sha256_hex(format!("901\n{LEGACY_FLEET_BODY}").as_bytes());
+        assert!(
+            !dir.join(unsafe_claim).exists(),
+            "quarantine must not attempt a new POST"
+        );
+    }
+}
+
+/// Catches a Needs you sent to a thread outside the configured project.
+#[test]
+fn foreign_project_notification_target_is_never_sent_a_message() {
+    let w = World::new();
+    let path = w.root.join("thread.json");
+    let mut thread: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    thread["thread"]["projectId"] = json!("prj_syn_foreign");
+    fs::write(path, thread.to_string()).unwrap();
+    assert!(w.engine().pass(1101).is_err());
+    assert_eq!(w.comments.lock().unwrap().len(), 3);
+    assert_eq!(w.tells(), 0);
 }
 
 /// Places the executable `src` at `dst`, owner-only. A separate `cp` process

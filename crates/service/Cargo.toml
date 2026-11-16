@@ -73,10 +73,6 @@ name = "l4b-intake"
 path = "../../tests/service/l4b_intake.rs"
 
 [[test]]
-name = "t5-health"
-path = "../../tests/service/t5_health.rs"
-
-[[test]]
 name = "l5-watchdog"
 path = "../../tests/service/l5_watchdog.rs"
 
