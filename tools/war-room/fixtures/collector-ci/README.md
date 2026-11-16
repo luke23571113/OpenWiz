@@ -8,6 +8,7 @@ and rate-limit values are made up and assert nothing about a real repository.
 | `github.json` | Every `gh api` answer the CI facts read, as `[key, answer]` pairs |
 | `fake_gh.py` | The synthetic `gh` the tests put on `PATH`: it answers `gh api PATH` from `github.json`, never the network |
 | `red-first.log` | The tests against the red-run stub, before the collector was built |
+| `red-mutations.log` | The two proofs added later, each against the collector with its rule broken |
 
 A key matches its path exactly, or, when it ends in `?` or `&`, as the path's
 prefix; the first match answers. `{owner}/{repo}` resolve from `GH_REPO`, as
@@ -38,6 +39,10 @@ source. The worked values below are the tests' independent expectations.
   (each hosted job rounded up to a whole minute): 7 + 9 + 3 = 19, and 4.
   From `tools/ci-bench/prices.tsv`: 19 × $0.006 = **$0.114**; the PC is $0.
   Per code run: (7 × 0.006 + 9 × 0.006) ÷ 2 = **$0.048**. Nothing unknown.
+- **Broken-timing variant** (a test makes job 5031, of the failed run 503,
+  end at 00:30:59, before its 00:31:00 start): `unknown_jobs` is 1, its
+  minutes are unknown, so `unknown_minutes` and `window_usd` are null and the
+  fact is `partial`; the 15.5 hosted and 4.0 PC minutes are kept.
 - **Unpriced variant** (a test relabels job 5031 `macos-14`): its 2.3333
   minutes are kept under `unknown`, `unknown_minutes` is 2.3333, `window_usd`
   is null and the fact is `partial`; the code runs are still $0.048 each.
@@ -71,4 +76,6 @@ the record lists it in `missing` (`ci: no run`) and the fact is `partial`.
 - Job 8101 has waited far past 900 seconds, so the guard escalates. With the
   queued jobs taken out, the guard is `healthy` 60 seconds after the read and
   `unknown` (stale) at 61. With one job page unreadable too, the observation
-  is incomplete and the guard says `unknown`.
+  is incomplete and the guard says `unknown`. A job of another attempt than
+  its run's (8301 as attempt 2 of run 7103's attempt 1) is kept, not
+  required, and leaves the observation incomplete.

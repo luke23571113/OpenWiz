@@ -163,6 +163,21 @@ class RunsAndMinutes(unittest.TestCase):
         self.assertEqual((by_kind(m['value']['runner_minutes']), m['value']['window_usd'], m['value']['unknown_minutes']),
                          (cost['runner_minutes'], cost['window_usd'], cost['unknown_minutes']))
 
+    def test_a_failed_job_s_broken_timing_leaves_the_unknown_amount_unknown(self):
+        # catches: one failed run's job that GitHub shows ending before it starts refusing the whole window,
+        # or counted as no minutes, instead of the known minutes kept and the unknown amount itself null.
+        job = self.fake.answer(R + '/actions/runs/503/jobs?per_page=100&page=1')['jobs'][0]
+        job['completed_at'] = '2026-01-04T00:30:59Z'  # before its 00:31:00 start
+        cost = self.fake.bench_point()['cost']
+        ci = self.fake.collect('runs', 'minutes', window=RUNS_WINDOW)
+        m = ci['minutes']
+        self.assertEqual((ci['runs']['state'], m['state']), ('known', 'partial'))
+        self.assertEqual(ci['runs']['value']['unknown_jobs'], 1)
+        self.assertEqual(by_kind(m['value']['runner_minutes']), {'github-hosted': 15.5, 'self-hosted': 4.0})
+        self.assertEqual((m['value']['unknown_minutes'], m['value']['window_usd']), (None, None))
+        self.assertEqual((by_kind(m['value']['runner_minutes']), m['value']['unknown_minutes'], cost['unknown_jobs']),
+                         (cost['runner_minutes'], cost['unknown_minutes'], 1))
+
     def test_a_failed_read_is_unavailable_never_zero(self):
         # catches: a missing job page read as no runs (0 runs, $0) instead of an unavailable fact.
         self.fake.drop(R + '/actions/runs/502/jobs?per_page=100&page=1')
@@ -303,8 +318,8 @@ class Queue(unittest.TestCase):
         self.assertEqual(decision['oldest_wait_seconds'], observation['observed_at'] - 1767614600)
 
     def test_a_queue_that_cannot_be_read_whole_says_unknown(self):
-        # catches: a job page that can't be read whole treated as an empty queue (the guard admits), or a
-        # failed rate-limit read encoded as zeros.
+        # catches: a job page that can't be read whole treated as an empty queue (the guard admits), a job
+        # of another attempt dropped or counted as required, or a failed rate-limit read encoded as zeros.
         self.without_queued_jobs()
         self.fake.drop(R + '/actions/runs/7103/jobs?')
         f = self.fake.collect('queue')['queue']
@@ -312,6 +327,16 @@ class Queue(unittest.TestCase):
         self.assertEqual(f['value']['observation']['complete'], False)
         code, decision = self.fake.guard(f['value']['observation'], f['value']['observation']['observed_at'])
         self.assertEqual((code, decision['level']), (1, 'unknown'))
+        # A job of another attempt than its run's is kept, never required, and the queue incomplete.
+        self.fake.answers.append([R + '/actions/runs/7103/jobs?', {'total_count': 1, 'jobs': [
+            {'id': 8301, 'run_id': 7103, 'run_attempt': 2, 'status': 'in_progress', 'created_at': '2026-01-05T12:01:00Z',
+             'started_at': '2026-01-05T12:01:05Z', 'labels': ['ubuntu-24.04']}]}])
+        self.fake.answers.insert(0, self.fake.answers.pop())
+        f = self.fake.collect('queue')['queue']
+        self.assertEqual(f['state'], 'partial')
+        jobs = f['value']['observation']['queue']['jobs']
+        self.assertEqual([j['id'] for j in jobs], ['job-8102', 'job-8103', 'job-8301'])
+        self.assertEqual(jobs[-1]['required'], False)
         self.fake.drop('rate_limit')
         f = self.fake.collect('queue')['queue']
         self.assertEqual((f['state'], f['value'], f['fresh_until'], f['freshness']),
