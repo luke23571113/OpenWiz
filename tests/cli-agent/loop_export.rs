@@ -330,6 +330,35 @@ fn export_never_replaces_a_file_with_other_bytes() {
     assert_eq!(room.read("exported/syn-triage.md"), TRIAGE_MD);
     assert_eq!(room.read("exported/syn-nightly.md"), NIGHTLY_MD);
 
+    // A file, or a link elsewhere, where a check's folder goes: that loop is
+    // refused and nothing is written through the link.
+    fs::create_dir_all(room.dir().join("other")).unwrap();
+    fs::write(room.dir().join("other/synthetic-hourly-kick"), "a file\n").unwrap();
+    fs::create_dir_all(room.dir().join("elsewhere")).unwrap();
+    std::os::unix::fs::symlink(
+        room.dir().join("elsewhere"),
+        room.dir().join("other/syn-triage"),
+    )
+    .unwrap();
+    let doc = report(
+        &room.export(&["--out", "other", "--json"]),
+        5,
+        "export_report",
+    );
+    for (n, folder) in [(0, "syn-triage"), (4, "synthetic-hourly-kick")] {
+        assert_eq!(doc["loops"][n]["result"], "refused");
+        assert_eq!(
+            doc["loops"][n]["refusals"][0]["message"],
+            format!(
+                "other/{folder} already exists with other bytes; nothing was written for this loop"
+            )
+        );
+    }
+    assert_eq!(doc["loops"][1]["result"], "written");
+    assert_eq!(tree(&room.dir().join("elsewhere")), Vec::<String>::new());
+    assert!(!room.dir().join("other/syn-triage.md").exists());
+    assert!(!room.dir().join("other/synthetic-hourly-kick.md").exists());
+
     let text = room.export(&["--out", "exported"]);
     assert_eq!(text.status.code(), Some(5));
     assert!(String::from_utf8_lossy(&text.stderr).contains(

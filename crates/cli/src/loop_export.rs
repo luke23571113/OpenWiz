@@ -89,24 +89,39 @@ fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
         });
     }
     let mut missing = Vec::new();
+    let mut exists = Vec::new();
     for (rel, text) in &exported.files {
         let path = out.join(rel);
+        // A check's folder must be a real folder or nothing yet: never a
+        // file, and never a link that would put the check elsewhere.
+        if let Some((folder, _)) = rel.split_once('/') {
+            match fs::symlink_metadata(out.join(folder)) {
+                Err(e) if e.kind() == ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
+                Ok(meta) if meta.is_dir() => {}
+                Ok(_) => {
+                    exists.push(out.join(folder));
+                    continue;
+                }
+            }
+        }
         match fs::symlink_metadata(&path) {
             Err(e) if e.kind() == ErrorKind::NotFound => missing.push(rel.clone()),
             Err(e) => return Err(e),
             Ok(meta) if meta.is_file() && fs::read(&path)? == text.as_bytes() => {}
-            Ok(_) => {
-                exported.refusals.push(Refusal {
-                    file: exported.name.clone(),
-                    code: "export-exists".into(),
-                    field: "file".into(),
-                    message: format!(
-                        "{} already exists with other bytes; nothing was written for this loop",
-                        path.display()
-                    ),
-                });
-            }
+            Ok(_) => exists.push(path),
         }
+    }
+    for path in exists {
+        exported.refusals.push(Refusal {
+            file: exported.name.clone(),
+            code: "export-exists".into(),
+            field: "file".into(),
+            message: format!(
+                "{} already exists with other bytes; nothing was written for this loop",
+                path.display()
+            ),
+        });
     }
     if !exported.refusals.is_empty() {
         return Ok(Outcome {
@@ -121,8 +136,12 @@ fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
         .filter(|(rel, _)| missing.contains(rel))
     {
         let path = out.join(rel);
-        if let Some(parent) = path.parent() {
-            create_dir(parent)?;
+        fs::create_dir_all(out)?;
+        if let Some((folder, _)) = rel.split_once('/') {
+            match fs::create_dir(out.join(folder)) {
+                Err(e) if e.kind() != ErrorKind::AlreadyExists => return Err(e),
+                _ => {}
+            }
         }
         // `create_new`: never through a file or link that appeared meanwhile.
         fs::OpenOptions::new()
@@ -142,25 +161,6 @@ fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
         result,
         files,
     })
-}
-
-/// Creates `dir` and its parents; an existing link there is refused, so a
-/// check is never written through one.
-fn create_dir(dir: &Path) -> std::io::Result<()> {
-    match fs::symlink_metadata(dir) {
-        Ok(meta) if meta.is_dir() => Ok(()),
-        Ok(_) => Err(std::io::Error::new(
-            ErrorKind::AlreadyExists,
-            format!("{} is not a folder", dir.display()),
-        )),
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            if let Some(parent) = dir.parent().filter(|p| !p.as_os_str().is_empty()) {
-                create_dir(parent)?;
-            }
-            fs::create_dir(dir)
-        }
-        Err(e) => Err(e),
-    }
 }
 
 fn entry(outcome: &Outcome) -> Value {

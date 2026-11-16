@@ -59,3 +59,15 @@ test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 63 filtered out;
 
 error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`
 ```
+
+## Second slice: a file or a link where a check's folder goes
+
+Red, before the fix (the loop's folder was checked only while writing, so the
+whole run failed instead of refusing that loop):
+
+```text
+test loop_export::export_never_replaces_a_file_with_other_bytes ... FAILED
+assertion `left == right` failed: stderr: openwiz: loop export: could not write to other: other/syn-triage is not a folder; the loops before it were written
+  left: Some(1)
+ right: Some(5)
+```
