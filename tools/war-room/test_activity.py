@@ -449,6 +449,41 @@ class BoundedReads(unittest.TestCase):
         self.assertEqual(world.now, 0)  # every admitted read ended before the call returned
         self.assertFalse([p for p in world.log if any(f'/runs/{rid}' in p for rid in range(205, 209))], world.log)
 
+    def test_runs_still_queued_at_the_first_failure_send_no_request(self):
+        # catches: a failure that lets runs already submitted but not yet started go on to read
+        # (review R1, re-check). Worker threads 2-4 start only once a run has failed, so runs
+        # 202-204 are still queued when 201's first read fails: none of them may send a request.
+        import concurrent.futures
+        release, started, lock = threading.Event(), [], threading.Lock()
+
+        def hold():
+            with lock:
+                started.append(None)
+                later = len(started) > 1
+            if later:
+                self.assertTrue(release.wait(10))
+
+        class Held(concurrent.futures.ThreadPoolExecutor):
+            def __init__(self, **how):
+                super().__init__(initializer=hold, **how)
+
+            def submit(self, *args):
+                future = super().submit(*args)
+                future.add_done_callback(lambda f: f.exception() and release.set())
+                return future
+
+        def gate(path, nth):
+            if path == jobs_path(201):
+                raise OSError('synthetic transport failure')
+        world = Runs(gate=gate)
+        try:
+            with patch.object(B, 'ThreadPoolExecutor', Held), self.assertRaises(OSError):
+                world.observe()
+        finally:
+            release.set()
+        self.assertEqual(world.now, 0)  # the running worker was joined
+        self.assertEqual(world.log, [LIST, jobs_path(201)])
+
 
 if __name__ == '__main__':
     unittest.main()
