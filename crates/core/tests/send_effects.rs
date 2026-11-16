@@ -155,7 +155,10 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn the_core_does_no_io() {
     let mut files = Vec::new();
-    rust_files(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+    rust_files(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut files,
+    );
     assert!(files.iter().any(|f| f.ends_with("messaging/send.rs")));
     for path in files {
         let text = fs::read_to_string(&path).unwrap();
