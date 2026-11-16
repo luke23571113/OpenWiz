@@ -1,0 +1,37 @@
+# #1010 red run, at the test commit before the build-script fix
+# cargo test -p openwiz-tests --test checks cli_build_script
+running 5 tests
+test cli_build_script::a_detached_build_reads_its_commit_and_a_second_build_does_nothing ... ok
+test cli_build_script::a_packed_branch_build_reads_its_commit_and_a_second_build_does_nothing ... FAILED
+test cli_build_script::a_branch_build_reads_its_commit_and_a_second_build_does_nothing ... FAILED
+test cli_build_script::a_ref_that_appears_after_the_first_build_rebuilds_with_the_new_commit ... FAILED
+test cli_build_script::a_worktree_build_reads_its_commit_and_a_second_build_does_nothing ... ok
+
+failures:
+
+---- cli_build_script::a_packed_branch_build_reads_its_commit_and_a_second_build_does_nothing stdout ----
+
+thread 'cli_build_script::a_packed_branch_build_reads_its_commit_and_a_second_build_does_nothing' panicked at tests/checks/cli_build_script.rs:138:5:
+a second build with no changes reran the build script
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- cli_build_script::a_branch_build_reads_its_commit_and_a_second_build_does_nothing stdout ----
+
+thread 'cli_build_script::a_branch_build_reads_its_commit_and_a_second_build_does_nothing' panicked at tests/checks/cli_build_script.rs:138:5:
+a second build with no changes reran the build script
+
+---- cli_build_script::a_ref_that_appears_after_the_first_build_rebuilds_with_the_new_commit stdout ----
+
+thread 'cli_build_script::a_ref_that_appears_after_the_first_build_rebuilds_with_the_new_commit' panicked at tests/checks/cli_build_script.rs:138:5:
+a second build with no changes reran the build script
+
+
+failures:
+    cli_build_script::a_branch_build_reads_its_commit_and_a_second_build_does_nothing
+    cli_build_script::a_packed_branch_build_reads_its_commit_and_a_second_build_does_nothing
+    cli_build_script::a_ref_that_appears_after_the_first_build_rebuilds_with_the_new_commit
+
+test result: FAILED. 2 passed; 3 failed; 0 ignored; 0 measured; 147 filtered out; finished in 0.78s
+
+error: test failed, to rerun pass `-p openwiz-tests --test checks`
+
