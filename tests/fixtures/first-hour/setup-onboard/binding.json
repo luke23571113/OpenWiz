@@ -1,0 +1,68 @@
+{
+ "schema": "openwiz.first-merge-kit-binding.v1",
+ "candidate": {
+  "version": "0.0.99",
+  "source": "1111111111111111111111111111111111111111",
+  "target": "x86_64-unknown-linux-gnu",
+  "manifest_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+ },
+ "host": {
+  "target": "x86_64-unknown-linux-gnu",
+  "fresh_machine": true,
+  "seeded_openwiz_state": false
+ },
+ "scope": {
+  "repository": "syn-owner/syn-first-hour",
+  "app_repositories": [
+   "syn-owner/syn-first-hour"
+  ],
+  "companion_repository": null
+ },
+ "route": {
+  "identity": "app",
+  "app_registration": "created",
+  "secret_route": "agent_save"
+ },
+ "counts": {
+  "fleet_threads": 1,
+  "loops": 1,
+  "builders": 3,
+  "reviewers": 3,
+  "merges": 1,
+  "app_registrations": 1,
+  "companions": 0
+ },
+ "credit_bound": 50,
+ "recorded": {
+  "actions": 5,
+  "waits": 3,
+  "help": 1
+ },
+ "cleanup": [
+  {
+   "resource": "test_threads",
+   "action": "archive"
+  },
+  {
+   "resource": "test_loops",
+   "action": "stop"
+  },
+  {
+   "resource": "test_app",
+   "action": "delete"
+  },
+  {
+   "resource": "test_secret",
+   "action": "delete"
+  },
+  {
+   "resource": "throwaway_repository",
+   "action": "delete"
+  }
+ ],
+ "graph": {
+  "spec": 625,
+  "revision": 1,
+  "fingerprint": "3333333333333333333333333333333333333333333333333333333333333333"
+ }
+}

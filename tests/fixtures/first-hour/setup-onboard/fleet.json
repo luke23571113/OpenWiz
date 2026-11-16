@@ -1,0 +1,15 @@
+{
+ "schema": "openwiz.first-merge-kit-fleet.v1",
+ "proof_class": "live",
+ "private_record": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-32",
+ "route": "launch_fleet",
+ "fleet_threads": 1,
+ "loop": {
+  "spec": 9100,
+  "every_minutes": 10
+ },
+ "engine_activations": 0,
+ "tick_starts": 0,
+ "builders": 1,
+ "reviewers": 0
+}

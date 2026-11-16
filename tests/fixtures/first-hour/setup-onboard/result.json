@@ -1,0 +1,433 @@
+{
+ "schema": "openwiz.first-hour.v1",
+ "kind": "result",
+ "verdict": "unverified",
+ "proof_class": "live",
+ "synthetic_assumptions": [],
+ "private_record": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-30",
+ "candidate": {
+  "known": {
+   "version": "0.0.99",
+   "source": "1111111111111111111111111111111111111111",
+   "target": "x86_64-unknown-linux-gnu",
+   "manifest_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  }
+ },
+ "repository": {
+  "known": {
+   "full_name": "syn-owner/syn-first-hour",
+   "selected_by_owner": true
+  }
+ },
+ "clock": {
+  "started_at_ms": {
+   "known": 1700000000000
+  },
+  "ended_at_ms": {
+   "known": 1700001799000
+  },
+  "limit_ms": 3600000
+ },
+ "stages": [
+  {
+   "id": "public_instruction",
+   "state": "verified",
+   "reason": "Synthetic: the public install instruction was opened.",
+   "evidence": [
+    {
+     "basis": "instruction_opened",
+     "at_ms": 1700000000000,
+     "detail": "Synthetic instruction page opened."
+    }
+   ]
+  },
+  {
+   "id": "install",
+   "state": "verified",
+   "reason": "Synthetic: the candidate installed.",
+   "evidence": [
+    {
+     "basis": "install_result",
+     "at_ms": 1700000191382,
+     "detail": "Synthetic install result for the candidate."
+    }
+   ]
+  },
+  {
+   "id": "connections",
+   "state": "verified",
+   "reason": "Synthetic: every prerequisite of the selected engine verified.",
+   "evidence": [
+    {
+     "basis": "setup_component_verified",
+     "at_ms": 1700000574148,
+     "detail": "Synthetic setup read with every component verified."
+    }
+   ]
+  },
+  {
+   "id": "idea",
+   "state": "verified",
+   "reason": "Synthetic: a fresh small idea was saved.",
+   "evidence": [
+    {
+     "basis": "idea_saved",
+     "at_ms": 1700000765531,
+     "detail": "Synthetic idea saved for the selected repository."
+    }
+   ]
+  },
+  {
+   "id": "spec_confirmation",
+   "state": "verified",
+   "reason": "Synthetic: the spec confirmation was saved.",
+   "evidence": [
+    {
+     "basis": "decision_saved",
+     "at_ms": 1700000956914,
+     "detail": "Synthetic resolved confirmation record."
+    }
+   ]
+  },
+  {
+   "id": "plan_approval",
+   "state": "verified",
+   "reason": "Synthetic: the exact plan approval was saved.",
+   "evidence": [
+    {
+     "basis": "decision_saved",
+     "at_ms": 1700001071744,
+     "detail": "Synthetic resolved approval of the current revision."
+    }
+   ]
+  },
+  {
+   "id": "fleet",
+   "state": "verified",
+   "reason": "Synthetic: the approved builders started.",
+   "evidence": [
+    {
+     "basis": "agents_running",
+     "at_ms": 1700001148297,
+     "detail": "Synthetic builder started."
+    }
+   ]
+  },
+  {
+   "id": "review",
+   "state": "verified",
+   "reason": "Synthetic: the independent reviewer approved the head.",
+   "evidence": [
+    {
+     "basis": "review_approve_exact_head",
+     "at_ms": 1700001722446,
+     "detail": "Synthetic APPROVE naming the head."
+    }
+   ]
+  },
+  {
+   "id": "ci",
+   "state": "verified",
+   "reason": "Synthetic: every required check was green on the head.",
+   "evidence": [
+    {
+     "basis": "ci_green_exact_head",
+     "at_ms": 1700001645893,
+     "detail": "Synthetic green required checks."
+    }
+   ]
+  },
+  {
+   "id": "merge",
+   "state": "verified",
+   "reason": "Synthetic: the merge was read back at the approved head.",
+   "evidence": [
+    {
+     "basis": "merge_read_back",
+     "at_ms": 1700001799000,
+     "detail": "Synthetic merged state at the approved head."
+    }
+   ]
+  }
+ ],
+ "builder": {
+  "harness": "claude_code",
+  "model": "Synthetic builder model",
+  "effort": "high",
+  "location": "cloud",
+  "usable": "verified",
+  "extra_prerequisites": [],
+  "evidence": [
+   {
+    "basis": "harness_run_observed",
+    "at_ms": 1700001148297,
+    "detail": "Synthetic builder run observed."
+   }
+  ]
+ },
+ "reviewer": {
+  "harness": "codex",
+  "model": "Synthetic reviewer model",
+  "effort": "high",
+  "location": "cloud",
+  "usable": "verified",
+  "extra_prerequisites": [
+   "Synthetic separate sign-in for the reviewer harness."
+  ],
+  "evidence": [
+   {
+    "basis": "harness_run_observed",
+    "at_ms": 1700001594858,
+    "detail": "Synthetic reviewer run observed."
+   }
+  ]
+ },
+ "waits": [
+  {
+   "stage": "install",
+   "kind": "install",
+   "started_at_ms": 1700000038276,
+   "ended_at_ms": 1700000153106,
+   "detail": "Synthetic download and verification."
+  },
+  {
+   "stage": "fleet",
+   "kind": "queue",
+   "started_at_ms": 1700001084503,
+   "ended_at_ms": 1700001148297,
+   "detail": "Synthetic builder queue."
+  },
+  {
+   "stage": "ci",
+   "kind": "ci",
+   "started_at_ms": 1700001531063,
+   "ended_at_ms": 1700001645893,
+   "detail": "Synthetic CI run."
+  }
+ ],
+ "help": [
+  {
+   "stage": "connections",
+   "at_ms": 1700000382765,
+   "source": "public_docs",
+   "detail": "Synthetic public setup page read."
+  }
+ ],
+ "retained_work": [
+  {
+   "kind": "setup_state",
+   "id": "syn-setup-state",
+   "content": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+   "basis": "owner_state_read_back"
+  },
+  {
+   "kind": "branch",
+   "id": "room/syn-first-hour-1",
+   "content": "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8",
+   "basis": "repository_read_back"
+  },
+  {
+   "kind": "commit",
+   "id": "dadadadadadadadadadadadadadadadadadadada",
+   "content": "c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9",
+   "basis": "repository_read_back"
+  }
+ ],
+ "operations": [
+  {
+   "operation_id": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+   "kind": "connect_app",
+   "phase": "applied",
+   "effect_count": 1,
+   "attempts": 1,
+   "reconciliation": "none"
+  },
+  {
+   "operation_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+   "kind": "send",
+   "phase": "applied",
+   "effect_count": 1,
+   "attempts": 1,
+   "reconciliation": "provider_read_back"
+  },
+  {
+   "operation_id": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+   "kind": "start_agent",
+   "phase": "applied",
+   "effect_count": 1,
+   "attempts": 1,
+   "reconciliation": "none"
+  },
+  {
+   "operation_id": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+   "kind": "merge",
+   "phase": "applied",
+   "effect_count": 1,
+   "attempts": 1,
+   "reconciliation": "none"
+  }
+ ],
+ "interruptions": [
+  {
+   "interruption": "lost_reply",
+   "before": [
+    {
+     "kind": "pending_operation",
+     "id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+     "content": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+     "basis": "owner_state_read_back"
+    },
+    {
+     "kind": "draft",
+     "id": "syn-draft-confirmation",
+     "content": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+     "basis": "tab_session_storage"
+    }
+   ],
+   "after": [
+    {
+     "kind": "pending_operation",
+     "id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+     "content": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+     "basis": "owner_state_read_back"
+    },
+    {
+     "kind": "draft",
+     "id": "syn-draft-confirmation",
+     "content": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+     "basis": "tab_session_storage"
+    }
+   ],
+   "operations": [
+    {
+     "operation_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+     "kind": "send",
+     "phase_before": "uncertain",
+     "phase_after": "applied",
+     "effect_count": 1,
+     "attempts": 1,
+     "reconciliation": "provider_read_back"
+    }
+   ],
+   "explanation": {
+    "what_happened": "Synthetic: the confirmation's reply was lost; its send record showed it was sent once.",
+    "took_effect": "yes",
+    "next_action": "Synthetic: nothing to resend; wait for the saved confirmation."
+   }
+  },
+  {
+   "interruption": "browser_restart",
+   "before": [
+    {
+     "kind": "setup_state",
+     "id": "syn-setup-state",
+     "content": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+     "basis": "owner_state_read_back"
+    }
+   ],
+   "after": [
+    {
+     "kind": "setup_state",
+     "id": "syn-setup-state",
+     "content": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+     "basis": "owner_state_read_back"
+    }
+   ],
+   "operations": [],
+   "explanation": {
+    "what_happened": "Synthetic: the browser restarted during setup; the saved setup state was read back unchanged.",
+    "took_effect": "no",
+    "next_action": "Synthetic: continue setup from the saved state."
+   }
+  },
+  {
+   "interruption": "update_rejected",
+   "before": [
+    {
+     "kind": "branch",
+     "id": "room/syn-first-hour-1",
+     "content": "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8",
+     "basis": "repository_read_back"
+    },
+    {
+     "kind": "commit",
+     "id": "dadadadadadadadadadadadadadadadadadadada",
+     "content": "c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9",
+     "basis": "repository_read_back"
+    }
+   ],
+   "after": [
+    {
+     "kind": "branch",
+     "id": "room/syn-first-hour-1",
+     "content": "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8",
+     "basis": "repository_read_back"
+    },
+    {
+     "kind": "commit",
+     "id": "dadadadadadadadadadadadadadadadadadadada",
+     "content": "c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9",
+     "basis": "repository_read_back"
+    }
+   ],
+   "operations": [],
+   "explanation": {
+    "what_happened": "Synthetic: an update was refused before activation; the last good build stayed selected.",
+    "took_effect": "no",
+    "next_action": "Synthetic: keep working on the current build."
+   }
+  }
+ ],
+ "findings": [
+  {
+   "id": "F1",
+   "severity": "low",
+   "work_loss": false,
+   "summary": "Synthetic low finding.",
+   "owner": 9001,
+   "disposition": "open"
+  }
+ ],
+ "gaps": [
+  {
+   "claim": "PR2",
+   "reason": "Synthetic: no usable-login observation in a recording."
+  },
+  {
+   "claim": "PR3",
+   "reason": "Synthetic: no independent security review."
+  },
+  {
+   "claim": "PR5",
+   "reason": "Synthetic: no reviewed page captures."
+  }
+ ],
+ "gates": {
+  "cloudroom_setup": {
+   "decision_ticket": 2201,
+   "state": "settled",
+   "producers": [
+    9001
+   ]
+  },
+  "paid_offer": {
+   "decision_ticket": 2202,
+   "state": "settled",
+   "producers": [
+    2293
+   ]
+  },
+  "feedback": {
+   "decision_ticket": 2203,
+   "state": "settled",
+   "producers": [
+    2292
+   ]
+  }
+ },
+ "ten_minute_fleet": {
+  "owner": 1110,
+  "state": "unmeasured",
+  "elapsed_ms": null
+ }
+}

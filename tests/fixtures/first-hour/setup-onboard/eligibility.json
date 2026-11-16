@@ -1,0 +1,77 @@
+{
+ "schema": "openwiz.first-merge-kit-eligibility.v1",
+ "graph": {
+  "spec": 625,
+  "revision": 1,
+  "fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+  "approval": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-10"
+ },
+ "producers": [
+  {
+   "ticket": 632,
+   "pr": 10632,
+   "merge_commit": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "approved_head": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+   "merged_at_head": true
+  },
+  {
+   "ticket": 633,
+   "pr": 10633,
+   "merge_commit": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "approved_head": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+   "merged_at_head": true
+  },
+  {
+   "ticket": 606,
+   "pr": 10606,
+   "merge_commit": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "approved_head": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+   "merged_at_head": true
+  },
+  {
+   "ticket": 634,
+   "pr": 10634,
+   "merge_commit": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "approved_head": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+   "merged_at_head": true
+  },
+  {
+   "ticket": 635,
+   "pr": 10635,
+   "merge_commit": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "approved_head": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+   "merged_at_head": true
+  },
+  {
+   "ticket": 636,
+   "pr": 10636,
+   "merge_commit": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "approved_head": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+   "merged_at_head": true
+  },
+  {
+   "ticket": 637,
+   "pr": 10637,
+   "merge_commit": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+   "approved_head": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+   "merged_at_head": true
+  }
+ ],
+ "authority": {
+  "live": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-40",
+  "machine": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-41",
+  "accounts": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-42",
+  "repository": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-43",
+  "app": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-44",
+  "companion": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-45",
+  "secret": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-46",
+  "agents": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-47",
+  "merges": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-48",
+  "spending": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-49",
+  "cleanup": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-50"
+ },
+ "upstream": {
+  "state": "observed_supported",
+  "evidence": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-60"
+ }
+}

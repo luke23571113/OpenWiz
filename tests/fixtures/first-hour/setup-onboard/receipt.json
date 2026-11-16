@@ -1,0 +1,128 @@
+{
+ "schema": "openwiz.setup-onboard.v1",
+ "kind": "first_merge_receipt",
+ "proof_class": "live",
+ "synthetic_assumptions": [],
+ "private_record": "https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-31",
+ "verdict": "pass",
+ "binding": {
+  "first_hour_result_sha256": "8bd524d734bb633f7415fb9a40d34010f20504c9f3a884d09c9a2ca2904c1f0e",
+  "candidate": {
+   "known": {
+    "version": "0.0.99",
+    "source": "1111111111111111111111111111111111111111",
+    "target": "x86_64-unknown-linux-gnu",
+    "manifest_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+   }
+  },
+  "repository": {
+   "known": "syn-owner/syn-first-hour"
+  },
+  "merge": {
+   "pull_request": 9101,
+   "head": "dadadadadadadadadadadadadadadadadadadada",
+   "merge_commit": "4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
+   "merged_at_ms": 1700001799000,
+   "basis": "merge_read_back",
+   "change": "implementation",
+   "reviewed_head": "dadadadadadadadadadadadadadadadadadadada",
+   "ci_green_head": "dadadadadadadadadadadadadadadadadadadada"
+  }
+ },
+ "instruction": "Install OpenWiz from github.com/openwizdev/OpenWiz",
+ "idea": "Synthetic fresh idea: a docs link checker for this repository.",
+ "clock": {
+  "started_at_ms": {
+   "known": 1700000000000
+  },
+  "ended_at_ms": {
+   "known": 1700001799000
+  },
+  "limit_ms": 1800000,
+  "rule": "strictly_less_than"
+ },
+ "actions": {
+  "count": {
+   "known": 5
+  },
+  "limit": 5,
+  "log": [
+   {
+    "at_ms": 1700000446560,
+    "kind": "app_manifest",
+    "actor": "owner",
+    "stage": "create_app",
+    "detail": "Synthetic: Create on the App manifest page."
+   },
+   {
+    "at_ms": 1700000484836,
+    "kind": "app_manifest",
+    "actor": "owner",
+    "stage": "install_app",
+    "detail": "Synthetic: Install on the selected repository only."
+   },
+   {
+    "at_ms": 1700000956914,
+    "kind": "confirmation",
+    "actor": "owner",
+    "stage": "spec_confirmation",
+    "detail": "Synthetic: the spec confirmation."
+   },
+   {
+    "at_ms": 1700001071744,
+    "kind": "approval",
+    "actor": "owner",
+    "stage": "plan_approval",
+    "detail": "Synthetic: the exact-plan approval."
+   },
+   {
+    "at_ms": 1700001084503,
+    "kind": "spending_approval",
+    "actor": "owner",
+    "stage": "launch",
+    "detail": "Synthetic: yes to the fleet start and its Cloud Credits."
+   }
+  ]
+ },
+ "identity": "app",
+ "app_registration": "created",
+ "secret_route": "agent_save",
+ "secret_route_observed": true,
+ "decisions": {
+  "spec_confirmation": true,
+  "plan_approval": true
+ },
+ "waits": [
+  {
+   "kind": "install",
+   "started_at_ms": 1700000038276,
+   "ended_at_ms": 1700000153106,
+   "detail": "Synthetic download and verification."
+  },
+  {
+   "kind": "queue",
+   "started_at_ms": 1700001084503,
+   "ended_at_ms": 1700001148297,
+   "detail": "Synthetic builder queue."
+  },
+  {
+   "kind": "ci",
+   "started_at_ms": 1700001531063,
+   "ended_at_ms": 1700001645893,
+   "detail": "Synthetic CI run."
+  }
+ ],
+ "help": [
+  {
+   "at_ms": 1700000382765,
+   "source": "public_docs",
+   "detail": "Synthetic public setup page read."
+  }
+ ],
+ "freshness": {
+  "machine": "fresh",
+  "repository": "fresh",
+  "seeded_openwiz_state": false,
+  "initial_record": "recorded"
+ }
+}
