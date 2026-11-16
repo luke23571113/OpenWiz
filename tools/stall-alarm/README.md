@@ -97,9 +97,8 @@ variants through a fake collector, and checks that no `gh` runs. The red
 run, against the unchanged alarm, is
 [`evidence/824-red-first.log`](evidence/824-red-first.log); the green run
 is [`evidence/824-green.log`](evidence/824-green.log). CI runs this suite in
-`war-room.yml`'s test step, on pull requests that touch that workflow's paths
-(the war room, including the collector); a change to this folder alone does
-not trigger it, so run it locally too.
+`war-room.yml`'s test step, on every pull request that touches this folder,
+the war room (including the collector) or that workflow.
 
 Fleet liveness uses the selected loop's configured `cron`: minute `*`,
 `*/N`, a single minute, or comma-separated minutes, with `*` in the other

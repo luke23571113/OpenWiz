@@ -13,6 +13,7 @@ on:
     paths:
       - 'tools/war-room/**'
       - 'tools/privacy-check/**'
+      - 'tools/stall-alarm/**'
       - '.github/workflows/war-room.yml'
 
 permissions:
