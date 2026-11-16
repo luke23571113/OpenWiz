@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """WR10: gather the real War room sources into one pinned WR2 selection. Reads only.
 
-  python3 -I gather.py --remote URL --repo OWNER/REPO --run-url URL --out DIR
+  python3 -I gather.py --remote URL --repo OWNER/REPO --run-url URL --out DIR [--data-remote URL]
       [--pool LABEL ...] [--journeys FILE --cohort FILE] [--answer-time FILE] [--stage DIR]
 
 Before a publish: one source root and `DIR/selection.json` in WR2's
@@ -328,8 +328,11 @@ def stage_evidence(repo, tickets, clock):
 
 
 def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None,
-           stage=None):
+           stage=None, data_remote=None):
     """Write out/root and out/selection.json, or raise Fail and select nothing.
+
+    `data_remote` (WRD4) is the repository holding the board and ci-benchmarks data
+    branches, when they are not on `remote`; their commit evidence then links it.
 
     `stage` is an existing directory holding TL2's journeys.json and stage-waits.json;
     without it they are collected for the open approved and merged cohort tickets."""
@@ -338,12 +341,16 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
     suite.require(sources.LINK.fullmatch(run_url) is not None, 'invalid run link')
     suite.require((journeys is None) == (cohort is None), '--journeys and --cohort go together')
     started = clock()
-    commit_link = 'https://github.com/%s/commit/%%s' % repo
+    data_repo = repo
+    if data_remote is not None:
+        hosted = re.fullmatch(r'https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?', data_remote)
+        data_repo = hosted.group(1) if hosted else repo
+    commit_link = 'https://github.com/%s/commit/%%s' % data_repo
     with tempfile.TemporaryDirectory(prefix='war-room-gather-') as tmp:
         work = Path(tmp) / 'git'
         git(Path(tmp), 'init', '-q', '--bare', str(work))
-        board = branch(work, remote, 'board')
-        bench = branch(work, remote, 'ci-benchmarks')
+        board = branch(work, data_remote or remote, 'board')
+        bench = branch(work, data_remote or remote, 'ci-benchmarks')
 
         # Current CI and throughput (WR8), and the merged cohort's journeys, through the existing gh readers.
         prs = None
@@ -537,6 +544,8 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
 def main(argv):
     parser = argparse.ArgumentParser(description='Gather the War room sources (WR10). Reads only.')
     parser.add_argument('--remote', required=True, help='the repository to fetch board and ci-benchmarks from')
+    parser.add_argument('--data-remote', help='the repository holding the board and ci-benchmarks data branches; '
+                        'default: --remote. A https://github.com/OWNER/REPO[.git] value also names their evidence links')
     parser.add_argument('--repo', required=True, help='OWNER/REPO for the read-only gh reads and links')
     parser.add_argument('--run-url', required=True, help='the GitHub run performing the reads (evidence)')
     parser.add_argument('--out', required=True, type=Path, help='a new directory')
@@ -548,7 +557,8 @@ def main(argv):
     a = parser.parse_args(argv)
     try:
         selection = gather(a.out, remote=a.remote, repo=a.repo, run_url=a.run_url, pools=tuple(a.pool or POOLS),
-                           journeys=a.journeys, cohort=a.cohort, answer_time=a.answer_time, stage=a.stage)
+                           journeys=a.journeys, cohort=a.cohort, answer_time=a.answer_time, stage=a.stage,
+                           data_remote=a.data_remote)
     except (Fail, ValueError, OSError, UnicodeError, RecursionError) as e:
         # Only the reason class: a source error can carry a private value.
         print('war-room gather: %s; nothing selected' % (e if isinstance(e, Fail) else type(e).__name__), file=sys.stderr)
