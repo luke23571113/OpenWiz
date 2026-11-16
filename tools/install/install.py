@@ -25,15 +25,6 @@ import tempfile
 
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PROGRAMS = {'openwiz', 'openwiz-service', 'openwiz-server'}
-# Additive runtime role: older bundles remain readable; engine commands require
-# this exact matching asset rather than falling back to a source checkout.
-ENGINE_RUNTIME = 'runtime/engine/engine.py'
-# #2379: additive installed-handover role. Older bundles stay installable; the
-# handover refuses unless every one of these exact verified assets is present.
-HANDOVER_RUNTIME = ('runtime/setup/store.py', 'runtime/platform/runtime.py',
-    'runtime/platform/security.py', 'runtime/pc_activation/activation.py',
-    'runtime/completion/checkpoint.py', 'runtime/completion/checkpoint.v1.schema.json',
-    ENGINE_RUNTIME, 'runtime/install.py', 'runtime/handover/handover.py')
 REQUIRED = PROGRAMS | {'web/openwiz-build.txt', 'runtime/openwiz-build.txt', 'web/index.html', 'web/setup.html', 'runtime/install.py', 'runtime/pull.py',
     'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
     'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
