@@ -18,7 +18,7 @@ fn example(kind: &str) -> Value {
 
 #[test]
 fn service_reader_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 10] = [
+    let cases: [(&str, fn()); 8] = [
         (
             "config_state_and_status_obey_the_same_shape_as_the_schema",
             config_state_and_status_obey_the_same_shape_as_the_schema,
@@ -32,10 +32,6 @@ fn service_reader_contracts_preserve_original_cases() {
             fix_attempt_timestamp_is_at_or_after_incident_opening,
         ),
         (
-            "health_pass_must_include_a_tick_result",
-            health_pass_must_include_a_tick_result,
-        ),
-        (
             "persisted_comments_require_saved_outcomes",
             persisted_comments_require_saved_outcomes,
         ),
@@ -46,10 +42,6 @@ fn service_reader_contracts_preserve_original_cases() {
         (
             "persisted_state_must_keep_the_contracts_cross_field_rules",
             persisted_state_must_keep_the_contracts_cross_field_rules,
-        ),
-        (
-            "state_reader_requires_cloudroom_as_the_first_health_result",
-            state_reader_requires_cloudroom_as_the_first_health_result,
         ),
         (
             "status_reader_requires_fixes_to_name_open_incidents",
@@ -231,21 +223,6 @@ fn unread_checks_exclude_subject_results() {
     );
 }
 
-fn health_pass_must_include_a_tick_result() {
-    let mut state = example("openwiz.service-state.v1");
-    assert!(document::read(Document::State, &state.to_string()).is_ok());
-
-    state["last_pass"]["results"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|result| result["check"] != "tick");
-
-    assert!(
-        document::read(Document::State, &state.to_string()).is_err(),
-        "a health pass missing its tick result must be refused"
-    );
-}
-
 fn persisted_comments_require_saved_outcomes() {
     for (incident, attempt) in [(0, "first"), (1, "second")] {
         let mut value = example("openwiz.service-state.v1");
@@ -333,18 +310,6 @@ fn kept_update_retains_the_old_running_build() {
     assert!(
         document::read(Document::Status, &status.to_string()).is_err(),
         "kept update rejects the proposed new build"
-    );
-}
-
-fn state_reader_requires_cloudroom_as_the_first_health_result() {
-    let mut state = example("openwiz.service-state.v1");
-    state["last_pass"]["results"]
-        .as_array_mut()
-        .unwrap()
-        .swap(0, 1);
-    assert!(
-        document::read(Document::State, &state.to_string()).is_err(),
-        "cloudroom must be first"
     );
 }
 

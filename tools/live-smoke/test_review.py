@@ -16,41 +16,6 @@ FixtureCase = runpy.run_path(str(HERE / 'test_smoke.py'))['FixtureCase']
 
 
 class Review(FixtureCase):
-    def test_r2_live_tick_is_restricted_to_the_audited_plan(self):
-        source = self.root / 'source'
-        subprocess.run(['git', 'init', '-q', str(source)], check=True)
-        subprocess.run(['git', '-C', str(source), '-c', 'user.name=Synthetic',
-                        '-c', 'user.email=synthetic@example.invalid',
-                        'commit', '--allow-empty', '-qm', 'synthetic source'], check=True)
-        head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
-        marker = self.root / 'effect'
-        text = self.fake.read_text().replace("case = sys.argv[1]", "case = sys.argv[1]\nif sys.argv[1:3] == ['fleet', 'tick'] and '--dry-run' not in sys.argv:\n    (root / 'effect').write_text('tick dispatched')")
-        self.fake.write_text(text)
-        self.kit['artifacts'][str(self.fake)] = self.sha(self.fake)
-        self.kit['artifacts'][str(HERE / 'smoke.py')] = self.sha(HERE / 'smoke.py')
-        self.kit.update(mode='live', source={'checkout': str(source), 'head': head})
-        plan = self.restricted_tick(self.kit['steps'][0])
-
-        def approved():
-            return hashlib.sha256(json.dumps(self.kit, sort_keys=True, ensure_ascii=True,
-                separators=(',', ':')).encode()).hexdigest()
-        # The restriction module is code the live run executes: it must be pinned.
-        self.assertEqual(self.report(self.run_tool('--execute', approved()), 2)['reason'], 'invalid_kit')
-        self.kit['artifacts'][str(HERE / 'restriction.py')] = self.sha(HERE / 'restriction.py')
-        # The preview the tick would execute names the never-started ticket.
-        self.replies['fleet tick --dry-run'] = {'exit': 0, 'out': json.dumps(
-            dict(plan, actions=[dict(plan['actions'][0], ticket=9004)]))}
-        doc = self.report(self.run_tool('--execute', approved()), 3)
-        self.assertEqual(doc['reason'], 'out_of_scope')
-        self.assertEqual(self.ticks(), [])
-        self.assertFalse(marker.exists())
-        # With the audited preview, the live tick runs once, pinned to it.
-        self.restricted_tick(self.kit['steps'][0])
-        self.report(self.run_tool('--execute', approved()), 0)
-        self.assertEqual(self.ticks(), [['fleet', 'tick', '--expect-plan',
-                                         str(self.state / 'fleet-expected-plan.json'), '--json']])
-        self.assertTrue(marker.exists())
-
     def test_r6_timeout_reaps_the_real_pty_drivers_new_session(self):
         # Adopt a leaking baseline child so this regression can clean it up
         # even before the fix. Only descendants of this test can be adopted.

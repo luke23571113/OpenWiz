@@ -181,6 +181,8 @@ class AppAPI:
 
             def do_GET(self):
                 requests.append(('GET', self.path))
+                if self.path == '/app':  # the setup check's App-owner read (#606 review R3)
+                    return self.reply(200, {'id': 1001, 'owner': {'login': 'synthetic-owner'}})
                 if self.path == '/app/installations':
                     return self.reply(200, [{'id': 2002, 'app_id': 1001, 'account': {'login': 'synthetic-owner'},
                                              'permissions': PROFILE, 'repository_selection': 'selected',

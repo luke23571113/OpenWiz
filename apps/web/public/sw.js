@@ -13,12 +13,6 @@
 //   icons come from the cache first.
 // - On install it stores `/` and the shell files that page names, so the
 //   installed app opens offline from its first visit.
-// - Notifications (#2035) only show and open. A push shows one generic
-//   notification only for the exact minimal payload (notifications.v1's
-//   ExternalPayload, as canonical JSON), keeping just its opaque token; any
-//   other payload is ignored. A tap only opens this origin's
-//   `/#notification=<token>`, where the authenticated cockpit re-reads the
-//   item. Neither fetches, caches, stores, answers or replays anything.
 
 const CACHE = 'openwiz-shell-v1';
 const PAGES = ['/', '/setup'];
@@ -101,50 +95,4 @@ self.addEventListener('fetch', (event) => {
   if (!isShell(url)) return;
   const page = PAGES.includes(url.pathname) || url.pathname === '/manifest.webmanifest';
   event.respondWith(page ? networkFirst(request) : cacheFirst(request));
-});
-
-const TITLE = 'OpenWiz needs your attention';
-const PAYLOAD = /^\{"title":"OpenWiz needs your attention","target_token":"([0-9a-f]{64})"\}$/;
-const TOKEN = /^[0-9a-f]{64}$/;
-
-// The token of an exact payload, or null. Anything else, including extra,
-// reordered or repeated keys, is untrusted.
-function payloadToken(data) {
-  try {
-    const match = data ? PAYLOAD.exec(data.text()) : null;
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-}
-
-self.addEventListener('push', (event) => {
-  const token = payloadToken(event.data);
-  if (!token) return;
-  event.waitUntil(self.registration.showNotification(TITLE, { tag: token, data: { token }, icon: '/icons/icon-192.png' }));
-});
-
-// Navigation only: the token is never a URL, origin, path or redirect.
-async function openBound(token) {
-  const url = new URL(`/#notification=${token}`, self.location.origin).href;
-  const windows = await self.clients.matchAll({ type: 'window' });
-  const own = windows.find((c) => new URL(c.url).origin === self.location.origin);
-  if (own) {
-    try {
-      await own.focus();
-      await own.navigate(url);
-      return;
-    } catch {
-      // Not navigable: open the bound fragment instead.
-    }
-  }
-  await self.clients.openWindow(url);
-}
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const data = event.notification.data;
-  const keys = data && typeof data === 'object' ? Object.keys(data) : [];
-  if (keys.length !== 1 || keys[0] !== 'token' || typeof data.token !== 'string' || !TOKEN.test(data.token)) return;
-  event.waitUntil(openBound(data.token));
 });

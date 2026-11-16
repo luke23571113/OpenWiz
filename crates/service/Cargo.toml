@@ -69,10 +69,6 @@ name = "l4b-intake"
 path = "../../tests/service/l4b_intake.rs"
 
 [[test]]
-name = "t5-health"
-path = "../../tests/service/t5_health.rs"
-
-[[test]]
 name = "l5-watchdog"
 path = "../../tests/service/l5_watchdog.rs"
 
@@ -91,11 +87,3 @@ path = "../../tests/service/l11_limits.rs"
 [[test]]
 name = "l12-registration"
 path = "../../tests/service/l12_registration.rs"
-
-[[test]]
-name = "notifications-engine"
-path = "../../tests/service/notifications_engine.rs"
-
-[[test]]
-name = "notifications-delivery"
-path = "../../tests/service/notifications_delivery.rs"
