@@ -1,0 +1,27 @@
+Command: python3 -I tools/war-room/test_collect_factory.py
+At: d01ed6bdc3ad5ce1d3672f9fcc2545f7b1d1b8e4
+
+test_check_results_keep_their_meaning (__main__.CapacityAndOpenPrs.test_check_results_keep_their_meaning) ... ok
+test_open_prs_and_the_hour_match_read_stall (__main__.CapacityAndOpenPrs.test_open_prs_and_the_hour_match_read_stall) ... ok
+test_prs_per_hour_is_ci_bench_headline (__main__.CapacityAndOpenPrs.test_prs_per_hour_is_ci_bench_headline) ... ok
+test_truncated_comments_make_open_prs_unavailable (__main__.CapacityAndOpenPrs.test_truncated_comments_make_open_prs_unavailable) ... ok
+test_journeys_are_journey_collect_unchanged (__main__.CarriedJourneys.test_journeys_are_journey_collect_unchanged) ... ok
+test_stage_waits_are_tl2_unchanged (__main__.CarriedJourneys.test_stage_waits_are_tl2_unchanged) ... ok
+test_stage_waits_without_tickets_are_unavailable (__main__.CarriedJourneys.test_stage_waits_without_tickets_are_unavailable) ... ok
+test_direction_unknown_when_tickets_disagree_or_none_link (__main__.DailyEdges.test_direction_unknown_when_tickets_disagree_or_none_link) ... ok
+test_open_tail_with_no_later_record (__main__.DailyEdges.test_open_tail_with_no_later_record) ... ok
+test_cost_keeps_each_source_and_unit (__main__.DailyNumbers.test_cost_keeps_each_source_and_unit) ... ok
+test_every_fact_passes_validate (__main__.DailyNumbers.test_every_fact_passes_validate) ... ok
+test_merges_count_every_base_with_direction (__main__.DailyNumbers.test_merges_count_every_base_with_direction) ... ok
+test_same_numbers_as_metrics_py (__main__.DailyNumbers.test_same_numbers_as_metrics_py) ... ok
+test_stalls_are_factory_metrics_gaps (__main__.DailyNumbers.test_stalls_are_factory_metrics_gaps) ... ok
+test_cli_exit_codes (__main__.Failures.test_cli_exit_codes) ... ok
+test_failed_source_greys_only_its_fact (__main__.Failures.test_failed_source_greys_only_its_fact) ... ok
+test_windows_the_facts_cannot_cover (__main__.Failures.test_windows_the_facts_cannot_cover) ... ok
+test_snapshot_and_read_agree (__main__.Snapshot.test_snapshot_and_read_agree) ... ok
+test_validate_contract_rules (__main__.Validate.test_validate_contract_rules) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 6.994s
+
+OK
