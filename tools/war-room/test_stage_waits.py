@@ -2,7 +2,7 @@
 """WR3 stage-wait proof at the producer-to-suite boundary. Synthetic only.
 
 The producer inputs are TL2's own sanitized demonstration outputs
-(tools/factory-metrics/fixtures/stage-waits/), checked by TL2's validator.
+(fixtures/stage-waits/), checked by TL2's validator.
 Expected waits are read off that fixture's literal endpoints, never computed by
 the adapter: builder_start 09:00 -> 09:10 = 10, reviewer_start 10:00 -> 10:06 =
 6 and 11:11 -> 11:15 = 4, merge 11:31 -> 11:36 = 5, fix_after_changes

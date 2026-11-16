@@ -21,7 +21,7 @@ assert the process status, and check that the input directory gains no files.
 The checker prints conformance only and never invokes a helper.
 
 For a tagged example the tests join, by reference, EB5's synthetic
-`tools/factory-metrics/fixtures/bottlenecks-contract/accepted.json` and its bound
+`tools/war-room/fixtures/bottlenecks-contract/accepted.json` and its bound
 `fixtures/journey/journeys.json`. They use tag `synthetic-skills-1`, candidate
 revision `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb` (commit and tree), its three
 skill hashes of 64 `b`s, and exact CF4 keys `old-cf4-1` / `candidate-cf4-1`.

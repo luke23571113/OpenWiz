@@ -598,7 +598,7 @@ class Charts(unittest.TestCase):
 COLLECTOR = HERE / 'fixtures' / 'collector'
 HEADLINE = 'body-ci-bench-headline'
 SNAPSHOT_AT = '2030-03-01T12:30:00Z'
-# ci-bench's synthetic baseline (tools/ci-bench/fixtures/baseline/README.md), worked there by hand:
+# ci-bench's synthetic baseline (its retired fixtures/baseline/README.md), worked there by hand:
 # 3 robots, 3 successful code runs, 970 s of robot time: 5.3889 robot-minutes a run and
 # 3 × 60 ÷ (970 ÷ 180) = 33.4021 PRs an hour of capacity; 4 PRs merged in 3 hours, 1.3333 an hour.
 # `bench.py chart` prints them as 33.40, 5.39 and 1.33 in bench.md (docs/evidence/823/ci-bench-parity.log).
@@ -779,7 +779,7 @@ class PrsPerHour(unittest.TestCase):
             saved = json.dumps(doc, indent=1, sort_keys=True) + '\n'
             case.branch('war-room', '2030-01-02T06:05:00Z', {'collector/snapshot.json': saved})
             gather = test_gather.gatherer()
-            with patch.object(gather, 'snapshot', side_effect=AssertionError('the collector read again')):
+            with patch.object(gather, 'page_snapshot', side_effect=AssertionError('the collector read again')):
                 root, _ = case.gather(collector=True)
             self.assertEqual((root / 'collector' / 'snapshot.json').read_text(encoding='utf-8'), saved)
             case.publish(root, case.tmp / 'out' / 'selection.json')
@@ -797,7 +797,7 @@ class PrsPerHour(unittest.TestCase):
             doc['collected_at'] = '2030-01-01T23:00:00Z'
             case.branch('war-room', '2030-01-01T23:05:00Z', {'collector/snapshot.json': json.dumps(doc)})
             fresh = dict(snapshot(), repository=test_gather.REPO, collected_at='2030-01-02T12:30:00Z')
-            with patch.object(gather, 'snapshot', return_value=fresh) as read:
+            with patch.object(gather, 'page_snapshot', return_value=fresh) as read:
                 root, _ = case.gather(out=case.tmp / 'next-day', collector=True)
             read.assert_called_once()
             self.assertEqual(json.loads((root / 'collector' / 'snapshot.json').read_text())['collected_at'],

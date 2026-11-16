@@ -9,10 +9,10 @@ is an assertion to verify, never permission to execute.
 ## Boundary and compatibility
 
 ```sh
-python3 -I tools/factory-metrics/experiment_contract.py check \
-  tools/factory-metrics/fixtures/bottlenecks-contract/accepted.json \
-  --journey tools/factory-metrics/fixtures/journey/journeys.json
-python3 -I tools/factory-metrics/test_experiment_contract.py
+python3 -I tools/war-room/experiment_contract.py check \
+  tools/war-room/fixtures/bottlenecks-contract/accepted.json \
+  --journey tools/war-room/fixtures/journey/journeys.json
+python3 -I tools/war-room/test_experiment_contract.py
 ```
 
 Python public seams: `validate(bundle, journey_v1)`, `validate_journey(v1)`,

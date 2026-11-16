@@ -260,7 +260,7 @@ class Ci3(unittest.TestCase):
         record = self.fake.ci3_record()
         f = self.fake.collect('ci3', window=CI3_WINDOW)['ci3']
         self.assertEqual(f['state'], 'known')
-        # tools/ci-bench/test_ci3.py's worked heads: 930 s and 2520 s, one with a rerun.
+        # CI3's worked heads (test_ci3.py): 930 s and 2520 s, one with a rerun.
         result = f['value']['result']
         self.assertEqual((f['value']['heads'], result['timed'], result['p50_minutes'], result['p95_minutes'],
                           result['with_reruns']), (2, 2, 15.5, 42.0, 1))

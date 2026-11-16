@@ -10,7 +10,7 @@ current-head/run/attempt cases, complete and partial queue reads, and open,
 held and shared stage cases at, below and above the loaded TL1 limits.
 
 Expected values are literals read off the synthetic inputs below, or the TL2
-fixture's literal endpoints (tools/factory-metrics/fixtures/stage-waits/).
+fixture's literal endpoints (fixtures/stage-waits/).
 """
 import copy
 from datetime import datetime, timedelta

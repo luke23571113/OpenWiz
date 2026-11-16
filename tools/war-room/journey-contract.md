@@ -12,12 +12,12 @@ unknown** in every document.
 ## 1. Commands
 
 ```sh
-python3 -I tools/factory-metrics/journey.py collect --repo OWNER/REPO \
+python3 -I tools/war-room/journey.py collect --repo OWNER/REPO \
   --ticket N [--ticket N ...] [--usage DAILY.json ...] --out DIR
-python3 -I tools/factory-metrics/journey.py check DIR/journeys.json
-python3 -I tools/factory-metrics/journey.py bench DIR/journeys.json   # the bench's per-ticket facts
-python3 -I tools/factory-metrics/journey.py cf4 DIR/journeys.json     # CF4's findings by kind, links apart
-python3 -I tools/factory-metrics/test_journey.py
+python3 -I tools/war-room/journey.py check DIR/journeys.json
+python3 -I tools/war-room/journey.py bench DIR/journeys.json   # the bench's per-ticket facts
+python3 -I tools/war-room/journey.py cf4 DIR/journeys.json     # CF4's findings by kind, links apart
+python3 -I tools/war-room/test_journey.py
 ```
 
 - **Reads GitHub only,** through `gh`, with fixed query documents (never a
@@ -355,11 +355,11 @@ TL2 (#2337, spec #2185) measures the five stage goals of
 `cf4` and the EB5 outcomes stay as they were.
 
 ```sh
-python3 -I tools/factory-metrics/journey.py collect --repo OWNER/REPO --ticket N ... \
+python3 -I tools/war-room/journey.py collect --repo OWNER/REPO --ticket N ... \
   --stage-waits [--as-of YYYY-MM-DDTHH:MM:SSZ] --out DIR
-python3 -I tools/factory-metrics/journey.py check DIR/journeys.json --stage-waits DIR/stage-waits.json
-python3 -I tools/factory-metrics/journey.py bench DIR/journeys.json --stage-waits DIR/stage-waits.json \
-  [--settings tools/factory-metrics/limits.conf]
+python3 -I tools/war-room/journey.py check DIR/journeys.json --stage-waits DIR/stage-waits.json
+python3 -I tools/war-room/journey.py bench DIR/journeys.json --stage-waits DIR/stage-waits.json \
+  [--settings tools/war-room/limits.conf]
 ```
 
 **Reads.** Everything in section 2, plus, for each named ticket, every page of

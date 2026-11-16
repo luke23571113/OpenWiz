@@ -1,4 +1,4 @@
-# MT8 (#827), item 1, red first: at efa05ef with tools/ci-bench/ deleted, the collector's PRs an hour still runs tools/ci-bench/bench.py.
+# MT8 (#827), item 1, red first: at efa05ef with the ci-bench folder deleted, the collector's PRs an hour still runs the bench's own bench.py.
 $ python3 -I tools/war-room/test_collect_factory.py -k prs_per_hour
 F
 ======================================================================

@@ -1,9 +1,9 @@
 # Daily factory numbers (#566)
 
 ```sh
-python3 tools/factory-metrics/metrics.py --date 2026-11-01 \
+python3 tools/war-room/metrics.py --date 2026-11-01 \
   --repo OWNER/REPO --out /tmp/factory-2026-11-01
-python3 tools/factory-metrics/test.py
+python3 tools/war-room/test_metrics.py
 ```
 
 Python 3 standard library and `gh` only. Give `gh` the GitHub App's token with
@@ -15,7 +15,7 @@ The repository is only `--repo`: to read another one, pass it (#1279).
 **Ticket journeys (#1384):** `journey.py` collects one sanitized record per
 ticket, from grill to merge, for the benches and the CF4 eval, reusing this
 tool's reads and usage reader; see [journey-contract.md](journey-contract.md).
-`python3 -I tools/factory-metrics/test_journey.py` runs its proofs.
+`python3 -I tools/war-room/test_journey.py` runs its proofs.
 
 It prints the morning report and writes **only aggregates**, `report.json`,
 `report.md` (including the chart's data table) and `factory.svg`, in a new output
@@ -142,7 +142,7 @@ Synthetic example:
 
 ## Proof
 
-`test.py` runs the public CLI against an exact-call fake `gh`, in isolated
+`test_metrics.py` runs the public CLI against an exact-call fake `gh`, in isolated
 private temporary directories, with synthetic records only. Its worked example
 is independent arithmetic: 3 merges (01:15, 02:20, 04:30) / 24 = 0.125 per hour; gaps
 10 + 45 + 20 + 90 + 10 = 175 minutes; biggest gap ticket #14 at 90 minutes;
@@ -158,7 +158,7 @@ evidence and need no Mac, live CloudRoom data or credentials.
 
 Exit 0: metrics reported (cost sources may be unknown). Exit 1: untrustworthy
 inventory/records or local I/O failure. Exit 2: bad arguments, before any read.
-`FACTORY_METRICS_PY=/path/to/variant.py python3 tools/factory-metrics/test.py`
+`FACTORY_METRICS_PY=/path/to/variant.py python3 tools/war-room/test_metrics.py`
 runs the proofs against a variant for a negative check.
 
 ## First-successful-push receipt (#2177)
@@ -286,9 +286,9 @@ Edit the five assignments in [limits.conf](limits.conf), in minutes, then read
 the settings used without changing code:
 
 ```sh
-python3 -I tools/factory-metrics/limits.py
-python3 -I tools/factory-metrics/limits.py --settings /tmp/synthetic-limits.conf
-python3 -I tools/factory-metrics/test_limits.py
+python3 -I tools/war-room/limits.py
+python3 -I tools/war-room/limits.py --settings /tmp/synthetic-limits.conf
+python3 -I tools/war-room/test_limits.py
 ```
 
 The JSON reports all five loaded values under `minutes`, with schema
@@ -306,9 +306,9 @@ Benchmark the five stage waits from the same journey collection, then read
 them against the current settings:
 
 ```sh
-python3 -I tools/factory-metrics/journey.py collect --repo OWNER/REPO --ticket N --stage-waits --out DIR
-python3 -I tools/factory-metrics/journey.py bench DIR/journeys.json --stage-waits DIR/stage-waits.json
-python3 -I tools/factory-metrics/journey.py bench DIR/journeys.json --stage-waits DIR/stage-waits.json \
+python3 -I tools/war-room/journey.py collect --repo OWNER/REPO --ticket N --stage-waits --out DIR
+python3 -I tools/war-room/journey.py bench DIR/journeys.json --stage-waits DIR/stage-waits.json
+python3 -I tools/war-room/journey.py bench DIR/journeys.json --stage-waits DIR/stage-waits.json \
   --settings /tmp/synthetic-limits.conf
 ```
 

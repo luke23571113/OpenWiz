@@ -450,14 +450,21 @@ class Workflow(unittest.TestCase):
         reader = load(ROOT / 'tools/privacy-check/workflow.py', 'wr9_workflow')
         self.flow = reader.parse((ROOT / '.github/workflows/war-room.yml').read_text())
         self.jobs = self.flow['jobs']
+        # #827: the proofs run from their own pull-request-only, read-only workflow.
+        self.proof = reader.parse((ROOT / '.github/workflows/war-room-proof.yml').read_text())
 
     def test_hosted_runners_and_pull_request_only_proof(self):
-        self.assertEqual(sorted(self.jobs), ['preview', 'proof', 'publish'])
-        for name, job in self.jobs.items():
+        self.assertEqual(sorted(self.jobs), ['preview', 'publish'])
+        self.assertEqual(sorted(self.proof['jobs']), ['proof'])
+        for name, job in [*self.jobs.items(), *self.proof['jobs'].items()]:
             with self.subTest(name):
                 self.assertEqual(job['runs-on'], 'ubuntu-24.04')
-        for name in ('proof', 'preview'):
-            self.assertEqual(self.jobs[name]['if'], "github.event_name == 'pull_request'")
+        for job in (self.proof['jobs']['proof'], self.jobs['preview']):
+            self.assertEqual(job['if'], "github.event_name == 'pull_request'")
+        # catches (#827): the proof workflow gaining a write, a schedule or a dispatch.
+        self.assertEqual(set(self.proof['on']), {'pull_request'})
+        self.assertEqual(self.proof['permissions'], {'contents': 'read'})
+        self.assertNotIn('permissions', self.proof['jobs']['proof'])
         # R1: default off; nothing publishes until the orchestrator sets WAR_ROOM_PUBLISH to on.
         self.assertEqual(self.jobs['publish']['if'],
                          "vars.WAR_ROOM_PUBLISH == 'on' && github.event_name != 'pull_request' "

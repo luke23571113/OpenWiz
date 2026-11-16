@@ -3,7 +3,7 @@
 
 Every world is synthetic (fixtures/collector-factory/README.md says where each
 comes from). The daily world is factory-metrics' own test world, worked by hand
-in tools/factory-metrics/test.py: 3 merges (01:15, 02:20, 04:30) on 2030-01-02;
+in tools/war-room/test_metrics.py: 3 merges (01:15, 02:20, 04:30) on 2030-01-02;
 gaps 10 + 45 + 20 + 90 + 10 = 175 idle minutes, by hour 00h 40, 01h 15, 02h 20,
 03h 60, 04h 30, 23h 10; the biggest is ticket 14's 90 minutes; Actions 12
 minutes and $0.60, Claude 3000 tokens / 6 credits / $3, GPT 6000 / 9 / $6,

@@ -351,7 +351,24 @@ def daily_snapshot(saved, repo, clock):
                 return raw
         except (OSError, ValueError, TypeError, KeyError, UnicodeError):
             pass
-    return (json.dumps(snapshot(repo, clock=clock), indent=1, sort_keys=True) + '\n').encode()
+    return (json.dumps(page_snapshot(repo, clock=clock), indent=1, sort_keys=True) + '\n').encode()
+
+
+LEAN = 'Not read for the page (#827): the hourly publish reads only PRs an hour, the one fact its chart draws.'
+
+
+def page_snapshot(repository, *, clock=now):
+    """The page's snapshot (#827): `snapshot`'s form, but only PRs an hour is read; every other
+    fact is unavailable with its reason, so the publish adds one collector read, never all of them."""
+    since, until = collect_factory.window(None, None, clock())
+    factory = collect_factory.read(repository, ['prs_per_hour'], since=since, until=until, clock=clock)['factory']
+    factory = {name: factory.get(name) or collect_factory.unavailable(name, LEAN) for name in collect_factory.FACTS}
+    ci = {name: collect_factory.unavailable(name, LEAN) for name in collect_factory.SCHEMA['x-facts']['ci']}
+    ends = [f['read']['ended_at'] for f in factory.values() if f['read']]
+    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repository, 'collected_at': max([clock(), *ends]),
+           'factory': factory, 'ci': ci}
+    scan_bytes(json.dumps(doc, sort_keys=True).encode())
+    return doc
 
 
 def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None,

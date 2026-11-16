@@ -411,13 +411,14 @@ Benches table: every slot, its state and how many of its values are measured,
 as text a phone reads natively.
 
 - **The job:** [`.github/workflows/war-room.yml`](../../.github/workflows/war-room.yml),
-  beside `board.yml`, on GitHub-hosted `ubuntu-24.04` for all three jobs, never
-  `vars.CI_RUNS_ON`. A pull request runs `proof` (`test_publish.py`) and a
-  `preview` (tick and draw on an empty history, no publish). A dispatched or
+  beside `board.yml`, on GitHub-hosted `ubuntu-24.04` for both jobs, never
+  `vars.CI_RUNS_ON`. A pull request runs a `preview` (tick and draw on an empty history, no publish). A dispatched or
   scheduled run from `main` is the `publish` job alone: `publish.sh` runs
   `test_publish.py` first, then `publish.py publish`. Only `publish` has
   `contents: write`, it pushes only `refs/heads/war-room`, and the
-  `war-room-publication` concurrency group serialises it.
+  `war-room-publication` concurrency group serialises it. The proofs run from
+  [`war-room-proof.yml`](../../.github/workflows/war-room-proof.yml) (#827): pull
+  requests only, `contents: read`, every war-room test and the CI time budgets.
 - **Default off:** `publish` runs only when the repository variable
   `WAR_ROOM_PUBLISH` is `on`, so after merge neither the backup cron nor a
   dispatch publishes or spends a minute. Activation is the orchestrator's
@@ -570,7 +571,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
 | --- | --- | --- |
 | Board | `history.jsonl` on `board`, checked by the board's own row validator. The latest row's six counts are **partial**, in the board's daily window (`[PST day start, min(commit, next PST day))`), each a level at the sample time. The startable percent and fed ratio need ticket identities from a `graph.json` of the same read, so without one they stay Unknown with that prerequisite | The `board` commit's time and link |
 | Credits | `credits.jsonl` on `board`, through WR2's native `credits` adapter | The `board` commit's time and link |
-| CI bench | The `windows/*/point.json` on `ci-benchmarks` with the latest `until`, through WR2's `ci_bench` adapter | The `ci-benchmarks` commit's time and link |
+| CI bench | Retired with the bench (#827): an explained missing slot. PRs an hour against the baseline comes from the collector snapshot (`collector/snapshot.json`, saved on `war-room` and reused for its UTC day) | None |
 | Current activity | WR8's `activity.project` with the existing `bench.gh`, `metrics.collect_prs` and `metrics.graphql` readers. `ci.yml`'s whole run history is over the API's 1000-item limit, so its run list is read bounded (`gather.current_runs`): the active runs, one status at a time, and the completed runs created this UTC day, the only runs WR8 uses. Each listing keeps `bench.pages`' checks; a run listed twice or under another status refuses the CI counts. Its observation bytes are kept beside its provider. Pools default to `closedwiz-pc` and `ubuntu-24.04` | The read's end, and this run's link |
 | Ticket journeys, rework, cost | `journey.py`'s `collect` for the tickets closed by the merged cohort, then WR6 `rework.project` and WR4 `cost.project` (journeys and the CI point). The cohort is the PRs merged in the latest complete UTC hour that has a merged PR closing a ticket, looking back up to 6 hours | The read's end, and this run's link |
 | Answer time | WR5's own projection when one is supplied, otherwise `answer_time.unavailable()` and its exact prerequisites. No recorded-answer source exists yet | This run's link |
@@ -589,8 +590,8 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
   nothing is selected or published. The board graph's ticket text is used only
   in memory and never written. The publish's own scan of every published file is
   unchanged.
-- **Reads only.** `board` and `ci-benchmarks` are fetched (depth 1) and never
-  pushed. The `gh` reads are GETs and fixed GraphQL queries. The publish job adds
+- **Reads only.** `board`, and `war-room` for the day's saved collector snapshot, are fetched (depth 1) and never
+  pushed by the gather. The `gh` reads are GETs and fixed GraphQL queries. The publish job adds
   `actions`, `issues` and `pull-requests` read scopes for them and still
   pushes only `refs/heads/war-room`. It stays on GitHub-hosted `ubuntu-24.04`,
   and its timeout cap rises from 10 to 15 minutes. No dependency, runner,
@@ -608,8 +609,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
 
 Red and green runs are in `fixtures/gather/`, which also holds the synthetic
 `history.jsonl`, `credits.jsonl` and `cohort.json`. The test builds the
-`board` and `ci-benchmarks` branches from these files, the page-history graph
-and the cost CI point. It reuses WR8's synthetic gh, WR6's journeys and WR5's
+`board` branch from these files and the page-history graph. It reuses WR8's synthetic gh, WR6's journeys and WR5's
 pairs. All of these are offline fixture evidence, not a live result.
 
 ## Health collection and v2 history (WRD1)
@@ -625,7 +625,7 @@ a v1 sample's health as unobserved. Nothing is backfilled.
 | --- | --- | --- |
 | Main CI | `health.main_ci`: the `main` head, every page of its `ci.yml` push runs, a reread of the latest run, the head again | Green from another head, a pending, cancelled or changing run, a same-second tie or a failed read |
 | CI queue | `health.ci_queue`: WR8's same checked read (no extra API call), each queued job's `created_at` | Zero from a partial or changing read; a count when a job's pool is unknown; an invented queue limit |
-| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/factory-metrics/limits.conf` | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
+| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/war-room/limits.conf` (the saved owner label keeps its original `tools/factory-metrics/limits.conf`, an immutable value) | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
 
 The same pinned stage evidence also fills the detailed `stage_waits` slot (WR3).
 
@@ -784,9 +784,9 @@ Fixture results alone are not live acceptance.
 **Data branches in another repository: `gather.py --data-remote URL`.** Optional. `URL`
 is any remote `git fetch` accepts (the caller authenticates git). It governs only the
 read-only, depth-1 fetches of `refs/heads/board` (`history.jsonl`, `credits.jsonl`,
-`graph.json`) and `refs/heads/ci-benchmarks` (`windows/*/point.json`); nothing is pushed.
+`graph.json`); nothing is pushed.
 Omitted, it defaults to `--remote`, so behaviour is unchanged. Given, `--remote` (still
-required) is not read by the gather. `--repo` keeps every `gh` read, run and pull-request
+required) is read by the gather only for the saved collector snapshot on `war-room`. `--repo` keeps every `gh` read, run and pull-request
 link and the board graph's `repo` check. The board, credits and CI-bench commit evidence
 links name `OWNER/REPO` when `URL` is exactly `https://github.com/OWNER/REPO` or
 `https://github.com/OWNER/REPO.git`, and `--repo` otherwise, as before.
