@@ -173,8 +173,42 @@ class Check(unittest.TestCase):
         self.assertEqual(lines[-2], "Actions minutes in 2026-01 so far: 33, an estimate (this repository's job"
                                     " times, each rounded up to a minute; billing: gh api failed (exit 1): HTTP 403).")
         self.assertEqual((marker(lines)["actions_minutes"], marker(lines)["minutes_source"]), (33, "estimate"))
-        self.assertIn(f"{B}/actions/runs?created=2026-01-01T00:00:00Z..2026-01-06T02:30:00Z&per_page=100&page=1",
+        # Runs created up to 30 days before the month can still run in it (R2).
+        self.assertIn(f"{B}/actions/runs?created=2025-12-02T00:00:00Z..2026-01-06T02:30:00Z&per_page=100&page=1",
                       gh.asked)
+
+    def test_the_estimate_counts_execution_in_the_month_not_creation(self):
+        # Bug (R2): runs are picked by creation date, so a run created on the
+        # last day of January that runs in February (queued, or a later
+        # attempt) is left out, and February's estimate is low; or a run's
+        # January execution is charged to February. GitHub reruns a run up to
+        # 30 days after it started, so runs created from 30 days before the
+        # month are read, and only each job's time inside the month counts.
+        now = "2026-02-02T17:00:00Z"
+        def job(i, started, completed):
+            return {"id": i, "name": "j", "conclusion": "success", "created_at": started, "started_at": started,
+                    "completed_at": completed, "runner_name": "r", "run_attempt": 1, "steps": []}
+        runs = {"total_count": 3, "workflow_runs": [
+            {"id": 700, "created_at": "2026-01-31T23:59:00Z"},
+            {"id": 701, "created_at": "2026-01-03T00:00:00Z"},
+            {"id": 702, "created_at": "2026-01-31T23:40:00Z"}]}
+        gh = FakeGitHub({
+            "organizations/{owner}/settings/billing/usage?year=2026&month=2": FAIL,
+            f"{B}/actions/runs?created=": runs,
+            # Queued at 23:59, ran 00:00 to 01:24 in February: 84 minutes.
+            f"{B}/actions/runs/700/jobs": {"total_count": 1, "jobs": [
+                job(1, "2026-02-01T00:00:00Z", "2026-02-01T01:24:00Z")]},
+            # Its first attempt ran in January (none of it counts); its rerun 29 days later, 5 minutes.
+            f"{B}/actions/runs/701/jobs": {"total_count": 2, "jobs": [
+                job(2, "2026-01-03T00:00:00Z", "2026-01-03T00:30:00Z"),
+                dict(job(3, "2026-02-01T12:00:00Z", "2026-02-01T12:05:00Z"), run_attempt=2)]},
+            # 23:50 to 00:10: only the 10 minutes after midnight are February's.
+            f"{B}/actions/runs/702/jobs": {"total_count": 1, "jobs": [
+                job(4, "2026-01-31T23:50:00Z", "2026-02-01T00:10:00Z")]},
+        })
+        minutes, source, _ = ci3_weekly.read_minutes(gh, now)
+        self.assertEqual((minutes, source), (99, "estimate"))
+        self.assertIn(f"{B}/actions/runs?created=2026-01-02T00:00:00Z..{now}&per_page=100&page=1", gh.asked)
 
     def test_a_failed_read_still_prints_the_note(self):
         # Bug: one failed read (a fork PR in the window, the comments) silences
