@@ -47,10 +47,10 @@ API = 'https://api.github.com'
 TIMEOUT = 30
 
 
-def run(argv, limit=4 * 1024 * 1024):
+def run(argv, limit=4 * 1024 * 1024, env=None):
     """One read. Returns (exit code, parsed JSON or None). Never echoes output."""
     try:
-        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT)
+        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT, env=env)
     except (OSError, subprocess.TimeoutExpired):
         return None, None
     if len(result.stdout) > limit:
@@ -119,11 +119,21 @@ def gh(path):
     return run([program, 'api', path])
 
 
+def github_com(path):
+    """#633 R1: one gh read bound to github.com, where the browser sign-in
+    happens. gh otherwise follows GH_HOST, or defaults to another server when
+    that server holds its only login: neither may stand in for github.com."""
+    program = shutil.which('gh')
+    if program is None:
+        return None, None
+    return run([program, 'api', path], env={**os.environ, 'GH_HOST': 'github.com'})
+
+
 def account():
     """(failure code or None, login): the signed-in account read from GitHub
     now (#633). Only a person's own account is a login; a bot, an unreadable
     answer or a browser that merely returned is not."""
-    code, user = gh('user')
+    code, user = github_com('user')
     if code is None or code == 4:  # gh missing or silent, or authentication required
         return 'identity_signed_out', None
     if code != 0 or type(user) is not dict:
@@ -142,7 +152,7 @@ def read_back(repository):
     failure, login = account()
     if failure is not None:
         return failure, None
-    code, repo = gh(f'repos/{repository}')
+    code, repo = github_com(f'repos/{repository}')
     if code != 0 or type(repo) is not dict:
         return ('identity_no_push' if code == 1 else 'identity_unreadable'), login
     permissions = repo.get('permissions')

@@ -29,6 +29,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import store  # noqa: E402
@@ -40,6 +41,76 @@ SIGN_IN_TIMEOUT = 15 * 60  # the owner's browser approval, then gh's own exchang
 SIGN_IN = ('auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--skip-ssh-key')
 # gh prefers these over its saved login; a sign-in must never stand on one.
 TOKEN_VARIABLES = ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN')
+
+
+# R2: the pending browser sign-in, durable beyond this process. Its gh child
+# outlives an interrupted wrapper; until that child ends, no second one starts.
+PENDING = 'github-login-pending.json'
+
+
+def sign_in_running(pid):
+    """Whether PID is still our `gh auth login` child (not a reused pid or a
+    reaped zombie). None when the platform cannot say."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return False  # another user's process: not our sign-in
+    proc = Path(f'/proc/{pid}/cmdline')
+    if proc.parent.parent.is_dir() and Path('/proc/self').exists():
+        try:
+            args = proc.read_bytes().split(b'\0')
+        except OSError:
+            return False
+        words = tuple(a.decode(errors='replace') for a in args if a)
+        return len(words) > len(SIGN_IN) and words[-len(SIGN_IN):] == SIGN_IN
+    for ps in ('/bin/ps', '/usr/bin/ps'):
+        if Path(ps).is_file():
+            try:
+                shown = subprocess.run([ps, '-o', 'args=', '-p', str(pid)], capture_output=True, text=True,
+                                       timeout=10, stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            return shown.returncode == 0 and shown.stdout.rstrip('\n').endswith(' '.join(SIGN_IN))
+    return None
+
+
+def pending(saved):
+    """True while an earlier sign-in may still be waiting for the owner. Bounded
+    by the sign-in's own time limit; an unreadable record counts until then."""
+    path = saved.dir / PENDING
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    if time.time() - info.st_mtime > SIGN_IN_TIMEOUT + 60:
+        return False
+    try:
+        record = json.loads(path.read_text(), object_pairs_hook=store.unique)
+        pid = record['pid']
+        store.require(set(record) == {'pid'} and (pid is None or store.positive(pid)), 'invalid pending sign-in')
+    except (OSError, ValueError, KeyError, TypeError, store.Refused):
+        return True
+    if pid is None:
+        return True  # recorded before its child started: wait out the bound
+    return sign_in_running(pid) is not False
+
+
+def mark_pending(saved, pid):
+    """Saves the pending sign-in (owner-only, replaced atomically) before and
+    after the child starts; None clears it."""
+    path = saved.dir / PENDING
+    if pid is False:
+        path.unlink(missing_ok=True)
+        return
+    temporary = saved.dir / f'.{PENDING}.{os.getpid()}.tmp'
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as handle:
+        handle.write(json.dumps({'pid': pid}))
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
 
 
 def selected_repository(saved, explicit):
@@ -84,16 +155,33 @@ def sign_in(args):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return result('login_in_progress', None)
+        # R2: an earlier sign-in whose wrapper died may still await the owner.
+        if pending(saved):
+            return result('login_in_progress', None)
         # A sign-in that finished while this one waited, or before a restart, is reused.
         failure, login = setup.account()
         if failure is None:
+            mark_pending(saved, False)
             return result('login_reused', login, repository)
+        mark_pending(saved, None)  # saved before the child starts
+        child = None
         try:
             # gh shows its one-time code and browser prompt to the owner directly.
-            finished = subprocess.run([program, *SIGN_IN], stdin=sys.stdin, stdout=sys.stderr,
-                                      stderr=sys.stderr, timeout=SIGN_IN_TIMEOUT).returncode
-        except (OSError, subprocess.TimeoutExpired):
+            child = subprocess.Popen([program, *SIGN_IN], stdin=sys.stdin, stdout=sys.stderr, stderr=sys.stderr)
+            mark_pending(saved, child.pid)
+            try:
+                finished = child.wait(timeout=SIGN_IN_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+                finished = None
+        except OSError:
             finished = None
+        finally:
+            # Cleared only once the child has ended; a wrapper that dies first
+            # leaves the record for the next request.
+            if child is None or child.poll() is not None:
+                mark_pending(saved, False)
         failure, login = setup.account()
         if failure is None:
             return result('login_verified', login, repository)
