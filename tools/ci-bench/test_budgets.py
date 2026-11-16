@@ -160,6 +160,21 @@ class Check(unittest.TestCase):
         self.assertEqual(odd.returncode, 1, odd.stdout + odd.stderr)
         self.assertIn("source 'guessed' is not measured, derived:<job> or unmeasured", odd.stderr)
 
+    # Bug (R2): a job declared with a quoted YAML key is left out of the
+    # inventory, so it runs with GitHub's 360-minute default and no budget.
+    def test_a_quoted_job_key_is_checked_and_other_declarations_refused(self):
+        quoted = workflow([("always", 12, False)]) + '  "extra":\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo synthetic\n'
+        r = self.check(quoted, self.PRIVACY, row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job extra has no budget row", r.stderr)
+        single = quoted.replace('"extra":', "'extra':")
+        r = self.check(single, self.PRIVACY, row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertIn("ci.yml job extra has no budget row", r.stderr)
+        flow = workflow([("always", 12, False)]) + "  ? extra\n  : {runs-on: ubuntu-24.04}\n"
+        r = self.check(flow, self.PRIVACY, row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml line 10: a job declaration budgets.py can't read", r.stderr)
+
     # The real workflows and table: the guard CI runs.
     def test_the_repository_workflows_match_their_table(self):
         r = run("check")
@@ -326,6 +341,40 @@ class Table(unittest.TestCase):
         # Unmeasured: today's 360, no p95, its one sample counted.
         self.assertEqual(rows[("ci.yml", "toolkit-nightly", "all")][:3] + rows[("ci.yml", "toolkit-nightly", "all")][6:],
                          ["360", "0", "1", "unmeasured"])
+
+
+    # Bug (R1): a traced or planted run whose lane tests failed (so its own
+    # trace upload was skipped) is counted as normal, inflating the normal
+    # budget; a run whose mode can't be known is guessed instead of left out.
+    def test_mode_comes_from_any_trace_step_that_ran_and_unclear_runs_are_left_out(self):
+        ci = workflow([("always", 60, True), ("rust", 60, True)])
+        def always(i, upload, first="success"):
+            a, b = i * 3600, i * 3600 + 60
+            rec = job(i, "always", 60)
+            rec["steps"] += [{"name": "Run npm test", "conclusion": first, "started_at": stamp(a), "completed_at": stamp(b)},
+                             {"name": "Run actions/upload-artifact@0000000000000000000000000000000000000000",
+                              "conclusion": upload, "started_at": stamp(b), "completed_at": stamp(b)}]
+            rec["conclusion"] = rec["run_concl"] = first
+            return rec
+        jobs = []
+        for i in range(1, 6):    # normal: every trace step skipped after clean steps
+            jobs += [always(i, "skipped"), job(i, "rust (1)", 300 + i)]
+        for i in range(6, 11):   # traced, green
+            jobs += [always(i, "success"), job(i, "rust (1)", 1800 + i, traced=True)]
+        # Run 11: traced (always uploaded its trace), but the rust tests
+        # failed, so rust's own trace upload was skipped.
+        jobs += [always(11, "success"), job(11, "rust (1)", 3000, conclusion="failure")]
+        # Run 12: always and rust both failed before their trace steps: no
+        # step says which mode it ran in.
+        jobs += [always(12, "skipped", first="failure"), job(12, "rust (1)", 2000, conclusion="failure")]
+        r, rows = self.table(jobs, ci=ci)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # normal: 301..305 s, p95 of 5 is 305 s; 1.5 x 305 s = 7.625 min -> 8.
+        self.assertEqual(rows[("ci.yml", "rust", "normal")][:3], ["8", "305", "5"])
+        # traced: 1806..1810 s and the failed 3000 s; p95 of 6 is 3000 s -> 75.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")][:3], ["75", "3000", "6"])
+        self.assertEqual(rows[("ci.yml", "always", "traced")][2], "6")
+        self.assertIn("ci.yml: 1 run with no clear traced or normal mode, left out of two-mode jobs", r.stdout)
 
 
 class Apply(unittest.TestCase):
