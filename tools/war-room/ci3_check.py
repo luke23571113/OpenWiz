@@ -5,9 +5,10 @@
     ci3_check.py due [--now T]                     the Cloudroom gate: one line on every third day, else nothing
 
 T is a UTC time, YYYY-MM-DDTHH:MM:SSZ (default: now). `check` reads GitHub
-only through the CI bench's reader (`gh api <path>`, GET): the CI3 measure
-for the last 7 days (ci3.py), spec #780's comments for the last note, and the
-month's Actions minutes (the organisation's billing usage, else this
+only through the CI bench's reader (`gh api <path>`, GET), for GH_REPO
+(default openwizdev/OpenWiz): the CI3 measure for the last 7 days, as the war
+room collector's `ci3` fact (collect_ci.py, which runs ci3.py), spec #780's
+comments for the last note, and the month's Actions minutes (the organisation's billing usage, else this
 repository's job times as an estimate, else unknown). A read that fails is
 said in the finding, never dropped: every run is due for its note. `due`
 reads no network: it counts Pacific days from loops/ci3-weekly.json's anchor.
@@ -20,10 +21,10 @@ from decimal import Decimal
 import importlib.util
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sys
-import tempfile
 import time
 
 HERE = Path(__file__).resolve().parent
@@ -37,6 +38,7 @@ bench = ci3.bench  # the bench's reader and checks, as CI3 reads them
 from bench import Fail, as_int, as_list, as_obj, as_str, as_time, need, secs  # noqa: E402
 
 SPEC = 780
+REPO = "openwizdev/OpenWiz"
 RECORD = ROOT / "docs" / "ci3.md"
 FLEET = ROOT / "docs" / "agents" / "fleet.md"
 DEFINITION = ROOT / "loops" / "ci3-weekly.json"
@@ -219,11 +221,18 @@ def read_minutes(read, now, workers=1):
         return None, None, f"billing: {no_billing}; estimate: {e}"
 
 
-def read_measure(read, since, until, now, workers=1):
-    with tempfile.TemporaryDirectory(prefix="ci3-check-") as tmp:
-        out = Path(tmp) / "window.json"
-        ci3.collect(since, until, out, workers, read=read, now=now)
-        return ci3.measure(ci3.read_window(out), label=f"AFTER {until[:10]}")
+def read_measure(repo, since, until):
+    """The CI3 measure for [since, until): the war room collector's `ci3` fact, read now
+    (tools/war-room/collector.v1.md, "The on-demand read"), so the note's numbers are the page's.
+    A fact the collector could not establish says its own prerequisite."""
+    import collect_ci  # here, not at the top: `due` stays offline and light
+    try:
+        fact = collect_ci.read(repo, ["ci3"], since=since, until=until)["ci"]["ci3"]
+    except (collect_ci.Refused, ValueError) as e:
+        raise Fail(f"the collector refused the read: {e}")
+    if fact["state"] == "unavailable":
+        raise Fail(" ".join(fact["prerequisites"]))
+    return fact["value"]
 
 
 # ---------------------------------------------------------------- the finding
@@ -285,9 +294,12 @@ def path_lines(rec):
             f" {rec['runner_minutes']['total']:,.1f}."]
 
 
-def check(now, read=None, record=RECORD, authors=None, workers=1):
-    """The finding: the note's numbers, in the order the note gives them. Every failed read is said."""
+def check(now, read=None, record=RECORD, authors=None, workers=1, repo=None):
+    """The finding: the note's numbers, in the order the note gives them. Every failed read is said.
+    `read` serves the comments and the minutes; the measure is the collector's, for `repo`
+    (default GH_REPO, else this project's repository)."""
     read = read or bench.gh
+    repo = repo or os.environ.get("GH_REPO") or REPO
     until = utc((secs(now) // 3600) * 3600 - SETTLE)
     since = utc(secs(until) - DAYS * 86400)
     month = now[:7]
@@ -298,7 +310,7 @@ def check(now, read=None, record=RECORD, authors=None, workers=1):
         except Fail as e:
             return None, str(e)
 
-    rec, no_rec = attempt(lambda: read_measure(read, since, until, now, workers))
+    rec, no_rec = attempt(lambda: read_measure(repo, since, until))
     before, no_before = attempt(lambda: read_before(record))
     note, no_note = attempt(lambda: read_last_note(read, authors if authors is not None else record_authors()))
     minutes, source, words = read_minutes(read, now, workers)
@@ -376,6 +388,7 @@ def main(argv=None):
     g.add_argument("--definition", default=str(DEFINITION))
     args = p.parse_args(argv)
     now = args.now or utc(time.time())
+    os.environ.setdefault("GH_REPO", REPO)  # one repository for every read: the collector's and gh's own
     if not bench.TIME.fullmatch(now):
         p.error(f"not a UTC time: {now}")
     try:

@@ -3,6 +3,7 @@
 
     ci3.py collect --since T --until T --out FILE   read a window from GitHub (gh api, GET only, through bench.py)
     ci3.py measure FILE [--label TEXT]              print the window's record (openwiz.ci3.v1) on stdout
+    ci3.py check-steps [--workflow FILE]           require a row of steps.tsv for every step of ci.yml
 
 T is a UTC time, YYYY-MM-DDTHH:MM:SSZ. A window holds the PR heads whose
 clock starts at or after --since and before --until. Python 3 standard
@@ -14,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 from pathlib import Path
+import re
 import sys
 import time
 from urllib.parse import quote
@@ -297,7 +299,7 @@ def split(path, total, table):
             d = bench.duration(step)
             covered += d
             try:
-                cat = bench.category(table, step["name"], job["name"])
+                cat = category(table, step["name"], job["name"])
             except Fail:
                 unclassified += d
                 continue
@@ -464,6 +466,46 @@ def measure(window, label=None, table=None):
     }
 
 
+# ---------------------------------------------------------------- step coverage
+
+
+def category(table, step, job):
+    """The one row of the step table a step's name matches (bench.py's rule), or Fail naming this table."""
+    name = re.sub(r"@\S+", "", step)
+    hits = [cat for cat, pat in table if pat.fullmatch(name)]
+    if len(hits) != 1:
+        how = "matches no row" if not hits else f"matches {len(hits)} rows"
+        raise Fail(f"step '{step}' (job {job}) {how} of {STEPS}")
+    return hits[0]
+
+
+def check_steps(workflow):
+    """Every step of the workflow has exactly one row in the step table, so CI3's critical path
+    classifies it. Moved with the table from ci-bench's `bench.py check-steps` (#826), unchanged:
+    explicit names are API names; otherwise GitHub prefixes uses/run with Run. Parse step entries,
+    not name/run words inside scripts or comments, and refuse unnamed multiline runs."""
+    table = bench.read_table(STEPS)
+    entries = re.split(r"(?m)^      - ", bench.read_file(workflow))[1:]
+    if not entries:
+        raise Fail(f"{workflow}: no steps found")
+    for entry in entries:
+        fields = {}
+        for line in entry.splitlines():
+            match = re.match(r"^(?:        )?(name|run|uses):\s*(.*?)\s*$", line)
+            if match:
+                fields[match[1]] = re.sub(r"\s+#.*$", "", match[2]).strip("\"'")
+        if "name" in fields:
+            name = re.sub(r"\$\{\{.*?\}\}", "*", fields["name"])
+        elif "uses" in fields:
+            name = "Run " + fields["uses"]
+        elif "run" in fields and fields["run"] not in ("|", ">", "|-", ">-"):
+            name = "Run " + fields["run"]
+        else:
+            raise Fail(f"{workflow}: step needs an explicit name")
+        category(table, name, str(workflow))
+    print(f"covered {len(entries)} CI steps")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="ci3.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -475,6 +517,8 @@ def main(argv=None):
     m = sub.add_parser("measure")
     m.add_argument("file")
     m.add_argument("--label")
+    k = sub.add_parser("check-steps")
+    k.add_argument("--workflow", default=str(ROOT / ".github" / "workflows" / "ci.yml"))
     args = p.parse_args(argv)
     try:
         if args.cmd == "collect":
@@ -482,6 +526,8 @@ def main(argv=None):
                 if not bench.TIME.fullmatch(t):
                     p.error(f"not a UTC time: {t}")
             collect(args.since, args.until, args.out, args.workers)
+        elif args.cmd == "check-steps":
+            check_steps(args.workflow)
         else:
             print(json.dumps(measure(read_window(args.file), args.label), indent=2, sort_keys=True))
     except Fail as e:
