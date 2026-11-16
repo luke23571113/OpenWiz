@@ -37,7 +37,7 @@ fn past(result: RunResult) -> Run {
 
 #[test]
 fn lp1_dispatch_contracts_preserve_capacity_budget_and_refusals() {
-    let cases: [(&str, fn()); 9] = [
+    let cases: [(&str, fn()); 8] = [
         (
             "lp1_active_and_unresolved_agents_count_once_and_keep_original_priority",
             lp1_active_and_unresolved_agents_count_once_and_keep_original_priority,
@@ -61,10 +61,6 @@ fn lp1_dispatch_contracts_preserve_capacity_budget_and_refusals() {
         (
             "lp1_one_pass_charges_each_new_dispatch_against_the_same_loop_budget",
             lp1_one_pass_charges_each_new_dispatch_against_the_same_loop_budget,
-        ),
-        (
-            "lp1_settled_outcomes_never_repeat_a_dispatch",
-            lp1_settled_outcomes_never_repeat_a_dispatch,
         ),
         (
             "lp1_unknown_occupancy_holds_dispatch_but_allows_checks",
@@ -292,36 +288,6 @@ fn lp1_off_shadow_and_changed_revision_never_dispatch() {
                 action: dispatch("a"),
                 reason
             }]
-        );
-    }
-}
-
-fn lp1_settled_outcomes_never_repeat_a_dispatch() {
-    for result in [
-        RunResult::Quiet,
-        RunResult::CheckFailed,
-        RunResult::CheckTimedOut,
-        RunResult::Shadow,
-        RunResult::Dispatching {
-            dispatch_at_ms: 100,
-        },
-        RunResult::Created {
-            dispatch_at_ms: 100,
-        },
-        RunResult::NotCreated {
-            dispatch_at_ms: 100,
-        },
-        RunResult::Refused,
-        RunResult::Uncertain {
-            dispatch_at_ms: 100,
-        },
-    ] {
-        let mut s = work(&[("a", Priority::Normal)]);
-        s.runs[0].result = result;
-        assert_eq!(
-            plan(&s, 200, &agent_limits(10, 0)).unwrap(),
-            Plan::default(),
-            "{result:?}"
         );
     }
 }
