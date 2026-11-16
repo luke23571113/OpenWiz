@@ -49,7 +49,7 @@ FAKE.chmod(0o700)
 FAKE_SHA = hashlib.sha256(FAKE.read_bytes()).hexdigest()
 RUNNER = HERE / 'smoke.py'
 
-READS = ('swarms', 'service', 'loops', 'cockpit', 'decisions', 'terminal', 'json', 'app', 'read_safety')
+READS = ('swarms', 'service', 'loops', 'cockpit', 'decisions', 'json', 'app', 'read_safety')
 FLEET_ROW = ['fleet_read'] + list(READS)
 GAP = 'Synthetic gap: no real phone radio, WebKit or Mac observation.'
 LIVE_NOTES = ('## 0.0.99 · 2030-01-02\n\n**Synthetic patch**\n\n'

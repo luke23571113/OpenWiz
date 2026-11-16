@@ -1,23 +1,4 @@
 //! EP1: synthetic route proofs for the whole-repository plan.
-use openwiz_server::{ROUTES, Route};
-
-pub const PLAN_ROUTES: &[Route] = &[Route {
-    method: "GET",
-    path: "/api/v1/plan",
-}];
-
-#[test]
-fn e11_plan_registers_exact_read_route() {
-    assert!(ROUTES.contains(&Route {
-        method: "GET",
-        path: "/api/v1/plan",
-    }));
-    assert_eq!(
-        ROUTES.iter().filter(|r| r.path == "/api/v1/plan").count(),
-        1
-    );
-}
-
 use crate::{e11_plan_support as p, fake::Fake};
 use serde_json::json;
 

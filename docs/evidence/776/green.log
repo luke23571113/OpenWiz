@@ -1,0 +1,58 @@
+Scoped local checks at 740de0be4bc6445e61568f1b6c18b70043740a3f
+fmt-ok
+clippy-ok
+== checks
+test result: ok. 144 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 179.25s
+== cli-agent
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.89s
+== proof
+test result: ok. 125 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.32s
+== messaging
+test result: ok. 188 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.75s
+== ci/shard/test.py OK
+== ci/select/test_pick.py OK
+== tools/war-room/test_page_history.py OK
+== tools/live-smoke/test_smoke.py OK
+== tools/live-smoke/test_review.py OK
+== tools/live-smoke/test_receipt.py OK
+== tools/live-smoke/test_restriction.py OK
+{"case": "R7", "head": true, "source_sha256": "6a032dcb05707b72a33c32d6c4df8724adb2b74ef2cb6d2eac821b5e3731f320", "port_cases": "pass"}
+{"fixture_dispatch": "pass", "dry_run": "not_run", "guard_refusal": "pass", "live": "not_run", "initial_fake_reads": 8}
+docs-only rc=0
+
+Carriage-guard fix at f4531c99707938810dcfbb1b839136973e764704 (main merged at c859d32)
+carriage guard: all 6 added paths are classified
+tools/open-import/test_guard.py OK
+tools/open-import/test_import.py OK
+tools/open-import/test_frozen.py OK
+
+Scoped checks after merging main (RL7) at 77d615fe6c416c9ee6532994c797f7437381ef39
+fmt-ok
+clippy-ok
+built
+== checks
+test result: ok. 146 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 182.28s
+
+== cli-agent
+test result: ok. 60 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.87s
+
+== proof
+test result: ok. 93 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 41.54s
+
+== tools/live-smoke/test_smoke.py OK
+== tools/live-smoke/test_review.py OK
+== tools/live-smoke/test_receipt.py OK
+== tools/live-smoke/test_restriction.py python3: can't open file '/tmp/scratch/OpenWiz/tools/live-smoke/test_restriction.py': [Errno 2] No such file or directory
+== tools/live-smoke/test_kit.py OK
+== tools/war-room/test_page_history.py OK
+== ci/shard/test.py OK
+== ci/select/test_pick.py OK
+== ci/select/test_trace.py OK
+== ci/select/test_job.py OK
+== ci/select/test_steps.py OK
+== tools/open-import/test_guard.py OK
+== tools/open-import/test_import.py FAILED (failures=12)
+== test_fixture {"fixture_dispatch": "pass", "dry_run": "not_run", "guard_refusal": "pass", "live": "not_run", "initial_fake_reads": 8}
+== carriage carriage guard: all 6 added paths are classified
+== docs-only rc=0
+Note: tools/live-smoke/test_restriction.py no longer exists on main. tools/open-import/test_import.py fails the same 12 cases on origin/main itself.
