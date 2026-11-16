@@ -964,7 +964,7 @@ fn r3_the_service_app_never_exchanges_for_another_owners_or_another_installation
     use openwiz_adapter_github::allowlist::Invocation;
     use openwiz_adapter_github::app::{App, Identity, Mode};
     let root = std::env::temp_dir().join(format!("ow-606-r3-{}", std::process::id()));
-    super::dirs::private_dir_all(&root.join("service/app")).unwrap();
+    super::dirs::private_dir_all(root.join("service/app")).unwrap();
     let key_path = root.join("service/app/private-key.pem");
     std::fs::write(&key_path, &key().0).unwrap();
     std::fs::set_permissions(
