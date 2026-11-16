@@ -232,3 +232,73 @@ fn several_paths_keep_their_order_and_an_unreadable_one_fails_the_run() {
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8(output.stderr).unwrap().contains(missing));
 }
+
+// catches (R5): a folder whose entries can be listed but not looked up
+// (mode 0400), read as holding no loop file, so validate reports success
+// without checking any. It must fail the run with read_failed and exit 1.
+#[test]
+fn a_folder_whose_files_cannot_be_looked_up_fails_the_run() {
+    use std::os::unix::fs::PermissionsExt;
+    let contract = load("contracts/loop-cli.v1.schema.json");
+    let sandbox = Sandbox::new();
+    let locked = sandbox.0.join("locked");
+    fs::create_dir(&locked).unwrap();
+    fs::copy(
+        Path::new(ROOT).join(FIXTURES).join("valid/at-same.md"),
+        locked.join("a.md"),
+    )
+    .unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o400)).unwrap();
+    // Root reads through the mode, so the break cannot be shown there.
+    let bypassed = fs::metadata(locked.join("a.md")).is_ok();
+    let (code, doc) = validate(&sandbox, &contract, &[locked.to_str().unwrap()]);
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+    if bypassed {
+        return;
+    }
+    assert_eq!(code, 1, "{doc}");
+    assert_eq!(doc["error"]["kind"], "read_failed", "{doc}");
+}
+
+// catches (R6): a path or file name carrying terminal control characters
+// (an escape sequence that clears or spoofs the screen) printed unchanged on
+// stderr, in the error's message or in the text report. The JSON report
+// keeps the name exactly, as data.
+#[test]
+fn control_characters_in_paths_never_reach_the_terminal() {
+    let contract = load("contracts/loop-cli.v1.schema.json");
+    let sandbox = Sandbox::new();
+    let missing = sandbox.0.join("gone\u{1b}[2J.md");
+    let missing = missing.to_str().unwrap();
+    let output = sandbox.run(&["loop", "validate", missing]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(!output.stderr.contains(&0x1b), "stderr: {:?}", output.stderr);
+    let (code, doc) = validate(&sandbox, &contract, &[missing]);
+    assert_eq!(code, 1);
+    let message = doc["error"]["message"].as_str().unwrap();
+    assert!(!message.contains('\u{1b}'), "{message:?}");
+
+    let folder = sandbox.0.join("loops");
+    fs::create_dir(&folder).unwrap();
+    fs::copy(
+        Path::new(ROOT).join(FIXTURES).join("valid/at-same.md"),
+        folder.join("x\u{1b}[2J.md"),
+    )
+    .unwrap();
+    fs::copy(
+        Path::new(ROOT).join(FIXTURES).join("invalid/bad-id.md"),
+        folder.join("y\u{1b}]0;spoof\u{7}.md"),
+    )
+    .unwrap();
+    let folder = folder.to_str().unwrap();
+    let output = sandbox.run(&["loop", "validate", folder]);
+    assert_eq!(output.status.code(), Some(5));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !stdout.contains(|c: char| c.is_control() && c != '\n'),
+        "{stdout:?}"
+    );
+    assert!(stdout.contains("x"), "{stdout}");
+    let (_, doc) = validate(&sandbox, &contract, &[folder]);
+    assert_eq!(doc["files"][0]["file"], format!("{folder}/x\u{1b}[2J.md"));
+}
