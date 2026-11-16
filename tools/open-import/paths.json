@@ -121,6 +121,7 @@
     "docs/evidence/public-release-free-only.md",
     "docs/evidence/openwiz-0.0.16/cloudroom-save-secret.md",
     "docs/evidence/openwiz-0.0.16/app-key-handoff.md",
+    "docs/evidence/openwiz-0.0.16/setup-github-login/**",
     "docs/decisions/public-cloudroom-setup.md",
     "docs/decisions/public-feedback.md",
     "docs/security/public-release-review.md",

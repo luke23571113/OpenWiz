@@ -47,10 +47,10 @@ API = 'https://api.github.com'
 TIMEOUT = 30
 
 
-def run(argv, limit=4 * 1024 * 1024):
+def run(argv, limit=4 * 1024 * 1024, env=None):
     """One read. Returns (exit code, parsed JSON or None). Never echoes output."""
     try:
-        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT)
+        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT, env=env)
     except (OSError, subprocess.TimeoutExpired):
         return None, None
     if len(result.stdout) > limit:
@@ -119,26 +119,80 @@ def gh(path):
     return run([program, 'api', path])
 
 
-def check_identity(project):
-    if project is None:
-        return 'identity_unselected'
-    code, user = gh('user')
-    if code is None:
-        return 'identity_signed_out'
-    if code == 4:  # gh: authentication required
-        return 'identity_signed_out'
+def github_com(path):
+    """#633 R1: one gh read bound to github.com, where the browser sign-in
+    happens. gh otherwise follows GH_HOST, or defaults to another server when
+    that server holds its only login: neither may stand in for github.com."""
+    return github_com_read(path)[:2]
+
+
+# Final check R3: gh's own line for GitHub's 401 answer, exactly. With a
+# credential only for another server, gh still asks github.com, which answers
+# 401, and gh exits 1 (exit 4 means no credential anywhere).
+UNAUTHENTICATED = re.compile(rb'gh: [^\n]* \(HTTP 401\)\n?')
+
+
+def github_com_read(path):
+    """(exit code, parsed JSON or None, whether gh's whole stderr is GitHub's 401
+    line) for one github.com read; anything else is not an authentication answer."""
+    program = shutil.which('gh')
+    if program is None:
+        return None, None, False
+    try:
+        result = subprocess.run([program, 'api', path], stdin=subprocess.DEVNULL, capture_output=True,
+                                timeout=TIMEOUT, env={**os.environ, 'GH_HOST': 'github.com'})
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None, False
+    try:
+        value = json.loads(result.stdout, object_pairs_hook=store.unique) if len(result.stdout) <= 4 * 1024 * 1024 else None
+    except (ValueError, store.Refused):
+        value = None
+    return result.returncode, value, result.returncode == 1 and UNAUTHENTICATED.fullmatch(result.stderr) is not None
+
+
+def account():
+    """(failure code or None, login): the signed-in account read from GitHub
+    now (#633). Only a person's own account is a login; a bot, an unreadable
+    answer or a browser that merely returned is not."""
+    code, user, unauthenticated = github_com_read('user')
+    if code is None or code == 4 or unauthenticated:  # no answer, no credential, or GitHub's 401
+        return 'identity_signed_out', None
     if code != 0 or type(user) is not dict:
-        return 'identity_unreadable'
+        return 'identity_unreadable', None
     login = user.get('login')
     if user.get('type') != 'User' or not isinstance(login, str) or login.endswith('[bot]'):
-        return 'identity_bot'
-    code, repo = gh(f"repos/{project['repository']}")
+        return 'identity_bot', None
+    if store.LOGIN.fullmatch(login) is None:
+        return 'identity_unreadable', None
+    return None, login
+
+
+def read_back(repository):
+    """(code, login or None): the account and its push access to REPOSITORY,
+    both read from GitHub now. github_login.py reports the same read."""
+    failure, login = account()
+    if failure is not None:
+        return failure, None
+    code, repo = github_com(f'repos/{repository}')
     if code != 0 or type(repo) is not dict:
-        return 'identity_no_push' if code == 1 else 'identity_unreadable'
+        return ('identity_no_push' if code == 1 else 'identity_unreadable'), login
     permissions = repo.get('permissions')
     if type(permissions) is dict and permissions.get('push') is True:
-        return 'identity_verified'
-    return 'identity_no_push'
+        return 'identity_verified', login
+    return 'identity_no_push', login
+
+
+def check_identity(project, identity=None):
+    """When the owner skipped the App for this repository (#633), the signed-in
+    account must also be the login they chose to act; any other is refused."""
+    if project is None:
+        return 'identity_unselected'
+    code, login = read_back(project['repository'])
+    saved = identity or {}
+    chosen = saved.get('acting_login') if saved.get('repository') == project['repository'] else None
+    if code == 'identity_verified' and chosen is not None and login.lower() != chosen.lower():
+        return 'identity_account_mismatch'
+    return code
 
 
 # --- Project settings: explicit, checked, never invented ------------------
@@ -540,7 +594,8 @@ def check(args):
             return failed
     results = {'cloudroom': guarded(lambda: check_cloudroom(openwiz, setup.state), 'cloudroom_unreadable'),
                'harness': guarded(lambda: check_harness(openwiz, project), 'harness_unreadable'),
-               'personal_github': guarded(lambda: check_identity(project), 'identity_unreadable'),
+               'personal_github': guarded(lambda: check_identity(project, before.get('identity')),
+                                          'identity_unreadable'),
                'project': guarded(lambda: check_project(openwiz, project, default_runtime(args.runtime),
                                                         before.get('brain')), 'project_unreadable')}
     # Local App files (key, ID, their directory or signing) that cannot be used

@@ -20,6 +20,7 @@ from test_product_identity import PROGRAMS, build, collector, identity, program
 # #1105 R9: each setup tool's source in the repository, by its runtime path.
 SETUP_SOURCES = {'runtime/setup/setup.py': 'tools/install/setup/setup.py',
                  'runtime/setup/store.py': 'tools/install/setup/store.py',
+                 'runtime/setup/github_login.py': 'tools/install/setup/github_login.py',  # #633
                  'runtime/github-app/setup.py': 'tools/github-app/setup.py',
                  'runtime/github-app/app.py': 'tools/github-app/app.py',
                  'runtime/github-app/manifest.json': 'tools/github-app/manifest.json',
