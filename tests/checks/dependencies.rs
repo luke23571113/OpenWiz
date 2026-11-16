@@ -1,4 +1,7 @@
-//! Dependency direction and the approved dependency set, from `cargo metadata`.
+//! The approved dependency set and the visual pair's side, from `cargo
+//! metadata`. Dependency direction itself (core, adapter, CLI) needs no test:
+//! each crate uses the one below it, so a dependency pointing back is a cycle
+//! Cargo refuses to build (#811).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -7,9 +10,6 @@ use std::process::Command;
 
 use serde_json::Value;
 
-const CORE: &str = "openwiz-core";
-const ADAPTER: &str = "openwiz-adapter-cloudroom";
-const CLI: &str = "openwiz-cli";
 const APPROVED_DIRECT: &[&str] = &["serde", "serde_json"];
 /// The visual terminal app (0.0.12 T3, #1098): the only crate allowed the
 /// approved visual pair (grill C3).
@@ -105,33 +105,6 @@ fn reachable(graph: &BTreeMap<String, BTreeSet<String>>, from: &str) -> BTreeSet
         }
     }
     seen
-}
-
-#[test]
-fn the_core_depends_on_neither_the_adapter_nor_the_cli() {
-    let g = graph(&metadata());
-    let core = reachable(&g, CORE);
-    assert!(
-        !core.contains(ADAPTER),
-        "core reaches the adapter: {core:?}"
-    );
-    assert!(!core.contains(CLI), "core reaches the CLI: {core:?}");
-}
-
-#[test]
-fn dependencies_point_inward() {
-    let g = graph(&metadata());
-    let adapter = reachable(&g, ADAPTER);
-    assert!(
-        adapter.contains(CORE),
-        "the adapter implements the core's interfaces"
-    );
-    assert!(
-        !adapter.contains(CLI),
-        "the adapter must not depend on a client"
-    );
-    let cli = reachable(&g, CLI);
-    assert!(cli.contains(CORE) && cli.contains(ADAPTER), "{cli:?}");
 }
 
 #[test]

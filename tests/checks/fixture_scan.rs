@@ -1527,6 +1527,13 @@ fn walk_envelope(value: &Value, words: &[String], bad: &mut Vec<String>) {
 fn fixtures_contain_only_synthetic_values() {
     let files = all_files();
     assert!(files.len() > 20, "the fixtures are there");
+    // Both fakes' sources get rule 1: they are scanned, as source code.
+    for fake in [
+        Path::new(FAKE).join("main.rs"),
+        Path::new(FAKE_GH).join("main.rs"),
+    ] {
+        assert!(files.contains(&fake), "{fake:?} is not scanned");
+    }
     let mut problems = Vec::new();
     for path in &files {
         for p in scan_file(path) {
@@ -2036,15 +2043,6 @@ fn a_github_scenarios_argv_is_only_text() {
             "{why}: {bad:?}"
         );
     }
-}
-
-/// The fake gh's source gets rule 1, like the fake room-cli's: it is
-/// scanned, as source code, and has nothing private in it.
-#[test]
-fn the_fake_gh_is_scanned_for_private_data() {
-    let fake = Path::new(FAKE_GH).join("main.rs");
-    assert!(all_files().contains(&fake), "{fake:?} is not scanned");
-    assert_eq!(scan_file(&fake), Vec::<String>::new());
 }
 
 /// #373: the diagnostic is public grammar, but its branch must be synthetic.

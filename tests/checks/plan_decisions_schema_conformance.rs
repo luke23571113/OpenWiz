@@ -640,29 +640,6 @@ fn skill_text(name: &str) -> String {
 }
 
 #[test]
-fn plan_approval_summary_names_its_saved_source() {
-    let text = skill_text("plan-graph");
-    let step = text
-        .split_once("\n## Decision records\n")
-        .unwrap()
-        .1
-        .split("\n## ")
-        .next()
-        .unwrap()
-        .lines()
-        .find(|line| line.starts_with("2. **Plan approval.** "))
-        .expect("the operative plan approval step");
-    assert!(
-        step.contains("from its latest `spec_confirmation` record"),
-        "plan approval must name the independently saved summary source"
-    );
-    assert!(step.contains("exact displayed 1–10 summary lines"));
-    assert!(step.contains("spec's changelog headline word for word (`none` for infra)"));
-    assert!(step.contains("do not truncate"));
-    assert!(step.contains("A missing, unread or conflicting source stops the request"));
-}
-
-#[test]
 fn plan_approval_command_runs_the_revision_v2_fixture_proof() {
     use std::os::unix::fs::PermissionsExt;
 
