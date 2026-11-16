@@ -28,6 +28,10 @@ is read when:
    test can build a subfolder's name at run time; a scenario folder inside it
    still needs its own name.
 
+Folders count from a fixed boundary, the outermost `fixtures` folder above the
+fixture (or the repository's top), never from the roots given: scanning a
+narrower or overlapping root gives the same answer as scanning the wider one.
+
 A folder is in use when it is a root, when rule 3 names it or a folder above it
 (scenario folders apart), or when its parent is in use and a reader quotes its
 name (`Scenario::new("send")`, `"extends": "complete"`). A quoted file name
@@ -140,6 +144,15 @@ class References:
         return any(s in self.ends for s in suffixes(path))
 
 
+def boundary(path):
+    """The folder a fixture's folders count from: the outermost `fixtures`
+    folder above it (`tests/fixtures`, which tests name only to reach what is
+    inside), or the repository's top when there is none. Every folder below it,
+    a scanned root included, can be named by path and so read whole."""
+    parts = PurePosixPath(path).parent.parts
+    return '/'.join(parts[:parts.index('fixtures') + 1]) if 'fixtures' in parts else '.'
+
+
 def scan(repo, roots):
     repo = Path(repo).resolve()
     files = tracked(repo)
@@ -155,10 +168,13 @@ def scan(repo, roots):
     for p in files:
         if not under(p, roots) and is_code(repo, p):
             refs.add(read_text(repo, p))
+    # Folders count from a fixed boundary, never from the roots given, so a
+    # narrower or overlapping root gives the same answer (#853 R1).
     folders = set()
     for p in fixtures:
+        stop = boundary(p)
         f = PurePosixPath(p).parent
-        while str(f) not in roots:
+        while str(f) != stop and str(f) != '.':
             folders.add(str(f))
             f = f.parent
     scenarios = {str(PurePosixPath(p).parent) for p in fixtures if PurePosixPath(p).name == SCENARIO}
