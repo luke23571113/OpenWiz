@@ -28,6 +28,10 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+# ci-bench's `collect` and `measure` commands, now bench_measure.py's functions (#827), run as the CLI ran them.
+BENCH = ['-c', 'import sys; sys.path.insert(0, sys.argv.pop(1)); import bench_measure as B; a = sys.argv[1:]; '
+         '(B.collect(a[2], a[4], a[6]) if a[0] == "collect" else '
+         'B.measure(a[1], int(a[3]), a[5], allow_empty=True, allow_timing_gaps=True))', str(ROOT / 'tools/war-room')]
 FIX = HERE / 'fixtures' / 'collector-factory'
 COLLECTOR = HERE / 'fixtures' / 'collector'
 SCRIPT = HERE / 'collect_factory.py'
@@ -270,9 +274,9 @@ class CapacityAndOpenPrs(unittest.TestCase):
                                          'baseline': None})
         self.assertEqual(fact['state'], 'known')
         with run_tool('bench-world.json', lambda tmp: [
-                str(ROOT / 'tools/ci-bench/bench.py'), 'collect', '--since', since, '--until', until,
+                *BENCH, 'collect', '--since', since, '--until', until,
                 '--out', str(tmp / 'w')]) as tmp:
-            subprocess.run([sys.executable, '-I', str(ROOT / 'tools/ci-bench/bench.py'), 'measure', str(tmp / 'w'),
+            subprocess.run([sys.executable, '-I', *BENCH, 'measure', str(tmp / 'w'),
                             '--robots', '5', '--label', 'compare', '--allow-empty', '--allow-timing-gaps'],
                            check=True, capture_output=True, timeout=60)
             point = json.loads((tmp / 'w' / 'point.json').read_text())

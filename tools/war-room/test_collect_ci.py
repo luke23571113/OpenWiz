@@ -23,7 +23,11 @@ ROOT = HERE.parents[1]
 FIX = HERE / 'fixtures' / 'collector-ci'
 REPO = 'synthetic-owner/synthetic-repo'
 R = 'repos/' + REPO
-BENCH, CI3 = ROOT / 'tools/ci-bench/bench.py', ROOT / 'tools/war-room/ci3.py'
+CI3 = ROOT / 'tools/war-room/ci3.py'
+# ci-bench's `collect` and `measure` commands, now bench_measure.py's functions (#827), run as the CLI ran them.
+BENCH = ['-c', 'import sys; sys.path.insert(0, sys.argv.pop(1)); import bench_measure as B; a = sys.argv[1:]; '
+         '(B.collect(a[2], a[4], a[6]) if a[0] == "collect" else '
+         'B.measure(a[1], int(a[3]), a[5], allow_empty=True, allow_timing_gaps=True))', str(ROOT / 'tools/war-room')]
 GUARD = ROOT / 'tools/ci-overload/alarm.py'
 RUNS_WINDOW = ('--since', '2026-01-04T00:00:00Z', '--until', '2026-01-04T01:00:00Z')
 CI3_WINDOW = ('--since', '2026-01-05T00:00:00Z', '--until', '2026-01-06T00:00:00Z')
@@ -90,7 +94,7 @@ class Fake:
         env, out = self.env(GH_REPO=REPO), self.tmp / 'bench'
         for args in (('collect', *RUNS_WINDOW, '--out', out),
                      ('measure', out, '--robots', '5', '--label', 'x', '--allow-empty', '--allow-timing-gaps')):
-            done = self.run(BENCH, *args, env=env)
+            done = self.run(*BENCH, *args, env=env)
             assert done.returncode == 0, done.stderr
         return json.loads((out / 'point.json').read_text(encoding='utf-8'))
 
