@@ -8,6 +8,7 @@ overload guard decides. Each test names the bug it catches.
 """
 import copy
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -45,6 +46,12 @@ class Fake:
         (self.tmp / 'bin').mkdir()
         (self.tmp / 'bin' / 'gh').symlink_to(FIX / 'fake_gh.py')
         self.log = self.tmp / 'gh.log'
+        self.store = self.tmp / 'store'
+
+    def put(self, key, answer):
+        """Answer `key` first, ahead of every other answer."""
+        self.drop(key)
+        self.answers.insert(0, [key, answer])
 
     def answer(self, key):
         return next(a for k, a in self.answers if k == key)
@@ -55,7 +62,8 @@ class Fake:
     def env(self, **extra):
         (self.tmp / 'github.json').write_text(json.dumps(self.answers), encoding='utf-8')
         env = dict(os.environ, PATH=str(self.tmp / 'bin') + os.pathsep + os.environ['PATH'],
-                   COLLECTOR_CI_FIXTURE=str(self.tmp / 'github.json'), COLLECTOR_CI_LOG=str(self.log))
+                   COLLECTOR_CI_FIXTURE=str(self.tmp / 'github.json'), COLLECTOR_CI_LOG=str(self.log),
+                   OPENWIZ_COLLECTOR_STORE=str(self.store))
         env.pop('GH_REPO', None)
         env.update(extra)
         return env
@@ -195,6 +203,45 @@ class RunsAndMinutes(unittest.TestCase):
         self.assertEqual(self.fake.asked(), [])
 
 
+class Retained(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.fake = Fake(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_each_measured_source_is_kept_where_its_hash_points(self):
+        # catches (R2): the exact job records behind runs and minutes, and CI3's private window, deleted once
+        # measured, so nothing recoverable stands behind the source hashes.
+        ci = self.fake.collect('runs', 'minutes', window=RUNS_WINDOW)
+        f3 = self.fake.collect('ci3', window=CI3_WINDOW)['ci3']
+        for f in (ci['runs'], ci['minutes'], f3):
+            kept = self.fake.store / f['source']['path']
+            self.assertTrue(kept.is_file(), f'{f["fact"]}: its source is not kept')
+            self.assertEqual(hashlib.sha256(kept.read_bytes()).hexdigest(), f['source']['sha256'], f['fact'])
+            self.assertEqual(kept.stat().st_mode & 0o077, 0, 'owner-only')
+        self.assertEqual(ci['runs']['source'], ci['minutes']['source'])
+        jobs = [json.loads(line) for line in (self.fake.store / ci['runs']['source']['path']).read_text().splitlines()]
+        self.assertEqual(sorted(j['id'] for j in jobs), [5011, 5012, 5021, 5031])
+        # A fresh reader remeasures CI3's record from the kept window alone, after the read returned.
+        done = self.fake.run(CI3, 'measure', self.fake.store / f3['source']['path'])
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(json.loads(done.stdout), f3['value'])
+
+    def test_a_source_that_cannot_be_kept_makes_its_fact_unavailable(self):
+        # catches (R2): a measured fact reported known while its source bytes could not be kept.
+        self.fake.store.write_text('not a directory', encoding='utf-8')
+        ci = self.fake.collect('runs', 'minutes', 'queue', window=RUNS_WINDOW)
+        for name in ('runs', 'minutes'):
+            self.assertEqual((ci[name]['state'], ci[name]['value']), ('unavailable', None))
+            self.assertIn('could not be kept', ci[name]['prerequisites'][0])
+        self.assertEqual(ci['queue']['state'], 'known')  # nothing to keep: its value is its own bytes
+        f3 = self.fake.collect('ci3', window=CI3_WINDOW)['ci3']
+        self.assertEqual((f3['state'], f3['value']), ('unavailable', None))
+        self.assertIn('could not be kept', f3['prerequisites'][0])
+
+
 class Ci3(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -316,6 +363,36 @@ class Queue(unittest.TestCase):
         code, decision = self.fake.guard(observation, observation['observed_at'])
         self.assertEqual((code, decision['level']), (1, 'escalate'))
         self.assertEqual(decision['oldest_wait_seconds'], observation['observed_at'] - 1767614600)
+
+    def test_a_run_or_job_that_moves_on_mid_read_leaves_the_queue_incomplete(self):
+        # catches (R1): one pass over the status lists missing a required run that started between two of
+        # them (or a job added between two reads of a page), and calling the queue complete, so the guard
+        # admits work while that run's required job has waited past its escalation threshold.
+        runs = R + '/actions/workflows/ci.yml/runs?status=in_progress&'
+        moved = {'id': 7104, 'event': 'pull_request', 'status': 'in_progress', 'conclusion': None,
+                 'created_at': '2026-01-05T12:00:00Z', 'run_attempt': 1}
+        late = {'id': 8104, 'run_id': 7101, 'run_attempt': 1, 'name': 'job-8104', 'status': 'queued',
+                'conclusion': None, 'created_at': '2026-01-05T12:00:00Z', 'started_at': None, 'completed_at': None,
+                'runner_name': None, 'labels': ['ubuntu-24.04'], 'steps': []}
+        for move in ('run', 'job'):
+            with self.subTest(move=move), tempfile.TemporaryDirectory() as tmp:
+                self.fake = Fake(tmp)
+                self.without_queued_jobs()
+                if move == 'run':
+                    first = self.fake.answer(runs)
+                    self.fake.put(runs, {'sequence': [first, {'total_count': 2,
+                                                              'workflow_runs': first['workflow_runs'] + [moved]}]})
+                    self.fake.put(R + '/actions/runs/7104/jobs?', {'total_count': 1, 'jobs': [dict(late, run_id=7104)]})
+                else:
+                    key = R + '/actions/runs/7101/jobs?'
+                    first = self.fake.answer(key)
+                    self.fake.put(key, {'sequence': [first, {'total_count': len(first['jobs']) + 1,
+                                                             'jobs': first['jobs'] + [late]}]})
+                f = self.fake.collect('queue')['queue']
+                self.assertEqual(f['state'], 'partial')
+                self.assertEqual(f['value']['observation']['complete'], False)
+                code, decision = self.fake.guard(f['value']['observation'], f['value']['observation']['observed_at'])
+                self.assertEqual((code, decision['level'], decision['allowed']), (1, 'unknown', False))
 
     def test_a_queue_that_cannot_be_read_whole_says_unknown(self):
         # catches: a job page that can't be read whole treated as an empty queue (the guard admits), a job

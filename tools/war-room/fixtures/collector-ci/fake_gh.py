@@ -6,6 +6,10 @@ its path exactly, or, when it ends in `?` or `&`, as the path's prefix; the
 first match answers. `{owner}` and `{repo}` resolve from GH_REPO, as gh's own
 placeholders do, and a path needing them without GH_REPO fails. Each asked
 path is appended to COLLECTOR_CI_LOG when set.
+
+An answer `{"sequence": [A1, A2, ...]}` changes between calls: the n-th time
+a path is asked (counted in COLLECTOR_CI_LOG, which it then needs) it gets
+An, and the last one after that, so a test can move GitHub on mid-read.
 """
 import json
 import os
@@ -29,6 +33,10 @@ with open(os.environ['COLLECTOR_CI_FIXTURE'], encoding='utf-8') as stream:
     answers = json.load(stream)
 for key, answer in answers:
     if path == key or (key.endswith(('?', '&')) and path.startswith(key)):
+        if type(answer) is dict and list(answer) == ['sequence']:
+            with open(os.environ['COLLECTOR_CI_LOG'], encoding='utf-8') as log:
+                asked = log.read().splitlines().count(path)
+            answer = answer['sequence'][min(asked, len(answer['sequence'])) - 1]
         print(json.dumps(answer))
         sys.exit(0)
 print('synthetic source unavailable', file=sys.stderr)
