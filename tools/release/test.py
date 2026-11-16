@@ -1528,17 +1528,6 @@ fn env_configuration_value() {}
         self.refused("0.0.1-R1: live capability needs published live evidence")
 
 
-def live_smoke_restriction():
-    """#2216's expected-plan restriction proofs, loaded by path: tools/live-smoke's
-    http.py must not shadow the standard library on this process's import path."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "live_smoke_test_restriction", Path(__file__).resolve().parents[1]/"live-smoke"/"test_restriction.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def live_smoke_receipts():
     """#1844's candidate-bound smoke/risk receipt proofs, loaded by path like
     the restriction proofs; their fake program is written once, at import."""
@@ -1553,7 +1542,7 @@ def live_smoke_receipts():
 def load_tests(loader, tests, pattern):
     """CI runs this file: include the entry, publish and backfill proofs too."""
     import test_backfill, test_candidate, test_entry, test_publish, test_open, test_review
-    for module in (test_entry, test_publish, test_backfill, test_open, test_review, live_smoke_restriction(), live_smoke_receipts(),
+    for module in (test_entry, test_publish, test_backfill, test_open, test_review, live_smoke_receipts(),
                    test_candidate):
         tests.addTests(loader.loadTestsFromModule(module))
     return tests
@@ -1596,7 +1585,7 @@ def main():
         for item in suite:
             yield from (flat(item) if isinstance(item, unittest.TestSuite) else (item,))
     # #1843: the checked public release command's proofs (test_candidate).
-    for module in (test_entry, test_publish, test_backfill, test_open, test_review, live_smoke_restriction(), live_smoke_receipts(),
+    for module in (test_entry, test_publish, test_backfill, test_open, test_review, live_smoke_receipts(),
                    test_candidate):
         tests += list(flat(unittest.defaultTestLoader.loadTestsFromModule(module)))
     if not tests:

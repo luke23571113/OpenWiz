@@ -219,7 +219,39 @@ def fleet_settings_usable(text):
     return bool(rows) or waits
 
 
-def check_project(openwiz, project, runtime):
+def check_brain(brain, repository):
+    """#635: the saved brain reference, resolved on GitHub. None, or a brain
+    for another repository (kept as it is), is an existing project: nothing is
+    inferred and the check is unchanged. Otherwise the brain
+    repository must read back private and hold its merged settings record
+    naming this placement; a proposal that is not merged yet is still missing."""
+    # R3: a brain retained for another repository is not this project's: the
+    # selected repository is an existing project and its check is unchanged.
+    if brain is None or brain['code_repository'].lower() != repository.lower():
+        return 'project_verified'
+    home = brain['brain_repository']
+    code, repo = gh(f'repos/{home}')
+    if code is None:
+        return 'project_unreadable'
+    if code != 0 or type(repo) is not dict or not str(repo.get('full_name', '')).lower() == home.lower() \
+            or repo.get('private') is not True or repo.get('visibility') != 'private':
+        return 'project_settings_missing' if code in (0, 1) else 'project_unreadable'
+    code, record = gh(f"repos/{home}/contents/{brain['folder']}/settings.json")
+    if code != 0 or type(record) is not dict or record.get('encoding') != 'base64':
+        return 'project_settings_missing' if code in (0, 1) else 'project_unreadable'
+    try:
+        settings = json.loads(base64.b64decode(record.get('content', ''), validate=False),
+                              object_pairs_hook=store.unique)
+    except ValueError:
+        return 'project_settings_missing'
+    if (type(settings) is not dict or settings.get('brain_location') != brain['location']
+            or str(settings.get('code_repository', '')).lower() != brain['code_repository'].lower()
+            or str(settings.get('brain_repository', '')).lower() != home.lower()):
+        return 'project_settings_missing'
+    return 'project_verified'
+
+
+def check_project(openwiz, project, runtime, brain=None):
     if project is None:
         return 'project_unprepared'
     if project['runtime'] is None or runtime_pin(runtime) != project['runtime']:
@@ -249,7 +281,7 @@ def check_project(openwiz, project, runtime):
     group = (thread.get('data') or {}).get('session', {}).get('group', {})
     if group.get('kind') != 'project' or group.get('id') != project['project']:
         return 'project_answer_refused'
-    return 'project_verified'
+    return check_brain(brain, project['repository'])
 
 
 # --- OpenWiz's App, through GitHub's App API ------------------------------
@@ -498,8 +530,8 @@ def check(args):
     results = {'cloudroom': guarded(lambda: check_cloudroom(openwiz, setup.state), 'cloudroom_unreadable'),
                'harness': guarded(lambda: check_harness(openwiz, project), 'harness_unreadable'),
                'personal_github': guarded(lambda: check_identity(project), 'identity_unreadable'),
-               'project': guarded(lambda: check_project(openwiz, project, default_runtime(args.runtime)),
-                                  'project_unreadable')}
+               'project': guarded(lambda: check_project(openwiz, project, default_runtime(args.runtime),
+                                                        before.get('brain')), 'project_unreadable')}
     # Local App files (key, ID, their directory or signing) that cannot be used
     # safely are a refusal of this component, never an abort.
     results['github_app'], ids = guarded(lambda: check_app(setup.state, project, before['app'], base),

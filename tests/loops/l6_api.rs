@@ -303,40 +303,8 @@ fn installed_api_attributes_to_local_operator_and_refuses_missing_invalid_or_for
 #[test]
 fn route_inventory_appends_exactly_the_two_local_switch_writes() {
     use openwiz_server::{ROUTES, Route};
-    let notification_routes = [
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/status",
-        },
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/preferences",
-        },
-        Route {
-            method: "PUT",
-            path: "/api/v1/notifications/preferences",
-        },
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/subscription",
-        },
-        Route {
-            method: "PUT",
-            path: "/api/v1/notifications/subscription",
-        },
-        Route {
-            method: "DELETE",
-            path: "/api/v1/notifications/subscription",
-        },
-        // #2036: the bound-target GET pinned in notifications.v1.
-        Route {
-            method: "GET",
-            path: "/api/v1/notifications/targets/{token}",
-        },
-    ];
-    assert_eq!(ROUTES.len(), 22 + notification_routes.len());
-    let (legacy, appended) = ROUTES.split_at(22);
-    assert_eq!(appended, notification_routes);
+    assert_eq!(ROUTES.len(), 22);
+    let legacy = ROUTES;
     assert_eq!(
         &legacy[20..],
         &[

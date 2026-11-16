@@ -737,6 +737,60 @@ The design brief, pins and hill-climb run plan are in
 Jake's checkpoints and his final visual review are separate, and live figures
 remain Unverified.
 
+## Private HTML serving (WRD4)
+
+The page itself is published, not only its pictures: `publish.py publish` writes the
+original `war-room.html` (byte for byte as `page.py` rendered it, never the drawable
+transform) in the same commit as `war-room.png`, `war-room-phone.png` and `README.md`,
+after the privacy scan has read it. A failed render, scan or push publishes nothing, so
+the page and its pictures keep their last good generation together; collections and saved
+samples are unchanged. The page opens with native section links: Figures, each numbered
+section, Sources and the inventory audit; a deep link is `/#sources`.
+
+[`web/serve.py`](web/serve.py) serves it privately, as [`web/contract.md`](web/contract.md)
+says: `fetch` reads the private `war-room` branch (read-only, depth 1) and keeps the page
+only if it is the static page, so a bad or missing one leaves the last good page served;
+`serve` answers only `GET`/`HEAD /`, on `127.0.0.1` only, with `text/html; charset=utf-8`,
+`no-store` and the page's own security policy. Everything else is `404` or `405`.
+
+**Finding (read-only, 2026-11-16).** The page works over local HTTP as built: one
+self-contained file, no script, no remote request, its CSP and embedded headings font
+intact, at 1440 and 390 px. The private address reuses the existing tunnel and Access
+login in front of a loopback-only origin, so WRD4 needs no new account resource, DNS or
+Access change. The exact hostname, account and setup are in the private record; the
+orchestrator confirmed the address. Before WRD4 the publisher put no HTML on the branch.
+
+**Setup.** On the serving host, with the caller's read access to the private repository:
+
+```sh
+python3 -I tools/war-room/web/serve.py fetch --remote https://github.com/OWNER/PRIVATE.git --into DIR   # hourly, after the publish
+python3 -I tools/war-room/web/serve.py serve --root DIR --port PORT                                    # always on, loopback
+```
+
+The tunnel's ingress for the private hostname points at `http://127.0.0.1:PORT` with
+Access required at the origin. Switching an existing host to this adapter waits for the
+orchestrator's go-ahead.
+
+**Verification.** `python3 -I tools/war-room/test_web.py` (needs `npm ci` in
+`tools/war-room`, Node and Chromium) publishes synthetic input through the real publisher
+to a local bare branch, fetches and serves it, and reads it in Chromium with page scripts
+disabled at 1440 and 390 px: content type, identical bytes, section links (present, real
+targets, keyboard and deep links), disclosures and values tables, static SVG, the font,
+no sideways scroll, the route allowlist and last-good on every failure. Live acceptance
+is separate: after activation, the exact live URL returns the pinned page signed in and
+the Access login signed out, checked with read-only requests and recorded privately.
+Fixture results alone are not live acceptance.
+
+**Data branches in another repository: `gather.py --data-remote URL`.** Optional. `URL`
+is any remote `git fetch` accepts (the caller authenticates git). It governs only the
+read-only, depth-1 fetches of `refs/heads/board` (`history.jsonl`, `credits.jsonl`,
+`graph.json`) and `refs/heads/ci-benchmarks` (`windows/*/point.json`); nothing is pushed.
+Omitted, it defaults to `--remote`, so behaviour is unchanged. Given, `--remote` (still
+required) is not read by the gather. `--repo` keeps every `gh` read, run and pull-request
+link and the board graph's `repo` check. The board, credits and CI-bench commit evidence
+links name `OWNER/REPO` when `URL` is exactly `https://github.com/OWNER/REPO` or
+`https://github.com/OWNER/REPO.git`, and `--repo` otherwise, as before.
+
 ## Review loops bench (RL0)
 
 `review_loops.py` measures the [review-loops contract](../../contracts/review-loops.v1.md)

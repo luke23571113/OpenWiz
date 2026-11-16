@@ -727,11 +727,13 @@ class Check(unittest.TestCase):
         url = lambda name: 'ssh://synthetic.invalid/' + name + '.git'
         # Test-only destinations: the copy's allowlist names the fixture URLs.
         adapter = hook / 'tools/privacy-check/hook.py'
-        text, count = re.subn(r'PUBLIC_URLS = \([^)]*\)', 'PUBLIC_URLS = ' + repr(tuple(url(x) for x in ('published', 'fresh', 'empty'))), adapter.read_text())
+        text, count = re.subn(r'PUBLIC_URLS = \([^)]*\)', 'PUBLIC_URLS = ' + repr(tuple(url(x) for x in ('published', 'fresh', 'empty', 'ahead'))), adapter.read_text())
         self.assertLessEqual(count, 1)
         adapter.write_text(text)
         ssh = self.root / 'fake-ssh'
+        reached = self.root / 'reached'
         ssh.write_text('#!/bin/sh\nfor a; do cmd=$a; done\nsub=${cmd%% *}\neval "set -- ${cmd#* }"\n'
+                       'echo "$1" >> "' + str(reached) + '"\n'
                        'exec git "${sub#git-}" "' + str(remotes) + '$1"\n')
         ssh.chmod(0o755)
         self.git('config', 'core.sshCommand', str(ssh))
@@ -802,6 +804,54 @@ class Check(unittest.TestCase):
                 self.assertIn('T1 ', out)
                 for key, _ in config:
                     self.git('config', '--unset-all', key)
+        # #872: the destination's main moved on after this clone last
+        # fetched, so its commit is not here yet. The push still narrows,
+        # and the pushed commits themselves are still scanned.
+        ahead = str(remotes / 'ahead.git')
+        subprocess.run(['git', 'init', '-q', '--bare', ahead], check=True)
+        self.git('push', '-q', ahead, published + ':refs/heads/main')
+        moved = self.git('-C', ahead, 'commit-tree', published + '^{tree}', '-p', published, '-m', 'merged later')
+        self.git('-C', ahead, 'update-ref', 'refs/heads/main', moved)
+        self.git('config', 'remote.origin.url', url('ahead'))
+        rc, out = push('ahead')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('range: from the merge-base with upstream', out)
+        self.git('commit', '--allow-empty', '-qm', 'pushed\n\n' + THREAD)
+        self.assertEqual(push('ahead')[0], 1)
+        self.git('reset', '-q', '--hard', 'HEAD~1')
+        # The lookup and fetch reach the push URL and nothing else: no lazy
+        # fetch from a promisor remote, no configured bundle source, and no
+        # per-URL remote settings (which fall back to the full scan).
+        other = remotes / 'other.git'
+        bundle = self.root / 'other.bundle'
+        self.git('-C', str(other), 'bundle', 'create', '-q', str(bundle), 'refs/heads/main')
+        (self.root / 'bundles').write_text('[bundle]\n\tversion = 1\n\tmode = all\n\theuristic = creationToken\n'
+                                           '[bundle "b"]\n\turi = ' + bundle.as_uri() + '\n\tcreationToken = 1\n')
+        side_cases = (
+            ('promisor remote', [('core.repositoryformatversion', '1'), ('extensions.partialClone', 'spy'),
+                                 ('remote.spy.url', url('other')), ('remote.spy.promisor', 'true')]),
+            ('bundle source', [('fetch.bundleURI', (self.root / 'bundles').as_uri())]),
+            ('per-URL remote setting', [('remote.' + url('ahead') + '.promisor', 'true')]),
+        )
+        for n, (case, config) in enumerate(side_cases):
+            with self.subTest(case=case):
+                step = self.git('-C', ahead, 'commit-tree', published + '^{tree}', '-p', moved, '-m', 'merged %d' % n)
+                self.git('-C', ahead, 'update-ref', 'refs/heads/main', step)
+                for key, value in config:
+                    self.git('config', key, value)
+                reached.unlink(missing_ok=True)
+                try:
+                    rc, out = push('ahead')
+                    self.assertNotIn('/other.git', reached.read_text() if reached.exists() else '')
+                    self.assertEqual(self.git('for-each-ref', 'refs/bundles'), '')
+                    if case == 'per-URL remote setting':
+                        self.assertEqual(rc, 1, out)
+                        self.assertIn('T1 ', out)
+                finally:
+                    for key, _ in reversed(config):
+                        self.git('config', '--unset-all', key)
+                    for ref in self.git('for-each-ref', '--format=%(refname)', 'refs/bundles').split():
+                        self.git('update-ref', '-d', ref)
 
     def test_first_push_narrowing_allowlist(self):
         # The production allowlist, read as the hook reads it: which push URL

@@ -267,8 +267,21 @@ fn record_authors(executor: &Executor, deadline: Instant) -> Result<RecordAuthor
 fn delivered<'a>(comments: &'a [Comment], body: &str, authors: &RecordAuthors) -> Vec<&'a Comment> {
     comments
         .iter()
-        .filter(|c| c.body == body && super::observe::authored(c, authors))
+        .filter(|c| c.body == body && authored(c, authors))
         .collect()
+}
+/// Whether a record author wrote `c` (#732): a login ending `[bot]` is the
+/// App's kind, any other a user's.
+fn authored(c: &Comment, authors: &RecordAuthors) -> bool {
+    let login = c.author.as_deref();
+    let kind = login.map(|l| {
+        if l.to_ascii_lowercase().ends_with("[bot]") {
+            "Bot"
+        } else {
+            "User"
+        }
+    });
+    authors.wrote(login, kind)
 }
 fn confirmed(dir: &Path, digest: &str) -> Result<bool, String> {
     let path = dir.join(format!("confirmed-{digest}"));

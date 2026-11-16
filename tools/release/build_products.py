@@ -67,6 +67,15 @@ def collect(root, binaries, web, output, version, source, target, program_receip
                 and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
                 'unsafe or missing CloudRoom setup tool')
         files['runtime/cloudroom/cloudroom.py'] = tool
+    # #635: installed `openwiz init`'s runtime, the same way: from its exact
+    # tracked file when the requested commit tracks it; the installer requires it.
+    if git(root, 'ls-tree', '-z', '--name-only', '--end-of-options', source,
+           '--', 'tools/install/setup/init.py') == b'tools/install/setup/init.py\0':
+        tool = root / 'tools/install/setup/init.py'
+        require(tool.is_file() and tool.stat().st_nlink == 1
+                and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
+                'unsafe or missing init runtime')
+        files['runtime/setup/init.py'] = tool
     # #2379: the requested commit decides: if it tracks the installed handover,
     # its whole role ships from exact tracked files; older commits keep theirs.
     if git(root, 'ls-tree', '-z', '--name-only', '--end-of-options', source,

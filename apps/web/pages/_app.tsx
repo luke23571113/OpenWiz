@@ -6,7 +6,6 @@ import '../styles/cockpit.css';
 import '../styles/plan.css';
 import '../styles/decisions.css';
 import '../styles/loops.css';
-import '../styles/notifications.css';
 import '../styles/feedback.css';
 import '../styles/first-hour.css';
 

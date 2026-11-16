@@ -164,6 +164,22 @@ Source: Jake, 2026-11-01: webhook wakes handle named work immediately, with a sl
 
 **Delegated ops authority and daily audit.** Narrow same-intent path requests are evaluated by the ops agent under the `narrow-grant` rule instead of a blanket escalation; contract, interface, dependency, workflow, scope, live and spending cases, and anything unreadable, still go to the orchestrator. The orchestrator audits every grant daily from its saved cursor and keeps grills, planning and real exceptions.
 
+## Supporting edits
+
+The project's standing supporting-edit rule. Every ticket of every fleet may make these edits without asking, beside its owned paths:
+
+1. **Its own rows in shared registries:** `tools/open-import/paths.json`, the CLI test catalogue in `tests/cli-agent/main.rs`, and CI step lists such as `tools/ci-bench/steps.tsv`.
+2. **Its changelog line** as `changes/<ticket>.md`, whatever its owned paths name.
+3. **Its own evidence folder** under `docs/evidence/`.
+4. **Synthetic answers to test fakes its change breaks,** with no assertion change.
+5. **Updates to byte-identical carried copies** of a file it owns.
+
+- **Own rows and lines only:** never another ticket's rows, lines or logic.
+- **Listed and checked:** the pull request lists each use, with its kind and path, and the reviewer checks each one stayed inside this rule.
+- **Still ask first,** as today, for any contract or schema, workflow, dependency, protected guard or other ticket's logic, and for any edit outside these five kinds.
+
+Source: Jake, 2026-11-15: a standing allowance for these five kinds, each use listed and reviewed, with the same ask-first list (J110; [private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6905144595)).
+
 ## Labels
 
 The triage labels and their names here are in [triage-labels.md](triage-labels.md). A fleet uses `held` for approval holds and `polish` for small follow-ups:
