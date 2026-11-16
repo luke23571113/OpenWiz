@@ -13,6 +13,8 @@ use std::io::Write;
 
 use crate::response;
 
+#[path = "loop_export.rs"]
+mod loop_export;
 #[path = "loop_validate.rs"]
 mod loop_validate;
 
@@ -24,7 +26,7 @@ pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
   (contracts/loop-cli.v1.md). validate checks loop files and names each
-  problem by file and field. export, plan and apply are not built yet: each
+  problem by file and field. plan and apply are not built yet: each
   refuses with exit 5 and reads and changes nothing.
 ";
 
@@ -236,11 +238,15 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         Ok(Parsed::Run(args)) if args.command == Command::Validate => {
             loop_validate::run(&args, stdout, stderr)
         }
+        Ok(Parsed::Run(args)) if args.command == Command::Export => {
+            loop_export::run(&args, stdout, stderr)
+        }
         Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
                 stderr,
-                "openwiz: usage: {why}; nothing was read (see openwiz loop --help)"
+                "openwiz: usage: {}; nothing was read (see openwiz loop --help)",
+                escape_untrusted(&why)
             );
             if json_selected(args) {
                 let doc = serde_json::json!({
@@ -298,13 +304,10 @@ mod tests {
         // validate's row is gone: it is built (#790), and
         // tests/cli-agent/loop_validate.rs keeps its behaviour.
         for (args, command, ticket) in [
+            // export (#791) is built: its keeper is
+            // tests/cli-agent/loop_export.rs, which checks its real report.
             (
-                &["export", "--project", "prj_syn_0001", "--json"][..],
-                "export",
-                791,
-            ),
-            (
-                &["plan", "loops", "--project", "prj_syn_0001", "--json"],
+                &["plan", "loops", "--project", "prj_syn_0001", "--json"][..],
                 "plan",
                 792,
             ),
@@ -547,6 +550,28 @@ mod tests {
         assert_eq!(
             escape_untrusted("Synthetic: plain text"),
             "Synthetic: plain text"
+        );
+    }
+
+    // catches: a usage error that echoes an argument's control bytes to the
+    // terminal (an unknown option is printed back as given), so an argument
+    // can clear the screen or set the clipboard (OSC 52); JSON keeps it.
+    #[test]
+    fn a_usage_error_never_prints_a_terminal_control() {
+        let bad = "--x\u{1b}]52;c;eA==\u{7}";
+        let (code, out, err) = run_args(&["export", "--project", "prj_syn_0001", bad]);
+        assert_eq!((code, out.as_str()), (2, ""));
+        assert_eq!(
+            err,
+            "openwiz: usage: loop export has no option --x?]52;c;eA==?; nothing was read (see openwiz loop --help)\n"
+        );
+        let (code, out, err) = run_args(&["export", "--json", "--project", "prj_syn_0001", bad]);
+        assert_eq!(code, 2);
+        assert!(!err.contains('\u{1b}'), "{err:?}");
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            doc["error"]["message"],
+            format!("Invalid loop arguments: loop export has no option {bad}.")
         );
     }
 

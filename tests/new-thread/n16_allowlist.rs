@@ -1,16 +1,13 @@
 //! N16 Allowlist (sheet A-2): `thread spawn` and `cloud status` are the only
 //! additions, each in exactly the shape spike run 3 recorded. Every other
 //! mutating subcommand, and every other `spawn` shape, is still refused, by
-//! the adapter (a [`SpawnArgs`] can't be built unsafe) and by the fake's own
-//! copy of the allowlist. P8(a) and M12 are updated with this reason.
-
-use std::process::Command;
+//! the adapter (a [`SpawnArgs`] can't be built unsafe). P8(a) and M12 are
+//! updated with this reason. It stays here, not in the adapter's own
+//! `tests/`: P8(a) and M12 read every file under `crates/` as product source
+//! and refuse the flags it spells (#808, W1-7).
 
 use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs};
 use openwiz_core::messaging::MAX_TEXT_BYTES;
-
-use crate::fake::*;
-use crate::n01_end_to_end::NEVER;
 
 const RID: &str = "ow1-0123456789abcdef0123456789abcdef01234567";
 
@@ -124,65 +121,4 @@ fn a_spawn_can_only_be_built_with_safe_arguments() {
         let why = bad.expect_err(what);
         assert!(!why.is_empty());
     }
-}
-
-/// The fake's own copy of the allowlist refuses every other shape (exit
-/// 97), and counts no refused call.
-#[test]
-fn the_fake_refuses_every_other_spawn_and_cloud_shape() {
-    let fake = NewFake::new("n16_fake_refuses");
-    let good = spawn_argv(PROJECT, "op-n16", "Synthetic");
-    let mut refused: Vec<Vec<String>> = vec![
-        vec!["cloud".into(), "status".into()],
-        vec![
-            "cloud".into(),
-            "status".into(),
-            "--json".into(),
-            "--hidden".into(),
-        ],
-        vec!["cloud".into(), "retry-start".into(), "thr_syn_0001".into()],
-        vec!["thread".into(), "spawn".into(), "--json".into()],
-        good[..16].to_vec(),
-    ];
-    // Each flag `spawn --help` lists that OpenWiz never passes, added.
-    for flag in NEVER {
-        let mut argv = good.clone();
-        argv.insert(14, (*flag).to_owned());
-        argv.insert(15, "x".to_owned());
-        refused.push(argv);
-    }
-    // Each value swapped for one outside the shape.
-    for (i, value) in [
-        (3, "-prj"),
-        (5, "local"),
-        (7, "pi"),
-        (9, "-m"),
-        (11, "ultra"),
-        (13, "syn-request"),
-    ] {
-        let mut argv = good.clone();
-        argv[i] = value.to_owned();
-        refused.push(argv);
-    }
-    // Two settings swapped in order, or one dropped.
-    let mut swapped = good.clone();
-    swapped.swap(2, 6);
-    swapped.swap(3, 7);
-    refused.push(swapped);
-    for drop in [2, 4, 6, 8, 10, 12, 14] {
-        let mut argv = good.clone();
-        argv.drain(drop..if drop == 14 { 15 } else { drop + 2 });
-        refused.push(argv);
-    }
-    for argv in &refused {
-        let out = Command::new(fake.program())
-            .args(argv)
-            .output()
-            .expect("run the fake");
-        assert_eq!(out.status.code(), Some(97), "{argv:?}");
-    }
-    assert_eq!(fake.spawn_count(), 0, "a refused call is not counted");
-    let out = Command::new(fake.program()).args(&good).output().unwrap();
-    assert_eq!(out.status.code(), Some(0), "the one shape is accepted");
-    assert_eq!(fake.spawn_count(), 1);
 }

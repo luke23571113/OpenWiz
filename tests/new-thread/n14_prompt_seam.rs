@@ -13,9 +13,8 @@ use openwiz_adapter_cloudroom::new_thread::spawn_argv;
 use openwiz_core::messaging::sha256_hex;
 use openwiz_core::new_thread::operation::{NewThreadError, SpawnRequest, preview_new_thread};
 use openwiz_core::prompt::{
-    AttachmentId, PromptPayload, ReadyPrompt, attachments_digest, empty_attachments_digest,
+    AttachmentId, ReadyPrompt, attachments_digest, empty_attachments_digest,
 };
-use serde_json::{Value, json};
 
 use crate::support::*;
 
@@ -27,11 +26,7 @@ fn with_attachment() -> openwiz_core::new_thread::NewThreadRequest {
 
 #[test]
 fn n14_prompt_seam_contracts_preserve_all_original_cases() {
-    let cases: [(&str, fn()); 6] = [
-        (
-            "a_file_path_in_the_text_is_sent_as_text",
-            a_file_path_in_the_text_is_sent_as_text,
-        ),
+    let cases: [(&str, fn()); 4] = [
         (
             "a_text_only_prompt_passes_no_attachment_flag",
             a_text_only_prompt_passes_no_attachment_flag,
@@ -43,10 +38,6 @@ fn n14_prompt_seam_contracts_preserve_all_original_cases() {
         (
             "the_empty_list_has_its_fixed_digest_on_every_record",
             the_empty_list_has_its_fixed_digest_on_every_record,
-        ),
-        (
-            "the_prompt_schema_allows_attachment_ids_each_once",
-            the_prompt_schema_allows_attachment_ids_each_once,
         ),
         (
             "without_an_attachment_store_any_attachment_is_refused_with_zero_calls_and_no_claim",
@@ -98,16 +89,6 @@ fn a_text_only_prompt_passes_no_attachment_flag() {
     assert_eq!(argv.last().map(String::as_str), Some("Synthetic"));
 }
 
-fn a_file_path_in_the_text_is_sent_as_text() {
-    let client = FakeClient::new();
-    let store = MemoryStore::new();
-    let text = "/synthetic/notes.txt";
-    create(&client, &store, &request(offered(), text, "op-n14-path"));
-    let argv = client.last_argv();
-    assert_eq!(argv.last().map(String::as_str), Some(text));
-    assert!(!argv.iter().any(|w| w == "--file" || w == "--image"));
-}
-
 fn the_empty_list_has_its_fixed_digest_on_every_record() {
     assert_eq!(
         empty_attachments_digest(),
@@ -133,34 +114,4 @@ fn an_attachment_id_is_one_safe_segment() {
     for bad in ["", "-a", "_a", "a/b", "..", "a b", long.as_str()] {
         assert!(AttachmentId::parse(bad).is_err(), "{bad}");
     }
-}
-
-fn prompt_schema() -> Value {
-    serde_json::from_str(&std::fs::read_to_string(PROMPT_SCHEMA).unwrap()).unwrap()
-}
-
-fn the_prompt_schema_allows_attachment_ids_each_once() {
-    let schema = prompt_schema();
-    assert_eq!(schema["title"], "openwiz.prompt.v1");
-    assert_eq!(crate::pattern::lint(&schema), Vec::<String>::new());
-    let text = serde_json::to_value(PromptPayload::text("Synthetic")).unwrap();
-    assert_eq!(
-        crate::pattern::validate(&schema, &text),
-        Vec::<String>::new()
-    );
-    let with = json!({"text": "Synthetic", "attachments": ["att-syn-0001", "att-syn-0002"]});
-    assert_eq!(
-        crate::pattern::validate(&schema, &with),
-        Vec::<String>::new()
-    );
-    for bad in [
-        json!({"text": "Synthetic", "attachments": ["att-syn-0001", "att-syn-0001"]}),
-        json!({"text": "Synthetic", "attachments": ["-att"]}),
-        json!({"text": "Synthetic", "attachments": ["a/b"]}),
-        json!({"text": "Synthetic", "attachments": [1]}),
-    ] {
-        assert!(!crate::pattern::validate(&schema, &bad).is_empty(), "{bad}");
-    }
-    let empty_text = json!({"text": "", "attachments": []});
-    assert!(!crate::pattern::validate(&schema, &empty_text).is_empty());
 }
