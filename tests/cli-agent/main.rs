@@ -138,7 +138,6 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("attachment.rm", "--json -- --help"),
         ("fleets", "--json --help"),
         ("fleet", "--json"),
-        ("fleet.tick", "--json --expect-plan"),
         ("fleet.tick.preview", "--dry-run --json"),
         ("fleet.due", "--github-only --json"),
         ("loop.off", "--json"),
@@ -147,12 +146,6 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("loop.export", "--project --out --json --help"),
         ("loop.plan", "--project --adopt --json --help"),
         ("loop.apply", "--project --from --adopt --json --help"),
-        ("engine.preview", "--json --state-dir --location"),
-        (
-            "engine.activate",
-            "--json --state-dir --yes --operation --root",
-        ),
-        ("engine.status", "--json --state-dir"),
         ("github.token", "--repository --read --help"),
         ("init", "--repository --state-dir --json"),
         (
@@ -247,7 +240,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
                 "loop" | "models" | "fleets" => {}
                 // The packaged Python parser is exercised by the existing
                 // package-proof stage after CI provisions Python.
-                "engine" | "init" => {}
+                "init" => {}
                 "github" => drop(openwiz_cli::github_token::parse(&args[1..]).unwrap()),
                 other => panic!("unexpected shipped command {other}"),
             }
@@ -369,92 +362,6 @@ fn cp1_schema_refuses_broken_catalogues_and_pins_additive_result_shapes() {
 }
 
 #[test]
-fn engine_schema_enforces_identity_numeric_and_effect_bounds() {
-    let contract: Value = serde_json::from_str(
-        &fs::read_to_string(Path::new(ROOT).join("contracts/cli.v1.schema.json")).unwrap(),
-    )
-    .unwrap();
-    let mut good = serde_json::json!({"schema":"openwiz.engine.v1","engine":{
-        "location":"local","revision":1,"runtime":"0.0.99 1111111111111111111111111111111111111111",
-        "operation_id":"0123456789abcdef0123456789abcdef","fingerprint":"2222222222222222222222222222222222222222222222222222222222222222",
-        "cost":{"source":"cloudroom_usage","provenance":"measured","credits":0.25,"window_s":86400.5,
-            "free_allowance":3000,"observed_at":1000,"allowance_at":1000}},
-        "operation":{"operation_id":"0123456789abcdef0123456789abcdef","kind":"activate_engine","phase":"proposed",
-            "fingerprint":"2222222222222222222222222222222222222222222222222222222222222222",
-            "effects":["Select one engine."],"reason":"Activation remains closed."},
-        "activation_allowed":false,"location_status":"not_activated","reason":"Activation needs authorization.",
-        "cost":{"provenance":"unknown","credits":null,"window_s":null,"monthly_projection":null,
-            "free_allowance":null,"reason":"No current observation."},"default_location":null,"service_config":null,
-        "pc_activation":{"state":"absent","operation_id":null},"login":"unknown"});
-    assert!(schema::lint(&contract).is_empty());
-    assert!(schema::validate(&contract, &good).is_empty());
-    good["service_config"] = serde_json::json!({"schema":"openwiz.service-config.v1",
-        "repository":{"owner":"a-","name":"synthetic.repo"},"operator":"synthetic-owner",
-        "project":"_synthetic","orchestrator_thread":"thr_syn_answer","service_issue":7,
-        "github_app":{"app_id":1001,"installation_id":2002},"tick":{"every_s":300},
-        "health":{"every_s":60},"server":{"port":7370,"allowed_host":null,"probe_timeout_s":10}});
-    assert!(schema::validate(&contract, &good).is_empty());
-    // A held PC activation (#1106 revision 17) names T9's journal operation.
-    let mut held = good.clone();
-    held["location_status"] = serde_json::json!("held");
-    held["pc_activation"] =
-        serde_json::json!({"state":"held","operation_id":"0123456789abcdef0123456789abcdef"});
-    assert!(schema::validate(&contract, &held).is_empty());
-    for (pointer, value) in [
-        ("/login", serde_json::json!("current")),
-        ("/location_status", serde_json::json!("activated")),
-        ("/pc_activation/state", serde_json::json!("verified")),
-        ("/pc_activation/operation_id", serde_json::json!("0123")),
-        ("/service_config/project", serde_json::json!("-synthetic")),
-        (
-            "/service_config/orchestrator_thread",
-            serde_json::json!("-synthetic"),
-        ),
-        (
-            "/service_config/repository/owner",
-            serde_json::json!("-synthetic"),
-        ),
-        (
-            "/engine/operation_id",
-            serde_json::json!("g123456789abcdef0123456789abcdef"),
-        ),
-        ("/engine/fingerprint", serde_json::json!("2")),
-        (
-            "/engine/runtime",
-            serde_json::json!("0X0X99 1111111111111111111111111111111111111111"),
-        ),
-        ("/engine/revision", serde_json::json!(9007199254740992u64)),
-        ("/engine/cost/window_s", serde_json::json!(0)),
-        ("/engine/cost/credits", serde_json::json!(-0.25)),
-        (
-            "/engine/cost/allowance_at",
-            serde_json::json!(9007199254740992u64),
-        ),
-        ("/operation/effects", serde_json::json!([])),
-        (
-            "/operation/effects",
-            serde_json::json!(["a", "b", "c", "d", "e", "f", "g", "h", "i"]),
-        ),
-        ("/activation_allowed", serde_json::json!(true)),
-    ] {
-        let mut bad = good.clone();
-        *bad.pointer_mut(pointer).unwrap() = value;
-        assert!(!schema::validate(&contract, &bad).is_empty(), "{pointer}");
-    }
-    for field in ["pc_activation", "login"] {
-        let mut missing = good.clone();
-        missing.as_object_mut().unwrap().remove(field);
-        assert!(!schema::validate(&contract, &missing).is_empty(), "{field}");
-    }
-    let mut absent = good;
-    absent["engine"].as_object_mut().unwrap().remove("cost");
-    assert!(!schema::validate(&contract, &absent).is_empty());
-    for pattern in ["unanchored", "^(a|b)$", "^[a-z]{4,2}$", "^[z-a]$"] {
-        assert!(!schema::lint(&serde_json::json!({"type":"string","pattern":pattern})).is_empty());
-    }
-}
-
-#[test]
 fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
     let catalogue = discovered();
     for command in catalogue["commands"].as_array().unwrap() {
@@ -478,14 +385,12 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             "attachment.ls" => "attachment ls",
             "attachment.rm" => "attachment rm attachment-synthetic",
             "fleet" => "fleet 123",
-            "fleet.tick" => "fleet tick",
             "fleet.tick.preview" => "fleet tick --dry-run",
             "fleet.due" => "fleet due --github-only",
             // These three parsers are private; their flags are checked through
             // real processes below, using only trap sources or absent config.
             "fleets" | "models" | "loop.off" | "loop.on" | "loop.validate" | "loop.export"
             | "loop.plan" | "loop.apply" => continue,
-            "engine.preview" | "engine.activate" | "engine.status" => continue,
             "init" | "init.apply" => continue,
             "github.token" => {
                 for flag in command["flags"].as_array().unwrap() {
@@ -512,7 +417,6 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
                     "--op-id" => Some("op-synthetic"),
                     "--attach" => Some("synthetic.txt"),
                     "--attachment" => Some("attachment-synthetic"),
-                    "--expect-plan" => Some("synthetic-reviewed-plan.json"),
                     "--text-sha256" => {
                         Some("1111111111111111111111111111111111111111111111111111111111111111")
                     }
@@ -563,10 +467,8 @@ fn cp1_fleet_forms_separate_execution_from_read_only_candidates_and_plans() {
     let catalogue = discovered();
     let commands = catalogue["commands"].as_array().unwrap();
     let form = |name| commands.iter().find(|c| c["name"] == name).unwrap();
-    assert_eq!(
-        form("fleet.tick")["effects"],
-        serde_json::json!(["source_read", "state_read", "state_write", "fleet_action"])
-    );
+    // The executing tick was retired (#800): only its read-only plan remains.
+    assert!(commands.iter().all(|c| c["name"] != "fleet.tick"));
     assert_eq!(
         form("fleet.tick.preview")["effects"],
         serde_json::json!(["source_read", "state_read"])
@@ -587,7 +489,6 @@ fn cp1_fleet_forms_separate_execution_from_read_only_candidates_and_plans() {
     assert_eq!(form("fleet.due")["json"], true);
     // Inspect the real public parser without executing any fleet action.
     for (args, due, dry_run, json) in [
-        (vec!["tick", "--json"], false, false, true),
         (vec!["tick", "--dry-run", "--json"], false, true, true),
         (vec!["due", "--github-only"], true, false, false),
         (vec!["due", "--github-only", "--json"], true, false, true),
@@ -601,6 +502,14 @@ fn cp1_fleet_forms_separate_execution_from_read_only_candidates_and_plans() {
     }
     for args in [
         vec!["due"],
+        vec!["tick"],
+        vec!["tick", "--json"],
+        vec![
+            "tick",
+            "--expect-plan",
+            "synthetic-reviewed-plan.json",
+            "--json",
+        ],
         vec!["tick", "--json", "--json"],
         vec!["tick", "--dry-run=true"],
         vec!["tick", "--"],
@@ -664,7 +573,6 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "attachment.rm",
             "fleets",
             "fleet",
-            "fleet.tick",
             "fleet.tick.preview",
             "fleet.due",
             "loop.off",
@@ -673,9 +581,6 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "loop.export",
             "loop.plan",
             "loop.apply",
-            "engine.preview",
-            "engine.activate",
-            "engine.status",
             "github.token",
             "init",
             "init.apply"

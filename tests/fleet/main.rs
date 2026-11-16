@@ -28,10 +28,6 @@
 mod schema;
 mod support;
 
-// Running independent cases at once (#1259).
-#[path = "../support/at_once.rs"]
-mod at_once;
-
 // Real-time proofs, in full or in their fast form (#1259).
 #[path = "../support/real_time.rs"]
 mod real_time;

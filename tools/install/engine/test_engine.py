@@ -341,87 +341,22 @@ class Engine(unittest.TestCase):
             '--archive',str(archive),'--target','x86_64-unknown-linux-gnu','--root',str(target)],capture_output=True,text=True)
         self.assertEqual(installed.returncode,0,installed.stderr)
         env = {**os.environ,'PATH':'/synthetic/no-build-tools','OPENWIZ_STATE_DIR':str(self.state)}
-        command = [str(target/'current/openwiz'),'engine'] if cli else [sys.executable,'-I',str(target/'current/runtime/engine/engine.py')]
+        command = [sys.executable,'-I',str(target/'current/runtime/engine/engine.py')]
+        if cli:
+            # #800: the CLI's engine commands were retired. The installed CLI refuses
+            # them as usage, writing no state; the installed runtime runs directly.
+            before = sorted(str(p) for p in self.state.rglob('*'))
+            refused = subprocess.run([str(target/'current/openwiz'),'engine','preview','--location','local','--json'],
+                env=env,capture_output=True,text=True,cwd=self.root)
+            self.assertEqual(refused.returncode,2,refused.stdout+refused.stderr)
+            self.assertEqual(json.loads(refused.stdout)['schema'],'openwiz.cli-error.v1')
+            self.assertIn('unknown command engine',refused.stderr)
+            self.assertEqual(sorted(str(p) for p in self.state.rglob('*')),before)
         result = subprocess.run([*command,'preview','--location','local','--json'],env=env,capture_output=True,text=True,cwd=self.root)
         self.assertEqual(result.returncode,0,result.stderr+result.stdout)
         preview = json.loads(result.stdout)
         self.assertFalse(preview['activation_allowed'])
         self.assertEqual(preview['engine']['runtime'],'0.0.99 '+'1'*40)
-        if cli:
-            tool = target / 'current/runtime/engine/engine.py'
-            # Exercise isolation and refusal through the installed executable,
-            # using only this synthetic package's writable child resources.
-            trap = self.root / 'trap'
-            trap.mkdir()
-            (trap / 'python3').write_text('#!/bin/sh\nexit 97\n')
-            (trap / 'python3').chmod(0o700)
-            source_fallback = self.root / 'tools/install/engine/engine.py'
-            source_fallback.parent.mkdir(parents=True)
-            observed = ('PATH','PYTHONPATH','OPENWIZ_ENGINE_PROGRAM','OPENWIZ_ENGINE_RUNTIME')
-            spy = ('import json,os\nreport=json.loads(' + repr(json.dumps(preview)) + ')\n'
-                + 'report["reason"]=json.dumps({k:k in os.environ for k in ' + repr(observed) + '})\n'
-                + 'print(json.dumps(report))\n')
-            source_fallback.write_text(spy)
-            tool.write_text(spy)
-            hostile = {**env,'PATH':str(trap),'PYTHONPATH':str(trap),
-                'OPENWIZ_ENGINE_PROGRAM':str(trap/'python3'),
-                'OPENWIZ_ENGINE_RUNTIME':str(source_fallback)}
-            isolated = subprocess.run([*command,'status','--json'],env=hostile,cwd=self.root,
-                capture_output=True,text=True)
-            self.assertEqual(isolated.returncode,0,isolated.stdout+isolated.stderr)
-            self.assertEqual(json.loads(json.loads(isolated.stdout)['reason']),{k:False for k in observed})
-            saved = tool.with_name('saved-engine.py')
-            tool.rename(saved)
-            for symlink in (False, True):
-                with self.subTest(runtime_symlink=symlink):
-                    if symlink:
-                        tool.symlink_to(saved)
-                    refused = subprocess.run([*command,'status','--json'],env=hostile,cwd=self.root,
-                        capture_output=True,text=True)
-                    self.assertEqual(refused.returncode,1,refused.stdout+refused.stderr)
-                    self.assertEqual(json.loads(refused.stdout)['error']['kind'],'unavailable')
-                    if symlink:
-                        tool.unlink()
-            saved.rename(tool)
-            directory = tool.parent
-            real_directory = directory.with_name('saved-engine')
-            directory.rename(real_directory)
-            directory.symlink_to(real_directory, target_is_directory=True)
-            refused = subprocess.run([*command,'status','--json'],env=hostile,cwd=self.root,
-                capture_output=True,text=True)
-            self.assertEqual(refused.returncode,1,refused.stdout+refused.stderr)
-            directory.unlink()
-            real_directory.rename(directory)
-            tool.write_bytes((HERE / 'engine.py').read_bytes())
-            # This copied installed child is an untrusted source boundary.
-            valid = {**preview, 'service_config':None}
-            malformed = [
-                ('{"schema":"openwiz.engine.v1","activation_allowed":false}', 0),
-                (json.dumps(valid)[:-1] + ',"activation_allowed":false}', 0),
-                (json.dumps({**valid, 'extra':'synthetic'}), 0),
-                (json.dumps({**valid, 'cost':[]}), 0),
-                (json.dumps({**valid, 'location_status':{'not_activated':None}}), 0),
-                (json.dumps({'schema':'openwiz.cli-error.v1','command':'engine.preview',
-                    'exit_code':2,'error':{'kind':'usage','message':'Synthetic.'}}), 2),
-                (json.dumps({'schema':'openwiz.cli-error.v1','command':'engine.status',
-                    'exit_code':10,'error':{'kind':'store_unavailable','message':'Synthetic.'}}), 2),
-            ]
-            for payload, exit_code in malformed:
-                with self.subTest(payload=payload):
-                    tool.write_text('import sys\nsys.stdout.write(' + repr(payload) + ')\nsys.exit(' + str(exit_code) + ')\n')
-                    rejected = subprocess.run([*command,'status','--json'],env=env,capture_output=True,text=True)
-                    self.assertEqual(rejected.returncode,1,rejected.stdout+rejected.stderr)
-                    self.assertEqual(json.loads(rejected.stdout)['schema'],'openwiz.cli-error.v1')
-                    self.assertEqual(json.loads(rejected.stdout)['error']['kind'],'unavailable')
-                    self.assertEqual(rejected.stderr,'')
-            error = {'schema':'openwiz.cli-error.v1','command':'engine.status','exit_code':2,
-                'error':{'kind':'usage','message':'Synthetic usage refusal.'}}
-            for payload, exit_code in [(json.dumps(valid),0),(json.dumps(error),2)]:
-                tool.write_text('import sys\nsys.stdout.write(' + repr(payload) + ')\nsys.exit(' + str(exit_code) + ')\n')
-                accepted = subprocess.run([*command,'status','--json'],env=env,capture_output=True,text=True)
-                self.assertEqual(accepted.returncode,exit_code,accepted.stdout+accepted.stderr)
-                self.assertEqual(json.loads(accepted.stdout),json.loads(payload))
-            tool.write_bytes((HERE / 'engine.py').read_bytes())
         if service:
             blocked = subprocess.run([str(target/'current/openwiz-service')],env=env,capture_output=True,text=True)
             self.assertEqual(blocked.returncode,1)
