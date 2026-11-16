@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CI3's one measure (contracts/ci3.v1.md): the time to a PR's result.
 
-    ci3.py collect --since T --until T --out FILE   read a window from GitHub (gh api, GET only, through bench.py)
+    ci3.py collect --since T --until T --out FILE   read a window from GitHub (gh api, GET only, through bench_reads.py)
     ci3.py measure FILE [--label TEXT]              print the window's record (openwiz.ci3.v1) on stdout
     ci3.py check-steps [--workflow FILE]           require a row of steps.tsv for every step of ci.yml
 
@@ -12,27 +12,74 @@ same record.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 import time
 from urllib.parse import quote
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.dont_write_bytecode = True
-# The bench's reader and checks stay in tools/ci-bench/bench.py until MT8 (#827) retires it.
-sys.path.insert(0, str(ROOT / "tools" / "ci-bench"))
-import bench  # noqa: E402  the bench's reader and checks
+sys.path.insert(0, str(HERE))
+# The war room's copy of the bench's reader and checks (#822), so CI3 reads nothing from tools/ci-bench/.
+import bench_reads as bench  # noqa: E402
 
-from bench import Fail, as_int, as_list, as_obj, as_str, as_time, need, secs  # noqa: E402
+from bench_reads import Fail, as_int, as_list, as_obj, as_str, as_time, need, secs  # noqa: E402
 
 VERSION = "ci3.v1"
 SCHEMA = "openwiz.ci3.v1"
 WINDOW_SCHEMA = "openwiz.ci3-window.v1"
 STEPS = HERE / "steps.tsv"  # the step table: which step is setup and which is running
+
+
+# ---------------------------------------------------------------- the bench's helpers CI3 uses
+# Copied unchanged from tools/ci-bench/bench.py (#826): bench_reads.py doesn't carry them.
+
+BASE_BRANCH = "main"
+
+
+def duration(step):
+    if step["started_at"] is None or step["completed_at"] is None:
+        return 0
+    return secs(step["completed_at"]) - secs(step["started_at"])
+
+
+def nearest_rank(values, p):
+    ordered = sorted(values)
+    return ordered[math.ceil(p * len(ordered)) - 1]
+
+
+def read_table(path):
+    rows = []
+    for i, line in enumerate(bench.read_file(path).splitlines()):
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) != 2 or parts[0] not in bench.CATEGORIES or not parts[1]:
+            raise Fail(f"{path} line {i + 1}: not '<category><TAB><step name>'")
+        pattern = "".join(".*" if c == "*" else re.escape(c) for c in parts[1])
+        rows.append((parts[0], re.compile(pattern)))
+    if not rows:
+        raise Fail(f"{path}: no rows")
+    return rows
+
+
+def write(path, text):
+    fd, tmp = tempfile.mkstemp(dir=Path(path).parent, prefix=".bench-")
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def utc_text(seconds):
+    return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 # The required checks on main today: workflow file and the job whose name is the check.
 REQUIRED = {"ci.yml": "ci", "privacy.yml": "privacy"}
 # A head's activity: what moves a branch to a new commit.
@@ -43,12 +90,12 @@ RUNNING = {"web", "rust", "build", "skills"}
 
 
 def utc(seconds):
-    return bench.utc_text(seconds)
+    return utc_text(seconds)
 
 
 def rank(values, p):
     """Nearest rank: the ceil(p x n)-th smallest value."""
-    return bench.nearest_rank(values, p) if values else None
+    return nearest_rank(values, p) if values else None
 
 
 # ---------------------------------------------------------------- collecting
@@ -60,7 +107,7 @@ def read_pr_list(since, until, read):
     prs, page = {}, 1
     while True:
         where = f"gh api pulls page {page}"
-        got = as_list(read(f"{base}/pulls?state=all&base={bench.BASE_BRANCH}&sort=updated&direction=desc"
+        got = as_list(read(f"{base}/pulls?state=all&base={BASE_BRANCH}&sort=updated&direction=desc"
                            f"&per_page={bench.PAGE}&page={page}"), where)
         older = False
         for pr in got:
@@ -227,7 +274,7 @@ def collect(since, until, out, workers=1, read=None, now=None):
               "collected_at": now or utc(time.time()),
               "heads": heads, "groups": collect_groups(since, until, read)}
     Path(out).parent.mkdir(parents=True, exist_ok=True)
-    bench.write(out, json.dumps(window, indent=1, sort_keys=True) + "\n")
+    write(out, json.dumps(window, indent=1, sort_keys=True) + "\n")
     print(f"collected {len(heads)} PR heads of {len(prs)} PRs and {len(window['groups'])} merge groups into {out}",
           file=sys.stderr)
 
@@ -296,7 +343,7 @@ def split(path, total, table):
         whole = job_secs(job)
         covered = 0
         for step in job["steps"]:
-            d = bench.duration(step)
+            d = duration(step)
             covered += d
             try:
                 cat = category(table, step["name"], job["name"])
@@ -428,7 +475,7 @@ def check_runs(runs, where, allowed):
 
 def measure(window, label=None, table=None):
     """The window's record, in the contract's record form. Deterministic: no clock, no network."""
-    table = table or bench.read_table(STEPS)
+    table = table or read_table(STEPS)
     since, until = window["since"], window["until"]
     timed, missing = [], []
     for h in sorted(window["heads"], key=lambda h: (h["pr"], secs(h["start"]), h["sha"] or "")):
@@ -484,7 +531,7 @@ def check_steps(workflow):
     classifies it. Moved with the table from ci-bench's `bench.py check-steps` (#826), unchanged:
     explicit names are API names; otherwise GitHub prefixes uses/run with Run. Parse step entries,
     not name/run words inside scripts or comments, and refuse unnamed multiline runs."""
-    table = bench.read_table(STEPS)
+    table = read_table(STEPS)
     entries = re.split(r"(?m)^      - ", bench.read_file(workflow))[1:]
     if not entries:
         raise Fail(f"{workflow}: no steps found")

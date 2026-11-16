@@ -42,8 +42,8 @@ import sources  # noqa: E402
 import suite  # noqa: E402
 
 C3 = sources.native('tools/war-room/ci3.py')
-B = C3.bench  # ci-bench's reader, rules and prices: the numbers ci-bench publishes
-FAILS = (B.Fail, activity.B.Fail, OSError, ValueError, TypeError, KeyError, ArithmeticError)
+B = sources.native('tools/ci-bench/bench.py')  # ci-bench's reader, rules and prices: the numbers ci-bench publishes
+FAILS = (B.Fail, C3.Fail, activity.B.Fail, OSError, ValueError, TypeError, KeyError, ArithmeticError)
 SCHEMA = json.loads((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))
 FACTS = ('runs', 'minutes', 'ci3', 'activity', 'queue')
 WINDOWED = ('runs', 'minutes', 'ci3')

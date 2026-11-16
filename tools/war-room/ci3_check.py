@@ -33,9 +33,9 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
 import ci3  # noqa: E402
 
-bench = ci3.bench  # the bench's reader and checks, as CI3 reads them
+bench = ci3.bench  # the war room's copy of the bench's reader and checks, as CI3 reads them
 
-from bench import Fail, as_int, as_list, as_obj, as_str, as_time, need, secs  # noqa: E402
+from ci3 import Fail, as_int, as_list, as_obj, as_str, as_time, need, secs  # noqa: E402
 
 SPEC = 780
 REPO = "openwizdev/OpenWiz"
@@ -59,7 +59,7 @@ LOOKBACK_DAYS = 32
 
 
 def utc(seconds):
-    return bench.utc_text(seconds)
+    return ci3.utc_text(seconds)
 
 
 def shown(t):
