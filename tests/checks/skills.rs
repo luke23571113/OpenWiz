@@ -4162,6 +4162,10 @@ fn onboard_keeps_its_gates() {
         "`--yes --operation <id>`",
         "onboard.py continue",
         "refuses, naming each one, while anything is missing, refused, unknown or out of date",
+        // Review R5 ruling: the pair writer and its accepted limitation.
+        "onboard.py decisions",
+        "sets only that one key",
+        "a host that later runs the full OpenWiz service must complete its settings",
     ] {
         assert!(connect.contains(required), "connect: {required}");
     }

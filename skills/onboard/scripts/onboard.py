@@ -2,6 +2,7 @@
 """The onboarding skill's mechanical checks (#1108, joined to install in #636). Standard library only.
 
   onboard.py continue --state FILE --setup-state DIR [--explained]
+  onboard.py decisions --state FILE --setup-state DIR [--yes]
   onboard.py create-repo --state FILE --repo OWNER/NAME [--yes]
   onboard.py choose --state FILE --options FILE (--harness P --model M --effort E | --from-setup) --agents cloud|local
   onboard.py spec --state FILE --spec N --repo OWNER/NAME
@@ -56,6 +57,7 @@ LAUNCH_FLEET = Path(__file__).resolve().parents[2] / 'launch-fleet'
 FLEET_SH = LAUNCH_FLEET / 'scripts/fleet.sh'
 OPTIONS = {
     'continue': ({'--state', '--setup-state'}, {'--explained'}, set()),
+    'decisions': ({'--state', '--setup-state'}, {'--yes'}, set()),
     'create-repo': ({'--state', '--repo'}, {'--yes'}, set()),
     'choose': ({'--state', '--options', '--agents'}, {'--from-setup'}, {'--harness', '--model', '--effort'}),
     'spec': ({'--state', '--spec', '--repo'}, set(), set()),
@@ -282,6 +284,53 @@ def decisions_pair(folder, pair):
         return all(name(configured, r).lower() == name(pair, r).lower() for r in ('public', 'private'))
     except (OSError, ValueError, KeyError, TypeError):
         return False
+
+
+def connect_decisions(got):
+    """A public repository's companion brain, connected to Decisions through the
+    existing private settings: decisions.v1's `decision_repositories` pair in
+    <state>/service/config.json. Only that key is written; every other byte of an
+    existing settings file stays. Preview first; --yes writes it once."""
+    folder = Path(got['--setup-state'])
+    try:
+        value = strict((folder / 'setup/state.json').read_text(encoding='utf-8'))
+        brain = value['brain']
+        assert isinstance(brain, dict) and brain['location'] == 'companion'
+        pair = brain['decision_repositories']
+        assert set(pair) == {'public', 'private'}
+    except (OSError, ValueError, KeyError, TypeError, AssertionError):
+        raise Exit(5, 'Setup records no companion brain to connect; nothing changed.')
+    if decisions_pair(folder, pair):
+        print('Decisions already reads %s/%s with its companion.' % (pair['public']['owner'], pair['public']['name']))
+        return 0
+    path = folder / 'service/config.json'
+    try:
+        settings = strict(path.read_text(encoding='utf-8'))
+        assert isinstance(settings, dict)
+    except FileNotFoundError:
+        settings = {}
+    except (OSError, ValueError, AssertionError):
+        raise Exit(10, 'The private settings file is unreadable; nothing changed.')
+    print('Effect: set Decisions\' repository pair in the private settings: public %s/%s, private %s/%s. '
+          'Restart the OpenWiz server afterwards.' % (pair['public']['owner'], pair['public']['name'],
+                                                    pair['private']['owner'], pair['private']['name']))
+    if not got.get('--yes'):
+        print("Nothing changed. On the user's yes to exactly this, run again with --yes.")
+        return 12
+    settings['decision_repositories'] = pair
+    temp = path.with_name('config.json.new')
+    try:
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+            json.dump(settings, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    except OSError:
+        raise Exit(10, 'Could not write the private settings; nothing changed.')
+    print('Decisions now reads the companion. Restart the OpenWiz server, then run continue.')
+    return 0
 
 
 def withdraw(state):
@@ -718,6 +767,8 @@ def main(argv):
         command, got = parse(argv)
         if command == 'continue':
             return carry_on(got)
+        if command == 'decisions':
+            return connect_decisions(got)
         if command == 'create-repo':
             return create_repo(got)
         if command == 'choose':
