@@ -1,6 +1,6 @@
 # #1095 proof plan
 
-Contract: #1095 and the full confirmed `2026-11-05-skill-ask` grill on PR #1094 at c7cc4251cc0bb412ce26160f92a7d19cdcf034ff. No parent spec is set on the ticket.
+Contract: #1095 and the full confirmed `2026-11-05-skill-ask` grill on PR #1094, as confirmed there on 2026-11-05. No parent spec is set on the ticket.
 
 | Claim | Evidence class and seam |
 | --- | --- |
