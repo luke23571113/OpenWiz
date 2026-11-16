@@ -13,6 +13,9 @@ use std::io::Write;
 
 use crate::response;
 
+#[path = "loop_plan.rs"]
+mod loop_plan;
+
 pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
   openwiz loop export --project <project> [--out <dir>] [--json]
   openwiz loop plan <path>... --project <project> [--adopt <id>=<loop>]... [--json]
@@ -20,8 +23,10 @@ pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
 ";
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
-  (contracts/loop-cli.v1.md). Not built yet: each command refuses with exit 5
-  and reads and changes nothing.
+  (contracts/loop-cli.v1.md). plan prints the exact room-cli commands and the
+  differences against room-cli loop list, and changes nothing. validate,
+  export and apply are not built yet: each refuses with exit 5 and reads and
+  changes nothing.
 ";
 
 /// The four loop-file commands.
@@ -221,6 +226,9 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
                     .is_err(),
             )
         }
+        Ok(Parsed::Run(args)) if args.command == Command::Plan => {
+            loop_plan::run(&args, stdout, stderr)
+        }
         Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
@@ -286,11 +294,6 @@ mod tests {
                 &["export", "--project", "prj_syn_0001", "--json"],
                 "export",
                 791,
-            ),
-            (
-                &["plan", "loops", "--project", "prj_syn_0001", "--json"],
-                "plan",
-                792,
             ),
             (
                 &["apply", "nightly", "--project", "prj_syn_0001", "--json"],
