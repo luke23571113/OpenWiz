@@ -135,6 +135,26 @@ fn it_records_every_call_and_answers_only_exactly_what_its_scenario_answers() {
 }
 
 #[test]
+fn it_answers_byte_for_byte() {
+    let stdout = "{\"a\":1}\n\n  \u{e9}\ttrailing ";
+    let stderr = "first line\nsecond line";
+    let path = scenario(
+        "a3_bytes",
+        "bytes",
+        &json!({
+            "synthetic_assumptions": [],
+            "responses": [{"argv": ["api", "synthetic"], "stdout": stdout, "stderr": stderr}]
+        }),
+        &[],
+    );
+    let fake = FakeGh::new("a3_bytes", &path);
+    let got = run(&fake, &["api", "synthetic"]);
+    assert_eq!(got.status.code(), Some(0));
+    assert_eq!(got.stdout, stdout.as_bytes());
+    assert_eq!(got.stderr, stderr.as_bytes());
+}
+
+#[test]
 fn it_logs_the_names_of_github_variables_never_their_values() {
     let path = scenario(
         "a3_environment",
