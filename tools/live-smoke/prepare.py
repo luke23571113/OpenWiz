@@ -57,15 +57,36 @@ def strings(value):
             yield from strings(item)
 
 
-def inside_checkout(path):
-    """A private file never lives in a Git working tree, where it could be
-    committed: neither by its given path nor after resolving every symlinked
-    folder on the way (#777 R1). A leaf symlink is refused separately, by the
-    owner-only read and the exclusive write."""
-    given = Path(os.path.abspath(path))
-    resolved = Path(os.path.realpath(given))
-    return any((folder / '.git').exists()
-               for start in (given, resolved) for folder in [start, *start.parents])
+def in_work_tree(path):
+    return any((folder / '.git').exists() for folder in [path, *path.parents])
+
+
+def resolve_private(path):
+    """The one resolver for every guarded read and write (#777 R1): the path as
+    the OS resolves it, never lexically normalized first, so `alias/..` follows
+    the link before `..`. For a path that does not exist yet, its deepest
+    existing ancestor is resolved and any `..` after it refuses (`unsafe_path`).
+    Every existing ancestor, and the result, must be outside a Git work tree
+    (`inside_checkout`): a private file there could be committed. A leaf
+    symlink is refused separately, by the owner-only read and the exclusive
+    write. Returns the resolved path, which is the one read or written."""
+    text = os.fspath(path)
+    if not os.path.isabs(text):
+        raise Refused('unsafe_path')
+    parts = text.split('/')
+    depth = len(parts)
+    while depth > 1 and not os.path.lexists('/'.join(parts[:depth])):
+        depth -= 1
+    rest = [part for part in parts[depth:] if part not in ('', '.')]
+    if '..' in rest:
+        raise Refused('unsafe_path')
+    for index in range(1, depth + 1):
+        if in_work_tree(Path(os.path.realpath('/'.join(parts[:index]) or '/'))):
+            raise Refused('inside_checkout')
+    resolved = Path(os.path.realpath('/'.join(parts[:depth]) or '/')).joinpath(*rest)
+    if in_work_tree(resolved):
+        raise Refused('inside_checkout')
+    return resolved
 
 
 def owner_only(path, reason):
@@ -78,15 +99,17 @@ def owner_only(path, reason):
 
 
 def private_output(path):
-    if not path.is_absolute() or inside_checkout(path):
+    """A new private file's resolved path, outside every work tree."""
+    if not path.is_absolute():
         raise Refused('inside_checkout')
+    return resolve_private(path)
 
 
 def read_private(path, reason):
     owner_only(path, reason)
-    if inside_checkout(path):
-        raise Refused('inside_checkout')
-    value = smoke['decode'](path.read_bytes())
+    resolved = resolve_private(path)
+    owner_only(resolved, reason)
+    value = smoke['decode'](resolved.read_bytes())
     if type(value) is not dict:
         raise Refused('invalid_input')
     if any(CREDENTIAL.search(text) for text in strings(value)):
@@ -110,7 +133,7 @@ def write_exclusive(out, text):
 
 
 def prepare(inputs_path, out):
-    private_output(out)
+    out = private_output(out)
     inputs = read_private(inputs_path, 'inputs_not_owner_only')
     template = smoke['decode'](TEMPLATE.read_bytes())
     wanted = names(template)

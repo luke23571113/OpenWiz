@@ -18,7 +18,7 @@ Refused = prepare['Refused']
 
 
 def assemble(records, out):
-    prepare['private_output'](out)
+    out = prepare['private_output'](out)
     if out.exists() or out.is_symlink():
         raise Refused('exists')
     merged = {}
