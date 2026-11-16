@@ -16,6 +16,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 from pathlib import Path
 import sys
 import unittest
@@ -199,7 +200,9 @@ class Kit(unittest.TestCase):
         b = Bundle(); b.receipt['actions']['log'][0]['actor'] = 'agent_for_owner'
         self.assertEqual(self.outcome(b)[:2], ([], 'pass'), "an agent's stand-in counts like the owner's tap")
         b = Bundle(); b.receipt['actions']['log'].pop(0)
-        self.assertIn("setup-onboard.v1's checks refuse the receipt: action_count_mismatch", self.outcome(b)[0])
+        refusals, outcome, codes = self.outcome(b)
+        self.assertEqual(outcome, 'refused')
+        self.assertIn('action_count_mismatch', codes['receipt']['problems'], 'a dropped entry under the same count')
         # The protected paste: each of the installed route's owner steps, never one entry for all.
         b = Bundle()
         b.binding['route']['secret_route'] = b.receipt['secret_route'] = 'protected_paste'
@@ -238,7 +241,7 @@ class Eligibility(unittest.TestCase):
         out = io.StringIO()
         self.assertEqual(kit.dry_run(None, None, out), 5)
         lines = out.getvalue().splitlines()
-        steps = [l for l in lines if l.startswith('F')]
+        steps = [l for l in lines if re.match(r'F[0-9]+ ', l)]
         self.assertEqual([l.split()[0] for l in steps], ['F%d' % i for i in range(1, 18)])
         self.assertTrue(all(l.endswith('; no effect in a dry run') for l in steps), steps)
         self.assertIn('F11 fleet (spend) at +660000 ms: refused: no recorded agents, spending authority; no effect in a dry run', lines)
