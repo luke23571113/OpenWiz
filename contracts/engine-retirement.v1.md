@@ -10,7 +10,7 @@ was run on a scratch copy with each removal's files left out, and nothing from i
 committed. Fixture builds and fixture tests prove only that the kept code compiles and
 its tests pass without the deleted files. They prove nothing about live behaviour.
 
-Base: `main` at `192f6e4`. A removal that starts from a later `main` re-checks
+Base: `main` at `192f6e4`; ER3's section was re-checked at `3228599`. A removal that starts from a later `main` re-checks
 its section against that `main` first. A file listed here that has changed since
 is read again before it is deleted.
 
@@ -81,39 +81,64 @@ must not delete it.
 | Loop definitions, switches, storage | store `loops/{config,document,paths,repository,storage}.rs`; server `loops.rs`; cli `loops.rs`; core `loops/*` |
 | Loops page | `apps/web/src/components/Loops.tsx`, `src/loops.ts` |
 | The scheduler code and loop runner | service `loops/{approval,check,limits,production,mod}.rs`, `scheduler.rs`, `runtime.rs` (the loop registration line) |
-| Loop health (kept by ER3) | service `health/loops.rs` (LP4's pure planner) and `loops::observe` |
-| Tests | `tests/loops/*`; `tests/service/l3_*`, `l10_approval.rs`, `l11_limits*`, `l12_registration.rs`, `l5_watchdog.rs`, `install_engine_loops.rs` |
+| Loop health (kept by ER3) | the registered `health` job, reduced to the LP4 watchdog: service `health/mod.rs` (watchdog pass and record delivery), `watchdog.rs`, `records.rs`, `loops.rs` (LP4's planner), `loops::observe`; its state in `document.rs` and `state.rs` |
+| Tests | `tests/loops/*`; `tests/service/l3_*`, `l10_approval.rs`, `l11_limits*`, `l12_registration.rs`, `l5_watchdog.rs`, `l5b_watchdog.rs`, `l5b_observation.rs`, `install_engine_loops.rs` |
 
 `tests/loops/l6_api.rs` and `tests/service/l12_registration.rs` are kept loop tests
 that ER4 and ER3 must edit, and say so in their pull requests (sections 4 and 5).
 
 ## 4. ER3 (#797): retire health and takeover
 
+**Loop health stays as a report-only job** (#797: "Loop health stays"). Today LP4's
+watchdog runs inside the health pass. It shares that pass's `incidents`,
+`next_incident` and `last_pass`, and it reports through the health records (a
+record comment on the service issue) and the Needs-you send to the orchestrator.
+ER3 keeps that path, the registered `health` job, with the watchdog as its only
+check. It deletes the other checks (`cloudroom`, `loop`, `tick`, `fleet_thread`,
+`server`), every repair fix (resume loop, restart tick, restart server), takeover and
+the runtime restart channel.
+
 **Delete**
 
-- `crates/service/src/health/`: `model.rs`, `observe.rs`, `records.rs`, `runtime.rs`, `takeover.rs`, `watchdog.rs`, and all of `mod.rs` except `pub mod loops;`
-- `tests/service/`: `t3_planner.rs`, `t3_checks.rs`, `t3_contract.rs`, `t3_owned.rs` (and `mod t3_planner;` in `main.rs`); `l5b_watchdog.rs`, `l5b_observation.rs`; the whole `t5-health` target: `t5_health.rs`, `t5_server.rs`, `t5_restart.rs`, `t5_execution.rs`, `t5_runtime.rs`, `t5_takeover.rs`, `t5_takeover_execution.rs`, and `t5_tick.rs` if ER2 has not already deleted it (it hangs off `t5_health.rs`)
+- `crates/service/src/health/`: `model.rs`, `observe.rs` (move its `authored` into `records.rs`; the #770 delivery read-back uses it), `runtime.rs`, `takeover.rs`
+- `tests/service/`: `t3_planner.rs`, `t3_checks.rs`, `t3_contract.rs`, `t3_owned.rs` (and `mod t3_planner;` in `main.rs`); the whole `t5-health` target: `t5_health.rs`, `t5_server.rs`, `t5_restart.rs`, `t5_execution.rs` (after moving the delivery tests below), `t5_runtime.rs`, `t5_takeover.rs`, `t5_takeover_execution.rs`, and `t5_tick.rs` if ER2 has not already deleted it (it hangs off `t5_health.rs`)
+
+**Keep**
+
+- `crates/service/src/health/loops.rs` (LP4's planner), `watchdog.rs` (the production observation and `apply`), `records.rs` (record render, freeze, post, reconcile and the record-author read-back).
+- In `crates/service/src/health/mod.rs`: `WatchdogRead`, `Sources`, `Health` (without `runtime` and `pending`), `with_watchdog_source`, `register` (it no longer takes the server port), `snapshot`, `change`, `repository`, `patch` and `flush_records`. `pass(now)` becomes the watchdog pass: take the pass lock, check the repository, flush and reconcile pending records, run `watchdog::apply` into `incidents`, `next_incident` and `last_pass`, then flush again. Delete `RuntimeFixes`, `Pending`, `observe`, `recover`, `save_outcome`, and the planner, takeover and fix parts of `pass`.
+- `crates/service/src/loops/mod.rs`'s `observe`, and `tests/service/l5_watchdog.rs`, `l5b_watchdog.rs`, `l5b_observation.rs`.
 
 **Edit**
 
-- `crates/core/src/health/mod.rs` and `model.rs`: keep only `model::{Id, Repository, SeenLoop}`, `is_openwiz_loop` and `HEALTHY_FOR_MS`. `crates/adapters/cloudroom/src/loops.rs` uses the first four, and `crates/adapters/github/src/decisions.rs` (the Decisions page) uses `Repository::parse`. `HEALTHY_FOR_MS` stays only while ER4 has not merged (`crates/service/src/notifications/sources.rs` reads it).
-- `crates/core/src/lib.rs`: the `health` line stays.
-- `crates/service/src/lib.rs`: nothing; `pub mod health;` stays for loop health.
-- `contracts/service.v1.md`: "The checks", "TK1: takeover by the service tick", "A result", "Incidents and the two-tries rule", "Records", "Public fleet ownership discovery", the `health` row of "The config", the incident and `last_pass` parts of "The status report" and "The state", and the production half of "LP4: the independent loops watchdog" (its pure planner stays).
+- `crates/core/src/health/mod.rs` and `model.rs`: keep only `model::{Id, Number, Repository, SeenLoop}`, `is_openwiz_loop` and `HEALTHY_FOR_MS`. `crates/adapters/cloudroom/src/loops.rs` uses `Id`, `Repository`, `SeenLoop` and `is_openwiz_loop`. `crates/adapters/github/src/decisions.rs` (the Decisions page) uses `Repository::parse`, and the kept `records.rs` uses `Number`. `HEALTHY_FOR_MS` stays only while ER4 has not merged (`crates/service/src/notifications/sources.rs` reads it).
+- `crates/core/src/lib.rs` and `crates/service/src/lib.rs`: nothing; both `health` lines stay.
+- `tests/service/l5b_watchdog.rs` (shared: its harness only): drop `RuntimeFixes` and `seen()`, call `Health::new` without a runtime, `pass(now)` and `register(&mut scheduler, now)`. Every assertion stays (checked: 12/12 pass).
+- `contracts/service.v1.md`: "The checks" and "A result" keep only the `watchdog` result. "Incidents and the two-tries rule" keeps watchdog incidents and their Needs you (watchdog incidents have no tries). "Records" keeps the watchdog's record line. Delete "TK1: takeover by the service tick" and "Public fleet ownership discovery". "LP4: the independent loops watchdog", the `health` row of "The config", and the `incidents`, `watchdog_deliveries` and `last_pass` parts of "The status report" and "The state" stay.
 
-**Path gaps** (outside ER3's owned paths)
+**Path gaps** (outside ER3's owned paths; granted by D4)
 
-- `crates/service/src/runtime.rs` (shared: the health wiring): `run_with_health_sources`, the `sources` parameter of `run_composed`, the health registration block and the `health_requests` loop.
-- `crates/service/Cargo.toml` (shared: the `t5-health` and `l5b-watchdog` `[[test]]` entries).
-- `tests/service/l12_registration.rs` (kept loop test): its runtime child calls `run_with_health_sources`; use `run_with_binder`. Three tests also wait for `status["last_pass"]`, a health pass. Without health they fail (checked: 3 of 17). Drop only that wait.
-- `tests/service/notifications_engine.rs` and `notifications_delivery.rs` (ER4's): each runtime child calls `run_with_health_sources`. Use `run_with_binder`, unless ER4 has merged and deleted them.
+- `crates/service/src/runtime.rs` (shared: the health wiring): drop `channel_with_monitor` and the `health_requests` loop, and call `Health::new` without a runtime and `register` without the port. `run_with_health_sources` and its `sources` parameter stay, because `health::Sources` stays.
+- `crates/service/src/document.rs` (shared: S1): drop "cloudroom first" and the required `cloudroom`, `tick` and `server` results. A pass with only the watchdog result is then valid. S7's fix checks see no fixes. Old state files with the retired results still read.
+- `crates/service/Cargo.toml` (shared: the `t5-health` `[[test]]` entry).
+- `tests/service/l12_registration.rs`, `notifications_engine.rs` and `notifications_delivery.rs`: no change. The health job still runs and writes `last_pass` (checked: 17/17, 33/33 and 5/5).
 
-**Left for later after ER3:** `crates/adapters/cloudroom/src/loops.rs` (health loop inventory, pause and resume; only health used it), `crates/service/src/scheduler.rs`'s tick monitor and restart helpers, and the incident and watchdog validation in `crates/service/src/document.rs`.
+**Move, never delete:** the delivery tests in `t5_execution.rs` protect `records.rs`, which stays. ER3 moves each onto watchdog incidents in `l5b_watchdog.rs`, or names the `l5b` test that already catches its bug:
+- `only_the_factory_s_comments_confirm_a_health_delivery` (#770)
+- `lost_record_reply_is_reconciled_without_another_post_or_resume`
+- `uncertain_absent_record_never_gets_a_second_post`
+- `legacy_claim_after_healing_gets_its_original_receipt_only_by_unique_readback`
+- `quarantined_frozen_delivery_keeps_other_repairs_and_healing_progressing`
+- `foreign_project_notification_target_is_never_sent_a_message`
 
-**Keepers:** health's restart of the HTTP server and the tick is gone (behaviour gone). For `t5_server.rs`'s two server-lifecycle tests, ER3 names a keeper in `tests/web-api/` or says the behaviour (health's server restart) is gone; this map did not verify one. Loop health keeps `l5_watchdog.rs`.
+The rest of `t5_execution.rs` tests repair fixes, which are gone.
 
-**Closes as not needed:** #770, #848 (service health records), #202 (`health::Fault::refresh`).
-**Stays open:** #203 (`health::model::Id::as_str`), because `Id` is kept.
+**Left for later after ER3:** `crates/adapters/cloudroom/src/loops.rs` (health loop inventory, pause and resume; only the retired checks used it), `crates/service/src/scheduler.rs`'s tick monitor and restart helpers, and `document.rs`'s validation of the retired incident kinds and fixes.
+
+**Keepers:** `l5_watchdog.rs`, `l5b_watchdog.rs` and `l5b_observation.rs` keep loop health. The moved delivery tests keep the records. Health's other checks, repairs and takeover, and its restart of the HTTP server and the tick, are gone. For `t5_server.rs`'s two server-lifecycle tests, ER3 names a keeper in `tests/web-api/` or says the behaviour (health's server restart) is gone; this map did not verify one.
+
+**Closes as not needed:** #202 (`health::Fault::refresh`). #770 has merged and is closed.
+**Stays open:** #848 (its test moves with the kept records) and #203 (`health::model::Id::as_str`, because `Id` is kept).
 
 ## 5. ER4 (#798): retire push notifications
 
@@ -257,9 +282,8 @@ Needed by nothing kept once the removals merge, and not named for retirement. Ea
 | `crates/service/src/document.rs`, `state.rs` (tick, incident, watchdog and notification fields of the config and state documents) and `contracts/service.v1.schema.json` | The service's own document readers. No removal owns them, and old state files keep reading |
 | `crates/adapters/cloudroom/src/loops.rs` | The health loop inventory. The Cloudroom adapter's reads are kept |
 | `crates/adapters/github/src/writes.rs` | GitHub writes used by the executor and health records; still used by `crates/service/src/update.rs` |
-| `crates/core/src/health/` remainder (`Id`, `Repository`, `SeenLoop`, `is_openwiz_loop`) | Used by the kept adapters. A later move to a neutral module would empty `health` |
+| `crates/core/src/health/` remainder (`Id`, `Number`, `Repository`, `SeenLoop`, `is_openwiz_loop`) | Used by the kept adapters. A later move to a neutral module would empty `health` |
 | `crates/core/src/notifications/model.rs` and `stock.rs` | Used by the ready stock and Decisions. The same move applies |
-| `crates/service/src/health/loops.rs` and `loops::observe` | Loop health, kept by the spec. After ER3 no production code calls them |
 | `crates/service/src/update.rs`, `app.rs`, `runtime.rs`, `paths.rs` | The rest of `openwiz-service` (spec, "Out of Scope") |
 | `crates/store/src/loops/paths.rs` `inspect_settled` | If ER4 does not delete it; #818 may use it |
 | `crates/service/src/bootstrap.rs` | The packaged service's fail-closed start gate; it belongs to the rest of the service, kept for a later grill (D2). ER6 does not delete it |
@@ -284,16 +308,16 @@ These change #786's graph or ticket bodies, so they go to Jake as one proposed r
 
 ## The build check (E1)
 
-Run on a scratch worktree of `192f6e4`, nothing committed, Rust 1.99.1 and Node 24.22.1.
+Run on scratch worktrees of `192f6e4` (ER3's revised section: `3228599`), nothing committed, Rust 1.99.1 and Node 24.22.1.
 
 | Variant | `cargo check --workspace --all-targets` | `cargo clippy --workspace --all-targets -- -D warnings` | Tests run |
 | --- | --- | --- | --- |
 | ER2 alone | pass, no warnings | pass | none needed (all deleted files were tests or the executor composition) |
-| ER3 alone | pass | pass | `openwiz-service` `l12-registration` 17/17 (after its edit; 14/17 before), `l3-runner` 58/58, `l5-watchdog` 7/7 |
+| ER3 alone (revised: watchdog-only health job) | pass | pass | `openwiz-service`: `l5b-watchdog` 12/12 (harness adapted, assertions unchanged), `l5-watchdog` 7/7, `l12-registration` 17/17, `l3-runner` 58/58, `l10-approval` 15/15, `l11-limits` 14/14, `notifications-engine` 33/33, `notifications-delivery` 5/5, `t4-unit` 9/9, `t4-service` 21/21, `t6-update` 46/46, lib 13/13; `checks` 145/145 |
 | ER4 alone | pass | pass | `web-api` 354/354 (after the route-catalogue edits; 347/354 before); `checks` 145/145; `notifications` (stock only) 7/7; `loops` `l6_api` 9/9 (after its edit); unit tests of core, store, server and service pass; `apps/web` `typecheck`, `check` and `build` pass |
 | ER6 alone on `main` | **fails**: `crates/service/src/tick.rs` needs the executor (P1) | none | none |
 | ER6 after ER2 | pass | pass | `proof` 125/125; `fleet` 216 pass, 71 fail (the list above); `cli-agent` 50 pass, 5 fail (the path gap above) |
-| ER2, ER3, ER4 and ER6 together | pass | pass | none (each part ran above); 111 files changed, about 30,900 lines deleted |
+| ER2, ER3, ER4 and ER6 together | pass | pass | none (each part ran above); 111 files changed, about 30,900 lines deleted. Run with ER3's first cut, before R1; **not rerun** with the revised ER3, which deletes less |
 
 On `main` itself, `loops`'s `l6_config::real_cli_uses_install_operator_and_refuses_unconfigured_or_caller_identity`
 also fails unless `openwiz` is built first (its own message says so). It is unrelated to this map.
