@@ -105,6 +105,7 @@
     "ci/main-batch/test_admit.py",
     "ci/main-batch/test_contract.py",
     "ci/main-batch/test_shadow.py",
+    "docs/evidence/796/**",
     "docs/evidence/1754/**",
     "docs/evidence/2559/**",
     "docs/evidence/2583/**",

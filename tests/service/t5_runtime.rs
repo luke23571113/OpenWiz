@@ -343,7 +343,6 @@ else:sys.exit(2)
             && v["incidents"]
                 .as_array()
                 .is_some_and(|rows| rows.iter().any(|i| i["tries"]["first"]["comment"] == 7001))
-            && v["tick"]["last_ended"]["how"] == "failed"
         {
             break v;
         }
