@@ -159,8 +159,6 @@
     "tools/github-reads/test_consumers.py",
     "tools/github-reads/test_contract.py",
     "tools/github-reads/test_read.py",
-    "tools/live-smoke/restriction.py",
-    "tools/live-smoke/test_restriction.py",
     "tools/live-smoke/receipt.py",
     "tools/live-smoke/test_receipt.py",
     "tools/notifications/discovery-kit.md",
