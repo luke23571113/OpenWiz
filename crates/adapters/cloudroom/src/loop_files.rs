@@ -1150,9 +1150,10 @@ fn read_trigger(line: &mut LineRefusals<'_>, value: &Json) -> Option<Trigger> {
         }
         "in" => {
             let delay = string(line, "in")?;
-            let (number, unit) = delay.split_at(delay.len().saturating_sub(1));
-            let ok = matches!(unit, "m" | "h" | "d")
-                && number.starts_with(|c: char| ('1'..='9').contains(&c))
+            // The unit is one ASCII byte, so strip it as text: a delay ending in
+            // a multibyte character is refused, never split inside it.
+            let number = delay.strip_suffix(['m', 'h', 'd']).unwrap_or("");
+            let ok = number.starts_with(|c: char| ('1'..='9').contains(&c))
                 && number.bytes().all(|b| b.is_ascii_digit());
             if !ok {
                 line.push(

@@ -12,13 +12,13 @@ use openwiz_adapter_cloudroom::loop_files::{self, Plan, PlanItem, RoomCommand};
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use serde_json::{Value, json};
 
-use super::Args;
+use super::{Args, escape_untrusted as esc};
 
 /// Runs a parsed `loop plan`.
 pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     let fail =
         |stdout: &mut dyn Write, stderr: &mut dyn Write, code: i32, kind: &str, message: String| {
-            let _ = writeln!(stderr, "openwiz: loop plan: {message}");
+            let _ = writeln!(stderr, "openwiz: loop plan: {}", esc(&message));
             if args.json {
                 let doc = json!({
                     "schema": "openwiz.cli-error.v1", "command": "loop.plan", "exit_code": code,
@@ -114,50 +114,80 @@ fn item_json(item: &PlanItem) -> Value {
     })
 }
 
-/// A word quoted for `sh`.
+/// A word for `sh` that reads back byte for byte, with nothing a terminal
+/// acts on: safe text single-quoted (line breaks included, so a prompt stays
+/// readable), and each other character as `"$(printf '\ooo')"`, the octal of
+/// its UTF-8 bytes. The value itself is never changed.
 fn quoted(word: &str) -> String {
-    format!("'{}'", word.replace('\'', "'\\''"))
+    let mut out = String::from("'");
+    for c in word.chars() {
+        let s = c.to_string();
+        if c == '\n' || esc(&s) == s {
+            out.push_str(&s.replace('\'', "'\\''"));
+        } else {
+            let octal: String = s.bytes().map(|b| format!("\\{b:03o}")).collect();
+            out.push_str(&format!("'\"$(printf '{octal}')\"'"));
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// A block of untrusted text, escaped line by line so its breaks stay.
+fn block(text: &str) -> String {
+    text.split('\n').map(esc).collect::<Vec<_>>().join("\n")
 }
 
 /// The text for people: one block per file, then the loops left alone.
+/// Every untrusted string goes through [`esc`]; JSON keeps the originals.
 fn text(plan: &Plan) -> String {
     let mut out = String::new();
     for item in &plan.items {
+        let file = esc(&item.file);
         let what = match &item.loop_id {
-            Some(l) if item.action == loop_files::Action::None => format!("no change to {l}"),
-            Some(l) => format!("{} {l}", item.action_word()),
+            Some(l) if item.action == loop_files::Action::None => {
+                format!("no change to {}", esc(l))
+            }
+            Some(l) => format!("{} {}", item.action_word(), esc(l)),
             None => item.action_word(),
         };
         let paused = if item.paused { " (paused)" } else { "" };
-        out.push_str(&format!("{}: {what}{paused}\n", item.file));
+        out.push_str(&format!("{file}: {what}{paused}\n"));
         for r in &item.refusals {
-            out.push_str(&format!("{}: {}: {}\n", r.file, r.field, r.message));
+            out.push_str(&format!(
+                "{}: {}: {}\n",
+                esc(&r.file),
+                esc(&r.field),
+                esc(&r.message)
+            ));
         }
         for d in &item.differences {
             out.push_str(&format!(
-                "{}: {}: {} -> {}\n",
-                item.file, d.field, d.live, d.file
+                "{file}: {}: {} -> {}\n",
+                d.field,
+                esc(&d.live.to_string()),
+                esc(&d.file.to_string())
             ));
         }
         for command in &item.commands {
             let argv: Vec<String> = command.argv().iter().map(|a| quoted(a)).collect();
             out.push_str(&format!("  room-cli {}\n", argv.join(" ")));
             for (name, text) in &command.files {
-                out.push_str(&format!("  {name}:\n{text}"));
+                out.push_str(&format!("  {name}:\n{}", block(text)));
                 if !text.ends_with('\n') {
                     out.push('\n');
                 }
             }
         }
         for note in &item.notes {
-            out.push_str(&format!("{}: note: {note}\n", item.file));
+            out.push_str(&format!("{file}: note: {}\n", esc(note)));
         }
     }
     for (l, name) in &plan.unmanaged {
-        out.push_str(&format!("unmanaged: {l}: {name}\n"));
+        out.push_str(&format!("unmanaged: {}: {}\n", esc(l), esc(name)));
     }
     for (l, id) in &plan.orphans {
-        out.push_str(&format!("no file: {l}: {id}\n"));
+        out.push_str(&format!("no file: {}: {}\n", esc(l), esc(id)));
     }
     out.push_str("Nothing was changed.\n");
     out
