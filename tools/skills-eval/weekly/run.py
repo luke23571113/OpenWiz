@@ -366,8 +366,8 @@ import subprocess
 import tempfile
 import datetime as dt
 
-sys.path.insert(2, str(HERE.parents[1] / 'factory-metrics'))
-sys.dont_write_bytecode = True  # leave no cache in the factory-metrics checkout
+sys.path.insert(2, str(HERE.parents[1] / 'war-room'))
+sys.dont_write_bytecode = True  # leave no cache in the war-room checkout
 import experiment_contract as X
 
 STAGE_NAMES = ('research', 'cf4', 'replay', 'live')

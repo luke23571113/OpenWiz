@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+"""CI3 C1 (#782): time budgets that fail. Offline proofs on synthetic records.
+
+Each test names the bug it catches (the test rule, #687). Every expected
+value is a worked literal, never computed the way budgets.py computes it.
+"""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+TRACED = "${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && %d || %d }}"
+MARK = "        if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'\n"
+HEAD = "workflow\tjob\tmode\ttimeout\tp95_seconds\tsamples\truns\tfirst\tlast\tsource\n"
+T0 = "2030-01-01T00:00:00Z"
+
+
+def run(*args, env=None, cwd=None):
+    return subprocess.run([sys.executable, "-I", str(HERE / "budgets.py"), *map(str, args)],
+                          capture_output=True, text=True, timeout=60, env=env, cwd=cwd)
+
+
+def workflow(jobs):
+    """A workflow file: jobs is [(key, timeout line value or None, traced step?)]."""
+    text = "name: Synthetic\non: push\njobs:\n"
+    for key, timeout, marked in jobs:
+        text += f"  {key}:\n    runs-on: ubuntu-24.04\n"
+        if timeout is not None:
+            text += f"    timeout-minutes: {timeout}\n"
+        text += "    steps:\n      - name: Run npm test\n        run: npm test\n"
+        if marked:
+            text += "      - uses: actions/upload-artifact@0000000000000000000000000000000000000000 # v0\n" + MARK
+    return text
+
+
+def row(wf, job, mode, timeout, p95, samples=20, runs=150, source="measured"):
+    return f"{wf}\t{job}\t{mode}\t{timeout}\t{p95}\t{samples}\t{runs}\t{T0}\t2030-01-02T00:00:00Z\t{source}\n"
+
+
+def stamp(seconds):
+    day, rest = divmod(seconds, 86400)
+    h, rest = divmod(rest, 3600)
+    m, s = divmod(rest, 60)
+    return f"2030-01-{1 + day:02d}T{h:02d}:{m:02d}:{s:02d}Z"
+
+
+def job(run_id, name, seconds, conclusion="success", traced=False, event="pull_request", start=0):
+    """One record in the CI bench's jobs.jsonl shape."""
+    a, b = start + run_id * 3600, start + run_id * 3600 + seconds
+    steps = [{"name": "Set up job", "conclusion": "success", "started_at": stamp(a), "completed_at": stamp(a)}]
+    if name.startswith(("rust", "web")):
+        steps += [{"name": "Run npm test", "conclusion": conclusion, "started_at": stamp(a), "completed_at": stamp(b)},
+                  {"name": "Run actions/upload-artifact@0000000000000000000000000000000000000000",
+                   "conclusion": "success" if traced else "skipped", "started_at": stamp(b), "completed_at": stamp(b)}]
+    return {"completed_at": stamp(b), "conclusion": conclusion, "created_at": stamp(a), "event": event,
+            "name": name, "run": run_id, "run_concl": conclusion, "runner_name": "GitHub Actions 1",
+            "started_at": stamp(a), "steps": steps, "id": run_id * 100 + len(name), "run_attempt": 1,
+            "collected_attempt": 1, "run_created_at": stamp(run_id * 3600)}
+
+
+def window(d, wf, records, runs):
+    d = Path(d) / wf.removesuffix(".yml")
+    d.mkdir(parents=True)
+    (d / "jobs.jsonl").write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in records))
+    (d / "window.json").write_text(json.dumps({"workflow": wf, "runs": runs, "first": T0,
+                                               "last": "2030-01-02T00:00:00Z"}, sort_keys=True))
+
+
+class Check(unittest.TestCase):
+    """CI3-B: the check fails on a job with no budget and on a wrong timeout."""
+
+    def check(self, ci, privacy, table):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            (t / "ci.yml").write_text(ci)
+            (t / "privacy.yml").write_text(privacy)
+            (t / "budgets.tsv").write_text(HEAD + table)
+            return run("check", "--table", t / "budgets.tsv", t / "ci.yml", t / "privacy.yml")
+
+    PRIVACY = workflow([("privacy", 5, False)])
+    PRIVACY_ROW = row("privacy.yml", "privacy", "all", 5, 120)
+
+    # Bug: a new job arrives with an open-ended timeout and no budget row.
+    def test_a_job_with_no_row_fails(self):
+        r = self.check(workflow([("always", 12, False), ("site", 30, False)]), self.PRIVACY,
+                       row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job site has no budget row", r.stderr)
+
+    # Bug: a timeout is widened (or never set from the table) by hand.
+    def test_a_timeout_that_differs_from_its_row_fails(self):
+        r = self.check(workflow([("always", 60, False)]), self.PRIVACY,
+                       row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job always: timeout-minutes 60, its budget is 12", r.stderr)
+
+    # Bug: a job with no timeout-minutes at all falls back to GitHub's 360.
+    def test_a_job_without_a_timeout_fails(self):
+        r = self.check(workflow([("always", None, False)]), self.PRIVACY,
+                       row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job always has no timeout-minutes", r.stderr)
+
+    # Bug: the Privacy workflow is left out of the check.
+    def test_the_privacy_workflow_is_checked_too(self):
+        r = self.check(workflow([("always", 12, False)]), workflow([("privacy", 90, False)]),
+                       row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("privacy.yml job privacy: timeout-minutes 90, its budget is 5", r.stderr)
+
+    # Bug: a traced or planted run is held to the normal budget, or the other way round.
+    def test_traced_and_normal_budgets_are_each_checked(self):
+        table = (row("ci.yml", "rust", "normal", 14, 540) + row("ci.yml", "rust", "traced", 47, 1860)
+                 + self.PRIVACY_ROW)
+        ok = self.check(workflow([("rust", TRACED % (47, 14), True)]), self.PRIVACY, table)
+        self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+        swapped = self.check(workflow([("rust", TRACED % (14, 47), True)]), self.PRIVACY, table)
+        self.assertEqual(swapped.returncode, 1, swapped.stdout + swapped.stderr)
+        self.assertIn("ci.yml job rust: traced timeout-minutes 14, its budget is 47", swapped.stderr)
+        plain = self.check(workflow([("rust", 14, True)]), self.PRIVACY, table)
+        self.assertEqual(plain.returncode, 1, plain.stdout + plain.stderr)
+        self.assertIn("ci.yml job rust: timeout-minutes 14 has no traced budget", plain.stderr)
+
+    # Bug: a row's timeout is edited by hand away from 1.5x its p95.
+    def test_a_row_whose_timeout_is_not_its_p95_budget_fails(self):
+        r = self.check(workflow([("always", 20, False)]), self.PRIVACY,
+                       row("ci.yml", "always", "all", 20, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml always all: timeout 20, but 1.5x its p95 of 450 s is 12", r.stderr)
+
+    # Bug: a row for a job that no longer exists hides a renamed job.
+    def test_a_row_for_a_missing_job_fails(self):
+        r = self.check(workflow([("always", 12, False)]), self.PRIVACY,
+                       row("ci.yml", "always", "all", 12, 450) + row("ci.yml", "gone", "all", 5, 60)
+                       + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml has no job gone for its budget row", r.stderr)
+
+    # Bug: a job that has never run (#782 question 4) is held to an
+    # invented p95, or an unmeasured row hides a measured job's wider timeout.
+    def test_an_unmeasured_row_keeps_its_timeout_and_a_derived_row_is_checked(self):
+        table = (row("ci.yml", "toolkit-nightly", "all", 360, 0, samples=1, source="unmeasured")
+                 + row("ci.yml", "rust", "all", 14, 540, source="derived:rust-export") + self.PRIVACY_ROW)
+        ok = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY, table)
+        self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+        wide = table.replace("\t14\t540\t", "\t20\t540\t")
+        r = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 20, False)]), self.PRIVACY, wide)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml rust all: timeout 20, but 1.5x its p95 of 540 s is 14", r.stderr)
+        moved = self.check(workflow([("toolkit-nightly", 400, False), ("rust", 14, False)]), self.PRIVACY, table)
+        self.assertEqual(moved.returncode, 1, moved.stdout + moved.stderr)
+        self.assertIn("ci.yml job toolkit-nightly: timeout-minutes 400, its budget is 360", moved.stderr)
+        odd = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY,
+                         table.replace("derived:rust-export", "guessed"))
+        self.assertEqual(odd.returncode, 1, odd.stdout + odd.stderr)
+        self.assertIn("source 'guessed' is not measured, derived:<job> or unmeasured", odd.stderr)
+
+    # Bug (R2): a job declared with a quoted YAML key is left out of the
+    # inventory, so it runs with GitHub's 360-minute default and no budget.
+    def test_a_quoted_job_key_is_checked_and_other_declarations_refused(self):
+        quoted = workflow([("always", 12, False)]) + '  "extra":\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo synthetic\n'
+        r = self.check(quoted, self.PRIVACY, row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job extra has no budget row", r.stderr)
+        single = quoted.replace('"extra":', "'extra':")
+        r = self.check(single, self.PRIVACY, row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertIn("ci.yml job extra has no budget row", r.stderr)
+        flow = workflow([("always", 12, False)]) + "  ? extra\n  : {runs-on: ubuntu-24.04}\n"
+        r = self.check(flow, self.PRIVACY, row("ci.yml", "always", "all", 12, 450) + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml line 10: a job declaration budgets.py can't read", r.stderr)
+
+    # The real workflows and table: the guard CI runs.
+    def test_the_repository_workflows_match_their_table(self):
+        r = run("check")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+class Table(unittest.TestCase):
+    """CI3-B: the budgets are 1.5x each job's measured p95, from the collected runs."""
+
+    def table(self, ci_jobs, ci_runs=150, fallback=None, ci=None, after=None, after_jobs=(), extra=()):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            (t / "ci.yml").write_text(ci or workflow([("always", 60, False), ("rust", 60, True)]))
+            (t / "privacy.yml").write_text(workflow([("privacy", 90, False)]))
+            window(t / "w", "ci.yml", ci_jobs, ci_runs)
+            window(t / "w", "privacy.yml", [job(i, "privacy", 100 + i) for i in range(1, 21)], 20)
+            args = ["table", t / "w", "--out", t / "budgets.tsv", "--workflows", t / "ci.yml", t / "privacy.yml"]
+            if fallback is not None:
+                window(t / "f", "ci.yml", fallback, 150)
+                window(t / "f", "privacy.yml", [], 0)
+                args += ["--fallback", t / "f"]
+            if after is not None:
+                window(t / "a", "ci.yml", after, 999)
+                window(t / "a", "privacy.yml", [], 0)
+                args += ["--after", t / "a", "--after-jobs", *after_jobs]
+            r = run(*args, *extra)
+            rows = {}
+            if r.returncode == 0:
+                lines = (t / "budgets.tsv").read_text().splitlines()
+                self.assertEqual(lines[0] + "\n", HEAD)
+                for line in lines[1:]:
+                    f = line.split("\t")
+                    rows[(f[0], f[1], f[2])] = f[3:]
+            return r, rows
+
+    def lanes(self):
+        """20 normal runs: always 1..20 min; rust two legs; 5 traced runs."""
+        jobs = []
+        for i in range(1, 21):
+            jobs.append(job(i, "always", 60 * i))
+            jobs.append(job(i, "rust (1)", 300 + i))
+            jobs.append(job(i, "rust (2)", 400 + i))
+        for i in range(21, 26):
+            jobs.append(job(i, "always", 120))
+            jobs.append(job(i, "rust (1)", 1800 + i, traced=True))
+        return jobs
+
+    # Bug: p95, 1.5x, rounding or the 5-minute floor computed wrong; a
+    # traced run's long single shard folded into the normal budget; the
+    # slower matrix leg's p95 hidden by pooling with the faster one.
+    def test_each_job_gets_one_and_a_half_times_its_p95_rounded_up(self):
+        r, rows = self.table(self.lanes())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # always: 25 samples (20 normal + 5 traced, one mode); nearest-rank
+        # p95 is the 24th of 25 sorted: 60, six 120 s, then 180..1200 s at
+        # places 8..25, so the 24th is 1140 s; 1.5 x 1140 s = 28.5 min -> 29.
+        self.assertEqual(rows[("ci.yml", "always", "all")][:4], ["29", "1140", "25", "150"])
+        # rust normal: legs (1) 301..320 and (2) 401..420; leg (2)'s p95 is
+        # its 19th, 419 s; 1.5 x 419 s = 10.475 min -> 11.
+        self.assertEqual(rows[("ci.yml", "rust", "normal")][:4], ["11", "419", "40", "150"])
+        # rust traced: 1821..1825 s; p95 of 5 is the 5th, 1825 s;
+        # 1.5 x 1825 s = 45.625 min -> 46.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")][:4], ["46", "1825", "5", "150"])
+        # privacy: 101..120 s; p95 119 s; 1.5 x 119 s = 2.975 min -> floor 5.
+        self.assertEqual(rows[("privacy.yml", "privacy", "all")][:4], ["5", "119", "20", "20"])
+        self.assertEqual(rows[("ci.yml", "always", "all")][4:], [T0, "2030-01-02T00:00:00Z", "measured"])
+
+    # Bug: a skipped job (no runner, no time) or a cancelled one (cut short)
+    # pulls the p95 down; a failed job's real time is dropped.
+    def test_only_jobs_that_ran_to_success_or_failure_count(self):
+        jobs = [j for j in self.lanes() if j["name"] != "always"]
+        jobs += [job(i, "always", 600) for i in range(1, 20)]
+        jobs.append(job(20, "always", 900, conclusion="failure"))
+        jobs.append(job(21, "always", 3000, conclusion="cancelled"))
+        skipped = job(22, "always", 0, conclusion="skipped")
+        skipped.update(steps=[], runner_name=None)
+        jobs.append(skipped)
+        r, rows = self.table(jobs)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # 19 x 600 s and one 900 s failure: the 19th of 20 is 600 s -> 15 min.
+        self.assertEqual(rows[("ci.yml", "always", "all")][:3], ["15", "600", "20"])
+
+    # Bug: a nightly (schedule) run whose lanes failed before the trace step
+    # is counted as a normal run.
+    def test_a_scheduled_run_is_traced(self):
+        jobs = self.lanes() + [job(30, "rust (1)", 2400, conclusion="failure", event="schedule")]
+        r, rows = self.table(jobs)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(rows[("ci.yml", "rust", "traced")][:3], ["60", "2400", "6"])
+
+    # Bug: a job or mode with too few samples gets a budget from noise.
+    def test_too_few_samples_read_the_fallback_or_fail(self):
+        few = [j for j in self.lanes() if j["run"] < 22]
+        r, _ = self.table(few)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job rust traced has 1 sample, fewer than 5", r.stderr)
+        older = [job(i, "rust (1)", 1500 + i, traced=True) for i in range(1, 7)]
+        r, rows = self.table(few, fallback=older)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # From the fallback alone: 1501..1506 s; p95 of 6 is the 6th, 1506 s;
+        # 1.5 x 1506 s = 37.65 min -> 38; the row names the 6 runs it came from.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")], ["38", "1506", "6", "6", stamp(3600), stamp(6 * 3600), "measured"])
+
+    # Bug: a rare job's fallback reads the whole older window, or more than
+    # its own last 150 runs, or counts runs in which it never ran.
+    def test_the_fallback_reads_the_jobs_own_last_150_runs(self):
+        few = [j for j in self.lanes() if j["run"] < 22]
+        older = [job(i, "rust (1)", 1000 + i, traced=True) for i in range(1, 153)]
+        older += [job(i, "always", 60) for i in range(200, 211)]
+        r, rows = self.table(few, fallback=older)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Its own last 150 runs are 3..152: 1003..1152 s; nearest-rank p95 is
+        # the 143rd, 1145 s; 1.5 x 1145 s = 28.625 min -> 29.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")],
+                         ["29", "1145", "150", "150", stamp(3 * 3600), stamp(152 * 3600), "measured"])
+
+    # Bug: a job whose shape changed in #743 (release, launch-fleet, skills)
+    # gets a budget from runs of its old shape, before the merges (#782 Q3).
+    def test_a_shape_changed_job_reads_only_runs_after_the_merges(self):
+        ci = workflow([("always", 60, False), ("rust", 60, True), ("release", 60, False)])
+        jobs = self.lanes() + [job(i, "release (1)", 300) for i in (1, 2)]
+        older = [job(i, "release", 3000) for i in range(1, 20)] + [job(i, "rust (1)", 1500, traced=True) for i in range(1, 7)]
+        def shaped(i):  # a run of the current workflow lists every job, even skipped ones
+            return [job(i, "always", 60), job(i, "rust (1)", 300)]
+        after4 = [x for i in range(1, 5) for x in [job(i, "release (2)", 600 + i)] + shaped(i)]
+        r, _ = self.table(jobs, ci=ci, fallback=older, after=after4, after_jobs=["release"])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job release all has 4 samples, fewer than 5", r.stderr)
+        # Run 7 was created after the merges but ran the old workflow: it has
+        # no rust job, and its unsharded release took 3000 s (#782: two such runs).
+        after6 = [x for i in range(1, 7) for x in [job(i, "release (2)", 600 + i)] + shaped(i)]
+        after6 += [job(7, "release", 3000), job(7, "always", 60)]
+        r, rows = self.table(jobs, ci=ci, fallback=older, after=after6, after_jobs=["release"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Never the older or old-shape 3000 s runs: 601..606 s, p95 of 6 is 606 s;
+        # 1.5 x 606 s = 15.15 min -> 16, from those 6 runs.
+        self.assertEqual(rows[("ci.yml", "release", "all")], ["16", "606", "6", "6", stamp(3600), stamp(6 * 3600), "measured"])
+
+    # Bug: a job in the workflow that never ran in the window is silently
+    # left without a row (the check would then fail later, in CI).
+    def test_a_job_with_no_samples_fails(self):
+        ci = workflow([("always", 60, False), ("rust", 60, True), ("toolkit-nightly", 360, False)])
+        r, _ = self.table(self.lanes(), ci=ci)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci.yml job toolkit-nightly all has 0 samples, fewer than 5", r.stderr)
+
+
+    # Bug: a job that never ran gets no row (the check stays red for good),
+    # or its twin's budget is copied without saying so (#782 question 4).
+    def test_derived_and_unmeasured_rows(self):
+        ci = workflow([("always", 60, False), ("rust", 60, True), ("rust-export", 60, True),
+                       ("toolkit-nightly", 360, False)])
+        jobs = [j for j in self.lanes()] + [dict(j, name=j["name"].replace("rust", "rust-export"))
+                                            for j in self.lanes() if j["name"].startswith("rust")]
+        jobs = [j for j in jobs if not j["name"].startswith("rust (")] + [job(99, "toolkit-nightly", 7200, event="schedule")]
+        r, rows = self.table(jobs, ci=ci, extra=["--derive", "rust=rust-export", "--unmeasured", "toolkit-nightly=360"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # rust-export's numbers (the lanes' rust legs: 11 and 46, worked above), marked as derived.
+        self.assertEqual(rows[("ci.yml", "rust", "normal")][:4] + rows[("ci.yml", "rust", "normal")][6:],
+                         ["11", "419", "40", "150", "derived:rust-export"])
+        self.assertEqual(rows[("ci.yml", "rust", "traced")][:4] + rows[("ci.yml", "rust", "traced")][6:],
+                         ["46", "1825", "5", "150", "derived:rust-export"])
+        self.assertEqual(rows[("ci.yml", "rust-export", "normal")][6:], ["measured"])
+        # Unmeasured: today's 360, no p95, its one sample counted.
+        self.assertEqual(rows[("ci.yml", "toolkit-nightly", "all")][:3] + rows[("ci.yml", "toolkit-nightly", "all")][6:],
+                         ["360", "0", "1", "unmeasured"])
+
+
+    # Bug (R1): a traced or planted run whose lane tests failed (so its own
+    # trace upload was skipped) is counted as normal, inflating the normal
+    # budget; a run whose mode can't be known is guessed instead of left out.
+    def test_mode_comes_from_any_trace_step_that_ran_and_unclear_runs_are_left_out(self):
+        ci = workflow([("always", 60, True), ("rust", 60, True)])
+        def always(i, upload, first="success"):
+            a, b = i * 3600, i * 3600 + 60
+            rec = job(i, "always", 60)
+            rec["steps"] += [{"name": "Run npm test", "conclusion": first, "started_at": stamp(a), "completed_at": stamp(b)},
+                             {"name": "Run actions/upload-artifact@0000000000000000000000000000000000000000",
+                              "conclusion": upload, "started_at": stamp(b), "completed_at": stamp(b)}]
+            rec["conclusion"] = rec["run_concl"] = first
+            return rec
+        jobs = []
+        for i in range(1, 6):    # normal: every trace step skipped after clean steps
+            jobs += [always(i, "skipped"), job(i, "rust (1)", 300 + i)]
+        for i in range(6, 11):   # traced, green
+            jobs += [always(i, "success"), job(i, "rust (1)", 1800 + i, traced=True)]
+        # Run 11: traced (always uploaded its trace), but the rust tests
+        # failed, so rust's own trace upload was skipped.
+        jobs += [always(11, "success"), job(11, "rust (1)", 3000, conclusion="failure")]
+        # Run 12: always and rust both failed before their trace steps: no
+        # step says which mode it ran in.
+        jobs += [always(12, "skipped", first="failure"), job(12, "rust (1)", 2000, conclusion="failure")]
+        r, rows = self.table(jobs, ci=ci)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # normal: 301..305 s, p95 of 5 is 305 s; 1.5 x 305 s = 7.625 min -> 8.
+        self.assertEqual(rows[("ci.yml", "rust", "normal")][:3], ["8", "305", "5"])
+        # traced: 1806..1810 s and the failed 3000 s; p95 of 6 is 3000 s -> 75.
+        self.assertEqual(rows[("ci.yml", "rust", "traced")][:3], ["75", "3000", "6"])
+        self.assertEqual(rows[("ci.yml", "always", "traced")][2], "6")
+        self.assertIn("ci.yml: 1 run with no clear traced or normal mode, left out of two-mode jobs", r.stdout)
+
+
+class Apply(unittest.TestCase):
+    # Bug: setting timeouts by hand edits other lines of a shared workflow.
+    def test_apply_changes_only_timeout_lines(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            before = workflow([("always", 60, False), ("rust", TRACED % (90, 60), True)])
+            (t / "ci.yml").write_text(before)
+            (t / "privacy.yml").write_text(workflow([("privacy", 5, False)]))
+            (t / "budgets.tsv").write_text(HEAD + row("ci.yml", "always", "all", 12, 450)
+                                           + row("ci.yml", "rust", "normal", 14, 540)
+                                           + row("ci.yml", "rust", "traced", 47, 1860)
+                                           + row("privacy.yml", "privacy", "all", 5, 120))
+            r = run("apply", "--table", t / "budgets.tsv", t / "ci.yml", t / "privacy.yml")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            after = (t / "ci.yml").read_text()
+            expected = before.replace("timeout-minutes: 60\n", "timeout-minutes: 12\n").replace(
+                TRACED % (90, 60), TRACED % (47, 14))
+            self.assertEqual(after, expected)
+            self.assertEqual(run("check", "--table", t / "budgets.tsv", t / "ci.yml", t / "privacy.yml").returncode, 0)
+
+
+FAKE_GH = """#!/usr/bin/env python3
+import json, os, sys
+world = json.load(open(os.environ["FAKE_GH_WORLD"]))
+path = sys.argv[2]
+with open(os.environ["FAKE_GH_LOG"], "a") as log:
+    log.write(" ".join(sys.argv[1:]) + "\\n")
+if sys.argv[1] != "api" or len(sys.argv) != 3 or path not in world:
+    sys.stderr.write("fake gh: no answer for " + " ".join(sys.argv[1:]) + "\\n")
+    sys.exit(1)
+print(json.dumps(world[path]))
+"""
+
+
+class Collect(unittest.TestCase):
+    # Bug: more runs than asked for are read, an earlier attempt's jobs are
+    # used, or a run still in progress is counted.
+    def test_collect_reads_the_last_completed_runs_latest_attempt(self):
+        base = "repos/{owner}/{repo}/actions"
+        def api_run(i, attempt=1):
+            return {"id": i, "event": "pull_request", "status": "completed", "conclusion": "success",
+                    "created_at": stamp(i * 3600), "run_attempt": attempt}
+        def api_job(i, name):
+            return {"id": i * 10, "name": name, "conclusion": "success", "created_at": stamp(i * 3600),
+                    "started_at": stamp(i * 3600), "completed_at": stamp(i * 3600 + 300), "run_attempt": 2,
+                    "runner_name": "GitHub Actions 1", "labels": ["ubuntu-24.04"],
+                    "steps": [{"name": "Set up job", "conclusion": "success", "started_at": stamp(i * 3600),
+                               "completed_at": stamp(i * 3600)}]}
+        runs = [api_run(i, 2) for i in (5, 4, 3)]
+        world = {
+            f"{base}/workflows/ci.yml/runs?status=completed&created=>=2030-01-01T00:00:00Z&per_page=2&page=1":
+                {"total_count": 3, "workflow_runs": runs[:2]},
+            f"{base}/workflows/ci.yml/runs?status=completed&created=>=2030-01-01T00:00:00Z&per_page=2&page=2":
+                {"total_count": 3, "workflow_runs": runs[2:]},
+        }
+        for i in (5, 4):
+            world[f"{base}/runs/{i}/jobs?filter=latest&per_page=100&page=1"] = {"total_count": 1, "jobs": [api_job(i, "always")]}
+            world[f"{base}/runs/{i}"] = api_run(i, 2)
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            (t / "bin").mkdir()
+            (t / "bin" / "gh").write_text(FAKE_GH)
+            (t / "bin" / "gh").chmod(0o755)
+            (t / "world.json").write_text(json.dumps(world))
+            env = {"PATH": f"{t / 'bin'}{os.pathsep}{os.environ['PATH']}", "FAKE_GH_WORLD": str(t / "world.json"),
+                   "FAKE_GH_LOG": str(t / "log")}
+            r = run("collect", "--workflow", "ci.yml", "--runs", 2, "--per-page", 2, "--since", T0,
+                    "--out", t / "w", env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            records = [json.loads(line) for line in (t / "w" / "ci" / "jobs.jsonl").read_text().splitlines()]
+            self.assertEqual(sorted(x["run"] for x in records), [4, 5])
+            self.assertEqual({x["collected_attempt"] for x in records}, {2})
+            self.assertEqual(json.loads((t / "w" / "ci" / "window.json").read_text()),
+                             {"workflow": "ci.yml", "runs": 2, "first": stamp(4 * 3600), "last": stamp(5 * 3600)})
+            self.assertNotIn("runs/3/", (t / "log").read_text())
+
+
+if __name__ == "__main__":
+    unittest.main()

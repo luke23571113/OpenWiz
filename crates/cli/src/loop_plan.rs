@@ -44,7 +44,7 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     if let Some((id, _)) = args
         .adopt
         .iter()
-        .find(|(id, _)| !files.iter().any(|f| f.id.as_deref() == Some(id)))
+        .find(|(id, _)| !files.iter().any(|(_, f)| f.id.as_deref() == Some(id)))
     {
         return fail(
             stdout,
@@ -109,7 +109,7 @@ fn item_json(item: &PlanItem) -> Value {
         "paused": item.paused,
         "commands": item.commands.iter().map(RoomCommand::to_json).collect::<Vec<_>>(),
         "differences": item.differences.iter().map(|d| json!({"field": d.field, "file": d.file, "live": d.live})).collect::<Vec<_>>(),
-        "refusals": item.refusals.iter().map(loop_files::Refusal::to_json).collect::<Vec<_>>(),
+        "refusals": item.refusals.iter().map(|r| json!({"file": item.file, "code": r.code, "field": r.field, "message": r.message})).collect::<Vec<_>>(),
         "notes": item.notes,
     })
 }
@@ -154,12 +154,7 @@ fn text(plan: &Plan) -> String {
         let paused = if item.paused { " (paused)" } else { "" };
         out.push_str(&format!("{file}: {what}{paused}\n"));
         for r in &item.refusals {
-            out.push_str(&format!(
-                "{}: {}: {}\n",
-                esc(&r.file),
-                esc(&r.field),
-                esc(&r.message)
-            ));
+            out.push_str(&format!("{file}: {}: {}\n", esc(&r.field), esc(&r.message)));
         }
         for d in &item.differences {
             out.push_str(&format!(
