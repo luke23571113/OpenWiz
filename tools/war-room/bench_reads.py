@@ -272,12 +272,16 @@ def current_activity(since, until, *, repo, read):
         todo.append((rid, run))
     # #1027: at most WORKERS runs are read at once, only after the first enumeration and all
     # finished before the second. A failing worker sets `failed` itself, under the lock each
-    # admission takes, so once any worker has failed no further run starts, whatever wait() last
-    # returned. The runs already in flight finish (nothing is left running), their results are
-    # dropped and the first failure the scheduler sees is raised.
+    # admission and each worker's start take, so once any worker has failed no further run is
+    # admitted, whatever wait() last returned, and no queued run sends a request. The first
+    # failure the scheduler sees cancels every queued run; the runs already reading finish
+    # (nothing is left running), their results are dropped and that first failure is raised.
     lock, failed = Lock(), Event()
 
     def worker(rid, run):
+        with lock:
+            if failed.is_set():
+                return None  # queued when another run failed: read nothing
         try:
             return facts(rid, run)
         except BaseException:
@@ -285,7 +289,7 @@ def current_activity(since, until, *, repo, read):
                 failed.set()
             raise
 
-    done, flying = {}, {}
+    done, flying, error = {}, {}, None
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         queue = iter(todo)
         while True:
@@ -297,7 +301,18 @@ def current_activity(since, until, *, repo, read):
                 break
             finished, _ = wait(flying, return_when=FIRST_COMPLETED)
             for future in sorted(finished, key=flying.get):
-                done[flying.pop(future)] = future.result()
+                rid = flying.pop(future)
+                if future.cancelled():
+                    continue
+                if future.exception() is not None:
+                    if error is None:
+                        error = future.exception()
+                        for queued in flying:
+                            queued.cancel()  # only a run not yet started can be cancelled
+                    continue
+                done[rid] = future.result()
+    if error is not None:
+        raise error
     # Merged in run order, as the serial read produced it; job ids stay unique across runs.
     seen, jobs, priced, cost_ids = set(), [], [], []
     for rid in sorted(done):
