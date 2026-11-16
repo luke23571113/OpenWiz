@@ -1,15 +1,16 @@
 //! P7 Bounded output: purpose at 120 characters, final output at 4 KiB, row
-//! and field caps.
+//! and field caps. The row cap, with no adapter or client, is in
+//! `crates/core/tests/inventory.rs` (#805).
 
 use openwiz_core::envelope::{Gap, GapKind};
 use openwiz_core::limits::{
-    FIELD_MAX_CHARS, FINAL_OUTPUT_MAX_BYTES, MAX_LIMIT, PURPOSE_MAX_CHARS, RUN_BUDGET,
+    FIELD_MAX_CHARS, FINAL_OUTPUT_MAX_BYTES, PURPOSE_MAX_CHARS, RUN_BUDGET,
 };
 use openwiz_core::model::{
     BoundedText, Fact, FinalOutput, Grouping, Location, ProjectId, Recap, ReportedConfiguration,
     SessionId,
 };
-use openwiz_core::ops::{self, ListRequest, OpError, ShowRequest};
+use openwiz_core::ops::{self, ListRequest, ShowRequest};
 use openwiz_core::source::{MachineRecord, OutputRecord, Placement, ProjectRecord, SourceError};
 use serde_json::Value;
 
@@ -80,31 +81,6 @@ fn a_session_without_purpose_reads_no_recap_yet() {
 }
 
 #[test]
-fn final_output_is_cut_to_4_kib_on_a_character_boundary() {
-    let fake = Fake::new("p07_final_output_cut", "normal");
-    let env = fake.show("thr_syn_0002").expect("show");
-    let original = fixture_json("thread-output-0002.json")["output"]
-        .as_str()
-        .expect("output")
-        .to_owned();
-    assert_eq!(FINAL_OUTPUT_MAX_BYTES, 4096, "the approved output size");
-    assert!(original.len() > FINAL_OUTPUT_MAX_BYTES);
-    match &env.data.final_output {
-        Fact::Known(FinalOutput::Reported(BoundedText { text, truncated })) => {
-            assert!(*truncated);
-            assert!(text.len() <= FINAL_OUTPUT_MAX_BYTES, "{} bytes", text.len());
-            assert!(
-                original.starts_with(text.as_str()),
-                "the cut keeps the start"
-            );
-            // The fixture puts a two-byte character across byte 4096.
-            assert_eq!(text.len(), FINAL_OUTPUT_MAX_BYTES - 1);
-        }
-        other => panic!("expected a cut final output, got {other:?}"),
-    }
-}
-
-#[test]
 fn a_session_without_final_output_reads_no_final_output_yet() {
     let fake = Fake::new("p07_no_final_output_yet", "normal");
     let env = fake.show("thr_syn_0005").expect("show");
@@ -131,22 +107,6 @@ fn show_reads_final_output_never_a_log_tail() {
         calls.iter().all(|a| !a.iter().any(|w| w == "log")),
         "show read a log: {calls:?}"
     );
-}
-
-#[test]
-fn rows_are_capped() {
-    let source = ScriptedSource::new(MAX_LIMIT + 10);
-    match list_scripted(
-        &source,
-        &ListRequest {
-            limit: MAX_LIMIT + 1,
-            ..ListRequest::default()
-        },
-    ) {
-        Ok(env) => assert!(env.data.sessions.len() <= MAX_LIMIT),
-        Err(OpError::InvalidRequest(reason)) => assert!(!reason.is_empty()),
-        Err(other) => panic!("a too-large limit is capped or refused, got {other:?}"),
-    }
 }
 
 /// Changed in ticket 1's correction round 1 (Sol S4): the cut must be shown
