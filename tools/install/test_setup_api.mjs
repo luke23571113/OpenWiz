@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { readSetup } from '../../apps/web/src/api.ts';
 
 const example = () => ({ schema: 'openwiz.setup.v1', ready: false,
-  components: ['cloudroom', 'harness', 'personal_github', 'github_app', 'project', 'engine', 'remote_access']
+  components: ['cloudroom', 'harness', 'personal_github', 'github_app', 'project', 'remote_access']
     .map((id) => ({ id, state: 'unknown', reason: 'Synthetic unverified prerequisite.', next: 'Ask your installing agent to verify it.' })),
   engine: 'unselected', cost: { provenance: 'unknown', credits: null, window_s: null, monthly_projection: null, free_allowance: null, reason: 'Cloud Credits have not been measured.' }, operations: [] });
 async function read(body) {
@@ -32,6 +32,8 @@ test('setup reader accepts independent unknowns and refuses malformed or falsely
     (v) => { v.cost.credits = 0; },
     (v) => { v.cost.provenance = 'measured'; v.cost.window_s = 0; },
     (v) => { v.ready = true; },
+    // #873: setup has no engine step, so an engine row is unreadable.
+    (v) => { v.components.push({ id: 'engine', state: 'missing', reason: 'Synthetic engine row.', next: 'Synthetic.' }); },
   ];
   for (const mutate of wrong) {
     const value = example();

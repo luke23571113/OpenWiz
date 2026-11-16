@@ -7,17 +7,6 @@ use crate::http::{API_HEADERS, Reply};
 use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The components a setup check observes (the store's own list).
-const CHECKED: [&str; 7] = [
-    "cloudroom",
-    "harness",
-    "personal_github",
-    "github_app",
-    "project",
-    "engine",
-    "remote_access",
-];
-
 pub(crate) const ROUTE: &str = "/api/v1/setup";
 
 /// Evidence older than this, or from the future beyond clock drift, is not
@@ -25,9 +14,10 @@ pub(crate) const ROUTE: &str = "/api/v1/setup";
 const CURRENT_MS: u64 = 60 * 60 * 1000;
 const DRIFT_MS: u64 = 5 * 60 * 1000;
 
-/// T1's defaults: nothing checked. Installing bytes alone never proves an
-/// account is ready. T4 (`engine`) and T5 (`remote_access`) replace their own rows.
-const DEFAULTS: [(&str, &str, &str, &str); 7] = [
+/// The components this report shows, each checked, with T1's defaults: nothing
+/// checked. Installing bytes alone never proves an account is ready. Setup has
+/// no engine step (#873): an old state file's engine observation is not shown.
+const DEFAULTS: [(&str, &str, &str, &str); 6] = [
     (
         "cloudroom",
         "unknown",
@@ -57,12 +47,6 @@ const DEFAULTS: [(&str, &str, &str, &str); 7] = [
         "missing",
         "No verified project is configured.",
         "Choose a repository and CloudRoom project, then confirm CI, review and answer routing.",
-    ),
-    (
-        "engine",
-        "missing",
-        "No engine has been selected or activated.",
-        "Choose Cloud or Local after reviewing costs and the proposed effects.",
     ),
     (
         "remote_access",
@@ -171,8 +155,8 @@ fn component(
     }
 }
 
-/// Overall readiness (setup.v1, #633): every prerequisite of the selected
-/// engine verified. The App is one, unless the owner explicitly skipped it;
+/// Overall readiness (setup.v1, #633): every prerequisite verified (no engine
+/// since #873). The App is one, unless the owner explicitly skipped it;
 /// then the verified personal login carries the identity part on its own.
 fn ready(components: &[Value], skipped: bool) -> bool {
     components
@@ -225,23 +209,18 @@ fn report_at(read: Result<Option<&SetupState>, ()>, now: u64) -> Value {
     let components = DEFAULTS
         .into_iter()
         .map(|(id, state_default, reason, next)| {
-            let checked = CHECKED.contains(&id);
             let (s, r, n) = if id == "github_app" && skipped {
                 SKIPPED_APP
-            } else if id == "engine" && engine.is_some() {
-                ("unknown", "Engine selection is saved; activation remains closed and no runtime is verified.", "Current login evidence and approved host provisioning are required. Check the saved operation; never retry an uncertain activation.")
-            } else if unreadable && checked {
+            } else if unreadable {
                 ("unknown", "This host's setup state could not be read safely.", "Check that OpenWiz's state directory is owner-only, then run the setup check again.")
-            } else if checked {
-                component(id, (state_default, reason, next), state, now)
             } else {
-                (state_default, reason, next)
+                component(id, (state_default, reason, next), state, now)
             };
             json!({"id":id,"state":s,"reason":r,"next":n})
         })
         .collect::<Vec<_>>();
-    // Overall readiness: every prerequisite of the selected engine verified.
-    // Phone access is reported, never inferred; T1's engine stays unselected.
+    // Overall readiness: every prerequisite verified. Phone access is
+    // reported, never inferred.
     let ready = ready(&components, skipped);
     let operations = state
         .map(|s| {
@@ -374,11 +353,13 @@ mod composed {
                 ("personal_github", "verified"),
                 ("github_app", "verified"),
                 ("project", "verified"),
-                ("engine", "missing"),
                 ("remote_access", "unknown"),
             ])
         );
-        assert_eq!(report["ready"], false, "no engine is selected");
+        assert_eq!(
+            report["ready"], false,
+            "CloudRoom and the harness are unproven"
+        );
         assert_eq!(report["operations"][0]["phase"], "uncertain");
         let app = &report["components"][3];
         assert!(
@@ -386,6 +367,32 @@ mod composed {
                 .as_str()
                 .unwrap()
                 .contains("selected repositor")
+        );
+    }
+
+    #[test]
+    fn an_old_saved_engine_selection_still_reads_and_shows_no_engine_step() {
+        // #873: setup has no engine step. An old state file that saved an
+        // engine selection still loads, and adds no engine component.
+        let old = observed(&ALL, 3, NOW - 1_000)
+            .replace(r#""runtime":null"#, &format!(r#""runtime":"0.0.9 {}""#, "1".repeat(40)))
+            .replace(r#""kind":"connect_app""#, r#""kind":"activate_engine""#)
+            .replace(
+                r#"]}"#,
+                r#"],"engine":{"location":"local","revision":3,"runtime":"0.0.9 1111111111111111111111111111111111111111","operation_id":"0123456789abcdef0123456789abcdef","fingerprint":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","cost":null}}"#,
+            );
+        let report = super::report_at(Ok(Some(&parse(&old))), NOW);
+        let ids: Vec<String> = states(&report).into_iter().map(|(id, _)| id).collect();
+        assert_eq!(
+            ids,
+            [
+                "cloudroom",
+                "harness",
+                "personal_github",
+                "github_app",
+                "project",
+                "remote_access"
+            ]
         );
     }
 
@@ -532,7 +539,6 @@ mod composed {
                 ("personal_github", login),
                 ("github_app", app),
                 ("project", "verified"),
-                ("engine", "verified"),
                 ("remote_access", "unknown"),
             ]
             .map(|(id, state)| serde_json::json!({"id":id,"state":state}))
@@ -576,10 +582,10 @@ mod composed {
         ] {
             let state = parse(&observed(&[("remote_access", code)], 3, NOW - 1_000));
             let report = super::report_at(Ok(Some(&state)), NOW);
-            assert_eq!(report["components"][6]["state"], expected, "{code}");
+            assert_eq!(report["components"][5]["state"], expected, "{code}");
             assert_eq!(
                 report["ready"], false,
-                "phone evidence cannot verify the engine"
+                "phone evidence cannot verify the factory"
             );
         }
         for (revision, at) in [(2, NOW - 1_000), (3, NOW - 3_600_001), (3, NOW + 300_001)] {
@@ -589,12 +595,12 @@ mod composed {
                 at,
             ));
             assert_eq!(
-                super::report_at(Ok(Some(&state)), NOW)["components"][6]["state"],
+                super::report_at(Ok(Some(&state)), NOW)["components"][5]["state"],
                 "unknown"
             );
         }
         assert_eq!(
-            super::report_at(Err(()), NOW)["components"][6]["state"],
+            super::report_at(Err(()), NOW)["components"][5]["state"],
             "unknown"
         );
     }
@@ -725,7 +731,7 @@ mod tests {
         assert_eq!(value["ready"], false);
         assert_eq!(value["engine"], "unselected");
         assert_eq!(value["operations"], serde_json::json!([]));
-        assert_eq!(value["components"].as_array().unwrap().len(), 7);
+        assert_eq!(value["components"].as_array().unwrap().len(), 6);
         assert!(
             value["components"]
                 .as_array()
