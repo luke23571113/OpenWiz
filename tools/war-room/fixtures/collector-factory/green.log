@@ -1,5 +1,5 @@
 Command: python3 -I tools/war-room/test_collect_factory.py
-At: 3293bc6f1abf59076a198be3e94bd9ac3d9791f6
+At: 1b96811603c4f31d81cc82ce057e0dafe332d753
 
 test_check_results_keep_their_meaning (__main__.CapacityAndOpenPrs.test_check_results_keep_their_meaning) ... ok
 test_open_prs_and_the_hour_match_read_stall (__main__.CapacityAndOpenPrs.test_open_prs_and_the_hour_match_read_stall) ... ok
@@ -19,34 +19,10 @@ test_cli_exit_codes (__main__.Failures.test_cli_exit_codes) ... ok
 test_failed_source_greys_only_its_fact (__main__.Failures.test_failed_source_greys_only_its_fact) ... ok
 test_windows_the_facts_cannot_cover (__main__.Failures.test_windows_the_facts_cannot_cover) ... ok
 test_snapshot_and_read_agree (__main__.Snapshot.test_snapshot_and_read_agree) ... ok
-test_snapshot_default_window_is_one_window_for_both_groups (__main__.Snapshot.test_snapshot_default_window_is_one_window_for_both_groups) ... FAIL
+test_snapshot_default_window_is_one_window_for_both_groups (__main__.Snapshot.test_snapshot_default_window_is_one_window_for_both_groups) ... ok
 test_validate_contract_rules (__main__.Validate.test_validate_contract_rules) ... ok
 
-======================================================================
-FAIL: test_snapshot_default_window_is_one_window_for_both_groups (__main__.Snapshot.test_snapshot_default_window_is_one_window_for_both_groups)
 ----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "<repo>/tools/war-room/test_collect_factory.py", line 447, in test_snapshot_default_window_is_one_window_for_both_groups
-    self.assertEqual((fact['state'], fact['window'], fact['prerequisites']),
-AssertionError: Tuples differ: ('una[68 chars]:42:25Z', 'timezone': 'UTC'}, ['Current CI act[73 chars]d.']) != ('una[68 chars]:42:26Z', 'timezone': 'UTC'}, ['Current CI act[73 chars]d.'])
+Ran 20 tests in 7.456s
 
-First differing element 1:
-{'sin[17 chars]00:00:00Z', 'until': '2026-11-16T10:42:25Z', 'timezone': 'UTC'}
-{'sin[17 chars]00:00:00Z', 'until': '2026-11-16T10:42:26Z', 'timezone': 'UTC'}
-
-  ('unavailable',
-   {'since': '2026-11-16T00:00:00Z',
-    'timezone': 'UTC',
--   'until': '2026-11-16T10:42:25Z'},
-?                               ^
-
-+   'until': '2026-11-16T10:42:26Z'},
-?                               ^
-
-   ['Current CI activity unavailable: the ci.yml run and job pages were '
-    'incomplete or changed.']) : activity
-
-----------------------------------------------------------------------
-Ran 20 tests in 7.966s
-
-FAILED (failures=1)
+OK
