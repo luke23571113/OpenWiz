@@ -123,6 +123,7 @@
     "docs/evidence/ci2-batch-proof.md",
     "docs/evidence/ci2-pr-cuts.md",
     "docs/evidence/public-release-free-only.md",
+    "docs/evidence/release-on-demand.md",
     "docs/evidence/openwiz-0.0.16/cloudroom-save-secret.md",
     "docs/evidence/openwiz-0.0.16/app-key-handoff.md",
     "docs/evidence/openwiz-0.0.16/setup-github-login/**",
