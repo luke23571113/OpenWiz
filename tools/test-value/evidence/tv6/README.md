@@ -7,8 +7,8 @@ the kit (`tools/test-value/README.md`). The ledger is [ledger.md](ledger.md).
 
 - **Before:** `measure.py --json before.json new-thread` on the pull
   request's base, `20a5100`, in a separate worktree.
-- **After:** in a worktree of this branch at `a2636d7` (as the before was:
-  see "Size and time"), `measure.py --json after.json new-thread
+- **After:** in a worktree of this branch at `a2636d7`, `measure.py --json
+  after.json new-thread
   openwiz-core:new_thread_project_names
   openwiz-adapter-cloudroom:new_thread_readers` on the branch: the old
   target and the two crate targets the moved tests now live in, measured
@@ -53,24 +53,17 @@ showed on the way, and both are in the evidence:
   tests reached. The moved reader case gained that drift row (red first,
   [`red.txt`](red.txt)), and the summary is whole again.
 
-## Size and time
+## Size and count
 
 9 `#[test]`s fewer in the target (113 to 104; with the 4 moved tests,
 113 to 108 for the group), 553 lines and 19.5 kB less test source; 40
 compiled files before and after (one file deleted, one new crate test file;
 the moved `project_names.rs` still counts).
 
-Run time is unchanged: 4.5 s before and 4.7 s after, and three plain
-`cargo test -p openwiz-tests --test new-thread` runs of each, alternating
-on the same machine, took 4.5 s, 4.5 s, 4.7 s (base) and 4.3 s, 4.6 s,
-4.4 s (head). Most of it is the real-time proofs (timeouts, hung reads,
-races), which all stay. This pull request claims no time saving.
-
-Both trees were measured in worktrees. In a main checkout the target takes
-about 20 s, because `crates/cli/build.rs` watches `.git/commondir`, which
-only a worktree has, so the release fixture `openwiz` the tests build is
-rebuilt on every run. That is outside this group's paths: see the pull
-request's Gaps.
+The `seconds` line above is the kit's sandbox reading and is not a claim:
+run time is judged only from CI's own job durations, before and after, on
+the same lane (orchestrator ruling on #787). This pull request claims no
+run time.
 
 ## What went
 
