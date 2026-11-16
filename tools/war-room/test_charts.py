@@ -598,7 +598,7 @@ class Charts(unittest.TestCase):
 COLLECTOR = HERE / 'fixtures' / 'collector'
 HEADLINE = 'body-ci-bench-headline'
 SNAPSHOT_AT = '2030-03-01T12:30:00Z'
-# ci-bench's synthetic baseline (tools/ci-bench/fixtures/baseline/README.md), worked there by hand:
+# ci-bench's synthetic baseline (its retired fixtures/baseline/README.md), worked there by hand:
 # 3 robots, 3 successful code runs, 970 s of robot time: 5.3889 robot-minutes a run and
 # 3 × 60 ÷ (970 ÷ 180) = 33.4021 PRs an hour of capacity; 4 PRs merged in 3 hours, 1.3333 an hour.
 # `bench.py chart` prints them as 33.40, 5.39 and 1.33 in bench.md (docs/evidence/823/ci-bench-parity.log).

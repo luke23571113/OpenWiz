@@ -1,7 +1,7 @@
 # WR3 stage-wait proof inputs
 
 `test_stage_waits.py` reads TL2's own sanitized demonstration outputs from
-`tools/factory-metrics/fixtures/stage-waits/` (`journeys.json`,
+this folder, moved byte-identical from factory-metrics (#827) (`journeys.json`,
 `stage-waits.json`); TL2 owns them. The tests copy them into a temporary root and
 write synthetic `limits.conf` files there. The settings evidence link
 (`example/factory`, commit `ccc…`) is a synthetic assumption, not a real source.

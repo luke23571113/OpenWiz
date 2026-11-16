@@ -298,7 +298,7 @@ class PageHistory(unittest.TestCase):
         self.assertEqual(projected['metrics'][0]['value'], 7)
         self.assertEqual(projected['state'], 'partial')
         self.assertEqual(projected['metrics'][0]['window']['timezone'], 'PST-fixed-UTC-08:00')
-        doc = json.loads((HERE.parent / 'factory-metrics/fixtures/journey/journeys.json').read_text())
+        doc = json.loads((HERE / 'fixtures/journey/journeys.json').read_text())
         projected = self.select_native('journey', doc)
         self.assertTrue(any(m['value'] == 19 for m in projected['metrics']))
         self.assertTrue(all(m['group'] == 'stage_waits' and m['state'] == 'partial'

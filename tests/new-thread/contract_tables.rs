@@ -114,6 +114,14 @@ fn the_prompt_contract() {
         (false, with(&good, "/attachments", json!({}))),
         (false, with(&good, "/attachments", json!(["-att"]))),
         (false, with(&good, "/attachments", json!([""]))),
+        // Merged from n14's schema case (#808).
+        (false, with(&good, "/attachments", json!(["a/b"]))),
+        (false, with(&good, "/attachments", json!([1]))),
+        (false, with(&good, "/text", json!(""))),
+        (
+            true,
+            serde_json::to_value(PromptPayload::text("Synthetic")).unwrap(),
+        ),
         (false, json!("Synthetic")),
         (false, Value::Null),
     ];

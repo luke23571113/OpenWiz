@@ -43,7 +43,7 @@ source. The worked values below are the tests' independent expectations.
 - **`minutes`:** `ubuntu-24.04` is `github-hosted`, the PC `self-hosted`.
   Runner minutes: 6.5 + 9 + 2.3333 = 17.8333 hosted, 4.0 self-hosted. Billed
   (each hosted job rounded up to a whole minute): 7 + 9 + 3 = 19, and 4.
-  From `tools/ci-bench/prices.tsv`: 19 × $0.006 = **$0.114**; the PC is $0.
+  From `tools/war-room/prices.tsv`: 19 × $0.006 = **$0.114**; the PC is $0.
   Per code run: (7 × 0.006 + 9 × 0.006) ÷ 2 = **$0.048**. Nothing unknown.
 - **Broken-timing variant** (a test makes job 5031, of the failed run 503,
   end at 00:30:59, before its 00:31:00 start): `unknown_jobs` is 1, its
@@ -55,7 +55,7 @@ source. The worked values below are the tests' independent expectations.
 
 ## `ci3`: the window [2026-01-05, 2026-01-06)
 
-`tools/ci-bench/test_ci3.py`'s fake GitHub, unchanged but for the repository:
+CI3's test fake GitHub (now `tools/war-room/test_ci3.py`'s), unchanged but for the repository:
 PR #9 opens at 10:05:00 on head 1 (pushed 10:00:00) and is pushed head 2 at
 11:00:00. Head 1's `ci` finishes 10:20:30: 930 seconds. Head 2's `ci` fails,
 is rerun and finishes 11:42:00: 2520 seconds. So 2 heads, 2 timed, p50 15.5

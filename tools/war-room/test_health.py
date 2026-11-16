@@ -10,7 +10,7 @@ current-head/run/attempt cases, complete and partial queue reads, and open,
 held and shared stage cases at, below and above the loaded TL1 limits.
 
 Expected values are literals read off the synthetic inputs below, or the TL2
-fixture's literal endpoints (tools/factory-metrics/fixtures/stage-waits/).
+fixture's literal endpoints (fixtures/stage-waits/).
 """
 import copy
 from datetime import datetime, timedelta
@@ -28,7 +28,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIX = HERE / 'fixtures'
-TL2 = HERE.parents[1] / 'tools/factory-metrics/fixtures/stage-waits'
+TL2 = HERE / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
 import sources  # noqa: E402

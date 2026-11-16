@@ -183,14 +183,14 @@ site skips changes/1251.md
 site skips changes/README.md
 site skips tests/service/t4_service.rs tests/fleet/b2_cases.rs tests/cli-agent/main.rs
 site skips tests/newdir/x.rs
-site skips tools/factory-metrics/test.py tools/review-relay/test.py tools/ci-bench/steps.tsv
+site skips tools/war-room/test_gather.py tools/review-relay/test.py tools/war-room/steps.tsv
 site skips changes/1102.md tests/service/t4_paths.rs
 site runs changes/1251.md apps/site/index.html
 site runs tests/fixtures/release/clean/README.md tests/service/t4_service.rs
-site runs tools/release/README.md tools/ci-bench/steps.tsv
+site runs tools/release/README.md tools/war-room/steps.tsv
 jobs "$ALL" changes/1251.md
 jobs "$ALL" tests/service/t4_service.rs
-jobs "$ALL" tools/factory-metrics/test.py
+jobs "$ALL" tools/war-room/test_gather.py
 # #2081: the fast toolkit step has its own reader. A regular Rust change
 # must not pay for it; its fixtures/plans and unknown inputs must select it.
 toolkit() {
@@ -215,7 +215,7 @@ toolkit skips Cargo.toml Cargo.lock tests/Cargo.toml
 toolkit skips tests/checks/skills.rs tests/fixtures/room-cli-0.43.1/ls-basic/scenario.json
 toolkit skips apps/web/src/api.ts apps/site/index.html
 toolkit skips skills/grill/SKILL.md docs/agents/fleet.md GLOSSARY.md
-toolkit skips tools/ci-bench/steps.tsv tools/github-app/test.py tools/release/test.py
+toolkit skips tools/war-room/steps.tsv tools/github-app/test.py tools/release/test.py
 toolkit skips ci/runner/cache.sh ci/rust-tests.sh
 toolkit skips STATUS.md private/evidence/x.md
 jobs "$ALL" tools/live-check/core.py

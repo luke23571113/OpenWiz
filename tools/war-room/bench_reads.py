@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """The ci-bench code the war room reads with, moved here (#822, spec #819 revision 4).
 
-Copied unchanged from tools/ci-bench/bench.py at its retirement's start: its
+Copied unchanged from ci-bench's bench.py at its retirement's start: its
 `gh` reader and page walk, its value checks, the current-activity
 observation (WR8), runner kinds, the price table and its list-rate costs, and
-the reader of a saved ci-benchmarks `point.json`. The war room's modules
-import these from here, so they no longer reach into tools/ci-bench/, which
-MT8 (#827) retires. Since #1027, current_activity alone differs from that copy:
-it reads up to WORKERS runs at once, with every check unchanged. Python 3
-standard library only, and gh.
+the reader of a saved CI bench `point.json`. The war room's modules
+import these from here; MT8 (#827) retired the bench itself. Since #1027,
+current_activity reads up to WORKERS runs at once, with every check unchanged.
+Python 3 standard library only, and gh.
 """
 import csv
 from functools import lru_cache

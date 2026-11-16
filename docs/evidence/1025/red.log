@@ -1,0 +1,60 @@
+# WZ20 red: real copy-tool standalone dry run before the fix
+# source: 83ecdddfec416fe33c042e6ab76361ba4640f4cf (origin/main); package version 0.1.1 (tools/skills-copy/package plugin.json and latest CHANGELOG section)
+$ python3 -I tools/skills-copy/copy.py --version 0.1.1 --source . --commit origin/main
+{
+  "commit": "83ecdddfec416fe33c042e6ab76361ba4640f4cf",
+  "skills": [
+    "ask-wiz",
+    "build-ticket",
+    "diagnose",
+    "feedback",
+    "feedback-triage",
+    "grill",
+    "handoff",
+    "hill-climb",
+    "huntr",
+    "image",
+    "install",
+    "launch-fleet",
+    "onboard",
+    "overnight",
+    "plan-graph",
+    "research",
+    "review-ticket",
+    "setup",
+    "triage",
+    "wayfind",
+    "where-are-we"
+  ],
+  "tree": "3ed163a68ed03a40818cb558e9d96263f752f3cf",
+  "files": 340,
+  "bytes": 2963440,
+  "published": null,
+  "mode": "dry-run",
+  "package": {
+    "version": "0.1.1",
+    "check": "carried"
+  },
+  "privacy": {
+    "status": "pass",
+    "result": "literals: not used\n"
+  },
+  "standalone": {
+    "status": "refused",
+    "skills": {
+      "launch-fleet": [
+        {
+          "rule": "standalone.script",
+          "file": "skills/launch-fleet/overload.md",
+          "line": 16
+        },
+        {
+          "rule": "standalone.link",
+          "file": "skills/launch-fleet/overload.md",
+          "line": 22
+        }
+      ]
+    }
+  }
+}
+exit status: 1

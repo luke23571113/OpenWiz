@@ -126,6 +126,8 @@ fn the_text_is_one_argument_byte_for_byte() {
         "\ttabbed\r\nand CRLF",
         "Unicode: é ü 漢字 😀 \u{200b}",
         "   leading spaces",
+        "\"quoted\" 'single' $HOME `tick` ; && |",
+        "--",
         cap.as_str(),
     ];
     for (i, text) in texts.iter().enumerate() {

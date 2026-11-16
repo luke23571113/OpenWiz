@@ -26,7 +26,7 @@ PAIRS = {
     '../github-app/mint-token.py': 'tools/github-app/mint-token.py',
     '../github-app/manifest.json': 'tools/github-app/manifest.json',
     # A fixture copy: TL2's sanitized stage bench, read by three of the skill's proofs.
-    '../../test/ops-inbox/stage-waits-bench.json': 'tools/factory-metrics/fixtures/stage-waits/bench.json',
+    '../../test/ops-inbox/stage-waits-bench.json': 'tools/war-room/fixtures/stage-waits/bench.json',
 }
 
 

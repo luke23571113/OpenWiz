@@ -22,9 +22,11 @@ names the tickets whose stage waits are read (the board's open approved work);
 `--now` fixes the clock, for fixture proofs.
 """
 import argparse
+import contextlib
 from datetime import datetime, timedelta, timezone
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -50,7 +52,7 @@ def _module(name, path):
 J = _module('collect_factory_journey', HERE / 'journey.py')
 M = J.M  # journey.py's own metrics module: one ReadError for every read below
 A = _module('collect_factory_stall_alarm', ROOT / 'tools/stall-alarm/alarm.py')
-BENCH = ROOT / 'tools/ci-bench/bench.py'
+B = _module('collect_factory_bench', HERE / 'bench_measure.py')  # ci-bench's collect and measure (#826)
 LIMITS = 'tools/war-room/limits.conf'  # TL1's one settings file
 SCHEMA = suite._decode((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))
 FACTS = tuple(SCHEMA['x-facts']['factory'])
@@ -406,15 +408,26 @@ def stage_waits(r, started):
 
 def prs_per_hour(r, started):
     """ci-bench's headline, exactly as `bench.py collect` and `measure` produce it, for this repository."""
-    env = dict(os.environ, GH_REPO=r.repo)  # gh fills bench.py's {owner}/{repo} from GH_REPO
+    before = os.environ.get('GH_REPO')
+    os.environ['GH_REPO'] = r.repo  # gh fills bench_measure's {owner}/{repo} from GH_REPO
     with tempfile.TemporaryDirectory(prefix='collect-factory-') as tmp:
         out = Path(tmp) / 'window'
-        for argv in (['collect', '--since', iso(r.since), '--until', iso(r.until), '--out', str(out)],
-                     ['measure', str(out), '--robots', str(r.robots), '--label', 'collector', '--allow-empty',
-                      '--allow-timing-gaps']):
-            p = subprocess.run([sys.executable, '-I', str(BENCH), *argv], capture_output=True, env=env, timeout=600)
-            # Never copy bench.py's error text: it can carry an upstream answer.
-            M.require(p.returncode == 0, 'ci-bench %s failed (exit %d)' % (argv[0], p.returncode))
+        out.mkdir()
+        try:
+            for step, run in (('collect', lambda: B.collect(iso(r.since), iso(r.until), str(out))),
+                              ('measure', lambda: B.measure(str(out), r.robots, 'collector', allow_empty=True,
+                                                            allow_timing_gaps=True))):
+                try:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        run()
+                except (B.Fail, OSError, ValueError, TypeError, KeyError) as error:
+                    # Never copy the bench's error text: it can carry an upstream answer.
+                    raise M.ReadError('ci-bench %s failed' % step) from error
+        finally:
+            if before is None:
+                os.environ.pop('GH_REPO', None)
+            else:
+                os.environ['GH_REPO'] = before
         raw = (out / 'point.json').read_bytes()
         runs = sorted({json.loads(line)['run'] for line in (out / 'jobs.jsonl').read_text().splitlines() if line})
         numbers = [p['number'] for p in json.loads((out / 'merged.json').read_text())]

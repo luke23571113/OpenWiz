@@ -121,6 +121,14 @@ class InstalledFirstHour(unittest.TestCase):
                                                         'same_operation_id': True, 'resumed_phase': 'applied',
                                                         'provider_writes': 0})
 
+    def test_no_record_tells_the_owner_about_an_engine(self):
+        # #799: the first fleet runs as launch-fleet's fleet thread; there is no engine to stop, restart or preview.
+        a = self.attempt
+        for doc in [a.result] + a.cases:
+            name = doc.get('case', {}).get('interruption', 'result')
+            with self.subTest(name):
+                self.assertNotRegex(json.dumps(doc).lower(), r'\bengine', name)
+
     def test_the_result_joins_every_case_to_its_final_operations(self):
         doc = self.attempt.result
         self.assertEqual([c['interruption'] for c in doc['interruptions']], CASES)

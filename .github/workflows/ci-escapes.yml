@@ -7,9 +7,9 @@
 # never read as "no escape". It runs main's own copy of the finder, never a
 # pull request's code, and reads plans only as data. See ci/escapes/README.md.
 #
-# Read access, plus issues: write for `find`'s one write. The bench
-# (tools/ci-bench) counts escapes by this run's name (the CI run and attempt)
-# and conclusion.
+# Read access, plus issues: write for `find`'s one write. The finder's
+# issues are the escape record: the CI bench's daily count by this run's name
+# and conclusion retired with the bench (#827).
 name: Selector escapes
 run-name: ${{ github.event_name == 'workflow_run' && format('Selector escapes in CI run {0} attempt {1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || 'Selector escapes, the finder''s tests' }}
 
@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/ci-bench/python.sh
+        run: sh tools/war-room/python.sh
       - name: The escape finder's tests
         run: python3 -I ci/escapes/test.py
 
@@ -64,7 +64,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/ci-bench/python.sh
+        run: sh tools/war-room/python.sh
       - name: Find and report selector escapes
         env:
           GH_TOKEN: ${{ github.token }}

@@ -2,7 +2,7 @@
 """WR3 stage-wait proof at the producer-to-suite boundary. Synthetic only.
 
 The producer inputs are TL2's own sanitized demonstration outputs
-(tools/factory-metrics/fixtures/stage-waits/), checked by TL2's validator.
+(fixtures/stage-waits/), checked by TL2's validator.
 Expected waits are read off that fixture's literal endpoints, never computed by
 the adapter: builder_start 09:00 -> 09:10 = 10, reviewer_start 10:00 -> 10:06 =
 6 and 11:11 -> 11:15 = 4, merge 11:31 -> 11:36 = 5, fix_after_changes
@@ -23,7 +23,7 @@ import unittest
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
-TL2 = HERE.parents[1] / 'tools/factory-metrics/fixtures/stage-waits'
+TL2 = HERE / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import main  # noqa: E402  (WR2's one tick: history + page)
 import history  # noqa: E402

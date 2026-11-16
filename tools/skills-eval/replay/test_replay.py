@@ -32,7 +32,7 @@ def load(name, path):
 R = load('replay_run', HERE / 'run.py')
 S = load('replay_score', HERE / 'score.py')
 C = R.C
-FACTORY = HERE.parents[1] / 'factory-metrics'
+FACTORY = HERE.parents[1] / 'war-room'
 MOVED = HERE.parents[1] / 'war-room'  # experiment_contract.py, journey.py, metrics.py (#821)
 
 

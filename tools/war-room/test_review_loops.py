@@ -10,7 +10,7 @@ counted twice; a PR with no review or no push receipt read as zero; an
 immature PR entering the defect rate; a blocking finding with no user path or
 risk line passing the report check; a polish finding refused for lacking one.
 
-Worked cohort (EB6's own journey fixture, tools/factory-metrics/fixtures/journey):
+Worked cohort (EB6's own journey fixture, fixtures/journey):
 PR 4201 has independent rounds at heads aaaa, bbbb and cccc (bbbb reposted
 once, cccc also has a helper verdict), a receipt 18 h before merge, opened
 16 h before merge, a mature attributable defect, and findings R1 high, R2
@@ -37,7 +37,7 @@ spec = importlib.util.spec_from_file_location('rl_review_loops', HERE / 'review_
 R = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(R)
 FIX = HERE / 'fixtures/review-loops'
-EB6 = HERE.parent / 'factory-metrics/fixtures/journey'
+EB6 = HERE / 'fixtures/journey'
 DOC = json.loads((EB6 / 'journeys.json').read_text())
 EB6_EXPORT = json.loads((EB6 / 'outcomes.json').read_text())  # EB6's own fixture, on a 48-hour policy
 FROZEN = {'rule': 'explicit-causal-fix-link-v1', 'followup_hours': 72, 'deduplication': 'root-cause-per-merge',

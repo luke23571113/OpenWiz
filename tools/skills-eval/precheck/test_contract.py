@@ -157,8 +157,8 @@ class Contract(unittest.TestCase):
     def setUp(self):
         self.record = C.read(FIX / 'complete.json')
         self.current = copy.deepcopy(self.record['request'])
-        self.bundle = C.read(ROOT / 'tools/factory-metrics/fixtures/bottlenecks-contract/accepted.json')
-        self.journey = C.read(ROOT / 'tools/factory-metrics/fixtures/journey/journeys.json')
+        self.bundle = C.read(ROOT / 'tools/war-room/fixtures/bottlenecks-contract/accepted.json')
+        self.journey = C.read(ROOT / 'tools/war-room/fixtures/journey/journeys.json')
 
     def check(self):
         return assess(self.record, self.current, self.bundle, self.journey, at='2030-01-03T14:00:00Z')
