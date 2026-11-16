@@ -26,7 +26,7 @@ import unittest
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-FIXTURES = ROOT / 'tests/fixtures/first-hour/setup-onboard'
+FIXTURES = ROOT / 'tests/fixtures/first-hour/setup-onboard'  # its README's JSON block
 
 
 def load(name, path):
@@ -38,10 +38,15 @@ def load(name, path):
 
 kit = load('first_merge_kit_under_test', HERE / 'first_merge_kit.py')
 START = 1700000000000
+POINTER = 'https://github.com/jparker2006/ClosedWiz/issues/1#issuecomment-%d'
 
 
 def fixture(name):
-    return json.loads((FIXTURES / name).read_text())
+    """One synthetic document from the fixture README's JSON block, a fresh copy each time."""
+    text = (FIXTURES / 'README.md').read_text()
+    # Fixtures hold no URL: each POINTER-<n> becomes the synthetic private-record pointer form here.
+    text = re.sub(r'"POINTER-([0-9]+)"', lambda m: json.dumps(POINTER % int(m[1])), text)
+    return json.loads(re.search(r'```json\n(.*?)\n```', text, re.S).group(1))[name.removesuffix('.json')]
 
 
 class Bundle:
@@ -304,18 +309,19 @@ class Eligibility(unittest.TestCase):
         # Catches a repeated key silently replacing an authority pointer, or a fractional count read as an integer.
         folder = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, folder, True)
-        good = (FIXTURES / 'eligibility.json').read_text()
+        good, bound = json.dumps(fixture('eligibility.json')), json.dumps(fixture('binding.json'))
         spoofed = good.replace('"spending": ', '"spending": "x", "spending": ', 1)
-        fractional = (FIXTURES / 'binding.json').read_text().replace('"credit_bound": 50', '"credit_bound": 50.0')
-        for name, text, binding in (('dup.json', spoofed, FIXTURES / 'binding.json'),
-                                    ('frac.json', good, None)):
+        fractional = bound.replace('"credit_bound": 50', '"credit_bound": 50.0')
+        for name, text, binding in (('dup.json', spoofed, bound), ('frac.json', good, fractional)):
             (folder / name).write_text(text)
-            (folder / 'b.json').write_text(fractional if binding is None else binding.read_text())
+            (folder / 'b.json').write_text(binding)
             with self.subTest(name), contextlib.redirect_stdout(io.StringIO()) as said:
                 self.assertEqual(kit.main(['eligibility', str(folder / name), str(folder / 'b.json')]), 5)
                 self.assertIn('not strict JSON', said.getvalue())
+        (folder / 'e.json').write_text(good)
+        (folder / 'b.json').write_text(bound)
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(kit.main(['eligibility', str(FIXTURES / 'eligibility.json'), str(FIXTURES / 'binding.json')]), 0)
+            self.assertEqual(kit.main(['eligibility', str(folder / 'e.json'), str(folder / 'b.json')]), 0)
 
 
 journey = load('first_merge_journey', HERE / 'journey.py')
