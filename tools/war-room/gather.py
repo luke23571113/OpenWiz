@@ -554,8 +554,10 @@ def snapshot(repository, *, clock=now, **reads):
 
     `reads` are collect_factory.read's keywords (window, usage, robots, tickets, base, checks);
     the CI group is read over the same window."""
+    # One window for both groups, resolved before either reads (the default: the last whole UTC day).
+    reads['since'], reads['until'] = collect_factory.window(reads.get('since'), reads.get('until'), clock())
     factory = collect_factory.read(repository, collect_factory.FACTS, clock=clock, **reads)['factory']  # MT2's call
-    ci = ci_facts(repository, since=reads.get('since'), until=reads.get('until'))  # MT3's call
+    ci = ci_facts(repository, since=reads['since'], until=reads['until'])  # MT3's call
     # The collection's end: at or after every fact's read, whichever clock each reader used.
     ends = [f['read']['ended_at'] for group in (factory, ci) for f in group.values() if f['read']]
     doc = {'schema': collect_factory.SNAPSHOT, 'repository': repository, 'collected_at': max([clock(), *ends]),
