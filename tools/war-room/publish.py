@@ -44,6 +44,8 @@ PAGE = 'war-room.html'
 # WRD5 (#883): the whole site is published in that one commit: home (PAGE) and its five child pages,
 # exactly these names ({route: file}). Never a partial site: every page is rendered and scanned first.
 SITE = page.site_files(PAGE)
+# #827: the collector snapshot the PRs-an-hour chart reads, saved so a UTC day's later publishes reuse it.
+SNAPSHOT = 'collector/snapshot.json'
 SAMPLE = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z\.json')
 PNG = b'\x89PNG\r\n\x1a\n'
 # WRD3: the v3 page's own desktop and phone widths, in CSS px (the phone picture is drawn at 2x).
@@ -180,14 +182,14 @@ def scan(tree, page_html):
     text_scan(page_html, checker)
     for path in sorted(tree.rglob('*')):
         name = path.relative_to(tree).as_posix()
-        if path.is_symlink() or not (path.is_file() or name == 'samples'):
+        if path.is_symlink() or not (path.is_file() or name in ('samples', SNAPSHOT.split('/')[0])):
             raise Fail('unexpected file on the page')
-        if name == 'samples':
+        if name in ('samples', SNAPSHOT.split('/')[0]):
             continue
         if name in PICTURES:
             if path.read_bytes()[:8] != PNG:
                 raise Fail('a picture is not a picture')
-        elif name == 'README.md' or name in SITE.values():
+        elif name in ('README.md', SNAPSHOT) or name in SITE.values():
             text_scan(path.read_text(encoding='utf-8'), checker)
         elif name.startswith('samples/') and SAMPLE.fullmatch(name[8:]):
             text_scan(path.read_text(encoding='utf-8'), checker)
@@ -225,13 +227,20 @@ def chart_builder(source_root, selection, at):
     # A native board history, or the projected board gather writes over its pinned raw history.
     chosen = [] if selection is None else charts.prepare.chart_selections(
         suite._decode(Path(selection).read_text(encoding='utf-8')))
+    snapshot = saved_snapshot(source_root)
 
     def build(history_root):
         try:
-            return charts.build(history_root, at=at, source_root=source_root, selections=chosen)
+            return charts.build(history_root, at=at, source_root=source_root, selections=chosen, snapshot=snapshot)
         except (ValueError, OSError, UnicodeError) as error:
             raise Fail('the chart build refused (%s)' % (error if isinstance(error, ValueError) else type(error).__name__))
     return build
+
+
+def saved_snapshot(source_root):
+    """The gathered collector snapshot (#827), when the gather wrote one."""
+    path = None if source_root is None else Path(source_root) / SNAPSHOT
+    return path if path is not None and path.is_file() and not path.is_symlink() else None
 
 
 def site_folder(history):
@@ -266,7 +275,7 @@ def render(out, history, at, read, charts=None):
     return html
 
 
-def publish(remote, at, read, draw_page=True, charts=None):
+def publish(remote, at, read, draw_page=True, charts=None, snapshot=None):
     """One tick and, with draw_page, the README and pictures; push only war-room.
     Without draw_page (the five-minute collection) only a new sample is added."""
     with tempfile.TemporaryDirectory(prefix='war-room-') as tmp:
@@ -286,7 +295,7 @@ def publish(remote, at, read, draw_page=True, charts=None):
                     continue
                 meta, name = entry.split('\t', 1)
                 if meta.split()[:2] != ['100644', 'blob'] or not (
-                        name in ('README.md', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
+                        name in ('README.md', SNAPSHOT, *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
                     raise Fail('the branch holds an unexpected file')
                 names.append(name)
             # A saved sample is immutable: changed, removed or renamed in any commit, merges
@@ -314,6 +323,9 @@ def publish(remote, at, read, draw_page=True, charts=None):
             main.history.collect(history, at, read)
             html = ''
         (work / 'samples').mkdir(exist_ok=True)
+        if draw_page and snapshot is not None:
+            (work / SNAPSHOT).parent.mkdir(exist_ok=True)
+            (work / SNAPSHOT).write_bytes(Path(snapshot).read_bytes())
         for path in sorted(samples.glob('*.json')):
             data = path.read_bytes()
             if path.name in before:
@@ -374,7 +386,8 @@ def cli(argv):
         read = selection_reader(a.source_root, a.selection)
         charts = chart_builder(a.source_root, a.selection, a.at)
         if a.cmd == 'publish':
-            print('published war-room at %s' % publish(a.remote, a.at, read, charts=charts))
+            print('published war-room at %s' % publish(a.remote, a.at, read, charts=charts,
+                                                       snapshot=saved_snapshot(a.source_root)))
         elif a.cmd == 'collect':
             head = publish(a.remote, a.at, read, draw_page=False)
             print('collected into war-room at %s' % head if head else 'boundary already collected')
