@@ -1,0 +1,29 @@
+Reproduced locally at c3ea31f (CI red: rust-export 3/4), before the typed-enum fix.
+running 1 test
+p08a_allowlist_static::allowlist_source_contracts_preserve_original_cases --- FAILED
+failures:
+---- p08a_allowlist_static::allowlist_source_contracts_preserve_original_cases stdout ----
+TA2 case: p08a_allowlist_static::engine_interpreter_exception_rejects_planted_widening
+TA2 case: p08a_allowlist_static::l3_check_admission_rejects_removed_approval_or_limits
+TA2 case: p08a_allowlist_static::l3_check_exception_rejects_planted_breaks
+TA2 case: p08a_allowlist_static::l3_exceptions_reject_aliased_process_starts
+TA2 case: p08a_allowlist_static::l3_repository_exception_rejects_planted_breaks
+TA2 case: p08a_allowlist_static::no_product_source_spells_a_forbidden_argument
+thread 'p08a_allowlist_static::allowlist_source_contracts_preserve_original_cases' (326856) panicked at tests/proof/p08a_allowlist_static.rs:2047:13:
+"<checkout>/crates/store/src/setup.rs" contains "create"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+failures:
+    p08a_allowlist_static::allowlist_source_contracts_preserve_original_cases
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 124 filtered out; finished in 0.48s
+error: test failed, to rerun pass `-p openwiz-tests --test proof`
+running 1 test
+m12_allowlist::no_product_source_spells_an_excluded_flag_or_another_write --- FAILED
+failures:
+---- m12_allowlist::no_product_source_spells_an_excluded_flag_or_another_write stdout ----
+thread 'm12_allowlist::no_product_source_spells_an_excluded_flag_or_another_write' (327904) panicked at tests/messaging/m12_allowlist.rs:392:13:
+"<checkout>/crates/store/src/setup.rs" contains "create"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+failures:
+    m12_allowlist::no_product_source_spells_an_excluded_flag_or_another_write
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 188 filtered out; finished in 0.22s
+error: test failed, to rerun pass `-p openwiz-tests --test messaging`

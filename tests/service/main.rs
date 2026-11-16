@@ -4,11 +4,9 @@
 //!
 //! Each ticket adds only its own `mod` line here (the orchestrator, on
 //! ClosedWiz#268), and declares any more modules of its own from inside its
-//! file with `#[path = "tN_more.rs"] mod more;`:
-//! - `t3_planner`: T3 (#268), the health planner's table tests (C3).
+//! file with `#[path = "tN_more.rs"] mod more;`.
 //!
 //! **Fixtures only.** Fixture tests never prove live behaviour.
 
 mod t12_handover;
 mod t2_locate;
-mod t3_planner;

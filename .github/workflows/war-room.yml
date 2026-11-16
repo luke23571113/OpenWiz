@@ -42,6 +42,7 @@ jobs:
         run: |
           python3 -I tools/war-room/test_publish.py
           python3 -I tools/war-room/test_gather.py
+          python3 -I tools/war-room/test_collect_ci.py
           python3 -I tools/war-room/test_collect_factory.py
       - name: The War room health and v2 history proofs (WRD1)
         # Runs even when an earlier step failed, so the health proofs always report.
@@ -59,6 +60,10 @@ jobs:
         # Runs even when an earlier step failed, so the serving proofs always report.
         if: ${{ !cancelled() }}
         run: python3 -I tools/war-room/test_web.py
+      - name: The War room six-page site proofs (WRD5, synthetic)
+        # Runs even when an earlier step failed, so the site proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_site.py
 
   preview:
     # A pull request ticks and draws on an empty private history, and publishes nothing.

@@ -76,6 +76,15 @@ def collect(root, binaries, web, output, version, source, target, program_receip
                 and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
                 'unsafe or missing init runtime')
         files['runtime/setup/init.py'] = tool
+    # #633: setup's GitHub sign-in helper, likewise from its exact tracked file
+    # when the requested commit tracks it; the installer requires it.
+    if git(root, 'ls-tree', '-z', '--name-only', '--end-of-options', source,
+           '--', 'tools/install/setup/github_login.py') == b'tools/install/setup/github_login.py\0':
+        tool = root / 'tools/install/setup/github_login.py'
+        require(tool.is_file() and tool.stat().st_nlink == 1
+                and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
+                'unsafe or missing GitHub sign-in helper')
+        files['runtime/setup/github_login.py'] = tool
     # #2379: the requested commit decides: if it tracks the installed handover,
     # its whole role ships from exact tracked files; older commits keep theirs.
     if git(root, 'ls-tree', '-z', '--name-only', '--end-of-options', source,

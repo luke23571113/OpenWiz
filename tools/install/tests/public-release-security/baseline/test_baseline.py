@@ -215,6 +215,8 @@ class GitHub(BaseHTTPRequestHandler):
         self.server.seen.append((method, self.path, dict(self.headers), body))
         if app['key_rejected']:
             return self.answer(401, {'message': 'synthetic: bad credentials'})
+        if method == 'GET' and self.path == '/app':  # the setup check's App-owner read (#606 review R3)
+            return self.answer(200, {'id': 1001, 'owner': {'login': 'synthetic-owner'}})
         if method == 'GET' and self.path == '/app/installations':
             # #2857: with a second page, GitHub's rel="next" link points to it.
             link = (f'<http://127.0.0.1:{self.server.server_port}/app/installations?page=2>; rel="next"'
@@ -409,7 +411,7 @@ class AppBoundaries(unittest.TestCase):
                 for method, path, headers, body in seen:
                     # App reads and at most one token request, for exactly the
                     # chosen repository, signed by the App's key alone.
-                    self.assertIn((method, path), [('GET', '/app/installations'),
+                    self.assertIn((method, path), [('GET', '/app'), ('GET', '/app/installations'),
                                                    ('GET', '/app/installations?page=2'),
                                                    ('POST', '/app/installations/2002/access_tokens')])
                     if method == 'POST':

@@ -1,0 +1,13 @@
+Final check red (R2, R3), run at fc7658b (the regressions) on the code of 51a8de8, before the fixes.
+ERROR: test_a_restart_while_approval_is_pending_starts_no_second_browser (__main__.SignIn.test_a_restart_while_approval_is_pending_starts_no_second_browser)
+  File "<checkout>/tools/install/setup/test_github_login.py", line 253, in test_a_restart_while_approval_is_pending_starts_no_second_browser
+FAIL: test_another_servers_login_never_reuses_selects_or_verifies (__main__.ForeignHost.test_another_servers_login_never_reuses_selects_or_verifies) (env={'GH_HOST': 'enterprise.example'})
+  File "<checkout>/tools/install/setup/test_github_login.py", line 313, in test_another_servers_login_never_reuses_selects_or_verifies
+AssertionError: 'identity_unreadable' != 'login_needed'
+FAIL: test_another_servers_login_never_reuses_selects_or_verifies (__main__.ForeignHost.test_another_servers_login_never_reuses_selects_or_verifies) (env={})
+  File "<checkout>/tools/install/setup/test_github_login.py", line 313, in test_another_servers_login_never_reuses_selects_or_verifies
+AssertionError: 'identity_unreadable' != 'login_needed'
+Ran 10 tests in 62.007s
+FAILED (failures=2, errors=1)
+R2's ERROR is the resumed sign-in --yes, after the record was aged by 3 hours beside a living recording child, starting a second gh auth login child and waiting in it until the test's 60-second limit; the extra recording child was killed by its pid.
+R3's FAILs are the github.com read answering GitHub's 401 (exit 1) while only another server holds a credential: identity_unreadable, so no browser sign-in starts.
