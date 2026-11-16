@@ -115,23 +115,6 @@ impl Clock for SystemClock {
     }
 }
 
-/// `openwiz ui`'s usage line and help (the command itself is the `openwiz`
-/// binary's `ui` module).
-pub const UI_USAGE: &str = "  openwiz ui [--port N] [--allowed-host NAME] [--json]\n";
-
-pub const UI_HELP: &str = "ui
-  Opens the visual terminal app on Home (Needs you, fleets, sessions; then Sessions and
-  Fleets), as openwiz with no arguments does in a terminal. It runs only openwiz-terminal
-  from the same directory as openwiz, and reads the already running local openwiz-server
-  on 127.0.0.1: it never starts a server or runs room-cli or gh. Needs a terminal on stdin
-  and stdout.
-  --port N    the server's port, 1 to 65535 (default 7370)
-  --allowed-host NAME
-              the server's configured public host name, for guarded requests; otherwise
-              OPENWIZ_SERVER_ALLOWED_HOST. Without one, only reads work
-  --json      print the openwiz.terminal-capability.v1 document; opens nothing
-";
-
 /// `openwiz --help`.
 pub fn help() -> String {
     format!(
@@ -155,7 +138,7 @@ Usage:
   openwiz attachment add [--json] [--] <path>...
   openwiz attachment ls [--json]
   openwiz attachment rm [--json] <id>...
-{fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{loop_files_usage}{engine_usage}{init_usage}{github_usage}{ui_usage}  openwiz help --agent
+{fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{loop_files_usage}{engine_usage}{init_usage}{github_usage}  openwiz help --agent
   openwiz help
   openwiz --help
 
@@ -288,7 +271,7 @@ attachment rm <id>...
   send's text is sent as text, never attached; send and new attach with --attach and
   --attachment. --json prints openwiz.attachment-add.v1,
   openwiz.attachment-list.v1 or openwiz.attachment-remove.v1.
-{loops_help}{loop_files_help}{fleets_help}{fleet_help}{tick_help}{ui_help}{github_help}
+{loops_help}{loop_files_help}{fleets_help}{fleet_help}{tick_help}{github_help}
 Exit codes:
   0  a result was printed, complete or partial
   0  send: queued, or sent (the provider accepted the message, not that the work completed)
@@ -359,8 +342,6 @@ attachment does the same: a usage error (2), or a store that can't be opened (10
         loop_files_usage = loop_files::USAGE,
         engine_usage = engine::USAGE,
         init_usage = init::USAGE,
-        ui_usage = UI_USAGE,
-        ui_help = UI_HELP,
         github_usage = github_token::USAGE,
         github_help = github_token::HELP,
         fleets_usage = fleets::USAGE,
@@ -405,6 +386,9 @@ pub fn parse(args: &[String]) -> Result<Command, UsageError> {
         "--help" | "-h" => Ok(Command::Help),
         "ls" => parse_ls(rest).map(Command::Ls),
         "show" => parse_show(rest).map(Command::Show),
+        "ui" => Err(UsageError(
+            "the terminal app was removed in OpenWiz 0.0.16; nothing was opened".to_owned(),
+        )),
         other => Err(UsageError(format!("unknown command {}", clean(other)))),
     }
 }

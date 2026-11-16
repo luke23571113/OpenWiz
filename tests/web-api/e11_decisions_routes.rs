@@ -1,11 +1,6 @@
 //! EP3: the decisions read uses the existing guarded HTTP seam.
 use crate::{fake::Fake, http};
 
-pub const DECISIONS_ROUTES: &[openwiz_server::Route] = &[openwiz_server::Route {
-    method: "GET",
-    path: "/api/v1/decisions",
-}];
-
 #[test]
 fn e11_decisions_target_failure_keeps_its_kind_and_never_leaks_diagnostics() {
     use crate::{e11_decisions_support as s, msg::SendFake, send_support};
@@ -69,17 +64,6 @@ fn e11_decisions_invalid_configured_target_never_reaches_the_provider() {
         assert_eq!(body["orchestrator"]["coverage"]["state"], "partial");
         assert!(messenger.invocations().is_empty());
     }
-}
-
-#[test]
-fn e11_decisions_appends_exactly_one_get() {
-    let legacy = crate::a4_no_mutation::legacy_routes(openwiz_server::ROUTES);
-    let before = 15 + crate::e11_plan_routes::PLAN_ROUTES.len();
-    assert_eq!(
-        // Exclude the two L6 switches and #1100's appended setup GET.
-        &legacy[before..legacy.len() - 2 - 1 - 1 /* #535 cockpit GET */ - 1 /* #549 loops GET */],
-        DECISIONS_ROUTES
-    );
 }
 
 #[test]

@@ -17,11 +17,6 @@ mod dirs;
 #[path = "../support/schema.rs"]
 mod schema;
 
-// The `openwiz` binary's ui module, as the binary compiles it.
-#[allow(dead_code)]
-#[path = "../../crates/cli/src/ui.rs"]
-mod cli_ui;
-
 mod github_token;
 mod init;
 mod loop_contract;
@@ -150,7 +145,6 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("loop.export", "--project --out --json --help"),
         ("loop.plan", "--project --adopt --json --help"),
         ("loop.apply", "--project --from --adopt --json --help"),
-        ("ui", "--port --allowed-host --json --help"),
         ("engine.preview", "--json --state-dir --location"),
         (
             "engine.activate",
@@ -248,9 +242,6 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
                 "fleet" => {
                     openwiz_cli::fleet::parse(&os).unwrap();
                 }
-                "ui" => {
-                    cli_ui::parse_ui(&os).unwrap();
-                }
                 "loop" | "models" | "fleets" => {}
                 // The packaged Python parser is exercised by the existing
                 // package-proof stage after CI provisions Python.
@@ -289,8 +280,6 @@ fn cp1_help_aliases_and_invalid_agent_forms_have_no_effects() {
         vec!["fleets", "-h"],
         vec!["loop", "--help"],
         vec!["loop", "-h"],
-        vec!["ui", "--help"],
-        vec!["ui", "-h"],
     ] {
         let result = sandbox.run(&args);
         assert_eq!(result.status.code(), Some(0), "{args:?}");
@@ -359,7 +348,6 @@ fn cp1_schema_refuses_broken_catalogues_and_pins_additive_result_shapes() {
         serde_json::json!({"schema":"openwiz.cli-error.v1","command":"ls","exit_code":2,"error":{"kind":"usage","message":"unknown option"}}),
         serde_json::json!({"schema":"openwiz.cli-help.v1","text":"synthetic help"}),
         serde_json::json!({"schema":"openwiz.fleet-due.v1","candidates":[{"spec":123,"ticket":124},{"spec":125,"ticket":null}]}),
-        serde_json::json!({"schema":"openwiz.terminal-capability.v1","available":false,"executable":"openwiz-terminal","transport":"loopback-http","actions":[],"reason":"not installed"}),
         serde_json::json!({"loop_id":"loop-synthetic","definition_revision":"1111111111111111111111111111111111111111","repository":"synthetic/repo","project":"project-synthetic","enabled":false,"actor":"synthetic-operator","at_ms":1000}),
     ];
     for document in documents {
@@ -491,7 +479,6 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             "fleet.tick" => "fleet tick",
             "fleet.tick.preview" => "fleet tick --dry-run",
             "fleet.due" => "fleet due --github-only",
-            "ui" => "ui",
             // These three parsers are private; their flags are checked through
             // real processes below, using only trap sources or absent config.
             "fleets" | "models" | "loop.off" | "loop.on" | "loop.validate" | "loop.export"
@@ -524,8 +511,6 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
                     "--attach" => Some("synthetic.txt"),
                     "--attachment" => Some("attachment-synthetic"),
                     "--expect-plan" => Some("synthetic-reviewed-plan.json"),
-                    "--port" => Some("7371"),
-                    "--allowed-host" => Some("openwiz.example"),
                     "--text-sha256" => {
                         Some("1111111111111111111111111111111111111111111111111111111111111111")
                     }
@@ -545,7 +530,6 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
                     openwiz_cli::fleet::tick::parse(&os).is_ok()
                 }
                 "fleet" => openwiz_cli::fleet::parse(&os).is_ok(),
-                "ui" => cli_ui::parse_ui(&os).is_ok(),
                 _ => unreachable!(),
             };
             assert!(accepted, "advertised flag rejected: {args:?}");
@@ -687,7 +671,6 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "loop.export",
             "loop.plan",
             "loop.apply",
-            "ui",
             "engine.preview",
             "engine.activate",
             "engine.status",

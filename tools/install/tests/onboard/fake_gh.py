@@ -7,12 +7,17 @@ nameWithOwner,isPrivate`), from the synthetic list in $FAKE_GH_REPOS
 (JSON: {"repos": {"owner/name": {"private": bool}}, "create": "ok" | "lost" | "fail",
 "fail_after_create": N, the N reads after a create failing as a network error would}),
 and logs each to $FAKE_GH_CREATE_LOG. "lost" creates the repository but exits 1
-with no answer, as a timed-out create. Every other call goes to launch-fleet's
-fake gh unchanged, which refuses writes. All values are synthetic.
+with no answer, as a timed-out create. It also answers the launch's read of a
+spec's comments (#636: `api --paginate repos/R/issues/N/comments?per_page=100
+--jq EXPR`) from launch-fleet's synthetic world, through jq as gh does, or
+fails it when $FAKE_GH_COMMENTS_FAIL is set. Every other call goes to
+launch-fleet's fake gh unchanged, which refuses writes. All values are synthetic.
 """
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import sys
 
 FLEET_GH = Path(__file__).resolve().parents[4] / 'skills/launch-fleet/scripts/fixtures/gh.py'
@@ -46,6 +51,15 @@ def main(argv):
             return 1
         print('https://github.com/%s' % name)
         return 0
+    if argv[:2] == ['api', '--paginate'] and len(argv) == 5 and argv[3] == '--jq':
+        match = re.fullmatch(r'repos/([^/]+/[^/]+)/issues/([0-9]+)/comments\?per_page=100', argv[2])
+        world = json.loads(Path(os.environ['FAKE_GH_WORLD']).read_text())
+        if not match or match[1] != world['repo'] or os.environ.get('FAKE_GH_COMMENTS_FAIL'):
+            sys.stderr.write('synthetic: HTTP 404\n')
+            return 1
+        issue = [i for i in world['issues'] if i['number'] == int(match[2])]
+        page = [{'body': c['body']} for c in (issue[0]['comments'] if issue else [])]
+        return subprocess.run(['jq', '-r', argv[4]], input=json.dumps(page), text=True).returncode
     os.execv(sys.executable, [sys.executable, '-I', '-S', str(FLEET_GH), *argv])
 
 

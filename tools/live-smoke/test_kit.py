@@ -46,7 +46,7 @@ class Claims(FixtureCase):
 
     def test_a_narrowed_kit_reports_exactly_its_declared_claims(self):
         """catches: a SHIP-3 kit refused for lacking the combined sheet's other
-        claims, or a report that lists claims (fleet, terminal, ...) this kit
+        claims, or a report that lists claims (fleet, cockpit, ...) this kit
         never checks, which a receipt could read as covered or pending."""
         doc = self.report(self.invoke(), 0)
         self.assertEqual(doc['claims'], {c: 'pass' for c in SHIP3})
@@ -85,7 +85,8 @@ class Port(FixtureCase):
         return str(path)
 
     def terminal(self, argv):
-        step = next(s for s in self.kit['steps'] if s['claim'] == 'terminal')
+        # The fixture's read step stands in for a launch (#776 removed the terminal claim).
+        step = next(s for s in self.kit['steps'] if s['claim'] == 'json')
         step['argv'] = argv
 
     def test_a_kit_that_asks_for_7370_refuses_before_any_effect(self):
