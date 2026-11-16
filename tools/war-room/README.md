@@ -820,8 +820,10 @@ line; its gaps fold into one closed disclosure. Chart SVGs, data and marks are u
 to its Sources entry on its child page (`health#bench-main_ci`; the browser opens the
 closed Sources disclosure), one state word and its existing headline value. States, in
 order: **off limit** (its own evidence shows an existing limit or goal missed: a failed main
-CI run, a missed stage limit, ready stock below the board's goal), **partial**, **healthy**
-(measured, with no limit missed) and **not measured** (unavailable). Ties keep inventory
+CI run, a missed stage limit, a measured stage-wait miss, ready stock below the board's goal),
+**partial** (including a pending or cancelled main CI run: no current result), **healthy**
+(measured, with no limit missed; main CI only on a successful run) and **not measured**
+(unavailable). Ties keep inventory
 order. No threshold is invented, Unknown is never zero and an unavailable bench says
 Unavailable. The order is rebuilt with each hourly publication; no page sorts or fetches.
 

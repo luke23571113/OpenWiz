@@ -47,7 +47,8 @@ starting `<!doctype html>`, with no `<script`, and carrying the page's own
 `Content-Security-Policy` meta tag. It writes them, with `identity.json` (`commit`, and
 `sha256` per file name), into a new folder `DIR/site-*`, then replaces the link
 `DIR/current` to point at it in one rename; the folder it replaced is kept and older ones are
-removed. Anything else (an unreachable remote, no branch, a missing child, a link, one bad
+removed. Refreshes of one `DIR` take turns on the lock file `DIR/.fetch.lock`, held from
+before the new folder exists until cleanup, so one never removes another's folder. Anything else (an unreachable remote, no branch, a missing child, a link, one bad
 page) exits 1 and leaves `DIR/current` as it was: the last good site stays served, every
 route from the same generation. Errors never echo the remote URL. A `DIR` that WRD4's
 adapter filled (`DIR/war-room.html`, no `current`) serves nothing until the first good site

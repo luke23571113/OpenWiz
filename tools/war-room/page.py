@@ -519,6 +519,10 @@ def assessed(record, claimed):
     Past means the bench's own evidence shows an existing limit or goal missed: a failed main CI run,
     a missed stage limit, ready stock below the board's goal (status's evidenced anomalies)."""
     off = {p['slot'] for p in suite.health(record) if any(o['result'] in ('failure', 'missed') for o in p['observations'])}
+    # #926 R1: a stage's own measured miss count (TL2's canonical `miss:<stage>` metric, never the
+    # non-counting `miss-ticket:` references), including fix and answer stages stage health omits.
+    off.update(p['slot'] for p in record['providers'] if p['slot'] == 'stage_waits' and any(
+        m['id'].startswith('miss:') and m['state'] != 'unavailable' and (m['value'] or 0) > 0 for m in p['metrics']))
     charted = set()
     ready = claimed.get('00a', [None])[0]
     if ready is not None:
@@ -563,7 +567,8 @@ def bench_value(slot, p, claimed):
 def bench_rows(record, claimed):
     """[(state, slot, value)]: every bench and health signal, off limit, then partial, healthy and
     not measured, each state in inventory order. No threshold is invented: off limit is only an
-    existing limit or goal the evidence shows missed, and unassessed data is never healthy."""
+    existing limit or goal the evidence shows missed, and unassessed data is never healthy; main CI
+    is healthy only on a successful current-head run."""
     off, charted = assessed(record, claimed)
     providers = {p['slot']: p for p in record['providers'] + suite.health(record)}
     order = [p['slot'] for p in suite.PROVIDERS] + [h['slot'] for h in suite.HEALTH]
@@ -573,6 +578,9 @@ def bench_rows(record, claimed):
         value = bench_value(slot, p, claimed)
         if slot in off:
             state = 'off limit'
+        elif slot == 'main_ci' and p['state'] != 'unavailable':
+            # #926 R2: only a successful current-head run is healthy; pending or cancelled is no current result.
+            state = 'healthy' if p['observations'][0]['result'] == 'success' else 'partial'
         elif p['state'] == 'partial':
             state = 'partial'
         elif p['state'] == 'known' or slot in charted:

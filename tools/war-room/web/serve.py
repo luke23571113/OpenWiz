@@ -11,6 +11,7 @@ with those pages on 127.0.0.1 and nothing else. Access is the tunnel's and Acces
 this program's (contract.md).
 """
 import argparse
+import fcntl
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -29,6 +30,7 @@ SITE = {'/': PAGE, '/speed': 'war-room-speed.html', '/health': 'war-room-health.
         '/quality': 'war-room-quality.html', '/skills': 'war-room-skills.html'}
 # The kept site: CURRENT is a link to one complete generation folder, replaced in one rename.
 CURRENT, GENERATION = 'current', 'site-'
+LOCK = '.fetch.lock'
 HOST = '127.0.0.1'
 MAX_BYTES = 8 * 1024 * 1024
 POLICY = re.compile(r'<meta http-equiv="Content-Security-Policy" content="([^"<>]+)">')
@@ -77,6 +79,14 @@ def fetch(remote, into):
     generation folder with its identity, and CURRENT is switched to it in one rename."""
     into = Path(into)
     into.mkdir(parents=True, exist_ok=True)
+    # #926 R3: one refresh at a time per folder, from before its generation exists until cleanup, so
+    # no refresh deletes another's staged generation. The lock file persists; the kernel releases it.
+    with open(into / LOCK, 'a') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        return _fetch(remote, into)
+
+
+def _fetch(remote, into):
     pages = {}
     with tempfile.TemporaryDirectory(prefix='war-room-web-') as tmp:
         git(tmp, 'init', '-q', '--bare', 'git')
