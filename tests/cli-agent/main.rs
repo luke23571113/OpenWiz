@@ -152,6 +152,11 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ),
         ("engine.status", "--json --state-dir"),
         ("github.token", "--repository --read --help"),
+        ("init", "--repository --state-dir --json"),
+        (
+            "init.apply",
+            "--repository --state-dir --json --yes --operation",
+        ),
     ];
     let commands = catalogue["commands"].as_array().unwrap();
     assert_eq!(commands.len(), matrix.len());
@@ -243,7 +248,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
                 "loop" | "models" | "fleets" => {}
                 // The packaged Python parser is exercised by the existing
                 // package-proof stage after CI provisions Python.
-                "engine" => {}
+                "engine" | "init" => {}
                 "github" => drop(openwiz_cli::github_token::parse(&args[1..]).unwrap()),
                 other => panic!("unexpected shipped command {other}"),
             }
@@ -485,6 +490,7 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             // real processes below, using only trap sources or absent config.
             "fleets" | "models" | "loop.off" | "loop.on" => continue,
             "engine.preview" | "engine.activate" | "engine.status" => continue,
+            "init" | "init.apply" => continue,
             "github.token" => {
                 for flag in command["flags"].as_array().unwrap() {
                     let mut args = vec!["token", "--repository", "synthetic-owner/work"];
@@ -674,7 +680,9 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "engine.preview",
             "engine.activate",
             "engine.status",
-            "github.token"
+            "github.token",
+            "init",
+            "init.apply"
         ]
     );
     assert!(
