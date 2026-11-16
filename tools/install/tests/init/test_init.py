@@ -286,6 +286,51 @@ class Init(unittest.TestCase):
         settings = json.loads(self.files(COMPANION)['.openwiz/brain/settings.json'])
         self.assertEqual((settings['brain_location'], settings['code_repository']), ('companion', CODE))
 
+    # R1. Catches: an apply that writes brain files into, and reports as private,
+    # a companion that became public or unreadable after the preview.
+    def test_apply_revalidates_the_destination_before_any_content_write(self):
+        companion = repository(COMPANION, 'private', description=f'OpenWiz private brain for {CODE}',
+                               homepage=f'https://github.com/{CODE}')
+        for change in ('public', 'hidden'):
+            with self.subTest(change):
+                shutil.rmtree(self.state, ignore_errors=True)
+                self.world({CODE.lower(): repository(CODE, 'public'), COMPANION.lower(): dict(companion)})
+                preview = self.init()
+                self.assertEqual([e['kind'] for e in preview['effects']], ['create_label', 'open_pull_request'])
+                self.edit(lambda w: w['repos'][COMPANION.lower()].update(
+                    {'private': False, 'visibility': 'public'} if change == 'public' else {'hidden': True}))
+                refused = self.apply(preview, expect=5)
+                self.assertEqual((refused['outcome'], refused['reason_code']), ('refused', 'brain_not_private'))
+                self.assertEqual(self.read()['repos'][COMPANION.lower()]['branches'], companion['branches'])
+                self.assertEqual(self.read()['repos'][COMPANION.lower()]['pulls'], [])
+                self.assertNotIn('brain', self.saved())
+
+    # R2. Catches: success reported, and the brain saved, for a proposal the
+    # owner closed: after a lost creation reply, or on a cached repeat.
+    def test_only_an_open_or_merged_proposal_counts_as_success(self):
+        self.world(faults=[{'method': 'POST', 'path': f'repos/{CODE}/pulls', 'mode': 'lose', 'times': 1}])
+        preview = self.init()
+        self.apply(preview, expect=6)
+        close = lambda w: w['repos'][CODE.lower()]['pulls'][0].update(state='closed')
+        self.edit(close)
+        resumed = self.apply(preview, expect=5)
+        self.assertEqual(resumed['reason_code'], 'proposal_closed')
+        self.assertEqual(len(self.read()['repos'][CODE.lower()]['pulls']), 1, 'never replaced')
+        self.assertNotIn('brain', self.saved())
+        # A completed apply whose proposal the owner then closed.
+        shutil.rmtree(self.state)
+        self.world({CODE.lower(): repository(CODE, 'private')})
+        done = self.apply(self.init())
+        self.edit(close)
+        self.assertEqual(self.init(expect=5)['reason_code'], 'proposal_closed')
+        repeat = self.apply(done, expect=5)
+        self.assertEqual(repeat['reason_code'], 'proposal_closed')
+        self.assertEqual(len(self.read()['repos'][CODE.lower()]['pulls']), 1)
+        # A merged proposal still counts.
+        self.edit(lambda w: w['repos'][CODE.lower()]['pulls'][0].update(merged_at='2026-01-01T00:00:00Z'))
+        merged = self.apply(done)
+        self.assertEqual(merged['pull_requests'][0]['state'], 'merged')
+
 
 class BrainReference(unittest.TestCase):
     """The store's optional `brain` field and setup's project check of it."""
@@ -344,18 +389,21 @@ class BrainReference(unittest.TestCase):
         record = json.dumps({'schema': 'openwiz.brain-settings.v1', 'brain_location': 'companion',
                              'code_repository': CODE, 'brain_repository': COMPANION})
 
-        def resolve(companion):
+        def resolve(companion, selected=CODE):
             world.write_text(json.dumps({'user': {'login': 'synthetic-owner', 'type': 'User'}, 'faults': [],
                                          'log': [], 'repos': {COMPANION.lower(): companion}}))
             saved = dict(os.environ)
             os.environ.update(PATH=f'{bin_dir}:/usr/bin:/bin', FAKE_GH_WORLD=str(world))
             try:
-                return setup.check_brain(self.brain())
+                return setup.check_brain(self.brain(), selected)
             finally:
                 os.environ.clear()
                 os.environ.update(saved)
         merged = repository(COMPANION, 'private', branches={'main': {'.openwiz/brain/settings.json': record}})
-        self.assertEqual(setup.check_brain(None), 'project_verified')
+        self.assertEqual(setup.check_brain(None, CODE), 'project_verified')
+        # R3: another repository's retained brain never gates the selected one.
+        self.assertEqual(resolve(dict(merged, hidden=True), selected='synthetic-owner/other-app'),
+                         'project_verified')
         self.assertEqual(resolve(merged), 'project_verified')
         self.assertEqual(resolve(dict(merged, private=False, visibility='public')), 'project_settings_missing')
         self.assertEqual(resolve(repository(COMPANION, 'private', branches={
