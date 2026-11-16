@@ -284,6 +284,7 @@ mod tests {
         )
     }
 
+    // plan (#792) is built; its keeper is tests/cli-agent/loop_plan.rs.
     // catches: a stub that succeeds, reads, or prints a result that is not the
     // contract's `not_built` document, so a caller mistakes it for a report.
     #[test]

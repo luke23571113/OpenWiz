@@ -105,7 +105,7 @@ impl Fake {
 
     fn write(&self, path: &str, text: &str) -> PathBuf {
         let path = self.0.0.join(path);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        super::dirs::private_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, text).unwrap();
         path
     }

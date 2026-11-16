@@ -172,7 +172,7 @@ Accepted/sent never means work completed; created never means started.
 | `loop off/on` | This schema's `loop_switch`: existing unwrapped event, **no schema field** |
 | `loop validate` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/not_built` until LC2 (#790) ships `validate_report` |
 | `loop export` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/not_built` until LC3 (#791) ships `export_report` |
-| `loop plan` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/not_built` until LC4 (#792) ships `plan_report` |
+| `loop plan` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/plan_report` (LC4, #792) |
 | `loop apply` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/not_built` until LC5 (#793) ships `apply_report` |
 
 Tick exits 0 after reporting its plan/outcomes (individual failed or uncertain

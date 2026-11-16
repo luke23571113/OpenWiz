@@ -1810,7 +1810,34 @@ pub struct LiveLoop {
     pub priority: i64,
     pub prompt: String,
     pub enabled: bool,
+    /// Keys `list` gave that the adapter neither maps nor knows as run
+    /// state (`agent.<key>` inside the agent), in the order given.
+    pub unmapped: Vec<String>,
 }
+
+/// Every key of a `list` loop the adapter knows: the mapped ones, its own
+/// identifiers and the run state it leaves out of a file.
+const LIST_KEYS: [&str; 19] = [
+    "id",
+    "project_id",
+    "session_id",
+    "name",
+    "cron",
+    "timezone",
+    "run_at",
+    "webhook",
+    "new_thread",
+    "script",
+    "agent",
+    "secrets",
+    "priority",
+    "prompt",
+    "enabled",
+    "last_error",
+    "last_run_at",
+    "next_run_at",
+    "runs",
+];
 
 impl CloudRoomSource {
     /// `room-cli loop list --json`, read once: every loop on the account.
@@ -1908,7 +1935,23 @@ pub fn parse_loop_list(stdout: &[u8]) -> Result<Vec<LiveLoop>, String> {
                 .as_int()
                 .and_then(|p| p.parse().ok())
                 .ok_or_else(|| bad(&format!("{loop_id}'s priority is not an integer")))?;
+            let mut unmapped: Vec<String> = Vec::new();
+            if let Json::Object(members) = item {
+                for (key, _) in members {
+                    if !LIST_KEYS.contains(&key.as_str()) {
+                        unmapped.push(key.clone());
+                    }
+                }
+            }
+            if let Some(Json::Object(members)) = item.get("agent") {
+                for (key, _) in members {
+                    if !["provider", "model", "reasoning"].contains(&key.as_str()) {
+                        unmapped.push(format!("agent.{key}"));
+                    }
+                }
+            }
             Ok(LiveLoop {
+                unmapped,
                 loop_id: loop_id.to_owned(),
                 address: ThreadId::parse(loop_id).map_err(|_| {
                     bad(&format!("{loop_id} is not an id that can be passed safely"))
@@ -2330,6 +2373,13 @@ fn plan_update(item: &mut PlanItem, file: &LoopFile, live: &LiveLoop, adopted: b
         || update.agent.is_some()
         || update.secrets.is_some();
     item.differences = differences;
+    if !live.unmapped.is_empty() {
+        item.notes.push(format!(
+            "Cloudroom loop {} carries settings the adapter does not map, so plan cannot compare them and the file does not hold them: {}",
+            live.loop_id,
+            live.unmapped.join(", ")
+        ));
+    }
     if adopted {
         item.notes.push(format!(
             "adopts Cloudroom loop {}: its name gains the marker {}",

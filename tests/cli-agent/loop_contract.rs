@@ -26,14 +26,8 @@ fn the_stubs_print_the_schemas_not_built_document_and_read_nothing() {
     for args in [
         &["loop", "validate", "loops/a.md", "--json"][..],
         &["loop", "export", "--project", "project-synthetic", "--json"],
-        &[
-            "loop",
-            "plan",
-            "loops",
-            "--project",
-            "project-synthetic",
-            "--json",
-        ],
+        // plan (#792) is built: its keeper is tests/cli-agent/loop_plan.rs,
+        // whose every document is checked against this schema.
         &[
             "loop",
             "apply",
