@@ -50,7 +50,7 @@ returns a fresh JSON-compatible dictionary on success. I/O failures raise
 `OSError`; invalid content/decoding raises `ValueError`. Consumers must propagate
 refusal, never treat it as an unlimited interval or an empty benchmark.
 
-The CLI is `python3 -I tools/factory-metrics/limits.py [--settings PATH]`.
+The CLI is `python3 -I tools/war-room/limits.py [--settings PATH]`.
 Without `--settings`, it reads the `limits.conf` beside the script, regardless
 of the working directory. An explicit path selects only that file; it is never
 merged with defaults. Success exits 0 and prints exactly one JSON object:
@@ -76,7 +76,7 @@ Endpoint evidence, thresholds, held intervals, Unknown history, distinct misses
 and benchmark denominators belong to #2337. Settings confer no action,
 replacement, merge, review, access or spending authority; all gates remain.
 
-`python3 -I tools/factory-metrics/test_limits.py` proves the five literal defaults,
+`python3 -I tools/war-room/test_limits.py` proves the five literal defaults,
 a real file edit reflected through Python and CLI, benign formatting and
 fail-closed boundaries with synthetic files. It makes no live or enforcement
 claim. Independent review checks the five goals against the confirmed decision.

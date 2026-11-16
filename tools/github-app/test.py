@@ -100,7 +100,7 @@ ROOT = HERE.parents[1]
 # in (its clone, or one setting), so none may name ClosedWiz's as a fixed
 # target. This file is the one test CI runs in those paths, so the check is here.
 FOLLOWING_PATHS = ("loops", "tools/stall-alarm", "tools/github-app",
-                   "tools/factory-metrics", "tools/roadmap", "docs/ROADMAP.md")
+                   "tools/roadmap", "docs/ROADMAP.md")
 # Built in pieces so this file is not a hit itself.
 FIXED_TARGET = re.compile(re.escape("jparker2006" + "/" + "ClosedWiz").encode(), re.IGNORECASE)
 # A pointer to the private record (a ClosedWiz issue comment, as #1257 has it)

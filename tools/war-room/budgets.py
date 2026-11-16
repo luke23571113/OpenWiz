@@ -42,7 +42,7 @@ sys.dont_write_bytecode = True
 
 
 def bench():
-    spec = importlib.util.spec_from_file_location("ci_bench", HERE / "bench.py")
+    spec = importlib.util.spec_from_file_location("ci_bench", HERE / "bench_measure.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

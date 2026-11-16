@@ -28,7 +28,7 @@ import unittest
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / 'fixtures' / 'weekly'
-TL2_FIXTURE = HERE.parents[1] / 'tools/factory-metrics/fixtures/stage-waits'
+TL2_FIXTURE = HERE / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
 import sources  # noqa: E402

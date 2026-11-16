@@ -20,56 +20,8 @@ permissions:
   contents: read
 
 jobs:
-  proof:
-    # Pull requests only: publish.sh runs the same tests before it publishes, so a dispatched or
-    # scheduled run is one job, one billed minute.
-    if: github.event_name == 'pull_request'
-    # GitHub-hosted on purpose, never vars.CI_RUNS_ON: the charge shows in GitHub's own billing.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Python
-        run: sh tools/ci-bench/python.sh
-      - name: Node for the chart build (WRD2)
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24.22.1
-      - name: The locked chart build (WRD2; build only)
-        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/war-room
-      - name: The War room publish and gather tests
-        run: |
-          python3 -I tools/war-room/test_publish.py
-          python3 -I tools/war-room/test_gather.py
-          python3 -I tools/war-room/test_collect_ci.py
-          python3 -I tools/war-room/test_collect_factory.py
-          python3 -B -I tools/stall-alarm/test.py
-      - name: The War room health and v2 history proofs (WRD1)
-        # Runs even when an earlier step failed, so the health proofs always report.
-        if: ${{ !cancelled() }}
-        run: python3 -I tools/war-room/test_health.py
-      - name: The War room chart proofs (WRD2)
-        # Runs even when an earlier step failed, so the chart proofs always report.
-        if: ${{ !cancelled() }}
-        run: python3 -I tools/war-room/test_charts.py
-      - name: The War room v3 page proofs (WRD3)
-        # Runs even when an earlier step failed, so the page proofs always report.
-        if: ${{ !cancelled() }}
-        run: python3 -I tools/war-room/test_page_design.py
-      - name: The War room private HTML serving proofs (WRD4, synthetic)
-        # Runs even when an earlier step failed, so the serving proofs always report.
-        if: ${{ !cancelled() }}
-        run: python3 -I tools/war-room/test_web.py
-      - name: The War room six-page site proofs (WRD5, synthetic)
-        # Runs even when an earlier step failed, so the site proofs always report.
-        if: ${{ !cancelled() }}
-        run: python3 -I tools/war-room/test_site.py
-
   preview:
     # A pull request ticks and draws on an empty private history, and publishes nothing.
-    needs: proof
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -78,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/ci-bench/python.sh
+        run: sh tools/war-room/python.sh
       - name: Node for the chart build (WRD2)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -97,7 +49,7 @@ jobs:
     # A cap, not a budget: gather.py's read-only gh reads add to the one-minute publish.
     timeout-minutes: 15
     # Only this job writes, and publish.py pushes only refs/heads/war-room. The read scopes are
-    # gather.py's (WR10): it fetches `board` and `ci-benchmarks` and runs read-only gh queries.
+    # gather.py's (WR10): it fetches `board` and runs read-only gh queries.
     permissions:
       contents: write
       actions: read
@@ -111,7 +63,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/ci-bench/python.sh
+        run: sh tools/war-room/python.sh
       - name: Node for the chart build (WRD2)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

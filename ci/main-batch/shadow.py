@@ -376,7 +376,7 @@ def facts(gh, context, packet):
 
 
 def measurement(context, jobs):
-    sys.path.insert(0, str(ROOT/'tools/ci-bench'))
+    sys.path.insert(0, str(ROOT/'tools/war-room'))
     import required
     queues, ends = [], []
     for job in jobs:

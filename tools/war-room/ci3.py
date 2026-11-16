@@ -24,7 +24,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
-# The war room's copy of the bench's reader, checks and step table (#822, #826): nothing from tools/ci-bench/.
+# The war room's copy of the bench's reader, checks and step table (#822, #826); ci-bench retired (#827).
 import bench_measure as bench  # noqa: E402
 
 from bench_measure import Fail, as_int, as_list, as_obj, as_str, as_time, need, secs  # noqa: E402
