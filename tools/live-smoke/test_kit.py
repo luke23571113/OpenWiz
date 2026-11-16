@@ -210,6 +210,8 @@ class Inputs(unittest.TestCase):
         (checkout / 'private' / 'records.json').write_text(json.dumps(records))
         (checkout / 'private' / 'records.json').chmod(0o600)
         refusals['records through an alias'] = ([alias / 'records.json'], 'inside_checkout')
+        # #777 R1 re-check: `..` after a symlinked folder, which the OS applies after the link.
+        refusals['records through alias-dotdot'] = ([alias / '..' / 'private' / 'records.json'], 'inside_checkout')
         for name, (paths, reason) in refusals.items():
             with self.subTest(name):
                 result, target = self.assemble(*paths, out=self.run_dir / (name.replace(' ', '-') + '.json'))
@@ -217,15 +219,31 @@ class Inputs(unittest.TestCase):
                 self.assertEqual(json.loads(result.stdout), {'assembled': False, 'reason': reason})
                 self.assertFalse(target.exists())
         # The reviewer's reproduction: the output path's folder resolves into Git.
-        for name, target in (('out through an alias', alias / 'inputs.json'),
-                             ('out through an alias above it', self.checkout_alias('outside-root', None)[1]
-                              / 'private' / 'inputs.json')):
+        for name, target, reason in (
+                ('out through an alias', alias / 'inputs.json', 'inside_checkout'),
+                ('out through an alias above it', self.checkout_alias('outside-root', None)[1]
+                 / 'private' / 'inputs.json', 'inside_checkout'),
+                ('out through alias/.. (the re-check reproduction)', alias / '..' / 'private' / 'inputs.json',
+                 'inside_checkout'),
+                ('.. after the deepest existing folder', self.run_dir / 'missing' / '..' / 'inputs.json',
+                 'unsafe_path')):
             with self.subTest(name):
                 result, _ = self.assemble(self.root / 'a.json', self.root / 'b.json', out=target)
                 self.assertEqual((result.returncode, json.loads(result.stdout)),
-                                 (2, {'assembled': False, 'reason': 'inside_checkout'}))
-                self.assertFalse(target.exists())
+                                 (2, {'assembled': False, 'reason': reason}))
+                self.assertFalse(os.path.lexists(target))
                 self.assertNotIn(PRIVATE, result.stdout)
+                self.assertEqual(sorted(p.name for p in (checkout / 'private').iterdir()), ['records.json'])
+        # `..` after a symlinked folder that resolves outside any work tree is allowed,
+        # and the file lands where the OS puts it.
+        outside = self.root / 'outside-target' / 'deep'
+        outside.mkdir(parents=True)
+        (self.root / 'outside-target' / 'run').mkdir(mode=0o700)
+        (self.root / 'outside-alias').symlink_to(outside, target_is_directory=True)
+        target = self.root / 'outside-alias' / '..' / 'run' / 'inputs.json'
+        result, _ = self.assemble(self.root / 'a.json', self.root / 'b.json', out=target)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(json.loads((self.root / 'outside-target' / 'run' / 'inputs.json').read_text()), records)
         result, _ = self.assemble(self.root / 'a.json', out=out)
         self.assertEqual(json.loads(result.stdout)['reason'], 'exists')
         self.assertEqual(json.loads(out.read_text()), inputs)
@@ -259,6 +277,11 @@ class Inputs(unittest.TestCase):
             'kit through an alias': (good, self.checkout_alias('kit-alias')[1] / 'kit.json', 'inside_checkout'),
             'inputs through an alias': (self.write(self.checkout_alias('inputs-alias')[1] / 'inputs.json', inputs),
                                         out, 'inside_checkout'),
+            # #777 R1 re-check: `..` after a symlinked folder, at both prepare sites.
+            'inputs through alias-dotdot': (self.write(self.checkout_alias('dots-in')[1] / 'inputs.json', inputs)
+                                        .parent / '..' / 'private' / 'inputs.json', out, 'inside_checkout'),
+            'kit through alias-dotdot': (good, self.checkout_alias('dots-out')[1] / '..' / 'private' / 'kit.json',
+                                     'inside_checkout'),
             'stale input': (self.write(self.run_dir / 'stale.json', dict(inputs, fleet_scope={})), out, 'unused_input'),
             'missing input': (self.write(self.run_dir / 'missing.json', {k: v for k, v in inputs.items() if k != 'install_root'}),
                               out, 'missing_input'),
@@ -273,7 +296,16 @@ class Inputs(unittest.TestCase):
                 doc = json.loads(result.stdout)
                 self.assertEqual((doc['prepared'], doc['reason']), (False, reason))
                 self.assertNotIn(PRIVATE, result.stdout)
-                self.assertFalse(fresh.exists())
+                self.assertFalse(os.path.lexists(fresh))
+        for name in ('checkout-kit-alias', 'checkout-dots-out'):
+            self.assertEqual(list((self.root / name / 'private').iterdir()), [], name)
+        # A kit through `..` after a link that resolves outside Git is written there.
+        (self.root / 'kit-target' / 'deep').mkdir(parents=True)
+        (self.root / 'kit-target' / 'run').mkdir(mode=0o700)
+        (self.root / 'kit-link').symlink_to(self.root / 'kit-target' / 'deep', target_is_directory=True)
+        allowed = run(HERE / 'prepare.py', '--inputs', good, '--out', self.root / 'kit-link' / '..' / 'run' / 'kit.json')
+        self.assertEqual(allowed.returncode, 0, allowed.stdout)
+        self.assertTrue((self.root / 'kit-target' / 'run' / 'kit.json').is_file())
         self.assertEqual(json.loads(run(HERE / 'prepare.py', '--inputs', rows['missing input'][0],
                                         '--out', self.run_dir / 'm.json').stdout)['missing'], ['install_root'])
 
