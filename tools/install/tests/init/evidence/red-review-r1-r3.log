@@ -1,0 +1,12 @@
+ERROR: test_the_project_check_resolves_the_brain_reference (__main__.BrainReference.test_the_project_check_resolves_the_brain_reference)
+TypeError: check_brain() takes 1 positional argument but 2 were given
+FAIL: test_apply_revalidates_the_destination_before_any_content_write (__main__.Init.test_apply_revalidates_the_destination_before_any_content_write) [public]
+AssertionError: 0 != 5
+FAIL: test_apply_revalidates_the_destination_before_any_content_write (__main__.Init.test_apply_revalidates_the_destination_before_any_content_write) [hidden]
+AssertionError: 6 != 5
+FAIL: test_only_an_open_or_merged_proposal_counts_as_success (__main__.Init.test_only_an_open_or_merged_proposal_counts_as_success)
+AssertionError: 0 != 5
+Ran 13 tests in 17.143s
+FAILED (failures=3, errors=1)
+--- R3 at the claim, old check_brain(brain of A) while B is selected:
+selected synthetic-owner/other-app -> project_settings_missing (expected project_verified)
