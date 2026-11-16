@@ -209,17 +209,26 @@ def setup_facts(folder):
         assert value['schema'] == 'openwiz.setup-state.v1' and type(value['revision']) is int
         observations, project = value['observations'], value['project']
         assert isinstance(observations, dict) and (project is None or isinstance(project, dict))
+        if project is not None:
+            assert all(isinstance(project[k], str) and project[k]
+                       for k in ('repository', 'project', 'harness', 'model', 'effort'))
+            assert re.fullmatch(REPOSITORY, project['repository'])
+        identity, brain = value.get('identity'), value.get('brain')
+        assert identity is None or (isinstance(identity, dict) and isinstance(identity['selected'], str)
+                                    and (identity['acting_login'] is None or isinstance(identity['acting_login'], str)))
+        assert brain is None or (isinstance(brain, dict) and all(
+            isinstance(brain[k], str) for k in ('location', 'code_repository', 'brain_repository')))
     except FileNotFoundError:
         raise Exit(5, 'Setup has not run in this OpenWiz state yet; run the setup check first; ' + NOTHING)
     except (OSError, ValueError, KeyError, TypeError, AssertionError):
         raise Exit(10, "OpenWiz's setup state is unreadable; " + NOTHING)
     if project is None:
         raise Exit(5, 'Setup has no prepared project: prepare it (setup.py prepare) and check again; ' + NOTHING)
-    repository = project.get('repository')
-    identity = value.get('identity')
-    if not (isinstance(identity, dict) and identity.get('repository') == repository):
+    repository = project['repository']
+    if not (identity and identity.get('repository') == repository):
         identity = None
-    skipped = bool(identity and identity.get('selected') == 'personal_login' and identity.get('app_choice') == 'skip')
+    skipped = bool(identity and identity['selected'] == 'personal_login' and identity.get('app_choice') == 'skip'
+                   and identity['acting_login'])
     now = int(time.time() * 1000)
 
     def state(component):
@@ -245,8 +254,7 @@ def setup_facts(folder):
         harness_line = 'listed by CloudRoom; its login is not proven by setup'
     else:
         problems.append('%s: %s (%s)' % (NAMES['harness'], harness, why))
-    brain = value.get('brain')
-    if not isinstance(brain, dict) or str(brain.get('code_repository', '')).lower() != str(repository).lower():
+    if brain is None or brain['code_repository'].lower() != repository.lower():
         problems.append('Private brain: missing (run openwiz init for %s, then the setup check)' % repository)
     if problems:
         raise Exit(5, 'Setup is not ready for the first fleet: %s; %s' % ('; '.join(problems), NOTHING))
