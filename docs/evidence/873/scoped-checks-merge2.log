@@ -1,0 +1,26 @@
+# #873 scoped local checks at 89cfa80099ccda40ee98856090d1f9b75788616b (after merging main 04a3afe, with #633)
+## cargo fmt --check
+ok
+## cargo clippy -p openwiz-server -p openwiz-store --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.72s
+## cargo test -p openwiz-server --lib setup
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+## cargo test -p openwiz-store setup
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s
+## tools/install: setup-onboard contract, setup and github_login unit tests
+OK
+OK
+## node --test tools/install/test_setup_api.mjs
+ℹ pass 2
+ℹ fail 0
+## apps/web: npm run typecheck && npm run check
+typecheck ok
+check: 56 source files and the stylesheet pass (V1, messaging and new-thread schema parity, V3, V10, W5, W12, U5, U12 to U14, AW7, AW8, the #549 loop switch, types, spacing)
+## apps/web: node --test test/unit/first-hour-*.test.ts
+ℹ pass 46
+ℹ fail 0
+## apps/web: npm run build, then run-browser --only the seven setup and first-hour files
+build ok
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0

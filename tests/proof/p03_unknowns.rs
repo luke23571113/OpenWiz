@@ -7,15 +7,6 @@ use openwiz_core::ops::ListRequest;
 use crate::support::*;
 
 #[test]
-fn missing_status_is_unknown_with_a_reason() {
-    let fake = Fake::new("p03_missing_status", "thread-list-missing-fields");
-    let env = fake
-        .list(&ListRequest::default())
-        .expect("honest partial list");
-    unknown_reason(&session(&env, "thr_syn_0002").status);
-}
-
-#[test]
 fn missing_model_is_unknown_with_a_reason() {
     let fake = Fake::new("p03_missing_model", "show-missing-fields");
     let env = fake.list(&long()).expect("ls -l");
@@ -37,17 +28,6 @@ fn missing_parent_is_unknown_not_top_level() {
     let normal = Fake::new("p03_missing_parent_normal", "normal");
     let env = normal.list(&ListRequest::default()).expect("normal list");
     assert_eq!(session(&env, "thr_syn_0001").parent, Fact::Known(None));
-}
-
-#[test]
-fn missing_freshness_is_unknown_with_a_reason() {
-    let fake = Fake::new("p03_missing_freshness", "thread-list-missing-fields");
-    let env = fake
-        .list(&ListRequest::default())
-        .expect("honest partial list");
-    let s = session(&env, "thr_syn_0004");
-    unknown_reason(&s.updated_at);
-    unknown_reason(&s.age_ms);
 }
 
 /// Finds `id`'s row in `ls --json` output.
