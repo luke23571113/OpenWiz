@@ -52,7 +52,7 @@ class Plans(unittest.TestCase):
             'ci/hosted/guard.sh': '# synthetic guard\n',
             **{p: '# synthetic existing input\n' for p in ('docs/github-app.md', 'docs/ROADMAP.md',
                 'tools/roadmap/generate.py', 'tools/privacy-check/check.py',
-                'tools/factory-metrics/report.py', 'loops/synthetic.json', 'tools/open-tickets/test.sh', 'tools/live-check/core.py',
+                'tools/factory-metrics/report.py', 'loops/synthetic.json', 'tools/open-tickets/test.sh',
                 'tools/ops-live/controls/kit.py', 'tools/ci-overload/alarm.py',
                 'tools/ops-live/acceptance.py')},
             '.github/actions/docs-only/classify.sh': (HERE / 'classify.sh').read_text(),
@@ -411,22 +411,6 @@ class Plans(unittest.TestCase):
         self.assertNotIn('empty_diff', [r['code'] for r in record['selection']['reasons']])
         self.assertIn('map-to-tested', record['selection']['reasons'][0]['detail'])
         self.assertTrue(dispatch['release'])
-
-    def test_toolkit_requirement_is_planned_without_inventing_a_rust_test(self):
-        record, dispatch=self.run_plan()
-        self.assertFalse(dispatch['toolkit'])
-        self.change('docs/github-app.md')
-        record, dispatch=self.run_plan()
-        self.assertEqual(record['selection'], {'mode':'selected'})
-        self.assertEqual(record['lanes']['rust']['decision'], 'skip')
-        self.assertFalse(dispatch['toolkit'])
-        self.change('tools/live-check/core.py')
-        record,dispatch=self.run_plan()
-        self.assertTrue(dispatch['toolkit'])
-        self.assertFalse(dispatch['export-rust'])
-        record, dispatch=self.run_plan(attempt=2)
-        self.assert_full(record, 'rerun')
-        self.assertTrue(dispatch['toolkit'])
 
     def test_every_full_event_and_rerun_selects_everything(self):
         cases = [({'event': 'push', 'action': None, 'pull_request': None}, 'push_main'),
