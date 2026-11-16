@@ -49,6 +49,9 @@ CASES = [
      ('rust',)),
     ('crates/server/src/web.rs', '("css", "text/css; charset=utf-8"),', '("css", "text/plain; charset=utf-8"),',
      ('rust', 'web')),
+    # C5 (#783): the deliberate PR's hidden edit, reached only through the map.
+    ('tools/install/setup/setup.py', "{'code': code, 'revision': bound, 'at': now}",
+     "{'code': code, 'revision': bound + 1, 'at': now}", ('web',)),
 ]
 EXPORT_INPUT = ('apps/web/',)
 NOT_EXPORT = ('apps/web/test/', 'apps/web/out/', 'apps/web/node_modules/')
