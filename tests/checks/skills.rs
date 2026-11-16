@@ -4354,6 +4354,24 @@ fn setup_onboard_login_passes() {
     );
 }
 
+// #637: the 0.0.16 first-merge receipt on the installed journey (the App and
+// the skip, the fleet start, key and companion faults) and its bounded live
+// kit's offline rules, on recording fixtures, in the checks binary.
+#[test]
+fn setup_onboard_journey_passes() {
+    let result = std::process::Command::new("python3")
+        .args(["-I", "tools/install/tests/first-hour/test_first_merge.py"])
+        .current_dir(ROOT)
+        .output()
+        .expect("run the first-merge journey and kit proofs");
+    assert!(
+        result.status.success(),
+        "first-merge journey and kit proofs failed: {}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
 // #1109 (IF9): one install line. The install skill, the public guide and the
 // README quote the same line, and the setup page names the same upgrade
 // destination. The site lane's own tests (apps/site/test/site.test.mjs) pin

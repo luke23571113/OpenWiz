@@ -1,0 +1,37 @@
+# Red run (#637 review R1, R2) at b87a940 with the new rows only: python3 -I tools/install/tests/first-hour/test_first_merge.py Kit Eligibility (checkout path sanitized). R1: a receipt start 1,000 ms after the bound result's instruction-open start passes over a 1,800,000 ms result. R2: a created-App binding with zero registrations is eligible.
+.......F..F...
+======================================================================
+FAIL: test_the_receipt_is_bound_to_its_result_candidate_repository_and_route (__main__.Kit.test_the_receipt_is_bound_to_its_result_candidate_repository_and_route)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/first-hour/test_first_merge.py", line 204, in test_the_receipt_is_bound_to_its_result_candidate_repository_and_route
+    self.assertEqual(self.outcome(b)[:2], ([late], 'refused'))
+AssertionError: Tuples differ: ([], 'pass') != (["The receipt's start is not the first-hou[43 chars]sed')
+
+First differing element 0:
+[]
+["The receipt's start is not the first-hour result's instruction-open start."]
+
+- ([], 'pass')
++ (["The receipt's start is not the first-hour result's instruction-open start."],
++  'refused')
+
+======================================================================
+FAIL: test_an_unbound_or_unsafe_binding_refuses (__main__.Eligibility.test_an_unbound_or_unsafe_binding_refuses) [The binding allows no App registration for its created App.]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/tests/first-hour/test_first_merge.py", line 313, in test_an_unbound_or_unsafe_binding_refuses
+    self.assertEqual(kit.eligibility(record, b), [expected])
+AssertionError: Lists differ: [] != ['The binding allows no App registration for its created App.']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'The binding allows no App registration for its created App.'
+
+- []
++ ['The binding allows no App registration for its created App.']
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.203s
+
+FAILED (failures=2)
