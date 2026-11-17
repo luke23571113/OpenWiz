@@ -1,0 +1,14 @@
+test_a_failure_after_another_run_succeeds_still_admits_no_further_run (__main__.BoundedReads.test_a_failure_after_another_run_succeeds_still_admits_no_further_run) ... FAIL
+
+======================================================================
+FAIL: test_a_failure_after_another_run_succeeds_still_admits_no_further_run (__main__.BoundedReads.test_a_failure_after_another_run_succeeds_still_admits_no_further_run)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_activity.py", line 450, in test_a_failure_after_another_run_succeeds_still_admits_no_further_run
+    self.assertFalse([p for p in world.log if any(f'/runs/{rid}' in p for rid in range(205, 209))], world.log)
+AssertionError: ['repos/synthetic-owner/work/actions/runs/205/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/205/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/205'] is not false : ['repos/synthetic-owner/work/actions/workflows/ci.yml/runs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/201/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/201/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/201', 'repos/synthetic-owner/work/actions/runs/202/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/203/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/204/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/203/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/203', 'repos/synthetic-owner/work/actions/runs/205/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/205/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/205', 'repos/synthetic-owner/work/actions/runs/204/jobs?per_page=100&page=1', 'repos/synthetic-owner/work/actions/runs/204']
+
+----------------------------------------------------------------------
+Ran 1 test in 0.005s
+
+FAILED (failures=1)
