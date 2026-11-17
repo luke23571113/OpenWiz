@@ -15,3 +15,9 @@ Ran 8 tests in 0.263s
 OK
 # exit 0
 # hook checks at this commit, run in the foreground before push: cargo fmt --check ok; cargo clippy --workspace --all-targets -- -D warnings ok; sh .github/actions/docs-only/test.sh all ok (includes 'ok   WM1: split checker'); cargo test -p openwiz-tests --test checks: 149 passed, 0 failed
+
+# CI repair (run 44128185963: the carriage guard): checks at 6d6a7f8d255ef91f64cc89cf446c8a2f39ba6af2
+# python3 -I tools/open-import/guard.py --base=<merge-base> --head=HEAD: carriage guard: all 40 added paths are classified (exit 0)
+# python3 -I tools/open-import/test_guard.py: OK
+# changed-file privacy guard (ci.yml step, run locally): passed, scanned 43 files (exit 0)
+# hook checks at this commit, foreground: cargo fmt --check ok; cargo clippy --workspace --all-targets -- -D warnings ok; sh .github/actions/docs-only/test.sh all ok; cargo test -p openwiz-tests --test checks: 149 passed, 0 failed
