@@ -74,3 +74,101 @@ fn the_real_measure_is_bin_df_and_fails_closed() {
         Staged::Ready(_)
     ));
 }
+
+/// #1089: an upload cancelled part way deletes its own folder while it
+/// still holds its reservation (its staging ends), and another upload
+/// measuring the room the stagings in progress still need can be looking
+/// at that folder at that moment. The other upload must still stage:
+/// before the fix it failed with a store error, which the web API answers
+/// `500 store_unavailable`.
+///
+/// The cancelled staging is played here as another process's would be: a
+/// folder whose reservation this test holds locked, then deletes, as the
+/// staging's own clean-up does. The reservation is a FIFO only so the test
+/// sees the moment the other upload is reading it (the full pipe drains)
+/// and holds that read until the folder is gone: no sleep and no retry.
+#[test]
+fn an_upload_cancelled_while_another_reserves_room_never_fails_it() {
+    use std::fs::{self, DirBuilder, OpenOptions};
+    use std::io::{ErrorKind, Write};
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    use crate::bench::PLENTY;
+
+    // O_NONBLOCK: 0x800 on Linux, 0x4 on macOS.
+    const NONBLOCK: i32 = if cfg!(target_vendor = "apple") {
+        0x4
+    } else {
+        0x800
+    };
+    // A reservation of zeros: any count of them reads as 0 bytes.
+    const ZEROS: [u8; 4096] = [b'0'; 4096];
+
+    let bench = Bench::new("ap07_cancelled_race");
+    let store = bench.store();
+    let cancelled = bench.attachments().join("att-syn1089cancelled");
+    DirBuilder::new().mode(0o700).create(&cancelled).unwrap();
+    let reserve = cancelled.join(".reserve");
+    let made = Command::new("mkfifo")
+        .arg(&reserve)
+        .status()
+        .expect("mkfifo");
+    assert!(made.success(), "mkfifo failed");
+    // Read and write, so it opens at once; it keeps the FIFO open for
+    // writing, so the other upload's read waits for this test.
+    let held = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(NONBLOCK)
+        .open(&reserve)
+        .unwrap();
+    held.lock()
+        .expect("hold the cancelled staging's reservation");
+    let mut fill = &held;
+    loop {
+        match fill.write(&ZEROS) {
+            Ok(_) => {}
+            Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+            Err(e) => panic!("fill the reservation: {e}"),
+        }
+    }
+
+    let bytes = padded(PNG, 1_000);
+    let racing = std::thread::spawn(move || {
+        store.stage_stream(
+            "syn-1089-photo.png",
+            1_000,
+            &mut &bytes[..],
+            T0,
+            &Free::new(PLENTY),
+        )
+    });
+
+    // The pipe has room again only once the racing upload has found the
+    // reservation locked and is reading it.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        match fill.write(&ZEROS[..1]) {
+            Ok(_) => break,
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+            Err(e) => panic!("watch the reservation: {e}"),
+        }
+        assert!(Instant::now() < deadline, "the racing upload never read");
+        assert!(!racing.is_finished(), "the racing upload ended unread");
+        std::thread::yield_now();
+    }
+
+    // The cancelled staging cleans up, still holding its reservation, then
+    // lets go: the racing upload's read ends.
+    fs::remove_dir_all(&cancelled).unwrap();
+    drop(held);
+
+    let staged = racing.join().unwrap();
+    assert!(
+        matches!(staged, Ok(Staged::Ready(_))),
+        "the racing upload failed: {staged:?}"
+    );
+    assert_eq!(bench.ids().len(), 1, "{:?}", bench.entries());
+}
