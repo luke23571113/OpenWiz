@@ -1,0 +1,329 @@
+# WM1 (#1056) split checker report on OpenWiz main, information only
+# main: 7f4dfedccc64fdac0810667f5c364c06543cd5a5
+# command: python3 -I ci/wizroom/split.py --root <checkout of main>
+stay tools/war-room/README.md <- tools/war-room/collector.v1.md:370 path
+stay tools/war-room/activity.py <- tools/war-room/collector.v1.md:367 path
+stay tools/war-room/answer_time.py <- tools/war-room/test_gather.py:91 import
+stay tools/war-room/assets/OFL.txt <- tools/war-room/assets/README.md:9 path
+stay tools/war-room/assets/README.md <- tools/war-room/README.md:725 path
+stay tools/war-room/assets/citadel.css <- tools/war-room/page.py:28 script path
+stay tools/war-room/assets/oswald-bold-latin.woff2 <- tools/war-room/page.py:32 script path
+stay tools/war-room/bench_measure.py <- tools/war-room/ci3.py:28 import
+stay tools/war-room/bench_reads.py <- tools/war-room/fixtures/activity/red-1027-bounded.log:15 path
+stay tools/war-room/benchmarks.json <- tools/war-room/page.py:25 script path
+stay tools/war-room/charts/build.py <- tools/war-room/fixtures/charts/red-limits.log:9 path
+stay tools/war-room/charts/contract.md <- tools/war-room/README.md:679 path
+stay tools/war-room/charts/dom.mjs <- tools/war-room/charts/build.py:113 script path
+stay tools/war-room/charts/input.schema.json <- tools/war-room/README.md:679 path
+stay tools/war-room/charts/palette.json <- tools/war-room/charts/build.py:113 script path
+stay tools/war-room/charts/palette.py <- tools/war-room/README.md:685 path
+stay tools/war-room/charts/prepare.py <- tools/war-room/fixtures/charts/red-review-2.log:14 path
+stay tools/war-room/charts/prs_per_hour.py <- tools/war-room/charts/build.py:30 import
+stay tools/war-room/charts/render.mjs <- tools/war-room/charts/build.py:63 script path
+stay tools/war-room/ci3.py <- contracts/ci3.v1.md:6 contract link
+stay tools/war-room/ci3_check.py <- loops/ci3-weekly.json:16 loop path
+stay tools/war-room/collect_ci.py <- tools/ci-overload/supply.py:27 import
+stay tools/war-room/collect_factory.py <- tools/stall-alarm/alarm.py:175 script path
+stay tools/war-room/collector.v1.md <- docs/evidence/827/search.sh:12 script path
+stay tools/war-room/collector.v1.schema.json <- tools/war-room/collector.v1.md:17 path
+stay tools/war-room/contract.md <- tools/war-room/collector.v1.md:12 path
+stay tools/war-room/contract.v2.md <- tools/war-room/collector.v1.md:12 path
+stay tools/war-room/cost.py <- tools/war-room/fixtures/cost/red-first.log:16 path
+stay tools/war-room/dependencies.md <- tools/war-room/README.md:675 path
+stay tools/war-room/design/brief.md <- tools/war-room/README.md:736 path
+stay tools/war-room/design/site/prototype/README.md <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/health-desktop-1440-full.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/health-desktop-1440x900.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/health-phone-390-full.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/health-phone-390x844.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/health.html <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/home-desktop-1440-full.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/home-desktop-1440x900.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/home-phone-390-full.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/home-phone-390x844.png <- tools/war-room/README.md:852 path
+stay tools/war-room/design/site/prototype/home.html <- tools/war-room/README.md:852 path
+stay tools/war-room/experiment_contract.py <- tools/skills-eval/precheck/test_contract.py:23 native load
+stay tools/war-room/factory-numbers.md <- tools/war-room/test_journey.py:663 script path
+stay tools/war-room/fake-gh <- tools/war-room/test_metrics.py:107 script path
+stay tools/war-room/fixtures/activity/fake_gh.py <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/green-boundaries.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/green-final.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/green-initial.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/proof.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/red-1027-bounded.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/red-1027-r1-queued-reads.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/red-1027-r1-stale-admission.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/red-boundaries.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/red-repository.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/red-unselected-pool.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/replay.py <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/review-1-r1-green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/activity/review-1-r1-red.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/answer-time/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/answer-time/pairs.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/answer-time/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/answer-time/review-r1-red.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/bottlenecks-contract/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/bottlenecks-contract/accepted.json <- tools/skills-eval/precheck/test_contract.py:160 script path
+stay tools/war-room/fixtures/bottlenecks-contract/attribution-resolution.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/bottlenecks-contract/preregistration.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/bottlenecks-contract/unfinished-result.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/bottlenecks-contract/unrun.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/browser-1440.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/browser-390.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/capture.py <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/palette-check.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/proof.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/red-limits.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/red-publish.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/red-review-1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/charts/red-review-2.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/ci3-weekly/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/ci3-weekly/github.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/ci3-weekly/record.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/ci3/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/ci3/window.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/fake_gh.py <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/github.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/green-move-merged.log <- docs/evidence/827/search.sh:14 script path
+stay tools/war-room/fixtures/collector-ci/green-move.log <- docs/evidence/827/search.sh:13 script path
+stay tools/war-room/fixtures/collector-ci/green-review-r1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/red-mutations.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-ci/red-review-r1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/bench-world.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/daily-usage.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/daily-world.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/fake_gh.py <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/journey-world.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/open-world.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/red-mutants.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/red-review-r1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/red-snapshot-ci.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector-factory/stage-world.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/collector/README.md <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/collector/read-ci3.json <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/collector/read-minutes-partial.json <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/collector/read-queue.json <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/collector/read-stall.json <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/collector/red-review-r1.log <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/collector/snapshot-unavailable.json <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/collector/snapshot.json <- tools/stall-alarm/test.py:7 script path
+stay tools/war-room/fixtures/contract/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/known.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/partial.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/red-cost-unit.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/red-positive-cost-zero.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/red-strict-forms.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/review-1-green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/review-1-red.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/contract/unavailable.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/allocation.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/checks.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/ci/point.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/delivery-checks.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/delivery-contract.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/delivery-cost.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/delivery-fmt.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/green-contract.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/journey.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/red-disjoint.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/review-1-checks.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/review-1-contract.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/review-1-green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/cost/review-1-red.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/cohort.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/credits.jsonl <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/green-2565-r1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/green-2565.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/history.jsonl <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/red-2565-r1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/red-2565.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/red-review-r1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/gather/red-review-r2-r3.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/health/fake_gh.py <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/health/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/health/proof.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/health/red-collect-only.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/health/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/health/red-providers.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/journey/bench.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/journey/cf4.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/journey/journeys.json <- tools/skills-eval/precheck/test_contract.py:161 script path
+stay tools/war-room/fixtures/journey/outcomes.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/packet.py <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/palette-page.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/probe.mjs <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/r/capture.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/r/edge-desktop-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/r/edge-phone-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/r/packet-desktop-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/r/packet-phone-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/red-body-clipping.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/red-phone-crop.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/red-r-edge.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/red-review-1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/round-0/capture.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/round-0/desktop-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/round-0/phone-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/shipping/capture.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/shipping/desktop-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-design/shipping/phone-target.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/blocked-pre-push.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/board-graph.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/checkpoint.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/decisions.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/final-scoped-checks.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/handback.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/point-observations.html <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/point-observations.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/point-observations.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/red-daily-usage.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/red-factory-shape.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/red-native-boundaries.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/red-point-projection.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/review-1-checks.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/review-1-red.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/review-1.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/scoped-contract.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/scoped-page-history.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/synthetic.html <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/synthetic.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/page-history/synthetic.png <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/publish/chromium <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/publish/gh <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/publish/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/publish/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/publish/review-1-green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/publish/review-1-red.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/cohort.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/description-v2.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/findings.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/red-assertions.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/red-policy.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/red-review-r1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/report-ok.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/report-today.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/report-v2-builder.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/report-v2-fresh.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/report-v2-merge.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/report-v2-park.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/rework-outcomes.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/review-loops/watchdog.jsonl <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/rework/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/rework/green-ci-registration.log <- docs/evidence/827/search.sh:16 script path
+stay tools/war-room/fixtures/rework/green-r1-ci-prerequisites.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/rework/green.log <- docs/evidence/827/search.sh:15 script path
+stay tools/war-room/fixtures/rework/journeys.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/rework/providers.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/rework/red-ci-registration.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/rework/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/rework/red-r1-ci-prerequisites.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/site/green-pictures.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/site/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/site/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/site/red-pictures.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/site/red-publish.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/site/red-review-1.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/site/red-web.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/stage-waits/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/stage-waits/bench.json <- tools/fleet-load/test_carried.py:29 script path
+stay tools/war-room/fixtures/stage-waits/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/stage-waits/journeys.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/stage-waits/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/stage-waits/review-1-green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/stage-waits/review-1-red.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/stage-waits/stage-waits.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/weekly/README.md <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/weekly/changes.json <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/weekly/green.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/fixtures/weekly/red-first.log <- tools/war-room/test_gather.py:31 script path
+stay tools/war-room/gather.py <- tools/war-room/test_gather.py:103 native load
+stay tools/war-room/health.py <- tools/war-room/collect_ci.py:40 import
+stay tools/war-room/history.py <- tools/war-room/test_gather.py:88 import
+stay tools/war-room/journey-contract.md <- tools/war-room/test_journey.py:1127 script path
+stay tools/war-room/journey.py <- tools/skills-eval/replay/test_replay.py:408 script path
+stay tools/war-room/limits-contract.md <- tools/war-room/factory-numbers.md:296 path
+stay tools/war-room/limits.conf <- skills/launch-fleet/scripts/test-limit-replacement.py:33 script path
+stay tools/war-room/limits.py <- tools/fleet-load/test_carried.py:22 script path
+stay tools/war-room/main.py <- tools/war-room/fixtures/page-history/red-first.log:61 path
+stay tools/war-room/metrics.py <- tools/skills-eval/replay/test_replay.py:408 script path
+stay tools/war-room/package-lock.json <- tools/war-room/charts/build.py:47 script path
+stay tools/war-room/page.py <- tools/war-room/collector.v1.md:369 path
+stay tools/war-room/prices.tsv <- tools/war-room/fixtures/collector-ci/green-move.log:2 path
+stay tools/war-room/publish.py <- tools/war-room/test_gather.py:97 import
+stay tools/war-room/publish.sh <- tools/war-room/fixtures/publish/red-first.log:37 path
+stay tools/war-room/python.sh <- .github/workflows/board.yml:41 workflow path
+stay tools/war-room/record.schema.json <- tools/war-room/suite.py:48 script path
+stay tools/war-room/record.v2.schema.json <- tools/war-room/suite.py:53 script path
+stay tools/war-room/required.py <- ci/main-batch/shadow.py:380 import
+stay tools/war-room/review_loops.py <- contracts/review-loops.v1.md:9 contract link
+stay tools/war-room/rework.py <- tools/war-room/test_gather.py:92 import
+stay tools/war-room/sources.py <- tools/war-room/test_gather.py:89 import
+stay tools/war-room/stage_waits.py <- tools/war-room/fixtures/stage-waits/red-first.log:14 path
+stay tools/war-room/steps.tsv <- .github/actions/docs-only/test.sh:186 script path
+stay tools/war-room/suite.py <- tools/open-import/test_import.py:54 script path
+stay tools/war-room/test_activity.py <- tools/war-room/test_gather.py:93 native load
+stay tools/war-room/test_answer_time.py <- tools/war-room/fixtures/collector-ci/green-move.log:27 path
+stay tools/war-room/test_charts.py <- tools/war-room/fixtures/charts/capture.py:14 import
+stay tools/war-room/test_ci3.py <- tools/war-room/fixtures/collector-ci/README.md:58 path
+stay tools/war-room/test_collect_ci.py <- tools/ci-overload/test.py:491 native load
+stay tools/war-room/test_collect_factory.py <- tools/war-room/fixtures/collector-factory/green.log:1 path
+stay tools/war-room/test_contract.py <- tools/war-room/fixtures/collector-ci/green-move.log:18 path
+stay tools/war-room/test_cost.py <- tools/war-room/fixtures/collector-ci/green-move.log:6 path
+stay tools/war-room/test_gather.py <- .github/actions/docs-only/test.sh:186 script path
+stay tools/war-room/test_health.py <- tools/war-room/fixtures/collector-ci/green-move.log:15 path
+stay tools/war-room/test_journey.py <- tools/war-room/fixtures/collector-factory/README.md:12 path
+stay tools/war-room/test_limits.py <- tools/war-room/factory-numbers.md:291 path
+stay tools/war-room/test_metrics.py <- tools/war-room/fixtures/collector-factory/README.md:11 path
+stay tools/war-room/test_page_design.py <- tools/war-room/fixtures/page-design/green.log:23 path
+stay tools/war-room/test_page_history.py <- tools/war-room/fixtures/collector-ci/green-move.log:33 path
+stay tools/war-room/test_publish.py <- tools/war-room/fixtures/charts/green.log:8 path
+stay tools/war-room/test_review_loops.py <- tools/war-room/fixtures/collector-ci/green-move.log:9 path
+stay tools/war-room/test_rework.py <- tools/war-room/fixtures/collector-ci/green-move.log:21 path
+stay tools/war-room/test_site.py <- tools/war-room/fixtures/site/red-first.log:1 path
+stay tools/war-room/test_stage_waits.py <- tools/war-room/fixtures/collector-ci/green-move.log:24 path
+stay tools/war-room/test_web.py <- tools/war-room/fixtures/site/red-review-1.log:11 path
+stay tools/war-room/test_weekly.py <- tools/war-room/fixtures/collector-ci/green-move.log:12 path
+stay tools/war-room/trends_reads.py <- tools/war-room/review_loops.py:39 native load
+stay tools/war-room/web/contract.md <- tools/war-room/publish.py:42 script path
+stay tools/war-room/web/serve.py <- tools/war-room/README.md:750 path
+stay tools/war-room/weekly.py <- tools/war-room/fixtures/health/proof.md:35 path
+move tools/war-room/budgets.py
+move tools/war-room/budgets.tsv
+move tools/war-room/design/site/after/README.md
+move tools/war-room/design/site/after/health-desktop-1440x900.png
+move tools/war-room/design/site/after/health-phone-390x844.png
+move tools/war-room/design/site/after/home-desktop-1440x900.png
+move tools/war-room/design/site/after/home-phone-390x844.png
+move tools/war-room/experiment-contract.md
+move tools/war-room/experiments/analysis.py
+move tools/war-room/experiments/controls.py
+move tools/war-room/experiments/run.py
+move tools/war-room/experiments/test_analysis.py
+move tools/war-room/experiments/test_checkpoint.py
+move tools/war-room/experiments/test_controls.py
+move tools/war-room/package.json
+move tools/war-room/test_budgets.py
+move tools/war-room/test_experiment_contract.py
+total: 307 stay, 17 move
+# exit 0

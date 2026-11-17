@@ -156,7 +156,7 @@ class Tree:
         self.all = files_of(root)
         self.inside = [p for p in self.all if p.startswith(self.folder + '/')]
         if not self.inside:
-            raise SystemExit(f'split: no files under {self.folder} in {root}')
+            raise ValueError(f'no files under {self.folder}')
         self.inside_set = set(self.inside)
         self.all_set = set(self.all)
         self.dirs = {posixpath.dirname(p) for p in self.inside}
@@ -167,7 +167,10 @@ class Tree:
         self.own = set(own)
 
     def text(self, path):
-        data = (self.root / path).read_bytes()
+        try:
+            data = (self.root / path).read_bytes()
+        except OSError as err:  # an unreadable file could hold a reference: fail closed
+            raise Refused(f'{path}:1 path: unreadable ({err.strerror})')
         return '' if b'\0' in data[:8192] else data.decode('utf-8', 'replace')
 
     def targets(self, path):
@@ -560,13 +563,9 @@ def split(root, folder=FOLDER, own=OWN):
         if path.startswith(tree.folder + '/') or path in tree.own or path.startswith(FIXTURES):
             continue
         try:
-            text = tree.text(path)
-        except OSError:
-            continue
-        kind = kind_of(path, text)
-        if kind is None:
-            continue
-        try:
+            kind = kind_of(path, tree.text(path))
+            if kind is None:
+                continue
             reach(path, file_refs(tree, path, kind))
         except Refused as err:
             refused.append(str(err))
@@ -591,7 +590,10 @@ def main(argv=None):
     root = Path(args.root)
     if not root.is_dir():
         parser.error(f'not a directory: {root}')
-    stay, move, refused = split(root, args.folder, tuple(args.own) if args.own else OWN)
+    try:
+        stay, move, refused = split(root, args.folder, tuple(args.own) if args.own else OWN)
+    except ValueError as err:
+        parser.error(str(err))
     if refused:
         for line in refused:
             print('refused ' + line, file=sys.stderr)
