@@ -12,3 +12,18 @@ python3 -I tools/open-import/test_frozen.py: exit 0
 node --test .github/workflows/ci.test.mjs: exit 0
 python3 -I tools/war-room/ci3.py check-steps: covered 160 CI steps
 python3 -I tools/war-room/budgets.py check: budgets: 16 jobs in 2 workflows match 22 rows
+
+# scoped checks at c23a1caac0a2aee87dfe0917c38335ae17c6b2dc (after merging origin/main with ER8 #874, fe405cf)
+sh .github/actions/docs-only/test.sh: all ok
+python3 -I ci/main-batch/test_admit.py: exit 0
+python3 -I ci/main-batch/test_contract.py: exit 0
+python3 -I ci/main-batch/test_shadow.py: exit 0
+python3 -I ci/select/test_steps.py: exit 0
+python3 -I tools/war-room/test_budgets.py: exit 0
+python3 -I tools/war-room/test_ci3.py: exit 0
+python3 -I tools/war-room/test_collect_ci.py: exit 0
+python3 -I tools/open-import/test_guard.py: exit 0
+python3 -I tools/open-import/test_frozen.py: exit 0
+node --test .github/workflows/ci.test.mjs: pass 8, fail 0
+python3 -I tools/war-room/ci3.py check-steps: covered 160 CI steps
+python3 -I tools/war-room/budgets.py check: budgets: 16 jobs in 2 workflows match 22 rows
