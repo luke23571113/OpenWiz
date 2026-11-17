@@ -284,7 +284,7 @@ fn read_back(
         }
     };
     let (shown, read) = &files[0];
-    let item = loop_files::read_back(shown, read, &live, project, now);
+    let item = loop_files::read_back(shown, read, &live, project, now, (0, 0));
     match item.action {
         Action::None | Action::Update => {
             report.loop_id = item.loop_id;

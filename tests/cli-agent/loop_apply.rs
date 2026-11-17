@@ -796,3 +796,41 @@ fn a_create_cloudroom_refuses_in_a_loop_started_thread_is_not_created() {
     assert_eq!(room.calls(), vec![json!(LIST), writes[0]["argv"].clone()]);
     room.assert_no_temporary_files();
 }
+
+// catches (review R3): an `in` file's created loop read back against its
+// own run time, so a loop Cloudroom scheduled at the wrong time reads as
+// created with no difference; and a run time apply cannot check reported as
+// anything but unknown. The window's edges are the adapter's unit test
+// `read_back_checks_an_in_files_run_time_against_the_write`.
+#[test]
+fn an_in_files_run_time_is_checked_against_its_delay() {
+    let at = |run_at: Value| json!({"id": "loop_syn_7", "project_id": PROJECT, "session_id": "thr_syn_0001", "name": "Look again in half an hour [wizloop:in-same]", "cron": null, "timezone": null, "run_at": run_at, "webhook": false, "new_thread": false, "script": null, "agent": null, "secrets": [], "priority": 1, "prompt": "Check what changed in the last 6 hours and say it in one line.\n", "enabled": true, "last_error": null, "last_run_at": null, "next_run_at": null, "runs": 0});
+    let file = fixture("in-same.md");
+    let create =
+        || json!({"any_loop_write": "create", "stdout": "Synthetic loop created: loop_syn_7\n"});
+    // Scheduled far later than half an hour: a difference, never success.
+    let room = Room::new(
+        vec![list(&account()), create()],
+        vec![list(&with(at(json!("2099-01-01T00:00:00Z"))))],
+    );
+    let (code, doc) = room.json(&["in-same", "--from", &file]);
+    assert_eq!(code, 5, "{doc:#}");
+    assert_eq!(
+        (&doc["outcome"], &doc["loop"]),
+        (&json!("different"), &json!("loop_syn_7"))
+    );
+    assert_eq!(
+        doc["read_back"],
+        json!({"differences": [{"field": "trigger", "file": {"in": "30m"}, "live": {"at": "2099-01-01T00:00:00Z"}}]})
+    );
+    assert_eq!(room.writes().len(), 1);
+    // A run time that is not one: it cannot be checked, so unknown.
+    let room = Room::new(
+        vec![list(&account()), create()],
+        vec![list(&with(at(json!("soon"))))],
+    );
+    let (code, doc) = room.json(&["in-same", "--from", &file]);
+    assert_eq!(code, 6, "{doc:#}");
+    assert_eq!(doc["outcome"], "unknown");
+    assert_eq!(room.writes().len(), 1);
+}

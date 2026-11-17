@@ -3282,6 +3282,7 @@ pub fn read_back(
     live: &[LiveLoop],
     project: &str,
     now: i64,
+    _written: (i64, i64),
 ) -> PlanItem {
     let mut read = read.clone();
     let managed: Vec<&LiveLoop> = live
@@ -3308,6 +3309,52 @@ pub fn read_back(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // catches (review R3): an `in` file's created loop compared with its own
+    // run time, so any run time reads back as no difference; the window's
+    // edges at whole-second precision; and a run time that cannot be read
+    // reported as anything but a loop plan cannot compare.
+    #[test]
+    fn read_back_checks_an_in_files_run_time_against_the_write() {
+        let file = read_loop(
+            b"---\nid: \"in-same\"\nname: \"Look again\"\ntrigger: {\"in\": \"30m\"}\nthread: \"same\"\n---\nLook again.\n",
+            &mut |_| CheckText::NotFound,
+        );
+        // 2030-01-01T00:00:00Z is 1_893_456_000; the write ran in its first
+        // two seconds, so the loop is due from 00:30:00 to 00:30:02.
+        let written = (1_893_456_000, 1_893_456_002);
+        for (run_at, differs) in [
+            ("2030-01-01T00:30:00Z", Some(false)),
+            ("2030-01-01T00:30:02.999Z", Some(false)),
+            ("2030-01-01T01:30:01+01:00", Some(false)),
+            ("2030-01-01T00:29:59.999Z", Some(true)),
+            ("2030-01-01T00:30:03Z", Some(true)),
+            ("2099-01-01T00:00:00Z", Some(true)),
+            ("soon", None),
+        ] {
+            let list = format!(
+                "{{\"automations\": [{{\"id\": \"loop_syn_7\", \"project_id\": \"prj_syn_0001\", \"session_id\": \"thr_syn_0001\", \"name\": \"Look again [wizloop:in-same]\", \"cron\": null, \"timezone\": null, \"run_at\": \"{run_at}\", \"webhook\": false, \"new_thread\": false, \"script\": null, \"agent\": null, \"secrets\": [], \"priority\": 3, \"prompt\": \"Look again.\\n\", \"enabled\": true, \"last_error\": null, \"last_run_at\": null, \"next_run_at\": null, \"runs\": 0}}]}}"
+            );
+            let live = parse_loop_list(list.as_bytes()).unwrap();
+            let item = read_back("in-same.md", &file, &live, "prj_syn_0001", 0, written);
+            match differs {
+                None => assert_eq!(item.action, Action::Refused, "{run_at}"),
+                Some(differs) => {
+                    let expected = if differs {
+                        vec![Difference {
+                            field: "trigger",
+                            file: json!({"in": "30m"}),
+                            live: json!({"at": run_at}),
+                        }]
+                    } else {
+                        vec![]
+                    };
+                    assert_eq!(item.differences, expected, "{run_at}");
+                    assert_eq!(item.loop_id.as_deref(), Some("loop_syn_7"), "{run_at}");
+                }
+            }
+        }
+    }
 
     fn read(text: &str) -> Vec<(&'static str, String)> {
         read_loop(text.as_bytes(), &mut |_| CheckText::NotFound)
