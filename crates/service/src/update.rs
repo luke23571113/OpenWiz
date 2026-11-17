@@ -823,10 +823,9 @@ impl Updater {
             }
             pending["phase"] = json!("build");
             write_pending(&self.root, &pending)?;
-            copy_file(
+            stage_program(
                 &source.join("target/release/openwiz-service"),
                 &build.join("openwiz-service"),
-                0o700,
             )?;
             copy_web(&source.join("apps/web/out"), &build.join("web"))?;
             let identity = self.executor.run(&Call::new(
@@ -1250,6 +1249,55 @@ fn copy_file(source: &Path, to: &Path, mode: u32) -> Result<(), String> {
         .map_err(|_| "cannot create candidate file")?;
     std::io::copy(&mut input, &mut output).map_err(|_| "cannot stage candidate file")?;
     output
+        .sync_all()
+        .map_err(|_| "cannot sync candidate file".to_owned())
+}
+/// Stages the candidate program through a child `/bin/cp`, so this
+/// multithreaded process never holds a writable descriptor for it. A child
+/// another thread forked meanwhile would keep that descriptor until its own
+/// exec, and the identity check would fail with ETXTBSY (#1060).
+fn stage_program(source: &Path, to: &Path) -> Result<(), String> {
+    let built = fs::symlink_metadata(source).map_err(|_| "missing candidate file")?;
+    if !built.is_file() {
+        return Err("candidate file must be regular".to_owned());
+    }
+    // The copier writes only into a directory made new and owner-only here, so
+    // nothing left by the gate can be replaced or written through.
+    let fresh = to.with_extension("stage");
+    DirBuilder::new()
+        .mode(0o700)
+        .create(&fresh)
+        .map_err(|_| "cannot create candidate file")?;
+    let copy = fresh.join("openwiz-service");
+    let copied = Command::new("/bin/cp")
+        .arg("--")
+        .arg(source)
+        .arg(&copy)
+        .env_clear()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !copied {
+        return Err("cannot stage candidate file".to_owned());
+    }
+    fs::set_permissions(&copy, fs::Permissions::from_mode(0o700))
+        .map_err(|_| "cannot stage candidate file")?;
+    // link(2) never replaces a path: the candidate is still created new.
+    fs::hard_link(&copy, to).map_err(|_| "cannot create candidate file")?;
+    fs::remove_file(&copy)
+        .and_then(|()| fs::remove_dir(&fresh))
+        .map_err(|_| "cannot stage candidate file")?;
+    // A read-only descriptor: fsync needs no writer.
+    let staged = File::open(to).map_err(|_| "cannot stage candidate file")?;
+    let meta = staged
+        .metadata()
+        .map_err(|_| "cannot stage candidate file")?;
+    if !meta.is_file() || meta.len() != built.len() {
+        return Err("cannot stage candidate file".to_owned());
+    }
+    staged
         .sync_all()
         .map_err(|_| "cannot sync candidate file".to_owned())
 }
