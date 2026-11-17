@@ -50,3 +50,10 @@ Diff/checklist audit: only the owned AD7 test and this standing supporting
 `docs/evidence/1026/` folder change. No dependencies, policies, contracts,
 production behavior, ignored tests or timeout increases. Synthetic data only.
 No helpers or new seams. No changelog: test-only fix (`no-changelog` label).
+
+CI follow-up: the carriage guard refused this new evidence folder before any
+Rust tests ran. Add only `docs/evidence/1026/**` to the shared carriage registry
+`tools/open-import/paths.json` under standing supporting-edit kind 1; this makes
+the already-approved public proof artifacts available to CI. No new test for a
+registry row: the existing carriage guard directly verifies its classification.
+The first successful push receipt remains the original observation.
