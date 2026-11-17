@@ -26,7 +26,7 @@ public evidence folder, under fleet supporting-edit kind 1. This prevents the
 carriage guard refusing its new proof artifacts before any test lane starts.
 
 Results: the controlled fourth-launch delay reproduces the exact final 504 versus
-200 assertion (`red-delayed-recovery.txt`, committed before the fix at 63ecf6b).
+200 assertion (`red-delayed-recovery.txt`, committed before the fix in this branch's red-first history).
 The first diagnostic hooked the unused posix_spawn symbol; its missing-marker
 result is excluded, not counted as a red. The retained runner hooks the binary's
 actual posix_spawnp symbol and rejects a missing marker or wrong assertion.
