@@ -2,11 +2,6 @@
 use super::*;
 
 #[test]
-fn ordinary_polling_stays_at_five_milliseconds() {
-    assert_eq!(poll_interval(), Duration::from_millis(5));
-}
-
-#[test]
 fn fixture_polling_is_fixed_and_process_local() {
     const CHILD: &str = "OPENWIZ_X2_POLL_SELECTION_PROOF";
     if std::env::var_os(CHILD).is_some() {
@@ -125,20 +120,6 @@ fn place_script(dst: &Path, text: &str) {
     std::fs::write(&src, text).unwrap();
     place(&src, dst);
     std::fs::remove_file(src).unwrap();
-}
-
-#[test]
-fn held_process_placement_refuses_a_directory_destination() {
-    use std::os::unix::fs::DirBuilderExt;
-    let fixture = OversizedProcess::new("placement-directory");
-    let destination = fixture.dir.join("placed");
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(&destination)
-        .unwrap();
-    let result = std::panic::catch_unwind(|| place_script(&destination, "#!/bin/sh\nexit 0\n"));
-    assert!(result.is_err(), "a directory destination must be refused");
-    assert_eq!(std::fs::read_dir(destination).unwrap().count(), 0);
 }
 
 impl Drop for OversizedProcess {

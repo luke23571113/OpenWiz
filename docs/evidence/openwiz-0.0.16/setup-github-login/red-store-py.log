@@ -1,0 +1,17 @@
+E
+======================================================================
+ERROR: test_old_and_new_saved_states (__main__.SavedIdentity.test_old_and_new_saved_states)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/setup/test_github_login.py", line 132, in test_old_and_new_saved_states
+    store.validate(self.state(None))
+  File "<checkout>/tools/install/setup/store.py", line 103, in validate
+    require(type(value) is dict and required <= set(value) <= required | {'engine'}, 'invalid setup state')
+  File "<checkout>/tools/install/setup/store.py", line 50, in require
+    raise Refused(reason)
+store.Refused: invalid setup state
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (errors=1)

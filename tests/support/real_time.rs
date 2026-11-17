@@ -10,6 +10,9 @@
 //! a pull request to `release-*`, a merge group, and any missing or odd
 //! value. `OPENWIZ_TESTS_FULL`, set to anything, always selects the full
 //! proofs.
+//!
+//! Its own tests are in `tests/checks/support_proofs.rs`, so they run once,
+//! not once per target that includes this file (#811).
 
 #![allow(dead_code)]
 
@@ -88,84 +91,4 @@ pub fn scaled(proof: &str, nominal: Duration, cap: Duration, calibrate: impl FnO
          slack x{SLACK}, cap {cap:?}; #2645)"
     );
     duration
-}
-
-/// The scaling rule, on literal durations.
-#[test]
-fn a_scaled_duration_covers_the_measured_read_within_its_cap() {
-    let ms = Duration::from_millis;
-    let cases = [
-        // (nominal, measured, cap, expected)
-        (ms(2000), ms(0), ms(20000), ms(2000)),
-        (ms(2000), ms(100), ms(20000), ms(2000)),
-        (ms(2000), ms(500), ms(20000), ms(2000)),
-        (ms(2000), ms(501), ms(20000), ms(2004)),
-        (ms(2000), ms(1300), ms(20000), ms(5200)),
-        (ms(2000), ms(9000), ms(20000), ms(20000)),
-        (ms(1000), ms(250), ms(15000), ms(1000)),
-        (ms(1000), ms(1000), ms(15000), ms(4000)),
-        (ms(10000), ms(3000), ms(20000), ms(12000)),
-        (ms(2000), Duration::MAX, ms(20000), ms(20000)),
-    ];
-    for (nominal, measured, cap, expected) in cases {
-        assert_eq!(
-            scale(nominal, measured, cap),
-            expected,
-            "{nominal:?} {measured:?} {cap:?}"
-        );
-    }
-}
-
-/// The context matrix: only the exact first-attempt pull request to `main`
-/// gets the fast form.
-#[test]
-fn only_a_first_attempt_pull_request_to_main_gets_the_fast_form() {
-    let pr = [
-        ("GITHUB_ACTIONS", "true"),
-        ("GITHUB_EVENT_NAME", "pull_request"),
-        ("GITHUB_BASE_REF", "main"),
-        ("GITHUB_RUN_ATTEMPT", "1"),
-    ];
-    let form_of = |vars: &[(&str, &str)]| {
-        let vars: Vec<(String, String)> = vars
-            .iter()
-            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-            .collect();
-        form_in(&|name| vars.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone()))
-    };
-    let with = |name: &str, value: Option<&str>| {
-        let mut vars: Vec<(&str, &str)> = pr.iter().copied().filter(|(k, _)| *k != name).collect();
-        if let Some(value) = value {
-            vars.push((name, value));
-        }
-        form_of(&vars)
-    };
-    assert_eq!(form_of(&pr), Form::Fast, "a first-attempt PR to main");
-    assert_eq!(form_of(&[]), Form::Full, "a local run");
-    let mut full_too = pr.to_vec();
-    full_too.push(("OPENWIZ_TESTS_FULL", ""));
-    assert_eq!(form_of(&full_too), Form::Full, "an explicit full run wins");
-    for (name, value) in [
-        ("GITHUB_ACTIONS", None),
-        ("GITHUB_ACTIONS", Some("false")),
-        ("GITHUB_ACTIONS", Some("TRUE")),
-        ("GITHUB_EVENT_NAME", None),
-        ("GITHUB_EVENT_NAME", Some("push")),
-        ("GITHUB_EVENT_NAME", Some("schedule")),
-        ("GITHUB_EVENT_NAME", Some("workflow_dispatch")),
-        ("GITHUB_EVENT_NAME", Some("merge_group")),
-        ("GITHUB_EVENT_NAME", Some("pull_request_target")),
-        ("GITHUB_EVENT_NAME", Some("Pull_request")),
-        ("GITHUB_BASE_REF", None),
-        ("GITHUB_BASE_REF", Some("")),
-        ("GITHUB_BASE_REF", Some("release-0.0.7")),
-        ("GITHUB_BASE_REF", Some("main-null")),
-        ("GITHUB_BASE_REF", Some(" main")),
-        ("GITHUB_RUN_ATTEMPT", None),
-        ("GITHUB_RUN_ATTEMPT", Some("2")),
-        ("GITHUB_RUN_ATTEMPT", Some("01")),
-        ("GITHUB_RUN_ATTEMPT", Some("")),
-    ] {
-        assert_eq!(with(name, value), Form::Full, "{name}={value:?}");
-    }
 }

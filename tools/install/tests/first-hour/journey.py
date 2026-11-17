@@ -5,10 +5,10 @@
 
 1. #1109's cold-consumer install journey, unchanged
    (tools/install/tests/journey/test_journey.py): the actual install entry, the
-   installed setup tool, the installed engine and the installed onboarding
-   helper. Only its recorded conversation is swapped for first-hour.json: one
-   fresh small idea on the owner's own selected repository (the one setup
-   prepared), not the demo, with no prepared plan.
+   installed setup tool and the installed onboarding helper. Only its recorded
+   conversation is swapped for first-hour.json: one fresh small idea on the
+   owner's own selected repository (the one setup prepared), not the demo,
+   with no prepared plan.
 2. The join this ticket adds: the fleet's builders, independent review, CI and
    the merge, decided at every step by the installed launch-fleet frontier
    (`runtime/skills/launch-fleet/scripts/fleet.sh spec`) reading a recording
@@ -30,6 +30,7 @@ through #2222's providers/codes.py). A recording is never a pass.
 
 Stdlib only. Nothing reaches a network, an account or a real installation.
 """
+import base64
 import calendar
 import hashlib
 import importlib.util
@@ -41,6 +42,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -57,7 +59,7 @@ SEAT_HARNESS = {'codex': 'codex', 'claude-code': 'claude_code'}
 ASSUMPTIONS = [
     'Synthetic recording-provider first hour on the installed journey (#2204): every id, digest, time, repository, '
     'thread, pull request and account is invented; GitHub and CloudRoom are recording providers.',
-    "The release, install, setup, engine and onboarding are #1109's fixture journey: no installed candidate was "
+    "The release, install, setup and onboarding are #1109's fixture journey: no installed candidate was "
     'published, no person opened the instruction and no real time was measured, so the clock is unknown.',
     "Builder and reviewer runs are the recording CloudRoom's threads, read back: no real harness login ran.",
 ]
@@ -166,6 +168,7 @@ class GitHub:
         self.faults = []
         self.ids = 95000
         self.trees = {}
+        self.merge_commits = {}
         self.j.save_world()
 
     def issue(self, number):
@@ -225,6 +228,7 @@ class GitHub:
         for ticket in p['closes']:
             self.issue(ticket)['state'] = 'CLOSED'
         self.effects[op] = self.effects.get(op, 0) + 1
+        self.merge_commits[number] = hashlib.sha1(('merge\n' + head).encode()).hexdigest()
         self.j.save_world()
         if fault == 'lose_reply':
             raise Lost(op)
@@ -267,6 +271,11 @@ class Attempt:
     def __init__(self, case, mutate=None):
         self.case = case
         self.mutate = mutate or {}
+        # #637: the explicit App skip is its own attempt; every owner-equivalent
+        # step the installed tools take at Connect is recorded where it happens.
+        self.conversation = skipped_conversation() if self.mutate.get('skip_app') else CONVERSATION
+        self.tool_actions = []
+        self.recording_actions = True
         self.install_journey = load('first_hour_install_journey', ROOT / 'tools/install/tests/journey/test_journey.py')
         self.notes = {}
         self.cases = []
@@ -287,13 +296,23 @@ class Attempt:
         original_consumer, original_module = ij_module.Consumer, ij_module.module
 
         def consumer(case):
-            captured['consumer'] = original_consumer(case)
-            return captured['consumer']
+            captured['consumer'] = c = original_consumer(case)
+            run, merge_brain = c.run, c.merge_brain
+
+            def recorded_run(argv, check=None):
+                self._owner_yes(argv)
+                return run(argv, check)
+
+            def recorded_merge(name):
+                self._owner_step('tap', 'brain_merge', "The owner's merge of init's visible brain pull request (an agent stand-in).")
+                return merge_brain(name)
+            c.run, c.merge_brain = recorded_run, recorded_merge
+            return c
 
         def module(name, path):
             value = original_module(name, path)
             if name == 'onboard_journey':
-                value.JOURNEY = CONVERSATION
+                value.JOURNEY = self.conversation
                 base = value.Journey
 
                 class Journey(base):
@@ -317,11 +336,22 @@ class Attempt:
 
         ij = ij_module.InstallJourney(METHOD)
         self.case.addCleanup(ij.doCleanups)
+        connect_app = ij.connect_app
+
+        def recorded_connect_app():
+            # #1109's stand-in for the App's manifest flow: Create and Install are the
+            # owner's two taps on GitHub, and its key steps follow the installed route.
+            self._owner_step('app_manifest', 'create_app', 'Create on the App manifest page (an agent stand-in).')
+            self._owner_step('app_manifest', 'install_app', 'Install on the selected repository only (an agent stand-in).')
+            self._owner_step('key_route', 'key_route', 'The key steps of the installed secret route.')
+            return connect_app()
+        ij.connect_app = recorded_connect_app
         ij_module.Consumer, ij_module.module = consumer, module
         try:
             getattr(ij, METHOD)()
         finally:
             ij_module.Consumer, ij_module.module = original_consumer, original_module
+        self.recording_actions = False
         self.ij, self.c, self.j = ij, captured['consumer'], captured['onboarding']
         self.build, self.state = ij.build, ij.state
         self.fleet_sh = self.build / 'runtime/skills/launch-fleet/scripts/fleet.sh'
@@ -354,18 +384,19 @@ class Attempt:
     def rules(self):
         return self.j.rules()
 
-    # 2. The fleet: the tick's starts land on CloudRoom and GitHub.
+    # 2. The fleet: the fleet thread's starts land on CloudRoom and GitHub.
     def _fleet(self):
-        runs = self.j.logged('fleet.tick')
-        self.case.assertEqual(len(runs), 1, 'the approved frontier ran once')
-        self.started = [t for t in self.j.tick_plan([t['number'] for t in self.j.tickets if not t['blockers']])['actions']]
+        self.case.assertEqual(len(self.j.spawns()), 1, 'the fleet thread started once')
+        if self.mutate.get('tick_start'):
+            # A known way to fail (J87 Q1): a stale instruction also starts work through the engine's tick.
+            self.c.run([str(self.build / 'openwiz'), 'fleet', 'tick', '--spec', str(self.j.spec)])
+        self.started = [t['number'] for t in self.j.tickets if not t['blockers']]
         self.builder_ops = {}
-        for action in self.started:
-            n = action['ticket']
+        for n in self.started:
             op = intent('start_agent', f'{REPO}#{n}:builder')
             self.builder_ops[n] = op
             branch = 'room/%d-%s' % (n, re.sub(r'[^a-z0-9]+', '-', self.ticket(n)['title'].split(': ', 1)[1].lower()).strip('-'))
-            self.cloudroom.start(op, '#%d: %s' % (n, self.ticket(n)['title']), branch, action['facts']['settings']['harness'])
+            self.cloudroom.start(op, '#%d: %s' % (n, self.ticket(n)['title']), branch, self.j.settings['harness'])
             self.github.comment(self.github.issue(n), 'launch-fleet: started', 45)
         self.agents_running = self.frontier('fleet started')
         self._repeat_approval()
@@ -385,7 +416,7 @@ class Attempt:
         op = self.builder_ops[n]
         threads = self.cloudroom.matching('#%d: ' % n)
         return {'operation_id': op, 'kind': 'start_agent', 'phase_before': before, 'phase_after': after,
-                'effect_count': len(threads), 'attempts': len(self.j.logged('fleet.tick')),
+                'effect_count': len(threads), 'attempts': len(self.j.spawns()),
                 'reconciliation': 'provider_read_back'}
 
     def _repeat_approval(self):
@@ -397,12 +428,12 @@ class Attempt:
         again = self.j.helper(['launch', '--spec', str(self.j.spec), '--yes', '--confirm', digest])
         self.notes['repeat_launch'] = (again.returncode, again.stdout)
         if self.mutate.get('second_tick'):
-            self.j.logged = (lambda logged: lambda form=None: logged(form) + ([logged(form)[0]] if form == 'fleet.tick' else []))(self.j.logged)
+            self.j.spawns = (lambda spawns: lambda: spawns() + spawns()[:1])(self.j.spawns)
         after = [self._onboarding_state()] + self._start_work(ops)
         operations = [self.builder_observation(n, 'applied', 'applied') for n in sorted(self.builder_ops)]
         self.cases.append(recovery('repeat_approval', before, after, operations, {
-            'what_happened': 'The approved launch was confirmed again after it had run: the engine ran the reviewed '
-                             'plan once, and the repeat only read progress.',
+            'what_happened': 'The approved launch was confirmed again after it had run: the fleet thread started '
+                             'once, and the repeat only read its record.',
             'took_effect': 'yes',
             'next_action': 'Nothing to repeat: the three builders started once.'}))
 
@@ -438,7 +469,7 @@ class Attempt:
                 work('commit', self.head, self.tree, 'repository_read_back')]
 
     def _process_restart(self, reviewer):
-        """The engine stops just after CloudRoom started the reviewer, before its record; it reconciles by op id."""
+        """The fleet thread stops just after CloudRoom started the reviewer, before its record; it reconciles by op id."""
         pull = self.github.pull(self.PR)
         claim = self.github.comment(pull, 'launch-fleet: review starting %s' % self.head, 50)
         before = self._repository_work() + [self._pending(self.review_op, 'start_agent', self.review_request)]
@@ -465,7 +496,7 @@ class Attempt:
                        'attempts': self.cloudroom.calls[self.review_op],
                        'reconciliation': 'none' if self.mutate.get('blind_restart') else 'provider_read_back'}]
         self.cases.append(recovery('process_restart', before, after, operations, {
-            'what_happened': 'The engine stopped after CloudRoom started the reviewer and before it recorded the '
+            'what_happened': 'The fleet thread stopped after CloudRoom started the reviewer and before it recorded the '
                              'start. On restart it read the reviewer thread back by its title first: it was there, '
                              'so it recorded the start and started nothing again.',
             'took_effect': 'yes',
@@ -607,7 +638,7 @@ class Attempt:
                         'Approved separately, with a fingerprint matching the current plan (comment %d).' % approval['id']),
             self._stage('fleet', 'verified' if len(self.cloudroom.matching('#')) >= 3 else 'missing',
                         [e('agents_running', 45, 'The approved frontier\'s three builders run, read back from CloudRoom.')],
-                        'The engine started the approved frontier once.'),
+                        'The fleet thread started the approved frontier once.'),
         ]
         verdict = self._verdict(pull)
         green = pull['rollup'] == 'SUCCESS' and all(c['conclusion'] == 'SUCCESS' for c in pull['checks'])
@@ -636,7 +667,7 @@ class Attempt:
         operations = self._setup_operations(setup)
         operations += [{'operation_id': self.builder_ops[n], 'kind': 'start_agent', 'phase': 'applied',
                         'effect_count': len(self.cloudroom.matching('#%d: ' % n)),
-                        'attempts': len(self.j.logged('fleet.tick')), 'reconciliation': 'provider_read_back'}
+                        'attempts': len(self.j.spawns()), 'reconciliation': 'provider_read_back'}
                        for n in sorted(self.builder_ops)]
         if self.review_op in self.cloudroom.calls:
             operations.append({'operation_id': self.review_op, 'kind': 'start_agent', 'phase': 'applied',
@@ -705,7 +736,7 @@ class Attempt:
         return [(o, o['fingerprint']) for o in setup['operations']]
 
     def _setup_operations(self, setup):
-        """The setup operations #1109's journey saved (the project, the engine's preview), read back."""
+        """The setup operations #1109's journey saved (setup's prepare and init of the project), read back."""
         return [{'operation_id': o['operation_id'], 'kind': o['kind'], 'phase': o['phase'],
                  'effect_count': 1 if o['phase'] == 'applied' else 0, 'attempts': 1 if o['phase'] == 'applied' else 0,
                  'reconciliation': 'none'} for o in setup['operations'] if o['kind'] != 'configure_access']
@@ -719,6 +750,232 @@ class Attempt:
                 'effect_count': observed['effect_count'], 'attempts': observed['attempts'],
                 'reconciliation': observed['reconciliation']}
 
+    # 7. The 0.0.16 receipt (#637): the same attempt's owner actions, fleet start and merge,
+    # bound to this result document, with the key and brain faults at the installed seams.
+    def _owner_yes(self, argv):
+        """An installed tool's `--yes` at Connect: the owner's yes to exactly that proposal."""
+        if not self.recording_actions or '--yes' not in argv:
+            return
+        words = [str(a) for a in argv]
+        tool = next((Path(w).name for w in words if w.endswith(('.py', '/openwiz'))), '')
+        stage = {('setup.py', 'prepare'): 'prepare_project', ('github_login.py', 'skip-app'): 'skip_app',
+                 ('github_login.py', 'sign-in'): 'github_sign_in', ('openwiz', 'init'): 'init'}
+        found = next((v for (t, sub), v in stage.items() if t == tool and sub in words), 'other_yes')
+        self._owner_step('sign_in' if found == 'github_sign_in' else 'confirmation', found,
+                         "The owner's yes to the installed %s proposal (an agent stand-in)." % found)
+
+    def _owner_step(self, kind, stage, detail):
+        """One owner-equivalent step an installed tool or the journey took for the owner: it counts like a tap."""
+        if self.recording_actions:
+            self.tool_actions.append((kind, stage, detail))
+
+    def owner_actions(self, key_steps):
+        """Every owner-equivalent interaction, one entry each, in the attempt's order: the
+        conversation's own turns, and at its Connect step each stand-in the installed tools took."""
+        found, turns = [], self.conversation['turns']
+        for i, turn in enumerate(turns):
+            if 'setup' in turn:
+                for kind, stage, detail in self.tool_actions:
+                    if kind == 'key_route':
+                        found += [('protected_paste' if step == 'paste_protected_prompt' else 'key_step', step,
+                                   'Owner step %s of the installed secret route (an agent stand-in).' % step,
+                                   'agent_for_owner') for step in key_steps]
+                    else:
+                        found.append((kind, stage, detail, 'agent_for_owner'))
+            elif 'user' in turn:
+                following = turns[i + 1] if i + 1 < len(turns) else {}
+                if turn.get('confirms') == 'spec':
+                    kind, stage = 'confirmation', 'spec_confirmation'
+                elif following.get('approve'):
+                    kind, stage = 'approval', 'plan_approval'
+                elif 'permits' in turn:
+                    kind, stage = 'spending_approval', 'launch'
+                elif turn['user'] in ('Confirm.', 'Confirmed.', 'Yes.'):
+                    kind, stage = 'confirmation', turn['step']
+                else:
+                    kind, stage = 'typed_choice', turn['step']
+                found.append((kind, stage, "The owner's recorded %s turn and its submission." % turn['step'], 'owner'))
+        return [{'at_ms': at(i)[1], 'kind': kind, 'actor': actor, 'stage': stage, 'detail': detail}
+                for i, (kind, stage, detail, actor) in enumerate(found)]
+
+    def capability(self, env=None, store=None):
+        """The installed App tool's secret_capability document for this attempt's state: no network, no write."""
+        argv = [sys.executable, '-I', '-B', str(self.build / 'runtime/github-app/setup.py'), '--agent-for',
+                REPO.split('/')[0], '--capability', '--state-dir', str(self.state)] + (
+            ['--secret-store', str(store)] if store else [])
+        result = subprocess.run(argv, cwd=self.c.project, env=dict(self.c.env(), **(env or {})),
+                                capture_output=True, text=True, timeout=60)
+        self.case.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads(result.stdout)
+
+    def fleet_start(self):
+        """How the first fleet started, read back: CloudRoom's spawns, the spec's fleet record and the engine's log."""
+        # The recording fleet thread's first wake (its builders started in _fleet) also leaves launch-fleet's
+        # fleet record on the spec; written only for the receipt, so the first-hour attempt reads as before.
+        self.j.fleet_record()
+        spawns = [a for a in self.j.spawns() if a[:2] == ['thread', 'spawn']]
+        titles = [a[a.index('--title') + 1] for a in spawns if '--title' in a]
+        comments = next(i for i in self.j.world['issues'] if i['number'] == self.j.spec)['comments']
+        loops = [int(n) for c in comments for n in re.findall(r'^launch-fleet: fleet active, loop fleet-([0-9]+)$',
+                                                               c['body'], re.M)]
+        said = [int(m) for _, r in self.j.calls for m in re.findall(r'every ([0-9]+) minutes', r.stdout)]
+        engine = self.c.engine_log.read_text().splitlines() if self.c.engine_log.exists() else []
+        activations = sum(1 for line in engine if line.startswith('openwiz engine'))
+        ticks = sum(1 for line in engine if line.startswith('openwiz fleet tick'))
+        threads = sum(1 for t in titles if t.startswith('Fleet #%d: ' % self.j.spec))
+        route = 'engine' if activations else ('fleet_tick' if ticks else ('launch_fleet' if threads else 'none'))
+        return {'schema': 'openwiz.first-merge-kit-fleet.v1', 'proof_class': 'recording', 'private_record': None,
+                'route': route, 'fleet_threads': threads,
+                'loop': {'spec': loops[0], 'every_minutes': said[-1]} if loops == [self.j.spec] and said else None,
+                'engine_activations': activations, 'tick_starts': ticks, 'builders': len(self.builder_ops),
+                'reviewers': len(getattr(self, 'reviewer_threads', []))}
+
+    def first_merge(self):
+        """The recording `first_merge_receipt`, bound to this attempt's exact result document."""
+        if getattr(self, 'receipt', None) is not None:
+            return self.receipt
+        skip = bool(self.mutate.get('skip_app'))
+        self.result_text = json.dumps(self.result, indent=1) + '\n'
+        self.fleet = self.fleet_start()
+        self.capability_doc = None if skip else self.capability()
+        key_steps = [] if skip else [s['step'] for s in self.capability_doc['steps']
+                                     if s['actor'] == 'owner' and s['counted']]
+        log = self.owner_actions(key_steps)
+        pull = self.github.pull(self.PR)
+        verdicts = [re.match(r'VERDICT: APPROVE at ([0-9a-f]{40})', c['body']) for c in pull['comments']]
+        reviewed = [m[1] for m in verdicts if m][-1:] or ['0' * 40]
+        green = pull['rollup'] == 'SUCCESS' and all(c['conclusion'] == 'SUCCESS' for c in pull['checks'])
+        merged = self.merged is not None and self.merged['state'] == 'MERGED' and self.merged['head'] == self.head
+        when = calendar.timegm(time.strptime(pull['mergedAt'], '%Y-%m-%dT%H:%M:%SZ')) * 1000 if pull['mergedAt'] else 0
+        brain_only = all(f['filename'].startswith('.openwiz/') for f in pull['files'])
+        idea = next(t['user'] for t in self.conversation['turns'] if t['step'] == 'project' and 'user' in t)
+        route = 'not_used' if skip else self.capability_doc['route']
+        self.receipt = {
+            'schema': 'openwiz.setup-onboard.v1', 'kind': 'first_merge_receipt', 'proof_class': 'recording',
+            'synthetic_assumptions': ASSUMPTIONS + RECEIPT_ASSUMPTIONS, 'private_record': None, 'verdict': 'unverified',
+            'binding': {'first_hour_result_sha256': sha(self.result_text), 'candidate': self.result['candidate'],
+                        'repository': {'known': self.result['repository']['known']['full_name']},
+                        'merge': {'pull_request': self.PR, 'head': self.head,
+                                  'merge_commit': self.github.merge_commits.get(self.PR, '0' * 40),
+                                  'merged_at_ms': when, 'basis': 'merge_read_back' if merged else 'pr_closed',
+                                  'change': 'init_only' if brain_only else 'implementation',
+                                  'reviewed_head': reviewed[0], 'ci_green_head': self.head if green else '0' * 40}},
+            'instruction': self.install_journey.LINE, 'idea': idea,
+            'clock': {'started_at_ms': {'unknown': 'a recording measures no time'},
+                      'ended_at_ms': {'unknown': 'a recording measures no time'},
+                      'limit_ms': 1800000, 'rule': 'strictly_less_than'},
+            'actions': {'count': {'known': len(log)}, 'limit': 5, 'log': log},
+            'identity': 'personal_login' if skip else 'app', 'app_registration': 'skipped' if skip else 'created',
+            'secret_route': route, 'secret_route_observed': False,
+            'decisions': {'spec_confirmation': self._stage_state('spec_confirmation') == 'verified',
+                          'plan_approval': self._stage_state('plan_approval') == 'verified'},
+            'waits': [{k: w[k] for k in ('kind', 'started_at_ms', 'ended_at_ms', 'detail')} for w in self.result['waits']],
+            'help': [{k: h[k] for k in ('at_ms', 'source', 'detail')} for h in self.result['help']],
+            'freshness': {'machine': 'unknown', 'repository': 'unknown', 'seeded_openwiz_state': True,
+                          'initial_record': 'missing'}}
+        codes_report = receipt_checks.check(self.receipt)
+        self.receipt['verdict'] = 'fail' if codes_report.failures else 'unverified'
+        return self.receipt
+
+    def _stage_state(self, ident):
+        return next(s['state'] for s in self.result['stages'] if s['id'] == ident)
+
+    def _owner_work(self):
+        app = self.state / 'service/app/app.json'
+        return ([work('setup_state', 'setup/state.json', sha(canonical(self._setup_records())), 'owner_state_read_back'),
+                 self._onboarding_state()] + self._repository_work()
+                + ([work('setup_state', 'service/app/app.json', sha(app.read_text()), 'owner_state_read_back')]
+                   if app.exists() else []))
+
+    def key_faults(self):
+        """The key's delivery faults through the installed App tool on this attempt's own state: each
+        route's capability as delivered, and a lost key never registering a replacement App."""
+        before = self._owner_work()
+        connects = lambda: sum(1 for o in self._setup_records()['operations'] if o['kind'] == 'connect_app')
+        registrations = connects()
+        key = base64.b64encode(b'synthetic key bytes, not a key\n').decode()
+        folder = Path(tempfile.mkdtemp(prefix='first-hour-key-', dir=self.c.dir))
+        sink = folder / 'secret-sink'
+        sink.write_text('#!/bin/sh\ncat > /dev/null\n')
+        sink.chmod(0o700)
+        docs = {'none': self.capability(),
+                'delivered': self.capability({'OPENWIZ_GITHUB_APP_KEY': key, 'OPENWIZ_GITHUB_APP_ID': '1001'}),
+                'foreign_id': self.capability({'OPENWIZ_GITHUB_APP_KEY': key, 'OPENWIZ_GITHUB_APP_ID': '1002'}),
+                'key_only': self.capability({'OPENWIZ_GITHUB_APP_KEY': key}),
+                'agent_save': self.capability(store=sink)}
+        again = subprocess.run([sys.executable, '-I', '-B', str(self.build / 'runtime/github-app/setup.py'),
+                                '--agent-for', REPO.split('/')[0], '--state-dir', str(self.state)],
+                               cwd=self.c.project, env=self.c.env(), capture_output=True, text=True, timeout=60)
+        after = self._owner_work()
+        self.key_notes = {'reregister_exit': again.returncode, 'reregister_said': again.stderr,
+                          'registrations': (registrations, connects())}
+        self.key_case = recovery('refused_access', before, after, [], {
+            'what_happened': 'The App key arrived missing, partial or with another App id, and once only through an '
+                             'unobserved agent-side store: each was reported as it is, and a run without the key was '
+                             'refused instead of registering a second App. Setup, onboarding and the merged branch stayed.',
+            'took_effect': 'no',
+            'next_action': 'Deliver the existing App\'s key through the protected prompt; never register again.'})
+        return docs
+
+    def companion_check(self):
+        """The separate public-code check: installed init on a copy of this attempt's state for a public repository,
+        its companion creation's reply lost once, then resumed."""
+        folder = Path(tempfile.mkdtemp(prefix='first-hour-companion-', dir=self.c.dir))
+        state = folder / 'state'
+        shutil.copytree(self.state, state)
+        public = REPO.split('/')[0] + '/synthetic-public'
+        self.c.github(public)
+        world = json.loads(self.c.world.read_text())
+        world['repos'][public.lower()].update(private=False, visibility='public')
+        world['faults'].append({'method': 'POST', 'path': 'user/repos', 'mode': 'lose', 'times': 1})
+        self.c.world.write_text(json.dumps(world))
+        init = lambda *args: self.c.run([str(self.build / 'openwiz'), 'init', '--repository', public,
+                                         '--state-dir', str(state), '--json', *args])
+        preview = json.loads(init().stdout)
+        op = preview['operation_id']
+        pending = lambda: [work('pending_operation', o['operation_id'], o['fingerprint'], 'owner_state_read_back')
+                           for o in json.loads((state / 'setup/state.json').read_text())['operations']
+                           if o['operation_id'] == op]
+        before = pending()
+        first = init('--yes', '--operation', op)
+        phase = next(o['phase'] for o in json.loads((state / 'setup/state.json').read_text())['operations']
+                     if o['operation_id'] == op)
+        second = init('--yes', '--operation', op)
+        created = [c for c in json.loads(self.c.world.read_text())['log'] if c == ['POST', 'user/repos']]
+        final = json.loads(second.stdout)
+        self.companion = {'preview': preview, 'first_exit': first.returncode, 'phase_after_lost_reply': phase,
+                          'final': final, 'creates': len(created),
+                          'companion': json.loads(self.c.world.read_text())['repos'].get(public.lower() + '-brain')}
+        self.companion_case = recovery('lost_reply', before, pending(), [
+            {'operation_id': op, 'kind': 'prepare_project', 'phase_before': phase, 'phase_after': 'applied',
+             'effect_count': len(created), 'attempts': 2, 'reconciliation': 'provider_read_back'}], {
+            'what_happened': "The private companion's creation reply was lost. The resumed init read the companion "
+                             'back before any other call, then linked it and proposed the brain once.',
+            'took_effect': 'yes',
+            'next_action': 'Nothing to repeat: one private companion, linked to the public code.'})
+        return self.companion
+
+
+def skipped_conversation():
+    """The same recorded first hour with the owner's explicit App skip at Connect (#637's skip-App check)."""
+    value = json.loads(json.dumps(CONVERSATION))
+    for turn in value['turns']:
+        if turn.get('setup') == 'app':
+            turn['setup'] = 'personal_login'
+        if turn.get('answers', {}).get('app_choice') == 'create':
+            turn['answers']['app_choice'] = 'skip'
+            turn['user'] = 'Skip the App; use my own login. Codex, syn-codex-model-01, high.'
+    return value
+
+
+RECEIPT_ASSUMPTIONS = [
+    "Every owner action is a recorded conversation turn or an installed tool's stand-in at Connect; no person "
+    'tapped anything, and the key steps are the installed route\'s documented owner steps, not observed.',
+    'The recording repository holds filled fleet settings before setup (seeded state); its machine and freshness '
+    'are not a supported fresh machine.',
+    'The merge commit is a digest the recording GitHub derives from the merged head.',
+]
+receipt_checks = load('first_hour_journey_receipt_checks', ROOT / 'tools/install/tests/setup-onboard-contract/check.py')
 
 def setup_interrupted(runtime, state):
     """configure_access on the installed runtime and the journey's own setup state; stopped, then resumed."""

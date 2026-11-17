@@ -84,6 +84,20 @@
 //! appended to `archived-threads.log`. From then on, a `thread show` of that
 //! id answers from its response's `after_archive` (a response of its own),
 //! when it has one, so a test can read an archive back.
+//!
+//! **`loop list --json`, `loop create` and `loop update`** (0.0.17, #789,
+//! `contracts/loop-cli.v1.md`; the forms from `room-cli loop --help`,
+//! cloudroom 0.1.111, never observed live). The fake accepts `list` only
+//! as `loop list --json`, and `create` and `update` only in the contract's
+//! exact flag order. It refuses every other `loop` form, `show` included
+//! (there is no `room-cli loop show`). Before answering, it appends each
+//! accepted `create` or `update` to `loop-writes.log` as one JSON line: the
+//! arguments, and the text of each `--prompt-file` and `--script-file` (null
+//! when it can't be read, which then fails the call with exit 1). A test
+//! that expects no write checks that the log does not exist. A response with
+//! `"any_loop_write": "create"` or `"update"` matches every accepted call of
+//! that kind; with `"webhook": true` also, only a `--webhook` create.
+//! `loops/` holds the synthetic scenario.
 
 use std::fs;
 use std::io::Write;
@@ -114,6 +128,7 @@ const ATTACHMENTS_LOG: &str = "attachments.log";
 const UPLOAD_FAILED: &str = "fake room-cli: an attachment could not be read for upload";
 const ARCHIVE_COUNT_FILE: &str = "archive-calls.count";
 const ARCHIVED_FILE: &str = "archived-threads.log";
+const LOOP_WRITES_LOG: &str = "loop-writes.log";
 
 fn main() -> ExitCode {
     let mut args = std::env::args();
@@ -143,6 +158,10 @@ fn main() -> ExitCode {
     }
     if is_archive(&argv) {
         count(&dir, ARCHIVE_COUNT_FILE);
+    }
+    if loop_write(&argv).is_some() && !record_loop_write(&dir, &argv) {
+        eprintln!("fake room-cli: a loop file could not be read");
+        return ExitCode::from(1);
     }
 
     let scenario_path = match fs::read_to_string(dir.join(SCENARIO_FILE)) {
@@ -265,6 +284,11 @@ fn allowlisted(argv: &[String]) -> bool {
         // OpenWiz 0.0.6 (B4, ClosedWiz#120): the third write, in exactly
         // its shape (observed in help, 0.43.1): never `--self`.
         ["thread", "archive", id, "--json"] => is_thread_id(id),
+        // 0.0.17 (#789): the loop-file reads and writes, in the exact forms
+        // of contracts/loop-cli.v1.md. No `show`: room-cli has none.
+        ["loop", "list", "--json"] => true,
+        ["loop", "create", rest @ ..] => loop_create_ok(rest),
+        ["loop", "update", id, rest @ ..] => !id.starts_with('-') && loop_update_ok(rest),
         [
             "thread",
             "spawn",
@@ -544,6 +568,124 @@ fn is_detail_read(argv: &[String]) -> bool {
     matches!(argv.get(1).map(String::as_str), Some("show" | "output"))
 }
 
+/// `create` or `update` for an accepted loop write, else `None`.
+fn loop_write(argv: &[String]) -> Option<&'static str> {
+    match argv.get(..2)? {
+        [a, b] if a == "loop" && b == "create" => Some("create"),
+        [a, b] if a == "loop" && b == "update" => Some("update"),
+        _ => None,
+    }
+}
+
+/// Takes `flag <value>` from the front of `rest`, if it is there. The value
+/// may be any text, a prompt starting with `-` included.
+fn take<'a>(rest: &mut &[&'a str], flag: &str) -> Option<&'a str> {
+    match *rest {
+        &[f, value, ref tail @ ..] if f == flag => {
+            *rest = tail;
+            Some(value)
+        }
+        _ => None,
+    }
+}
+
+/// Takes the switch `flag` from the front of `rest`, if it is there.
+fn take_switch(rest: &mut &[&str], flag: &str) -> bool {
+    match *rest {
+        &[f, ref tail @ ..] if f == flag => {
+            *rest = tail;
+            true
+        }
+        _ => false,
+    }
+}
+
+/// `--provider P --model M --reasoning R`, all three or none: `None` for a
+/// partial agent.
+fn take_agent(rest: &mut &[&str]) -> Option<()> {
+    if take(rest, "--provider").is_none() {
+        return Some(());
+    }
+    take(rest, "--model")?;
+    take(rest, "--reasoning").map(|_| ())
+}
+
+/// A trigger at the front of `rest`: `--cron E --timezone Z` or `--at T`,
+/// and with `create` also `--in D` or `--webhook`. `None` for a cron with no
+/// timezone; `Some(false)` for no trigger.
+fn take_trigger(rest: &mut &[&str], create: bool) -> Option<bool> {
+    if take(rest, "--cron").is_some() {
+        return take(rest, "--timezone").map(|_| true);
+    }
+    Some(
+        take(rest, "--at").is_some()
+            || (create && (take(rest, "--in").is_some() || take_switch(rest, "--webhook"))),
+    )
+}
+
+/// `loop create`, in the contract's exact order: name, prompt file, trigger,
+/// thread, optional script file, optional agent, priority, secrets.
+fn loop_create_ok(mut rest: &[&str]) -> bool {
+    let r = &mut rest;
+    take(r, "--name").is_some()
+        && take(r, "--prompt-file").is_some()
+        && take_trigger(r, true) == Some(true)
+        && (take_switch(r, "--new-thread") || take_switch(r, "--same-thread"))
+        && {
+            take(r, "--script-file");
+            take_agent(r).is_some()
+        }
+        && take(r, "--priority").is_some_and(|p| matches!(p, "1" | "2" | "3" | "4"))
+        && take(r, "--secrets").is_some()
+        && r.is_empty()
+}
+
+/// `loop update <id>`: at least one flag, each at most once, in the
+/// contract's order: name, priority, prompt, trigger, script file, agent,
+/// secrets.
+fn loop_update_ok(mut rest: &[&str]) -> bool {
+    let given = !rest.is_empty();
+    let r = &mut rest;
+    take(r, "--name");
+    if take(r, "--priority").is_some_and(|p| !matches!(p, "1" | "2" | "3" | "4")) {
+        return false;
+    }
+    take(r, "--prompt");
+    if take_trigger(r, false).is_none() {
+        return false;
+    }
+    take(r, "--script-file");
+    if take_agent(r).is_none() {
+        return false;
+    }
+    take(r, "--secrets");
+    given && r.is_empty()
+}
+
+/// Appends one accepted loop write to `loop-writes.log`: its arguments and
+/// the text of each file it names. False when a named file can't be read.
+fn record_loop_write(dir: &Path, argv: &[String]) -> bool {
+    let mut files = serde_json::Map::new();
+    let mut readable = true;
+    for pair in argv.windows(2) {
+        if pair[0] == "--prompt-file" || pair[0] == "--script-file" {
+            let text = fs::read_to_string(&pair[1]).ok();
+            readable &= text.is_some();
+            files.insert(pair[0].clone(), text.map_or(Value::Null, Value::String));
+        }
+    }
+    let line = serde_json::json!({"argv": argv, "files": files});
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join(LOOP_WRITES_LOG))
+    {
+        // One write per line, so concurrent calls never interleave lines.
+        let _ = f.write_all(format!("{line}\n").as_bytes());
+    }
+    readable
+}
+
 /// Finds the response for `argv`, and the directory its files are relative to.
 fn find_response(scenario_path: &Path, argv: &[String]) -> Option<(Value, PathBuf)> {
     let text = fs::read_to_string(scenario_path)
@@ -575,7 +717,12 @@ fn find_response(scenario_path: &Path, argv: &[String]) -> Option<(Value, PathBu
             &got[..]
         };
         let any_spawn = response["any_spawn"].as_bool() == Some(true) && is_spawn(argv);
-        if any_spawn || wanted == got {
+        let any_loop_write = loop_write(argv).is_some_and(|verb| {
+            response["any_loop_write"].as_str() == Some(verb)
+                && (response["webhook"].as_bool() != Some(true)
+                    || argv.iter().any(|a| a == "--webhook"))
+        });
+        if any_spawn || any_loop_write || wanted == got {
             return Some((response.clone(), base));
         }
     }

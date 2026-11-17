@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """WR10: gather the real War room sources into one pinned WR2 selection. Reads only.
 
-  python3 -I gather.py --remote URL --repo OWNER/REPO --run-url URL --out DIR
+  python3 -I gather.py --remote URL --repo OWNER/REPO --run-url URL --out DIR [--data-remote URL]
       [--pool LABEL ...] [--journeys FILE --cohort FILE] [--answer-time FILE] [--stage DIR]
 
 Before a publish: one source root and `DIR/selection.json` in WR2's
 `sources.select` form, each artifact pinned by sha256, observed time and
-evidence. The `board` and `ci-benchmarks` branches are fetched, never pushed;
+evidence. The `board` branch is fetched, never pushed;
 WR8's current CI/throughput and the merged cohort's journeys come from the
 existing read-only `gh` readers. A source that cannot be read gives only its
 own card a precise reason; a privacy hit anywhere in the root refuses the
@@ -32,6 +32,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import activity  # noqa: E402
 import answer_time as wr5  # noqa: E402
+import collect_factory  # noqa: E402
 import cost  # noqa: E402
 import health  # noqa: E402
 import publish  # noqa: E402
@@ -55,8 +56,8 @@ REASONS = {
              'prerequisite: the hourly board publish (.github/workflows/board.yml) writing a valid history row.',
     'credits': 'Credits unavailable: credits.jsonl on the board branch is missing, unreadable or invalid; '
                'prerequisite: the CloudRoom credit sampler appending valid samples (board.py sample).',
-    'ci_bench': 'CI bench unavailable: no valid windows/*/point.json on the ci-benchmarks branch; '
-                'prerequisite: the daily CI bench publish (tools/ci-bench/daily.sh).',
+    'ci_bench': 'CI bench retired (#827): its daily publish no longer runs, so no point is read; '
+                'PRs an hour against the baseline is drawn from a collector snapshot (charts/build.py --snapshot).',
     'activity': 'Current CI and throughput unavailable: the read-only gh reads of ci.yml runs/jobs and merged PRs failed; '
                 'prerequisite: gh with actions, issues and pull-requests read access (WR8 activity.project).',
     'journey': 'Ticket journeys unavailable: journey.py collect over the merged cohort failed or found no cohort; '
@@ -65,8 +66,8 @@ REASONS = {
               'prerequisite: read-only gh access and a merged PR closing a ticket in the latest complete UTC hours.',
     'answer_time': 'Answer time unavailable: the supplied answer_time projection is unreadable or invalid; '
                    'prerequisite: WR5 answer_time.project output over source-linked recorded requests.',
-    'cost': 'Cost readiness unavailable: neither the journeys nor the CI bench point could be read (WR4 cost.project); '
-            'prerequisite: ticket journeys from journey.py collect or a ci-benchmarks point.',
+    'cost': 'Cost readiness unavailable: the journeys could not be read (WR4 cost.project); '
+            'prerequisite: ticket journeys from journey.py collect.',
     'main_ci': 'Main CI unavailable: the read of the main head and its ci.yml push runs could not be selected; '
                'prerequisite: read-only gh access to the branch and its Actions runs (health.main_ci).',
     'ci_queue': 'CI queue unavailable: the current ci.yml run/job read could not be selected; '
@@ -82,7 +83,7 @@ REASONS = {
                       'is shown; prerequisite: a valid board-wide graph.json of this repository on the board branch '
                       '(source kind board) and complete PR pages.',
 }
-LIMITS = sources.ROOT / 'tools/factory-metrics/limits.conf'  # TL1's one settings source
+LIMITS = sources.ROOT / 'tools/war-room/limits.conf'  # TL1's one settings source
 
 
 class Fail(Exception):
@@ -267,6 +268,12 @@ def current_runs(repo, since, until, read):
     return answer
 
 
+def ci_facts(repo, *, since, until):
+    """MT3 (#822): a snapshot's five CI facts (collector.v1.md), read now through the collector."""
+    import collect_ci  # it imports gather for current_runs and the privacy scan: import it only here
+    return collect_ci.read(repo, collect_ci.FACTS, since=since, until=until)['ci']
+
+
 def scan_bytes(data):
     """The existing privacy checker and credential/thread-id guard (publish.text_scan) over one artifact."""
     base = sources.native('tools/privacy-check/check.py')
@@ -328,8 +335,11 @@ def stage_evidence(repo, tickets, clock):
 
 
 def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None,
-           stage=None):
+           stage=None, data_remote=None):
     """Write out/root and out/selection.json, or raise Fail and select nothing.
+
+    `data_remote` (WRD4) is the repository holding the board data branch, when it
+    is not on `remote`; its commit evidence then links it.
 
     `stage` is an existing directory holding TL2's journeys.json and stage-waits.json;
     without it they are collected for the open approved and merged cohort tickets."""
@@ -338,12 +348,15 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
     suite.require(sources.LINK.fullmatch(run_url) is not None, 'invalid run link')
     suite.require((journeys is None) == (cohort is None), '--journeys and --cohort go together')
     started = clock()
-    commit_link = 'https://github.com/%s/commit/%%s' % repo
+    data_repo = repo
+    if data_remote is not None:
+        hosted = re.fullmatch(r'https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?', data_remote)
+        data_repo = hosted.group(1) if hosted else repo
+    commit_link = 'https://github.com/%s/commit/%%s' % data_repo
     with tempfile.TemporaryDirectory(prefix='war-room-gather-') as tmp:
         work = Path(tmp) / 'git'
         git(Path(tmp), 'init', '-q', '--bare', str(work))
-        board = branch(work, remote, 'board')
-        bench = branch(work, remote, 'ci-benchmarks')
+        board = branch(work, data_remote or remote, 'board')
 
         # Current CI and throughput (WR8), and the merged cohort's journeys, through the existing gh readers.
         prs = None
@@ -438,22 +451,8 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         else:
             root.missing('credits', REASONS['credits'])
 
-        # The latest completed CI bench window on ci-benchmarks.
-        point = None
-        if bench:
-            windows = []
-            for name, read in bench[0].items():
-                if re.fullmatch(r'windows/[A-Za-z0-9_.-]+/point\.json', name):
-                    try:
-                        windows.append((suite._decode(read().decode('utf-8'))['until'], name, read))
-                    except (ValueError, KeyError, TypeError, UnicodeError):
-                        continue
-            if windows:
-                until, name, read = max(windows, key=lambda w: (str(w[0]), w[1]))
-                point = root.select('ci_bench', 'ci_bench', 'ci-bench/point.json', read(), bench[2],
-                                    [commit_link % bench[1]])
-        if point is None and not any(e['slot'] == 'ci_bench' for e in root.selection):
-            root.missing('ci_bench', REASONS['ci_bench'])
+        # The CI bench retired (#827): its slot is an explained gap, never a stale point.
+        root.missing('ci_bench', REASONS['ci_bench'])
 
         if wr8 is not None:
             provider, wire = wr8
@@ -499,7 +498,7 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         else:
             root.missing('rework', REASONS['rework'])
         selections = {}
-        for key, entry in (('journey', journey), ('ci', point)):
+        for key, entry in (('journey', journey),):
             if entry is not None:
                 selections[key] = {'path': str(staging / entry['path']), 'source_path': entry['path'],
                                    'observed_at': entry['observed_at'], 'evidence': entry['evidence']}
@@ -534,9 +533,29 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
 
 
 
+# The collector snapshot (collector.v1.md): every fact once, composed from both groups' reads.
+def snapshot(repository, *, clock=now, **reads):
+    """One `openwiz.war-room.collector.v1` snapshot, or raise Fail on a privacy hit (nothing kept).
+
+    `reads` are collect_factory.read's keywords (window, usage, robots, tickets, base, checks);
+    the CI group is read over the same window."""
+    # One window for both groups, resolved before either reads (the default: the last whole UTC day).
+    reads['since'], reads['until'] = collect_factory.window(reads.get('since'), reads.get('until'), clock())
+    factory = collect_factory.read(repository, collect_factory.FACTS, clock=clock, **reads)['factory']  # MT2's call
+    ci = ci_facts(repository, since=reads['since'], until=reads['until'])  # MT3's call
+    # The collection's end: at or after every fact's read, whichever clock each reader used.
+    ends = [f['read']['ended_at'] for group in (factory, ci) for f in group.values() if f['read']]
+    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repository, 'collected_at': max([clock(), *ends]),
+           'factory': factory, 'ci': ci}
+    scan_bytes(json.dumps(doc, sort_keys=True).encode())
+    return doc
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description='Gather the War room sources (WR10). Reads only.')
-    parser.add_argument('--remote', required=True, help='the repository to fetch board and ci-benchmarks from')
+    parser.add_argument('--remote', required=True, help='the repository to fetch board from')
+    parser.add_argument('--data-remote', help='the repository holding the board data branch; '
+                        'default: --remote. A https://github.com/OWNER/REPO[.git] value also names its evidence links')
     parser.add_argument('--repo', required=True, help='OWNER/REPO for the read-only gh reads and links')
     parser.add_argument('--run-url', required=True, help='the GitHub run performing the reads (evidence)')
     parser.add_argument('--out', required=True, type=Path, help='a new directory')
@@ -548,7 +567,8 @@ def main(argv):
     a = parser.parse_args(argv)
     try:
         selection = gather(a.out, remote=a.remote, repo=a.repo, run_url=a.run_url, pools=tuple(a.pool or POOLS),
-                           journeys=a.journeys, cohort=a.cohort, answer_time=a.answer_time, stage=a.stage)
+                           journeys=a.journeys, cohort=a.cohort, answer_time=a.answer_time, stage=a.stage,
+                           data_remote=a.data_remote)
     except (Fail, ValueError, OSError, UnicodeError, RecursionError) as e:
         # Only the reason class: a source error can carry a private value.
         print('war-room gather: %s; nothing selected' % (e if isinstance(e, Fail) else type(e).__name__), file=sys.stderr)

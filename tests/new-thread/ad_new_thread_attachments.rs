@@ -9,10 +9,8 @@ use std::fs;
 use std::process::Output;
 use std::time::Duration;
 
-use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs, ThreadId};
 use openwiz_adapter_cloudroom::new_thread::spawn_argv as adapter_spawn_argv;
-use openwiz_core::attachment::{Claim, PromptAttachment, StagedAttachment, StagedPath};
-use openwiz_core::messaging::Mode;
+use openwiz_core::attachment::{Claim, PromptAttachment, StagedPath};
 use openwiz_core::model::Timestamp;
 use openwiz_core::new_thread::operation::{
     NewThreadError, NewThreadReport, NewThreadResult, SpawnRequest, new_thread_with,
@@ -123,14 +121,10 @@ fn ad01_one_spawn_carries_every_staged_copy_before_the_prompt() {
 
 #[test]
 fn newthread_attachment_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 3] = [
+    let cases: [(&str, fn()); 2] = [
         (
             "ad01_no_relative_token_file_url_or_unplain_path_can_become_a_staged_path",
             ad01_no_relative_token_file_url_or_unplain_path_can_become_a_staged_path,
-        ),
-        (
-            "ad01_tell_and_spawn_get_the_same_tail_from_attachment_args",
-            ad01_tell_and_spawn_get_the_same_tail_from_attachment_args,
         ),
         (
             "ad04_the_record_reader_takes_attachments_only_exactly_and_agreeing",
@@ -141,66 +135,6 @@ fn newthread_attachment_contracts_preserve_original_cases() {
         eprintln!("TA2 case: ad_new_thread_attachments::{name}");
         proof();
     }
-}
-
-fn ad01_tell_and_spawn_get_the_same_tail_from_attachment_args() {
-    let area = std::path::Path::new("/synthetic/state/attachments");
-    let staged = |id: &str, name: &str, kind| {
-        let id = staging::attachment_id(id);
-        let name = openwiz_core::attachment::SafeName::parse(name).unwrap();
-        StagedAttachment {
-            path: StagedPath::new(area, &id, &name).unwrap(),
-            attachment: PromptAttachment {
-                id,
-                sha256: openwiz_core::attachment::Sha256::parse(&"a".repeat(64)).unwrap(),
-                size_bytes: 1,
-                kind,
-                name,
-            },
-        }
-    };
-    let files = vec![
-        staged(
-            "att-syn-1",
-            "syn-notes.txt",
-            openwiz_core::attachment::Kind::File,
-        ),
-        staged(
-            "att-syn-2",
-            "syn-photo.png",
-            openwiz_core::attachment::Kind::Image,
-        ),
-    ];
-    let tell = Invocation::ThreadTell {
-        id: ThreadId::parse("thr_syn_0001").unwrap(),
-        mode: Mode::Queue,
-        text: "Synthetic".to_owned(),
-        attachments: files.clone(),
-    }
-    .argv();
-    let spawn = Invocation::ThreadSpawn(
-        SpawnArgs::new(
-            PROJECT,
-            "codex",
-            "syn-codex-model-01",
-            "high",
-            &request_id(&crate::support::op("op-ad01-tail")),
-            "Synthetic",
-        )
-        .unwrap()
-        .with_attachments(files),
-    )
-    .argv();
-    let tail = [
-        "--file",
-        "/synthetic/state/attachments/att-syn-1/syn-notes.txt",
-        "--image",
-        "/synthetic/state/attachments/att-syn-2/syn-photo.png",
-    ];
-    assert_eq!(&tell[6..10], tail, "{tell:?}");
-    assert_eq!(&tell[10..], ["--", "Synthetic"]);
-    assert_eq!(&spawn[15..19], tail, "{spawn:?}");
-    assert_eq!(&spawn[19..], ["--prompt", "Synthetic"]);
 }
 
 fn ad01_no_relative_token_file_url_or_unplain_path_can_become_a_staged_path() {

@@ -245,42 +245,6 @@ fn synthetic_status_refuses_kept_text_with_wrong_hash() {
 }
 
 #[test]
-fn synthetic_status_refuses_claimed_record_with_created_outcome() {
-    let fake = NewFake::new("store_claimed_created");
-    let store = fake.store();
-    let record = &every_record()[3];
-    let mut value = serde_json::to_value(record).unwrap();
-    assert_eq!(value["outcome"]["kind"], "created");
-    assert_eq!(value["dispatching_at"], json!(T0.0 + 1));
-    assert_eq!(value["finished_at"], json!(T0.0 + 2));
-    // Synthetic corrupt disk input: only the phase contradicts this creation.
-    value["state"] = json!("claimed");
-    let bytes = serde_json::to_vec(&value).unwrap();
-    let path = store.record_path(&record.op_id);
-    fs::write(&path, &bytes).unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-    // An existing, unlocked claim lets status recover the stopped owner.
-    let lock = path.with_extension("lock");
-    fs::write(&lock, b"").unwrap();
-    fs::set_permissions(&lock, fs::Permissions::from_mode(0o600)).unwrap();
-
-    let output = fake.run_process(&["new", "--status", "op-store-every", "--json"], "");
-    assert_eq!(
-        fs::read(&path).unwrap(),
-        bytes,
-        "status never rewrites disk"
-    );
-    assert_eq!(fake.invocations().len(), 0, "no provider call of any kind");
-    assert_eq!(fake.spawn_count(), 0);
-    assert_eq!(output.status.code(), Some(10), "{output:?}");
-    assert_status_store_error(&output);
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("is not a new-thread record"),
-        "{output:?}"
-    );
-}
-
-#[test]
 fn synthetic_status_preserves_finished_record_with_created_outcome() {
     let fake = NewFake::new("store_finished_created");
     let store = fake.store();

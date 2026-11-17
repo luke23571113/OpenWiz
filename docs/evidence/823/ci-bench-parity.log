@@ -1,0 +1,34 @@
+# MT4 (#823): ci-bench and the war-room chart on the same synthetic data
+# Data: tools/ci-bench/fixtures/baseline (synthetic, worked by hand in its README), as ci-bench's baseline and as a window.
+# The war-room snapshot is fixtures/collector/snapshot.json with prs_per_hour carrying that point's numbers,
+# as test_charts.PrsPerHour.test_its_numbers_match_ci_bench_on_the_same_data builds it.
+
+$ python3 -I tools/ci-bench/bench.py chart --baseline tools/ci-bench/fixtures/baseline tools/ci-bench/fixtures/baseline --out OUT
+charted 2 windows into OUT
+OUT/bench.md, PRs an hour (baseline, then the same data as a window):
+| Window | Dates | Robots | Capacity, reconstructed rule | Capacity, successful code runs | Merged |
+| --- | --- | --- | --- | --- | --- |
+| 2030-02-01 baseline | 2030-02-01T00:00:00Z to 2030-02-01T03:00:00Z | 3 | 25.50 | 33.40 | 1.33 (4 in 3.0 h) |
+| 2030-02-01 baseline | 2030-02-01T00:00:00Z to 2030-02-01T03:00:00Z | 3 | – | 33.40 | 1.33 (4 in 3.0 h) |
+OUT/bench.md, robot-minutes per successful code run (4th column):
+| 2030-02-01 baseline | successful code runs | 3 | 5.39 | 2.06 | 1.06 | 1.33 | 0.83 | 0.11 |
+| 2030-02-01 baseline | successful code runs | 3 | 5.39 | 2.06 | 1.06 | 1.33 | 0.83 | 0.11 |
+OUT/prs-per-hour.svg mark titles:
+PRs an hour
+2030-02-01 baseline, capacity, reconstructed rule: 25.5 PRs an hour
+2030-02-01 baseline, capacity, successful code runs: 33.4 PRs an hour
+2030-02-01 baseline, merged: 1.3 PRs an hour
+2030-02-01 baseline, capacity, successful code runs: 33.4 PRs an hour
+2030-02-01 baseline, merged: 1.3 PRs an hour
+10x the baseline: 255.0 PRs an hour
+
+$ war-room chart build on the same numbers (body-ci-bench-headline rows: plotted value, state, label; then the value words on the marks)
+33.4021 known Baseline, synthetic baseline (2030-01-01T08:00:00Z to 2030-01-02T08:00:00Z PST): capacity 33.40 PRs an hour on 3 robots, 5.39 robot-minutes per successful code run
+1.3333 known Baseline, synthetic baseline (2030-01-01T08:00:00Z to 2030-01-02T08:00:00Z PST): merged into main 1.33 PRs an hour
+33.4021 known Window 2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC: capacity 33.40 PRs an hour on 3 robots, 3 successful code runs at 5.39 robot-minutes each
+1.3333 known Window 2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC: merged into main 1.33 PRs an hour (4 PRs)
+marks: ['33.4', '1.3', '33.4', '1.3']
+
+Same data, same numbers: capacity 33.40 (33.4 on the mark), merged 1.33 (1.3), 5.39 robot-minutes, 3 robots.
+ci-bench also draws the baseline's reconstructed rule (25.50); the collector's baseline carries successful code runs only,
+the rule ci-bench compares new windows on, so the war room has no reconstructed-rule bar.

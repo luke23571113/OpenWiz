@@ -10,7 +10,7 @@ counted twice; a PR with no review or no push receipt read as zero; an
 immature PR entering the defect rate; a blocking finding with no user path or
 risk line passing the report check; a polish finding refused for lacking one.
 
-Worked cohort (EB6's own journey fixture, tools/factory-metrics/fixtures/journey):
+Worked cohort (EB6's own journey fixture, fixtures/journey):
 PR 4201 has independent rounds at heads aaaa, bbbb and cccc (bbbb reposted
 once, cccc also has a helper verdict), a receipt 18 h before merge, opened
 16 h before merge, a mature attributable defect, and findings R1 high, R2
@@ -37,7 +37,7 @@ spec = importlib.util.spec_from_file_location('rl_review_loops', HERE / 'review_
 R = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(R)
 FIX = HERE / 'fixtures/review-loops'
-EB6 = HERE.parent / 'factory-metrics/fixtures/journey'
+EB6 = HERE / 'fixtures/journey'
 DOC = json.loads((EB6 / 'journeys.json').read_text())
 EB6_EXPORT = json.loads((EB6 / 'outcomes.json').read_text())  # EB6's own fixture, on a 48-hour policy
 FROZEN = {'rule': 'explicit-causal-fix-link-v1', 'followup_hours': 72, 'deduplication': 'root-cause-per-merge',
@@ -366,6 +366,211 @@ class ContractExamples(unittest.TestCase):
         for first in ('Reviewer question:', 'Orchestrator answer:'):
             block = next(b for b in md if b.startswith(first))
             self.assertRegex(block.splitlines()[0], rf'^{first} #[1-9][0-9]* at [0-9a-f]{{40}}$')
+
+
+class ReportsV2(unittest.TestCase):
+    """BR1 (#886): check-report enforces review-loops v2 and keeps v1.
+
+    Plausible breaks these catch: a ruling the reviewer never marked, or marked
+    twice, passing; a Risk: blocker logged instead of sent on; a non-risk
+    blocker sent to the fresh round or parked; v1's orchestrator line passing
+    under v2; a logged blocker with no follow-up issue passing.
+    """
+    STATES = {'builder': 'report-v2-builder.md', 'fresh': 'report-v2-fresh.md',
+              'park': 'report-v2-park.md', 'merge': 'report-v2-merge.md'}
+    DESCRIPTION = (FIX / 'description-v2.md').read_text()
+
+    def text(self, state):
+        return (FIX / self.STATES[state]).read_text()
+
+    def problems(self, text, description=None):
+        return R.check_report(text) if description is None else R.check_report(text, description=description)
+
+    def test_each_v2_state_passes_with_marks_and_a_logged_blocker(self):
+        for state in self.STATES:
+            text = self.text(state)
+            with self.subTest(state=state):
+                self.assertIn('- **Ruling 1** upheld:', text)
+                self.assertIn('- **Ruling 2** overturned as R4:', text)
+                self.assertEqual([], self.problems(text))
+                self.assertEqual([], self.problems(text, self.DESCRIPTION))
+                self.assertRegex(text.strip().splitlines()[-1], '^' + R.NEXT_V2[state] + '$')
+        for state in ('fresh', 'park', 'merge'):
+            self.assertIn('Logged as follow-up #4310', self.text(state))
+        none = re.sub(r'- \*\*Ruling 1\*\*.*\n- \*\*Ruling 2\*\*.*\n', 'Rulings: none.\n', self.text('merge'))
+        self.assertEqual([], self.problems(none, self.DESCRIPTION.replace(
+            self.DESCRIPTION.split('## Rulings\n\n')[1].split('\n\n')[0], 'none')))
+
+    def test_refusals(self):
+        b, f, p, m, d = (self.text('builder'), self.text('fresh'), self.text('park'), self.text('merge'),
+                         self.DESCRIPTION)
+        mark1 = '- **Ruling 1** upheld: the ticket\'s "existing destination" covers folders.\n'
+        mark2 = '- **Ruling 2** overturned as R4: the CLI contract gives every refusal status 3.\n'
+        log1 = ' Logged as follow-up #4310.'
+        user1 = ('  User path: a cook exports twice in one day; the second export silently replaces the first, '
+                 'and the first is lost.\n')
+        cases = [
+            ('unmarked ruling, shown the description', b.replace(mark2, ''), d,
+             ['Ruling 2: the description lists it, but the report leaves it unmarked']),
+            ('unmarked ruling, a gap in the marks', b.replace(mark1, ''), None,
+             ['Ruling 1: unmarked; marks run from 1 with no gap']),
+            ('twice-marked ruling', b.replace(mark1, mark1 + mark1), None, ['Ruling 1: marked twice']),
+            ('twice-marked ruling, two marks', b.replace(mark1, mark1 + mark1.replace(
+                'upheld', 'overturned as R1')), d, ['Ruling 1: marked twice']),
+            ('malformed mark', b.replace('** upheld:', '** kept:'), None,
+             ['malformed ruling mark: ' + mark1.replace('upheld', 'kept').strip()]),
+            ('overturned as a missing finding', b.replace('overturned as R4', 'overturned as R9'), None,
+             ['Ruling 2: overturned as R9, which is not a finding in the report']),
+            ('two rulings name one finding', b.replace('Ruling 1** upheld', 'Ruling 1** overturned as R4'), None,
+             ['R4: named by two overturned rulings']),
+            ('none beside a mark', b.replace(mark1, 'Rulings: none.\n' + mark1), None,
+             ['Rulings: none. stands beside a ruling mark']),
+            ('a mark the description does not list', b, d.replace(d.split('## Rulings\n\n')[1].split('\n\n')[0], 'none'),
+             ['Ruling 1: marked, but the description lists no such ruling',
+              'Ruling 2: marked, but the description lists no such ruling']),
+            ('a ruling line with no cost level', b, d.replace('Cost if wrong: high:', 'Cost if wrong:'),
+             ['description: malformed ruling line: ' + next(
+                 x for x in d.splitlines() if x.startswith('2. ')).replace('Cost if wrong: high:', 'Cost if wrong:')]),
+            ('an empty ## Rulings section', b.replace(mark1, '').replace(mark2, ''),
+             d.replace(d.split('## Rulings\n\n')[1].split('\n\n')[0] + '\n\n', ''),
+             ['description: ## Rulings lists no ruling and is not none']),
+            ('a gap in the ruling numbers', b.replace('Ruling 2**', 'Ruling 3**'), d.replace('\n2. ', '\n3. '),
+             ['description: rulings are numbered from 1 with no gap']),
+            ('two ## Rulings sections', b, d + '\n## Rulings\n\nnone\n',
+             ['description: more than one ## Rulings section']),
+            ('Risk: blocker logged at the re-check',
+             f.replace('VERDICT: CHANGES', 'VERDICT: APPROVE').replace(
+                 'still written on the error path.', 'still written on the error path. Logged as follow-up #4311.')
+             .replace('Next: a fresh, stronger builder fixes R2 once, then one final check.',
+                      "Next: none open. It merges by the project's merge rules."), None,
+             ['R2: a Risk: blocker is never logged; it goes to the fresh round or parks']),
+            ('non-risk blocker sent to the fresh round',
+             f.replace(log1, '').replace('fixes R2 once', 'fixes R1 and R2 once'), None,
+             ['R1: only a Risk: blocker goes to the fresh round or parks; log it']),
+            ('non-risk blocker parked',
+             p.replace('Logged as follow-up #4310 at the re-check.', 'still open after 2 rounds: it still replaces.')
+             .replace('park R2', 'park R1 and R2'), None,
+             ['R1: only a Risk: blocker goes to the fresh round or parks; log it']),
+            ('v1 orchestrator line under v2',
+             f.replace('Next: a fresh, stronger builder fixes R2 once, then one final check.',
+                       'Next: the orchestrator decides R2: fix once more, or log and merge.'), None,
+             ['a v2 report never uses the v1 orchestrator or final Next: line']),
+            ('v1 final line under v2',
+             p.replace('Next: park R2 as a decision for Jake.',
+                       'Next: the orchestrator logs R2 and merges, or asks Jake for a security, privacy, '
+                       'live, spending or publishing call.'), None,
+             ['a v2 report never uses the v1 orchestrator or final Next: line']),
+            ('logged blocker with no follow-up issue number', m.replace(log1, ' Logged as follow-up.'), None,
+             ['R1: a logged blocker names its follow-up issue: Logged as follow-up #<n>']),
+            ('logged blocker without its line', m.replace(user1, ''), None,
+             ['R1: an open or logged blocker restates its User path: or Risk: line']),
+            ('logged polish finding', m.replace('Polish issue: #4302.', 'Polish issue: #4302. Logged as follow-up #4311.'),
+             None, ['R3: only a blocking finding is logged']),
+        ]
+        for name, text, description, expected in cases:
+            with self.subTest(name):
+                self.assertTrue(text not in (b, f, p, m) or description not in (None, d), 'a real change')
+                self.assertEqual(expected, self.problems(text, description))
+
+    def test_v1_log_statuses_never_close_a_v2_blocker(self):
+        """Review R1 at 223c90e: v1's log forms skipped v2's logging rules."""
+        risky = self.text('fresh').replace('VERDICT: CHANGES', 'VERDICT: APPROVE').replace(
+            'Next: a fresh, stronger builder fixes R2 once, then one final check.',
+            "Next: none open. It merges by the project's merge rules.")
+        plain = self.text('merge')
+        for status in ('logged as polish', 'follow-up', 'Polish issue:'):
+            with self.subTest(status=status):
+                text = risky.replace('still open after 1 round: the token is still written on the error path.',
+                                     f'{status} #4311, privacy risk remains.')
+                self.assertNotEqual(risky, text)
+                self.assertEqual([f'R2: a v2 report logs a blocker only as Logged as follow-up #<n>, not "{status}"',
+                                  'R2: a Risk: blocker is never logged; it goes to the fresh round or parks'],
+                                 self.problems(text))
+                text = plain.replace('still open after 1 round: a second export still replaces the first. '
+                                     'Logged as follow-up #4310.', f'{status} #4310.')
+                self.assertNotEqual(plain, text)
+                self.assertEqual([f'R1: a v2 report logs a blocker only as Logged as follow-up #<n>, not "{status}"'],
+                                 self.problems(text))
+        for state in ('fresh', 'park'):
+            self.assertEqual([], self.problems(self.text(state)))
+
+    def test_a_quoted_follow_up_sentence_is_not_a_disposition(self):
+        """Review R2 at 223c90e: only the status or the first line's last sentence logs a blocker."""
+        old = ('`src/export.rs:48` (Spec) An existing `cookbook.zip` is overwritten. Fix: open it with '
+               '`create_new(true)`.')
+        b = self.text('builder')
+        for quoted in ('`src/status.rs:20` (Spec) The status command omits the follow-up line; the ticket says it '
+                       'prints `Logged as follow-up #4310.` Fix: print it.',
+                       '`src/status.rs:20` (Spec) The status command should print Logged as follow-up #4310 after '
+                       'the title. Fix: print it.'):
+            with self.subTest(quoted=quoted):
+                text = b.replace(old, quoted)
+                self.assertNotEqual(b, text)
+                self.assertEqual([], self.problems(text))
+                merged = text.replace('VERDICT: CHANGES', 'VERDICT: APPROVE').replace(
+                    'Next: the builder fixes or disputes R1, R2 and R4 once, then one re-check.',
+                    'Next: the builder fixes or disputes R2 and R4 once, then one re-check.')
+                self.assertIn('Next: names no contract state for the open blocking findings', self.problems(merged))
+        evidence = b.replace('the second export silently replaces the first, and the first is lost.',
+                             'the status prints Logged as follow-up #4310.')
+        self.assertNotEqual(b, evidence)
+        self.assertEqual([], self.problems(evidence))
+
+    def test_a_quoted_example_is_not_the_section(self):
+        quoted = self.DESCRIPTION.replace('## Rulings', '```md\n## Rulings\n\nnone\n```\n\n## Rulings', 1)
+        self.assertEqual(2, quoted.count('## Rulings'))
+        self.assertEqual([], self.problems(self.text('builder'), quoted))
+        unfenced = quoted.replace('```md\n', '').replace('none\n```\n', 'none\n')
+        self.assertIn('description: more than one ## Rulings section', self.problems(self.text('builder'), unfenced))
+
+    def test_v1_reports_pass_unchanged(self):
+        self.assertEqual([], self.problems((FIX / 'report-ok.md').read_text()))
+        recheck = ('VERDICT: CHANGES at 9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d\n\n'
+                   '- **R1 [blocking]** still open after 1 rounds: it still overwrites.\n\n'
+                   'Next: the orchestrator decides R1: fix once more, or log and merge.\n')
+        self.assertEqual([], self.problems(recheck))
+
+    def test_cli_reads_the_description(self):
+        def cli(report, *extra):
+            return subprocess.run([sys.executable, '-I', HERE / 'review_loops.py', 'check-report', report, *extra],
+                                  capture_output=True, text=True)
+        ok = cli(FIX / 'report-v2-fresh.md', '--description', FIX / 'description-v2.md')
+        self.assertEqual((0, 'report ok\n', ''), (ok.returncode, ok.stdout, ok.stderr))
+        bad = cli(FIX / 'report-v2-fresh.md', '--description', FIX / 'report-ok.md')
+        self.assertEqual((1, ''), (bad.returncode, bad.stdout))
+        self.assertEqual('Ruling 1: marked, but the description lists no such ruling\n'
+                         'Ruling 2: marked, but the description lists no such ruling\n', bad.stderr)
+
+
+class ContractV2Examples(unittest.TestCase):
+    """The v2 contract's own synthetic examples are what check-report accepts."""
+    TEXT = (HERE.parent.parent / 'contracts/review-loops.v2.md').read_text()
+
+    def blocks(self):
+        return [b.strip() for b in re.findall(r'```md\n(.*?)\n *```', self.TEXT, re.S)]
+
+    def test_next_table_is_the_tool_table(self):
+        table = dict(re.findall(r'^\| `([a-z]+)` \|[^|]*\| `(Next: [^`]*)` \|$', self.TEXT, re.M))
+        self.assertEqual(['builder', 'fresh', 'park', 'merge'], list(table))
+        self.assertEqual(set(R.NEXT_V2), set(table))
+        for state, line in table.items():
+            self.assertRegex(line, '^' + R.NEXT_V2[state] + '$')
+        self.assertEqual((R.NEXT['builder'], R.NEXT['merge']), (R.NEXT_V2['builder'], R.NEXT_V2['merge']))
+
+    def test_examples_pass_the_check(self):
+        md = self.blocks()
+        rulings = [x for x in md if x.startswith('## Rulings')]
+        self.assertEqual(2, len(rulings))
+        marks = next(x for x in md if x.startswith('- **Ruling'))
+        logged = next(x for x in md if 'Logged as follow-up' in x)
+        report = ('VERDICT: APPROVE at 9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d\n\n' + logged + '\n'
+                  '- **R4 [polish]** `src/cli.rs:12` (Spec) The refusal exits with status 2. Fix: exit with 3. '
+                  'Polish issue: #4311.\n\n' + marks + '\n\nNext: none open. It merges by the project\'s merge rules.\n')
+        self.assertEqual([], R.check_report(report, description=rulings[0]))
+        none = report.replace(marks, next(x for x in md if x.startswith('Rulings: none.')))
+        self.assertEqual([], R.check_report(none, description=rulings[1]))
+        decision = next(x for x in md if x.startswith('**Orchestrator decision:**'))
+        self.assertRegex(decision, r'^\*\*Orchestrator decision:\*\* log and merge: R[1-9][0-9]* at [0-9a-f]{40}\. ')
 
 
 class Compare(unittest.TestCase):

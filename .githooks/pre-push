@@ -23,7 +23,9 @@
 # build cache, in ${XDG_CACHE_HOME:-~/.cache}/closedwiz-pre-push/<clone>/,
 # outside the working tree, so no tool finds the working tree's settings
 # above it. That folder is safe to delete; the next push rebuilds it, which
-# takes longer once. It never changes the repository itself. It uses the
+# takes longer once. It never changes the repository's refs or files; a new
+# branch's privacy check may fetch the destination's main objects (#872),
+# writing no ref. It uses the
 # cargo and npm on PATH, and apps/web/node_modules from this clone
 # (npm ci --ignore-scripts in apps/web).
 #

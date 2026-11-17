@@ -20,23 +20,44 @@ from test_product_identity import PROGRAMS, build, collector, identity, program
 # #1105 R9: each setup tool's source in the repository, by its runtime path.
 SETUP_SOURCES = {'runtime/setup/setup.py': 'tools/install/setup/setup.py',
                  'runtime/setup/store.py': 'tools/install/setup/store.py',
+                 'runtime/setup/github_login.py': 'tools/install/setup/github_login.py',  # #633
                  'runtime/github-app/setup.py': 'tools/github-app/setup.py',
                  'runtime/github-app/app.py': 'tools/github-app/app.py',
-                 'runtime/github-app/manifest.json': 'tools/github-app/manifest.json'}
+                 'runtime/github-app/manifest.json': 'tools/github-app/manifest.json',
+                 'runtime/setup/init.py': 'tools/install/setup/init.py'}  # #635
 
 
 class Package(unittest.TestCase):
-    def test_installed_engine_preparation(self):
+    def test_packaged_service_start_gate_stays_closed(self):
+        # D2 (#874): the kept fail-closed start gate (crates/service/src/bootstrap.rs).
+        # The real service, installed from a verified bundle with no engine runtime,
+        # refuses to start, and still refuses when its install manifest is gone.
         target = Path(os.environ.get('CARGO_TARGET_DIR', ROOT / 'target'))
         if not target.is_absolute():
             target = ROOT / target
-        cli, service = target/'debug/openwiz', target/'debug/openwiz-service'
-        for binary in (cli, service):
-            self.assertTrue(binary.is_file(), 'Build the CLI and service before the installed engine package proof.')
-        result = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/install/engine/test_engine.py')],
-            env={**os.environ,'OPENWIZ_ENGINE_FIXTURE_CLI':str(cli),'OPENWIZ_ENGINE_FIXTURE_SERVICE':str(service)},
-            capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        service = target/'debug/openwiz-service'
+        self.assertTrue(service.is_file(), 'Build the service before the packaged start-gate proof.')
+        import fixture_bundle
+        with tempfile.TemporaryDirectory(prefix='openwiz-start-gate-') as temporary:
+            root = Path(temporary)
+            web, state, installed = root/'web', root/'state', root/'installed'
+            web.mkdir()
+            state.mkdir(mode=0o700)
+            (web/'index.html').write_text('Synthetic page, no accounts.')
+            bundle = fixture_bundle.create(root/'bundle', service, web, service=service)
+            result = subprocess.run([sys.executable, '-I', str(ROOT/'tools/install/install.py'),
+                '--manifest', bundle['manifest'], '--manifest-sha256', bundle['checksum'],
+                '--archive', bundle['archive'], '--target', 'x86_64-unknown-linux-gnu', '--root', str(installed)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            env = {**os.environ, 'PATH': '/synthetic/no-build-tools', 'OPENWIZ_STATE_DIR': str(state)}
+            blocked = subprocess.run([str(installed/'current/openwiz-service')], env=env, capture_output=True, text=True)
+            self.assertEqual(blocked.returncode, 1)
+            self.assertIn('Activation remains closed', blocked.stderr)
+            (installed/'current/install-manifest.json').unlink()
+            damaged = subprocess.run([str(installed/'current/openwiz-service')], env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(damaged.returncode, 1)
+            self.assertIn('Activation remains closed', damaged.stderr)
 
     def test_installed_platform_and_private_key_contracts(self):
         # Rust runs before Python is provisioned on the PC runner. Register the
@@ -48,7 +69,7 @@ class Package(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_compiled_programs_answer_their_identity_query_without_effects(self):
-        # #1148: the real debug programs the installed-engine proof uses.
+        # #1148: the real debug programs the packaged start-gate proof uses.
         target = Path(os.environ.get('CARGO_TARGET_DIR', ROOT / 'target'))
         target = target if target.is_absolute() else ROOT / target
         import product_identity
@@ -101,8 +122,6 @@ class Package(unittest.TestCase):
             (scripts / 'platform/runtime.py').write_bytes(b'Synthetic local runtime manager.\n')
             (scripts / 'access').mkdir()
             (scripts / 'access/access.py').write_bytes(b'Synthetic access verifier.\n')
-            (scripts / 'engine').mkdir()
-            (scripts / 'engine/engine.py').write_bytes(b'Synthetic engine preparation.\n')
             (scripts / 'cloudroom').mkdir()  # #2201
             (scripts / 'cloudroom/cloudroom.py').write_bytes(b'Synthetic CloudRoom setup tool.\n')
             self.assertEqual(sorted(SETUP_SOURCES), sorted(SETUP_TOOLS))
@@ -124,8 +143,10 @@ class Package(unittest.TestCase):
                 result = subprocess.run(args, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 assets = {row['path']:row for row in json.loads(identity_file.read_bytes())['assets']}
-                self.assertEqual((output/'runtime/engine/engine.py').read_bytes(), b'Synthetic engine preparation.\n')
-                self.assertEqual(assets['runtime/engine/engine.py']['mode'], '0600')
+                # #874: the engine, handover and activation runtimes are retired;
+                # the build neither needs nor ships them.
+                self.assertEqual([p for p in assets if p.startswith(('runtime/engine/', 'runtime/handover/',
+                                  'runtime/pc_activation/', 'runtime/completion/'))], [])
                 self.assertEqual((output/'runtime/cloudroom/cloudroom.py').read_bytes(), b'Synthetic CloudRoom setup tool.\n')
                 self.assertEqual(assets['runtime/cloudroom/cloudroom.py']['mode'], '0600')
                 self.assertIn('runtime/platform/runtime.py',assets)

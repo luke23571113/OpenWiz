@@ -1,0 +1,8 @@
+# MT4 (#823): scoped checks at merge commit f011c62002b58b1b22911361092a0ba625b0a7c5 (origin/main merged in; conflict only in tools/open-import/paths.json)
+$ python3 -I tools/war-room/test_charts.py: Ran 24 tests in 6.283s  OK 
+$ python3 -I tools/war-room/test_page_design.py: Ran 14 tests in 5.418s  OK 
+$ python3 -I tools/war-room/test_page_history.py: Ran 18 tests in 0.864s  OK 
+$ python3 -I tools/war-room/test_publish.py: Ran 16 tests in 18.807s  OK 
+$ python3 -I tools/war-room/test_contract.py: Ran 19 tests in 0.092s  OK 
+$ python3 -I tools/war-room/test_web.py: Ran 5 tests in 20.808s  OK 
+$ python3 -I tools/war-room/test_health.py: Ran 22 tests in 9.139s  OK 

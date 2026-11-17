@@ -148,7 +148,7 @@ fn run_composed(
     let mut state = State::load(root, since)?;
     let mut startup = crate::update::recover(root, &config, build, &mut state)?;
     state::status(&startup.preview(&state), build, since, port, None, since)?;
-    let mut server = start_server(root, port, host.clone(), web.clone())?;
+    let server = start_server(root, port, host, web)?;
     // An injected binder can allocate its port atomically. Status and candidate
     // health confirmation must use the address the server actually owns.
     let port = server.local_addr().port();
@@ -169,7 +169,6 @@ fn run_composed(
         .map_err(|_| "service/status.sock: cannot set private permissions".to_owned())?;
     let state = Arc::new(Mutex::new(state));
     let restart = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    crate::tick::register(root, &config, Arc::clone(&state), &mut scheduler)?;
     crate::events::intake::register(root, &config, &mut scheduler)?;
     // Refused loop authority/capacity never prevents independent service jobs.
     if crate::loops::production::register(root, &config, &mut scheduler).is_err() {
@@ -183,8 +182,6 @@ fn run_composed(
         &mut scheduler,
         Arc::clone(&restart),
     )?;
-    let (health_control, health_requests) =
-        crate::health::runtime::channel_with_monitor(scheduler.tick_monitor());
     let sources = sources.unwrap_or_else(|| crate::health::Sources::production(root, &config));
     Arc::new(crate::health::Health::new(
         root,
@@ -192,30 +189,8 @@ fn run_composed(
         Arc::clone(&state),
         sources.room,
         sources.github,
-        health_control,
     )?)
-    .register(&mut scheduler, port, now)?;
-    // #2034: the configured notification pass joins this scheduler. It reads
-    // this service's own decisions route and saved health state. Delivery comes
-    // from T4's one installed factory (#2035), or a fixture's recording one
-    // (#2039); a refusal keeps other jobs.
-    let (delivery, binding) = crate::delivery();
-    match crate::notification_job(
-        root,
-        &config,
-        Arc::clone(&state),
-        crate::notifications::sources::loopback_decisions(port),
-        crate::notifications::sources::installed_comments(&root.join("service/config.json")),
-        delivery,
-        binding,
-        Arc::new(openwiz_server::SystemClock),
-    ) {
-        Ok(Some((every, job))) => scheduler
-            .register(crate::NOTIFICATION_JOB, every, job)
-            .map_err(str::to_owned)?,
-        Ok(None) => {}
-        Err(_) => eprintln!("openwiz-service: notification job refused; delivery stays off"),
-    }
+    .register(&mut scheduler, now)?;
     let ipc_server_since = Arc::clone(&server_since);
     let build = build.to_owned();
     let ipc_state = Arc::clone(&state);
@@ -254,17 +229,6 @@ fn run_composed(
     loop {
         if restart.load(std::sync::atomic::Ordering::SeqCst) {
             return Err("checked update queued; handing over through the service unit".to_owned());
-        }
-        while let Ok(request) = health_requests.try_recv() {
-            if request.apply(&mut scheduler, &mut server, || {
-                let listener = openwiz_server::bind(port)
-                    .map_err(|_| "cannot rebind the configured loopback port".to_owned())?;
-                crate::web_api::start(root, listener, host.clone(), web.clone())
-            }) {
-                *server_since
-                    .lock()
-                    .map_err(|_| "server status is unavailable")? = (now(), server.status_handle());
-            }
         }
         if server.unexpectedly_stopped() {
             return Err("embedded HTTP server stopped".to_owned());

@@ -1,7 +1,7 @@
 # Paired replay contract, version 1
 
 EB5 (#2176) pins the `replay` member of
-[openwiz.bottlenecks.v1](../factory-metrics/experiment-contract.md). EB7 (#2178)
+[openwiz.bottlenecks.v1](../war-room/experiment-contract.md). EB7 (#2178)
 owns its producer, isolation, execution, scoring and actual report. CF4's
 [existing contract](contract.md) remains unchanged; no new evaluator is built
 here. `experiment_contract.execute('run_replay', ...)` always refuses.

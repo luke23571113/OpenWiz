@@ -21,8 +21,8 @@ def _module(name, path):
     return module
 
 
-B = _module('activity_ci_bench', HERE.parent / 'ci-bench/bench.py')
-M = _module('activity_factory_metrics', HERE.parent / 'factory-metrics/metrics.py')
+B = _module('activity_ci_bench', HERE / 'bench_reads.py')
+M = _module('activity_factory_metrics', HERE / 'metrics.py')
 DIRECTIONS = ('forward', 'sideways', 'backwards')
 COST_SCOPE = ('Complete cost today needs running jobs, earlier attempts, other workflows and billing; '
               'this estimate covers latest completed ci.yml runs created in this UTC day only, '

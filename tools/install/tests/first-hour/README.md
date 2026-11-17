@@ -9,9 +9,12 @@ throughout; every document is a `recording` or a test fixture, never a pass.
 python3 -I tools/install/tests/first-hour/test_journey.py   # the journey and its fault cases (about 90 s)
 python3 -I tools/install/tests/first-hour/test_kit.py       # the live kit's offline proofs
 python3 -I tools/install/tests/first-hour/kit.py dry-run [<eligibility.json>]
+python3 -I tools/install/tests/first-hour/test_first_merge.py   # #637: the 0.0.16 receipt on the journey and its kit (about 2 min)
+python3 -I tools/install/tests/first-hour/first_merge_kit.py dry-run [<eligibility.json> [<binding.json>]]
 ```
 
-CI runs both suites from `tests/checks/skills.rs` (`install_journey_and_live_kit_pass`).
+CI runs the first two suites from `tests/checks/skills.rs` (`install_journey_and_live_kit_pass`) and the
+0.0.16 suite there too (`setup_onboard_journey_passes`, and `release:setup-onboard-journey`).
 
 | File | What |
 | --- | --- |
@@ -20,6 +23,8 @@ CI runs both suites from `tests/checks/skills.rs` (`install_journey_and_live_kit
 | `test_journey.py` | The proofs. Every expected code is written by hand from contracts/first-hour.v1.md; #2200's checks (through #2222's `providers/codes.py`) give the actual ones. `KnownWaysToFail` reruns the attempt with one realistic bug each (a blind merge retry, a restart that starts the reviewer again, red CI, a stale verdict). |
 | `kit.py`, `test_kit.py` | The offline dry run, eligibility check and result validator of [first-hour-live-kit.md](../../first-hour-live-kit.md). |
 | `providers/` | #2222's recording and fault providers (its own folder). |
+| `first_merge_kit.py`, `test_first_merge.py` | #637: the 0.0.16 kit's offline dry run, eligibility check and receipt validator (first-hour-live-kit.md's 0.0.16 extension), and the proofs of it and of the journey's recording receipt. Fixtures: `tests/fixtures/first-hour/setup-onboard/`. |
+| `evidence/` | #637's red runs. |
 
 ## The fault cases on this journey
 
@@ -31,7 +36,7 @@ call and read-back counts:
 | Case | Seam on the installed journey |
 | --- | --- |
 | `repeat_approval` | The approved launch confirmed again through the installed onboarding helper: no second tick, no second builder |
-| `process_restart` | The engine stops after CloudRoom started the reviewer, before its record; on restart it reads the thread back by title first and starts nothing again |
+| `process_restart` | The fleet thread stops after CloudRoom started the reviewer, before its record; on restart it reads the thread back by title first and starts nothing again |
 | `revoked_access` | The App's installation removed: GitHub refuses the merge with no effect; the installed setup check says `app_revoked`; reconnecting reads `app_verified` |
 | `lost_reply` | The merge's reply lost after its effect: the pull request is read back (merged at the approved head) before anything else; no second merge |
 | `update_rejected` | A tampered update through the actual install entry after the merge: refused, the last good build stays, the setup, onboarding record and merged branch unchanged |
@@ -52,3 +57,38 @@ unresolved. The `paid_offer` and `feedback` gates name their verified producers
 
 **Proof limits.** Fixtures prove the join's gating, effects and recovery, never
 a real release, account, login, elapsed time or live behaviour.
+
+## The 0.0.16 receipt on this journey (#637)
+
+The same attempt also yields setup-onboard.v1's `first_merge_receipt`
+(`Attempt.first_merge()`), bound to the SHA-256 of its exact `result` text,
+its candidate, repository and merge read back at the reviewed, green head.
+It never relabels the result: the hour keeps `3600000` and the ten-minute
+measure stays `unmeasured`, each with its own verdict.
+
+- **Owner actions, one entry each.** The recorded conversation's own turns
+  (typed choices, the grill's confirmation, the spec confirmation, the plan
+  approval, the launch's spending approval) and, at Connect, every installed
+  tool's `--yes` (prepare, init, the App skip), the App's Create and Install
+  stand-in, each owner step of the installed key route (the App tool's
+  `--capability`: six for the protected paste) and the owner's merge of the
+  brain pull request. A stand-in is `agent_for_owner` and counts like a tap.
+  The App path logs 19, the skip path 12: both fail the five-action limit
+  (`actions_exceeded`), which this recording reports rather than hides.
+- **The fleet start** (`Attempt.fleet_start()`): CloudRoom's fleet-thread
+  spawn, launch-fleet's fleet record on the spec with its 10-minute loop, and
+  the engine log (absent). A known way to fail, `tick_start`, runs
+  `openwiz fleet tick` beside the fleet thread; the kit refuses it.
+- **Key faults** (`key_faults()`): the installed App tool's capability on this
+  state with no, a full, a foreign-id and a key-only delivery, and with a
+  stand-in agent-side store, which stays `agent_save_unavailable` (the no-paste
+  route is Unverified until the real CloudRoom contribution is observed). A
+  run without the key refuses to register a second App; the owner's work is
+  compared before and after (`refused_access`).
+- **The public-companion check** (`companion_check()`): installed init on a
+  copy of this state for public code, its companion creation's reply lost
+  once, then resumed: one private companion, linked (`lost_reply`).
+- **The skip-App continuation** is its own attempt (`{'skip_app': True}`).
+
+Its primary attempt still carries #2204's planted fault cases; the live kit's
+primary timed run has none (first-hour-live-kit.md, F1 to F13).

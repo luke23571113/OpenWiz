@@ -47,10 +47,10 @@ API = 'https://api.github.com'
 TIMEOUT = 30
 
 
-def run(argv, limit=4 * 1024 * 1024):
+def run(argv, limit=4 * 1024 * 1024, env=None):
     """One read. Returns (exit code, parsed JSON or None). Never echoes output."""
     try:
-        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT)
+        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT, env=env)
     except (OSError, subprocess.TimeoutExpired):
         return None, None
     if len(result.stdout) > limit:
@@ -119,26 +119,80 @@ def gh(path):
     return run([program, 'api', path])
 
 
-def check_identity(project):
-    if project is None:
-        return 'identity_unselected'
-    code, user = gh('user')
-    if code is None:
-        return 'identity_signed_out'
-    if code == 4:  # gh: authentication required
-        return 'identity_signed_out'
+def github_com(path):
+    """#633 R1: one gh read bound to github.com, where the browser sign-in
+    happens. gh otherwise follows GH_HOST, or defaults to another server when
+    that server holds its only login: neither may stand in for github.com."""
+    return github_com_read(path)[:2]
+
+
+# Final check R3: gh's own line for GitHub's 401 answer, exactly. With a
+# credential only for another server, gh still asks github.com, which answers
+# 401, and gh exits 1 (exit 4 means no credential anywhere).
+UNAUTHENTICATED = re.compile(rb'gh: [^\n]* \(HTTP 401\)\n?')
+
+
+def github_com_read(path):
+    """(exit code, parsed JSON or None, whether gh's whole stderr is GitHub's 401
+    line) for one github.com read; anything else is not an authentication answer."""
+    program = shutil.which('gh')
+    if program is None:
+        return None, None, False
+    try:
+        result = subprocess.run([program, 'api', path], stdin=subprocess.DEVNULL, capture_output=True,
+                                timeout=TIMEOUT, env={**os.environ, 'GH_HOST': 'github.com'})
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None, False
+    try:
+        value = json.loads(result.stdout, object_pairs_hook=store.unique) if len(result.stdout) <= 4 * 1024 * 1024 else None
+    except (ValueError, store.Refused):
+        value = None
+    return result.returncode, value, result.returncode == 1 and UNAUTHENTICATED.fullmatch(result.stderr) is not None
+
+
+def account():
+    """(failure code or None, login): the signed-in account read from GitHub
+    now (#633). Only a person's own account is a login; a bot, an unreadable
+    answer or a browser that merely returned is not."""
+    code, user, unauthenticated = github_com_read('user')
+    if code is None or code == 4 or unauthenticated:  # no answer, no credential, or GitHub's 401
+        return 'identity_signed_out', None
     if code != 0 or type(user) is not dict:
-        return 'identity_unreadable'
+        return 'identity_unreadable', None
     login = user.get('login')
     if user.get('type') != 'User' or not isinstance(login, str) or login.endswith('[bot]'):
-        return 'identity_bot'
-    code, repo = gh(f"repos/{project['repository']}")
+        return 'identity_bot', None
+    if store.LOGIN.fullmatch(login) is None:
+        return 'identity_unreadable', None
+    return None, login
+
+
+def read_back(repository):
+    """(code, login or None): the account and its push access to REPOSITORY,
+    both read from GitHub now. github_login.py reports the same read."""
+    failure, login = account()
+    if failure is not None:
+        return failure, None
+    code, repo = github_com(f'repos/{repository}')
     if code != 0 or type(repo) is not dict:
-        return 'identity_no_push' if code == 1 else 'identity_unreadable'
+        return ('identity_no_push' if code == 1 else 'identity_unreadable'), login
     permissions = repo.get('permissions')
     if type(permissions) is dict and permissions.get('push') is True:
-        return 'identity_verified'
-    return 'identity_no_push'
+        return 'identity_verified', login
+    return 'identity_no_push', login
+
+
+def check_identity(project, identity=None):
+    """When the owner skipped the App for this repository (#633), the signed-in
+    account must also be the login they chose to act; any other is refused."""
+    if project is None:
+        return 'identity_unselected'
+    code, login = read_back(project['repository'])
+    saved = identity or {}
+    chosen = saved.get('acting_login') if saved.get('repository') == project['repository'] else None
+    if code == 'identity_verified' and chosen is not None and login.lower() != chosen.lower():
+        return 'identity_account_mismatch'
+    return code
 
 
 # --- Project settings: explicit, checked, never invented ------------------
@@ -219,7 +273,39 @@ def fleet_settings_usable(text):
     return bool(rows) or waits
 
 
-def check_project(openwiz, project, runtime):
+def check_brain(brain, repository):
+    """#635: the saved brain reference, resolved on GitHub. None, or a brain
+    for another repository (kept as it is), is an existing project: nothing is
+    inferred and the check is unchanged. Otherwise the brain
+    repository must read back private and hold its merged settings record
+    naming this placement; a proposal that is not merged yet is still missing."""
+    # R3: a brain retained for another repository is not this project's: the
+    # selected repository is an existing project and its check is unchanged.
+    if brain is None or brain['code_repository'].lower() != repository.lower():
+        return 'project_verified'
+    home = brain['brain_repository']
+    code, repo = gh(f'repos/{home}')
+    if code is None:
+        return 'project_unreadable'
+    if code != 0 or type(repo) is not dict or not str(repo.get('full_name', '')).lower() == home.lower() \
+            or repo.get('private') is not True or repo.get('visibility') != 'private':
+        return 'project_settings_missing' if code in (0, 1) else 'project_unreadable'
+    code, record = gh(f"repos/{home}/contents/{brain['folder']}/settings.json")
+    if code != 0 or type(record) is not dict or record.get('encoding') != 'base64':
+        return 'project_settings_missing' if code in (0, 1) else 'project_unreadable'
+    try:
+        settings = json.loads(base64.b64decode(record.get('content', ''), validate=False),
+                              object_pairs_hook=store.unique)
+    except ValueError:
+        return 'project_settings_missing'
+    if (type(settings) is not dict or settings.get('brain_location') != brain['location']
+            or str(settings.get('code_repository', '')).lower() != brain['code_repository'].lower()
+            or str(settings.get('brain_repository', '')).lower() != home.lower()):
+        return 'project_settings_missing'
+    return 'project_verified'
+
+
+def check_project(openwiz, project, runtime, brain=None):
     if project is None:
         return 'project_unprepared'
     if project['runtime'] is None or runtime_pin(runtime) != project['runtime']:
@@ -249,7 +335,7 @@ def check_project(openwiz, project, runtime):
     group = (thread.get('data') or {}).get('session', {}).get('group', {})
     if group.get('kind') != 'project' or group.get('id') != project['project']:
         return 'project_answer_refused'
-    return 'project_verified'
+    return check_brain(brain, project['repository'])
 
 
 # --- OpenWiz's App, through GitHub's App API ------------------------------
@@ -410,6 +496,17 @@ def check_app(state_path, project, recorded, base):
     mine = [i for i in installations if type(i) is dict and i.get('app_id') == app_id
             and isinstance((i.get('account') or {}).get('login'), str)
             and i['account']['login'].lower() == owner.lower()]
+    if len(mine) == 1:
+        # C-G1/J48 (#606 review R3): the user's own App is verified only on its owner's
+        # account; another account's App installed by the repository owner is not.
+        status, found = request(base, 'GET', '/app', jwt)
+        if status == 401:
+            return 'app_key_rejected', None
+        if status != 200 or type(found) is not dict or found.get('id') != app_id:
+            return 'app_unreadable', None
+        app_owner = (found.get('owner') or {}).get('login')
+        if not isinstance(app_owner, str) or app_owner.lower() != owner.lower():
+            mine = []
     if len(mine) != 1 or not store.positive(mine[0].get('id')):
         had = recorded is not None and recorded.get('installation_id') is not None
         return ('app_revoked' if had else 'app_not_installed'), {'app_id': app_id, 'installation_id': None}
@@ -497,9 +594,10 @@ def check(args):
             return failed
     results = {'cloudroom': guarded(lambda: check_cloudroom(openwiz, setup.state), 'cloudroom_unreadable'),
                'harness': guarded(lambda: check_harness(openwiz, project), 'harness_unreadable'),
-               'personal_github': guarded(lambda: check_identity(project), 'identity_unreadable'),
-               'project': guarded(lambda: check_project(openwiz, project, default_runtime(args.runtime)),
-                                  'project_unreadable')}
+               'personal_github': guarded(lambda: check_identity(project, before.get('identity')),
+                                          'identity_unreadable'),
+               'project': guarded(lambda: check_project(openwiz, project, default_runtime(args.runtime),
+                                                        before.get('brain')), 'project_unreadable')}
     # Local App files (key, ID, their directory or signing) that cannot be used
     # safely are a refusal of this component, never an abort.
     results['github_app'], ids = guarded(lambda: check_app(setup.state, project, before['app'], base),

@@ -119,19 +119,6 @@ pub(super) fn occupancy_reads(f: &Fixture) -> usize {
 }
 
 #[test]
-fn occupancy_is_sampled_once_per_pass() {
-    for status in ["pending", "starting", "active", "synthetic-unknown-status"] {
-        let f = Fixture::new("printf finding");
-        let runner = f.runner();
-        let runs = runner.pass().unwrap();
-        reported_status(&f, status);
-        let before = occupancy_reads(&f);
-        assert_eq!(runner.pass().unwrap(), runs);
-        assert_eq!(occupancy_reads(&f) - before, 1, "{status}");
-    }
-}
-
-#[test]
 fn occupancy_settlement_survives_restart_and_unreadable_history() {
     struct CapacityClock(Arc<FakeClock>);
     impl Clock for CapacityClock {

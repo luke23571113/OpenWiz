@@ -411,13 +411,14 @@ Benches table: every slot, its state and how many of its values are measured,
 as text a phone reads natively.
 
 - **The job:** [`.github/workflows/war-room.yml`](../../.github/workflows/war-room.yml),
-  beside `board.yml`, on GitHub-hosted `ubuntu-24.04` for all three jobs, never
-  `vars.CI_RUNS_ON`. A pull request runs `proof` (`test_publish.py`) and a
-  `preview` (tick and draw on an empty history, no publish). A dispatched or
+  beside `board.yml`, on GitHub-hosted `ubuntu-24.04` for both jobs, never
+  `vars.CI_RUNS_ON`. A pull request runs a `preview` (tick and draw on an empty history, no publish). A dispatched or
   scheduled run from `main` is the `publish` job alone: `publish.sh` runs
   `test_publish.py` first, then `publish.py publish`. Only `publish` has
   `contents: write`, it pushes only `refs/heads/war-room`, and the
-  `war-room-publication` concurrency group serialises it.
+  `war-room-publication` concurrency group serialises it. The proofs run from
+  [`war-room-proof.yml`](../../.github/workflows/war-room-proof.yml) (#827): pull
+  requests only, `contents: read`, every war-room test and the CI time budgets.
 - **Default off:** `publish` runs only when the repository variable
   `WAR_ROOM_PUBLISH` is `on`, so after merge neither the backup cron nor a
   dispatch publishes or spends a minute. Activation is the orchestrator's
@@ -484,7 +485,7 @@ as text a phone reads natively.
   hourly loop stops.
 - **Cost basis, per run:** one GitHub-hosted Linux job of about a minute,
   billed per job rounded up to the minute at the list rate in
-  [`tools/ci-bench/prices.tsv`](../ci-bench/prices.tsv) (`github-hosted`,
+  [`tools/war-room/prices.tsv`](prices.tsv) (`github-hosted`,
   $0.006/minute, verified 2026-11-05): 24 dispatched plus 4 backup runs is about
   28 minutes, about $0.17 a day before any included minutes. A pull request
   run is two jobs. Each publish also adds pictures to the branch's history:
@@ -570,7 +571,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
 | --- | --- | --- |
 | Board | `history.jsonl` on `board`, checked by the board's own row validator. The latest row's six counts are **partial**, in the board's daily window (`[PST day start, min(commit, next PST day))`), each a level at the sample time. The startable percent and fed ratio need ticket identities from a `graph.json` of the same read, so without one they stay Unknown with that prerequisite | The `board` commit's time and link |
 | Credits | `credits.jsonl` on `board`, through WR2's native `credits` adapter | The `board` commit's time and link |
-| CI bench | The `windows/*/point.json` on `ci-benchmarks` with the latest `until`, through WR2's `ci_bench` adapter | The `ci-benchmarks` commit's time and link |
+| CI bench | Retired with the bench (#827): an explained missing slot. PRs an hour against the baseline is drawn from a collector snapshot by `charts/build.py --snapshot`; the hourly publish does not yet pass one (a gap of #827) | None |
 | Current activity | WR8's `activity.project` with the existing `bench.gh`, `metrics.collect_prs` and `metrics.graphql` readers. `ci.yml`'s whole run history is over the API's 1000-item limit, so its run list is read bounded (`gather.current_runs`): the active runs, one status at a time, and the completed runs created this UTC day, the only runs WR8 uses. Each listing keeps `bench.pages`' checks; a run listed twice or under another status refuses the CI counts. Its observation bytes are kept beside its provider. Pools default to `closedwiz-pc` and `ubuntu-24.04` | The read's end, and this run's link |
 | Ticket journeys, rework, cost | `journey.py`'s `collect` for the tickets closed by the merged cohort, then WR6 `rework.project` and WR4 `cost.project` (journeys and the CI point). The cohort is the PRs merged in the latest complete UTC hour that has a merged PR closing a ticket, looking back up to 6 hours | The read's end, and this run's link |
 | Answer time | WR5's own projection when one is supplied, otherwise `answer_time.unavailable()` and its exact prerequisites. No recorded-answer source exists yet | This run's link |
@@ -589,7 +590,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
   nothing is selected or published. The board graph's ticket text is used only
   in memory and never written. The publish's own scan of every published file is
   unchanged.
-- **Reads only.** `board` and `ci-benchmarks` are fetched (depth 1) and never
+- **Reads only.** `board` is fetched (depth 1) and never
   pushed. The `gh` reads are GETs and fixed GraphQL queries. The publish job adds
   `actions`, `issues` and `pull-requests` read scopes for them and still
   pushes only `refs/heads/war-room`. It stays on GitHub-hosted `ubuntu-24.04`,
@@ -608,8 +609,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
 
 Red and green runs are in `fixtures/gather/`, which also holds the synthetic
 `history.jsonl`, `credits.jsonl` and `cohort.json`. The test builds the
-`board` and `ci-benchmarks` branches from these files, the page-history graph
-and the cost CI point. It reuses WR8's synthetic gh, WR6's journeys and WR5's
+`board` branch from these files and the page-history graph. It reuses WR8's synthetic gh, WR6's journeys and WR5's
 pairs. All of these are offline fixture evidence, not a live result.
 
 ## Health collection and v2 history (WRD1)
@@ -625,7 +625,7 @@ a v1 sample's health as unobserved. Nothing is backfilled.
 | --- | --- | --- |
 | Main CI | `health.main_ci`: the `main` head, every page of its `ci.yml` push runs, a reread of the latest run, the head again | Green from another head, a pending, cancelled or changing run, a same-second tie or a failed read |
 | CI queue | `health.ci_queue`: WR8's same checked read (no extra API call), each queued job's `created_at` | Zero from a partial or changing read; a count when a job's pool is unknown; an invented queue limit |
-| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/factory-metrics/limits.conf` | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
+| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/war-room/limits.conf` (the saved owner label keeps its original `tools/factory-metrics/limits.conf`, an immutable value) | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
 
 The same pinned stage evidence also fills the detailed `stage_waits` slot (WR3).
 
@@ -736,6 +736,121 @@ The design brief, pins and hill-climb run plan are in
 [`design/brief.md`](design/brief.md). Proofs are synthetic. The hill-climb,
 Jake's checkpoints and his final visual review are separate, and live figures
 remain Unverified.
+
+## Private HTML serving (WRD4)
+
+The page itself is published, not only its pictures: `publish.py publish` writes the
+original `war-room.html` (byte for byte as `page.py` rendered it, never the drawable
+transform) in the same commit as `war-room.png`, `war-room-phone.png` and `README.md`,
+after the privacy scan has read it. A failed render, scan or push publishes nothing, so
+the page and its pictures keep their last good generation together; collections and saved
+samples are unchanged. The page opens with native section links: Figures, each numbered
+section, Sources and the inventory audit; a deep link is `/#sources`.
+
+[`web/serve.py`](web/serve.py) serves it privately, as [`web/contract.md`](web/contract.md)
+says: `fetch` reads the private `war-room` branch (read-only, depth 1) and keeps the page
+only if it is the static page, so a bad or missing one leaves the last good page served;
+`serve` answers only `GET`/`HEAD /`, on `127.0.0.1` only, with `text/html; charset=utf-8`,
+`no-store` and the page's own security policy. Everything else is `404` or `405`.
+
+**Finding (read-only, 2026-11-16).** The page works over local HTTP as built: one
+self-contained file, no script, no remote request, its CSP and embedded headings font
+intact, at 1440 and 390 px. The private address reuses the existing tunnel and Access
+login in front of a loopback-only origin, so WRD4 needs no new account resource, DNS or
+Access change. The exact hostname, account and setup are in the private record; the
+orchestrator confirmed the address. Before WRD4 the publisher put no HTML on the branch.
+
+**Setup.** On the serving host, with the caller's read access to the private repository:
+
+```sh
+python3 -I tools/war-room/web/serve.py fetch --remote https://github.com/OWNER/PRIVATE.git --into DIR   # hourly, after the publish
+python3 -I tools/war-room/web/serve.py serve --root DIR --port PORT                                    # always on, loopback
+```
+
+The tunnel's ingress for the private hostname points at `http://127.0.0.1:PORT` with
+Access required at the origin. Switching an existing host to this adapter waits for the
+orchestrator's go-ahead.
+
+**Verification.** `python3 -I tools/war-room/test_web.py` (needs `npm ci` in
+`tools/war-room`, Node and Chromium) publishes synthetic input through the real publisher
+to a local bare branch, fetches and serves it, and reads it in Chromium with page scripts
+disabled at 1440 and 390 px: content type, identical bytes, section links (present, real
+targets, keyboard and deep links), disclosures and values tables, static SVG, the font,
+no sideways scroll, the route allowlist and last-good on every failure. Live acceptance
+is separate: after activation, the exact live URL returns the pinned page signed in and
+the Access login signed out, checked with read-only requests and recorded privately.
+Fixture results alone are not live acceptance.
+
+**Data branches in another repository: `gather.py --data-remote URL`.** Optional. `URL`
+is any remote `git fetch` accepts (the caller authenticates git). It governs only the
+read-only, depth-1 fetches of `refs/heads/board` (`history.jsonl`, `credits.jsonl`,
+`graph.json`); nothing is pushed.
+Omitted, it defaults to `--remote`, so behaviour is unchanged. Given, `--remote` (still
+required) is not read by the gather. `--repo` keeps every `gh` read, run and pull-request
+link and the board graph's `repo` check. The board, credits and CI-bench commit evidence
+links name `OWNER/REPO` when `URL` is exactly `https://github.com/OWNER/REPO` or
+`https://github.com/OWNER/REPO.git`, and `--repo` otherwise, as before.
+
+## Small static site (WRD5)
+
+The War room is six static pages on the same private address
+([`web/contract.md`](web/contract.md)): **home** (`/`) answers health and speed, with the
+status strip, the five headline cards and **every benchmark, worst first**; five child pages
+hold the detail, one question each: **Speed** (`/speed`: flow, latency, throughput, PR rate
+and answer time), **Health** (`/health`: main CI, queue, stage waits and stalls, overload,
+readiness), **Cost** (`/cost`: usage, cost per merged PR), **Quality** (`/quality`: rework,
+review rounds, defects, tests) and **Skills and evals** (`/skills`: skills eval, EB6 to EB9,
+skill tokens). Navigation is plain links; every disclosure is native `<details>`; no page
+has a script.
+
+**Inventory.** `benchmarks.json` `pages` lists each child page's slug, title, question and
+body figures in order; each headline card names the child page that holds its benches'
+values and sources (`page`). `page.membership` refuses the site when a body figure is on no
+page or two, a card names no page, or a bench or health signal has no single home figure,
+so a new benchmark is never silently left off. Figure numbers and ids are unchanged.
+
+**Figures.** A figure's face is its title, its one-sentence caption and its value or chart.
+Its unit, dates, coverage, missing days, gap notes, values table and source note are first
+in its closed **Values and sources** disclosure. An unavailable figure says Unavailable,
+with its prerequisite on the face only when it is one short line (`page.SHORT`, 90
+characters); a longer one opens the disclosure. The status strip keeps its flag and fact
+line; its gaps fold into one closed disclosure. Chart SVGs, data and marks are unchanged.
+
+**Every benchmark, worst first.** One row per bench and health signal (20): its name, linked
+to its Sources entry on its child page (`health#bench-main_ci`; the browser opens the
+closed Sources disclosure), one state word and its existing headline value. States, in
+order: **off limit** (its own evidence shows an existing limit or goal missed: a failed main
+CI run, a missed stage limit, a measured stage-wait miss, ready stock below the board's goal),
+**partial** (including a pending or cancelled main CI run: no current result), **healthy**
+(measured, with no limit missed; main CI only on a successful run) and **not measured**
+(unavailable). Ties keep inventory
+order. No threshold is invented, Unknown is never zero and an unavailable bench says
+Unavailable. The order is rebuilt with each hourly publication; no page sorts or fetches.
+
+**Build.** `page.site(record, charts)` returns the six pages, all rendered before anything
+is returned; `page.render` stays the complete one-document view of the same content (every
+chart once, the whole Sources appendix), which `main.tick` keeps at its page path; the
+published pictures are drawn from the home page, no longer from `page.render`. `main.tick(..., site=DIR)` writes the six pages (`page.site_files`) beside
+it from the same saved sample and chart bundle, rendering every page before writing any.
+`publish.py publish` publishes the six pages, the pictures and the README in one commit
+after scanning them all; a failed child, scan, write or push publishes nothing, and the
+branch keeps its previous complete site. The first site publication replaces WRD4's
+one-page branch. `web/serve.py fetch` switches all six routes to a new site at once, or
+keeps the last good site. Publish the site before switching the adapter: a folder WRD4
+filled serves nothing until its first good site fetch.
+
+**Verification.** `python3 -I tools/war-room/test_site.py` builds the synthetic packet's six
+pages: one page per figure and bench, the refusal of unplaced figures and benches, the
+worst-first rows with the packet's literals (and a real zero against an Unknown), the
+low-text faces with every qualifying fact behind the disclosure, marks reconciled with
+values tables, every site link landing, and a failed child page keeping the previous site.
+`test_publish.py` proves the six-page commit, all-or-last-good publication over a failed
+child or a planted value, and the replacement of a one-page branch; `test_web.py` serves
+the six routes only, refuses a site with one bad or missing page, and reads every page in
+Chromium with scripts off at 1440 and 390 px (navigation by keyboard, a home row landing on
+its opened Sources, a figure deep link, disclosures, no sideways scroll). The design targets
+were HTML prototypes ([`design/site/prototype/`](design/site/prototype/)). Fixture results
+are not live delivery: the private rollout and its read-only checks are separate.
 
 ## Review loops bench (RL0)
 

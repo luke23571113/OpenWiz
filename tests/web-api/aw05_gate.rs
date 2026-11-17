@@ -171,6 +171,10 @@ fn a_forged_send_with_an_attachment_that_is_not_ready_is_refused_with_zero_calls
         "not found",
     );
     drop(stream);
+    // Socket close starts abort cleanup; the next row needs it finished.
+    // Otherwise its reservation scan races removal of the aborted upload
+    // and can report store_unavailable instead of exercising the send gate.
+    s.wait_for("the aborted upload to finish cleanup", |st| st.uploads == 0);
     // Removed.
     let id = ready_id(&upload(&s, "aw5-removed.txt", b"Synthetic AW5\n"));
     assert_eq!(remove(&s, &id).status, 200);

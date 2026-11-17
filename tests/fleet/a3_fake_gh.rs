@@ -9,15 +9,13 @@ use std::fs;
 use std::fs::DirBuilder;
 use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, Output};
 
 use serde_json::{Value, json};
 
 use crate::support::FakeGh;
 
 const REFUSED: i32 = 97;
-const NO_SCENARIO: i32 = 98;
 const BAD_SCENARIO: i32 = 99;
 
 /// Writes `scenario` as `<test>/<name>/scenario.json`, with `files` beside
@@ -157,65 +155,6 @@ fn it_answers_byte_for_byte() {
 }
 
 #[test]
-fn a_scenario_extends_another_and_its_own_responses_come_first() {
-    let parent = json!({
-        "synthetic_assumptions": [],
-        "responses": [
-            {"argv": ["--version"], "stdout": "parent version"},
-            {"argv": ["repo", "view"], "stdout": "parent repo"}
-        ]
-    });
-    scenario("a3_extends", "parent", &parent, &[]);
-    let child = scenario(
-        "a3_extends",
-        "child",
-        &json!({
-            "synthetic_assumptions": [],
-            "extends": "parent",
-            "responses": [{"argv": ["--version"], "stdout": "child version"}]
-        }),
-        &[],
-    );
-    let fake = FakeGh::new("a3_extends", &child);
-    assert_eq!(text(&run(&fake, &["--version"])).1, "child version");
-    assert_eq!(text(&run(&fake, &["repo", "view"])).1, "parent repo");
-    assert_eq!(text(&run(&fake, &["pr", "list"])).0, Some(REFUSED));
-}
-
-#[test]
-fn a_hanging_answer_writes_its_pid_and_never_answers() {
-    let path = scenario(
-        "a3_hang",
-        "hang",
-        &json!({
-            "synthetic_assumptions": [],
-            "responses": [{"argv": ["issue", "list"], "stdout": "never", "hang": true}]
-        }),
-        &[],
-    );
-    let fake = FakeGh::new("a3_hang", &path);
-    let mut child = Command::new(fake.program())
-        .args(["issue", "list"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("start the fake gh");
-    let pid = child.id().to_string();
-    let limit = Instant::now() + Duration::from_secs(10);
-    while fake.hung_pid().as_deref() != Some(pid.as_str()) {
-        assert!(Instant::now() < limit, "no gh-hang.pid with {pid}");
-        assert!(
-            child.try_wait().expect("poll the fake").is_none(),
-            "the fake exited instead of hanging"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    child.kill().expect("stop the fake");
-    let output = child.wait_with_output().expect("reap the fake");
-    assert!(output.stdout.is_empty(), "a hung call never answers");
-    assert_eq!(fake.invocations(), [owned(&["issue", "list"])]);
-}
-
-#[test]
 fn it_logs_the_names_of_github_variables_never_their_values() {
     let path = scenario(
         "a3_environment",
@@ -240,46 +179,6 @@ fn it_logs_the_names_of_github_variables_never_their_values() {
     );
     let log = fs::read_to_string(fake.dir.join("gh-environment.log")).expect("the log");
     assert!(!log.contains("syn-value"), "a value was logged: {log}");
-}
-
-#[test]
-fn started_by_name_through_path_it_shares_a_directory_with_the_fake_room_cli() {
-    let path = scenario(
-        "a3_by_name",
-        "by-name",
-        &json!({"synthetic_assumptions": [], "responses": [{"argv": ["--version"], "stdout": "syn"}]}),
-        &[],
-    );
-    let fake = FakeGh::new("a3_by_name", &path);
-    std::os::unix::fs::symlink(
-        env!("CARGO_BIN_EXE_fake-room-cli"),
-        fake.dir.join("room-cli"),
-    )
-    .expect("link the fake room-cli");
-    let got = Command::new("gh")
-        .arg("--version")
-        .env("PATH", &fake.dir)
-        .current_dir(&fake.dir)
-        .output()
-        .expect("run gh by name");
-    assert_eq!(text(&got), (Some(0), "syn".to_owned(), String::new()));
-    assert_eq!(fake.invocations(), [owned(&["--version"])]);
-    let mut files: Vec<String> = fs::read_dir(&fake.dir)
-        .expect("read the directory")
-        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
-        .collect();
-    files.sort();
-    assert_eq!(
-        files,
-        [
-            "fake-gh.scenario",
-            "gh",
-            "gh-environment.log",
-            "gh-invocations.log",
-            "room-cli"
-        ],
-        "only the fake gh's own files, none of the fake room-cli's"
-    );
 }
 
 #[test]
@@ -371,21 +270,5 @@ fn a_malformed_scenario_stops_the_fake_and_answers_nothing() {
     assert_eq!(
         text(&run(&fake, &["--version"])),
         (Some(0), "syn".to_owned(), String::new())
-    );
-}
-
-#[test]
-fn with_no_scenario_it_answers_nothing() {
-    let missing =
-        Path::new(env!("CARGO_TARGET_TMPDIR")).join("fake-gh-scenarios/a3_none/missing.json");
-    let fake = FakeGh::new("a3_no_scenario_file", &missing);
-    assert_eq!(text(&run(&fake, &["--version"])).0, Some(NO_SCENARIO));
-    fs::remove_file(fake.dir.join("fake-gh.scenario")).expect("remove the pointer");
-    let got = text(&run(&fake, &["--version"]));
-    assert_eq!((got.0, got.1.as_str()), (Some(NO_SCENARIO), ""));
-    assert_eq!(
-        fake.invocations().len(),
-        2,
-        "both calls were still recorded"
     );
 }

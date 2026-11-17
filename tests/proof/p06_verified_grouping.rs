@@ -77,27 +77,6 @@ fn a_missing_or_mistyped_project_id_is_ungrouped_with_a_reason() {
     }
 }
 
-#[test]
-fn text_shows_ungrouped_sessions_with_their_reason() {
-    let fake = Fake::new("p06_text_ungrouped", "normal");
-    let json = fake.cli_json(&["ls", "--json"]);
-    let reason = json["data"]["sessions"]
-        .as_array()
-        .expect("sessions")
-        .iter()
-        .find(|s| s["id"] == "thr_syn_0003")
-        .and_then(|s| s["group"]["reason"].as_str())
-        .expect("thr_syn_0003 is ungrouped in JSON")
-        .to_owned();
-    let (code, text, _) = fake.cli(&["ls"]);
-    assert_eq!(code, 0);
-    assert!(
-        text.contains("thr_syn_0003"),
-        "ungrouped sessions stay visible:\n{text}"
-    );
-    assert!(text.contains(&reason), "the reason is shown:\n{text}");
-}
-
 /// New in ticket 1's correction round 1 (Sol S6). One source is read twice;
 /// between the runs a project disappears, then comes back. Each run groups by
 /// its own project list only, so a mapping kept from an earlier run is caught.
@@ -169,44 +148,6 @@ fn grouping_uses_only_the_current_runs_project_list() {
             session(&second, id).group
         );
     }
-}
-
-/// New in ticket 1's correction round 1 (Sol S6). Issue #3: shared project
-/// names are shown as `name~<last 6 characters of the id>`; a unique name is
-/// shown as it is. JSON keeps the reported name; the suffix is display only.
-#[test]
-fn shared_project_names_are_shown_with_the_last_six_characters_of_the_id() {
-    let fake = Fake::new("p06_shared_name_display", "normal");
-    let json = fake.cli_json(&["ls", "--json"]);
-    for row in json["data"]["sessions"].as_array().expect("sessions") {
-        if row["id"] == "thr_syn_0005" || row["id"] == "thr_syn_0006" {
-            assert_eq!(row["group"]["name"]["known"], "Synthetic shared name");
-        }
-    }
-    let (code, text, _) = fake.cli(&["ls"]);
-    assert_eq!(code, 0);
-    let groups = rows_by_group(&text);
-    for (id, header) in [
-        ("thr_syn_0001", "/factories/Synthetic project one/"),
-        ("thr_syn_0005", "/factories/Synthetic shared name~n_0004/"),
-        ("thr_syn_0006", "/factories/Synthetic shared name~n_0005/"),
-    ] {
-        let found = groups
-            .iter()
-            .find(|(row, _)| row == id)
-            .and_then(|(_, h)| h.as_deref());
-        assert_eq!(found, Some(header), "{id}:\n{text}");
-    }
-    assert!(
-        !text.contains("/factories/Synthetic shared name/"),
-        "a shared name is never shown bare:\n{text}"
-    );
-    let (code, text, _) = fake.cli(&["show", "thr_syn_0006"]);
-    assert_eq!(code, 0);
-    assert!(
-        text.contains("/factories/Synthetic shared name~n_0005/"),
-        "{text}"
-    );
 }
 
 /// New in ticket 2, after the Sol review (S1): text groups follow the

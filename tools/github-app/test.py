@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -98,7 +100,7 @@ ROOT = HERE.parents[1]
 # in (its clone, or one setting), so none may name ClosedWiz's as a fixed
 # target. This file is the one test CI runs in those paths, so the check is here.
 FOLLOWING_PATHS = ("loops", "tools/stall-alarm", "tools/github-app",
-                   "tools/factory-metrics", "tools/roadmap", "docs/ROADMAP.md")
+                   "tools/roadmap", "docs/ROADMAP.md")
 # Built in pieces so this file is not a hit itself.
 FIXED_TARGET = re.compile(re.escape("jparker2006" + "/" + "ClosedWiz").encode(), re.IGNORECASE)
 # A pointer to the private record (a ClosedWiz issue comment, as #1257 has it)
@@ -165,8 +167,9 @@ class ManifestTests(unittest.TestCase):
         manifest = json.loads((HERE / "manifest.json").read_text())
         self.assertEqual(manifest["default_permissions"], SERVICE)
         self.assertEqual(manifest["default_events"], [])
-        # Revision 3 of spec #2537: one public App installs on both accounts (GI4, #2546).
-        self.assertIs(manifest["public"], True)
+        # J48 (#606): each user's own App is private by default; only the explicit
+        # factory setting registers the factory's public multi-account App.
+        self.assertIs(manifest["public"], False)
 
 
 @contextmanager
@@ -189,7 +192,14 @@ def fake_github(pem):
             if self.path == "/app":
                 # GI4 (#2546): the agent mode reconciles the App's owner and profile.
                 status, result = 200, {"id": 1001, "slug": "synthetic-app",
+                                       "owner": {"login": behavior.get("app_owner", "synthetic-owner")},
                                        "permissions": behavior.get("app_permissions", SERVICE)}
+            elif self.path == "/app/installations":
+                # The setup check's installation list (tools/install/setup/setup.py).
+                status, result = 200, [{"id": i, "app_id": 1001, "account": {"login": login},
+                                        "repository_selection": behavior.get("selection", "selected"),
+                                        "permissions": SERVICE}
+                                       for i, login in behavior["installations"].items()]
             elif found and int(found.group(1)) in behavior["installations"]:
                 status, result = 200, {"id": int(found.group(1)), "app_id": 1001, "account": {
                     "login": behavior["installations"][int(found.group(1))]},
@@ -209,6 +219,7 @@ def fake_github(pem):
                     self.connection.shutdown(2)
                     return
                 result = {"id": 1001, "pem": pem.decode(), "slug": "synthetic-app",
+                          "owner": {"login": behavior.get("app_owner", "synthetic-owner")},
                           "html_url": "https://github.com/apps/synthetic-app",
                           "permissions": behavior["converted"]}
             elif self.path == "/app/installations/2002/access_tokens":
@@ -234,6 +245,15 @@ def fake_github(pem):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def mints(calls):
+    """The token requests among the recorded calls: one per mint."""
+    return [c for c in calls if c[0].endswith("/access_tokens")]
+
+
+# J48 (#606): the owner-bound reads a mint makes before asking for a token.
+OWNER_READS = ["/app", "/app/installations/2002"]
 
 
 class KeyFixture(unittest.TestCase):
@@ -264,7 +284,7 @@ class KeyFixture(unittest.TestCase):
             for needle in needles:
                 self.assertNotIn(needle, output)
 
-    def token(self, endpoint, device_now=None):
+    def token(self, endpoint, device_now=None, env=None):
         self.assertTrue((HERE / "mint-token.py").is_file())
         command = ["python3", str(HERE / "mint-token.py")]
         if device_now is not None:
@@ -290,7 +310,8 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
         return subprocess.run(command + [
             "--state-dir", str(self.state), "--installation-id", "2002", "--api-base", endpoint,
             "--repository", "synthetic-owner/work"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15,
+            env=env or {k: v for k, v in os.environ.items() if not k.startswith("OPENWIZ_GITHUB_APP_")})
 
 
 class TokenTests(KeyFixture):
@@ -325,7 +346,7 @@ class TokenTests(KeyFixture):
                         self.assertEqual(result.stderr,
                                          b"App token refused: check PC state permissions, App installation and GitHub availability.\n")
                     self.assert_no_key(result.stdout, result.stderr)
-            self.assertEqual(len(calls), 11)
+            self.assertEqual(len(mints(calls)), 11)
             self.assert_no_key(repr(calls))
 
     def test_signs_real_jwt_and_prints_only_read_token(self):
@@ -335,9 +356,8 @@ class TokenTests(KeyFixture):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, b"synthetic-installation-token\n1767229200\n")
         self.assertEqual(result.stderr, b"")
-        self.assertEqual(len(calls), 1)
-        path, headers, body = calls[0]
-        self.assertEqual(path, "/app/installations/2002/access_tokens")
+        self.assertEqual([c[0] for c in calls], OWNER_READS + ["/app/installations/2002/access_tokens"])
+        path, headers, body = calls[2]
         self.assertEqual(json.loads(body), {"permissions": PERMISSIONS, "repositories": ["work"]})
         jwt = headers["Authorization"].removeprefix("Bearer ")
         header, payload, signature = jwt.split(".")
@@ -395,7 +415,7 @@ class TokenTests(KeyFixture):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertEqual(result.stdout, b"")
                     self.assert_no_key(result.stderr)
-            self.assertEqual(len(calls), len(cases))
+            self.assertEqual(len(mints(calls)), len(cases))
         self.assertEqual(sorted(p.name for p in self.app.iterdir()),
                          ["app.json", "private-key.pem"])
 
@@ -405,11 +425,14 @@ class ReadProfileTests(KeyFixture):
     SELECTED = {"repository_selection": "selected", "repositories": [
         {"full_name": "synthetic-owner/other"}, {"full_name": "Synthetic-Owner/Work"}]}
 
-    def read_token(self, endpoint, *repositories):
+    def read_token(self, endpoint, *repositories, mode=None):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("OPENWIZ_GITHUB_APP_")}
+        if mode is not None:
+            env["OPENWIZ_GITHUB_APP_MODE"] = mode
         return subprocess.run(["python3", str(HERE / "mint-token.py"), "--state-dir", str(self.state),
                                "--installation-id", "2002", "--api-base", endpoint,
                                *[a for r in repositories for a in ("--repository", r)]],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15, env=env)
 
     def test_no_repository_refuses_without_any_request(self):
         with fake_github(self.pem) as (endpoint, calls, _behavior):
@@ -425,7 +448,8 @@ class ReadProfileTests(KeyFixture):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.decode().splitlines(),
                          ["synthetic-installation-token", str(int(expiry.timestamp()))])
-        self.assertEqual(json.loads(calls[0][2]),
+        self.assertEqual([c[0] for c in calls], OWNER_READS + ["/app/installations/2002/access_tokens"])
+        self.assertEqual(json.loads(calls[2][2]),
                          {"permissions": PERMISSIONS, "repositories": ["other", "work"]})
 
     def test_read_token_refuses_foreign_unselected_expired_or_mixed_owner(self):
@@ -451,7 +475,47 @@ class ReadProfileTests(KeyFixture):
                     self.assertEqual(result.stderr,
                                      b"App token refused: check PC state permissions, App installation and GitHub availability.\n")
             # Mixed owners and duplicates refuse before any call.
-            self.assertEqual(len(calls), len(cases) - 2)
+            self.assertEqual(len(calls), 3 * (len(cases) - 2))
+
+    def test_read_token_is_bound_to_the_app_owner_or_the_named_factory_installations(self):
+        """C-G1/J48 (#606): a user App mints only for an installation on its owner's
+        account; only the explicit factory setting accepts the identity contract's
+        named installations, and nothing else."""
+        text = (HERE.parent.parent / "contracts/github-identity.v1.md").read_text()
+        pin = json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
+        named = [(i["account"], r) for i in pin["installations"] for r in i["repositories"]]
+        cross = next((a, r) for a, r in named if a != named[-1][0])  # another account than the last
+        owner = named[-1][0]
+        cases = [  # (mode, App owner, installation account, repository, minted)
+            (None, "synthetic-owner", "synthetic-owner", "synthetic-owner/work", True),
+            (None, "synthetic-elsewhere", "synthetic-owner", "synthetic-owner/work", False),
+            ("user", "synthetic-elsewhere", "synthetic-owner", "synthetic-owner/work", False),
+            (None, owner, cross[0], cross[1], False),  # the factory's cross-account install, no setting
+            ("factory", owner, cross[0], cross[1], True),
+            ("factory", owner, owner, named[-1][1], True),
+            ("factory", owner, cross[0], cross[0] + "/synthetic-unnamed", False),
+            ("factory", owner, "synthetic-owner", "synthetic-owner/work", False),
+            ("public", "synthetic-owner", "synthetic-owner", "synthetic-owner/work", False),
+            ("", "synthetic-owner", "synthetic-owner", "synthetic-owner/work", False)]
+        with fake_github(self.pem) as (endpoint, calls, behavior):
+            original = behavior.copy()
+            for mode, app_owner, account, repository, minted in cases:
+                with self.subTest(mode=mode, app_owner=app_owner, account=account, repository=repository):
+                    behavior.clear()
+                    behavior.update(original, app_owner=app_owner, installations={2002: account},
+                                    read_profile={"repository_selection": "selected",
+                                                  "repositories": [{"full_name": repository}]})
+                    before = len(mints(calls))
+                    result = self.read_token(endpoint, repository, mode=mode)
+                    if minted:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(result.stdout.decode().splitlines()[0], "synthetic-installation-token")
+                    else:
+                        self.assertEqual((result.returncode, result.stdout), (1, b""))
+                        self.assertEqual(result.stderr, b"App token refused: check PC state permissions, "
+                                                        b"App installation and GitHub availability.\n")
+                        # Refused before any token exists: nothing to discard.
+                        self.assertEqual(len(mints(calls)), before)
 
 
 class GuardTests(KeyFixture):
@@ -504,8 +568,33 @@ class GuardTests(KeyFixture):
             result = self.token(endpoint)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(result.stdout, b"")
-            self.assertEqual(len(calls), 1)
+            self.assertEqual([c[0] for c in calls], OWNER_READS + ["/app/installations/2002/access_tokens"])
             self.assert_no_key(result.stderr)
+
+
+class SetupCheckOwnerBoundary(KeyFixture):
+    """#606 review R3: the setup check verifies an App only on its owner's own
+    installation, never another account's App installed by the repository owner."""
+
+    def check(self, endpoint):
+        spec = importlib.util.spec_from_file_location("install_setup_606", HERE.parent / "install/setup/setup.py")
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+        return setup.check_app(self.state, {"repository": "synthetic-owner/synthetic-repo"}, None, endpoint)
+
+    def test_the_setup_check_verifies_only_the_app_owners_installation(self):
+        soon = (datetime.now(timezone.utc) + timedelta(minutes=50)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for owner, verified in (("synthetic-owner", True), ("synthetic-elsewhere", False)):
+            with self.subTest(owner=owner), fake_github(self.pem) as (endpoint, calls, behavior):
+                behavior.update(app_owner=owner, permissions=SERVICE, expires_at=soon, read_profile={
+                    "repository_selection": "selected",
+                    "repositories": [{"full_name": "synthetic-owner/synthetic-repo"}]})
+                code, ids = self.check(endpoint)
+                if verified:
+                    self.assertEqual((code, ids), ("app_verified", {"app_id": 1001, "installation_id": 2002}))
+                else:
+                    self.assertEqual(code, "app_not_installed")
+                    self.assertEqual(mints(calls), [])  # refused before any token exists
 
 
 class Form(HTMLParser):
@@ -660,6 +749,29 @@ class SetupTests(KeyFixture):
         self.assertIn(b"https://github.com/apps/synthetic-app/installations/new?state=", stdout)
         self.assert_no_key(line, page, answer, stdout, stderr, repr(calls),
                            (self.state / "setup/state.json").read_bytes())
+
+    def test_installation_on_the_repository_owner_must_also_be_the_app_owner(self):
+        """C-G1/J48 (#606): the product's App is a user App; an installation is
+        captured only on its owner's account, even when that account owns the
+        repository and the App was created by someone else."""
+        with fake_github(self.pem) as (endpoint, calls, behavior):
+            behavior["app_owner"] = "synthetic-elsewhere"
+            process, line, page, form, manifest = self.start(endpoint)
+            self.assertIs(manifest["public"], False)
+            self.assertEqual(manifest["name"], "OpenWiz synthetic-owner")
+            state = urllib.parse.parse_qs(urllib.parse.urlsplit(form.action).query)["state"][0]
+            with urllib.request.urlopen(manifest["redirect_url"] + "?" + urllib.parse.urlencode(
+                    {"code": "synthetic-code", "state": state})) as response:
+                answer = response.read()
+            with self.assertRaises(urllib.error.HTTPError) as refused:
+                urllib.request.urlopen(manifest["setup_url"] + "?" + urllib.parse.urlencode(
+                    {"installation_id": "2002", "setup_action": "install", "state": state}))
+            self.assertEqual(refused.exception.code, 400)
+            process.kill()
+            stdout, stderr = process.communicate(timeout=10)
+        self.assertIsNone(self.setup_state()["app"])
+        self.assertNotIn(b"captured", stdout)
+        self.assert_no_key(line, page, answer, stdout, stderr, repr(calls))
 
     def test_failed_exchange_never_echoes_response_or_writes_key(self):
         with fake_github(self.pem) as (endpoint, calls, behavior):
@@ -1083,7 +1195,7 @@ class AgentSetupTests(KeyFixture):
         self.pin = json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
 
     def command(self, endpoint, extra=(), account=("--agent-for", "synthetic-owner"), store=True):
-        return ["python3", str(HERE / "setup.py"), "--state-dir", str(self.state), "--api-base", endpoint,
+        return ["python3", str(getattr(self, "tool", HERE) / "setup.py"), "--state-dir", str(self.state), "--api-base", endpoint,
                 "--port", "0", *account, *(("--secret-store", str(self.store)) if store else ()), *extra]
 
     def stored(self, delivered, app_id="1001"):
@@ -1193,10 +1305,21 @@ class AgentSetupTests(KeyFixture):
         return process, line, page, base, state
 
     def test_agent_page_carries_exactly_the_contract_profile(self):
+        """J48 (#606): a user's own App is registered private, under a name of its
+        own (the factory's name is taken on GitHub, and Create must need no edit);
+        only the explicit factory setting carries the pin's public App."""
         app = self.pin["app"]
-        for account, target in (
-                (("--agent-for", "synthetic-owner"), "https://github.com/settings/apps/new?state="),
-                (ORG, "https://github.com/organizations/synthetic-org/settings/apps/new?state=")):
+        long = "synthetic-" + "x" * 29  # a 39-character login
+        for account, target, name, public in (
+                (("--agent-for", "synthetic-owner"), "https://github.com/settings/apps/new?state=",
+                 "OpenWiz synthetic-owner", False),
+                (ORG, "https://github.com/organizations/synthetic-org/settings/apps/new?state=",
+                 "OpenWiz synthetic-org", False),
+                (("--agent-for", long), "https://github.com/settings/apps/new?state=",
+                 "OpenWiz synthetic-xxxxxxx " + hashlib.sha256(long.encode()).hexdigest()[:8], False),
+                (("--agent-for", "synthetic-org", "--organization", "--factory"),
+                 "https://github.com/organizations/synthetic-org/settings/apps/new?state=",
+                 app["name"], app["visibility"] == "public")):
             with self.subTest(account=account), fake_github(self.pem) as (endpoint, calls, _behavior):
                 shutil.rmtree(self.state / "setup", ignore_errors=True)
                 process, line, (status, headers, page), form, base = self.agent_start(endpoint, account)
@@ -1204,9 +1327,10 @@ class AgentSetupTests(KeyFixture):
                 stdout, stderr = process.communicate(timeout=10)
                 self.assertEqual(status, 200)
                 self.assertTrue(form.action.startswith(target), form.action)
+                self.assertLessEqual(len(name), 34)  # GitHub's App name limit
                 home = "https://github.com/" + account[1]
                 self.assertEqual(json.loads(form.values["manifest"]), {
-                    "name": app["name"], "public": app["visibility"] == "public",
+                    "name": name, "public": public,
                     "default_permissions": app["permissions"], "default_events": app["events"],
                     "url": home, "hook_attributes": {"url": home, "active": app["webhook"]},
                     "redirect_url": base + "/callback", "setup_url": base + "/installed",
@@ -1391,10 +1515,10 @@ class AgentSetupTests(KeyFixture):
         with fake_github(self.pem) as (endpoint, calls, behavior):
             self.register(endpoint)
             # With the secret delivered, the one App is reconciled and only its install is
-            # offered, on this account or another one it installs on.
+            # offered again, on its owner's account (J48: a user App installs nowhere else;
+            # test_agent_reconcile_is_bound_to_the_owner_unless_the_factory_setting_is_explicit).
             outputs = []
-            for login, account in (("synthetic-owner", ("--agent-for", "synthetic-owner")),
-                                   ("synthetic-org", ORG)):
+            for login, account in (("synthetic-owner", ("--agent-for", "synthetic-owner")),):
                 behavior["installations"] = {2002: login}
                 process, line, page, base, state = self.reconcile_start(endpoint, account)
                 answer = self.installed(base, state)
@@ -1402,9 +1526,9 @@ class AgentSetupTests(KeyFixture):
                 self.assertEqual(process.returncode, 0, stderr)
                 self.assertIn(f"Installation 2002 read back: {login}".encode(), stdout)
                 outputs += [line, page, answer, stdout, stderr]
-        self.assertEqual([c[0] for c in calls][2:], ["/app", "/app/installations/2002"] * 2)
+        self.assertEqual([c[0] for c in calls][2:], ["/app", "/app/installations/2002"])
         self.assertEqual(len(self.records()), 2)  # the store was not called again
-        self.assertEqual(self.phases(), ["applied"] * 3)
+        self.assertEqual(self.phases(), ["applied"] * 2)
         self.assert_nothing_left(*outputs)
         self.assert_calls_hold_no_key(calls)
 
@@ -1488,6 +1612,151 @@ class AgentSetupTests(KeyFixture):
                 self.assertEqual(self.phases(), ["applied"])  # registered and stored; not installed
                 self.assertNotIn(b"read back", stdout)
                 self.assert_nothing_left(line, page, answer, stdout, stderr)
+
+    def test_agent_app_created_by_another_account_is_refused_and_never_installed(self):
+        """C-G1/J48 (#606): the browser's signed-in account, not the named one,
+        owns a created App. A user App owned elsewhere is refused at conversion:
+        its key goes nowhere, nothing is offered for install, and its recorded id
+        blocks another registration."""
+        with fake_github(self.pem) as (endpoint, calls, behavior):
+            behavior["app_owner"] = "synthetic-elsewhere"
+            process, line, (_status, _headers, page), form, base = self.agent_start(endpoint)
+            _state, answer = self.callback(base, form, expect=403)
+            stdout, stderr = process.communicate(timeout=10)
+            self.assertNotEqual(process.returncode, 0)
+            self.assertNotIn(b"installations/new", answer + stdout)
+            self.assertIn(b"synthetic-elsewhere", stderr)
+            self.assertEqual(self.records(), [])
+            self.assertEqual(self.recorded_app(), {"app_id": 1001})
+            self.assertEqual(self.phases(), ["applied"])
+            again = self.agent_run(endpoint)
+            self.assertEqual(again.returncode, 6, again.stderr)
+            self.assertEqual([c[0] for c in calls], ["/app-manifests/synthetic-code/conversions"])
+            self.assert_nothing_left(line, page, answer, stdout, stderr, again.stderr)
+            # Review R2: after the documented cleanup (the foreign App deleted on
+            # GitHub, its recorded id removed), a fresh proposal and confirmation
+            # offer Create again; the refused registration's old id authorizes nothing.
+            refused = self.operation
+            (self.app / "app.json").unlink()
+            fresh = self.agent_preview(endpoint)
+            self.assertNotEqual(fresh["operation_id"], refused)
+            old = self.agent_run(endpoint, ("--yes", "--operation", refused))
+            self.assertNotEqual(old.returncode, 0)
+            self.assertEqual(old.stdout, b"")
+            behavior["app_owner"] = "synthetic-owner"
+            process, line, (status, _headers, page), form, base = self.agent_start(endpoint)
+            self.assertEqual(status, 200)
+            self.assertTrue(form.action.startswith("https://github.com/settings/apps/new?"), form.action)
+            process.kill()
+            process.communicate(timeout=10)
+
+    def test_agent_reconcile_is_bound_to_the_owner_unless_the_factory_setting_is_explicit(self):
+        """C-G1/J48 (#606): a delivered key's App must be the named account's own;
+        only --factory reconciles the pin's App on one of its named accounts."""
+        named = [i["account"] for i in self.pin["installations"]]
+        cases = [  # (account flags, App owner, installation account, read back)
+            (("--agent-for", "synthetic-owner"), "synthetic-elsewhere", "synthetic-owner", False),
+            (("--agent-for", named[0]), named[-1], named[0], False),
+            (("--agent-for", named[0], "--factory"), named[-1], named[0], True),
+            (("--agent-for", "synthetic-owner", "--factory"), named[-1], "synthetic-owner", False)]
+        for account, owner, installed, read_back in cases:
+            with self.subTest(account=account, owner=owner), fake_github(self.pem) as (endpoint, calls, behavior):
+                shutil.rmtree(self.state / "setup", ignore_errors=True)
+                (self.app / "app.json").unlink(missing_ok=True)
+                behavior.update(app_owner=owner, installations={2002: installed})
+                env = self.stored(True)
+                if not read_back:
+                    operation = self.agent_preview(endpoint, account, env)["operation_id"]
+                    result = self.agent_run(endpoint, ("--yes", "--operation", operation), account, env)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn(b"http://127.0.0.1", result.stdout)
+                    self.assertEqual([c[0] for c in calls], ["/app"])
+                    self.assertIsNone(self.recorded_app())
+                    self.assertEqual(self.phases(), ["proposed"])
+                    self.assert_nothing_left(result.stdout, result.stderr)
+                    continue
+                process, line, page, base, state = self.reconcile_start(endpoint, account, env)
+                self.installed(base, state)
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stderr)
+                self.assertIn(f"Installation 2002 read back: {named[0]}".encode(), stdout)
+
+    def test_agent_capability_reports_only_what_this_host_shows(self):
+        """setup-onboard.v1's secret_capability producer (#606), judged by the
+        contract's own checker: verified delivery only when the delivered id agrees,
+        no success without it, and a --secret-store seam never counts as the
+        CloudRoom save-secret contribution."""
+        spec = importlib.util.spec_from_file_location(
+            "setup_onboard_check", HERE.parent / "install/tests/setup-onboard-contract/check.py")
+        checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checker)
+        cases = [  # (registered, env, store, outcome, delivery, problems, failures, unproven)
+            (True, self.stored(False), False, "uncertain", "missing", [], [],
+             ["delivery_unverified", "key_download_unknown", "not_live"]),
+            (True, self.stored(True), False, "stored", "verified", [], [], ["key_download_unknown", "not_live"]),
+            (True, self.stored(True, None), False, "uncertain", "uncertain", [], [],
+             ["delivery_unverified", "key_download_unknown", "not_live"]),
+            (True, self.stored(True, "1002"), False, "failed", "refused", [], ["secret_store_failed"],
+             ["key_download_unknown", "not_live"]),
+            (False, self.stored(True), False, "uncertain", "uncertain", [], [],
+             ["delivery_unverified", "key_download_unknown", "not_live"]),
+            (True, self.stored(True), True, "stored", "verified", ["agent_save_unavailable"], [], ["not_live"])]
+        for registered, env, store, outcome, delivery, problems, failures, unproven in cases:
+            with self.subTest(registered=registered, store=store, delivered=env.get("OPENWIZ_GITHUB_APP_ID")):
+                (self.app / "app.json").unlink(missing_ok=True)
+                if registered:
+                    (self.app / "app.json").write_text('{"app_id": 1001}')
+                    (self.app / "app.json").chmod(0o600)
+                result = self.agent_run("http://127.0.0.1:1", ("--capability",), env=env, store=store)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                document = json.loads(result.stdout)
+                report = checker.check(document)
+                self.assertEqual((document["outcome"], document["delivery"]["state"]), (outcome, delivery))
+                self.assertEqual((report.problems, report.failures, report.unproven),
+                                 (problems, failures, unproven))
+                self.assertEqual(document["app_registrations"], 1 if registered else 0)
+                self.assertEqual(self.records(), [])  # reads only: no store call
+                self.assert_nothing_left(result.stdout, result.stderr)
+
+    def test_agent_factory_reconcile_works_from_the_installed_runtime(self):
+        """Review R1 (#606): the installed runtime ships no contracts/ folder, so
+        the factory's named installations must travel with the tool itself; the
+        same --factory reconciliation works there as from the checkout, and an
+        unnamed account is still refused."""
+        runtime = Path(self.tmp.name) / "installed/current/runtime"
+        for source, name in ((HERE / "setup.py", "github-app/setup.py"), (HERE / "app.py", "github-app/app.py"),
+                             (HERE / "manifest.json", "github-app/manifest.json"),
+                             (HERE.parent / "install/setup/store.py", "setup/store.py")):
+            (runtime / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(source, runtime / name)
+        self.tool = runtime / "github-app"
+        named = [i["account"] for i in self.pin["installations"]]
+        for account, read_back in ((named[0], True), ("synthetic-owner", False)):
+            with self.subTest(account=account), fake_github(self.pem) as (endpoint, calls, behavior):
+                shutil.rmtree(self.state / "setup", ignore_errors=True)
+                (self.app / "app.json").unlink(missing_ok=True)
+                behavior.update(app_owner=named[-1], installations={2002: account})
+                flags, env = ("--agent-for", account, "--factory"), self.stored(True)
+                if not read_back:
+                    operation = self.agent_preview(endpoint, flags, env)["operation_id"]
+                    result = self.agent_run(endpoint, ("--yes", "--operation", operation), flags, env)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual([c[0] for c in calls], ["/app"])
+                    continue
+                process, _line, _page, base, state = self.reconcile_start(endpoint, flags, env)
+                self.installed(base, state)
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stderr)
+                self.assertIn(f"Installation 2002 read back: {account}".encode(), stdout)
+
+    def test_factory_installations_are_exactly_the_identity_contracts_pin(self):
+        """Review R1 (#606): the tool's own factory allowlist is the reviewed pin,
+        so factory mode accepts no installation the contract dropped and refuses
+        none it added."""
+        sys.path.insert(0, str(HERE))
+        import app as tool  # noqa: E402
+        pinned = {i["account"].lower(): {r.lower() for r in i["repositories"]} for i in self.pin["installations"]}
+        self.assertEqual(tool.factory_installations(), pinned)
 
     def test_agent_mode_needs_a_valid_account_and_store(self):
         relative = ("--secret-store", "fake-secret-store")

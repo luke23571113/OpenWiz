@@ -23,7 +23,7 @@ class Lanes(unittest.TestCase):
         self.sha = hashlib.sha256(raw.encode()).hexdigest()
         (self.path / 'ci-selection.json').write_text(raw)
         self.dispatch = {**dict.fromkeys(('build-web','lint-rust','export-rust','export-web','build-site','image-skills'), True),
-                         'rust': True, 'web': True, 'site': True, 'release': True, 'toolkit': True,
+                         'rust': True, 'web': True, 'site': True, 'release': True,
                          'skills': ['launch-fleet','plan-graph','triage'], 'trace': False, 'planted': False,
                          'plan_sha256': self.sha}
         (self.path / 'ci-dispatch.json').write_text(json.dumps(self.dispatch))
@@ -33,7 +33,6 @@ class Lanes(unittest.TestCase):
         self.expected = {k: self.plan['lanes'][k]['tests'] for k in ('always','rust','web')}
         self.expected.update(site=['site:build','site:test'], release=['release:package'])
         self.expected.update({'skill:'+s['skill']: s['tests'] for s in self.plan['lanes']['skills']})
-        self.expected['prerequisite:toolkit'] = []
         self.expected['build:web_export'] = []
         for name, tests in self.expected.items():
             self.receipt(name, tests)

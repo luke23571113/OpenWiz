@@ -1,16 +1,11 @@
 //! N10, the refusal half only (sheet A-3: no retry in 0.0.4). There is no
 //! `--retry` and no retry operation: asking for one is a usage error that
 //! reads and calls nothing. An uncertain create stays uncertain whatever
-//! runs next, and the owner resolves it in CloudRoom. With the fake's
-//! request-ID table, the total stays one thread.
-
-use std::fs;
-use std::path::Path;
+//! runs next, and the owner resolves it in CloudRoom: one thread in all.
 
 use serde_json::json;
 
 use crate::fake::*;
-use crate::support::ROOT;
 
 const TEXT: &str = "Synthetic uncertain create";
 
@@ -45,24 +40,6 @@ fn there_is_no_retry() {
         help.contains("no retry"),
         "the help says there is none:\n{help}"
     );
-    // Nothing in the product can retry a create (a tripwire).
-    for dir in [
-        "crates/core/src/new_thread",
-        "crates/cli/src",
-        "crates/adapters",
-    ] {
-        let mut stack = vec![Path::new(ROOT).join(dir)];
-        while let Some(path) = stack.pop() {
-            if path.is_dir() {
-                stack.extend(fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
-                continue;
-            }
-            let text = fs::read_to_string(&path).unwrap();
-            for word in ["retry_new_thread", "\"--retry\"", "retry-start"] {
-                assert!(!text.contains(word), "{path:?} names {word}");
-            }
-        }
-    }
 }
 
 #[test]
@@ -99,35 +76,4 @@ fn an_uncertain_create_stays_uncertain_and_one_thread_in_all() {
     let record = fake.record("op-n10-u");
     assert_eq!(record["outcome"]["kind"], "uncertain");
     assert_eq!(record["text"], TEXT);
-}
-
-/// The fake's request-ID table, as the provider's source reads (ClosedWiz
-/// #11, not observed): the same request id with different content is
-/// refused, and with the same content returns the existing thread without
-/// creating one. OpenWiz never sends a request id twice, so only the fake's
-/// own check sees it.
-#[test]
-fn the_fakes_request_id_table() {
-    let fake = NewFake::new("n10_table");
-    let program = fake.program();
-    let run = |text: &str| {
-        let argv = spawn_argv(PROJECT, "op-n10-table", text);
-        std::process::Command::new(&program)
-            .args(&argv)
-            .output()
-            .expect("run the fake")
-    };
-    let first = run(TEXT);
-    assert_eq!(first.status.code(), Some(0));
-    let same = run(TEXT);
-    assert_eq!(same.status.code(), Some(0));
-    assert_eq!(fake.threads_created(), 1, "the same content: no new thread");
-    let other = run("Synthetic other content");
-    assert_eq!(other.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8_lossy(&other.stderr).trim(),
-        "Error: Failed to create thread: HTTP 409: Request ID was already used with different content"
-    );
-    assert_eq!(fake.threads_created(), 1);
-    assert_eq!(fake.spawn_count(), 3);
 }

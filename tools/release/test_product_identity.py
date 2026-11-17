@@ -37,7 +37,6 @@ RUNTIME = {
     'tools/install/setup/store.py': b'# Synthetic store.\n',
     'tools/install/platform/runtime.py': b'# Synthetic platform runtime.\n',
     'tools/install/access/access.py': b'# Synthetic access tool.\n',
-    'tools/install/engine/engine.py': b'# Synthetic engine.\n',
     'tools/github-app/setup.py': b'# Synthetic App setup.\n',
     'tools/github-app/app.py': b'# Synthetic App.\n',
     'tools/github-app/manifest.json': b'{"name":"Synthetic App"}\n',
@@ -47,7 +46,6 @@ PACKAGED = {'tools/install/install.py': 'runtime/install.py', 'tools/install/pul
             'tools/install/setup/store.py': 'runtime/setup/store.py',
             'tools/install/platform/runtime.py': 'runtime/platform/runtime.py',
             'tools/install/access/access.py': 'runtime/access/access.py',
-            'tools/install/engine/engine.py': 'runtime/engine/engine.py',
             'tools/github-app/setup.py': 'runtime/github-app/setup.py',
             'tools/github-app/app.py': 'runtime/github-app/app.py',
             'tools/github-app/manifest.json': 'runtime/github-app/manifest.json'}
@@ -194,8 +192,8 @@ class TrackedRuntimeProvenance(Repository):
         self.refused(newer)
 
     def test_requested_older_source_refuses_newer_runtime_bytes(self):
-        (self.repo / 'tools/install/engine/engine.py').write_bytes(b'# Synthetic engine, revised.\n')
-        self.commit('revise synthetic engine')
+        (self.repo / 'tools/install/access/access.py').write_bytes(b'# Synthetic access tool, revised.\n')
+        self.commit('revise synthetic access tool')
         self.refused(self.source)
 
     def test_uncommitted_edits_to_any_tracked_runtime_file_refuse(self):

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""The cold-consumer install journey (#1109, IF1-IF9 integration), on fixtures only.
+"""The cold-consumer install journey (#1109, IF1-IF9 integration; joined in #636), on fixtures only.
 
 From the one install line to a first fleet, in the confirmed order the packaged
 install skill gives (its numbered sections, read from the installed copy): the
 actual entry `tools/install/install` checks the machine, downloads a synthetic
 release through an injected transport and installs it; the installed runtime's
-own setup tool checks connections and prepares the project against T3's
-recording fakes; the installed `openwiz engine` runs the installed engine; and
-the first fleet replays T6's recorded conversation through the installed
-onboarding helper and launch-fleet scripts. The consumer is a plain folder with
-no OpenWiz sources and no skills checkout. Recording `cargo`, `rustc`, `npm`,
-`node` and `npx` come first on PATH: any call fails the journey.
+own setup tool checks connections against T3's recording fakes; and the first
+fleet replays the onboarding's recorded conversation through the installed
+onboarding helper and launch-fleet scripts. At its Connect step the installed
+setup, sign-in skip, App and `openwiz init` tools run for the one chosen
+repository against one recording GitHub (T5's world, through gh.py), and the
+onboarding carries the state they leave (#636). No engine or tick is run: the
+first fleet is one launch-fleet fleet thread. The consumer is a plain folder
+with no OpenWiz sources and no skills checkout. Recording `cargo`, `rustc`,
+`npm`, `node` and `npx` come first on PATH: any call fails the journey.
 
 Fixtures prove the composition, its gates and its refusals; never a real
 release, account, machine, elapsed time or live behaviour.
@@ -46,7 +49,7 @@ VERSION = '0.0.99'
 NAME = 'openwiz-' + TARGET
 BASE = 'https://github.com/openwizdev/OpenWiz/releases/'
 LINE = 'Install OpenWiz from github.com/openwizdev/OpenWiz'
-ORDER = ['Preflight', 'Verified install', 'Setup and connections', 'Engine', 'Explain', 'First fleet']
+ORDER = ['Preflight', 'Verified install', 'Setup and connections', 'Explain', 'First fleet']
 # #2293 (PR6, copy only): contracts/public-offer.v1.md's free-only copy, as independent literals.
 FREE_ONLY = ('OpenWiz is free now. Paid plans come later. '
              'CloudRoom and model charges are separate and not included.')
@@ -59,10 +62,27 @@ PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write', 'pull_req
 TOKEN = 'ghs_SyntheticInstallationToken0000000000000001'
 PERSONAL = 'gho_SyntheticPersonalToken00000000000000000002'
 
+
+def settings_table(title, provider, model):
+    return ('## %s\n\n| Setting | Value | `room-cli thread spawn` flag |\n| --- | --- | --- |\n'
+            '| Harness | Synthetic | `--provider %s` |\n| Model | Synthetic | `--model %s` |\n'
+            '| Effort | High | `--reasoning-level high` |\n\nSource: synthetic owner, 2026-11-01.\n\n' % (title, provider, model))
+
+
+# The fleet settings the setup skill writes from the owner's recorded choice (#636).
+FLEET_SETTINGS = ('# Fleet settings\n\nSynthetic settings.\n\n'
+                  + settings_table('Builder', 'codex', 'syn-codex-model-01')
+                  + settings_table('Builder for small tickets', 'codex', 'syn-codex-model-01')
+                  + settings_table('Reviewer for GPT-built', 'claude-code', 'syn-claude-model-01')
+                  + '## Test commands\n\n| # | Folder | Command | CI check |\n| --- | --- | --- | --- |\n'
+                  '| 1 | root | `make test` | `test` |\n\nSource: the synthetic consumer\'s CI workflow.\n\n'
+                  '## CI checks\n\n| Check | Runs | Required on |\n| --- | --- | --- |\n| `test` | 1 | `main` |\n\n'
+                  'Source: the synthetic consumer\'s CI workflow.\n\n## Standing merge rules\n\n'
+                  'None yet: every merge waits for the user.\n\nSource: synthetic owner, 2026-11-01.\n')
+
 sys.path.insert(0, str(TOOLS))
 sys.dont_write_bytecode = True
-from fixture_bundle import handover_runtime  # noqa: E402
-from install import HANDOVER_RUNTIME, PROGRAMS, REQUIRED, sha  # noqa: E402
+from install import PROGRAMS, REQUIRED, sha  # noqa: E402
 
 
 def module(name, path):
@@ -97,6 +117,7 @@ def bundle_assets(source):
     for program in PROGRAMS:
         assets[program] = b'#!/bin/sh\nexit 0\n'
     assets['openwiz'] = (HERE / 'fake_openwiz').read_bytes()
+    assets['runtime/cloudroom/cloudroom.py'] = (HERE / 'fake_cloudroom.py').read_bytes()  # #636: recording CloudRoom
     assets['web/index.html'] = b'<!doctype html><title>OpenWiz</title>\n'
     assets['web/setup.html'] = b'<!doctype html><title>Set up OpenWiz</title>\n'
     for name in ('install.py', 'pull.py'):
@@ -104,7 +125,6 @@ def bundle_assets(source):
     assets.update(tracked(TOOLS / 'setup', 'runtime/setup/'))
     assets.update(tracked(ROOT / 'tools/github-app', 'runtime/github-app/'))
     assets['runtime/access/access.py'] = (TOOLS / 'access/access.py').read_bytes()
-    assets.update(handover_runtime())
     for skill in ('setup', 'grill', 'plan-graph', 'launch-fleet', 'onboard', 'install'):
         assets.update(tracked(ROOT / 'skills' / skill, f'runtime/skills/{skill}/'))
     assets = {k: v for k, v in assets.items() if not re.search(r'(^|/)test[^/]*$|/tests?/', k)}
@@ -164,7 +184,7 @@ class Transport:
 class AppAPI:
     """GitHub's App API on 127.0.0.1 for the installed setup check; records each request."""
 
-    def __init__(self, case):
+    def __init__(self, case, repository=REPO):
         requests = self.requests = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -181,6 +201,8 @@ class AppAPI:
 
             def do_GET(self):
                 requests.append(('GET', self.path))
+                if self.path == '/app':  # the setup check's App-owner read (#606 review R3)
+                    return self.reply(200, {'id': 1001, 'owner': {'login': 'synthetic-owner'}})
                 if self.path == '/app/installations':
                     return self.reply(200, [{'id': 2002, 'app_id': 1001, 'account': {'login': 'synthetic-owner'},
                                              'permissions': PROFILE, 'repository_selection': 'selected',
@@ -195,7 +217,7 @@ class AppAPI:
                     return self.reply(201, {'token': TOKEN, 'expires_at': expiry,
                                             'permissions': body.get('permissions', {}),
                                             'repository_selection': 'selected',
-                                            'repositories': [{'full_name': REPO}]})
+                                            'repositories': [{'full_name': repository}]})
                 self.reply(404, {'message': 'synthetic: unexpected route'})
 
         self.server = HTTPServer(('127.0.0.1', 0), Handler)
@@ -226,11 +248,15 @@ class Consumer:
             shim = self.shims / tool
             shim.write_text('#!/bin/sh\necho "%s $*" >> "%s"\nexit 97\n' % (tool, self.build_log))
             shim.chmod(0o755)
-        # T3's recording `gh` (the agents' own login), alone in its own folder.
+        # One recording GitHub for setup, sign-in, App skip and init (#636): T5's
+        # world through the journey's gh.py, alone in its own folder.
         self.gh = self.dir / 'gh'
         self.gh.mkdir()
-        (self.gh / 'gh').write_text('#!/bin/sh\nexec /usr/bin/python3 -I "%s" "$@"\n' % (CONNECT / 'gh'))
+        (self.gh / 'gh').write_text('#!/bin/sh\nexec /usr/bin/python3 -I "%s" "$@"\n' % (HERE / 'gh.py'))
         (self.gh / 'gh').chmod(0o755)
+        self.world = self.dir / 'github.json'
+        self.engine_log = self.dir / 'engine.log'
+        self.github(REPO)
         self.fakes = self.dir / 'fakes'
         self.fakes.mkdir()
         os.symlink(ONBOARD_TESTS, self.fakes / 'onboard')
@@ -241,8 +267,36 @@ class Consumer:
             'cloudroom': 'ok', 'repository': REPO, 'identity': 'person', 'settings': True,
             'issue': {'number': 7, 'state': 'open'}, 'threads': {'thr_synthetic_answer': 'prj_synthetic'},
             'harnesses': [{'harness': 'claude-code', 'provider': 'claude-code', 'attachments': None,
-                           'steer': None, 'models': [{'model': 'synthetic-model', 'efforts': ['high']}]}]}))
+                           'steer': None, 'models': [{'model': 'synthetic-model', 'efforts': ['high']}]},
+                          {'harness': 'codex', 'provider': 'codex', 'attachments': None, 'steer': None,
+                           'models': [{'model': 'syn-codex-model-01', 'efforts': ['low', 'medium', 'high']}]}]}))
         self.outputs = []
+
+    def github(self, *repositories):
+        """T5's recording GitHub: each repository private, owned by the signed-in user,
+        holding the filled fleet settings, with its service-record issue."""
+        world = json.loads(self.world.read_text()) if self.world.exists() else {
+            'user': {'login': 'synthetic-owner', 'type': 'User'}, 'repos': {}, 'faults': [], 'log': [], 'issues': {}}
+        for name in repositories:
+            world['repos'][name.lower()] = {
+                'full_name': name, 'private': True, 'visibility': 'private', 'default_branch': 'main',
+                'permissions': {'push': True}, 'owner': {'login': name.split('/')[0], 'type': 'User'},
+                'description': None, 'homepage': None, 'labels': [], 'pulls': [],
+                'branches': {'main': {'docs/agents/fleet.md': FLEET_SETTINGS}}}
+            world['issues']['%s#7' % name] = {'number': 7, 'state': 'open'}
+        self.world.write_text(json.dumps(world))
+
+    def merge_brain(self, name):
+        """The owner merges init's visible brain pull request on GitHub."""
+        world = json.loads(self.world.read_text())
+        repo = world['repos'][name.lower()]
+        repo['branches']['main'].update(repo['branches']['openwiz/brain'])
+        for pull in repo['pulls']:
+            pull.update(state='closed', merged_at='2026-11-01T11:40:00Z')
+        self.world.write_text(json.dumps(world))
+
+    def github_writes(self):
+        return [call for call in json.loads(self.world.read_text())['log'] if call[0] != 'GET']
 
     def env(self):
         env = {k: v for k, v in os.environ.items() if k in ('LANG', 'LC_ALL', 'TMPDIR')}
@@ -250,7 +304,8 @@ class Consumer:
             env['JOURNEY_HOST'] = self.host
         env.update(HOME=str(self.home), PATH='%s:%s:/usr/bin:/bin' % (self.shims, self.gh),
                    GH_TOKEN=PERSONAL, SYNTHETIC_SCENARIO=str(self.scenario),
-                   SYNTHETIC_CALLS=str(self.calls), JOURNEY_FAKES=str(self.fakes))
+                   SYNTHETIC_CALLS=str(self.calls), JOURNEY_FAKES=str(self.fakes),
+                   FAKE_GH_WORLD=str(self.world), JOURNEY_ENGINE_LOG=str(self.engine_log))
         return env
 
     def run(self, argv, check=None):
@@ -364,41 +419,15 @@ class InstallJourney(unittest.TestCase):
 
         def setup_and_connections():
             # The installed runtime's own setup tool; each component's result
-            # code is the evidence the setup page turns into its states.
-            tool = [sys.executable, '-I', '-B', str(self.build / 'runtime/setup/setup.py')]
+            # code is the evidence the setup page turns into its states. The
+            # repository-bound connections wait for the onboarding's Connect step.
             api = AppAPI(self)
-            check = [*tool, 'check', '--state-dir', str(self.state), '--api-base', api.base]
+            check = [sys.executable, '-I', '-B', str(self.build / 'runtime/setup/setup.py'), 'check',
+                     '--state-dir', str(self.state), '--api-base', api.base]
             results = json.loads(c.run(check, 0).stdout)['results']
-            self.assertEqual((results['github_app'], results['project']), ('app_missing', 'project_unprepared'))
+            self.assertEqual((results['cloudroom'], results['github_app'], results['project']),
+                             ('cloudroom_login_verified', 'app_missing', 'project_unprepared'))
             self.assertEqual(api.requests, [], 'no App API call before an App is connected')
-            prepare = [*tool, 'prepare', '--state-dir', str(self.state), '--repository', REPO,
-                       '--project', 'prj_synthetic', '--operator', 'synthetic-owner', '--service-issue', '7',
-                       '--answer-thread', 'thr_synthetic_answer', '--harness', 'claude-code',
-                       '--model', 'synthetic-model', '--effort', 'high']
-            proposed = json.loads(c.run(prepare, 0).stdout)
-            self.assertEqual(proposed['phase'], 'proposed')
-            self.assertEqual(json.loads(c.run(check, 0).stdout)['results']['project'], 'project_unprepared',
-                             'a proposal saves nothing')
-            applied = json.loads(c.run([*prepare, '--yes', '--operation', proposed['operation_id']], 0).stdout)
-            self.assertEqual(applied['phase'], 'applied')
-            self.connect_app()
-            results = json.loads(c.run(check, 0).stdout)['results']
-            self.assertEqual({k: results[k] for k in ('harness', 'personal_github', 'github_app', 'project')},
-                             {'harness': 'harness_listed', 'personal_github': 'identity_verified',
-                              'github_app': 'app_verified', 'project': 'project_verified'}, results)
-            self.assertTrue(any(r[0] == 'POST' for r in api.requests), 'the App token was minted to prove access')
-
-        def engine():
-            openwiz = str(self.build / 'openwiz')
-            preview = c.run([openwiz, 'engine', 'preview', '--location', 'local',
-                             '--state-dir', str(self.state), '--json'])
-            value = json.loads(preview.stdout)
-            self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
-            self.assertEqual(value['schema'], 'openwiz.engine.v1')
-            text = json.dumps(value)
-            self.assertIn('unknown', text, 'no measurement: the cost stays unknown')
-            status = json.loads(c.run([openwiz, 'engine', 'status', '--state-dir', str(self.state), '--json'], 0).stdout)
-            self.assertNotEqual(status.get('state'), 'running', 'a preview starts no engine')
 
         def explain():
             installed = self.build / 'runtime/skills'
@@ -411,25 +440,25 @@ class InstallJourney(unittest.TestCase):
                 self.assertIn(concept, quote[0])
 
         def first_fleet():
-            onboard = module('onboard_journey', ONBOARD_TESTS / 'test_journey.py')
-            installed = self.build / 'runtime/skills/onboard'
-            onboard.SKILL = installed / 'SKILL.md'
-            onboard.HELPER = installed / 'scripts/onboard.py'
-            j = onboard.Journey(self)
-            j.openwiz = self.build / 'openwiz'
-            env = j.env
-            j.env = lambda: dict(env(), PATH='%s:%s' % (c.shims, env()['PATH']), JOURNEY_FAKES=str(c.fakes))
+            j = self.onboarding(c)
             results = j.replay()
             for turn, result in results:
                 self.assertEqual(result.returncode, turn['exit'], (turn['tool'], result.stdout, result.stderr))
-            self.assertEqual(len(j.logged('fleet.tick')), 1, 'the approved frontier starts once')
-            watch = results[-1][1].stdout
-            self.assertIn('5 tickets: 3 building, 2 blocked', watch)
-            self.assertNotEqual(Path(onboard.HELPER).resolve().parents[3], ROOT.resolve())
+            carried = next(r for t, r in results if t['tool'][0] == 'continue').stdout
+            skipped = any(t.get('setup') == 'personal_login' for t in self.onboard.JOURNEY['turns'])
+            acting = ('synthetic-owner, your personal GitHub login (the App is skipped)' if skipped
+                      else 'your OpenWiz GitHub App')
+            for line in ('Acting identity: %s.' % acting,
+                         'Private brain: %s (in repository).' % self.repository,
+                         'Next: the grill (the explanation is done)'):
+                self.assertIn(line, carried)
+            self.assertEqual(len(j.spawns()), 1, 'one fleet thread starts the approved frontier')
+            self.assertEqual([call['form'] for call in j.logged()], ['fleet'], 'the installed openwiz only reads progress')
+            self.assertIn('5 tickets: 3 building, 2 blocked', results[-1][1].stdout)
+            self.assertNotEqual(Path(self.onboard.HELPER).resolve().parents[3], ROOT.resolve())
 
         runners = {'Preflight': preflight, 'Verified install': verified_install,
-                   'Setup and connections': setup_and_connections, 'Engine': engine,
-                   'Explain': explain, 'First fleet': first_fleet}
+                   'Setup and connections': setup_and_connections, 'Explain': explain, 'First fleet': first_fleet}
         skill = ROOT / 'skills/install/SKILL.md'
         self.assertEqual(steps(skill), ORDER)
         for title in steps(skill):
@@ -443,6 +472,7 @@ class InstallJourney(unittest.TestCase):
         self.assertFalse(any(p.startswith('private/') or '/private/' in p for p in published['assets']))
         self.assertEqual(sorted(p.name for p in c.project.iterdir()), ['README.md', 'docs'],
                          'the consumer has no OpenWiz sources or skills checkout')
+        self.assertFalse(c.engine_log.exists(), 'no engine or tick call')
         for output in c.outputs:
             self.assertNotIn(TOKEN, output)
             self.assertNotIn(PERSONAL, output)
@@ -548,70 +578,129 @@ class InstallJourney(unittest.TestCase):
         c.entry('install', '--assets', str(c.downloads), '--target', TARGET, '--root', str(c.root), check=5)
         self.assertEqual(list((c.dir / 'target').iterdir()), [], 'nothing is made through a link')
 
-    def installed(self, c, setup=False):
+    def installed(self, c):
         result, _ = self.install(c, release(c.dir / 'published'))
-        build, state = Path(result['build']), Path(result['state_root'])
-        if setup:
-            # Setup before the engine, as the skill orders it: its documented
-            # check, the project prepared, the App connected, then checked again.
-            self.build, self.state = build, state
-            skill = build / 'runtime/skills/install/SKILL.md'
-            api = AppAPI(self)
-            check = [*documented(skill, 'setup.py check', build=build, state=state, root=c.root), '--api-base', api.base]
-            c.run(check, 0)
-            prepare = [sys.executable, '-I', '-B', str(build / 'runtime/setup/setup.py'), 'prepare', '--state-dir', str(state),
-                       '--repository', REPO, '--project', 'prj_synthetic', '--operator', 'synthetic-owner',
-                       '--service-issue', '7', '--answer-thread', 'thr_synthetic_answer', '--harness', 'claude-code',
-                       '--model', 'synthetic-model', '--effort', 'high']
-            proposed = json.loads(c.run(prepare, 0).stdout)
-            c.run([*prepare, '--yes', '--operation', proposed['operation_id']], 0)
+        return Path(result['build']), Path(result['state_root'])
+
+    # The onboarding's Connect step (#636), on the installed tools, for one repository.
+    def tool(self, c, name, *args, check=0):
+        program = [sys.executable, '-I', '-B', str(self.build / 'runtime/setup' / name)]
+        return c.run([*program, *args], check)
+
+    def confirm(self, c, name, *args):
+        """A tool's preview, then the same with --yes and its operation id: the owner's yes."""
+        proposed = json.loads(self.tool(c, name, *args).stdout)
+        self.assertEqual(proposed['phase'], 'proposed', proposed)
+        applied = json.loads(self.tool(c, name, *args, '--yes', '--operation', proposed['operation_id']).stdout)
+        self.assertEqual(applied['phase'], 'applied', applied)
+        return applied
+
+    def init(self, c, *args, check=0):
+        return c.run([str(self.build / 'openwiz'), 'init', '--repository', self.repository,
+                      '--state-dir', str(self.state), '--json', *args], check)
+
+    def connect(self, c, identity='skip', api=None):
+        """Sign-in read-back, prepare, the App or the explicit skip, init and the check:
+        each disclosed effect previewed, then applied on its yes. Returns the check results."""
+        state = ['--state-dir', str(self.state)]
+        c.github(self.repository)
+        login = json.loads(c.run([sys.executable, '-I', '-B', str(self.build / 'runtime/setup/github_login.py'),
+                                  'status', '--repository', self.repository, *state], 0).stdout)
+        self.assertIn('synthetic-owner', json.dumps(login), 'the existing login is read back and reused')
+        self.confirm(c, 'setup.py', 'prepare', *state, '--repository', self.repository, '--project', 'prj_synthetic',
+                     '--operator', 'synthetic-owner', '--service-issue', '7', '--answer-thread', 'thr_synthetic_answer',
+                     *[x for k in ('harness', 'model', 'effort') for x in ('--' + k, self.settings[k])])
+        if identity == 'skip':
+            self.confirm(c, 'github_login.py', 'skip-app', *state)
+        else:
             self.connect_app()
-            results = json.loads(c.run(check, 0).stdout)['results']
-            self.assertEqual(results['project'], 'project_verified', 'the documented check reads the install state')
-        return build, state
+        preview = json.loads(self.init(c).stdout)
+        self.assertEqual((preview['outcome'], preview['brain']['location']), ('proposed', 'in_repository'))
+        applied = json.loads(self.init(c, '--yes', '--operation', preview['operation_id']).stdout)
+        self.assertEqual(applied['outcome'], 'applied', applied)
+        check = ['check', *state] + (['--api-base', api.base] if api else [])
+        return check
 
-    def test_the_documented_engine_commands_use_the_install_state(self):
-        # R3: the skill's own commands, as written, keep every setup effect in the install's state.
-        c = Consumer(self)
-        build, state = self.installed(c, setup=True)
-        skill = build / 'runtime/skills/install/SKILL.md'
-        values = {'build': build, 'state': state, 'root': c.root}
-        preview = c.run(documented(skill, 'engine preview', **values), 0)
-        operation = json.loads(preview.stdout)
-        saved = json.loads((state / 'setup/state.json').read_text()) if (state / 'setup/state.json').exists() else {}
-        self.assertIn(operation['operation']['operation_id'] if 'operation' in operation else operation.get('operation_id'),
-                      json.dumps(saved), 'the preview is saved in the install state')
+    def onboarding(self, c, identity=None, api=None):
+        """The onboarding journey through the installed helper, its Connect step on the installed tools."""
+        onboard = module('onboard_journey', ONBOARD_TESTS / 'test_journey.py')
+        self.repository = onboard.JOURNEY['repo']  # the conversation's one repository
+        said = onboard.answers(onboard.JOURNEY['turns'])
+        self.settings = {k: said[k] for k in ('harness', 'model', 'effort')}  # answered once, at Connect
+        installed = self.build / 'runtime/skills/onboard'
+        onboard.SKILL = installed / 'SKILL.md'
+        onboard.HELPER = installed / 'scripts/onboard.py'
+        self.onboard = onboard
+        j = onboard.Journey(self)
+        j.openwiz = self.build / 'openwiz'
+        j.setup_dir = self.state
+        env = j.env
+        j.env = lambda: dict(env(), PATH='%s:%s' % (c.shims, env()['PATH']), JOURNEY_FAKES=str(c.fakes))
 
-    def test_the_documented_local_activation_reaches_its_existing_gates(self):
-        # R4: the documented confirmation names the installation and reaches the
-        # existing holds on every host; nothing is activated or started anywhere.
-        # On the PC's own target (Linux x86_64) T9 records one held PC activation;
-        # on any other host the PC path stops before any record.
-        expected = {'Linux/x86_64': (6, 'held', 'held', 'No service was started'),
-                    'Linux/aarch64': (5, 'not_activated', 'absent', 'no service was started'),
-                    'Darwin/arm64': (5, 'not_activated', 'absent', 'no service was started')}
-        for host, (code, status, pc, words) in expected.items():
-            with self.subTest(host=host):
+        def write_setup(recorded):
+            # The real installed setup, not a synthetic state: the conversation
+            # names the identity (its App or the explicit skip); the brain's pull
+            # request is open until the owner merges it, so nothing carries yet.
+            chosen = identity or ('skip' if recorded['identity']['selected'] == 'personal_login' else 'app')
+            check = self.connect(c, chosen, api or AppAPI(self, self.repository))
+            results = json.loads(self.tool(c, 'setup.py', *check).stdout)['results']
+            self.assertEqual(results['project'], 'project_settings_missing', 'an unmerged brain is not ready')
+            early = j.helper(['continue', '--explained'])
+            self.assertEqual(early.returncode, 5, early.stdout)
+            self.assertIn('Project: not verified (project_settings_missing)', early.stdout)
+            c.merge_brain(self.repository)
+            results = json.loads(self.tool(c, 'setup.py', *check).stdout)['results']
+            self.assertEqual((results['personal_github'], results['project']), ('identity_verified', 'project_verified'))
+            self.assertEqual(results['github_app'], 'app_missing' if chosen == 'skip' else 'app_verified')
+        j.write_setup = write_setup
+        return j
+
+    def test_both_identities_continue_through_the_installed_tools(self):
+        # #636 (P2, P4 at the installed seam): the explicit skip and the user's
+        # own App each carry the same repository, project, brain and agents into
+        # onboarding. Catches an App failure read as a skip, a skip read as a
+        # verified App, or a brain that is not the one init made.
+        for identity, acting in (('skip', 'synthetic-owner, your personal GitHub login (the App is skipped)'),
+                                 ('app', 'your OpenWiz GitHub App')):
+            with self.subTest(identity):
                 c = Consumer(self)
-                c.host = host
-                build, state = self.installed(c, setup=True)
-                skill = build / 'runtime/skills/install/SKILL.md'
-                values = {'build': build, 'state': state, 'root': c.root}
-                preview = json.loads(c.run(documented(skill, 'engine preview', **values), 0).stdout)
-                operation = preview['engine']['operation_id']
-                self.assertEqual([p for p in build.rglob('*') if p.name == '__pycache__'], [],
-                                 'the documented setup commands leave the verified build unchanged')
-                activated = c.run(documented(skill, 'engine activate', operation=operation, **values))
-                held = json.loads(activated.stdout)
-                self.assertNotIn('Name this installation with --root', held['reason'])
-                self.assertNotIn('not the verified selected installation', held['reason'])
-                self.assertEqual((activated.returncode, held['activation_allowed'], held['location_status'],
-                                  held['pc_activation']['state'], held['operation']['phase']),
-                                 (code, False, status, pc, 'proposed'), held['reason'])
-                self.assertIn(words, held['reason'])
-                status_now = json.loads(c.run(documented(skill, 'engine status', **values), 0).stdout)
-                self.assertEqual((status_now['activation_allowed'], status_now['location_status']), (False, status),
-                                 'status reads the same hold, never running')
+                self.build, self.state = self.installed(c)
+                api = AppAPI(self, 'synthetic-owner/synthetic-sheep')
+                j = self.onboarding(c, identity, api)
+                results = j.replay(until='grill')
+                carried = next(r for t, r in results if t['tool'][0] == 'continue')
+                self.assertEqual(carried.returncode, 0, carried.stdout)
+                self.assertIn('Acting identity: %s.' % acting, carried.stdout)
+                self.assertIn('Private brain: %s (in repository).' % self.repository, carried.stdout)
+                saved = json.loads((self.state / 'setup/state.json').read_text())
+                self.assertEqual(saved['identity']['app_choice'] if 'identity' in saved else 'none',
+                                 'skip' if identity == 'skip' else 'none', 'only the owner\'s skip selects the login')
+                self.assertEqual(any(r[0] == 'POST' for r in api.requests), identity == 'app',
+                                 'the App path proves access with an installation token; the skip mints none')
+
+    def test_a_resumed_connect_repeats_no_effect(self):
+        # #636 (P5): an interrupted Connect run again reuses each operation and
+        # reads before it writes. Catches a second label, branch, file or pull
+        # request, or a changed onboarding record, from a repeated yes.
+        c = Consumer(self)
+        self.build, self.state = self.installed(c)
+        j = self.onboarding(c)
+        j.replay(until='grill')
+        writes = c.github_writes()
+        brain = 'repos/%s/' % self.repository
+        self.assertEqual(writes, [['POST', brain + 'labels'], ['POST', brain + 'git/refs']]
+                         + [['PUT', brain + 'contents/.openwiz/brain/' + f]
+                            for f in ('README.md', 'settings.json', 'grills/README.md', 'decisions/README.md')]
+                         + [['POST', brain + 'pulls']], 'one label, branch, four files and one pull request')
+        before = (j.state.read_text(), (self.state / 'setup/state.json').read_text())
+        init_ops = [o for o in json.loads(before[1])['operations'] if 'brain' in ' '.join(o['effects']).lower()]
+        self.assertTrue(init_ops, 'init saved its operation')
+        again = json.loads(self.init(c, '--yes', '--operation', init_ops[-1]['operation_id']).stdout)
+        self.assertEqual(again['outcome'], 'applied', again)
+        self.assertEqual(c.github_writes(), writes, 'a repeated init makes no second provider effect')
+        repeat = j.helper(['continue', '--explained'])
+        self.assertEqual(repeat.returncode, 0, repeat.stdout)
+        self.assertEqual(json.loads(j.state.read_text()), json.loads(before[0]), 'the carried record is unchanged')
 
     def test_open_serves_setup_with_the_install_state(self):
         # R3: the setup server `install open` starts reads the same state the tools write.

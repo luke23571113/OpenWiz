@@ -1,0 +1,33 @@
+# #873 red run, web and contract: tests and fixtures changed, reader, schema and pages unchanged
+## python3 -m unittest tests/setup-onboard-contract/test_contract.py (tools/install)
+FAIL: test_setup_views_follow_the_expanded_setup_schema (tests.setup-onboard-contract.test_contract.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='legacy-app-ready')
+AssertionError: False != True : ['$.components: item count', '$.components: contains nothing required', '$.components: contains nothing required']
+FAIL: test_setup_views_follow_the_expanded_setup_schema (tests.setup-onboard-contract.test_contract.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='legacy-app-missing-not-ready')
+AssertionError: False != True : ['$.components: item count', '$.components: contains nothing required']
+FAIL: test_setup_views_follow_the_expanded_setup_schema (tests.setup-onboard-contract.test_contract.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='skip-app-login-ready')
+AssertionError: False != True : ['$.components: item count', '$.components: contains nothing required', '$.components: contains nothing required']
+FAIL: test_setup_views_follow_the_expanded_setup_schema (tests.setup-onboard-contract.test_contract.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='skip-app-with-brain')
+AssertionError: False != True : ['$.components: item count', '$.components: contains nothing required', '$.components: contains nothing required']
+FAIL: test_setup_views_follow_the_expanded_setup_schema (tests.setup-onboard-contract.test_contract.Schemas.test_setup_views_follow_the_expanded_setup_schema) (view='app-selected-ready')
+AssertionError: False != True : ['$.components: item count', '$.components: contains nothing required', '$.components: contains nothing required']
+Ran 20 tests in 0.109s
+FAILED (failures=5)
+## node --test tools/install/test_setup_api.mjs
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+    code: 'ERR_ASSERTION',
+    actual: 'error',
+    expected: 'ok',
+## node --test test/unit/first-hour-prerequisites.test.ts (apps/web)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  code: 'ERR_ASSERTION',
+## node --test test/browser/first-hour-pages.test.mjs (apps/web)
+ℹ Error: A resource generated asynchronous activity after the test ended. This activity created the error "AssertionError [ERR_ASSERTION]: the setup fixture parses
+  AssertionError [ERR_ASSERTION]: the setup fixture parses
+    code: 'ERR_ASSERTION',
+  AssertionError [ERR_ASSERTION]: the setup fixture parses
+    code: 'ERR_ASSERTION',
+  AssertionError [ERR_ASSERTION]: the setup fixture parses
+    code: 'ERR_ASSERTION',
+  AssertionError [ERR_ASSERTION]: the setup fixture parses
+    code: 'ERR_ASSERTION',
+  AssertionError [ERR_ASSERTION]: the setup fixture parses

@@ -18,7 +18,7 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CLAIMS = ['fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
-          'terminal', 'json', 'send', 'new', 'app', 'read_safety']
+          'json', 'send', 'new', 'app', 'read_safety']
 
 
 def sha(path):

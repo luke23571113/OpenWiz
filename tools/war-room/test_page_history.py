@@ -298,7 +298,7 @@ class PageHistory(unittest.TestCase):
         self.assertEqual(projected['metrics'][0]['value'], 7)
         self.assertEqual(projected['state'], 'partial')
         self.assertEqual(projected['metrics'][0]['window']['timezone'], 'PST-fixed-UTC-08:00')
-        doc = json.loads((HERE.parent / 'factory-metrics/fixtures/journey/journeys.json').read_text())
+        doc = json.loads((HERE / 'fixtures/journey/journeys.json').read_text())
         projected = self.select_native('journey', doc)
         self.assertTrue(any(m['value'] == 19 for m in projected['metrics']))
         self.assertTrue(all(m['group'] == 'stage_waits' and m['state'] == 'partial'
@@ -362,7 +362,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_daily_usage_is_separate_from_pr_attribution(self):
         # A saved daily report already has usage totals. Omitting them loses
         # existing evidence; the separate owner-export test does not cover this.
-        M = module('sources').native('tools/factory-metrics/metrics.py')
+        M = module('sources').native('tools/war-room/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)
@@ -397,7 +397,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_artifact_refuses_undeclared_fields(self):
         # This output has no standalone native validator. The projection must
         # reject unknown fields rather than silently accepting a changed schema.
-        M = module('sources').native('tools/factory-metrics/metrics.py')
+        M = module('sources').native('tools/war-room/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)
@@ -432,7 +432,7 @@ class PageHistory(unittest.TestCase):
 
     def test_approved_pending_decision_projection(self):
         from datetime import datetime, timezone
-        doc = json.loads((HERE.parents[1] / 'tests/terminal/bodies/decisions.json').read_text())
+        doc = json.loads((HERE / 'fixtures/page-history/decisions.json').read_text())
         epoch = int(datetime(2030, 1, 2, 12, tzinfo=timezone.utc).timestamp()) * 1000
         doc['snapshot_at'] = epoch
         doc['freshness']['snapshot_at']['known'] = epoch

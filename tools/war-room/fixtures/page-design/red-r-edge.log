@@ -1,0 +1,243 @@
+# #631 R + granted renderer fixes, red: test_page_design.py EdgePage at 998c293c073460066131055f7fccd1f62cde0a8d (main), before the changes
+test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) ... 
+  test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00a] ... FAIL
+  test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00b] ... FAIL
+  test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00c] ... FAIL
+  test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00d] ... FAIL
+test_a_long_card_value_never_squeezes_the_card_title (__main__.EdgePage.test_a_long_card_value_never_squeezes_the_card_title) ... 
+  test_a_long_card_value_never_squeezes_the_card_title (__main__.EdgePage.test_a_long_card_value_never_squeezes_the_card_title) [phone] ... FAIL
+  test_a_long_card_value_never_squeezes_the_card_title (__main__.EdgePage.test_a_long_card_value_never_squeezes_the_card_title) [phone-target] ... FAIL
+test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) ... 
+  test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [desktop] ... FAIL
+  test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [phone] ... FAIL
+  test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [desktop-target] ... FAIL
+  test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [phone-target] ... FAIL
+
+======================================================================
+FAIL: test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00a]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label'] != []
+
+First list contains 4 additional elements.
+First extra element 0:
+'x-grid'
+
+- ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label']
++ []
+
+======================================================================
+FAIL: test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00b]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label'] != []
+
+First list contains 4 additional elements.
+First extra element 0:
+'x-grid'
+
+- ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label']
++ []
+
+======================================================================
+FAIL: test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00c]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label'] != []
+
+First list contains 4 additional elements.
+First extra element 0:
+'x-grid'
+
+- ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label']
++ []
+
+======================================================================
+FAIL: test_a_headline_chart_without_values_draws_no_numeric_scale (__main__.EdgePage.test_a_headline_chart_without_values_draws_no_numeric_scale) [00d]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label'] != []
+
+First list contains 4 additional elements.
+First extra element 0:
+'x-grid'
+
+- ['x-grid', 'x-axis tick', 'x-axis tick label', 'x-axis label']
++ []
+
+======================================================================
+FAIL: test_a_long_card_value_never_squeezes_the_card_title (__main__.EdgePage.test_a_long_card_value_never_squeezes_the_card_title) [phone]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: 5 not less than or equal to 2
+
+======================================================================
+FAIL: test_a_long_card_value_never_squeezes_the_card_title (__main__.EdgePage.test_a_long_card_value_never_squeezes_the_card_title) [phone-target]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: 5 not less than or equal to 2
+
+======================================================================
+FAIL: test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [desktop]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: [['PST day starts →', '▲ Sampled drop, ext[415 chars]00']] != []
+
+First list contains 28 additional elements.
+First extra element 0:
+['PST day starts →', '▲ Sampled drop, extr']
+
++ []
+- [['PST day starts →', '▲ Sampled drop, extr'],
+-  ['0', '0'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '0'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['2500', '900'],
+-  ['2500', '1200'],
+-  ['2500', '450'],
+-  ['2500', '3000'],
+-  ['2500', '600'],
+-  ['900', '1200'],
+-  ['900', '0'],
+-  ['900', '450'],
+-  ['900', '3000'],
+-  ['900', '600'],
+-  ['1200', '0'],
+-  ['1200', '450'],
+-  ['1200', '3000'],
+-  ['1200', '600'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['450', '600']]
+
+======================================================================
+FAIL: test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [phone]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: [['PST day starts →', '▲ Sampled drop, ext[415 chars]00']] != []
+
+First list contains 28 additional elements.
+First extra element 0:
+['PST day starts →', '▲ Sampled drop, extr']
+
++ []
+- [['PST day starts →', '▲ Sampled drop, extr'],
+-  ['0', '0'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '0'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['2500', '900'],
+-  ['2500', '1200'],
+-  ['2500', '450'],
+-  ['2500', '3000'],
+-  ['2500', '600'],
+-  ['900', '1200'],
+-  ['900', '0'],
+-  ['900', '450'],
+-  ['900', '3000'],
+-  ['900', '600'],
+-  ['1200', '0'],
+-  ['1200', '450'],
+-  ['1200', '3000'],
+-  ['1200', '600'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['450', '600']]
+
+======================================================================
+FAIL: test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [desktop-target]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: [['PST day starts →', '▲ Sampled drop, ext[415 chars]00']] != []
+
+First list contains 28 additional elements.
+First extra element 0:
+['PST day starts →', '▲ Sampled drop, extr']
+
++ []
+- [['PST day starts →', '▲ Sampled drop, extr'],
+-  ['0', '0'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '0'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['2500', '900'],
+-  ['2500', '1200'],
+-  ['2500', '450'],
+-  ['2500', '3000'],
+-  ['2500', '600'],
+-  ['900', '1200'],
+-  ['900', '0'],
+-  ['900', '450'],
+-  ['900', '3000'],
+-  ['900', '600'],
+-  ['1200', '0'],
+-  ['1200', '450'],
+-  ['1200', '3000'],
+-  ['1200', '600'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['450', '600']]
+
+======================================================================
+FAIL: test_dense_credit_spans_keep_headline_text_apart_and_inside (__main__.EdgePage.test_dense_credit_spans_keep_headline_text_apart_and_inside) [phone-target]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+AssertionError: Lists differ: [['PST day starts →', '▲ Sampled drop, ext[415 chars]00']] != []
+
+First list contains 28 additional elements.
+First extra element 0:
+['PST day starts →', '▲ Sampled drop, extr']
+
++ []
+- [['PST day starts →', '▲ Sampled drop, extr'],
+-  ['0', '0'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['0', '900'],
+-  ['0', '1200'],
+-  ['0', '0'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['2500', '900'],
+-  ['2500', '1200'],
+-  ['2500', '450'],
+-  ['2500', '3000'],
+-  ['2500', '600'],
+-  ['900', '1200'],
+-  ['900', '0'],
+-  ['900', '450'],
+-  ['900', '3000'],
+-  ['900', '600'],
+-  ['1200', '0'],
+-  ['1200', '450'],
+-  ['1200', '3000'],
+-  ['1200', '600'],
+-  ['0', '450'],
+-  ['0', '600'],
+-  ['450', '600']]
+
+----------------------------------------------------------------------
+Ran 3 tests in 2.257s
+
+FAILED (failures=10)

@@ -1,0 +1,30 @@
+{
+ "date": "2030-01-02",
+ "complete": true,
+ "claude": [
+  {
+   "thread": "synthetic-a",
+   "tokens": 1000,
+   "credits": 2,
+   "usd": 1
+  },
+  {
+   "thread": "synthetic-b",
+   "tokens": 2000,
+   "credits": 4,
+   "usd": 2
+  }
+ ],
+ "gpt": [
+  {
+   "thread": "synthetic-c",
+   "tokens": 6000,
+   "credits": 9,
+   "usd": 6
+  }
+ ],
+ "sandbox": {
+  "hours": 6,
+  "usd": 3
+ }
+}

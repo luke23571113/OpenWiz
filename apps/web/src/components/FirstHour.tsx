@@ -18,7 +18,7 @@ import type { FleetEnvelope, MergedPr } from '../fleetGraph.ts';
 import { fleetModel } from '../fleetGraph.ts';
 import type { Tier } from '../markers.ts';
 import { clockText } from '../present.ts';
-import { componentName, nextComponent, operationName } from '../setup.ts';
+import { appSkipped, componentName, operationName } from '../setup.ts';
 import { StatusGlyph } from './StatusMark.tsx';
 
 /** One read as the page holds it: still reading, failed (with the last good value, if any), or read. */
@@ -66,14 +66,23 @@ function connections(setup: FirstHourProps['setup']): Step {
       'Ask your installing agent to check this operation by its id before trying again. Do not start it again.',
       [['Took effect', 'unknown'], ['Operation', uncertain.operation_id, true]]);
   }
-  const needed = view.components.filter((c) => c.id !== 'remote_access' && c.id !== 'engine');
+  // #636: an App the owner explicitly skipped stays missing and needs nothing.
+  const skipped = appSkipped(view);
+  const needed = view.components.filter((c) => c.id !== 'remote_access' && !(skipped && c.id === 'github_app'));
   const refused = needed.find((c) => c.state === 'refused');
   if (refused) return step('connections', 't1', 'refused', refused.reason, `${refused.next} Your drafts stay.`, [['Took effect', 'no'], REVIEWER]);
-  const next = nextComponent(view);
+  const next = needed.find((c) => c.state !== 'verified');
   if (next && next.state === 'missing') return step('connections', 't1', 'your turn', `Next: ${componentName(next.id)}. ${next.reason}`, next.next, [REVIEWER]);
   if (next) return step('connections', 't5', 'unknown', `${componentName(next.id)}: ${next.reason}`, next.next, [REVIEWER]);
-  if (!view.ready) return step('connections', 't1', 'your turn', 'Connections verified. Choose where the engine runs next.', 'Nothing starts without your approval.', [REVIEWER]);
-  return step('connections', 't2', 'done', 'Setup reports every connection verified.', null, [REVIEWER]);
+  if (!view.ready) return step('connections', 't5', 'unknown', 'Setup does not report ready yet.', 'Ask your installing agent to run the setup check again, then Refresh.', [REVIEWER]);
+  return step('connections', 't2', 'done', `Setup reports every connection verified.${actingIdentity(view)}`, null, [REVIEWER]);
+}
+
+/** #636: which identity acts, from the owner's saved choice only; an old report names none. */
+function actingIdentity(view: SetupView): string {
+  if (appSkipped(view) && view.identity?.acting_login) return ` Acting identity: ${view.identity.acting_login}, your personal GitHub login. The App is skipped.`;
+  if (view.identity?.selected === 'app') return ' Acting identity: your OpenWiz GitHub App.';
+  return '';
 }
 
 /** The first open decision's step, or null when none is open. */

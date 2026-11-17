@@ -37,7 +37,12 @@ RELEASE = ['release:test', 'release:package', 'release:install', 'release:pull',
            'release:ci2-main-batch-admit',
            'release:ci2-overload',
            'release:product-identity',
-           'release:setup-onboard-contract']
+           'release:setup-onboard-contract',
+           'release:test-value',
+           'release:test-value-unread-fixtures',
+           'release:setup-onboard-init',
+           'release:setup-onboard-login',
+           'release:setup-onboard-journey']
 # O16-P-RETIRED (#2429): the retiring CI overflow switch's check is registered
 # only in a tree that carries its command target (ClosedWiz). The public tree
 # leaves tools/ci-overflow/ out, so the literal above stays its exact set. This
@@ -82,7 +87,7 @@ def mandatory_ci_paths(paths):
 
 
 def legacy_readers(root, paths, step=''):
-    # Known standalone skill suites do not consume release/toolkit inputs.
+    # Known standalone skill suites do not consume release inputs.
     # Everything else retains the conservative reader union used to prune
     # the old Rust and web release suites, including their docs and tools.
     paths=[p for p in paths if not any(p.startswith('skills/'+s+'/') for s in skills.SUITES)]
@@ -187,7 +192,6 @@ def build(root, run, live, map_dir, repo, keys=None):
     site = bool(reasons) or requirements['build-site'] == 'true'
     try:
         readers=legacy_readers(root,paths) if not reasons else {'rust','web-test'}
-        toolkit=bool(reasons) or 'rust' in legacy_readers(root,paths,step='toolkit')
     except Exception as error:
         reasons=[{'code':'selector_error','detail':text(error)}]
         chosen=set(inventory)
@@ -195,7 +199,6 @@ def build(root, run, live, map_dir, repo, keys=None):
         selected_skills=list(skills.SUITES)
         site=True
         readers={'rust','web-test'}
-        toolkit=True
     release = bool(reasons) or site or bool(readers & {'rust','web-test'})
     # The whole checks binary is in the always lane (architecture, privacy,
     # contract/static checks and pending markers), exactly once in every run.
@@ -217,7 +220,7 @@ def build(root, run, live, map_dir, repo, keys=None):
     dispatch = {k: requirements[k] == 'true' for k in steps.FLAGS}
     dispatch.update(skills=selected_skills,
         rust=record['lanes']['rust']['decision'] == 'run', web=record['lanes']['web']['decision'] == 'run',
-        site=site, release=release, toolkit=toolkit,
+        site=site, release=release,
         trace=job.traces(run['event'], 'refs/heads/' + run['base_branch'], paths),
         planted=job.plants(run['event'], paths, (root / 'ci/select/map.json').is_file()))
     return record, dispatch

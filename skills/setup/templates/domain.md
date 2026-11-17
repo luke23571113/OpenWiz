@@ -12,7 +12,7 @@ If the glossary or ADRs do not exist yet, carry on without them. Missing private
 
 ## Private storage
 
-The repository routing is in `issue-tracker.md`. Resolve the private checkout by its verified remote, never by a guessed current directory; verify private visibility before writing. Grills (including their branches, PRs and decision requests) use `docs/grills/` there. The handoff is `private/orchestration/HANDOFF.md`; all orchestrator state stays under `private/orchestration/` in that private checkout. Authorized agents read those private sources directly; a public source names a decision and a private-comment pointer, never its exact replies or thread ids. If a source is not available, report the gap.
+The repository routing is in `issue-tracker.md`. Resolve the private checkout by its verified remote, never by a guessed current directory; verify private visibility before writing. Grills (including their branches, PRs and decision requests) use `docs/grills/` there. The handoff page is `<handoff page>` and all orchestrator state stays under `<private state folder>`, the locations recorded here for that private checkout; never assume a default. Authorized agents read those private sources directly; a public source names a decision and a private-comment pointer, never its exact replies or thread ids. If a source is not available, report the gap.
 
 ## Layout
 
@@ -28,8 +28,8 @@ The repository routing is in `issue-tracker.md`. Resolve the private checkout by
 ├── docs/grills/
 │   ├── README.md
 │   └── <date>-<topic>.md
-└── private/orchestration/
-    └── HANDOFF.md
+└── <private state folder>/
+    └── <handoff page>
 ```
 
 ## Use the glossary's words

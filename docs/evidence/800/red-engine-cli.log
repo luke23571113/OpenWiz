@@ -1,0 +1,15 @@
+F
+======================================================================
+FAIL: test_verified_installer_carries_real_engine_and_cli_without_build_tools (__main__.Engine.test_verified_installer_carries_real_engine_and_cli_without_build_tools)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/tools/install/engine/test_engine.py", line 346, in test_verified_installer_carries_real_engine_and_cli_without_build_tools
+    self.assertEqual(result.returncode,0,result.stderr+result.stdout)
+AssertionError: 2 != 0 : openwiz: unknown command engine (see openwiz --help)
+{"command":"unknown","error":{"kind":"usage","message":"Invalid command arguments or input; see openwiz help --agent."},"exit_code":2,"schema":"openwiz.cli-error.v1"}
+
+
+----------------------------------------------------------------------
+Ran 1 test in 4.049s
+
+FAILED (failures=1)

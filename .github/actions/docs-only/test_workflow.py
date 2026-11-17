@@ -62,16 +62,10 @@ class Workflow(unittest.TestCase):
             with self.subTest(altered=event,before=before), self.assertRaisesRegex(AssertionError,event+' trigger contract'):
                 self.assert_trigger_contract(source.replace(before,after))
 
-    def test_launch_fleet_retains_the_legacy_rust_suite_budget(self):
-        # #743: launch-fleet's own sharded job keeps its 60 minutes; no wider.
-        for job,expected in [('launch-fleet',60),('skills',30),('release',60)]:
-            with self.subTest(job=job):
-                self.assertEqual(re.search(r'^    timeout-minutes: (.+)$',jobs()[job],re.M)[1],str(expected))
-
     def test_independent_jobs_wait_for_export_only_when_needed(self):
         blocks=jobs()
         self.assertEqual(set(blocks),{'changes','always','web-build','rust','rust-export','web','web-export',
-                                      'site','release','skills','launch-fleet','select-map','ci','web-test','toolkit-nightly',
+                                      'site','release','skills','launch-fleet','select-map','ci','web-test',
                                       'main-light'})
         for name in ('always','web-build','rust','web','site','release','skills','launch-fleet'):
             self.assertRegex(blocks[name],r'^    needs: changes\n')
@@ -93,7 +87,7 @@ class Workflow(unittest.TestCase):
                         active.append(name)
                         continue
                     condition = match[1].removeprefix('${{ ').removesuffix(' }}')
-                    outputs = dict.fromkeys(('rust', 'toolkit', 'web', 'build-web',
+                    outputs = dict.fromkeys(('rust', 'web', 'build-web',
                         'export-rust', 'export-web', 'trace', 'planted'), 'false')
                     outputs.update(site='true', release='true', skills='[]', **{'skill-jobs': '[]'},
                                    **{'site-in-release': str(combined).lower()})
@@ -135,7 +129,7 @@ class Workflow(unittest.TestCase):
     def test_final_ci_waits_for_all_jobs_and_always_runs(self):
         block=jobs()['ci']
         deps=re.search(r'^    needs: \[(.*)\]$',block,re.M)[1].split(', ')
-        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','toolkit-nightly','main-light'})
+        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','main-light'})
         self.assertIn('NEEDS: ${{ toJSON(needs) }}',block)
 
     def test_actual_ci_script_refuses_failure_cancellation_and_missing_lane(self):
@@ -192,7 +186,7 @@ class Security(unittest.TestCase):
 
     def test_runner_choices_keep_small_jobs_independent_and_forks_hosted(self):
         small={'changes','select-map','ci','web-test','main-light'}
-        rust={'always','rust','rust-export','toolkit-nightly'}
+        rust={'always','rust','rust-export'}
         web={'web-build','web','web-export','site','release','skills','launch-fleet'}
         blocks=jobs()
         self.assertEqual(set(blocks),small|rust|web)
@@ -254,7 +248,7 @@ class Security(unittest.TestCase):
                 self.assertIn('run: sh ci/hosted/guard.sh',steps[1])
                 self.assertIn('HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}',steps[1])
                 self.assertNotIn('        if:',steps[1])
-                if name not in ('changes','ci','select-map','web-test','toolkit-nightly','main-light'):
+                if name not in ('changes','ci','select-map','web-test','main-light'):
                     prepare=[s for s in steps if 'uses: ./.github/actions/docs-only/setup\n' in s]
                     self.assertEqual(len(prepare),1,name)
                     self.assertIn('hosted: ${{ steps.guard.outputs.hosted }}',prepare[0])

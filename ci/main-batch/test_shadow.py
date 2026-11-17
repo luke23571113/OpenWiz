@@ -90,7 +90,7 @@ class Shadow(unittest.TestCase):
     def test_missing_cancelled_pending_stale_and_matrix_work_refuse(self):
         original = copy.deepcopy(self.reads)
         for change in ('missing-job', 'cancelled', 'pending-ci', 'old-attempt',
-                       'missing-check', 'missing-skill', 'missing-shard', 'failed-toolkit',
+                       'missing-check', 'missing-skill', 'missing-shard',
                        'missing-release-member', 'missing-fleet-member'):
             with self.subTest(change=change):
                 self.reads = copy.deepcopy(original)
@@ -115,7 +115,6 @@ class Shadow(unittest.TestCase):
                     member = next(j for j in jobs['jobs'] if j['name'] == name + ' (1)')
                     jobs['jobs'].append(dict(member, id=member['id'] + 90, name=name + ' (3)'))
                     jobs['total_count'] += 1
-                else: jobs['jobs'][2]['steps'][0]['conclusion'] = 'failure'
                 report, state = self.reconcile()
                 self.assertFalse(report['complete'], report)
                 self.assertEqual(state['covered'], '1'*40)
@@ -210,11 +209,11 @@ class Shadow(unittest.TestCase):
         # Bug: a skipped job row's placeholder clocks (created == started) were
         # counted as zero-second waits, lowering the median and p90.
         page = self.reads['actions/runs/9000100/attempts/1/jobs?per_page=100&page=1']
-        for number, name in enumerate(('rust-export', 'web-export', 'toolkit-nightly'), 9000300):
+        for number, name in enumerate(('rust-export', 'web-export'), 9000300):
             page['jobs'].append(dict(id=number, run_id=9000100, run_attempt=1, head_sha='3'*40, name=name,
                 status='completed', conclusion='skipped', created_at='2030-01-01T00:00:00Z',
                 started_at='2030-01-01T00:00:00Z', completed_at='2030-01-01T00:00:00Z'))
-        page['total_count'] += 3
+        page['total_count'] += 2
         report, _ = self.reconcile()
         self.assertTrue(report['complete'], report)
         self.assertEqual(report['measurement']['job_queue_seconds'], {'n': 13, 'median': 30, 'p90': 30})
@@ -352,7 +351,7 @@ class Shadow(unittest.TestCase):
                 (folder/'ci-selection.json').write_text(self.document['plan'])
                 plan = json.loads(self.document['plan'])
                 dispatch = dict.fromkeys(('build-web','lint-rust','export-rust','export-web',
-                    'build-site','image-skills','rust','web','site','release','toolkit'), True)
+                    'build-site','image-skills','rust','web','site','release'), True)
                 dispatch.update(**{'export-rust':False,'export-web':False},
                     skills=['launch-fleet','plan-graph','triage'],trace=False,planted=False,
                     plan_sha256=hashlib.sha256(self.document['plan'].encode()).hexdigest())

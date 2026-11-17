@@ -3,10 +3,10 @@
 mod dirs;
 #[path = "l5b_observation.rs"]
 mod observation;
-use openwiz_core::{health::model::*, messaging::OpId};
+use openwiz_core::messaging::OpId;
 use openwiz_service::{
     health::{
-        Health, RuntimeFixes,
+        Health,
         loops::{Checking, Evidence, Observation},
     },
     state::State,
@@ -21,17 +21,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Instant,
 };
-struct Runtime;
-impl RuntimeFixes for Runtime {
-    fn restart_tick(&self, _: Instant) -> Result<(), String> {
-        panic!("watchdog cannot repair")
-    }
-    fn restart_server(&self, _: Instant) -> Result<(), String> {
-        panic!("watchdog cannot repair")
-    }
-}
 struct World {
     root: PathBuf,
     config: Value,
@@ -39,6 +29,8 @@ struct World {
     source: Arc<Mutex<Evidence<Vec<Observation>>>>,
     comments: Arc<Mutex<Vec<Value>>>,
     lose: Arc<AtomicBool>,
+    drop_record: Arc<AtomicBool>,
+    posts: Arc<AtomicU64>,
 }
 impl Drop for World {
     fn drop(&mut self) {
@@ -66,15 +58,6 @@ fn healthy() -> Observation {
         next_due_at_ms: Evidence::Known(None),
         checking: Evidence::Known(vec![]),
         disabled_by_failures: Evidence::Known(false),
-    }
-}
-fn seen() -> Seen {
-    Seen {
-        cloudroom: CloudRoomSeen::Running,
-        loops: Listed::Read(vec![]),
-        tick_running_since: None,
-        fleet_threads: Listed::Read(vec![]),
-        server: Known::Healthy,
     }
 }
 impl World {
@@ -128,11 +111,16 @@ else: sys.exit(2)
             source: Arc::new(Mutex::new(Evidence::Known(vec![row()]))),
             comments: Arc::new(Mutex::new(vec![])),
             lose: Arc::new(AtomicBool::new(false)),
+            drop_record: Arc::new(AtomicBool::new(false)),
+            posts: Arc::new(AtomicU64::new(0)),
         }
     }
     fn engine(&self) -> Health {
         let comments = self.comments.clone();
         let lose = self.lose.clone();
+        let drop_record = self.drop_record.clone();
+        let posts = self.posts.clone();
+        let root = self.root.clone();
         let github = openwiz_adapter_github::process::Executor::supplied(Arc::new(
             move |call, _| {
                 let args = call.argv().iter().map(String::as_str).collect::<Vec<_>>();
@@ -142,12 +130,15 @@ else: sys.exit(2)
                         json!({"defaultBranchRef":{"name":"main"},"nameWithOwner":"synthetic-owner/synthetic-repo","url":"https://github.invalid/synthetic-owner/synthetic-repo"})
                     }
                     // #718: the comment read projects each author; these
-                    // synthetic health records are the factory App's.
+                    // synthetic health records are the factory App's unless a
+                    // row names its own (#732).
                     ["api", path, ..] if path.contains("/comments?") => json!(
                         cs.iter()
                             .map(|c| {
                                 let mut c = c.clone();
-                                c["author"] = json!("openwiz[bot]");
+                                if c.get("author").is_none() {
+                                    c["author"] = json!("openwiz[bot]");
+                                }
                                 c
                             })
                             .collect::<Vec<_>>()
@@ -157,13 +148,26 @@ else: sys.exit(2)
                         json!({"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
                     }
                     ["api", path, ..] if path.contains("/contents/docs/agents/fleet.md?") => {
-                        return Ok(b"## GitHub identity\n| Setting | Value |\n| --- | --- |\n| Record authors | `openwiz[bot]` |\n".to_vec());
+                        let row = if root.join("no-record-authors").exists() {
+                            ""
+                        } else {
+                            "| Record authors | `openwiz[bot]`, `syn-owner` |\n"
+                        };
+                        return Ok(format!(
+                            "## GitHub identity\n| Setting | Value |\n| --- | --- |\n{row}"
+                        )
+                        .into_bytes());
                     }
                     ["issue", "list", ..] => json!([]),
                     ["issue", "comment", "901", "--body", body] => {
                         let n = 7000 + cs.len() as u64;
-                        cs.push(json!({"id":n,"body":body,"created":2000,"updated":2000}));
-                        if lose.swap(false, Ordering::SeqCst) {
+                        posts.fetch_add(1, Ordering::SeqCst);
+                        // A lost reply's comment may also never land.
+                        let lost = lose.swap(false, Ordering::SeqCst);
+                        if !(lost && drop_record.load(Ordering::SeqCst)) {
+                            cs.push(json!({"id":n,"body":body,"created":2000,"updated":2000}));
+                        }
+                        if lost {
                             return Err(openwiz_core::source::SourceError::Unavailable {
                                 detail: "synthetic lost reply".into(),
                             });
@@ -189,7 +193,6 @@ else: sys.exit(2)
             self.state.clone(),
             openwiz_adapter_cloudroom::source::CloudRoomSource::new(self.root.join("room")),
             github,
-            Arc::new(Runtime),
         )
         .unwrap()
         .with_watchdog_source(Arc::new(move |_| source.lock().unwrap().clone()))
@@ -199,6 +202,9 @@ else: sys.exit(2)
     }
     fn reload(&mut self) {
         self.state = Arc::new(Mutex::new(State::load(&self.root, 2000).unwrap()));
+    }
+    fn posts(&self) -> u64 {
+        self.posts.load(Ordering::SeqCst)
     }
     fn tells(&self) -> usize {
         fs::read_to_string(self.root.join("room-calls"))
@@ -211,28 +217,28 @@ else: sys.exit(2)
 #[test]
 fn each_problem_notifies_once_across_reload_and_recovers_immediately() {
     let mut w = World::new();
-    w.engine().pass(&seen(), 1101).unwrap();
+    w.engine().pass(1101).unwrap();
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
     w.reload();
-    w.engine().pass(&seen(), 1200).unwrap();
+    w.engine().pass(1200).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
     let mut changed = row();
     changed.next_due_at_ms = Evidence::Known(Some(1050));
     *w.source.lock().unwrap() = Evidence::Known(vec![changed]);
-    w.engine().pass(&seen(), 1250).unwrap();
+    w.engine().pass(1250).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 4);
     assert_eq!(w.tells(), 4);
     *w.source.lock().unwrap() = Evidence::Unknown;
-    w.engine().pass(&seen(), 1300).unwrap();
+    w.engine().pass(1300).unwrap();
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
-    w.engine().pass(&seen(), 1400).unwrap();
+    w.engine().pass(1400).unwrap();
     assert_eq!(w.snapshot()["incidents"], json!([]));
     *w.source.lock().unwrap() = Evidence::Known(vec![row()]);
-    w.engine().pass(&seen(), 1500).unwrap();
+    w.engine().pass(1500).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 7);
     assert_eq!(w.tells(), 7);
 }
@@ -240,12 +246,12 @@ fn each_problem_notifies_once_across_reload_and_recovers_immediately() {
 fn changed_problem_notifies_and_uncertain_delivery_survives_healing() {
     let mut w = World::new();
     w.lose.store(true, Ordering::SeqCst);
-    let first = w.engine().pass(&seen(), 1101);
+    let first = w.engine().pass(1101);
     assert!(first.is_err());
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
     w.reload();
-    w.engine().pass(&seen(), 1200).unwrap();
+    w.engine().pass(1200).unwrap();
     assert_eq!(w.snapshot()["incidents"], json!([]));
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
@@ -254,7 +260,7 @@ fn changed_problem_notifies_and_uncertain_delivery_survives_healing() {
     changed.checking = Evidence::Known(vec![]);
     changed.disabled_by_failures = Evidence::Known(false);
     *w.source.lock().unwrap() = Evidence::Known(vec![changed]);
-    w.engine().pass(&seen(), 1300).unwrap();
+    w.engine().pass(1300).unwrap();
     assert_eq!(w.comments.lock().unwrap().len(), 4);
     assert_eq!(w.snapshot()["incidents"][0]["broken"]["due_at_ms"], 1050);
 }
@@ -283,26 +289,12 @@ fn service_reader_accepts_exact_watchdog_faults_without_repairs() {
 #[test]
 fn registered_health_job_runs_the_watchdog() {
     let w = World::new();
-    let server = openwiz_server::start(
-        std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap(),
-        openwiz_server::Config::default(),
-        Arc::new(openwiz_adapter_cloudroom::source::CloudRoomSource::new(
-            "/bin/false",
-        )),
-        Arc::new(openwiz_server::SystemClock),
-        Arc::new(|_| {}),
-    )
-    .unwrap();
     let mut scheduler = openwiz_service::scheduler::Scheduler::default();
     Arc::new(w.engine())
-        .register(&mut scheduler, server.local_addr().port(), || 1101)
+        .register(&mut scheduler, || 1101)
         .unwrap();
     assert_eq!(scheduler.poll(60).unwrap(), ["health"]);
     scheduler.wait("health").unwrap();
-    server
-        .shutdown(Instant::now() + std::time::Duration::from_secs(3))
-        .unwrap();
-    server.join();
     assert_eq!(w.snapshot()["incidents"].as_array().unwrap().len(), 3);
     assert_eq!(w.comments.lock().unwrap().len(), 3);
     assert_eq!(w.tells(), 3);
@@ -332,17 +324,17 @@ fn durable_reader_refuses_reusing_one_notification_for_distinct_problems() {
 fn failed_cloudroom_delivery_remains_pending_after_healing_and_restart() {
     let mut w = World::new();
     fs::write(w.root.join("fail-tell"), "synthetic failed delivery").unwrap();
-    assert!(w.engine().pass(&seen(), 1101).is_err());
+    assert!(w.engine().pass(1101).is_err());
     assert_eq!(w.tells(), 3);
     let pending = w.snapshot()["watchdog_deliveries"].clone();
     assert_eq!(pending.as_array().unwrap().len(), 3);
     *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
     w.reload();
-    assert!(w.engine().pass(&seen(), 1200).is_err());
+    assert!(w.engine().pass(1200).is_err());
     assert_eq!(w.snapshot()["incidents"], json!([]));
     assert_eq!(w.snapshot()["watchdog_deliveries"], pending);
     w.reload();
-    assert!(w.engine().pass(&seen(), 1300).is_err());
+    assert!(w.engine().pass(1300).is_err());
     assert_eq!(w.snapshot()["incidents"], json!([]));
     assert_eq!(w.snapshot()["watchdog_deliveries"], pending);
     assert_eq!(w.comments.lock().unwrap().len(), 3);
@@ -353,280 +345,219 @@ fn failed_cloudroom_delivery_remains_pending_after_healing_and_restart() {
     );
 }
 
-/// Places the executable `src` at `dst`, owner-only. A separate `cp` process
-/// writes it, so this process never holds a writable descriptor for it: a
-/// child another test forks meanwhile would inherit one until its exec and
-/// keep the file busy, so launching it would fail with ETXTBSY (#2583, as
-/// #2559 and #1754).
-fn place(src: &std::path::Path, dst: &std::path::Path) {
-    placed(copier(src, dst), dst);
-}
-/// Starts `place`'s `cp`, with no input and its output captured.
-fn copier(src: &std::path::Path, dst: &std::path::Path) -> std::process::Child {
-    use std::process::Stdio;
-    // `cp` would copy into a directory and succeed (#2721, #2731).
-    assert!(!dst.is_dir(), "{} is a directory", dst.display());
-    std::process::Command::new("cp")
-        .arg("--")
-        .arg(src)
-        .arg(dst)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("cp runs")
-}
-/// Waits for `place`'s `cp` to succeed, then makes `dst` executable, owner-only.
-fn placed(cp: std::process::Child, dst: &std::path::Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let out = cp.wait_with_output().expect("cp runs");
-    assert!(
-        out.status.success(),
-        "cp {}: {}",
-        dst.display(),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700)).unwrap();
-}
-/// Places a fixture script the same way, from a source file that never runs.
-fn place_script(dst: &std::path::Path, text: &str) {
-    let src = dst.with_extension("src");
-    std::fs::write(&src, text).unwrap();
-    place(&src, dst);
-    std::fs::remove_file(&src).unwrap();
-}
-/// Descriptors of this process open for writing on `path`'s file.
-#[cfg(target_os = "linux")]
-fn writers(path: &std::path::Path) -> usize {
-    use std::os::unix::fs::MetadataExt;
-    let (fds, infos) = (
-        std::path::Path::new("/proc/self/fd"),
-        std::path::Path::new("/proc/self/fdinfo"),
-    );
-    let target = std::fs::metadata(path).unwrap();
-    std::fs::read_dir(fds)
+// Moved from the retired health executor's tests (ER3, #797): the record
+// delivery they protect stays, so each now runs on watchdog incidents. A
+// first pass on `row()` opens three, each with one record and one Needs you.
+
+/// #770: only a record author's comment confirms a health delivery, both when
+/// a pass checks for an earlier copy before posting and when it reconciles an
+/// uncertain claim. Catches the read-back counting anyone's exact copy of a
+/// predictable record as delivered (so the factory's own record is never
+/// posted, or an uncertain claim settles on a stranger's comment), matching
+/// logins case-sensitively, taking a user login for the App, trusting a
+/// comment with no author, or confirming without the setting.
+#[test]
+fn only_the_factory_s_comments_confirm_a_health_delivery() {
+    // The exact body a first pass at 1101 posts first, read from a clean world.
+    let w = World::new();
+    w.engine().pass(1101).unwrap();
+    let body = w.comments.lock().unwrap()[0]["body"].clone();
+    for (author, counts) in [
+        (json!("openwiz[bot]"), true),
+        (json!("SYN-Owner"), true),
+        (json!("syn-outsider"), false),
+        (json!("openwiz"), false),
+        (Value::Null, false),
+    ] {
+        // Before posting: an earlier copy counts only when a record author
+        // wrote it; otherwise the factory posts its own.
+        let w = World::new();
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":body,"created":1000,"updated":1000}));
+        w.engine().pass(1101).unwrap();
+        assert_eq!(w.posts(), 3 - u64::from(counts), "{author}");
+        // Reconciling a lost reply: the only exact copy settles the claim
+        // only when a record author wrote it.
+        let w = World::new();
+        w.lose.store(true, Ordering::SeqCst);
+        w.drop_record.store(true, Ordering::SeqCst);
+        assert!(w.engine().pass(1101).is_err());
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":200,"author":author,"body":body,"created":1000,"updated":1000}));
+        assert_eq!(w.engine().pass(1200).is_ok(), counts, "{author}");
+        assert_eq!(w.posts(), 3, "{author}: never a second post");
+    }
+    // A stranger's copy beside the factory's leaves the delivery unique.
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(1101).is_err());
+    w.comments
+        .lock()
         .unwrap()
-        .filter_map(|fd| {
-            let fd = fd.ok()?.file_name();
-            let file = std::fs::metadata(fds.join(&fd)).ok()?;
-            let info = std::fs::read_to_string(infos.join(&fd)).ok()?;
-            let flags = info.lines().find_map(|l| l.strip_prefix("flags:"))?;
-            let access = u32::from_str_radix(flags.trim(), 8).unwrap() & 3;
-            (file.dev() == target.dev() && file.ino() == target.ino() && access != 0).then_some(())
-        })
-        .count()
+        .push(json!({"id":200,"author":"syn-outsider","body":body,"created":1000,"updated":1000}));
+    w.engine().pass(1200).unwrap();
+    assert_eq!(w.posts(), 3);
+    // Without the setting, even the factory's own comment confirms nothing.
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(1101).is_err());
+    fs::write(w.root.join("no-record-authors"), "").unwrap();
+    assert!(w.engine().pass(1200).is_err());
+    assert_eq!(w.posts(), 3);
 }
-/// #2583 (as #2559): this binary's fakes are placed while other test threads
-/// fork. The copy is held mid-way on a FIFO, where this process must hold no
-/// writer for the placed file; then the placed program launches.
-#[cfg(target_os = "linux")]
+
+/// Catches a lost post reply whose comment never landed being posted again.
 #[test]
-fn placing_a_fake_executable_leaves_no_writer_a_concurrent_fork_could_inherit() {
-    let dir = PlaceDir::new("ow-place-l5b");
-    let program = dir.0.join("placed");
-    let held = writers_mid_copy(&dir.0, &program);
-    assert_eq!(
-        held, 0,
-        "mid-copy, this process held a writable descriptor for the placed \
-         executable: a child forked then keeps it busy (ETXTBSY)"
-    );
-    let run = std::process::Command::new(&program).output().unwrap();
-    assert!(run.status.success());
-    assert_eq!(run.stdout, b"PLACED\n");
+fn uncertain_absent_record_never_gets_a_second_post() {
+    let w = World::new();
+    w.lose.store(true, Ordering::SeqCst);
+    w.drop_record.store(true, Ordering::SeqCst);
+    assert!(w.engine().pass(1101).is_err());
+    assert!(w.engine().pass(1200).is_err());
+    assert_eq!(w.posts(), 3);
 }
-/// #2731 (as #2721): a directory at the exact destination is refused,
-/// instead of `cp` placing the program inside that directory and reporting
-/// success.
+
+/// A legacy fleet record body: retired takeover wording, and a thread id that
+/// public records never carry, so it is unsafe to post again.
+const LEGACY_FLEET_BODY: &str = "openwiz-service: incident i1: the fleet thread thr_syn_old of #901 is gone (archived); try 1 of 2, take it over: done, new fleet thread thr_syn_new\n\n```json\n{\"schema\":\"openwiz.service-record.v1\",\"kind\":\"fix\",\"at\":2000,\"incident\":\"i1\",\"check\":\"fleet_thread\",\"spec\":901,\"thread\":\"thr_syn_old\",\"broken\":{\"state\":\"broken\",\"what\":\"archived\"},\"fix\":\"take_over_fleet_thread\",\"try\":1,\"outcome\":{\"state\":\"done\",\"thread\":\"thr_syn_new\"}}\n```";
+
+/// Catches an old uncertain claim settling on an ambiguous read-back, or being
+/// posted again, once nothing is open.
 #[test]
-fn placing_onto_a_directory_destination_is_refused() {
+fn legacy_claim_after_healing_gets_its_original_receipt_only_by_unique_readback() {
     use std::os::unix::fs::DirBuilderExt;
-    let dir = std::env::temp_dir().join(format!("ow-place-dir-l5b-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
-    let destination = dir.join("placed");
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(&destination)
-        .unwrap();
-    let placed = std::panic::catch_unwind(|| place_script(&destination, "#!/bin/sh\nexit 0\n"));
-    assert!(
-        placed.is_err(),
-        "a directory destination was accepted; the program landed inside it"
-    );
-    assert_eq!(std::fs::read_dir(&destination).unwrap().count(), 0);
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-/// #2699 (as #2594): the proof above fails, never hangs, when its copier fails
-/// before opening the FIFO. Here `cp` cannot stat a destination under a
-/// regular file.
-#[cfg(target_os = "linux")]
-#[test]
-#[should_panic(expected = "the copier ended before opening the FIFO")]
-fn the_fifo_proof_fails_when_its_copier_fails_before_the_rendezvous() {
-    let dir = PlaceDir::new("ow-place-l5b-early");
-    let file = dir.0.join("file");
-    std::fs::write(&file, "").unwrap();
-    writers_mid_copy(&dir.0, &file.join("placed"));
-}
-/// #2707, #2734: a copier still waiting on the FIFO when a proof fails is
-/// killed and reaped as its `Copy` unwinds, never left behind. With no writer
-/// started, the copier stays blocked opening the FIFO past the deadline.
-#[cfg(target_os = "linux")]
-#[test]
-fn the_fifo_proof_reaps_a_copier_that_misses_its_deadline() {
-    let dir = PlaceDir::new("ow-place-l5b-late");
-    let fifo = dir.0.join("late.fifo");
-    let made = std::process::Command::new("mkfifo").arg(&fifo).status();
-    assert!(made.unwrap().success());
-    let program = dir.0.join("placed");
-    let cp = copier(&fifo, &program);
-    let pid = cp.id();
-    let unwound = std::panic::catch_unwind(move || {
-        let _copy = Copy {
-            source: None,
-            cp: Some(cp),
-            program,
-            until: std::time::Instant::now(),
-        };
-        panic!("the proof failed while its copier waited");
-    });
-    assert!(unwound.is_err());
-    let left = std::fs::metadata(format!("/proc/{pid}")).map(|_| ());
+    let mut w = World::new();
+    *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
+    let dir = w.root.join("service/health");
+    fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+    let digest =
+        openwiz_core::messaging::sha256_hex(format!("901\n{LEGACY_FLEET_BODY}").as_bytes());
+    let claim = dir.join(&digest);
+    let bytes = json!({"issue":901,"body":LEGACY_FLEET_BODY})
+        .to_string()
+        .into_bytes();
+    fs::write(&claim, &bytes).unwrap();
+    fs::set_permissions(&claim, fs::Permissions::from_mode(0o600)).unwrap();
+    let receipt = dir.join(format!("confirmed-{digest}"));
+    assert_eq!(w.snapshot()["incidents"], json!([]));
+    assert!(w.engine().pass(1101).is_err());
+    assert!(!receipt.exists(), "absence is not delivery confirmation");
+    for id in [8001, 8002] {
+        w.comments
+            .lock()
+            .unwrap()
+            .push(json!({"id":id,"body":LEGACY_FLEET_BODY,"created":2000,"updated":2000}));
+    }
+    assert!(w.engine().pass(1200).is_err());
+    assert!(!receipt.exists(), "ambiguous exact readback stays pending");
+    w.comments.lock().unwrap().pop();
+    w.reload();
+    w.engine()
+        .pass(1300)
+        .expect("the unique original late comment must settle the old claim");
+    let recorded: Value = serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
+    assert_eq!(recorded, json!({"comment":8001}));
     assert_eq!(
-        left.map_err(|e| e.kind()),
-        Err(std::io::ErrorKind::NotFound),
-        "the copier was left running or unreaped after the proof unwound"
+        fs::read(&claim).unwrap(),
+        bytes,
+        "never rebind the original claim"
     );
+    assert_eq!(w.posts(), 0, "reconciliation cannot POST again");
+    assert_eq!(w.tells(), 0);
 }
-/// An owner-only scratch directory for one FIFO proof, removed when dropped,
-/// even by a failing proof.
-#[cfg(target_os = "linux")]
-struct PlaceDir(std::path::PathBuf);
-#[cfg(target_os = "linux")]
-impl PlaceDir {
-    fn new(prefix: &str) -> Self {
-        use std::os::unix::fs::DirBuilderExt;
-        let dir = std::env::temp_dir().join(format!("{prefix}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
-        Self(dir)
-    }
-}
-#[cfg(target_os = "linux")]
-impl Drop for PlaceDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-/// Places a script at `program` as `place` does, from a FIFO in `dir` this
-/// process writes, and returns how many writers this process held for
-/// `program` while the copy was held mid-way.
-#[cfg(target_os = "linux")]
-fn writers_mid_copy(dir: &std::path::Path, program: &std::path::Path) -> usize {
-    use std::time::{Duration, Instant};
-    let fifo = dir.join("source.fifo");
-    let made = std::process::Command::new("mkfifo").arg(&fifo).status();
-    assert!(made.unwrap().success());
-    let mut copy = Copy::start(&fifo, program, Instant::now() + Duration::from_secs(10));
-    let head = b"#!/bin/sh\n";
-    copy.write(head);
-    // Once the first bytes have landed, the placed file's writer is open.
-    while std::fs::metadata(program).map_or(true, |m| m.len() < head.len() as u64) {
-        copy.check("the copy started");
-    }
-    let held = writers(program);
-    copy.write(b"printf 'PLACED\\n'\n");
-    copy.finish();
-    held
-}
-/// `place`'s `cp` copying a FIFO to `program`, and this process's writer for
-/// that FIFO. Dropped, even by a failing proof, it closes the writer, so the
-/// copier reads its end, then kills a copier still running after a short
-/// grace and reaps it (#2707).
-#[cfg(target_os = "linux")]
-struct Copy {
-    source: Option<std::fs::File>,
-    cp: Option<std::process::Child>,
-    program: std::path::PathBuf,
-    until: std::time::Instant,
-}
-#[cfg(target_os = "linux")]
-impl Copy {
-    /// Starts the copier and opens the FIFO's writer once the copier's reader
-    /// has it open, failing if the copier ends first or `until` passes.
-    fn start(fifo: &std::path::Path, program: &std::path::Path, until: std::time::Instant) -> Self {
-        let mut copy = Self {
-            source: None,
-            cp: Some(copier(fifo, program)),
-            program: program.to_owned(),
-            until,
-        };
-        // Opening blocks until a reader has the FIFO open, so it runs on its
-        // own thread while this one watches the copier and the deadline.
-        let opening = {
-            let fifo = fifo.to_owned();
-            std::thread::spawn(move || std::fs::OpenOptions::new().write(true).open(fifo))
-        };
-        while !opening.is_finished() {
-            if copy.ended() || std::time::Instant::now() >= until {
-                // A reader of this process's own completes the open; dropped
-                // with it, so the copier sees an empty source if it opens late.
-                let reader = std::fs::File::open(fifo);
-                drop(opening.join());
-                drop(reader);
-                assert!(!copy.ended(), "the copier ended before opening the FIFO");
-                panic!("the copier never opened the FIFO");
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+
+/// R2: a delivery quarantine is not journal corruption. Repeated passes must
+/// still heal a known-healthy watchdog incident while its unsafe retained
+/// Needs you stays pending, never rewritten, posted or sent; a corrupt
+/// retained body stops the pass before anything changes.
+#[test]
+fn quarantined_frozen_delivery_keeps_healing_progressing() {
+    use std::os::unix::fs::DirBuilderExt;
+    for corrupt in [false, true] {
+        let mut w = World::new();
+        *w.source.lock().unwrap() = Evidence::Known(vec![healthy()]);
+        let incident = json!({"id":"i1","check":"watchdog","loop_id":"loop-synthetic","opened_at":1101,
+            "broken":{"state":"broken","what":"missed","due_at_ms":1000},"healthy_since":null,
+            "needs_you":{"at":1101,"op_id":"synthetic-quarantined-notification","comment":null}});
+        {
+            let mut state = w.state.lock().unwrap();
+            let mut value = state.snapshot().clone();
+            value["incidents"] = json!([incident]);
+            value["watchdog_deliveries"] = json!([incident]);
+            value["next_incident"] = json!(2);
+            state.save(value).unwrap();
         }
-        copy.source = Some(opening.join().unwrap().unwrap());
-        copy
-    }
-    fn ended(&mut self) -> bool {
-        self.cp
-            .as_mut()
-            .is_none_or(|cp| cp.try_wait().unwrap().is_some())
-    }
-    /// Fails if the copier has ended or `until` has passed; else waits a moment.
-    fn check(&mut self, waiting_for: &str) {
-        assert!(!self.ended(), "the copier ended before {waiting_for}");
-        assert!(
-            std::time::Instant::now() < self.until,
-            "the deadline passed before {waiting_for}"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    fn write(&mut self, bytes: &[u8]) {
-        use std::io::Write;
-        self.source.as_mut().unwrap().write_all(bytes).unwrap();
-    }
-    /// Closes the writer and waits, by `until`, for the copier to succeed.
-    fn finish(mut self) {
-        drop(self.source.take());
-        while !self.ended() {
+        let dir = w.root.join("service/health");
+        fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+        let path = dir.join(format!(
+            "body-{}",
+            openwiz_core::messaging::sha256_hex(
+                "901/\"synthetic-quarantined-notification\"".as_bytes()
+            )
+        ));
+        let bytes = json!({"body":LEGACY_FLEET_BODY,"sha256":if corrupt {"0".repeat(64)} else {openwiz_core::messaging::sha256_hex(LEGACY_FLEET_BODY.as_bytes())}}).to_string().into_bytes();
+        fs::write(&path, &bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        for now in [1200, 1300] {
+            let result = w.engine().pass(now);
             assert!(
-                std::time::Instant::now() < self.until,
-                "the copier never finished"
+                result.is_err(),
+                "retained delivery remains pending: corrupt={corrupt}, now={now}"
             );
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            if corrupt {
+                assert!(result.unwrap_err().contains("checksum"));
+            }
+            assert_eq!(
+                fs::read(&path).unwrap(),
+                bytes,
+                "never rewrite the retained body"
+            );
+            let state = w.snapshot();
+            assert_eq!(
+                state["watchdog_deliveries"],
+                json!([incident]),
+                "the operation binding stays unchanged"
+            );
+            assert_eq!(
+                state["incidents"],
+                if corrupt {
+                    json!([incident])
+                } else {
+                    json!([])
+                },
+                "a healthy loop heals unless storage is corrupt"
+            );
+            w.reload();
         }
-        placed(self.cp.take().unwrap(), &self.program);
+        assert_eq!(w.posts(), 0);
+        assert_eq!(w.tells(), 0, "unsafe notification is never sent");
+        let unsafe_claim =
+            openwiz_core::messaging::sha256_hex(format!("901\n{LEGACY_FLEET_BODY}").as_bytes());
+        assert!(
+            !dir.join(unsafe_claim).exists(),
+            "quarantine must not attempt a new POST"
+        );
     }
 }
-#[cfg(target_os = "linux")]
-impl Drop for Copy {
-    fn drop(&mut self) {
-        drop(self.source.take());
-        // The copier ends soon after its end of file: a short grace past a
-        // missed deadline, never an unbounded wait.
-        let now = std::time::Instant::now();
-        let until = self.until.max(now + std::time::Duration::from_secs(1));
-        while !self.ended() && std::time::Instant::now() < until {
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        if let Some(mut cp) = self.cp.take() {
-            let _ = cp.kill();
-            let _ = cp.wait();
-        }
-    }
+
+/// Catches a Needs you sent to a thread outside the configured project.
+#[test]
+fn foreign_project_notification_target_is_never_sent_a_message() {
+    let w = World::new();
+    let path = w.root.join("thread.json");
+    let mut thread: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    thread["thread"]["projectId"] = json!("prj_syn_foreign");
+    fs::write(path, thread.to_string()).unwrap();
+    assert!(w.engine().pass(1101).is_err());
+    assert_eq!(w.comments.lock().unwrap().len(), 3);
+    assert_eq!(w.tells(), 0);
 }
+
+// Fixture programs are placed by a separate `cp` (#811), shared.
+#[path = "../support/place.rs"]
+mod place;
+use place::place_script;

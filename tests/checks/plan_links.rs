@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{PermissionsExt, symlink};
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -629,8 +629,7 @@ fn tools(dir: &Path) -> PathBuf {
             .unwrap_or_else(|| panic!("{name} on PATH"));
         symlink(program, tools.join(name)).expect("tool link");
     }
-    fs::write(tools.join("gh"), FAKE_GH).expect("fake gh");
-    fs::set_permissions(tools.join("gh"), fs::Permissions::from_mode(0o700)).expect("mode");
+    crate::place::place_script(&tools.join("gh"), FAKE_GH);
     tools
 }
 

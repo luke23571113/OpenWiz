@@ -100,9 +100,16 @@ const MEASURE = `(() => {
     scripts: document.scripts.length,
     fonts: [...document.fonts].map((f) => ({ family: f.family, weight: f.weight, status: f.status })),
     figures: [...document.querySelectorAll('figure.fig')].map((f) => ({ id: f.id, ...rect(f),
+      // The figure's own title box (#631 R: a long card value must not squeeze it into a narrow stack).
+      title: (() => { const h = f.querySelector('h3'); return h ? { ...rect(h), lines: Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight)) } : null; })(),
       caption: (f.querySelector('figcaption') || {}).textContent || null,
       charts: [...f.querySelectorAll('.chart svg')].map((s) => ({ ...rect(s), label: s.getAttribute('aria-label'),
         marks: s.querySelectorAll('title').length,
+        // Visible text boxes that overlap another's: labels drawn over each other (#631, 00e grant).
+        overlaps: (() => { const t = [...s.querySelectorAll('text')].filter((e) => shown(e) && e.textContent.trim()).map((e) => [e.textContent.trim().slice(0, 20), e.getBoundingClientRect()]);
+          const hit = []; for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) { const a = t[i][1], b = t[j][1];
+            if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) hit.push([t[i][0], t[j][0]]); }
+          return hit; })(),
         // Text drawn outside its own SVG box is cut off for the reader (#759 R1).
         clipped: [...s.querySelectorAll('text')].filter((t) => {
           const b = t.getBoundingClientRect(), o = s.getBoundingClientRect();
@@ -133,7 +140,7 @@ for (const v of VIEWPORTS) {
   // Keyboard: Tab from the top; the first disclosure reached opens with Enter.
   const focus = [];
   let opened = null;
-  for (let i = 0; i < 4 && opened === null; i++) {
+  for (let i = 0; i < 20 && opened === null; i++) {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
     const at = await evaluate(`(() => { const a = document.activeElement; return { tag: a.tagName.toLowerCase(),

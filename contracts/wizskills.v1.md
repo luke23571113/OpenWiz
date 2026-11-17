@@ -83,6 +83,23 @@ An absent one causes no read, no error and no stand-in; a skill says so
 honestly and carries on. They are reads under the same limits as the settings
 above, never executed or imported.
 
+**Setup's optional consumer reads (J104).** Jake, 2026-11-15: setup's reads of
+the consumer's workflow files and its other project files are listed as
+optional consumer paths, read only when present, as J73 did
+([private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6904873199)).
+Setup reads five more consumer-project path shapes, each optional and read only
+when present, to copy the project's test commands and CI checks and to note
+its package layout: workflow files directly in `.github/workflows/` (`.github/workflows/*.yml` and
+`.github/workflows/*.yaml`), `pnpm-workspace.yaml`, `package.json` (only its
+`workspaces` field) and `packages/*/src` (only whether each folder exists,
+never its files). Setup also reads the private-state locations, the handoff
+page and orchestrator state, that the consumer's verified domain settings
+record, under the existing private-access authority; those come from settings,
+not a fixed path, so they have no normative entry. The J73 limits above apply
+unchanged: an absent one causes no read, no error and no stand-in setting; they
+are reads, never executed or imported; no consumer-project code runs, and no
+other source or private-tree access is granted.
+
 **OpenWiz's App setup tool (E1).** Setup may offer OpenWiz's App setup tool,
 `setup.py`, only from the installed OpenWiz, and runs it only after the user's
 explicit go. It never executes a `setup.py`, or any other file, from the
@@ -279,7 +296,7 @@ demonstrate structure; downstream tests prove real copying and execution.
   "required_files": ["skills/README.md", "check/run.py", ".github/workflows/ci.yml", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "README.md", "CHANGELOG.md", "LICENSE", "install.sh"],
   "skill_files": ["SKILL.md", "agents/openai.yaml"],
   "carried_contracts": ["contracts/decisions.v1.md", "contracts/decisions.v1.schema.json", "contracts/plan-links.v1.md", "contracts/plan-links.v1.schema.json", "contracts/open-development.v1.md", "contracts/ops-dispatch.v1.md", "contracts/ops-dispatch.v1.schema.json", "contracts/github-identity.v1.md", "contracts/cli.v1.md"],
-  "project_settings": ["docs/agents/*.md", "changes/README.md", "GLOSSARY.md", "AGENTS.md", "CLAUDE.md", "docs/adr/*.md", "GLOSSARY-MAP.md", ".out-of-scope/*.md", "docs/grills/*.md"],
+  "project_settings": ["docs/agents/*.md", "changes/README.md", "GLOSSARY.md", "AGENTS.md", "CLAUDE.md", "docs/adr/*.md", "GLOSSARY-MAP.md", ".out-of-scope/*.md", "docs/grills/*.md", ".github/workflows/*.yml", ".github/workflows/*.yaml", "pnpm-workspace.yaml", "package.json", "packages/*/src"],
   "plugin_name": "openwiz",
   "marketplace_name": "wizskills",
   "version_pattern": "(?:0\\.[1-9][0-9]*|[1-9][0-9]*\\.(?:0|[1-9][0-9]*))\\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?",
