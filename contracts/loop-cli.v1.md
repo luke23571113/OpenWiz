@@ -179,6 +179,11 @@ loop of the project with no marker and no binding) and `orphans`
   (export's `unmapped`) is `refused` with `apply-unmapped` before any write
   to it: `update` passes only mapped flags, and nothing shows that Cloudroom
   keeps the rest. Apply never drops such a setting.
+- `loop-started-thread` is unreachable until Cloudroom exposes a signal
+  for a thread a loop started (follow-up
+  https://github.com/openwizdev/OpenWiz/issues/1068). Apply never matches
+  Cloudroom's wording: a refusal there is `failed`, with Cloudroom's message
+  unchanged under code `room-cli`, and nothing half-done.
 
 ## Exit codes
 
