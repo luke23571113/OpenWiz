@@ -24,8 +24,11 @@
 //! `plan` is given, [`parse_loop_list`] reads `room-cli loop list` with the
 //! same strict JSON parser, and [`plan`] maps each valid file to its
 //! `room-cli loop create` or `update` command and compares it with its
-//! managed loop, as `contracts/wizloops-cloudroom.v1.md` says. Nothing here
-//! writes.
+//! managed loop, as `contracts/wizloops-cloudroom.v1.md` says.
+//!
+//! LC5 (#793, apply) runs plan's commands: [`CloudRoomSource::loop_files_write`]
+//! runs one, with the files it names, and [`read_back`] plans the file again
+//! against the `loop list` read after it. Nothing else here writes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -3166,9 +3169,237 @@ fn loop_id(object: &Map<String, Value>) -> String {
         .to_owned()
 }
 
+// ------------------------------------------------------------------- apply
+
+// LC5 (#793): apply runs plan's own commands. Its two pieces here are one
+// write, with the files its `@` operands stand for, and the read-back's
+// comparison. Which commands run, and what each result means, is apply's.
+
+/// What one `room-cli loop create` or `update` did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Written {
+    /// It exited 0: Cloudroom accepted it. Its stdout.
+    Accepted(String),
+    /// It exited with another code: Cloudroom refused it. The first
+    /// non-empty line of its error output, unchanged.
+    Refused(String),
+    /// It timed out, ended without an exit code, or could not be run:
+    /// whether it changed anything is unknown. Why, in words.
+    Unclear(String),
+}
+
+/// Writes `text` to the new file `path`, owner-only.
+fn write_private(path: &Path, text: &str) -> io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?
+        .write_all(text.as_bytes())
+}
+
+impl CloudRoomSource {
+    /// Runs one of plan's commands once, through the allowlist: writes each
+    /// of its files, owner-only, into `dir` (a private folder the caller
+    /// made and removes afterwards), and passes their paths where its
+    /// `@prompt` and `@script` operands stand. Never retried. `Err` when a
+    /// file could not be written, or the command is not a loop write: then
+    /// nothing was run.
+    pub fn loop_files_write(
+        &self,
+        command: &RoomCommand,
+        dir: &Path,
+        deadline: Instant,
+    ) -> io::Result<Written> {
+        let invalid = |what: &str| io::Error::new(io::ErrorKind::InvalidInput, what.to_owned());
+        let mut paths = BTreeMap::new();
+        for (operand, text) in &command.files {
+            let path = dir.join(operand.trim_start_matches('@'));
+            write_private(&path, text)?;
+            let path = path
+                .to_str()
+                .ok_or_else(|| invalid("the temporary folder's path is not UTF-8"))?;
+            paths.insert(operand.as_str(), path.to_owned());
+        }
+        let path = |operand: &mut String| -> io::Result<()> {
+            *operand = paths
+                .get(operand.as_str())
+                .cloned()
+                .ok_or_else(|| invalid("a file operand has no file"))?;
+            Ok(())
+        };
+        let mut invocation = command.invocation.clone();
+        match &mut invocation {
+            Invocation::LoopCreate(a) => {
+                path(&mut a.prompt_file)?;
+                a.script_file.as_mut().map(path).transpose()?;
+            }
+            Invocation::LoopUpdate(a) => {
+                a.script_file.as_mut().map(path).transpose()?;
+            }
+            _ => return Err(invalid("not a loop write")),
+        }
+        Ok(
+            match process::run_spawn(self.program(), &invocation, deadline) {
+                Ok(out) => Written::Accepted(String::from_utf8_lossy(&out).into_owned()),
+                Err(process::SpawnFailure::Exited {
+                    exit_code: Some(code),
+                    first_line,
+                }) if first_line.is_empty() => {
+                    Written::Refused(format!("room-cli exited {code} with no error output"))
+                }
+                Err(process::SpawnFailure::Exited {
+                    exit_code: Some(_),
+                    first_line,
+                }) => Written::Refused(first_line),
+                Err(process::SpawnFailure::Exited {
+                    exit_code: None, ..
+                }) => Written::Unclear("room-cli ended without an exit code".into()),
+                Err(process::SpawnFailure::Source(e)) => Written::Unclear(format!("room-cli {e}")),
+            },
+        )
+    }
+}
+
+/// The address a webhook `create` printed: the first word of its output
+/// that starts with `https://`. The adapter's "A webhook address is shown
+/// once": the caller passes it on once and writes it nowhere.
+pub fn webhook_address(stdout: &str) -> Option<&str> {
+    stdout
+        .split_whitespace()
+        .find(|word| word.starts_with("https://"))
+}
+
+/// An `in` delay in seconds: a whole number with `m`, `h` or `d`.
+fn delay_seconds(delay: &str) -> Option<i64> {
+    let unit = match delay.as_bytes().last()? {
+        b'm' => 60,
+        b'h' => 3600,
+        b'd' => 86_400,
+        _ => return None,
+    };
+    delay[..delay.len() - 1]
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(unit)
+}
+
+/// The read-back: the file planned again, with no binding, against the
+/// `loop list` read after the last write, as plan compares.
+///
+/// An `in` file's delay became a run time when its loop was created, so
+/// that run time is checked on its own: `written` is the clock in whole
+/// seconds just before the first write (rounded down) and just after the
+/// last (rounded up), and the run time, read to the whole second, must fall
+/// within the delay after it. Out of that window it is a `trigger`
+/// difference; a run time that cannot be read, or a loop with no run time,
+/// leaves nothing to compare, and plan refuses it (`cf-in-existing`).
+pub fn read_back(
+    shown: &str,
+    read: &FileRead,
+    live: &[LiveLoop],
+    project: &str,
+    now: i64,
+    written: (i64, i64),
+) -> PlanItem {
+    let mut read = read.clone();
+    let managed: Vec<&LiveLoop> = live
+        .iter()
+        .filter(|l| {
+            l.project_id == project
+                && split_marker(&l.name).is_some_and(|(id, _)| Some(id) == read.id.as_deref())
+        })
+        .collect();
+    let mut late = None;
+    if let (Some(file), [only]) = (read.file.as_mut(), managed.as_slice())
+        && let Some(delay) = file
+            .frontmatter
+            .get("trigger")
+            .and_then(|t| t.get("in"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        && let Some(Trigger::At(at)) = &only.trigger
+        && let Some((due, _)) = instant(at)
+        && let Some(seconds) = delay_seconds(&delay)
+    {
+        let (before, after) = written;
+        if !(before.saturating_add(seconds)..=after.saturating_add(seconds)).contains(&due) {
+            late = Some(Difference {
+                field: "trigger",
+                file: json!({ "in": delay }),
+                live: json!({ "at": at }),
+            });
+        }
+        // Checked above: the rest of the loop is compared as plan compares.
+        file.frontmatter
+            .insert("trigger".into(), json!({ "at": at }));
+    }
+    let mut item = plan(&[(shown.to_owned(), read)], live, project, &[], now)
+        .items
+        .remove(0);
+    if let Some(difference) = late {
+        // In the contract's field order: after `name`, before the rest.
+        let at = item
+            .differences
+            .iter()
+            .take_while(|d| d.field == "name")
+            .count();
+        item.differences.insert(at, difference);
+    }
+    item
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // catches (review R3): an `in` file's created loop compared with its own
+    // run time, so any run time reads back as no difference; the window's
+    // edges at whole-second precision; and a run time that cannot be read
+    // reported as anything but a loop plan cannot compare.
+    #[test]
+    fn read_back_checks_an_in_files_run_time_against_the_write() {
+        let file = read_loop(
+            b"---\nid: \"in-same\"\nname: \"Look again\"\ntrigger: {\"in\": \"30m\"}\nthread: \"same\"\n---\nLook again.\n",
+            &mut |_| CheckText::NotFound,
+        );
+        // 2030-01-01T00:00:00Z is 1_893_456_000; the write ran in its first
+        // two seconds, so the loop is due from 00:30:00 to 00:30:02.
+        let written = (1_893_456_000, 1_893_456_002);
+        for (run_at, differs) in [
+            ("2030-01-01T00:30:00Z", Some(false)),
+            ("2030-01-01T00:30:02.999Z", Some(false)),
+            ("2030-01-01T01:30:01+01:00", Some(false)),
+            ("2030-01-01T00:29:59.999Z", Some(true)),
+            ("2030-01-01T00:30:03Z", Some(true)),
+            ("2099-01-01T00:00:00Z", Some(true)),
+            ("soon", None),
+        ] {
+            let list = format!(
+                "{{\"automations\": [{{\"id\": \"loop_syn_7\", \"project_id\": \"prj_syn_0001\", \"session_id\": \"thr_syn_0001\", \"name\": \"Look again [wizloop:in-same]\", \"cron\": null, \"timezone\": null, \"run_at\": \"{run_at}\", \"webhook\": false, \"new_thread\": false, \"script\": null, \"agent\": null, \"secrets\": [], \"priority\": 3, \"prompt\": \"Look again.\\n\", \"enabled\": true, \"last_error\": null, \"last_run_at\": null, \"next_run_at\": null, \"runs\": 0}}]}}"
+            );
+            let live = parse_loop_list(list.as_bytes()).unwrap();
+            let item = read_back("in-same.md", &file, &live, "prj_syn_0001", 0, written);
+            match differs {
+                None => assert_eq!(item.action, Action::Refused, "{run_at}"),
+                Some(differs) => {
+                    let expected = if differs {
+                        vec![Difference {
+                            field: "trigger",
+                            file: json!({"in": "30m"}),
+                            live: json!({"at": run_at}),
+                        }]
+                    } else {
+                        vec![]
+                    };
+                    assert_eq!(item.differences, expected, "{run_at}");
+                    assert_eq!(item.loop_id.as_deref(), Some("loop_syn_7"), "{run_at}");
+                }
+            }
+        }
+    }
 
     fn read(text: &str) -> Vec<(&'static str, String)> {
         read_loop(text.as_bytes(), &mut |_| CheckText::NotFound)
