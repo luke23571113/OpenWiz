@@ -753,3 +753,46 @@ fn text_output_previews_the_command_and_never_prints_a_terminal_control() {
         "{text}"
     );
 }
+
+// catches: inside a thread a loop started, Cloudroom's refusal of the
+// create (the adapter's "Loops cannot be created from a thread a loop
+// started") reported as anything but `failed` with its message unchanged,
+// the loop reported as created, or apply reading back, retrying or leaving
+// its files. The refusal's real wording is unobserved; this one is synthetic.
+#[test]
+fn a_create_cloudroom_refuses_in_a_loop_started_thread_is_not_created() {
+    let message = "Error: Synthetic: a thread a loop started cannot create loops";
+    let room = Room::new(
+        vec![
+            list(&account()),
+            json!({"any_loop_write": "create", "stderr": message, "exit": 1}),
+        ],
+        vec![],
+    );
+    let file = fixture("webhook-new.md");
+    let (code, doc) = room.json(&["webhook-new", "--from", &file]);
+    assert_eq!(code, 5, "{doc:#}");
+    assert_eq!(
+        (
+            &doc["outcome"],
+            &doc["action"],
+            &doc["loop"],
+            &doc["read_back"]
+        ),
+        (
+            &json!("failed"),
+            &json!("create"),
+            &json!(null),
+            &json!(null)
+        )
+    );
+    assert_eq!(
+        doc["refusals"],
+        json!([{"file": file, "code": "room-cli", "field": "file", "message": message}])
+    );
+    assert!(doc.get("webhook_address").is_none(), "{doc:#}");
+    let writes = room.writes();
+    assert_eq!(writes.len(), 1, "one create, never retried");
+    assert_eq!(room.calls(), vec![json!(LIST), writes[0]["argv"].clone()]);
+    room.assert_no_temporary_files();
+}
