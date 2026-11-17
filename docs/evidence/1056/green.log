@@ -50,3 +50,16 @@ OK
 # pre-push: all 6 checks passed at 93cb747 in 429 s
 # python3 -I tools/open-import/guard.py --base=<merge-base> --head=HEAD: carriage guard: all 67 added paths are classified (exit 0); test_guard.py: OK
 # changed-file privacy scan (ci.yml step's scan, run locally): 70 files, 0 findings
+
+# WM1 (#1056) merge of main 894ab71f7c5517f641b3beb5d861da3c146d3035 (conflict: tools/open-import/paths.json, both evidence rows kept): checks at e4d12ae103d5a508980e5744d91b0e2d3d7be90d
+# python3 -I ci/wizroom/test_split.py: Ran 10 tests, OK
+# pre-push: ok    cargo fmt --check  (1 s)
+# pre-push: ok    cargo clippy --workspace --all-targets -- -D warnings  (10 s)
+# pre-push: ok    cargo test -p openwiz-tests --test checks  (252 s)
+# pre-push: ok    sh .github/actions/docs-only/test.sh  (134 s)
+# pre-push: ok    npm run typecheck  (5 s)
+# pre-push: ok    npm run check  (2 s)
+# pre-push: all 6 checks passed at e4d12ae in 407 s
+# carriage guard: all 67 added paths are classified (exit 0); test_guard.py: OK
+# changed-file privacy scan: 70 files, 0 findings
+# split.py on main 894ab71: same two refusals as main-report.txt (exit 1)
