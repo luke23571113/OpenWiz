@@ -58,3 +58,8 @@ Validation: all four AW5 proofs pass under the same process pauses (5.96s),
 the controlled cleanup probe passes (3.49s), `cargo fmt --check` passes and
 `cargo clippy -p openwiz-tests --all-targets -- -D warnings` passes.
 No changelog: tests only (`no-changelog`). Normal hook and full CI remain gates.
+
+Supporting registry row: `tools/open-import/paths.json` adds only
+`docs/evidence/946/**` under fleet supporting-edit kind 1 so CI classifies these
+public proof artifacts. The existing carriage guard verifies the row; no new
+test is needed for registry wiring.
