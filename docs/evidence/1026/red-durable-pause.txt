@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/tmp/openwiz-j130/OpenWiz/docs/evidence/1026/pause-test.py", line 29, in <module>
+    raise RuntimeError('durable send record not observed')
+RuntimeError: durable send record not observed
