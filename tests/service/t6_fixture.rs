@@ -747,6 +747,11 @@ fn place_script(dst: &std::path::Path, text: &[u8]) {
 /// Descriptors of this process open for writing on `path`'s file.
 #[cfg(target_os = "linux")]
 fn writers(path: &std::path::Path) -> usize {
+    writable(path).len()
+}
+/// The `/proc/self/fd` entries of this process open for writing on `path`'s file.
+#[cfg(target_os = "linux")]
+fn writable(path: &std::path::Path) -> Vec<PathBuf> {
     use std::os::unix::fs::MetadataExt;
     let (fds, infos) = (
         std::path::Path::new("/proc/self/fd"),
@@ -761,9 +766,83 @@ fn writers(path: &std::path::Path) -> usize {
             let info = std::fs::read_to_string(infos.join(&fd)).ok()?;
             let flags = info.lines().find_map(|l| l.strip_prefix("flags:"))?;
             let access = u32::from_str_radix(flags.trim(), 8).unwrap() & 3;
-            (file.dev() == target.dev() && file.ino() == target.ino() && access != 0).then_some(())
+            (file.dev() == target.dev() && file.ino() == target.ino() && access != 0)
+                .then(|| fds.join(&fd))
         })
-        .count()
+        .collect()
+}
+/// #1060 (as #1044): a concurrent fork at the worst moment of staging. While
+/// alive, it watches `program`; the moment this process holds a writer for it,
+/// a child takes a writer for the same file and keeps it until the watch ends,
+/// as a child forked then would have kept its inherited copy. Executing
+/// `program` meanwhile fails with ETXTBSY.
+#[cfg(target_os = "linux")]
+pub struct Inheritor {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    watcher: Option<std::thread::JoinHandle<Option<std::process::Child>>>,
+}
+#[cfg(target_os = "linux")]
+impl Inheritor {
+    pub fn watch(program: PathBuf) -> Self {
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watching = stop.clone();
+        let watcher = std::thread::spawn(move || {
+            while !watching.load(Ordering::SeqCst) {
+                if !program.exists() {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                } else if let Some(child) = writable(&program)
+                    .iter()
+                    .find_map(|fd| inherit(fd, &program))
+                {
+                    return Some(child);
+                }
+            }
+            None
+        });
+        Self {
+            stop,
+            watcher: Some(watcher),
+        }
+    }
+    /// Ends the watch, releases and reaps the child, and says whether one
+    /// held a writer for the program.
+    pub fn finish(mut self) -> bool {
+        self.end()
+    }
+    fn end(&mut self) -> bool {
+        self.stop.store(true, Ordering::SeqCst);
+        let Some(Some(mut child)) = self.watcher.take().map(|w| w.join().unwrap()) else {
+            return false;
+        };
+        drop(child.stdin.take());
+        child.wait().unwrap();
+        true
+    }
+}
+#[cfg(target_os = "linux")]
+impl Drop for Inheritor {
+    fn drop(&mut self) {
+        self.end();
+    }
+}
+/// Starts a `cat` whose output is a new writer for the file open as `fd`, if
+/// that is still `program`. It writes nothing and ends when its input closes.
+#[cfg(target_os = "linux")]
+fn inherit(fd: &Path, program: &Path) -> Option<std::process::Child> {
+    use std::os::unix::fs::MetadataExt;
+    use std::process::Stdio;
+    let writer = OpenOptions::new().write(true).open(fd).ok()?;
+    let (held, target) = (writer.metadata().ok()?, fs::metadata(program).ok()?);
+    if (held.dev(), held.ino()) != (target.dev(), target.ino()) {
+        return None;
+    }
+    let child = Command::new("cat")
+        .stdin(Stdio::piped())
+        .stdout(writer)
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    Some(child)
 }
 /// #2700 (as #2583): this binary's fakes are placed while other test threads
 /// fork. The copy is held mid-way on a FIFO, where this process must hold no

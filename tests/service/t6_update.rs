@@ -860,7 +860,15 @@ fn a_passing_main_merge_is_staged_but_not_reported_as_running() {
     let old = f.head();
     let candidate = f.merge("pass");
     let state = f.state();
+    // #1060 (as #1044): another thread may fork at any moment of staging.
+    #[cfg(target_os = "linux")]
+    let fork = fixture::Inheritor::watch(f.build(&candidate).join("openwiz-service"));
     assert!(f.updater(&old).check(&state, 1000).unwrap());
+    #[cfg(target_os = "linux")]
+    assert!(
+        !fork.finish(),
+        "staging held a writer for the candidate a concurrent fork inherited"
+    );
     assert!(state.lock().unwrap().snapshot()["update"].is_null());
     assert!(f.records().is_empty());
     let pending = f.pending();
@@ -886,6 +894,102 @@ fn a_passing_main_merge_is_staged_but_not_reported_as_running() {
     );
     assert!(f.build(&candidate).join("openwiz-service").is_file());
     assert!(f.build(&candidate).join("web/index.html").is_file());
+}
+
+/// #1060: staging writes the candidate program another way, so each refusal it
+/// must keep is a row. A program planted where the candidate goes is never
+/// replaced or written through (create-new), a symlinked build output is
+/// never staged (regular file), and a program reporting another build is
+/// never queued (identity). The keeper above stages a real build, which the
+/// identity call accepts only as an owner-only file with one link.
+#[test]
+fn staging_refuses_a_planted_target_a_symlinked_program_or_another_identity() {
+    use std::sync::{Arc, Mutex};
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum Row {
+        Planted,
+        Symlinked,
+        Misidentified,
+    }
+    struct Staging {
+        row: Row,
+        outside: std::path::PathBuf,
+        identity: Mutex<bool>,
+    }
+    impl update::Executor for Staging {
+        fn run(&self, call: &update::Call) -> Result<String, String> {
+            let args: Vec<_> = call.argv().iter().map(String::as_str).collect();
+            let dir = call.directory();
+            match (call.program().to_str().unwrap(), args.as_slice()) {
+                ("git", _) => return update::System.run(call),
+                ("npm", ["run", "build"]) => {
+                    fixture::directory(&dir.join("out"));
+                    fixture::file(&dir.join("out/index.html"), "synthetic candidate");
+                }
+                ("cargo", ["build", "--release"]) => {
+                    let program = dir.join("target/release/openwiz-service");
+                    fixture::directory(program.parent().unwrap());
+                    match self.row {
+                        Row::Symlinked => std::os::unix::fs::symlink(&self.outside, &program),
+                        _ => std::fs::write(&program, "synthetic build output"),
+                    }
+                    .unwrap();
+                    if self.row == Row::Planted {
+                        let target = dir.parent().unwrap().join("openwiz-service");
+                        std::os::unix::fs::symlink(&self.outside, target).unwrap();
+                    }
+                }
+                (_, ["--update-build"]) => {
+                    *self.identity.lock().unwrap() = true;
+                    return Ok(format!("{}\n", "0".repeat(40)));
+                }
+                _ => {}
+            }
+            Ok(String::new())
+        }
+    }
+    for row in [Row::Planted, Row::Symlinked, Row::Misidentified] {
+        let f = fixture::Fixture::new();
+        let old = f.head();
+        f.merge("pass");
+        let outside = f.temp.join("outside");
+        fixture::file(&outside, "synthetic outside file");
+        let staging = Arc::new(Staging {
+            row,
+            outside: outside.clone(),
+            identity: Mutex::new(false),
+        });
+        let updater = update::Updater::fixture(
+            &f.root,
+            &f.install,
+            &f.repo,
+            &old,
+            f.sink(),
+            staging.clone(),
+        )
+        .unwrap();
+        assert!(
+            !updater.check(&f.state(), 1000).unwrap(),
+            "{row:?} was staged"
+        );
+        let records = f.records();
+        assert_eq!(records.len(), 1, "{row:?}: one kept record");
+        assert!(
+            records[0].contains("the build failed"),
+            "{row:?}: {}",
+            records[0]
+        );
+        assert_eq!(
+            *staging.identity.lock().unwrap(),
+            row == Row::Misidentified,
+            "{row:?}: the identity call"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&outside).unwrap(),
+            "synthetic outside file",
+            "{row:?} wrote through a symlink"
+        );
+    }
 }
 
 #[test]
