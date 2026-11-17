@@ -644,10 +644,14 @@ impl Store<Attachments> {
     /// The room the stagings in progress still need: for each unfinished
     /// attachment whose reservation a staging still holds, what it reserved
     /// less what it has written. A reservation no staging holds is a
-    /// stopped one's: it needs nothing (a later sweep deletes it).
+    /// stopped one's: it needs nothing (a later sweep deletes it). Nor does
+    /// one whose directory is gone while it is looked at: its staging ended
+    /// and deleted it (#1089), as a cancelled upload's does while it still
+    /// holds its reservation; any other error fails closed.
     fn outstanding(&self) -> Result<u64, StoreError> {
+        let gone = |e: &io::Error| e.kind() == io::ErrorKind::NotFound;
         let mut total = 0u64;
-        for (_, dir) in self.entries()? {
+        'dirs: for (_, dir) in self.entries()? {
             if fs::symlink_metadata(dir.join(META)).is_ok() {
                 continue;
             }
@@ -673,8 +677,18 @@ impl Store<Attachments> {
                 StoreError("a staging's reservation can't be read; nothing was staged".to_owned())
             })?;
             let mut written = 0u64;
-            for entry in fs::read_dir(&dir).map_err(|e| io_error("list", &dir, &e))? {
-                let entry = entry.map_err(|e| io_error("list", &dir, &e))?;
+            let listed = match fs::read_dir(&dir) {
+                Ok(listed) => listed,
+                Err(e) if gone(&e) => continue,
+                Err(e) => return Err(io_error("list", &dir, &e)),
+            };
+            for entry in listed {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    // Deleted part way through the listing (Linux).
+                    Err(e) if gone(&e) => continue 'dirs,
+                    Err(e) => return Err(io_error("list", &dir, &e)),
+                };
                 if entry.path() == path {
                     continue;
                 }
