@@ -5,6 +5,7 @@ import signal
 import subprocess
 import sys
 import time
+import tempfile
 
 program = Path(sys.argv[1]).resolve()
 checkout = Path(__file__).resolve().parents[3]
@@ -17,7 +18,7 @@ try:
     until = time.monotonic() + 10
     while p.poll() is None:
         # The core assigns its deadline before claiming the send.
-        records = list(Path('/tmp/openwiz-messaging-tests').glob(
+        records = list((Path(tempfile.gettempdir()) / 'openwiz-messaging-tests').glob(
             f'{p.pid}-*/ad07_outcomes-state/sends/op-ad07-sent.json'))
         if records:
             os.kill(p.pid, signal.SIGSTOP)
