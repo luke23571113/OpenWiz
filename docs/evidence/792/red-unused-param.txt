@@ -1,0 +1,23 @@
+# #792 red run 2: the self-review fix, with the check's text dropped when its timeout is refused (the bug put back)
+
+
+running 1 test
+test loop_plan::a_refused_checks_params_still_count_as_used ... FAILED
+
+failures:
+
+---- loop_plan::a_refused_checks_params_still_count_as_used stdout ----
+
+thread 'loop_plan::a_refused_checks_params_still_count_as_used' (18457) panicked at tests/cli-agent/loop_plan.rs:723:5:
+assertion `left == right` failed
+  left: [("bad-timeout", "check.timeout"), ("unused-param", "params.repo")]
+ right: [("bad-timeout", "check.timeout")]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    loop_plan::a_refused_checks_params_still_count_as_used
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 70 filtered out; finished in 2.27s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`

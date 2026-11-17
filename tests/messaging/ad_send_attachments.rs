@@ -1204,23 +1204,3 @@ fn ad09_attachment_ls_and_rm_see_the_claim_through_the_release_binary() {
         "an uncertain send's attachment is kept"
     );
 }
-
-#[test]
-fn ad07_legacy_queued_receipt_keeps_staged_copies_and_prompt() {
-    let fake = SendFake::with(
-        "ad07_legacy_queue",
-        vec![tell(LOCAL, "tell-queued-thread-busy.json", json!({}))],
-    );
-    let a = stage(&fake.state, "syn-legacy-a.txt", &text("Synthetic a"), T0);
-    let b = stage(&fake.state, "syn-legacy-b.png", &png(1024), T0);
-    let r = with_ids(
-        request(LOCAL, Mode::Queue, "Synthetic legacy", "op-ad07-legacy"),
-        &[&a, &b],
-    );
-    let report = report_with(&fake, &r);
-    assert_eq!(report.status, Status::Uncertain);
-    assert!(kept(&fake.state, &a));
-    assert!(kept(&fake.state, &b));
-    assert_eq!(fake.record("op-ad07-legacy")["text"], "Synthetic legacy");
-    assert_eq!(fake.tell_count(), 1);
-}

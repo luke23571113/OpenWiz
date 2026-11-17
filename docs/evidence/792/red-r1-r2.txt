@@ -1,0 +1,28 @@
+# #980 R1 and R2 red runs at c4a023b + these two tests
+
+
+running 2 tests
+test loop_plan::a_multibyte_delay_is_refused_and_the_other_files_still_plan ... FAILED
+test loop_plan::human_output_escapes_terminal_controls_and_json_keeps_them ... FAILED
+
+failures:
+
+---- loop_plan::a_multibyte_delay_is_refused_and_the_other_files_still_plan stdout ----
+
+thread 'loop_plan::a_multibyte_delay_is_refused_and_the_other_files_still_plan' (368577) panicked at tests/cli-agent/loop_plan.rs:69:9:
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- loop_plan::human_output_escapes_terminal_controls_and_json_keeps_them stdout ----
+
+thread 'loop_plan::human_output_escapes_terminal_controls_and_json_keeps_them' (368578) panicked at tests/cli-agent/loop_plan.rs:799:5:
+"<tmp> update loop_syn_3\n<tmp> body: \"Synthetic: post a short nightly note.\" -> \"Synthetic: \\u001b[2J\\u001b[Hforged\\nsecond \u{202e}line.\"\n  room-cli 'loop' 'update' 'loop_syn_3' '--prompt' 'Synthetic: \u{1b}[2J\u{1b}[Hforged\nsecond \u{202e}line.'\n<tmp> create\n  room-cli 'loop' 'create' '--name' 'Synthetic hook [wizloop:hook]' '--prompt-file' '@prompt' '--webhook' '--new-thread' '--priority' '3' '--secrets' 'none'\n  @prompt:\nSynthetic: \u{1b}[2J\u{1b}[Hforged\nsecond \u{202e}line.\nunmanaged: loop_syn_5: Synthetic \u{1b}[2J\u{1b}[Hkick\nno file: loop_syn_1: syn-triage\nno file: loop_syn_2: syn-delivery\nno file: loop_syn_4: syn-reminder\nNothing was changed.\n"
+
+
+failures:
+    loop_plan::a_multibyte_delay_is_refused_and_the_other_files_still_plan
+    loop_plan::human_output_escapes_terminal_controls_and_json_keeps_them
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 72 filtered out; finished in 2.13s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`

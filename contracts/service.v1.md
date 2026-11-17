@@ -494,8 +494,11 @@ full source identity, outcome records, pending journal, exact candidate identity
 check and health-confirmed handover/recovery. Packaged candidates stage all
 programs, web and runtime under service/builds/<source>; they never invoke
 Cargo/npm or silently adopt another channel. Invalid/unavailable artifacts keep
-the last-good selection. Setup/connection/engine effects follow
+the last-good selection. Setup and connection effects follow
 [setup.v1.md](setup.v1.md); this channel never marks those prerequisites ready.
+The `openwiz engine` commands that prepared a packaged activation were retired
+in 0.0.17 (#800); the service's packaged start gate is unchanged (D2 of
+[the retirement map](engine-retirement.v1.md#decisions)).
 
 Record delivery durability: a private immutable claim binds the issue and exact comment body before a POST, and an atomically saved receipt holds the confirmed comment id. Claims outlive their incidents. Even after healing or a restart, an unresolved claim remains reported and is reconciled only by a unique exact GitHub readback; it is never POSTed again. Incident healing continues while delivery is pending.
 

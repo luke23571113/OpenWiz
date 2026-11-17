@@ -106,7 +106,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs, THREAD_ID_MAX_LEN, ThreadId};
+use openwiz_adapter_cloudroom::allowlist::{
+    Invocation, LoopAgentArgs, LoopCreateArgs, LoopReschedule, LoopTrigger, LoopUpdateArgs,
+    SpawnArgs, THREAD_ID_MAX_LEN, ThreadId,
+};
 use openwiz_core::attachment::{
     AttachmentId, Kind, PromptAttachment, SafeName, Sha256, StagedAttachment, StagedPath,
 };
@@ -258,6 +261,56 @@ const ALLOWED: &[&[&str]] = &[
     &["loop", "list", "--json"],
     &["loop", "resume", "loop_syn_1", "--json"],
     &["loop", "pause", "loop_syn_1", "--json"],
+    // #792 (J109, orchestrator ruling on #792): the loop file writes, in
+    // contracts/loop-cli.v1.md's forms; plan builds them, apply runs them.
+    &[
+        "loop",
+        "create",
+        "--name",
+        "Synthetic [wizloop:syn]",
+        "--prompt-file",
+        "@prompt",
+        "--cron",
+        "0 9 * * *",
+        "--timezone",
+        "UTC",
+        "--new-thread",
+        "--script-file",
+        "@script",
+        "--provider",
+        "syn-provider",
+        "--model",
+        "syn-model",
+        "--reasoning",
+        "medium",
+        "--priority",
+        "3",
+        "--secrets",
+        "none",
+    ],
+    &[
+        "loop",
+        "update",
+        "loop_syn_1",
+        "--name",
+        "Synthetic [wizloop:syn]",
+        "--priority",
+        "2",
+        "--prompt",
+        "Synthetic",
+        "--at",
+        "2030-01-02T03:04:05Z",
+        "--script-file",
+        "@script",
+        "--provider",
+        "syn-provider",
+        "--model",
+        "syn-model",
+        "--reasoning",
+        "medium",
+        "--secrets",
+        "all",
+    ],
 ];
 
 /// Arguments that must never be passed, whatever the invocation.
@@ -280,6 +333,14 @@ const FORBIDDEN: &[&str] = &[
     "send",
     "mark-read",
 ];
+
+fn syn_agent() -> LoopAgentArgs {
+    LoopAgentArgs {
+        provider: "syn-provider".into(),
+        model: "syn-model".into(),
+        reasoning: "medium".into(),
+    }
+}
 
 /// Every invocation the adapter can build. The `match` makes a new variant
 /// a compile error here, as a reminder to add its forms to `all`; it cannot
@@ -356,6 +417,29 @@ fn every_invocation() -> Vec<Invocation> {
         Invocation::LoopList,
         Invocation::LoopResume(ThreadId::parse("loop_syn_1").expect("valid id")),
         Invocation::LoopPause(ThreadId::parse("loop_syn_1").expect("valid id")),
+        Invocation::LoopCreate(LoopCreateArgs {
+            name: "Synthetic [wizloop:syn]".into(),
+            prompt_file: "@prompt".into(),
+            trigger: LoopTrigger::Cron {
+                cron: "0 9 * * *".into(),
+                timezone: "UTC".into(),
+            },
+            new_thread: true,
+            script_file: Some("@script".into()),
+            agent: Some(syn_agent()),
+            priority: "3".into(),
+            secrets: "none".into(),
+        }),
+        Invocation::LoopUpdate(LoopUpdateArgs {
+            loop_id: ThreadId::parse("loop_syn_1").expect("valid id"),
+            name: Some("Synthetic [wizloop:syn]".into()),
+            priority: Some("2".into()),
+            prompt: Some("Synthetic".into()),
+            trigger: Some(LoopReschedule::At("2030-01-02T03:04:05Z".into())),
+            script_file: Some("@script".into()),
+            agent: Some(syn_agent()),
+            secrets: Some("all".into()),
+        }),
     ];
     for invocation in &all {
         match invocation {
@@ -372,7 +456,9 @@ fn every_invocation() -> Vec<Invocation> {
             | Invocation::ThreadArchive(_)
             | Invocation::LoopList
             | Invocation::LoopResume(_)
-            | Invocation::LoopPause(_) => {}
+            | Invocation::LoopPause(_)
+            | Invocation::LoopCreate(_)
+            | Invocation::LoopUpdate(_) => {}
         }
     }
     all
@@ -463,6 +549,29 @@ fn no_invocation_passes_a_forbidden_argument() {
                 assert_eq!(argv[1], "archive");
                 (&argv[..], &["archive"])
             }
+            // #792 (J109): the loop file writes' subcommands, and nothing
+            // else; update's `--prompt` value is the prompt, not an argument.
+            Invocation::LoopCreate(_) => {
+                assert_eq!(argv[1], "create");
+                (&argv[..], &["create"])
+            }
+            Invocation::LoopUpdate(_) => {
+                assert_eq!(argv[1], "update");
+                let prompt = argv.iter().position(|a| a == "--prompt");
+                let checked: Vec<String> = argv
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| prompt.is_none_or(|p| *i != p + 1))
+                    .map(|(_, a)| a.clone())
+                    .collect();
+                for word in &checked {
+                    assert!(
+                        !FORBIDDEN.contains(&word.as_str()) || word == "update",
+                        "{invocation:?} passes {word}"
+                    );
+                }
+                continue;
+            }
             _ => (&argv[..], &[]),
         };
         for word in checked {
@@ -471,9 +580,15 @@ fn no_invocation_passes_a_forbidden_argument() {
                 "{invocation:?} passes {word}"
             );
         }
-        // Every read asks for JSON, except --version, which prints plain text.
+        // Every read asks for JSON, except --version, which prints plain
+        // text; the loop file writes (#792) have no --json form.
         assert!(
-            argv == ["--version"] || argv.iter().any(|a| a == "--json"),
+            argv == ["--version"]
+                || matches!(
+                    invocation,
+                    Invocation::LoopCreate(_) | Invocation::LoopUpdate(_)
+                )
+                || argv.iter().any(|a| a == "--json"),
             "{argv:?}"
         );
     }
@@ -541,12 +656,6 @@ const LOOP_REPOSITORY: &str = "../crates/store/src/loops/repository.rs";
 const LOOP_CHECK: &str = "../crates/service/src/loops/check.rs";
 const LOOP_EXECUTOR: &str = "../crates/service/src/loops/mod.rs";
 
-/// EN1 (#1106), approved 2026-11-07: only the fixed isolated interpreter
-/// and installed sibling tool, with the minimized environment. Activation and
-/// every other gate remain closed.
-/// Private record: https://github.com/jparker2006/ClosedWiz/issues/1106#issuecomment-6714565014
-const ENGINE_LAUNCHER: &str = "../crates/cli/src/engine.rs";
-
 /// J99 (#635), approved by Jake 2026-11-15: installed `openwiz init` runs only
 /// the fixed sibling `runtime/setup/init.py` through absolute
 /// `/usr/bin/python3 -I`, with a cleared environment passing only HOME,
@@ -557,11 +666,7 @@ const INIT_LAUNCHER: &str = "../crates/cli/src/init.rs";
 
 #[test]
 fn allowlist_source_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 18] = [
-        (
-            "engine_interpreter_exception_rejects_planted_widening",
-            engine_interpreter_exception_rejects_planted_widening,
-        ),
+    let cases: [(&str, fn()); 17] = [
         (
             "init_interpreter_exception_rejects_planted_widening",
             init_interpreter_exception_rejects_planted_widening,
@@ -662,11 +767,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
         .canonicalize()
         .unwrap();
     let mut updated = false;
-    let engine_launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(ENGINE_LAUNCHER)
-        .canonicalize()
-        .expect("the engine launcher");
-    let mut engine_launched = false;
     let init_launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(INIT_LAUNCHER)
         .canonicalize()
@@ -732,15 +832,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
             ran = true;
             continue;
         }
-        if canonical == engine_launcher {
-            assert_eq!(
-                engine_launcher_problems(&text),
-                Vec::<String>::new(),
-                "{ENGINE_LAUNCHER}"
-            );
-            engine_launched = true;
-            continue;
-        }
         if canonical == init_launcher {
             assert_eq!(
                 init_launcher_problems(&text),
@@ -781,7 +872,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
     assert!(ran, "{GITHUB_RUNNER} was not checked");
     assert!(signed, "{GITHUB_APP} was not checked");
     assert!(updated, "the canonical updater runner was not checked");
-    assert!(engine_launched, "{ENGINE_LAUNCHER} was not checked");
     assert!(init_launched, "{INIT_LAUNCHER} was not checked");
     assert_eq!(checked_loops, [true; 3], "all canonical L3 gates checked");
 }
@@ -1990,6 +2080,34 @@ fn no_product_source_spells_a_forbidden_argument() {
     for (path, text) in product_sources() {
         let path = path.canonicalize().expect("path");
         for word in FORBIDDEN {
+            // #792 (J109): `loop create` and `loop update`, once each, only
+            // opening their own argv arm in the allowlist.
+            if matches!(*word, "create" | "update") && path == allowlist {
+                let variant = if *word == "create" {
+                    "LoopCreate"
+                } else {
+                    "LoopUpdate"
+                };
+                let header = format!("            Self::{variant}(a) => {{\n");
+                let arm: String = text
+                    .split(&header)
+                    .nth(1)
+                    .and_then(|rest| rest.split("\n            }\n").next())
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .collect();
+                assert_eq!(text.matches(&header).count(), 1, "{path:?}: {variant}");
+                assert_eq!(
+                    text.matches(&format!("\"{word}\"")).count(),
+                    1,
+                    "{path:?}: {word}"
+                );
+                assert!(
+                    arm.starts_with(&format!("letmutw=vec![\"loop\",\"{word}\",")),
+                    "{path:?}: {word} outside {variant}"
+                );
+                continue;
+            }
             if *word == "update" {
                 assert!(
                     service_update_fields_only(&path, &service_reader, &text),
@@ -2193,132 +2311,6 @@ fn ta3_staged_totals_reach_tell_and_spawn_allowances() {
         Invocation::MachineList,
     ] {
         assert_eq!(read.allowance(), Duration::ZERO);
-    }
-}
-
-// #1106 EN1: negative controls for the exact installed interpreter boundary.
-fn engine_launcher_problems(text: &str) -> Vec<String> {
-    let code = l3_compact(text);
-    let mut problems = Vec::new();
-    l3_counts(
-        &mut problems,
-        &code,
-        &[
-            ("Command", 2),
-            ("Command::new(", 1),
-            ("engine_process", 2),
-            (".arg(", 2),
-            (".args(", 1),
-            (".env_clear(", 1),
-            (".env(", 1),
-            (".envs(", 0),
-            (".env_remove(", 0),
-            (".current_dir(", 0),
-            (".output(", 1),
-            (".spawn(", 0),
-            (".status(", 0),
-            (".exec(", 0),
-            ("std::env::current_exe(", 1),
-            ("std::env::var_os(", 1),
-            ("letresult=engine_process(args);", 1),
-        ],
-    );
-    l3_exact_function(
-        &mut problems,
-        &code,
-        "fn engine_process(args: &[OsString]) -> Option<std::process::Output>",
-        r#"fn engine_process(args: &[OsString]) -> Option<std::process::Output> {
-    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
-    let tool = exe.parent()?.join("runtime/engine/engine.py");
-    // Only this installed sibling, never PATH or a source checkout fallback.
-    let meta = std::fs::symlink_metadata(&tool).ok()?;
-    if !meta.is_file() || meta.file_type().is_symlink() {
-        return None;
-    }
-    if tool
-        .ancestors()
-        .skip(1)
-        .any(|p| !std::fs::symlink_metadata(p).is_ok_and(|m| !m.file_type().is_symlink()))
-    {
-        return None;
-    }
-    let mut command = Command::new("/usr/bin/python3");
-    command.arg("-I").arg(tool).args(args).env_clear();
-    for name in ["HOME", "XDG_STATE_HOME", "OPENWIZ_STATE_DIR"] {
-        if let Some(value) = std::env::var_os(name) {
-            command.env(name, value);
-        }
-    }
-    command.stdin(std::process::Stdio::null()).output().ok()
-}
-"#,
-    );
-    problems
-}
-
-fn engine_interpreter_exception_rejects_planted_widening() {
-    let code = l3_compact(include_str!("../../crates/cli/src/engine.rs"));
-    assert!(engine_launcher_problems(&code).is_empty());
-    for (from, to) in [
-        (
-            r#"Command::new("/usr/bin/python3")"#,
-            r#"Command::new("python3")"#,
-        ),
-        (
-            r#"Command::new("/usr/bin/python3")"#,
-            r#"Command::new("/bin/sh")"#,
-        ),
-        (r#".arg("-I")"#, r#".arg("-c")"#),
-        (".env_clear()", ""),
-        (".env_clear()", r#".env_clear().env("PATH", "/synthetic")"#),
-        (
-            ".env_clear()",
-            r#".env_clear().env("PYTHONPATH", "/synthetic")"#,
-        ),
-        (".env_clear()", r#".env_clear().current_dir("/synthetic")"#),
-        (".args(args)", r#".arg("--extra").args(args)"#),
-        ("std::env::current_exe()", "std::env::current_dir()"),
-        (
-            ".canonicalize().ok()?",
-            ".canonicalize().unwrap_or_default()",
-        ),
-        (
-            r#".join("runtime/engine/engine.py")"#,
-            r#".join("tools/install/engine/engine.py")"#,
-        ),
-        (
-            r#".join("runtime/engine/engine.py")"#,
-            r#".join(std::env::var_os("ENGINE_PATH").unwrap())"#,
-        ),
-        (
-            "if !meta.is_file() || meta.file_type().is_symlink()",
-            "if false",
-        ),
-        (".ancestors()", ".ancestors().take(0)"),
-        (
-            r#"["HOME", "XDG_STATE_HOME", "OPENWIZ_STATE_DIR"]"#,
-            r#"["HOME", "XDG_STATE_HOME", "PATH"]"#,
-        ),
-        (".stdin(std::process::Stdio::null())", ""),
-        (".output().ok()", ".status().ok()"),
-    ] {
-        let planted = l3_plant(&code, from, to);
-        assert!(
-            !engine_launcher_problems(&planted).is_empty(),
-            "missed {from} -> {to}"
-        );
-    }
-    for extra in [
-        r#"fn extra() { Command::new("/usr/bin/python3").output(); }"#,
-        r#"use std::process::Command as C; fn extra() { C::new("/bin/sh").spawn(); }"#,
-        r#"type C = Command; fn extra() { C::new("/bin/sh").spawn(); }"#,
-        r#"fn extra(c: &mut Command) { let _ = Command::spawn(c); }"#,
-        r#"fn extra() { let f = engine_process; let _ = f(&[]); }"#,
-    ] {
-        assert!(
-            !engine_launcher_problems(&format!("{code}{}", l3_compact(extra))).is_empty(),
-            "missed {extra}"
-        );
     }
 }
 
