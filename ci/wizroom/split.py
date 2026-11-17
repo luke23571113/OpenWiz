@@ -33,8 +33,13 @@ FIXTURES = 'ci/wizroom/fixtures/'
 SCRIPT_SUFFIXES = {'.py', '.sh', '.bash', '.zsh', '.mjs', '.cjs', '.js', '.ts', '.rs'}
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', 'target'}
 UNKNOWN = None  # one unknown piece of a path pattern
-LOAD_CALLS = {'spec_from_file_location': 1, 'SourceFileLoader': 1, 'run_path': 0}
-MODULE_CALLS = {'import_module', '__import__'}
+# Loads by path: each call's path argument, by position and by keyword.
+LOAD_CALLS = {'spec_from_file_location': (1, 'location'), 'SourceFileLoader': (1, 'path'),
+              'run_path': (0, 'path_name')}
+MODULE_CALLS = {'import_module', '__import__'}  # the module name: first argument, or name=
+PATH_TYPES = ('Path', 'PurePath', 'PosixPath', 'PurePosixPath')
+JOINS = ('os.path.join', 'posixpath.join')
+PATH_METHODS = ('joinpath', 'with_name', 'resolve', 'absolute')
 PRIORITY = {'import': 0, 'native load': 0}
 
 
@@ -113,6 +118,25 @@ def norm(v):
     return ('',) if s == '.' else (s,)
 
 
+def norm_prefix(v):
+    """A partly computed path with its leading known segments normalised (tools/a/../b/ -> tools/b/)."""
+    if known(v):
+        return norm(v)
+    if not v or not isinstance(v[0], str) or '/' not in v[0]:
+        return v
+    head, _, tail = v[0].rpartition('/')
+    head = posixpath.normpath(head) if head else ''
+    head = '' if head == '.' else head
+    return ((head + '/' if head else '') + tail,) + v[1:] if (head or tail) else v[1:]
+
+
+def climb(v):
+    """What a partly computed file path can reach: an unknown piece may itself hold
+    `..` segments, so everything before the first unknown piece says nothing."""
+    first = next((i for i, t in enumerate(v) if t is UNKNOWN), 0)
+    return v[first:]
+
+
 def parent(v):
     if not known(v):
         return (UNKNOWN,)
@@ -122,12 +146,12 @@ def parent(v):
     return (posixpath.dirname(s),)
 
 
-def could_name(tree, pattern, text):
-    """A computed load could name a folder file: its known parts match one, or it is
-    wholly computed in a file that names the folder."""
-    if specific(pattern):
-        return bool(tree.matches(pattern))
-    return tree.folder in text or posixpath.basename(tree.folder) in text
+def could_load(tree, pattern, suffixes=('',)):
+    """A load by a partly or wholly computed file path could reach a folder file or
+    directory, unless the known text after its first unknown piece rules every one out.
+    Whether the file names the folder is no evidence either way."""
+    tail = climb(pattern)
+    return any(tree.matches(concat(tail, (s,)) if s else tail) for s in suffixes)
 
 
 def names_folder(tree, pattern):
@@ -136,8 +160,14 @@ def names_folder(tree, pattern):
     return any(isinstance(t, str) and (t.startswith(segment) or '/' + segment in t) for t in pattern)
 
 
-def could_name_dir(tree, pattern):
-    return specific(pattern) and any(m in tree.dirs for m in tree.matches(pattern))
+def could_search(tree, pattern):
+    """A computed import search path could make imports resolve in the folder: it could
+    be the folder, a directory in it, or a directory above it (the repository root too)."""
+    tail = climb(pattern)
+    if tail == (UNKNOWN,):
+        return True
+    rx = regex_of(tail)
+    return any(rx.fullmatch(d) for d in tree.dirs | tree.above)
 
 
 def regex_of(v):
@@ -164,6 +194,18 @@ class Tree:
             while d and d != self.folder:
                 d = posixpath.dirname(d)
                 self.dirs.add(d)
+        self.above = set()
+        d = self.folder
+        while d:
+            d = posixpath.dirname(d)
+            if d:
+                self.above.add(d)
+        self.all_dirs = {''}
+        for p in self.all:
+            d = posixpath.dirname(p)
+            while d not in self.all_dirs:
+                self.all_dirs.add(d)
+                d = posixpath.dirname(d)
         self.own = set(own)
 
     def text(self, path):
@@ -220,8 +262,9 @@ def markdown_refs(tree, path, text, kind):
 
 
 SHELL_SOURCE = re.compile(r'(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)(?:\.|source)\s+(\S+)')
-JS_LOAD = re.compile(r'\b(?:require|import)\s*\(\s*([^)]*?)\s*\)')
-JS_STATIC = re.compile(r'''^\s*(?:import|export)\b[^'"]*\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]''')
+JS_CALL = re.compile(r'(?<![\w$.])(?:require|import)\s*\(')
+JS_STATIC = re.compile(r'''^[ \t]*(?:import|export)\b[^'";]*?\bfrom\s*(['"])([^'"]+)\1|^[ \t]*import\s*(['"])([^'"]+)\3''', re.M)
+JS_SUFFIXES = ('', '.js', '.mjs', '.cjs', '/index.js')
 
 
 COMPUTED = r'(\$\{[^}]*\}|\$\([^)]*\)|\$\w+|`[^`]*`)'
@@ -232,51 +275,189 @@ def shell_pattern(arg):
     return tuple(UNKNOWN if i % 2 else piece for i, piece in enumerate(pieces) if piece)
 
 
-def js_pattern(arg):
-    out = ()
-    for part in arg.split('+'):
-        part = part.strip()
-        literal = re.fullmatch(r'''(['"])([^'"]*)\1''', part)
-        if literal:
-            out = concat(out, (literal.group(2),))
-        elif part.startswith('`') and part.endswith('`') and len(part) > 1:
-            out = concat(out, shell_pattern(part[1:-1]))
+def js_code(text):
+    """The JavaScript source with each comment blanked out, newlines and strings kept,
+    so loads are found across lines and never inside a comment; and the offsets that
+    lie inside a template string, where `import(` is only text. A quote ends at its
+    line's end, so a regular expression literal holding a quote cannot hide the
+    code after it."""
+    out, i, n, quote, inside = [], 0, len(text), None, set()
+    while i < n:
+        c = text[i]
+        if quote:
+            out.append(c)
+            if quote == '`':
+                inside.add(i)
+            if c == '\\' and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif c == quote or (c == '\n' and quote != '`'):
+                quote = None
+        elif c in '\'"`':
+            quote = c
+            out.append(c)
+        elif text.startswith('//', i):
+            j = text.find('\n', i)
+            j = n if j < 0 else j
+            out.append(' ' * (j - i))
+            i = j
+            continue
+        elif text.startswith('/*', i):
+            j = text.find('*/', i + 2)
+            j = n if j < 0 else j + 2
+            out.append(re.sub(r'[^\n]', ' ', text[i:j]))
+            i = j
+            continue
         else:
-            out = concat(out, (UNKNOWN,))
-    return out
+            out.append(c)
+        i += 1
+    return ''.join(out), inside
+
+
+def js_split(expr, sep):
+    """Split at each top-level separator, outside brackets and strings."""
+    parts, depth, quote, cur = [], 0, None, ''
+    for i, c in enumerate(expr):
+        if quote:
+            quote = None if c == quote and expr[i - 1] != '\\' else quote
+        elif c in '\'"`':
+            quote = c
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif c == sep and depth == 0:
+            parts.append(cur)
+            cur = ''
+            continue
+        cur += c
+    return parts + [cur]
+
+
+def js_args(code, open_at):
+    """The text between a call's opening bracket and its matching close."""
+    depth, quote = 0, None
+    for i in range(open_at, len(code)):
+        c = code[i]
+        if quote:
+            quote = None if c == quote and code[i - 1] != '\\' else quote
+        elif c in '\'"`':
+            quote = c
+        elif c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth == 0:
+                return code[open_at + 1:i]
+    return code[open_at + 1:]
+
+
+class JavaScript:
+    """Resolves a load's argument: string literals, templates, `+`, constants assigned
+    once in the file, and `new URL(<path>, import.meta.url or such a URL)`."""
+
+    def __init__(self, path, code):
+        self.here = posixpath.dirname(path)
+        self.code = code
+
+    def const(self, name):
+        n = re.escape(name)
+        found = re.findall(r'(?<![\w$.])(?:const|let|var)\s+' + n
+                           + r'(?:\s*:\s*[\w$.<>\[\]| ]+)?\s*=\s*([^;\n]+)', self.code)
+        writes = re.findall(r'(?<![\w$.])' + n + r'(?:\s*:\s*[\w$.<>\[\]| ]+)?\s*'
+                            r'(?:[-+*/%&|^]|\*\*|<<|>>>?|\?\?|&&|\|\|)?=(?![=>])', self.code)
+        return found[0].strip() if len(found) == 1 and len(writes) == 1 else None
+
+    def value(self, expr, depth=0):
+        """('url', pattern) for a URL already resolved to a tree path, or ('spec', pattern)
+        for a module specifier; anything else is one unknown piece."""
+        expr = re.sub(r'\.(?:href|pathname)\s*$', '', expr.strip())
+        if depth > 8 or not expr:
+            return 'spec', (UNKNOWN,)
+        wrapped = re.fullmatch(r'(?:String|fileURLToPath)\s*\((.*)\)', expr, re.S)
+        if wrapped and len(js_split(wrapped.group(1), ',')) == 1:
+            return self.value(wrapped.group(1), depth + 1)
+        url = re.fullmatch(r'new\s+URL\s*\((.*)\)', expr, re.S)
+        if url:
+            args = js_split(url.group(1), ',')
+            if len(args) < 2:
+                return 'spec', (UNKNOWN,)
+            rel = self.value(args[0], depth + 1)[1]
+            if rel and isinstance(rel[0], str) and rel[0].startswith('/'):
+                return 'spec', (UNKNOWN,)  # absolute on the server: not a tree path we can see
+            base = args[1].strip()
+            if base == 'import.meta.url':
+                base_v = (self.here + '/' if self.here else '',)
+            else:
+                kind, base_v = self.value(base, depth + 1)
+                if kind != 'url':
+                    base_v = (UNKNOWN,)
+                elif known(base_v) and not text_of(base_v).endswith('/'):
+                    d = posixpath.dirname(text_of(base_v))
+                    base_v = (d + '/' if d else '',)
+            out = concat(base_v, rel)
+            if known(out):  # a URL ending in `/` names a directory: keep it, so it resolves as a base
+                return 'url', concat(norm(out), ('/',)) if text_of(out).endswith('/') else norm(out)
+            return 'url', norm_prefix(out)
+        parts = js_split(expr, '+')
+        if len(parts) > 1:
+            kind, out = self.value(parts[0], depth + 1)
+            for part in parts[1:]:
+                out = concat(out, self.value(part, depth + 1)[1])
+            return kind, out
+        literal = re.fullmatch(r'''(['"])(.*)\1''', expr, re.S)
+        if literal and '\\' not in literal.group(2) and literal.group(1) not in literal.group(2):
+            return 'spec', (literal.group(2),)
+        if expr.startswith('`') and expr.endswith('`') and len(expr) > 1:
+            return 'spec', shell_pattern(expr[1:-1]) or ('',)
+        if re.fullmatch(r'[\w$]+', expr):
+            assigned = self.const(expr)
+            if assigned is not None:
+                return self.value(assigned, depth + 1)
+        return 'spec', (UNKNOWN,)
+
+    def target(self, kind, v):
+        """The tree path pattern a load reaches, or None for a package name."""
+        if kind == 'url' or not v or v[0] is UNKNOWN:
+            return v or None
+        if v[0].startswith('.'):
+            return norm_prefix(join((self.here,), v))
+        return None  # a package name or an absolute path: never a file of the tree
 
 
 def other_script_refs(tree, path, text):
-    """Shell sources and JavaScript loads: resolved when literal, refused when computed into the folder."""
+    """Shell sources and JavaScript loads: resolved when literal, refused when computed
+    and able to reach the folder."""
     refs = []
-    here = posixpath.dirname(path)
     suffix = posixpath.splitext(path)[1]
-    for no, line in enumerate(text.splitlines(), 1):
-        if line.lstrip().startswith(('#', '//')):
-            continue
-        args = []
-        if suffix in ('.sh', '.bash', '.zsh') or (not suffix and text.startswith('#!') and 'sh' in text.split('\n', 1)[0]):
-            args += [(m.group(1), False) for m in SHELL_SOURCE.finditer(line)]
-        if suffix in ('.mjs', '.cjs', '.js', '.ts'):
-            args += [(m.group(1), True) for m in JS_LOAD.finditer(line)]
-            args += [(f"'{m.group(1) or m.group(2)}'", True) for m in JS_STATIC.finditer(line)]
-        for arg, relative in args:
-            url = re.search(r'''new\s+URL\(\s*(['"])([^'"]*)\1\s*,\s*import\.meta\.url''', arg) if relative else None
-            if url:
-                arg = f"'{url.group(2) if url.group(2).startswith('.') else './' + url.group(2)}'"
-            literal = re.fullmatch(r'''(['"])([^'"$`]*)\1''', arg) if relative else re.fullmatch(r'''['"]?([^'"$`]*)['"]?''', arg)
-            if literal:
-                target = literal.group(literal.lastindex)
-                base = here if relative and target.startswith('.') else ''
-                full = posixpath.normpath(posixpath.join(base, target))
-                for cand in (full, full + '.js', full + '.mjs', full + '/index.js'):
-                    refs += [(no, 'import' if relative else 'native load', t) for t in tree.targets(cand)]
+    if suffix in ('.sh', '.bash', '.zsh') or (not suffix and text.startswith('#!') and 'sh' in text.split('\n', 1)[0]):
+        for no, line in enumerate(text.splitlines(), 1):
+            if line.lstrip().startswith('#'):
                 continue
-            pattern = js_pattern(arg) if relative else shell_pattern(arg)
-            if relative and pattern and isinstance(pattern[0], str) and pattern[0].startswith('.'):
-                pattern = join((here,), pattern)
-            if could_name(tree, pattern, text):
-                raise Refused(f'{path}:{no} native load: computed path ({arg}) could name a file in {tree.folder}')
+            for m in SHELL_SOURCE.finditer(line):
+                arg = m.group(1)
+                literal = re.fullmatch(r'''['"]?([^'"$`]*)['"]?''', arg)
+                if literal:
+                    refs += [(no, 'native load', t) for t in tree.targets(posixpath.normpath(literal.group(1)))]
+                elif could_load(tree, shell_pattern(arg)):
+                    raise Refused(f'{path}:{no} native load: computed path ({arg}) could name a file in {tree.folder}')
+    if suffix in ('.mjs', '.cjs', '.js', '.ts'):
+        code, strings = js_code(text)
+        js = JavaScript(path, code)
+        loads = [(m.start(), js.value(js_args(code, m.end() - 1)))
+                 for m in JS_CALL.finditer(code) if m.start() not in strings]
+        loads += [(m.start(), ('spec', (m.group(2) or m.group(4),)))
+                  for m in JS_STATIC.finditer(code) if m.start() not in strings]
+        for at, (kind, v) in sorted(loads, key=lambda x: x[0]):
+            no = code.count('\n', 0, at) + 1
+            target = js.target(kind, v)
+            if target is None:
+                continue
+            if known(target):
+                for s in JS_SUFFIXES:
+                    refs += [(no, 'import', t) for t in tree.targets(text_of(target) + s)]
+            elif could_load(tree, target, JS_SUFFIXES):
+                raise Refused(f'{path}:{no} native load: computed path could name a file in {tree.folder}')
     return refs
 
 
@@ -303,6 +484,12 @@ class Python:
         self.functions = {}
         self.loops = {None: {}}  # function -> {name: the literal strings a for loop binds it to}
         self._index(self.module, None)
+        self.alias = {}  # a name bound by an import -> the dotted name it stands for
+        for node in ast.walk(self.module):
+            if isinstance(node, ast.Import):
+                self.alias.update({a.asname: a.name for a in node.names if a.asname})
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                self.alias.update({a.asname or a.name: f'{node.module}.{a.name}' for a in node.names})
 
     def _index(self, node, fn):
         for child in ast.iter_child_nodes(node):
@@ -359,6 +546,12 @@ class Python:
                 if scope is None:
                     return (UNKNOWN,)
                 scope = self.scope.get(scope)
+        if isinstance(node, ast.IfExp):
+            pick = (bind or {}).get(node)
+            if pick is not None:
+                return e(node.body if pick == 0 else node.orelse)
+            body, orelse = e(node.body), e(node.orelse)
+            return body if body == orelse else (UNKNOWN,)
         if isinstance(node, ast.BinOp):
             if isinstance(node.op, ast.Div):
                 return join(e(node.left), e(node.right))
@@ -375,15 +568,15 @@ class Python:
                 v = parent(v)
             return v
         if isinstance(node, ast.Call):
-            name = dotted(node.func)
+            name = self.name(node.func)
             last = name.rsplit('.', 1)[-1]
             args = node.args
-            if last in ('Path', 'PurePath', 'PosixPath', 'PurePosixPath') and args:
+            if last in PATH_TYPES and args:
                 v = e(args[0])
                 for a in args[1:]:
                     v = join(v, e(a))
                 return v
-            if name in ('os.path.join', 'posixpath.join') and args:
+            if name in JOINS and args:
                 v = e(args[0])
                 for a in args[1:]:
                     v = join(v, e(a))
@@ -394,6 +587,8 @@ class Python:
                 return parent(e(args[0]))
             if isinstance(node.func, ast.Attribute) and node.func.attr in ('resolve', 'absolute'):
                 return e(node.func.value)
+            if isinstance(node.func, ast.Attribute) and node.func.attr == 'with_name' and len(args) == 1:
+                return join(parent(e(node.func.value)), e(args[0]))
             if isinstance(node.func, ast.Attribute) and node.func.attr == 'joinpath':
                 v = e(node.func.value)
                 for a in args:
@@ -411,41 +606,111 @@ class Python:
             fn = self.scope.get(fn)
         used = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
         local = self.assigns.get(fn, {})
+        ifs = [n for n in ast.walk(node) if isinstance(n, ast.IfExp)]
         pending = list(used)
         while pending:  # a parameter can reach the sink through local assignments
-            for value in local.get(pending.pop(), []):
+            name = pending.pop()
+            for value in local.get(name, []) + (self.assigns[None].get(name, []) if fn is not None else []):
                 for n in ast.walk(value):
                     if isinstance(n, ast.Name) and n.id not in used:
                         used.add(n.id)
                         pending.append(n.id)
+                    elif isinstance(n, ast.IfExp) and n not in ifs:
+                        ifs.append(n)
         # A name a for loop binds to literal strings takes each of them in turn.
         loops = {**self.loops[None], **(self.loops.get(fn) or {})}
         looped = sorted(n for n in used if n in loops)
         choices = [dict(zip(looped, combo)) for combo in itertools.product(*[[(v,) for v in loops[n]] for n in looped])]
+        # A conditional expression takes each of its two branches in turn.
+        ifs = ifs[:6]
+        choices = [{**c, **dict(zip(ifs, picks))} for c in choices for picks in itertools.product((0, 1), repeat=len(ifs))]
         params = [p for p in self.params(fn) if p in used and p not in looped] if fn is not None else []
         calls = [None]
         if params:
-            calls = [c for c in ast.walk(self.module)
-                     if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == fn.name] or [None]
+            method = bool(self.params(fn)) and self.params(fn)[0] in ('self', 'cls')
+            calls = [c for c in ast.walk(self.module) if isinstance(c, ast.Call) and (
+                isinstance(c.func, ast.Attribute) and c.func.attr == fn.name if method
+                else isinstance(c.func, ast.Name) and c.func.id == fn.name)] or [None]
         out = []
         names = self.params(fn)
         for call in calls:
             bind = {}
             if call is not None:
+                # A method called as self.<name>(...) or cls.<name>(...) binds its first parameter itself.
+                skip = 1 if isinstance(call.func, ast.Attribute) else 0
                 for i, p in enumerate(names):
-                    arg = call.args[i] if i < len(call.args) else next((k.value for k in call.keywords if k.arg == p), None)
+                    j = i - skip
+                    arg = (call.args[j] if 0 <= j < len(call.args) else
+                           next((k.value for k in call.keywords if k.arg == p), None) if j >= 0 else None)
                     bind[p] = self.ev(arg, self.scope.get(call)) if arg is not None else (UNKNOWN,)
             for choice in choices:
                 out.append((call.lineno if call is not None else node.lineno,
                             self.ev(node, self.scope.get(node), {**bind, **choice})))
         return out
 
+    def name(self, func):
+        """A called name with its imported aliases resolved: `load` from
+        `from runpy import run_path as load` is `runpy.run_path`."""
+        d = dotted(func)
+        head, dot, rest = d.partition('.')
+        return self.alias[head] + dot + rest if head in self.alias else d
+
+    def path_call(self, node):
+        """A call that builds a path from its arguments or its receiver."""
+        if not isinstance(node, ast.Call):
+            return False
+        name = self.name(node.func)
+        return (name.rsplit('.', 1)[-1] in PATH_TYPES or name in JOINS
+                or isinstance(node.func, ast.Attribute) and node.func.attr in PATH_METHODS)
+
+    def outermost(self, node):
+        """A path expression that is not itself part of a larger one."""
+        up = self.up.get(node)
+        if isinstance(up, ast.BinOp) and isinstance(up.op, ast.Div):
+            return False
+        if self.path_call(up) and node in up.args:
+            return False
+        return not (isinstance(up, ast.Attribute) and up.value is node and up.attr in PATH_METHODS)
+
+    @staticmethod
+    def argument(call, pos, keyword):
+        if len(call.args) > pos and not any(isinstance(a, ast.Starred) for a in call.args[:pos + 1]):
+            return call.args[pos]
+        return next((k.value for k in call.keywords if k.arg == keyword), None)
+
+    def module_files(self, roots, parts, first):
+        """The folder files an import of PARTS loads from ROOTS: each package's
+        `__init__.py` and the module, through regular and namespace packages. With
+        FIRST, Python's first match wins; otherwise every root counts."""
+        tree, found = self.tree, []
+        dirs = roots
+        for i, part in enumerate(parts):
+            portions, nxt = [], []
+            for d in dirs:
+                stem = posixpath.join(d, part)
+                if stem + '/__init__.py' in tree.all_set:
+                    found += tree.targets(stem + '/__init__.py')
+                    nxt.append(stem)
+                elif stem + '.py' in tree.all_set:
+                    found += tree.targets(stem + '.py')
+                elif stem in tree.all_dirs:
+                    portions.append(stem)  # a namespace package portion
+                    continue
+                else:
+                    continue
+                if first:
+                    break
+            dirs = nxt if (first and nxt) else nxt + portions
+            if not dirs:
+                break
+        return found
+
     def refs(self):
         tree, refs = self.tree, []
         search = []  # (line, pattern, at module level, inserted in front)
         sinks = []  # (line, kind, pattern)
-        modules = []  # (line, dotted name)
-        dynamic = []  # lines of computed module loads
+        modules = []  # (node, dotted name)
+        dynamic = []  # (line, module-name pattern) of computed module loads
         for node in ast.walk(self.module):
             if isinstance(node, ast.Import):
                 modules += [(node, a.name) for a in node.names]
@@ -463,7 +728,7 @@ class Python:
                     modules.append((node, node.module))
                     modules += [(node, f'{node.module}.{a.name}') for a in node.names]
             elif isinstance(node, ast.Call):
-                name = dotted(node.func)
+                name = self.name(node.func)
                 last = name.rsplit('.', 1)[-1]
                 if name in ('sys.path.insert', 'sys.path.append') and node.args:
                     front = (name.endswith('insert') and isinstance(node.args[0], ast.Constant)
@@ -471,63 +736,67 @@ class Python:
                     for line, v in self.values(node.args[-1]):
                         search.append((line, v, self.scope.get(node) is None, front))
                 elif last in LOAD_CALLS:
-                    pos = LOAD_CALLS[last]
-                    arg = node.args[pos] if len(node.args) > pos else next(
-                        (k.value for k in node.keywords if k.arg in ('location', 'path', 'path_name')), None)
+                    arg = self.argument(node, *LOAD_CALLS[last])
                     if arg is not None:
                         sinks += [(line, 'native load', v) for line, v in self.values(arg)]
                 elif last == 'exec' and node.args:
                     for inner in ast.walk(node.args[0]):
-                        if isinstance(inner, ast.Call) and dotted(inner.func) == 'open' and inner.args:
-                            sinks += [(line, 'native load', v) for line, v in self.values(inner.args[0])]
-                elif last in MODULE_CALLS and node.args:
-                    for line, v in self.values(node.args[0]):
+                        if isinstance(inner, ast.Call) and self.name(inner.func) == 'open':
+                            arg = self.argument(inner, 0, 'file')
+                            if arg is not None:
+                                sinks += [(line, 'native load', v) for line, v in self.values(arg)]
+                elif last in MODULE_CALLS:
+                    arg = self.argument(node, 0, 'name')
+                    for line, v in self.values(arg) if arg is not None else []:
                         if known(v):
                             modules.append((node, text_of(v)))
                         else:
-                            dynamic.append(line)
-            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-                if not (isinstance(self.up.get(node), ast.BinOp) and isinstance(self.up[node].op, ast.Div)):
+                            dynamic.append((line, v))
+                if self.path_call(node) and self.outermost(node):
                     sinks += [(line, 'script path', v) for line, v in self.values(node)]
+            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div) and self.outermost(node):
+                sinks += [(line, 'script path', v) for line, v in self.values(node)]
         for line, kind, v in sinks:
-            v = norm(v)
+            v = norm_prefix(v)
             if known(v):
                 refs += [(line, kind, t) for t in tree.targets(text_of(v))]
             elif kind != 'script path':
-                if could_name(tree, v, self.text):
+                if could_load(tree, v):
                     raise Refused(f'{self.path}:{line} {kind}: computed path could name a file in {tree.folder}')
             elif names_folder(tree, v):
                 refs += [(line, kind, t) for t in tree.matches(v) if t in tree.inside_set]
         entries = []
         for line, v, top, front in search:
-            v = norm(v)
+            v = norm_prefix(v)
             if known(v):
                 entries.append((line, text_of(v), top, front))
-            elif could_name_dir(tree, v):
-                raise Refused(f'{self.path}:{line} import: computed search path could be in {tree.folder}')
+            elif could_search(tree, v):
+                raise Refused(f'{self.path}:{line} import: computed search path could reach {tree.folder}')
         here = posixpath.dirname(self.path)
-        inside = lambda d: d == tree.folder or d.startswith(tree.folder + '/')
-        if dynamic and any(inside(d) for _, d, _, _ in entries):
-            raise Refused(f'{self.path}:{dynamic[0]} import: computed module name could load a file in {tree.folder}')
+        roots = [here] + [d for _, d, _, _ in entries]
+        for line, v in dynamic:
+            # A computed module name, through every root the file can import from.
+            name = tuple(t.replace('.', '/') if isinstance(t, str) else t for t in v)
+            for d in roots:
+                full = join((d,), name)
+                if not specific(name):
+                    reach = d == '' or d in tree.above or d == tree.folder or d.startswith(tree.folder + '/')
+                else:
+                    reach = any(tree.matches(concat(full, (s,)) if s else full) for s in ('', '.py', '/__init__.py'))
+                if reach:
+                    raise Refused(f'{self.path}:{line} import: computed module name could load a file in {tree.folder}')
         for node, mod in modules:
             parts = mod.split('.')
             if self.scope.get(node) is None:
-                # At module level Python searches in order and the first folder with the module wins.
+                # At module level Python searches in order and the first match wins.
                 order = [here]
                 for line, d, top, front in entries:
                     if top and line < node.lineno:
                         order = [d] + order if front else order + [d]
-                order = [next((d for d in order if any(c in tree.all_set for c in (
-                    posixpath.join(d, parts[0]) + '.py', posixpath.join(d, parts[0], '__init__.py')))), None)]
+                found = self.module_files(order, parts, True)
             else:
-                order = [here] + [d for _, d, _, _ in entries]  # inside a function: any of them
-            for d in order:
-                if d is None:
-                    continue
-                for i in range(1, len(parts) + 1):
-                    stem = posixpath.join(d, *parts[:i])
-                    for c in (stem + '.py', stem + '/__init__.py'):
-                        refs += [(node.lineno, 'import', t) for t in tree.targets(c)]
+                found = self.module_files(roots, parts, False)  # inside a function: any of them
+            refs += [(node.lineno, 'import', t) for t in found]
         return refs
 
 

@@ -26,18 +26,23 @@ no address, machine, account, sample or private-record content.
 A file in the folder **stays public** if a public OpenWiz file outside the
 folder reaches it, by one of:
 
-1. **an import**: a Python `import` or `from … import` that resolves to it,
-   through the importing file's own folder or a `sys.path` entry the file adds;
-   at module level, Python's search order applies (entries added above the
-   import, first match wins); inside a function, any entry the file adds counts;
+1. **an import**: a Python `import`, `from … import`, `importlib.import_module`
+   or `__import__` (by position or `name=`) that resolves to it, through the
+   importing file's own folder or a `sys.path` entry the file adds, in regular
+   and namespace packages (a directory without `__init__.py`); at module
+   level, Python's search order applies (entries added above the import, first
+   match wins); inside a function, any entry the file adds counts;
 2. **a native load**: a load by file path, such as Python's
    `importlib.util.spec_from_file_location`, `SourceFileLoader`,
-   `runpy.run_path` or `exec(open(…))`, a shell `.`/`source`, or a JavaScript
-   `require`, `import(…)` or static `import … from`;
+   `runpy.run_path` or `exec(open(…))` (by position or keyword, and under any
+   name the file imports it as), a shell `.`/`source`, or a JavaScript
+   `require`, `import(…)` or static `import … from`, on one line or across
+   several (never inside a comment or a string);
 3. **a path in a script, workflow, loop or contract**: the file's
    repository-relative path written in it (`tools/war-room/<path>`), a path a
-   Python file computes from `__file__` and literals (`Path`, `/`, `parent`,
-   `parents[n]`, `os.path.join`), or, in Markdown, a relative link.
+   Python file computes from `__file__` and literals (`Path(…)`, `/`, `parent`,
+   `parents[n]`, `os.path.join`, `joinpath`, `with_name`) wherever it uses it,
+   or, in Markdown, a relative link.
 
 A path that names a directory in the folder reaches every file under it. The
 bare folder path alone reaches nothing by itself; a `sys.path` entry naming it
@@ -73,13 +78,25 @@ Two sets of files outside the folder are **not public consumers**:
 
 **Resolving and refusing.** References are resolved from the tree alone. A
 Python path is evaluated from `__file__`, string literals, module-level and
-local assignments, literal `for` loops over string tuples or lists, and, when a
-load's path comes from a function parameter, every call of that function in the
-same file. A **load** (an import's search path, a computed module name, or a
-native load) whose path cannot be fully resolved is **refused, with its file
-and line**, when it could name a file in the folder: its known parts match a
-file or directory there, or it is wholly computed in a file that names the
-folder. A partly computed plain path counts only when its known part names the
+local assignments, conditional expressions (each branch), literal `for` loops
+over string tuples or lists, and, when a load's path comes from a function
+parameter, every call of that function (or, for a method, of
+`<object>.<method>`) in the same file. A JavaScript load is evaluated from
+string literals, templates, `+`, a constant assigned once in the file,
+`String(…)`, and `new URL(<path>, import.meta.url)` or such a URL.
+
+A **load** (an import's search path, a module name, or a native load) that
+cannot be fully resolved is **refused, with its file and line**, unless its
+known parts rule out every file in the folder. Whether the file mentions the
+folder is no evidence either way: a wholly computed load (`. "$PLUGIN"`,
+`require(name)`, `sys.path.insert(0, os.environ[…])`) is always refused. A
+computed piece of a file path may hold `..`, so only the known text after its
+first computed piece can rule a folder file out (`require('./plugins/' + name
++ '.json')` passes when the folder holds no `.json` file). A computed search
+path is refused when it could be the folder, a directory in it or a directory
+above it. A computed module name is refused when, through the file's own folder
+or any `sys.path` entry it adds, it could name a module in the folder. A partly
+computed plain path (not a load) counts only when its known part names the
 folder's own segment (`war-room/`), and then every folder file it can match
 stays. An unreadable file is refused too. A refusal is fixed by making the
 reference resolvable, never by weakening the rule.
