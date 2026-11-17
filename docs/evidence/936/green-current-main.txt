@@ -1,0 +1,16 @@
+Compiling openwiz-adapter-cloudroom v0.0.1-dev (/tmp/openwiz-j130/936/crates/adapters/cloudroom)
+   Compiling openwiz-cli v0.0.1-dev (/tmp/openwiz-j130/936/crates/cli)
+   Compiling openwiz-server v0.0.1-dev (/tmp/openwiz-j130/936/crates/server)
+   Compiling openwiz-tests v0.0.1-dev (/tmp/openwiz-j130/936/tests)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 39.58s
+     Running web-api/main.rs (target/debug/deps/web_api-ddafb5784ccbf0ec)
+
+running 6 tests
+test e11_plan_bounds::e11_plan_log_status_multiset_rejects_noncanonical_fields_and_wrong_counts ... ok
+test e11_plan_bounds::e11_plan_exact_get_has_all_existing_guards_and_private_route_logs ... ok
+test e11_plan_bounds::e11_the_route_log_check_takes_the_lines_in_any_order ... ok
+test e11_plan_bounds::e11_plan_shares_inflight_only_and_competes_with_inventory_for_two_slots ... ok
+test e11_plan_bounds::e11_gated_wrapper_starts_after_an_unrelated_fork ... ok
+test e11_plan_bounds::e11_plan_deadline_retains_its_slot_until_the_source_really_finishes ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 21.73s

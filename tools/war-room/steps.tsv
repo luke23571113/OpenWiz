@@ -88,6 +88,8 @@ skills	The shard balancer's tests
 build	Build and lint Rust
 skills	The always-run checks
 web	The release proofs
+# #829: retired with the live-check toolkit. Historical step names, kept for
+# runs from before its merge; remove seven days after #829 merges.
 # #242: initial fixture preparation is setup; toolkit proofs are helper tests.
 setup	Private live-check fixture destination
 setup	The reviewed live-check fixture source

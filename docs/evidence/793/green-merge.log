@@ -1,0 +1,9 @@
+# #793: checks at 2094acf, origin/main (#1054, 3900011) merged into room/793-loop-apply.
+# Conflict: tools/open-import/paths.json only; main's docs/evidence/794/** row and this ticket's docs/evidence/793/** row both kept, in sorted order.
+# Main brought no Rust, contract or loop test change (docs/evidence/1046, docs/evidence/794, tools/install, tools/skills-copy, tools/war-room).
+pre-push: checking 2094acf
+pre-push: ok    cargo fmt --check  (1 s)
+pre-push: ok    cargo clippy --workspace --all-targets -- -D warnings  (6 s)
+pre-push: ok    cargo test -p openwiz-tests --test checks  (186 s)
+pre-push: ok    sh .github/actions/docs-only/test.sh  (134 s)
+pre-push: all 4 checks passed at 2094acf in 328 s

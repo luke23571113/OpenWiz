@@ -1,0 +1,26 @@
+# Red run 1 (#793): tests/cli-agent/loop_apply.rs against LC1's apply stub, at the commit before apply's code.
+# Command: CARGO_BUILD_JOBS=2 cargo test -p openwiz-tests --test cli-agent loop_apply -- --test-threads=2
+# Each test fails at its first assertion on apply's result (the stub's not_built, exit 5); setup (plan, export) passed.
+test loop_apply::a_created_webhooks_address_reaches_only_the_caller_once ... FAILED
+test loop_apply::a_command_cloudroom_refuses_is_failed_with_its_message_unchanged ... FAILED
+test loop_apply::a_failed_read_before_any_write_exits_1_and_writes_nothing ... FAILED
+test loop_apply::a_differing_read_back_is_reported_and_never_retried ... FAILED
+test loop_apply::an_unclear_outcome_is_unknown_and_never_retried ... FAILED
+test loop_apply::apply_adopts_an_unmarked_loop_by_its_binding ... FAILED
+test loop_apply::apply_creates_with_the_plans_files_and_removes_them ... FAILED
+test loop_apply::apply_refuses_a_loop_with_an_unmapped_setting_and_writes_nothing ... FAILED
+test loop_apply::apply_runs_only_its_plans_command_then_reads_back ... FAILED
+test loop_apply::apply_writes_nothing_it_should_not ... FAILED
+test loop_apply::text_output_previews_the_command_and_never_prints_a_terminal_control ... FAILED
+thread 'loop_apply::a_created_webhooks_address_reaches_only_the_caller_once' panicked at tests/cli-agent/loop_apply.rs:367:5:
+thread 'loop_apply::a_command_cloudroom_refuses_is_failed_with_its_message_unchanged' panicked at tests/cli-agent/loop_apply.rs:489:5:
+thread 'loop_apply::a_failed_read_before_any_write_exits_1_and_writes_nothing' panicked at tests/cli-agent/loop_apply.rs:568:5:
+thread 'loop_apply::a_differing_read_back_is_reported_and_never_retried' panicked at tests/cli-agent/loop_apply.rs:405:5:
+thread 'loop_apply::an_unclear_outcome_is_unknown_and_never_retried' panicked at tests/cli-agent/loop_apply.rs:454:9:
+thread 'loop_apply::apply_adopts_an_unmarked_loop_by_its_binding' panicked at tests/cli-agent/loop_apply.rs:602:5:
+thread 'loop_apply::apply_creates_with_the_plans_files_and_removes_them' panicked at tests/cli-agent/loop_apply.rs:311:5:
+thread 'loop_apply::apply_refuses_a_loop_with_an_unmapped_setting_and_writes_nothing' panicked at tests/cli-agent/loop_apply.rs:660:5:
+thread 'loop_apply::apply_runs_only_its_plans_command_then_reads_back' panicked at tests/cli-agent/loop_apply.rs:275:5:
+thread 'loop_apply::apply_writes_nothing_it_should_not' panicked at tests/cli-agent/loop_apply.rs:513:5:
+thread 'loop_apply::text_output_previews_the_command_and_never_prints_a_terminal_control' panicked at tests/cli-agent/loop_apply.rs:708:5:
+test result: FAILED. 0 passed; 11 failed; 0 ignored; 0 measured; 83 filtered out; finished in 0.54s
