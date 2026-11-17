@@ -219,6 +219,15 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
             );
         }
     };
+    // The clock around the writes, in whole seconds, for an `in` file's
+    // read-back: rounded down before the first, up after the last.
+    let clock = || {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+    };
+    let seconds = |d: std::time::Duration| i64::try_from(d.as_secs()).unwrap_or(i64::MAX);
+    let before = seconds(clock());
     let mut accepted = true;
     for command in &item.commands {
         let written = source.loop_files_write(command, &dir, deadline());
@@ -256,9 +265,20 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
             }
         }
     }
+    let after = clock();
+    let after = seconds(after).saturating_add(i64::from(after.subsec_nanos() > 0));
     let _ = std::fs::remove_dir_all(&dir);
     if accepted {
-        read_back(&mut report, item.action, &source, &files, project, now());
+        let written = (before, after);
+        read_back(
+            &mut report,
+            item.action,
+            &source,
+            &files,
+            project,
+            now(),
+            written,
+        );
     }
     finish(args, project, id, &report, stdout, stderr)
 }
@@ -271,6 +291,7 @@ fn read_back(
     files: &[(String, loop_files::FileRead)],
     project: &str,
     now: i64,
+    written: (i64, i64),
 ) {
     let deadline = Instant::now() + openwiz_core::limits::READ_TIMEOUT;
     let live = match source.loop_files_list(deadline) {
@@ -284,7 +305,7 @@ fn read_back(
         }
     };
     let (shown, read) = &files[0];
-    let item = loop_files::read_back(shown, read, &live, project, now, (0, 0));
+    let item = loop_files::read_back(shown, read, &live, project, now, written);
     match item.action {
         Action::None | Action::Update => {
             report.loop_id = item.loop_id;

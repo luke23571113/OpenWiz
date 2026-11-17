@@ -3272,17 +3272,37 @@ pub fn webhook_address(stdout: &str) -> Option<&str> {
         .find(|word| word.starts_with("https://"))
 }
 
+/// An `in` delay in seconds: a whole number with `m`, `h` or `d`.
+fn delay_seconds(delay: &str) -> Option<i64> {
+    let unit = match delay.as_bytes().last()? {
+        b'm' => 60,
+        b'h' => 3600,
+        b'd' => 86_400,
+        _ => return None,
+    };
+    delay[..delay.len() - 1]
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(unit)
+}
+
 /// The read-back: the file planned again, with no binding, against the
-/// `loop list` read after the last write, as plan compares. An `in` file's
-/// delay became its loop's run time when it was created, so that run time
-/// stands in for it (an `in` file never matches an existing loop).
+/// `loop list` read after the last write, as plan compares.
+///
+/// An `in` file's delay became a run time when its loop was created, so
+/// that run time is checked on its own: `written` is the clock in whole
+/// seconds just before the first write (rounded down) and just after the
+/// last (rounded up), and the run time, read to the whole second, must fall
+/// within the delay after it. Out of that window it is a `trigger`
+/// difference; a run time that cannot be read, or a loop with no run time,
+/// leaves nothing to compare, and plan refuses it (`cf-in-existing`).
 pub fn read_back(
     shown: &str,
     read: &FileRead,
     live: &[LiveLoop],
     project: &str,
     now: i64,
-    _written: (i64, i64),
+    written: (i64, i64),
 ) -> PlanItem {
     let mut read = read.clone();
     let managed: Vec<&LiveLoop> = live
@@ -3292,18 +3312,43 @@ pub fn read_back(
                 && split_marker(&l.name).is_some_and(|(id, _)| Some(id) == read.id.as_deref())
         })
         .collect();
+    let mut late = None;
     if let (Some(file), [only]) = (read.file.as_mut(), managed.as_slice())
-        && let Some(Trigger::At(at)) = &only.trigger
-        && file
+        && let Some(delay) = file
             .frontmatter
             .get("trigger")
-            .is_some_and(|t| t.get("in").is_some())
+            .and_then(|t| t.get("in"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        && let Some(Trigger::At(at)) = &only.trigger
+        && let Some((due, _)) = instant(at)
+        && let Some(seconds) = delay_seconds(&delay)
     {
+        let (before, after) = written;
+        if !(before.saturating_add(seconds)..=after.saturating_add(seconds)).contains(&due) {
+            late = Some(Difference {
+                field: "trigger",
+                file: json!({ "in": delay }),
+                live: json!({ "at": at }),
+            });
+        }
+        // Checked above: the rest of the loop is compared as plan compares.
         file.frontmatter
             .insert("trigger".into(), json!({ "at": at }));
     }
-    let mut items = plan(&[(shown.to_owned(), read)], live, project, &[], now).items;
-    items.remove(0)
+    let mut item = plan(&[(shown.to_owned(), read)], live, project, &[], now)
+        .items
+        .remove(0);
+    if let Some(difference) = late {
+        // In the contract's field order: after `name`, before the rest.
+        let at = item
+            .differences
+            .iter()
+            .take_while(|d| d.field == "name")
+            .count();
+        item.differences.insert(at, difference);
+    }
+    item
 }
 
 #[cfg(test)]

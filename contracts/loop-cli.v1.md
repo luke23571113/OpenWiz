@@ -179,6 +179,11 @@ loop of the project with no marker and no binding) and `orphans`
   (export's `unmapped`) is `refused` with `apply-unmapped` before any write
   to it: `update` passes only mapped flags, and nothing shows that Cloudroom
   keeps the rest. Apply never drops such a setting.
+- The read-back of a loop created from an `in` file checks its run time
+  against the delay: it must fall within the delay after the clock just
+  before the first write and just after the last, read to the whole second.
+  Outside that window it is a `trigger` difference (`different`); a run time
+  that cannot be read is `unknown`.
 - `loop-started-thread` is unreachable until Cloudroom exposes a signal
   for a thread a loop started (follow-up
   https://github.com/openwizdev/OpenWiz/issues/1068). Apply never matches
