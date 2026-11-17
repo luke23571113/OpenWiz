@@ -78,7 +78,7 @@ def coverage_refusals(raw, context):
             if tests:
                 expected[kind] = tests
         expected.update({'skill:'+s['skill']: s['tests'] for s in lanes['skills']})
-        expected.update({'build:web_export': [], 'prerequisite:toolkit': []})
+        expected.update({'build:web_export': []})
         digest = hashlib.sha256(document['plan'].encode('utf-8')).hexdigest()
         wanted = {k: dict(lane=k, tests=v, plan_sha256=digest, run=run) for k,v in expected.items()}
         receipts = document['receipts']

@@ -50,7 +50,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.plan.outputs.rust }}
-      toolkit: ${{ steps.plan.outputs.toolkit }}
       web: ${{ steps.plan.outputs.web }}
       site: ${{ steps.plan.outputs.site }}
       site-in-release: ${{ steps.plan.outputs.site-in-release }}
@@ -444,7 +443,7 @@ jobs:
 
   rust:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.toolkit == 'true') && needs.changes.outputs.export-rust == 'false' }}
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.export-rust == 'false' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 56 || 22 }}
     # #1266: the Rust tests split across this many members, a setting per
@@ -495,20 +494,6 @@ jobs:
       - name: The shard balancer's tests
         if: strategy.job-index == 0
         run: python3 -I ci/shard/test.py
-      # #2081: the persisted plan selects only the fast core/plan proofs.
-      # Historical preparation, inherited suites, dry runs and mutants are nightly.
-      - name: The live-check toolkit (fixtures only)
-        id: toolkit
-        if: needs.changes.outputs.toolkit == 'true'
-        shell: bash
-        run: |
-          export PYTHONDONTWRITEBYTECODE=1
-          python3 tools/live-check/test_core.py
-          python3 tools/live-check/plans/test_plans.py
-      - name: Record passed toolkit
-        env:
-          TOOLKIT_RESULT: ${{ steps.toolkit.outcome }}
-        run: python3 -I .github/actions/docs-only/run.py toolkit "$RUNNER_TEMP/ci-plan" "$TOOLKIT_RESULT" "$RUNNER_TEMP/receipts"
       # #1266: this member's share of the selected Rust tests, balanced by
       # ci/shard/times.tsv. One member runs the whole lane through run.py, as
       # before; the ci job checks that every share passed and together they
@@ -575,7 +560,7 @@ jobs:
 
   rust-export:
     needs: [changes, web-build]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.toolkit == 'true') && needs.changes.outputs.export-rust == 'true' && needs.web-build.result == 'success' }}
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.export-rust == 'true' && needs.web-build.result == 'success' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: ${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && 56 || 22 }}
     # #1266: the Rust tests split across this many members, a setting per
@@ -635,20 +620,6 @@ jobs:
       - name: The shard balancer's tests
         if: strategy.job-index == 0
         run: python3 -I ci/shard/test.py
-      # #2081: the persisted plan selects only the fast core/plan proofs.
-      # Historical preparation, inherited suites, dry runs and mutants are nightly.
-      - name: The live-check toolkit (fixtures only)
-        id: toolkit
-        if: needs.changes.outputs.toolkit == 'true'
-        shell: bash
-        run: |
-          export PYTHONDONTWRITEBYTECODE=1
-          python3 tools/live-check/test_core.py
-          python3 tools/live-check/plans/test_plans.py
-      - name: Record passed toolkit
-        env:
-          TOOLKIT_RESULT: ${{ steps.toolkit.outcome }}
-        run: python3 -I .github/actions/docs-only/run.py toolkit "$RUNNER_TEMP/ci-plan" "$TOOLKIT_RESULT" "$RUNNER_TEMP/receipts"
       # #1266: this member's share of the selected Rust tests, balanced by
       # ci/shard/times.tsv. One member runs the whole lane through run.py, as
       # before; the ci job checks that every share passed and together they
@@ -1109,204 +1080,6 @@ jobs:
           path: ${{ runner.temp }}/shard-ran/launch-fleet-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 30
-
-  toolkit-nightly:
-    if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 360
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/private/
-      # The runner guard (#1265), before anything the change ships runs: a
-      # fork's pull request fails off GitHub's runners, and whether this job
-      # may save GitHub's cache (ci/hosted/guard.sh).
-      - name: The runner guard
-        id: guard
-        env:
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: sh ci/hosted/guard.sh
-      # LT3 (#242): the same reviewed checkout action fetches only the pinned
-      # fixture inputs during initial preparation and removes its credentials
-      # before returning. The main checkout/private exclusion stays unchanged.
-      - name: Private live-check fixture destination
-        shell: bash
-        run: |
-          git_version="$(git --version)"
-          if [[ ! "$git_version" =~ ^git\ version\ ([0-9]+)\.([0-9]+)\.[0-9]+[^[:cntrl:]]*$ ]] ||
-             (( 10#${BASH_REMATCH[1]} < 2 || (10#${BASH_REMATCH[1]} == 2 && 10#${BASH_REMATCH[2]} < 28) )); then
-            echo "sparse-capable Git 2.28 or newer is required" >&2
-            exit 1
-          fi
-          install -d -m 0700 "$GITHUB_WORKSPACE/.lt3-fixture-source"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        name: The reviewed live-check fixture source
-        with:
-          ref: 660c1692f3343cec36883abd57b5c88237ac5f44
-          persist-credentials: false
-          fetch-depth: 1
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          path: .lt3-fixture-source
-          sparse-checkout: |
-            /Cargo.toml
-            /Cargo.lock
-            /crates/
-            /tests/
-            /contracts/
-            /apps/web/
-      - name: Seal the live-check fixture source
-        shell: bash
-        run: |
-          source="$GITHUB_WORKSPACE/.lt3-fixture-source"
-          # The action warns rather than failing on some auth-cleanup errors.
-          # Verify its credential files are gone and only known non-auth Git
-          # metadata remains; never read includes or print configuration values.
-          test -d "$RUNNER_TEMP" && test -r "$RUNNER_TEMP" && test -x "$RUNNER_TEMP"
-          shopt -s nullglob
-          checkout_credentials=("$RUNNER_TEMP"/git-credentials-*.config)
-          if [ "${#checkout_credentials[@]}" -ne 0 ]; then
-            echo "checkout credential cleanup is incomplete; no tests started" >&2
-            exit 1
-          fi
-          for repository in "$GITHUB_WORKSPACE" "$source"; do
-            for configuration in "$repository/.git/config" "$repository/.git/config.worktree"; do
-              if [[ "$configuration" == */config.worktree && ! -e "$configuration" && ! -L "$configuration" ]]; then
-                continue
-              fi
-              if ! config_names="$(git config --file "$configuration" --no-includes --name-only --list 2>/dev/null)"; then
-                echo "cannot verify checkout credential cleanup; no tests started" >&2
-                exit 1
-              fi
-              while IFS= read -r key; do
-                case "${key,,}" in
-                  core.repositoryformatversion|core.filemode|core.bare|core.logallrefupdates|core.sparsecheckout|core.sparsecheckoutcone|extensions.worktreeconfig|extensions.partialclone|extensions.objectformat|remote.origin.url|remote.origin.fetch|remote.origin.promisor|remote.origin.partialclonefilter|gc.auto|branch.*.remote|branch.*.merge|'') ;;
-                  *)
-                    echo "checkout credential cleanup is incomplete; no tests started" >&2
-                    exit 1 ;;
-                esac
-              done <<< "$config_names"
-            done
-          done
-          if [ "$(git -C "$source" rev-parse HEAD)" != 660c1692f3343cec36883abd57b5c88237ac5f44 ]; then
-            echo "live-check fixture source revision mismatch" >&2
-            exit 1
-          fi
-          for path in Cargo.toml Cargo.lock; do
-            if [ ! -f "$source/$path" ]; then
-              echo "missing live-check fixture prerequisite: $path" >&2
-              exit 1
-            fi
-          done
-          for path in crates tests contracts apps/web; do
-            if [ ! -d "$source/$path" ]; then
-              echo "missing live-check fixture prerequisite: $path" >&2
-              exit 1
-            fi
-          done
-          test ! -e "$source/private"
-          test ! -e "$RUNNER_TEMP/live-check-source"
-          git -C "$source" remote remove origin
-          mv "$source" "$RUNNER_TEMP/live-check-source"
-          chmod 0700 "$RUNNER_TEMP/live-check-source"
-      - name: Python for the offline installer and release proofs
-        run: |
-          if ! command -v python3 > /dev/null; then
-            case "$(uname -m)" in
-              x86_64) sum=df15fe60d3ff55bf9dcf25824b5572756bb8816ff93865a273d3301d7066a8b7 ;;
-              aarch64) sum=578d9da1983463ffb0c8c98ab0da2f18177f44069328eb0af847860c1eb05c3e ;;
-              *) echo "no pinned Python for $(uname -m)" >&2; exit 1 ;;
-            esac
-            curl -fsSL --retry 5 --retry-delay 10 -o "$RUNNER_TEMP/python.tar.gz" \
-              "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18+20261026-$(uname -m)-unknown-linux-gnu-install_only_stripped.tar.gz"
-            echo "$sum  $RUNNER_TEMP/python.tar.gz" | sha256sum -c -
-            python="$(mktemp -d "$RUNNER_TEMP/python.XXXXXX")"
-            tar -xzf "$RUNNER_TEMP/python.tar.gz" -C "$python" --strip-components=1
-            export PATH="$python/bin:$PATH"
-            echo "$python/bin" >> "$GITHUB_PATH"
-          fi
-      - name: Rust ${{ env.RUST_VERSION }}
-        run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
-          rustup default "$RUST_VERSION"
-          rustc --version && cargo --version
-      - name: zsh
-        run: |
-          command -v zsh > /dev/null || { sudo apt-get update -q && sudo apt-get install -y zsh; }
-          zsh --version
-      - name: The live-check toolkit (nightly fixtures and mutants)
-        shell: bash
-        run: |
-          export PYTHONDONTWRITEBYTECODE=1
-          fixture="$(mktemp -d "$RUNNER_TEMP/live-check.XXXXXX")"
-          evidence="$RUNNER_TEMP/live-check-evidence"
-          mkdir -m 0700 "$evidence"
-          export KIT_SOURCE_ROOT="$RUNNER_TEMP/live-check-source"
-          export KIT_TARGET="$fixture/target"
-          export CARGO_BUILD_JOBS=2
-          finish_live_check() {
-            toolkit_status=$?
-            set +e
-            trap - EXIT
-            if [ "$toolkit_status" -ne 0 ]; then
-              for log in "$evidence"/plan-*.log "$evidence"/mutants/*.log; do
-                [ -f "$log" ] || continue
-                case "$log" in
-                  "$evidence"/mutants/*)
-                    record="${log%.log}.json"
-                    if [ -f "$record" ] && jq -e '.ok == true' "$record" >/dev/null 2>&1; then
-                      continue
-                    fi ;;
-                esac
-                printf '\nLive-check failure details: %s\n' "${log##*/}"
-                cat "$log" || echo "could not read live-check failure log" >&2
-              done
-            fi
-            if ! rm -rf "$fixture" "$KIT_SOURCE_ROOT"; then
-              [ "$toolkit_status" -ne 0 ] || toolkit_status=1
-            fi
-            printf '{"exit": %s}\n' "$toolkit_status" > "$evidence/result.json" || toolkit_status=1
-            exit "$toolkit_status"
-          }
-          trap finish_live_check EXIT
-          # tee finishes before the step ends; pipefail preserves any failing
-          # command. Keep the full stream and all plan/mutant records, even red.
-          {
-          command -v lsof > /dev/null
-          command -v jq > /dev/null
-          test -f "$KIT_SOURCE_ROOT/Cargo.lock"
-          fixture_remotes="$(git -C "$KIT_SOURCE_ROOT" remote)"
-          test -z "$fixture_remotes"
-          git -C "$KIT_SOURCE_ROOT" rev-parse HEAD > "$evidence/source-head.txt"
-          git rev-parse HEAD > "$evidence/toolkit-head.txt"
-          CARGO_TARGET_DIR="$KIT_TARGET" cargo build --manifest-path "$KIT_SOURCE_ROOT/Cargo.toml" --release --locked \
-            -p openwiz-cli -p openwiz-server -p openwiz-tests
-          export KIT_NO_BUILD=1
-          python3 tools/live-check/test_mutants.py
-          sh tools/live-check/send/scripts/test/c8-tests.sh
-          sh tools/live-check/send/scripts/test/kit-tests.sh
-          sh tools/live-check/send/scripts/test/sol-tests.sh
-          sh tools/live-check/new/scripts/test/kit-tests.sh
-          python3 tools/live-check/plans/dry-run.py --profile send --log "$evidence/plan-send.log"
-          python3 tools/live-check/plans/dry-run.py --profile new --log "$evidence/plan-new.log"
-          python3 tools/live-check/mutants.py --logs "$evidence/mutants" --jobs 2
-          } 2>&1 | tee "$evidence/full.log"
-      - name: Keep the nightly toolkit evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: live-check-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/live-check-evidence
-          if-no-files-found: error
-          retention-days: 7
 
   # The next map (#432): after a traced run whose three jobs all passed, the
   # records each traced job kept become one map (map.py, which refuses a map

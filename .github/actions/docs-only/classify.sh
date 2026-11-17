@@ -16,17 +16,16 @@
 # inputs; missing or unreadable lists are never treated as empty.
 #
 # CLASSIFY_STEP answers for one step instead of the jobs: site (#1251)
-# selects web-test's public-site check; toolkit (#2081) selects rust's fast
-# offline toolkit checks. The corresponding row reader selects that step.
+# selects web-test's public-site check. Its row reader selects that step.
 # ci.yml asks decide.sh with it set, retaining the job's every-edge rules.
-# These steps have no separate prune, so every input they read must have its
+# The step has no separate prune, so every input it reads must have its
 # reader in the table; full runs expose missing inputs.
 set -eu
 HERE="$(dirname "$0")"
 READS="${READS:-$HERE/ci-reads.txt}"
 step="${CLASSIFY_STEP:-}"
 case "$step" in
-  '' | site | toolkit) ;;
+  '' | site) ;;
   *) echo "classify: unknown step '$step'" >&2; exit 1 ;;
 esac
 skips=
@@ -44,9 +43,9 @@ esac
 table="$(mktemp)"
 trap 'rm -f "$table"' EXIT
 # Who reads each path: the first row whose pattern (an ERE) matches the whole
-# path wins. `-` is no job; `site` and `toolkit` are step readers (CLASSIFY_STEP,
-# above), never jobs. A path no row matches is read by every job and the
-# steps (fail closed): .github/ (the site's tests read ci.yml and this
+# path wins. `-` is no job; `site` is a step reader (CLASSIFY_STEP, above),
+# never a job. A path no row matches is read by every job and the step
+# (fail closed): .github/ (the site's tests read ci.yml and this
 # file) and anything new. ci/runner/cache.sh, crates/, apps/web/,
 # contracts/, tests/Cargo.toml, tests/fake-room-cli/ and tests/fixtures/
 # (web-test builds the server and the fake, and serves the fixtures) are
@@ -70,7 +69,6 @@ web-build,rust  tests/(attachments|checks|messaging|new-thread|proof|send-harnes
 rust,web-test   tools/install/.+
 rust,web-test,site tools/release/.+
 rust            tools/github-app/.+
-web-build,rust,web-test,toolkit tools/live-check/.+
 web-build,web-test,site apps/site/.+
 rust,web-test   Cargo\.toml|Cargo\.lock
 web-build,rust,web-test,site tests/fixtures/release/.+|apps/web/(package\.json|package-lock\.json|styles/tokens\.css|public/fonts/.+)
@@ -82,7 +80,7 @@ awk -v skips="$skips" -v step="$step" '
   FILENAME == ARGV[1] { who[++rows] = $1; pat[rows] = "^(" $2 ")$"; next }
   FILENAME == ARGV[2] { listed[$0] = 1; next }
   {
-    readers = "web-build,rust,web-test,site,toolkit"
+    readers = "web-build,rust,web-test,site"
     if (!($0 in listed)) for (i = 1; i <= rows; i++) if ($0 ~ pat[i]) { readers = who[i]; break }
     if (skips != "") {
       # X5 combines the old Rust tool proofs and web release proofs.
@@ -93,9 +91,9 @@ awk -v skips="$skips" -v step="$step" '
     paths++
     n = split(readers, r, ",")
     for (i = 1; i <= n; i++) {
-      # Step readers never become jobs; only their own row selects them.
-      if (step == "") { if (r[i] != "site" && r[i] != "toolkit") ran[r[i]] = 1 }
-      else if (r[i] == step) ran[step == "site" ? "web-test" : "rust"] = 1
+      # The step reader never becomes a job; only its own row selects it.
+      if (step == "") { if (r[i] != "site") ran[r[i]] = 1 }
+      else if (r[i] == step) ran["web-test"] = 1
     }
   }
   END {
