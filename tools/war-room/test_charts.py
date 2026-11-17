@@ -766,6 +766,23 @@ class PrsPerHour(unittest.TestCase):
         meta = html[html.index('<p class="meta">', start):html.index('</p>', html.index('<p class="meta">', start))]
         self.assertIn('prs per hour · no completed window read · coverage 0 of 4', meta)
 
+    def test_the_published_site_draws_it_from_the_gathered_snapshot(self):
+        # catches: a publish that gathers the collector snapshot but never hands it to the chart
+        # build, so the published site has no PRs-an-hour chart (MT13, #1049).
+        publish = load('war_room_publish', HERE / 'publish.py')
+        gathered = self.tmp / 'published' / 'gathered'
+        (gathered / 'root').mkdir(parents=True)
+        (gathered / 'selection.json').write_text('[]\n', encoding='utf-8')
+        shutil.copy(COLLECTOR / 'snapshot.json', gathered / 'snapshot.json')
+        root, selection = gathered / 'root', gathered / 'selection.json'
+        hist = self.tmp / 'published' / 'private' / 'history'
+        publish.tick(hist, SNAPSHOT_AT, publish.selection_reader(root, selection),
+                     publish.chart_builder(root, selection, SNAPSHOT_AT))
+        site = ''.join((publish.site_folder(hist) / name).read_text(encoding='utf-8') for name in publish.SITE.values())
+        self.assertIn('id="figure-%s"' % HEADLINE, site)
+        # The fixture's own numbers, as the first case reads them.
+        self.assertIn(page.esc('Window 2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC: capacity 15.00 PRs an hour'), site)
+
 
 if __name__ == '__main__':
     unittest.main()
