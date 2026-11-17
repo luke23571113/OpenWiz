@@ -132,6 +132,22 @@ def setup_state(identity='personal_login', brain='in_repository', overrides=None
     return STORE.validate(value)
 
 
+def demo_repository(name=REPO, visibility='private', branches=None):
+    """One repository in the shared synthetic GitHub world, as init's fake models it."""
+    owner, short = name.split('/')
+    return {'full_name': name, 'private': visibility == 'private', 'visibility': visibility, 'default_branch': 'main',
+            'permissions': {'push': True}, 'owner': {'login': owner, 'type': 'User'}, 'description': None,
+            'homepage': None, 'labels': [], 'pulls': [], 'branches': branches or {}}
+
+
+def github(repos=(), **switches):
+    """#1074: the one synthetic GitHub world create-repo and real init both use."""
+    world = {'user': {'login': 'synthetic-owner', 'type': 'User'}, 'faults': [], 'log': [], 'create': 'ok',
+             'repos': {r['full_name'].lower(): r for r in repos}}
+    world.update(switches)
+    return json.dumps(world)
+
+
 class Journey:
     """One replay: a private folder with its state, fakes and synthetic GitHub."""
 
@@ -156,7 +172,7 @@ class Journey:
         room = self.dir / 'bin/room-cli'
         room.write_text('#!/bin/sh\nexec "%s" -I "%s" "$@"\n' % (sys.executable, HERE / 'fake_room_cli.py'))
         self.repos = self.dir / 'repos.json'
-        self.repos.write_text(json.dumps({'repos': {}, 'create': 'ok'}))
+        self.repos.write_text(github())
         self.created_log = self.dir / 'gh-create.log'
         for path in (self.openwiz, gh, room):
             path.chmod(0o755)
@@ -772,7 +788,8 @@ class Launch(unittest.TestCase):
         j.replay(until='connect')
         self.assertEqual(j.gh_creates(), [['repo', 'view'], ['repo', 'create'], ['repo', 'view']],
                          'checked absent, created once, read back')
-        self.assertEqual(json.loads(j.repos.read_text())['repos'], {REPO: {'private': True}})
+        made = json.loads(j.repos.read_text())['repos']
+        self.assertEqual((list(made), made[REPO.lower()]['private']), ([REPO.lower()], True))
         preview = next(r for a, r in j.calls if a[0] == 'create-repo' and '--yes' not in a)
         for words in ('private', REPO, 'your gh identity'):
             self.assertIn(words, preview.stdout)
@@ -787,7 +804,7 @@ class Launch(unittest.TestCase):
         for create, fails, first, second, creates in (('lost', 0, 0, 0, 1), ('lost', 2, 6, 6, 1), ('fail', 0, 5, 0, 2)):
             with self.subTest(create, fails=fails):
                 j = Journey(self)
-                j.repos.write_text(json.dumps({'repos': {}, 'create': create, 'fail_after_create': fails}))
+                j.repos.write_text(github(create=create, fail_after_create=fails))
                 yes = ['create-repo', '--repo', REPO, '--yes']
                 if fails:
                     self.assertEqual(j.helper(yes).returncode, 6, j.calls[-1][1].stdout)
@@ -804,7 +821,7 @@ class Launch(unittest.TestCase):
 
     def test_an_existing_or_public_repository_is_never_taken_as_the_demo(self):
         j = Journey(self)
-        j.repos.write_text(json.dumps({'repos': {REPO: {'private': False}}, 'create': 'ok'}))
+        j.repos.write_text(github([demo_repository(visibility='public')]))
         self.assertEqual(j.helper(['create-repo', '--repo', REPO]).returncode, 12)
         result = j.helper(['create-repo', '--repo', REPO, '--yes'])
         self.assertEqual(result.returncode, 5, result.stdout)
@@ -820,6 +837,120 @@ class Launch(unittest.TestCase):
         self.assertEqual(busy.returncode, 7, busy.stdout + busy.stderr)
         self.assertEqual(j.spawns() + j.logged(), [])
 
+
+
+INIT = ROOT / 'tools/install/setup/init.py'
+YES_DEMO = ['create-repo', '--repo', REPO, '--yes']
+
+
+class DemoToInit(unittest.TestCase):
+    """#1074: the default demo path, from create-repo into real init, on ONE
+    shared synthetic GitHub world (fake_gh.py over init's own recording fake).
+    Earlier cases replaced init's result with a written setup store, so they
+    never saw that a created demo had no default branch for init to propose on."""
+
+    def init(self, j, *args):
+        """Real init (tools/install/setup/init.py, as the installed CLI runs it) on the same world."""
+        argv = [sys.executable, '-I', str(INIT), '--repository', REPO, '--state-dir', str(j.setup_dir), '--json', *args]
+        result = subprocess.run(argv, env=j.env(), capture_output=True, text=True, timeout=120)
+        return result.returncode, json.loads(result.stdout)
+
+    def world(self, j):
+        return json.loads(j.repos.read_text())
+
+    def writes(self, j):
+        return [call for call in self.world(j)['log'] if call[0] != 'GET']
+
+    # Catches: the default demo created empty, so init's mandatory brain
+    # proposal finds no default-branch ref and stops uncertain (the #1074 bug).
+    def test_a_created_demo_carries_on_into_init_s_brain_proposal(self):
+        j = Journey(self)
+        j.replay(until='connect')
+        created = self.world(j)['repos'][REPO.lower()]
+        self.assertEqual(created['private'], True)
+        code, preview = self.init(j)
+        self.assertEqual((code, preview['outcome']), (0, 'proposed'), preview)
+        code, applied = self.init(j, '--yes', '--operation', preview['operation_id'])
+        self.assertEqual((code, applied['outcome'], applied['reason_code']), (0, 'applied', 'brain_proposed'), applied)
+        self.assertEqual(applied['pull_requests'], [{'repository': REPO, 'number': 1, 'visible': True, 'state': 'open'}])
+        demo = self.world(j)['repos'][REPO.lower()]
+        self.assertEqual([(p['head'], p['base']) for p in demo['pulls']], [('openwiz/brain', 'main')])
+        self.assertEqual(demo['branches']['main'], created['branches']['main'],
+                         'init only proposes; the created default branch is unchanged')
+        self.assertEqual([c for c in self.writes(j) if c == ['POST', 'user/repos']], [['POST', 'user/repos']],
+                         'one repository, created once')
+
+    # Catches: a yes given to a preview that never said the repository gets
+    # an initial README commit on its default branch, or a preview that writes.
+    def test_the_preview_discloses_the_initial_commit_and_writes_nothing(self):
+        j = Journey(self)
+        preview = j.helper(['create-repo', '--repo', REPO])
+        self.assertEqual(preview.returncode, 12, preview.stdout)
+        for words in ('private', REPO, 'README.md', 'initial commit', 'default branch'):
+            self.assertIn(words, preview.stdout)
+        self.assertEqual((self.world(j)['repos'], self.writes(j)), ({}, []))
+
+    # Catches: a created repository reported complete (and init started) while
+    # its default branch or commit could not be read, or a retry that creates
+    # a second repository or pushes its own seed commit.
+    def test_an_unread_or_missing_default_branch_is_never_created(self):
+        ref = 'repos/%s/git/ref/heads/main' % REPO
+        for name, faults, first in (('ref read lost', [{'method': 'GET', 'path': ref, 'mode': 'drop', 'times': 1}], 6),
+                                    ('ref read refused', [{'method': 'GET', 'path': ref, 'mode': 500, 'times': 1}], 6)):
+            with self.subTest(name):
+                j = Journey(self)
+                j.repos.write_text(github(faults=faults))
+                result = j.helper(YES_DEMO)
+                self.assertEqual(result.returncode, first, result.stdout)
+                self.assertNotIn('Created', result.stdout)
+                again = j.helper(YES_DEMO)
+                self.assertEqual(again.returncode, 0, again.stdout)
+                self.assertIn('Created and read back', again.stdout)
+                self.assertEqual(self.writes(j), [['POST', 'user/repos']], 'one create, no seed push, no other write')
+
+    # Catches: an onboarding whose own repository exists without a default
+    # branch (an interrupted or earlier empty create) being reported created,
+    # retried, or seeded by a separate push.
+    def test_its_own_repository_without_a_default_branch_stays_unresolved(self):
+        for state, code in (('pending', 6), ('uncertain', 6), ('created', 5)):
+            with self.subTest(state):
+                j = Journey(self)
+                j.repos.write_text(github([demo_repository()]))
+                j.state.write_text(json.dumps({'created': {'repo': REPO, 'state': state}}))
+                j.state.chmod(0o600)
+                before = self.world(j)['repos']
+                for _ in range(2):
+                    result = j.helper(YES_DEMO)
+                    self.assertEqual(result.returncode, code, result.stdout)
+                    self.assertIn('default branch', result.stdout)
+                    self.assertNotIn('Created and read back', result.stdout)
+                self.assertEqual(self.world(j)['repos'], before, 'nothing created, seeded or pushed')
+                self.assertEqual(self.writes(j), [])
+                if state != 'created':
+                    self.assertNotEqual(json.loads(j.state.read_text())['created']['state'], 'created')
+
+    # Catches: someone else's repository, private or public, taken as the demo
+    # or written to, and a repeat that rewrites the owner's later work.
+    def test_existing_repositories_and_owner_work_are_never_written(self):
+        owned = {'main': {'README.md': 'Owner work.\n', 'game.py': 'print(1)\n'}}
+        for visibility in ('private', 'public'):
+            with self.subTest(visibility):
+                j = Journey(self)
+                j.repos.write_text(github([demo_repository(visibility=visibility, branches=owned)]))
+                before = self.world(j)['repos']
+                result = j.helper(YES_DEMO)
+                self.assertEqual(result.returncode, 5, result.stdout)
+                self.assertIn('already exists', result.stdout)
+                self.assertEqual((self.world(j)['repos'], self.writes(j)), (before, []))
+        j = Journey(self)
+        self.assertEqual(j.helper(YES_DEMO).returncode, 0, j.calls[-1][1].stdout)
+        world = self.world(j)
+        world['repos'][REPO.lower()]['branches'].setdefault('main', {})['game.py'] = 'print(1)\n'  # the owner's later commit
+        j.repos.write_text(json.dumps(world))
+        again = j.helper(YES_DEMO)
+        self.assertEqual(again.returncode, 0, again.stdout)
+        self.assertEqual(self.world(j)['repos'], world['repos'], 'a repeat only reads')
+        self.assertEqual(self.writes(j), [['POST', 'user/repos']])
 
 if __name__ == '__main__':
     unittest.main()
