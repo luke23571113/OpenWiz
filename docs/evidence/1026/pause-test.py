@@ -8,9 +8,7 @@ import time
 import tempfile
 
 program = Path(sys.argv[1]).resolve()
-checkout = Path(__file__).resolve().parents[3]
 # The first durable claim is shared by the old and corrected keeper.
-start = time.time()
 p = subprocess.Popen([str(program), '--exact',
     'ad_send_attachments::ad07_every_row_of_the_outcome_table', '--nocapture'],
     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
