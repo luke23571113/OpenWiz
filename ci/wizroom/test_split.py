@@ -105,14 +105,48 @@ class SplitChecker(unittest.TestCase):
         self.assertEqual(move, ['tools/war-room/page.py'])
 
     # catches: a load whose target is computed at run time silently ignored, so a
-    # file it may load is moved; a computed load that cannot reach the folder
-    # must not refuse.
+    # file it may load is moved: a computed module name through the repository
+    # root (R3), a computed relative JavaScript path (R4), a wholly computed shell
+    # source or import search path in a file that never names the folder (R2,
+    # R9); and a computed load whose known parts exclude every folder file
+    # refused anyway (plugins.cjs).
     def test_an_unresolvable_dynamic_load_refuses_with_its_location(self):
         result = run('dynamic')
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         refused = [line.split(' ')[1] for line in result.stderr.splitlines() if line.startswith('refused ')]
-        self.assertEqual(refused, ['tools/stall-alarm/alarm.py:6', 'tools/stall-alarm/plugin.py:6'])
+        self.assertEqual(refused, [
+            'tools/client/pick.py:6', 'tools/client/read.cjs:1', 'tools/client/run.sh:2',
+            'tools/client/search.py:4', 'tools/stall-alarm/alarm.py:6', 'tools/stall-alarm/local.py:6',
+            'tools/stall-alarm/plugin.py:6'])
         self.assertNotRegex(result.stdout, r'(?m)^(stay|move) ')
+
+    # catches: ordinary Python forms that load or read a folder file moved away:
+    # a plain os.path.join or joinpath read, publicly and from a staying file
+    # (R1); a keyword import_module call (R6); a namespace package import (R7);
+    # an aliased loader (R8); a with_name sibling load.
+    def test_python_path_and_load_forms_keep_their_files_public(self):
+        stay, move = report('python-forms')
+        self.assertEqual(stay, {
+            'tools/war-room/collector.py': 'tools/client/kw.py:6 import',
+            'tools/war-room/pkg/reader.py': 'tools/client/ns.py:5 import',
+            'tools/war-room/limits.conf': 'tools/client/read.py:3 script path',
+            'tools/war-room/runner.py': 'tools/client/run.py:4 native load',
+            'tools/war-room/settings.toml': 'tools/client/settings.py:3 script path',
+            'tools/war-room/suite.py': 'tools/war-room/runner.py:5 native load',
+            'tools/war-room/data/rows.csv': 'tools/war-room/runner.py:6 script path',
+        })
+        self.assertEqual(move, ['tools/war-room/page.py'])
+
+    # catches: a JavaScript load written across lines ignored (R5), a load in a
+    # comment counted, and loads through a URL base or a constant refused or lost.
+    def test_javascript_load_forms_keep_their_files_public(self):
+        stay, move = report('js-forms')
+        self.assertEqual(stay, {
+            'tools/war-room/collector.cjs': 'tools/client/multi.cjs:1 import',
+            'tools/war-room/reader.mjs': 'tools/client/url.mjs:2 import',
+            'tools/war-room/harness.mjs': 'tools/client/url.mjs:4 import',
+        })
+        self.assertEqual(move, ['tools/war-room/old.cjs'])
 
     # catches: prose or an unrelated tool counted as a reference, keeping war-room
     # files public that nothing public uses.
