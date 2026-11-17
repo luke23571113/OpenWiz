@@ -1,0 +1,25 @@
+running 1 test
+test aw05_gate::a_forged_send_with_an_attachment_that_is_not_ready_is_refused_with_zero_calls ... FAILED
+
+failures:
+
+failures:
+    aw05_gate::a_forged_send_with_an_attachment_that_is_not_ready_is_refused_with_zero_calls
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.97s
+
+probe: holding aborted-upload cleanup before reservation removal
+probe: aborted reservation removed between scan read and directory listing
+
+thread 'aw05_gate::a_forged_send_with_an_attachment_that_is_not_ready_is_refused_with_zero_calls' (126964) panicked at tests/web-api/attach_support.rs:260:5:
+assertion `left == right` failed: {
+  "error": {
+    "kind": "store_unavailable",
+    "message": "the attachment store could not be used; nothing was staged"
+  }
+}
+
+  left: 500
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+probe outcome matched: red
