@@ -23,8 +23,13 @@ fn output(command: &mut Command) -> Output {
 // A separate `cp` writes the executable (#2700), so concurrent forks in this
 // multithreaded parent, including System executors and direct test commands,
 // cannot inherit a writable descriptor for it.
+// Programs here may be compiled binaries, not text, so the source is written
+// as bytes, as `place_script` does for text.
 fn executable(path: &Path, program: &[u8]) {
-    place_script(path, std::str::from_utf8(program).unwrap());
+    let source = path.with_extension("src");
+    fs::write(&source, program).unwrap();
+    place(&source, path);
+    fs::remove_file(&source).unwrap();
 }
 pub fn directory(path: &Path) {
     DirBuilder::new()
@@ -713,4 +718,4 @@ mod listener {
 // copies of one stateless helper.
 #[allow(clippy::duplicate_mod)]
 mod place;
-use place::place_script;
+use place::place;
