@@ -118,19 +118,32 @@ dispatcher when moving these existing steps into lanes.
 
 ## The deliberate proof (#783, CI3 C5)
 
-One PR hid a real change from the selector, and CI went red on the test that
-catches it.
+A one-line behaviour change was caught by a test selected through the map.
 
-- **The edit:** `tools/install/setup/setup.py` binds each setup check's
-  observations to `bound + 1` instead of `bound`, so every component reads
-  `unknown`. Only the map reaches this file: no skill or tools suite and no
-  folder rule runs `tools/install`, and the always-run `rust:test:checks`
-  doesn't read it. The map picks `web:browser:install-access` and
-  `web:browser:install-connections`, and the second catches it.
-- **The PR:** PENDING_PR, opened ready (a draft gets no plan) right after a
-  nightly map signing, changing only that line. It was closed unmerged, with no
-  review and no queue.
-- **The red run:** PENDING_RUN. Its `changes` log says `CI selection: selected`
-  and plans `web:browser:install-connections`, which failed.
-- **The case:** the last row of `CASES` in [`planted.py`](planted.py) plants the
-  same edit offline, so the proof keeps holding after the PR closed.
+- **The edit:** `tools/install/setup/setup.py` records each setup check's
+  observations at `bound + 1` instead of `bound`. The reader rejects the
+  mismatched revision, reporting `unknown` where `missing` is expected.
+  The browser catcher is reached through the map's measured file reads,
+  rather than a skill-folder rule or a tools suite.
+- **The PR:** [#1050](https://github.com/openwizdev/OpenWiz/pull/1050), head
+  `24f385db400836704d7b894906fffb73f5a4524f`, changed only that line. The
+  [ready-PR exception](https://github.com/openwizdev/OpenWiz/issues/783#issuecomment-6904479822)
+  allowed selection to run; a draft fails before planning. The PR is closed
+  unmerged and must not be reopened or pushed again.
+- **The selected red run:** [43973090712, attempt 1](https://github.com/openwizdev/OpenWiz/actions/runs/43973090712/attempts/1).
+  The [changes job](https://github.com/openwizdev/OpenWiz/actions/runs/43973090712/job/133670033141)
+  says `CI selection: selected` and plans `web:browser:install-connections`.
+  The [web-export job](https://github.com/openwizdev/OpenWiz/actions/runs/43973090712/job/133670740222)
+  executes it: `test/browser/install-connections.test.mjs:164` fails at the
+  assertion on line 183, observing `unknown` for components expected to be
+  `missing`. [Independent verification](https://github.com/openwizdev/OpenWiz/issues/783#issuecomment-6941059608)
+  records the same evidence.
+- **The offline case:** the `tools/install/setup/setup.py` row of `CASES` in
+  [`planted.py`](planted.py) plants exactly that edit and requires the web lane
+  to catch it. [Local red/green evidence](../../docs/evidence/783/planted-red-green.md)
+  records the catcher failing with the edit and passing after restoration.
+
+Option (b), manual dispatch signing, remains dropped and unmerged under
+[revision 3](https://github.com/openwizdev/OpenWiz/issues/780#issuecomment-6934511268).
+Push signing in [C7, #1055](https://github.com/openwizdev/OpenWiz/issues/1055)
+is separate work.
