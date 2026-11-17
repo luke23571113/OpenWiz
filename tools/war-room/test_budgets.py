@@ -144,18 +144,18 @@ class Check(unittest.TestCase):
     # Bug: a job that has never run (#782 question 4) is held to an
     # invented p95, or an unmeasured row hides a measured job's wider timeout.
     def test_an_unmeasured_row_keeps_its_timeout_and_a_derived_row_is_checked(self):
-        table = (row("ci.yml", "toolkit-nightly", "all", 360, 0, samples=1, source="unmeasured")
+        table = (row("ci.yml", "slow-nightly", "all", 360, 0, samples=1, source="unmeasured")
                  + row("ci.yml", "rust", "all", 14, 540, source="derived:rust-export") + self.PRIVACY_ROW)
-        ok = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY, table)
+        ok = self.check(workflow([("slow-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY, table)
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
         wide = table.replace("\t14\t540\t", "\t20\t540\t")
-        r = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 20, False)]), self.PRIVACY, wide)
+        r = self.check(workflow([("slow-nightly", 360, False), ("rust", 20, False)]), self.PRIVACY, wide)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("ci.yml rust all: timeout 20, but 1.5x its p95 of 540 s is 14", r.stderr)
-        moved = self.check(workflow([("toolkit-nightly", 400, False), ("rust", 14, False)]), self.PRIVACY, table)
+        moved = self.check(workflow([("slow-nightly", 400, False), ("rust", 14, False)]), self.PRIVACY, table)
         self.assertEqual(moved.returncode, 1, moved.stdout + moved.stderr)
-        self.assertIn("ci.yml job toolkit-nightly: timeout-minutes 400, its budget is 360", moved.stderr)
-        odd = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY,
+        self.assertIn("ci.yml job slow-nightly: timeout-minutes 400, its budget is 360", moved.stderr)
+        odd = self.check(workflow([("slow-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY,
                          table.replace("derived:rust-export", "guessed"))
         self.assertEqual(odd.returncode, 1, odd.stdout + odd.stderr)
         self.assertIn("source 'guessed' is not measured, derived:<job> or unmeasured", odd.stderr)
@@ -316,21 +316,21 @@ class Table(unittest.TestCase):
     # Bug: a job in the workflow that never ran in the window is silently
     # left without a row (the check would then fail later, in CI).
     def test_a_job_with_no_samples_fails(self):
-        ci = workflow([("always", 60, False), ("rust", 60, True), ("toolkit-nightly", 360, False)])
+        ci = workflow([("always", 60, False), ("rust", 60, True), ("slow-nightly", 360, False)])
         r, _ = self.table(self.lanes(), ci=ci)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("ci.yml job toolkit-nightly all has 0 samples, fewer than 5", r.stderr)
+        self.assertIn("ci.yml job slow-nightly all has 0 samples, fewer than 5", r.stderr)
 
 
     # Bug: a job that never ran gets no row (the check stays red for good),
     # or its twin's budget is copied without saying so (#782 question 4).
     def test_derived_and_unmeasured_rows(self):
         ci = workflow([("always", 60, False), ("rust", 60, True), ("rust-export", 60, True),
-                       ("toolkit-nightly", 360, False)])
+                       ("slow-nightly", 360, False)])
         jobs = [j for j in self.lanes()] + [dict(j, name=j["name"].replace("rust", "rust-export"))
                                             for j in self.lanes() if j["name"].startswith("rust")]
-        jobs = [j for j in jobs if not j["name"].startswith("rust (")] + [job(99, "toolkit-nightly", 7200, event="schedule")]
-        r, rows = self.table(jobs, ci=ci, extra=["--derive", "rust=rust-export", "--unmeasured", "toolkit-nightly=360"])
+        jobs = [j for j in jobs if not j["name"].startswith("rust (")] + [job(99, "slow-nightly", 7200, event="schedule")]
+        r, rows = self.table(jobs, ci=ci, extra=["--derive", "rust=rust-export", "--unmeasured", "slow-nightly=360"])
         self.assertEqual(r.returncode, 0, r.stderr)
         # rust-export's numbers (the lanes' rust legs: 11 and 46, worked above), marked as derived.
         self.assertEqual(rows[("ci.yml", "rust", "normal")][:4] + rows[("ci.yml", "rust", "normal")][6:],
@@ -339,7 +339,7 @@ class Table(unittest.TestCase):
                          ["46", "1825", "5", "150", "derived:rust-export"])
         self.assertEqual(rows[("ci.yml", "rust-export", "normal")][6:], ["measured"])
         # Unmeasured: today's 360, no p95, its one sample counted.
-        self.assertEqual(rows[("ci.yml", "toolkit-nightly", "all")][:3] + rows[("ci.yml", "toolkit-nightly", "all")][6:],
+        self.assertEqual(rows[("ci.yml", "slow-nightly", "all")][:3] + rows[("ci.yml", "slow-nightly", "all")][6:],
                          ["360", "0", "1", "unmeasured"])
 
 

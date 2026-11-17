@@ -191,39 +191,6 @@ site runs tools/release/README.md tools/war-room/steps.tsv
 jobs "$ALL" changes/1251.md
 jobs "$ALL" tests/service/t4_service.rs
 jobs "$ALL" tools/war-room/test_gather.py
-# #2081: the fast toolkit step has its own reader. A regular Rust change
-# must not pay for it; its fixtures/plans and unknown inputs must select it.
-toolkit() {
-  want="$1"; shift
-  got="$(printf '%s\n' "$@" | sed '/^$/d' | CLASSIFY_STEP=toolkit sh "$HERE/classify.sh" 2>&1)" || got="error: $got"
-  case " $got " in *" rust "*) got=runs ;; *" error: "*) ;; *) got=skips ;; esac
-  if [ "$got" = "$want" ]; then ok "toolkit step $want  <=  $*"; else bad "toolkit step: want '$want', got '$got':  $*"; fi
-}
-toolkit runs tools/live-check/core.py
-toolkit runs tools/live-check/test_core.py
-toolkit runs tools/live-check/plans/0.0.3.json tools/live-check/plans/0.0.4.recorded.json
-toolkit runs tools/live-check/send/scripts/test/kit-tests.sh
-toolkit runs tools/live-check/new/texts.tsv
-toolkit runs .github/workflows/ci.yml
-toolkit runs .github/actions/docs-only/classify.sh
-toolkit runs newdir/input.txt
-toolkit skips tools/live-check-other/input.txt
-toolkit runs
-toolkit runs crates/core/src/lib.rs tools/live-check/core.py
-toolkit skips crates/core/src/lib.rs crates/cli/src/main.rs
-toolkit skips Cargo.toml Cargo.lock tests/Cargo.toml
-toolkit skips tests/checks/skills.rs tests/fixtures/room-cli-0.43.1/ls-basic/scenario.json
-toolkit skips apps/web/src/api.ts apps/site/index.html
-toolkit skips skills/grill/SKILL.md docs/agents/fleet.md GLOSSARY.md
-toolkit skips tools/war-room/steps.tsv tools/github-app/test.py tools/release/test.py
-toolkit skips ci/runner/cache.sh ci/rust-tests.sh
-toolkit skips STATUS.md private/evidence/x.md
-jobs "$ALL" tools/live-check/core.py
-jobs "$ALL" tools/live-check/plans/0.0.4.json
-jobs "$ALL" tools/live-check
-jobs "$ALL" tools/live-check-other/input.txt
-site skips tools/live-check/core.py
-if printf 'tools/live-check/core.py\n' | CLASSIFY_STEP=toolkit sh "$HERE/classify.sh" --skips rust > /dev/null 2>&1; then bad "CLASSIFY_STEP=toolkit gives a prune list"; else ok "CLASSIFY_STEP=toolkit refuses --skips"; fi
 # The step mode leaves the jobs' own answers alone.
 jobs "$ALL" crates/core/src/lib.rs
 jobs "web-build web-test" apps/site/index.html
@@ -331,61 +298,19 @@ done
 # non-cone patterns (a cone can't leave out a folder but a few of its files).
 WORKFLOW="$ROOT/.github/workflows/ci.yml"
 want_with="$(printf '%s\n' '        with:' '          persist-credentials: false' '          fetch-depth: 0' '          filter: blob:none' '          sparse-checkout-cone-mode: false' '          sparse-checkout: |' '            /*' '            !/private/'; sed 's|^|            /|' "$HERE/ci-reads.txt")"
-# Each checkout step, as `job NAME` followed by its fields. Main checkouts
-# retain the exact existing contract; LT3 has one separately bounded exception.
-all_checkouts="$(awk '
+# Each checkout step, as `job NAME` followed by its fields.
+checkouts="$(awk '
   /^  [a-z][a-z0-9-]*:$/ { job = $1; sub(":", "", job); inside = 0 }
   /^      - uses: actions\/checkout@/ { print "job " job; inside = 1; next }
   inside && /^        / { print; next }
   { inside = 0 }
 ' "$WORKFLOW")"
-# Select entire records, never a matching word in a comment or citation.
-checkout_part() {
-  printf '%s\n' "$all_checkouts" | awk -v fixture="$1" '
-    function emit() {
-      is_fixture = index(block, "\n        name: The reviewed live-check fixture source\n") != 0
-      if (is_fixture == fixture) printf "%s", block
-    }
-    /^job / { emit(); block = "" }
-    { block = block $0 "\n" }
-    END { emit() }
-  '
-}
-checkouts="$(checkout_part 0)"
-fixture_checkout="$(checkout_part 1)"
-want_fixture="$(cat <<'LT3_CHECKOUT'
-job toolkit-nightly
-        name: The reviewed live-check fixture source
-        with:
-          ref: 660c1692f3343cec36883abd57b5c88237ac5f44
-          persist-credentials: false
-          fetch-depth: 1
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          path: .lt3-fixture-source
-          sparse-checkout: |
-            /Cargo.toml
-            /Cargo.lock
-            /crates/
-            /tests/
-            /contracts/
-            /apps/web/
-LT3_CHECKOUT
-)"
-fixture_action="$(awk '/^        name: The reviewed live-check fixture source$/ { print previous } { previous = $0 }' "$WORKFLOW")"
-if [ "$fixture_checkout" = "$want_fixture" ] &&
-   [ "$fixture_action" = '      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' ] &&
-   [ "$(printf '%s\n' "$all_checkouts" | grep -c '^job ')" = 17 ]; then
-  ok "ci.yml: LT3 fixture checkout is the one pinned nightly-only sparse exception, with credentials removed"
-else
-  bad "ci.yml: LT3 fixture checkout must be one exact pinned rust-only exception; all seventeen checkouts required"
-fi
-for job in changes always web-build rust rust-export web web-export site release skills launch-fleet toolkit-nightly select-map ci web-test main-light; do
+for job in changes always web-build rust rust-export web web-export site release skills launch-fleet select-map ci web-test main-light; do
   steps="$(printf '%s\n' "$checkouts" | grep -cxF "job $job")"
   with="$(printf '%s\n' "$checkouts" | awk -v j="job $job" '/^job / { on = ($0 == j); next } on')"
   if [ "$steps" = 1 ] && [ "$with" = "$want_with" ]; then ok "ci.yml: $job checks out blobless and sparse, private/ only as ci-reads.txt lists"; else bad "ci.yml: $job has $steps checkout steps, with [$(printf '%s\n' "$with" | sed 's/^ *//' | tr '\n' ';')]"; fi
 done
-if [ "$(printf '%s\n' "$checkouts" | grep -c '^job ')" = 16 ]; then ok "ci.yml: sixteen main checkout steps (X5, launch-fleet's shards, toolkit-nightly and main-light)"; else bad "ci.yml: $(printf '%s\n' "$checkouts" | grep -c '^job ') checkout steps"; fi
+if [ "$(printf '%s\n' "$checkouts" | grep -c '^job ')" = 15 ]; then ok "ci.yml: fifteen main checkout steps (X5, launch-fleet's shards and main-light)"; else bad "ci.yml: $(printf '%s\n' "$checkouts" | grep -c '^job ') checkout steps"; fi
 # The patterns as CI uses them: web-build's (the check above holds all three
 # to the same list). Keep this tied to the actual workflow: pending X5's
 # update must remain a failing checkout proof, never a substituted pattern.
@@ -442,8 +367,6 @@ tests/checks/skills.rs
 tests/pending-ticket-2.txt
 tools/github-app/test.py
 tools/github-app/manifest.json
-tools/live-check/core.py
-tools/live-check/plans/0.0.4.recorded.json
 Cargo.toml
 Cargo.lock
 tests/Cargo.toml
@@ -465,8 +388,6 @@ newdir/x.md'
 # server web-test builds, skills/ and docs/ for the skills check), and every
 # path no row knows.
 KEEP_ANY='ci/escapes/escapes.py
-tools/live-check/core.py
-tools/live-check/plans/0.0.4.recorded.json
 ci/runner/cache.sh
 tests/Cargo.toml
 tests/fake-room-cli/main.rs
@@ -899,37 +820,6 @@ site_decide "a merge group of a crate runs it" true merge_group checks_requested
 pr true main "$M1" "$H8"
 site_decide "a draft fails" fail pull_request synchronize 1 main "$M1" "$H8"
 
-# #2081: toolkit uses the same live-PR decision and fail-closed edges, with
-# its own reader. No successful integration build is needed for this proof.
-H11="$(head_from "$M1" tools/live-check/plans/0.0.4.json)"
-toolkit_decide() {
-  name="$1" want="$2"; shift 2
-  got="$(cd "$g" && PATH="$tmp/bin:$PATH" CLASSIFY_STEP=toolkit JOB=rust EVENT="$1" ACTION="$2" RUN_ATTEMPT="$3" EVENT_BASE_REF="$4" EVENT_BASE="$5" EVENT_HEAD="$6" REPO=owner/repo PR=1 sh "$HERE/decide.sh" 2> "$tmp/decide.err")" || got=fail
-  if [ "$got" = "$want" ]; then ok "toolkit step: $name: $want"; else bad "toolkit step: $name: want $want, got $got ($(tail -n 1 "$tmp/decide.err"))"; fi
-}
-pr false main "$M1" "$H11"
-toolkit_decide "a toolkit plan against main runs it" true pull_request synchronize 1 main "$M1" "$H11"
-pr false main "$M1" "$H10"
-toolkit_decide "an ordinary crate against main skips it" false pull_request synchronize 1 main "$M1" "$H10"
-toolkit_decide "a crate rerun runs it" true pull_request synchronize 2 main "$M1" "$H10"
-toolkit_decide "ready_for_review runs it" true pull_request ready_for_review 1 main "$M1" "$H10"
-toolkit_decide "a stale event head runs it" true pull_request synchronize 1 main "$M1" "$H11"
-pr false main "$M2" "$H10"
-toolkit_decide "a stale event base runs it" true pull_request synchronize 1 main "$M1" "$H10"
-pr false release-x "$M1" "$H10"
-toolkit_decide "a release base runs it" true pull_request synchronize 1 release-x "$M1" "$H10"
-pr false main "$UNKNOWN" "$H10"
-toolkit_decide "an absent base runs it" true pull_request synchronize 1 main "$UNKNOWN" "$H10"
-pr false main "$M1" "$M1"
-toolkit_decide "an empty diff runs it" true pull_request synchronize 1 main "$M1" "$M1"
-toolkit_decide "a push runs it" true push '' 1 '' "$M1" "$H10"
-toolkit_decide "the nightly run runs it" true schedule '' 1 '' '' "$M1"
-toolkit_decide "a merge group runs it" true merge_group checks_requested 1 '' '' "$H10"
-pr true main "$M1" "$H11"
-toolkit_decide "a draft fails" fail pull_request synchronize 1 main "$M1" "$H11"
-pr false main "$M1" "$H11"
-FAKE_FAIL=all toolkit_decide "an unreadable PR fails" fail pull_request synchronize 1 main "$M1" "$H11"
-
 # On the checkout CI makes (#334): decide.sh's diff needs only commits and
 # trees, so a blobless, sparse clone whose remote is gone gives the same
 # answers as the full one.
@@ -1003,12 +893,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[1])
 import test_lanes
-import test_toolkit
+import test_workflow
 
 consumer = '''#!PYTHON
 import os
@@ -1040,8 +931,10 @@ else:
 '''.replace('PYTHON', sys.executable)
 
 for job in ('rust', 'rust-export'):
-    script = test_toolkit.step(test_toolkit.jobs(test_toolkit.workflow())[job],
-                               'Run cargo test --workspace').split('        run: |\n', 1)[1]
+    steps = [s for s in re.split(r'(?=^      - )', test_workflow.jobs()[job], flags=re.M)
+             if s.startswith('      - name: Run cargo test --workspace\n')]
+    assert len(steps) == 1, f'{job}: expected one test step'
+    script = steps[0].split('        run: |\n', 1)[1]
     script = '\n'.join(line[10:] for line in script.splitlines())
     for case, overrides in [('normal', {}), ('traced', {'TRACE': '1'}),
                             ('trace fallback', {'TRACE': '1', 'TRACE_RC': '3'}),
@@ -1064,7 +957,7 @@ for job in ('rust', 'rust-export'):
                                     **{'lint-rust': False},
                                     plan_sha256=hashlib.sha256(raw.encode()).hexdigest())
             (root/'ci-dispatch.json').write_text(json.dumps(fixture.dispatch))
-            (root/'.github').symlink_to(test_toolkit.ROOT/'.github', target_is_directory=True)
+            (root/'.github').symlink_to(test_workflow.ROOT/'.github', target_is_directory=True)
             (root/'ci-plan').symlink_to(root, target_is_directory=True)
             bin = root/'bin'
             bin.mkdir()
@@ -1100,7 +993,7 @@ fi
 # The classifier, prune/checkout, live-event decider and Rust-runner fixture
 # cases above retain their coverage. Legacy action output validation remains
 # in ci/select/test_steps.py; no lane re-runs the action's decision.
-for proof in test_gate.py test_plan.py test_lanes.py test_execution.py test_release_prune.py test_workflow.py test_toolkit.py test_toolkit_checkout.py test_toolkit_nightly.py; do
+for proof in test_gate.py test_plan.py test_lanes.py test_execution.py test_release_prune.py test_workflow.py; do
   if python3 -I "$HERE/$proof"; then ok "X5: $proof"; else bad "X5: $proof"; fi
 done
 if node --test "$ROOT/.github/workflows/ci.test.mjs" "$ROOT/.github/workflows/ci-safety-watch.test.mjs"; then

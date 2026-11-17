@@ -17,7 +17,7 @@
     {"step": "project", "agent": "Pick one: a pocket weather haiku tool, a one-page fan site for your favourite synthetic band, a tiny terminal game where you herd sheep, or your own idea. Where should it go? Recommended: a new disposable repository synthetic-owner/synthetic-sheep (private, created with your gh identity, safe to delete later). You then make or pick its CloudRoom project. Or one of your repositories."},
     {"step": "project", "user": "The sheep game, in the new demo repository."},
     {"step": "project", "tool": ["create-repo", "--repo", "synthetic-owner/synthetic-sheep"], "exit": 12},
-    {"step": "project", "agent": "This creates one private GitHub repository, synthetic-owner/synthetic-sheep, with your gh identity. Create it?"},
+    {"step": "project", "agent": "This creates one private GitHub repository, synthetic-owner/synthetic-sheep, with your gh identity, with one initial commit on its default branch: a README.md holding only the title. Create it?"},
     {"step": "project", "user": "Yes.", "permits": ["create_repository"]},
     {"step": "project", "tool": ["create-repo", "--repo", "synthetic-owner/synthetic-sheep", "--yes"], "exit": 0},
     {"step": "project", "agent": "Created and read back. Please make a CloudRoom project for it, or pick one; setup then selects it."},

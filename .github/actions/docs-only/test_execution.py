@@ -50,7 +50,7 @@ class Execution(unittest.TestCase):
             dispatch=dict.fromkeys(('build-web','export-rust','export-web','build-site','image-skills',
                                    'rust','web','site','release'),True)
             dispatch.update(**{'lint-rust':checks_only},skills=['launch-fleet','plan-graph','triage'],
-                            trace=over.pop('trace',True),planted=over.pop('planted',False),toolkit=not checks_only,
+                            trace=over.pop('trace',True),planted=over.pop('planted',False),
                             plan_sha256=hashlib.sha256(raw.encode()).hexdigest())
             if checks_only:
                 dispatch['rust']=False

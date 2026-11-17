@@ -423,78 +423,236 @@ fn ad05_steer_with_attachments_is_refused_with_zero_calls_local_and_cloud() {
 
 #[test]
 fn ad07_every_row_of_the_outcome_table() {
-    let fake = SendFake::with(
-        "ad07_outcomes",
-        vec![
-            tell(CLOUD, "tell-sent.json", json!({})),
-            tell(LOCAL, "tell-queue-observed-0002.json", json!({})),
-            tell(
-                "thr_syn_0005",
-                "tell-sent.json",
-                json!({ "exit": 1, "stderr": "Error: HTTP 400: Invalid input" }),
-            ),
-            tell("thr_syn_0004", "tell-sent.json", json!({ "hang": true })),
-            tell(
-                "thr_syn_0003",
-                "tell-sent.json",
-                json!({ "upload_fails_after": 1 }),
-            ),
-            tell(
-                "thr_syn_0006",
-                "tell-sent.json",
-                json!({ "exit": 1, "stderr": "Error: HTTP 413: Attachment too large" }),
-            ),
-        ],
-    );
-    let case = |target: &str, op: &str| {
-        let a = stage(&fake.state, &format!("syn-{op}-a.txt"), &text("a\n"), T0);
-        let b = stage(&fake.state, &format!("syn-{op}-b.png"), &png(1024), T0);
-        let mut r = with_ids(request(target, Mode::Queue, "Synthetic", op), &[&a, &b]);
-        // Short (#1260): the hang row waits for it, plus the attachments'
-        // allowance.
-        r.budget = Duration::from_secs(1);
-        (report_with(&fake, &r), a, b)
+    use openwiz_core::messaging::InvalidRequest;
+    use openwiz_core::messaging::effects::{Activity, QueuedWork, TargetRecord};
+    use openwiz_core::messaging::record::RecordState;
+    use openwiz_core::messaging::send::{
+        Messenger, Rejection, TellReply, UncertainReason, WaitingOn,
     };
-    // Sent: accepted, the attachments handed to CloudRoom, nothing more.
-    let (sent, ..) = case(CLOUD, "op-ad07-sent");
-    assert_eq!(sent.status, Status::Accepted);
-    assert!(
-        delivery_of(&sent)
-            .text()
-            .contains("with 2 attachments handed to CloudRoom")
-    );
-    // Observed busy queue acceptance records the outcome before cleanup.
-    let (queued, a, b) = case(LOCAL, "op-ad07-queued");
-    assert_eq!(queued.status, Status::Queued);
-    assert!(
-        delivery_of(&queued)
-            .text()
-            .starts_with("queued: thread busy, with 2 attachments handed to CloudRoom")
-    );
-    assert!(delivery_of(&queued).text().contains(NOT_REPORTED));
-    assert!(!kept(&fake.state, &a));
-    assert!(!kept(&fake.state, &b));
-    // A documented rejection before acceptance: failed.
-    let (rejected, ..) = case("thr_syn_0005", "op-ad07-rejected");
-    assert_eq!(rejected.status, Status::Failed);
-    // Uploaded, then no answer in time: uncertain.
-    let (timed_out, ..) = case("thr_syn_0004", "op-ad07-timeout");
-    assert_eq!(timed_out.status, Status::Uncertain);
-    assert!(
-        matches!(delivery_of(&timed_out), Delivery::Uncertain { reason, .. }
-        if *reason == openwiz_core::messaging::send::UncertainReason::TimedOut)
-    );
-    // The upload fails part way, with an undocumented error: uncertain.
-    let (upload, ..) = case("thr_syn_0003", "op-ad07-upload");
-    assert_eq!(upload.status, Status::Uncertain);
-    // An attachment refusal no pinned fixture documents: uncertain.
-    let (undocumented, ..) = case("thr_syn_0006", "op-ad07-undocumented");
-    assert_eq!(undocumented.status, Status::Uncertain);
-    for report in [&rejected, &timed_out, &upload, &undocumented] {
-        assert!(!delivery_of(report).text().contains("handed to CloudRoom"));
+    use openwiz_core::model::{Fact, SessionId};
+    use openwiz_core::ops::Clock;
+    use openwiz_core::prompt::ReadyPrompt;
+    use openwiz_core::source::{Placement, SourceError};
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::Instant;
+
+    // AD7 owns outcomes and lifetime, not adapter startup or receipt parsing
+    // (AD1 and M4 own those). Keep its one-second budget, but control time.
+    struct OutcomeClock(Instant);
+    impl Clock for OutcomeClock {
+        fn now(&self) -> Timestamp {
+            T0
+        }
+        fn monotonic(&self) -> Instant {
+            self.0
+        }
     }
-    // Every call carried both attachments, uploaded first.
-    assert_eq!(fake.tell_count(), 6);
+    struct Outcome<'a> {
+        reply: Mutex<Option<TellReply>>,
+        calls: AtomicUsize,
+        fake: &'a SendFake,
+        op: OpId,
+        copies: [&'a ReadyAttachment; 2],
+    }
+    impl Messenger for Outcome<'_> {
+        fn name(&self) -> &str {
+            "synthetic-outcome"
+        }
+        fn tested_version(&self) -> &str {
+            "0.43.1"
+        }
+        fn check_target_id(&self, _id: &SessionId) -> Result<(), InvalidRequest> {
+            Ok(())
+        }
+        fn version(&self, _deadline: Instant) -> Result<String, SourceError> {
+            Ok("0.43.1".into())
+        }
+        fn read_target(
+            &self,
+            id: &SessionId,
+            _deadline: Instant,
+        ) -> Result<TargetRecord, SourceError> {
+            Ok(TargetRecord {
+                id: id.clone(),
+                title: Fact::Known("Synthetic outcome target".into()),
+                activity: Fact::Known(Activity::Running),
+                hidden: Fact::Known(false),
+                archived: Fact::Known(false),
+                placement: Fact::Known(Placement::Cloud),
+                host_connected: None,
+                queued_work: Fact::Known(QueuedWork::None),
+                queued_message_count: Fact::Known(0),
+                pending_interaction: Fact::Known(false),
+                problems: vec![],
+            })
+        }
+        fn tell(&self, _: &SessionId, _: Mode, _: &str, _: Instant) -> TellReply {
+            panic!("attachments must use tell_prompt")
+        }
+        fn tell_prompt(
+            &self,
+            _: &SessionId,
+            _: Mode,
+            prompt: &ReadyPrompt,
+            _: Instant,
+        ) -> TellReply {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            // The real core must bind/claim both copies and save dispatching
+            // before handing them over; neither may be deleted early.
+            let record = self.fake.store().load(&self.op).unwrap().unwrap();
+            assert_eq!(record.state, RecordState::Dispatching);
+            assert_eq!(record.attachments, bound(&self.copies));
+            assert_eq!(prompt.attachments.len(), 2);
+            for (copy, bytes) in self.copies.iter().zip([text("a\n"), png(1024)]) {
+                assert_eq!(fs::read(copy_path(&self.fake.state, copy)).unwrap(), bytes);
+                assert_eq!(claim_state(self.fake, copy, T0), Claim::Dispatching);
+            }
+            self.reply
+                .lock()
+                .unwrap()
+                .take()
+                .expect("one dispatch only")
+        }
+    }
+    let fake = SendFake::new("ad07_outcomes", "send");
+    let unclear = |reason| TellReply::Unclear {
+        reason,
+        gaps: vec![],
+    };
+    let rows = [
+        ("sent", TellReply::Sent, Status::Accepted, Claim::Accepted),
+        (
+            "queued",
+            TellReply::Queued {
+                waiting_on: WaitingOn::ThreadBusy,
+                queued_message_id: "qmsg_syn_0001".into(),
+            },
+            Status::Queued,
+            Claim::Accepted,
+        ),
+        (
+            "rejected",
+            TellReply::Rejected(Rejection::InvalidInput),
+            Status::Failed,
+            Claim::Failed,
+        ),
+        (
+            "timeout",
+            unclear(UncertainReason::TimedOut),
+            Status::Uncertain,
+            Claim::Uncertain,
+        ),
+        (
+            "upload",
+            unclear(UncertainReason::UndocumentedError),
+            Status::Uncertain,
+            Claim::Uncertain,
+        ),
+        (
+            "undocumented",
+            unclear(UncertainReason::UndocumentedError),
+            Status::Uncertain,
+            Claim::Uncertain,
+        ),
+    ];
+    for (i, (name, reply, status, claim)) in rows.into_iter().enumerate() {
+        let a = stage(&fake.state, &format!("syn-{name}-a.txt"), &text("a\n"), T0);
+        let b = stage(&fake.state, &format!("syn-{name}-b.png"), &png(1024), T0);
+        let mut request = with_ids(
+            request(
+                &format!("thr_syn_{:04}", i + 1),
+                Mode::Queue,
+                "Synthetic",
+                &format!("op-ad07-{name}"),
+            ),
+            &[&a, &b],
+        );
+        request.budget = Duration::from_secs(1);
+        let source = Outcome {
+            reply: Mutex::new(Some(reply)),
+            calls: AtomicUsize::new(0),
+            fake: &fake,
+            op: request.op_id.clone(),
+            copies: [&a, &b],
+        };
+        let fixed = OutcomeClock(Instant::now());
+        let send = || {
+            send::send_with(
+                &source,
+                &fake.store(),
+                &staging::store(&fake.state),
+                &fixed,
+                &request,
+            )
+            .unwrap()
+        };
+        let report = send();
+        assert_eq!(report.status, status, "{name}: {report:?}");
+        assert_eq!(report.attachments, bound(&[&a, &b]), "{name}");
+        assert_eq!(
+            report.attachments_digest.as_deref(),
+            Some(attachments_digest(&bound(&[&a, &b])).as_str()),
+            "{name}"
+        );
+        let accepted = claim == Claim::Accepted;
+        let words = delivery_of(&report).text();
+        assert_eq!(
+            words.contains("with 2 attachments handed to CloudRoom"),
+            accepted,
+            "{name}: {words}"
+        );
+        if accepted {
+            assert!(words.contains(NOT_REPORTED), "{name}: {words}");
+        }
+        if name == "queued" {
+            assert!(
+                words.starts_with("queued: thread busy, with 2 attachments handed to CloudRoom")
+            );
+        }
+        if name == "timeout" {
+            assert!(matches!(
+                delivery_of(&report),
+                Delivery::Uncertain {
+                    reason: UncertainReason::TimedOut,
+                    ..
+                }
+            ));
+        }
+        // Reopen the real stores: a report alone does not prove durability.
+        let record = fake.store().load(&request.op_id).unwrap().unwrap();
+        assert_eq!(record.state, RecordState::Finished, "{name}");
+        assert_eq!(
+            record.delivery.as_ref(),
+            Some(delivery_of(&report)),
+            "{name}"
+        );
+        assert_eq!(record.attachments, bound(&[&a, &b]), "{name}");
+        for copy in [&a, &b] {
+            assert_eq!(kept(&fake.state, copy), !accepted, "{name}");
+            if !accepted {
+                assert_eq!(claim_state(&fake, copy, T0), claim, "{name}");
+            }
+        }
+        let replay = send();
+        assert_eq!(replay.status, status, "{name}");
+        assert!(
+            matches!(replay.result, SendResult::Outcome { replayed: true, .. }),
+            "{name}: {replay:?}"
+        );
+        assert_eq!(delivery_of(&replay), delivery_of(&report), "{name}");
+        assert_eq!(
+            source.calls.load(Ordering::SeqCst),
+            1,
+            "{name}: replay dispatched again"
+        );
+    }
+    assert!(
+        fake.invocations().is_empty(),
+        "AD1/M4 own adapter integration"
+    );
 }
 
 /// A send store that refuses only the durable dispatching mark.

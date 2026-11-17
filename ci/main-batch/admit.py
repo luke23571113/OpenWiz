@@ -178,7 +178,7 @@ def nightly_refusals(data, pin):
          'nightly plan differs from its inventory')
     digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
     expected = {'always': lanes['always']['tests'], 'web': lanes['web']['tests'],
-                'build:web_export': [], 'prerequisite:toolkit': []}
+                'build:web_export': []}
     for kind in ('site', 'release'):
         group = [t for t in lanes['site']['tests'] if t.startswith(kind + ':')]
         if group:
