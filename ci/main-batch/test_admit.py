@@ -61,7 +61,7 @@ def lane_receipts(plan_text):
     plan = json.loads(plan_text)
     lanes, digest = plan['lanes'], hashlib.sha256(plan_text.encode()).hexdigest()
     wanted = {'always': lanes['always']['tests'], 'web': lanes['web']['tests'],
-              'build:web_export': [], 'prerequisite:toolkit': []}
+              'build:web_export': []}
     for kind in ('site', 'release'):
         tests = [t for t in lanes['site']['tests'] if t.startswith(kind + ':')]
         if tests:
