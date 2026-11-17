@@ -4,15 +4,17 @@
 //! are `contracts/loop-cli.v1.md`'s.
 //!
 //! LC1 (#789) ships [`parse`], the contract's argument rules, and stubs: each
-//! command parses its arguments, then refuses with the `not_built` result,
-//! reading nothing and changing nothing. LC2 to LC5 (#790 to #793) each
-//! replace one stub in [`run`]. `loop off|on` stay in `loops.rs`, unchanged.
+//! command parsed its arguments, then refused with the `not_built` result.
+//! LC2 to LC5 (#790 to #793) each replaced one stub in [`run`]; none is left.
+//! `loop off|on` stay in `loops.rs`, unchanged.
 
 use std::ffi::OsString;
 use std::io::Write;
 
 use crate::response;
 
+#[path = "loop_apply.rs"]
+mod loop_apply;
 #[path = "loop_export.rs"]
 mod loop_export;
 #[path = "loop_plan.rs"]
@@ -29,8 +31,9 @@ pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
   (contracts/loop-cli.v1.md). validate checks loop files and names each
   problem by file and field. plan prints the exact room-cli commands and the
-  differences against room-cli loop list, and changes nothing. apply is not
-  built yet: it refuses with exit 5 and reads and changes nothing.
+  differences against room-cli loop list, and changes nothing. apply runs
+  only those commands for one id, once, then reads the loop back and reports
+  any difference; an unclear outcome exits 6 and is never retried.
 ";
 
 /// Untrusted text (a Cloudroom name, id or key, room-cli's error text, a
@@ -247,7 +250,7 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         Ok(Parsed::Run(args)) if args.command == Command::Plan => {
             loop_plan::run(&args, stdout, stderr)
         }
-        Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
+        Ok(Parsed::Run(args)) => loop_apply::run(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
                 stderr,
@@ -266,27 +269,6 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     }
 }
 
-/// The stub's result: exit 5, nothing read or changed.
-fn not_built(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
-    let (word, ticket) = (args.command.word(), args.command.ticket());
-    if args.json {
-        let doc = serde_json::json!({
-            "schema": "openwiz.loop-not-built.v1", "command": word, "exit_code": 5,
-            "status": "not_built", "ticket": ticket,
-            "message": format!("openwiz loop {word} is not built yet; nothing was read or changed"),
-        });
-        if writeln!(stdout, "{doc}").is_err() {
-            return 1;
-        }
-    } else {
-        let _ = writeln!(
-            stderr,
-            "openwiz: loop {word} is not built yet (#{ticket}); nothing was read or changed"
-        );
-    }
-    5
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,44 +285,9 @@ mod tests {
         )
     }
 
-    // plan (#792) is built; its keeper is tests/cli-agent/loop_plan.rs.
-    // catches: a stub that succeeds, reads, or prints a result that is not the
-    // contract's `not_built` document, so a caller mistakes it for a report.
-    #[test]
-    fn each_stub_refuses_with_the_contracts_not_built_result() {
-        // validate's row is gone: it is built (#790), and
-        // tests/cli-agent/loop_validate.rs keeps its behaviour.
-        // export (#791) is built: its keeper is
-        // tests/cli-agent/loop_export.rs, which checks its real report.
-        // apply (#793) is the one stub left.
-        let (args, command, ticket) = (
-            &["apply", "nightly", "--project", "prj_syn_0001", "--json"],
-            "apply",
-            793,
-        );
-        let (code, out, err) = run_args(args);
-        assert_eq!(code, 5, "{args:?}");
-        assert!(err.is_empty(), "{args:?}: {err}");
-        assert!(out.ends_with('\n') && out.lines().count() == 1, "{out:?}");
-        let doc: Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(
-            doc,
-            serde_json::json!({
-                "schema": "openwiz.loop-not-built.v1", "command": command,
-                "exit_code": 5, "status": "not_built", "ticket": ticket,
-                "message": format!("openwiz loop {command} is not built yet; nothing was read or changed"),
-            })
-        );
-        let text: Vec<&str> = args.iter().copied().filter(|a| *a != "--json").collect();
-        let (code, out, err) = run_args(&text);
-        assert_eq!((code, out.as_str()), (5, ""));
-        assert_eq!(
-            err,
-            format!(
-                "openwiz: loop {command} is not built yet (#{ticket}); nothing was read or changed\n"
-            )
-        );
-    }
+    // The stub test `each_stub_refuses_with_the_contracts_not_built_result`
+    // is gone with the last stub: apply (#793) is built, and its keeper is
+    // tests/cli-agent/loop_apply.rs, which checks apply's real results.
 
     // catches: a parser that accepts a form the contract refuses (so a later
     // command acts on arguments nobody pinned) or refuses a pinned form.
