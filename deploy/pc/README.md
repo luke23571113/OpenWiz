@@ -212,33 +212,7 @@ Do not run the kill/reboot check from a builder sandbox or against any other
 process. No PC, CloudRoom, Mac, GitHub or public-network behavior is proven by
 the fixture suite.
 
-## Recording PC activation preparation for 0.0.13
+## PC activation (retired)
 
-The bounded activation interface is defined in
-[`pc_activation/contract.v1.md`](../../tools/install/pc_activation/contract.v1.md).
-It selects the owner's `openwiz.service` and the documented enable/start
-operation. The installed Linux manager publishes its private definition in
-`<state>/service/platform/openwiz.service`, verifies the exact FragmentPath and
-links it only when absent. A foreign or conflicting existing unit holds the
-operation for reconciliation.
-
-The protected setup operation pins owner, unit definition, installed build,
-config, repository, project, runtime, App ids and its request hash in an
-owner-only companion journal under the existing setup lock. The existing
-protected App setup supplies `<state>/service/app/private-key.pem` with 0700
-directories and a 0600 key. Activation checks metadata through the existing
-signer boundary and reads zero key bytes.
-
-Lost start replies remain uncertain until fresh status and the exact run-lock
-holder prove the same saved resource healthy. The current build-only status
-response cannot supply that complete binding. T12 owns the native observation
-and installed handover after its separate ownership and login gates. Its App
-record adapter must reuse the existing sink's exact comment read-back and
-unsent/uncertain distinction. The recording tests establish these interface
-rules on synthetic providers. Native activation, linger, logout/reboot and
-installed acceptance retain their separate live gates.
-
-This preparation exposes no installed activation command. The existing service
-scheduler supplies its registered tick and updater when separately activated.
-Cloud activation and Cloud secret transport retain their unresolved capability
-and approval requirements.
+The PC activation and installed handover runtimes were retired in 0.0.17 (#874).
+The packaged service's start gate stays closed: nothing writes the PC activation record it reads (D2).

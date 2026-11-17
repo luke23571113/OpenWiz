@@ -214,13 +214,6 @@ class Install(unittest.TestCase):
 
 
 class FirstHourContract(unittest.TestCase):
-    def test_pc_activation_contract(self):
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'pc_activation/test_activation.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'PC activation contract checks failed')
-
     def test_first_hour_contract(self):
         # #2200: the release:install log must show the contract suite ran.
         result = subprocess.run([sys.executable, '-I',
@@ -236,14 +229,6 @@ class FirstHourContract(unittest.TestCase):
                                 capture_output=True, text=True)
         print(result.stdout + result.stderr, end='', flush=True)
         self.assertEqual(result.returncode, 0, 'completion checkpoint checks failed')
-
-    def test_installed_handover(self):
-        # #2379: the release:install log must show the handover suite ran.
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'handover/test_handover.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'installed handover checks failed')
 
 
 if __name__ == '__main__':
