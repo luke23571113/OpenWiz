@@ -1,0 +1,17 @@
+# WM1 (#1056) scoped local checks at 9f2a0bbb63590f9cb257a936233e415ad621dfb0
+# python3 -I ci/wizroom/test_split.py
+test_a_contract_link_keeps_its_file_public (__main__.SplitChecker.test_a_contract_link_keeps_its_file_public) ... ok
+test_a_loop_path_keeps_its_file_public (__main__.SplitChecker.test_a_loop_path_keeps_its_file_public) ... ok
+test_a_native_load_keeps_its_file_public (__main__.SplitChecker.test_a_native_load_keeps_its_file_public) ... ok
+test_a_tree_with_no_public_reference_moves_everything (__main__.SplitChecker.test_a_tree_with_no_public_reference_moves_everything) ... ok
+test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not (__main__.SplitChecker.test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not) ... ok
+test_an_import_keeps_its_module_public (__main__.SplitChecker.test_an_import_keeps_its_module_public) ... ok
+test_an_unresolvable_dynamic_load_refuses_with_its_location (__main__.SplitChecker.test_an_unresolvable_dynamic_load_refuses_with_its_location) ... ok
+test_files_reached_from_a_staying_file_stay_too (__main__.SplitChecker.test_files_reached_from_a_staying_file_stay_too) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.263s
+
+OK
+# exit 0
+# hook checks at this commit, run in the foreground before push: cargo fmt --check ok; cargo clippy --workspace --all-targets -- -D warnings ok; sh .github/actions/docs-only/test.sh all ok (includes 'ok   WM1: split checker'); cargo test -p openwiz-tests --test checks: 149 passed, 0 failed
