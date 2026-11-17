@@ -65,7 +65,7 @@ class SplitChecker(unittest.TestCase):
         stay, move = report('native-load')
         self.assertEqual(stay, {
             'tools/war-room/experiment_contract.py': 'tools/skills-eval/replay/score.py:5 native load',
-            'tools/war-room/weights.py': 'tools/skills-eval/promotions/promote.py:14 native load',
+            'tools/war-room/weights.py': 'tools/skills-eval/promotions/promote.py:15 native load',
         })
         self.assertEqual(move, ['tools/war-room/page.py'])
 
@@ -82,10 +82,15 @@ class SplitChecker(unittest.TestCase):
         self.assertEqual(stay, {'tools/war-room/ci3_check.py': 'loops/weekly.json:3 loop path'})
         self.assertEqual(move, ['tools/war-room/page.py'])
 
-    # catches: a file a public contract links to moved away, leaving a dead link.
+    # catches: a file a public contract links to moved away, leaving a dead link;
+    # and a staying document's own relative link (the collector contract's schema).
     def test_a_contract_link_keeps_its_file_public(self):
         stay, move = report('contract')
-        self.assertEqual(stay, {'tools/war-room/review_loops.py': 'contracts/review.v1.md:3 contract link'})
+        self.assertEqual(stay, {
+            'tools/war-room/review_loops.py': 'contracts/review.v1.md:3 contract link',
+            'tools/war-room/collector.v1.md': 'contracts/review.v1.md:4 contract link',
+            'tools/war-room/collector.v1.schema.json': 'tools/war-room/collector.v1.md:3 path',
+        })
         self.assertEqual(move, ['tools/war-room/page.py'])
 
     # catches: a staying module's own imports and read files moved away, so the
