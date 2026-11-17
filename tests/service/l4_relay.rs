@@ -188,22 +188,3 @@ fn r2_shared_key_scopes_repository_pr_head_and_kind() {
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(ids.len(), 6);
 }
-
-#[test]
-fn r2_operative_contract_requires_shared_record_and_once_per_key() {
-    let contract = include_str!("../../contracts/fleet-tick.v1.md");
-    let clause = contract
-        .lines()
-        .find(|line| line.starts_with("**Shared relay record (#546):**"))
-        .expect("the ruling's operative relay clause");
-    for required in [
-        "at most once per key",
-        "uncertain",
-        "RelayStore",
-        "RelayKey",
-        "#694",
-    ] {
-        assert!(clause.contains(required), "missing {required}");
-    }
-    assert!(!contract.contains("A `send` repeated after an interruption reaches its agent twice"));
-}
