@@ -33,6 +33,10 @@ jobs:
           persist-credentials: false
       - name: Python
         run: sh tools/collector/python.sh
+      # #555: the collector reads skills/ through the link to the gitignored
+      # .wizskills/skills; install the release wizskills.lock pins.
+      - name: The pinned WizSkills
+        run: python3 -I tools/wizskills/install.py
       - name: Node for the chart build (WRD2)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
