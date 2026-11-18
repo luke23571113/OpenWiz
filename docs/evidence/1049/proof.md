@@ -38,3 +38,20 @@ Every test's catches statement appears in the PR. No tests are deleted.
 No helpers were used for this narrow takeover; no reviewer was started.
 Both inherited commits remain unchanged, including the original first-push
 receipt recorded on the ticket.
+
+## CI integration expectation correction
+
+[Grant 6965460285](https://github.com/openwizdev/OpenWiz/issues/1049#issuecomment-6965460285)
+covers exactly one line in `tools/war-room/test_gather.py`,
+`Gather.test_the_full_gathered_selection_publishes_with_real_chromium`:
+add `snapshot.json` to the expected published filenames. No other line in that
+test changes. This supports the owned gather handoff and saved-snapshot
+publisher behavior and restores the CI gate while retaining exact equality
+and every existing page/image assertion.
+
+The integration check reproduced the CI failure at its file-list assertion
+before the correction and passed afterward, including both real-Chromium
+layouts and the rest of the existing checks. Both runs are in `green.log`; the
+red was committed before the correction. No new or deleted test (#687): the
+existing integration test continues to catch missing or unexpected published
+files and broken complete-page rendering. No runner timing is inferred.

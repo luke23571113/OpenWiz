@@ -83,3 +83,13 @@ Ran 1 test in 4.387s
 
 FAILED (failures=1)
 exit: 1 (expected before the granted correction)
+
+After the one-line expectation grant (OpenWiz #1049 comment 6965460285):
+$ python3 -I tools/war-room/test_gather.py Gather.test_the_full_gathered_selection_publishes_with_real_chromium
+war-room PRs-per-hour read: 0.227 seconds
+.
+----------------------------------------------------------------------
+Ran 1 test in 5.137s
+
+OK
+exit: 0

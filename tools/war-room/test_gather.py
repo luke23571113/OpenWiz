@@ -518,7 +518,7 @@ class Gather(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         files = git(self.origin, 'ls-tree', '-r', '--name-only', 'refs/heads/war-room').split()
         # WRD5 (#883): the six site pages beside the pictures, in the same commit.
-        self.assertEqual(sorted(files), sorted(['README.md', 'samples/2030-01-02T12-30-00Z.json', 'war-room-phone.png',
+        self.assertEqual(sorted(files), sorted(['README.md', 'samples/2030-01-02T12-30-00Z.json', 'snapshot.json', 'war-room-phone.png',
                                                 'war-room.png', *publish_module().SITE.values()]))
         sizes = {}
         for name in ('war-room.png', 'war-room-phone.png'):
