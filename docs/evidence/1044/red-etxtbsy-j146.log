@@ -1,0 +1,20 @@
+   Compiling openwiz-service v0.0.1-dev (<checkout>/crates/service)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.06s
+     Running ../../tests/service/t6_update.rs (target/debug/deps/t6_update-71c12b0e39959912)
+
+running 1 test
+
+thread 'a_concurrent_fork_cannot_keep_the_staged_program_busy' (<pid>) panicked at crates/service/../../tests/service/t6_update.rs:977:5:
+a good merge was not staged (writer inherited by a concurrent fork: true): Object {"at": Number(1000), "from": String("be568b23c9fc92861dc65391ea65efe00e57b8f6"), "outcome": Object {"reason": String("candidate build or acceptance command failed"), "state": String("kept"), "step": String("build")}, "to": String("7aec8aeba244506907abd63a6918ce9692efd808")}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+failed fixture: <synthetic-fixture>
+test a_concurrent_fork_cannot_keep_the_staged_program_busy ... FAILED
+
+failures:
+
+failures:
+    a_concurrent_fork_cannot_keep_the_staged_program_busy
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 39 filtered out; finished in 1.29s
+
+error: test failed, to rerun pass `-p openwiz-service --test t6-update`
