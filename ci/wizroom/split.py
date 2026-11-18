@@ -275,13 +275,25 @@ def shell_pattern(arg):
     return tuple(UNKNOWN if i % 2 else piece for i, piece in enumerate(pieces) if piece)
 
 
-def js_code(text):
-    """The JavaScript source with each comment blanked out, newlines and strings kept,
-    so loads are found across lines and never inside a comment; and the offsets that
-    lie inside a template string, where `import(` is only text. A quote ends at its
-    line's end, so a regular expression literal holding a quote cannot hide the
-    code after it."""
+def js_code(text, path):
+    """Blank comments and regex literals without shifting offsets or newlines.
+
+    Keep strings for load-argument evaluation, and mark template text so it is
+    never scanned for loads. Recognise regexes where an expression must begin;
+    a numeric operand makes a slash division. Other slash contexts require more
+    grammar than this small lexer models, so refuse instead of hiding code.
+    """
     out, i, n, quote, inside = [], 0, len(text), None, set()
+    previous = ''
+    prefixes = {'', '(', '[', '{', '=', ',', ':', ';', '?', '~', '*', '%',
+                '&', '|', '^', '+', '-', '/', '<', 'return', 'throw', 'case',
+                'delete', 'void', 'typeof', 'new', 'in', 'instanceof', 'else',
+                'do', 'default', 'debugger'}
+
+    def refuse(at, reason):
+        no = text.count('\n', 0, at) + 1
+        raise Refused(f'{path}:{no} native load: {reason}')
+
     while i < n:
         c = text[i]
         if quote:
@@ -295,6 +307,7 @@ def js_code(text):
                 quote = None
         elif c in '\'"`':
             quote = c
+            previous = 'literal'
             out.append(c)
         elif text.startswith('//', i):
             j = text.find('\n', i)
@@ -308,8 +321,62 @@ def js_code(text):
             out.append(re.sub(r'[^\n]', ' ', text[i:j]))
             i = j
             continue
+        elif c == '/':
+            if previous == 'number':
+                previous = '/'  # division: its operand can contain a real load
+                out.append(c)
+            else:
+                if previous not in prefixes:
+                    refuse(i, 'ambiguous JavaScript slash (regex or division)')
+                j, bracket = i + 1, False
+                while j < n and text[j] not in '\r\n\u2028\u2029':
+                    ch = text[j]
+                    if ch == '\\':
+                        if j + 1 == n or text[j + 1] in '\r\n\u2028\u2029':
+                            break
+                        j += 2
+                        continue
+                    if ch == '[':
+                        if bracket:
+                            refuse(i, 'ambiguous JavaScript regex character class')
+                        bracket = True
+                    elif ch == ']':
+                        bracket = False
+                    elif ch == '/' and not bracket:
+                        break
+                    j += 1
+                if j == n or text[j] != '/' or bracket:
+                    refuse(i, 'unterminated JavaScript regex literal')
+                j += 1
+                flags_at = j
+                while j < n and (text[j].isalnum() or text[j] in '_$'):
+                    j += 1
+                flags = text[flags_at:j]
+                if any(f not in 'dgimsuy' for f in flags) or len(set(flags)) != len(flags):
+                    refuse(i, 'unsupported JavaScript regex flags')
+                out.append(' ' * (j - i))
+                previous = 'literal'
+                i = j
+                continue
+        elif c.isalnum() or c in '_$':
+            j = i + 1
+            while j < n and (text[j].isalnum() or text[j] in '_$'):
+                j += 1
+            token = text[i:j]
+            previous = ('number' if token.isdecimal() else
+                        token if token in prefixes and previous != '.' else 'identifier')
+            out.append(token)
+            i = j
+            continue
+        elif text[i:i + 2] in ('++', '--'):
+            out.append(text[i:i + 2])
+            previous = 'increment'
+            i += 2
+            continue
         else:
             out.append(c)
+            if not c.isspace():
+                previous = c
         i += 1
     return ''.join(out), inside
 
@@ -442,7 +509,7 @@ def other_script_refs(tree, path, text):
                 elif could_load(tree, shell_pattern(arg)):
                     raise Refused(f'{path}:{no} native load: computed path ({arg}) could name a file in {tree.folder}')
     if suffix in ('.mjs', '.cjs', '.js', '.ts'):
-        code, strings = js_code(text)
+        code, strings = js_code(text, path)
         js = JavaScript(path, code)
         loads = [(m.start(), js.value(js_args(code, m.end() - 1)))
                  for m in JS_CALL.finditer(code) if m.start() not in strings]

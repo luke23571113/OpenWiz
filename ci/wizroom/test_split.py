@@ -187,6 +187,7 @@ class SplitChecker(unittest.TestCase):
         cases = (
             ('ordinary regex', 'const regex = /x/;\n' + load, True),
             ('division', 'const amount = 12 / 3 / 2;\n' + load, True),
+            ('division load operand', 'const amount = 12\n/ ' + load, True),
             ('quoted text', 'const text = " /`/ ";\n' + load, True),
             ('line comment', '// ' + load, False),
             ('block comment', '/*\n' + load + '\n*/', False),

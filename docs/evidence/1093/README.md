@@ -41,3 +41,33 @@ Tests added (also listed in the PR):
 
 No tests removed or weakened. No new dependency. No future seam is needed:
 WM2 (#1058) consumes the unchanged split-checker CLI and its stay/move contract.
+
+## Outcome
+
+Red commit: `dbf90f9d97a25acc32b8b68fe57979a354e1143e`, before any checker
+implementation edit. Its 10 failing subcases reach the intended retention or
+refusal assertions; all ten existing tests and the text controls pass.
+`red.txt` preserves that run with only the checkout prefix replaced by
+`<checkout>`. The reviewed-head Node reproduction is in `reproduction.txt`.
+
+The checkpoint push was attempted with hooks enabled. Format, Clippy and the
+Rust static checks passed; the classifier hook refused the red split suite,
+so that commit is published together with the fix, preserving red-first history.
+The first attempt also required installing the clone's existing web dependencies.
+Neither failure was bypassed. App-token executable unavailable: GitHub uses the
+contracted current-account fallback; commits retain the user's identity.
+
+`green.txt` binds the passing split suite and independent direct/multiline
+Node/checker runs to hashes of the checker and test sources. The same digest
+checks cover every CLI run. The added division-operand control also passes on
+the unchanged old checker, and ensures regex recognition does not hide a real
+`require` used in arithmetic.
+
+Implementation choice: parse regex escapes, simple character classes and standard
+flags only where an expression must begin. Numeric division remains supported;
+other slash contexts, nested character classes and unsupported flags refuse with
+their source location. This intentionally leaves some valid JavaScript outside
+the small lexer's model; it must be made unambiguous before a move can proceed.
+No full JavaScript/TypeScript parser, live consumer or live migration is claimed.
+No original proof was changed. Helpers: none (one localized lexer slice).
+CI at the final pushed head remains the required hand-back gate.
