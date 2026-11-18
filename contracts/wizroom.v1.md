@@ -38,19 +38,21 @@ folder reaches it, by one of:
    name the file imports it as), a shell `.`/`source`, or a JavaScript
    `require`, `import(…)` or static `import … from`, on one line or across
    several (never inside a comment or a string);
-3. **a path in a script, workflow, loop or contract**: the file's
-   repository-relative path written in it (`tools/war-room/<path>`), a path a
-   Python file computes from `__file__` and literals (`Path(…)`, `/`, `parent`,
-   `parents[n]`, `os.path.join`, `joinpath`, `with_name`) wherever it uses it,
-   or, in Markdown, a relative link.
+3. **an executable dependency**: a script invoked by a public script, a
+   workflow's `run` command or a loop's `argv`; or a runtime file path that
+   code reads, including Python paths computed from `__file__` and literals
+   (`Path(…)`, `/`, `parent`, `parents[n]`, `os.path.join`, `joinpath`,
+   `with_name`).
 
 A path that names a directory in the folder reaches every file under it. The
 bare folder path alone reaches nothing by itself; a `sys.path` entry naming it
 makes imports resolve there.
 
-**Files reached from those count too**: every staying file's own references, of
-any of the kinds above and whatever the staying file's type, keep their
-targets public. **Everything else moves.**
+**Files reached from those count too**: every staying file's executable
+dependencies keep their targets public. Prose links, fixture logs, comments
+and test-only synthetic path strings do not retain a file. A test travels
+with the code it tests. Documentation links are updated to the new public
+location or name the private repository. **Everything else moves.**
 
 **Which public files count.** A file outside the folder counts when it is:
 
@@ -59,12 +61,12 @@ targets public. **Everything else moves.**
 | script | a `.py`, `.sh`, `.bash`, `.zsh`, `.mjs`, `.cjs`, `.js`, `.ts` or `.rs` file, or any file starting with `#!` | `script path` |
 | workflow | `.github/workflows/*.yml` or `*.yaml`, and `.github/actions/**/action.yml` | `workflow path` |
 | loop | `loops/**/*.json` | `loop path` |
-| contract | anything under `contracts/` | `contract link` |
 
-Imports and native loads report as `import` and `native load`; a staying
-non-script file's own reference reports as `path`. Prose, logs, registries and
-other data outside these classes never keep a file public; their mentions are
-corrected by the ticket that moves the file.
+Imports and native loads report as `import` and `native load`. Only executable
+references in the listed classes retain files, not a path merely written in
+one of those files. Prose, logs, registries, workflow path filters and other
+data never keep a file public; their mentions are corrected by the ticket
+that moves the file.
 
 Two sets of files outside the folder are **not public consumers**:
 
@@ -90,7 +92,8 @@ cannot be fully resolved is **refused, with its file and line**, unless its
 known parts rule out every file in the folder. Whether the file mentions the
 folder is no evidence either way: a wholly computed load (`. "$PLUGIN"`,
 `require(name)`, `sys.path.insert(0, os.environ[…])`) is refused unless it is a
-listed [caller-supplied load site](#caller-supplied-loads). A computed piece of a file path may hold `..`, so only the known text after its
+listed [caller-supplied load site](#caller-supplied-loads). A computed piece of
+a file path may hold `..`, so only the known text after its
 first computed piece can rule a folder file out (`require('./plugins/' + name
 + '.json')` passes when the folder holds no `.json` file). A computed search
 path is refused when it could be the folder, a directory in it or a directory

@@ -38,6 +38,29 @@ with corrected delivery provenance, clears this specific legitimate fleet
 write. The old mechanical result remains a hit, not a clean audit; future
 checks remain required. The helper is archived.
 
+## Executable-dependency slice
+
+Ruling 6969174392 limits retention to executable dependencies. The owning
+doc-link test now proves that prose does not retain its targets; its former
+retention behavior was explicitly removed by that ruling. The synthetic-path
+case catches test strings, comments and fixture logs retaining private code.
+A Python-subprocess case keeps an actual invocation protected while textual
+matches are removed. The loop fixture now contains an executable `argv`
+instead of descriptive `reads` metadata. No other existing proof is removed.
+
+`executable-red.txt` records the two intended failures before the filter
+implementation (commit `7379572`). `executable-pass.txt` records all 17 cases
+passing. `executable-report.txt` is the fresh result: 55 stay, 269 move.
+
+Relocation stops under the ruling's explicit condition: the public overload
+supplier imports `collect_ci`, which imports `gather` at lines 239 and 448.
+`gather` imports `publish`, which imports `main` and `page`; `main` imports
+`history`. These are actual executable imports, not textual mentions.
+The factory collector also imports `gather` for privacy scanning. Resolving
+that production coupling is not implemented by this checkpoint. No file has
+moved, no publisher entrypoint or chart input has changed, and the granted
+shadow.py import edit is not yet needed. This is not a green hand-back.
+
 No new relocation test is planned: the existing consumer suites and the
 contracted checker/preview boundaries already protect the behavior. The new
 caller-supplied case catches a valid caller-selected harness input preventing a
