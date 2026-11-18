@@ -258,11 +258,6 @@ class Repo(unittest.TestCase):
             self.assertEqual(full[key], 'true', (key, full))
         self.assertEqual(full['skill-tests'], 'all')
 
-    def test_k16_one_skill_folder_selects_its_suite(self):
-        self.change('skills/triage/find-work.sh')
-        _, out = self.select()
-        self.assertEqual(out['skill-tests'], 'triage')
-
     def test_k16_launch_fleet_folder_selects_its_suite(self):
         self.change('skills/launch-fleet/scripts/fleet.sh')
         _, out = self.select()
@@ -335,11 +330,6 @@ class Repo(unittest.TestCase):
         self.change('docs/a.md')
         self.metadata(**{'rust:test:proof': 'false'})
         self.full('selector_error')
-
-    def test_k16_image_suite_selects_its_browser_dependencies(self):
-        self.change('skills/image/scripts/screenshot.py')
-        _, out = self.select()
-        self.assertEqual((out['skill-tests'], out['image-skills']), ('image', 'true'))
 
     def test_drift_on_main_since_the_trace_is_part_of_the_change(self):
         self.change('crates/core/src/lib.rs')  # merged to main after the trace

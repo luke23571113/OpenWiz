@@ -1,3 +1,0 @@
-interface:
-  display_name: "Diagnose"
-  short_description: "Diagnose hard bugs, flaky tests and stuck review findings"

@@ -58,22 +58,14 @@ jobs "$ALL" .github/workflows/ci-escapes.yml.bak
 
 # Skills and docs (#177): the rust job's skills check and the triage test
 # read them. web-build runs with rust, for the out/ that rust reads.
-jobs "web-build rust" skills/grill/SKILL.md
-jobs "web-build rust" skills/README.md
-jobs "web-build rust" skills/triage/test/test_find_work.py
-jobs "web-build rust" skills/hill-climb/scripts/climb.py
-jobs "web-build rust" skills/hill-climb/tests/test_climb.py
-jobs "web-build rust" skills/image/scripts/screenshot.py
-jobs "web-build rust" skills/image/tests/test_screenshot.py
-jobs "web-build rust" skills/image/tests/test_bridge.py
-jobs "web-build rust" skills/image/tests/test_harness_selection.py
-jobs "web-build rust" skills/image/tests/bridge/browser-harness
-jobs "web-build rust" .claude-plugin/plugin.json
+# #555: `skills` is one tracked link to the installed WizSkills; a path under
+# it is never tracked, so it is unknown and runs every job.
+jobs "web-build rust" skills
 jobs "web-build rust" .claude/skills/grill
 jobs "web-build rust" .agents/skills/grill
 jobs "web-build rust" docs/agents/fleet.md
 jobs "web-build rust" docs/grills/2026-10-31-ci-speed.md docs/adr/0010-infra-work-has-no-version.md GLOSSARY.md
-jobs "web-build rust" skills/build-ticket/SKILL.md STATUS.md private/evidence/x.md ci/runner/README.md
+jobs "web-build rust" skills STATUS.md private/evidence/x.md ci/runner/README.md
 # The Rust-only tests: web-test builds only the server and the fake.
 jobs "web-build rust" tests/checks/skills.rs
 jobs "web-build rust" tests/proof/p01_inventory.rs tests/messaging/support.rs tests/web-api/a8_web_page.rs
@@ -115,7 +107,7 @@ jobs "$ALL" XSTATUS.md
 jobs "$ALL" STATUS.md.bak
 jobs "$ALL" privatex/a.md
 jobs "$ALL" private
-jobs "$ALL" skills
+jobs "$ALL" skills/a.md
 jobs "$ALL" docs
 jobs "$ALL" xskills/a.md
 jobs "$ALL" .claude/skills/builder/helper.sh
@@ -174,7 +166,7 @@ site skips tools/install/install.py
 site skips tools/github-app/test.py
 site skips ci/runner/cache.sh
 site skips ci/rust-tests.sh
-site skips skills/grill/SKILL.md docs/agents/fleet.md GLOSSARY.md
+site skips skills docs/agents/fleet.md GLOSSARY.md
 site skips STATUS.md private/evidence/x.md
 # R2 on #1291: the paths no job row knows but the site never reads (traced):
 # the changelog lines, every other test folder and every other tool. The
@@ -200,7 +192,7 @@ if printf 'apps/site/index.html\n' | CLASSIFY_STEP=site sh "$HERE/classify.sh" -
 # into list entries: ordinary paths, skip mode and site mode keep their rules.
 mkdir -p "${TMPDIR:-/tmp}"
 noreads="$(mktemp)"
-READS="$noreads" jobs "web-build rust" skills/a.md
+READS="$noreads" jobs "web-build rust" skills
 READS="$noreads" jobs "$ALL" unknown/synthetic.rs
 READS="$noreads" jobs none private/synthetic.md
 READS="$noreads" jobs "$ALL"
@@ -352,13 +344,7 @@ ci/runner/cache.sh
 ci/rust-tests.sh
 ci/escapes/escapes.py
 .github/workflows/ci-escapes.yml
-skills/grill/SKILL.md
-skills/image/tests/test_screenshot.py
-skills/image/tests/test_bridge.py
-skills/image/tests/test_harness_selection.py
-skills/image/tests/bridge/browser-harness
-skills/README.md
-.claude-plugin/plugin.json
+skills
 .claude/skills/grill
 .agents/skills/grill
 docs/agents/fleet.md
@@ -408,13 +394,7 @@ ci/rust-tests.sh
 tests/checks/skills.rs
 tests/pending-ticket-2.txt"
 KEEP_RUST="$KEEP_WEB_BUILD
-skills/grill/SKILL.md
-skills/image/tests/test_screenshot.py
-skills/image/tests/test_bridge.py
-skills/image/tests/test_harness_selection.py
-skills/image/tests/bridge/browser-harness
-skills/README.md
-.claude-plugin/plugin.json
+skills
 .claude/skills/grill
 .agents/skills/grill
 docs/agents/fleet.md
@@ -591,7 +571,7 @@ H1="$(head_from "$M1" STATUS.md)"
 H2="$(head_from "$M1" private/evidence/x.md)"
 M2="$(head_from "$M1" crates/b.rs)"
 H3="$(head_from "$R0" STATUS.md)"
-H4="$(head_from "$M1" skills/grill/SKILL.md)"
+H4="$(head_from "$M1" skills)"
 H5="$(head_from "$M1" tests/checks/skills.rs)"
 H6="$(head_from "$M1" apps/web/src/App.tsx)"
 H7="$(head_from "$M1" ci/runner/README.md)"
@@ -860,26 +840,26 @@ run_on_main() {
 }
 # The run must get as far as the read: exit 2 (the checkout, decide or the
 # prune failed) proves nothing about the skip proof.
-for case in 'web-test skills/grill/SKILL.md' 'web-test docs/agents/fleet.md' 'web-test tests/checks/skills.rs' 'web-build GLOSSARY.md' 'web-build Cargo.lock' 'rust STATUS.md' 'rust private/orchestration/HANDOFF.md' 'web-test private/evidence/openwiz-0.0.1/ticket-1/red-run.log' 'rust ci/runner/README.md'; do
+for case in 'web-test skills' 'web-test docs/agents/fleet.md' 'web-test tests/checks/skills.rs' 'web-build GLOSSARY.md' 'web-build Cargo.lock' 'rust STATUS.md' 'rust private/orchestration/HANDOFF.md' 'web-test private/evidence/openwiz-0.0.1/ticket-1/red-run.log' 'rust ci/runner/README.md'; do
   # shellcheck disable=SC2086 # two words, split on purpose
   set -- $case
   run_on_main "$1" "$2"
   case $? in 1) ok "skip proof: $1 reading $2, which it may skip for, fails on main" ;; 0) bad "skip proof: $1 read $2, which it may skip for, and passed on main" ;; *) bad "skip proof: $1 on main: the checkout, decide or the prune failed" ;; esac
 done
-for case in 'web-test apps/web/src/App.tsx' 'web-test Cargo.lock' 'rust skills/grill/SKILL.md' 'web-build tests/checks/skills.rs' 'rust contracts/dependencies.v1.md'; do
+for case in 'web-test apps/web/src/App.tsx' 'web-test Cargo.lock' 'rust skills' 'web-build tests/checks/skills.rs' 'rust contracts/dependencies.v1.md'; do
   # shellcheck disable=SC2086 # two words, split on purpose
   set -- $case
   if run_on_main "$1" "$2"; then ok "control: $1 reading $2, which it reads, passes on main"; else bad "control: $1 reading $2, which it reads, failed on main"; fi
 done
 # A merge group (#190) runs the same prune: a job still can't read a path it
 # may skip for, and still reads what it does.
-for case in 'web-test skills/grill/SKILL.md' 'rust STATUS.md' 'web-build GLOSSARY.md'; do
+for case in 'web-test skills' 'rust STATUS.md' 'web-build GLOSSARY.md'; do
   # shellcheck disable=SC2086 # two words, split on purpose
   set -- $case
   run_on_main "$1" "$2" merge_group
   case $? in 1) ok "skip proof: $1 reading $2, which it may skip for, fails in a merge group" ;; 0) bad "skip proof: $1 read $2, which it may skip for, and passed in a merge group" ;; *) bad "skip proof: $1 in a merge group: the checkout, decide or the prune failed" ;; esac
 done
-for case in 'web-test apps/web/src/App.tsx' 'rust skills/grill/SKILL.md' 'web-build tests/checks/skills.rs'; do
+for case in 'web-test apps/web/src/App.tsx' 'rust skills' 'web-build tests/checks/skills.rs'; do
   # shellcheck disable=SC2086 # two words, split on purpose
   set -- $case
   if run_on_main "$1" "$2" merge_group; then ok "control: $1 reading $2, which it reads, passes in a merge group"; else bad "control: $1 reading $2, which it reads, failed in a merge group"; fi

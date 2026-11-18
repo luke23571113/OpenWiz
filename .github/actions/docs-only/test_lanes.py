@@ -180,33 +180,25 @@ class Lanes(unittest.TestCase):
                               cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
 
     def test_shard_records_must_run_every_unit_once_and_add_up_to_the_total(self):
-        # catches (#743): a shard that silently drops cases or units, a member
-        # that never reported, a unit run twice, or a record from another plan.
-        script = 'skill:launch-fleet:skills/launch-fleet/scripts/test.sh'
-        def member(k, units, cases):
+        # catches (#743): a member that never reported, a unit run twice, or a
+        # record from another plan. #555: launch-fleet's lane is one unit now
+        # (ClosedWiz's inbox check); its counted test.sh runs in WizSkills.
+        unit = 'skill:launch-fleet:tools/review-relay/test_inbox.py'
+        def member(k, units):
             return {'lane': 'skill:launch-fleet', 'shard': k, 'shards': 3, 'plan_sha256': self.sha,
-                    'units': dict.fromkeys(units, 1.0), 'counts': {script: {'cases': cases, 'total': 10, 'groups': 4}}}
-        others = ['skill:launch-fleet:' + p for p in ('skills/launch-fleet/test/ops-protocol/test_protocol.py',
-            'skills/launch-fleet/scripts/test-effects.py', 'skills/launch-fleet/scripts/test-grants.py',
-            'skills/launch-fleet/scripts/test-inbox.py', 'tools/review-relay/test_inbox.py')]
+                    'units': dict.fromkeys(units, 1.0), 'counts': {}}
         def fleet():
-            return [member(1, [script + ':group:1', script + ':group:2', *others[:2]], 5),
-                    member(2, [script + ':group:3', *others[2:4]], 3),
-                    member(3, [script + ':group:4', others[4]], 2)]
+            return [member(1, [unit]), member(2, []), member(3, [])]
         result = self.check_shards('skill:launch-fleet', fleet())
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('5 + 3 + 2 = 10 of 10 cases', result.stdout)
-        def drop_group(r):
-            del r[2]['units'][script + ':group:4']; r[2]['counts'][script]['cases'] = 0
-        def short(r): r[1]['counts'][script]['cases'] = 2
-        def twice(r): r[1]['units'][others[0]] = 1.0
+        def twice(r): r[1]['units'][unit] = 1.0
         def missing(r): del r[2]
         def foreign(r): r[0]['plan_sha256'] = '0' * 64
-        for name, change, wants in [('dropped group', drop_group, ['group:4: never ran', 'not 10']),
-                                    ('short count', short, ['9 cases ran across the shards, not 10']),
-                                    ('twice', twice, ['test_protocol.py: ran 2 times']),
+        def dropped(r): r[0]['units'] = {}
+        for name, change, wants in [('twice', twice, ['test_inbox.py: ran 2 times']),
                                     ('missing member', missing, ['shard 3 of 3 reported 0 times']),
-                                    ('foreign plan', foreign, ['another lane or plan'])]:
+                                    ('foreign plan', foreign, ['another lane or plan']),
+                                    ('dropped unit', dropped, ['test_inbox.py: never ran'])]:
             with self.subTest(name):
                 records = fleet(); change(records)
                 result = self.check_shards('skill:launch-fleet', records)

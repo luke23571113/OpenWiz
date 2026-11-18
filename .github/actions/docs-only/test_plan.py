@@ -107,32 +107,6 @@ class Plans(unittest.TestCase):
             self.assertEqual(lane['skipped'], [])
         self.assertEqual(record['builds']['web_export']['decision'], 'run')
 
-    def test_skill_only_has_always_and_one_skill_without_export(self):
-        record, dispatch = self.run_plan()
-        self.assertEqual(record['selection'], {'mode': 'selected'})
-        self.assertEqual(record['builds']['web_export']['decision'], 'skip')
-        for name in ('rust', 'web', 'site'):
-            self.assertEqual(record['lanes'][name]['decision'], 'skip')
-            self.assertTrue(record['lanes'][name]['reason'])
-        running = [x['skill'] for x in record['lanes']['skills'] if x['decision'] == 'run']
-        self.assertEqual(running, ['launch-fleet'])
-        self.assertEqual(dispatch['skills'], ['launch-fleet'])
-        self.assertEqual(record['lanes']['always']['tests'], ['always:fmt','always:classifier','always:selector','always:checks'])
-
-    def test_build_ticket_only_change_plans_its_suite_and_full_runs_include_it(self):
-        # #747: check-helpers.sh's suite ran only locally; a change to it planned nothing.
-        git(self.root, 'checkout', '-q', '--detach', self.base)
-        self.change('skills/build-ticket/scripts/check-helpers.sh')
-        record, dispatch = self.run_plan()
-        self.assertEqual(record['selection'], {'mode': 'selected'})
-        running = [x for x in record['lanes']['skills'] if x['decision'] == 'run']
-        self.assertEqual(running, [{'skill': 'build-ticket', 'decision': 'run',
-                                    'tests': ['skill:build-ticket'], 'skipped': []}])
-        self.assertEqual(dispatch['skills'], ['build-ticket'])
-        record, dispatch = self.run_plan(attempt=2)
-        self.assert_full(record, 'rerun')
-        self.assertIn('build-ticket', dispatch['skills'])
-
     def test_selected_site_release_cut_keeps_every_planned_test(self):
         git(self.root, 'checkout', '-q', '--detach', self.base)
         site = self.root / 'apps/site/index.html'

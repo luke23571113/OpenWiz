@@ -63,7 +63,7 @@ rust            \.claude/skills/(export-review|live-quick-check)/SKILL\.md
 web-build,rust,web-test ci/escapes/escapes\.py
 -               ci/escapes/.+|\.github/workflows/ci-escapes\.yml
 web-build,rust  ci/rust-tests\.sh
-rust            skills/.+|\.claude-plugin/[^/]+|\.claude/skills/[^/]+|\.agents/skills/[^/]+
+rust            skills|\.claude/skills/[^/]+|\.agents/skills/[^/]+
 rust            docs/.+|GLOSSARY\.md
 web-build,rust  tests/(attachments|checks|messaging|new-thread|proof|send-harness|support|web-api)/.+|tests/pending-ticket-2\.txt
 rust,web-test   tools/install/.+
