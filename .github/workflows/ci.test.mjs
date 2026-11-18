@@ -192,15 +192,18 @@ function jobGraph(source) {
   }));
 }
 
-function simulate(source, event_name, outputs = {}) {
+function simulate(source, event_name, outputs = {}, initialResults = {}) {
   const graph = jobGraph(source);
-  const results = {};
+  const results = { ...initialResults };
   const github = { event_name, ref: 'refs/heads/main', event: { merge_group: { base_ref: 'refs/heads/main' } } };
   const settle = (name) => {
     if (name in results) return results[name];
     const job = graph.get(name);
     assert.ok(job, `job ${name} exists`);
-    const needs = Object.fromEntries(job.needs.map((n) => [n, { result: settle(n), outputs: outputs[n] ?? {} }]));
+    // GitHub exposes a skipped step's missing output as an empty string.
+    const needs = Object.fromEntries(job.needs.map((n) => [n, { result: settle(n),
+      outputs: new Proxy(outputs[n] ?? {}, { get: (values, key) => values[key] ?? '' }),
+    }]));
     const done = Object.values(needs).map((n) => n.result);
     const success = () => done.every((r) => r === 'success');
     const condition = job.condition ?? 'success()';
@@ -248,6 +251,12 @@ test('PR, nightly and merge-group coverage stays full; main pushes follow the ma
   assert.ok(!simulate(dropped, 'merge_group', FULL_PLAN).includes('ci'));
   const kept = workflow.replace(ci, "  ci:\n    needs: $1\n    if: ${{ always() && github.event_name != 'push' }}");
   assert.ok(simulate(kept, 'merge_group', FULL_PLAN).includes('ci'));
+});
+
+test('an unreadable main-map gate still schedules the final failure check', () => {
+  // catches: a failed age read being reported as a successful light push.
+  const ran = simulate(workflow, 'push', { changes: {} }, { changes: 'failure' });
+  assert.deepEqual(ran, ['ci', 'main-light', 'web-test']);
 });
 
 test('main pushes with an old map run the traced full plan and sign; nightly signing stays unconditional', () => {

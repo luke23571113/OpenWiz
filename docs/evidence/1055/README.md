@@ -39,11 +39,11 @@ used in place of signature verification. All cases use synthetic inputs.
 
 | Claim | Evidence boundary | Owner / readiness |
 | --- | --- | --- |
-| 119 minutes and exactly 120 stay light; 121 minutes and 120 minutes plus one second trace | Actual workflow script with synthetic signed maps and fixed clock | Builder; red first above, green pending |
-| Unknown or untrusted age cannot certify light execution | Missing map/token, tampered bytes, wrong repo/ref/event, foreign commit, invalid shape/time | Builder; actual verifier and ancestry check, green pending |
-| Fresh pushes skip the full plan; old pushes execute and sign after passing CI; PR/nightly/merge-group keep behavior | Existing executable job graph, step conditions, plan/final-gate proofs | Builder; green pending |
-| A newer main push cancels only its main-push group; PR cancellation and schedule/queue isolation stay | Existing concurrency scheduler model over committed expressions | Builder; red first above, green pending; live proof pending |
-| Normal hooks and required CI pass at the pushed head | Exact-commit pre-push hook and new PR's CI | Builder and GitHub; pending |
+| 119 minutes and exactly 120 stay light; 121 minutes and 120 minutes plus one second trace | Actual workflow script with synthetic signed maps and fixed clock | Builder; red first above, green: see validation below |
+| Unknown or untrusted age cannot certify light execution | Missing map/token, tampered bytes, wrong repo/ref/event, foreign commit, invalid shape/time | Builder; actual verifier and ancestry check, green: see validation below |
+| Fresh pushes skip the full plan; old pushes execute and sign after passing CI; PR/nightly/merge-group keep behavior | Existing executable job graph, step conditions, plan/final-gate proofs | Builder; green: see validation below |
+| A newer main push cancels only its main-push group; PR cancellation and schedule/queue isolation stay | Existing concurrency scheduler model over committed expressions | Builder; red first above, green: see validation below; live proof pending |
+| Normal hooks and required CI pass at the pushed head | Exact-commit pre-push hook and new PR's CI | Local proof green; exact pushed-head hook and PR CI pending |
 | Two ordinary authorized main pushes show older cancellation and newer signing | Native post-merge run/job links on #1055 | Fleet coordinates ordinary merges, builder records; pending after merge when signed map age exceeds 120 minutes |
 | First week's actual signing count is posted on #780 | Exact seven-day post-merge window of native CI run/job signing receipts, with failures/cancellations and unknown reads retained | Fleet owns the week observation; builder requests/records its evidence; due merge time plus seven days; pending |
 | Distinct isolated selector proof | Selected plan, failing assertion and every catcher, with no always-run/folder-rule catcher | Builder with fleet's scoped proof authority; pending after fresh push-signed maps, no old proof rerun |
@@ -81,4 +81,46 @@ J110 kind 3 covers this ticket's `docs/evidence/1055/` proof and logs, supportin
 its owned workflow/test paths and acceptance gates. Kind 1 covers only the
 new `docs/evidence/1055/**` source row in `tools/open-import/paths.json`, needed
 so the carriage guard accepts that evidence; all other rows are preserved.
+J110 kind 1 also covers only this ticket's new exact step row in
+`tools/collector/steps.tsv` (the merged WM2 successor named by the ticket's
+path notice). It classifies the age read, including key fetch, as setup under
+the existing table rule, preserving all other rows. J110 kind 4 supplies the
+existing `ci/select/test_steps.py` scheduled fixture's event value so it can
+evaluate the new push condition; its assertions are unchanged.
 No changelog line: infra CI behavior and evidence only. No helpers used.
+
+## Validation
+
+At the implementation tree (before the exact-head push hook):
+
+- `python3 -I .github/actions/docs-only/test_workflow.py`: 21 tests passed,
+  including actual signed-map age and step-condition execution.
+- `node --test .github/workflows/ci.test.mjs`: 11 tests passed, including
+  cancellation, the fresh/old graphs, required CI on unreadable age and
+  unchanged PR/schedule/merge-group behavior. The existing graph simulator
+  now represents GitHub's absent step outputs as empty strings.
+- `python3 -I ci/select/test_job.py`: 40 tests passed; the existing signature,
+  map-byte binding, repository/ref/event/workflow and trust rules are unchanged.
+- `python3 -I ci/select/test_steps.py`: 8 tests passed.
+- `python3 -I ci/main-batch/test_shadow.py`: 24 tests passed; only its obsolete
+  light-main/push-cancellation assertions changed, preserving shadow guards.
+- `sh .github/actions/docs-only/test.sh`: passed (`all ok`), including workflow,
+  selector/classifier, dispatch, runner fixtures and CI safety proofs.
+- `python3 -I tools/collector/ci3.py check-steps`: covered 161 CI steps.
+- `python3 -I tools/collector/test_ci3.py Steps`: 1 test passed.
+
+`green-summary.log` retains the concise outputs; the red runs remain above.
+No Rust crate or product behavior changed. Mandatory format, clippy and cheap
+Rust checks still run through the normal pre-push hook on the exact pushed
+commit. No complete local workspace/browser suite was run; CI owns those.
+
+Read-only live trust observation, 2026-11-18T10:47:15Z:
+[scheduled run 44150324603](https://github.com/openwizdev/OpenWiz/actions/runs/44150324603)
+has the newest main cache key `ci-select-map-44150324603-1`. Its downloaded
+map artifact passed the unmodified verifier against GitHub's live issuer keys,
+map-shape validation and ancestry to the current base. The signed event is
+`schedule`, signed commit `b7472e5f881070a300a8633346aeaa93d6a6928e`, signed
+issue time `1794942900`, and observed age `55935.536` seconds. It would admit
+tracing. Cache metadata identified the existing restore candidate, never
+supplied age or authentication. No token bytes are recorded here. This is a
+read-only verification, not a new main push, cancellation or signing proof.

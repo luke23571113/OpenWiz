@@ -73,6 +73,8 @@ build	The carriage guard
 build	The changed-file privacy guard
 setup	The hosted setup
 # X5: one plan, independent lanes, receipts, and the required-check transition.
+# #1055: the push-only trusted map-age read is setup, including key fetch.
+setup	Check the signed main map age
 setup	Write the CI plan
 setup	Prepare lane
 setup	Prune unused inputs

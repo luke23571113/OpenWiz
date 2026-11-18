@@ -84,12 +84,14 @@ class MainMapAge(unittest.TestCase):
 
     def test_main_push_119_minutes_stays_light(self):
         self.write_map(age=119 * 60)
+        os.utime(self.maps / 'map.json', (self.NOW - 86400, self.NOW - 86400))
         self.assertEqual(self.run_gate(), 'trace=false\n', '119-minute signed map must keep the push light')
 
     def test_main_push_121_minutes_traces(self):
         for event in ('push', 'schedule'):
             with self.subTest(signed_by=event):
                 self.write_map(age=121 * 60, event_name=event)
+                os.utime(self.maps / 'map.json', (self.NOW, self.NOW))
                 self.assertEqual(self.run_gate(), 'trace=true\n', '121-minute signed map must trigger tracing')
 
     def test_exactly_120_minutes_is_not_older_but_one_second_more_is(self):
@@ -255,7 +257,7 @@ class Workflow(unittest.TestCase):
         self.assertNotIn('uses: ./.github/actions/docs-only\n',workflow)
 
     # Which events run ci (always on pull requests, merge groups and nightly,
-    # never on a main push) is ci.test.mjs's job-graph simulation (#744).
+    # on an admitted old-map main push) is ci.test.mjs's job-graph simulation (#1055).
     def test_final_ci_waits_for_all_jobs_and_always_runs(self):
         block=jobs()['ci']
         deps=re.search(r'^    needs: \[(.*)\]$',block,re.M)[1].split(', ')

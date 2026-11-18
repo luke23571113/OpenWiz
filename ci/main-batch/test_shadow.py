@@ -417,8 +417,8 @@ class Shadow(unittest.TestCase):
         end = workflow.index('\n  # Transition bridge:', start)
         block = workflow[start:end]
         ci = workflow[workflow.index('\n  ci:\n'):start]
-        # #744: never on a main push (main-light); every other event always.
-        self.assertIn("    if: ${{ always() && github.event_name != 'push' }}\n", ci, 'required result always runs')
+        # #1055: an admitted old-map main push runs ci; every other event always.
+        self.assertIn("    if: ${{ always() && (github.event_name != 'push' || needs.changes.result != 'success' || needs.changes.outputs.trace == 'true') }}\n", ci, 'required result always runs')
         self.assertIn('    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills, launch-fleet]\n',
                       ci, 'required result dependencies')
         finish = '          python3 -I .github/actions/docs-only/run.py finish "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts"'
@@ -485,8 +485,8 @@ console.log(JSON.stringify(cases.map(c=>expressions.map(e=>Boolean(runInNewConte
             self.assertRegex(workflow, pattern, 'admission preserved')
         self.assertIn('  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}\n',
                       workflow, 'admission slots preserved')
-        self.assertIn("  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
-                      workflow, 'admission running push/nightly retained')
+        self.assertIn("  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}\n",
+                      workflow, 'admission obsolete pushes cancelled; nightly isolated')
 
     def test_approved_runner_representation_preserves_shadow_contract(self):
         workflow = (ROOT/'.github/workflows/ci.yml').read_text()
@@ -531,7 +531,7 @@ console.log(JSON.stringify(cases.map(c=>expressions.map(e=>Boolean(runInNewConte
             ('nightly removed', workflow.replace("- cron: '23 9 * * *'",
                 "- cron: '23 9 * * 1'"), 'admission'),
             ('PR removed', workflow.replace('  pull_request:', '  workflow_dispatch:'), 'admission'),
-            ('push cancellation', workflow.replace("cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+            ('cross-event cancellation', workflow.replace("cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}",
                 'cancel-in-progress: ${{ true }}'), 'admission'),
         ]
         for name, mutant, reason in mutations:
