@@ -23,14 +23,14 @@ test at .github/workflows/ci.test.mjs:67:1
 ✖ new main pushes cancel obsolete main pushes without cancelling other refs (6.607701ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
   + actual - expected
-  
+
     {
   +   pending: 'latest',
   +   running: 'running'
   -   pending: null,
   -   running: 'latest'
     }
-  
+
       at TestContext.<anonymous> (file://<repo>/.github/workflows/ci.test.mjs:70:10)
       at Test.runInAsyncScope (node:async_hooks:227:14)
       at Test.run (node:internal/test_runner/test:1402:25)
@@ -50,12 +50,12 @@ test at .github/workflows/ci.test.mjs:229:1
 ✖ PR, nightly and merge-group coverage stays full; main pushes follow the map-age decision (31.386321ms)
   AssertionError [ERR_ASSERTION]: fresh map: no plan or heavy lanes
   + actual - expected
-  
+
     [
   -   'changes',
       'main-light'
     ]
-  
+
       at TestContext.<anonymous> (file://<repo>/.github/workflows/ci.test.mjs:234:10)
       at Test.runInAsyncScope (node:async_hooks:227:14)
       at Test.run (node:internal/test_runner/test:1402:25)
@@ -75,7 +75,7 @@ test at .github/workflows/ci.test.mjs:253:1
 ✖ main pushes with an old map run the traced full plan and sign; nightly signing stays unconditional (7.398313ms)
   AssertionError [ERR_ASSERTION]: 121-minute map: traced full run signs
   + actual - expected
-  
+
     [
   -   'always',
   -   'changes',
@@ -91,7 +91,7 @@ test at .github/workflows/ci.test.mjs:253:1
   -   'web-export',
   -   'web-test'
     ]
-  
+
       at TestContext.<anonymous> (file://<repo>/.github/workflows/ci.test.mjs:255:10)
       at Test.runInAsyncScope (node:async_hooks:227:14)
       at Test.run (node:internal/test_runner/test:1402:25)
