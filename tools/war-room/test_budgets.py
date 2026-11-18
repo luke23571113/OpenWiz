@@ -377,6 +377,76 @@ class Table(unittest.TestCase):
         self.assertIn("ci.yml: 1 run with no clear traced or normal mode, left out of two-mode jobs", r.stdout)
 
 
+class Planted(unittest.TestCase):
+    """CI3-B: exercise the public table/check CLI with independent mode evidence."""
+
+    THREE = ("${{ needs.changes.outputs.planted == 'true' && %d || "
+             "needs.changes.outputs.trace == 'true' && %d || %d }}")
+
+    def fixtures(self, t):
+        (t / "ci.yml").write_text(workflow([("rust", self.THREE % (90, 45, 15), True)]))
+        jobs, modes = [], {}
+        # Fixed independent durations: normal 600s, traced 1800s, planted 3600s.
+        for i in range(1, 16):
+            mode = "normal" if i <= 5 else "traced" if i <= 10 else "planted"
+            jobs.append(job(i, "rust (1)", {"normal": 600, "traced": 1800, "planted": 3600}[mode],
+                            traced=mode != "normal"))
+            modes[str(i)] = {"attempt": 1, "trace": mode == "traced", "planted": mode == "planted",
+                             "source": f"https://github.com/synthetic/repo/actions/runs/{i}/artifacts/{i}"}
+        window(t / "w", "ci.yml", jobs, 15)
+        (t / "w/ci/modes.json").write_text(json.dumps(modes))
+        return ["table", t / "w", "--out", t / "budgets.tsv", "--workflows", t / "ci.yml"]
+
+    def test_three_modes_have_independent_durations(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            r = run(*self.fixtures(t))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rows = [line.split("\t") for line in (t / "budgets.tsv").read_text().splitlines()[1:]]
+            self.assertEqual({f[2]: f[3:6] for f in rows},
+                             {"normal": ["15", "600", "5"], "traced": ["45", "1800", "5"],
+                              "planted": ["90", "3600", "5"]})
+            self.assertEqual(run("check", "--table", t / "budgets.tsv", t / "ci.yml").returncode, 0)
+
+    def test_check_refuses_missing_planted_coverage_even_with_legacy_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            (t / "ci.yml").write_text(workflow([("rust", TRACED % (45, 15), True)]))
+            (t / "budgets.tsv").write_text(HEAD + row("ci.yml", "rust", "normal", 15, 600)
+                                           + row("ci.yml", "rust", "traced", 45, 1800))
+            r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("planted", r.stderr)
+
+    def test_check_refuses_traced_samples_attributed_to_planted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            args = self.fixtures(t)
+            self.assertEqual(run(*args).returncode, 0)
+            # Relabel the trace-only records as the planted row's provenance.
+            evidence = t / "budgets.samples.json"
+            samples = json.loads(evidence.read_text())
+            for sample in samples:
+                sample["planted"] = False
+                sample["trace"] = True
+            evidence.write_text(json.dumps(samples))
+            r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("planted evidence", r.stderr)
+
+    def test_check_refuses_each_modes_wrong_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            self.assertEqual(run(*self.fixtures(t)).returncode, 0)
+            for mode, values in (("planted", (45, 45, 15)), ("traced", (90, 90, 15)),
+                                 ("normal", (90, 45, 45))):
+                with self.subTest(mode=mode):
+                    (t / "ci.yml").write_text(workflow([("rust", self.THREE % values, True)]))
+                    r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+                    self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                    self.assertIn(f"{mode} timeout-minutes", r.stderr)
+
+
 class Apply(unittest.TestCase):
     # Bug: setting timeouts by hand edits other lines of a shared workflow.
     def test_apply_changes_only_timeout_lines(self):
