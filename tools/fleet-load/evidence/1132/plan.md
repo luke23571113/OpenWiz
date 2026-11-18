@@ -11,7 +11,7 @@ load workload exhausting its cumulative deadline; the green proof is the
 same workload followed by every existing LoadProof/test.py case, without
 reducing the workload. A separate timing helper observes complete fake
 processes, including expected nonzero 304 responses, and checks that their
-count equals the proof's existing question count for each completed tick.
+GH count equals the proof's existing question count for each completed tick.
 
 If measurement confirms cumulative timeout: name the 900-second workload
 budget in load.py and propagate it to scale.identity's frozen workload

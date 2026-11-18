@@ -47,7 +47,7 @@ def measure(fleet, report_path, trace_path=None):
                 # -q preserves expected nonzero fake statuses (notably 304)
                 # without mixing GNU time's diagnostic text into the JSONL.
                 prefix = shlex.join(['/usr/bin/time', '-q', '-a', '-o', str(self.profile), '-f',
-                                     '{"wall_s":%e,"user_s":%U,"system_s":%S}'])
+                                     '{"tool":"' + name + '","wall_s":%e,"user_s":%U,"system_s":%S}'])
                 wrapper.write_text(wrapper.read_text().replace('exec ', 'exec ' + prefix + ' ', 1))
 
         def tick(self, spec, low=False):
@@ -71,7 +71,10 @@ def measure(fleet, report_path, trace_path=None):
                     cpu = after.ru_utime + after.ru_stime - before.ru_utime - before.ru_stime
                     row = dict(spec=spec, offset_s=self.now - load.START, low=low,
                                wall_s=round(wall, 6), children_cpu_s=round(cpu, 6),
-                               fake_processes=len(samples), fake_cpu_s=round(fake_cpu, 6),
+                               fake_processes=len(samples),
+                               fake_gh_processes=sum(s['tool'] == 'gh' for s in samples),
+                               fake_room_processes=sum(s['tool'] == 'room-cli' for s in samples),
+                               fake_cpu_s=round(fake_cpu, 6),
                                fake_summed_wall_s=round(sum(s['wall_s'] for s in samples), 6),
                                nonfake_cpu_s=round(cpu - fake_cpu, 6),
                                fake_cpu_rounding_bound_s=round(0.02 * len(samples), 6), error=error)
@@ -80,7 +83,7 @@ def measure(fleet, report_path, trace_path=None):
                     print(json.dumps(row), flush=True)
             with mock.patch.object(load.subprocess, 'run', side_effect=timed):
                 super().tick(spec, low=low)
-            assert rows[-1]['fake_processes'] == self.ticks[-1]['questions'], 'missing fake process measurements'
+            assert rows[-1]['fake_gh_processes'] == self.ticks[-1]['questions'], 'missing fake gh process measurements'
 
     try:
         with mock.patch.object(load, 'Workload', Measured):

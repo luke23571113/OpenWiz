@@ -27,7 +27,7 @@ The baseline used a temporary prototype of the same GNU-time wrappers and
 `779250eb49d2929f422989536dc084b20c4fb2e9`. A prototype parsing error on GNU
 time's expected-nonzero diagnostics was corrected with `-q` before the
 recorded baseline; that setup error is not claimed as a load-proof failure.
-The checked-in helper also verifies each completed tick's fake-process count
+The checked-in helper also verifies each completed tick's fake-gh process count
 against the existing proof's recorded question count. Measurement requires
 GNU time only; the regular suite gains no dependency.
 
@@ -74,3 +74,13 @@ cannot advertise the old 600-second bound. Preserve every case, count,
 virtual-time bound, concurrency bound and safety/API-budget assertion.
 No production reader or fake response changes. This ticket explicitly
 allows an evidence-based budget reset; it claims no production speedup.
+
+### Profiler consistency correction
+
+The first candidate profile stopped at its new process-count cross-check.
+A warm tick also invokes the fake `room-cli thread list` from `records.py`;
+that is a real fake-process cost, but not one of the GitHub questions.
+The profiler now labels each timed process by tool, retains both costs, and
+checks the exact GH-only count against the proof's existing question count.
+The incomplete candidate run is not a passing workload. The baseline's
+all-fake CPU measurements remain valid; they included that room-cli cost.
