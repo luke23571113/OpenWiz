@@ -83,3 +83,12 @@ escaped JSON form, binary/invalid-escape refusals and text-scan finding counts.
 `runtime-red.txt` records the initial stubs reaching 22 intended assertion
 failures before extraction. Both claims are fixture evidence, producible by
 the builder now. Existing privacy tests will also run without assertion edits.
+
+After extraction the equivalence cases pass. Existing gather (20), publisher
+(17), CI collector (17), factory collector (20), privacy checker (45), health
+(22) and page/history (18) tests pass without test-file edits. The fresh report
+is 44 stay, 280 move; every presentation/publisher/adapter file and all chart
+installation inputs classify private. The own CI proof row in
+`.github/actions/docs-only/test.sh` uses standing supporting kind 1 so the new
+runtime equivalence boundary runs in CI and the push hook. The own public
+carriage row `tools/collector/**` uses the same kind.

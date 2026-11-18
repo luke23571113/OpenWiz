@@ -39,6 +39,8 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / 'collector'))
+import collector_runtime
 import suite  # noqa: E402
 
 
@@ -501,10 +503,9 @@ def read(repository, facts, *, since=None, until=None, usage=None, robots=ROBOTS
 
 def scan(doc):
     """The war room's privacy scan (gather.scan_bytes) over the whole document; a hit refuses it all."""
-    import gather  # noqa: E402  (gather composes snapshots from this module)
     try:
-        gather.scan_bytes(json.dumps(doc, sort_keys=True).encode())
-    except gather.Fail:
+        collector_runtime.scan_bytes(json.dumps(doc, sort_keys=True).encode())
+    except collector_runtime.Fail:
         raise Refused('the privacy scan refused the read')
 
 

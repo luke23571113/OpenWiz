@@ -31,6 +31,8 @@ import tempfile
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / 'collector'))
+from collector_runtime import TOKEN, text_scan
 import main  # noqa: E402
 import page  # noqa: E402
 import sources  # noqa: E402
@@ -57,8 +59,6 @@ MAX_HEIGHT = 65000
 # every tile of a picture within MAX_HEIGHT.
 TILE_MEMORY = '--force-gpu-mem-available-mb=4096'
 # The same credential/id forms sources.safe_record refuses inside a record.
-TOKEN = re.compile(r'(?i)(?:\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9_-]{8,}|authorization\s*:|bearer\s+'
-                   r'|-----BEGIN .*PRIVATE KEY|\bthr_[A-Za-z0-9_-]+)')
 # WRD3: a picture has no links to follow, so the skip link goes. Every figure's unit, dates,
 # coverage and gaps are in its visible caption line, never in a disclosure, so the picture keeps
 # them. The Sources appendix is drawn open, and (#2565) each value's card keeps what tells it from a
@@ -162,10 +162,6 @@ def readme(record, saved, at):
         'Saved samples are in `samples/`, one per five-minute boundary sampled; a boundary not sampled stays absent.', ''])
 
 
-def text_scan(text, checker):
-    checker.text(text, 'published')
-    if TOKEN.search(text):
-        checker.findings += 1
 
 
 def scan(tree, page_html):

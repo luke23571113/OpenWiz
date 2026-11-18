@@ -998,6 +998,7 @@ for proof in test_gate.py test_plan.py test_lanes.py test_execution.py test_rele
 done
 # WM1 (#1056): the war room's split checker, on its synthetic trees (fast, offline).
 if python3 -I "$ROOT/ci/wizroom/test_split.py"; then ok "WM1: split checker"; else bad "WM1: split checker"; fi
+if python3 -I "$ROOT/tools/collector/test_runtime.py"; then ok "WM2: shared runtime equivalence"; else bad "WM2: shared runtime equivalence"; fi
 if node --test "$ROOT/.github/workflows/ci.test.mjs" "$ROOT/.github/workflows/ci-safety-watch.test.mjs"; then
   ok "CI nightly admission and push/PR coalescing"
 else bad "CI concurrency or safety watcher"; fi
