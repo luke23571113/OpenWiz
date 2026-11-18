@@ -677,6 +677,9 @@ class Launch(unittest.TestCase):
         self.assertIn('could not be read', unread.stdout)
         self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'uncertain')
         j.extra_env = {}
+        # R2 catches an outsider's U+2028 inside JSON blocking a trusted record.
+        j.world['issues'][0]['comments'].append(
+            {'id': 90003, 'author': 'synthetic-outsider', 'body': 'Thanks!\u2028Looks good.'})
         for author in ('SYNTHETIC-FACTORY[bot]', 'Synthetic-Owner'):
             with self.subTest(trusted=author):
                 # Both configured logins, including the fallback user, work
