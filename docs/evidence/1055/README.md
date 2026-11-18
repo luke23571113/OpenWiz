@@ -27,6 +27,10 @@ fixture inputs. It is not a live GitHub run or an implemented age gate.
   push; and the independent 121-minute/old-map graph case runs only `main-light`
   instead of the traced full plan and signer.
 
+The existing `python3 -I tools/collector/ci3.py check-steps` also exits 1
+before adding the new push-step registry row: [red-step-registry.log](red-step-registry.log).
+The error names `Check the signed main map age` as an unclassified CI step.
+
 The tests execute the workflow's actual age script and operative conditions,
 and the existing scheduler model, not an invented timer or a fixture timestamp
 used in place of signature verification. All cases use synthetic inputs.
