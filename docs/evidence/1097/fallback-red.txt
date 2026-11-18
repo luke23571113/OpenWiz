@@ -1,0 +1,14 @@
+F
+======================================================================
+FAIL: test_planted_twin_inherits_unmeasured_fallback_without_claiming_p95 (__main__.Check.test_planted_twin_inherits_unmeasured_fallback_without_claiming_p95)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/OpenWiz-1097/tools/war-room/test_budgets.py", line 184, in test_planted_twin_inherits_unmeasured_fallback_without_claiming_p95
+    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+AssertionError: 1 != 0 : budgets: ci.yml rust planted: timeout 90, but 1.5x its p95 of 0 s is 5
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.064s
+
+FAILED (failures=1)

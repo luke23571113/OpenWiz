@@ -170,6 +170,23 @@ class Check(unittest.TestCase):
         self.assertEqual(odd.returncode, 1, odd.stdout + odd.stderr)
         self.assertIn("source 'guessed' is not measured, derived:<job> or unmeasured", odd.stderr)
 
+    # Bug: an authorized unmeasured planted twin is treated as a measured
+    # zero-second p95, or a derived row silently carries different statistics.
+    def test_planted_twin_inherits_unmeasured_fallback_without_claiming_p95(self):
+        rows = ""
+        for key in ("rust", "rust-export"):
+            rows += row("ci.yml", key, "normal", 14, 540)
+            rows += row("ci.yml", key, "traced", 47, 1860)
+            rows += row("ci.yml", key, "planted", 90, 0, samples=1,
+                        source="derived:rust-export" if key == "rust" else "unmeasured")
+        ci = workflow([(key, Planted.THREE % (90, 47, 14), True) for key in ("rust", "rust-export")])
+        r = self.check(ci, self.PRIVACY, rows + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        wrong = rows.replace("rust\tplanted\t90\t0\t1", "rust\tplanted\t90\t0\t2")
+        r = self.check(ci, self.PRIVACY, wrong + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("derived row differs from its planted twin", r.stderr)
+
     # Bug (R2): a job declared with a quoted YAML key is left out of the
     # inventory, so it runs with GitHub's 360-minute default and no budget.
     def test_a_quoted_job_key_is_checked_and_other_declarations_refused(self):
