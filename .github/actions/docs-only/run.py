@@ -51,6 +51,7 @@ COMMANDS = {
     'release:setup-onboard-init': ['python3', '-I', 'tools/install/tests/init/test_init.py'],
     'release:setup-onboard-login': ['python3', '-I', '-B', 'tools/install/setup/test_github_login.py'],
     'release:setup-onboard-journey': ['python3', '-I', 'tools/install/tests/first-hour/test_first_merge.py'],
+    'release:fleet-load': ['sh', 'tools/fleet-load/ci.sh'],
 }
 # This independent job cannot use the Rust job's target/.
 # Its installed-engine proof consumes both debug binaries.

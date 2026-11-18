@@ -84,3 +84,53 @@ The profiler now labels each timed process by tool, retains both costs, and
 checks the exact GH-only count against the proof's existing question count.
 The incomplete candidate run is not a passing workload. The baseline's
 all-fake CPU measurements remain valid; they included that room-cli cost.
+
+## Candidate result
+
+The same full workload completed in **616.213 seconds**, with 49 spec ticks.
+Tick wall p50/p95/max: **11.333 / 18.763 / 20.904 seconds**, all below the
+unchanged 60-second cap. All 6727 fake GH processes reconcile exactly with
+the recorded questions. Another 39 fake room-cli processes are measured
+separately. Child CPU total: 1160.324 seconds; fake CPU approximately 150.730
+seconds (conservative aggregate rounding bound 135.320 seconds); remaining
+child CPU approximately 1009.594 seconds, including profiler overhead.
+The frozen workload bytes/definition and report carry the actual 900-second
+budget, with a new workload hash. Old-budget comparisons remain incomparable.
+
+`candidate-ticks.tsv` contains every tick. `load.verify` and `scale.report`
+both passed on the completed trace. The existing trace-replay seam then ran
+all 14 test.py tests, including every planted violation, in 39.526 seconds.
+The carried, router and seams suites passed 2, 15 and 7 tests respectively
+(0.041, 7.349 and 12.589 seconds). Thus all **38 existing tests** passed; the
+measured workload plus the suite checks took **675.718 seconds**. The logs
+are `green-load.txt`, `green-carried.txt`, `green-router.txt`, `green-seams.txt`.
+No test method, case, count or behavioral assertion was changed.
+
+CI registers `sh tools/fleet-load/ci.sh` as `release:fleet-load`; it always
+constructs a fresh workload. The release lane already provisions Cargo,
+Node, jq and Python and has a 21-minute job limit. Its own measured balancing
+row is 675.72 seconds. The existing exact-once shard receipts and final `ci`
+gate cover the new unit. The nine-minute always job and workflows are unchanged.
+The three registry edits are J110 own-row supporting edits, each needed to
+select, execute or balance the owned fleet-load suite. Helpers: zero.
+
+### Release-job fit
+
+Read the three release shard receipts from successful main CI run
+[44367525793](https://github.com/openwizdev/OpenWiz/actions/runs/44367525793),
+at the same baseline commit. The current balancer places fleet-load with
+setup-onboard-login, open-tickets carriage/collect and github-app. Those
+other units took 4.45 + 392.02 + 41.18 + 59.99 = **497.64 seconds** there.
+With the new 675.72-second measurement, that shard projects **1173.36
+seconds** of proof work. That run's shard-1 setup/artifact overhead was
+about 56 seconds: a total projection of **20m29s**, within the existing
+21-minute job bound. The other two shards project about 420 and 491 seconds
+of proof work using the same receipts. All units, including fleet-load,
+still occur exactly once. Unknown-suite weights make the balancer's raw
+estimates conservative; do not call those estimates measured runner times.
+
+This is a cross-run projection with limited headroom, not a green-CI claim.
+The PR's actual hosted run must verify the job fit and complete full suite.
+
+The complete existing selector/classifier/execution/prune checks also passed
+(`sh .github/actions/docs-only/test.sh`, `green-selector.txt`).
