@@ -419,11 +419,38 @@ pub fn gate_call(program: &Path, argv: &[&str], directory: &Path, commit: &str) 
     ))
 }
 
+// The sole copier form approved by owner decision J146 (private record).
+fn copy_commit(args: &[&str]) -> Option<Commit> {
+    let ["--", source, destination] = args else {
+        return None;
+    };
+    let target = Path::new(destination);
+    absolute(target).ok()?;
+    absolute(Path::new(source)).ok()?;
+    let build = target.parent()?;
+    let commit = Commit::parse(build.file_name()?.to_str()?)?;
+    let builds = build.parent()?;
+    if builds.file_name()? != "builds"
+        || builds.parent()?.file_name()? != "service"
+        || *destination != build.join("openwiz-service").to_str()?
+        || *source
+            != build
+                .join("source/target/release/openwiz-service")
+                .to_str()?
+    {
+        return None;
+    }
+    Some(commit)
+}
+
 /// Fixed forms for all three classes of outbound effects. Dynamic values are
 /// typed commits or absolute paths, never shell fragments or extra flags.
 pub fn allows_command(program: &Path, args: &[&str]) -> bool {
     if allows_gate(program, args) {
         return true;
+    }
+    if program == Path::new("/bin/cp") {
+        return copy_commit(args).is_some();
     }
     if program == Path::new("python3") {
         let valid_script = |script: &str| {
@@ -537,7 +564,11 @@ fn validated_command(call: &Call) -> Result<Command, String> {
     if !allows_command(call.program(), &args) {
         return Err("update command is not allowlisted".to_owned());
     }
-    if call.program.is_absolute() && call.program != Path::new("/bin/kill") {
+    if call.program == Path::new("/bin/cp") {
+        if copy_commit(&args).as_ref() != Some(&call.commit) {
+            return Err("copy paths and commit disagree".to_owned());
+        }
+    } else if call.program.is_absolute() && call.program != Path::new("/bin/kill") {
         let parent = call.program.parent().ok_or("candidate parent missing")?;
         if parent.file_name().and_then(|s| s.to_str()) != Some(call.commit.as_str()) {
             return Err("candidate path and commit disagree".to_owned());
@@ -823,10 +854,7 @@ impl Updater {
             }
             pending["phase"] = json!("build");
             write_pending(&self.root, &pending)?;
-            stage_program(
-                &source.join("target/release/openwiz-service"),
-                &build.join("openwiz-service"),
-            )?;
+            stage_program(self.executor.as_ref(), &build, &to)?;
             copy_web(&source.join("apps/web/out"), &build.join("web"))?;
             let identity = self.executor.run(&Call::new(
                 build
@@ -1256,41 +1284,37 @@ fn copy_file(source: &Path, to: &Path, mode: u32) -> Result<(), String> {
 /// multithreaded process never holds a writable descriptor for it. A child
 /// another thread forked meanwhile would keep that descriptor until its own
 /// exec, and the identity check would fail with ETXTBSY (#1060).
-fn stage_program(source: &Path, to: &Path) -> Result<(), String> {
-    let built = fs::symlink_metadata(source).map_err(|_| "missing candidate file")?;
+fn stage_program(executor: &dyn Executor, build: &Path, commit: &Commit) -> Result<(), String> {
+    let source = build.join("source/target/release/openwiz-service");
+    let to = build.join("openwiz-service");
+    let built = fs::symlink_metadata(&source).map_err(|_| "missing candidate file")?;
     if !built.is_file() {
         return Err("candidate file must be regular".to_owned());
     }
-    // The copier writes only into a directory made new and owner-only here, so
-    // nothing left by the gate can be replaced or written through.
-    let fresh = to.with_extension("stage");
-    DirBuilder::new()
-        .mode(0o700)
-        .create(&fresh)
-        .map_err(|_| "cannot create candidate file")?;
-    let copy = fresh.join("openwiz-service");
-    let copied = Command::new("/bin/cp")
-        .arg("--")
-        .arg(source)
-        .arg(&copy)
-        .env_clear()
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    if !copied {
-        return Err("cannot stage candidate file".to_owned());
+    // `build` was created new at 0700 in this attempt. Refuse anything a gate
+    // planted at the destination before the copier can replace or follow it.
+    private(build, true)?;
+    match fs::symlink_metadata(&to) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        _ => return Err("candidate file already exists or cannot be inspected".to_owned()),
     }
-    fs::set_permissions(&copy, fs::Permissions::from_mode(0o700))
+    executor.run(&Call::new(
+        "/bin/cp",
+        &[
+            "--",
+            source.to_str().ok_or("source path is not UTF-8")?,
+            to.to_str().ok_or("program path is not UTF-8")?,
+        ],
+        build,
+        commit,
+    ))?;
+    // cp inherits the source mode subject to umask. Set the final private mode
+    // by path, then verify ownership, regular type, no symlink and one link.
+    fs::set_permissions(&to, fs::Permissions::from_mode(0o700))
         .map_err(|_| "cannot stage candidate file")?;
-    // link(2) never replaces a path: the candidate is still created new.
-    fs::hard_link(&copy, to).map_err(|_| "cannot create candidate file")?;
-    fs::remove_file(&copy)
-        .and_then(|()| fs::remove_dir(&fresh))
-        .map_err(|_| "cannot stage candidate file")?;
+    private(&to, false)?;
     // A read-only descriptor: fsync needs no writer.
-    let staged = File::open(to).map_err(|_| "cannot stage candidate file")?;
+    let staged = File::open(&to).map_err(|_| "cannot stage candidate file")?;
     let meta = staged
         .metadata()
         .map_err(|_| "cannot stage candidate file")?;
@@ -1299,8 +1323,10 @@ fn stage_program(source: &Path, to: &Path) -> Result<(), String> {
     }
     staged
         .sync_all()
-        .map_err(|_| "cannot sync candidate file".to_owned())
+        .map_err(|_| "cannot sync candidate file".to_owned())?;
+    sync(build)
 }
+
 fn copy_web(source: &Path, to: &Path) -> Result<(), String> {
     if !fs::symlink_metadata(source)
         .map_err(|_| "missing candidate web export")?
