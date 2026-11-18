@@ -22,6 +22,22 @@ kind 1, this ticket's own carriage-registry rows if needed for the new paths.
 The checker/contract changes are covered by the replacement ruling, not by the
 supporting-edit rule. Infra work needs no product changelog line.
 
+The caller-supplied slice passes all 15 checker cases; its red log precedes
+the implementation in commit `ac471bbb9793decc2623b57b342b7068f4356bf7`.
+`before-move.txt` records the intermediate 307-stay/17-move report before the
+executable-dependency ruling. It is not the relocation authority.
+
+The read-only scout checked the pinned main: publisher entrypoint, chart
+installation inputs, public consumers and preview commands. Its publisher,
+package and shadow-import pointers were checked directly and used; no code
+or test draft was supplied. The no-push audit recorded a hit for the fleet's
+new delivery receipt, comment 6969038847. The original snapshot, saved window
+and hit remain private and unchanged. Ruling
+[6969174392](https://github.com/openwizdev/OpenWiz/issues/1058#issuecomment-6969174392),
+with corrected delivery provenance, clears this specific legitimate fleet
+write. The old mechanical result remains a hit, not a clean audit; future
+checks remain required. The helper is archived.
+
 No new relocation test is planned: the existing consumer suites and the
 contracted checker/preview boundaries already protect the behavior. The new
 caller-supplied case catches a valid caller-selected harness input preventing a

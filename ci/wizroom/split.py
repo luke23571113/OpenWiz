@@ -207,6 +207,24 @@ class Tree:
                 self.all_dirs.add(d)
                 d = posixpath.dirname(d)
         self.own = set(own)
+        self.caller_supplied = set()
+        policy = 'contracts/wizroom.v1.md'
+        if policy in self.all_set:
+            # Only operative rows in this section classify sites. Mentions in
+            # prose, examples or another section never exempt a dynamic load.
+            section = False
+            fenced = False
+            for line in self.text(policy).splitlines():
+                if line.startswith('```'):
+                    fenced = not fenced
+                if fenced:
+                    continue
+                if line.startswith('## '):
+                    section = line == '## Caller-supplied loads'
+                if section:
+                    row = re.fullmatch(r'\| `([\w./-]+):([1-9][0-9]*)` \| caller-supplied \|', line)
+                    if row:
+                        self.caller_supplied.add((row[1], int(row[2])))
 
     def text(self, path):
         try:
@@ -834,6 +852,9 @@ class Python:
                 sinks += [(line, 'script path', v) for line, v in self.values(node)]
         for line, kind, v in sinks:
             v = norm_prefix(v)
+            if (kind == 'native load' and v == (UNKNOWN,)
+                    and (self.path, line) in tree.caller_supplied):
+                continue
             if known(v):
                 refs += [(line, kind, t) for t in tree.targets(text_of(v))]
             elif kind != 'script path':

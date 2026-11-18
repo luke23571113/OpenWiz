@@ -89,8 +89,8 @@ A **load** (an import's search path, a module name, or a native load) that
 cannot be fully resolved is **refused, with its file and line**, unless its
 known parts rule out every file in the folder. Whether the file mentions the
 folder is no evidence either way: a wholly computed load (`. "$PLUGIN"`,
-`require(name)`, `sys.path.insert(0, os.environ[…])`) is always refused. A
-computed piece of a file path may hold `..`, so only the known text after its
+`require(name)`, `sys.path.insert(0, os.environ[…])`) is refused unless it is a
+listed [caller-supplied load site](#caller-supplied-loads). A computed piece of a file path may hold `..`, so only the known text after its
 first computed piece can rule a folder file out (`require('./plugins/' + name
 + '.json')` passes when the folder holds no `.json` file). A computed search
 path is refused when it could be the folder, a directory in it or a directory
@@ -140,6 +140,22 @@ report; before WM3's import, where its move set is the exact list of files
 WizRoom imports and its stay set is exactly what WM2 moved to the collector
 folder (so, at WM2's head, the folder holds only the move set); and before
 WM9's removal, where nothing public may reach the folder.
+
+## Caller-supplied loads
+
+A load supplied wholly by its caller, through an argument or environment
+variable with no repository default, adds no repository dependency of its own.
+Only the following sites have that classification. Every unlisted dynamic
+load remains subject to the refusal rule above; a repository path or default
+still counts as a dependency. Placement follows the existing static in-tree
+callers: the replay stays with `bench_reads.py`, and the timing harness stays
+with launch-fleet's test runner and its `gh.py`. Neither harness changes its
+accepted inputs. These are load-site declarations, never `--own` exemptions.
+
+| Site | Classification |
+| --- | --- |
+| `skills/launch-fleet/scripts/fixtures/timing-gh.py:22` | caller-supplied |
+| `tools/war-room/fixtures/activity/replay.py:78` | caller-supplied |
 
 ## The public collector folder
 
