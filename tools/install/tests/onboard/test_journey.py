@@ -628,6 +628,70 @@ class Launch(unittest.TestCase):
         self.assertIn('has its fleet record', third.stdout)
         self.assertEqual(len(j.spawns()), 1, 'never a second start')
 
+    def test_uncertain_launch_accepts_only_configured_record_authors(self):
+        # Catches #1096 F1: outsider text settling an uncertain launch, or an
+        # unread author policy/comment read being treated as a started fleet.
+        # Earlier recovery tests supplied only the factory's own comment.
+        j = Journey(self)
+        j.replay(until='launch')
+        self.assertEqual(j.tool(PREVIEW).returncode, 12)
+        self.assertEqual(j.tool(dict(YES, spawn=1)).returncode, 6)
+        j.fleet_record()
+        record = j.world['issues'][0]['comments'][-1]
+        unresolved = j.state.read_text()
+        settings = j.world['files']['docs/agents/fleet.md']
+        for author in ('synthetic-outsider', None):
+            with self.subTest(author=author):
+                j.state.write_text(unresolved)
+                record['author'] = author
+                j.save_world()
+                result = j.tool(YES)
+                self.assertEqual(result.returncode, 6, result.stdout)
+                self.assertIn('no fleet record yet', result.stdout)
+                self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'uncertain')
+        record['author'] = 'SYNTHETIC-FACTORY[bot]'
+        row = '| Record authors | `synthetic-factory[bot]` |'
+        policies = {'unreadable': None, 'missing': settings.replace(row, ''),
+                    'duplicate': settings.replace(row, row + '\n' + row),
+                    'empty': settings.replace(row, '| Record authors | |'),
+                    'malformed login': settings.replace(row, '| Record authors | `synthetic-factory[bot]`, invalid |'),
+                    'extra cell': settings.replace(row, row + ' extra |')}
+        for name, policy in policies.items():
+            with self.subTest(policy=name):
+                j.state.write_text(unresolved)
+                if policy is None:
+                    j.world['files'].pop('docs/agents/fleet.md', None)
+                else:
+                    j.world['files']['docs/agents/fleet.md'] = policy
+                j.save_world()
+                result = j.tool(YES)
+                self.assertEqual(result.returncode, 6, result.stdout)
+                self.assertIn('could not be read', result.stdout)
+                self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'uncertain')
+        j.world['files']['docs/agents/fleet.md'] = settings
+        j.save_world()
+        j.state.write_text(unresolved)
+        j.extra_env['FAKE_GH_COMMENTS_FAIL'] = '1'
+        unread = j.tool(YES)
+        self.assertEqual(unread.returncode, 6, unread.stdout)
+        self.assertIn('could not be read', unread.stdout)
+        self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'uncertain')
+        j.extra_env = {}
+        for author in ('SYNTHETIC-FACTORY[bot]', 'Synthetic-Owner'):
+            with self.subTest(trusted=author):
+                # Both configured logins, including the fallback user, work
+                # case-insensitively on an unresolved start.
+                j.state.write_text(unresolved)
+                record['author'] = author
+                j.world['files']['docs/agents/fleet.md'] = settings.replace(
+                    row, '| Record authors | `synthetic-factory[bot]`, `synthetic-owner` |')
+                j.save_world()
+                settled = j.tool(YES)
+                self.assertEqual(settled.returncode, 0, settled.stdout)
+                self.assertIn('has its fleet record', settled.stdout)
+                self.assertEqual(json.loads(j.state.read_text())['launch']['state'], 'started')
+        self.assertEqual(len(j.spawns()), 1, 'reconciliation never dispatches another fleet')
+
     def test_a_start_cut_short_before_its_outcome_settles_on_its_record(self):
         # Review R1: catches a start interrupted after the spawn and before its
         # outcome was saved staying pending for ever, even once its fleet record exists.
@@ -860,6 +924,32 @@ class DemoToInit(unittest.TestCase):
 
     def writes(self, j):
         return [call for call in self.world(j)['log'] if call[0] != 'GET']
+
+    def test_signed_out_demo_creation_refuses_with_a_sign_in_pointer(self):
+        # Catches #1096 F2: the real demo command reaching repo creation before
+        # GitHub sign-in, then failing with no usable onboarding next step.
+        # Earlier demo cases always supplied a signed-in synthetic user.
+        j = Journey(self)
+        j.repos.write_text(github(signed_out=True))
+        before = self.world(j)['repos']
+        preview = j.helper(['create-repo', '--repo', REPO])
+        self.assertEqual(preview.returncode, 12, preview.stdout)
+        result = j.helper(YES_DEMO)
+        self.assertEqual(result.returncode, 5, result.stdout)
+        for words in ('GitHub', 'sign-in', 'github_login.py sign-in', 'nothing created'):
+            self.assertIn(words, result.stdout)
+        self.assertEqual((self.world(j)['repos'], self.writes(j)), (before, []))
+        self.assertNotIn(['repo', 'create'], j.gh_creates(), 'no creation attempted while signed out')
+        self.assertFalse(j.state.exists(), 'no pending creation is saved for a refused sign-in')
+        # Once sign-in is available, the same demo can be created and read
+        # back; the refusal neither creates nor strands an operation.
+        world = self.world(j)
+        world['signed_out'] = False
+        j.repos.write_text(json.dumps(world))
+        created = j.helper(YES_DEMO)
+        self.assertEqual(created.returncode, 0, created.stdout)
+        self.assertIn('Created and read back', created.stdout)
+        self.assertEqual(self.writes(j), [['POST', 'user/repos']])
 
     # Catches: the default demo created empty, so init's mandatory brain
     # proposal finds no default-branch ref and stops uncertain (the #1074 bug).
