@@ -1,0 +1,8 @@
+Command: python3 -I ci/wizroom/split.py --root .
+Checker SHA-256: 49c135fcef4a57bcf63fb44ea879f8eb068f1469be21320866abd7f0c7b49518
+Exit: 1; stdout empty.
+Ambiguous JavaScript slash refusals: 0 (reviewed head: 39).
+Refusals exactly match the two WM1 baseline dynamic refusals:
+refused skills/launch-fleet/scripts/fixtures/timing-gh.py:22 native load: computed path could name a file in tools/war-room
+refused tools/war-room/fixtures/activity/replay.py:78 native load: computed path could name a file in tools/war-room
+split: refused 2 reference(s); no stay or move set

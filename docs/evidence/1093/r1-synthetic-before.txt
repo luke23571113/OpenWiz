@@ -1,0 +1,47 @@
+Checker: 736da8fcbb36a58256c2ed465ad18539851cb0fe
+Each synthetic Node consumer loads its marker; each old-checker run wrongly refuses ordinary syntax.
+shebang (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+shebang (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+not regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+not regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+arrow regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+arrow regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+arrow backtick regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+arrow backtick regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+greater regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+greater regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+identifier division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+identifier division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+bracket division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+bracket division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+call division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+call division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+grouped division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+grouped division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+string division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+string division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+template division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+template division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+postfix increment (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+postfix increment (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+postfix decrement (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+postfix decrement (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+if regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+if regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+while regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+while regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+for regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+for regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+with regex (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+with regex (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+nested control (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+nested control (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+keyword method (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+keyword method (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+literal division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+literal division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+regex division (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+regex division (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+division load operand (direct): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+division load operand (multiline): Node 0, synthetic loaded; checker 1, ambiguous JavaScript slash at tools/client/read.cjs:1; tree unchanged.
+Total: 44 valid consumers, 44 incorrect refusals.

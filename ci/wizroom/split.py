@@ -275,13 +275,29 @@ def shell_pattern(arg):
     return tuple(UNKNOWN if i % 2 else piece for i, piece in enumerate(pieces) if piece)
 
 
-def js_code(text):
-    """The JavaScript source with each comment blanked out, newlines and strings kept,
-    so loads are found across lines and never inside a comment; and the offsets that
-    lie inside a template string, where `import(` is only text. A quote ends at its
-    line's end, so a regular expression literal holding a quote cannot hide the
-    code after it."""
+def js_code(text, path):
+    """Blank comments and regex literals without shifting offsets or newlines.
+
+    Keep strings for load-argument evaluation, and mark template text so it is
+    never scanned for loads. Token context separates regex starts from division
+    operands; matched parentheses distinguish control headers from calls/grouping.
+    Closing braces and unmodelled keyword contexts still refuse conservatively.
+    """
     out, i, n, quote, inside = [], 0, len(text), None, set()
+    previous = ''
+    regex_words = {'return', 'throw', 'case', 'delete', 'void', 'typeof', 'new',
+                   'in', 'instanceof', 'else', 'do', 'default', 'debugger'}
+    keywords = set(('await break case catch class const continue debugger default '
+                    'delete do else enum export extends false finally for function '
+                    'if implements import in instanceof interface let new null of '
+                    'package private protected public return static super switch '
+                    'this throw true try typeof var void while with yield').split())
+    parens = []  # whether each opening parenthesis belongs to a control header
+
+    def refuse(at, reason):
+        no = text.count('\n', 0, at) + 1
+        raise Refused(f'{path}:{no} native load: {reason}')
+
     while i < n:
         c = text[i]
         if quote:
@@ -295,8 +311,9 @@ def js_code(text):
                 quote = None
         elif c in '\'"`':
             quote = c
+            previous = 'literal'
             out.append(c)
-        elif text.startswith('//', i):
+        elif text.startswith('//', i) or (i == 0 and text.startswith('#!', i)):
             j = text.find('\n', i)
             j = n if j < 0 else j
             out.append(' ' * (j - i))
@@ -308,8 +325,67 @@ def js_code(text):
             out.append(re.sub(r'[^\n]', ' ', text[i:j]))
             i = j
             continue
+        elif c == '/':
+            if previous in ('identifier', 'number', 'literal', 'increment', ']', ')'):
+                previous = '/'  # division: its operand can contain a real load
+                out.append(c)
+            else:
+                if previous == '}' or (previous in keywords and previous not in regex_words):
+                    refuse(i, 'ambiguous JavaScript slash (regex or division)')
+                j, bracket = i + 1, False
+                while j < n and text[j] not in '\r\n\u2028\u2029':
+                    ch = text[j]
+                    if ch == '\\':
+                        if j + 1 == n or text[j + 1] in '\r\n\u2028\u2029':
+                            break
+                        j += 2
+                        continue
+                    if ch == '[':
+                        if bracket:
+                            refuse(i, 'ambiguous JavaScript regex character class')
+                        bracket = True
+                    elif ch == ']':
+                        bracket = False
+                    elif ch == '/' and not bracket:
+                        break
+                    j += 1
+                if j == n or text[j] != '/' or bracket:
+                    refuse(i, 'unterminated JavaScript regex literal')
+                j += 1
+                flags_at = j
+                while j < n and (text[j].isalnum() or text[j] in '_$'):
+                    j += 1
+                flags = text[flags_at:j]
+                if any(f not in 'dgimsuy' for f in flags) or len(set(flags)) != len(flags):
+                    refuse(i, 'unsupported JavaScript regex flags')
+                out.append(' ' * (j - i))
+                previous = 'literal'
+                i = j
+                continue
+        elif c.isalnum() or c in '_$':
+            j = i + 1
+            while j < n and (text[j].isalnum() or text[j] in '_$'):
+                j += 1
+            token = text[i:j]
+            previous = ('number' if token.isdecimal() else
+                        'identifier' if token not in keywords or previous == '.' else
+                        'literal' if token in ('true', 'false', 'null', 'this', 'super') else token)
+            out.append(token)
+            i = j
+            continue
+        elif text[i:i + 2] in ('++', '--'):
+            out.append(text[i:i + 2])
+            previous = 'increment'
+            i += 2
+            continue
         else:
             out.append(c)
+            if c == '(':
+                parens.append(previous in ('if', 'while', 'for', 'with'))
+            if c == ')':
+                previous = 'control-close' if parens and parens.pop() else ')'
+            elif not c.isspace():
+                previous = c
         i += 1
     return ''.join(out), inside
 
@@ -442,7 +518,7 @@ def other_script_refs(tree, path, text):
                 elif could_load(tree, shell_pattern(arg)):
                     raise Refused(f'{path}:{no} native load: computed path ({arg}) could name a file in {tree.folder}')
     if suffix in ('.mjs', '.cjs', '.js', '.ts'):
-        code, strings = js_code(text)
+        code, strings = js_code(text, path)
         js = JavaScript(path, code)
         loads = [(m.start(), js.value(js_args(code, m.end() - 1)))
                  for m in JS_CALL.finditer(code) if m.start() not in strings]
