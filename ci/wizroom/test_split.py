@@ -206,12 +206,59 @@ class SplitChecker(unittest.TestCase):
                     'tools/war-room/collector.cjs': 'tools/client/read.cjs:2 import'} if keeps else {})
                 self.assertEqual(move, [] if keeps else ['tools/war-room/collector.cjs'])
 
+    # catches: ordinary shebangs, regex starts and division operands refuse the
+    # entire split, stopping WM2 even though a following collector load resolves.
+    def test_javascript_ordinary_syntax_keeps_following_loads(self):
+        cases = (
+            ('shebang', '#!/usr/bin/env node', 2),
+            ('not regex', 'const okay = !/a/.test("b");', 2),
+            ('arrow regex', 'const test = x => /a/.test(x);', 2),
+            ('arrow backtick regex', 'const test = (x) => /`/.test(x);', 2),
+            ('greater regex', 'const okay = "a" > /`/.source;', 2),
+            ('identifier division', 'const total = 8; const half = total / 2;', 2),
+            ('bracket division', 'const a = [8]; const half = a[0] / 2;', 2),
+            ('call division', 'function f(x) { return x; } const half = f(8) / 2;', 2),
+            ('grouped division', 'const half = (8 + 4) / 2;', 2),
+            ('string division', 'const half = "8" / 2;', 2),
+            ('template division', 'const half = `8` / 2;', 2),
+            ('postfix increment', 'let total = 8; const half = total++ / 2;', 2),
+            ('postfix decrement', 'let total = 8; const half = total-- / 2;', 2),
+            ('if regex', 'if (true) /`/.test("x");', 2),
+            ('while regex', 'while (false) /`/.test("x");', 2),
+            ('for regex', 'for (; false;) /`/.test("x");', 2),
+            ('with regex', 'with ({}) /`/.test("x");', 2),
+            ('nested control', 'if ((Math.max(1, 2))) /`/.test("x");', 2),
+            ('keyword method', 'const obj = {if() { return 8; }}; const half = obj.if() / 2;', 2),
+            ('literal division', 'const half = true / 2;', 2),
+            ('regex division', 'const half = /a/ / 2;', 2),
+            ('division load operand',
+             'const total = 8; const half = total / require("../war-room/collector.cjs");', 1),
+        )
+        fixture = FIXTURES / 'js-regex/tools/war-room/collector.cjs'
+        for name, prefix, line in cases:
+            for load in ('require("../war-room/collector.cjs");',
+                         'require(\n  "../war-room/collector.cjs"\n);'):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    (root / 'tools/client').mkdir(parents=True)
+                    (root / 'tools/war-room').mkdir()
+                    (root / 'tools/client/read.cjs').write_text(prefix + '\n' + load + '\n')
+                    (root / 'tools/war-room/collector.cjs').write_bytes(fixture.read_bytes())
+                    loaded = subprocess.run(['node', str(root / 'tools/client/read.cjs')],
+                                            capture_output=True, text=True, timeout=10)
+                    self.assertEqual(loaded.returncode, 0, loaded.stderr)
+                    self.assertEqual(loaded.stdout, 'synthetic loaded\n')
+                    stay, move = report(root)
+                    self.assertEqual(stay, {
+                        'tools/war-room/collector.cjs': f'tools/client/read.cjs:{line} import'})
+                    self.assertEqual(move, [])
+
     # catches: unresolved loads after a regex, or ambiguous/unterminated regex
     # syntax, yielding a successful unsafe move instead of a located refusal.
     def test_javascript_regex_uncertainty_refuses_without_sets(self):
         cases = (
             ('computed load', 'const regex = /`/;\nrequire(process.env.SYNTHETIC_MODULE);', 2),
-            ('ambiguous slash', 'if (true) /`/.test("x");\nrequire("../war-room/collector.cjs");', 1),
+            ('ambiguous closing brace', 'if (true) {} /`/.test("x");\nrequire("../war-room/collector.cjs");', 1),
             ('unterminated regex', 'const regex = /`\nrequire("../war-room/collector.cjs");', 1),
         )
         for name, source, line in cases:
