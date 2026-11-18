@@ -108,9 +108,9 @@ proof of full work. Selected PR greens, even their union, never substitute.
 `{lane, tests, plan_sha256, run}`. `run` is the exact selection run object and the
 digest is SHA-256 of the exact stored plan text. Expected receipts are `always`,
 `rust`, `web`, the nonempty `site` and `release` groups of the selection's site
-lane, each `skill:<name>`, `build:web_export`, and `prerequisite:toolkit` (full work
-requires the toolkit). Every planned test belongs to its corresponding receipt,
-each exactly once; build/toolkit receipts have empty test lists. Receipt order
+lane, each `skill:<name>`, and `build:web_export`. Every planned test belongs to
+its corresponding receipt, each exactly once; the build receipt has an empty test
+list. Receipt order
 and test order are immaterial. No foreign, stale or duplicate receipt counts.
 The existing finish boundary remains authoritative for its actual job/matrix
 results; a reader cannot fabricate a missing matrix member's receipt.

@@ -4116,9 +4116,16 @@ fn onboard_keeps_its_gates() {
         "wait for the user's explicit yes to that list. No yes, no effect.",
         "No prewritten plan.",
         "It is no limit on any later fleet",
+        "Every recorded choice is reused, never invented.",
+        "Spec confirmation, exact-plan approval and spending consent stay three separate answers.",
     ] {
         assert!(rules.contains(required), "rule: {required}");
     }
+    // #636 (J87 Q1): the first fleet starts through launch-fleet, never the engine.
+    assert!(
+        collapse(&text).contains("it never runs `openwiz engine` or `openwiz fleet tick`"),
+        "no engine or tick"
+    );
     let explain = section("## 1. Explain\n");
     for concept in [
         "**idea**",
@@ -4144,24 +4151,41 @@ fn onboard_keeps_its_gates() {
     ] {
         assert!(project.contains(required), "project: {required}");
     }
+    // #636: one repository's GitHub identity, project and brain, carried once.
+    let connect = section("## 3. Connect\n");
+    for required in [
+        "A current login is reused.",
+        "no token is pasted",
+        "An App failure never becomes a skip: only the user's own answer does.",
+        "the App stays missing, never verified",
+        "there is no placement question",
+        "`--yes --operation <id>`",
+        "onboard.py continue",
+        "refuses, naming each one, while anything is missing, refused, unknown or out of date",
+        // Review R5 ruling: the pair writer and its accepted limitation.
+        "onboard.py decisions",
+        "sets only that one key",
+        "a host that later runs the full OpenWiz service must complete its settings",
+    ] {
+        assert!(connect.contains(required), "connect: {required}");
+    }
     assert!(
-        section("## 3. Grill\n").contains("4 to 7 small"),
+        section("## 4. Grill\n").contains("4 to 7 small"),
         "grill aims small"
     );
-    let agents = section("## 4. Choose the agents\n");
+    let agents = section("## 5. Choose the agents\n");
     for required in [
-        "never fill one in for the user",
-        "**Harness**",
-        "**Effort**",
+        "are reused, not asked again",
+        "never filling it in",
+        "--from-setup --agents cloud|local",
         "Cloud",
         "Local",
-        "never copy the engine's location into it",
         "`launch` refuses Local and starts nothing",
         "**both** builder tables",
     ] {
         assert!(agents.contains(required), "agents: {required}");
     }
-    let plan = section("## 5. Plan\n");
+    let plan = section("## 6. Plan\n");
     for required in [
         "**spec confirmation**",
         "**exact-plan approval**",
@@ -4169,11 +4193,13 @@ fn onboard_keeps_its_gates() {
     ] {
         assert!(plan.contains(required), "plan: {required}");
     }
-    let launch = section("## 6. Launch\n");
+    let launch = section("## 7. Launch\n");
     for required in [
         "`<launch-fleet skill's folder>/scripts/fleet.sh frontier`",
-        "`openwiz fleet tick --dry-run --json`",
-        "--expect-plan",
+        "one fleet thread for the spec, with its own loop",
+        "`room-cli thread spawn --parent-self`",
+        "`launch-fleet: fleet active, loop fleet-<S>`",
+        "it is not the plan approval",
         "never retry it by hand",
         "On the user's yes",
         "`--yes --confirm <that digest>`",
@@ -4235,7 +4261,6 @@ fn install_keeps_its_order_and_gates() {
             "Preflight",
             "Verified install",
             "Setup and connections",
-            "Engine",
             "Explain",
             "First fleet"
         ],
@@ -4252,6 +4277,10 @@ fn install_keeps_its_order_and_gates() {
         "never guess one",
         "Removing OpenWiz from this computer does not revoke",
         "the `onboard` skill",
+        // #636 (J87 Q1): one continuation, no engine, no engine location.
+        "never runs `openwiz engine` or `openwiz fleet tick`",
+        "There is no engine to choose and no engine location to ask about.",
+        "pass `--explained` to its `continue`",
     ] {
         assert!(all.contains(required), "install skill: {required}");
     }
@@ -4320,6 +4349,24 @@ fn setup_onboard_login_passes() {
     assert!(
         result.status.success(),
         "setup GitHub login proofs failed: {}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+// #637: the 0.0.16 first-merge receipt on the installed journey (the App and
+// the skip, the fleet start, key and companion faults) and its bounded live
+// kit's offline rules, on recording fixtures, in the checks binary.
+#[test]
+fn setup_onboard_journey_passes() {
+    let result = std::process::Command::new("python3")
+        .args(["-I", "tools/install/tests/first-hour/test_first_merge.py"])
+        .current_dir(ROOT)
+        .output()
+        .expect("run the first-merge journey and kit proofs");
+    assert!(
+        result.status.success(),
+        "first-merge journey and kit proofs failed: {}{}",
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );

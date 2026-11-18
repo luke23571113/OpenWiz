@@ -1448,10 +1448,9 @@ fn scan_text(path: &Path, text: &str) -> Vec<String> {
         return bad; // source code and prose: rule 1 only
     }
     if folder(path) == Folder::ReleaseCandidate {
-        // Reuse the strict reader already available through the test crate's
-        // terminal dependency. No duplicate value is discarded before scanning.
+        // The strict reader: no duplicate value is discarded before scanning.
         // Candidate files dispatch here even when named scenario.json.
-        match openwiz_terminal::json::parse(text.as_bytes()) {
+        match crate::strict_json::parse(text.as_bytes()) {
             Ok(value) => walk_in(&value, "$", &mut bad, Folder::ReleaseCandidate),
             Err(_) => bad
                 .push("release-candidate fixtures require strict JSON with unique keys".to_owned()),
@@ -1527,6 +1526,13 @@ fn walk_envelope(value: &Value, words: &[String], bad: &mut Vec<String>) {
 fn fixtures_contain_only_synthetic_values() {
     let files = all_files();
     assert!(files.len() > 20, "the fixtures are there");
+    // Both fakes' sources get rule 1: they are scanned, as source code.
+    for fake in [
+        Path::new(FAKE).join("main.rs"),
+        Path::new(FAKE_GH).join("main.rs"),
+    ] {
+        assert!(files.contains(&fake), "{fake:?} is not scanned");
+    }
     let mut problems = Vec::new();
     for path in &files {
         for p in scan_file(path) {
@@ -2036,15 +2042,6 @@ fn a_github_scenarios_argv_is_only_text() {
             "{why}: {bad:?}"
         );
     }
-}
-
-/// The fake gh's source gets rule 1, like the fake room-cli's: it is
-/// scanned, as source code, and has nothing private in it.
-#[test]
-fn the_fake_gh_is_scanned_for_private_data() {
-    let fake = Path::new(FAKE_GH).join("main.rs");
-    assert!(all_files().contains(&fake), "{fake:?} is not scanned");
-    assert_eq!(scan_file(&fake), Vec::<String>::new());
 }
 
 /// #373: the diagnostic is public grammar, but its branch must be synthetic.

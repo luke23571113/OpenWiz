@@ -239,15 +239,28 @@ class SignIn(Recording):
                                    env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL)
         marker = self.gh_dir / 'auth.pid'
-        wait_for(marker.exists, 'the pending gh sign-in')
-        wrapper.kill()
-        wrapper.wait()
+        record = self.state / 'setup/github-login-pending.json'
+
+        def recorded_child():
+            if not marker.exists() or not record.exists():
+                return False
+            return str(json.loads(record.read_text())['pid']) == marker.read_text()
+
+        # The child's marker precedes the wrapper's durable PID write. Killing
+        # at the marker alone can leave pid=null; ageing that record would
+        # legitimately expire it and start a second, pending browser flow.
+        # catches: a restart starting another sign-in despite a durably recorded
+        # living child, even when that child's record is older than the limit.
+        try:
+            wait_for(recorded_child, 'the durably recorded pending gh sign-in')
+        finally:
+            wrapper.kill()
+            wrapper.wait()
         child = int(marker.read_text())
         os.kill(child, 0)  # the browser sign-in is still waiting for the owner
         self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_in_progress')
         # Final check R2: the record's age never outweighs a positively living
         # sign-in child; only an unprovable record ages out.
-        record = self.state / 'setup/github-login-pending.json'
         old = record.stat().st_mtime - 3 * 3600
         os.utime(record, (old, old))
         self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_in_progress')

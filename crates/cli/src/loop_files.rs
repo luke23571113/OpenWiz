@@ -4,14 +4,23 @@
 //! are `contracts/loop-cli.v1.md`'s.
 //!
 //! LC1 (#789) ships [`parse`], the contract's argument rules, and stubs: each
-//! command parses its arguments, then refuses with the `not_built` result,
-//! reading nothing and changing nothing. LC2 to LC5 (#790 to #793) each
-//! replace one stub in [`run`]. `loop off|on` stay in `loops.rs`, unchanged.
+//! command parsed its arguments, then refused with the `not_built` result.
+//! LC2 to LC5 (#790 to #793) each replaced one stub in [`run`]; none is left.
+//! `loop off|on` stay in `loops.rs`, unchanged.
 
 use std::ffi::OsString;
 use std::io::Write;
 
 use crate::response;
+
+#[path = "loop_apply.rs"]
+mod loop_apply;
+#[path = "loop_export.rs"]
+mod loop_export;
+#[path = "loop_plan.rs"]
+mod loop_plan;
+#[path = "loop_validate.rs"]
+mod loop_validate;
 
 pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
   openwiz loop export --project <project> [--out <dir>] [--json]
@@ -20,9 +29,20 @@ pub const USAGE: &str = "  openwiz loop validate <path>... [--catalog] [--json]
 ";
 pub const HELP: &str = "loop validate/export/plan/apply
   Loop files in the WizLoops format, with Cloudroom as the adapter
-  (contracts/loop-cli.v1.md). Not built yet: each command refuses with exit 5
-  and reads and changes nothing.
+  (contracts/loop-cli.v1.md). validate checks loop files and names each
+  problem by file and field. plan prints the exact room-cli commands and the
+  differences against room-cli loop list, and changes nothing. apply runs
+  only those commands for one id, once, then reads the loop back and reports
+  any difference; an unclear outcome exits 6 and is never retried.
 ";
+
+/// Untrusted text (a Cloudroom name, id or key, room-cli's error text, a
+/// path) made safe to print on a terminal: every control, bidi or invisible
+/// format character is replaced, as [`crate::clean`] does for the inventory.
+/// JSON output keeps the original value; only human output goes through this.
+pub fn escape_untrusted(text: &str) -> String {
+    crate::clean(text)
+}
 
 /// The four loop-file commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,11 +241,21 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
                     .is_err(),
             )
         }
-        Ok(Parsed::Run(args)) => not_built(&args, stdout, stderr),
+        Ok(Parsed::Run(args)) if args.command == Command::Validate => {
+            loop_validate::run(&args, stdout, stderr)
+        }
+        Ok(Parsed::Run(args)) if args.command == Command::Export => {
+            loop_export::run(&args, stdout, stderr)
+        }
+        Ok(Parsed::Run(args)) if args.command == Command::Plan => {
+            loop_plan::run(&args, stdout, stderr)
+        }
+        Ok(Parsed::Run(args)) => loop_apply::run(&args, stdout, stderr),
         Err(why) => {
             let _ = writeln!(
                 stderr,
-                "openwiz: usage: {why}; nothing was read (see openwiz loop --help)"
+                "openwiz: usage: {}; nothing was read (see openwiz loop --help)",
+                escape_untrusted(&why)
             );
             if json_selected(args) {
                 let doc = serde_json::json!({
@@ -237,27 +267,6 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
             2
         }
     }
-}
-
-/// The stub's result: exit 5, nothing read or changed.
-fn not_built(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
-    let (word, ticket) = (args.command.word(), args.command.ticket());
-    if args.json {
-        let doc = serde_json::json!({
-            "schema": "openwiz.loop-not-built.v1", "command": word, "exit_code": 5,
-            "status": "not_built", "ticket": ticket,
-            "message": format!("openwiz loop {word} is not built yet; nothing was read or changed"),
-        });
-        if writeln!(stdout, "{doc}").is_err() {
-            return 1;
-        }
-    } else {
-        let _ = writeln!(
-            stderr,
-            "openwiz: loop {word} is not built yet (#{ticket}); nothing was read or changed"
-        );
-    }
-    5
 }
 
 #[cfg(test)]
@@ -276,52 +285,9 @@ mod tests {
         )
     }
 
-    // catches: a stub that succeeds, reads, or prints a result that is not the
-    // contract's `not_built` document, so a caller mistakes it for a report.
-    #[test]
-    fn each_stub_refuses_with_the_contracts_not_built_result() {
-        for (args, command, ticket) in [
-            (&["validate", "loops/a.md", "--json"][..], "validate", 790),
-            (
-                &["export", "--project", "prj_syn_0001", "--json"],
-                "export",
-                791,
-            ),
-            (
-                &["plan", "loops", "--project", "prj_syn_0001", "--json"],
-                "plan",
-                792,
-            ),
-            (
-                &["apply", "nightly", "--project", "prj_syn_0001", "--json"],
-                "apply",
-                793,
-            ),
-        ] {
-            let (code, out, err) = run_args(args);
-            assert_eq!(code, 5, "{args:?}");
-            assert!(err.is_empty(), "{args:?}: {err}");
-            assert!(out.ends_with('\n') && out.lines().count() == 1, "{out:?}");
-            let doc: Value = serde_json::from_str(&out).unwrap();
-            assert_eq!(
-                doc,
-                serde_json::json!({
-                    "schema": "openwiz.loop-not-built.v1", "command": command,
-                    "exit_code": 5, "status": "not_built", "ticket": ticket,
-                    "message": format!("openwiz loop {command} is not built yet; nothing was read or changed"),
-                })
-            );
-            let text: Vec<&str> = args.iter().copied().filter(|a| *a != "--json").collect();
-            let (code, out, err) = run_args(&text);
-            assert_eq!((code, out.as_str()), (5, ""));
-            assert_eq!(
-                err,
-                format!(
-                    "openwiz: loop {command} is not built yet (#{ticket}); nothing was read or changed\n"
-                )
-            );
-        }
-    }
+    // The stub test `each_stub_refuses_with_the_contracts_not_built_result`
+    // is gone with the last stub: apply (#793) is built, and its keeper is
+    // tests/cli-agent/loop_apply.rs, which checks apply's real results.
 
     // catches: a parser that accepts a form the contract refuses (so a later
     // command acts on arguments nobody pinned) or refuses a pinned form.
@@ -517,6 +483,43 @@ mod tests {
             OsString::from_vec(vec![0xff])
         }];
         assert!(parse(&bad).is_err(), "not UTF-8");
+    }
+
+    // catches: untrusted text printed with its control bytes, so a loop's
+    // name or room-cli's error can clear the screen, spoof a line or set the
+    // clipboard (OSC 52) when export prints it.
+    #[test]
+    fn escape_untrusted_replaces_terminal_controls() {
+        assert_eq!(
+            escape_untrusted("a\u{1b}[2Jb\u{1b}]52;c;eA==\u{7}c\rd\ne\u{202e}f"),
+            "a?[2Jb?]52;c;eA==?c?d?e\u{fffd}f"
+        );
+        assert_eq!(
+            escape_untrusted("Synthetic: plain text"),
+            "Synthetic: plain text"
+        );
+    }
+
+    // catches: a usage error that echoes an argument's control bytes to the
+    // terminal (an unknown option is printed back as given), so an argument
+    // can clear the screen or set the clipboard (OSC 52); JSON keeps it.
+    #[test]
+    fn a_usage_error_never_prints_a_terminal_control() {
+        let bad = "--x\u{1b}]52;c;eA==\u{7}";
+        let (code, out, err) = run_args(&["export", "--project", "prj_syn_0001", bad]);
+        assert_eq!((code, out.as_str()), (2, ""));
+        assert_eq!(
+            err,
+            "openwiz: usage: loop export has no option --x?]52;c;eA==?; nothing was read (see openwiz loop --help)\n"
+        );
+        let (code, out, err) = run_args(&["export", "--json", "--project", "prj_syn_0001", bad]);
+        assert_eq!(code, 2);
+        assert!(!err.contains('\u{1b}'), "{err:?}");
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            doc["error"]["message"],
+            format!("Invalid loop arguments: loop export has no option {bad}.")
+        );
     }
 
     // catches: help that reads, fails, or loses its JSON wrapper.

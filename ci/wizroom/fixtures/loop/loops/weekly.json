@@ -1,0 +1,4 @@
+{
+  "name": "synthetic-weekly",
+  "argv": ["python3", "-I", "tools/war-room/ci3_check.py"]
+}

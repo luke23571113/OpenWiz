@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
-use super::{ROOT, Sandbox, schema};
+use super::{ROOT, schema};
 
 // OpenWiz's own SHA-256 (no crate is approved for it), compiled in here.
 #[allow(dead_code)]
@@ -23,42 +23,15 @@ fn the_stubs_print_the_schemas_not_built_document_and_read_nothing() {
     )
     .unwrap();
     assert_eq!(schema::lint(&contract), Vec::<String>::new());
-    for args in [
-        &["loop", "validate", "loops/a.md", "--json"][..],
-        &["loop", "export", "--project", "project-synthetic", "--json"],
-        &[
-            "loop",
-            "plan",
-            "loops",
-            "--project",
-            "project-synthetic",
-            "--json",
-        ],
-        &[
-            "loop",
-            "apply",
-            "nightly",
-            "--project",
-            "project-synthetic",
-            "--json",
-        ],
-    ] {
-        let sandbox = Sandbox::new();
-        let output = sandbox.run(args);
-        assert_eq!(output.status.code(), Some(5), "{args:?}");
-        let doc: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(
-            schema::validate(&contract, &doc),
-            Vec::<String>::new(),
-            "{args:?}"
-        );
-        assert_eq!(doc["schema"], "openwiz.loop-not-built.v1");
-        assert!(
-            !sandbox.0.join("calls").exists(),
-            "{args:?} called a source"
-        );
-        assert!(!sandbox.0.join("state").exists(), "{args:?} touched state");
-    }
+    // validate is built (#790): loop_validate.rs checks its real output
+    // against the same schema and that it reads no source.
+    // export (#791) is built: its keeper is loop_export.rs, which checks
+    // its real output against export_report in the same schema.
+    // plan (#792) is built: its keeper is tests/cli-agent/loop_plan.rs,
+    // whose every document is checked against this schema.
+    // apply (#793) is built: its keeper is tests/cli-agent/loop_apply.rs,
+    // whose every document is checked against this schema and whose every
+    // test checks the room-cli calls made. No stub is left.
 }
 
 // catches: a pinned WizLoops file that drifts from the pinned commit (an

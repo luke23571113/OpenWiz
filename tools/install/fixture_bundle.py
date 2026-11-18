@@ -14,7 +14,7 @@ import tarfile
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from install import HANDOVER_RUNTIME, PROGRAMS, REQUIRED, sha
+from install import PROGRAMS, REQUIRED, sha
 
 
 def create(output, server, web, service=None, source='1' * 40):
@@ -48,11 +48,6 @@ def create(output, server, web, service=None, source='1' * 40):
         'archive':archive.name, 'archive_sha256':sha(archive.read_bytes()),
         'archive_bytes':archive.stat().st_size, 'assets':rows}))
     return {'manifest':str(manifest), 'archive':str(archive), 'checksum':sha(manifest.read_bytes())}
-
-
-def handover_runtime(tools=Path(__file__).resolve().parent):
-    """The reviewed tracked handover files, at their installed runtime paths."""
-    return {path: (tools / path.removeprefix('runtime/')).read_bytes() for path in HANDOVER_RUNTIME}
 
 
 if __name__ == '__main__':

@@ -661,35 +661,23 @@ fn cp2_due_candidates_and_tick_reports_follow_the_recorded_world() {
     assert!(w.calls().iter().all(|(tool, _)| tool == "gh"));
     assert!(w.writes().is_empty());
     assert!(!w.dir.join("state").exists());
-    for extra in [
-        vec!["fleet", "tick", "--dry-run", "--json"],
-        vec!["fleet", "tick", "--json"],
-    ] {
-        let doc = report(
-            &w.run(&extra),
-            0,
-            "fleet-tick",
-            "envelope",
-            "openwiz.fleet-tick.v1",
-        );
-        assert_eq!(doc["actions"].as_array().unwrap().len(), 1);
-        assert_eq!(doc["actions"][0]["rule"], "frontier");
-    }
-    assert_eq!(
-        w.writes()
-            .iter()
-            .filter(|(tool, args)| tool == "room-cli"
-                && args.starts_with(&["thread".to_owned(), "spawn".to_owned()]))
-            .count(),
-        1
+    let doc = report(
+        &w.run(&["fleet", "tick", "--dry-run", "--json"]),
+        0,
+        "fleet-tick",
+        "envelope",
+        "openwiz.fleet-tick.v1",
     );
+    assert_eq!(doc["actions"].as_array().unwrap().len(), 1);
+    assert_eq!(doc["actions"][0]["rule"], "frontier");
+    // The plan reads only: the executing tick that acted on it was retired (#800).
+    assert!(w.writes().is_empty());
 }
 
 #[test]
 fn cp2_fleet_source_failures_and_partial_fleets_preserve_reports() {
     for args in [
         vec!["fleet", "9", "--json"],
-        vec!["fleet", "tick", "--json"],
         vec!["fleet", "tick", "--dry-run", "--json"],
         vec!["fleet", "due", "--github-only", "--json"],
     ] {

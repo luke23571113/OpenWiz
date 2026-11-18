@@ -22,7 +22,7 @@ END = '2030-01-08T08:00:00Z'
 
 
 def journey(n=3, kind='missing-proof'):
-    doc = json.loads((ROOT / 'tools/factory-metrics/fixtures/journey/journeys.json').read_text())
+    doc = json.loads((ROOT / 'tools/collector/fixtures/journey/journeys.json').read_text())
     pr = doc['pull_requests'][0]
     pr['findings'] = [
         {'id': f'R{i+1}', 'severity': 'medium', 'check': 'Spec', 'kind': kind,

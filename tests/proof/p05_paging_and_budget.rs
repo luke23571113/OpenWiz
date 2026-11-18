@@ -1,13 +1,11 @@
 //! P5 Paging and budget: stable ordering, `--limit` and `--offset`,
 //! enrichment of the requested page only, at most 4 concurrent detail reads,
-//! and a 30-second budget.
+//! and a 30-second budget. The cases with no adapter or client (the page
+//! counts, detail reads, concurrency and budget) are in
+//! `crates/core/tests/inventory.rs` (#805).
 
 use std::collections::BTreeSet;
-use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
 
-use openwiz_core::envelope::{Completeness, GapKind};
-use openwiz_core::limits::{MAX_CONCURRENT_DETAIL_READS, RUN_BUDGET};
 use openwiz_core::ops::{Detail, ListRequest};
 
 use crate::support::*;
@@ -19,61 +17,6 @@ fn page(offset: usize, limit: usize, detail: Detail) -> ListRequest {
         limit,
         ..ListRequest::default()
     }
-}
-
-#[test]
-fn ordering_is_stable_whatever_order_the_source_returns() {
-    let forward = ScriptedSource::new(12);
-    let mut reversed_records = forward.records.clone();
-    reversed_records.reverse();
-    let reversed = ScriptedSource::with_records(reversed_records);
-    let request = ListRequest::default();
-    let a = ids(&list_scripted(&forward, &request).expect("list"));
-    let b = ids(&list_scripted(&reversed, &request).expect("list"));
-    let again = ids(&list_scripted(&forward, &request).expect("list"));
-    assert_eq!(a, b, "the order must not depend on the source's row order");
-    assert_eq!(a, again, "the order must be the same on every run");
-}
-
-#[test]
-fn limit_and_offset_select_the_page() {
-    let source = ScriptedSource::new(25);
-    let env = list_scripted(&source, &page(20, 10, Detail::Short)).expect("list");
-    assert_eq!(env.data.sessions.len(), 5);
-    let c = env.coverage.counts.as_ref().expect("counts");
-    assert_eq!((c.matched, c.offset, c.limit, c.shown), (25, 20, 10, 5));
-
-    let past_the_end = list_scripted(&source, &page(40, 10, Detail::Short)).expect("list");
-    assert!(past_the_end.data.sessions.is_empty());
-    assert_eq!(
-        past_the_end.coverage.counts.as_ref().expect("counts").shown,
-        0
-    );
-}
-
-#[test]
-fn pages_cover_every_session_once() {
-    let source = ScriptedSource::new(25);
-    let all = ids(&list_scripted(&source, &page(0, 100, Detail::Short)).expect("list"));
-    let mut paged = Vec::new();
-    for offset in (0..25).step_by(7) {
-        paged.extend(ids(&list_scripted(
-            &source,
-            &page(offset, 7, Detail::Short),
-        )
-        .expect("list")));
-    }
-    assert_eq!(
-        paged, all,
-        "consecutive pages must join up with no gap or repeat"
-    );
-}
-
-#[test]
-fn short_listing_makes_no_detail_reads() {
-    let source = ScriptedSource::new(10);
-    list_scripted(&source, &page(0, 10, Detail::Short)).expect("list");
-    assert!(source.detail_ids().is_empty(), "ls must not read details");
 }
 
 #[test]
@@ -100,85 +43,6 @@ fn long_listing_enriches_only_the_requested_page() {
         .map(|argv| argv[2].clone())
         .collect();
     assert_eq!(shown_ids, shown, "room-cli thread show only for the page");
-}
-
-#[test]
-fn at_most_four_detail_reads_run_at_once() {
-    let source = ScriptedSource::new(20).with_delay(Duration::from_millis(100));
-    list_scripted(&source, &page(0, 20, Detail::Long)).expect("list");
-    let max = source.max_in_flight.load(Ordering::SeqCst);
-    assert!(max >= 1, "details were read");
-    assert_eq!(MAX_CONCURRENT_DETAIL_READS, 4, "the approved limit");
-    assert!(max <= 4, "{max} detail reads ran at once");
-}
-
-#[test]
-fn the_budget_bounds_the_whole_run() {
-    // Five rounds of four reads at 200 ms each against a 300 ms budget
-    // (#1260: one fifth of the earlier 1 s and 1.5 s, the same overrun).
-    let source = ScriptedSource::new(20).with_delay(Duration::from_millis(200));
-    let budget = Duration::from_millis(300);
-    let started = Instant::now();
-    let env = list_scripted(
-        &source,
-        &ListRequest {
-            budget,
-            ..page(0, 20, Detail::Long)
-        },
-    )
-    .expect("honest partial list");
-    assert!(
-        started.elapsed() < budget + Duration::from_secs(1),
-        "took {:?}",
-        started.elapsed()
-    );
-    assert_eq!(env.coverage.state, Completeness::Partial);
-    assert_eq!(
-        env.data.sessions.len(),
-        20,
-        "unenriched rows are still listed"
-    );
-    assert!(
-        env.gaps
-            .iter()
-            .any(|g| g.kind == GapKind::BudgetExhausted || g.kind == GapKind::TimedOut),
-        "{:?}",
-        env.gaps
-    );
-    let unenriched = env
-        .data
-        .sessions
-        .iter()
-        .filter(|s| {
-            matches!(
-                s.reported_configuration.model,
-                openwiz_core::model::Fact::Unknown(_)
-            )
-        })
-        .count();
-    assert!(
-        unenriched > 0,
-        "rows not read in time have unknown configuration"
-    );
-}
-
-#[test]
-fn the_default_budget_is_thirty_seconds() {
-    assert_eq!(RUN_BUDGET, Duration::from_secs(30), "the approved budget");
-    let source = ScriptedSource::new(3);
-    let started = Instant::now();
-    list_scripted(&source, &page(0, 3, Detail::Long)).expect("list");
-    let finished = Instant::now();
-    let deadlines = source.deadlines.lock().unwrap().clone();
-    assert!(!deadlines.is_empty(), "every read gets a deadline");
-    for deadline in deadlines {
-        // The run's deadline is set between the start and the end of the call.
-        assert!(
-            deadline >= started + RUN_BUDGET && deadline <= finished + RUN_BUDGET,
-            "a read's deadline is {:?} after the start, not the 30-second run budget",
-            deadline.duration_since(started)
-        );
-    }
 }
 
 #[test]

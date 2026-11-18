@@ -25,18 +25,20 @@ import sys
 import tempfile
 import unittest
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / 'fixtures' / 'weekly'
-TL2_FIXTURE = HERE.parents[1] / 'tools/factory-metrics/fixtures/stage-waits'
+TL2_FIXTURE = PUBLIC_ROOT / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
+sys.path.insert(0, str(PUBLIC_ROOT))
 import sources  # noqa: E402
 import suite  # noqa: E402
 
 
 def module(name):
-    spec = importlib.util.spec_from_file_location(name, HERE / f'{name}.py')
+    spec = importlib.util.spec_from_file_location(name, (PUBLIC_ROOT if name == 'stage_waits' else HERE) / f'{name}.py')
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result
@@ -502,8 +504,8 @@ class Weekly(unittest.TestCase):
         sw = module('stage_waits')
         root = Path(tempfile.mkdtemp(prefix='wr7-'))
         self.addCleanup(shutil.rmtree, root)
-        doc = json.loads((TL2_FIXTURE / 'journeys.json').read_text(encoding='utf-8'))
-        side = json.loads((TL2_FIXTURE / 'stage-waits.json').read_text(encoding='utf-8'))
+        doc = json.loads((PUBLIC_ROOT / 'fixtures/stage-waits/journeys.json').read_text(encoding='utf-8'))
+        side = json.loads((PUBLIC_ROOT / 'fixtures/stage-waits/stage-waits.json').read_text(encoding='utf-8'))
         if edited_end is not None:
             event = next(e for t in doc['tickets'] if t['ticket'] == 4301 for e in t['events']
                          if e['kind'] == 'builder_start')

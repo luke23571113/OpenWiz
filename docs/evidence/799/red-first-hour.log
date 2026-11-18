@@ -1,0 +1,27 @@
+# #799 red run: test_no_record_tells_the_owner_about_an_engine on main 559d2a0 plus the new test only.
+# Command: python3 -I -B tools/install/tests/first-hour/test_journey.py InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine
+# Each AssertionError is cut to the engine phrase it matched (the full document is long and synthetic).
+
+FAIL: test_no_record_tells_the_owner_about_an_engine (__main__.InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine) [result]
+  File "<repo>/tools/install/tests/first-hour/test_journey.py", line 130, in test_no_record_tells_the_owner_about_an_engine
+AssertionError: Regex matched \bengine in: assertionerror: regex matched: 'engine' matches '\\bengine' in '{ | the engine stopped after cloudroom started the reviewer and before it | the release, install, setup, engine and onboarding are #1109\'s fixture journey: no installed c
+FAIL: test_no_record_tells_the_owner_about_an_engine (__main__.InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine) [repeat_approval]
+  File "<repo>/tools/install/tests/first-hour/test_journey.py", line 130, in test_no_record_tells_the_owner_about_an_engine
+AssertionError: Regex matched \bengine in: assertionerror: regex matched: 'engine' matches '\\bengine' in '{ | the release, install, setup, engine and onboarding are #1109\'s fixture journey: no installed c
+FAIL: test_no_record_tells_the_owner_about_an_engine (__main__.InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine) [process_restart]
+  File "<repo>/tools/install/tests/first-hour/test_journey.py", line 130, in test_no_record_tells_the_owner_about_an_engine
+AssertionError: Regex matched \bengine in: assertionerror: regex matched: 'engine' matches '\\bengine' in '{ | the engine stopped after cloudroom started the reviewer and before it | the release, install, setup, engine and onboarding are #1109\'s fixture journey: no installed c
+FAIL: test_no_record_tells_the_owner_about_an_engine (__main__.InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine) [revoked_access]
+  File "<repo>/tools/install/tests/first-hour/test_journey.py", line 130, in test_no_record_tells_the_owner_about_an_engine
+AssertionError: Regex matched \bengine in: assertionerror: regex matched: 'engine' matches '\\bengine' in '{ | the release, install, setup, engine and onboarding are #1109\'s fixture journey: no installed c
+FAIL: test_no_record_tells_the_owner_about_an_engine (__main__.InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine) [lost_reply]
+  File "<repo>/tools/install/tests/first-hour/test_journey.py", line 130, in test_no_record_tells_the_owner_about_an_engine
+AssertionError: Regex matched \bengine in: assertionerror: regex matched: 'engine' matches '\\bengine' in '{ | the release, install, setup, engine and onboarding are #1109\'s fixture journey: no installed c
+FAIL: test_no_record_tells_the_owner_about_an_engine (__main__.InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine) [update_rejected]
+  File "<repo>/tools/install/tests/first-hour/test_journey.py", line 130, in test_no_record_tells_the_owner_about_an_engine
+AssertionError: Regex matched \bengine in: assertionerror: regex matched: 'engine' matches '\\bengine' in '{ | the release, install, setup, engine and onboarding are #1109\'s fixture journey: no installed c
+FAIL: test_no_record_tells_the_owner_about_an_engine (__main__.InstalledFirstHour.test_no_record_tells_the_owner_about_an_engine) [setup_interrupted]
+  File "<repo>/tools/install/tests/first-hour/test_journey.py", line 130, in test_no_record_tells_the_owner_about_an_engine
+AssertionError: Regex matched \bengine in: assertionerror: regex matched: 'engine' matches '\\bengine' in '{ | the release, install, setup, engine and onboarding are #1109\'s fixture journey: no installed c
+Ran 1 test in 39.746s
+FAILED (failures=7)

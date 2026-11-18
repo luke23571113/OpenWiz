@@ -8,9 +8,11 @@ recomputed the way the build computes them. Needs `npm ci --ignore-scripts` in
 tools/war-room. No network, no live read.
 """
 from collections import Counter
+import contextlib
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -19,11 +21,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import xml.etree.ElementTree as ET
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(PUBLIC_ROOT))
 import health  # noqa: E402
 import history  # noqa: E402
 import main  # noqa: E402
@@ -595,10 +600,10 @@ class Charts(unittest.TestCase):
 
 # --- MT4 (#823): PRs an hour against the baseline, from a collector snapshot ------------
 
-COLLECTOR = HERE / 'fixtures' / 'collector'
+COLLECTOR = PUBLIC_ROOT / 'fixtures/collector'
 HEADLINE = 'body-ci-bench-headline'
 SNAPSHOT_AT = '2030-03-01T12:30:00Z'
-# ci-bench's synthetic baseline (tools/ci-bench/fixtures/baseline/README.md), worked there by hand:
+# ci-bench's synthetic baseline (its retired fixtures/baseline/README.md), worked there by hand:
 # 3 robots, 3 successful code runs, 970 s of robot time: 5.3889 robot-minutes a run and
 # 3 × 60 ÷ (970 ÷ 180) = 33.4021 PRs an hour of capacity; 4 PRs merged in 3 hours, 1.3333 an hour.
 # `bench.py chart` prints them as 33.40, 5.39 and 1.33 in bench.md (docs/evidence/823/ci-bench-parity.log).
@@ -765,6 +770,69 @@ class PrsPerHour(unittest.TestCase):
         start = html.index('id="figure-%s"' % HEADLINE)
         meta = html[html.index('<p class="meta">', start):html.index('</p>', html.index('<p class="meta">', start))]
         self.assertIn('prs per hour · no completed window read · coverage 0 of 4', meta)
+
+    def test_the_published_site_draws_it_from_the_gathered_snapshot(self):
+        # catches: a publish that gathers the collector snapshot but never hands it to the chart
+        # build, so the published site has no PRs-an-hour chart (MT13, #1049).
+        publish = load('war_room_publish', HERE / 'publish.py')
+        gathered = self.gather_chart_read('success')
+        root, selection = gathered / 'root', gathered / 'selection.json'
+        hist = self.tmp / 'published' / 'private' / 'history'
+        publish.tick(hist, SNAPSHOT_AT, publish.selection_reader(root, selection),
+                     publish.chart_builder(root, selection, SNAPSHOT_AT))
+        site = ''.join((publish.site_folder(hist) / name).read_text(encoding='utf-8') for name in publish.SITE.values())
+        self.assertIn('id="figure-%s"' % HEADLINE, site)
+        # The fixture's own numbers, as the first case reads them.
+        self.assertIn(page.esc('Window 2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC: capacity 15.00 PRs an hour'), site)
+
+    def gather_chart_read(self, outcome):
+        fixtures = load('mt13_gather_fixtures', HERE / 'test_gather.py')
+        case = fixtures.Gather()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        envelope = {'schema': 'openwiz.war-room.collector.read.v1', 'repository': REPO,
+                    'requested_at': '2030-03-01T12:00:00Z',
+                    'factory': {'prs_per_hour': snapshot()['factory']['prs_per_hour']}, 'ci': {}}
+        # Substitute only the read process. All gather, snapshot validation, chart and page
+        # code stays real; no network or live service is reached, including on the slow path.
+        script = ('import json, select, sys\n'
+                  + ('select.select([], [], [], 65)\n' if outcome == 'slow' else '')
+                  + ('sys.exit(1)\n' if outcome == 'failure' else 'print(%r)\n' % json.dumps(envelope)))
+        real = subprocess.Popen
+
+        def fake_read(args, *a, **kw):
+            if len(args) > 2 and args[2] == str(PUBLIC_ROOT / 'collect_factory.py'):
+                args = [sys.executable, '-I', '-c', script]
+            return real(args, *a, **kw)
+
+        log = io.StringIO()
+        with mock.patch.object(subprocess, 'Popen', side_effect=fake_read), contextlib.redirect_stderr(log):
+            case.gather()
+        self.assertRegex(log.getvalue(), r'^war-room PRs-per-hour read: [0-9]+\.[0-9]{3} seconds\n$')
+        return case.tmp / 'out'
+
+    def test_a_slow_snapshot_read_times_out_and_the_page_carries_on_unknown(self):
+        # catches: a collector read allowed to finish after 60 seconds, stalling the publish
+        # and turning an unread window into measured throughput instead of Unknown.
+        self.assert_unknown_publish(self.gather_chart_read('slow'))
+
+    def test_a_failed_snapshot_read_keeps_the_page_unknown(self):
+        # catches: a failed collector aborting the publish or being rendered as zero PRs an hour.
+        self.assert_unknown_publish(self.gather_chart_read('failure'))
+
+    def assert_unknown_publish(self, gathered):
+        doc = json.loads((gathered / 'snapshot.json').read_text())
+        fact = doc['factory']['prs_per_hour']
+        self.assertEqual(fact['state'], 'unavailable')
+        self.assertIsNone(fact['value'])
+        selection = gathered / 'selection.json'
+        hist = gathered / 'history'
+        publish.tick(hist, SNAPSHOT_AT, publish.selection_reader(gathered / 'root', selection),
+                     publish.chart_builder(gathered / 'root', selection, SNAPSHOT_AT))
+        html = ''.join((publish.site_folder(hist) / name).read_text() for name in publish.SITE.values())
+        self.assertIn('Window: capacity Unknown', html)
+        self.assertIn('Window: merged into main Unknown', html)
+        self.assertNotIn('Window: capacity 0.00', html)
 
 
 if __name__ == '__main__':

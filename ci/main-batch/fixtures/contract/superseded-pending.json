@@ -191,21 +191,6 @@
         "head": "3333333333333333333333333333333333333333",
         "pull_request": null
       }
-    },
-    {
-      "lane": "prerequisite:toolkit",
-      "tests": [],
-      "plan_sha256": "8346be77d6a20371d060007d61a139e1ac32c04816577b369c4e008781a9196b",
-      "run": {
-        "id": 9000100,
-        "attempt": 1,
-        "event": "push",
-        "action": null,
-        "base_branch": "main",
-        "base": "2222222222222222222222222222222222222222",
-        "head": "3333333333333333333333333333333333333333",
-        "pull_request": null
-      }
     }
   ],
   "outcomes": [
@@ -247,10 +232,6 @@
     },
     {
       "name": "build:web_export",
-      "result": "success"
-    },
-    {
-      "name": "prerequisite:toolkit",
       "result": "success"
     }
   ],

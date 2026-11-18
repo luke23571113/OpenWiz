@@ -161,7 +161,7 @@ job; a fabricated matching hash or assertion proves nothing by itself.
 
 ## Shared experiment and CF4 references
 
-Use [EB5's experiment contract](../../factory-metrics/experiment-contract.md)
+Use [EB5's experiment contract](../../collector/experiment-contract.md)
 unchanged. There is no second experiment schema, stage store, assignment record
 or evaluator. The precheck's `experiment` is a reference only:
 `{tag, experiment_hash, arm, cf4_refs}`. Tag + bound repository + canonical
@@ -195,7 +195,7 @@ report bodies starting with `VERDICT:` followed by `Full review by` / `Re-check`
 They are not independent findings, verdicts or review rounds and cannot be fed
 into those arrays as independent observations. Mentioning a report token in a
 technical summary grants no verdict or round status. Consumers keep
-them separate under the [journey contract](../../factory-metrics/journey-contract.md),
+them separate under the [journey contract](../../collector/journey-contract.md),
 including its outcome sidecar's helper/round separation. No independent round
 count or approval field is supplied by this result.
 

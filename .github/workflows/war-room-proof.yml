@@ -1,0 +1,84 @@
+name: War room proof
+
+# The War room's proofs on pull requests (#827), moved out of war-room.yml, which publishes
+# privately and is switched off here. Tests only: it reads the code and publishes nothing.
+
+on:
+  pull_request:
+    paths:
+      - 'tools/war-room/**'
+      - 'tools/collector/**'
+      - 'tools/privacy-check/**'
+      - 'tools/stall-alarm/**'
+      - 'tools/skills-eval/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/privacy.yml'
+      - '.github/workflows/war-room-proof.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    # Pull requests only: publish.sh runs the same tests before it publishes, so a dispatched or
+    # scheduled run is one job, one billed minute.
+    if: github.event_name == 'pull_request'
+    # GitHub-hosted on purpose, never vars.CI_RUNS_ON: the charge shows in GitHub's own billing.
+    runs-on: ubuntu-24.04
+    # #827: about 6 minutes measured on a runner with the CI bench workflow's tests; twice that.
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python
+        run: sh tools/collector/python.sh
+      - name: Node for the chart build (WRD2)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: The locked chart build (WRD2; build only)
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/war-room
+      - name: The War room publish and gather tests
+        run: |
+          python3 -I tools/war-room/test_publish.py
+          python3 -I tools/war-room/test_gather.py
+          python3 -I tools/collector/test_collect_ci.py
+          python3 -I tools/collector/test_collect_factory.py
+          python3 -B -I tools/stall-alarm/test.py
+          python3 -I tools/war-room/budgets.py check
+          python3 -I tools/war-room/test_budgets.py
+      - name: The War room health and v2 history proofs (WRD1)
+        # Runs even when an earlier step failed, so the health proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_health.py
+      - name: The War room chart proofs (WRD2)
+        # Runs even when an earlier step failed, so the chart proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_charts.py
+      - name: The War room v3 page proofs (WRD3)
+        # Runs even when an earlier step failed, so the page proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_page_design.py
+      - name: The War room private HTML serving proofs (WRD4, synthetic)
+        # Runs even when an earlier step failed, so the serving proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_web.py
+      - name: The War room six-page site proofs (WRD5, synthetic)
+        # Runs even when an earlier step failed, so the site proofs always report.
+        if: ${{ !cancelled() }}
+        run: python3 -I tools/war-room/test_site.py
+      - name: The War room tests the CI bench workflow ran, and its moved tests (#827)
+        # Runs even when an earlier step failed, so these proofs always report.
+        if: ${{ !cancelled() }}
+        run: |
+          python3 -I tools/collector/ci3.py check-steps
+          python3 -I tools/collector/test_contract.py
+          python3 -I tools/collector/test_activity.py
+          python3 -I tools/war-room/test_rework.py
+          python3 -I tools/war-room/test_review_loops.py
+          python3 -I tools/collector/test_ci3.py
+          python3 -I tools/collector/test_metrics.py
+          python3 -I tools/collector/test_journey.py
+          python3 -I tools/collector/test_limits.py
+          python3 -I tools/collector/test_experiment_contract.py

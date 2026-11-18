@@ -52,7 +52,17 @@ class Init(unittest.TestCase):
         shutil.copy(HERE / 'fake_gh.py', self.bin / 'gh')
         os.chmod(self.bin / 'gh', 0o700)
         self.world_file = self.base / 'world.json'
-        self.state = self.base / 'state'
+        # This suite owns provider reconciliation, not power-loss durability.
+        # Hundreds of real journal fsyncs otherwise inherit the host disk's
+        # unrelated flush queue and can exhaust a CLI subprocess's budget.
+        # Keep real files, locks, fsync and process reloads on Linux tmpfs;
+        # keep executable fakes in base (tmpfs may be mounted noexec).
+        memory = Path('/dev/shm')
+        self.state_root = Path(tempfile.mkdtemp(
+            prefix='openwiz-init-state-',
+            dir=memory if sys.platform == 'linux' and memory.is_dir() else None))
+        self.addCleanup(shutil.rmtree, self.state_root, ignore_errors=True)
+        self.state = self.state_root / 'state'
         self.world({CODE.lower(): repository(CODE, 'private')})
 
     def tearDown(self):

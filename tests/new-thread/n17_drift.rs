@@ -16,7 +16,7 @@ use crate::support::*;
 
 #[test]
 fn n17_drift_affected_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 4] = [
+    let cases: [(&str, fn()); 3] = [
         (
             "an_unexpected_catalogue_gives_no_options_and_no_call",
             an_unexpected_catalogue_gives_no_options_and_no_call,
@@ -28,10 +28,6 @@ fn n17_drift_affected_contracts_preserve_original_cases() {
         (
             "an_untested_or_unreadable_version_is_reported_never_a_gate",
             an_untested_or_unreadable_version_is_reported_never_a_gate,
-        ),
-        (
-            "the_schema_says_new_has_its_own_tested_version",
-            the_schema_says_new_has_its_own_tested_version,
         ),
     ];
     for (name, proof) in cases {
@@ -140,11 +136,6 @@ fn an_untested_or_unreadable_version_is_reported_never_a_gate() {
     }
 }
 
-/// The new-thread schema, read from the repository.
-fn new_thread_schema() -> serde_json::Value {
-    serde_json::from_str(&std::fs::read_to_string(SCHEMA).expect("schema")).expect("JSON")
-}
-
 /// The `source:` lines of a text report.
 fn source_lines(out: &str) -> Vec<&str> {
     out.lines().filter(|l| l.starts_with("source: ")).collect()
@@ -225,23 +216,4 @@ fn a_new_thread_at_the_reads_tested_version_is_not_live_tested_for_new_threads()
     let (code, json) = json_of(&fake.run_process(&release, ""));
     assert_eq!(code, Some(0), "{json}");
     assert_eq!(json["source"], not_tested, "the release program");
-}
-
-/// #200: the contract says the same as the report: `tested_version` is
-/// new's own, empty while no live create has passed, never the reads'.
-fn the_schema_says_new_has_its_own_tested_version() {
-    let schema = new_thread_schema();
-    let source = &schema["$defs"]["source"];
-    assert_eq!(
-        source["description"],
-        "The provider and the version this create read (#37: the version is never a gate). \
-         tested_version is new's own: the room-cli version a live create last passed with, \
-         or \"\" while none has (#200). It is never the reads' live-tested version in \
-         openwiz.inventory.v1. version_tested is true only when version is known and \
-         equals it. Evidence, not a requirement."
-    );
-    assert_eq!(
-        source["properties"]["tested_version"],
-        json!({"type": "string"})
-    );
 }

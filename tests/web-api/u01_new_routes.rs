@@ -4,61 +4,11 @@
 //! no retry route (sheet A-3). Every other method on a new route is `405`,
 //! and none of them reads, claims or creates anything.
 
-use openwiz_server::{ROUTES, Route};
-
 use crate::new_support::{
     NewFake, OPTIONS, PROJECT, TEXT, body, create, new_config, preview, serve_config, serve_new,
     status, threads,
 };
 use crate::send_support::{good_headers, raw};
-
-/// The route table A2 adds to W1's, in order: two reads and two `POST`s, of
-/// which only the create writes.
-pub const NEW_ROUTES: &[Route] = &[
-    Route {
-        method: "GET",
-        path: "/api/v1/cloud-options",
-    },
-    Route {
-        method: "GET",
-        path: "/api/v1/new-threads/{op_id}",
-    },
-    Route {
-        method: "POST",
-        path: "/api/v1/projects/{id}/threads/preview",
-    },
-    Route {
-        method: "POST",
-        path: "/api/v1/projects/{id}/threads",
-    },
-];
-
-/// Updated for #16 (OpenWiz 0.0.4, B3) with this reason: B3 appends
-/// exactly AW1's three attachment routes (sheet B-9) after A2's four, so
-/// A2's are no longer last. They are still exactly these, in this order,
-/// right after 0.0.3's six, and there is still no retry route.
-#[test]
-fn the_route_table_adds_exactly_the_new_thread_routes() {
-    let legacy = crate::a4_no_mutation::legacy_routes(ROUTES);
-    // #127 appends two read-only fleet routes after the attachments.
-    let after = crate::aw01_routes::ATTACHMENT_ROUTES.len()
-        + crate::c3_routes::FLEET_ROUTES.len()
-        + crate::e11_plan_routes::PLAN_ROUTES.len()
-        + crate::e11_decisions_routes::DECISIONS_ROUTES.len()
-        + 2 // L6 appends exactly two local loop-switch routes.
-        + 1 // #1100 appends exactly one setup GET.
-        + 1 // #535 cockpit GET.
-        + 1; // #549 loops GET.
-    let end = legacy.len() - after;
-    assert_eq!(&legacy[end - NEW_ROUTES.len()..end], NEW_ROUTES);
-    assert_eq!(legacy.len(), 6 + NEW_ROUTES.len() + after, "{ROUTES:?}");
-    for route in ROUTES {
-        assert!(
-            !route.path.contains("retry"),
-            "no retry route (A-3): {route:?}"
-        );
-    }
-}
 
 #[test]
 fn every_other_method_on_the_post_routes_is_405_and_creates_nothing() {

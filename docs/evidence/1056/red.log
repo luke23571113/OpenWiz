@@ -1,0 +1,103 @@
+test_a_contract_link_keeps_its_file_public (__main__.SplitChecker.test_a_contract_link_keeps_its_file_public) ... FAIL
+test_a_loop_path_keeps_its_file_public (__main__.SplitChecker.test_a_loop_path_keeps_its_file_public) ... FAIL
+test_a_native_load_keeps_its_file_public (__main__.SplitChecker.test_a_native_load_keeps_its_file_public) ... FAIL
+test_a_tree_with_no_public_reference_moves_everything (__main__.SplitChecker.test_a_tree_with_no_public_reference_moves_everything) ... FAIL
+test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not (__main__.SplitChecker.test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not) ... FAIL
+test_an_import_keeps_its_module_public (__main__.SplitChecker.test_an_import_keeps_its_module_public) ... FAIL
+test_an_unresolvable_dynamic_load_refuses_with_its_location (__main__.SplitChecker.test_an_unresolvable_dynamic_load_refuses_with_its_location) ... FAIL
+test_files_reached_from_a_staying_file_stay_too (__main__.SplitChecker.test_files_reached_from_a_staying_file_stay_too) ... FAIL
+
+======================================================================
+FAIL: test_a_contract_link_keeps_its_file_public (__main__.SplitChecker.test_a_contract_link_keeps_its_file_public)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 88, in test_a_contract_link_keeps_its_file_public
+    self.assertEqual(stay, {'tools/war-room/review_loops.py': 'contracts/review.v1.md:3 contract link'})
+AssertionError: {} != {'tools/war-room/review_loops.py': 'contracts/review.v1.md:3 contract link'}
+- {}
++ {'tools/war-room/review_loops.py': 'contracts/review.v1.md:3 contract link'}
+
+======================================================================
+FAIL: test_a_loop_path_keeps_its_file_public (__main__.SplitChecker.test_a_loop_path_keeps_its_file_public)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 82, in test_a_loop_path_keeps_its_file_public
+    self.assertEqual(stay, {'tools/war-room/ci3_check.py': 'loops/weekly.json:3 loop path'})
+AssertionError: {} != {'tools/war-room/ci3_check.py': 'loops/weekly.json:3 loop path'}
+- {}
++ {'tools/war-room/ci3_check.py': 'loops/weekly.json:3 loop path'}
+
+======================================================================
+FAIL: test_a_native_load_keeps_its_file_public (__main__.SplitChecker.test_a_native_load_keeps_its_file_public)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 66, in test_a_native_load_keeps_its_file_public
+    self.assertEqual(stay, {
+AssertionError: {} != {'tools/war-room/experiment_contract.py': [132 chars]oad'}
+- {}
++ {'tools/war-room/experiment_contract.py': 'tools/skills-eval/replay/score.py:5 '
++                                           'native load',
++  'tools/war-room/weights.py': 'tools/skills-eval/promotions/promote.py:14 '
++                               'native load'}
+
+======================================================================
+FAIL: test_a_tree_with_no_public_reference_moves_everything (__main__.SplitChecker.test_a_tree_with_no_public_reference_moves_everything)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 117, in test_a_tree_with_no_public_reference_moves_everything
+    self.assertEqual(move, ['tools/war-room/history.py', 'tools/war-room/page.py',
+AssertionError: Lists differ: [] != ['tools/war-room/history.py', 'tools/war-r[39 chars].py']
+
+Second list contains 3 additional elements.
+First extra element 0:
+'tools/war-room/history.py'
+
+- []
++ ['tools/war-room/history.py',
++  'tools/war-room/page.py',
++  'tools/war-room/test_page.py']
+
+======================================================================
+FAIL: test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not (__main__.SplitChecker.test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 76, in test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not
+    self.assertEqual(stay, {'tools/war-room/python.sh': '.github/workflows/board.yml:8 workflow path'})
+AssertionError: {} != {'tools/war-room/python.sh': '.github/workflows/board.yml:8 workflow path'}
+- {}
++ {'tools/war-room/python.sh': '.github/workflows/board.yml:8 workflow path'}
+
+======================================================================
+FAIL: test_an_import_keeps_its_module_public (__main__.SplitChecker.test_an_import_keeps_its_module_public)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 59, in test_an_import_keeps_its_module_public
+    self.assertEqual(stay, {'tools/war-room/collector.py': 'tools/stall-alarm/alarm.py:5 import'})
+AssertionError: {} != {'tools/war-room/collector.py': 'tools/stall-alarm/alarm.py:5 import'}
+- {}
++ {'tools/war-room/collector.py': 'tools/stall-alarm/alarm.py:5 import'}
+
+======================================================================
+FAIL: test_an_unresolvable_dynamic_load_refuses_with_its_location (__main__.SplitChecker.test_an_unresolvable_dynamic_load_refuses_with_its_location)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 107, in test_an_unresolvable_dynamic_load_refuses_with_its_location
+    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_files_reached_from_a_staying_file_stay_too (__main__.SplitChecker.test_files_reached_from_a_staying_file_stay_too)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "ci/wizroom/test_split.py", line 95, in test_files_reached_from_a_staying_file_stay_too
+    self.assertEqual(stay, {
+AssertionError: {} != {'tools/war-room/collector_read.py': 'tool[183 chars]ath'}
+- {}
++ {'tools/war-room/collector_read.py': 'tools/ci-overload/supply.py:5 import',
++  'tools/war-room/limits.conf': 'tools/war-room/collector_read.py:5 script path',
++  'tools/war-room/sources.py': 'tools/war-room/collector_read.py:3 import'}
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.175s
+
+FAILED (failures=8)

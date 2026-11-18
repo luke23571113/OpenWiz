@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 
@@ -27,9 +28,9 @@ def _module(name, path):
     return result
 
 
-S = _module('wr4_suite', HERE / 'suite.py')
-J = _module('wr4_journey', HERE.parent / 'factory-metrics/journey.py')
-B = _module('wr4_ci', HERE / 'bench_reads.py')
+S = _module('wr4_suite', PUBLIC_ROOT / 'suite.py')
+J = _module('wr4_journey', PUBLIC_ROOT / 'journey.py')
+B = _module('wr4_ci', PUBLIC_ROOT / 'bench_reads.py')
 COMPONENTS = ('models', 'shared_parent', 'helpers', 'sandbox', 'ci')
 require = S.require
 

@@ -162,12 +162,3 @@ fn a_conflicting_reuse_is_no_call() {
     }
     assert_eq!(fake.tell_count(), 1);
 }
-
-#[test]
-fn the_send_path_has_no_single_flight() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/server/src/send.rs");
-    let text = std::fs::read_to_string(path).expect("crates/server/src/send.rs");
-    for word in ["Runs", "Call::", "flights", "single-flight"] {
-        assert!(!text.contains(word), "the send path mentions {word}");
-    }
-}

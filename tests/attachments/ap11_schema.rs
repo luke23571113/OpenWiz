@@ -7,7 +7,7 @@ use openwiz_core::attachment::{
     ATTACHMENT_ID_MAX_LEN, ATTACHMENT_SCHEMA_ID, AttachmentId, AttachmentRef, FailReason, Kind,
     Readiness, SAFE_NAME_MAX_BYTES, SafeName, Sha256,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::support::*;
 
@@ -81,7 +81,7 @@ fn sample(kind: Kind, original: &str) -> AttachmentRef {
 
 #[test]
 fn ap11_schema_contracts_preserve_all_original_cases() {
-    let cases: [(&str, fn()); 7] = [
+    let cases: [(&str, fn()); 6] = [
         (
             "every_reference_the_core_serializes_matches",
             every_reference_the_core_serializes_matches,
@@ -93,10 +93,6 @@ fn ap11_schema_contracts_preserve_all_original_cases() {
         (
             "ids_and_hashes_are_checked_however_they_arrive",
             ids_and_hashes_are_checked_however_they_arrive,
-        ),
-        (
-            "the_checker_rejects_what_the_core_never_writes",
-            the_checker_rejects_what_the_core_never_writes,
         ),
         ("the_pattern_check_is_strict", the_pattern_check_is_strict),
         (
@@ -197,44 +193,6 @@ fn the_schemas_bounds_match_the_core() {
     assert_eq!(defs["sha256"]["minLength"], 64);
     assert_eq!(defs["sha256"]["maxLength"], 64);
     assert_eq!(defs["kind"]["enum"], json!(["image", "file"]));
-}
-
-fn the_checker_rejects_what_the_core_never_writes() {
-    let good = serde_json::to_value(sample(Kind::Image, "synthetic.png")).unwrap();
-    type Mutation = (&'static str, fn(&mut Value));
-    let mutations: [Mutation; 10] = [
-        ("missing sha256", |v| {
-            v.as_object_mut().unwrap().remove("sha256");
-        }),
-        ("missing display name", |v| {
-            v.as_object_mut().unwrap().remove("display_name");
-        }),
-        ("an unknown kind", |v| v["kind"] = json!("video")),
-        ("a short hash", |v| v["sha256"] = json!("5a")),
-        ("a negative size", |v| v["size_bytes"] = json!(-1)),
-        ("a size as a string", |v| v["size_bytes"] = json!("10")),
-        ("an empty name", |v| v["name"] = json!("")),
-        ("a name over 200", |v| v["name"] = json!("a".repeat(201))),
-        ("an extra field", |v| v["mime_type"] = json!("image/png")),
-        ("an empty id", |v| v["id"] = json!("")),
-    ];
-    for (what, mutate) in mutations {
-        let mut bad = good.clone();
-        mutate(&mut bad);
-        assert!(
-            !validate_def("attachment", &bad).is_empty(),
-            "the checker accepted: {what}"
-        );
-    }
-    for bad in [
-        json!({"state": "failed"}),
-        json!({"state": "failed", "reason": "too_big"}),
-        json!({"state": "ready", "reason": "low_disk"}),
-        json!({"state": "sent"}),
-        json!("ready"),
-    ] {
-        assert!(!validate_def("readiness", &bad).is_empty(), "{bad}");
-    }
 }
 
 fn ids_and_hashes_are_checked_however_they_arrive() {

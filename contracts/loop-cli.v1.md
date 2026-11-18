@@ -116,6 +116,7 @@ OpenWiz's own codes:
 | `export-exists` | `file` | `<path> already exists with other bytes; nothing was written for this loop` |
 | `apply-id-mismatch` | `id` | `the file's id is <file id>, not <id>` |
 | `loop-started-thread` | `file` | `apply runs only from an ordinary thread or a terminal, never a thread a loop started` |
+| `apply-unmapped` | `file` | `Cloudroom loop <loop> carries settings the adapter does not map (<keys>), and nothing shows that a write keeps them; nothing was written` |
 
 **`not_built`** (LC1): `{"schema": "openwiz.loop-not-built.v1",
 "command": "<validate|export|plan|apply>", "exit_code": 5, "status":
@@ -137,9 +138,14 @@ the project in `loop list` order: `loop` (the Cloudroom id), `id` (the
 file's id, or null when refused before one exists), `result` (`written`,
 `unchanged` when identical files already exist, or `refused`), `files` (the
 paths written or found unchanged, relative to `out`), `binding` (for an
-unmarked loop, `{"id", "loop"}`, the `--adopt` it needs; otherwise null)
-and `refusals`. Export never writes a webhook address or a secret's value:
-`loop list` holds neither, and only `list`'s mapped keys reach a file.
+unmarked loop, `{"id", "loop"}`, the `--adopt` it needs; otherwise null),
+`refusals`, and `unmapped`: each key of the loop's `list` item that the
+adapter rules do not name (`agent.<key>` inside the agent), in byte order,
+as a recorded gap. A loop with an unmapped key is still written and
+flagged, never refused or skipped; its file does not carry that key, and a
+text run says so in one line. Export never writes a webhook address or a
+secret's value: `loop list` holds neither, and only `list`'s mapped keys
+reach a file.
 
 **`plan_report`**: `project`, and `items`, one per loop file in the order
 read: `file`, `id`, `action` (`create`, `update`, `none` or `refused`),
@@ -169,6 +175,20 @@ loop of the project with no marker and no binding) and `orphans`
 - `webhook_address` appears only for a created webhook loop: `create`'s
   address, passed to the caller this once. Apply writes it to no file, plan
   or log.
+- A loop whose `list` item carries a key the adapter rules do not name
+  (export's `unmapped`) is `refused` with `apply-unmapped` before any write
+  to it: `update` passes only mapped flags, and nothing shows that Cloudroom
+  keeps the rest. Apply never drops such a setting.
+- The read-back of a loop created from an `in` file checks its run time
+  against the delay: it must fall within the delay after the clock just
+  before the first write and just after the last, read to the whole second.
+  Outside that window it is a `trigger` difference (`different`); a run time
+  that cannot be read is `unknown`.
+- `loop-started-thread` is unreachable until Cloudroom exposes a signal
+  for a thread a loop started (follow-up
+  https://github.com/openwizdev/OpenWiz/issues/1068). Apply never matches
+  Cloudroom's wording: a refusal there is `failed`, with Cloudroom's message
+  unchanged under code `room-cli`, and nothing half-done.
 
 ## Exit codes
 
@@ -177,9 +197,9 @@ The values are [cli.v1.md](cli.v1.md#fixed-exits-and-existing-results)'s.
 | Exit | `validate` | `export` | `plan` | `apply` |
 | --- | --- | --- | --- | --- |
 | 0 | every file valid | every loop written or unchanged | printed, no refusal (differences are fine) | `created`, `updated` or `unchanged` |
-| 1 | a path unreadable; output failed | `loop list` failed; output failed | a path unreadable; `loop list` failed; output failed | a read before any write failed; output failed |
+| 1 | a path unreadable; output failed | `loop list` failed; output failed; or the platform has no safe check-write route | a path unreadable; `loop list` failed; output failed | a read before any write failed; output failed |
 | 2 | usage | usage | usage | usage |
-| 5 | a file or folder refused; `not_built` | a loop refused (the others are still written); `not_built` | a file refused (the others are still planned); `not_built` | `refused`, `failed` or `different`; `not_built` |
+| 5 | a file or folder refused | a loop refused (the others are still written) | a file refused (the others are still planned) | `refused`, `failed` or `different`; `not_built` |
 | 6 | | | | `unknown` |
 
 ## `room-cli loop` command forms

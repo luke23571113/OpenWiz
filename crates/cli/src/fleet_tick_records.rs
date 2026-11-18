@@ -678,13 +678,6 @@ pub fn contains_thread_id(text: &str) -> bool {
     })
 }
 
-pub fn fallback_record(_builder: &NonEmpty, branch: &NonEmpty) -> String {
-    format!(
-        "launch-fleet: builder fallback due, branch {}",
-        branch.as_str()
-    )
-}
-
 pub fn fallback_due(comments: &[Comment]) -> bool {
     // Even a malformed claim cannot establish that no fallback was consumed.
     lines(comments).any(|l| l.starts_with("launch-fleet: builder fallback due,"))

@@ -1,0 +1,16 @@
+FAIL install: no approval case and no not-applicable reason
+FAIL build-ticket: docs/grills/ is not in the snapshot
+FAIL grill: docs/grills/README.md is not in the snapshot
+FAIL grill: docs/grills/2026-10-30-fleets-0.0.5.md is not in the snapshot
+FAIL handoff: private/orchestration/HANDOFF.md is not in the snapshot
+FAIL handoff: private/orchestration/ is not in the snapshot
+FAIL hill-climb: docs/grills/2026-11-01-skill-hill-climb.md is not in the snapshot
+FAIL install: SKILL.md names skills/launch-fleet/SKILL.md, which the map does not classify
+FAIL launch-fleet: private/orchestration/ is not in the snapshot
+FAIL onboard: SKILL.md names README.md, which the map does not classify
+FAIL onboard: SKILL.md names skills/install/SKILL.md, which the map does not classify
+FAIL plan-graph: private/orchestration/grant-audit.md is not in the snapshot
+FAIL setup: docs/grills/ is not in the snapshot
+FAIL setup: private/orchestration/ is not in the snapshot
+FAIL wayfind: docs/grills/ is not in the snapshot
+FAIL: 89 cases, 15 problems

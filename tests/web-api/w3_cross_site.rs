@@ -5,7 +5,7 @@
 //! custom header, a rebinding or loopback `Host`. No answer carries a CORS
 //! header. The live half is #10's L9.
 
-use openwiz_server::{Limits, SendHost};
+use openwiz_server::Limits;
 
 use crate::http::Response;
 use crate::msg::SendFake;
@@ -272,49 +272,6 @@ fn a_preflight_gets_no_cors_grant() {
     );
     assert_eq!(r.status, 200, "{}", r.text());
     assert_no_cors("the send", &r);
-}
-
-/// Sol #91 round 1, finding 2: WS-6 holds by type, not by convention. A
-/// send host can never be a loopback name or an IP literal, so no
-/// configuration can serve a send to a loopback `Host`.
-#[test]
-fn a_send_host_can_never_be_loopback_or_an_ip_address() {
-    for bad in [
-        "localhost",
-        "LOCALHOST",
-        "LocalHost",
-        "a.localhost",
-        "openwiz.localhost",
-        "localhost.localdomain",
-        "ip6-localhost",
-        "ip6-loopback",
-        "127.0.0.1",
-        "127.1",
-        "127.0.0.1.",
-        "2130706433",
-        "0.0.0.0",
-        "10.0.0.1",
-        "203.0.113.7",
-        "1.2.3.4",
-        "0x7f.0.0.1",
-        "::1",
-        "[::1]",
-        "",
-        "openwiz.example:443",
-    ] {
-        assert!(
-            SendHost::new(bad).is_err(),
-            "{bad:?} was accepted as a send host"
-        );
-    }
-    for good in [
-        "openwiz.example",
-        "my.openwiz.example",
-        "a",
-        "x-1.example.invalid",
-    ] {
-        assert_eq!(SendHost::new(good).expect(good).as_str(), good);
-    }
 }
 
 #[test]

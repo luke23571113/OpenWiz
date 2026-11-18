@@ -280,10 +280,6 @@ fn no_product_source_spells_an_excluded_flag_or_another_write() {
         .join("crates/service/src/document.rs")
         .canonicalize()
         .unwrap();
-    let terminal_actions = Path::new(ROOT)
-        .join(TERMINAL_ACTIONS)
-        .canonicalize()
-        .unwrap();
     // `spawn`'s own flags, only inside `ThreadSpawn`'s argv in the allowlist.
     let spawn_arm = |text: &str| {
         text.split("Self::ThreadSpawn(")
@@ -306,7 +302,20 @@ fn no_product_source_spells_an_excluded_flag_or_another_write() {
         let canonical = path.canonicalize().unwrap();
         for flag in EXCLUDED {
             let literal = format!("\"{flag}\"");
-            if canonical == allowlist && matches!(*flag, "--model" | "--reasoning-level") {
+            // #792 (J109, orchestrator ruling on #792): `--model` also once in
+            // each of the two loop write arms, and nowhere else.
+            if canonical == allowlist && *flag == "--model" {
+                assert!(
+                    loop_write_arms_only(&canonical, &allowlist, &text, flag),
+                    "{literal} outside ThreadSpawn and the two loop write arms"
+                );
+                assert!(
+                    spawn_arm(&text).contains(&literal),
+                    "{literal} outside ThreadSpawn"
+                );
+                continue;
+            }
+            if canonical == allowlist && *flag == "--reasoning-level" {
                 assert_eq!(text.matches(&literal).count(), 1, "{literal} once");
                 assert!(
                     spawn_arm(&text).contains(&literal),
@@ -334,6 +343,15 @@ fn no_product_source_spells_an_excluded_flag_or_another_write() {
         }
         for word in MUTATING {
             let literal = format!("\"{word}\"");
+            // #792 (J109): `loop create` and `loop update`, once each, only
+            // inside their own argv arms in the allowlist.
+            if matches!(*word, "create" | "update") && canonical == allowlist {
+                assert!(
+                    loop_write_arms_only(&canonical, &allowlist, &text, word),
+                    "{word} outside its loop write arm"
+                );
+                continue;
+            }
             if *word == "update" {
                 assert!(
                     service_update_fields_only(&canonical, &service_reader, &text),
@@ -367,11 +385,6 @@ fn no_product_source_spells_an_excluded_flag_or_another_write() {
                 continue;
             }
             if *word == "send" && path.starts_with(Path::new(ROOT).join("crates/cli")) {
-                continue;
-            }
-            // #1098 (orchestrator ruling): the Send action's capability id,
-            // once, in the terminal's action seam, and nowhere else there.
-            if *word == "send" && canonical == terminal_actions && send_capability_id_only(&text) {
                 continue;
             }
             if *word == "spawn" && canonical == allowlist {
@@ -454,47 +467,100 @@ fn service_update_exception_never_allows_a_command_or_another_file() {
     ));
 }
 
-/// #1098's one terminal exception (as in p08a): the action seam may spell
-/// `"send"` exactly once, as `ActionId::Send`'s capability id.
-const TERMINAL_ACTIONS: &str = "crates/terminal/src/actions/mod.rs";
-
-fn send_capability_id_only(text: &str) -> bool {
-    text.matches("\"send\"").count() == 1 && text.contains("ActionId::Send => \"send\",")
+// #792 (J109): the two loop write arms of the allowlist's argv, each from
+// its own `Self::Loop…(a) => {` to that arm's closing brace.
+fn loop_write_arm(text: &str, variant: &str) -> String {
+    let header = format!("            Self::{variant}(a) => {{\n");
+    text.split(&header)
+        .nth(1)
+        .and_then(|rest| rest.split("\n            }\n").next())
+        .unwrap_or_default()
+        .to_owned()
 }
-
-#[test]
-fn m12_the_terminal_send_exception_refuses_any_widening() {
-    let actions = fs::read_to_string(Path::new(ROOT).join(TERMINAL_ACTIONS)).unwrap();
-    assert!(send_capability_id_only(&actions));
-    // A second literal anywhere, or the literal outside the capability arm.
-    for widened in [
-        format!("{actions}\nconst X: &str = \"send\";\n"),
-        actions.replace(
-            "ActionId::Send => \"send\",",
-            "ActionId::Send => \"send\",\n            ActionId::Answer => \"send\",",
-        ),
-        actions.replace(
-            "ActionId::Send => \"send\",",
-            "ActionId::Send => \"message\",",
-        ) + "\nconst X: &str = \"send\";\n",
-    ] {
-        assert_ne!(widened, actions);
-        assert!(!send_capability_id_only(&widened), "{widened}");
-    }
-    // The exception is that file and that word only: every other terminal
-    // source spells no mutating word, and the seam spells no other one.
-    let mut files = Vec::new();
-    rust_files(&Path::new(ROOT).join("crates/terminal"), &mut files);
-    assert!(!files.is_empty());
-    for path in files {
-        let text = fs::read_to_string(&path).unwrap();
-        for word in MUTATING {
-            let literal = format!("\"{word}\"");
-            if *word == "send" && path.ends_with("actions/mod.rs") {
-                continue;
+// `create`, `update` and `--model` only where the allowlist builds the two
+// loop writes: each subcommand once, opening its own arm; `--model` once in
+// each loop arm and once in `ThreadSpawn`, so three times in the file.
+fn loop_write_arms_only(path: &Path, allowlist: &Path, text: &str, word: &str) -> bool {
+    let literal = format!("\"{word}\"");
+    let compact = |s: &str| s.split_whitespace().collect::<String>();
+    let create = loop_write_arm(text, "LoopCreate");
+    let update = loop_write_arm(text, "LoopUpdate");
+    let headers = ["LoopCreate", "LoopUpdate"]
+        .iter()
+        .all(|v| text.matches(&format!("Self::{v}(a) =>")).count() == 1);
+    path == allowlist
+        && headers
+        && match word {
+            "create" => {
+                text.matches(&literal).count() == 1
+                    && compact(&create).starts_with("letmutw=vec![\"loop\",\"create\",")
             }
-            assert!(!text.contains(&literal), "{path:?} contains {literal}");
+            "update" => {
+                text.matches(&literal).count() == 1
+                    && compact(&update).starts_with("letmutw=vec![\"loop\",\"update\",")
+            }
+            "--model" => {
+                text.matches(&literal).count() == 3
+                    && create.matches(&literal).count() == 1
+                    && update.matches(&literal).count() == 1
+            }
+            _ => false,
         }
+}
+#[test]
+fn loop_write_exception_rejects_other_paths_and_command_like_occurrences() {
+    let canonical = Path::new(ROOT)
+        .join("crates/adapters/cloudroom/src/allowlist.rs")
+        .canonicalize()
+        .unwrap();
+    let text = fs::read_to_string(&canonical).unwrap();
+    for word in ["create", "update", "--model"] {
+        assert!(
+            loop_write_arms_only(&canonical, &canonical, &text, word),
+            "{word}"
+        );
+        let other = canonical.with_file_name("loop_files.rs");
+        assert!(
+            !loop_write_arms_only(&other, &canonical, &text, word),
+            "{word}"
+        );
+    }
+    for (word, planted) in [
+        (
+            "create",
+            format!("{text}\nlet argv = [\"loop\", \"create\"];"),
+        ),
+        (
+            "update",
+            format!("{text}\nlet argv = [\"loop\", \"update\"];"),
+        ),
+        ("--model", format!("{text}\nlet argv = [\"--model\"];")),
+        (
+            "create",
+            text.replace("Self::LoopCreate(a) =>", "Self::ThreadArchive(a) =>"),
+        ),
+        (
+            "update",
+            text.replace("Self::LoopUpdate(a) =>", "Self::LoopUpdate(a) if true =>"),
+        ),
+        (
+            "create",
+            text.replacen(
+                "\"loop\",\n                    \"create\"",
+                "\"thread\",\n                    \"create\"",
+                1,
+            ),
+        ),
+        (
+            "update",
+            text.replacen("\"loop\", \"update\"", "\"thread\", \"update\"", 1),
+        ),
+    ] {
+        assert_ne!(planted, text, "{word}");
+        assert!(
+            !loop_write_arms_only(&canonical, &canonical, &planted, word),
+            "{word}"
+        );
     }
 }
 

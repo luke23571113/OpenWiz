@@ -1,0 +1,40 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.56s
+     Running cli-agent/main.rs (target/debug/deps/cli_agent-30d0967a26360172)
+
+running 4 tests
+test loop_validate::each_valid_fixture_parses_to_expected_json ... ok
+test loop_validate::several_paths_keep_their_order_and_an_unreadable_one_fails_the_run ... FAILED
+test loop_validate::each_pinned_fixture_file_passes_or_refuses_as_expected_json_says ... FAILED
+test loop_validate::folders_and_catalogs_refuse_as_expected_json_says ... FAILED
+
+failures:
+
+---- loop_validate::several_paths_keep_their_order_and_an_unreadable_one_fails_the_run stdout ----
+
+thread 'loop_validate::several_paths_keep_their_order_and_an_unreadable_one_fails_the_run' (11094) panicked at tests/cli-agent/loop_validate.rs:183:10:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- loop_validate::each_pinned_fixture_file_passes_or_refuses_as_expected_json_says stdout ----
+
+thread 'loop_validate::each_pinned_fixture_file_passes_or_refuses_as_expected_json_says' (11091) panicked at tests/cli-agent/loop_validate.rs:64:9:
+assertion `left == right` failed: catalog/all-secrets.md: {"command":"validate","exit_code":5,"message":"openwiz loop validate is not built yet; nothing was read or changed","schema":"openwiz.loop-not-built.v1","status":"not_built","ticket":790}
+  left: 5
+ right: 0
+
+---- loop_validate::folders_and_catalogs_refuse_as_expected_json_says stdout ----
+
+thread 'loop_validate::folders_and_catalogs_refuse_as_expected_json_says' (11093) panicked at tests/cli-agent/loop_validate.rs:122:9:
+assertion `left == right` failed: catalog/
+  left: Null
+ right: Array [Object {"code": String("catalog-all-secrets"), "field": String("secrets"), "file": String("<root>/tests/../contracts/fixtures/wizloops/catalog/all-secrets.md"), "message": String("must name each secret in a catalog file, never \"all\"")}]
+
+
+failures:
+    loop_validate::each_pinned_fixture_file_passes_or_refuses_as_expected_json_says
+    loop_validate::folders_and_catalogs_refuse_as_expected_json_says
+    loop_validate::several_paths_keep_their_order_and_an_unreadable_one_fails_the_run
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 63 filtered out; finished in 2.08s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`

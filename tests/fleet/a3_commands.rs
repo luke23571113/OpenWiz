@@ -1,52 +1,13 @@
-//! A3 (ClosedWiz#111): the wiring of `openwiz fleets` and `openwiz fleet
-//! <spec>`, which stays when A4 and A5 build them. The program sends each
-//! command to its own file's `run`, and `openwiz --help` carries each
-//! file's own usage line, section and exit codes in their places.
+//! A3 (ClosedWiz#111): `openwiz --help` carries `openwiz fleets` and
+//! `openwiz fleet <spec>`'s own usage line, section and exit codes in their
+//! places. The program's dispatch to each command is proven by running the
+//! release `openwiz` (`a4_fleets.rs`, `a5_agents_cli.rs`).
 //!
 //! What the stubs do (say not yet, read nothing) is each command's own,
 //! proven in `a4_fleets.rs` and `a5_fleet.rs`, which A4 and A5 replace (Sol
 //! on #247, R1).
 
-use std::fs;
-use std::path::Path;
-
 use openwiz_cli::{fleet, fleets};
-
-use crate::support::Run;
-
-const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
-
-/// The text of `main.rs` from `start` up to the next branch.
-fn arm<'a>(main: &'a str, start: &str) -> &'a str {
-    assert_eq!(main.matches(start).count(), 1, "main.rs has `{start}` once");
-    main.split(start)
-        .nth(1)
-        .and_then(|rest| rest.split("Some(").next())
-        .expect("an arm")
-}
-
-#[test]
-fn the_program_sends_each_command_to_its_own_files_run() {
-    // The signature main.rs calls: the arguments after the name, stdout and
-    // stderr. A change to it is a compile error here.
-    let _: [Run; 2] = [fleets::run, fleet::run];
-    let main = fs::read_to_string(Path::new(ROOT).join("crates/cli/src/main.rs")).expect("main.rs");
-    assert_eq!(
-        main.matches("match args.first().and_then(|a| a.to_str()) {")
-            .count(),
-        1,
-        "the dispatcher matches the actual command argument"
-    );
-    for name in ["fleets", "fleet"] {
-        let start = format!("Some(\"{name}\") =>");
-        let call: String = arm(&main, &start).split_whitespace().collect();
-        assert_eq!(
-            call,
-            format!("openwiz_cli::{name}::run(&args[1..],stdout,stderr),"),
-            "`openwiz {name}` goes to its own file's run, with nothing else"
-        );
-    }
-}
 
 #[test]
 fn the_help_carries_each_commands_own_lines_in_their_places() {

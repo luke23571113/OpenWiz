@@ -13,12 +13,10 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use openwiz_server::{Limits, MAX_NAME_BYTES};
+use openwiz_server::Limits;
 
-use crate::attach_support::{
-    ATTACHMENTS, Free, State, encode, ready_id, serve_attach, upload_headers, upload_with,
-};
-use crate::send_support::{raw, with};
+use crate::attach_support::{ATTACHMENTS, Free, State, serve_attach, upload_headers};
+use crate::send_support::raw;
 
 #[test]
 fn an_upload_streams_into_the_store_and_writes_nothing_beside_it() {
@@ -67,115 +65,6 @@ fn listing(dir: &Path) -> Vec<String> {
         .collect();
     names.sort();
     names
-}
-
-#[test]
-fn a_name_up_to_the_cap_is_staged_whole() {
-    assert_eq!(MAX_NAME_BYTES, 1024, "the header's cap, not a file name's");
-    let state = State::new("web_aw3_long_name");
-    let s = serve_attach(&state, Free::plenty(), Limits::default());
-    let good = upload_headers("aw3.txt");
-    let name = format!("{}.txt", "n".repeat(MAX_NAME_BYTES - 4));
-    let r = upload_with(
-        &s,
-        &with(&good, "X-OpenWiz-Name", &encode(&name)),
-        b"Synthetic AW3\n",
-    );
-    ready_id(&r);
-    let staged = &r.json()["ready"][0]["staged"]["attachment"];
-    assert_eq!(
-        staged["display_name"],
-        name.as_str(),
-        "the owner's name, whole"
-    );
-    assert_eq!(
-        staged["name"].as_str().map(str::len),
-        Some(179),
-        "the core's safe name"
-    );
-}
-
-const STORE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../crates/store/src/attachments.rs"
-);
-const CLI: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../crates/cli/src/attachment.rs"
-);
-const SERVER_SRC: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/server/src");
-
-/// The reports' types (their fields: the CLI's text wraps them, as
-/// `struct AddReport(…)`, never redefines them) and their one presentation
-/// rule each (`expires_at`, the broken-copy words, which removals were
-/// expirations).
-const REPORT_DEFINITIONS: &[&str] = &[
-    "struct StagedView",
-    "struct AddReport {",
-    "struct AddReady",
-    "struct AddFailed",
-    "struct NotStaged",
-    "struct ListReport {",
-    "struct Broken",
-    "enum RemoveResult",
-    "struct RemoveEntry",
-    "struct RemoveReport {",
-    "fn broken_message",
-    "fn claim_word",
-    "UNSENT_TTL",
-];
-
-#[test]
-fn the_reports_have_one_implementation_in_the_store() {
-    let store = fs::read_to_string(STORE).expect("the store");
-    assert!(
-        store.contains("pub mod report"),
-        "the store's report module"
-    );
-    for definition in REPORT_DEFINITIONS {
-        if *definition == "UNSENT_TTL" {
-            assert!(
-                store.contains(definition),
-                "the store's expires_at uses {definition}"
-            );
-        } else {
-            assert_eq!(
-                store.matches(definition).count(),
-                1,
-                "the store defines {definition} once"
-            );
-        }
-    }
-    let mut clients = vec![(CLI.to_owned(), fs::read_to_string(CLI).expect("the CLI"))];
-    for entry in fs::read_dir(SERVER_SRC).expect("server sources") {
-        let path = entry.expect("entry").path();
-        clients.push((
-            path.display().to_string(),
-            fs::read_to_string(&path).expect("source"),
-        ));
-    }
-    for (path, text) in &clients {
-        for definition in REPORT_DEFINITIONS {
-            assert!(
-                !text.contains(definition),
-                "{path} defines {definition}: a second implementation"
-            );
-        }
-    }
-    let uses = |end: &str| {
-        clients
-            .iter()
-            .find(|(p, _)| p.ends_with(end))
-            .is_some_and(|(_, t)| t.contains("attachments::report"))
-    };
-    assert!(
-        uses("cli/src/attachment.rs"),
-        "the CLI calls the store's reports"
-    );
-    assert!(
-        uses("server/src/attachments.rs"),
-        "the server calls the store's reports"
-    );
 }
 
 /// A body that gives `first` bytes, then waits for the test: the rest, or

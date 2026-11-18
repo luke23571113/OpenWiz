@@ -21,9 +21,11 @@ from pathlib import Path
 import re
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(PUBLIC_ROOT))
 import suite  # noqa: E402
 import sources  # noqa: E402
 
@@ -35,7 +37,7 @@ def _load(name, path):
     return result
 
 
-trends = _load('war_room_weekly_trends', HERE / 'trends_reads.py')
+trends = _load('war_room_weekly_trends', PUBLIC_ROOT / 'trends_reads.py')
 
 SCHEMA = 'openwiz.war-room.weekly.v1'
 PST = 'PST-fixed-UTC-08:00'

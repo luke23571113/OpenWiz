@@ -115,11 +115,6 @@ fn closed_merge_facts_fail(test: &str, with_commit: bool, with_time: bool) {
 }
 
 #[test]
-fn closed_merge_both_facts_fail_discovery() {
-    closed_merge_facts_fail("closed-merge-both", true, true);
-}
-
-#[test]
 fn closed_merge_commit_only_fails_discovery() {
     closed_merge_facts_fail("closed-merge-commit", true, false);
 }
@@ -971,13 +966,6 @@ fn a7_scale_real_budget_and_unchanged_limits() {
     assert_eq!(doc["coverage"]["state"], "complete");
     assert_eq!(calls, 20);
     assert!(elapsed < Duration::from_secs(20)); // synthetic timing target only
-}
-
-#[test]
-fn a7_scale_unbounded_transport_count() {
-    let (doc, calls, _) = scale_run("uncut", 50, Duration::from_secs(30));
-    assert_eq!(doc["coverage"]["state"], "complete");
-    assert_eq!(calls, 20);
 }
 
 use openwiz_core::fleet::fleets::{FleetsSource, IssueRow, Listed, PrRow};

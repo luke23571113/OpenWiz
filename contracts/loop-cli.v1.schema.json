@@ -248,7 +248,8 @@
         "result",
         "files",
         "binding",
-        "refusals"
+        "refusals",
+        "unmapped"
       ],
       "additionalProperties": false,
       "properties": {
@@ -291,6 +292,14 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/refusal"
+          }
+        },
+        "unmapped": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
           }
         }
       }

@@ -50,6 +50,7 @@ COMMANDS = {
     'release:test-value-unread-fixtures': ['python3', '-I', 'tools/test-value/test_unread_fixtures.py'],
     'release:setup-onboard-init': ['python3', '-I', 'tools/install/tests/init/test_init.py'],
     'release:setup-onboard-login': ['python3', '-I', '-B', 'tools/install/setup/test_github_login.py'],
+    'release:setup-onboard-journey': ['python3', '-I', 'tools/install/tests/first-hour/test_first_merge.py'],
 }
 # This independent job cannot use the Rust job's target/.
 # Its installed-engine proof consumes both debug binaries.
@@ -65,7 +66,7 @@ def load(folder):
     record = gate.read_plan(folder / 'ci-selection.json')
     dispatch = gate.escapes.strict_json((folder / 'ci-dispatch.json').read_text())
     sha = hashlib.sha256((folder / 'ci-selection.json').read_bytes()).hexdigest()
-    booleans = set(planner.steps.FLAGS) | {'rust','web','site','release','trace','planted','toolkit'}
+    booleans = set(planner.steps.FLAGS) | {'rust','web','site','release','trace','planted'}
     if (not isinstance(dispatch, dict) or set(dispatch) != booleans | {'skills','plan_sha256'}
             or dispatch['plan_sha256'] != sha
             or any(type(dispatch[k]) is not bool for k in booleans)):
@@ -73,8 +74,6 @@ def load(folder):
     selected = [s['skill'] for s in record['lanes']['skills'] if s['decision']=='run']
     if dispatch['skills'] != selected:
         raise ValueError('skill execution metadata differs from plan')
-    if record['selection']['mode']=='full' and not dispatch['toolkit']:
-        raise ValueError('full plan requires the toolkit prerequisite')
     for key in ('rust','web'):
         if dispatch[key] != (record['lanes'][key]['decision']=='run'):
             raise ValueError(key + ' execution metadata differs from plan')
@@ -215,8 +214,6 @@ def execute(folder, kind):
         if not trace('export',[],dispatch): call(['npm','run','build'],cwd='apps/web')
         call(['npm','run','typecheck'],cwd='apps/web')
         call(['npm','run','check'],cwd='apps/web')
-    elif kind=='rust' and not tests and dispatch['toolkit']:
-        print('Rust route owns only the planned toolkit prerequisite')
     elif not tests:
         raise ValueError('lane is not planned: '+kind)
     elif kind=='always':
@@ -267,7 +264,7 @@ def lint(folder):
 
 def lint_always(folder):
     _,dispatch=load(folder)
-    if not dispatch['rust'] and not dispatch['toolkit']:
+    if not dispatch['rust']:
         lint(folder)
     else:
         print('Rust test lane owns the requested lint/build work')
@@ -277,29 +274,9 @@ def receipt(record, dispatch, kind, tests):
     return dict(lane=kind,tests=tests,plan_sha256=dispatch['plan_sha256'],run=record['run'])
 
 
-def toolkit(folder, outcome, receipts):
-    record,dispatch=load(folder)
-    if not dispatch['toolkit']:
-        if outcome not in ('','skipped'):
-            raise ValueError('unplanned toolkit outcome: '+repr(outcome))
-        return
-    if outcome!='success':
-        raise ValueError('toolkit prerequisite expected success, got '+repr(outcome))
-    receipts=Path(receipts);receipts.mkdir(parents=True,exist_ok=True)
-    (receipts/'prerequisite-toolkit.json').write_text(json.dumps(
-        receipt(record,dispatch,'prerequisite:toolkit',[])))
-
-
 def stamp(folder, kind, receipts):
     record, dispatch = load(folder)
     tests = tests_for(record,kind)
-    if kind=='rust' and dispatch['toolkit']:
-        path=Path(receipts)/'prerequisite-toolkit.json'
-        expected=receipt(record,dispatch,'prerequisite:toolkit',[])
-        if not path.is_file() or json.dumps(gate.escapes.strict_json(path.read_text()),sort_keys=True)!=json.dumps(expected,sort_keys=True):
-            raise ValueError('missing or mismatched toolkit prerequisite receipt')
-        if not tests:
-            return
     if not tests and kind!='build:web_export': raise ValueError('cannot stamp unplanned lane '+kind)
     if kind=='build:web_export' and record['builds']['web_export']['decision']!='run':
         raise ValueError('cannot stamp unplanned export')
@@ -324,7 +301,7 @@ def finish(folder, needs_path, receipts):
     outcomes['build:web_export'] = result('web-build',dispatch['build-web'])
     for kind in ('rust','web'):
         exported = dispatch['export-'+kind]
-        state=result(kind+'-export' if exported else kind,dispatch[kind] or (kind=='rust' and dispatch['toolkit']))
+        state=result(kind+'-export' if exported else kind,dispatch[kind])
         outcomes[kind] = state if dispatch[kind] else 'skipped'
         result(kind if exported else kind+'-export',False)
     result('site', dispatch['site'] and not planner.combine_site_release(record))
@@ -336,7 +313,6 @@ def finish(folder, needs_path, receipts):
     expected = {k: tests_for(record,k) for k in ('always','rust','web','site','release') if tests_for(record,k)}
     expected.update({'skill:'+s: tests_for(record,'skill:'+s) for s in dispatch['skills']})
     if dispatch['build-web']: expected['build:web_export']=[]
-    if dispatch['toolkit']: expected['prerequisite:toolkit']=[]
     seen = set()
     for path in sorted(Path(receipts).glob('*.json')):
         entry = gate.escapes.strict_json(path.read_text())
@@ -366,7 +342,6 @@ if __name__=='__main__':
         elif mode=='lint': lint(*args)
         elif mode=='lint-always': lint_always(*args)
         elif mode=='stamp': stamp(*args)
-        elif mode=='toolkit': toolkit(*args)
         elif mode=='finish': finish(*args)
         else: raise ValueError('unknown plan runner command')
     except Exception as error:

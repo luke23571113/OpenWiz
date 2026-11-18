@@ -181,7 +181,7 @@ test('IF4/IF5: empty and preconnected consumer reach independently verified read
     let r = await report(server);
     // Review R5 (re-check): an inventory read alone never verifies CloudRoom (contracts/setup.v1.md).
     assert.deepEqual(r.states, { cloudroom: 'unknown', harness: 'missing', personal_github: 'missing',
-      github_app: 'missing', project: 'missing', engine: 'missing', remote_access: 'unknown' });
+      github_app: 'missing', project: 'missing', remote_access: 'unknown' });
     assert.equal(r.value.ready, false);
     assert.deepEqual(github.requests, [], 'no App API call without an App');
     await github.close();
@@ -217,8 +217,8 @@ test('IF4/IF5: empty and preconnected consumer reach independently verified read
     r = await report(server);
     // Review R5: a catalogue listing (possibly a saved copy) never verifies a harness login.
     assert.deepEqual(r.states, { cloudroom: 'unknown', harness: 'unknown', personal_github: 'verified',
-      github_app: 'verified', project: 'verified', engine: 'missing', remote_access: 'unknown' }, r.body);
-    assert.equal(r.value.ready, false, 'no engine is selected, so the factory is not ready');
+      github_app: 'verified', project: 'verified', remote_access: 'unknown' }, r.body);
+    assert.equal(r.value.ready, false, 'CloudRoom and the harness are unproven, so the factory is not ready');
     assert.match(r.reason('harness'), /saved copy; that harness's login is not proven/);
     assert.match(r.reason('cloudroom'), /answered a live read, but no check here proves your CloudRoom login/);
     const state = JSON.parse(readFileSync(join(a.state, 'setup/state.json'), 'utf8'));
@@ -236,6 +236,9 @@ test('IF4/IF5: empty and preconnected consumer reach independently verified read
         for (const [id, value] of Object.entries(r.states)) {
           assert.equal(await p.page.locator(`[data-setup-component="${id}"] .setup-state`).innerText(), value);
         }
+        // #873: setup has no engine step: no engine row, panel or wording.
+        assert.equal(await p.page.locator('[data-setup-component]').count(), 6);
+        assert.doesNotMatch(await p.page.locator('main').innerText(), /engine/i);
         await p.page.locator('[data-setup-component="github_app"] summary').click();
         assert.match(await p.page.locator('[data-setup-component="github_app"]').innerText(), /selected repositor/);
         mkdirSync(RESULTS_DIR, { recursive: true });

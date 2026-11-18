@@ -1,0 +1,13 @@
+# Red run 3 (#793, review R3 at b82269a): an in file's created loop checked against its own run time.
+# Commands: CARGO_BUILD_JOBS=2 cargo test -p openwiz-adapter-cloudroom --lib read_back_checks -- --test-threads=2; cargo test -p openwiz-tests --test cli-agent an_in_files -- --test-threads=2
+# read_back gained its written window as an unused parameter only, so these reach their assertions: a run time outside the window reads as no difference, and the 2099 loop as created (exit 0).
+test loop_files::tests::read_back_checks_an_in_files_run_time_against_the_write ... FAILED
+thread 'loop_files::tests::read_back_checks_an_in_files_run_time_against_the_write' panicked at crates/adapters/cloudroom/src/loop_files.rs:3352:21:
+  left: []
+ right: [Difference { field: "trigger", file: Object {"in": String("30m")}, live: Object {"at": String("2030-01-01T00:29:59.999Z")} }]
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+test loop_apply::an_in_files_run_time_is_checked_against_its_delay ... FAILED
+thread 'loop_apply::an_in_files_run_time_is_checked_against_its_delay' panicked at tests/cli-agent/loop_apply.rs:817:5:
+  left: 0
+ right: 5
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 95 filtered out; finished in 0.40s

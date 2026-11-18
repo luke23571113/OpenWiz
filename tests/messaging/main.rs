@@ -50,9 +50,8 @@ mod m18_in_flight;
 mod structure;
 
 // B2 (ClosedWiz#15): attachments in send (AD1 to AD5, AD7, AD9, AD10,
-// AD13), and the B-8 measurement of `room-cli`'s memory on the fake.
+// AD13).
 #[path = "../attachments/staging.rs"]
 mod staging;
 
 mod ad_send_attachments;
-mod b8_memory;

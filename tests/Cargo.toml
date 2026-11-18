@@ -96,12 +96,6 @@ path = "loops/main.rs"
 name = "cli-agent"
 path = "cli-agent/main.rs"
 
-# 0.0.12 T3 (#1098): the visual terminal app, its action seam and PTY
-# launch; T4-T6 each fill their own action module file here.
-[[test]]
-name = "terminal"
-path = "terminal/main.rs"
-
 # 0.0.15 T6: the kept ready-stock module's tests (push notifications retired, 0.0.17 ER4).
 [[test]]
 name = "notifications"
@@ -120,10 +114,9 @@ openwiz-store = { path = "../crates/store" }
 # The web API tests start openwiz-server in-process. A dev-dependency only,
 # so no normal dependency points at the server.
 [dev-dependencies]
+# The checks' strict JSON reader (#776; moved from the removed terminal crate).
+serde.workspace = true
 openwiz-server = { path = "../crates/server" }
-# The visual terminal app (0.0.12 T3): a dev-dependency only, so the visual
-# pair never enters a normal dependency graph but its own crate's.
-openwiz-terminal = { path = "../crates/terminal" }
 
 [lints]
 workspace = true

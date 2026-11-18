@@ -1,0 +1,123 @@
+# #792 red run: cargo test -p openwiz-tests --test cli-agent loop_plan
+# with plan still dispatched to LC1's not_built stub; the tests, adapter and loop_plan.rs present
+
+warning: function `run` is never used
+  --> crates/cli/src/loop_plan.rs:18:8
+   |
+18 | pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+   |        ^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `report` is never used
+  --> crates/cli/src/loop_plan.rs:80:4
+   |
+80 | fn report(plan: &Plan, project: &str, code: i32) -> Value {
+   |    ^^^^^^
+
+warning: function `item_json` is never used
+  --> crates/cli/src/loop_plan.rs:90:4
+   |
+90 | fn item_json(item: &PlanItem) -> Value {
+   |    ^^^^^^^^^
+
+warning: function `quoted` is never used
+   --> crates/cli/src/loop_plan.rs:102:4
+    |
+102 | fn quoted(word: &str) -> String {
+    |    ^^^^^^
+
+warning: function `text` is never used
+   --> crates/cli/src/loop_plan.rs:107:4
+    |
+107 | fn text(plan: &Plan) -> String {
+    |    ^^^^
+
+warning: `openwiz-cli` (lib) generated 5 warnings
+
+running 7 tests
+test loop_plan::plan_creates_each_valid_fixture_as_the_adapters_table_says ... FAILED
+test loop_plan::plan_refuses_a_marker_two_loops_carry ... FAILED
+test loop_plan::plan_refuses_each_invalid_fixture_with_its_expected_refusals ... FAILED
+test loop_plan::plan_of_the_accounts_own_files_shows_no_difference ... FAILED
+test loop_plan::plan_refuses_what_the_adapter_cannot_do ... FAILED
+test loop_plan::plan_stops_before_planning_when_a_read_fails ... FAILED
+test loop_plan::plan_shows_each_difference_and_the_update_that_makes_it ... FAILED
+
+failures:
+
+---- loop_plan::plan_creates_each_valid_fixture_as_the_adapters_table_says stdout ----
+
+thread 'loop_plan::plan_creates_each_valid_fixture_as_the_adapters_table_says' (9837) panicked at tests/cli-agent/loop_plan.rs:83:9:
+assertion `left == right` failed
+  left: []
+ right: [Array [String("loop"), String("list"), String("--json")]]
+
+---- loop_plan::plan_refuses_a_marker_two_loops_carry stdout ----
+
+thread 'loop_plan::plan_refuses_a_marker_two_loops_carry' (9839) panicked at tests/cli-agent/loop_plan.rs:122:10:
+called `Option::unwrap()` on a `None` value
+
+---- loop_plan::plan_refuses_each_invalid_fixture_with_its_expected_refusals stdout ----
+
+thread 'loop_plan::plan_refuses_each_invalid_fixture_with_its_expected_refusals' (9840) panicked at tests/cli-agent/loop_plan.rs:83:9:
+assertion `left == right` failed
+  left: []
+ right: [Array [String("loop"), String("list"), String("--json")]]
+
+---- loop_plan::plan_of_the_accounts_own_files_shows_no_difference stdout ----
+
+thread 'loop_plan::plan_of_the_accounts_own_files_shows_no_difference' (9838) panicked at tests/cli-agent/loop_plan.rs:284:5:
+assertion `left == right` failed: {
+  "command": "plan",
+  "exit_code": 5,
+  "message": "openwiz loop plan is not built yet; nothing was read or changed",
+  "schema": "openwiz.loop-not-built.v1",
+  "status": "not_built",
+  "ticket": 792
+}
+  left: 5
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- loop_plan::plan_refuses_what_the_adapter_cannot_do stdout ----
+
+thread 'loop_plan::plan_refuses_what_the_adapter_cannot_do' (10485) panicked at tests/cli-agent/loop_plan.rs:83:9:
+assertion `left == right` failed
+  left: []
+ right: [Array [String("loop"), String("list"), String("--json")]]
+
+---- loop_plan::plan_stops_before_planning_when_a_read_fails stdout ----
+
+thread 'loop_plan::plan_stops_before_planning_when_a_read_fails' (10487) panicked at tests/cli-agent/loop_plan.rs:447:5:
+assertion `left == right` failed
+  left: (5, String("openwiz.loop-not-built.v1"), Null)
+ right: (1, String("openwiz.cli-error.v1"), String("read_failed"))
+
+---- loop_plan::plan_shows_each_difference_and_the_update_that_makes_it stdout ----
+
+thread 'loop_plan::plan_shows_each_difference_and_the_update_that_makes_it' (10486) panicked at tests/cli-agent/loop_plan.rs:335:5:
+assertion `left == right` failed: {
+  "command": "plan",
+  "exit_code": 5,
+  "message": "openwiz loop plan is not built yet; nothing was read or changed",
+  "schema": "openwiz.loop-not-built.v1",
+  "status": "not_built",
+  "ticket": 792
+}
+  left: 5
+ right: 0
+
+
+failures:
+    loop_plan::plan_creates_each_valid_fixture_as_the_adapters_table_says
+    loop_plan::plan_of_the_accounts_own_files_shows_no_difference
+    loop_plan::plan_refuses_a_marker_two_loops_carry
+    loop_plan::plan_refuses_each_invalid_fixture_with_its_expected_refusals
+    loop_plan::plan_refuses_what_the_adapter_cannot_do
+    loop_plan::plan_shows_each_difference_and_the_update_that_makes_it
+    loop_plan::plan_stops_before_planning_when_a_read_fails
+
+test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 63 filtered out; finished in 2.12s
+
+error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`

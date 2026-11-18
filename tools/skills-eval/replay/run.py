@@ -25,7 +25,7 @@ import tempfile
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
-_spec = importlib.util.spec_from_file_location('replay_contract', HERE.parents[1] / 'factory-metrics/experiment_contract.py')
+_spec = importlib.util.spec_from_file_location('replay_contract', HERE.parents[1] / 'collector/experiment_contract.py')
 C = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(C)
 ARMS = C.ARMS

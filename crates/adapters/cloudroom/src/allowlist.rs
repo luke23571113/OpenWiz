@@ -201,6 +201,58 @@ fn allowance_of(staged: &[StagedAttachment]) -> std::time::Duration {
 /// The longest model passed.
 const MODEL_MAX_LEN: usize = 128;
 
+/// A loop's trigger, as `room-cli loop create` takes it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoopTrigger {
+    Cron { cron: String, timezone: String },
+    At(String),
+    In(String),
+    Webhook,
+}
+
+/// A loop's new trigger, as `room-cli loop update` takes it: no `--in`
+/// and no webhook change exist there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoopReschedule {
+    Cron { cron: String, timezone: String },
+    At(String),
+}
+
+/// A new-thread loop's agent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoopAgentArgs {
+    pub provider: String,
+    pub model: String,
+    pub reasoning: String,
+}
+
+/// `room-cli loop create`, the form in `contracts/loop-cli.v1.md`. The two
+/// file operands are paths; plan shows them as `@prompt` and `@script`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoopCreateArgs {
+    pub name: String,
+    pub prompt_file: String,
+    pub trigger: LoopTrigger,
+    pub new_thread: bool,
+    pub script_file: Option<String>,
+    pub agent: Option<LoopAgentArgs>,
+    pub priority: String,
+    pub secrets: String,
+}
+
+/// `room-cli loop update <loop>`, with only the flags for what differs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoopUpdateArgs {
+    pub loop_id: ThreadId,
+    pub name: Option<String>,
+    pub priority: Option<String>,
+    pub prompt: Option<String>,
+    pub trigger: Option<LoopReschedule>,
+    pub script_file: Option<String>,
+    pub agent: Option<LoopAgentArgs>,
+    pub secrets: Option<String>,
+}
+
 /// One allowed `room-cli` invocation: a read, or one of the two writes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Invocation {
@@ -291,6 +343,12 @@ pub enum Invocation {
     /// TK1: pause only the exact old fleet loop named by its ownership record.
     /// The adapter requires repository ownership and confirms paused readback.
     LoopPause(ThreadId),
+    /// 0.0.17 (#792, J109): `loop create`, in the contract's form. `plan`
+    /// only builds and prints it; `apply` (#793) is its only runner.
+    LoopCreate(LoopCreateArgs),
+    /// 0.0.17 (#792, J109): `loop update <loop>`, in the contract's form,
+    /// built and printed the same way.
+    LoopUpdate(LoopUpdateArgs),
 }
 
 impl Invocation {
@@ -380,6 +438,85 @@ impl Invocation {
                 w
             }
             Self::ThreadArchive(id) => vec!["thread", "archive", id.as_str(), "--json"],
+            Self::LoopCreate(a) => {
+                let mut w = vec![
+                    "loop",
+                    "create",
+                    "--name",
+                    a.name.as_str(),
+                    "--prompt-file",
+                    a.prompt_file.as_str(),
+                ];
+                match &a.trigger {
+                    LoopTrigger::Cron { cron, timezone } => {
+                        w.extend(["--cron", cron.as_str(), "--timezone", timezone.as_str()]);
+                    }
+                    LoopTrigger::At(at) => w.extend(["--at", at.as_str()]),
+                    LoopTrigger::In(delay) => w.extend(["--in", delay.as_str()]),
+                    LoopTrigger::Webhook => w.push("--webhook"),
+                }
+                w.push(if a.new_thread {
+                    "--new-thread"
+                } else {
+                    "--same-thread"
+                });
+                if let Some(script) = &a.script_file {
+                    w.extend(["--script-file", script.as_str()]);
+                }
+                if let Some(g) = &a.agent {
+                    w.extend([
+                        "--provider",
+                        g.provider.as_str(),
+                        "--model",
+                        g.model.as_str(),
+                        "--reasoning",
+                        g.reasoning.as_str(),
+                    ]);
+                }
+                w.extend([
+                    "--priority",
+                    a.priority.as_str(),
+                    "--secrets",
+                    a.secrets.as_str(),
+                ]);
+                w
+            }
+            Self::LoopUpdate(a) => {
+                let mut w = vec!["loop", "update", a.loop_id.as_str()];
+                if let Some(name) = &a.name {
+                    w.extend(["--name", name.as_str()]);
+                }
+                if let Some(priority) = &a.priority {
+                    w.extend(["--priority", priority.as_str()]);
+                }
+                if let Some(prompt) = &a.prompt {
+                    w.extend(["--prompt", prompt.as_str()]);
+                }
+                match &a.trigger {
+                    Some(LoopReschedule::Cron { cron, timezone }) => {
+                        w.extend(["--cron", cron.as_str(), "--timezone", timezone.as_str()]);
+                    }
+                    Some(LoopReschedule::At(at)) => w.extend(["--at", at.as_str()]),
+                    None => {}
+                }
+                if let Some(script) = &a.script_file {
+                    w.extend(["--script-file", script.as_str()]);
+                }
+                if let Some(g) = &a.agent {
+                    w.extend([
+                        "--provider",
+                        g.provider.as_str(),
+                        "--model",
+                        g.model.as_str(),
+                        "--reasoning",
+                        g.reasoning.as_str(),
+                    ]);
+                }
+                if let Some(secrets) = &a.secrets {
+                    w.extend(["--secrets", secrets.as_str()]);
+                }
+                w
+            }
         };
         words.into_iter().map(str::to_owned).collect()
     }
@@ -403,7 +540,9 @@ impl Invocation {
             | Self::ThreadSpawn(_)
             | Self::ThreadArchive(_)
             | Self::LoopResume(_)
-            | Self::LoopPause(_) => false,
+            | Self::LoopPause(_)
+            | Self::LoopCreate(_)
+            | Self::LoopUpdate(_) => false,
         }
     }
 }
@@ -473,7 +612,33 @@ mod tests {
             (Invocation::ThreadSpawn(spawn), false),
             (Invocation::ThreadArchive(id.clone()), false),
             (Invocation::LoopResume(id.clone()), false),
-            (Invocation::LoopPause(id), false),
+            (Invocation::LoopPause(id.clone()), false),
+            (
+                Invocation::LoopCreate(LoopCreateArgs {
+                    name: "x".into(),
+                    prompt_file: "@prompt".into(),
+                    trigger: LoopTrigger::Webhook,
+                    new_thread: true,
+                    script_file: None,
+                    agent: None,
+                    priority: "3".into(),
+                    secrets: "none".into(),
+                }),
+                false,
+            ),
+            (
+                Invocation::LoopUpdate(LoopUpdateArgs {
+                    loop_id: id,
+                    name: None,
+                    priority: Some("2".into()),
+                    prompt: None,
+                    trigger: None,
+                    script_file: None,
+                    agent: None,
+                    secrets: None,
+                }),
+                false,
+            ),
         ];
         for (invocation, read) in &cases {
             assert_eq!(invocation.is_read(), *read, "{invocation:?}");

@@ -12,7 +12,7 @@ path = "../../tests/service/t4_unit.rs"
 
 [[test]]
 name = "t4-scheduler"
-path = "../../tests/service/t4_scheduler.rs"
+path = "tests/t4_scheduler.rs"
 
 [lints]
 workspace = true
@@ -37,7 +37,7 @@ path = "../../tests/service/t4_reader.rs"
 
 [[test]]
 name = "t4-paths"
-path = "../../tests/service/t4_paths.rs"
+path = "tests/t4_paths.rs"
 
 [[test]]
 name = "t4-service"
@@ -70,7 +70,7 @@ path = "../../tests/service/l4b_intake.rs"
 
 [[test]]
 name = "l5-watchdog"
-path = "../../tests/service/l5_watchdog.rs"
+path = "tests/l5_watchdog.rs"
 
 [[test]]
 name = "l5b-watchdog"

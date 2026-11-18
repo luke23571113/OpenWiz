@@ -19,9 +19,11 @@ from pathlib import Path
 import sys
 import tempfile
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[3] / 'collector'
 sys.dont_write_bytecode = True
 TOOL = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOL))
+sys.path.insert(0, str(PUBLIC_ROOT))
 import health  # noqa: E402
 import history  # noqa: E402
 import page  # noqa: E402
@@ -234,7 +236,7 @@ def world(root):
                                               json.dumps(ci_point('2030-01-12', 42, (11, 8.5, 18.0, 13.0))),
                                               '2030-01-13T11:00:00Z')])
     final = '2030-01-14T09:55:00Z'
-    journeys = (TOOL.parent / 'factory-metrics/fixtures/journey/journeys.json').read_text(encoding='utf-8')
+    journeys = (PUBLIC_ROOT / 'fixtures/journey/journeys.json').read_text(encoding='utf-8')
     w.sample(final, [w.entry('credits', 'credits', 'credits.jsonl', CREDITS, final),
                      w.entry('ci_bench', 'ci_bench', 'latest.json',
                              json.dumps(ci_point(DAYS[-1], merged[DAYS[-1]], codes[DAYS[-1]])), final),

@@ -9,7 +9,7 @@ import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'install'))
-from install import ENGINE_RUNTIME, HANDOVER_RUNTIME, PROGRAMS, Refused, TARGETS, digest, require, sha
+from install import PROGRAMS, Refused, TARGETS, digest, require, sha
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from product_identity import PROGRAMS as COMPILED, architecture, canonical, expected, git, mode, payload, \
     release_version, verify_programs, verify_runtime, verify_web
@@ -53,11 +53,6 @@ def collect(root, binaries, web, output, version, source, target, program_receip
             and not any(path.is_symlink() for path in (access, *list(access.parents)[:3])),
             'unsafe or missing access tool')
     files['runtime/access/access.py'] = access
-    engine = root / 'tools/install/engine/engine.py'
-    require(engine.is_file() and engine.stat().st_nlink == 1
-            and not any(p.is_symlink() for p in (engine, *list(engine.parents)[:3])),
-            'unsafe or missing engine runtime')
-    files[ENGINE_RUNTIME] = engine
     # #2201: setup's CloudRoom tool ships from its exact tracked file when the
     # requested commit tracks it; the installer requires it.
     if git(root, 'ls-tree', '-z', '--name-only', '--end-of-options', source,
@@ -85,16 +80,6 @@ def collect(root, binaries, web, output, version, source, target, program_receip
                 and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
                 'unsafe or missing GitHub sign-in helper')
         files['runtime/setup/github_login.py'] = tool
-    # #2379: the requested commit decides: if it tracks the installed handover,
-    # its whole role ships from exact tracked files; older commits keep theirs.
-    if git(root, 'ls-tree', '-z', '--name-only', '--end-of-options', source,
-           '--', 'tools/install/handover/handover.py') == b'tools/install/handover/handover.py\0':
-        for name in HANDOVER_RUNTIME:
-            path = root / 'tools/install' / name.removeprefix('runtime/')
-            require(path.is_file() and path.stat().st_nlink == 1
-                    and not any(p.is_symlink() for p in (path, *list(path.parents)[:3])),
-                    'unsafe or missing handover runtime')
-            files[name] = path
     output.mkdir(mode=0o700)
     rows, runtime = [], {}
     for name, path in sorted(files.items()):

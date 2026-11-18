@@ -110,7 +110,7 @@ class InstalledFirstHour(unittest.TestCase):
                 self.assertEqual(journey.codes(doc), clean(), json.dumps(doc, indent=1))
         self.assertEqual(a.notes['repeat_launch'][0], 0)
         self.assertIn('already started once', a.notes['repeat_launch'][1])
-        self.assertEqual(len(a.j.logged('fleet.tick')), 1, 'the repeat ran no second tick')
+        self.assertEqual(len(a.j.spawns()), 1, 'the repeat started no second fleet thread')
         self.assertEqual(len(a.reviewer_threads), 1, 'one reviewer after the restart')
         self.assertEqual(a.notes['revoked'][0], 'refused: the App can no longer write to this repository')
         self.assertEqual(a.notes['revoked'][1], 'app_revoked', 'setup tells the owner the App was removed')
@@ -121,15 +121,25 @@ class InstalledFirstHour(unittest.TestCase):
                                                         'same_operation_id': True, 'resumed_phase': 'applied',
                                                         'provider_writes': 0})
 
+    def test_no_record_tells_the_owner_about_an_engine(self):
+        # #799: the first fleet runs as launch-fleet's fleet thread; there is no engine to stop, restart or preview.
+        a = self.attempt
+        for doc in [a.result] + a.cases:
+            name = doc.get('case', {}).get('interruption', 'result')
+            with self.subTest(name):
+                self.assertNotRegex(json.dumps(doc).lower(), r'\bengine', name)
+
     def test_the_result_joins_every_case_to_its_final_operations(self):
         doc = self.attempt.result
         self.assertEqual([c['interruption'] for c in doc['interruptions']], CASES)
         kinds = sorted(o['kind'] for o in doc['operations'])
-        self.assertEqual(kinds, ['activate_engine', 'configure_access', 'merge', 'prepare_project'] + ['start_agent'] * 4)
-        # Every intent that took effect did so once; the engine's preview stays proposed with no call or effect.
+        # #636: setup's prepare and init each saved one operation; no engine is previewed.
+        self.assertEqual(kinds, ['configure_access', 'merge', 'prepare_project', 'prepare_project'] + ['start_agent'] * 4)
+        # Every intent that took effect did so once.
         self.assertEqual(sorted((o['kind'], o['phase'], o['effect_count']) for o in doc['operations']),
-                         sorted([('activate_engine', 'proposed', 0), ('configure_access', 'applied', 1), ('merge', 'applied', 1),
-                                 ('prepare_project', 'applied', 1)] + [('start_agent', 'applied', 1)] * 4))
+                         sorted([('configure_access', 'applied', 1), ('merge', 'applied', 1),
+                                 ('prepare_project', 'applied', 1), ('prepare_project', 'applied', 1)]
+                                + [('start_agent', 'applied', 1)] * 4))
         # Dropping a touched intent from the final inventory is caught, not hidden.
         dropped = json.loads(json.dumps(doc))
         dropped['operations'] = [o for o in dropped['operations'] if o['kind'] != 'merge']

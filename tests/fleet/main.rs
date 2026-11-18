@@ -8,10 +8,9 @@
 //! `#[path = "a4_more.rs"] mod more;`, never here:
 //! - `a3_seams`, `a3_commands`, `a3_fake_gh` and `a3_model`: A3's
 //!   proofs, which stay true when later tickets fill their files. The
-//!   seams exist, the new crate's dependencies point inward, each command
-//!   is wired to its own file, the fake `gh` behaves as
-//!   `tests/fake-gh/main.rs` says, and the core's fleet model types match
-//!   the contract.
+//!   new crate's dependencies point inward, `openwiz --help` carries each
+//!   command's lines, the fake `gh` answers only its scenario, and the
+//!   core's fleet model types match the contract.
 //! - `support`: the fakes and the release `openwiz`, and `schema`: the
 //!   fleet schema's checker, for every ticket's tests.
 //! - `a4_fleets`: A4 (#112), `openwiz fleets`; until then, its stub's
@@ -19,7 +18,8 @@
 //! - `a5_fleet`: A5 (#113), `openwiz fleet <spec>`; until then, its stub's
 //!   proofs.
 //! - `a6_agents`: A6 (#114), a ticket's agents.
-//! - `b3_writes`: spec 2's B3 (#119), the GitHub writes.
+//! - `b3_writes`: spec 2's B3 (#119), the GitHub writes, and their
+//!   recording fake `gh` (`b3_fake`, declared from it).
 //! - `b4_starts`: spec 2's B4 (#120), starting builders and reviewers and
 //!   archiving finished agents; its other files are declared from inside it.
 //!
@@ -27,10 +27,6 @@
 
 mod schema;
 mod support;
-
-// Running independent cases at once (#1259).
-#[path = "../support/at_once.rs"]
-mod at_once;
 
 // Real-time proofs, in full or in their fast form (#1259).
 #[path = "../support/real_time.rs"]

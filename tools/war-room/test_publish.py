@@ -17,6 +17,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -283,6 +284,43 @@ class Publish(unittest.TestCase):
         git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/war-room')
         return self.branch()
 
+    def test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn(self):
+        # catches (MT13, #1049): the snapshot the PRs-an-hour chart is drawn from left off the branch,
+        # refused as an unexpected file by the next publish, published unscanned or as any JSON, a
+        # second snapshot-like file let through, or an old snapshot kept beside a page not drawn from it.
+        publish = load(HERE / 'publish.py', 'mt13_publish')
+        doc = json.loads((PUBLIC_ROOT / 'fixtures/collector/snapshot.json').read_text())
+        doc['collected_at'] = '2030-01-02T11:00:00Z'  # gathered before this render
+        raw = json.dumps(doc).encode()
+        beside = self.selection.parent / 'snapshot.json'  # where gather.py writes it
+        beside.write_bytes(raw)
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.files(), sorted(FILES + ['snapshot.json']))
+        self.assertEqual(self.show('snapshot.json'), raw)
+        self.assertIn(b'id="figure-body-ci-bench-headline"', b''.join(self.show(name) for name in SITE))
+        result = self.publish(NEXT)  # the saved snapshot is an allowed file on the branch
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tree = self.tmp / 'tree'
+        git(self.tmp, 'clone', '-q', '-b', 'war-room', str(self.origin), str(tree))
+        shutil.rmtree(tree / '.git')
+        page = '<html><body>synthetic page</body></html>'
+        publish.scan(tree, page)
+        for name, path, data in (('planted token', 'snapshot.json', raw.replace(b'"repository": "', b'"repository": "ghp' + b'_Synthetic0123456789abcdef', 1)),
+                                 ('not a snapshot', 'snapshot.json', b'{"schema": "synthetic"}\n'),
+                                 ('another snapshot', 'snapshot-old.json', raw)):
+            with self.subTest(name):
+                copy = self.tmp / 'copy'
+                shutil.rmtree(copy, ignore_errors=True)
+                shutil.copytree(tree, copy)
+                (copy / path).write_bytes(data)
+                with self.assertRaises(publish.Fail):
+                    publish.scan(copy, page)
+        beside.unlink()
+        result = self.publish('2030-01-02T14:11:00Z')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('snapshot.json', self.files())
+
     def test_a_broken_branch_publishes_nothing(self):
         self.assertEqual(self.publish().returncode, 0)
         sample = self.show('samples/2030-01-02T12-00-00Z.json')
@@ -450,14 +488,21 @@ class Workflow(unittest.TestCase):
         reader = load(ROOT / 'tools/privacy-check/workflow.py', 'wr9_workflow')
         self.flow = reader.parse((ROOT / '.github/workflows/war-room.yml').read_text())
         self.jobs = self.flow['jobs']
+        # #827: the proofs run from their own pull-request-only, read-only workflow.
+        self.proof = reader.parse((ROOT / '.github/workflows/war-room-proof.yml').read_text())
 
     def test_hosted_runners_and_pull_request_only_proof(self):
-        self.assertEqual(sorted(self.jobs), ['preview', 'proof', 'publish'])
-        for name, job in self.jobs.items():
+        self.assertEqual(sorted(self.jobs), ['preview', 'publish'])
+        self.assertEqual(sorted(self.proof['jobs']), ['proof'])
+        for name, job in [*self.jobs.items(), *self.proof['jobs'].items()]:
             with self.subTest(name):
                 self.assertEqual(job['runs-on'], 'ubuntu-24.04')
-        for name in ('proof', 'preview'):
-            self.assertEqual(self.jobs[name]['if'], "github.event_name == 'pull_request'")
+        for job in (self.proof['jobs']['proof'], self.jobs['preview']):
+            self.assertEqual(job['if'], "github.event_name == 'pull_request'")
+        # catches (#827): the proof workflow gaining a write, a schedule or a dispatch.
+        self.assertEqual(set(self.proof['on']), {'pull_request'})
+        self.assertEqual(self.proof['permissions'], {'contents': 'read'})
+        self.assertNotIn('permissions', self.proof['jobs']['proof'])
         # R1: default off; nothing publishes until the orchestrator sets WAR_ROOM_PUBLISH to on.
         self.assertEqual(self.jobs['publish']['if'],
                          "vars.WAR_ROOM_PUBLISH == 'on' && github.event_name != 'pull_request' "

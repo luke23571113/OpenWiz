@@ -1,18 +1,11 @@
-//! Public-tree promises from #1277: CI needs no private files, and every
-//! public link in contracts, code, apps and tests uses OpenWiz's final address.
+//! A public-tree promise from #1277: every public link in contracts, code,
+//! apps and tests uses OpenWiz's final address. (CI's empty private-read list
+//! is checked by `.github/actions/docs-only/test.sh`.)
 
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
-
-#[test]
-fn ci_needs_no_private_files() {
-    let reads = fs::read_to_string(Path::new(ROOT).join(".github/actions/docs-only/ci-reads.txt"))
-        .expect("CI's private-read list is readable");
-    assert!(reads.trim().is_empty(), "CI still requires private files");
-}
 
 #[test]
 fn public_files_use_the_final_openwiz_address() {

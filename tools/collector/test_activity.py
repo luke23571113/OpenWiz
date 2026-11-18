@@ -1,0 +1,489 @@
+#!/usr/bin/env python3
+"""WR8 raw fake-source -> suite proofs; standard library, no live reads."""
+import copy
+import importlib.util
+import json
+import os
+import sys
+
+sys.dont_write_bytecode = True
+from pathlib import Path
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+
+HERE = Path(__file__).resolve().parent
+
+
+def module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    value = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(value)
+    return value
+
+
+A = module('activity', HERE / 'activity.py')
+S = module('suite', HERE / 'suite.py')
+B, M = A.B, A.M
+AT = '2030-01-02T12:30:00Z'
+REPO = 'synthetic-owner/work'
+ROOT = 'repos/' + REPO
+RUNS = ROOT + '/actions/workflows/ci.yml/runs?per_page=100&page=1'
+JOBS = ROOT + '/actions/runs/71/jobs?per_page=100&page=1'
+RUN = ROOT + '/actions/runs/71'
+POOLS = ('ubuntu-24.04', 'ubuntu-slim')
+
+
+def conn(nodes, more=False, cursor=None):
+    return {'nodes': nodes, 'pageInfo': {'hasNextPage': more, 'endCursor': cursor}}
+
+
+def ticket(number, title='Feature', milestone='0.0.9', labels=()):
+    return {'number': number, 'title': title,
+            'milestone': None if milestone is None else {'title': milestone},
+            'labels': conn([{'name': name} for name in labels])}
+
+
+def job(number, status, labels, **extra):
+    return {'id': number, 'run_id': 71, 'run_attempt': 1, 'status': status,
+            'labels': labels, 'runner_name': None, 'steps': [],
+            'created_at': '2030-01-02T11:00:00Z', 'started_at': None,
+            'completed_at': None, **extra}
+
+
+def fixture():
+    run = {'id': 71, 'run_attempt': 1, 'status': 'in_progress', 'conclusion': None,
+           'created_at': '2030-01-02T10:00:00Z'}
+    prs = []
+    for n, merged, links in [(81, '12:05', [91, 92]), (82, '12:10', [93]),
+                              (83, '11:10', [94])]:
+        prs.append({'number': n, 'mergedAt': '2030-01-02T' + merged + ':00Z',
+                    'closedAt': '2030-01-02T' + merged + ':00Z',
+                    'closingIssuesReferences': conn([
+                        {'number': t, 'repository': {'nameWithOwner': REPO}} for t in links])})
+    answers = {RUNS: {'total_count': 1, 'workflow_runs': [run]}, RUN: run,
+               JOBS: {'total_count': 3, 'jobs': [
+                   job(101, 'in_progress', ['ubuntu-24.04']),
+                   job(102, 'queued', ['ubuntu-24.04']),
+                   job(103, 'queued', ['ubuntu-slim'])]},
+               'graph:prs:': {'data': {'repository': {'pullRequests': conn(prs)}}}}
+    for t in [ticket(91), ticket(92), ticket(93, title='Proposal: harden'),
+              ticket(94, milestone=None)]:
+        answers['graph:' + str(t['number']) + ':'] = {'data': {'repository': {'issue': t}}}
+    return answers
+
+
+class ActivityTests(unittest.TestCase):
+    def project(self, data=None, **overrides):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'gh').symlink_to(HERE / 'fixtures/activity/fake_gh.py')
+            path = tmp / 'source.json'
+            path.write_text(json.dumps(fixture() if data is None else data))
+            with patch.dict(os.environ, {'PATH': str(tmp) + os.pathsep + os.environ['PATH'],
+                                         'WR8_FIXTURE': str(path)}):
+                args = dict(repo=REPO, read_started_at='2030-01-02T12:29:00Z',
+                            source_path='fixtures/activity/observation.json',
+                            ci_read=B.gh, pr_read=M.collect_prs,
+                            ticket_read=M.graphql, pools=POOLS)
+                args.update(overrides)
+                at = args.pop('at', AT)
+                provider, wire = A.project(at, **args)
+                self.wire = wire
+                captured = tmp / args['source_path']
+                captured.parent.mkdir(parents=True, exist_ok=True)
+                captured.write_bytes(wire)
+                import hashlib
+                for metric in provider['metrics']:
+                    self.assertEqual(metric['source']['sha256'], hashlib.sha256(captured.read_bytes()).hexdigest())
+        record = S.compose(at, [provider])
+        S.validate(record)
+        return {m['id']: m for m in record['providers'][0]['metrics']}
+
+    def test_complete_sources_counts_and_current_metadata(self):
+        metrics = self.project()
+        for key, value in {'ci-running-ubuntu-24.04': 1, 'ci-queued-ubuntu-24.04': 1,
+                           'ci-running-ubuntu-slim': 0, 'ci-queued-ubuntu-slim': 1,
+                           'merged-hour-forward': 1, 'merged-hour-backwards': 1,
+                           'merged-hour-sideways': 0, 'merged-day-sideways': 1}.items():
+            with self.subTest(key=key):
+                self.assertEqual((metrics[key]['state'], metrics[key]['value']), ('known', value))
+                self.assertEqual(metrics[key]['observed_at'], AT)
+                self.assertEqual(metrics[key]['freshness'], 'unknown')
+                self.assertEqual(len(metrics[key]['source']['sha256']), 64)
+        self.assertIn('current ticket metadata', metrics['merged-day-forward']['label'])
+        self.assertEqual(metrics['merged-hour-forward']['sample']['identities'], ['pr-81'])
+        self.assertEqual(metrics['merged-hour-forward']['window']['since'], '2030-01-02T12:00:00Z')
+        self.assertEqual(metrics['merged-day-forward']['window']['since'], '2030-01-02T00:00:00Z')
+
+    def test_selected_pools_preserve_recognized_source_coverage(self):
+        # R1: selection filters metrics, not the complete source classification.
+        # The all-pools proof misses this bug because every known pool is selected.
+        cases = [
+            ('ubuntu-24.04', ['ubuntu-slim'], 'known', (1, 1)),
+            ('ubuntu-slim', ['ubuntu-slim'], 'known', (0, 1)),
+            ('ubuntu-24.04', None, 'partial', (None, None)),
+            ('ubuntu-24.04', ['synthetic-unclassified'], 'partial', (None, None)),
+            ('ubuntu-24.04', list(POOLS), 'partial', (None, None)),
+        ]
+        for selected, source_labels, state, expected in cases:
+            with self.subTest(selected=selected, source_labels=source_labels):
+                data = fixture()
+                data[JOBS]['jobs'][2]['labels'] = source_labels
+                metrics = self.project(data, pools=(selected,))
+                for status, value in zip(('running', 'queued'), expected):
+                    metric = metrics[f'ci-{status}-{selected}']
+                    self.assertEqual((metric['state'], metric['value']), (state, value))
+                    self.assertEqual(metric['dimensions']['pool'], selected)
+                    if state == 'known':
+                        self.assertEqual(metric['prerequisites'], [])
+                    else:
+                        self.assertTrue(metric['prerequisites'])
+                omitted = 'ubuntu-slim' if selected == 'ubuntu-24.04' else 'ubuntu-24.04'
+                self.assertNotIn(f'ci-running-{omitted}', metrics)
+                self.assertNotIn(f'ci-queued-{omitted}', metrics)
+
+    def test_ci_gaps_cannot_invent_complete_counts(self):
+        for case in ('partial', 'duplicate-run', 'duplicate-job', 'attempt', 'job-attempt',
+                     'status', 'missing-labels', 'conflicting-labels', 'unknown-label'):
+            data = fixture()
+            if case == 'partial':
+                data[JOBS]['total_count'] = 4
+                data[JOBS.replace('&page=1', '&page=2')] = {'total_count': 4, 'jobs': []}
+            elif case == 'duplicate-run':
+                data[RUNS]['workflow_runs'] *= 2
+                data[RUNS]['total_count'] = 2
+            elif case == 'duplicate-job':
+                data[JOBS]['jobs'][1] = copy.deepcopy(data[JOBS]['jobs'][0])
+            elif case == 'attempt':
+                data[RUN] = {**data[RUN], 'run_attempt': 2}
+            elif case == 'job-attempt':
+                data[JOBS]['jobs'][1]['run_attempt'] = 2
+            elif case == 'status':
+                data[JOBS]['jobs'][1]['status'] = 'waiting'
+            elif case == 'missing-labels':
+                del data[JOBS]['jobs'][1]['labels']
+            elif case == 'conflicting-labels':
+                data[JOBS]['jobs'][1]['labels'] = list(POOLS)
+            else:
+                data[JOBS]['jobs'][1]['labels'] = ['Linux', 'X64', 'unknown-pool']
+            with self.subTest(case=case):
+                metrics = self.project(data)
+                for key in ('ci-running-ubuntu-24.04', 'ci-queued-ubuntu-24.04'):
+                    self.assertIsNone(metrics[key]['value'])
+                    self.assertNotEqual(metrics[key]['state'], 'known')
+                    self.assertTrue(metrics[key]['prerequisites'])
+                self.assertEqual(metrics['merged-hour-forward']['value'], 1)
+
+    def test_paginated_jobs_and_closing_metadata(self):
+        data = fixture()
+        data[JOBS]['jobs'], tail = data[JOBS]['jobs'][:1], data[JOBS]['jobs'][1:]
+        data[JOBS.replace('&page=1', '&page=2')] = {'total_count': 3, 'jobs': tail}
+        issue = data['graph:91:']['data']['repository']['issue']
+        issue['labels'] = conn([{'name': 'feature-first'}], True, 'next-labels')
+        data['graph:91:next-labels'] = {'data': {'repository': {'issue': {
+            **issue, 'labels': conn([{'name': 'feature'}])}}}}
+        metrics = self.project(data)
+        self.assertEqual(metrics['ci-queued-ubuntu-slim']['value'], 1)
+        self.assertEqual(metrics['merged-hour-forward']['value'], 1)
+
+    def test_direction_unknowns_and_duplicates(self):
+        for case in ('ambiguous', 'unlinked', 'missing', 'partial-labels', 'duplicate-pr', 'duplicate-link'):
+            data = fixture()
+            if case == 'ambiguous':
+                data['graph:92:']['data']['repository']['issue']['milestone'] = None
+            elif case == 'unlinked':
+                data['graph:prs:']['data']['repository']['pullRequests']['nodes'][0]['closingIssuesReferences'] = conn([])
+            elif case == 'missing':
+                data['graph:91:']['data']['repository']['issue'] = None
+            elif case == 'partial-labels':
+                data['graph:91:']['data']['repository']['issue']['labels'] = conn([], True, 'unread')
+            elif case == 'duplicate-pr':
+                data['graph:prs:']['data']['repository']['pullRequests']['nodes'] *= 2
+            else:
+                links = data['graph:prs:']['data']['repository']['pullRequests']['nodes'][0]['closingIssuesReferences']['nodes']
+                links.append(copy.deepcopy(links[0]))
+            with self.subTest(case=case):
+                metrics = self.project(data)
+                self.assertIsNone(metrics['merged-hour-forward']['value'])
+                self.assertNotEqual(metrics['merged-hour-forward']['state'], 'known')
+                self.assertEqual(metrics['ci-running-ubuntu-24.04']['value'], 1)
+
+    def test_cost_estimate_preserves_scope_prices_and_rounding(self):
+        data = fixture()
+        data[RUNS]['workflow_runs'][0] = {**data[RUN], 'status': 'completed', 'conclusion': 'success'}
+        data[RUN] = data[RUNS]['workflow_runs'][0]
+        data[JOBS] = {'total_count': 1, 'jobs': [job(104, 'completed', ['ubuntu-slim'],
+            runner_name='synthetic-runner', started_at='2030-01-02T11:00:00Z',
+            completed_at='2030-01-02T11:01:01Z')]}
+        metrics = self.project(data)
+        cost = metrics['ci-cost-today-estimate']
+        self.assertEqual(cost['value'], 0.004)
+        self.assertEqual(cost['state'], 'partial')
+        self.assertIn('latest completed', cost['label'])
+        self.assertTrue(any('2026-' in p for p in cost['prerequisites']))
+        self.assertIsNone(metrics['ci-cost-today-billing']['value'])
+        data[JOBS]['jobs'][0]['labels'].append('unsupported-synthetic-selector')
+        metrics = self.project(data)
+        self.assertIsNone(metrics['ci-cost-today-estimate']['value'])
+
+
+    def test_ci_reader_is_bound_to_selected_repository(self):
+        other = 'synthetic-second/work'
+        data = {key.replace(ROOT, 'repos/' + other): value for key, value in fixture().items()}
+        metrics = self.project(data, repo=other)
+        self.assertEqual(metrics['ci-running-ubuntu-24.04']['value'], 1)
+
+    def test_source_bundle_drops_untrusted_labels(self):
+        data = fixture()
+        data[JOBS]['jobs'][1]['labels'].append('sensitive-synthetic-label')
+        self.project(data)
+        self.assertNotIn(b'sensitive-synthetic-label', self.wire)
+
+    def test_calendar_boundary_remains_valid_without_an_elapsed_window(self):
+        metrics = self.project(at='2030-01-02T00:00:00Z',
+                               read_started_at='2030-01-01T23:59:00Z')
+        self.assertEqual(metrics['merged-hour-forward']['state'], 'unavailable')
+        self.assertIsNone(metrics['merged-hour-forward']['window'])
+
+    def test_completed_job_in_active_run_is_not_in_completed_run_cost_cohort(self):
+        data = fixture()
+        data[JOBS]['jobs'][0] = job(104, 'completed', ['ubuntu-slim'],
+            runner_name='synthetic-runner', started_at='2030-01-02T11:00:00Z',
+            completed_at='2030-01-02T11:01:01Z')
+        metrics = self.project(data)
+        self.assertEqual(metrics['ci-cost-today-estimate']['sample']['identities'], [])
+
+    def test_missing_milestone_title_is_not_sideways(self):
+        data = fixture()
+        data['graph:94:']['data']['repository']['issue']['milestone'] = {}
+        metrics = self.project(data)
+        self.assertIsNone(metrics['merged-day-sideways']['value'])
+
+    def test_unread_old_ticket_metadata_does_not_hide_today(self):
+        data = fixture()
+        pr = copy.deepcopy(data['graph:prs:']['data']['repository']['pullRequests']['nodes'][0])
+        pr.update(number=80, mergedAt='2030-01-01T12:00:00Z')
+        pr['closingIssuesReferences'] = conn([{'number': 90, 'repository': {'nameWithOwner': REPO}}])
+        data['graph:prs:']['data']['repository']['pullRequests']['nodes'].append(pr)
+        metrics = self.project(data)
+        self.assertEqual(metrics['merged-hour-forward']['value'], 1)
+
+    def test_unselected_pool_capability_stays_visible(self):
+        metrics = self.project(pools=())
+        self.assertEqual(metrics['ci-pools']['state'], 'unavailable')
+        self.assertTrue(metrics['ci-pools']['prerequisites'])
+
+    def test_unconfigured_sources_are_explicitly_grey(self):
+        metrics = self.project(ci_read=None, pr_read=None, ticket_read=None)
+        self.assertTrue(metrics)
+        self.assertTrue(all(m['state'] == 'unavailable' and m['value'] is None for m in metrics.values()))
+
+
+DAY = '2030-01-02T00:00:00Z'
+LIST = ROOT + '/actions/workflows/ci.yml/runs?per_page=100&page=1'
+DONE = dict(runner_name='synthetic-runner', started_at='2030-01-02T11:00:00Z', completed_at='2030-01-02T11:01:01Z')
+
+
+def jobs_path(rid, page=1):
+    return f'{ROOT}/actions/runs/{rid}/jobs?per_page=100&page={page}'
+
+
+class Runs:
+    """Eight synthetic ci.yml runs (#1027), read from many threads at once: every read is logged,
+    reads in flight are counted, and `edit` may change one answer at one read."""
+
+    def __init__(self, gate=None, edit=None):
+        self.runs = [{'id': rid, 'run_attempt': 1, 'status': 'completed' if rid % 2 else 'in_progress',
+                      'conclusion': 'success' if rid % 2 else None, 'created_at': '2030-01-02T10:00:00Z'}
+                     for rid in range(201, 209)]
+        self.answers = {LIST: {'total_count': 8, 'workflow_runs': self.runs}}
+        for r in self.runs:
+            jid = 10 * r['id']
+            mine = ([job(jid, 'completed', ['ubuntu-24.04'], run_id=r['id'], **DONE)] if r['id'] % 2 else
+                    [job(jid, 'in_progress', ['ubuntu-24.04'], run_id=r['id']),
+                     job(jid + 1, 'queued', ['ubuntu-slim'], run_id=r['id'])])
+            self.answers[jobs_path(r['id'])] = {'total_count': len(mine), 'jobs': mine}
+            self.answers[jobs_path(r['id'], 2)] = {'total_count': len(mine) + 1, 'jobs': []}  # a late, empty page
+            self.answers[f'{ROOT}/actions/runs/{r["id"]}'] = r
+        self.gate, self.edit, self.lock = gate, edit, threading.Lock()
+        self.log, self.now, self.most = [], 0, 0
+
+    def __call__(self, path):
+        with self.lock:
+            self.log.append(path)
+            nth = self.log.count(path)
+            self.now += 1
+            self.most = max(self.most, self.now)
+        try:
+            if self.gate:
+                self.gate(path, nth)
+            answer = copy.deepcopy(self.answers[path])
+            return self.edit(path, nth, answer) if self.edit else answer
+        finally:
+            with self.lock:
+                self.now -= 1
+
+    def observe(self):
+        return B.current_activity(DAY, AT, repo=REPO, read=self)
+
+
+class BoundedReads(unittest.TestCase):
+    """#1027: current_activity reads up to four runs at once and keeps every per-run check."""
+
+    def test_four_runs_overlap_and_every_check_still_runs(self):
+        # catches: a serial reader (no overlap), an unbounded fan-out (more than four in flight),
+        # and a parallel rewrite that drops a jobs read, the run reread or an outer enumeration,
+        # or merges in completion order instead of run order.
+        meet = threading.Barrier(4, timeout=10)
+        world = Runs(gate=lambda path, nth: meet.wait() if path.endswith('/jobs?per_page=100&page=1') and nth == 1
+                     else None)
+        seen = world.observe()
+        self.assertEqual(world.most, 4)
+        self.assertEqual(seen['runs'], list(range(201, 209)))
+        self.assertEqual([(j['id'], j['run'], j['status'], j['pool']) for j in seen['jobs']], [
+            (2010, 201, 'completed', 'ubuntu-24.04'), (2020, 202, 'in_progress', 'ubuntu-24.04'),
+            (2021, 202, 'queued', 'ubuntu-slim'), (2030, 203, 'completed', 'ubuntu-24.04'),
+            (2040, 204, 'in_progress', 'ubuntu-24.04'), (2041, 204, 'queued', 'ubuntu-slim'),
+            (2050, 205, 'completed', 'ubuntu-24.04'), (2060, 206, 'in_progress', 'ubuntu-24.04'),
+            (2061, 206, 'queued', 'ubuntu-slim'), (2070, 207, 'completed', 'ubuntu-24.04'),
+            (2080, 208, 'in_progress', 'ubuntu-24.04'), (2081, 208, 'queued', 'ubuntu-slim')])
+        self.assertEqual(seen['cost_jobs'], [2010, 2030, 2050, 2070])
+        # Four completed jobs of 61 s, each billed as 2 minutes at 0.006 USD.
+        self.assertEqual((seen['cost']['billed_minutes'], seen['cost']['window_usd']), ({'github-hosted': 8}, 0.048))
+        # The first enumeration ends before any run is read; the second starts after every run is read.
+        self.assertEqual((world.log[0], world.log[-1], len(world.log)), (LIST, LIST, 2 + 3 * 8))
+        for rid in range(201, 209):
+            mine = [p for p in world.log if f'/runs/{rid}' in p]
+            self.assertEqual(mine, [jobs_path(rid), jobs_path(rid), f'{ROOT}/actions/runs/{rid}'], rid)
+
+    def test_a_changed_read_while_other_runs_are_in_flight_refuses_the_observation(self):
+        # catches: a parallel rewrite that loses a per-run check (jobs equality, run reread,
+        # pagination, identity) or the cross-run duplicate-job check, e.g. a duplicate set per worker.
+        def status(answer, value):
+            answer['jobs'][0]['status'] = value
+            return answer
+
+        def outer(answer):
+            answer['workflow_runs'] = answer['workflow_runs'][:-1]
+            answer['total_count'] = 7
+            return answer
+
+        def short(answer):
+            answer['total_count'] = 2  # the empty second page then falls short of it
+            return answer
+
+        def unknown(answer):
+            for r in answer.get('workflow_runs', [answer]):
+                if r['id'] == 205:
+                    r['status'] = 'synthetic-unknown'
+            return answer
+
+        def other_run(answer, jid=None, rid=None):
+            answer['jobs'][0].update({'id': jid or answer['jobs'][0]['id'], 'run_id': rid or answer['jobs'][0]['run_id']})
+            return answer
+        cases = {
+            'first jobs read differs': ((jobs_path(204),), 1, lambda a: status(a, 'queued')),
+            'second jobs read differs': ((jobs_path(206),), 2, lambda a: status(a, 'queued')),
+            'attempt changed on reread': ((f'{ROOT}/actions/runs/205',), 1, lambda a: {**a, 'run_attempt': 2}),
+            'status changed on reread': ((f'{ROOT}/actions/runs/202',), 1, lambda a: {**a, 'status': 'completed'}),
+            'outer run set changed': ((LIST,), 2, outer),
+            'unknown run status': ((LIST, f'{ROOT}/actions/runs/205'), None, unknown),
+            # These four change every read of the page, so only their own check can refuse them.
+            'late jobs page short of total_count': ((jobs_path(207),), None, short),
+            'duplicate job across runs': ((jobs_path(208),), None, lambda a: other_run(a, jid=2010)),
+            'job of another run': ((jobs_path(203),), None, lambda a: other_run(a, rid=201)),
+        }
+        for name, (where, when, change) in cases.items():
+            with self.subTest(name):
+                world = Runs(edit=lambda path, nth, answer: change(answer) if path in where and when in (None, nth)
+                             else answer)
+                with self.assertRaises(B.Fail):
+                    world.observe()
+
+    def test_a_failed_worker_stops_admission_and_nothing_is_retried(self):
+        # catches: a pool that keeps feeding queued runs to free workers after a failure, retries a
+        # failed read, or returns a partial observation. All four first reads fail, so no run ever
+        # completes and no timing can admit a fifth.
+        def fail(path, nth):
+            if path in {jobs_path(rid) for rid in range(201, 205)}:
+                raise OSError('synthetic read failure')
+        world = Runs(gate=fail)
+        with self.assertRaises(OSError):
+            world.observe()
+        first = {jobs_path(rid) for rid in range(201, 205)}
+        self.assertEqual(world.log[0], LIST)
+        self.assertTrue(world.log[1:] and set(world.log[1:]) <= first and len(set(world.log)) == len(world.log),
+                        world.log)
+
+    def test_a_failure_after_another_run_succeeds_still_admits_no_further_run(self):
+        # catches: admission that trusts a stale wait() snapshot (review R1). Run 201 succeeds and
+        # wait() returns it; run 202 then fails before the scheduler looks again. Run 205 must
+        # still never start. The real wait() is used; only this legal interleaving is pinned.
+        let_fail, let_others, real_wait, calls = threading.Event(), threading.Event(), B.wait, []
+
+        def gate(path, nth):
+            if nth == 1 and path == jobs_path(202):
+                self.assertTrue(let_fail.wait(10))
+                raise OSError('synthetic transport failure')
+            if nth == 1 and path in (jobs_path(203), jobs_path(204)):
+                self.assertTrue(let_others.wait(10))
+
+        def pinned(futures, **how):
+            finished, pending = real_wait(futures, **how)
+            calls.append(len(finished))
+            if len(calls) == 1:  # only run 201 can have finished: let 202 fail, then return the old answer
+                let_fail.set()
+                failed, _ = real_wait(pending, **how)
+                self.assertTrue(all(f.exception() is not None for f in failed))
+                let_others.set()
+            return finished, pending
+        world = Runs(gate=gate)
+        try:
+            with patch.object(B, 'wait', pinned), self.assertRaises(OSError):
+                world.observe()
+        finally:
+            let_fail.set()
+            let_others.set()
+        self.assertEqual(world.now, 0)  # every admitted read ended before the call returned
+        self.assertFalse([p for p in world.log if any(f'/runs/{rid}' in p for rid in range(205, 209))], world.log)
+
+    def test_runs_still_queued_at_the_first_failure_send_no_request(self):
+        # catches: a failure that lets runs already submitted but not yet started go on to read
+        # (review R1, re-check). Worker threads 2-4 start only once a run has failed, so runs
+        # 202-204 are still queued when 201's first read fails: none of them may send a request.
+        import concurrent.futures
+        release, started, lock = threading.Event(), [], threading.Lock()
+
+        def hold():
+            with lock:
+                started.append(None)
+                later = len(started) > 1
+            if later:
+                self.assertTrue(release.wait(10))
+
+        class Held(concurrent.futures.ThreadPoolExecutor):
+            def __init__(self, **how):
+                super().__init__(initializer=hold, **how)
+
+            def submit(self, *args):
+                future = super().submit(*args)
+                future.add_done_callback(lambda f: f.exception() and release.set())
+                return future
+
+        def gate(path, nth):
+            if path == jobs_path(201):
+                raise OSError('synthetic transport failure')
+        world = Runs(gate=gate)
+        try:
+            with patch.object(B, 'ThreadPoolExecutor', Held), self.assertRaises(OSError):
+                world.observe()
+        finally:
+            release.set()
+        self.assertEqual(world.now, 0)  # the running worker was joined
+        self.assertEqual(world.log, [LIST, jobs_path(201)])
+
+
+if __name__ == '__main__':
+    unittest.main()

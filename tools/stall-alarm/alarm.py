@@ -14,38 +14,15 @@ import tempfile
 import time
 
 
-QUERY = """query StallAlarm($owner: String!, $name: String!, $cursor: String, $recent: String!) {
-  repository(owner: $owner, name: $name) {
-    defaultBranchRef { name }
-    pullRequests(states: OPEN, first: 50, after: $cursor) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        number isDraft baseRefName headRefOid mergeable
-        comments(last: 100) {
-          pageInfo { hasPreviousPage }
-          nodes { databaseId createdAt updatedAt body }
-        }
-        commits(last: 1) { nodes { commit {
-          oid
-          statusCheckRollup { state contexts(first: 100) {
-            pageInfo { hasNextPage }
-            nodes { __typename
-              ... on CheckRun { name status conclusion }
-              ... on StatusContext { context state }
-            }
-          } }
-        } } }
-      }
-    }
-  }
-  search(query: $recent, type: ISSUE, first: 1) { issueCount }
-}"""
 SHA = r"[0-9a-f]{40}"
-SENT = re.compile(rf"launch-fleet: (findings sent|CI failure sent|re-check sent) ({SHA})(?=\b|$)(?:, thread [A-Za-z0-9_-]+)?")
-APPROVE = re.compile(rf"VERDICT: APPROVE at ({SHA})")
+# #824: the GitHub facts are the war-room collector's on-demand read
+# (tools/collector/collector.v1.md): `open_prs`, and `merges` for the hour.
+READ = "openwiz.war-room.collector.read.v1"
+SENT = ("findings sent", "CI failure sent", "re-check sent")
 # Only the pull-request and any-item rows of launch-fleet's Records table.
 # Match the record prefix, as fleet.sh's kind() does; annotations may follow.
-# Unknown or incomplete fleet text cannot prove an agent acted.
+# Unknown or incomplete fleet text cannot prove an agent acted. The
+# collector's open_prs read refuses any other record with this rule.
 PR_RECORD = re.compile(
     rf"launch-fleet: (?:review (?:starting|withdrawn) {SHA}"
     rf"|(?:review started|review told again|re-check sent) {SHA}"
@@ -97,16 +74,13 @@ def iso(value):
     return datetime.fromtimestamp(value, timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def first_line(body):
-    require(isinstance(body, str))
-    return next((line.strip() for line in body.splitlines() if line.strip()), "")
-
-
 class Reader:
     def __init__(self, seconds):
         self.end = time.monotonic() + seconds
 
-    def read(self, args):
+    def read(self, args, whole=False):
+        # Each command gets at most eight seconds; the collector's one read
+        # (WHOLE) holds every GitHub read of the tick, so it gets the rest.
         remaining = self.end - time.monotonic()
         if remaining <= 0:
             raise ReadError("command failed")
@@ -118,7 +92,7 @@ class Reader:
         except OSError:
             raise ReadError("command failed") from None
         try:
-            out, _ = proc.communicate(timeout=min(8, remaining))
+            out, _ = proc.communicate(timeout=remaining if whole else min(8, remaining))
         except BaseException as error:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.communicate()
@@ -190,105 +164,95 @@ def loop_stalls(reader, loop_id, now, started_at, grace):
     return {}
 
 
-def nodes(connection, previous=False):
-    require(isinstance(connection, dict) and isinstance(connection.get("nodes"), list))
-    page = connection.get("pageInfo")
-    flag = "hasPreviousPage" if previous else "hasNextPage"
-    require(isinstance(page, dict) and page.get(flag) is False)
-    require(all(isinstance(node, dict) for node in connection["nodes"]))
-    return connection["nodes"]
+def collector():
+    configured = os.environ.get("STALL_ALARM_COLLECTOR")
+    if configured:
+        require(Path(configured).is_absolute())
+        return configured
+    # An embedded script has no checkout of its own: it must name one.
+    here = globals().get("__file__")
+    require(isinstance(here, str) and Path(here).is_file())
+    return str(Path(here).resolve().parents[1] / "collector" / "collect_factory.py")
+
+
+def exact(value, *keys):
+    """VALUE is an object with exactly KEYS (the contract's objects are closed)."""
+    require(isinstance(value, dict) and set(value) == set(keys))
+    return value
+
+
+def known(facts, name):
+    fact = exact(facts[name], "fact", "state", "read", "point", "window", "fresh_until", "freshness",
+                 "source", "evidence", "prerequisites", "value")
+    require(fact["fact"] == name and fact["state"] == "known")
+    return fact["value"]
 
 
 def inspect_pull(pull, now, base, checks):
-    require(integer(pull["number"]) and pull["number"] > 0)
-    require(type(pull["isDraft"]) is bool and isinstance(pull["baseRefName"], str))
-    require(isinstance(pull["headRefOid"], str) and re.fullmatch(SHA, pull["headRefOid"]) is not None)
+    exact(pull, "number", "draft", "base", "head", "mergeable", "rollup", "checks", "verdict", "record")
+    number, head = pull["number"], pull["head"]
+    require(integer(number) and number > 0)
+    require(type(pull["draft"]) is bool and isinstance(pull["base"], str))
+    require(isinstance(head, str) and re.fullmatch(SHA, head) is not None)
     require(pull["mergeable"] in ("MERGEABLE", "CONFLICTING", "UNKNOWN"))
-    comments = nodes(pull["comments"], previous=True)
-    records, verdicts = [], []
-    for comment in comments:
-        require(integer(comment["databaseId"]))
-        created, edited = timestamp(comment["createdAt"]), timestamp(comment["updatedAt"])
-        require(edited >= created)
-        line = first_line(comment["body"])
-        if line.startswith("launch-fleet:"):
-            require(PR_RECORD.match(line) is not None)
-            records.append((edited, comment["databaseId"], line))
-        # The fleet selects reports whose body itself starts with VERDICT:
-        # (unlike its records, which use the first nonblank line).
-        if comment["body"].startswith("VERDICT: "):
-            records.append((edited, comment["databaseId"], line))
-            verdicts.append((comment["databaseId"], line))
-    head = pull["headRefOid"]
+    # The latest of the PR's fleet record and its verdict, by last edit, then
+    # comment ID: only a sent record at the current head can be idle.
+    latest = []
+    for kind, field in (("record", "kind"), ("verdict", "verdict")):
+        item = pull[kind]
+        if item is not None:
+            exact(item, field, "head", "comment_id", "at")
+            require(integer(item["comment_id"]) and isinstance(item[field], str))
+            require(item["head"] is None or isinstance(item["head"], str))
+            latest.append((timestamp(item["at"]), item["comment_id"], kind, item))
     idle = {}
-    if records:
-        edited, ident, line = max(records)
-        sent = SENT.match(line)
-        if sent and sent[2] == head and now - edited >= 3600:
-            idle[f"github/idle/{pull['number']}/{ident}/{iso(edited)}"] = f"idle #{pull['number']}: 60 minutes after {sent[1]}"
-    commits = pull["commits"]
-    require(isinstance(commits, dict) and isinstance(commits.get("nodes"), list))
-    require(len(commits["nodes"]) == 1)
-    commit = commits["nodes"][0]["commit"]
-    require(isinstance(commit, dict) and isinstance(commit.get("oid"), str))
-    rollup = commit["statusCheckRollup"]
-    green = False
-    if rollup is not None:
-        require(isinstance(rollup, dict) and rollup.get("state") in ("SUCCESS", "FAILURE", "ERROR", "PENDING", "EXPECTED"))
-        contexts = nodes(rollup["contexts"])
-        successes = set()
-        for context in contexts:
-            kind = context.get("__typename")
-            if kind == "CheckRun":
-                require(isinstance(context.get("name"), str) and isinstance(context.get("status"), str))
-                require(context.get("conclusion") is None or isinstance(context.get("conclusion"), str))
-                if context["status"] == "COMPLETED" and context["conclusion"] == "SUCCESS":
-                    successes.add(context["name"])
-            elif kind == "StatusContext":
-                require(isinstance(context.get("context"), str) and isinstance(context.get("state"), str))
-                if context["state"] == "SUCCESS":
-                    successes.add(context["context"])
-            else:
-                raise ReadError("unknown check kind")
-        green = rollup["state"] == "SUCCESS" and all(check in successes for check in checks)
-    latest = max(verdicts)[1] if verdicts else ""
-    approval = APPROVE.fullmatch(latest)
-    eligible = (not pull["isDraft"] and pull["baseRefName"] == base
-                and pull["mergeable"] == "MERGEABLE" and commit["oid"] == head
-                and approval is not None and approval[1] == head and green)
+    if latest:
+        edited, ident, kind, item = max(latest, key=lambda entry: entry[:2])
+        if kind == "record" and item["kind"] in SENT and item["head"] == head and now - edited >= 3600:
+            idle[f"github/idle/{number}/{ident}/{iso(edited)}"] = f"idle #{number}: 60 minutes after {item['kind']}"
+    rollup, results = pull["rollup"], pull["checks"]
+    require(rollup in ("success", "failure", "pending", None) and isinstance(results, list))
+    require(all(isinstance(exact(c, "name", "result")["name"], str) and isinstance(c["result"], str)
+                for c in results))
+    green = rollup == "success" and all(
+        any(c["name"] == check and c["result"] == "success" for c in results) for check in checks)
+    verdict = pull["verdict"]
+    approved = verdict is not None and verdict["verdict"] == "APPROVE" and verdict["head"] == head
+    eligible = (not pull["draft"] and pull["base"] == base
+                and pull["mergeable"] == "MERGEABLE" and approved and green)
     return idle, eligible
 
 
 def github_stalls(reader, args, now):
-    owner, name = args.repo.split("/")
-    recent = f"repo:{args.repo} is:pr is:merged base:{args.base} merged:>{iso(now - 3600)}"
-    cursor, seen, stalls, eligible, recent_merge = None, set(), {}, False, False
-    while True:
-        command = ["gh", "api", "graphql", "-f", "query=" + QUERY,
-                   "-f", "owner=" + owner, "-f", "name=" + name, "-f", "recent=" + recent]
-        if cursor is not None:
-            command += ["-f", "cursor=" + cursor]
-        answer = reader.read(command)
-        require(isinstance(answer, dict) and not answer.get("errors"))
-        data = answer["data"]
-        repo = data["repository"]
-        require(repo["defaultBranchRef"]["name"] == args.base)
-        count = data["search"]["issueCount"]
-        require(integer(count))
-        recent_merge = recent_merge or count > 0
-        conn = repo["pullRequests"]
-        require(isinstance(conn, dict) and isinstance(conn.get("nodes"), list))
-        page = conn["pageInfo"]
-        require(type(page["hasNextPage"]) is bool)
-        for pull in conn["nodes"]:
-            idle, ready = inspect_pull(pull, now, args.base, args.check)
-            stalls.update(idle)
-            eligible = eligible or ready
-        if not page["hasNextPage"]:
-            break
-        cursor = page["endCursor"]
-        require(isinstance(cursor, str) and cursor and cursor not in seen and conn["nodes"])
-        seen.add(cursor)
+    since, until = iso(now - 3600), iso(now)
+    command = [sys.executable, "-I", collector(), "read", "--repo", args.repo,
+               "--fact", "merges", "--fact", "open_prs", "--since", since, "--until", until,
+               "--base", args.base, *[part for check in args.check for part in ("--check", check)]]
+    if args.now:
+        command += ["--now", until]
+    answer = reader.read(command, whole=True)
+    exact(answer, "schema", "repository", "requested_at", "factory", "ci")
+    require(answer["schema"] == READ and answer["repository"] == args.repo and answer["ci"] == {})
+    facts = answer["factory"]
+    exact(facts, "merges", "open_prs")
+    merges, value = known(facts, "merges"), known(facts, "open_prs")
+    require(facts["merges"]["window"] == {"since": since, "until": until, "timezone": "UTC"})
+    require(isinstance(exact(merges, "pull_requests")["pull_requests"], list))
+    recent_merge = False
+    for merged in merges["pull_requests"]:
+        exact(merged, "number", "merged_at", "base", "tickets", "direction")
+        require(integer(merged["number"]) and isinstance(merged["base"], str))
+        require(timestamp(since) <= timestamp(merged["merged_at"]) < timestamp(until))
+        recent_merge = recent_merge or merged["base"] == args.base
+    exact(value, "default_branch", "base", "checks", "pull_requests")
+    require(value["default_branch"] == args.base)
+    require(value["base"] == args.base and value["checks"] == args.check)
+    require(isinstance(value["pull_requests"], list))
+    stalls, eligible = {}, False
+    for pull in value["pull_requests"]:
+        idle, ready = inspect_pull(pull, now, args.base, args.check)
+        stalls.update(idle)
+        eligible = eligible or ready
     if eligible and not recent_merge:
         stalls["github/merges"] = "no merges for 60 minutes with an approved green conflict-free pull request"
     return stalls

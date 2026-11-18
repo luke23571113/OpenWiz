@@ -1,13 +1,13 @@
 ## Contract and suite seam (WR1)
 
-The [v1 contract](contract.md) and [record schema](record.schema.json) pin one
+The [v1 contract](../collector/contract.md) and [record schema](../collector/record.schema.json) pin one
 snapshot and the explicit unavailable provider slots for spec #2340.
 Composition/checking is finite and offline; it starts no collector or schedule.
 
 ```sh
-python3 -I tools/war-room/test_contract.py
-python3 -I tools/war-room/suite.py check tools/war-room/fixtures/contract/known.json
-python3 -I tools/war-room/suite.py compose --at 2030-01-02T12:00:00Z
+python3 -I tools/collector/test_contract.py
+python3 -I tools/collector/suite.py check tools/collector/fixtures/contract/known.json
+python3 -I tools/collector/suite.py compose --at 2030-01-02T12:00:00Z
 ```
 
 Later adapters pass projected provider records to `compose`; history/page and
@@ -310,7 +310,7 @@ own `stage_bench` computes every wait, result and miss: this file adds no timer,
 settings owner, source parser, recovery or effect.
 
 ```sh
-python3 -I tools/war-room/stage_waits.py --at UTC_TIME --root DIR --journey journeys.json \
+python3 -I tools/collector/stage_waits.py --at UTC_TIME --root DIR --journey journeys.json \
   --sidecar stage-waits.json --settings limits.conf --settings-evidence URL \
   --cohort-since UTC_TIME --settings-read-at UTC_TIME   # prints a projected provider
 python3 -I tools/war-room/test_stage_waits.py
@@ -391,7 +391,7 @@ observation. It is neither billing nor all-in PR allocation; the separate billin
 metric stays grey pending complete day-specific existing billing evidence.
 
 ```sh
-python3 -B -I tools/war-room/test_activity.py
+python3 -B -I tools/collector/test_activity.py
 ```
 
 The fake-gh source-to-suite proofs cover counts, pagination, attempts, exact
@@ -411,13 +411,14 @@ Benches table: every slot, its state and how many of its values are measured,
 as text a phone reads natively.
 
 - **The job:** [`.github/workflows/war-room.yml`](../../.github/workflows/war-room.yml),
-  beside `board.yml`, on GitHub-hosted `ubuntu-24.04` for all three jobs, never
-  `vars.CI_RUNS_ON`. A pull request runs `proof` (`test_publish.py`) and a
-  `preview` (tick and draw on an empty history, no publish). A dispatched or
+  beside `board.yml`, on GitHub-hosted `ubuntu-24.04` for both jobs, never
+  `vars.CI_RUNS_ON`. A pull request runs a `preview` (tick and draw on an empty history, no publish). A dispatched or
   scheduled run from `main` is the `publish` job alone: `publish.sh` runs
   `test_publish.py` first, then `publish.py publish`. Only `publish` has
   `contents: write`, it pushes only `refs/heads/war-room`, and the
-  `war-room-publication` concurrency group serialises it.
+  `war-room-publication` concurrency group serialises it. The proofs run from
+  [`war-room-proof.yml`](../../.github/workflows/war-room-proof.yml) (#827): pull
+  requests only, `contents: read`, every war-room test and the CI time budgets.
 - **Default off:** `publish` runs only when the repository variable
   `WAR_ROOM_PUBLISH` is `on`, so after merge neither the backup cron nor a
   dispatch publishes or spends a minute. Activation is the orchestrator's
@@ -484,7 +485,7 @@ as text a phone reads natively.
   hourly loop stops.
 - **Cost basis, per run:** one GitHub-hosted Linux job of about a minute,
   billed per job rounded up to the minute at the list rate in
-  [`tools/ci-bench/prices.tsv`](../ci-bench/prices.tsv) (`github-hosted`,
+  [`tools/collector/prices.tsv`](../collector/prices.tsv) (`github-hosted`,
   $0.006/minute, verified 2026-11-05): 24 dispatched plus 4 backup runs is about
   28 minutes, about $0.17 a day before any included minutes. A pull request
   run is two jobs. Each publish also adds pictures to the branch's history:
@@ -570,7 +571,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
 | --- | --- | --- |
 | Board | `history.jsonl` on `board`, checked by the board's own row validator. The latest row's six counts are **partial**, in the board's daily window (`[PST day start, min(commit, next PST day))`), each a level at the sample time. The startable percent and fed ratio need ticket identities from a `graph.json` of the same read, so without one they stay Unknown with that prerequisite | The `board` commit's time and link |
 | Credits | `credits.jsonl` on `board`, through WR2's native `credits` adapter | The `board` commit's time and link |
-| CI bench | The `windows/*/point.json` on `ci-benchmarks` with the latest `until`, through WR2's `ci_bench` adapter | The `ci-benchmarks` commit's time and link |
+| CI bench | Retired with the bench (#827): an explained missing slot. PRs an hour against the baseline is drawn from a collector snapshot by `charts/build.py --snapshot`; the hourly publish does not yet pass one (a gap of #827) | None |
 | Current activity | WR8's `activity.project` with the existing `bench.gh`, `metrics.collect_prs` and `metrics.graphql` readers. `ci.yml`'s whole run history is over the API's 1000-item limit, so its run list is read bounded (`gather.current_runs`): the active runs, one status at a time, and the completed runs created this UTC day, the only runs WR8 uses. Each listing keeps `bench.pages`' checks; a run listed twice or under another status refuses the CI counts. Its observation bytes are kept beside its provider. Pools default to `closedwiz-pc` and `ubuntu-24.04` | The read's end, and this run's link |
 | Ticket journeys, rework, cost | `journey.py`'s `collect` for the tickets closed by the merged cohort, then WR6 `rework.project` and WR4 `cost.project` (journeys and the CI point). The cohort is the PRs merged in the latest complete UTC hour that has a merged PR closing a ticket, looking back up to 6 hours | The read's end, and this run's link |
 | Answer time | WR5's own projection when one is supplied, otherwise `answer_time.unavailable()` and its exact prerequisites. No recorded-answer source exists yet | This run's link |
@@ -589,7 +590,7 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
   nothing is selected or published. The board graph's ticket text is used only
   in memory and never written. The publish's own scan of every published file is
   unchanged.
-- **Reads only.** `board` and `ci-benchmarks` are fetched (depth 1) and never
+- **Reads only.** `board` is fetched (depth 1) and never
   pushed. The `gh` reads are GETs and fixed GraphQL queries. The publish job adds
   `actions`, `issues` and `pull-requests` read scopes for them and still
   pushes only `refs/heads/war-room`. It stays on GitHub-hosted `ubuntu-24.04`,
@@ -608,14 +609,13 @@ python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN
 
 Red and green runs are in `fixtures/gather/`, which also holds the synthetic
 `history.jsonl`, `credits.jsonl` and `cohort.json`. The test builds the
-`board` and `ci-benchmarks` branches from these files, the page-history graph
-and the cost CI point. It reuses WR8's synthetic gh, WR6's journeys and WR5's
+`board` branch from these files and the page-history graph. It reuses WR8's synthetic gh, WR6's journeys and WR5's
 pairs. All of these are offline fixture evidence, not a live result.
 
 ## Health collection and v2 history (WRD1)
 
 WRD1 (#629) adds the three health signals and the successor record,
-[`contract.v2.md`](contract.v2.md). New samples are `openwiz.war-room.v2`: the 17 v1
+[`contract.v2.md`](../collector/contract.v2.md). New samples are `openwiz.war-room.v2`: the 17 v1
 slots, unchanged, plus a `health` section with `main_ci`, `ci_queue` and
 `stage_health`. Saved v1 samples keep their bytes. `suite.load`, `history.read_all`,
 `weekly.py` and the publish scan read both versions, and `suite.health(record)` shows
@@ -625,7 +625,7 @@ a v1 sample's health as unobserved. Nothing is backfilled.
 | --- | --- | --- |
 | Main CI | `health.main_ci`: the `main` head, every page of its `ci.yml` push runs, a reread of the latest run, the head again | Green from another head, a pending, cancelled or changing run, a same-second tie or a failed read |
 | CI queue | `health.ci_queue`: WR8's same checked read (no extra API call), each queued job's `created_at` | Zero from a partial or changing read; a count when a job's pool is unknown; an invented queue limit |
-| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/factory-metrics/limits.conf` | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
+| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/collector/limits.conf` (the saved owner label keeps its original `tools/factory-metrics/limits.conf`, an immutable value) | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
 
 The same pinned stage evidence also fills the detailed `stage_waits` slot (WR3).
 
@@ -673,7 +673,7 @@ Red runs are in `fixtures/health/`: offline fixture evidence, not a live result.
 
 WRD2 (#630) draws the War room's figures once per build as static SVG, with the locked
 [Observable Plot](dependencies.md) under Node, from validated history (v1 and v2, read
-as [WRD1's v2 contract](contract.v2.md) defines it) and the selected board history.
+as [WRD1's v2 contract](../collector/contract.v2.md) defines it) and the selected board history.
 Browsers get the finished SVG and HTML tables: no Plot, D3, chart script, hydration,
 font, image or data request reaches the page. The interface WRD3 consumes is
 [`charts/contract.md`](charts/contract.md) and [`charts/input.schema.json`](charts/input.schema.json).
@@ -784,7 +784,7 @@ Fixture results alone are not live acceptance.
 **Data branches in another repository: `gather.py --data-remote URL`.** Optional. `URL`
 is any remote `git fetch` accepts (the caller authenticates git). It governs only the
 read-only, depth-1 fetches of `refs/heads/board` (`history.jsonl`, `credits.jsonl`,
-`graph.json`) and `refs/heads/ci-benchmarks` (`windows/*/point.json`); nothing is pushed.
+`graph.json`); nothing is pushed.
 Omitted, it defaults to `--remote`, so behaviour is unchanged. Given, `--remote` (still
 required) is not read by the gather. `--repo` keeps every `gh` read, run and pull-request
 link and the board graph's `repo` check. The board, credits and CI-bench commit evidence
@@ -829,8 +829,8 @@ Unavailable. The order is rebuilt with each hourly publication; no page sorts or
 
 **Build.** `page.site(record, charts)` returns the six pages, all rendered before anything
 is returned; `page.render` stays the complete one-document view of the same content (every
-chart once, the whole Sources appendix), which `main.tick` keeps at its page path and the
-pictures draw. `main.tick(..., site=DIR)` writes the six pages (`page.site_files`) beside
+chart once, the whole Sources appendix), which `main.tick` keeps at its page path; the
+published pictures are drawn from the home page, no longer from `page.render`. `main.tick(..., site=DIR)` writes the six pages (`page.site_files`) beside
 it from the same saved sample and chart bundle, rendering every page before writing any.
 `publish.py publish` publishes the six pages, the pictures and the README in one commit
 after scanning them all; a failed child, scan, write or push publishes nothing, and the
@@ -906,3 +906,68 @@ its one rule undone, and `red-review-r1.log` review round 1's proofs (R1 to
 R3) red before their fix. `rework-outcomes.json` is a synthetic 72-hour EB6
 sidecar over WR6's three-PR rework journey (one defect in three mature PRs). The BEFORE run (RL0b, #2571) keeps its bundle private in
 `private/evidence/review-loops/before/`.
+
+## CI time budgets (C1, C8)
+
+`budgets.py` separates normal (`trace=false, planted=false`), traced
+(`trace=true, planted=false`) and planted (`planted=true`, including when
+`trace=true`) execution. Each marked job has three rows in `budgets.tsv` and
+three timeout branches. The formula stays `ceil(1.5 * p95 / 60)` minutes with a
+five-minute floor; p95 is nearest rank per matrix leg, then the slowest leg.
+At least five eligible job samples are required. Ordinary successful and failed
+jobs still count; cancelled/skipped jobs do not. A planted job must additionally
+finish its workload: success, or a trace-record upload reached after execution.
+An early test failure is not a completed planted duration.
+
+Refresh from real records, keeping downloaded records outside public Git:
+
+```sh
+python3 -I tools/war-room/budgets.py collect --workflow ci.yml --runs 150 --since 2026-11-15T23:33:42Z --out /tmp/budget-window
+python3 -I tools/war-room/budgets.py collect --workflow privacy.yml --runs 150 --since 2026-11-15T23:33:42Z --out /tmp/budget-window
+python3 -I tools/war-room/budgets.py table /tmp/budget-window --out /tmp/budgets.tsv
+python3 -I tools/war-room/test_budgets.py
+python3 -I tools/war-room/budgets.py check
+```
+
+Collection saves `modes.json` beside the existing bench-shaped `jobs.jsonl`.
+It reads each latest attempt's persisted `ci-selection-<attempt>` artifact,
+checks selection run/attempt identity and the dispatch's selection hash, and
+keeps the actual boolean dispatch flags and artifact source. Missing, expired,
+unreadable or ambiguous evidence stays unknown. A combined trace/planted upload
+that ran cannot distinguish those modes. A skipped upload after clean steps can
+still establish normal execution. Unknown runs are reported and excluded from
+mode-specific samples.
+
+C1's fallback remains each rare job/mode's own last 150 eligible runs, with its
+actual window; never another mode's runs. Shape-changed release/skills/fleet jobs
+still require their post-merge window (`--after`, `--after-jobs`). Existing
+approved export-twin derivations stay explicit (`--derive rust=rust-export
+web=web-export`) and must use the same mode. No new twin relationship is implied.
+
+`table` writes planted duration provenance to `<table-stem>.samples.json` and
+references it as `measured:<path relative to table>` in the source column. Keep
+that file with a reviewed table, adjusting the relative path when moving it.
+`check` validates planted mode flags, completion, count and p95 against those
+observations, rejects missing planted rows and legacy shared timeouts, and checks
+each mode's timeout against its own row. A planted twin must reference the same
+mode and values. It reads no network during checking.
+
+If five completed samples do not exist, generation fails unless the gap is
+explicitly represented with `--unmeasured JOB:planted=AUTHORIZED_MINUTES`.
+The [C8 ruling](https://github.com/openwizdev/OpenWiz/issues/1097#issuecomment-6967769682)
+applies C1 question 4: undersampled planted rows restore their pre-#782
+90-minute limit, explicitly unmeasured. A provenance reference may be recorded
+as `unmeasured:<path relative to table>`; the committed rows point to the
+[C8 evidence](../../docs/evidence/1097/measurements.md), including run
+43586844977 attempt 1's observed 70m33s. This is not a five-sample p95 or a value
+computed from that one duration. Rows with five eligible samples stay measured
+by the unchanged formula and minimum, even if a fallback option is configured.
+
+An explicit `--derive rust=rust-export web=web-export` also inherits a twin's
+same-mode unmeasured fallback (for example,
+`--unmeasured rust-export:planted=90 web-export:planted=90`). The derived row keeps
+the twin's counts/window and p95 unknown (`0` in the TSV); the check validates the
+same-mode twin and does not apply the measured formula to its unknown p95.
+[Non-blocking follow-up #1109](https://github.com/openwizdev/OpenWiz/issues/1109)
+tracks a later re-read once eligible completed workloads exist. It authorizes
+no fresh measurements, reruns, sample waiver or automatic timeout changes.

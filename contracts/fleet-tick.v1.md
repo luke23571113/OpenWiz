@@ -12,7 +12,7 @@ certification does not enable them or change existing tick behavior. P5 stays
 Unverified; #2244 owns separate unstarted Local discovery. Every existing live,
 review/CI/base/merge, activation, spending and publication gate remains.
 
-What the fleet tick decides and does (OpenWiz 0.0.6, spec #116). `openwiz fleet tick --dry-run --json` prints the actions it would take; `openwiz fleet tick --json` reports attempted pending-start recoveries, then the actions planned from refreshed inputs, with what happened to each. The planner (B2, #118) returns exactly these actions; the executors (B3 #119, B4 #120) carry them out; the CLI (B5, #121) prints them. The schema is [`fleet-tick.v1.schema.json`](fleet-tick.v1.schema.json); this file adds the rules file, what each action means, does and records, the rules a schema can't express, and examples.
+What the fleet tick decides (OpenWiz 0.0.6, spec #116). `openwiz fleet tick --dry-run --json` prints the actions it would take. The planner (B2, #118) returns exactly these actions and the CLI (B5, #121) prints them. The executing `openwiz fleet tick` that carried them out, with its `--expect-plan` restriction, was retired in 0.0.17 (#800, spec #786): the agents running `launch-fleet` act. The schema is [`fleet-tick.v1.schema.json`](fleet-tick.v1.schema.json); this file adds the rules file, what each action means, the rules a schema can't express, and examples.
 
 **Public records (O4, #1272):** GitHub comments follow the thread-free forms in
 [open development v1](open-development.v1.md#fleet-records), including its
@@ -49,69 +49,32 @@ The existing manual replacement form is accepted only privately; an unsettled
 public handover yields `look`, never a guessed replacement.
 
 GitHub-only `fleet due` cannot resolve a thread-free identity without CloudRoom
-or private starts. It emits a conservative candidate for `fleet tick` to settle;
+or private starts. It emits a conservative candidate for the agent it wakes to settle;
 it never invents an agent identity or performs a CloudRoom read.
 
 **Revision #1196:** conditional builder/reviewer tables, selected start settings and one-time restart due items. The CLI prints this contract. Fixture proofs are in `tests/fleet/`.
 
 **Always true:**
 - **Every action cites its rule and carries the facts that justify it.** The rule is one id from [the action table](#the-actions); the facts are what the action acts on and what its rule found, as read. What a rule needs to be absent (no record yet, no open pull request, no verdict, no hold) is in its "When", not in its facts. Nothing in a tick is decided without a rule.
-- **Only these actions, only these writes.** Each action's writes are listed below and nothing else: no branch deleted, nothing forced, no comment edited, nothing released or published (grill Q5, Q6; spec #116). A case no rule covers gets no action, or a `look` for an agent.
+- **Only these actions.** No branch deleted, nothing forced, no comment edited, nothing released or published (grill Q5, Q6; spec #116). A case no rule covers gets no action, or a `look` for an agent.
 - **Fail closed.** An action is planned only when every fact it needs was read in full and every condition of its rule holds. An unread or doubtful fact plans nothing but a `look` (below): never a guess. If the rules file, the repository or the spec list can't be read, the tick plans nothing and prints no document (B5's exit status says why).
 - **Authority is checked, never inferred.** A start or a merge needs the spec's current plan graph approval (fleet.v1's [Approval and authority](fleet.v1.md#approval-and-authority)), which the tick checks itself. A label, a `ready` state or an `approve` verdict alone never starts or merges anything.
 - **No private data:** the facts are numbers, commits, labels, file paths, check names and results, thread ids and OpenWiz's own reasons. No comment, issue or thread content, and no account names.
 
 ## The document
 
-### Reviewed-plan execution (revision #1892)
-
-`openwiz fleet tick --expect-plan PATH [--json]` opts into a pre-effect
-restriction. Save and review the complete `fleet tick --dry-run --json` document,
-then pass that file. This adds no schema or action kind. Without this option,
-the existing recovery and execution behavior is unchanged.
-
-The file must be one strict `openwiz.fleet-tick.v1` JSON object, with mode
-`dry_run`, exactly its fields and no duplicate keys at any depth. `planned_at`
-must be a nonnegative integer in the unsigned 64-bit range; it is validated,
-not compared to the later execution clock. Every other field must equal the
-current typed planner's document: the complete ordered actions, including their
-arguments, rules, facts and `planned` outcomes, the rules object and the default
-branch. JSON object key order and whitespace are immaterial; array order is not.
-Extra, missing, duplicated or reordered actions and changed arguments all refuse.
-
-Before recovery can run, the restricted tick refuses if any repository start
-record has a pending latest attempt. The dry-run preview never authorizes the
-separate recovery plan. Otherwise the whole plan comparison completes before
-the first action: a mismatch leaves no partial GitHub/CloudRoom write or local
-state/lock write. Unreadable or invalid plan files also refuse. The restriction
-never supplies authority; all existing action preconditions and rechecks still
-apply, and execution uses only the compared ordered actions. Once the plan
-matches, later executor failures retain their usual per-action outcomes.
-
-Use the separate `--expect-plan PATH` form once, on execution only: no
-`=value`, empty/non-UTF-8 path, `--dry-run` combination or `fleet due` form.
-The next token is the path even when it resembles a flag. Argument errors
-exit 2; an unreadable, invalid, mismatched or recovery-ineligible reviewed plan
-exits 1. With a genuine `--json` option, refusal uses the existing
-`openwiz.cli-error.v1` envelope; no fleet execution report is emitted.
-
-Approval: Jake, 2026-11-07, EX1: the opt-in reviewed-plan restriction with no
-default behavior or schema change ([private record](https://github.com/jparker2006/ClosedWiz/issues/1892#issuecomment-6712343375)).
-
 ### Envelope fields
 
 | Field | What |
 | --- | --- |
 | `schema` | Always `openwiz.fleet-tick.v1` |
-| `mode` | `dry_run` (`--dry-run`: nothing is written; every outcome is `planned`) or `run` (the actions were carried out; no outcome is `planned`) |
+| `mode` | `dry_run` (`--dry-run`: nothing is written; every outcome is `planned`). The schema's `run` belonged to the retired executing tick (#800); the CLI never prints it |
 | `planned_at` | The clock the planner used, in milliseconds since 1970 |
 | `default_branch` | The repository's default branch, as read: the only base the tick reviews or merges into |
 | `rules` | [The rules file](#the-rules-file), as read |
-| `actions` | Every action due, including attempted pending-start recoveries in run mode, in [order](#order); `[]` when nothing is due and no recovery was attempted |
+| `actions` | Every action due, in [order](#order); `[]` when nothing is due |
 
-**Silent when nothing is due** (S2-4): an empty `actions` list. Without `--json`, the tick prints only the `wake` and `needs_you` actions (one line each), **and one line for every action that did not end `done`.** Those lines' wording is B5's.
-
-**A run never hides a fault (R5, #516):** without `--json`, an action whose outcome is `refused`, `failed` or `uncertain` prints `fleet #<spec>: #<ticket-or-spec> <rule> <state>: <reason>`, so a loop agent that runs `openwiz fleet tick` cannot mistake a write that keeps failing for a quiet tick. A recovered pending start is such an action: an unsuccessful recovery outcome is printed this way too, from the action recovery already attempted, without executing it again or repeating a confirmed start. A `wake` or `needs_you` that ends `done` keeps its judgment line; one that did not prints this line instead, never both. A dry run's actions are all `planned` and print no such line. The exit status is unchanged: the tick still exits 0 when it planned or ran, and the diagnostic lines, not the status, carry the fault.
+**Silent when nothing is due** (S2-4): an empty `actions` list. Without `--json`, the tick prints only the `wake` and `needs_you` actions (one line each). Those lines' wording is B5's.
 
 ## Reading it
 
@@ -163,7 +126,7 @@ Every action is `{"kind", "rule", "spec", "ticket", "facts", "outcome"}`:
 - **`rule`:** the rule it cites. Each rule belongs to one kind, and fixes the shape of `facts`.
 - **`spec`:** the spec (fleet) the action is under. **`ticket`:** its ticket, or `null` for an action on the spec itself: always `null` for `all_closed`, `re_approve` and `spec_summary`, either for `look`, and never for the rest.
 - **`facts`:** the facts that justify it, below.
-- **`outcome`:** [what happened](#outcomes).
+- **`outcome`:** always `{"state": "planned"}`: due, not carried out.
 
 ### The actions
 
@@ -253,59 +216,16 @@ ADR 0008 in full: a ticket's pull request merges **only when every one of these 
 5. **The base is unchanged:** the base CI ran against is the base branch's head now (`facts.base_commit`).
 6. **Not a release line:** the base branch is the default branch, and no `release-*` branch. Release lines, publishing and anything live stay the user's (grill Q5; story 4).
 
-### What each action writes
+### Shared relay record
 
-The tick's memory is GitHub, plus OpenWiz's own record of the agents it starts (B4). **An action is due until what ends it is there:** its record, or a state read back (the last column). **A record is written last,** once every write before it has succeeded, and been read back where the action says so; so an action interrupted or failed part way leaves no record, is due again, and repeats only the writes it can't find done (each of those is named below). Records are in `launch-fleet`'s forms ("Records") and always new comments: **the tick never edits or deletes a comment.** A `wake` writes nothing: the agent it wakes records what it did, in those forms, once it has done it. `<P>` is the pull request, `<commit>` its head.
-
-| Rule | Writes, in order | Ended by |
-| --- | --- | --- |
-| `frontier` | B4's start record, then one `new_thread` with the action's selected `settings`, with no title and the brief `You are the builder for #<N>. Read skills/build-ticket/SKILL.md and follow it.`; then, for people, `launch-fleet: started` on the ticket | B4's start record: a start it records is never repeated; an uncertain one is reconciled (0.0.4's status read), or a `look`. The comment ends nothing, and one that fails isn't retried |
-| `first_review`, `fresh_review` | B4's start record, then one `new_thread` with the action's selected `settings`, with no title and the brief `You are the reviewer for pull request #<P> at <commit>. Read skills/review-ticket/SKILL.md and follow it.`; then, for people, `launch-fleet: review started <commit>` on the pull request | B4's start record, as for `frontier` |
-| `re_check` | One `send` to `facts.reviewer`: `Re-check pull request #<P> at <commit>: read skills/review-ticket/SKILL.md, Re-checks.` | `launch-fleet: re-check sent <commit>` on the pull request, after the send |
-| `review_findings` | One `send` to `facts.builder`: `The review of pull request #<P> at <commit> asks for changes: read the report there. Fix or dispute each open finding, then hand back a new green head.` | `launch-fleet: findings sent <commit>` on the pull request, after the send |
-| `ci_failed` | One `send` to `facts.builder`, naming the failed checks and the commit | `launch-fleet: CI failure sent <commit>` on the pull request, after the send |
-| `contract_changed` | One `send` to `facts.builder`, naming the files and the pull request that changed them | `launch-fleet: noted #<merged>` on the ticket, after the send |
-| `adr_0008` | `gh pr merge <P> --merge --match-head-commit <commit>`, with a body citing the rule, the approval and the verdict; the read back (`gh pr view <P> --json state,mergeCommit,headRefOid`: `MERGED`, the same head); then, for people, `launch-fleet: merged #<P> at <commit> by ADR 0008: approval revision <n> (comment <id>), APPROVE (comment <id>), CI green` on the ticket | The pull request merged, read back: the merge's own body names the rule, so the comment ends nothing. If the merge or its read back fails, `launch-fleet: merge blocked <commit>: <why>` on the pull request ends it for that head, and a `look` follows |
-| `merged` | `launch-fleet: closed: merged in #<P> at <merge commit>` on the ticket, unless that comment is there already; then `gh issue close <N>`, read back (`gh issue view <N> --json state`) | **The ticket read back closed.** The comment ends nothing: a ticket still open is due again, and its comment isn't posted twice |
-| `all_closed` | `launch-fleet: closed: every ticket is closed` on the spec, unless it's there already; then `gh issue close <spec>`, read back | **The spec read back closed,** as for `merged` |
-| `contract_hold` | The `held` label on, then `ready_label` off: two edits, each read back, and one already so is done. The tick creates no label: without the project's `held` label the first edit fails | `launch-fleet: held for #<merged>: contract changed, re-approve. <files> changed in #<merged>.` on the ticket, after both edits |
-| `release` | The `held` label off, read back | The label read back off |
-| `finished` | `room-cli thread archive <id>` for each thread (one already archived counts as done) | `launch-fleet: archived` on the ticket, once all are |
-| `builder_refused` | One comment, its own record | `launch-fleet: start refused: <reason> (start <start>)`, or `start failed:`, on the ticket |
-| `reviewer_refused` | One comment, its own record | `launch-fleet: review refused <commit>: <reason> (start <start>)`, or `review failed <commit>: <reason> (start <start>)` (no thread: never a reviewer given up on), on the pull request |
-| `needs_info` | Printed for an agent | The agent's `launch-fleet: asked the orchestrator` on the ticket, once it has passed the question on |
-| `disputed` | Printed for an agent | The agent's `launch-fleet: dispute asked <commit>` on the pull request, once it has asked the orchestrator about every finding the action names |
-| `diagnosis` | Printed for an agent | The agent's `launch-fleet: diagnosis asked <commit>` on the pull request, once it has asked the orchestrator about every finding the action names. Its own record, never the dispute's: one passed on never ends the other |
-| `restart` | Under the builder start lock, re-read records and save the one fallback due comment, then print its branch and settings | The ticket's fallback due record; refused, failed or uncertain writes print no restart line |
-| `look` | Printed for an agent | The agent's `launch-fleet: look: <reason>` on the ticket (a pull request's item too), or on the spec, once it has looked |
-| `held` | One `send` to the orchestrator's thread (`Needs you: …`), and a comment on the spec starting `**Needs you:** #<N> is held for #<merged>`, unless it's there already | `launch-fleet: needs you sent: held for #<merged>` on the ticket, after both |
-| `person_ready` | The same two writes, the comment starting `**Needs you:** #<N> is ready, and only you can do it` | `launch-fleet: told the user` on the ticket, after both |
-| `re_approve` | The same two writes, the comment starting `**Needs you:** spec #<S> changed since revision <n>` | `launch-fleet: needs approval: changed since revision <n> (fingerprint now <its first 12 digits>)` on the spec, after both |
-| `spec_summary` | One `send` to the orchestrator's thread; then the summary on the spec, in place of a `**Needs you:**` comment (as `launch-fleet` writes it) | The summary itself, `launch-fleet: spec summary: …`, posted last |
-
-**Shared relay record (#546):** a relay is sent at most once per key (pull request, head and kind, scoped to its repository), and repeated only when its shared record is uncertain, such as a crash between send and outcome recording. The direct route and the tick's check-in consult the same durable `RelayStore` record before relaying; `RelayKey` and `RelayStore` are exported by `openwiz_service::events`, and the tick's consumer is #694. `RelayKey::op_id()` hashes the canonical repository, PR, head and relay kind with the `openwiz.fleet-relay.v1` domain into the existing private `sends/<op_id>.json` send record; both clients open the same OpenWiz state root. Its atomic claim and dispatch mark are synced before the provider call. A live in-progress record never permits another call; a stopped dispatch is uncertain, not failed or successful. The uncertainty exception does not request an automatic retry: these APIs return the saved outcome by default and never generate a new ID for a repeated hint. The table's post-send GitHub comments remain notifications; their absence cannot replace or bypass this shared record. A comment the table says "unless it's there already" is found by its first line and never posted twice. The orchestrator's thread is given to the tick (B5); `send` is 0.0.3's. Which writes go through which allowlisted command is B3's (GitHub: one comment, one label, one close or one merge per call, each read back) and B4's (CloudRoom).
+**Shared relay record (#546):** a relay is sent at most once per key (pull request, head and kind, scoped to its repository), and repeated only when its shared record is uncertain, such as a crash between send and outcome recording. The direct route and the tick's check-in consult the same durable `RelayStore` record before relaying; `RelayKey` and `RelayStore` are exported by `openwiz_service::events`, and the tick's consumer is #694. `RelayKey::op_id()` hashes the canonical repository, PR, head and relay kind with the `openwiz.fleet-relay.v1` domain into the existing private `sends/<op_id>.json` send record; both clients open the same OpenWiz state root. Its atomic claim and dispatch mark are synced before the provider call. A live in-progress record never permits another call; a stopped dispatch is uncertain, not failed or successful. The uncertainty exception does not request an automatic retry: these APIs return the saved outcome by default and never generate a new ID for a repeated hint. Post-send GitHub comments remain notifications; their absence cannot replace or bypass this shared record. A comment the table says "unless it's there already" is found by its first line and never posted twice.
 
 ### Order
 
-In run mode, recovery actions appear first, in the order attempted, each with
-its actual outcome. Recovery rechecks authority and reconciles pending starts
-before the tick refreshes its inputs and makes the remaining plan. The actions
-from that refreshed plan follow in the order below. A dry run performs no
-recovery: an unresolved pending start remains a `look` with a `planned` outcome.
+A dry run performs no recovery: an unresolved pending start remains a `look`
+with a `planned` outcome.
 
 Actions are listed by `spec` ascending; within a spec, its spec-level actions (`ticket` `null`) last, the rest by `ticket` ascending; within a ticket (or the spec), by kind in the action table's order; within a kind, by rule in its order. A document has at most one action per kind and rule for each ticket, and at most one `start_builder` per ticket: **never two builders**. Each action stands alone: none needs another beside it. But **actions from one review report agree:** a ticket's `review_findings`, `disputed` and `diagnosis` in one document have the same `pr` and the same `verdict` (a ticket has one open pull request, and its latest verdict is one comment). A `contract_hold` and its `held` are never in one document, since the notification is due only once the hold's record is there.
-
-## Outcomes
-
-| `outcome` | Means |
-| --- | --- |
-| `{"state": "planned"}` | Due, not carried out: every action of a dry run, and only those |
-| `{"state": "done"}` | Carried out, its writes read back where the action says so, and its record made |
-| `{"state": "refused", "reason"}` | The tool refused before anything changed (CloudRoom refused a start; `gh` refused a merge whose head moved). **Nothing changed** |
-| `{"state": "failed", "reason"}` | It didn't complete: one of its writes failed, and is known not to have happened. **The writes before it may have happened, and are known** (a close's reason comment posted, then the close not read back closed); nothing after it was tried. Its record isn't made, so it's due again, and a retry repeats only the writes it can't find done, as [What each action writes](#what-each-action-writes) says |
-| `{"state": "uncertain", "reason"}` | Whether a write happened can't be told (a start that timed out). **Unknown stays unknown:** the next tick reconciles it (0.0.4's status read) before anything is retried, and a start that can't be settled is a `look`, never a retry |
-
-The reason is OpenWiz's own words, never a tool's raw output.
 
 ## Where each fact comes from
 
@@ -323,7 +243,7 @@ Each has the finding id the check reports. The planner (B2) produces only docume
 
 | Id | Rule |
 | --- | --- |
-| `mode` | In a `dry_run` every outcome is `planned`; in a `run` none is |
+| `mode` | In a `dry_run` every outcome is `planned` |
 | `head` | A `verdict` in `adr_0008`, `review_findings`, `disputed` and `diagnosis` names its `pr`'s `head_commit`; a `re_check`'s `last_verdict` names another commit |
 | `base` | Every `pr` has the document's `default_branch` as its base, and the default branch is no release line (it doesn't start `release-`) |
 | `checks` | No check name twice. In `first_review`, `fresh_review`, `re_check`, `review_findings` and `adr_0008`, CI is green on the head (its base has a required check, each required check `pass`; none `fail`, `cancel` or `pending`); in `ci_failed`, at least one check is `fail` or `cancel` |
@@ -372,7 +292,7 @@ Where the tick does what `launch-fleet` does differently, and why:
 
 | Change | Why |
 | --- | --- |
-| **Spec completion remains v1 behavior:** `all_closed` still waits for every sub-issue to close and its agents to be archived, the summary to be recorded, and no open follow-up. `spec_summary` requires closed approved tickets, not verified planned builder merges; it lists the `follow_ups` input plus every open unapproved sub-issue, classifying the latter as follow-ups without checking a `polish` label or body marker. Neither rule checks live-check evidence or labels follow-ups `polish` | #1021 changed `launch-fleet`: verified planned builder merges, completed planned human work and any required live-check pass permit completion; confirmed follow-ups go to `polish` and never block it, while unclassified sub-issues require judgment. V1 has no live-check evidence input and no per-sub-issue follow-up marker (an `Issue` carries no body; the `follow_ups` input lists marked external issues). The tick writes the summary and closes the spec itself ([What each action writes](#what-each-action-writes)), with no step that checks live-check evidence or classifies follow-ups. Until it has one, the orchestrator running `launch-fleet` must check the live-check evidence and classify and label follow-ups before a `spec_summary` or `all_closed` action is carried out. These documented differences grant no waiver of #1021's completion gates and do not claim planner parity |
+| **Spec completion remains v1 behavior:** `all_closed` still waits for every sub-issue to close and its agents to be archived, the summary to be recorded, and no open follow-up. `spec_summary` requires closed approved tickets, not verified planned builder merges; it lists the `follow_ups` input plus every open unapproved sub-issue, classifying the latter as follow-ups without checking a `polish` label or body marker. Neither rule checks live-check evidence or labels follow-ups `polish` | #1021 changed `launch-fleet`: verified planned builder merges, completed planned human work and any required live-check pass permit completion; confirmed follow-ups go to `polish` and never block it, while unclassified sub-issues require judgment. V1 has no live-check evidence input and no per-sub-issue follow-up marker (an `Issue` carries no body; the `follow_ups` input lists marked external issues). The plan has no step that checks live-check evidence or classifies follow-ups. Until it has one, the orchestrator running `launch-fleet` must check the live-check evidence and classify and label follow-ups before a `spec_summary` or `all_closed` action is carried out. These documented differences grant no waiver of #1021's completion gates and do not claim planner parity |
 | **No comment is ever edited.** A start is recorded in OpenWiz's own start records before it's made, not as a `launch-fleet: starting` claim edited on; every record is a new comment | B3: "Never delete a branch, force anything, or edit any comment"; spec #116: "A start is recorded before it's made, like `send`'s op ids" |
 | **A merge also needs the spec's current approval** and the rules file's `adr_0008` row | Spec #116, "Merging": "the ticket belongs to a plan graph whose approval comment matches its current revision"; fleet.v1, "Approval and authority". `launch-fleet`'s `merge` line tests neither |
 | **The required checks are the `Required on` column's,** for the pull request's base | `fleet.md`, "CI checks"; `fleet.sh` takes every check in the table |
@@ -388,7 +308,6 @@ Where the tick does what `launch-fleet` does differently, and why:
 Synthetic values only. The check validates every `json` block here.
 
 1. **A dry run with one action of every rule:** spec 960's tickets 961 to 978 (#970 held now, #978 held in an earlier tick, its notification due); spec 985, whose plan changed since its approval; spec 990, every ticket closed; spec 995, closed and archived, its summary written.
-2. **A run:** three actions and what happened to each.
 
 ```json
 {
@@ -601,58 +520,6 @@ Synthetic values only. The check validates every `json` block here.
       "kind": "close", "rule": "all_closed", "spec": 995, "ticket": null,
       "facts": {"tickets": [996, 997]},
       "outcome": {"state": "planned"}
-    }
-  ]
-}
-```
-
-```json
-{
-  "schema": "openwiz.fleet-tick.v1",
-  "mode": "run",
-  "planned_at": 1793400300000,
-  "default_branch": "main",
-  "rules": {
-    "builder": {"harness": "claude-code", "model": "claude-opus-5-5", "effort": "xhigh"},
-    "builder_small": {"harness": "codex", "model": "gpt-6.1-sol", "effort": "high"},
-    "reviewer_claude": {"harness": "codex", "model": "gpt-6.1-sol", "effort": "high"},
-    "reviewer_gpt": {"harness": "claude-code", "model": "claude-opus-5-5", "effort": "high"},
-    "ci_checks": [
-      {"name": "web-build", "required_on": ["main", "release-*"]},
-      {"name": "rust", "required_on": ["main", "release-*"]},
-      {"name": "web-test", "required_on": ["main", "release-*"]}
-    ],
-    "merge": "adr_0008"
-  },
-  "actions": [
-    {
-      "kind": "start_builder", "rule": "frontier", "spec": 960, "ticket": 961,
-      "facts": {
-        "settings": {"harness": "claude-code", "model": "claude-opus-5-5", "effort": "xhigh"},
-        "title": "Synthetic ticket B1",
-        "approval": {"comment": 5990, "revision": 3, "fingerprint": "bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000"},
-        "labels": ["ready-for-agent"],
-        "blockers": [{"number": 950, "pr": 1950, "merge_commit": "9500000000000000000000000000000000000000"}],
-        "retry_after": {"start": "syn-start-961-1", "state": "refused"}
-      },
-      "outcome": {"state": "uncertain", "reason": "the start timed out"}
-    },
-    {
-      "kind": "merge", "rule": "adr_0008", "spec": 960, "ticket": 968,
-      "facts": {
-        "approval": {"comment": 5990, "revision": 3, "fingerprint": "bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000bbbb0000"},
-        "pr": {"number": 1968, "head_commit": "9680000000000000000000000000000000000000", "base_branch": "main"},
-        "base_commit": "5000000000000000000000000000000000000000",
-        "verdict": {"verdict": "approve", "commit": "9680000000000000000000000000000000000000", "comment": 5968},
-        "reviewer": "syn-thread-r968",
-        "checks": [{"name": "web-build", "result": "pass"}, {"name": "rust", "result": "pass"}, {"name": "web-test", "result": "pass"}]
-      },
-      "outcome": {"state": "done"}
-    },
-    {
-      "kind": "archive", "rule": "finished", "spec": 960, "ticket": 972,
-      "facts": {"threads": [{"thread": "syn-thread-b972", "role": "builder"}, {"thread": "syn-thread-r972", "role": "reviewer"}]},
-      "outcome": {"state": "failed", "reason": "CloudRoom could not archive the thread"}
     }
   ]
 }

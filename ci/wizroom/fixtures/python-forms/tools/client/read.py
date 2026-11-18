@@ -1,0 +1,4 @@
+import os
+
+with open(os.path.join(os.path.dirname(__file__), '../war-room/limits.conf')) as f:
+    print(f.read())

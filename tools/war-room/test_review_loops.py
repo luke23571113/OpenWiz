@@ -10,7 +10,7 @@ counted twice; a PR with no review or no push receipt read as zero; an
 immature PR entering the defect rate; a blocking finding with no user path or
 risk line passing the report check; a polish finding refused for lacking one.
 
-Worked cohort (EB6's own journey fixture, tools/factory-metrics/fixtures/journey):
+Worked cohort (EB6's own journey fixture, fixtures/journey):
 PR 4201 has independent rounds at heads aaaa, bbbb and cccc (bbbb reposted
 once, cccc also has a helper verdict), a receipt 18 h before merge, opened
 16 h before merge, a mature attributable defect, and findings R1 high, R2
@@ -31,15 +31,16 @@ import subprocess
 import sys
 import unittest
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('rl_review_loops', HERE / 'review_loops.py')
 R = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(R)
 FIX = HERE / 'fixtures/review-loops'
-EB6 = HERE.parent / 'factory-metrics/fixtures/journey'
-DOC = json.loads((EB6 / 'journeys.json').read_text())
-EB6_EXPORT = json.loads((EB6 / 'outcomes.json').read_text())  # EB6's own fixture, on a 48-hour policy
+EB6 = PUBLIC_ROOT / 'fixtures/journey'
+DOC = json.loads((PUBLIC_ROOT / 'fixtures/journey/journeys.json').read_text())
+EB6_EXPORT = json.loads((PUBLIC_ROOT / 'fixtures/journey/outcomes.json').read_text())  # EB6's own fixture, on a 48-hour policy
 FROZEN = {'rule': 'explicit-causal-fix-link-v1', 'followup_hours': 72, 'deduplication': 'root-cause-per-merge',
           'unknown_attribution': 'retain-unknown'}  # the contract's frozen policy, typed independently
 

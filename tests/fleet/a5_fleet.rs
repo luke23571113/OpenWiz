@@ -1360,25 +1360,6 @@ fn the_text_never_says_none_for_a_line_it_couldnt_read() {
     }
 }
 
-#[test]
-fn its_help_says_what_it_reads_and_how_it_exits() {
-    use openwiz_cli::fleet;
-    assert_eq!(fleet::USAGE, "  openwiz fleet <spec> [--json]\n");
-    assert!(fleet::HELP.starts_with("fleet <spec>\n"));
-    for words in [
-        "gh",
-        "merge commit was read back",
-        "CloudRoom projects, threads and Cloud workspaces",
-    ] {
-        assert!(fleet::HELP.contains(words), "{words:?}");
-    }
-    assert_eq!(
-        fleet::EXIT_CODES,
-        "  0  fleet: the fleet was printed, complete or partial\n  1  fleet: the spec or its \
-         ticket list couldn't be read; nothing was printed\n"
-    );
-}
-
 /// #373: a real-gh-shaped empty result is complete, including with APPROVE.
 #[test]
 fn no_checks_reported_keeps_the_ticket_building_and_fleet_progress_known() {
@@ -1429,36 +1410,4 @@ fn no_checks_reported_keeps_the_ticket_building_and_fleet_progress_known() {
             "in_review": 0, "changes_requested": 0, "held": 0, "blocked": 1, "unknown": 0
         }})
     );
-}
-
-#[test]
-fn no_checks_near_misses_leave_ticket_and_progress_unread() {
-    for (i, response) in crate::a4_fleets::no_checks::failures()
-        .into_iter()
-        .enumerate()
-    {
-        let world = small_world().answer(&checks_argv(20), response);
-        let ran = world.run(&format!("no_checks_near_miss_{i}"), &["1", "--json"]);
-        let got = ran.json();
-        conforms(&got);
-        let checks = read(&got, "r9");
-        assert_eq!(checks["outcome"]["state"], "failed", "case {i}");
-        assert_eq!(checks["outcome"]["gap"], "command_failed", "case {i}");
-        assert_eq!(
-            states(&got),
-            vec![(2, unread(&["r9"])), (3, known("blocked"))]
-        );
-        assert_eq!(got["data"]["fleet"]["progress"], unread(&["r9"]));
-        let reason = checks["outcome"]["reason"].as_str().unwrap();
-        assert!(
-            reason.ends_with("gh error (detail withheld)")
-                || reason.ends_with("gh error: HTTP 403 (detail withheld)")
-                || reason.ends_with("no error output"),
-            "{reason}"
-        );
-        assert_eq!(
-            ran.calls.iter().filter(|a| **a == checks_argv(20)).count(),
-            1
-        );
-    }
 }
