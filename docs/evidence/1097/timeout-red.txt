@@ -1,0 +1,40 @@
+✔ Rust and web lanes read the plan's planted output (1.187401ms)
+✔ nightly remains admitted when later main pushes arrive (13.244063ms)
+✔ main pushes retain the running run and coalesce pending pushes to latest (6.91898ms)
+✔ PR updates cancel obsolete work for that PR only (5.759294ms)
+✔ merge groups retain independent groups and do not cancel running work (4.182093ms)
+✔ the carriage guard runs on pull requests and merge groups and fails closed (2.633876ms)
+✔ frozen.yml runs the base's frozen old code check on GitHub-hosted runners for every PR and merge group to main (8.311418ms)
+✔ pull requests and merge groups run the full suite and every required check; a main push runs only the light check (50.088623ms)
+✖ marked jobs choose planted, traced and normal timeout branches independently (2.485477ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 8
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 150.313629
+
+✖ failing tests:
+
+test at .github/workflows/ci.test.mjs:251:1
+✖ marked jobs choose planted, traced and normal timeout branches independently (2.485477ms)
+  AssertionError [ERR_ASSERTION]: always: planted=false trace=true
+  
+  101 !== 202
+  
+      at TestContext.<anonymous> (file:///code/OpenWiz-1097/.github/workflows/ci.test.mjs:265:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 101,
+    expected: 202,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
