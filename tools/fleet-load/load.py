@@ -29,6 +29,9 @@ START = 1793534400  # Synthetic 2026-11-01 12:00 UTC.
 TICK = 600
 SPECS = [100, 200, 300, 400, 500]
 TICKETS = list(range(1001, 1101))
+# #1132: four-CPU measurement exhausted 600s, while individual ticks stayed
+# below 21s. Allow the complete scaled proof 15 minutes; keep the 60s tick cap.
+MAX_WALL_S = 900
 
 
 def extension(name):
@@ -146,7 +149,7 @@ class Workload:
         self.path = self.root / 'world.json'
         self.events = self.root / 'events.jsonl'
         self.now = START
-        self.deadline = time.monotonic() + 600
+        self.deadline = time.monotonic() + MAX_WALL_S
         self.ticks = []
         self.tasks = []
         self.builders = {}
@@ -216,7 +219,7 @@ class Workload:
     def timeout(self):
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError('FA3 exceeded its ten-minute workload bound')
+            raise TimeoutError(f'FA3 exceeded its {MAX_WALL_S}-second workload bound')
         return min(60, remaining)
 
     def command(self, args):

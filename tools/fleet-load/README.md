@@ -6,7 +6,7 @@ OpenWiz's own scale harness (`cargo`, `tests/`, `tools/scale-50`). They still
 run the skill's real `fleet.sh` and fixtures at `skills/launch-fleet/scripts/`.
 
 ```sh
-sh tools/fleet-load/ci.sh   # all of it, for CI (WZ12 wires it in)
+sh tools/fleet-load/ci.sh   # full suite: CI release:fleet-load
 python3 -I tools/fleet-load/test_carried.py
 python3 -I tools/fleet-load/standalone/dry_run_report.py   # WZ-P3/P4 for launch-fleet
 ```
@@ -25,6 +25,42 @@ CI: an event wake on an owned fleet prints only its `wake fleet #S` line (GI2,
 before its one GraphQL read. `transport.py` models the repository-privacy
 question (#1273).
 
+## #1132: measured execution budget and CI
+
+The full suite is registered as `release:fleet-load` in the existing release
+CI lane, whose job limit is 21 minutes. Its balancing row uses the measured
+full-suite time; the long workload stays outside the nine-minute always job.
+CI runs `ci.sh` with a fresh workload and requires its exact-once shard receipt.
+
+The scaled proof has a **900-second cumulative workload deadline** and retains
+its **60-second per-command/tick cap**. The frozen aggregate workload snapshot
+records the same 900-second budget. Cases, counts, virtual-time bounds, safety
+assertions and API budgets are unchanged. The old failures with 1.9 or 6.4
+seconds on their last command were the remainder of the expired 600-second
+workload budget, not full-tick measurements.
+
+Measure the complete schedule alone on four Linux CPUs (GNU time is needed
+only for this optional profiler):
+
+```sh
+cargo build --locked -p openwiz-tests --example openwiz -j 2
+taskset -c 0-3 python3 -I tools/fleet-load/measure_load.py \
+  --report /tmp/fleet-load-cost.json --trace /tmp/fleet-load-trace.json
+python3 -I tools/fleet-load/test.py --verify-report /tmp/fleet-load-trace.json
+```
+
+Every tick reports elapsed wall time, child CPU, complete fake-process CPU
+(including Python startup and fake-internal children), the remaining child
+CPU and the per-process rounding bound. GH and room-cli process counts stay
+separate: private record discovery can call room-cli during a tick, outside
+its GitHub question count. Parallel fake wall times overlap; never subtract
+their sum from tick wall time. These are synthetic measurements, with no
+live HTTP latency or production speedup claim.
+
+See [the baseline, decision and verification](evidence/1132/measurement.md)
+and its per-tick TSVs. No new test: the existing full workload is the red/green
+proof for this budget reset; CI wiring adds no behavior needing another test.
+
 ## FA3: 100-ticket fake fleet
 
 Run the affected proof only (Python standard library, `sh`, `jq`, SHA-256 tools):
@@ -35,7 +71,8 @@ python3 -I tools/fleet-load/test.py --report /tmp/fa3-report.json
 
 This runs the real `skills/launch-fleet/scripts/fleet.sh spec` across five
 approved synthetic specs, each with 20 tickets. A fixed virtual clock advances
-10 minutes per tick, with a ten-minute wall-clock deadline; no sleeping, background watcher or live endpoint is used.
+10 minutes per tick, with a 900-second wall-clock workload deadline and a
+60-second command cap; no sleeping, background watcher or live endpoint is used.
 Five tickets wait for a verified predecessor merge. GitHub records persist
 between ticks; each spec retains its own fleet identity.
 
@@ -108,8 +145,8 @@ This is fixture evidence for S1–S4, not a live observation. The follower model
 the skill's actions; it does not run an LLM or prove that an agent follows the
 skill. Overlapping claim elections, takeover and post-check builder inactivity
 remain covered elsewhere or unverified. Rust fleet-tick and underlying HTTP
-pagination/REST allowance measurement belong to #1227. No workflow file is
-owned here; the standalone invocation is ready for CI integration.
+pagination/REST allowance measurement belong to #1227. CI runs the complete
+suite through the existing release lane.
 
 Synthetic assumptions: all ticket/spec/PR/commit/thread/loop identifiers, times,
 work durations, findings and CI outcomes are invented. GitHub response shapes

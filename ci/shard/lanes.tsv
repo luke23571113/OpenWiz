@@ -779,3 +779,5 @@ skill:launch-fleet:skills/launch-fleet/scripts/test.sh:group:99	0.94
 skill:launch-fleet:skills/launch-fleet/test/ops-protocol/test_protocol.py	0.19
 skill:launch-fleet:tools/review-relay/test_inbox.py	0.38
 site	24.00
+# #1132: four-CPU fixture workload plus all existing suite checks; evidence under tools/fleet-load/evidence/1132.
+release:fleet-load	675.72

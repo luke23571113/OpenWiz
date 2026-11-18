@@ -1,0 +1,6 @@
+......100 tickets / 5 specs / 49 spec ticks; 6727 check questions; peak 308/1250 GraphQL points per simulated hour; 200 archives
+........
+----------------------------------------------------------------------
+Ran 14 tests in 39.434s
+
+OK
