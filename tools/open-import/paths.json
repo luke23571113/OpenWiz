@@ -44,6 +44,7 @@
     "skills/**",
     "tests/**",
     "tools/fleet-load/**",
+    "tools/collector/**",
     "tools/github-app/**",
     "tools/install/**",
     "tools/live-smoke/README.md",

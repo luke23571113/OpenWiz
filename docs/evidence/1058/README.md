@@ -65,3 +65,21 @@ No new relocation test is planned: the existing consumer suites and the
 contracted checker/preview boundaries already protect the behavior. The new
 caller-supplied case catches a valid caller-selected harness input preventing a
 split, or an unrelated dynamic load silently losing dependency protection.
+
+## Shared runtime equivalence proof
+
+[Ruling 6969452056](https://github.com/openwizdev/OpenWiz/issues/1058#issuecomment-6969452056)
+authorizes extracting only the shared current-run reader, privacy scanner and
+their required helpers/constants. `tools/collector/test_runtime.py` owns the
+equivalence proof, using the pre-extraction definitions from public commit
+`621e69c`, saved with their original source hashes in
+`tools/collector/fixtures/runtime-baseline.json`. The baseline also preserves
+the existing publisher privacy plants and one existing clean fixture.
+
+The current-run claim compares the same synthetic reads, returned values,
+read sequence, repeated enumeration, passthrough and refusal outcomes. The
+privacy claim compares the same fixture bytes, every existing plant and its
+escaped JSON form, binary/invalid-escape refusals and text-scan finding counts.
+`runtime-red.txt` records the initial stubs reaching 22 intended assertion
+failures before extraction. Both claims are fixture evidence, producible by
+the builder now. Existing privacy tests will also run without assertion edits.
