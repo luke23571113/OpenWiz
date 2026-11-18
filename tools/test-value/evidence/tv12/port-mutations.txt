@@ -102,4 +102,3 @@ AssertionError: 2 != 0 : b'sh: 1: Syntax error: Unterminated quoted string\n'
 Ran 1 test (local duration omitted)
 
 FAILED (failures=1)
-

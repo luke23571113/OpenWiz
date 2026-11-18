@@ -14,7 +14,9 @@ or the private Markdown parsers used only for those wording checks. Their
 wording-enforcement behaviour is retired by #814; the skill instructions,
 approval rules and runtime guards remain. In particular the isolation parser
 was not a shipped Markdown parser: every caller was a test in this one file.
-No runtime allowlist, privacy guard, contract, workflow or dependency changed.
+All 23 references to the three retired wording validators are inside the
+original test file (`git grep` at the base commit). No runtime allowlist,
+privacy guard, contract, workflow or dependency changed.
 
 OpenWiz keeps its harness-link checker and planted bad-link cases, local release
 contract checks, public install-prompt integration check and all six wrappers
@@ -31,6 +33,11 @@ replacement and stay; see their named replacement requirements in the ledger.
 - `port-mutations.txt`: all three ported tests fail after a controlled break of
   the behaviour they protect, in temporary copies only. Production scripts are
   unchanged; this migration is not a product bug fix.
+  Reproduction: copy the affected skill to a temporary directory and run its
+  new suite after (a) replacing `check-relies.sh` with `#!/bin/sh\nexit 0\n`,
+  (b) replacing `"$work/after"` with `"$work/before"` throughout
+  `check-workers.sh`, or (c) removing the single quotes around
+  `<snapshot-path>` in the documented `check` command. Each suite must fail.
 - The kit's before/after `checks` measurement runs in isolated worktrees with
   Rust 1.99.1 and cargo-llvm-cov 0.9.1, with two build jobs and test threads.
 - Sandbox run times are deliberately omitted from human-facing logs and the
@@ -41,3 +48,20 @@ replacement and stay; see their named replacement requirements in the ledger.
 
 The existing `tools/test-value/evidence/**` import row covers this evidence:
 no `tools/open-import/paths.json` row is added. No product changelog is needed.
+
+## Measured checkpoint result
+
+`before.json` is the exact base; `after.json` measures the unchanged Rust source
+of checkpoint `0f797a784a290e3b5a483c8aafe4bf4fe24c6f67`. The following
+commit adds only evidence. Both instrumented and plain target runs passed.
+
+- Checks target: 133 to 101 tests; skills group: 48 to 16.
+- Compiled test source: 23 files in each, 437,689 to 364,509 bytes, 12,019 to
+  10,133 lines. This is the kit's compiled-source size, not evidence-file size.
+- Coverage: 200 covered product lines before and after, unchanged in every
+  crate; `drops: none`. Full comparison in [compare.txt](compare.txt).
+- The three ported executable checks remain in Rust at this checkpoint because
+  the companion CI receipt is pending. This is not the completed T5 hand-back.
+  Remove those originals only on the named green receipt, and refresh the
+  measurement if the source changes. The six suite wrappers still have no
+  replacement and must remain.

@@ -24,4 +24,3 @@ test skills::setup_onboard_journey_passes has been running for over 60 seconds
 test skills::setup_onboard_journey_passes ... ok
 
 test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 85 filtered out; finished (local duration omitted)
-
