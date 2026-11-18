@@ -553,13 +553,14 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
                     got, runs, first, last = own_runs(samples(sjobs, twin, mode, straced))
                     jobs = sjobs
                 n = len(got)
-                unmeasured_key = next((candidate for candidate in
-                                       (f"{key}:{mode}", key, f"{twin}:{mode}", twin)
-                                       if candidate in unmeasured), None)
+                candidates = (f"{key}:{mode}", key)
+                if mode == "planted":
+                    candidates += (f"{twin}:{mode}", twin)
+                unmeasured_key = next((candidate for candidate in candidates if candidate in unmeasured), None)
                 if unmeasured_key in unmeasured and (mode != "planted" or n < MIN_SAMPLES):
                     rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": unmeasured[unmeasured_key], "p95_seconds": 0,
                                  "samples": n, "runs": runs, "first": first, "last": last,
-                                 "source": "unmeasured" if twin == key else f"derived:{twin}"})
+                                 "source": f"derived:{twin}" if mode == "planted" and twin != key else "unmeasured"})
                     continue
                 if n < MIN_SAMPLES:
                     errors.append(f"{wf} job {key} {mode} has {n} sample{'' if n == 1 else 's'},"
