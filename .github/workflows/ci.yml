@@ -370,6 +370,16 @@ jobs:
           browser: 'false'
       - name: Python for the offline installer and release proofs
         run: sh .github/actions/docs-only/python.sh
+      # #555: install the WizSkills release wizskills.lock pins, then fail on
+      # any carried contract that differs from it by one byte.
+      - name: Install the pinned WizSkills
+        run: python3 -I tools/wizskills/install.py
+      - name: The WizSkills contract copies
+        run: python3 -I tools/wizskills/check_contracts.py
+      - name: The WizSkills installer's tests
+        run: |
+          python3 -I tools/wizskills/test_install.py
+          python3 -I tools/wizskills/test_contract.py
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-selection-${{ github.run_attempt }}
