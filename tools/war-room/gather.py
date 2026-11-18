@@ -336,7 +336,7 @@ def stage_evidence(repo, tickets, clock):
 
 
 def chart_snapshot(repo):
-    """MT13: only the chart's fact; other facts are explicitly not read here."""
+    """MT13: read only the chart's fact, with a hard 60-second process-group budget."""
     doc = {'schema': collect_factory.SNAPSHOT, 'repository': repo, 'collected_at': now()}
     for group in ('factory', 'ci'):
         doc[group] = {name: collect_factory.unavailable(name, 'Not read for the published PRs-an-hour chart.')
@@ -348,7 +348,17 @@ def chart_snapshot(repo):
         with subprocess.Popen([sys.executable, '-I', str(HERE / 'collect_factory.py'), 'read', '--repo', repo,
                                '--fact', 'prs_per_hour'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               start_new_session=True) as read:
-            raw, _ = read.communicate()
+            try:
+                raw, _ = read.communicate(timeout=max(0, 60 - (time.monotonic() - started)))
+            except subprocess.TimeoutExpired:
+                # Kill the collector and its gh children, including a child holding stdout.
+                # Waiting for an executor or a still-running pipe writer would defeat the bound.
+                try:
+                    os.killpg(read.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                read.communicate()
+                raise
             suite.require(read.returncode == 0, 'chart read failed')
         answer = suite._decode(raw.decode('utf-8'))
         suite._shape(answer, collect_factory.SCHEMA['$defs']['read_envelope'], collect_factory.SCHEMA)
@@ -356,12 +366,12 @@ def chart_snapshot(repo):
         fact = answer['factory']['prs_per_hour']
         collect_factory.validate(fact)
         doc['factory']['prs_per_hour'] = fact
-    except (OSError, ValueError, KeyError, UnicodeError):
+    except (OSError, ValueError, KeyError, UnicodeError, subprocess.TimeoutExpired):
         pass  # An unread chart must not stall the remaining publish or become zero.
     finally:
         print('war-room PRs-per-hour read: %.3f seconds' % (time.monotonic() - started), file=sys.stderr)
-    doc['collected_at'] = max([now(), *([fact['read']['ended_at']] if
-                              (fact := doc['factory']['prs_per_hour'])['read'] else [])])
+    fact = doc['factory']['prs_per_hour']
+    doc['collected_at'] = max([now(), *([fact['read']['ended_at']] if fact['read'] else [])])
     scan_bytes(json.dumps(doc).encode())
     return doc
 
