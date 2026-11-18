@@ -260,6 +260,10 @@ class SplitChecker(unittest.TestCase):
             ('computed load', 'const regex = /`/;\nrequire(process.env.SYNTHETIC_MODULE);', 2),
             ('ambiguous closing brace', 'if (true) {} /`/.test("x");\nrequire("../war-room/collector.cjs");', 1),
             ('unterminated regex', 'const regex = /`\nrequire("../war-room/collector.cjs");', 1),
+            ('await keyword', 'async function load() { await /`/; }\nrequire("../war-room/collector.cjs");', 1),
+            ('yield keyword', 'function* load() { yield /`/; }\nrequire("../war-room/collector.cjs");', 1),
+            ('of keyword', 'function load() { for (const x of /`/) {} }\nrequire("../war-room/collector.cjs");', 1),
+            ('extends keyword', 'function load() { return class extends /`/ {}; }\nrequire("../war-room/collector.cjs");', 1),
         )
         for name, source, line in cases:
             with self.subTest(case=name), tempfile.TemporaryDirectory() as tmp:

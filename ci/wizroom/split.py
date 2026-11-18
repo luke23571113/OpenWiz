@@ -279,16 +279,20 @@ def js_code(text, path):
     """Blank comments and regex literals without shifting offsets or newlines.
 
     Keep strings for load-argument evaluation, and mark template text so it is
-    never scanned for loads. Recognise regexes where an expression must begin;
-    a numeric operand makes a slash division. Other slash contexts require more
-    grammar than this small lexer models, so refuse instead of hiding code.
+    never scanned for loads. Token context separates regex starts from division
+    operands; matched parentheses distinguish control headers from calls/grouping.
+    Closing braces and unmodelled keyword contexts still refuse conservatively.
     """
     out, i, n, quote, inside = [], 0, len(text), None, set()
     previous = ''
-    prefixes = {'', '(', '[', '{', '=', ',', ':', ';', '?', '~', '*', '%',
-                '&', '|', '^', '+', '-', '/', '<', 'return', 'throw', 'case',
-                'delete', 'void', 'typeof', 'new', 'in', 'instanceof', 'else',
-                'do', 'default', 'debugger'}
+    regex_words = {'return', 'throw', 'case', 'delete', 'void', 'typeof', 'new',
+                   'in', 'instanceof', 'else', 'do', 'default', 'debugger'}
+    keywords = set(('await break case catch class const continue debugger default '
+                    'delete do else enum export extends false finally for function '
+                    'if implements import in instanceof interface let new null of '
+                    'package private protected public return static super switch '
+                    'this throw true try typeof var void while with yield').split())
+    parens = []  # whether each opening parenthesis belongs to a control header
 
     def refuse(at, reason):
         no = text.count('\n', 0, at) + 1
@@ -309,7 +313,7 @@ def js_code(text, path):
             quote = c
             previous = 'literal'
             out.append(c)
-        elif text.startswith('//', i):
+        elif text.startswith('//', i) or (i == 0 and text.startswith('#!', i)):
             j = text.find('\n', i)
             j = n if j < 0 else j
             out.append(' ' * (j - i))
@@ -322,11 +326,11 @@ def js_code(text, path):
             i = j
             continue
         elif c == '/':
-            if previous == 'number':
+            if previous in ('identifier', 'number', 'literal', 'increment', ']', ')'):
                 previous = '/'  # division: its operand can contain a real load
                 out.append(c)
             else:
-                if previous not in prefixes:
+                if previous == '}' or (previous in keywords and previous not in regex_words):
                     refuse(i, 'ambiguous JavaScript slash (regex or division)')
                 j, bracket = i + 1, False
                 while j < n and text[j] not in '\r\n\u2028\u2029':
@@ -364,7 +368,8 @@ def js_code(text, path):
                 j += 1
             token = text[i:j]
             previous = ('number' if token.isdecimal() else
-                        token if token in prefixes and previous != '.' else 'identifier')
+                        'identifier' if token not in keywords or previous == '.' else
+                        'literal' if token in ('true', 'false', 'null', 'this', 'super') else token)
             out.append(token)
             i = j
             continue
@@ -375,7 +380,11 @@ def js_code(text, path):
             continue
         else:
             out.append(c)
-            if not c.isspace():
+            if c == '(':
+                parens.append(previous in ('if', 'while', 'for', 'with'))
+            if c == ')':
+                previous = 'control-close' if parens and parens.pop() else ')'
+            elif not c.isspace():
                 previous = c
         i += 1
     return ''.join(out), inside

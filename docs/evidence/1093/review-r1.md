@@ -35,3 +35,36 @@ because their division examples use only numbers, and their regex starts use `=`
 The closing-brace ambiguity remains deliberately refused; this round does not
 add a complete JavaScript grammar. No live services, writes or delete APIs are
 used. Exact-head required CI remains the hand-back gate.
+
+## Result
+
+Red commit: `8577c4a704acb6ae100a37a7b7d5079de9fa99ff`, committed before the lexer fix. `r1-red.txt`
+reaches the intended CLI refusal after Node successfully loads the shebang
+consumer; `r1-synthetic-before.txt` records all 44 incorrect refusals, each after
+a successful Node load. No setup failure stands in for the regression.
+
+The fix blanks a leading shebang and classifies slash positions by their
+preceding token. Identifiers, numbers, strings/templates, regex values, `]`,
+postfix increments/decrements and call/group closes permit division. Other
+punctuators permit a regex. A parenthesis stack distinguishes the `if`, `while`,
+`for` and `with` control headers from expression parentheses. Closing braces and
+unmodelled keyword contexts remain refused, with unchanged location/no-set rules.
+
+`r1-green.txt` binds the 14 passing tests to checker/test source hashes. The new
+table exercises 22 syntax prefixes with both direct and multiline loads, running
+all 44 consumers in Node. The seven uncertainty controls also pass on the
+unchanged reviewed checker, including `await`, `yield`, `of` and `extends`.
+`r1-real-tree-after.txt` preserves the real-tree closure: zero ambiguous-slash
+refusals, and exactly the two baseline dynamic refusals, byte-identical to the
+WM1 checker diagnostics. The real-tree command is revalidated at the green head
+before hand-back; required CI remains pending until observed at that head.
+
+The initial evidence and source hashes in `green.txt` describe 736da8f and are
+retained as history. This round does not claim a successful whole-tree split:
+the two pre-existing unresolved dynamic references still prevent sets. It adds
+no live observation or authority. The three polish issues are not fixed here.
+
+The red checkpoint push was attempted in the foreground with hooks enabled.
+Format, Clippy and Rust static checks passed; the classifier refused the new
+ordinary-syntax regression. The red commit is published together with the fix,
+without bypassing that gate or replacing the original first-push receipt.

@@ -42,7 +42,7 @@ Tests added (also listed in the PR):
 No tests removed or weakened. No new dependency. No future seam is needed:
 WM2 (#1058) consumes the unchanged split-checker CLI and its stay/move contract.
 
-## Outcome
+## Initial outcome at 736da8f
 
 Red commit: `dbf90f9d97a25acc32b8b68fe57979a354e1143e`, before any checker
 implementation edit. Its 10 failing subcases reach the intended retention or
@@ -71,3 +71,10 @@ the small lexer's model; it must be made unambiguous before a move can proceed.
 No full JavaScript/TypeScript parser, live consumer or live migration is claimed.
 No original proof was changed. Helpers: none (one localized lexer slice).
 CI at the final pushed head remains the required hand-back gate.
+
+## First-review R1 correction
+
+The initial conservative-slash choice above was overturned: it refused ordinary
+syntax in 39 public consumers. [review-r1.md](review-r1.md) records the single
+fix round, red-first controls and the real-tree before/after proof. The original
+R11 evidence and WM1's completed review history remain unchanged.
