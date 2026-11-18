@@ -1,0 +1,12 @@
+Command: python3 -I tools/install/tests/onboard/test_journey.py Launch.test_uncertain_launch_accepts_only_configured_record_authors -v
+R2 fix: literal-newline comment stream split; skip only the trailing empty string.
+Synthetic recording only.
+
+test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 9.799s
+
+OK
+
+Exit: 0

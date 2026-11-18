@@ -701,7 +701,10 @@ def fleet_recorded(spec, env):
     if result is None or result.returncode != 0:
         return None
     try:
-        comments = [strict(line) for line in result.stdout.decode('utf-8').splitlines()]
+        lines = result.stdout.decode('utf-8').split('\n')
+        if lines[-1] == '':
+            lines.pop()
+        comments = [strict(line) for line in lines]
         if any(not isinstance(c, dict) or set(c) != {'author', 'body'} or not isinstance(c['body'], str)
                or c['author'] is not None and not isinstance(c['author'], str) for c in comments):
             return None
