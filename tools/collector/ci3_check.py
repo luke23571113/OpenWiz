@@ -223,7 +223,7 @@ def read_minutes(read, now, workers=1):
 
 def read_measure(repo, since, until):
     """The CI3 measure for [since, until): the war room collector's `ci3` fact, read now
-    (tools/war-room/collector.v1.md, "The on-demand read"), so the note's numbers are the page's.
+    (tools/collector/collector.v1.md, "The on-demand read"), so the note's numbers are the page's.
     A fact the collector could not establish says its own prerequisite."""
     import collect_ci  # here, not at the top: `due` stays offline and light
     try:
@@ -395,7 +395,7 @@ def main(argv=None):
         if args.cmd == "check":
             sys.stdout.write(check(now, record=args.record, workers=WORKERS))
         elif due(now, args.definition):
-            print("CI3 note due: run `python3 -I tools/war-room/ci3_check.py check`.")
+            print("CI3 note due: run `python3 -I tools/collector/ci3_check.py check`.")
     except Fail as e:
         # 2, not 1: Cloudroom skips a gate that exits 1 with no output silently,
         # and counts 2 as a failure (three in a row pause the loop).

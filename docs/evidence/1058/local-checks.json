@@ -1,0 +1,167 @@
+[
+  {
+    "log": "wm2-final-ci.txt",
+    "tests": 16,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-final-runtime.txt",
+    "tests": 2,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-final-split-tests.txt",
+    "tests": 17,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-activity.txt",
+    "tests": 19,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-carried.txt",
+    "tests": 2,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-ci.txt",
+    "tests": 16,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-ci3.txt",
+    "tests": 33,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-collect_factory.txt",
+    "tests": 18,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-contract.txt",
+    "tests": 19,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-experiment_contract.txt",
+    "tests": 25,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-gather.txt",
+    "tests": 23,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-health.txt",
+    "tests": 22,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-journey.txt",
+    "tests": 63,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-limits.txt",
+    "tests": 4,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-metrics.txt",
+    "tests": 19,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-overload.txt",
+    "tests": 23,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-page-history.txt",
+    "tests": 18,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-moved-publish.txt",
+    "tests": 17,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_answer_time.py.txt",
+    "tests": 10,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_budgets.py.txt",
+    "tests": 21,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_charts.py.txt",
+    "tests": 27,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_cost.py.txt",
+    "tests": 16,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_review_loops.py.txt",
+    "tests": 39,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_rework.py.txt",
+    "tests": 8,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_site.py.txt",
+    "tests": 8,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_stage_waits.py.txt",
+    "tests": 11,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_web.py.txt",
+    "tests": 5,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_weekly.py.txt",
+    "tests": 23,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-shadow.txt",
+    "tests": 24,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-skills-precheck-test_contract.py.txt",
+    "tests": 9,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-skills-promotions-test_promotions.py.txt",
+    "tests": 10,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-skills-replay-test_replay.py.txt",
+    "tests": 26,
+    "result": "pass"
+  },
+  {
+    "log": "wm2-skills-weekly-test_weekly.py.txt",
+    "tests": 47,
+    "result": "pass"
+  }
+]

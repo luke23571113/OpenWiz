@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/war-room/python.sh
+        run: sh tools/collector/python.sh
       - name: The board's tests
         run: python3 -I private/orchestration/board/test_board.py
 
@@ -57,7 +57,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/war-room/python.sh
+        run: sh tools/collector/python.sh
       - name: Read and draw, no publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,7 +81,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/war-room/python.sh
+        run: sh tools/collector/python.sh
       - name: Tests, then read, draw and publish only board
         env:
           GH_TOKEN: ${{ github.token }}

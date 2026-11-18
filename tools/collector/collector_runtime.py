@@ -6,7 +6,7 @@ import sys
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / 'war-room'))
+sys.path.insert(0, str(HERE))
 import activity
 import sources
 

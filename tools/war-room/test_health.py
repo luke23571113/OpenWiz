@@ -25,12 +25,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIX = HERE / 'fixtures'
-TL2 = HERE / 'fixtures/stage-waits'
+TL2 = PUBLIC_ROOT / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
+sys.path.insert(0, str(PUBLIC_ROOT))
 import sources  # noqa: E402
 import suite  # noqa: E402
 
@@ -47,7 +49,7 @@ V1_SHA256 = '6f6006dda51632d1c1b4726de2a3ef5be19ba2abb0e62bd26f299f0d526a400c'
 
 def module(name):
     import importlib.util
-    spec = importlib.util.spec_from_file_location(name, HERE / f'{name}.py')
+    spec = importlib.util.spec_from_file_location(name, (PUBLIC_ROOT if name == 'health' else HERE) / f'{name}.py')
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result
@@ -338,14 +340,14 @@ class Contract(unittest.TestCase):
         self.assertEqual([p['slot'] for p in record['health']], ['main_ci', 'ci_queue', 'stage_health'])
         self.assertEqual([p['slot'] for p in record['providers']], [p['slot'] for p in suite.PROVIDERS])
         for name in ('known.json', 'partial.json', 'unavailable.json'):
-            old = suite.load(FIX / 'contract' / name)
+            old = suite.load(PUBLIC_ROOT / 'fixtures/contract' / name)
             self.assertEqual(old['schema'], 'openwiz.war-room.v1')
             for p in suite.health(old):
                 self.assertEqual((p['state'], p['observations']), ('unavailable', []))
                 self.assertIn('Not observed: this sample predates the v2 health record.', p['prerequisites'])
 
     def test_version_shapes_do_not_mix(self):
-        v1 = suite.load(FIX / 'contract' / 'known.json')
+        v1 = suite.load(PUBLIC_ROOT / 'fixtures/contract/known.json')
         v2 = self.record()
         for bad in (dict(v1, health=v2['health']),                   # v1 with health
                     {k: v for k, v in v2.items() if k != 'health'},  # v2 without it
@@ -439,7 +441,7 @@ class Collection(unittest.TestCase):
 
     def test_boundaries_retries_gaps_failures_and_old_bytes(self):
         # The same v1 record two hours earlier on the collection day (11:00 -> 01:00, 12:00 -> 02:00).
-        v1 = json.loads((FIX / 'contract' / 'known.json').read_text().replace('2030-01-02T1', '2030-03-01T0'))
+        v1 = json.loads((PUBLIC_ROOT / 'fixtures/contract/known.json').read_text().replace('2030-01-02T1', '2030-03-01T0'))
         history.save(self.history, v1)
         old = (self.history / 'samples' / '2030-03-01T02-00-00Z.json').read_bytes()
         self.assertEqual(hashlib.sha256(old).hexdigest(), V1_SHA256)

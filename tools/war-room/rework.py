@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 
@@ -24,8 +25,8 @@ def _module(name, path):
     return module
 
 
-S = _module('rework_suite', HERE / 'suite.py')
-J = _module('rework_journey', HERE / 'journey.py')
+S = _module('rework_suite', PUBLIC_ROOT / 'suite.py')
+J = _module('rework_journey', PUBLIC_ROOT / 'journey.py')
 
 
 def project(wire, *, source_path, cohort, merged_prs, since, until, observed_at):

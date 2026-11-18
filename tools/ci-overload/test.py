@@ -488,7 +488,7 @@ class Scheduled(unittest.TestCase):
 def collector_fake(folder):
     """MT3's synthetic gh and its answers (tools/war-room's collector-ci fixture), unchanged."""
     spec = importlib.util.spec_from_file_location(
-        'test_collect_ci', HERE.parents[1] / 'tools/war-room/test_collect_ci.py')
+        'test_collect_ci', HERE.parents[1] / 'tools/collector/test_collect_ci.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.Fake(folder), module.R

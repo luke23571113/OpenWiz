@@ -23,11 +23,11 @@ ROOT = HERE.parents[1]
 FIX = HERE / 'fixtures' / 'collector-ci'
 REPO = 'synthetic-owner/synthetic-repo'
 R = 'repos/' + REPO
-CI3 = ROOT / 'tools/war-room/ci3.py'
+CI3 = ROOT / 'tools/collector/ci3.py'
 # ci-bench's `collect` and `measure` commands, now bench_measure.py's functions (#827), run as the CLI ran them.
 BENCH = ['-c', 'import sys; sys.path.insert(0, sys.argv.pop(1)); import bench_measure as B; a = sys.argv[1:]; '
          '(B.collect(a[2], a[4], a[6]) if a[0] == "collect" else '
-         'B.measure(a[1], int(a[3]), a[5], allow_empty=True, allow_timing_gaps=True))', str(ROOT / 'tools/war-room')]
+         'B.measure(a[1], int(a[3]), a[5], allow_empty=True, allow_timing_gaps=True))', str(ROOT / 'tools/collector')]
 GUARD = ROOT / 'tools/ci-overload/alarm.py'
 RUNS_WINDOW = ('--since', '2026-01-04T00:00:00Z', '--until', '2026-01-04T01:00:00Z')
 CI3_WINDOW = ('--since', '2026-01-05T00:00:00Z', '--until', '2026-01-06T00:00:00Z')
@@ -441,20 +441,6 @@ class CommandLine(unittest.TestCase):
             self.assertEqual(fake.asked(), [])
 
 
-class Gather(unittest.TestCase):
-    def test_gather_s_ci_call_reads_every_ci_fact(self):
-        # catches: a snapshot's CI group missing a fact (the contract requires all five, even unavailable).
-        with tempfile.TemporaryDirectory() as tmp:
-            fake = Fake(tmp)
-            code = ('import json, sys; sys.path.insert(0, sys.argv[1]); import gather; '
-                    'print(json.dumps(gather.ci_facts(sys.argv[2], since=sys.argv[3], until=sys.argv[4])))')
-            done = fake.run('-c', code, HERE, REPO, '2026-01-04T00:00:00Z', '2026-01-04T01:00:00Z')
-        self.assertEqual(done.returncode, 0, done.stderr)
-        ci = json.loads(done.stdout)
-        suite._shape(ci, SCHEMA['$defs']['ci_facts'], SCHEMA)
-        self.assertEqual(list(ci), ['runs', 'minutes', 'ci3', 'activity', 'queue'])
-        self.assertEqual({k: f['state'] for k, f in ci.items()},
-                         {'runs': 'known', 'minutes': 'known', 'ci3': 'known', 'activity': 'known', 'queue': 'known'})
 
 
 if __name__ == '__main__':

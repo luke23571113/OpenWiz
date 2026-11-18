@@ -137,7 +137,7 @@ def _pinned_file(raw, filename, read):
 
 
 def ci_bench(s, raw):
-    B = native('tools/war-room/bench_reads.py')
+    B = native('tools/collector/bench_reads.py')
     p = _pinned_file(raw, 'point.json', lambda path: B.read_point(path.parent))
     span = window(p['since'], p['until'], 'PST-fixed-UTC-08:00'
                   if p['hours'] == 24 and p['since'][11:] == p['until'][11:] == '08:00:00Z' else 'UTC')
@@ -169,7 +169,7 @@ def ci_bench(s, raw):
 
 
 def factory_metrics(s, raw):
-    M = native('tools/war-room/metrics.py')
+    M = native('tools/collector/metrics.py')
     p = M.load(raw.decode('utf-8'))
     M.exact(p, ('schema', 'date', 'merged_prs', 'merged_per_hour', 'hours', 'idle_minutes',
                 'biggest_stall', 'stalls', 'historical_completeness', 'edited_fleet_comments',
@@ -256,7 +256,7 @@ def factory_metrics(s, raw):
 
 
 def journey(s, raw):
-    J = native('tools/war-room/journey.py')
+    J = native('tools/collector/journey.py')
     doc = J.M.load(raw.decode('utf-8'))
     J.validate(doc)
     bench = J.bench(doc)
@@ -278,7 +278,7 @@ def journey(s, raw):
 
 
 def skills_eval(s, raw):
-    T = native('tools/war-room/trends_reads.py')
+    T = native('tools/collector/trends_reads.py')
     result = _pinned_file(raw, 'score.json', lambda path: T.cf4_results([path]))[0]
     # A score/manifest has no run-time window. Do not invent it from revision or
     # file timestamps; keep recorded result readiness separate from measurements.
@@ -521,7 +521,7 @@ def credits(s, raw):
 
 
 def claude_usage(s, raw):
-    M = native('tools/war-room/metrics.py')
+    M = native('tools/collector/metrics.py')
     data = _pinned_file(raw, 'usage.json', lambda path: M.read_usage(path))
     span = day_window(data['date'])
     items = []

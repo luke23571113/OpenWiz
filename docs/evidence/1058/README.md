@@ -92,3 +92,36 @@ installation inputs classify private. The own CI proof row in
 `.github/actions/docs-only/test.sh` uses standing supporting kind 1 so the new
 runtime equivalence boundary runs in CI and the push hook. The own public
 carriage row `tools/collector/**` uses the same kind.
+
+## Public-layer relocation
+
+The stop above is resolved by ruling 6969452056. The fresh factored report
+(`factored-report.txt`) gives 44 public files and 280 private files before
+relocation. `moved-paths.json` records all 120 moves: the executable public
+layer plus its contracts, tests and synthetic fixtures under ruling
+6969174392's tests-follow-code rule. `after-move.txt` reports zero public
+dependencies into the 204 files left in war-room. Page, charts, site, history,
+publisher and adapter stay private; the package manifest, lock and charts
+stay together. Publisher entrypoints and default collector storage remain
+unchanged. No compatibility wrapper is introduced.
+
+The three gather integration cases now live in `test_gather.py` as
+`CollectorCIIntegration` and `CollectorSnapshotIntegration`; their statements
+and assertions are preserved, with public fixture names qualified. The
+remaining collector tests move with their code. `move-audit.txt` records this
+comparison and byte-identical schemas, settings, prices, steps and chart
+installation inputs. `local-checks.json` names the affected passing suites;
+`preview.json` records the real six-page no-publish preview on synthetic
+inputs. All existing privacy assertions remain.
+
+The relocation repoints only import/invocation/fixture/doc paths in the named
+public consumers and remaining private code. The shadow.py change is exactly
+the granted required-import directory line. Workflow script paths and path
+filters follow the moved files; npm installation still uses war-room.
+`tools/open-import/paths.json` adds only this ticket's evidence and collector
+rows (standing kind 1); the new collector README explains the split. The own
+STATUS row records WM2, leaving WM1 intact. No dependency version changes.
+
+Caller-supplied placement: replay.py is public in tools/collector with
+bench_reads.py; timing-gh.py remains public with launch-fleet's test.sh/gh.py.
+Both caller-selected load behaviors remain unchanged.

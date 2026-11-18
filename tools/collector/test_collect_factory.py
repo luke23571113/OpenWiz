@@ -3,7 +3,7 @@
 
 Every world is synthetic (fixtures/collector-factory/README.md says where each
 comes from). The daily world is factory-metrics' own test world, worked by hand
-in tools/war-room/test_metrics.py: 3 merges (01:15, 02:20, 04:30) on 2030-01-02;
+in tools/collector/test_metrics.py: 3 merges (01:15, 02:20, 04:30) on 2030-01-02;
 gaps 10 + 45 + 20 + 90 + 10 = 175 idle minutes, by hour 00h 40, 01h 15, 02h 20,
 03h 60, 04h 30, 23h 10; the biggest is ticket 14's 90 minutes; Actions 12
 minutes and $0.60, Claude 3000 tokens / 6 credits / $3, GPT 6000 / 9 / $6,
@@ -11,7 +11,7 @@ sandbox 6 hours / $3. The journey and stage worlds are test_journey.py's, the
 bench world ci-bench's test.py's, and the open-PR world is the contract's
 read-stall.json, as GitHub would answer it.
 
-Each case names the bug it catches. Run: python3 -I tools/war-room/test_collect_factory.py
+Each case names the bug it catches. Run: python3 -I tools/collector/test_collect_factory.py
 """
 import contextlib
 import hashlib
@@ -31,13 +31,13 @@ ROOT = HERE.parents[1]
 # ci-bench's `collect` and `measure` commands, now bench_measure.py's functions (#827), run as the CLI ran them.
 BENCH = ['-c', 'import sys; sys.path.insert(0, sys.argv.pop(1)); import bench_measure as B; a = sys.argv[1:]; '
          '(B.collect(a[2], a[4], a[6]) if a[0] == "collect" else '
-         'B.measure(a[1], int(a[3]), a[5], allow_empty=True, allow_timing_gaps=True))', str(ROOT / 'tools/war-room')]
+         'B.measure(a[1], int(a[3]), a[5], allow_empty=True, allow_timing_gaps=True))', str(ROOT / 'tools/collector')]
 FIX = HERE / 'fixtures' / 'collector-factory'
 COLLECTOR = HERE / 'fixtures' / 'collector'
 SCRIPT = HERE / 'collect_factory.py'
 DAILY_REPO, OPEN_REPO = 'example/factory', 'synthetic-owner/synthetic-repo'
 DAY = ('2030-01-02T00:00:00Z', '2030-01-03T00:00:00Z')
-C_LIMITS = 'tools/war-room/limits.conf'  # TL1's settings file, which collect_factory reads
+C_LIMITS = 'tools/collector/limits.conf'  # TL1's settings file, which collect_factory reads
 FACTS = ['merges', 'prs_per_hour', 'stage_waits', 'stalls', 'open_prs', 'journeys', 'cost']
 
 
@@ -407,58 +407,6 @@ class Validate(unittest.TestCase):
                     C.validate(fact)
 
 
-class Snapshot(unittest.TestCase):
-    # catches: the snapshot and the on-demand read disagreeing on the same source, a missing
-    # fact or group key, a CI group that is not the CI collector's own read (#819 ruling: the
-    # snapshot calls gather.ci_facts), or a collection time before one of its reads ended.
-    def test_snapshot_and_read_agree(self):
-        C = load('collect_factory', SCRIPT)
-        G = load('gather', HERE / 'gather.py')
-        clock = lambda: '2030-01-03T06:00:00Z'  # noqa: E731
-        kw = dict(since=DAY[0], until=DAY[1], usage=FIX / 'daily-usage.json', clock=clock)
-        with fake_gh('daily-world.json'):
-            snap = G.snapshot(DAILY_REPO, **kw)
-            read = C.read(DAILY_REPO, ['merges', 'stalls', 'cost'], **kw)
-            ci = G.ci_facts(DAILY_REPO, since=DAY[0], until=DAY[1])
-        suite._shape(snap, SCHEMA, SCHEMA)
-        self.assertEqual(list(snap['factory']), FACTS)
-        self.assertEqual(list(snap['ci']), ['runs', 'minutes', 'ci3', 'activity', 'queue'])
-        for name in ('merges', 'stalls', 'cost'):
-            self.assertEqual(snap['factory'][name], read['factory'][name], name)
-        for name, fact in snap['ci'].items():
-            self.assertEqual((fact['state'], fact['value'], fact['prerequisites']),
-                             (ci[name]['state'], ci[name]['value'], ci[name]['prerequisites']), name)
-        ends = [f['read']['ended_at'] for g in ('factory', 'ci') for f in snap[g].values() if f['read']]
-        self.assertTrue(any(f['read'] for f in snap['ci'].values()), 'the CI collector read nothing')
-        self.assertGreaterEqual(snap['collected_at'], max(ends))
-
-
-    # catches (R1, #978 review): the default snapshot (no window) failing in the CI read because
-    # only the factory reader resolved the default day, the two groups read over different bounds,
-    # or half a window accepted after reading something.
-    def test_snapshot_default_window_is_one_window_for_both_groups(self):
-        G = load('gather', HERE / 'gather.py')
-        clock = lambda: '2030-01-03T06:00:00Z'  # noqa: E731  (the default day is then 2030-01-02)
-        with fake_gh('daily-world.json'):
-            default = G.snapshot(DAILY_REPO, clock=clock, usage=FIX / 'daily-usage.json')
-            explicit = G.snapshot(DAILY_REPO, clock=clock, usage=FIX / 'daily-usage.json', since=DAY[0], until=DAY[1])
-        suite._shape(default, SCHEMA, SCHEMA)
-        self.assertEqual(default['factory']['merges']['window'], {'since': DAY[0], 'until': DAY[1], 'timezone': 'UTC'})
-        self.assertEqual([p['number'] for p in default['factory']['merges']['value']['pull_requests']], [31, 32, 33])
-        for name in ('merges', 'stalls', 'cost'):
-            self.assertEqual(default['factory'][name], explicit['factory'][name], name)
-        for name, fact in default['ci'].items():
-            self.assertEqual((fact['state'], fact['prerequisites']),
-                             (explicit['ci'][name]['state'], explicit['ci'][name]['prerequisites']), name)
-            # activity's window is today so far, to its read's real end (collector.v1.md), never the read
-            # window; every other CI fact that names a window names exactly the requested one.
-            if name != 'activity' and fact['window'] is not None:
-                self.assertEqual((fact['window']['since'], fact['window']['until']), DAY, name)
-        for half in ({'since': DAY[0]}, {'until': DAY[1]}):
-            with self.subTest(half=half), fake_gh('daily-world.json') as (_, calls):
-                with self.assertRaises(ValueError):
-                    G.snapshot(DAILY_REPO, clock=clock, **half)
-                self.assertEqual(calls(), [])
 
 if __name__ == '__main__':
     unittest.main()

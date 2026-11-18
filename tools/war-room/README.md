@@ -1,13 +1,13 @@
 ## Contract and suite seam (WR1)
 
-The [v1 contract](contract.md) and [record schema](record.schema.json) pin one
+The [v1 contract](../collector/contract.md) and [record schema](../collector/record.schema.json) pin one
 snapshot and the explicit unavailable provider slots for spec #2340.
 Composition/checking is finite and offline; it starts no collector or schedule.
 
 ```sh
-python3 -I tools/war-room/test_contract.py
-python3 -I tools/war-room/suite.py check tools/war-room/fixtures/contract/known.json
-python3 -I tools/war-room/suite.py compose --at 2030-01-02T12:00:00Z
+python3 -I tools/collector/test_contract.py
+python3 -I tools/collector/suite.py check tools/collector/fixtures/contract/known.json
+python3 -I tools/collector/suite.py compose --at 2030-01-02T12:00:00Z
 ```
 
 Later adapters pass projected provider records to `compose`; history/page and
@@ -310,7 +310,7 @@ own `stage_bench` computes every wait, result and miss: this file adds no timer,
 settings owner, source parser, recovery or effect.
 
 ```sh
-python3 -I tools/war-room/stage_waits.py --at UTC_TIME --root DIR --journey journeys.json \
+python3 -I tools/collector/stage_waits.py --at UTC_TIME --root DIR --journey journeys.json \
   --sidecar stage-waits.json --settings limits.conf --settings-evidence URL \
   --cohort-since UTC_TIME --settings-read-at UTC_TIME   # prints a projected provider
 python3 -I tools/war-room/test_stage_waits.py
@@ -391,7 +391,7 @@ observation. It is neither billing nor all-in PR allocation; the separate billin
 metric stays grey pending complete day-specific existing billing evidence.
 
 ```sh
-python3 -B -I tools/war-room/test_activity.py
+python3 -B -I tools/collector/test_activity.py
 ```
 
 The fake-gh source-to-suite proofs cover counts, pagination, attempts, exact
@@ -485,7 +485,7 @@ as text a phone reads natively.
   hourly loop stops.
 - **Cost basis, per run:** one GitHub-hosted Linux job of about a minute,
   billed per job rounded up to the minute at the list rate in
-  [`tools/war-room/prices.tsv`](prices.tsv) (`github-hosted`,
+  [`tools/collector/prices.tsv`](../collector/prices.tsv) (`github-hosted`,
   $0.006/minute, verified 2026-11-05): 24 dispatched plus 4 backup runs is about
   28 minutes, about $0.17 a day before any included minutes. A pull request
   run is two jobs. Each publish also adds pictures to the branch's history:
@@ -615,7 +615,7 @@ pairs. All of these are offline fixture evidence, not a live result.
 ## Health collection and v2 history (WRD1)
 
 WRD1 (#629) adds the three health signals and the successor record,
-[`contract.v2.md`](contract.v2.md). New samples are `openwiz.war-room.v2`: the 17 v1
+[`contract.v2.md`](../collector/contract.v2.md). New samples are `openwiz.war-room.v2`: the 17 v1
 slots, unchanged, plus a `health` section with `main_ci`, `ci_queue` and
 `stage_health`. Saved v1 samples keep their bytes. `suite.load`, `history.read_all`,
 `weekly.py` and the publish scan read both versions, and `suite.health(record)` shows
@@ -625,7 +625,7 @@ a v1 sample's health as unobserved. Nothing is backfilled.
 | --- | --- | --- |
 | Main CI | `health.main_ci`: the `main` head, every page of its `ci.yml` push runs, a reread of the latest run, the head again | Green from another head, a pending, cancelled or changing run, a same-second tie or a failed read |
 | CI queue | `health.ci_queue`: WR8's same checked read (no extra API call), each queued job's `created_at` | Zero from a partial or changing read; a count when a job's pool is unknown; an invented queue limit |
-| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/war-room/limits.conf` (the saved owner label keeps its original `tools/factory-metrics/limits.conf`, an immutable value) | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
+| Stage health | `health.stage_health`: TL2's sidecar for the board graph's open approved tickets and the merged cohort's, judged by `tools/collector/limits.conf` (the saved owner label keeps its original `tools/factory-metrics/limits.conf`, an immutable value) | A miss from held, stale or unknown waits; a limit read before TL2's read; a cohort collected when either ticket list failed |
 
 The same pinned stage evidence also fills the detailed `stage_waits` slot (WR3).
 
@@ -673,7 +673,7 @@ Red runs are in `fixtures/health/`: offline fixture evidence, not a live result.
 
 WRD2 (#630) draws the War room's figures once per build as static SVG, with the locked
 [Observable Plot](dependencies.md) under Node, from validated history (v1 and v2, read
-as [WRD1's v2 contract](contract.v2.md) defines it) and the selected board history.
+as [WRD1's v2 contract](../collector/contract.v2.md) defines it) and the selected board history.
 Browsers get the finished SVG and HTML tables: no Plot, D3, chart script, hydration,
 font, image or data request reaches the page. The interface WRD3 consumes is
 [`charts/contract.md`](charts/contract.md) and [`charts/input.schema.json`](charts/input.schema.json).

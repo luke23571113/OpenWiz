@@ -16,7 +16,7 @@ import time
 
 SHA = r"[0-9a-f]{40}"
 # #824: the GitHub facts are the war-room collector's on-demand read
-# (tools/war-room/collector.v1.md): `open_prs`, and `merges` for the hour.
+# (tools/collector/collector.v1.md): `open_prs`, and `merges` for the hour.
 READ = "openwiz.war-room.collector.read.v1"
 SENT = ("findings sent", "CI failure sent", "re-check sent")
 # Only the pull-request and any-item rows of launch-fleet's Records table.
@@ -172,7 +172,7 @@ def collector():
     # An embedded script has no checkout of its own: it must name one.
     here = globals().get("__file__")
     require(isinstance(here, str) and Path(here).is_file())
-    return str(Path(here).resolve().parents[1] / "war-room" / "collect_factory.py")
+    return str(Path(here).resolve().parents[1] / "collector" / "collect_factory.py")
 
 
 def exact(value, *keys):

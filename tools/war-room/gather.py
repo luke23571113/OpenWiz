@@ -28,6 +28,7 @@ import sys
 import tempfile
 import time
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -85,7 +86,7 @@ REASONS = {
                       'is shown; prerequisite: a valid board-wide graph.json of this repository on the board branch '
                       '(source kind board) and complete PR pages.',
 }
-LIMITS = sources.ROOT / 'tools/war-room/limits.conf'  # TL1's one settings source
+LIMITS = sources.ROOT / 'tools/collector/limits.conf'  # TL1's one settings source
 
 
 
@@ -292,7 +293,7 @@ def chart_snapshot(repo):
         'prs_per_hour', 'PRs an hour unavailable: the collector read failed or exceeded 60 seconds.')
     started = time.monotonic()
     try:
-        with subprocess.Popen([sys.executable, '-I', str(HERE / 'collect_factory.py'), 'read', '--repo', repo,
+        with subprocess.Popen([sys.executable, '-I', str(PUBLIC_ROOT / 'collect_factory.py'), 'read', '--repo', repo,
                                '--fact', 'prs_per_hour'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               start_new_session=True) as read:
             try:

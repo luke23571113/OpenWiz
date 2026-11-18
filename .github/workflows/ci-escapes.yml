@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/war-room/python.sh
+        run: sh tools/collector/python.sh
       - name: The escape finder's tests
         run: python3 -I ci/escapes/test.py
 
@@ -64,7 +64,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/war-room/python.sh
+        run: sh tools/collector/python.sh
       - name: Find and report selector escapes
         env:
           GH_TOKEN: ${{ github.token }}

@@ -158,7 +158,7 @@ accepted inputs. These are load-site declarations, never `--own` exemptions.
 | Site | Classification |
 | --- | --- |
 | `skills/launch-fleet/scripts/fixtures/timing-gh.py:22` | caller-supplied |
-| `tools/war-room/fixtures/activity/replay.py:78` | caller-supplied |
+| `tools/collector/fixtures/activity/replay.py:78` | caller-supplied |
 
 ## The public collector folder
 

@@ -12,7 +12,6 @@ from urllib.parse import parse_qs
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE.parent / 'war-room'))
 import activity
 import sources
 import collector_runtime as current

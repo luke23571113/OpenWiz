@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """MT2 (#821): the war room collector's factory facts (collector.v1.md). Reads only.
 
-  python3 -I tools/war-room/collect_factory.py read --repo OWNER/NAME --fact NAME [--fact NAME ...]
+  python3 -I tools/collector/collect_factory.py read --repo OWNER/NAME --fact NAME [--fact NAME ...]
       [--since UTC --until UTC] [--usage FILE] [--robots N] [--ticket N ...] [--base NAME] [--check NAME ...]
       [--now UTC]
 
@@ -39,7 +39,6 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE.parent / 'collector'))
 import collector_runtime
 import suite  # noqa: E402
 
@@ -55,7 +54,7 @@ J = _module('collect_factory_journey', HERE / 'journey.py')
 M = J.M  # journey.py's own metrics module: one ReadError for every read below
 A = _module('collect_factory_stall_alarm', ROOT / 'tools/stall-alarm/alarm.py')
 B = _module('collect_factory_bench', HERE / 'bench_measure.py')  # ci-bench's collect and measure (#826)
-LIMITS = 'tools/war-room/limits.conf'  # TL1's one settings file
+LIMITS = 'tools/collector/limits.conf'  # TL1's one settings file
 SCHEMA = suite._decode((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))
 FACTS = tuple(SCHEMA['x-facts']['factory'])
 READ, SNAPSHOT = 'openwiz.war-room.collector.read.v1', 'openwiz.war-room.collector.v1'

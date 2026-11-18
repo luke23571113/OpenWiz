@@ -36,14 +36,13 @@ import tempfile
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE.parent / 'collector'))
 import collector_runtime
 import activity  # noqa: E402
 import health  # noqa: E402
 import sources  # noqa: E402
 import suite  # noqa: E402
 
-C3 = sources.native('tools/war-room/ci3.py')
+C3 = sources.native('tools/collector/ci3.py')
 B = C3.bench  # ci-bench's reader, rules and prices: the numbers ci-bench publishes
 FAILS = (B.Fail, activity.B.Fail, OSError, ValueError, TypeError, KeyError, ArithmeticError)
 SCHEMA = json.loads((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))

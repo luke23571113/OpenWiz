@@ -28,6 +28,7 @@ sys.path.insert(0, str(HERE))
 import history  # noqa: E402
 import prepare  # noqa: E402
 import prs_per_hour  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'collector'))
 import suite  # noqa: E402
 
 MANIFEST = 'openwiz.war-room.charts-manifest.v1'

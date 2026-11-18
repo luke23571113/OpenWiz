@@ -4,7 +4,7 @@
   python3 -I supply.py --repository OWNER/NAME --output /absolute/observation.json
 
 Reads the war room collector's `queue` fact now (`collect_ci.read(repository,
-['queue'])`, tools/war-room/collector.v1.md) and writes its
+['queue'])`, tools/collector/collector.v1.md) and writes its
 `value.observation`, unchanged, to --output: owner-only, replaced atomically.
 It never reads a saved snapshot. A partial fact is written as it is (its
 `complete` is false), so the guard keeps any alarm it can still establish.
@@ -23,7 +23,7 @@ import sys
 import tempfile
 
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'war-room'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'collector'))
 import collect_ci  # noqa: E402
 
 
