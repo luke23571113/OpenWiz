@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """X5 workflow contracts, plus execution of the final job's actual script."""
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -9,6 +11,7 @@ import sys
 import tempfile
 sys.dont_write_bytecode = True
 import unittest
+from unittest import mock
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
@@ -19,6 +22,113 @@ import test_lanes
 def jobs():
     source=(ROOT/'.github/workflows/ci.yml').read_text().split('jobs:\n',1)[1]
     return dict((m[1],m[2]) for m in re.finditer(r'^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)',source,re.M|re.S))
+
+
+class MainMapAge(unittest.TestCase):
+    """C7: execute the workflow gate with real synthetic RSA signatures.
+
+    catches: tracing a fresh map, rounding away the strict 120-minute
+    boundary, or trusting a forged/cache-metadata timestamp to skip work.
+    Only the clock and GitHub's published key response are fixture inputs.
+    """
+    NOW = 1_700_010_000
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT / 'ci/select'))
+        import test_job
+        cls.signed = test_job
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.git('init', '-q')
+        self.git('-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid',
+                 'commit', '--allow-empty', '-qm', 'synthetic map source')
+        self.commit = self.git('rev-parse', 'HEAD').stdout.strip()
+        self.maps = self.root / '.cache/closedwiz-ci-select'
+        self.maps.mkdir(parents=True)
+        step = jobs()['changes'].split('      - name: Check the signed main map age\n', 1)[1].split('      - ', 1)[0]
+        body = step.split('        run: |\n', 1)[1]
+        lines = [line[10:] for line in body.splitlines() if line.startswith('          ')]
+        self.script = '\n'.join(lines[1:-1])
+        self.output = self.root / 'output'
+
+    def git(self, *args):
+        return subprocess.run(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(self.root), *args],
+                              text=True, capture_output=True, check=True)
+
+    def write_map(self, age=121 * 60, **claims):
+        data = json.dumps({'schema': 'openwiz.ci-select-map.v1', 'commit': self.commit,
+            'units': {'rust:test:proof': {'files': ['proof.txt'], 'dirs': []}}}).encode()
+        signed = self.signed
+        values = signed.claims(aud=signed.job.audience(data), sha=self.commit, iat=self.NOW - age)
+        values.update(claims)
+        (self.maps / 'map.json').write_bytes(data)
+        (self.maps / 'map.jwt').write_text(signed.sign(values, signed.KEY))
+        self.output.unlink(missing_ok=True)
+
+    def run_gate(self):
+        original = Path.cwd()
+        try:
+            os.chdir(self.root)
+            with mock.patch.dict(os.environ, HOME=str(self.root), GITHUB_OUTPUT=str(self.output),
+                                 GITHUB_REPOSITORY=self.signed.REPO), \
+                    mock.patch.object(self.signed.job, 'fetch_jwks', return_value=self.signed.jwks(self.signed.KEY)), \
+                    mock.patch('time.time', return_value=self.NOW), contextlib.redirect_stdout(io.StringIO()):
+                exec(compile(self.script, 'ci.yml:main_map', 'exec'), {'__name__': '__main__'})
+        finally:
+            os.chdir(original)
+        return self.output.read_text()
+
+    def test_main_push_119_minutes_stays_light(self):
+        self.write_map(age=119 * 60)
+        self.assertEqual(self.run_gate(), 'trace=false\n', '119-minute signed map must keep the push light')
+
+    def test_main_push_121_minutes_traces(self):
+        for event in ('push', 'schedule'):
+            with self.subTest(signed_by=event):
+                self.write_map(age=121 * 60, event_name=event)
+                self.assertEqual(self.run_gate(), 'trace=true\n', '121-minute signed map must trigger tracing')
+
+    def test_exactly_120_minutes_is_not_older_but_one_second_more_is(self):
+        for age, expected in ((7200, 'false'), (7201, 'true')):
+            with self.subTest(age_seconds=age):
+                self.write_map(age=age)
+                self.assertEqual(self.run_gate(), 'trace=' + expected + '\n')
+
+    def test_missing_or_untrusted_map_cannot_supply_an_age_decision(self):
+        for case in ('missing-map', 'missing-token', 'tampered-map', 'wrong-repository',
+                     'PR-token', 'foreign-commit', 'invalid-shape', 'future-time', 'boolean-time'):
+            with self.subTest(case=case):
+                self.write_map(age=119 * 60)
+                if case.startswith('missing-'):
+                    (self.maps / ('map.json' if case == 'missing-map' else 'map.jwt')).unlink()
+                elif case == 'tampered-map':
+                    path = self.maps / 'map.json'
+                    path.write_bytes(path.read_bytes() + b' ')
+                elif case == 'wrong-repository':
+                    self.write_map(repository='someone/else')
+                elif case == 'PR-token':
+                    self.write_map(event_name='pull_request', ref='refs/pull/7/merge')
+                elif case == 'foreign-commit':
+                    commit = self.commit
+                    self.commit = 'd' * 40
+                    self.write_map()
+                    self.commit = commit
+                elif case == 'invalid-shape':
+                    data = json.dumps({'schema': 'unknown', 'commit': self.commit, 'units': {}}).encode()
+                    values = self.signed.claims(aud=self.signed.job.audience(data), sha=self.commit, iat=self.NOW - 7260)
+                    (self.maps / 'map.json').write_bytes(data)
+                    (self.maps / 'map.jwt').write_text(self.signed.sign(values, self.signed.KEY))
+                elif case == 'future-time':
+                    self.write_map(iat=self.NOW + 301)
+                elif case == 'boolean-time':
+                    self.write_map(iat=True)
+                with self.assertRaisesRegex(SystemExit, 'Main map age: unknown'):
+                    self.run_gate()
+                self.assertFalse(self.output.exists(), 'an unreadable age must not emit a trace decision')
 
 
 class Workflow(unittest.TestCase):
@@ -112,6 +222,26 @@ class Workflow(unittest.TestCase):
         self.assertIn('run.py execute "$RUNNER_TEMP/ci-plan" release --shard ', blocks['release'])
         self.assertIn('run.py check-shards "$RUNNER_TEMP/ci-plan" release ', blocks['ci'])
         self.assertIn('run.py stamp "$RUNNER_TEMP/ci-plan" release', blocks['ci'])
+
+    def test_main_push_plan_requires_an_old_signed_map_but_other_events_do_not(self):
+        # catches: a fresh main push still writes a full plan, or a PR/nightly/
+        # merge group is accidentally made dependent on the main-push age read.
+        block = jobs()['changes']
+        steps = {name: block.split('      - name: ' + name + '\n', 1)[1].split('      - ', 1)[0]
+                 for name in ('Check the signed main map age', 'Write the CI plan')}
+        upload = block.split('      - uses: actions/upload-artifact@', 1)[1]
+        for event in ('push', 'pull_request', 'schedule', 'merge_group'):
+            for old in (False, True):
+                values = {'github.event_name': repr(event), 'steps.main_map.outputs.trace': repr(str(old).lower())}
+                for name, step in {**steps, 'selection artifact': upload}.items():
+                    expression = re.search(r'^        if: (.+)$', step, re.M)
+                    code = expression[1] if expression else 'True'
+                    for key, value in values.items():
+                        code = code.replace(key, value)
+                    code = code.replace('&&', ' and ').replace('||', ' or ')
+                    expected = event == 'push' if name == 'Check the signed main map age' else event != 'push' or old
+                    with self.subTest(event=event, old=old, step=name):
+                        self.assertEqual(eval(code, {'__builtins__': {}}, {}), expected)
 
     def test_one_writer_keeps_attempt_specific_plan_and_summary(self):
         workflow=(ROOT/'.github/workflows/ci.yml').read_text()

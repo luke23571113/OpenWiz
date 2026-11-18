@@ -64,11 +64,12 @@ test('nightly remains admitted when later main pushes arrive', () => {
   assert.deepEqual(queue.groups.get(policy('schedule').group), { running: 'prior-nightly', pending: 'nightly' });
 });
 
-test('main pushes retain the running run and coalesce pending pushes to latest', () => {
+test('new main pushes cancel obsolete main pushes without cancelling other refs', () => {
   const queue = scheduler();
   for (const id of ['running', 'pending', 'latest']) queue.enqueue(id, policy('push'));
-  assert.deepEqual(queue.groups.get(policy('push').group), { running: 'running', pending: 'latest' });
-  assert.deepEqual(queue.cancelled, ['pending']);
+  assert.deepEqual(queue.groups.get(policy('push').group), { running: 'latest', pending: null });
+  assert.deepEqual(queue.cancelled, ['running', 'pending']);
+  assert.equal(policy('push', 'refs/heads/release-synthetic').cancel, false);
   assert.equal(policy('schedule').cancel, false);
 });
 
@@ -181,7 +182,7 @@ test('frozen.yml runs the base\'s frozen old code check on GitHub-hosted runners
 // success(), which a skipped need fails. A full plan's outputs feed the lanes.
 // catches: a condition that drops a required check (or the full suite) from
 // pull_request or merge_group, where a skipped required check passes silently,
-// and a main push that still runs the full suite the queue already ran.
+// and a main push that ignores the signed-map age decision.
 function jobGraph(source) {
   const body = source.slice(source.indexOf('\njobs:\n') + 7);
   return new Map([...body.matchAll(/^  ([a-z][a-z0-9-]*):\n((?:    .*\n|\n)*)/gm)].map(([, name, block]) => {
@@ -222,15 +223,16 @@ function simulate(source, event_name, outputs = {}) {
 const FULL_PLAN = { changes: { rust: 'true', web: 'true', site: 'true',
   'site-in-release': 'false', release: 'true', skills: '["image","launch-fleet"]', 'skill-jobs': '["image"]', 'build-web': 'true',
   'export-rust': 'true', 'export-web': 'true', trace: 'false', planted: 'false' } };
-// #743: launch-fleet's sharded job is in it, and like release never runs on a main push.
+// #743: launch-fleet and release retain their sharded jobs on a full run.
 const FULL_SUITE = ['always', 'changes', 'ci', 'launch-fleet', 'release', 'rust-export', 'site', 'skills', 'web-build', 'web-export', 'web-test'];
 
-test('pull requests and merge groups run the full suite and every required check; a main push runs only the light check', () => {
+test('PR, nightly and merge-group coverage stays full; main pushes follow the map-age decision', () => {
   for (const event of ['pull_request', 'merge_group']) {
     assert.deepEqual(simulate(workflow, event, FULL_PLAN), FULL_SUITE, event);
   }
   assert.deepEqual(simulate(workflow, 'schedule', FULL_PLAN), FULL_SUITE, 'nightly');
-  assert.deepEqual(simulate(workflow, 'push', FULL_PLAN), ['main-light'], 'main push');
+  assert.deepEqual(simulate(workflow, 'push', { changes: {} }), ['changes', 'main-light'], 'fresh map: no plan or heavy lanes');
+
   // The light check is format (privacy runs in privacy.yml on every main push).
   const light = workflow.match(/^  main-light:\n((?:    .*\n|\n)*)/m)?.[1] ?? '';
   assert.match(light, /^          cargo fmt --check$/m);
@@ -246,6 +248,12 @@ test('pull requests and merge groups run the full suite and every required check
   assert.ok(!simulate(dropped, 'merge_group', FULL_PLAN).includes('ci'));
   const kept = workflow.replace(ci, "  ci:\n    needs: $1\n    if: ${{ always() && github.event_name != 'push' }}");
   assert.ok(simulate(kept, 'merge_group', FULL_PLAN).includes('ci'));
+});
+
+test('main pushes with an old map run the traced full plan and sign; nightly signing stays unconditional', () => {
+  const traced = { changes: { ...FULL_PLAN.changes, trace: 'true' } };
+  assert.deepEqual(simulate(workflow, 'push', traced), [...FULL_SUITE, 'main-light', 'select-map'].sort(), '121-minute map: traced full run signs');
+  assert.deepEqual(simulate(workflow, 'schedule', traced), [...FULL_SUITE, 'select-map'].sort(), 'nightly still signs');
 });
 
 test('marked jobs choose planted, traced and normal timeout branches independently', () => {

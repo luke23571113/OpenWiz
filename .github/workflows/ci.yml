@@ -289,6 +289,37 @@ jobs:
           path: ~/.cache/closedwiz-ci-select
           key: ci-select-map-none
           restore-keys: ci-select-map-
+      - name: Check the signed main map age
+        id: main_map
+        if: github.event_name == 'push'
+        run: |
+          python3 -I - <<'PY_MAIN_MAP'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import time
+
+          sys.dont_write_bytecode = True
+          sys.path.insert(0, str(Path('ci/select').resolve()))
+          import job
+          import pick
+
+          try:
+              folder = Path.home() / '.cache/closedwiz-ci-select'
+              data = (folder / 'map.json').read_bytes()
+              token = (folder / 'map.jwt').read_text().strip()
+              now = time.time()
+              claims = job.verify(data, token, job.fetch_jwks(), os.environ['GITHUB_REPOSITORY'], now=now)
+              pick.check_map(pick.strict_json(data.decode('utf-8')))
+              subprocess.run(['git', 'merge-base', '--is-ancestor', claims['sha'], 'HEAD'], check=True)
+          except Exception as error:
+              sys.exit(f'Main map age: unknown ({type(error).__name__}); refusing a trace decision')
+          trace = True
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'trace={str(trace).lower()}\n')
+          print(f'Main signed map age: {now - claims["iat"]:.3f}s; trace={str(trace).lower()}')
+          PY_MAIN_MAP
       - name: Write the CI plan
         id: plan
         env:
