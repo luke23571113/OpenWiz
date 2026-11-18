@@ -2,171 +2,211 @@
   {
     "log": "wm2-final-ci.txt",
     "tests": 16,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "cc7709e84527f8eb0c63963acb69561ae9f9cc4593e045be9973942f20b7cc1c"
   },
   {
     "log": "wm2-final-runtime.txt",
     "tests": 2,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "f309c113a69c7d7043af5f2ba35e5a687578cb9651f03edf591b5d8e0166007a"
   },
   {
     "log": "wm2-final-split-tests.txt",
     "tests": 17,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "49efe73f4cb00ceeb4d47874951c19b854f0f8e6c9c18b321aaac0998936cfea"
   },
   {
     "log": "wm2-moved-activity.txt",
     "tests": 19,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "e6e33b8d3d2216f1b95af2d492e5eeab928f977cadbd86473182617ef5f7c686"
   },
   {
     "log": "wm2-moved-carried.txt",
     "tests": 2,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "dec5673ee7ead0e86a249ea046dba60aab31a8206a43fedeb035ab8449b4e26d"
   },
   {
     "log": "wm2-moved-ci.txt",
     "tests": 16,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "8d7971334d3cf36699d6d0cba049507eb08609fae070c5e7ecf3976517d4da57"
   },
   {
     "log": "wm2-moved-ci3.txt",
     "tests": 33,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "5b8e6258727d0f3bcf181a1e06385c7316a7b5dd61dddce54580431ce59c4c4f"
   },
   {
     "log": "wm2-moved-collect_factory.txt",
     "tests": 18,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "bea138219e240ba757a53984bdb2c129c5cac12bab78d9a0030dfbb51d46e09f"
   },
   {
     "log": "wm2-moved-contract.txt",
     "tests": 19,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "fd2bd4a02541bb9d131c915512a15daeeb94520800a1334e2137964e5a2afc82"
   },
   {
     "log": "wm2-moved-experiment_contract.txt",
     "tests": 25,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "37824eef7d99b9bb7933d0e0ae21c2e445ee627136cff70905236e45fb7ded26"
   },
   {
     "log": "wm2-moved-gather.txt",
     "tests": 23,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "51bc0b25b9cfc19d9793bab9a21f70b88c5a7cf4f44b4ca0e9ce23b572422697"
   },
   {
     "log": "wm2-moved-health.txt",
     "tests": 22,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "b8589ae1cf66d96c557fe306aa3a79398aff46a3c321806f8871d1de9564bac6"
   },
   {
     "log": "wm2-moved-journey.txt",
     "tests": 63,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "089f39ea224b0ade52a88049a3273c3e3ada9d187058d27819ec61a2a4da7f12"
   },
   {
     "log": "wm2-moved-limits.txt",
     "tests": 4,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "f0b43fa7aa30e0c67fffb4aa9f3f68af70da0843b69feb87ac691a8b5de71989"
   },
   {
     "log": "wm2-moved-metrics.txt",
     "tests": 19,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "5de453679ac4ed41e71d3f18eeb90bf23ff961e15a708cf9528dd7efed6793d2"
   },
   {
     "log": "wm2-moved-overload.txt",
     "tests": 23,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "2c022983522cbfb440b5a00cde6feaf348b90ac5ae53130e457906a31d33b0a0"
   },
   {
     "log": "wm2-moved-page-history.txt",
     "tests": 18,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "7fff1186c799a61b5bf40af6be710b8b6825f9c6face8aa11496f2039a9cc99c"
   },
   {
     "log": "wm2-moved-publish.txt",
     "tests": 17,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "1f6b158167d49736a7bb1debf47c2c27b3f02eb6158b568691bd8c75daf93bd0"
   },
   {
     "log": "wm2-private-test_answer_time.py.txt",
     "tests": 10,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "9be41ab49c8cca46d17293b57ee063859c0f0048f2a6699b9676d26781175992"
   },
   {
     "log": "wm2-private-test_budgets.py.txt",
     "tests": 21,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "18f0794e875cd545f36f265ca3e3ccd2c4a114c8dd470689740e01cc0330e725"
   },
   {
     "log": "wm2-private-test_charts.py.txt",
     "tests": 27,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "afcad788a50afb08583d03cbf3cb907e24d4f1f0deddcd630e1291cce143f98a"
   },
   {
     "log": "wm2-private-test_cost.py.txt",
     "tests": 16,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "783dea0b7f8a6841dc53737cdffeeaffbacdb5c0ef148b9b08ae8c133f6793dc"
   },
   {
     "log": "wm2-private-test_review_loops.py.txt",
     "tests": 39,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "7f0d7bf19440258c1a1e8fb2411984e8136ae89d01b68c66ceca95a695a6e1de"
   },
   {
     "log": "wm2-private-test_rework.py.txt",
     "tests": 8,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "3873572d7fd35a619c672c26baef81942b73a002cf1daa363fb5f089d6e4ce3d"
   },
   {
     "log": "wm2-private-test_site.py.txt",
     "tests": 8,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "178616c2192cc73ee2910f4e05ef290aed8935f9f1b6408b62902e0d744720fa"
   },
   {
     "log": "wm2-private-test_stage_waits.py.txt",
     "tests": 11,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "695ec381415b87f325d7d6cfa782f302df144fe7cf97e71aeec4c3894dc5e320"
   },
   {
     "log": "wm2-private-test_web.py.txt",
     "tests": 5,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "2d11664a0dfb327713266fcf4743d0edc8857404ed2437944ef726ab9a4ff31e"
   },
   {
     "log": "wm2-private-test_weekly.py.txt",
     "tests": 23,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "ca871b627b34511c90c7743f5830f09a267655a595f32d670ec6838290ead337"
   },
   {
     "log": "wm2-shadow.txt",
     "tests": 24,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "18954853ba8b116f2da7384ba57651ca9a6fa456c298b5d703cc00a4e94b79ea"
   },
   {
     "log": "wm2-skills-precheck-test_contract.py.txt",
     "tests": 9,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "e91b481f19e12476ad9404a0a9b9f1df170c26ad5dcdd31ca22cc8edc49d6b5c"
   },
   {
     "log": "wm2-skills-promotions-test_promotions.py.txt",
     "tests": 10,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "7a8878bee5faee3c6644436b810dc5bc340964cc6ef0cadcb880e7ff05ff7432"
   },
   {
     "log": "wm2-skills-replay-test_replay.py.txt",
     "tests": 26,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "5752faf1c14e63dbf502bc9a569720678f25b1f4e4c94b878dfd9b210671006c"
   },
   {
     "log": "wm2-skills-weekly-test_weekly.py.txt",
     "tests": 47,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "e599e156f1b20d5f8b8c4d315d6a22a3a3cacab6eda16160ba53b9a3314879a8"
   },
   {
     "log": "wm2-private-test_page_design.py.txt",
     "tests": 14,
-    "result": "pass"
+    "result": "pass",
+    "sha256": "06d125e960c0561bfef02ecd359efddd543dc4e6029fead79ca358f2d6cccf19"
+  },
+  {
+    "log": "wm2-private-test_controls.py.txt",
+    "tests": 13,
+    "result": "pass",
+    "sha256": "d5e8002d8d363b4c8071015fab001a4e265680ee2801eb9f68de5b9abee3e738"
   }
 ]

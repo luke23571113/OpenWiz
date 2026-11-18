@@ -136,3 +136,35 @@ install approval coverage. The relocated precheck, replay, promotion and
 weekly suites pass; the main suite is not reported as passing.
 `skills-eval-baseline.json` records the comparison. No private records are
 copied into public Git and no evaluator rule or assertion is changed.
+
+## Ready-PR baseline disposition and final receipts
+
+[Ruling 6970196773](https://github.com/openwizdev/OpenWiz/issues/1058#issuecomment-6970196773)
+authorizes the ready pull request with the existing skills-eval gap documented.
+The broader suite still has three failures and four errors; its offline check
+still has 15 problems, identical to live main b57e867. These are tracked by
+[existing issue #1047](https://github.com/openwizdev/OpenWiz/issues/1047), not
+a duplicate. Required exact-head CI and the other-family review remain gates.
+The four `skills-eval-{test,check}-{main,wm2}.txt` logs preserve those exact
+runs, with only checkout prefixes replaced by placeholders. The comparison
+and disposition are in `skills-eval-baseline.json`; passing affected runs
+are in `local-checks.json`. Nothing claims the broader suite passed.
+
+`path-notices.json` records all 16 notices, each deduplicated against complete
+current comments before posting and then read back. The inventory read all
+778 open issues and all 339 comments in their 48 comment threads; no issue was
+closed. `changed-paths.txt` is the complete rename-aware path list including
+this ticket's supporting evidence paths. `git log --follow` for collect_ci.py
+reaches its pre-move commits.
+
+Helper accounting: one read-only scout on b57e867 returned 19 pointers.
+Pointers 1–17 and 19 were checked directly and used for publisher/chart
+boundaries, consumer paths, fixture layout, offline commands and caller-load
+placement; pointer 18's outside-owned documentation edits were not used.
+No helper code or draft was accepted; none of the source pointers was found
+wrong. The original audit hit and its specific clearance remain as described
+above, with no clean-audit claim or general bypass. No new helper was used.
+
+The final commit adds evidence only above cd64389, whose six mandatory push
+hooks passed. Source and assertions are unchanged from that checkpoint.
+Full required CI at the ready PR head and exact-head review are pending.

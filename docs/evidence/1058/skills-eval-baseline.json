@@ -22,5 +22,14 @@
     "problems": 15,
     "identical": true
   },
-  "summary": "Existing missing private-record snapshot paths, unclassified skill links and install approval coverage; no new WM2 failure."
+  "summary": "Existing missing private-record snapshot paths, unclassified skill links and install approval coverage; no new WM2 failure.",
+  "logs": [
+    "skills-eval-test-main.txt",
+    "skills-eval-test-wm2.txt",
+    "skills-eval-check-main.txt",
+    "skills-eval-check-wm2.txt"
+  ],
+  "log_note": "Exact saved runs; checkout prefixes replaced with placeholders. Test timings retained.",
+  "tracking_issue": "https://github.com/openwizdev/OpenWiz/issues/1047",
+  "disposition": "https://github.com/openwizdev/OpenWiz/issues/1058#issuecomment-6970196773"
 }
