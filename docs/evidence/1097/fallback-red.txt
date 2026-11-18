@@ -12,3 +12,25 @@ AssertionError: 1 != 0 : budgets: ci.yml rust planted: timeout 90, but 1.5x its 
 Ran 1 test in 0.064s
 
 FAILED (failures=1)
+F
+======================================================================
+FAIL: test_sufficient_planted_samples_stay_measured_with_fallback_configured (__main__.Planted.test_sufficient_planted_samples_stay_measured_with_fallback_configured)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/OpenWiz-1097/tools/war-room/test_budgets.py", line 492, in test_sufficient_planted_samples_stay_measured_with_fallback_configured
+    self.assertEqual(planted[3:6], ["90", "3600", "5"])
+AssertionError: Lists differ: ['90', '0', '5'] != ['90', '3600', '5']
+
+First differing element 1:
+'0'
+'3600'
+
+- ['90', '0', '5']
++ ['90', '3600', '5']
+?         +++
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.064s
+
+FAILED (failures=1)

@@ -456,6 +456,47 @@ class Planted(unittest.TestCase):
                     self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
                     self.assertIn(f"{mode} timeout-minutes", r.stderr)
 
+    # Bug: table generation drops a twin's unmeasured status, invents a p95
+    # from one sample, or loses its explicit same-mode derivation.
+    def test_generation_carries_the_export_twins_unmeasured_fallback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            args = self.fixtures(t)
+            (t / "ci.yml").write_text(workflow([
+                (key, self.THREE % (90, 45, 15), True) for key in ("rust", "rust-export")]))
+            path = t / "w/ci/jobs.jsonl"
+            records = [json.loads(line) for line in path.read_text().splitlines()]
+            records = [dict(r, name="rust-export (1)") for r in records if r["run"] <= 11]
+            path.write_text("".join(json.dumps(r) + "\n" for r in records))
+            r = run(*args, "--derive", "rust=rust-export", "--unmeasured", "rust-export:planted=90")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rows = [line.split("\t") for line in (t / "budgets.tsv").read_text().splitlines()[1:]]
+            planted = {f[1]: f for f in rows if f[2] == "planted"}
+            self.assertEqual(planted["rust"][3:6], ["90", "0", "1"])
+            self.assertEqual(planted["rust-export"][3:6], ["90", "0", "1"])
+            self.assertEqual(planted["rust"][9], "derived:rust-export")
+            self.assertEqual(planted["rust-export"][9], "unmeasured")
+            self.assertEqual(r.stdout.count("p95 unknown"), 2)
+            r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    # Bug: a configured fallback suppresses a five-sample measured p95.
+    def test_sufficient_planted_samples_stay_measured_with_fallback_configured(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            r = run(*self.fixtures(t), "--unmeasured", "rust:planted=90")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            path = t / "budgets.tsv"
+            rows = [line.split("\t") for line in path.read_text().splitlines()[1:]]
+            planted = next(f for f in rows if f[2] == "planted")
+            self.assertEqual(planted[3:6], ["90", "3600", "5"])
+            self.assertTrue(planted[9].startswith("measured:"))
+            planted[4], planted[9] = "0", "unmeasured"
+            path.write_text(HEAD + "".join("\t".join(f) + "\n" for f in rows))
+            r = run("check", "--table", path, t / "ci.yml")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("five eligible samples must be measured", r.stderr)
+
     # Bug: an incomplete planted attempt supplies a deceptively short p95,
     # or trace-only/unknown runs fill the planted sample minimum.
     def test_incomplete_or_unknown_planted_evidence_never_fills_the_minimum(self):
