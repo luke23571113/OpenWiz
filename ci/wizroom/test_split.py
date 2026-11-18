@@ -117,16 +117,56 @@ class SplitChecker(unittest.TestCase):
         self.assertEqual(stay, {'tools/war-room/ci3_check.py': 'loops/weekly.json:3 loop path'})
         self.assertEqual(move, ['tools/war-room/page.py'])
 
-    # catches: a file a public contract links to moved away, leaving a dead link;
-    # and a staying document's own relative link (the collector contract's schema).
-    def test_a_contract_link_keeps_its_file_public(self):
+    # catches: documentation links retaining private implementation files even
+    # though no public code executes them (WM2 executable-dependency ruling).
+    def test_a_doc_link_does_not_retain_its_target(self):
         stay, move = report('contract')
-        self.assertEqual(stay, {
-            'tools/war-room/review_loops.py': 'contracts/review.v1.md:3 contract link',
-            'tools/war-room/collector.v1.md': 'contracts/review.v1.md:4 contract link',
-            'tools/war-room/collector.v1.schema.json': 'tools/war-room/collector.v1.md:3 path',
-        })
-        self.assertEqual(move, ['tools/war-room/page.py'])
+        self.assertEqual(stay, {})
+        self.assertEqual(move, ['tools/war-room/collector.v1.md',
+                                'tools/war-room/collector.v1.schema.json',
+                                'tools/war-room/page.py', 'tools/war-room/review_loops.py'])
+
+    # catches: an expected synthetic path in a test, comment or fixture log
+    # keeping page/publishing code public without an executable consumer.
+    def test_test_strings_and_fixture_logs_do_not_retain_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'tools/client').mkdir(parents=True)
+            (root / 'tools/war-room').mkdir()
+            (root / 'tools/client/test_paths.py').write_text(
+                '"""python3 tools/war-room/page.py"""\n'
+                '# python3 tools/war-room/page.py\n'
+                'expected = "tools/war-room/page.py"\n'
+                'source = "import page"\n'
+                'assert expected.endswith("page.py")\n')
+            (root / 'tools/war-room/reader.py').write_text('VALUE = 1\n')
+            (root / 'tools/war-room/page.py').write_text('VALUE = 2\n')
+            (root / 'tools/client/run.sh').write_text(
+                '#!/bin/sh\n# python3 tools/war-room/page.py\n'
+                'python3 tools/war-room/reader.py\n')
+            (root / 'tools/war-room/fixtures').mkdir()
+            (root / 'tools/war-room/fixtures/old.log').write_text(
+                'python3 tools/war-room/page.py\n')
+            stay, move = report(root)
+            self.assertEqual(stay, {
+                'tools/war-room/reader.py': 'tools/client/run.sh:3 script path'})
+            self.assertEqual(move, ['tools/war-room/fixtures/old.log', 'tools/war-room/page.py'])
+
+    # catches: removing textual matches also losing an actual Python subprocess
+    # invocation that a public tool still executes.
+    def test_a_python_script_invocation_retains_its_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'tools/client').mkdir(parents=True)
+            (root / 'tools/war-room').mkdir()
+            (root / 'tools/client/run.py').write_text(
+                'import subprocess\n'
+                'subprocess.run(["python3", "-I", "tools/war-room/collector.py"], check=True)\n')
+            (root / 'tools/war-room/collector.py').write_text('print("synthetic")\n')
+            stay, move = report(root)
+            self.assertEqual(stay, {
+                'tools/war-room/collector.py': 'tools/client/run.py:2 script path'})
+            self.assertEqual(move, [])
 
     # catches: a staying module's own imports and read files moved away, so the
     # public layer breaks one step behind its consumer.
