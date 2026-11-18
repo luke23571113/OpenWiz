@@ -234,6 +234,56 @@ class TrackedRuntimeProvenance(Repository):
 
 
 
+class LockedSkillsProvenance(Repository):
+    """#555: after the cut the source tracks `skills` as a link to the
+    gitignored `.wizskills/skills`, and `wizskills.lock` pins the WizSkills
+    release. The collector packages the installed skills only when that
+    install is exactly the lock's release tree."""
+
+    SKILLS = {'skills/synthetic/SKILL.md': b'Synthetic installed skill.\n',
+              'skills/synthetic/scripts/run.sh': b'#!/bin/sh\necho installed\n'}
+
+    def setUp(self):
+        super().setUp()
+        release = self.repo / '.wizskills'
+        release.mkdir()
+        for path, data in {**self.SKILLS, 'README.md': b'Synthetic WizSkills.\n'}.items():
+            (release / path).parent.mkdir(parents=True, exist_ok=True)
+            (release / path).write_bytes(data)
+        run = lambda *a: subprocess.run([*GIT, '-C', str(release), *a], check=True,
+                                        capture_output=True).stdout.decode().strip()
+        run('init', '-q')
+        run('add', '-A')
+        run('commit', '-q', '-m', 'synthetic release')
+        lock = {'version': '0.1.2', 'commit': run('rev-parse', 'HEAD'), 'tree': run('rev-parse', 'HEAD^{tree}')}
+        self.git('rm', '-rq', 'skills')
+        os.symlink('.wizskills/skills', self.repo / 'skills')
+        (self.repo / '.gitignore').write_bytes(b'/.wizskills/\n')
+        (self.repo / 'wizskills.lock').write_text(json.dumps(lock, indent=2) + '\n')
+        self.source = self.commit('skills come from the pinned WizSkills install')
+
+    def accepted(self):
+        result, output, _ = self.collect(self.source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path, data in self.SKILLS.items():
+            self.assertEqual((output / 'runtime' / path).read_bytes(), data, path)
+
+    def test_the_pinned_install_is_packaged(self):
+        self.accepted()
+
+    # catches: a release packaging locally edited skills instead of the pinned release.
+    def test_a_tampered_install_is_refused(self):
+        self.accepted()
+        (self.repo / '.wizskills/skills/synthetic/SKILL.md').write_bytes(b'Edited after install.\n')
+        self.refused(self.source)
+
+    # catches: a release built with no skills, or from a stale tracked copy, when the install is absent.
+    def test_a_missing_install_is_refused(self):
+        self.accepted()
+        subprocess.run(['rm', '-rf', str(self.repo / '.wizskills')], check=True)
+        self.refused(self.source)
+
+
 class CompiledProductIdentity(Repository):
     """#1148: compiled CLI/server/service and generated web identity. The
     runtime always matches here, so each refusal is the compiled product's."""
