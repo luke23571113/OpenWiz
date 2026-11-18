@@ -561,7 +561,11 @@ impl Fixture {
             .lock()
             .unwrap()
             .iter()
-            .filter(|s| !s.starts_with("git ") && !s.contains("--update-build"))
+            .filter(|s| {
+                !s.starts_with("git ")
+                    && !s.starts_with("/bin/cp ")
+                    && !s.contains("--update-build")
+            })
             .cloned()
             .collect()
     }

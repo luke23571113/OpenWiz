@@ -1,0 +1,8 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.51s
+     Running ../../tests/service/t6_update.rs (target/debug/deps/t6_update-fcb19ec47d8a0580)
+
+running 1 test
+test a_passing_main_merge_is_staged_but_not_reported_as_running ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; finished in 179.77s
+

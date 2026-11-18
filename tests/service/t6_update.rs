@@ -888,6 +888,201 @@ fn a_passing_main_merge_is_staged_but_not_reported_as_running() {
     assert!(f.build(&candidate).join("web/index.html").is_file());
 }
 
+/// #1060 (#1044): the service forks from many threads. A child forked while
+/// this process holds a writable descriptor for the staged program keeps that
+/// descriptor after the stager closes its own, and the identity check's exec
+/// then fails with ETXTBSY: a good merge is not staged. A watcher stands in for
+/// such a fork: it reopens for writing any writer of the staged program it sees
+/// in this process, and holds it until the attempt ends. The gates are fakes;
+/// Git and the identity exec are real. The program is padded so its copy lasts
+/// long enough to be seen.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_concurrent_fork_cannot_keep_the_staged_program_busy() {
+    use std::{
+        fs,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+    struct Gates(String);
+    impl update::Executor for Gates {
+        fn run(&self, call: &update::Call) -> Result<String, String> {
+            let args: Vec<_> = call.argv().iter().map(String::as_str).collect();
+            match (call.program().to_str(), args.as_slice()) {
+                (Some("npm"), ["run", "build"]) => {
+                    fixture::directory(&call.directory().join("out"));
+                    fixture::file(&call.directory().join("out/index.html"), "<html></html>");
+                }
+                (Some("cargo"), ["build", "--release"]) => {
+                    let release = call.directory().join("target/release");
+                    fixture::directory(&release);
+                    let mut program = format!("#!/bin/sh\necho {}\nexit 0\n", self.0).into_bytes();
+                    program.resize(program.len() + (64 << 20), b'#');
+                    fixture::file(&release.join("openwiz-service"), program);
+                }
+                (Some("sh" | "npm" | "cargo"), _) => {}
+                _ => return update::Executor::run(&update::System, call),
+            }
+            Ok(String::new())
+        }
+    }
+    let f = fixture::Fixture::new();
+    let old = f.head();
+    let candidate = f.merge("pass");
+    let staged = fs::canonicalize(&f.root)
+        .unwrap()
+        .join("service/builds")
+        .join(&candidate)
+        .join("openwiz-service");
+    let done = Arc::new(AtomicBool::new(false));
+    let watcher = {
+        let done = Arc::clone(&done);
+        std::thread::spawn(move || {
+            // One inherited writer is enough; it stays open until joined.
+            let mut held = None;
+            while held.is_none() && !done.load(Ordering::SeqCst) {
+                held = fs::read_dir("/proc/self/fd")
+                    .unwrap()
+                    .flatten()
+                    .find_map(|fd| {
+                        let fd = fd.path();
+                        let info = fs::read_to_string(
+                            Path::new("/proc/self/fdinfo").join(fd.file_name()?),
+                        )
+                        .ok()?;
+                        let flags = info.lines().find_map(|l| l.strip_prefix("flags:"))?;
+                        let writable = u32::from_str_radix(flags.trim(), 8).ok()? & 3 != 0;
+                        (writable && fs::read_link(&fd).ok()? == staged)
+                            .then(|| fs::OpenOptions::new().write(true).open(&fd).ok())?
+                    });
+            }
+            held
+        })
+    };
+    let updater = update::Updater::fixture(
+        &f.root,
+        &f.install,
+        &f.repo,
+        &old,
+        f.sink(),
+        Arc::new(Gates(candidate.clone())),
+    )
+    .unwrap();
+    let state = f.state();
+    let staged_ok = updater.check(&state, 1000).unwrap();
+    done.store(true, Ordering::SeqCst);
+    let inherited = watcher.join().unwrap().is_some();
+    assert!(
+        staged_ok,
+        "a good merge was not staged (writer inherited by a concurrent fork: \
+         {inherited}): {:?}",
+        state.lock().unwrap().snapshot()["update"]
+    );
+    assert_eq!(f.pending()["phase"], "queued");
+    assert!(
+        !inherited,
+        "this process held a writer for the staged program"
+    );
+}
+
+/// #1060: staging writes the candidate program another way, so each refusal it
+/// must keep is a row. A program planted where the candidate goes is never
+/// replaced or written through (create-new), a symlinked build output is
+/// never staged (regular file), and a program reporting another build is
+/// never queued (identity). The keeper above stages a real build, which the
+/// identity call accepts only as an owner-only file with one link.
+#[test]
+fn staging_refuses_a_planted_target_a_symlinked_program_or_another_identity() {
+    use std::sync::{Arc, Mutex};
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum Row {
+        Planted,
+        Symlinked,
+        Misidentified,
+    }
+    struct Staging {
+        row: Row,
+        outside: std::path::PathBuf,
+        identity: Mutex<bool>,
+    }
+    impl update::Executor for Staging {
+        fn run(&self, call: &update::Call) -> Result<String, String> {
+            let args: Vec<_> = call.argv().iter().map(String::as_str).collect();
+            let dir = call.directory();
+            match (call.program().to_str().unwrap(), args.as_slice()) {
+                ("git" | "/bin/cp", _) => return update::System.run(call),
+                ("npm", ["run", "build"]) => {
+                    fixture::directory(&dir.join("out"));
+                    fixture::file(&dir.join("out/index.html"), "synthetic candidate");
+                }
+                ("cargo", ["build", "--release"]) => {
+                    let program = dir.join("target/release/openwiz-service");
+                    fixture::directory(program.parent().unwrap());
+                    match self.row {
+                        Row::Symlinked => std::os::unix::fs::symlink(&self.outside, &program),
+                        _ => std::fs::write(&program, "synthetic build output"),
+                    }
+                    .unwrap();
+                    if self.row == Row::Planted {
+                        let target = dir.parent().unwrap().join("openwiz-service");
+                        std::os::unix::fs::symlink(&self.outside, target).unwrap();
+                    }
+                }
+                (_, ["--update-build"]) => {
+                    *self.identity.lock().unwrap() = true;
+                    return Ok(format!("{}\n", "0".repeat(40)));
+                }
+                _ => {}
+            }
+            Ok(String::new())
+        }
+    }
+    for row in [Row::Planted, Row::Symlinked, Row::Misidentified] {
+        let f = fixture::Fixture::new();
+        let old = f.head();
+        f.merge("pass");
+        let outside = f.temp.join("outside");
+        fixture::file(&outside, "synthetic outside file");
+        let staging = Arc::new(Staging {
+            row,
+            outside: outside.clone(),
+            identity: Mutex::new(false),
+        });
+        let updater = update::Updater::fixture(
+            &f.root,
+            &f.install,
+            &f.repo,
+            &old,
+            f.sink(),
+            staging.clone(),
+        )
+        .unwrap();
+        assert!(
+            !updater.check(&f.state(), 1000).unwrap(),
+            "{row:?} was staged"
+        );
+        let records = f.records();
+        assert_eq!(records.len(), 1, "{row:?}: one kept record");
+        assert!(
+            records[0].contains("the build failed"),
+            "{row:?}: {}",
+            records[0]
+        );
+        assert_eq!(
+            *staging.identity.lock().unwrap(),
+            row == Row::Misidentified,
+            "{row:?}: the identity call"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&outside).unwrap(),
+            "synthetic outside file",
+            "{row:?} wrote through a symlink"
+        );
+    }
+}
+
 #[test]
 fn only_the_complete_fixed_gate_can_run() {
     let expected: &[(&str, &[&str])] = &[
@@ -937,6 +1132,69 @@ fn only_the_complete_fixed_gate_can_run() {
     ] {
         assert!(!update::allows_gate(Path::new(program), &args));
         assert!(!update::allows_command(Path::new(program), &args));
+    }
+    // #1060, owner decision J146 (private record): a broader copier rule
+    // could overwrite another build or run flags outside the approved form.
+    let source = "/tmp/synthetic/service/builds/1111111111111111111111111111111111111111/source/target/release/openwiz-service";
+    let target =
+        "/tmp/synthetic/service/builds/1111111111111111111111111111111111111111/openwiz-service";
+    assert!(update::allows_command(
+        Path::new("/bin/cp"),
+        &["--", source, target]
+    ));
+    for (program, args) in [
+        ("cp", vec!["--", source, target]),
+        ("/usr/bin/cp", vec!["--", source, target]),
+        ("/bin/cp", vec![source, target]),
+        ("/bin/cp", vec!["-f", "--", source, target]),
+        ("/bin/cp", vec!["--", source, target, "--preserve"]),
+        ("/bin/cp", vec!["--", &source[1..], target]),
+        ("/bin/cp", vec!["--", source, &target[1..]]),
+        (
+            "/bin/cp",
+            vec![
+                "--",
+                source,
+                "/tmp/synthetic/service/builds/2222222222222222222222222222222222222222/openwiz-service",
+            ],
+        ),
+        (
+            "/bin/cp",
+            vec![
+                "--",
+                source,
+                "/tmp/synthetic/service/builds/1111111111111111111111111111111111111111/another-program",
+            ],
+        ),
+        (
+            "/bin/cp",
+            vec![
+                "--",
+                source,
+                "/tmp/other/service/builds/1111111111111111111111111111111111111111/openwiz-service",
+            ],
+        ),
+        (
+            "/bin/cp",
+            vec![
+                "--",
+                "/tmp/synthetic/service/builds/not-a-commit/source/target/release/openwiz-service",
+                "/tmp/synthetic/service/builds/not-a-commit/openwiz-service",
+            ],
+        ),
+        (
+            "/bin/cp",
+            vec![
+                "--",
+                "/tmp/synthetic/service/builds/1111111111111111111111111111111111111111/source/../source/target/release/openwiz-service",
+                target,
+            ],
+        ),
+    ] {
+        assert!(
+            !update::allows_command(Path::new(program), &args),
+            "{program} {args:?}"
+        );
     }
     let git = [
         "-c",
