@@ -17,6 +17,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -288,7 +289,7 @@ class Publish(unittest.TestCase):
         # refused as an unexpected file by the next publish, published unscanned or as any JSON, a
         # second snapshot-like file let through, or an old snapshot kept beside a page not drawn from it.
         publish = load(HERE / 'publish.py', 'mt13_publish')
-        doc = json.loads((HERE / 'fixtures' / 'collector' / 'snapshot.json').read_text())
+        doc = json.loads((PUBLIC_ROOT / 'fixtures/collector/snapshot.json').read_text())
         doc['collected_at'] = '2030-01-02T11:00:00Z'  # gathered before this render
         raw = json.dumps(doc).encode()
         beside = self.selection.parent / 'snapshot.json'  # where gather.py writes it

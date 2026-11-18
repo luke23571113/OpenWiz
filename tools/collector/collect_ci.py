@@ -36,12 +36,13 @@ import tempfile
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import collector_runtime
 import activity  # noqa: E402
 import health  # noqa: E402
 import sources  # noqa: E402
 import suite  # noqa: E402
 
-C3 = sources.native('tools/war-room/ci3.py')
+C3 = sources.native('tools/collector/ci3.py')
 B = C3.bench  # ci-bench's reader, rules and prices: the numbers ci-bench publishes
 FAILS = (B.Fail, activity.B.Fail, OSError, ValueError, TypeError, KeyError, ArithmeticError)
 SCHEMA = json.loads((HERE / 'collector.v1.schema.json').read_text(encoding='utf-8'))
@@ -236,11 +237,10 @@ def ci3(repo, since, until):
 
 def current(repo):
     """WR8's current ci.yml observation for today so far, as gather reads it, with each active job's creation."""
-    import gather  # gather calls this module for its CI facts: import it only here
     started = now()
     day = started.replace(hour=0, minute=0, second=0)
     window = {'since': iso(day), 'until': iso(started), 'timezone': 'UTC'}
-    read, raw = health.capture(gather.current_runs(repo, iso(day), iso(started), B.gh))
+    read, raw = health.capture(collector_runtime.current_runs(repo, iso(day), iso(started), B.gh))
     try:
         observed = activity.B.current_activity(iso(day), iso(started), repo=repo, read=read)
         created = [{'job': j['id'], 'created_at': B.as_time(raw[j['id']], 'created_at', 'active job')}
@@ -445,10 +445,9 @@ def check(envelope):
                               f'{f["fact"]}: read before it was requested')
     except ValueError as error:
         raise Refused(f'the read breaks the collector contract: {error}')
-    import gather
     try:
-        gather.scan_bytes(json.dumps(envelope, indent=1).encode())
-    except gather.Fail as error:
+        collector_runtime.scan_bytes(json.dumps(envelope, indent=1).encode())
+    except collector_runtime.Fail as error:
         raise Refused(str(error))
 
 

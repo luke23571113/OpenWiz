@@ -26,6 +26,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIX = HERE / 'fixtures'
@@ -86,11 +87,12 @@ def load(name, path):
 
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
+sys.path.insert(0, str(PUBLIC_ROOT))
 import sources  # noqa: E402
 import suite  # noqa: E402
 import answer_time  # noqa: E402
 import rework  # noqa: E402
-WR8 = load('wr8_fixture', HERE / 'test_activity.py')
+WR8 = load('wr8_fixture', PUBLIC_ROOT / 'test_activity.py')
 
 
 def publish_module():
@@ -292,7 +294,7 @@ class Gather(unittest.TestCase):
         # WR8's synthetic gh, answering WR8's own fixture reads.
         bin_dir = self.tmp / 'bin'
         bin_dir.mkdir()
-        (bin_dir / 'gh').symlink_to(FIX / 'activity/fake_gh.py')
+        (bin_dir / 'gh').symlink_to(PUBLIC_ROOT / 'fixtures/activity/fake_gh.py')
         self.answers = self.tmp / 'gh.json'
         self.answer(WR8.fixture())
         self.env = {'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'], 'WR8_FIXTURE': str(self.answers)}
@@ -735,6 +737,82 @@ class Gather(unittest.TestCase):
                 self.assertIn('privacy scan', str(refused.exception))
                 self.assertNotIn(planted, str(refused.exception))
                 self.assertFalse(out.exists(), 'a refused gather writes nothing')
+
+
+import test_collect_ci as CIProof
+
+
+class CollectorCIIntegration(unittest.TestCase):
+    def test_gather_s_ci_call_reads_every_ci_fact(self):
+        # catches: a snapshot's CI group missing a fact (the contract requires all five, even unavailable).
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = CIProof.Fake(tmp)
+            code = ('import json, sys; sys.path.insert(0, sys.argv[1]); import gather; '
+                    'print(json.dumps(gather.ci_facts(sys.argv[2], since=sys.argv[3], until=sys.argv[4])))')
+            done = fake.run('-c', code, HERE, CIProof.REPO, '2026-01-04T00:00:00Z', '2026-01-04T01:00:00Z')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        ci = json.loads(done.stdout)
+        CIProof.suite._shape(ci, CIProof.SCHEMA['$defs']['ci_facts'], CIProof.SCHEMA)
+        self.assertEqual(list(ci), ['runs', 'minutes', 'ci3', 'activity', 'queue'])
+        self.assertEqual({k: f['state'] for k, f in ci.items()},
+                         {'runs': 'known', 'minutes': 'known', 'ci3': 'known', 'activity': 'known', 'queue': 'known'})
+
+
+import test_collect_factory as FactoryProof
+
+
+class CollectorSnapshotIntegration(unittest.TestCase):
+    # catches: the snapshot and the on-demand read disagreeing on the same source, a missing
+    # fact or group key, a CI group that is not the CI collector's own read (#819 ruling: the
+    # snapshot calls gather.ci_facts), or a collection time before one of its reads ended.
+    def test_snapshot_and_read_agree(self):
+        C = FactoryProof.load('collect_factory', FactoryProof.SCRIPT)
+        G = FactoryProof.load('gather', HERE / 'gather.py')
+        clock = lambda: '2030-01-03T06:00:00Z'  # noqa: E731
+        kw = dict(since=FactoryProof.DAY[0], until=FactoryProof.DAY[1], usage=FactoryProof.FIX / 'daily-usage.json', clock=clock)
+        with FactoryProof.fake_gh('daily-world.json'):
+            snap = G.snapshot(FactoryProof.DAILY_REPO, **kw)
+            read = C.read(FactoryProof.DAILY_REPO, ['merges', 'stalls', 'cost'], **kw)
+            ci = G.ci_facts(FactoryProof.DAILY_REPO, since=FactoryProof.DAY[0], until=FactoryProof.DAY[1])
+        FactoryProof.suite._shape(snap, FactoryProof.SCHEMA, FactoryProof.SCHEMA)
+        self.assertEqual(list(snap['factory']), FactoryProof.FACTS)
+        self.assertEqual(list(snap['ci']), ['runs', 'minutes', 'ci3', 'activity', 'queue'])
+        for name in ('merges', 'stalls', 'cost'):
+            self.assertEqual(snap['factory'][name], read['factory'][name], name)
+        for name, fact in snap['ci'].items():
+            self.assertEqual((fact['state'], fact['value'], fact['prerequisites']),
+                             (ci[name]['state'], ci[name]['value'], ci[name]['prerequisites']), name)
+        ends = [f['read']['ended_at'] for g in ('factory', 'ci') for f in snap[g].values() if f['read']]
+        self.assertTrue(any(f['read'] for f in snap['ci'].values()), 'the CI collector read nothing')
+        self.assertGreaterEqual(snap['collected_at'], max(ends))
+
+
+    # catches (R1, #978 review): the default snapshot (no window) failing in the CI read because
+    # only the factory reader resolved the default day, the two groups read over different bounds,
+    # or half a window accepted after reading something.
+    def test_snapshot_default_window_is_one_window_for_both_groups(self):
+        G = FactoryProof.load('gather', HERE / 'gather.py')
+        clock = lambda: '2030-01-03T06:00:00Z'  # noqa: E731  (the default day is then 2030-01-02)
+        with FactoryProof.fake_gh('daily-world.json'):
+            default = G.snapshot(FactoryProof.DAILY_REPO, clock=clock, usage=FactoryProof.FIX / 'daily-usage.json')
+            explicit = G.snapshot(FactoryProof.DAILY_REPO, clock=clock, usage=FactoryProof.FIX / 'daily-usage.json', since=FactoryProof.DAY[0], until=FactoryProof.DAY[1])
+        FactoryProof.suite._shape(default, FactoryProof.SCHEMA, FactoryProof.SCHEMA)
+        self.assertEqual(default['factory']['merges']['window'], {'since': FactoryProof.DAY[0], 'until': FactoryProof.DAY[1], 'timezone': 'UTC'})
+        self.assertEqual([p['number'] for p in default['factory']['merges']['value']['pull_requests']], [31, 32, 33])
+        for name in ('merges', 'stalls', 'cost'):
+            self.assertEqual(default['factory'][name], explicit['factory'][name], name)
+        for name, fact in default['ci'].items():
+            self.assertEqual((fact['state'], fact['prerequisites']),
+                             (explicit['ci'][name]['state'], explicit['ci'][name]['prerequisites']), name)
+            # activity's window is today so far, to its read's real end (collector.v1.md), never the read
+            # window; every other CI fact that names a window names exactly the requested one.
+            if name != 'activity' and fact['window'] is not None:
+                self.assertEqual((fact['window']['since'], fact['window']['until']), FactoryProof.DAY, name)
+        for half in ({'since': FactoryProof.DAY[0]}, {'until': FactoryProof.DAY[1]}):
+            with self.subTest(half=half), FactoryProof.fake_gh('daily-world.json') as (_, calls):
+                with self.assertRaises(ValueError):
+                    G.snapshot(FactoryProof.DAILY_REPO, clock=clock, **half)
+                self.assertEqual(calls(), [])
 
 
 if __name__ == '__main__':

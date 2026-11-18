@@ -246,7 +246,7 @@ shape, and `$defs/fact_<name>` each fact's.
   bound the windowed facts. Each module also exposes `validate(fact)`, the
   cross-field rules above for its own facts.
 - `gather.py` (shared by MT2 and MT3) composes one snapshot from both groups.
-- CLIs: `python3 -I tools/war-room/collect_factory.py read --repo OWNER/NAME
+- CLIs: `python3 -I tools/collector/collect_factory.py read --repo OWNER/NAME
   --fact NAME [--fact NAME ...] [--since UTC --until UTC]`, and the same for
   `collect_ci.py`, print one read envelope and exit 0; a bad command line
   exits 2 before any read; a refused read exits 1 with nothing on stdout.

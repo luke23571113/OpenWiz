@@ -24,9 +24,11 @@ import unittest
 from unittest import mock
 import xml.etree.ElementTree as ET
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(PUBLIC_ROOT))
 import health  # noqa: E402
 import history  # noqa: E402
 import main  # noqa: E402
@@ -598,7 +600,7 @@ class Charts(unittest.TestCase):
 
 # --- MT4 (#823): PRs an hour against the baseline, from a collector snapshot ------------
 
-COLLECTOR = HERE / 'fixtures' / 'collector'
+COLLECTOR = PUBLIC_ROOT / 'fixtures/collector'
 HEADLINE = 'body-ci-bench-headline'
 SNAPSHOT_AT = '2030-03-01T12:30:00Z'
 # ci-bench's synthetic baseline (its retired fixtures/baseline/README.md), worked there by hand:
@@ -799,7 +801,7 @@ class PrsPerHour(unittest.TestCase):
         real = subprocess.Popen
 
         def fake_read(args, *a, **kw):
-            if len(args) > 2 and args[2] == str(HERE / 'collect_factory.py'):
+            if len(args) > 2 and args[2] == str(PUBLIC_ROOT / 'collect_factory.py'):
                 args = [sys.executable, '-I', '-c', script]
             return real(args, *a, **kw)
 

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FIX = HERE / 'fixtures/cost'
@@ -23,7 +24,7 @@ def module(name, path):
     return result
 
 
-suite = module('cost_suite', HERE / 'suite.py')
+suite = module('cost_suite', PUBLIC_ROOT / 'suite.py')
 
 
 class Cost(unittest.TestCase):

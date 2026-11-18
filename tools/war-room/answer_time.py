@@ -14,8 +14,9 @@ from pathlib import Path
 import re
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
-_spec = importlib.util.spec_from_file_location('war_room_suite', Path(__file__).with_name('suite.py'))
+_spec = importlib.util.spec_from_file_location('war_room_suite', PUBLIC_ROOT / 'suite.py')
 suite = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(suite)
 

@@ -15,6 +15,7 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'collector'))
 import sources  # noqa: E402
 import suite  # noqa: E402
 

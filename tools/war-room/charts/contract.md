@@ -4,7 +4,7 @@ WRD2 (#630), spec #626. The build turns validated history (`openwiz.war-room.v1`
 and `openwiz.war-room.v2` samples, read through `history.read_all`) and
 explicitly selected native artifacts into finished static SVG figures, a
 plotted-values table and a provenance manifest. Its input is the **v2 record as
-WRD1 defines it** in [`../contract.v2.md`](../contract.v2.md); v1 samples are
+WRD1 defines it** in [`../contract.v2.md`](../../collector/contract.v2.md); v1 samples are
 read through the same readers and show health as unobserved (`suite.health`).
 WRD3 (#631) consumes this interface: [`input.schema.json`](input.schema.json),
 the bundle below and the files `build.py --out` writes.
@@ -141,7 +141,7 @@ From the latest sample, without new statistics:
 ## PRs an hour against the baseline (MT4, #823)
 
 `body-ci-bench-headline` is ci-bench's headline, read from one collector
-snapshot ([`../collector.v1.md`](../collector.v1.md)), not from history:
+snapshot ([`../collector.v1.md`](../../collector/collector.v1.md)), not from history:
 `build.build(..., snapshot=FILE)` or `build.py --snapshot FILE`.
 [`prs_per_hour.py`](prs_per_hour.py) checks the file against
 `collector.v1.schema.json`, refuses one collected after the build or whose

@@ -14,12 +14,13 @@ from pathlib import Path
 import sys
 import unittest
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 
 
 def module(name):
-    spec = importlib.util.spec_from_file_location(name, HERE / f'{name}.py')
+    spec = importlib.util.spec_from_file_location(name, (PUBLIC_ROOT if name == 'suite' else HERE) / f'{name}.py')
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result

@@ -630,7 +630,7 @@ class Due(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertEqual(bool(run.stdout), fires, now)
             if fires:
-                self.assertEqual(run.stdout, "CI3 note due: run `python3 -I tools/war-room/ci3_check.py check`.\n")
+                self.assertEqual(run.stdout, "CI3 note due: run `python3 -I tools/collector/ci3_check.py check`.\n")
 
     def test_a_gate_that_cannot_read_its_definition_fails_loudly(self):
         # Bug: a broken definition exits 1 with no output, which Cloudroom
@@ -706,7 +706,7 @@ class Definition(unittest.TestCase):
         self.assertEqual((d["enabled"], d["mode"]), (False, "shadow"))
         # 3 days, and 2026-11-16 09:00 PST (17:00 UTC) in milliseconds.
         self.assertEqual(d["wake"], {"kind": "interval", "every_ms": 259200000, "anchor_ms": 1794848400000})
-        self.assertEqual(d["check"]["argv"], ["python3", "-I", "tools/war-room/ci3_check.py", "check"])
+        self.assertEqual(d["check"]["argv"], ["python3", "-I", "tools/collector/ci3_check.py", "check"])
         self.assertTrue((ROOT / d["check"]["argv"][2]).is_file())
         self.assertEqual(d["budget"]["max_agent_starts"], 1)
 

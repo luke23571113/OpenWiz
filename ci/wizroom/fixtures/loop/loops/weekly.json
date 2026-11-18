@@ -1,4 +1,4 @@
 {
   "name": "synthetic-weekly",
-  "reads": ["tools/war-room/ci3_check.py"]
+  "argv": ["python3", "-I", "tools/war-room/ci3_check.py"]
 }

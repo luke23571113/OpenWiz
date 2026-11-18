@@ -14,6 +14,7 @@ It writes nothing and makes no network call.
 import argparse
 import ast
 import itertools
+import json
 from collections import deque
 import os
 from pathlib import Path
@@ -68,14 +69,12 @@ def kind_of(path, text):
         return 'workflow'
     if path.startswith('loops/') and name.endswith('.json'):
         return 'loop'
-    if path.startswith('contracts/'):
-        return 'contract'
     if posixpath.splitext(name)[1] in SCRIPT_SUFFIXES or text.startswith('#!'):
         return 'script'
     return None
 
 
-PATH_KIND = {'workflow': 'workflow path', 'loop': 'loop path', 'contract': 'contract link',
+PATH_KIND = {'workflow': 'workflow path', 'loop': 'loop path',
              'script': 'script path', None: 'path'}
 
 
@@ -207,6 +206,24 @@ class Tree:
                 self.all_dirs.add(d)
                 d = posixpath.dirname(d)
         self.own = set(own)
+        self.caller_supplied = set()
+        policy = 'contracts/wizroom.v1.md'
+        if policy in self.all_set:
+            # Only operative rows in this section classify sites. Mentions in
+            # prose, examples or another section never exempt a dynamic load.
+            section = False
+            fenced = False
+            for line in self.text(policy).splitlines():
+                if line.startswith('```'):
+                    fenced = not fenced
+                if fenced:
+                    continue
+                if line.startswith('## '):
+                    section = line == '## Caller-supplied loads'
+                if section:
+                    row = re.fullmatch(r'\| `([\w./-]+):([1-9][0-9]*)` \| caller-supplied \|', line)
+                    if row:
+                        self.caller_supplied.add((row[1], int(row[2])))
 
     def text(self, path):
         try:
@@ -246,18 +263,44 @@ def literal_refs(tree, path, text, kind):
     return refs
 
 
-MD_LINK = re.compile(r'\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|^\s*\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)')
-
-
-def markdown_refs(tree, path, text, kind):
+def invocation_refs(tree, path, text, kind):
+    """Executable command paths only: prose, filters and fixture logs are not calls."""
     refs = []
+    if kind == 'loop':
+        def argv(value):
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if key == 'argv' and isinstance(item, list):
+                        for arg in item:
+                            if isinstance(arg, str):
+                                line = text.count('\n', 0, text.find(json.dumps(arg))) + 1
+                                refs.extend((line, 'loop path', t) for t in tree.targets(arg))
+                    else:
+                        argv(item)
+            elif isinstance(value, list):
+                for item in value:
+                    argv(item)
+        argv(json.loads(text))
+        return refs
+    suffix = posixpath.splitext(path)[1]
+    if kind != 'workflow' and suffix not in ('.sh', '.bash', '.zsh'):
+        return refs
+    run_indent = None
     for no, line in enumerate(text.splitlines(), 1):
-        for m in MD_LINK.finditer(line):
-            target = (m.group(1) or m.group(2)).split('#', 1)[0]
-            if not target or re.match(r'^[a-z][a-z0-9+.-]*:', target, re.I) or target.startswith('/'):
+        command = line.strip()
+        if kind == 'workflow':
+            run = re.match(r'^(\s*)(?:-\s+)?run:\s*(.*)$', line)
+            if run:
+                command = run[2]
+                run_indent = len(run[1]) if command in ('|', '>') else None
+            elif run_indent is None or (command and len(line) - len(line.lstrip()) <= run_indent):
+                run_indent = None
                 continue
-            for t in tree.targets(posixpath.join(posixpath.dirname(path), target)):
-                refs.append((no, PATH_KIND[kind], t))
+        # A path used by an interpreter or as the command itself is executable.
+        # Assertions, echo/printf and commented examples do not enter here.
+        if re.match(r'(?:exec\s+)?(?:python(?:3(?:\.\d+)?)?|sh|bash|zsh|node)\s', command) or command.startswith(tree.folder + '/'):
+            refs.extend((no, PATH_KIND[kind], target)
+                        for _, _, target in literal_refs(tree, path, command, kind))
     return refs
 
 
@@ -828,12 +871,25 @@ class Python:
                             modules.append((node, text_of(v)))
                         else:
                             dynamic.append((line, v))
+                elif name in ('subprocess.run', 'subprocess.call', 'subprocess.check_call',
+                              'subprocess.check_output', 'subprocess.Popen') and node.args:
+                    command = node.args[0]
+                    if isinstance(command, (ast.List, ast.Tuple)) and command.elts:
+                        first = command.elts[0]
+                        interpreter = self.ev(first, self.scope.get(first))
+                        if (dotted(first) == 'sys.executable' or (known(interpreter) and
+                                re.fullmatch(r'(?:.*/)?(?:python(?:3(?:\.\d+)?)?|sh|bash|zsh|node)', text_of(interpreter)))):
+                            for arg in command.elts[1:]:
+                                sinks += [(line, 'script path', v) for line, v in self.values(arg)]
                 if self.path_call(node) and self.outermost(node):
                     sinks += [(line, 'script path', v) for line, v in self.values(node)]
             elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div) and self.outermost(node):
                 sinks += [(line, 'script path', v) for line, v in self.values(node)]
         for line, kind, v in sinks:
             v = norm_prefix(v)
+            if (kind == 'native load' and v == (UNKNOWN,)
+                    and (self.path, line) in tree.caller_supplied):
+                continue
             if known(v):
                 refs += [(line, kind, t) for t in tree.targets(text_of(v))]
             elif kind != 'script path':
@@ -880,9 +936,7 @@ def file_refs(tree, path, kind):
     text = tree.text(path)
     if not text:
         return []
-    refs = literal_refs(tree, path, text, kind)
-    if path.endswith('.md'):
-        refs += markdown_refs(tree, path, text, kind)
+    refs = invocation_refs(tree, path, text, kind)
     if path.endswith('.py') or (text.startswith('#!') and 'python' in text.split('\n', 1)[0]):
         try:
             refs += Python(tree, path, text).refs()

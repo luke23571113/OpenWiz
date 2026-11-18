@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 TABLE = HERE / "budgets.tsv"
@@ -42,7 +43,7 @@ sys.dont_write_bytecode = True
 
 
 def bench():
-    spec = importlib.util.spec_from_file_location("ci_bench", HERE / "bench_measure.py")
+    spec = importlib.util.spec_from_file_location("ci_bench", PUBLIC_ROOT / 'bench_measure.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
