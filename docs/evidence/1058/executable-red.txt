@@ -1,0 +1,36 @@
+test_a_doc_link_does_not_retain_its_target (__main__.SplitChecker.test_a_doc_link_does_not_retain_its_target) ... FAIL
+test_test_strings_and_fixture_logs_do_not_retain_files (__main__.SplitChecker.test_test_strings_and_fixture_logs_do_not_retain_files) ... FAIL
+test_a_python_script_invocation_retains_its_target (__main__.SplitChecker.test_a_python_script_invocation_retains_its_target) ... ok
+
+======================================================================
+FAIL: test_a_doc_link_does_not_retain_its_target (__main__.SplitChecker.test_a_doc_link_does_not_retain_its_target)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 124, in test_a_doc_link_does_not_retain_its_target
+    self.assertEqual(stay, {})
+AssertionError: {'tools/war-room/collector.v1.md': 'contra[189 chars]ink'} != {}
++ {}
+- {'tools/war-room/collector.v1.md': 'contracts/review.v1.md:4 contract link',
+-  'tools/war-room/collector.v1.schema.json': 'tools/war-room/collector.v1.md:3 '
+-                                             'path',
+-  'tools/war-room/review_loops.py': 'contracts/review.v1.md:3 contract link'}
+
+======================================================================
+FAIL: test_test_strings_and_fixture_logs_do_not_retain_files (__main__.SplitChecker.test_test_strings_and_fixture_logs_do_not_retain_files)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 151, in test_test_strings_and_fixture_logs_do_not_retain_files
+    self.assertEqual(stay, {
+AssertionError: {'tools/war-room/page.py': 'tools/client/run.sh:2 script p[65 chars]ath'} != {'tools/war-room/reader.py': 'tools/client/run.sh:3 script path'}
+- {'tools/war-room/page.py': 'tools/client/run.sh:2 script path',
+-  'tools/war-room/reader.py': 'tools/client/run.sh:3 script path'}
+? ^
+
++ {'tools/war-room/reader.py': 'tools/client/run.sh:3 script path'}
+? ^
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.112s
+
+FAILED (failures=2)

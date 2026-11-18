@@ -1,0 +1,37 @@
+# MT13 red run: test_publish.py's saved-snapshot case, before the publish.py lines (base 0a9310a; lines cut at 240 chars)
+$ python3 -I tools/war-room/test_publish.py Publish.test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn
+test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn (__main__.Publish.test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn) ... FAIL
+
+======================================================================
+FAIL: test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn (__main__.Publish.test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_publish.py", line 298, in test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn
+    self.assertEqual(self.files(), sorted(FILES + ['snapshot.json']))
+AssertionError: Lists differ: ['REA[42 chars]n', 'war-room-cost.html', 'war-room-health.htm[125 chars]png'] != ['REA[42 chars]n', 'snapshot.json', 'war-room-cost.html', 'wa[142 chars]png']
+
+First differing element 2:
+'war-room-cost.html'
+'snapshot.json'
+
+Second list contains 1 additional elements.
+First extra element 10:
+'war-room.png'
+
+  ['README.md',
+   'samples/2030-01-02T12-00-00Z.json',
++  'snapshot.json',
+   'war-room-cost.html',
+   'war-room-health.html',
+   'war-room-phone.png',
+   'war-room-quality.html',
+   'war-room-skills.html',
+   'war-room-speed.html',
+   'war-room.html',
+   'war-room.png']
+
+----------------------------------------------------------------------
+Ran 1 test in 0.545s
+
+FAILED (failures=1)
+exit: 1

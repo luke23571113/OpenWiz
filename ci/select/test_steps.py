@@ -27,7 +27,7 @@ class Dispatch(unittest.TestCase):
             raw = json.dumps(record)
             (tmp/'ci-selection.json').write_text(raw)
             flags = dict.fromkeys(('build-web','lint-rust','export-rust','export-web','build-site','image-skills',
-                                  'rust','web','site','release','trace','planted','toolkit'),False)
+                                  'rust','web','site','release','trace','planted'),False)
             flags.update(skills=[n for n in names if n in chosen],plan_sha256=hashlib.sha256(raw.encode()).hexdigest())
             (tmp/'ci-dispatch.json').write_text(json.dumps(flags))
             log = tmp/'calls'
@@ -167,11 +167,11 @@ class Workflow(unittest.TestCase):
         blocks=re.findall(r'^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)',source,re.M|re.S)
         ran=set()
         for name,block in blocks:
-            if name in ('changes','select-map','ci','web-test','toolkit-nightly','main-light'): continue
+            if name in ('changes','select-map','ci','web-test','main-light'): continue
             expression=re.search(r'^    if: \$\{\{ (.*) \}\}$',block,re.M)[1]
             expression=re.sub(r'needs\.changes\.outputs\.([a-z-]+)',lambda m:repr(output.get(m[1],'')),expression)
             expression=expression.replace('needs.changes.result',repr('success')).replace('needs.web-build.result',repr(export_result))
-            expression=expression.replace('!cancelled()','True').replace('&&',' and ').replace('||',' or ')
+            expression=expression.replace('github.event_name', repr('schedule')).replace('!cancelled()','True').replace('&&',' and ').replace('||',' or ')
             if eval(expression,{'__builtins__':{}},{'contains':lambda a,b:b in a}): ran.add(name)
         return ran
 

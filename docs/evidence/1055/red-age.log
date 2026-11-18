@@ -1,0 +1,44 @@
+FF.fatal: Not a valid commit name dddddddddddddddddddddddddddddddddddddddd
+.FF
+======================================================================
+FAIL: test_exactly_120_minutes_is_not_older_but_one_second_more_is (__main__.MainMapAge.test_exactly_120_minutes_is_not_older_but_one_second_more_is) (age_seconds=7200)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/.github/actions/docs-only/test_workflow.py", line 99, in test_exactly_120_minutes_is_not_older_but_one_second_more_is
+    self.assertEqual(self.run_gate(), 'trace=' + expected + '\n')
+AssertionError: 'trace=true\n' != 'trace=false\n'
+- trace=true
++ trace=false
+
+
+======================================================================
+FAIL: test_main_push_119_minutes_stays_light (__main__.MainMapAge.test_main_push_119_minutes_stays_light)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/.github/actions/docs-only/test_workflow.py", line 87, in test_main_push_119_minutes_stays_light
+    self.assertEqual(self.run_gate(), 'trace=false\n', '119-minute signed map must keep the push light')
+AssertionError: 'trace=true\n' != 'trace=false\n'
+- trace=true
++ trace=false
+ : 119-minute signed map must keep the push light
+
+======================================================================
+FAIL: test_main_push_plan_requires_an_old_signed_map_but_other_events_do_not (__main__.Workflow.test_main_push_plan_requires_an_old_signed_map_but_other_events_do_not) (event='push', old=False, step='Write the CI plan')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/.github/actions/docs-only/test_workflow.py", line 244, in test_main_push_plan_requires_an_old_signed_map_but_other_events_do_not
+    self.assertEqual(eval(code, {'__builtins__': {}}, {}), expected)
+AssertionError: True != False
+
+======================================================================
+FAIL: test_main_push_plan_requires_an_old_signed_map_but_other_events_do_not (__main__.Workflow.test_main_push_plan_requires_an_old_signed_map_but_other_events_do_not) (event='push', old=False, step='selection artifact')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/.github/actions/docs-only/test_workflow.py", line 244, in test_main_push_plan_requires_an_old_signed_map_but_other_events_do_not
+    self.assertEqual(eval(code, {'__builtins__': {}}, {}), expected)
+AssertionError: True != False
+
+----------------------------------------------------------------------
+Ran 5 tests in 2.988s
+
+FAILED (failures=4)

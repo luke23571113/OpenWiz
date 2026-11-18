@@ -4,6 +4,9 @@
 Each test names the bug it catches (the test rule, #687). Every expected
 value is a worked literal, never computed the way budgets.py computes it.
 """
+import base64
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -11,10 +14,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-TRACED = "${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && %d || %d }}"
+LEGACY = "${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && %d || %d }}"
 MARK = "        if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'\n"
 HEAD = "workflow\tjob\tmode\ttimeout\tp95_seconds\tsamples\truns\tfirst\tlast\tsource\n"
 T0 = "2030-01-01T00:00:00Z"
@@ -60,13 +64,18 @@ def job(run_id, name, seconds, conclusion="success", traced=False, event="pull_r
     return {"completed_at": stamp(b), "conclusion": conclusion, "created_at": stamp(a), "event": event,
             "name": name, "run": run_id, "run_concl": conclusion, "runner_name": "GitHub Actions 1",
             "started_at": stamp(a), "steps": steps, "id": run_id * 100 + len(name), "run_attempt": 1,
-            "collected_attempt": 1, "run_created_at": stamp(run_id * 3600)}
+            "collected_attempt": 1, "run_created_at": stamp(run_id * 3600),
+            "_mode": "traced" if traced or event == "schedule" else "normal"}
 
 
 def window(d, wf, records, runs):
     d = Path(d) / wf.removesuffix(".yml")
     d.mkdir(parents=True)
-    (d / "jobs.jsonl").write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in records))
+    (d / "jobs.jsonl").write_text("".join(json.dumps({k: v for k, v in r.items() if k != "_mode"}, sort_keys=True) + "\n" for r in records))
+    records_by_mode = sorted(records, key=lambda r: {None: -1, "normal": 0, "traced": 1, "planted": 2}[r.get("_mode")])
+    modes = {str(r["run"]): {"attempt": 1, "trace": r["_mode"] == "traced", "planted": r["_mode"] == "planted",
+                             "source": "synthetic-dispatch", "completed_jobs": ["always", "rust", "rust-export"]} for r in records_by_mode if r.get("_mode") is not None}
+    (d / "modes.json").write_text(json.dumps(modes))
     (d / "window.json").write_text(json.dumps({"workflow": wf, "runs": runs, "first": T0,
                                                "last": "2030-01-02T00:00:00Z"}, sort_keys=True))
 
@@ -116,15 +125,16 @@ class Check(unittest.TestCase):
     # Bug: a traced or planted run is held to the normal budget, or the other way round.
     def test_traced_and_normal_budgets_are_each_checked(self):
         table = (row("ci.yml", "rust", "normal", 14, 540) + row("ci.yml", "rust", "traced", 47, 1860)
+                 + row("ci.yml", "rust", "planted", 60, 0, samples=0, source="unmeasured")
                  + self.PRIVACY_ROW)
-        ok = self.check(workflow([("rust", TRACED % (47, 14), True)]), self.PRIVACY, table)
+        ok = self.check(workflow([("rust", Planted.THREE % (60, 47, 14), True)]), self.PRIVACY, table)
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
-        swapped = self.check(workflow([("rust", TRACED % (14, 47), True)]), self.PRIVACY, table)
+        swapped = self.check(workflow([("rust", Planted.THREE % (60, 14, 47), True)]), self.PRIVACY, table)
         self.assertEqual(swapped.returncode, 1, swapped.stdout + swapped.stderr)
         self.assertIn("ci.yml job rust: traced timeout-minutes 14, its budget is 47", swapped.stderr)
         plain = self.check(workflow([("rust", 14, True)]), self.PRIVACY, table)
         self.assertEqual(plain.returncode, 1, plain.stdout + plain.stderr)
-        self.assertIn("ci.yml job rust: timeout-minutes 14 has no traced budget", plain.stderr)
+        self.assertIn("ci.yml job rust: timeout-minutes has no matching planted/traced/normal budget", plain.stderr)
 
     # Bug: a row's timeout is edited by hand away from 1.5x its p95.
     def test_a_row_whose_timeout_is_not_its_p95_budget_fails(self):
@@ -144,21 +154,38 @@ class Check(unittest.TestCase):
     # Bug: a job that has never run (#782 question 4) is held to an
     # invented p95, or an unmeasured row hides a measured job's wider timeout.
     def test_an_unmeasured_row_keeps_its_timeout_and_a_derived_row_is_checked(self):
-        table = (row("ci.yml", "toolkit-nightly", "all", 360, 0, samples=1, source="unmeasured")
+        table = (row("ci.yml", "slow-nightly", "all", 360, 0, samples=1, source="unmeasured")
                  + row("ci.yml", "rust", "all", 14, 540, source="derived:rust-export") + self.PRIVACY_ROW)
-        ok = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY, table)
+        ok = self.check(workflow([("slow-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY, table)
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
         wide = table.replace("\t14\t540\t", "\t20\t540\t")
-        r = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 20, False)]), self.PRIVACY, wide)
+        r = self.check(workflow([("slow-nightly", 360, False), ("rust", 20, False)]), self.PRIVACY, wide)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("ci.yml rust all: timeout 20, but 1.5x its p95 of 540 s is 14", r.stderr)
-        moved = self.check(workflow([("toolkit-nightly", 400, False), ("rust", 14, False)]), self.PRIVACY, table)
+        moved = self.check(workflow([("slow-nightly", 400, False), ("rust", 14, False)]), self.PRIVACY, table)
         self.assertEqual(moved.returncode, 1, moved.stdout + moved.stderr)
-        self.assertIn("ci.yml job toolkit-nightly: timeout-minutes 400, its budget is 360", moved.stderr)
-        odd = self.check(workflow([("toolkit-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY,
+        self.assertIn("ci.yml job slow-nightly: timeout-minutes 400, its budget is 360", moved.stderr)
+        odd = self.check(workflow([("slow-nightly", 360, False), ("rust", 14, False)]), self.PRIVACY,
                          table.replace("derived:rust-export", "guessed"))
         self.assertEqual(odd.returncode, 1, odd.stdout + odd.stderr)
         self.assertIn("source 'guessed' is not measured, derived:<job> or unmeasured", odd.stderr)
+
+    # Bug: an authorized unmeasured planted twin is treated as a measured
+    # zero-second p95, or a derived row silently carries different statistics.
+    def test_planted_twin_inherits_unmeasured_fallback_without_claiming_p95(self):
+        rows = ""
+        for key in ("rust", "rust-export"):
+            rows += row("ci.yml", key, "normal", 14, 540)
+            rows += row("ci.yml", key, "traced", 47, 1860)
+            rows += row("ci.yml", key, "planted", 90, 0, samples=1,
+                        source="derived:rust-export" if key == "rust" else "unmeasured")
+        ci = workflow([(key, Planted.THREE % (90, 47, 14), True) for key in ("rust", "rust-export")])
+        r = self.check(ci, self.PRIVACY, rows + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        wrong = rows.replace("rust\tplanted\t90\t0\t1", "rust\tplanted\t90\t0\t2")
+        r = self.check(ci, self.PRIVACY, wrong + self.PRIVACY_ROW)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("derived row differs from its planted twin", r.stderr)
 
     # Bug (R2): a job declared with a quoted YAML key is left out of the
     # inventory, so it runs with GitHub's 360-minute default and no budget.
@@ -200,6 +227,7 @@ class Table(unittest.TestCase):
                 window(t / "a", "ci.yml", after, 999)
                 window(t / "a", "privacy.yml", [], 0)
                 args += ["--after", t / "a", "--after-jobs", *after_jobs]
+            args += ["--unmeasured", "rust:planted=60", "rust-export:planted=60", "always:planted=60"]
             r = run(*args, *extra)
             rows = {}
             if r.returncode == 0:
@@ -316,21 +344,21 @@ class Table(unittest.TestCase):
     # Bug: a job in the workflow that never ran in the window is silently
     # left without a row (the check would then fail later, in CI).
     def test_a_job_with_no_samples_fails(self):
-        ci = workflow([("always", 60, False), ("rust", 60, True), ("toolkit-nightly", 360, False)])
+        ci = workflow([("always", 60, False), ("rust", 60, True), ("slow-nightly", 360, False)])
         r, _ = self.table(self.lanes(), ci=ci)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("ci.yml job toolkit-nightly all has 0 samples, fewer than 5", r.stderr)
+        self.assertIn("ci.yml job slow-nightly all has 0 samples, fewer than 5", r.stderr)
 
 
     # Bug: a job that never ran gets no row (the check stays red for good),
     # or its twin's budget is copied without saying so (#782 question 4).
     def test_derived_and_unmeasured_rows(self):
         ci = workflow([("always", 60, False), ("rust", 60, True), ("rust-export", 60, True),
-                       ("toolkit-nightly", 360, False)])
+                       ("slow-nightly", 360, False)])
         jobs = [j for j in self.lanes()] + [dict(j, name=j["name"].replace("rust", "rust-export"))
                                             for j in self.lanes() if j["name"].startswith("rust")]
-        jobs = [j for j in jobs if not j["name"].startswith("rust (")] + [job(99, "toolkit-nightly", 7200, event="schedule")]
-        r, rows = self.table(jobs, ci=ci, extra=["--derive", "rust=rust-export", "--unmeasured", "toolkit-nightly=360"])
+        jobs = [j for j in jobs if not j["name"].startswith("rust (")] + [job(99, "slow-nightly", 7200, event="schedule")]
+        r, rows = self.table(jobs, ci=ci, extra=["--derive", "rust=rust-export", "--unmeasured", "slow-nightly=360"])
         self.assertEqual(r.returncode, 0, r.stderr)
         # rust-export's numbers (the lanes' rust legs: 11 and 46, worked above), marked as derived.
         self.assertEqual(rows[("ci.yml", "rust", "normal")][:4] + rows[("ci.yml", "rust", "normal")][6:],
@@ -339,42 +367,176 @@ class Table(unittest.TestCase):
                          ["46", "1825", "5", "150", "derived:rust-export"])
         self.assertEqual(rows[("ci.yml", "rust-export", "normal")][6:], ["measured"])
         # Unmeasured: today's 360, no p95, its one sample counted.
-        self.assertEqual(rows[("ci.yml", "toolkit-nightly", "all")][:3] + rows[("ci.yml", "toolkit-nightly", "all")][6:],
+        self.assertEqual(rows[("ci.yml", "slow-nightly", "all")][:3] + rows[("ci.yml", "slow-nightly", "all")][6:],
                          ["360", "0", "1", "unmeasured"])
 
 
-    # Bug (R1): a traced or planted run whose lane tests failed (so its own
-    # trace upload was skipped) is counted as normal, inflating the normal
-    # budget; a run whose mode can't be known is guessed instead of left out.
-    def test_mode_comes_from_any_trace_step_that_ran_and_unclear_runs_are_left_out(self):
-        ci = workflow([("always", 60, True), ("rust", 60, True)])
-        def always(i, upload, first="success"):
-            a, b = i * 3600, i * 3600 + 60
-            rec = job(i, "always", 60)
-            rec["steps"] += [{"name": "Run npm test", "conclusion": first, "started_at": stamp(a), "completed_at": stamp(b)},
-                             {"name": "Run actions/upload-artifact@0000000000000000000000000000000000000000",
-                              "conclusion": upload, "started_at": stamp(b), "completed_at": stamp(b)}]
-            rec["conclusion"] = rec["run_concl"] = first
-            return rec
-        jobs = []
-        for i in range(1, 6):    # normal: every trace step skipped after clean steps
-            jobs += [always(i, "skipped"), job(i, "rust (1)", 300 + i)]
-        for i in range(6, 11):   # traced, green
-            jobs += [always(i, "success"), job(i, "rust (1)", 1800 + i, traced=True)]
-        # Run 11: traced (always uploaded its trace), but the rust tests
-        # failed, so rust's own trace upload was skipped.
-        jobs += [always(11, "success"), job(11, "rust (1)", 3000, conclusion="failure")]
-        # Run 12: always and rust both failed before their trace steps: no
-        # step says which mode it ran in.
-        jobs += [always(12, "skipped", first="failure"), job(12, "rust (1)", 2000, conclusion="failure")]
-        r, rows = self.table(jobs, ci=ci)
+    # Bug: combined trace/planted uploads are guessed as traced, or a failed
+    # lane loses mode evidence that another lane's persisted dispatch supplies.
+    def test_actual_dispatch_survives_failed_lanes_and_ambiguous_uploads_stay_unknown(self):
+        jobs = self.lanes()
+        jobs.append(job(30, "rust (1)", 3000, conclusion="failure", traced=True))
+        ambiguous = job(31, "rust (1)", 4000, traced=True)
+        ambiguous.pop("_mode")
+        jobs.append(ambiguous)
+        r, rows = self.table(jobs)
         self.assertEqual(r.returncode, 0, r.stderr)
-        # normal: 301..305 s, p95 of 5 is 305 s; 1.5 x 305 s = 7.625 min -> 8.
-        self.assertEqual(rows[("ci.yml", "rust", "normal")][:3], ["8", "305", "5"])
-        # traced: 1806..1810 s and the failed 3000 s; p95 of 6 is 3000 s -> 75.
         self.assertEqual(rows[("ci.yml", "rust", "traced")][:3], ["75", "3000", "6"])
-        self.assertEqual(rows[("ci.yml", "always", "traced")][2], "6")
-        self.assertIn("ci.yml: 1 run with no clear traced or normal mode, left out of two-mode jobs", r.stdout)
+        self.assertEqual(rows[("ci.yml", "rust", "normal")][:3], ["11", "419", "40"])
+        self.assertIn("ci.yml: 1 run with no clear normal, traced or planted mode", r.stdout)
+
+
+class Planted(unittest.TestCase):
+    """CI3-B: exercise the public table/check CLI with independent mode evidence."""
+
+    THREE = ("${{ needs.changes.outputs.planted == 'true' && %d || "
+             "needs.changes.outputs.trace == 'true' && %d || %d }}")
+
+    def fixtures(self, t):
+        (t / "ci.yml").write_text(workflow([("rust", self.THREE % (90, 45, 15), True)]))
+        jobs, modes = [], {}
+        # Fixed independent durations: normal 600s, traced 1800s, planted 3600s.
+        for i in range(1, 16):
+            mode = "normal" if i <= 5 else "traced" if i <= 10 else "planted"
+            jobs.append(job(i, "rust (1)", {"normal": 600, "traced": 1800, "planted": 3600}[mode],
+                            traced=mode != "normal"))
+            modes[str(i)] = {"attempt": 1, "trace": mode == "traced", "planted": mode == "planted",
+                             "source": f"https://github.com/synthetic/repo/actions/runs/{i}/artifacts/{i}",
+                             "completed_jobs": ["rust"]}
+        window(t / "w", "ci.yml", jobs, 15)
+        (t / "w/ci/modes.json").write_text(json.dumps(modes))
+        return ["table", t / "w", "--out", t / "budgets.tsv", "--workflows", t / "ci.yml"]
+
+    def test_three_modes_have_independent_durations(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            r = run(*self.fixtures(t))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rows = [line.split("\t") for line in (t / "budgets.tsv").read_text().splitlines()[1:]]
+            self.assertEqual({f[2]: f[3:6] for f in rows},
+                             {"normal": ["15", "600", "5"], "traced": ["45", "1800", "5"],
+                              "planted": ["90", "3600", "5"]})
+            self.assertEqual(run("check", "--table", t / "budgets.tsv", t / "ci.yml").returncode, 0)
+
+    def test_check_refuses_missing_planted_coverage_even_with_legacy_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            (t / "ci.yml").write_text(workflow([("rust", LEGACY % (45, 15), True)]))
+            (t / "budgets.tsv").write_text(HEAD + row("ci.yml", "rust", "normal", 15, 600)
+                                           + row("ci.yml", "rust", "traced", 45, 1800))
+            r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("planted", r.stderr)
+
+    def test_check_refuses_traced_samples_attributed_to_planted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            args = self.fixtures(t)
+            self.assertEqual(run(*args).returncode, 0)
+            # Relabel the trace-only records as the planted row's provenance.
+            evidence = t / "budgets.samples.json"
+            samples = json.loads(evidence.read_text())
+            for sample in samples:
+                sample["planted"] = False
+                sample["trace"] = True
+            evidence.write_text(json.dumps(samples))
+            r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("planted evidence", r.stderr)
+
+    def test_check_refuses_each_modes_wrong_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            self.assertEqual(run(*self.fixtures(t)).returncode, 0)
+            for mode, values in (("planted", (45, 45, 15)), ("traced", (90, 90, 15)),
+                                 ("normal", (90, 45, 45))):
+                with self.subTest(mode=mode):
+                    (t / "ci.yml").write_text(workflow([("rust", self.THREE % values, True)]))
+                    r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+                    self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                    self.assertIn(f"{mode} timeout-minutes", r.stderr)
+
+    # Bug: table generation drops a twin's unmeasured status, invents a p95
+    # from one sample, or loses its explicit same-mode derivation.
+    def test_generation_carries_the_export_twins_unmeasured_fallback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            args = self.fixtures(t)
+            (t / "ci.yml").write_text(workflow([
+                (key, self.THREE % (90, 45, 15), True) for key in ("rust", "rust-export")]))
+            path = t / "w/ci/jobs.jsonl"
+            records = [json.loads(line) for line in path.read_text().splitlines()]
+            records = [dict(r, name="rust-export (1)") for r in records if r["run"] <= 11]
+            path.write_text("".join(json.dumps(r) + "\n" for r in records))
+            r = run(*args, "--derive", "rust=rust-export", "--unmeasured", "rust-export:planted=90")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rows = [line.split("\t") for line in (t / "budgets.tsv").read_text().splitlines()[1:]]
+            planted = {f[1]: f for f in rows if f[2] == "planted"}
+            self.assertEqual(planted["rust"][3:6], ["90", "0", "1"])
+            self.assertEqual(planted["rust-export"][3:6], ["90", "0", "1"])
+            self.assertEqual(planted["rust"][9], "derived:rust-export")
+            self.assertEqual(planted["rust-export"][9], "unmeasured")
+            self.assertEqual(r.stdout.count("p95 unknown"), 2)
+            r = run("check", "--table", t / "budgets.tsv", t / "ci.yml")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    # Bug: a configured fallback suppresses a five-sample measured p95.
+    def test_sufficient_planted_samples_stay_measured_with_fallback_configured(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            r = run(*self.fixtures(t), "--unmeasured", "rust:planted=90")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            path = t / "budgets.tsv"
+            rows = [line.split("\t") for line in path.read_text().splitlines()[1:]]
+            planted = next(f for f in rows if f[2] == "planted")
+            self.assertEqual(planted[3:6], ["90", "3600", "5"])
+            self.assertTrue(planted[9].startswith("measured:"))
+            planted[4], planted[9] = "0", "unmeasured"
+            path.write_text(HEAD + "".join("\t".join(f) + "\n" for f in rows))
+            r = run("check", "--table", path, t / "ci.yml")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("five eligible samples must be measured", r.stderr)
+
+    # Bug: an incomplete planted attempt supplies a deceptively short p95,
+    # or trace-only/unknown runs fill the planted sample minimum.
+    def test_incomplete_or_unknown_planted_evidence_never_fills_the_minimum(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            args = self.fixtures(t)
+            path = t / "w/ci/jobs.jsonl"
+            records = [json.loads(line) for line in path.read_text().splitlines()]
+            for record in records:
+                if record["run"] == 15:
+                    record["conclusion"] = "failure"
+                    record["steps"][1]["conclusion"] = "failure"
+                    record["steps"][2]["conclusion"] = "skipped"
+            path.write_text("".join(json.dumps(r) + "\n" for r in records))
+            r = run(*args)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("rust planted has 4 samples, fewer than 5", r.stderr)
+            # Explicit attempt mismatch cannot be used as planted evidence.
+            modes_path = t / "w/ci/modes.json"
+            modes = json.loads(modes_path.read_text())
+            modes["14"]["attempt"] = 2
+            modes_path.write_text(json.dumps(modes))
+            r = run(*args)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("rust planted has 3 samples, fewer than 5", r.stderr)
+            self.assertIn("no clear normal, traced or planted mode", r.stdout)
+
+    def test_planted_with_trace_flag_also_true_stays_planted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            t = Path(temp)
+            args = self.fixtures(t)
+            path = t / "w/ci/modes.json"
+            modes = json.loads(path.read_text())
+            for i in range(11, 16):
+                modes[str(i)]["trace"] = True
+            path.write_text(json.dumps(modes))
+            self.assertEqual(run(*args).returncode, 0)
+            rows = (t / "budgets.tsv").read_text()
+            self.assertIn("rust\tplanted\t90\t3600\t5", rows)
+            self.assertIn("rust\ttraced\t45\t1800\t5", rows)
 
 
 class Apply(unittest.TestCase):
@@ -382,24 +544,25 @@ class Apply(unittest.TestCase):
     def test_apply_changes_only_timeout_lines(self):
         with tempfile.TemporaryDirectory() as temp:
             t = Path(temp)
-            before = workflow([("always", 60, False), ("rust", TRACED % (90, 60), True)])
+            before = workflow([("always", 60, False), ("rust", Planted.THREE % (60, 90, 60), True)])
             (t / "ci.yml").write_text(before)
             (t / "privacy.yml").write_text(workflow([("privacy", 5, False)]))
             (t / "budgets.tsv").write_text(HEAD + row("ci.yml", "always", "all", 12, 450)
                                            + row("ci.yml", "rust", "normal", 14, 540)
                                            + row("ci.yml", "rust", "traced", 47, 1860)
+                                           + row("ci.yml", "rust", "planted", 60, 0, samples=0, source="unmeasured")
                                            + row("privacy.yml", "privacy", "all", 5, 120))
             r = run("apply", "--table", t / "budgets.tsv", t / "ci.yml", t / "privacy.yml")
             self.assertEqual(r.returncode, 0, r.stderr)
             after = (t / "ci.yml").read_text()
             expected = before.replace("timeout-minutes: 60\n", "timeout-minutes: 12\n").replace(
-                TRACED % (90, 60), TRACED % (47, 14))
+                Planted.THREE % (60, 90, 60), Planted.THREE % (60, 47, 14))
             self.assertEqual(after, expected)
             self.assertEqual(run("check", "--table", t / "budgets.tsv", t / "ci.yml", t / "privacy.yml").returncode, 0)
 
 
 FAKE_GH = """#!/usr/bin/env python3
-import json, os, sys
+import base64, json, os, sys
 world = json.load(open(os.environ["FAKE_GH_WORLD"]))
 path = sys.argv[2]
 with open(os.environ["FAKE_GH_LOG"], "a") as log:
@@ -407,7 +570,10 @@ with open(os.environ["FAKE_GH_LOG"], "a") as log:
 if sys.argv[1] != "api" or len(sys.argv) != 3 or path not in world:
     sys.stderr.write("fake gh: no answer for " + " ".join(sys.argv[1:]) + "\\n")
     sys.exit(1)
-print(json.dumps(world[path]))
+if isinstance(world[path], dict) and "zip_base64" in world[path]:
+    sys.stdout.buffer.write(base64.b64decode(world[path]["zip_base64"]))
+else:
+    print(json.dumps(world[path]))
 """
 
 
@@ -433,6 +599,15 @@ class Collect(unittest.TestCase):
                 {"total_count": 3, "workflow_runs": runs[2:]},
         }
         for i in (5, 4):
+            plan = json.dumps({"schema": "openwiz.ci-selection.v1", "run": {"id": i, "attempt": 2}}).encode()
+            dispatch = {"trace": i == 4, "planted": i == 5, "plan_sha256": hashlib.sha256(plan).hexdigest()}
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, "w") as z:
+                z.writestr("ci-selection.json", plan)
+                z.writestr("ci-dispatch.json", json.dumps(dispatch))
+            world[f"{base}/runs/{i}/artifacts?per_page=100&page=1"] = {"total_count": 1, "artifacts": [
+                {"id": i, "name": "ci-selection-2", "expired": False, "archive_download_url": f"synthetic-artifact-{i}"}]}
+            world[f"{base}/artifacts/{i}/zip"] = {"zip_base64": base64.b64encode(archive.getvalue()).decode()}
             world[f"{base}/runs/{i}/jobs?filter=latest&per_page=100&page=1"] = {"total_count": 1, "jobs": [api_job(i, "always")]}
             world[f"{base}/runs/{i}"] = api_run(i, 2)
         with tempfile.TemporaryDirectory() as temp:
@@ -451,7 +626,34 @@ class Collect(unittest.TestCase):
             self.assertEqual({x["collected_attempt"] for x in records}, {2})
             self.assertEqual(json.loads((t / "w" / "ci" / "window.json").read_text()),
                              {"workflow": "ci.yml", "runs": 2, "first": stamp(4 * 3600), "last": stamp(5 * 3600)})
+            modes = json.loads((t / "w/ci/modes.json").read_text())
+            self.assertEqual({r: (m["trace"], m["planted"]) for r, m in modes.items()},
+                             {"4": (True, False), "5": (False, True)})
             self.assertNotIn("runs/3/", (t / "log").read_text())
+            # Missing artifacts and stale/mismatched plan bindings stay unknown.
+            for bad in ("missing", "hash", "attempt"):
+                with self.subTest(evidence=bad):
+                    broken = json.loads(json.dumps(world))
+                    if bad == "missing":
+                        broken[f"{base}/runs/5/artifacts?per_page=100&page=1"] = {"total_count": 0, "artifacts": []}
+                    else:
+                        plan = json.dumps({"schema": "openwiz.ci-selection.v1",
+                                           "run": {"id": 5, "attempt": 1 if bad == "attempt" else 2}}).encode()
+                        dispatch = {"trace": False, "planted": True,
+                                    "plan_sha256": "wrong" if bad == "hash" else hashlib.sha256(plan).hexdigest()}
+                        archive = io.BytesIO()
+                        with zipfile.ZipFile(archive, "w") as z:
+                            z.writestr("ci-selection.json", plan)
+                            z.writestr("ci-dispatch.json", json.dumps(dispatch))
+                        broken[f"{base}/artifacts/5/zip"] = {"zip_base64": base64.b64encode(archive.getvalue()).decode()}
+                    (t / "world.json").write_text(json.dumps(broken))
+                    r = run("collect", "--workflow", "ci.yml", "--runs", 2, "--per-page", 2, "--since", T0,
+                            "--out", t / "w", env=env)
+                    self.assertEqual(r.returncode, 0, r.stderr)
+                    mode = json.loads((t / "w/ci/modes.json").read_text())["5"]
+                    self.assertEqual(mode["source"], "unknown")
+                    self.assertNotIn("planted", mode)
+
 
 
 if __name__ == "__main__":

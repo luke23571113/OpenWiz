@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[2] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('controls', HERE / 'controls.py')
@@ -26,8 +27,8 @@ def read(path):
 
 def fixture():
     """Reuse EB5's literal shapes, shifting outcomes after the planned assignment."""
-    j = read(HERE.parent / 'fixtures/journey/journeys.json')
-    d = read(HERE.parent / 'fixtures/bottlenecks-contract/accepted.json')
+    j = read(PUBLIC_ROOT / 'fixtures/journey/journeys.json')
+    d = read(PUBLIC_ROOT / 'fixtures/bottlenecks-contract/accepted.json')
     for t in j['tickets']:
         for e in t['events']:
             if e['kind'] == 'builder_start':
@@ -47,7 +48,7 @@ def fixture():
     for stage, at in [('research','2030-01-03T09:00:00Z'),
                       ('cf4','2030-01-03T13:00:00Z'),('replay','2030-01-04T00:30:00Z')]:
         d['stages'][stage] = dict(status='pass', artifact_hash='f'*64, source='s1', at=at)
-    p = read(HERE.parent / 'fixtures/bottlenecks-contract/preregistration.json')
+    p = read(PUBLIC_ROOT / 'fixtures/bottlenecks-contract/preregistration.json')
     p['replay_hash'] = C.digest(d['replay'])
     p['live_approval'] = dict(status='granted', at='2030-01-04T03:00:00Z', source='s5')
     d['preregistration'] = p

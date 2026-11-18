@@ -21,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import history  # noqa: E402
 import page  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'collector'))
 import suite  # noqa: E402
 
 ROUTES = ['', 'speed', 'health', 'cost', 'quality', 'skills']

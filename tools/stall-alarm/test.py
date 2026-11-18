@@ -19,7 +19,7 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = Path(os.environ.get("STALL_ALARM_SCRIPT", HERE / "alarm.py")).resolve()
-FIXTURES = HERE.parent / "war-room" / "fixtures" / "collector"
+FIXTURES = HERE.parent / "collector" / "fixtures" / "collector"
 NOW = 1793620800  # 2026-11-02T12:00:00Z
 SHA = "a" * 40
 OTHER = "b" * 40

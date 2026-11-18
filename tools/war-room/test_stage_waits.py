@@ -21,19 +21,21 @@ import sys
 import tempfile
 import unittest
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
-TL2 = HERE / 'fixtures/stage-waits'
+TL2 = PUBLIC_ROOT / 'fixtures/stage-waits'
 sys.path.insert(0, str(HERE))
 import main  # noqa: E402  (WR2's one tick: history + page)
 import history  # noqa: E402
 import page  # noqa: E402
+sys.path.insert(0, str(PUBLIC_ROOT))
 import sources  # noqa: E402
 import suite  # noqa: E402
 
 
 def module(name):
-    spec = importlib.util.spec_from_file_location(name, HERE / f'{name}.py')
+    spec = importlib.util.spec_from_file_location(name, (PUBLIC_ROOT if name == 'stage_waits' else HERE) / f'{name}.py')
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result
@@ -219,7 +221,7 @@ class StageWaits(unittest.TestCase):
                           'https://github.com/example/factory/issues/4301#issuecomment-6104'}, set(q['evidence']))
         self.assertEqual('2030-03-01T12:00:00Z', q['observed_at'])
         self.assertEqual('closedwiz.journey.stage-waits.v1', q['source']['schema'])
-        self.assertEqual(hashlib.sha256((TL2 / 'stage-waits.json').read_bytes()).hexdigest(),
+        self.assertEqual(hashlib.sha256((PUBLIC_ROOT / 'fixtures/stage-waits/stage-waits.json').read_bytes()).hexdigest(),
                          q['source']['sha256'])
         pending = m['wait:builder_start:t4303']
         self.assertEqual(('partial', 5.0, None), (pending['state'], pending['value'],
@@ -246,9 +248,9 @@ class StageWaits(unittest.TestCase):
         cases = {
             'missing sidecar': lambda: (self.root / 'stage-waits.json').unlink(),
             'sidecar of another journey': lambda: (self.root / 'journeys.json').write_text(
-                (TL2 / 'journeys.json').read_text().replace('2030-03-01T09:10:00Z', '2030-03-01T09:11:00Z', 1)),
+                (PUBLIC_ROOT / 'fixtures/stage-waits/journeys.json').read_text().replace('2030-03-01T09:10:00Z', '2030-03-01T09:11:00Z', 1)),
             'unknown interval claims an end': lambda: (self.root / 'stage-waits.json').write_text(
-                (TL2 / 'stage-waits.json').read_text().replace('"state": "unknown"', '"state": "ended"', 1)),
+                (PUBLIC_ROOT / 'fixtures/stage-waits/stage-waits.json').read_text().replace('"state": "unknown"', '"state": "ended"', 1)),
             'duplicate setting': lambda: self.settings(None, ''.join(
                 f'{k}={v}\n' for k, v in DEFAULTS.items()) + 'merge=5\n'),
             'missing setting': lambda: self.settings({k: v for k, v in DEFAULTS.items() if k != 'merge'}),
@@ -295,7 +297,7 @@ class StageWaits(unittest.TestCase):
         self.assertEqual(html, page.render(latest))
 
     def test_cli_prints_a_projected_provider_for_source_selection(self):
-        script = HERE / 'stage_waits.py'
+        script = PUBLIC_ROOT / 'stage_waits.py'
         done = subprocess.run([sys.executable, '-I', str(script), '--at', AT, '--root', str(self.root),
                                '--journey', 'journeys.json', '--sidecar', 'stage-waits.json',
                                '--settings', 'limits.conf', '--settings-evidence', EVIDENCE[0],

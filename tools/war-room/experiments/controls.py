@@ -9,9 +9,10 @@ import importlib.util
 from pathlib import Path
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[2] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
-_spec = importlib.util.spec_from_file_location('eb5', HERE.parent / 'experiment_contract.py')
+_spec = importlib.util.spec_from_file_location('eb5', PUBLIC_ROOT / 'experiment_contract.py')
 C = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(C)
 

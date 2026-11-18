@@ -90,7 +90,7 @@ class Shadow(unittest.TestCase):
     def test_missing_cancelled_pending_stale_and_matrix_work_refuse(self):
         original = copy.deepcopy(self.reads)
         for change in ('missing-job', 'cancelled', 'pending-ci', 'old-attempt',
-                       'missing-check', 'missing-skill', 'missing-shard', 'failed-toolkit',
+                       'missing-check', 'missing-skill', 'missing-shard',
                        'missing-release-member', 'missing-fleet-member'):
             with self.subTest(change=change):
                 self.reads = copy.deepcopy(original)
@@ -115,7 +115,6 @@ class Shadow(unittest.TestCase):
                     member = next(j for j in jobs['jobs'] if j['name'] == name + ' (1)')
                     jobs['jobs'].append(dict(member, id=member['id'] + 90, name=name + ' (3)'))
                     jobs['total_count'] += 1
-                else: jobs['jobs'][2]['steps'][0]['conclusion'] = 'failure'
                 report, state = self.reconcile()
                 self.assertFalse(report['complete'], report)
                 self.assertEqual(state['covered'], '1'*40)
@@ -210,11 +209,11 @@ class Shadow(unittest.TestCase):
         # Bug: a skipped job row's placeholder clocks (created == started) were
         # counted as zero-second waits, lowering the median and p90.
         page = self.reads['actions/runs/9000100/attempts/1/jobs?per_page=100&page=1']
-        for number, name in enumerate(('rust-export', 'web-export', 'toolkit-nightly'), 9000300):
+        for number, name in enumerate(('rust-export', 'web-export'), 9000300):
             page['jobs'].append(dict(id=number, run_id=9000100, run_attempt=1, head_sha='3'*40, name=name,
                 status='completed', conclusion='skipped', created_at='2030-01-01T00:00:00Z',
                 started_at='2030-01-01T00:00:00Z', completed_at='2030-01-01T00:00:00Z'))
-        page['total_count'] += 3
+        page['total_count'] += 2
         report, _ = self.reconcile()
         self.assertTrue(report['complete'], report)
         self.assertEqual(report['measurement']['job_queue_seconds'], {'n': 13, 'median': 30, 'p90': 30})
@@ -352,7 +351,7 @@ class Shadow(unittest.TestCase):
                 (folder/'ci-selection.json').write_text(self.document['plan'])
                 plan = json.loads(self.document['plan'])
                 dispatch = dict.fromkeys(('build-web','lint-rust','export-rust','export-web',
-                    'build-site','image-skills','rust','web','site','release','toolkit'), True)
+                    'build-site','image-skills','rust','web','site','release'), True)
                 dispatch.update(**{'export-rust':False,'export-web':False},
                     skills=['launch-fleet','plan-graph','triage'],trace=False,planted=False,
                     plan_sha256=hashlib.sha256(self.document['plan'].encode()).hexdigest())
@@ -418,8 +417,8 @@ class Shadow(unittest.TestCase):
         end = workflow.index('\n  # Transition bridge:', start)
         block = workflow[start:end]
         ci = workflow[workflow.index('\n  ci:\n'):start]
-        # #744: never on a main push (main-light); every other event always.
-        self.assertIn("    if: ${{ always() && github.event_name != 'push' }}\n", ci, 'required result always runs')
+        # #1055: an admitted old-map main push runs ci; every other event always.
+        self.assertIn("    if: ${{ always() && (github.event_name != 'push' || needs.changes.result != 'success' || needs.changes.outputs.trace == 'true') }}\n", ci, 'required result always runs')
         self.assertIn('    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills, launch-fleet]\n',
                       ci, 'required result dependencies')
         finish = '          python3 -I .github/actions/docs-only/run.py finish "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts"'
@@ -486,8 +485,8 @@ console.log(JSON.stringify(cases.map(c=>expressions.map(e=>Boolean(runInNewConte
             self.assertRegex(workflow, pattern, 'admission preserved')
         self.assertIn('  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}\n',
                       workflow, 'admission slots preserved')
-        self.assertIn("  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
-                      workflow, 'admission running push/nightly retained')
+        self.assertIn("  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}\n",
+                      workflow, 'admission obsolete pushes cancelled; nightly isolated')
 
     def test_approved_runner_representation_preserves_shadow_contract(self):
         workflow = (ROOT/'.github/workflows/ci.yml').read_text()
@@ -532,7 +531,7 @@ console.log(JSON.stringify(cases.map(c=>expressions.map(e=>Boolean(runInNewConte
             ('nightly removed', workflow.replace("- cron: '23 9 * * *'",
                 "- cron: '23 9 * * 1'"), 'admission'),
             ('PR removed', workflow.replace('  pull_request:', '  workflow_dispatch:'), 'admission'),
-            ('push cancellation', workflow.replace("cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+            ('cross-event cancellation', workflow.replace("cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}",
                 'cancel-in-progress: ${{ true }}'), 'admission'),
         ]
         for name, mutant, reason in mutations:

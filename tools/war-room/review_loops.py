@@ -22,9 +22,11 @@ from pathlib import Path
 import re
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(PUBLIC_ROOT))
 import suite as S  # noqa: E402
 import sources as SRC  # noqa: E402
 
@@ -36,7 +38,7 @@ def _module(name, path):
     return module
 
 
-T = _module('review_loops_trends', HERE / 'trends_reads.py')
+T = _module('review_loops_trends', PUBLIC_ROOT / 'trends_reads.py')
 J = T.J
 W = _module('review_loops_rework', HERE / 'rework.py')
 

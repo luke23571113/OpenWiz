@@ -47,8 +47,8 @@ pushes to `main`, nightly runs and other workflows are outside the measure.
 **Reproduce it:**
 
 ```sh
-python3 tools/war-room/ci3.py collect --since 2026-11-14T03:17:00Z --until 2026-11-15T17:16:00Z --out WINDOW.json --workers 4
-python3 tools/war-room/ci3.py measure WINDOW.json --label BEFORE
+python3 tools/collector/ci3.py collect --since 2026-11-14T03:17:00Z --until 2026-11-15T17:16:00Z --out WINDOW.json --workers 4
+python3 tools/collector/ci3.py measure WINDOW.json --label BEFORE
 ```
 
 The window file holds run ids and job records: it stays private. A later read

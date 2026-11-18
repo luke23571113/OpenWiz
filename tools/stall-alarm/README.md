@@ -14,7 +14,7 @@ python3 tools/stall-alarm/alarm.py --repo example-owner/example-repo \
 ```
 
 Needs Python 3 (standard library only), a checkout holding
-`tools/war-room/collect_factory.py` with an authenticated `gh` for it, and
+`tools/collector/collect_factory.py` with an authenticated `gh` for it, and
 the full managed local `room-cli loop list --json` on the PC. No package or
 crate is added.
 The second command is a real read; the tests use isolated fakes only.
@@ -49,15 +49,15 @@ an escalation names the cause observed at that tick.
 ## The collector read (#824)
 
 The alarm makes no GitHub read of its own. Each tick it runs the war room
-collector once, `python3 -I tools/war-room/collect_factory.py read --repo
+collector once, `python3 -I tools/collector/collect_factory.py read --repo
 OWNER/NAME --fact merges --fact open_prs --since <tick - 60 min> --until
 <tick> --base <base> --check <check> ...`, and reads the one
 `openwiz.war-room.collector.read.v1` envelope it prints, as the
-[collector contract](../war-room/collector.v1.md) says for the stall alarm:
+[collector contract](../collector/collector.v1.md) says for the stall alarm:
 on demand, inside the tick's read budget, never from a snapshot. Only the
 CloudRoom loop status stays the alarm's own read.
 
-The collector is `tools/war-room/collect_factory.py` beside this folder, or
+The collector is `tools/collector/collect_factory.py` beside this folder, or
 the absolute path in `STALL_ALARM_COLLECTOR`. A copy of the alarm with no
 checkout beside it (the embedded script below) must name one, or its GitHub
 read fails. The envelope must be for this repository, hold exactly `merges`
@@ -92,7 +92,7 @@ ticks.
 Fixture proof: `python3 -B -I tools/stall-alarm/test.py`. `Alarm` runs the
 former cases through the real collector over synthetic GitHub answers;
 `CollectorFixtures` reads the contract's
-[`read-stall.json`](../war-room/fixtures/collector/read-stall.json) and its
+[`read-stall.json`](../collector/fixtures/collector/read-stall.json) and its
 variants through a fake collector, and checks that no `gh` runs. The red
 run, against the unchanged alarm, is
 [`evidence/824-red-first.log`](evidence/824-red-first.log); the green run
@@ -203,7 +203,7 @@ fi
 export STALL_ALARM_ROOM_CLI
 SH
 printf ': "${STALL_ALARM_COLLECTOR:=%s}"\nexport STALL_ALARM_COLLECTOR\n' \
-  "$PWD/tools/war-room/collect_factory.py" >> /tmp/stall-alarm-check.sh
+  "$PWD/tools/collector/collect_factory.py" >> /tmp/stall-alarm-check.sh
 cat >> /tmp/stall-alarm-check.sh <<'SH'
 exec python3 - --repo example-owner/example-repo --fleet-loop loop_fixture \
   --state "${STALL_ALARM_STATE:-$HOME/.local/state/stall-alarm/example-owner-example-repo.json}" <<'PY'

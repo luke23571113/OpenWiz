@@ -1,0 +1,100 @@
+Command: python3 tools/install/tests/onboard/test_journey.py Launch.test_uncertain_launch_accepts_only_configured_record_authors -v
+Production baseline: e0d7ada74716b80b62fafefcfea3794f58c6c943
+Synthetic recording only.
+
+test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) ... 
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (author='synthetic-outsider') ... FAIL
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (author=None) ... FAIL
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='unreadable') ... FAIL
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='missing') ... FAIL
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='duplicate') ... FAIL
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='empty') ... FAIL
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='malformed login') ... FAIL
+  test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='extra cell') ... FAIL
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (author='synthetic-outsider')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 649, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (author=None)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 649, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='unreadable')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 668, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='missing')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 668, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='duplicate')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 668, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='empty')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 668, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='malformed login')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 668, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+======================================================================
+FAIL: test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) (policy='extra cell')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/onboard/test_journey.py", line 668, in test_uncertain_launch_accepts_only_configured_record_authors
+    self.assertEqual(result.returncode, 6, result.stdout)
+AssertionError: 0 != 6 : Spec #900 already started once (its fleet thread was started); not starting again.
+Spec #900 has its fleet record: the fleet thread made its loop and runs the spec.
+
+
+----------------------------------------------------------------------
+Ran 1 test in 9.539s
+
+FAILED (failures=8)
+
+Exit: 1

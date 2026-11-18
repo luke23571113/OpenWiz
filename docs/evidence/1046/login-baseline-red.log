@@ -1,0 +1,42 @@
+test_another_servers_login_never_reuses_selects_or_verifies (__main__.ForeignHost.test_another_servers_login_never_reuses_selects_or_verifies) ... ok
+test_only_githubs_own_authentication_answer_opens_the_browser_sign_in (__main__.ForeignHost.test_only_githubs_own_authentication_answer_opens_the_browser_sign_in) ... ok
+test_the_helper_runs_from_the_packaged_setup_files_alone (__main__.Packaged.test_the_helper_runs_from_the_packaged_setup_files_alone) ... ok
+test_old_and_new_saved_states (__main__.SavedIdentity.test_old_and_new_saved_states) ... ok
+test_a_repeated_request_while_one_is_open_starts_no_second_browser (__main__.SignIn.test_a_repeated_request_while_one_is_open_starts_no_second_browser) ... ok
+test_a_restart_while_approval_is_pending_starts_no_second_browser (__main__.SignIn.test_a_restart_while_approval_is_pending_starts_no_second_browser) ... ERROR
+test_an_environment_token_is_refused_not_used_as_the_browser_login (__main__.SignIn.test_an_environment_token_is_refused_not_used_as_the_browser_login) ... ok
+test_an_existing_login_is_reused_without_a_browser (__main__.SignIn.test_an_existing_login_is_reused_without_a_browser) ... ok
+test_cancellation_and_a_callback_alone_are_never_a_login (__main__.SignIn.test_cancellation_and_a_callback_alone_are_never_a_login) ... ok
+test_restart_after_an_interrupted_approval_reuses_it (__main__.SignIn.test_restart_after_an_interrupted_approval_reuses_it) ... ok
+test_signed_out_preview_opens_nothing_then_one_browser_sign_in_reads_back (__main__.SignIn.test_signed_out_preview_opens_nothing_then_one_browser_sign_in_reads_back) ... ok
+test_the_selected_repository_access_is_read_back (__main__.SignIn.test_the_selected_repository_access_is_read_back) ... ok
+test_an_unverified_or_changed_account_cannot_be_chosen (__main__.SkipApp.test_an_unverified_or_changed_account_cannot_be_chosen) ... ok
+test_preview_saves_nothing_then_confirmation_saves_the_choice_once (__main__.SkipApp.test_preview_saves_nothing_then_confirmation_saves_the_choice_once) ... ok
+test_the_check_refuses_another_account_and_lost_access (__main__.SkipApp.test_the_check_refuses_another_account_and_lost_access) ... ok
+
+======================================================================
+ERROR: test_a_restart_while_approval_is_pending_starts_no_second_browser (__main__.SignIn.test_a_restart_while_approval_is_pending_starts_no_second_browser)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/install/setup/test_github_login.py", line 253, in test_a_restart_while_approval_is_pending_starts_no_second_browser
+    self.assertEqual(self.tool('sign-in', '--yes')['code'], 'login_in_progress')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<checkout>/tools/install/setup/test_github_login.py", line 144, in tool
+    result = subprocess.run([sys.executable, '-I', '-B', str(TOOL), *args], capture_output=True, text=True,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 1207, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 2060, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+  File "/usr/lib/python3.11/subprocess.py", line 1251, in _check_timeout
+    raise TimeoutExpired(
+subprocess.TimeoutExpired: Command '['/usr/bin/python3', '-I', '-B', '<checkout>/tools/install/setup/github_login.py', 'sign-in', '--yes']' timed out after 60 seconds
+
+----------------------------------------------------------------------
+Ran 15 tests in 81.485s
+
+FAILED (errors=1)

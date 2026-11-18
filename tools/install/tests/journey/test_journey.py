@@ -82,8 +82,7 @@ FLEET_SETTINGS = ('# Fleet settings\n\nSynthetic settings.\n\n'
 
 sys.path.insert(0, str(TOOLS))
 sys.dont_write_bytecode = True
-from fixture_bundle import handover_runtime  # noqa: E402
-from install import HANDOVER_RUNTIME, PROGRAMS, REQUIRED, sha  # noqa: E402
+from install import PROGRAMS, REQUIRED, sha  # noqa: E402
 
 
 def module(name, path):
@@ -126,7 +125,6 @@ def bundle_assets(source):
     assets.update(tracked(TOOLS / 'setup', 'runtime/setup/'))
     assets.update(tracked(ROOT / 'tools/github-app', 'runtime/github-app/'))
     assets['runtime/access/access.py'] = (TOOLS / 'access/access.py').read_bytes()
-    assets.update(handover_runtime())
     for skill in ('setup', 'grill', 'plan-graph', 'launch-fleet', 'onboard', 'install'):
         assets.update(tracked(ROOT / 'skills' / skill, f'runtime/skills/{skill}/'))
     assets = {k: v for k, v in assets.items() if not re.search(r'(^|/)test[^/]*$|/tests?/', k)}

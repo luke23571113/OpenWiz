@@ -343,7 +343,7 @@ fn e11_plan_deadline_retains_its_slot_until_the_source_really_finishes() {
     let (_room, gh, gate, s, output) = gated(
         "ep1-deadline",
         Limits {
-            // The gate forces expiration; allow healthy recovery launches too.
+            // The gate forces expiration; recovery admission is observed below.
             request_deadline: Duration::from_secs(2),
             slot_wait: Duration::from_millis(60),
             ..Default::default()
@@ -366,9 +366,34 @@ fn e11_plan_deadline_retains_its_slot_until_the_source_really_finishes() {
     gate.open();
     assert_eq!(inventory.join().unwrap().status, 504);
     s.wait_for("timed out sources actually finish", |s| s.core_runs == 0);
-    ungate(&gh, &output);
-    let recovered = s.get("/api/v1/plan");
-    assert_eq!(recovered.status, 200, "{}", recovered.text());
+    // Re-arm the source gate: recovery must admit a fresh worker and free
+    // its slot after actual completion, even if launching it is slow. A
+    // healthy 200 is owned by the shared-flight keeper above; requiring it
+    // inside this deliberately short HTTP deadline races scheduling (#936).
+    fs::remove_file(gh.dir.join("gate-entered")).unwrap();
+    fs::remove_file(gh.dir.join("gate-once")).unwrap();
+    let recovered = thread::spawn(move || http::get(addr, "/api/v1/plan"));
+    wait_gate(&gh);
+    assert_eq!(
+        s.server.stats().core_runs,
+        1,
+        "a fresh plan owns the freed slot"
+    );
+    assert_eq!(
+        gh.invocations().len(),
+        3,
+        "recovery is held before its first call"
+    );
+    assert_eq!(recovered.join().unwrap().status, 504);
+    assert_eq!(
+        s.server.stats().core_runs,
+        1,
+        "HTTP expiry still cannot free it"
+    );
+    release(&gh, &output);
+    s.wait_for("the recovery source actually finishes", |s| {
+        s.core_runs == 0
+    });
     assert_eq!(gh.invocations().len(), 6);
 }
 

@@ -26,6 +26,7 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import page  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'collector'))
 import suite  # noqa: E402
 
 DESIGN = HERE / 'fixtures' / 'page-design'

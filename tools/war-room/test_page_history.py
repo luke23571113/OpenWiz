@@ -12,14 +12,16 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(PUBLIC_ROOT))
 import suite
 
 
 def module(name):
-    spec = importlib.util.spec_from_file_location('wr2_' + name, HERE / (name + '.py'))
+    spec = importlib.util.spec_from_file_location('wr2_' + name, (PUBLIC_ROOT if name == 'sources' else HERE) / (name + '.py'))
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result
@@ -31,7 +33,7 @@ LINK = 'https://github.com/synthetic-owner/work/issues/4001'
 
 
 def provider():
-    return suite.load(HERE / 'fixtures/contract/known.json')['providers'][0]
+    return suite.load(PUBLIC_ROOT / 'fixtures/contract/known.json')['providers'][0]
 
 
 def publication_worker(root, role, connection):
@@ -298,7 +300,7 @@ class PageHistory(unittest.TestCase):
         self.assertEqual(projected['metrics'][0]['value'], 7)
         self.assertEqual(projected['state'], 'partial')
         self.assertEqual(projected['metrics'][0]['window']['timezone'], 'PST-fixed-UTC-08:00')
-        doc = json.loads((HERE / 'fixtures/journey/journeys.json').read_text())
+        doc = json.loads((PUBLIC_ROOT / 'fixtures/journey/journeys.json').read_text())
         projected = self.select_native('journey', doc)
         self.assertTrue(any(m['value'] == 19 for m in projected['metrics']))
         self.assertTrue(all(m['group'] == 'stage_waits' and m['state'] == 'partial'
@@ -362,7 +364,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_daily_usage_is_separate_from_pr_attribution(self):
         # A saved daily report already has usage totals. Omitting them loses
         # existing evidence; the separate owner-export test does not cover this.
-        M = module('sources').native('tools/war-room/metrics.py')
+        M = module('sources').native('tools/collector/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)
@@ -397,7 +399,7 @@ class PageHistory(unittest.TestCase):
     def test_factory_artifact_refuses_undeclared_fields(self):
         # This output has no standalone native validator. The projection must
         # reject unknown fields rather than silently accepting a changed schema.
-        M = module('sources').native('tools/war-room/metrics.py')
+        M = module('sources').native('tools/collector/metrics.py')
         p = M.measure(M.day_arg('2030-01-01'), {}, [], 0, 0)
         p['costs'] = M.cloud_costs(None, p['date'], 0)
         p['costs']['actions'] = M.unknown(('minutes', 'usd'), 'synthetic unavailable', 0)

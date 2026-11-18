@@ -31,15 +31,16 @@ import subprocess
 import sys
 import unittest
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('rl_review_loops', HERE / 'review_loops.py')
 R = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(R)
 FIX = HERE / 'fixtures/review-loops'
-EB6 = HERE / 'fixtures/journey'
-DOC = json.loads((EB6 / 'journeys.json').read_text())
-EB6_EXPORT = json.loads((EB6 / 'outcomes.json').read_text())  # EB6's own fixture, on a 48-hour policy
+EB6 = PUBLIC_ROOT / 'fixtures/journey'
+DOC = json.loads((PUBLIC_ROOT / 'fixtures/journey/journeys.json').read_text())
+EB6_EXPORT = json.loads((PUBLIC_ROOT / 'fixtures/journey/outcomes.json').read_text())  # EB6's own fixture, on a 48-hour policy
 FROZEN = {'rule': 'explicit-causal-fix-link-v1', 'followup_hours': 72, 'deduplication': 'root-cause-per-merge',
           'unknown_attribution': 'retain-unknown'}  # the contract's frozen policy, typed independently
 
