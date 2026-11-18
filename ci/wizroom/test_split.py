@@ -53,6 +53,40 @@ def report(fixture):
 
 
 class SplitChecker(unittest.TestCase):
+    # catches: a listed caller-supplied harness preventing the split, or its
+    # declaration accidentally exempting another line/file's dynamic load.
+    def test_caller_supplied_sites_add_no_dependency_and_unlisted_loads_refuse(self):
+        source = ('import importlib.util\nimport os\n'
+                  'importlib.util.spec_from_file_location("plugin", os.environ["PLUGIN"])\n')
+        for declaration, extra, succeeds in (
+                ('tools/client/harness.py:3', '', True),
+                (None, '', False),
+                ('tools/client/harness.py:2', '', False),
+                ('tools/client/other.py:3', '', False),
+                ('tools/client/harness.py:3', source.splitlines()[-1] + '\n', False)):
+            with self.subTest(declaration=declaration, extra=bool(extra)), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / 'tools/client').mkdir(parents=True)
+                (root / 'tools/war-room').mkdir()
+                (root / 'contracts').mkdir()
+                (root / 'tools/client/harness.py').write_text(source + extra)
+                (root / 'tools/war-room/collector.py').write_text('VALUE = "synthetic"\n')
+                if declaration:
+                    (root / 'contracts/wizroom.v1.md').write_text(
+                        '# Synthetic split contract\n\n## Caller-supplied loads\n\n'
+                        '| Site | Classification |\n| --- | --- |\n'
+                        f'| `{declaration}` | caller-supplied |\n')
+                if succeeds:
+                    stay, move = report(root)
+                    self.assertEqual(stay, {})
+                    self.assertEqual(move, ['tools/war-room/collector.py'])
+                else:
+                    result = run(root)
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    line = 4 if extra else 3
+                    self.assertIn(f'refused tools/client/harness.py:{line} native load:', result.stderr)
+                    self.assertNotRegex(result.stdout, r'(?m)^(stay|move) ')
+
     # catches: an imported war-room module moved to WizRoom, so a public tool's
     # import breaks (the stall alarm's collector read).
     def test_an_import_keeps_its_module_public(self):
