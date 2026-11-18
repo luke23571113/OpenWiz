@@ -1,0 +1,26 @@
+Command: python3 -I ci/wizroom/test_split.py
+Checker SHA-256: 49c135fcef4a57bcf63fb44ea879f8eb068f1469be21320866abd7f0c7b49518
+Test SHA-256: 8e0c7fb1ef10fbdc3c3f4057edbf528671fdde8e258569dc677b84e8e8855a78
+test_a_contract_link_keeps_its_file_public (__main__.SplitChecker.test_a_contract_link_keeps_its_file_public) ... ok
+test_a_loop_path_keeps_its_file_public (__main__.SplitChecker.test_a_loop_path_keeps_its_file_public) ... ok
+test_a_native_load_keeps_its_file_public (__main__.SplitChecker.test_a_native_load_keeps_its_file_public) ... ok
+test_a_tree_with_no_public_reference_moves_everything (__main__.SplitChecker.test_a_tree_with_no_public_reference_moves_everything) ... ok
+test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not (__main__.SplitChecker.test_a_workflow_path_keeps_its_file_public_but_the_war_rooms_own_workflow_does_not) ... ok
+test_an_import_keeps_its_module_public (__main__.SplitChecker.test_an_import_keeps_its_module_public) ... ok
+test_an_unresolvable_dynamic_load_refuses_with_its_location (__main__.SplitChecker.test_an_unresolvable_dynamic_load_refuses_with_its_location) ... ok
+test_files_reached_from_a_staying_file_stay_too (__main__.SplitChecker.test_files_reached_from_a_staying_file_stay_too) ... ok
+test_javascript_load_forms_keep_their_files_public (__main__.SplitChecker.test_javascript_load_forms_keep_their_files_public) ... ok
+test_javascript_ordinary_syntax_keeps_following_loads (__main__.SplitChecker.test_javascript_ordinary_syntax_keeps_following_loads) ... ok
+test_javascript_regex_comment_and_template_controls (__main__.SplitChecker.test_javascript_regex_comment_and_template_controls) ... ok
+test_javascript_regex_does_not_hide_following_loads (__main__.SplitChecker.test_javascript_regex_does_not_hide_following_loads) ... ok
+test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) ... ok
+test_python_path_and_load_forms_keep_their_files_public (__main__.SplitChecker.test_python_path_and_load_forms_keep_their_files_public) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 4.657s
+
+OK
+
+The 44 ordinary-syntax consumers run in Node and retain the expected collector reference.
+All seven uncertainty controls also refuse on the unchanged reviewed checker.
+Tree digests are checked for every synthetic checker invocation.
