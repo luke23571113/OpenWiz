@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'wizskills.lock'
       - 'tools/war-room/**'
       - 'tools/collector/**'
       - 'tools/privacy-check/**'
