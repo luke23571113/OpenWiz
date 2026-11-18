@@ -1,9 +1,9 @@
 before: openwiz-tests:checks
 after: openwiz-tests:checks
-tests: 133 -> 101 (-32)
+tests: 133 -> 98 (-35)
 size files: 23 -> 23 (+0)
-size bytes: 437689 -> 364509 (-73180)
-size lines: 12019 -> 10133 (-1886)
+size bytes: 437689 -> 339413 (-98276)
+size lines: 12019 -> 9427 (-2592)
 coverage openwiz-adapter-cloudroom: 0/5744 (0.00%) -> 0/5744 (0.00%), covered +0
 coverage openwiz-adapter-github: 117/4948 (2.36%) -> 117/4948 (2.36%), covered +0
 coverage openwiz-cli: 0/6756 (0.00%) -> 0/6756 (0.00%), covered +0

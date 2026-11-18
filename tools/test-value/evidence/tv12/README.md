@@ -3,65 +3,65 @@
 [Ledger](ledger.md): every one of the original 48 tests has a row.
 [Proof plan and helper check](plan.md).
 
-Three checks exercise an executable skill boundary rather than comparing
-sentences: the public dependency declaration validator, the research worker
-GitHub-write guard, and research snapshot commands executed in fresh shells.
-Their scripts match byte-for-byte between the installed pin and WizSkills.
-The companion ports preserve the executable cases and remove exact prose pins.
+Three executable checks move to the owning WizSkills suites: the public
+dependency declaration validator, the worker GitHub-write guard, and snapshot
+commands executed in fresh shells. Their production scripts match byte-for-byte
+between the installed pin and WizSkills. All three replacement suites ran green
+in [WizSkills CI 44390693366](https://github.com/openwizdev/WizSkills/actions/runs/44390693366)
+at `0564f5e3cb3c0e8a2461279ee1dcfbe7e69051b1` before the Rust originals were
+removed. [wizskills-ci.json](wizskills-ci.json) records each explicit pass receipt.
 
-The 32 retired tests compared sentence inventories, heading/order/file inventories
-or the private Markdown parsers used only for those wording checks. Their
-wording-enforcement behaviour is retired by #814; the skill instructions,
-approval rules and runtime guards remain. In particular the isolation parser
-was not a shipped Markdown parser: every caller was a test in this one file.
-All 23 references to the three retired wording validators are inside the
-original test file (`git grep` at the base commit). No runtime allowlist,
-privacy guard, contract, workflow or dependency changed.
+The 32 retired tests compared sentence/heading/order/file inventories or private
+Markdown parsers used only for those wording checks. Their wording-enforcement
+behaviour is retired under #814; the instructions and supported runtime behaviour
+remain. All 23 references to the three retired wording validators were inside
+the original test file (`git grep` at the base). No production guard changed.
 
-OpenWiz keeps its harness-link checker and planted bad-link cases, local release
-contract checks, public install-prompt integration check and all six wrappers
-that execute its install/setup suites. These span the installed skills and the
-OpenWiz consumer; none belongs to one Rust product crate, so they remain shared.
+OpenWiz retains 13 integration checks: its harness-link checker and planted bad
+links, local release contract checks, public install-prompt integration, and all
+six wrappers of its install/setup suites. Those six have no green WizSkills
+replacement; their required replacement scripts are named in the ledger.
+These cross the installed package and OpenWiz-owned consumer files, so stay in
+the shared target rather than a single Rust crate.
 
-The portable originals remain too until the companion's exact-head CI receipt
-runs their replacements green. The six other suite wrappers have no WizSkills
-replacement and stay; see their named replacement requirements in the ledger.
+## Evidence
 
-## Proof and limits
+- `before.json`: the exact base, `aa09045873946bf512f7e2ad538ecc17384366d8`,
+  measured in its own detached worktree; all 133 checks-target tests passed in
+  instrumented and plain runs.
+- `after.json` and `compare.txt`: final Rust source with the three portable
+  originals removed, measured with the same kit and toolchain. Refreshed after
+  the green replacement receipt, rather than relabelling the checkpoint report.
+- `checkpoint-after.json`: the earlier 101-test checkpoint, still retaining
+  the three originals pending that receipt. Its 16-test skills-only run is
+  `after-skills.txt`; these are intermediate evidence, not final counts.
+- `before-skills.txt`: the initial 48-test group run; the plan records its
+  formatting-concurrency correction. The independent base measurement above
+  provides the source-bound baseline.
+- `port-mutations.txt`: all three ported suites fail at their behaviour
+  assertions after a controlled break, in temporary copies only. Production
+  scripts are unchanged. Reproduction: copy the affected skill and run its new
+  suite after replacing `check-relies.sh` with `#!/bin/sh\nexit 0\n`, replacing
+  `"$work/after"` with `"$work/before"` in `check-workers.sh`, or removing the
+  single quotes around `<snapshot-path>` in the documented `check` command.
 
-- `before-skills.txt`: all 48 base skills tests passed.
-- `port-mutations.txt`: all three ported tests fail after a controlled break of
-  the behaviour they protect, in temporary copies only. Production scripts are
-  unchanged; this migration is not a product bug fix.
-  Reproduction: copy the affected skill to a temporary directory and run its
-  new suite after (a) replacing `check-relies.sh` with `#!/bin/sh\nexit 0\n`,
-  (b) replacing `"$work/after"` with `"$work/before"` throughout
-  `check-workers.sh`, or (c) removing the single quotes around
-  `<snapshot-path>` in the documented `check` command. Each suite must fail.
-- The kit's before/after `checks` measurement runs in isolated worktrees with
-  Rust 1.99.1 and cargo-llvm-cov 0.9.1, with two build jobs and test threads.
-- Sandbox run times are deliberately omitted from human-facing logs and the
-  comparison. Only CI job durations on the same lane can support a speed claim.
-  The kit's original JSON results retain its required schema, including seconds;
-  those local values are not a campaign timing claim.
-- No live effect, publication, pin advance or release is proven or performed.
+## Method and limits
 
-The existing `tools/test-value/evidence/**` import row covers this evidence:
-no `tools/open-import/paths.json` row is added. No product changelog is needed.
+Rust 1.99.1, cargo-llvm-cov 0.9.1, two build jobs and test threads. Each measured
+checkout has its own target folder. Sandbox duration is omitted from the human
+comparison; only CI job durations on the same lane support campaign speed
+claims. Original kit JSON retains its required schema, including seconds, which
+are not used as timing evidence. No speed claim is made here.
 
-## Measured checkpoint result
+The existing `tools/test-value/evidence/**` import row covers all evidence:
+no paths.json row added. No product changelog, dependency, contract, workflow,
+pin, release, publication or live action changes. Full product suites run in CI.
 
-`before.json` is the exact base; `after.json` measures the unchanged Rust source
-of checkpoint `0f797a784a290e3b5a483c8aafe4bf4fe24c6f67`. The following
-commit adds only evidence. Both instrumented and plain target runs passed.
+## Final result
 
-- Checks target: 133 to 101 tests; skills group: 48 to 16.
-- Compiled test source: 23 files in each, 437,689 to 364,509 bytes, 12,019 to
-  10,133 lines. This is the kit's compiled-source size, not evidence-file size.
-- Coverage: 200 covered product lines before and after, unchanged in every
-  crate; `drops: none`. Full comparison in [compare.txt](compare.txt).
-- The three ported executable checks remain in Rust at this checkpoint because
-  the companion CI receipt is pending. This is not the completed T5 hand-back.
-  Remove those originals only on the named green receipt, and refresh the
-  measurement if the source changes. The six suite wrappers still have no
-  replacement and must remain.
+The checks target goes from **133 to 98 tests**; the skills group goes from
+48 to 13 here, with three executable proofs running in WizSkills. The kit
+reports 23 compiled Rust source files in each run. Final source size and per-crate
+coverage are in [compare.txt](compare.txt): **200 covered product lines in each
+run, unchanged in every crate; drops: none**. Both instrumented and plain runs
+passed on final Rust blob `5bc91e467840f1a110df9f6d514b1ba99741e4c9`.

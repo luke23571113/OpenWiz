@@ -49,3 +49,17 @@ independent base kit measure used the untouched detached worktree and passed
 all 133 tests; the pruned 16-test run completed before scoped Clippy, and the
 after kit measure has its own output. The base measurement, rather than the
 initial run alone, supplies the source-bound baseline evidence.
+
+Final migration: after the complete WizSkills check succeeded at
+`0564f5e3cb3c0e8a2461279ee1dcfbe7e69051b1`, its actual log was read and all
+three `suite ...: pass` lines verified. Only then were the three Rust originals
+removed. Receipt: `wizskills-ci.json`. The final Rust source blob is
+`5bc91e467840f1a110df9f6d514b1ba99741e4c9`; it has 13 tests, each retained test
+body byte-identical to the base. The ledger has 32 deleted, three moved and
+13 kept rows. Final formatting and scoped Clippy passed, and the kit's after
+measurement is refreshed on this source. The six installation/setup suite
+wrappers still lack replacements and remain.
+
+Final kit run completed successfully with 98 passed / zero ignored tests in
+each instrumented/plain run. `after.json` and `compare.txt` replace the earlier
+checkpoint result; coverage is identical in every crate, with no drops.

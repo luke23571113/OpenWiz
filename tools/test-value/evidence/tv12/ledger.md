@@ -35,12 +35,12 @@ Local release safety contracts, consumer links and suite wrappers stay here.
 | `tests/checks/skills.rs::overnight_reuses_huntr_thirty_minute_loop` | deleted | behaviour gone: exact night-controller paragraph spelling enforcement retired by #814 | |
 | `tests/checks/skills.rs::overnight_day_review_preserves_redacted_technical_facts` | deleted | behaviour gone: exact overnight day-review instruction inventory enforcement retired by #814 | |
 | `tests/checks/skills.rs::a_dangling_or_wrong_link_fails` | kept | itself | A harness-link checker accepting dangling, missing, wrong, absolute, copied or extra links; its synthetic cases exercise the OpenWiz integration. |
-| `tests/checks/skills.rs::plan_graph_relies_on_form` | kept | itself | Invalid, hidden, unsafe or missing dependency declarations accepted by the public checker; port pending companion CI. |
+| `tests/checks/skills.rs::plan_graph_relies_on_form` | moved | `openwizdev/WizSkills:skills/plan-graph/test/test_relies.py::ReliesTest.test_relies_on_form` | Invalid, hidden, unsafe or missing dependency declarations accepted by the public shell checker, including loss of its sh/jq-only runtime. |
 | `tests/checks/skills.rs::plan_graph_relies_on_rule_and_template` | deleted | behaviour gone: the private validator of plan-graph rule/template wording (the executable dependency checker is retained pending its port) retired by #814 | |
 | `tests/checks/skills.rs::plan_graph_relies_on_rule_is_visible_and_template_is_unique` | deleted | behaviour gone: the private validator of plan-graph rule/template wording (the executable dependency checker is retained pending its port) retired by #814 | |
-| `tests/checks/skills.rs::research_worker_github_check` | kept | itself | Worker writes, mismatched allowances or incomplete GitHub reads reported clean; port pending companion CI. |
+| `tests/checks/skills.rs::research_worker_github_check` | moved | `openwizdev/WizSkills:skills/research/test/test_workers.py::WorkerTest.test_worker_github_check` | Worker writes, broad/wrong/stale allowances, deletion allowances accepting edits and invalid/incomplete observations reported clean. |
 | `tests/checks/skills.rs::research_workflow_checks_github_around_dispatch` | deleted | behaviour gone: exact workflow wording enforcement (the executable guard and commands are retained pending their ports) retired by #814 | |
-| `tests/checks/skills.rs::research_snapshot_path_survives_fresh_shells` | kept | itself | Snapshot/check examples losing a path or breaking shell quoting across fresh shells; port pending companion CI. |
+| `tests/checks/skills.rs::research_snapshot_path_survives_fresh_shells` | moved | `openwizdev/WizSkills:skills/research/test/test_snapshot_commands.py::SnapshotTest.test_snapshot_path_survives_fresh_shells` | Snapshot/check/allowance commands losing the recorded path or breaking argv/redirection across fresh shells with spaces and apostrophes. |
 | `tests/checks/skills.rs::ask_wiz_contract` | deleted | behaviour gone: literal ask-wiz routing/install-rule prose validation (the skill and its approval rule remain) retired by #814 | |
 | `tests/checks/skills.rs::ask_wiz_phase_boundaries` | deleted | behaviour gone: literal ask-wiz routing/install-rule prose validation (the skill and its approval rule remain) retired by #814 | |
 | `tests/checks/skills.rs::ask_wiz_install_rule_refuses_ungated_or_hidden_instructions` | deleted | behaviour gone: literal ask-wiz routing/install-rule prose validation (the skill and its approval rule remain) retired by #814 | |
@@ -69,8 +69,11 @@ remain in OpenWiz, so no WizSkills green result can stand in for them today.
 - `tools/install/tests/first-hour/test_journey.py`
 - `tools/install/tests/first-hour/test_kit.py`
 
-The three executable portable proofs are provisionally retained above. Their
-keeper paths, when the companion runs green in CI, will be:
+The three executable portable proofs moved only after WizSkills run
+[44390693366](https://github.com/openwizdev/WizSkills/actions/runs/44390693366)
+passed at `0564f5e3cb3c0e8a2461279ee1dcfbe7e69051b1`. Each suite printed its
+pass receipt; [wizskills-ci.json](wizskills-ci.json) binds them to that head.
+Their keeper paths are:
 
 - `openwizdev/WizSkills:skills/plan-graph/test/test_relies.py::ReliesTest.test_relies_on_form`
 - `openwizdev/WizSkills:skills/research/test/test_workers.py::WorkerTest.test_worker_github_check`
