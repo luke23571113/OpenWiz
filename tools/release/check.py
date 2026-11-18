@@ -50,6 +50,8 @@ def safe_path(value):
 # grills other than their README private by class; public guidance, design and
 # release-proof documents are no longer excluded as private process files.
 ALIAS = re.compile(r"\.(?:agents|claude)/skills/([a-z0-9][a-z0-9-]*)")
+# #555: the tracked `skills` link to the gitignored WizSkills install.
+WIZSKILLS = ("skills", b".wizskills/skills")
 MODES = ("100644", "100755", "120000")
 
 
@@ -106,15 +108,25 @@ def tree(repo, ref, paths=None, links=False):
     return entries
 
 
+def linkable(path):
+    return path == WIZSKILLS[0] or ALIAS.fullmatch(path) is not None
+
+
 def alias(path, target, paths):
-    """Approved harness links: .agents or .claude skills/<name> -> ../../skills/<name>.
+    """Approved links: .agents or .claude skills/<name> -> ../../skills/<name>,
+    and (#555) `skills` -> exactly .wizskills/skills, the pinned WizSkills install.
 
     The raw link bytes are compared, never dereferenced, so absolute, escaping,
-    cyclic and differently spelt targets all refuse."""
+    cyclic and differently spelt targets all refuse. An alias resolves through
+    an exported skills folder, or through the exported WizSkills link."""
+    if path == WIZSKILLS[0]:
+        require(target == WIZSKILLS[1], "link: skills must point to .wizskills/skills")
+        return
     match = ALIAS.fullmatch(path)
     require(match is not None, "link: only approved .agents/skills or .claude/skills aliases may be links")
     require(target == ("../../skills/"+match[1]).encode(), f"link: {path} must point to ../../skills/{match[1]}")
-    require(any(p.startswith("skills/"+match[1]+"/") for p in paths), f"link: dangling alias {path}")
+    require(WIZSKILLS[0] in paths or any(p.startswith("skills/"+match[1]+"/") for p in paths),
+            f"link: dangling alias {path}")
 
 
 def refuse_ranges(text):
@@ -218,9 +230,9 @@ def load_plan(path, version):
             require(item["source"] == item["path"], "historical rows name their published path")
         require(item.get("mode","100644") in MODES, "invalid file mode")
         if item.get("mode") == "120000":
-            require(ALIAS.fullmatch(item["path"]) and item["source"] == item["path"],
+            require(linkable(item["path"]) and item["source"] == item["path"],
                     "link: only approved .agents/skills or .claude/skills aliases may be links")
-        if ALIAS.fullmatch(item["path"]):
+        if linkable(item["path"]):
             require(item.get("mode") == "120000", "link: an .agents/skills alias row needs mode 120000")
         path = public_path(item["path"],product=True)
         if tuple(map(int,version.split("."))) < (0,0,4):

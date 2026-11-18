@@ -150,6 +150,34 @@ class Backfill(base.ReleaseCheck):
         self.assertEqual(self.git(export, "cat-file", "-p", "HEAD:"+ALIAS).stdout, TARGET)
         self.assertEqual(os.readlink(self.stage/"fresh"/ALIAS), TARGET)
 
+    # catches: a source release after #555's cut refusing the tracked WizSkills
+    # link, or the harness aliases that now resolve through it.
+    def test_r1_the_wizskills_link_and_aliases_through_it_stage(self):
+        self.product_source(".wizskills/skills", "skills")
+        link = self.repo/ALIAS
+        link.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(TARGET, link)
+        self.commit(self.repo)
+        self.data["files"] = [f for f in self.data["files"] if not f["path"].startswith("skills/")]
+        self.data["claim_reviews"] = [r for r in self.data["claim_reviews"] if not r["path"].startswith("skills/")]
+        self.data["files"].append({"path": ALIAS, "source": ALIAS, "sha256": digest(TARGET), "mode": "120000"})
+        self.save_plan()
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        export = self.stage/"export"
+        self.assertEqual(self.git(export, "cat-file", "-p", "HEAD:skills").stdout, ".wizskills/skills")
+        self.assertEqual(self.git(export, "cat-file", "-p", "HEAD:"+ALIAS).stdout, TARGET)
+        # The skills link must point at the install exactly, never elsewhere.
+        self.outputs_clear()
+        (self.repo/"skills").unlink()
+        os.symlink(".wizskills/other", self.repo/"skills")
+        self.commit(self.repo)
+        for row in self.data["files"]:
+            if row["path"] == "skills":
+                row["sha256"] = digest(".wizskills/other")
+        self.save_plan()
+        self.refused("link")
+
     def test_r1_product_namespaces_need_explicit_rows_and_other_private_paths_stay_refused(self):
         cases = [("private/notes.md", "forbidden public path"),
                  ("docs/grills/synthetic.md", "private process document"),
