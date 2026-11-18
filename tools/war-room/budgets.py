@@ -30,8 +30,8 @@ WORKFLOWS = [ROOT / ".github/workflows/ci.yml", ROOT / ".github/workflows/privac
 RUNS, FLOOR, MIN_SAMPLES = 150, 5, 5
 COLUMNS = ["workflow", "job", "mode", "timeout", "p95_seconds", "samples", "runs", "first", "last", "source"]
 # measured[:samples-file]: from the job's own runs; derived:<job>: from a twin with the same steps, for a job that has
-# never run; unmeasured: today's timeout kept until the job has enough runs (#782 question 4).
-SOURCE = re.compile(r"measured(?::[^\t\n]+)?|unmeasured|derived:[A-Za-z0-9_-]+")
+# never run; unmeasured[:provenance]: authorized prior limit until enough runs (#782 question 4).
+SOURCE = re.compile(r"(?:measured|unmeasured)(?::[^\t\n]+)?|derived:[A-Za-z0-9_-]+")
 # Marked jobs execute three distinct modes. Planted takes precedence when both flags are true.
 MARK = "if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'"
 THREE = ("${{ needs.changes.outputs.planted == 'true' && %d || "
@@ -188,17 +188,32 @@ def timeout_text(want):
     return str(want[1]) if want[0] == "all" else THREE % want[1:]
 
 
+def is_unmeasured(row, rows):
+    """An explicit unknown p95, including a planted row's same-mode export twin."""
+    source = row["source"]
+    if source == "unmeasured" or source.startswith("unmeasured:"):
+        return True
+    if row["mode"] == "planted" and source.startswith("derived:"):
+        twin = rows.get((row["workflow"], source.split(":", 1)[1], "planted"))
+        return twin is not None and (twin["source"] == "unmeasured" or twin["source"].startswith("unmeasured:"))
+    return False
+
+
 def planted_evidence(table, rows, r):
     """Validate a planted row against its offline, mode-bound duration observations."""
     source = r["source"]
-    if source == "unmeasured":
+    if source == "unmeasured" or source.startswith("unmeasured:"):
+        if r["samples"] >= MIN_SAMPLES:
+            raise Fail("planted evidence: five eligible samples must be measured")
         if r["p95_seconds"] != 0:
             raise Fail("planted evidence: an unmeasured row cannot claim a p95")
+        if ":" in source:
+            B.read_file(Path(table).parent / source.split(":", 1)[1])
         return
     if source.startswith("derived:"):
         twin = rows.get((r["workflow"], source.split(":", 1)[1], "planted"))
         if twin is None or twin["source"].startswith("derived:"):
-            raise Fail("planted evidence: missing measured planted twin")
+            raise Fail("planted evidence: missing direct planted twin")
         if any(r[k] != twin[k] for k in COLUMNS if k not in ("job", "source")):
             raise Fail("planted evidence: derived row differs from its planted twin")
         return
@@ -245,7 +260,7 @@ def check(table, workflows):
     rows = read_table(table)
     errors = []
     for (wf, key, mode), r in sorted(rows.items()):
-        if r["source"] != "unmeasured" and r["timeout"] != budget(r["p95_seconds"]):
+        if not is_unmeasured(r, rows) and r["timeout"] != budget(r["p95_seconds"]):
             errors.append(f"{wf} {key} {mode}: timeout {r['timeout']}, but 1.5x its p95 of {r['p95_seconds']} s"
                           f" is {budget(r['p95_seconds'])}")
         if mode == "planted":
@@ -538,10 +553,13 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
                     got, runs, first, last = own_runs(samples(sjobs, twin, mode, straced))
                     jobs = sjobs
                 n = len(got)
-                unmeasured_key = f"{key}:{mode}" if f"{key}:{mode}" in unmeasured else key
-                if unmeasured_key in unmeasured:
+                unmeasured_key = next((candidate for candidate in
+                                       (f"{key}:{mode}", key, f"{twin}:{mode}", twin)
+                                       if candidate in unmeasured), None)
+                if unmeasured_key in unmeasured and (mode != "planted" or n < MIN_SAMPLES):
                     rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": unmeasured[unmeasured_key], "p95_seconds": 0,
-                                 "samples": n, "runs": runs, "first": first, "last": last, "source": "unmeasured"})
+                                 "samples": n, "runs": runs, "first": first, "last": last,
+                                 "source": "unmeasured" if twin == key else f"derived:{twin}"})
                     continue
                 if n < MIN_SAMPLES:
                     errors.append(f"{wf} job {key} {mode} has {n} sample{'' if n == 1 else 's'},"
@@ -571,8 +589,9 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
     if evidence:
         B.write(Path(out).with_suffix(".samples.json"), json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     write_table(out, rows)
+    indexed = {(r["workflow"], r["job"], r["mode"]): r for r in rows}
     for r in rows:
-        if r["source"] == "unmeasured":
+        if is_unmeasured(r, indexed):
             print(f"{r['workflow']} {r['job']} {r['mode']}: p95 unknown, {r['samples']} eligible samples;"
                   f" retained unmeasured timeout {r['timeout']} min")
             continue

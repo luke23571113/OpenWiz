@@ -1,9 +1,15 @@
-# C8 measurement checkpoint
+# C8 budget measurements and authorized fallback
 
 Approval: spec #780 revision 4, [comment 6966973244](https://github.com/openwizdev/OpenWiz/issues/780#issuecomment-6966973244),
 fingerprint `09364d968dd0c2532f8297841e1f77f7ff691d6427d3abe8722f24c65294b704`.
-This is an implementation checkpoint with a mandatory measurement gap. It does
-not establish an adequate planted Rust budget or unblock #783.
+Disposition: [orchestrator ruling 6967769682](https://github.com/openwizdev/OpenWiz/issues/1097#issuecomment-6967769682),
+2026-11-18, applies C1's question-4 unmeasured fallback. Undersampled planted
+rows use their pre-#782 90-minute limit, explicitly unmeasured, and Rust/web
+inherit their same-mode export twins. This resolves the checkpoint's mandatory
+measurement blocker for shipping C8. [Follow-up #1109](https://github.com/openwizdev/OpenWiz/issues/1109)
+tracks the remaining measurements without blocking this repair. Required CI,
+independent review and verified merge remain gates; #783 waits for that merge.
+No new measurement runs are authorized or performed.
 
 ## Original failure
 
@@ -53,19 +59,22 @@ The window contains five planted runs, created 2026-11-14T03:17:38Z through
 
 | Job | Eligible samples | p95 seconds | Timeout minutes | Source / readiness |
 | --- | ---: | ---: | ---: | --- |
-| always | 4 | unknown | 13 | existing limit retained, unmeasured; one more completed sample needed |
+| always | 4 | unknown | 90 | authorized pre-#782 fallback, unmeasured; one more completed sample needed |
 | web-build | 5 | 81 | 5 | own planted samples; measured |
-| rust-export | 1 | unknown | 56 | existing limit retained, unmeasured; four more completed samples needed |
-| web-export | 4 | unknown | 75 | existing limit retained, unmeasured; one more completed sample needed |
-| rust | 0 own | unknown | 56 | existing limit retained, unmeasured; own evidence or an approved same-mode twin is missing |
-| web | 0 own | unknown | 75 | existing limit retained, unmeasured; own evidence or an approved same-mode twin is missing |
+| rust-export | 1 | unknown | 90 | authorized pre-#782 fallback, unmeasured; four more completed samples needed |
+| web-export | 4 | unknown | 90 | authorized pre-#782 fallback, unmeasured; one more completed sample needed |
+| rust | 1 from twin (0 own) | unknown | 90 | derived from the unmeasured planted rust-export row |
+| web | 4 from twin (0 own) | unknown | 90 | derived from the unmeasured planted web-export row |
 
 The five web-build durations are 68, 72, 81, 69 and 50 seconds. Nearest-rank p95
 of five is 81 seconds. `ceil(1.5 * 81 / 60) = 3`, so the floor sets 5 minutes.
 [planted.samples.json](planted.samples.json) holds those observations and the
 other completed planted observations, including their mode and provenance.
 Only the sufficiently sampled web-build row claims measured p95. TSV p95 `0`
-with source `unmeasured` means unknown, not a measured zero-second workload.
+with source `unmeasured:<provenance>` or a derivation from that same-mode row
+means unknown, not a measured zero-second workload. The direct unmeasured rows
+point to this record; derived rows retain the twin's sample count, window and
+unmeasured status. No traced sample supplies a planted row.
 
 The sole completed planted Rust-export workload is
 [43586844977 attempt 1](https://github.com/openwizdev/OpenWiz/actions/runs/43586844977/attempts/1):
@@ -78,11 +87,14 @@ understate the workload. The remaining planted runs are
 [43568492229](https://github.com/openwizdev/OpenWiz/actions/runs/43568492229), and
 [44190068127 attempt 2](https://github.com/openwizdev/OpenWiz/actions/runs/44190068127/attempts/2).
 
-[Builder question](https://github.com/openwizdev/OpenWiz/issues/1097#issuecomment-6967279066):
-measurement owner/path needed for sufficient completed observations, without
-rerunning #1094/#1050, reducing the sample minimum or applying an exception.
-`needs-info` is set beside `ready-for-agent`. A passing ordinary CI run cannot
-replace this missing measurement or prove an adequate planted Rust timeout.
+The [builder question](https://github.com/openwizdev/OpenWiz/issues/1097#issuecomment-6967279066)
+is resolved by the [ruling](https://github.com/openwizdev/OpenWiz/issues/1097#issuecomment-6967769682):
+the pre-#782 90-minute fallback is authorized under the existing unmeasured rule.
+Its value is not inferred from 4,233 seconds and is not a measured five-sample
+p95. The formula, minimum and exclusions remain unchanged; web-build's five
+samples keep its measured five-minute budget. #1109 owns the later re-read when
+ordinary approved CI supplies enough completed workloads. No fresh measurement,
+sample waiver, rerun of #1094/#1050 or workflow structure change is part of C8.
 
 ## Corrected trace-only provenance
 
@@ -126,10 +138,18 @@ and dependencies are unchanged.
   to distinguish traced from planted.
 - Live observation: saved public Actions records establish the counts and gaps
   above; they do not supply the missing completed workloads.
-- Independent review: pending the selected reviewer and an eligible hand-back.
-- Required CI at the checkpoint head: pending PR execution; no corrected-budget
-  planted success is claimed. The final measured budget and corresponding proof
-  remain missing. This checkpoint is not a completed C8 hand-back.
+- Fixture test: an explicitly unmeasured planted export twin can supply the
+  authorized 90-minute fallback without claiming p95; mismatched twin statistics
+  are refused. Committed red: [fallback-red.txt](fallback-red.txt), commit
+  `cd41ec8`. Generation also preserves same-mode derivation and reports p95
+  unknown for the direct and derived unmeasured rows. The further red in
+  `f17354f` proves that a configured fallback cannot suppress a five-sample
+  planted p95; sufficiently sampled rows must stay measured.
+- Independent review: pending the assigned Opus 5.5 High reviewer after required
+  CI passes at the new green head.
+- Required CI: pending the updated hand-back head's normal PR run. No completed
+  planted run using the restored fallback is claimed; the authorized unmeasured
+  disposition permits shipping while #1109 retains that measurement gap.
 
 The first PR CI run [44226086889](https://github.com/openwizdev/OpenWiz/actions/runs/44226086889)
 failed in the carriage guard before planning: its seven new evidence paths were
@@ -138,8 +158,8 @@ unclassified. The owning registry row `docs/evidence/1097/**` is added to
 `docs/agents/fleet.md` (Supporting edits, item 1). This covered supporting edit
 serves CI3-B's evidence and validation criterion; it supports the owned
 `docs/evidence/1097/` folder and adds no broader class or protected-rule change.
-The actual guard is rerun at the amended head. No Actions rerun is requested;
-a normal branch push starts its next CI run.
+The actual guard passed after that own-row edit. No Actions rerun is requested;
+a normal branch push starts CI for each new head.
 
 No helpers were used. No new dependency or file under `tools/ci-bench` was added.
 This is infrastructure work; `no-changelog` applies.

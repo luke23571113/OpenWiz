@@ -1,18 +1,18 @@
-...........................
+..............................
 ----------------------------------------------------------------------
-Ran 27 tests in 3.408s
+Ran 30 tests in 3.928s
 
 OK
 budgets: 16 jobs in 2 workflows match 28 rows
-✔ Rust and web lanes read the plan's planted output (1.148614ms)
-✔ nightly remains admitted when later main pushes arrive (13.78027ms)
-✔ main pushes retain the running run and coalesce pending pushes to latest (7.644088ms)
-✔ PR updates cancel obsolete work for that PR only (5.603505ms)
-✔ merge groups retain independent groups and do not cancel running work (4.385115ms)
-✔ the carriage guard runs on pull requests and merge groups and fails closed (2.819809ms)
-✔ frozen.yml runs the base's frozen old code check on GitHub-hosted runners for every PR and merge group to main (8.368013ms)
-✔ pull requests and merge groups run the full suite and every required check; a main push runs only the light check (49.310363ms)
-✔ marked jobs choose planted, traced and normal timeout branches independently (9.045198ms)
+✔ Rust and web lanes read the plan's planted output (1.21389ms)
+✔ nightly remains admitted when later main pushes arrive (13.858453ms)
+✔ main pushes retain the running run and coalesce pending pushes to latest (7.401112ms)
+✔ PR updates cancel obsolete work for that PR only (5.726197ms)
+✔ merge groups retain independent groups and do not cancel running work (4.752619ms)
+✔ the carriage guard runs on pull requests and merge groups and fails closed (2.77079ms)
+✔ frozen.yml runs the base's frozen old code check on GitHub-hosted runners for every PR and merge group to main (8.899027ms)
+✔ pull requests and merge groups run the full suite and every required check; a main push runs only the light check (50.142983ms)
+✔ marked jobs choose planted, traced and normal timeout branches independently (9.185423ms)
 ℹ tests 9
 ℹ suites 0
 ℹ pass 9
@@ -20,12 +20,11 @@ budgets: 16 jobs in 2 workflows match 28 rows
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 158.874413
+ℹ duration_ms 164.889654
 
-Additional affected checks (Rust sources unchanged):
-cargo fmt --check: PASS
-cargo clippy --workspace --all-targets -- -D warnings: PASS
-cargo test -p openwiz-tests --test checks: PASS (149 tests)
-Classifier/safety suite: initially failed only the new red workflow timeout case;
-node --test .github/workflows/ci.test.mjs now passes that case and all nine tests.
-Pre-push runs the complete mandated fast checks again on the pushed commit.
+Ruling 6967769682 applied: undersampled planted fallback 90 minutes,
+explicitly unmeasured; same-mode export derivations preserve unknown p95.
+Five-sample rows retain measured p95/formula even with fallback configured.
+Follow-up #1109 is non-blocking. No new measurements or Actions reruns.
+The mandatory pre-push hook checks format, Clippy, static proofs and classifier
+at the hand-back commit. Required remote CI and independent review remain gates.

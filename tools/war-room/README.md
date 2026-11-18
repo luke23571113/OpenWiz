@@ -953,9 +953,21 @@ each mode's timeout against its own row. A planted twin must reference the same
 mode and values. It reads no network during checking.
 
 If five completed samples do not exist, generation fails unless the gap is
-explicitly represented with `--unmeasured JOB:planted=EXISTING_MINUTES`. This keeps
-an existing limit with p95 unknown (`0` in the TSV), never establishes adequacy or
-permits a wider limit. The [C8 evidence](../../docs/evidence/1097/measurements.md)
-records the remaining planted gaps and the original 56-minute overrun. Re-read
-in this ticket once the measurement owner supplies sufficient completed runs;
-no automatic rerun or timeout exception is part of this tool.
+explicitly represented with `--unmeasured JOB:planted=AUTHORIZED_MINUTES`.
+The [C8 ruling](https://github.com/openwizdev/OpenWiz/issues/1097#issuecomment-6967769682)
+applies C1 question 4: undersampled planted rows restore their pre-#782
+90-minute limit, explicitly unmeasured. A provenance reference may be recorded
+as `unmeasured:<path relative to table>`; the committed rows point to the
+[C8 evidence](../../docs/evidence/1097/measurements.md), including run
+43586844977 attempt 1's observed 70m33s. This is not a five-sample p95 or a value
+computed from that one duration. Rows with five eligible samples stay measured
+by the unchanged formula and minimum, even if a fallback option is configured.
+
+An explicit `--derive rust=rust-export web=web-export` also inherits a twin's
+same-mode unmeasured fallback (for example,
+`--unmeasured rust-export:planted=90 web-export:planted=90`). The derived row keeps
+the twin's counts/window and p95 unknown (`0` in the TSV); the check validates the
+same-mode twin and does not apply the measured formula to its unknown p95.
+[Non-blocking follow-up #1109](https://github.com/openwizdev/OpenWiz/issues/1109)
+tracks a later re-read once eligible completed workloads exist. It authorizes
+no fresh measurements, reruns, sample waiver or automatic timeout changes.
