@@ -82,10 +82,33 @@ def source_tree(root, source):
     return tree
 
 
-def locked_skills(root, source, tree=None):
+def install_locked(root, source, scratch):
+    """For a source tracking the WizSkills link, install the release its own
+    lock pins under `scratch` (tools/wizskills/install.py, which verifies the
+    tag, commit and tree) and return that install; None for a source that
+    tracks its skills. For a checkout without a working tree (#555: the
+    release candidate's bare clone)."""
+    tree = source_tree(root, source)
+    if tree.get('skills', ('', '', ''))[:2] != LINK:
+        return None
+    scratch = Path(scratch)
+    for path in ('wizskills.lock', 'contracts/wizskills.v1.md'):
+        require(tree.get(path, ('', '', ''))[:2] in {(m, 'blob') for m in REGULAR}, 'skills link without a WizSkills lock')
+        (scratch / path).parent.mkdir(parents=True, exist_ok=True)
+        (scratch / path).write_bytes(git(root, 'cat-file', 'blob', tree[path][2]))
+    ws = wizskills()
+    try:
+        ws.install(scratch)
+    except ws.Stop:
+        raise Refused('the locked WizSkills release cannot be installed')
+    return scratch / WIZSKILLS
+
+
+def locked_skills(root, source, tree=None, install=None):
     """When `source` tracks `skills` as the WizSkills link: the verified
-    install's {skills/<path>: blob oid}, after checking the install is exactly
-    the lock's release tree. None for a source that tracks its skills."""
+    install's {skills/<path>: blob oid}, after checking the install (by
+    default `root`'s .wizskills) is exactly the lock's release tree. None for
+    a source that tracks its skills."""
     tree = tree if tree is not None else source_tree(root, source)
     if tree.get('skills', ('', '', ''))[:2] != LINK:
         return None
@@ -100,7 +123,7 @@ def locked_skills(root, source, tree=None):
                            {'version_pattern': r'[0-9]+\.[0-9]+\.[0-9]+', 'oid_pattern': '[0-9a-f]{40}'})
     except (ValueError, UnicodeError):
         raise Refused('invalid WizSkills lock')
-    dest = Path(root) / WIZSKILLS
+    dest = Path(install) if install is not None else Path(root) / WIZSKILLS
     require(os.path.lexists(dest), 'WizSkills install missing')
     with tempfile.TemporaryDirectory(prefix='wizskills-verify-') as scratch:
         try:
@@ -120,12 +143,12 @@ def locked_skills(root, source, tree=None):
     return skills
 
 
-def verify_runtime(root, source, runtime):
+def verify_runtime(root, source, runtime, install=None):
     """Refuse unless `runtime` ({repository path: packaged bytes}) is the
     requested commit's tracked runtime: every file a regular blob there with
     identical bytes, and the skills exactly the commit's skills tree."""
     tree = source_tree(root, source)
-    installed = locked_skills(root, source, tree)
+    installed = locked_skills(root, source, tree, install)
     if installed is not None:
         require(set(installed) == {p for p in runtime if skill(p)},
                 'packaged skills differ from the locked WizSkills release')

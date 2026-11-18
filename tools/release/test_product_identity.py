@@ -284,6 +284,55 @@ class LockedSkillsProvenance(Repository):
         self.refused(self.source)
 
 
+def _wizskills_fixture():
+    """tools/wizskills/test_install.py's fake tagged WizSkills remote, loaded
+    under its own name (tools/install has a test_install.py too)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('wizskills_test_install', ROOT / 'tools/wizskills/test_install.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class CandidateSourceInstall(_wizskills_fixture().Fixture):
+    """#555: the release candidate verifies a bare clone, which has no install
+    and no working tree; it installs the release the source's own lock pins."""
+
+    def test_a_bare_source_verifies_against_the_release_its_lock_pins(self):
+        # catches: every post-cut release candidate refused, because its bare
+        # clone has no .wizskills, or verified against some other install.
+        sys.path.insert(0, str(ROOT / 'tools/release'))
+        import product_identity as rl4
+        pin = self.release('0.1.2')
+        source = self.tmp / 'source'
+        (source / 'contracts').mkdir(parents=True)
+        (source / 'contracts/wizskills.v1.md').write_bytes((ROOT / 'contracts/wizskills.v1.md').read_bytes())
+        (source / 'wizskills.lock').write_text(json.dumps(pin) + '\n')
+        os.symlink('.wizskills/skills', source / 'skills')
+        run = lambda *a: subprocess.run([*GIT, '-C', str(source), *a], check=True,
+                                        capture_output=True).stdout.decode().strip()
+        run('init', '-q')
+        run('add', '-A')
+        run('commit', '-q', '-m', 'synthetic cut source')
+        commit = run('rev-parse', 'HEAD')
+        bare = self.tmp / 'bare.git'
+        subprocess.run(['git', 'clone', '-q', '--bare', str(source), str(bare)], check=True)
+        scratch = self.tmp / 'scratch'
+        scratch.mkdir()
+        saved = dict(os.environ)
+        os.environ.update(self.env)
+        try:
+            install = rl4.install_locked(bare, commit, scratch)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        skills = {'skills/alpha/SKILL.md': (install / 'skills/alpha/SKILL.md').read_bytes(),
+                  'skills/alpha/scripts/run.sh': (install / 'skills/alpha/scripts/run.sh').read_bytes()}
+        rl4.verify_runtime(bare, commit, skills, install)
+        with self.assertRaises(rl4.Refused):
+            rl4.verify_runtime(bare, commit, {**skills, 'skills/alpha/SKILL.md': b'Edited.\n'}, install)
+
+
 class CompiledProductIdentity(Repository):
     """#1148: compiled CLI/server/service and generated web identity. The
     runtime always matches here, so each refusal is the compiled product's."""
