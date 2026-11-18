@@ -44,9 +44,6 @@ PAGE = 'war-room.html'
 # WRD5 (#883): the whole site is published in that one commit: home (PAGE) and its five child pages,
 # exactly these names ({route: file}). Never a partial site: every page is rendered and scanned first.
 SITE = page.site_files(PAGE)
-# MT13 (#1049): the collector snapshot gather.py writes beside its selection. The PRs-an-hour chart
-# is drawn from it, and it is published with the page as the chart's evidence (replaced each render).
-SNAPSHOT = 'snapshot.json'
 SAMPLE = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z\.json')
 PNG = b'\x89PNG\r\n\x1a\n'
 # WRD3: the v3 page's own desktop and phone widths, in CSS px (the phone picture is drawn at 2x).
@@ -192,7 +189,7 @@ def scan(tree, page_html):
                 raise Fail('a picture is not a picture')
         elif name == 'README.md' or name in SITE.values():
             text_scan(path.read_text(encoding='utf-8'), checker)
-        elif name == SNAPSHOT:  # MT13: scanned, and only a collector snapshot
+        elif name == 'snapshot.json':  # MT13: scanned, and only a collector snapshot
             text_scan(path.read_text(encoding='utf-8'), checker)
             schema = sources.native('tools/war-room/charts/prs_per_hour.py').SCHEMA
             try:
@@ -235,7 +232,7 @@ def chart_builder(source_root, selection, at):
     # A native board history, or the projected board gather writes over its pinned raw history.
     chosen = [] if selection is None else charts.prepare.chart_selections(
         suite._decode(Path(selection).read_text(encoding='utf-8')))
-    snapshot = None if selection is None or not (Path(selection).parent / SNAPSHOT).is_file() else Path(selection).parent / SNAPSHOT
+    snapshot = None if selection is None or not (Path(selection).parent / 'snapshot.json').is_file() else Path(selection).parent / 'snapshot.json'
 
     def build(history_root):
         try:
@@ -273,9 +270,9 @@ def render(out, history, at, read, charts=None):
     draw(drawable(html, False), os.path.join(out, PICTURES[0]), WIDTH)
     draw(drawable(html, True), os.path.join(out, PICTURES[1]), PHONE_WIDTH, scale=2)
     if getattr(charts, 'snapshot', None) is not None:
-        shutil.copyfile(charts.snapshot, os.path.join(out, SNAPSHOT))
+        shutil.copyfile(charts.snapshot, os.path.join(out, 'snapshot.json'))
     else:  # never an earlier snapshot beside a page not drawn from it
-        Path(out, SNAPSHOT).unlink(missing_ok=True)
+        Path(out, 'snapshot.json').unlink(missing_ok=True)
     saved = len(main.history.read_all(history))
     with open(os.path.join(out, 'README.md'), 'w', encoding='utf-8') as f:
         f.write(readme(record, saved, at))
@@ -302,7 +299,7 @@ def publish(remote, at, read, draw_page=True, charts=None):
                     continue
                 meta, name = entry.split('\t', 1)
                 if meta.split()[:2] != ['100644', 'blob'] or not (
-                        name in ('README.md', SNAPSHOT, *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
+                        name in ('README.md', 'snapshot.json', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
                     raise Fail('the branch holds an unexpected file')
                 names.append(name)
             # A saved sample is immutable: changed, removed or renamed in any commit, merges

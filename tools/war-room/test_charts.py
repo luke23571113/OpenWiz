@@ -8,9 +8,11 @@ recomputed the way the build computes them. Needs `npm ci --ignore-scripts` in
 tools/war-room. No network, no live read.
 """
 from collections import Counter
+import contextlib
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -19,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import xml.etree.ElementTree as ET
 
 sys.dont_write_bytecode = True
@@ -770,10 +773,7 @@ class PrsPerHour(unittest.TestCase):
         # catches: a publish that gathers the collector snapshot but never hands it to the chart
         # build, so the published site has no PRs-an-hour chart (MT13, #1049).
         publish = load('war_room_publish', HERE / 'publish.py')
-        gathered = self.tmp / 'published' / 'gathered'
-        (gathered / 'root').mkdir(parents=True)
-        (gathered / 'selection.json').write_text('[]\n', encoding='utf-8')
-        shutil.copy(COLLECTOR / 'snapshot.json', gathered / 'snapshot.json')
+        gathered = self.gather_chart_read('success')
         root, selection = gathered / 'root', gathered / 'selection.json'
         hist = self.tmp / 'published' / 'private' / 'history'
         publish.tick(hist, SNAPSHOT_AT, publish.selection_reader(root, selection),
@@ -782,6 +782,55 @@ class PrsPerHour(unittest.TestCase):
         self.assertIn('id="figure-%s"' % HEADLINE, site)
         # The fixture's own numbers, as the first case reads them.
         self.assertIn(page.esc('Window 2030-02-28T00:00:00Z to 2030-03-01T00:00:00Z UTC: capacity 15.00 PRs an hour'), site)
+
+    def gather_chart_read(self, outcome):
+        fixtures = load('mt13_gather_fixtures', HERE / 'test_gather.py')
+        case = fixtures.Gather()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        envelope = {'schema': 'openwiz.war-room.collector.read.v1', 'repository': REPO,
+                    'requested_at': '2030-03-01T12:00:00Z',
+                    'factory': {'prs_per_hour': snapshot()['factory']['prs_per_hour']}, 'ci': {}}
+        # Substitute only the read process. All gather, snapshot validation, chart and page
+        # code stays real; no network or live service is reached, including on the slow path.
+        script = ('import json, select, sys\n'
+                  + ('select.select([], [], [], 65)\n' if outcome == 'slow' else '')
+                  + ('sys.exit(1)\n' if outcome == 'failure' else 'print(%r)\n' % json.dumps(envelope)))
+        real = subprocess.Popen
+
+        def fake_read(args, *a, **kw):
+            if len(args) > 2 and args[2] == str(HERE / 'collect_factory.py'):
+                args = [sys.executable, '-I', '-c', script]
+            return real(args, *a, **kw)
+
+        log = io.StringIO()
+        with mock.patch.object(subprocess, 'Popen', side_effect=fake_read), contextlib.redirect_stderr(log):
+            case.gather()
+        self.assertRegex(log.getvalue(), r'^war-room PRs-per-hour read: [0-9]+\.[0-9]{3} seconds\n$')
+        return case.tmp / 'out'
+
+    def test_a_slow_snapshot_read_times_out_and_the_page_carries_on_unknown(self):
+        # catches: a collector read allowed to finish after 60 seconds, stalling the publish
+        # and turning an unread window into measured throughput instead of Unknown.
+        self.assert_unknown_publish(self.gather_chart_read('slow'))
+
+    def test_a_failed_snapshot_read_keeps_the_page_unknown(self):
+        # catches: a failed collector aborting the publish or being rendered as zero PRs an hour.
+        self.assert_unknown_publish(self.gather_chart_read('failure'))
+
+    def assert_unknown_publish(self, gathered):
+        doc = json.loads((gathered / 'snapshot.json').read_text())
+        fact = doc['factory']['prs_per_hour']
+        self.assertEqual(fact['state'], 'unavailable')
+        self.assertIsNone(fact['value'])
+        selection = gathered / 'selection.json'
+        hist = gathered / 'history'
+        publish.tick(hist, SNAPSHOT_AT, publish.selection_reader(gathered / 'root', selection),
+                     publish.chart_builder(gathered / 'root', selection, SNAPSHOT_AT))
+        html = ''.join((publish.site_folder(hist) / name).read_text() for name in publish.SITE.values())
+        self.assertIn('Window: capacity Unknown', html)
+        self.assertIn('Window: merged into main Unknown', html)
+        self.assertNotIn('Window: capacity 0.00', html)
 
 
 if __name__ == '__main__':

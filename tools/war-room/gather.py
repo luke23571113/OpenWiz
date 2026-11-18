@@ -21,6 +21,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -334,6 +335,37 @@ def stage_evidence(repo, tickets, clock):
     return ((json.dumps(doc, indent=2) + '\n').encode(), (json.dumps(stages, indent=2) + '\n').encode())
 
 
+def chart_snapshot(repo):
+    """MT13: only the chart's fact; other facts are explicitly not read here."""
+    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repo, 'collected_at': now()}
+    for group in ('factory', 'ci'):
+        doc[group] = {name: collect_factory.unavailable(name, 'Not read for the published PRs-an-hour chart.')
+                      for name in collect_factory.SCHEMA['x-facts'][group]}
+    doc['factory']['prs_per_hour'] = collect_factory.unavailable(
+        'prs_per_hour', 'PRs an hour unavailable: the collector read failed or exceeded 60 seconds.')
+    started = time.monotonic()
+    try:
+        with subprocess.Popen([sys.executable, '-I', str(HERE / 'collect_factory.py'), 'read', '--repo', repo,
+                               '--fact', 'prs_per_hour'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              start_new_session=True) as read:
+            raw, _ = read.communicate()
+            suite.require(read.returncode == 0, 'chart read failed')
+        answer = suite._decode(raw.decode('utf-8'))
+        suite._shape(answer, collect_factory.SCHEMA['$defs']['read_envelope'], collect_factory.SCHEMA)
+        suite.require(answer['repository'] == repo, 'chart read repository differs')
+        fact = answer['factory']['prs_per_hour']
+        collect_factory.validate(fact)
+        doc['factory']['prs_per_hour'] = fact
+    except (OSError, ValueError, KeyError, UnicodeError):
+        pass  # An unread chart must not stall the remaining publish or become zero.
+    finally:
+        print('war-room PRs-per-hour read: %.3f seconds' % (time.monotonic() - started), file=sys.stderr)
+    doc['collected_at'] = max([now(), *([fact['read']['ended_at']] if
+                              (fact := doc['factory']['prs_per_hour'])['read'] else [])])
+    scan_bytes(json.dumps(doc).encode())
+    return doc
+
+
 def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None,
            stage=None, data_remote=None):
     """Write out/root and out/selection.json, or raise Fail and select nothing.
@@ -526,9 +558,11 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
             root.projected(wr5.unavailable(), ended)
 
         scan(staging)
+        chart_wire = (json.dumps(chart_snapshot(repo), indent=1) + '\n').encode()
         out.mkdir(parents=True)
         shutil.copytree(staging, out / 'root')
         (out / 'selection.json').write_text(json.dumps(root.selection, indent=1) + '\n', encoding='utf-8')
+        (out / 'snapshot.json').write_bytes(chart_wire)
     return root.selection
 
 
