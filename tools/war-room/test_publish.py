@@ -283,6 +283,43 @@ class Publish(unittest.TestCase):
         git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/war-room')
         return self.branch()
 
+    def test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn(self):
+        # catches (MT13, #1049): the snapshot the PRs-an-hour chart is drawn from left off the branch,
+        # refused as an unexpected file by the next publish, published unscanned or as any JSON, a
+        # second snapshot-like file let through, or an old snapshot kept beside a page not drawn from it.
+        publish = load(HERE / 'publish.py', 'mt13_publish')
+        doc = json.loads((HERE / 'fixtures' / 'collector' / 'snapshot.json').read_text())
+        doc['collected_at'] = '2030-01-02T11:00:00Z'  # gathered before this render
+        raw = json.dumps(doc).encode()
+        beside = self.selection.parent / 'snapshot.json'  # where gather.py writes it
+        beside.write_bytes(raw)
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.files(), sorted(FILES + ['snapshot.json']))
+        self.assertEqual(self.show('snapshot.json'), raw)
+        self.assertIn(b'id="figure-body-ci-bench-headline"', b''.join(self.show(name) for name in SITE))
+        result = self.publish(NEXT)  # the saved snapshot is an allowed file on the branch
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tree = self.tmp / 'tree'
+        git(self.tmp, 'clone', '-q', '-b', 'war-room', str(self.origin), str(tree))
+        shutil.rmtree(tree / '.git')
+        page = '<html><body>synthetic page</body></html>'
+        publish.scan(tree, page)
+        for name, path, data in (('planted token', 'snapshot.json', raw.replace(b'"repository": "', b'"repository": "ghp' + b'_Synthetic0123456789abcdef', 1)),
+                                 ('not a snapshot', 'snapshot.json', b'{"schema": "synthetic"}\n'),
+                                 ('another snapshot', 'snapshot-old.json', raw)):
+            with self.subTest(name):
+                copy = self.tmp / 'copy'
+                shutil.rmtree(copy, ignore_errors=True)
+                shutil.copytree(tree, copy)
+                (copy / path).write_bytes(data)
+                with self.assertRaises(publish.Fail):
+                    publish.scan(copy, page)
+        beside.unlink()
+        result = self.publish('2030-01-02T14:11:00Z')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('snapshot.json', self.files())
+
     def test_a_broken_branch_publishes_nothing(self):
         self.assertEqual(self.publish().returncode, 0)
         sample = self.show('samples/2030-01-02T12-00-00Z.json')

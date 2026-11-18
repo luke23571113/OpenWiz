@@ -189,6 +189,13 @@ def scan(tree, page_html):
                 raise Fail('a picture is not a picture')
         elif name == 'README.md' or name in SITE.values():
             text_scan(path.read_text(encoding='utf-8'), checker)
+        elif name == 'snapshot.json':  # MT13: scanned, and only a collector snapshot
+            text_scan(path.read_text(encoding='utf-8'), checker)
+            schema = sources.native('tools/war-room/charts/prs_per_hour.py').SCHEMA
+            try:
+                suite._shape(suite._decode(path.read_text(encoding='utf-8')), schema, schema)
+            except ValueError:
+                checker.findings += 1
         elif name.startswith('samples/') and SAMPLE.fullmatch(name[8:]):
             text_scan(path.read_text(encoding='utf-8'), checker)
             try:
@@ -225,12 +232,14 @@ def chart_builder(source_root, selection, at):
     # A native board history, or the projected board gather writes over its pinned raw history.
     chosen = [] if selection is None else charts.prepare.chart_selections(
         suite._decode(Path(selection).read_text(encoding='utf-8')))
+    snapshot = None if selection is None or not (Path(selection).parent / 'snapshot.json').is_file() else Path(selection).parent / 'snapshot.json'
 
     def build(history_root):
         try:
-            return charts.build(history_root, at=at, source_root=source_root, selections=chosen)
+            return charts.build(history_root, at=at, source_root=source_root, selections=chosen, snapshot=snapshot)
         except (ValueError, OSError, UnicodeError) as error:
             raise Fail('the chart build refused (%s)' % (error if isinstance(error, ValueError) else type(error).__name__))
+    build.snapshot = snapshot  # render publishes the snapshot the chart was drawn from
     return build
 
 
@@ -260,6 +269,10 @@ def render(out, history, at, read, charts=None):
     html = (site / PAGE).read_text(encoding='utf-8')
     draw(drawable(html, False), os.path.join(out, PICTURES[0]), WIDTH)
     draw(drawable(html, True), os.path.join(out, PICTURES[1]), PHONE_WIDTH, scale=2)
+    if getattr(charts, 'snapshot', None) is not None:
+        shutil.copyfile(charts.snapshot, os.path.join(out, 'snapshot.json'))
+    else:  # never an earlier snapshot beside a page not drawn from it
+        Path(out, 'snapshot.json').unlink(missing_ok=True)
     saved = len(main.history.read_all(history))
     with open(os.path.join(out, 'README.md'), 'w', encoding='utf-8') as f:
         f.write(readme(record, saved, at))
@@ -286,7 +299,7 @@ def publish(remote, at, read, draw_page=True, charts=None):
                     continue
                 meta, name = entry.split('\t', 1)
                 if meta.split()[:2] != ['100644', 'blob'] or not (
-                        name in ('README.md', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
+                        name in ('README.md', 'snapshot.json', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
                     raise Fail('the branch holds an unexpected file')
                 names.append(name)
             # A saved sample is immutable: changed, removed or renamed in any commit, merges

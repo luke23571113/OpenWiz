@@ -1,0 +1,95 @@
+Synthetic scoped checks after the 60-second cutoff. No runner timing is claimed.
+
+$ python3 -I tools/war-room/test_charts.py PrsPerHour
+........
+----------------------------------------------------------------------
+Ran 8 tests in 65.757s
+
+OK
+exit: 0
+
+$ python3 -I tools/war-room/test_publish.py
+test_a_broken_branch_publishes_nothing (__main__.Publish.test_a_broken_branch_publishes_nothing) ... ok
+test_a_failed_child_page_publishes_nothing_and_keeps_the_previous_site (__main__.Publish.test_a_failed_child_page_publishes_nothing_and_keeps_the_previous_site) ... ok
+test_a_failed_read_or_render_publishes_nothing (__main__.Publish.test_a_failed_read_or_render_publishes_nothing) ... ok
+test_a_failed_selected_artifact_publishes_nothing (__main__.Publish.test_a_failed_selected_artifact_publishes_nothing) ... ok
+test_a_link_or_odd_mode_on_the_branch_publishes_nothing (__main__.Publish.test_a_link_or_odd_mode_on_the_branch_publishes_nothing) ... ok
+test_a_sample_rewritten_in_a_merge_publishes_nothing (__main__.Publish.test_a_sample_rewritten_in_a_merge_publishes_nothing) ... ok
+test_consecutive_ticks_carry_history_forward (__main__.Publish.test_consecutive_ticks_carry_history_forward) ... ok
+test_five_minute_collection_survives_hourly_publication (__main__.Publish.test_five_minute_collection_survives_hourly_publication) ... ok
+test_preview_draws_and_publishes_nothing (__main__.Publish.test_preview_draws_and_publishes_nothing) ... ok
+test_privacy_scan_refuses_a_planted_secret (__main__.Publish.test_privacy_scan_refuses_a_planted_secret) ... ok
+test_publish_sh_runs_its_tests_first (__main__.Publish.test_publish_sh_runs_its_tests_first) ... ok
+test_publish_writes_only_the_war_room_branch (__main__.Publish.test_publish_writes_only_the_war_room_branch) ... ok
+test_the_first_site_publication_replaces_a_one_page_branch (__main__.Publish.test_the_first_site_publication_replaces_a_one_page_branch) ... ok
+test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn (__main__.Publish.test_the_gathered_snapshot_is_published_scanned_and_only_while_drawn) ... ok
+test_the_height_bound_is_in_device_pixels (__main__.Publish.test_the_height_bound_is_in_device_pixels) ... ok
+test_hosted_runners_and_pull_request_only_proof (__main__.Workflow.test_hosted_runners_and_pull_request_only_proof) ... ok
+test_only_publish_writes_and_publication_is_serialised (__main__.Workflow.test_only_publish_writes_and_publication_is_serialised) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 21.385s
+
+OK
+exit: 0
+
+$ python3 -I tools/war-room/test_gather.py Gather.test_gather_writes_a_selection_sources_select_accepts Gather.test_a_removed_or_unreadable_source_greys_only_its_own_card Gather.test_a_planted_secret_turns_the_privacy_scan_red Gather.test_an_escaped_secret_in_a_valid_journey_refuses_the_gather
+war-room PRs-per-hour read: 0.235 seconds
+.war-room PRs-per-hour read: 0.236 seconds
+...
+----------------------------------------------------------------------
+Ran 4 tests in 6.390s
+
+OK
+exit: 0
+
+$ cargo fmt --check
+exit: 0
+
+CI follow-up: the gathered-selection integration expectation omits the now-published snapshot.
+$ python3 -I tools/war-room/test_gather.py Gather.test_the_full_gathered_selection_publishes_with_real_chromium
+war-room PRs-per-hour read: 0.234 seconds
+F
+======================================================================
+FAIL: test_the_full_gathered_selection_publishes_with_real_chromium (__main__.Gather.test_the_full_gathered_selection_publishes_with_real_chromium)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_gather.py", line 521, in test_the_full_gathered_selection_publishes_with_real_chromium
+    self.assertEqual(sorted(files), sorted(['README.md', 'samples/2030-01-02T12-30-00Z.json', 'war-room-phone.png',
+AssertionError: Lists differ: ['REA[42 chars]n', 'snapshot.json', 'war-room-cost.html', 'wa[142 chars]png'] != ['REA[42 chars]n', 'war-room-cost.html', 'war-room-health.htm[125 chars]png']
+
+First differing element 2:
+'snapshot.json'
+'war-room-cost.html'
+
+First list contains 1 additional elements.
+First extra element 10:
+'war-room.png'
+
+  ['README.md',
+   'samples/2030-01-02T12-30-00Z.json',
+-  'snapshot.json',
+   'war-room-cost.html',
+   'war-room-health.html',
+   'war-room-phone.png',
+   'war-room-quality.html',
+   'war-room-skills.html',
+   'war-room-speed.html',
+   'war-room.html',
+   'war-room.png']
+
+----------------------------------------------------------------------
+Ran 1 test in 4.387s
+
+FAILED (failures=1)
+exit: 1 (expected before the granted correction)
+
+After the one-line expectation grant (OpenWiz #1049 comment 6965460285):
+$ python3 -I tools/war-room/test_gather.py Gather.test_the_full_gathered_selection_publishes_with_real_chromium
+war-room PRs-per-hour read: 0.227 seconds
+.
+----------------------------------------------------------------------
+Ran 1 test in 5.137s
+
+OK
+exit: 0
