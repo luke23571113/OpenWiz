@@ -365,7 +365,8 @@ class InstallJourney(unittest.TestCase):
         return json.loads(result.stdout), transport
 
     def test_the_line_resolves_to_the_packaged_skill_and_its_confirmed_order(self):
-        plugin = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())
+        # #555: the plugin manifest is the installed WizSkills release's.
+        plugin = json.loads((ROOT / '.wizskills/.claude-plugin/plugin.json').read_text())
         self.assertIn('./skills/install', plugin['skills'])
         skill = ROOT / 'skills/install/SKILL.md'
         self.assertIn('> ' + LINE + '\n', skill.read_text())
