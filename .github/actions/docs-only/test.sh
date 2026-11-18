@@ -183,11 +183,11 @@ site skips changes/1251.md
 site skips changes/README.md
 site skips tests/service/t4_service.rs tests/fleet/b2_cases.rs tests/cli-agent/main.rs
 site skips tests/newdir/x.rs
-site skips tools/war-room/test_gather.py tools/review-relay/test.py tools/war-room/steps.tsv
+site skips tools/war-room/test_gather.py tools/review-relay/test.py tools/collector/steps.tsv
 site skips changes/1102.md tests/service/t4_paths.rs
 site runs changes/1251.md apps/site/index.html
 site runs tests/fixtures/release/clean/README.md tests/service/t4_service.rs
-site runs tools/release/README.md tools/war-room/steps.tsv
+site runs tools/release/README.md tools/collector/steps.tsv
 jobs "$ALL" changes/1251.md
 jobs "$ALL" tests/service/t4_service.rs
 jobs "$ALL" tools/war-room/test_gather.py
@@ -996,6 +996,9 @@ fi
 for proof in test_gate.py test_plan.py test_lanes.py test_execution.py test_release_prune.py test_workflow.py; do
   if python3 -I "$HERE/$proof"; then ok "X5: $proof"; else bad "X5: $proof"; fi
 done
+# WM1 (#1056): the war room's split checker, on its synthetic trees (fast, offline).
+if python3 -I "$ROOT/ci/wizroom/test_split.py"; then ok "WM1: split checker"; else bad "WM1: split checker"; fi
+if python3 -I "$ROOT/tools/collector/test_runtime.py"; then ok "WM2: shared runtime equivalence"; else bad "WM2: shared runtime equivalence"; fi
 if node --test "$ROOT/.github/workflows/ci.test.mjs" "$ROOT/.github/workflows/ci-safety-watch.test.mjs"; then
   ok "CI nightly admission and push/PR coalescing"
 else bad "CI concurrency or safety watcher"; fi

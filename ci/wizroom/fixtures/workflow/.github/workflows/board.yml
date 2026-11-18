@@ -1,0 +1,8 @@
+name: Board
+on: workflow_dispatch
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Python
+        run: sh tools/war-room/python.sh

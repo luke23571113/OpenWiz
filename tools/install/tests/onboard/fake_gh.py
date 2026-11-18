@@ -45,6 +45,9 @@ def demo(argv):
     state = json.loads(Path(path).read_text())
     with open(os.environ['FAKE_GH_CREATE_LOG'], 'a') as log:
         log.write(json.dumps(argv) + '\n')
+    if state.get('signed_out'):
+        sys.stderr.write('To get started with GitHub CLI, please run: gh auth login\n')
+        return 1
     name = argv[2]
     found = state['repos'].get(name.lower())
     if argv[1] == 'view' and state.get('view_fails', 0) > 0:
@@ -78,6 +81,13 @@ def demo(argv):
 
 
 def main(argv):
+    if argv == ['api', 'user', '--jq', '.login']:
+        state = json.loads(Path(os.environ['FAKE_GH_REPOS']).read_text())
+        if state.get('signed_out'):
+            sys.stderr.write('To get started with GitHub CLI, please run: gh auth login\n')
+            return 1
+        print(state['user']['login'])
+        return 0
     if argv[:2] == ['repo', 'create'] or (argv[:2] == ['repo', 'view'] and len(argv) > 2 and not argv[2].startswith('-')):
         return demo(argv)
     if argv[:3] == ['api', '--include', '-X']:
@@ -90,7 +100,9 @@ def main(argv):
             sys.stderr.write('synthetic: HTTP 404\n')
             return 1
         issue = [i for i in world['issues'] if i['number'] == int(match[2])]
-        page = [{'body': c['body']} for c in (issue[0]['comments'] if issue else [])]
+        page = [{'body': c['body'], 'user': {'login': c.get('author', 'synthetic-factory[bot]')}
+                 if c.get('author', 'synthetic-factory[bot]') is not None else None}
+                for c in (issue[0]['comments'] if issue else [])]
         return subprocess.run(['jq', '-r', argv[4]], input=json.dumps(page), text=True).returncode
     os.execv(sys.executable, [sys.executable, '-I', '-S', str(FLEET_GH), *argv])
 

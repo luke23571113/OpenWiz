@@ -1,0 +1,101 @@
+.........................E....F.................E.E.....E...F............F
+======================================================================
+ERROR: test_r1_run_persists_a_cap_stopped_case (__main__.ReviewFindings.test_r1_run_persists_a_cap_stopped_case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<baseline-checkout>/tools/skills-eval/test.py", line 618, in test_r1_run_persists_a_cap_stopped_case
+    self.assertEqual(E.main(['run', '--out', d, '--case', cid]), 3)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<baseline-checkout>/tools/skills-eval/eval.py", line 393, in main
+    return {'check': cmd_check, 'coverage': cmd_coverage, 'run': cmd_run, 'score': cmd_score,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<baseline-checkout>/tools/skills-eval/eval.py", line 181, in cmd_run
+    sys.exit(f'refusing to run: eval.py check has {len(errs)} problems')
+SystemExit: refusing to run: eval.py check has 15 problems
+
+======================================================================
+ERROR: test_r1_cap_holds_across_cases_with_judges (__main__.ReviewRound3.test_r1_cap_holds_across_cases_with_judges)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<baseline-checkout>/tools/skills-eval/test.py", line 956, in test_r1_cap_holds_across_cases_with_judges
+    self.assertEqual(E.main(args), 3)
+                     ^^^^^^^^^^^^
+  File "<baseline-checkout>/tools/skills-eval/eval.py", line 393, in main
+    return {'check': cmd_check, 'coverage': cmd_coverage, 'run': cmd_run, 'score': cmd_score,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<baseline-checkout>/tools/skills-eval/eval.py", line 181, in cmd_run
+    sys.exit(f'refusing to run: eval.py check has {len(errs)} problems')
+SystemExit: refusing to run: eval.py check has 15 problems
+
+======================================================================
+ERROR: test_r5_setup_rerun_reads_the_settings_sources (__main__.ReviewRound3.test_r5_setup_rerun_reads_the_settings_sources)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<baseline-checkout>/tools/skills-eval/test.py", line 966, in test_r5_setup_rerun_reads_the_settings_sources
+    r = T.report(m, READ, None, 'none', {}, LIST)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<baseline-checkout>/tools/skills-eval/tokens.py", line 131, in report
+    sha = hashlib.sha256(text.encode()).hexdigest()
+                         ^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'encode'
+
+======================================================================
+ERROR: test_resume_refuse_and_cap (__main__.RunCommand.test_resume_refuse_and_cap)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<baseline-checkout>/tools/skills-eval/test.py", line 363, in test_resume_refuse_and_cap
+    self.assertEqual(E.main(['run', '--out', d, '--case', cid]), 0)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<baseline-checkout>/tools/skills-eval/eval.py", line 393, in main
+    return {'check': cmd_check, 'coverage': cmd_coverage, 'run': cmd_run, 'score': cmd_score,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<baseline-checkout>/tools/skills-eval/eval.py", line 181, in cmd_run
+    sys.exit(f'refusing to run: eval.py check has {len(errs)} problems')
+SystemExit: refusing to run: eval.py check has 15 problems
+
+======================================================================
+FAIL: test_r5_required_text_is_complete (__main__.ReviewFindings.test_r5_required_text_is_complete)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<baseline-checkout>/tools/skills-eval/test.py", line 773, in test_r5_required_text_is_complete
+    self.assertEqual(T.map_problems(m, E.shipped(READ), READ, LIST), [])
+AssertionError: Lists differ: ['build-ticket: docs/grills/ is not in the[871 chars]hot'] != []
+
+First list contains 14 additional elements.
+First extra element 0:
+'build-ticket: docs/grills/ is not in the snapshot'
+
+Diff is 983 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_every_case_control_scores_as_declared (__main__.Scoring.test_every_case_control_scores_as_declared)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<baseline-checkout>/tools/skills-eval/test.py", line 165, in test_every_case_control_scores_as_declared
+    self.assertEqual(errs, [])
+AssertionError: Lists differ: ['install: no approval case and no not-app[929 chars]hot'] != []
+
+First list contains 15 additional elements.
+First extra element 0:
+'install: no approval case and no not-applicable reason'
+
+Diff is 1044 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_the_real_map_covers_every_shipped_skill (__main__.Tokens.test_the_real_map_covers_every_shipped_skill)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<baseline-checkout>/tools/skills-eval/test.py", line 457, in test_the_real_map_covers_every_shipped_skill
+    self.assertEqual(T.map_problems(m, E.shipped(READ), READ, LIST), [])
+AssertionError: Lists differ: ['build-ticket: docs/grills/ is not in the[871 chars]hot'] != []
+
+First list contains 14 additional elements.
+First extra element 0:
+'build-ticket: docs/grills/ is not in the snapshot'
+
+Diff is 983 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 74 tests in 2.120s
+
+FAILED (failures=3, errors=4)

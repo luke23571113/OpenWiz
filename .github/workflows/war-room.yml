@@ -12,6 +12,7 @@ on:
   pull_request:
     paths:
       - 'tools/war-room/**'
+      - 'tools/collector/**'
       - 'tools/privacy-check/**'
       - 'tools/stall-alarm/**'
       - '.github/workflows/war-room.yml'
@@ -30,7 +31,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/war-room/python.sh
+        run: sh tools/collector/python.sh
       - name: Node for the chart build (WRD2)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -63,7 +64,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Python
-        run: sh tools/war-room/python.sh
+        run: sh tools/collector/python.sh
       - name: Node for the chart build (WRD2)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

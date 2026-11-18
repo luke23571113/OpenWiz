@@ -10,14 +10,16 @@ bench.md tables do (two decimals). Unknown stays Unknown, never zero.
 from pathlib import Path
 import sys
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[2] / 'collector'
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import prepare  # noqa: E402
+sys.path.insert(0, str(PUBLIC_ROOT))
 import suite  # noqa: E402
 
 ID = 'body-ci-bench-headline'
-SCHEMA = suite._decode((HERE.parent / 'collector.v1.schema.json').read_text(encoding='utf-8'))
+SCHEMA = suite._decode((PUBLIC_ROOT / 'collector.v1.schema.json').read_text(encoding='utf-8'))
 DOMAIN = ['baseline:capacity', 'baseline:merged', 'window:capacity', 'window:merged']
 SERIES = [{'key': 'capacity', 'label': 'Capacity, successful code runs', 'role': 'primary'},
           {'key': 'merged', 'label': 'Merged into main', 'role': 'secondary'}]

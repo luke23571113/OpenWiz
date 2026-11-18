@@ -1,0 +1,21 @@
+$ python3 -I tools/war-room/test_charts.py PrsPerHour.test_a_slow_snapshot_read_times_out_and_the_page_carries_on_unknown
+Before the 60-second cutoff; synthetic read finishes after 65 seconds.
+F
+======================================================================
+FAIL: test_a_slow_snapshot_read_times_out_and_the_page_carries_on_unknown (__main__.PrsPerHour.test_a_slow_snapshot_read_times_out_and_the_page_carries_on_unknown)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/war-room/test_charts.py", line 815, in test_a_slow_snapshot_read_times_out_and_the_page_carries_on_unknown
+    self.assert_unknown_publish(self.gather_chart_read('slow'))
+  File "tools/war-room/test_charts.py", line 824, in assert_unknown_publish
+    self.assertEqual(fact['state'], 'unavailable')
+AssertionError: 'known' != 'unavailable'
+- known
++ unavailable
+
+
+----------------------------------------------------------------------
+Ran 1 test in 66.395s
+
+FAILED (failures=1)
+exit: 1 (expected)

@@ -31,6 +31,8 @@ import tempfile
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / 'collector'))
+from collector_runtime import TOKEN, text_scan
 import main  # noqa: E402
 import page  # noqa: E402
 import sources  # noqa: E402
@@ -57,8 +59,6 @@ MAX_HEIGHT = 65000
 # every tile of a picture within MAX_HEIGHT.
 TILE_MEMORY = '--force-gpu-mem-available-mb=4096'
 # The same credential/id forms sources.safe_record refuses inside a record.
-TOKEN = re.compile(r'(?i)(?:\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9_-]{8,}|authorization\s*:|bearer\s+'
-                   r'|-----BEGIN .*PRIVATE KEY|\bthr_[A-Za-z0-9_-]+)')
 # WRD3: a picture has no links to follow, so the skip link goes. Every figure's unit, dates,
 # coverage and gaps are in its visible caption line, never in a disclosure, so the picture keeps
 # them. The Sources appendix is drawn open, and (#2565) each value's card keeps what tells it from a
@@ -162,10 +162,6 @@ def readme(record, saved, at):
         'Saved samples are in `samples/`, one per five-minute boundary sampled; a boundary not sampled stays absent.', ''])
 
 
-def text_scan(text, checker):
-    checker.text(text, 'published')
-    if TOKEN.search(text):
-        checker.findings += 1
 
 
 def scan(tree, page_html):
@@ -189,6 +185,13 @@ def scan(tree, page_html):
                 raise Fail('a picture is not a picture')
         elif name == 'README.md' or name in SITE.values():
             text_scan(path.read_text(encoding='utf-8'), checker)
+        elif name == 'snapshot.json':  # MT13: scanned, and only a collector snapshot
+            text_scan(path.read_text(encoding='utf-8'), checker)
+            schema = sources.native('tools/war-room/charts/prs_per_hour.py').SCHEMA
+            try:
+                suite._shape(suite._decode(path.read_text(encoding='utf-8')), schema, schema)
+            except ValueError:
+                checker.findings += 1
         elif name.startswith('samples/') and SAMPLE.fullmatch(name[8:]):
             text_scan(path.read_text(encoding='utf-8'), checker)
             try:
@@ -225,12 +228,14 @@ def chart_builder(source_root, selection, at):
     # A native board history, or the projected board gather writes over its pinned raw history.
     chosen = [] if selection is None else charts.prepare.chart_selections(
         suite._decode(Path(selection).read_text(encoding='utf-8')))
+    snapshot = None if selection is None or not (Path(selection).parent / 'snapshot.json').is_file() else Path(selection).parent / 'snapshot.json'
 
     def build(history_root):
         try:
-            return charts.build(history_root, at=at, source_root=source_root, selections=chosen)
+            return charts.build(history_root, at=at, source_root=source_root, selections=chosen, snapshot=snapshot)
         except (ValueError, OSError, UnicodeError) as error:
             raise Fail('the chart build refused (%s)' % (error if isinstance(error, ValueError) else type(error).__name__))
+    build.snapshot = snapshot  # render publishes the snapshot the chart was drawn from
     return build
 
 
@@ -260,6 +265,10 @@ def render(out, history, at, read, charts=None):
     html = (site / PAGE).read_text(encoding='utf-8')
     draw(drawable(html, False), os.path.join(out, PICTURES[0]), WIDTH)
     draw(drawable(html, True), os.path.join(out, PICTURES[1]), PHONE_WIDTH, scale=2)
+    if getattr(charts, 'snapshot', None) is not None:
+        shutil.copyfile(charts.snapshot, os.path.join(out, 'snapshot.json'))
+    else:  # never an earlier snapshot beside a page not drawn from it
+        Path(out, 'snapshot.json').unlink(missing_ok=True)
     saved = len(main.history.read_all(history))
     with open(os.path.join(out, 'README.md'), 'w', encoding='utf-8') as f:
         f.write(readme(record, saved, at))
@@ -286,7 +295,7 @@ def publish(remote, at, read, draw_page=True, charts=None):
                     continue
                 meta, name = entry.split('\t', 1)
                 if meta.split()[:2] != ['100644', 'blob'] or not (
-                        name in ('README.md', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
+                        name in ('README.md', 'snapshot.json', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
                     raise Fail('the branch holds an unexpected file')
                 names.append(name)
             # A saved sample is immutable: changed, removed or renamed in any commit, merges

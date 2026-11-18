@@ -21,15 +21,19 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1] / 'collector'
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / 'collector'))
+from collector_runtime import ACTIVE, LITERAL, Fail, current_runs, scan_bytes
 import activity  # noqa: E402
 import answer_time as wr5  # noqa: E402
 import collect_factory  # noqa: E402
@@ -43,7 +47,6 @@ import suite  # noqa: E402
 
 B, M, J = activity.B, activity.M, rework.J
 POOLS = ('closedwiz-pc', 'ubuntu-24.04')
-LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"')  # one JSON string literal
 COHORT_HOURS = 6  # the latest complete UTC hours searched for a merged cohort
 ISSUE = 'https://github.com/%s/issues/2432'
 LEVEL = ('A level at the board sample time (the latest sample of this fixed-PST day so far, the board\'s daily rule), '
@@ -83,11 +86,9 @@ REASONS = {
                       'is shown; prerequisite: a valid board-wide graph.json of this repository on the board branch '
                       '(source kind board) and complete PR pages.',
 }
-LIMITS = sources.ROOT / 'tools/war-room/limits.conf'  # TL1's one settings source
+LIMITS = sources.ROOT / 'tools/collector/limits.conf'  # TL1's one settings source
 
 
-class Fail(Exception):
-    pass
 
 
 def utc(at):
@@ -230,68 +231,16 @@ def merged_cohort(prs, started):
     return None
 
 
-ACTIVE = ('in_progress', 'queued', 'waiting', 'pending', 'requested')
 
 
-def current_runs(repo, since, until, read):
-    """WR8's run reader, bounded: ci.yml's whole run history (over the API's 1000-item limit here)
-    is listed as its active runs, one status at a time, and the completed runs created in
-    [since, until], the only runs WR8's current_activity uses. Each listing keeps bench.pages'
-    total_count and limit checks; a run listed twice, or under a status it does not have,
-    refuses the read. The union is answered in WR8's page shape, newest first, one fresh
-    listing per enumeration, so WR8's own before/after comparison still sees any change."""
-    listed = 'repos/%s/actions/workflows/%s/runs?' % (repo, B.WORKFLOW)
-    whole = re.compile(re.escape(listed + 'per_page=%d&page=' % B.PAGE) + r'([1-9][0-9]*)')
-    union = []
-
-    def listing():
-        runs = {}
-        queries = [('status=%s' % s, s) for s in ACTIVE] + [('created=%s..%s&status=completed' % (since, until), 'completed')]
-        for query, status in queries:
-            for value, where in B.pages(listed + query + '&per_page=%d' % B.PAGE, 'workflow_runs', 'runs', read):
-                rid = B.as_int(B.as_obj(value, where), 'id', where)
-                if rid in runs or B.as_str(value, 'status', where) != status:
-                    raise B.Fail('current runs: a run listed twice or under another status')
-                if status == 'completed' and not since <= B.as_time(value, 'created_at', where) <= until:
-                    raise B.Fail('current runs: a completed run outside its created window')
-                runs[rid] = value
-        return [runs[r] for r in sorted(runs, reverse=True)]
-
-    def answer(path):
-        found = whole.fullmatch(path)
-        if found is None:
-            return read(path)
-        page = int(found.group(1))
-        if page == 1:
-            union[:] = listing()
-        return {'total_count': len(union), 'workflow_runs': union[(page - 1) * B.PAGE:page * B.PAGE]}
-    return answer
 
 
 def ci_facts(repo, *, since, until):
     """MT3 (#822): a snapshot's five CI facts (collector.v1.md), read now through the collector."""
-    import collect_ci  # it imports gather for current_runs and the privacy scan: import it only here
+    import collect_ci
     return collect_ci.read(repo, collect_ci.FACTS, since=since, until=until)['ci']
 
 
-def scan_bytes(data):
-    """The existing privacy checker and credential/thread-id guard (publish.text_scan) over one artifact."""
-    base = sources.native('tools/privacy-check/check.py')
-
-    class Quiet(base.Checker):
-        def refuse(self, *args, **kwargs):
-            self.findings += 1
-    checker = Quiet()
-    try:
-        text = data.decode('utf-8')
-        publish.text_scan(text, checker)
-        # JSON escapes (\u0067, \/) hide a value from the bytes but not from a reader:
-        # every JSON string literal, keys included, is scanned again as it decodes.
-        publish.text_scan('\n'.join(json.loads(s) for s in LITERAL.findall(text)), checker)
-    except (UnicodeError, ValueError):
-        raise Fail('the privacy scan refused a gathered binary or an undecodable string')
-    if checker.findings:
-        raise Fail('the privacy scan refused a gathered source')
 
 
 def scan(root):
@@ -332,6 +281,47 @@ def stage_evidence(repo, tickets, clock):
     except (J.ReadError, M.ReadError, OSError, ValueError, TypeError, KeyError, StopIteration):
         return None
     return ((json.dumps(doc, indent=2) + '\n').encode(), (json.dumps(stages, indent=2) + '\n').encode())
+
+
+def chart_snapshot(repo):
+    """MT13: read only the chart's fact, with a hard 60-second process-group budget."""
+    doc = {'schema': collect_factory.SNAPSHOT, 'repository': repo, 'collected_at': now()}
+    for group in ('factory', 'ci'):
+        doc[group] = {name: collect_factory.unavailable(name, 'Not read for the published PRs-an-hour chart.')
+                      for name in collect_factory.SCHEMA['x-facts'][group]}
+    doc['factory']['prs_per_hour'] = collect_factory.unavailable(
+        'prs_per_hour', 'PRs an hour unavailable: the collector read failed or exceeded 60 seconds.')
+    started = time.monotonic()
+    try:
+        with subprocess.Popen([sys.executable, '-I', str(PUBLIC_ROOT / 'collect_factory.py'), 'read', '--repo', repo,
+                               '--fact', 'prs_per_hour'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              start_new_session=True) as read:
+            try:
+                raw, _ = read.communicate(timeout=max(0, 60 - (time.monotonic() - started)))
+            except subprocess.TimeoutExpired:
+                # Kill the collector and its gh children, including a child holding stdout.
+                # Waiting for an executor or a still-running pipe writer would defeat the bound.
+                try:
+                    os.killpg(read.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                read.communicate()
+                raise
+            suite.require(read.returncode == 0, 'chart read failed')
+        answer = suite._decode(raw.decode('utf-8'))
+        suite._shape(answer, collect_factory.SCHEMA['$defs']['read_envelope'], collect_factory.SCHEMA)
+        suite.require(answer['repository'] == repo, 'chart read repository differs')
+        fact = answer['factory']['prs_per_hour']
+        collect_factory.validate(fact)
+        doc['factory']['prs_per_hour'] = fact
+    except (OSError, ValueError, KeyError, UnicodeError, subprocess.TimeoutExpired):
+        pass  # An unread chart must not stall the remaining publish or become zero.
+    finally:
+        print('war-room PRs-per-hour read: %.3f seconds' % (time.monotonic() - started), file=sys.stderr)
+    fact = doc['factory']['prs_per_hour']
+    doc['collected_at'] = max([now(), *([fact['read']['ended_at']] if fact['read'] else [])])
+    scan_bytes(json.dumps(doc).encode())
+    return doc
 
 
 def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None, cohort=None, answer_time=None,
@@ -526,9 +516,11 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
             root.projected(wr5.unavailable(), ended)
 
         scan(staging)
+        chart_wire = (json.dumps(chart_snapshot(repo), indent=1) + '\n').encode()
         out.mkdir(parents=True)
         shutil.copytree(staging, out / 'root')
         (out / 'selection.json').write_text(json.dumps(root.selection, indent=1) + '\n', encoding='utf-8')
+        (out / 'snapshot.json').write_bytes(chart_wire)
     return root.selection
 
 

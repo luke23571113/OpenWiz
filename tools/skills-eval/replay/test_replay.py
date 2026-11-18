@@ -32,8 +32,8 @@ def load(name, path):
 R = load('replay_run', HERE / 'run.py')
 S = load('replay_score', HERE / 'score.py')
 C = R.C
-FACTORY = HERE.parents[1] / 'war-room'
-MOVED = HERE.parents[1] / 'war-room'  # experiment_contract.py, journey.py, metrics.py (#821)
+FACTORY = HERE.parents[1] / 'collector'
+MOVED = HERE.parents[1] / 'collector'  # experiment_contract.py, journey.py, metrics.py (#821)
 
 
 def literal(name):
@@ -402,7 +402,7 @@ class Checkpoints(RepoFixture):
         # unowned file is changed; a semantic-neutral byte change must stale it.
         source = self.root / 'copy/tools'
         replay = source / 'skills-eval/replay'; replay.mkdir(parents=True)
-        factory = source / 'war-room'; factory.mkdir()
+        factory = source / 'collector'; factory.mkdir()
         for name in ('run.py', 'score.py'): shutil.copyfile(HERE / name, replay / name)
         for name in ('experiment_contract.py', 'journey.py', 'metrics.py'):
             shutil.copyfile(MOVED / name, factory / name)

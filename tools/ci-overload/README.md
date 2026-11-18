@@ -56,7 +56,7 @@ python3 -I tools/ci-overload/supply.py --repository synthetic-owner/synthetic-re
 
 `supply.py` reads the war room collector's `queue` fact on demand
 (`collect_ci.read(repository, ['queue'])`,
-[`tools/war-room/collector.v1.md`](../war-room/collector.v1.md)) and writes
+[`tools/collector/collector.v1.md`](../collector/collector.v1.md)) and writes
 its `value.observation`, unchanged, as this guard's `--input`: owner-only and
 replaced atomically. It never reads a saved snapshot, and `observed_at` stays
 the read's end, so the guard's 60-second bound and every refusal above are

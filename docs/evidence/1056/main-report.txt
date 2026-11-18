@@ -1,0 +1,8 @@
+# WM1 (#1056) split checker report on OpenWiz main, information only (review round 1, fail-closed loads)
+# main: b7472e5f881070a300a8633346aeaa93d6a6928e
+# command: python3 -I ci/wizroom/split.py --root <checkout of main>
+# stderr:
+refused skills/launch-fleet/scripts/fixtures/timing-gh.py:22 native load: computed path could name a file in tools/war-room
+refused tools/war-room/fixtures/activity/replay.py:78 native load: computed path could name a file in tools/war-room
+split: refused 2 reference(s); no stay or move set
+# exit 1

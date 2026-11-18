@@ -1,0 +1,12 @@
+Command: python3 tools/install/tests/onboard/test_journey.py Launch.test_uncertain_launch_accepts_only_configured_record_authors DemoToInit.test_signed_out_demo_creation_refuses_with_a_sign_in_pointer -v
+Synthetic recording only.
+
+test_uncertain_launch_accepts_only_configured_record_authors (__main__.Launch.test_uncertain_launch_accepts_only_configured_record_authors) ... ok
+test_signed_out_demo_creation_refuses_with_a_sign_in_pointer (__main__.DemoToInit.test_signed_out_demo_creation_refuses_with_a_sign_in_pointer) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 9.994s
+
+OK
+
+Exit: 0
