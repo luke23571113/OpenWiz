@@ -1,0 +1,116 @@
+✔ Rust and web lanes read the plan's planted output (1.159236ms)
+✔ nightly remains admitted when later main pushes arrive (13.281319ms)
+✖ new main pushes cancel obsolete main pushes without cancelling other refs (6.607701ms)
+✔ PR updates cancel obsolete work for that PR only (6.021422ms)
+✔ merge groups retain independent groups and do not cancel running work (4.101305ms)
+✔ the carriage guard runs on pull requests and merge groups and fails closed (2.539131ms)
+✔ frozen.yml runs the base's frozen old code check on GitHub-hosted runners for every PR and merge group to main (7.849069ms)
+✖ PR, nightly and merge-group coverage stays full; main pushes follow the map-age decision (31.386321ms)
+✖ main pushes with an old map run the traced full plan and sign; nightly signing stays unconditional (7.398313ms)
+✔ marked jobs choose planted, traced and normal timeout branches independently (8.606061ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 7
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 144.191754
+
+✖ failing tests:
+
+test at .github/workflows/ci.test.mjs:67:1
+✖ new main pushes cancel obsolete main pushes without cancelling other refs (6.607701ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+  +   pending: 'latest',
+  +   running: 'running'
+  -   pending: null,
+  -   running: 'latest'
+    }
+
+      at TestContext.<anonymous> (file://<repo>/.github/workflows/ci.test.mjs:70:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { running: 'running', pending: 'latest' },
+    expected: { running: 'latest', pending: null },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at .github/workflows/ci.test.mjs:229:1
+✖ PR, nightly and merge-group coverage stays full; main pushes follow the map-age decision (31.386321ms)
+  AssertionError [ERR_ASSERTION]: fresh map: no plan or heavy lanes
+  + actual - expected
+
+    [
+  -   'changes',
+      'main-light'
+    ]
+
+      at TestContext.<anonymous> (file://<repo>/.github/workflows/ci.test.mjs:234:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'main-light' ],
+    expected: [ 'changes', 'main-light' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at .github/workflows/ci.test.mjs:253:1
+✖ main pushes with an old map run the traced full plan and sign; nightly signing stays unconditional (7.398313ms)
+  AssertionError [ERR_ASSERTION]: 121-minute map: traced full run signs
+  + actual - expected
+
+    [
+  -   'always',
+  -   'changes',
+  -   'ci',
+  -   'launch-fleet',
+      'main-light',
+  -   'release',
+  -   'rust-export',
+  -   'select-map',
+  -   'site',
+  -   'skills',
+  -   'web-build',
+  -   'web-export',
+  -   'web-test'
+    ]
+
+      at TestContext.<anonymous> (file://<repo>/.github/workflows/ci.test.mjs:255:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'main-light' ],
+    expected: [
+      'always',      'changes',
+      'ci',          'launch-fleet',
+      'main-light',  'release',
+      'rust-export', 'select-map',
+      'site',        'skills',
+      'web-build',   'web-export',
+      'web-test'
+    ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

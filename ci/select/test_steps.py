@@ -171,7 +171,7 @@ class Workflow(unittest.TestCase):
             expression=re.search(r'^    if: \$\{\{ (.*) \}\}$',block,re.M)[1]
             expression=re.sub(r'needs\.changes\.outputs\.([a-z-]+)',lambda m:repr(output.get(m[1],'')),expression)
             expression=expression.replace('needs.changes.result',repr('success')).replace('needs.web-build.result',repr(export_result))
-            expression=expression.replace('!cancelled()','True').replace('&&',' and ').replace('||',' or ')
+            expression=expression.replace('github.event_name', repr('schedule')).replace('!cancelled()','True').replace('&&',' and ').replace('||',' or ')
             if eval(expression,{'__builtins__':{}},{'contains':lambda a,b:b in a}): ran.add(name)
         return ran
 
