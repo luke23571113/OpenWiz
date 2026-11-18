@@ -86,6 +86,12 @@ def collect(root, binaries, web, output, version, source, target, program_receip
                 and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
                 'unsafe or missing GitHub sign-in helper')
         files['runtime/setup/github_login.py'] = tool
+    # #555: a runtime file's repository path, as the receipt records it and the
+    # candidate verifies it: a skill is skills/<path>, the path users and briefs
+    # see through the link, even when its bytes come from the WizSkills install.
+    def repository(name, path):
+        return name[len('runtime/'):] if name.startswith('runtime/skills/') else path.relative_to(root).as_posix()
+
     output.mkdir(mode=0o700)
     rows, runtime = [], {}
     for name, path in sorted(files.items()):
@@ -96,8 +102,7 @@ def collect(root, binaries, web, output, version, source, target, program_receip
         destination.chmod(int(mode(name), 8))
         rows.append({'path':name, 'sha256':sha(data), 'bytes':len(data), 'mode':mode(name)})
         if name.startswith('runtime/'):
-            runtime[name[len('runtime/'):] if name.startswith('runtime/skills/')
-                    else path.relative_to(root).as_posix()] = data
+            runtime[repository(name, path)] = data
     try:
         # #2217: the copied runtime bytes are the requested commit's, before any stamp.
         verify_runtime(root, source, runtime)
@@ -107,8 +112,8 @@ def collect(root, binaries, web, output, version, source, target, program_receip
                                    program_receipt, version, source, target)
         # #2539: the web-build receipt matches the export as built, before its stamp.
         products.append(verify_web([r for r in rows if r['path'].startswith('web/')], web_receipt, version, source, target))
-        selection = sorted([repository, name] for name, path in files.items() if name.startswith('runtime/')
-                           for repository in [path.relative_to(root).as_posix()])
+        selection = sorted([repository(name, path), name] for name, path in files.items()
+                           if name.startswith('runtime/'))
         products.append({'identity': expected('runtime', version, source, target),
                          'verification': 'tracked-tree',
                          'build_receipt': {'record': 'tracked-tree',
