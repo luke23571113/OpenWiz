@@ -131,5 +131,15 @@ and dependencies are unchanged.
   planted success is claimed. The final measured budget and corresponding proof
   remain missing. This checkpoint is not a completed C8 hand-back.
 
+The first PR CI run [44226086889](https://github.com/openwizdev/OpenWiz/actions/runs/44226086889)
+failed in the carriage guard before planning: its seven new evidence paths were
+unclassified. The owning registry row `docs/evidence/1097/**` is added to
+`tools/open-import/paths.json` under the standing own-row allowance in
+`docs/agents/fleet.md` (Supporting edits, item 1). This covered supporting edit
+serves CI3-B's evidence and validation criterion; it supports the owned
+`docs/evidence/1097/` folder and adds no broader class or protected-rule change.
+The actual guard is rerun at the amended head. No Actions rerun is requested;
+a normal branch push starts its next CI run.
+
 No helpers were used. No new dependency or file under `tools/ci-bench` was added.
 This is infrastructure work; `no-changelog` applies.
