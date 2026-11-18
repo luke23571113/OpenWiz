@@ -55,14 +55,6 @@ CLASSIFIED_2405 = (
 )
 CARRIED = REVIEWED_CARRIAGE + tuple(row[0] for row in CLASSIFIED_2405)
 
-# #2428: the source's plugin manifests replace the destination's, byte for
-# byte; the destination fixture holds different, older manifests.
-SOURCE_MANIFESTS = {
-    '.claude-plugin/plugin.json':
-        b'{"name":"synthetic","skills":["./skills/one","./skills/two"]}\n',
-    '.claude-plugin/marketplace.json':
-        b'{"name":"synthetic","plugins":[{"name":"synthetic","source":"./"}]}\n',
-}
 
 
 class Import(unittest.TestCase):
@@ -83,13 +75,10 @@ class Import(unittest.TestCase):
             'docs/grills/README.md': b'synthetic source grill index\n',
             'private/evidence/secret': b'not for carriage\n',
             'tools/ci-overflow/retired': b'not for carriage\n',
-            **SOURCE_MANIFESTS,
         })
         self.public = self.repo('public', {
             'README.md': b'public readme\n', 'LICENSE': b'public license\n',
             'docs/grills/README.md': b'synthetic destination grill index\n',
-            '.claude-plugin/plugin.json': b'{"name":"synthetic"}\n',
-            '.claude-plugin/marketplace.json': b'{"name":"old synthetic"}\n',
             'crates/core/src/lib.rs': b'old\n', 'obsolete': b'delete this\n',
         })
         self.base = self.git(self.public, 'rev-parse', 'HEAD').strip()
@@ -174,9 +163,9 @@ class Import(unittest.TestCase):
         self.assertNotEqual(self.base, self.head)
         self.assertNotEqual(self.git(self.public, 'cat-file', '-e', self.head, ok=False).returncode, 0)
         names = self.git(self.public, 'ls-tree', '-r', '--name-only', commit).splitlines()
-        self.assertEqual(names, sorted([*SOURCE_MANIFESTS, 'LICENSE', 'README.md',
+        self.assertEqual(names, sorted(['LICENSE', 'README.md',
                                         'crates/core/src/lib.rs', 'docs/grills/README.md', *CARRIED]))
-        for name, data in {**carried, **SOURCE_MANIFESTS}.items():
+        for name, data in carried.items():
             self.assertEqual(self.git(self.public, 'show', commit + ':' + name).encode(), data)
         # #1285: the README is carried from source; keep still wins for LICENSE.
         self.assertEqual(self.git(self.public, 'show', commit + ':README.md'),
@@ -362,7 +351,7 @@ class Import(unittest.TestCase):
         self.assertEqual(before, self.snapshot(self.public))
         applied = self.success(self.call('apply-patch', '--patch-dir', output, '--write-local'))
         names = self.git(self.public, 'ls-tree', '-r', '--name-only', applied['commit']).splitlines()
-        self.assertEqual(names, sorted([*SOURCE_MANIFESTS, 'LICENSE', 'README.md',
+        self.assertEqual(names, sorted(['LICENSE', 'README.md',
                                         'crates/core/src/lib.rs', 'docs/grills/README.md',
                                         'obsolete', *CARRIED]))
         self.assertEqual(self.git(self.public, 'show', applied['commit'] + ':docs/grills/README.md'),

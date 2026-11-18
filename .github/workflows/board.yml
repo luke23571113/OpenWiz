@@ -13,8 +13,8 @@ on:
   pull_request:
     paths:
       - 'private/orchestration/board/**'
-      - 'skills/plan-graph/check-links.sh'
-      - 'skills/plan-graph/test/links/**'
+      # #555: plan-graph's link check now arrives from WizSkills by a pin bump.
+      - 'wizskills.lock'
       - '.github/workflows/board.yml'
 
 permissions:

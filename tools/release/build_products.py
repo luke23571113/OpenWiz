@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Record native build products, web export and exact tracked skill runtime."""
+"""Record native build products, web export and exact skill runtime: the source's
+tracked skills, or (#555) the WizSkills install its lock pins."""
 import argparse
 import json
 from pathlib import Path
@@ -11,8 +12,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'install'))
 from install import PROGRAMS, Refused, TARGETS, digest, require, sha
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from product_identity import PROGRAMS as COMPILED, architecture, canonical, expected, git, mode, payload, \
-    release_version, verify_programs, verify_runtime, verify_web
+from product_identity import PROGRAMS as COMPILED, WIZSKILLS, architecture, canonical, expected, git, \
+    locked_skills, mode, payload, release_version, verify_programs, verify_runtime, verify_web
 
 
 def collect(root, binaries, web, output, version, source, target, program_receipt, web_receipt):
@@ -27,12 +28,17 @@ def collect(root, binaries, web, output, version, source, target, program_receip
         require(not path.is_symlink(), 'web symlink')
         if path.is_file():
             files['web/' + path.relative_to(web).as_posix()] = path
-    for path in subprocess.check_output(['git', '-C', str(root), 'ls-files', '-z', 'skills']).split(b'\0'):
-        if path:
-            relative = path.decode('utf-8')
-            actual = root / relative
-            require(actual.is_file() and not actual.is_symlink(), 'unsafe tracked skill runtime')
-            files['runtime/' + relative] = actual
+    # #555: a source tracking `skills` as the WizSkills link packages the
+    # verified install its lock pins; verify_runtime checks the bytes again.
+    installed = locked_skills(root, source)
+    if installed is not None:
+        skills = [(relative, root / WIZSKILLS / relative) for relative in sorted(installed)]
+    else:
+        skills = [(path.decode('utf-8'), root / path.decode('utf-8')) for path in subprocess.check_output(
+            ['git', '-C', str(root), 'ls-files', '-z', 'skills']).split(b'\0') if path]
+    for relative, actual in skills:
+        require(actual.is_file() and not actual.is_symlink(), 'unsafe tracked skill runtime')
+        files['runtime/' + relative] = actual
     files['runtime/install.py'] = root / 'tools/install/install.py'
     files['runtime/pull.py'] = root / 'tools/install/pull.py'
     # #1105: the setup and App connection tools an installed consumer runs.
@@ -80,6 +86,12 @@ def collect(root, binaries, web, output, version, source, target, program_receip
                 and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
                 'unsafe or missing GitHub sign-in helper')
         files['runtime/setup/github_login.py'] = tool
+    # #555: a runtime file's repository path, as the receipt records it and the
+    # candidate verifies it: a skill is skills/<path>, the path users and briefs
+    # see through the link, even when its bytes come from the WizSkills install.
+    def repository(name, path):
+        return name[len('runtime/'):] if name.startswith('runtime/skills/') else path.relative_to(root).as_posix()
+
     output.mkdir(mode=0o700)
     rows, runtime = [], {}
     for name, path in sorted(files.items()):
@@ -90,7 +102,7 @@ def collect(root, binaries, web, output, version, source, target, program_receip
         destination.chmod(int(mode(name), 8))
         rows.append({'path':name, 'sha256':sha(data), 'bytes':len(data), 'mode':mode(name)})
         if name.startswith('runtime/'):
-            runtime[path.relative_to(root).as_posix()] = data
+            runtime[repository(name, path)] = data
     try:
         # #2217: the copied runtime bytes are the requested commit's, before any stamp.
         verify_runtime(root, source, runtime)
@@ -100,8 +112,8 @@ def collect(root, binaries, web, output, version, source, target, program_receip
                                    program_receipt, version, source, target)
         # #2539: the web-build receipt matches the export as built, before its stamp.
         products.append(verify_web([r for r in rows if r['path'].startswith('web/')], web_receipt, version, source, target))
-        selection = sorted([repository, name] for name, path in files.items() if name.startswith('runtime/')
-                           for repository in [path.relative_to(root).as_posix()])
+        selection = sorted([repository(name, path), name] for name, path in files.items()
+                           if name.startswith('runtime/'))
         products.append({'identity': expected('runtime', version, source, target),
                          'verification': 'tracked-tree',
                          'build_receipt': {'record': 'tracked-tree',

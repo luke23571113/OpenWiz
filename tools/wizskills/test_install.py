@@ -19,9 +19,16 @@ ROOT = HERE.parents[1]
 INSTALL = HERE / 'install.py'
 CHECK = HERE / 'check_contracts.py'
 URL = 'https://github.com/openwizdev/WizSkills.git'
-CARRIED = ['contracts/decisions.v1.md', 'contracts/decisions.v1.schema.json',
-           'contracts/plan-links.v1.md', 'contracts/plan-links.v1.schema.json',
-           'contracts/open-development.v1.md']
+
+
+def contract_carried():
+    """The carried list, read from the contract's own block, never copied here."""
+    text = (ROOT / 'contracts/wizskills.v1.md').read_text(encoding='utf-8')
+    block = text.split('```wizskills-v1\n', 1)[1].split('```', 1)[0]
+    return json.loads(block)['carried_contracts']
+
+
+CARRIED = contract_carried()
 
 # A synthetic release installer that follows the contract's interface closely
 # enough for the wrapper: it fetches only the explicit tag from the release URL,

@@ -6,6 +6,8 @@ OpenWiz is developed in the public repository `openwizdev/OpenWiz`; ClosedWiz st
 
 **Build and acceptance are separate.** The 0.0.1 inventory, 0.0.3 send, 0.0.4 new-thread and attachment flows are implemented. 0.0.5 was accepted with recorded gaps ([#106](https://github.com/jparker2006/ClosedWiz/issues/106#issuecomment-6550891204)). Check [STATUS.md](STATUS.md) and each version's acceptance record for its current gates; fixture tests alone never prove live behaviour.
 
+**First step for any agent: if `.wizskills/` is missing, run `python3 -I tools/wizskills/install.py` from the repository root.** It installs the pinned WizSkills release, so every `skills/<name>/SKILL.md` path resolves.
+
 Always true:
 - **Private.** No personal context, transcripts, credentials, live session content or real identifiers in any file. Fixtures are synthetic only.
 - **Two writes: `send` and `new`.** OpenWiz never launches or merges anything, and starts nothing but the one new thread `openwiz new --yes` asks for. Its writes are:
@@ -28,7 +30,7 @@ Always true:
 | `crates/cli` (`openwiz-cli`, program `openwiz`) | Parses commands and prints results. Depends on the core and the adapter |
 | `crates/server` (`openwiz-server`) | The loopback HTTP API and optional static web export. It serves inventory/session/health reads, send and new-thread preview/status/write routes, and local attachment staging/list/removal; see [contracts/web-api.v1.md](contracts/web-api.v1.md). std-only HTTP. Depends on the core and the adapter; only `openwiz-service` embeds it (#269, approved one-process exception) |
 | `apps/web` | The static web app (Next.js static export) over the HTTP API, including inventory, send, new-thread and attachment flows; see [apps/web/AGENTS.md](apps/web/AGENTS.md) |
-| `skills/` | The fleet skills (0.0.5), any agent in any harness: one folder each, installed through `.claude-plugin/`, linked from `.claude/skills/` and `.agents/skills/`, checked by `tests/checks/skills.rs`: see [skills/README.md](skills/README.md) |
+| `skills` | The fleet skills, from [WizSkills](https://github.com/openwizdev/WizSkills): a tracked link to the gitignored `.wizskills/skills`, installed from the release `wizskills.lock` pins; `.claude/skills/` and `.agents/skills/` link through it. Change a skill in WizSkills and move the pin; ClosedWiz's remaining checks over them read the installed copy (`tests/checks/skills.rs`): see [tools/wizskills/README.md](tools/wizskills/README.md) |
 | `contracts/web-api.v1.md` | The web API: routes, parameters, statuses, headers and bounds |
 | `contracts/inventory.v1.schema.json` | The `openwiz.inventory.v1` JSON envelope |
 | `tests/proof/` | Proof cases P1 to P12, one module each |

@@ -146,6 +146,7 @@ fi
 # that differ, so cargo's cache stays warm. Anything else in it is wiped.
 copy() {
   rm -f "$tree/apps/web/node_modules"
+  rm -rf "$tree/.wizskills"
   if GIT_INDEX_FILE="$index" git --work-tree="$tree" read-tree --reset -u "$1" 2> /dev/null &&
     [ -z "$(GIT_INDEX_FILE="$index" git --work-tree="$tree" ls-files --others)" ]; then
     :
@@ -154,6 +155,9 @@ copy() {
     mkdir -p "$tree" && GIT_INDEX_FILE="$index" git --work-tree="$tree" read-tree --reset -u "$1" || return 1
   fi
   [ ! -d "$tree/apps/web" ] || ln -s "$top/apps/web/node_modules" "$tree/apps/web/node_modules"
+  # #555: `skills` links to the gitignored .wizskills/skills; install the
+  # release the commit's own wizskills.lock pins (verified against it).
+  [ ! -f "$tree/wizskills.lock" ] || (cd "$tree" && python3 -I tools/wizskills/install.py > /dev/null) || return 1
 }
 
 # run DIR COMMAND...: one check, in DIR of the copy, cut off from the

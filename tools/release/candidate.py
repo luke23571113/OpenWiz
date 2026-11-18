@@ -926,6 +926,7 @@ def verify_products(record, inputs, ctx):
     folder, got = Path(ctx['artifacts']), []
     try:
         with tempfile.TemporaryDirectory(prefix='release-products-') as scratch:
+            installed = {}
             for row in receipts:
                 keys(row, 'target program web selection', 'invalid')
                 target = row['target']
@@ -957,7 +958,12 @@ def verify_products(record, inputs, ctx):
                         or any(not isinstance(pair, list) or len(pair) != 2 for pair in selection)
                         or sorted(name for _, name in selection) != sorted(a['path'] for a in runtime)):
                     return ['unverified']
-                rl4.verify_runtime(ctx['work'], source, {repo: (build / name).read_bytes() for repo, name in selection})
+                # #555: a source tracking the WizSkills link verifies its skills
+                # against the release its own lock pins, installed once per run.
+                if 'install' not in installed:
+                    installed['install'] = rl4.install_locked(ctx['work'], source, tempfile.mkdtemp(dir=scratch))
+                rl4.verify_runtime(ctx['work'], source, {repo: (build / name).read_bytes() for repo, name in selection},
+                                   installed['install'])
                 rows.append({'identity': rl4.expected('runtime', version, source, target),
                              'payload_sha256': final['runtime'], 'verification': 'tracked-tree',
                              'build_receipt': {'record': 'tracked-tree', 'sha256': sha(rl4.canonical(

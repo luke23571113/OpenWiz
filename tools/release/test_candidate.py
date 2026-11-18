@@ -115,6 +115,10 @@ LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate
           'w = os.environ.get("WAIVABLE"); w = w and {tuple(x) for x in json.loads(w)}; '
           'w and setattr(candidate, "WAIVABLE", w); load = candidate.smoke_module; '
           'w and setattr(candidate, "smoke_module", lambda: (lambda m: (setattr(m, "WAIVABLE", w), m)[1])(load())); '
+          # #555: a lock-mode test supplies its local WizSkills install (the
+          # network install has its own test); the install is still verified.
+          'i = os.environ.get("WIZSKILLS_INSTALL"); import product_identity, pathlib; '
+          'i and setattr(product_identity, "install_locked", lambda root, source, scratch: pathlib.Path(i)); '
           'sys.exit(candidate.main(sys.argv[1:]))')
 
 FAKE_GIT = r'''#!/usr/bin/env python3
@@ -922,6 +926,43 @@ class Candidate(World):
                 # The reviewer's R1 shape: a correctly hashed but unsupported products record.
                 self.blocked(self.receipt('products', 'ci', receipts=receipts), 'products_unverified')
         self.assertEqual(self.receipt('products', 'ci'), (0, {'status': 'recorded', 'gate': 'products'}))
+        self.assertEqual(self.writes(), [])
+
+    def lock_mode(self):
+        """#555: the candidate commit tracks `skills` as the WizSkills link; its
+        install holds the same skill bytes, pinned by wizskills.lock."""
+        install = self.repo / '.wizskills'
+        install.mkdir()
+        for path, data in RUNTIME.items():
+            if path.startswith('skills/'):
+                (install / path).parent.mkdir(parents=True, exist_ok=True)
+                (install / path).write_bytes(data)
+        (install / 'README.md').write_text('Synthetic WizSkills.\n')
+        self.git(install, 'init', '-q')
+        self.git(install, 'add', '-A')
+        self.git(install, 'commit', '-q', '-m', 'Synthetic WizSkills release')
+        lock = {'version': '0.1.2', 'commit': self.git(install, 'rev-parse', 'HEAD'),
+                'tree': self.git(install, 'rev-parse', 'HEAD^{tree}')}
+        self.git(self.repo, 'rm', '-rq', 'skills')
+        os.symlink('.wizskills/skills', self.repo / 'skills')
+        (self.repo / '.gitignore').write_text('/.wizskills/\n')
+        (self.repo / 'wizskills.lock').write_text(json.dumps(lock) + '\n')
+        self.head = self.commit('Synthetic cut: skills from WizSkills')
+        self.git(self.repo, 'push', '-q', self.remote, 'HEAD:main')
+        self.env['WIZSKILLS_INSTALL'] = str(install)
+        return install
+
+    def test_wz12_products_from_the_pinned_install_pass_and_a_tampered_install_is_refused(self):
+        # catches (#555 R1): the collector's receipt naming .wizskills/skills/...
+        # while the candidate verifies skills/..., so correct packages built
+        # from the pinned install are refused at the products gate.
+        install = self.lock_mode()
+        self.ready()
+        self.assertEqual(self.evaluate()[0], 0)
+        self.assertEqual(self.receipt('products', 'ci'), (0, {'status': 'recorded', 'gate': 'products'}))
+        skill = install / 'skills/synthetic/SKILL.md'
+        skill.write_bytes(skill.read_bytes() + b'Edited after packaging.\n')
+        self.blocked(self.receipt('products', 'ci'), 'products_unverified')
         self.assertEqual(self.writes(), [])
 
     def test_d2_a_private_term_in_any_staged_runtime_or_web_file_refuses(self):

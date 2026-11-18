@@ -8,21 +8,9 @@ import subprocess
 import sys
 
 SUITES = {
-    'triage': [['python3', '-I', 'skills/triage/test/test_find_work.py']],
-    'where-are-we': [['python3', '-I', 'skills/where-are-we/test/test_read_github.py']],
-    'hill-climb': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/hill-climb/tests']],
-    'image': [['python3', '-I', '-m', 'unittest', 'discover', '-s', 'skills/image/tests']],
-    'plan-graph': [['python3', '-I', 'skills/plan-graph/scripts/test_check_approval.py'],
-                   ['sh', 'skills/plan-graph/test/test-revision.sh']],
-    'launch-fleet': [['sh', 'skills/launch-fleet/scripts/test.sh'],
-                     ['python3', '-I', 'skills/launch-fleet/test/ops-protocol/test_protocol.py'],
-                     ['python3', '-I', 'skills/launch-fleet/scripts/test-effects.py'],
-                     ['python3', '-I', 'skills/launch-fleet/scripts/test-grants.py'],
-                     ['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py'],
-                     ['python3', '-I', 'tools/review-relay/test_inbox.py']],
-    # #747: the no-push check's cases (author trust included) and its durable saves.
-    'build-ticket': [['python3', '-I', 'skills/build-ticket/scripts/test/test_check_helpers.py'],
-                     ['python3', '-I', 'skills/build-ticket/scripts/test/test_durable_helpers.py']],
+    # #555: the skills' own suites run in WizSkills (check/run.py). ClosedWiz
+    # keeps one lane for its own checks over the installed launch-fleet.
+    'launch-fleet': [['python3', '-I', 'tools/review-relay/test_inbox.py']],
 }
 # #743: suites CI runs as their own job, split across members by
 # ci/shard/lanes.py; the skills job's matrix runs the rest.

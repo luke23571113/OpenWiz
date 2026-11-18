@@ -1,37 +1,21 @@
-//! The skills folder (OpenWiz 0.0.5, ClosedWiz#96; five more in 0.0.7,
-//! ClosedWiz#225): the skills install in one step, and any agent, in any
-//! harness, can invoke them.
+//! The skills (OpenWiz 0.0.5, ClosedWiz#96; five more in 0.0.7, ClosedWiz#225),
+//! now installed from WizSkills (#555): `skills` links to `.wizskills/skills`.
 //!
-//! Rules, checked on the repository and on planted breaks:
-//! 1. **The list, exactly.** `skills/` holds `README.md` and one real folder
-//!    for each name in [`SKILLS`], and no links anywhere (Codex drops links
-//!    when it installs a plugin).
-//! 2. **Frontmatter.** Each `SKILL.md` opens with `name` (its folder's name)
-//!    and `description`, one line each, and no other key. It is an allowlist,
-//!    except ask-wiz requires `disable-model-invocation: true` (#1095).
-//! 3. **Codex.** `agents/openai.yaml`, where present, holds only
-//!    `interface.display_name` and `interface.short_description`, never a
-//!    `policy`, except ask-wiz requires `allow_implicit_invocation: false`.
-//! 4. **Matt's MIT notice.** Every skill but those in [`NOT_MATTS`] adapts
-//!    Matt Pocock's, so once written (any body but the exact [`STUB`]) it
-//!    carries his copyright and MIT notice word for word. Each skill in
-//!    [`NOT_MATTS`] instead carries its source line, exactly and on a line of
-//!    its own, stub or written, and never his copyright line or notice. Every
-//!    written skill has its `agents/openai.yaml`.
-//! 5. **Links resolve.** `.claude/skills/<name>` and `.agents/skills/<name>`
-//!    are links to `../../skills/<name>`, every link in those two folders is
-//!    one of them, and every relative Markdown link under `skills/` resolves
-//!    inside the repository.
-//! 6. **Manifests.** `.claude-plugin/plugin.json` lists exactly
-//!    `./skills/<name>` for each skill, beside metadata only, and
-//!    `.claude-plugin/marketplace.json` offers that one plugin from `./`.
+//! WizSkills' own `check/run.py` keeps the skill rules (the list, frontmatter,
+//! Codex file, Matt Pocock's notice or source line, in-skill links and the
+//! plugin manifests). ClosedWiz keeps, on the installed copy:
+//! 1. **Harness links.** `.claude/skills/<name>` and `.agents/skills/<name>`
+//!    are links to `../../skills/<name>`, and every link in those two folders
+//!    is one of them.
+//! 2. **Its readers' text.** The skill instructions its own code and fleet
+//!    settings depend on, one test each below.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs::{self, FileType};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
@@ -223,20 +207,6 @@ fn reviewer_builder_family_has_a_recorded_source() {
             "missing source rule: {required}"
         );
     }
-}
-
-#[test]
-fn diagnose_orchestrator_is_listed_in_the_skills_table() {
-    let text = fs::read_to_string(Path::new(ROOT).join("skills/README.md")).expect("skills README");
-    let rows: Vec<_> = text
-        .lines()
-        .filter(|line| line.starts_with("| [`diagnose`](diagnose/SKILL.md) |"))
-        .collect();
-    assert_eq!(rows.len(), 1, "one diagnose row in the skills table");
-    assert_eq!(
-        rows[0].split('|').nth(2).expect("Run by cell").trim(),
-        "builder; orchestrator, for its +1 diagnosis"
-    );
 }
 
 #[test]
@@ -961,32 +931,6 @@ fn source_line(name: &str) -> Option<&'static str> {
 /// Where agents look for skills inside a repository.
 const LINK_DIRS: [&str; 2] = [".claude/skills", ".agents/skills"];
 
-/// The only frontmatter keys a skill may have.
-const FRONTMATTER_KEYS: [&str; 2] = ["name", "description"];
-
-/// The longest description the Agent Skills format allows.
-const DESCRIPTION_MAX_CHARS: usize = 1024;
-
-/// The only keys under `interface:` in `agents/openai.yaml`.
-const OPENAI_KEYS: [&str; 2] = ["display_name", "short_description"];
-
-/// The only keys in `plugin.json`: metadata and `skills`. No `version`, so
-/// installs follow commits; nothing that ships hooks, commands or servers.
-const PLUGIN_KEYS: [&str; 8] = [
-    "name",
-    "description",
-    "author",
-    "homepage",
-    "repository",
-    "license",
-    "keywords",
-    "skills",
-];
-
-/// The only keys in `marketplace.json`, and in its one plugin entry.
-const MARKETPLACE_KEYS: [&str; 4] = ["name", "owner", "description", "plugins"];
-const MARKETPLACE_ENTRY_KEYS: [&str; 5] = ["name", "source", "description", "category", "keywords"];
-
 /// The whole body of a skill that is not written yet.
 const STUB: &str = "**Not written yet.** This file only fixes the skill's name and path; \
 its build ticket writes it. Stop here, and tell whoever invoked it that this skill \
@@ -995,142 +939,22 @@ is not ready.";
 /// How a stub's body starts; a written skill drops it.
 const STUB_MARK: &str = "**Not written yet.**";
 
-/// Matt Pocock's copyright and MIT notice, line for line from `LICENSE` in
-/// `github.com/mattpocock/skills` @ `a496f55`. Compared with whitespace
-/// collapsed, so line breaks don't matter.
-const MATT_NOTICE: [&str; 16] = [
-    "Copyright (c) 2026 Matt Pocock",
-    "Permission is hereby granted, free of charge, to any person obtaining a copy",
-    "of this software and associated documentation files (the \"Software\"), to deal",
-    "in the Software without restriction, including without limitation the rights",
-    "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell",
-    "copies of the Software, and to permit persons to whom the Software is",
-    "furnished to do so, subject to the following conditions:",
-    "The above copyright notice and this permission notice shall be included in all",
-    "copies or substantial portions of the Software.",
-    "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR",
-    "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,",
-    "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE",
-    "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER",
-    "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,",
-    "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE",
-    "SOFTWARE.",
-];
-
 /// Every rule the repository at `root` breaks, one line each.
+///
+/// #555: the skills come from WizSkills, whose own `check/run.py` keeps the
+/// list, frontmatter, Codex file, notice, in-skill links and manifests. What
+/// stays ClosedWiz's is its harness links into the installed copy and the
+/// plan-graph rule it reads.
 fn problems(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
-    check_folder(root, &mut out);
-    for name in SKILLS {
-        check_skill(root, name, &mut out);
-    }
-    check_plugin(root, &mut out);
-    check_marketplace(root, &mut out);
     check_links(root, &mut out);
-    check_markdown(root, &mut out);
     check_plan_graph(root, &mut out);
     out
 }
 
 // ---- 1. The list, exactly ----
 
-fn check_folder(root: &Path, out: &mut Vec<String>) {
-    let Ok(entries) = fs::read_dir(root.join("skills")) else {
-        out.push("skills/ is missing".into());
-        return;
-    };
-    let mut found = BTreeSet::new();
-    for entry in entries {
-        let entry = entry.expect("entry");
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let kind = entry.file_type().expect("file type");
-        let readme = name == "README.md" && kind.is_file();
-        if readme || (kind.is_dir() && SKILLS.contains(&name.as_str())) {
-            found.insert(name);
-        } else {
-            out.push(format!(
-                "skills/{name}: only README.md and the listed skill folders belong here"
-            ));
-        }
-    }
-    for name in ["README.md"].into_iter().chain(SKILLS) {
-        if !found.contains(name) {
-            out.push(format!("skills/{name} is missing"));
-        }
-    }
-}
-
 // ---- 2 to 4. Each skill ----
-
-fn check_skill(root: &Path, name: &str, out: &mut Vec<String>) {
-    let dir = root.join("skills").join(name);
-    let at = format!("skills/{name}/SKILL.md");
-    let Ok(text) = fs::read_to_string(dir.join("SKILL.md")) else {
-        out.push(format!("{at} is missing"));
-        return;
-    };
-    let Some((front, body)) = split_frontmatter(&text) else {
-        out.push(format!(
-            "{at}: it must open with a `---` line, then the frontmatter, closed by a `---` line"
-        ));
-        return;
-    };
-    check_frontmatter(&at, name, &front, out);
-
-    let openai = dir.join("agents/openai.yaml");
-    let openai_at = format!("skills/{name}/agents/openai.yaml");
-    let has_openai = match fs::read_to_string(&openai) {
-        Ok(yaml) => {
-            check_openai_yaml(&openai_at, name, &yaml, out);
-            true
-        }
-        Err(_) => false,
-    };
-
-    // A skill not adapted from Matt Pocock's, stub or written: its source
-    // line, exactly and on a line of its own, and never his notice.
-    let source = source_line(name);
-    let mut rest = body.clone();
-    if let Some(line) = source {
-        if !body.lines().any(|l| l.trim() == line) {
-            out.push(format!(
-                "{at}: carries its source line exactly, on a line of its own: `{line}` \
-                 (it is not adapted from Matt Pocock's skills; see skills/README.md)"
-            ));
-        }
-        if collapse(&body).contains(&collapse(MATT_NOTICE[0])) {
-            out.push(format!(
-                "{at}: must not carry Matt Pocock's copyright or notice: it is not adapted from \
-                 his skills (see skills/README.md)"
-            ));
-        }
-        rest = body
-            .lines()
-            .filter(|l| l.trim() != line)
-            .collect::<Vec<_>>()
-            .join("\n");
-    }
-
-    if rest.trim() == STUB {
-        return;
-    }
-    if body.contains(STUB_MARK) {
-        out.push(format!(
-            "{at}: a written skill drops the stub line `{STUB_MARK}`"
-        ));
-    }
-    if source.is_none() && !collapse(&body).contains(&collapse(&MATT_NOTICE.join("\n"))) {
-        out.push(format!(
-            "{at}: a written skill carries Matt Pocock's copyright and MIT notice word for word \
-             (it adapts his skills; see skills/README.md)"
-        ));
-    }
-    if !has_openai {
-        out.push(format!(
-            "{openai_at} is missing: a written skill has one for Codex"
-        ));
-    }
-}
 
 /// The frontmatter lines and the body, or `None` when the file does not
 /// open with a `---` line or never closes its frontmatter.
@@ -1149,330 +973,12 @@ fn split_frontmatter(text: &str) -> Option<(Vec<&str>, String)> {
     None
 }
 
-fn check_frontmatter(at: &str, name: &str, front: &[&str], out: &mut Vec<String>) {
-    let mut values = BTreeMap::new();
-    let mut invocation_flags = 0;
-    for line in front {
-        let Some((key, rest)) = line.split_once(':').filter(|(k, _)| is_key(k)) else {
-            out.push(format!(
-                "{at}: frontmatter line `{line}` is not a one-line `key: value`"
-            ));
-            continue;
-        };
-        if name == "ask-wiz" && key == "disable-model-invocation" {
-            invocation_flags += 1;
-            if rest != " true" || invocation_flags != 1 {
-                out.push(format!(
-                    "{at}: ask-wiz requires one `disable-model-invocation: true`"
-                ));
-            }
-            continue;
-        }
-        if !FRONTMATTER_KEYS.contains(&key) {
-            out.push(format!(
-                "{at}: frontmatter key `{key}` is not allowed: only `name` and `description`, \
-                 so no harness can make the skill user-only (`disable-model-invocation`)"
-            ));
-            continue;
-        }
-        match scalar(rest) {
-            Ok(value) => {
-                if values.insert(key, value).is_some() {
-                    out.push(format!("{at}: `{key}` appears twice"));
-                }
-            }
-            Err(why) => out.push(format!("{at}: `{key}` {why}")),
-        }
-    }
-    if name == "ask-wiz" && invocation_flags == 0 {
-        out.push(format!(
-            "{at}: ask-wiz requires `disable-model-invocation: true`"
-        ));
-    }
-    match values.get("name") {
-        None => out.push(format!("{at}: the frontmatter has no `name`")),
-        Some(found) if found != name => out.push(format!(
-            "{at}: `name` is `{found}`, not its folder's name `{name}`"
-        )),
-        Some(_) => {}
-    }
-    match values.get("description") {
-        None => out.push(format!("{at}: the frontmatter has no `description`")),
-        Some(text) if text.chars().count() > DESCRIPTION_MAX_CHARS => out.push(format!(
-            "{at}: `description` is longer than {DESCRIPTION_MAX_CHARS} characters"
-        )),
-        Some(_) => {}
-    }
-}
-
-fn is_key(key: &str) -> bool {
-    key.starts_with(|c: char| c.is_ascii_lowercase())
-        && key
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
-}
-
-/// A one-line YAML value, after its key's `:`: a plain scalar YAML reads as
-/// the same text, or a quoted one. Anything else is refused, not guessed at.
-fn scalar(rest: &str) -> Result<String, &'static str> {
-    let raw = rest.trim();
-    if raw.is_empty() {
-        return Err("needs a value on the same line");
-    }
-    if !rest.starts_with(' ') {
-        return Err("needs a space after its `:`");
-    }
-    let value = if let Some(inner) = raw.strip_prefix('"') {
-        let inner = inner
-            .strip_suffix('"')
-            .ok_or("opens a double quote it does not close")?;
-        let mut value = String::new();
-        let mut chars = inner.chars();
-        while let Some(c) = chars.next() {
-            match c {
-                '\\' => match chars.next() {
-                    Some(e @ ('"' | '\\')) => value.push(e),
-                    _ => return Err("uses an escape other than \\\" or \\\\"),
-                },
-                '"' => return Err("has an unescaped double quote inside"),
-                c => value.push(c),
-            }
-        }
-        value
-    } else if let Some(inner) = raw.strip_prefix('\'') {
-        let inner = inner
-            .strip_suffix('\'')
-            .ok_or("opens a single quote it does not close")?;
-        if inner.replace("''", "").contains('\'') {
-            return Err("has an unescaped single quote inside");
-        }
-        inner.replace("''", "'")
-    } else {
-        const INDICATORS: &[char] = &[
-            '-', '?', ':', ',', '[', ']', '{', '}', '#', '&', '*', '!', '|', '>', '%', '@', '`',
-        ];
-        if raw.starts_with(INDICATORS) {
-            return Err("starts with a YAML indicator: quote it");
-        }
-        if raw.contains(": ") || raw.contains(" #") || raw.ends_with(':') {
-            return Err("has `: `, ` #` or a final `:`, which YAML misreads: quote it");
-        }
-        let lower = raw.to_ascii_lowercase();
-        let special = ["true", "false", "null", "~", "yes", "no", "on", "off"];
-        if special.contains(&lower.as_str()) || raw.parse::<f64>().is_ok() {
-            return Err("reads as a YAML boolean, null or number: quote it");
-        }
-        raw.to_string()
-    };
-    if value.trim().is_empty() {
-        return Err("is empty");
-    }
-    Ok(value)
-}
-
-fn check_openai_yaml(at: &str, name: &str, text: &str, out: &mut Vec<String>) {
-    // Only this exact policy is allowed, only for the user-started router.
-    // Parse the remaining interface with the existing strict allowlist.
-    let text = if name == "ask-wiz" {
-        match text
-            .trim_end()
-            .strip_suffix("policy:\n  allow_implicit_invocation: false")
-        {
-            Some(interface) => interface,
-            None => {
-                out.push(format!(
-                    "{at}: ask-wiz requires exactly `policy.allow_implicit_invocation: false`"
-                ));
-                text
-            }
-        }
-    } else {
-        text
-    };
-    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-    let mut rest = lines.as_slice();
-    match rest.split_first() {
-        Some((&"interface:", tail)) => rest = tail,
-        _ => out.push(format!("{at}: it must open with `interface:`")),
-    }
-    let mut seen = BTreeSet::new();
-    for line in rest {
-        let entry = line
-            .strip_prefix("  ")
-            .and_then(|l| l.split_once(':'))
-            .filter(|(k, _)| OPENAI_KEYS.contains(k));
-        match entry {
-            Some((key, value)) => {
-                if let Err(why) = scalar(value) {
-                    out.push(format!("{at}: `{key}` {why}"));
-                }
-                if !seen.insert(key) {
-                    out.push(format!("{at}: `{key}` appears twice"));
-                }
-            }
-            None if line.contains("policy") || line.contains("allow_implicit_invocation") => out
-                .push(format!(
-                    "{at}: `{}` is not allowed: `policy` is Codex's switch that makes a skill \
-                     user-only",
-                    line.trim()
-                )),
-            None => out.push(format!(
-                "{at}: `{}` is not allowed: only `interface.display_name` and \
-                 `interface.short_description`",
-                line.trim()
-            )),
-        }
-    }
-    for key in OPENAI_KEYS {
-        if !seen.contains(key) {
-            out.push(format!("{at}: `interface.{key}` is missing"));
-        }
-    }
-}
-
 /// Text with every run of whitespace collapsed to one space.
 fn collapse(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 // ---- 6. Manifests ----
-
-/// The JSON object at `rel`. A `Value`, so a missing key reads as null.
-fn read_object(root: &Path, rel: &str, out: &mut Vec<String>) -> Option<Value> {
-    let Ok(text) = fs::read_to_string(root.join(rel)) else {
-        out.push(format!("{rel} is missing"));
-        return None;
-    };
-    match serde_json::from_str(&text) {
-        Ok(object @ Value::Object(_)) => Some(object),
-        Ok(_) => {
-            out.push(format!("{rel} must be a JSON object"));
-            None
-        }
-        Err(e) => {
-            out.push(format!("{rel} is not JSON: {e}"));
-            None
-        }
-    }
-}
-
-fn only_keys(at: &str, object: &Value, allowed: &[&str], out: &mut Vec<String>) {
-    for key in object.as_object().into_iter().flat_map(Map::keys) {
-        if !allowed.contains(&key.as_str()) {
-            out.push(format!(
-                "{at}: `{key}` is not allowed (only {})",
-                allowed.join(", ")
-            ));
-        }
-    }
-}
-
-fn is_plugin_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name.starts_with('-')
-        && !name.ends_with('-')
-        && name
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-}
-
-const PLUGIN: &str = ".claude-plugin/plugin.json";
-const MARKETPLACE: &str = ".claude-plugin/marketplace.json";
-
-fn check_plugin(root: &Path, out: &mut Vec<String>) {
-    let Some(plugin) = read_object(root, PLUGIN, out) else {
-        return;
-    };
-    only_keys(PLUGIN, &plugin, &PLUGIN_KEYS, out);
-    if !plugin["name"].as_str().is_some_and(is_plugin_name) {
-        out.push(format!(
-            "{PLUGIN}: `name` must be a lowercase-and-hyphens string"
-        ));
-    }
-    if !plugin["description"]
-        .as_str()
-        .is_some_and(|d| !d.trim().is_empty())
-    {
-        out.push(format!(
-            "{PLUGIN}: `description` must be a non-empty string"
-        ));
-    }
-    let Some(entries) = plugin["skills"].as_array() else {
-        out.push(format!(
-            "{PLUGIN}: `skills` must be an array of skill folders"
-        ));
-        return;
-    };
-    let expected: Vec<String> = SKILLS.iter().map(|n| format!("./skills/{n}")).collect();
-    let mut listed = BTreeSet::new();
-    for entry in entries {
-        let Some(entry) = entry.as_str().filter(|e| expected.iter().any(|x| x == e)) else {
-            let shown = entry
-                .as_str()
-                .map_or_else(|| entry.to_string(), str::to_owned);
-            out.push(format!(
-                "{PLUGIN}: `{shown}` is not `./skills/<name>` for one of the listed skills"
-            ));
-            continue;
-        };
-        if !listed.insert(entry) {
-            out.push(format!("{PLUGIN}: `{entry}` is listed twice"));
-        }
-        if !root.join(entry).join("SKILL.md").is_file() {
-            out.push(format!(
-                "{PLUGIN}: `{entry}` does not resolve to a folder with a SKILL.md"
-            ));
-        }
-    }
-    for entry in &expected {
-        if !listed.contains(entry.as_str()) {
-            out.push(format!("{PLUGIN}: it does not list `{entry}`"));
-        }
-    }
-}
-
-fn check_marketplace(root: &Path, out: &mut Vec<String>) {
-    let Some(market) = read_object(root, MARKETPLACE, out) else {
-        return;
-    };
-    only_keys(MARKETPLACE, &market, &MARKETPLACE_KEYS, out);
-    if !market["name"].as_str().is_some_and(is_plugin_name) {
-        out.push(format!(
-            "{MARKETPLACE}: `name` must be a lowercase-and-hyphens string"
-        ));
-    }
-    if !market["owner"]["name"]
-        .as_str()
-        .is_some_and(|n| !n.trim().is_empty())
-    {
-        out.push(format!(
-            "{MARKETPLACE}: `owner.name` must be a non-empty string"
-        ));
-    }
-    let entry = match market["plugins"].as_array().map(Vec::as_slice) {
-        Some([entry @ Value::Object(_)]) => entry,
-        _ => {
-            out.push(format!(
-                "{MARKETPLACE}: `plugins` must hold exactly one plugin entry, this repository's"
-            ));
-            return;
-        }
-    };
-    let at = format!("{MARKETPLACE}: `plugins[0]`");
-    only_keys(&at, entry, &MARKETPLACE_ENTRY_KEYS, out);
-    let plugin_name = fs::read_to_string(root.join(PLUGIN))
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .and_then(|p| p["name"].as_str().map(str::to_owned));
-    if entry["name"].as_str() != plugin_name.as_deref() {
-        out.push(format!("{at}: `name` must be {PLUGIN}'s `name`"));
-    }
-    if entry["source"].as_str() != Some("./") || !root.join(PLUGIN).is_file() {
-        out.push(format!(
-            "{at}: `source` must be `./`, this repository, which holds {PLUGIN}"
-        ));
-    }
-}
 
 // ---- 5. Links ----
 
@@ -1539,88 +1045,6 @@ fn tree(dir: &Path) -> Vec<(PathBuf, FileType)> {
         out.push((entry.path(), kind));
     }
     out
-}
-
-fn check_markdown(root: &Path, out: &mut Vec<String>) {
-    let Ok(real_root) = fs::canonicalize(root) else {
-        return;
-    };
-    for (path, kind) in tree(&root.join("skills")) {
-        let at = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .display()
-            .to_string();
-        if kind.is_symlink() {
-            out.push(format!(
-                "{at} is a link: none belong under skills/ (Codex drops them when it installs a plugin)"
-            ));
-            continue;
-        }
-        if !kind.is_file() || path.extension().is_none_or(|e| e != "md") {
-            continue;
-        }
-        let text = fs::read_to_string(&path).expect("markdown");
-        for target in markdown_targets(&text) {
-            if target.contains("://") || target.starts_with("mailto:") {
-                continue;
-            }
-            let file = target.split(['#', '?']).next().unwrap_or_default();
-            if file.is_empty() {
-                continue;
-            }
-            match fs::canonicalize(path.parent().expect("parent").join(file)) {
-                Ok(real) if real.starts_with(&real_root) => {}
-                Ok(_) => out.push(format!("{at}: link `{target}` leaves the repository")),
-                Err(_) => out.push(format!("{at}: link `{target}` does not resolve")),
-            }
-        }
-    }
-}
-
-/// The targets of the Markdown links and link definitions in `text`, outside
-/// code blocks and code spans.
-fn markdown_targets(text: &str) -> Vec<String> {
-    let mut targets = Vec::new();
-    let mut fence: Option<&str> = None;
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if let Some(open) = fence {
-            if trimmed.starts_with(open) {
-                fence = None;
-            }
-            continue;
-        }
-        if let Some(open) = ["```", "~~~"].into_iter().find(|f| trimmed.starts_with(f)) {
-            fence = Some(open);
-            continue;
-        }
-        let line: String = line.split('`').step_by(2).collect();
-        if let Some((_, def)) = line
-            .trim_start()
-            .strip_prefix('[')
-            .and_then(|l| l.split_once("]: "))
-        {
-            targets.push(first_token(def));
-            continue;
-        }
-        let mut rest = line.as_str();
-        while let Some(i) = rest.find("](") {
-            rest = &rest[i + 2..];
-            let end = rest.find(')').unwrap_or(rest.len());
-            targets.push(first_token(&rest[..end]));
-            rest = &rest[end..];
-        }
-    }
-    targets
-}
-
-fn first_token(text: &str) -> String {
-    let token = text.split_whitespace().next().unwrap_or_default();
-    token
-        .trim_start_matches('<')
-        .trim_end_matches('>')
-        .to_string()
 }
 
 // #198: bind the check to the operative Contracts rule and the ticket
@@ -1980,49 +1404,6 @@ fn huntr_kind_record_preserves_standing_tier_approval() {
     );
 }
 
-// ClosedWiz#1685: huntr hunts reliably overnight. One controller holds a
-// lease on the switch issue, never found by listing threads; each hunter
-// fetches the pinned commit itself with its own sandbox's GitHub login, or
-// reports BLOCKED in one line; the controller ends its turn while hunters run,
-// files what is proven first on every wake, and posts a result at least every
-// 30 minutes and at the end. The dry run proves the scripts on a fake gh.
-#[test]
-fn huntr_controller_dry_run_passes() {
-    let output = std::process::Command::new("node")
-        .arg("--test")
-        .arg(Path::new(ROOT).join("skills/huntr/scripts/controller.test.mjs"))
-        .env_remove("GH_TOKEN")
-        .env_remove("GITHUB_TOKEN")
-        .output()
-        .expect("node runs the huntr dry run");
-    assert!(
-        output.status.success(),
-        "huntr dry run failed:\n{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-// ClosedWiz#2557: feedback-triage's queue, approval binding, refusal,
-// repeated yes, sent, uncertain, reconcile-before-retry and untrusted-input
-// proofs, on a recording GitHub with synthetic issues only.
-#[test]
-fn feedback_triage_offline_proofs_pass() {
-    let output = std::process::Command::new("python3")
-        .args(["-I", "-B", "-m", "unittest", "discover", "-s"])
-        .arg(Path::new(ROOT).join("skills/feedback-triage/tests"))
-        .env_remove("GH_TOKEN")
-        .env_remove("GITHUB_TOKEN")
-        .output()
-        .expect("python3 runs the feedback-triage proofs");
-    assert!(
-        output.status.success(),
-        "feedback-triage proofs failed:\n{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
 #[test]
 fn huntr_holds_one_controller_by_lease_and_waits_by_waking() {
     let skill =
@@ -2167,7 +1548,7 @@ fn overnight_day_review_preserves_redacted_technical_facts() {
 }
 
 /// A good repository in a fresh folder for `case`: every skill's stub, the
-/// README, both manifests and both sets of links. Synthetic text only.
+/// README and both sets of links. Synthetic text only.
 fn fixture(case: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join("skills-check")
@@ -2188,21 +1569,6 @@ fn fixture(case: &str) -> PathBuf {
         &root,
         "skills/README.md",
         "# Synthetic skills\n\nSee [grill](grill/SKILL.md) and `[code](not/a/link.md)`.\n",
-    );
-    let entries: Vec<String> = SKILLS.iter().map(|n| format!("./skills/{n}")).collect();
-    write_json(
-        &root,
-        PLUGIN,
-        &json!({"name": "synthetic-skills", "description": "Synthetic.", "skills": entries}),
-    );
-    write_json(
-        &root,
-        MARKETPLACE,
-        &json!({
-            "name": "synthetic",
-            "owner": {"name": "Synthetic"},
-            "plugins": [{"name": "synthetic-skills", "source": "./"}]
-        }),
     );
     root
 }
@@ -2234,19 +1600,8 @@ fn stub(name: &str) -> String {
     )
 }
 
-fn written(name: &str, notice: &str) -> String {
-    format!(
-        "---\nname: {name}\ndescription: Synthetic description of {name}.\n---\n\n\
-         # Synthetic\n\nSynthetic steps.\n\n## Licence\n\n{notice}\n"
-    )
-}
-
 const OPENAI: &str =
     "interface:\n  display_name: \"Synthetic\"\n  short_description: \"Synthetic skill\"\n";
-
-fn notice() -> String {
-    MATT_NOTICE.join("\n")
-}
 
 fn assert_clean(root: &Path) {
     let found = problems(root);
@@ -2265,191 +1620,6 @@ fn assert_catches(root: &Path, expected: &str) {
         "expected a problem containing {expected:?}, got:\n{}",
         found.join("\n")
     );
-}
-
-#[test]
-fn the_stubs_and_a_written_skill_pass() {
-    let root = fixture("good");
-    assert_clean(&root);
-    write(&root, "skills/grill/SKILL.md", &written("grill", &notice()));
-    write(&root, "skills/grill/agents/openai.yaml", OPENAI);
-    assert_clean(&root);
-    // Line breaks in the notice don't matter.
-    write(
-        &root,
-        "skills/setup/SKILL.md",
-        &written("setup", &collapse(&notice())),
-    );
-    write(&root, "skills/setup/agents/openai.yaml", OPENAI);
-    assert_clean(&root);
-    // Quoted values, as Matt's frontmatter uses them.
-    write(
-        &root,
-        "skills/triage/SKILL.md",
-        &format!("---\nname: \"triage\"\ndescription: 'Synthetic: it''s quoted.'\n---\n\n{STUB}\n"),
-    );
-    assert_clean(&root);
-}
-
-#[test]
-fn a_missing_or_broken_frontmatter_fails() {
-    let front = |lines: &str| format!("---\n{lines}\n---\n\n{STUB}\n");
-    let long = "x".repeat(DESCRIPTION_MAX_CHARS + 1);
-    let cases = [
-        (
-            "no-frontmatter",
-            format!("# Synthetic\n\n{STUB}\n"),
-            "must open with a `---` line",
-        ),
-        (
-            "unclosed",
-            "---\nname: grill\ndescription: Synthetic.\n".into(),
-            "closed by a `---` line",
-        ),
-        (
-            "no-description",
-            front("name: grill"),
-            "has no `description`",
-        ),
-        ("no-name", front("description: Synthetic."), "has no `name`"),
-        (
-            "wrong-name",
-            front("name: grilling\ndescription: Synthetic."),
-            "not its folder's name `grill`",
-        ),
-        (
-            "folded",
-            front("name: grill\ndescription: >\n  Synthetic."),
-            "is not a one-line `key: value`",
-        ),
-        (
-            "colon",
-            front("name: grill\ndescription: Synthetic: broken."),
-            "quote it",
-        ),
-        (
-            "empty",
-            front("name: grill\ndescription: \"\""),
-            "`description` is empty",
-        ),
-        (
-            "blank",
-            front("name: grill\ndescription:"),
-            "needs a value on the same line",
-        ),
-        (
-            "no-space",
-            front("name:grill\ndescription: Synthetic."),
-            "needs a space after its `:`",
-        ),
-        (
-            "boolean",
-            front("name: grill\ndescription: true"),
-            "reads as a YAML boolean",
-        ),
-        (
-            "number",
-            front("name: grill\ndescription: 1.5"),
-            "reads as a YAML boolean",
-        ),
-        (
-            "twice",
-            front("name: grill\ndescription: One.\ndescription: Two."),
-            "appears twice",
-        ),
-        (
-            "long",
-            front(&format!("name: grill\ndescription: {long}")),
-            "longer than 1024",
-        ),
-    ];
-    for (case, text, expected) in cases {
-        let root = fixture(&format!("frontmatter-{case}"));
-        write(&root, "skills/grill/SKILL.md", &text);
-        assert_catches(&root, expected);
-    }
-}
-
-#[test]
-fn a_user_only_flag_fails() {
-    let flagged =
-        |flag: &str| format!("---\nname: grill\ndescription: Synthetic.\n{flag}\n---\n\n{STUB}\n");
-    for (case, flag) in [
-        ("claude", "disable-model-invocation: true"),
-        ("claude-false", "disable-model-invocation: false"),
-        ("hidden", "user-invocable: false"),
-    ] {
-        let root = fixture(&format!("user-only-{case}"));
-        write(&root, "skills/grill/SKILL.md", &flagged(flag));
-        assert_catches(
-            &root,
-            &format!("key `{}` is not allowed", flag.split(':').next().unwrap()),
-        );
-    }
-
-    let root = fixture("user-only-codex");
-    write(
-        &root,
-        "skills/grill/agents/openai.yaml",
-        &format!("{OPENAI}policy:\n  allow_implicit_invocation: false\n"),
-    );
-    assert_catches(&root, "Codex's switch that makes a skill user-only");
-
-    for (case, yaml, expected) in [
-        (
-            "no-interface",
-            "  display_name: \"Synthetic\"\n",
-            "must open with `interface:`",
-        ),
-        (
-            "no-short",
-            "interface:\n  display_name: \"Synthetic\"\n",
-            "`interface.short_description` is missing",
-        ),
-        (
-            "extra",
-            &format!("{OPENAI}  icon_small: \"x.svg\"\n") as &str,
-            "is not allowed",
-        ),
-    ] {
-        let root = fixture(&format!("openai-{case}"));
-        write(&root, "skills/grill/agents/openai.yaml", yaml);
-        assert_catches(&root, expected);
-    }
-}
-
-#[test]
-fn a_missing_mit_notice_fails() {
-    let root = fixture("notice-missing");
-    write(
-        &root,
-        "skills/grill/SKILL.md",
-        &written("grill", "Synthetic, no notice."),
-    );
-    write(&root, "skills/grill/agents/openai.yaml", OPENAI);
-    assert_catches(&root, "Matt Pocock's copyright and MIT notice");
-
-    let root = fixture("notice-changed");
-    let changed = notice().replace("free of charge", "for a fee");
-    write(&root, "skills/grill/SKILL.md", &written("grill", &changed));
-    write(&root, "skills/grill/agents/openai.yaml", OPENAI);
-    assert_catches(&root, "Matt Pocock's copyright and MIT notice");
-
-    let root = fixture("notice-no-copyright");
-    let unsigned = notice().replace("Copyright (c) 2026 Matt Pocock", "");
-    write(&root, "skills/grill/SKILL.md", &written("grill", &unsigned));
-    write(&root, "skills/grill/agents/openai.yaml", OPENAI);
-    assert_catches(&root, "Matt Pocock's copyright and MIT notice");
-
-    let root = fixture("written-no-openai");
-    write(&root, "skills/grill/SKILL.md", &written("grill", &notice()));
-    assert_catches(&root, "skills/grill/agents/openai.yaml is missing");
-
-    let root = fixture("written-kept-stub-line");
-    let kept = written("grill", &format!("{STUB_MARK} Synthetic.\n\n{}", notice()));
-    write(&root, "skills/grill/SKILL.md", &kept);
-    write(&root, "skills/grill/agents/openai.yaml", OPENAI);
-    assert_catches(&root, "drops the stub line");
 }
 
 #[test]
@@ -2511,311 +1681,6 @@ fn a_dangling_or_wrong_link_fails() {
     let root = fixture("link-older-skill");
     write(&root, ".claude/skills/older/SKILL.md", &stub("older"));
     assert_clean(&root);
-
-    let root = fixture("link-inside-skills");
-    relink(&root, "skills/grill/shared.md", "../README.md");
-    assert_catches(&root, "skills/grill/shared.md is a link");
-
-    let root = fixture("markdown-dangling");
-    write(
-        &root,
-        "skills/README.md",
-        "# Synthetic\n\nSee [gone](gone/SKILL.md).\n",
-    );
-    assert_catches(
-        &root,
-        "skills/README.md: link `gone/SKILL.md` does not resolve",
-    );
-
-    let root = fixture("markdown-outside");
-    write(&root, "../outside-synthetic.md", "Synthetic.\n");
-    write(
-        &root,
-        "skills/README.md",
-        "# Synthetic\n\n[out]: ../../outside-synthetic.md\n",
-    );
-    assert_catches(&root, "leaves the repository");
-}
-
-#[test]
-fn a_broken_manifest_fails() {
-    let plugin = |skills: Value, extra: Value| {
-        let mut value =
-            json!({"name": "synthetic-skills", "description": "Synthetic.", "skills": skills});
-        value
-            .as_object_mut()
-            .unwrap()
-            .extend(extra.as_object().unwrap().clone());
-        value
-    };
-    let all = || -> Vec<Value> {
-        SKILLS
-            .iter()
-            .map(|n| json!(format!("./skills/{n}")))
-            .collect()
-    };
-
-    let root = fixture("plugin-missing");
-    fs::remove_file(root.join(PLUGIN)).expect("remove");
-    assert_catches(&root, ".claude-plugin/plugin.json is missing");
-
-    let root = fixture("plugin-not-json");
-    write(&root, PLUGIN, "{ synthetic");
-    assert_catches(&root, "is not JSON");
-
-    let mut fewer = all();
-    fewer.retain(|entry| entry != "./skills/diagnose");
-    let mut extra = all();
-    extra.push(json!("./skills/extra"));
-    let mut slash = all();
-    slash[0] = json!("./skills/grill/");
-    let mut twice = all();
-    twice.push(json!("./skills/setup"));
-    let cases = [
-        (
-            "unlisted",
-            plugin(json!(fewer), json!({})),
-            "does not list `./skills/diagnose`",
-        ),
-        (
-            "extra",
-            plugin(json!(extra), json!({})),
-            "`./skills/extra` is not `./skills/<name>`",
-        ),
-        (
-            "slash",
-            plugin(json!(slash), json!({})),
-            "`./skills/grill/` is not `./skills/<name>`",
-        ),
-        (
-            "twice",
-            plugin(json!(twice), json!({})),
-            "`./skills/setup` is listed twice",
-        ),
-        (
-            "hooks",
-            plugin(json!(all()), json!({"hooks": "./hooks.json"})),
-            "`hooks` is not allowed",
-        ),
-        (
-            "version",
-            plugin(json!(all()), json!({"version": "0.0.5"})),
-            "`version` is not allowed",
-        ),
-        (
-            "no-skills",
-            json!({"name": "synthetic-skills", "description": "Synthetic."}),
-            "`skills` must be an array",
-        ),
-    ];
-    for (case, value, expected) in cases {
-        let root = fixture(&format!("plugin-{case}"));
-        write_json(&root, PLUGIN, &value);
-        assert_catches(&root, expected);
-    }
-
-    let root = fixture("plugin-unresolved");
-    fs::remove_file(root.join("skills/grill/SKILL.md")).expect("remove");
-    assert_catches(&root, "`./skills/grill` does not resolve");
-
-    let market = |plugins: Value| json!({"name": "synthetic", "owner": {"name": "Synthetic"}, "plugins": plugins});
-    let cases = [
-        (
-            "source",
-            market(json!([{"name": "synthetic-skills", "source": "./other"}])),
-            "`source` must be `./`",
-        ),
-        (
-            "name",
-            market(json!([{"name": "other", "source": "./"}])),
-            "`name` must be",
-        ),
-        (
-            "two",
-            market(
-                json!([{"name": "synthetic-skills", "source": "./"}, {"name": "x", "source": "./"}]),
-            ),
-            "exactly one plugin entry",
-        ),
-        (
-            "no-owner",
-            json!({"name": "synthetic", "plugins": [{"name": "synthetic-skills", "source": "./"}]}),
-            "`owner.name`",
-        ),
-    ];
-    for (case, value, expected) in cases {
-        let root = fixture(&format!("marketplace-{case}"));
-        write_json(&root, MARKETPLACE, &value);
-        assert_catches(&root, expected);
-    }
-}
-
-#[test]
-fn the_skill_set_is_exactly_the_list() {
-    let root = fixture("set-missing");
-    fs::remove_dir_all(root.join("skills/setup")).expect("remove");
-    assert_catches(&root, "skills/setup is missing");
-
-    let root = fixture("set-extra");
-    write(&root, "skills/extra/SKILL.md", &stub("extra"));
-    assert_catches(
-        &root,
-        "skills/extra: only README.md and the listed skill folders",
-    );
-
-    let root = fixture("set-no-readme");
-    fs::remove_file(root.join("skills/README.md")).expect("remove");
-    assert_catches(&root, "skills/README.md is missing");
-}
-
-/// The two source lines, as the orchestrator's diagnosis of #245's R1 worded
-/// them: written here, not read from [`NOT_MATTS`].
-const WHERE_ARE_WE_SOURCE: &str =
-    "**Source:** dot-context's written plan. Not adapted from Matt Pocock's skills.";
-const IMAGE_SOURCE: &str =
-    "**Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.";
-
-/// The stub body, then `extra`, for a skill's `SKILL.md`.
-fn stub_with(name: &str, extra: &str) -> String {
-    format!(
-        "---\nname: {name}\ndescription: Synthetic description of {name}.\n---\n\n{STUB}\n{extra}"
-    )
-}
-
-#[test]
-fn only_a_skill_that_adapts_matts_needs_his_notice() {
-    // Spec ClosedWiz#205: where-are-we and image adapt nothing of his, so
-    // written with their source lines and without his notice they pass.
-    let root = fixture("notice-not-matts");
-    for (name, source) in [
-        ("where-are-we", WHERE_ARE_WE_SOURCE),
-        ("image", IMAGE_SOURCE),
-    ] {
-        write(
-            &root,
-            &format!("skills/{name}/SKILL.md"),
-            &written(name, source),
-        );
-        write(&root, &format!("skills/{name}/agents/openai.yaml"), OPENAI);
-    }
-    assert_clean(&root);
-
-    // The other three new skills adapt his, so they still need it.
-    for name in ["wayfind", "research", "diagnose"] {
-        let root = fixture(&format!("notice-missing-{name}"));
-        let body = written(name, "Synthetic, no notice.");
-        write(&root, &format!("skills/{name}/SKILL.md"), &body);
-        write(&root, &format!("skills/{name}/agents/openai.yaml"), OPENAI);
-        assert_catches(
-            &root,
-            &format!("skills/{name}/SKILL.md: a written skill carries Matt Pocock's"),
-        );
-    }
-
-    // Notice or not, a written skill has its agents/openai.yaml.
-    let root = fixture("not-matts-no-openai");
-    write(
-        &root,
-        "skills/image/SKILL.md",
-        &written("image", IMAGE_SOURCE),
-    );
-    assert_catches(&root, "skills/image/agents/openai.yaml is missing");
-}
-
-#[test]
-fn a_stub_not_adapted_from_matts_passes_with_its_source_line() {
-    let root = fixture("source-stubs");
-    write(
-        &root,
-        "skills/where-are-we/SKILL.md",
-        &stub_with("where-are-we", &format!("\n{WHERE_ARE_WE_SOURCE}\n")),
-    );
-    write(
-        &root,
-        "skills/image/SKILL.md",
-        &stub_with("image", &format!("\n{IMAGE_SOURCE}\n")),
-    );
-    assert_clean(&root);
-}
-
-#[test]
-fn a_skill_not_adapted_from_matts_without_its_exact_source_line_fails() {
-    // A source line that is missing, changed, another skill's, or not on a
-    // line of its own is refused, in a stub and in a written skill.
-    let missing = "carries its source line exactly, on a line of its own";
-    let image_changed = IMAGE_SOURCE.replace("original to OpenWiz", "original");
-    let cases = [
-        (
-            "stub-no-source",
-            "where-are-we",
-            stub_with("where-are-we", ""),
-        ),
-        (
-            "stub-changed",
-            "image",
-            stub_with("image", &format!("\n{image_changed}\n")),
-        ),
-        (
-            "stub-other-skills",
-            "where-are-we",
-            stub_with("where-are-we", &format!("\n{IMAGE_SOURCE}\n")),
-        ),
-        (
-            "stub-inline",
-            "image",
-            stub_with("image", &format!("\nSee {IMAGE_SOURCE}\n")),
-        ),
-        (
-            "written-no-source",
-            "image",
-            written("image", "Synthetic, no source."),
-        ),
-        (
-            "written-listed",
-            "where-are-we",
-            written("where-are-we", &format!("- {WHERE_ARE_WE_SOURCE}")),
-        ),
-    ];
-    for (case, name, text) in cases {
-        let root = fixture(&format!("source-{case}"));
-        write(&root, &format!("skills/{name}/SKILL.md"), &text);
-        write(&root, &format!("skills/{name}/agents/openai.yaml"), OPENAI);
-        assert_catches(&root, &format!("skills/{name}/SKILL.md: {missing}"));
-    }
-}
-
-#[test]
-fn a_skill_not_adapted_from_matts_with_his_notice_fails() {
-    // Matt Pocock's notice, or his copyright line alone, is refused there,
-    // even beside the right source line: they don't adapt his work.
-    let attributed = "must not carry Matt Pocock's copyright or notice";
-    let copyright = MATT_NOTICE[0];
-    let cases = [
-        (
-            "stub-notice",
-            "image",
-            stub_with("image", &format!("\n{IMAGE_SOURCE}\n\n{}\n", notice())),
-        ),
-        (
-            "written-notice",
-            "where-are-we",
-            written(
-                "where-are-we",
-                &format!("{WHERE_ARE_WE_SOURCE}\n\n{}", notice()),
-            ),
-        ),
-        (
-            "written-copyright",
-            "image",
-            written("image", &format!("{IMAGE_SOURCE}\n\n{copyright}")),
-        ),
-    ];
-    for (case, name, text) in cases {
-        let root = fixture(&format!("attributed-{case}"));
-        write(&root, &format!("skills/{name}/SKILL.md"), &text);
-        write(&root, &format!("skills/{name}/agents/openai.yaml"), OPENAI);
-        assert_catches(&root, &format!("skills/{name}/SKILL.md: {attributed}"));
-    }
 }
 
 /// #198: exercise the public checker on synthetic ticket bodies, including
@@ -3648,57 +2513,6 @@ fn research_snapshot_path_survives_fresh_shells() {
     assert_eq!(check_command, format!("{checker}check '<snapshot-path>'"));
 }
 
-// #1095: the confirmed grill makes only ask-wiz user-started.
-#[test]
-fn ask_wiz_user_started_policy() {
-    let root = fixture("ask-wiz-policy");
-    let text = written("ask-wiz", &notice()).replacen(
-        "description: Synthetic description of ask-wiz.\n",
-        "description: Synthetic description of ask-wiz.\ndisable-model-invocation: true\n",
-        1,
-    );
-    let yaml = format!("{OPENAI}policy:\n  allow_implicit_invocation: false\n");
-    write(&root, "skills/ask-wiz/SKILL.md", &text);
-    write(&root, "skills/ask-wiz/agents/openai.yaml", &yaml);
-    assert_clean(&root);
-
-    for bad in [
-        text.replace("disable-model-invocation: true\n", ""),
-        text.replace(
-            "disable-model-invocation: true",
-            "disable-model-invocation: false",
-        ),
-        text.replace(
-            "disable-model-invocation: true",
-            "disable-model-invocation: \"true\"",
-        ),
-        text.replace(
-            "disable-model-invocation: true",
-            "disable-model-invocation: true\ndisable-model-invocation: true",
-        ),
-    ] {
-        write(&root, "skills/ask-wiz/SKILL.md", &bad);
-        assert_catches(&root, "disable-model-invocation");
-    }
-    write(&root, "skills/ask-wiz/SKILL.md", &text);
-    for bad in [
-        OPENAI.to_owned(),
-        yaml.replace(
-            "allow_implicit_invocation: false",
-            "allow_implicit_invocation: true",
-        ),
-        yaml.replace(
-            "allow_implicit_invocation: false",
-            "allow_implicit_invocation: \"false\"",
-        ),
-        format!("{yaml}  allow_implicit_invocation: false\n"),
-        format!("{yaml}  unknown: false\n"),
-    ] {
-        write(&root, "skills/ask-wiz/agents/openai.yaml", &bad);
-        assert_catches(&root, "policy");
-    }
-}
-
 #[test]
 fn ask_wiz_contract() {
     let root = Path::new(ROOT);
@@ -3787,18 +2601,6 @@ fn ask_wiz_contract() {
         ask_wiz_install_rule_holds(discovery),
         "operative installation gate"
     );
-    let readme = fs::read_to_string(root.join("skills/README.md")).expect("README");
-    assert_eq!(
-        readme
-            .lines()
-            .filter(|line| line.starts_with("| [`ask-wiz`](ask-wiz/SKILL.md) |"))
-            .count(),
-        1
-    );
-    for manifest in [PLUGIN, MARKETPLACE] {
-        let text = fs::read_to_string(root.join(manifest)).expect("manifest");
-        assert!(text.contains("ask-wiz"), "{manifest} describes ask-wiz");
-    }
 }
 
 #[test]
@@ -3856,44 +2658,6 @@ fn ask_wiz_install_rule_refuses_ungated_or_hidden_instructions() {
             "accepted an absent or hidden installation gate"
         );
     }
-}
-
-#[test]
-fn feedback_helper_offline_proofs_pass() {
-    // #2292: contracts/feedback.v1.md's sender and sharing proof rows, run
-    // offline on the skill's recording `gh` and private scratch state.
-    let result = std::process::Command::new("python3")
-        .args(["-I", "skills/feedback/test/test_feedback.py"])
-        .current_dir(ROOT)
-        .output()
-        .expect("run the feedback helper's offline proofs");
-    assert!(
-        result.status.success(),
-        "feedback helper proofs failed: {}{}",
-        String::from_utf8_lossy(&result.stdout),
-        String::from_utf8_lossy(&result.stderr)
-    );
-}
-
-#[test]
-fn ci_runs_where_are_we_collector_tests_after_triage() {
-    // K16 keeps the full-run order, and selects each folder independently.
-    // Execute the owning workflow-boundary proof with synthetic fake suites.
-    let result = std::process::Command::new("python3")
-        .args([
-            "-I",
-            "ci/select/test_steps.py",
-            "Dispatch.test_triage_and_collector_full_and_selected",
-        ])
-        .current_dir(ROOT)
-        .output()
-        .expect("run the synthetic skill-dispatch proof");
-    assert!(
-        result.status.success(),
-        "skill dispatch proof failed: {}{}",
-        String::from_utf8_lossy(&result.stdout),
-        String::from_utf8_lossy(&result.stderr)
-    );
 }
 
 // #1845: these are the operative release instructions an agent follows,

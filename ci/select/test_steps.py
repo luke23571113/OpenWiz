@@ -19,7 +19,7 @@ class Dispatch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             tmp = Path(folder)
             record = json.loads((ROOT / 'ci/selection/valid/selected-skill-only.json').read_text())
-            names = ['triage', 'where-are-we', 'hill-climb', 'image', 'plan-graph', 'launch-fleet']
+            names = ['launch-fleet']
             chosen = names if selected == 'all' else ([] if selected == 'none' else selected.split())
             record['lanes']['skills'] = [dict(skill=n, **(
                 {'decision': 'run', 'tests': ['skill:'+n], 'skipped': []} if n in chosen else
@@ -43,69 +43,18 @@ class Dispatch(unittest.TestCase):
                 if proc.returncode: code=proc.returncode; break
             return code,log.read_text().splitlines() if log.exists() else []
 
-    def test_triage_and_collector_full_and_selected(self):
-        all_calls=['python3 -I skills/triage/test/test_find_work.py',
-            'python3 -I skills/where-are-we/test/test_read_github.py',
-            'python3 -I -m unittest discover -s skills/hill-climb/tests',
-            'python3 -I -m unittest discover -s skills/image/tests',
-            'python3 -I skills/plan-graph/scripts/test_check_approval.py',
-            'sh skills/plan-graph/test/test-revision.sh','sh skills/launch-fleet/scripts/test.sh',
-            'python3 -I skills/launch-fleet/test/ops-protocol/test_protocol.py',
-            'python3 -I skills/launch-fleet/scripts/test-effects.py',
-            'python3 -I skills/launch-fleet/scripts/test-grants.py',
-            'python3 -I skills/launch-fleet/scripts/test-inbox.py',
-            'python3 -I tools/review-relay/test_inbox.py']
-        self.assertEqual(self.run_skills('all'),(0,all_calls))
-        for selected,expected in [('triage',all_calls[:1]),('where-are-we',all_calls[1:2]),('none',[])]:
-            self.assertEqual(self.run_skills(selected),(0,expected))
-
-    def test_suite_failure_is_exposed_only_when_selected(self):
-        for selected,failed in [('all',True),('launch-fleet',True),('none',False),('triage',False)]:
-            code,calls=self.run_skills(selected,'skills/launch-fleet/scripts/test.sh')
-            self.assertEqual(code!=0,failed,(selected,calls))
-            self.assertEqual(any('skills/launch-fleet/scripts/test.sh' in c for c in calls),failed)
-
-    def test_ops_protocol_failure_fails_its_selected_lane(self):
-        proof = 'skills/launch-fleet/test/ops-protocol/test_protocol.py'
-        for selected, failed in [('launch-fleet', True), ('all', True), ('triage', False), ('none', False)]:
-            code, calls = self.run_skills(selected, proof)
-            self.assertEqual(code != 0, failed, (selected, calls))
-            self.assertEqual(any(proof in call for call in calls), failed)
-
-
-    def test_ops_effects_execution_and_failure_propagation(self):
-        proof = 'skills/launch-fleet/scripts/test-effects.py'
+    # #555: the skills' own suites run in WizSkills; the one lane left runs
+    # ClosedWiz's own inbox check over the installed launch-fleet.
+    # catches: the lane passing although its check failed, or running when unselected.
+    def test_launch_fleet_lane_runs_closedwiz_inbox_check_and_fails_with_it(self):
+        proof = 'tools/review-relay/test_inbox.py'
         command = 'python3 -I ' + proof
-        for selected, included in [('launch-fleet', True), ('all', True),
-                                   ('triage', False), ('none', False)]:
+        for selected, included in [('launch-fleet', True), ('all', True), ('none', False)]:
             for failure in ('', proof):
                 with self.subTest(selected=selected, failure=bool(failure)):
                     code, calls = self.run_skills(selected, failure)
                     self.assertEqual(code != 0, included and bool(failure), (selected, calls))
-                    self.assertEqual(calls.count(command), int(included), (selected, calls))
-
-
-    def test_ops_grants_execution_and_failure_propagation(self):
-        proof = 'skills/launch-fleet/scripts/test-grants.py'
-        command = 'python3 -I ' + proof
-        for selected, included in [('launch-fleet', True), ('all', True),
-                                   ('triage', False), ('none', False)]:
-            for failure in ('', proof):
-                with self.subTest(selected=selected, failure=bool(failure)):
-                    code, calls = self.run_skills(selected, failure)
-                    self.assertEqual(code != 0, included and bool(failure), (selected, calls))
-                    self.assertEqual(calls.count(command), int(included), (selected, calls))
-
-    def test_ops_inbox_execution_and_failure_propagation(self):
-        for proof in ('skills/launch-fleet/scripts/test-inbox.py', 'tools/review-relay/test_inbox.py'):
-            command = 'python3 -I ' + proof
-            for selected, included in [('launch-fleet', True), ('all', True),
-                                       ('triage', False), ('none', False)]:
-                for failure in ('', proof):
-                    with self.subTest(proof=proof, selected=selected, failure=bool(failure)):
-                        code, calls = self.run_skills(selected, failure)
-                        self.assertEqual(code != 0, included and bool(failure), (selected, calls))
-                        self.assertEqual(calls.count(command), int(included), (selected, calls))
+                    self.assertEqual(calls, [command] if included else [], (selected, calls))
 
 
 class Validation(unittest.TestCase):

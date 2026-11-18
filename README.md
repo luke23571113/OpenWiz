@@ -27,7 +27,7 @@ Paste this line into your coding agent:
 
 > Install OpenWiz from github.com/openwizdev/OpenWiz
 
-Agents: read [`skills/install/SKILL.md`](skills/install/SKILL.md) and follow it. It checks the machine and CloudRoom, installs the verified prebuilt release (no Rust or Node), opens setup, then hands the first fleet to the [`onboard`](skills/onboard/SKILL.md) skill. Nothing starts until the user approves a plan. People: see the [install guide](docs/install.md), including recovery and removal. OpenWiz is free now. Paid plans come later. CloudRoom and model charges are separate and not included.
+Agents: read [`skills/install/SKILL.md`](https://github.com/openwizdev/WizSkills/blob/v0.1.2/skills/install/SKILL.md) and follow it. It checks the machine and CloudRoom, installs the verified prebuilt release (no Rust or Node), opens setup, then hands the first fleet to the [`onboard`](https://github.com/openwizdev/WizSkills/blob/v0.1.2/skills/onboard/SKILL.md) skill. Nothing starts until the user approves a plan. People: see the [install guide](docs/install.md), including recovery and removal. OpenWiz is free now. Paid plans come later. CloudRoom and model charges are separate and not included.
 
 ## Layout
 
@@ -38,7 +38,7 @@ Agents: read [`skills/install/SKILL.md`](skills/install/SKILL.md) and follow it.
 | `apps/site/` | Landing page and version changelog |
 | `contracts/` | Versioned contracts and JSON schemas |
 | [`tests/`](tests/fixtures/README.md) | Proof suites, synthetic fixtures and fake external programs |
-| [`skills/`](skills/README.md) | Fleet skills, installable across harnesses |
+| [`skills`](https://github.com/openwizdev/WizSkills) | Fleet skills, from WizSkills: the release `wizskills.lock` pins, installed into `.wizskills/` by `python3 -I tools/wizskills/install.py` |
 | `docs/agents/` | Project settings for fleets, helpers and triage |
 | `docs/adr/` | Public decision summaries |
 | [`release/openwiz/`](release/openwiz/README.md) | Frozen 0.0.0 product documentation; it is not the current release source |

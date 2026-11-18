@@ -5,6 +5,12 @@
 the requested source commit's regular-file blobs, and its skills exactly that
 commit's skills tree, before the collector accepts or stamps them.
 
+#555 (WZ12): a source that tracks `skills` as a link takes its skills from the
+gitignored WizSkills install that its `wizskills.lock` pins. The install must
+be exactly the lock's release tree (tools/wizskills/install.py's own check),
+and the packaged skills exactly that tree's `skills/` blobs; a missing or
+edited install refuses.
+
 #1148 (RL4): the compiled CLI/server/service and generated web identity of
 contracts/release-candidate.v1.md, "Minimum product identity (RL4)". The
 native build job runs `query` and `web` to write its receipts; the collector
@@ -13,8 +19,10 @@ binds one target's packaged files for the release candidate. Never publishes.
 """
 import argparse
 import hashlib
+import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import re
 import struct
@@ -47,10 +55,21 @@ def skill(path):
     return path == 'skills' or path.startswith('skills/')
 
 
-def verify_runtime(root, source, runtime):
-    """Refuse unless `runtime` ({repository path: packaged bytes}) is the
-    requested commit's tracked runtime: every file a regular blob there with
-    identical bytes, and the skills exactly the commit's skills tree."""
+LINK = ('120000', 'blob')
+WIZSKILLS = '.wizskills'
+
+
+def wizskills():
+    """tools/wizskills/install.py, loaded under its own name (`install` is the product installer)."""
+    path = Path(__file__).resolve().parents[1] / 'wizskills' / 'install.py'
+    spec = importlib.util.spec_from_file_location('wizskills_install', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def source_tree(root, source):
+    """{path: (mode, kind, oid)} of the requested commit, or refuse."""
     require(digest(source, 40), 'invalid runtime source')
     resolved = git(root, 'rev-parse', '--verify', '--quiet', '--end-of-options', source + '^{commit}')
     require(resolved == (source + '\n').encode(), 'runtime source is not the requested commit')
@@ -60,8 +79,87 @@ def verify_runtime(root, source, runtime):
             meta, path = entry.split(b'\t', 1)
             mode, kind, oid = meta.decode('ascii').split(' ')
             tree[path.decode('utf-8')] = (mode, kind, oid)
-    require({p for p in tree if skill(p)} == {p for p in runtime if skill(p)},
-            'tracked skills differ from the requested source')
+    return tree
+
+
+def install_locked(root, source, scratch):
+    """For a source tracking the WizSkills link, install the release its own
+    lock pins under `scratch` (tools/wizskills/install.py, which verifies the
+    tag, commit and tree) and return that install; None for a source that
+    tracks its skills. For a checkout without a working tree (#555: the
+    release candidate's bare clone)."""
+    tree = source_tree(root, source)
+    if tree.get('skills', ('', '', ''))[:2] != LINK:
+        return None
+    scratch = Path(scratch)
+    for path in ('wizskills.lock', 'contracts/wizskills.v1.md'):
+        require(tree.get(path, ('', '', ''))[:2] in {(m, 'blob') for m in REGULAR}, 'skills link without a WizSkills lock')
+        (scratch / path).parent.mkdir(parents=True, exist_ok=True)
+        (scratch / path).write_bytes(git(root, 'cat-file', 'blob', tree[path][2]))
+    ws = wizskills()
+    try:
+        ws.install(scratch)
+    except ws.Stop:
+        raise Refused('the locked WizSkills release cannot be installed')
+    return scratch / WIZSKILLS
+
+
+def locked_skills(root, source, tree=None, install=None):
+    """When `source` tracks `skills` as the WizSkills link: the verified
+    install's {skills/<path>: blob oid}, after checking the install (by
+    default `root`'s .wizskills) is exactly the lock's release tree. None for
+    a source that tracks its skills."""
+    tree = tree if tree is not None else source_tree(root, source)
+    if tree.get('skills', ('', '', ''))[:2] != LINK:
+        return None
+    require(git(root, 'cat-file', 'blob', tree['skills'][2]) == b'.wizskills/skills',
+            'skills link does not point at the WizSkills install')
+    require(tree.get('wizskills.lock', ('', '', ''))[:2] in {(m, 'blob') for m in REGULAR},
+            'skills link without a WizSkills lock')
+    ws = wizskills()
+    try:
+        lock = ws.identity(git(root, 'cat-file', 'blob', tree['wizskills.lock'][2]).decode('utf-8'),
+                           ['version', 'commit', 'tree'],
+                           {'version_pattern': r'[0-9]+\.[0-9]+\.[0-9]+', 'oid_pattern': '[0-9a-f]{40}'})
+    except (ValueError, UnicodeError):
+        raise Refused('invalid WizSkills lock')
+    dest = Path(install) if install is not None else Path(root) / WIZSKILLS
+    require(os.path.lexists(dest), 'WizSkills install missing')
+    with tempfile.TemporaryDirectory(prefix='wizskills-verify-') as scratch:
+        try:
+            ws.verify_install(dest, lock, Path(scratch))
+            listed = ws.out(['--git-dir', str(dest / '.git'), 'ls-tree', '-r', '-z', '--full-tree',
+                             lock['tree'], '--', 'skills'], ws.git_env(), 'WizSkills install unreadable')
+        except ws.Stop:
+            raise Refused('WizSkills install is not the locked release')
+    skills = {}
+    for entry in listed.split('\0'):
+        if entry:
+            meta, path = entry.split('\t', 1)
+            mode, kind, oid = meta.split(' ')
+            require(kind == 'blob' and mode in REGULAR, 'WizSkills skill is not a regular file')
+            skills[path] = oid
+    require(skills, 'WizSkills release has no skills')
+    return skills
+
+
+def verify_runtime(root, source, runtime, install=None):
+    """Refuse unless `runtime` ({repository path: packaged bytes}) is the
+    requested commit's tracked runtime: every file a regular blob there with
+    identical bytes, and the skills exactly the commit's skills tree."""
+    tree = source_tree(root, source)
+    installed = locked_skills(root, source, tree, install)
+    if installed is not None:
+        require(set(installed) == {p for p in runtime if skill(p)},
+                'packaged skills differ from the locked WizSkills release')
+        for path in installed:
+            data = runtime[path]
+            require(hashlib.sha1(b'blob %d\0' % len(data) + data).hexdigest() == installed[path],
+                    'packaged skill differs from the locked WizSkills release')
+        runtime = {p: d for p, d in runtime.items() if not skill(p)}
+    else:
+        require({p for p in tree if skill(p)} == {p for p in runtime if skill(p)},
+                'tracked skills differ from the requested source')
     for path, data in runtime.items():
         mode, kind, oid = tree.get(path, ('', '', ''))
         require(kind == 'blob' and mode in REGULAR, 'runtime file is not a regular file in the requested source')

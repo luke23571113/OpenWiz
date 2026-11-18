@@ -147,3 +147,8 @@ runs:
       if: inputs.npm == 'true'
       shell: bash
       run: sh ci/retry.sh 3 -- npm ci --ignore-scripts --prefix apps/web
+    # #555: `skills` is a tracked link to the gitignored .wizskills/skills, so
+    # every lane installs the WizSkills release wizskills.lock pins first.
+    - name: The pinned WizSkills
+      shell: bash
+      run: python3 -I tools/wizskills/install.py
