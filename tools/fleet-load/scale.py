@@ -21,6 +21,9 @@ spec.loader.exec_module(fa3)
 def identity(fleet, installed):
     raw = (TOOLS / 'fixtures/workload-v1.json').read_text()
     definition = api.decode(raw)
+    # Freeze the actual execution budget, alongside the unchanged workload.
+    definition['bounds']['max_wall_s'] = fa3.MAX_WALL_S
+    raw = json.dumps(definition, indent=2) + '\n'
     workload = {k: definition[k] for k in ('id', 'tickets', 'specs', 'arrival', 'role_policy')}
     workload['sha256'] = hashlib.sha256(raw.encode()).hexdigest()
     folder = Path(__file__).resolve().parent
