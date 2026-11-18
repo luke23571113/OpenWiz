@@ -163,5 +163,10 @@
     "log": "wm2-skills-weekly-test_weekly.py.txt",
     "tests": 47,
     "result": "pass"
+  },
+  {
+    "log": "wm2-private-test_page_design.py.txt",
+    "tests": 14,
+    "result": "pass"
   }
 ]

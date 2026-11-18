@@ -125,3 +125,14 @@ STATUS row records WM2, leaving WM1 intact. No dependency version changes.
 Caller-supplied placement: replay.py is public in tools/collector with
 bench_reads.py; timing-gh.py remains public with launch-fleet's test.sh/gh.py.
 Both caller-selected load behaviors remain unchanged.
+
+## Broader skills-eval baseline gap
+
+After committing the move, the offline skills-eval main suite ran 74 tests
+with three failures and four errors. Its check command reports 15 problems.
+Both results reproduce identically at live main b57e867 in a detached live
+worktree: missing private-record snapshot paths, unclassified skill links and
+install approval coverage. The relocated precheck, replay, promotion and
+weekly suites pass; the main suite is not reported as passing.
+`skills-eval-baseline.json` records the comparison. No private records are
+copied into public Git and no evaluator rule or assertion is changed.
