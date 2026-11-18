@@ -906,3 +906,68 @@ its one rule undone, and `red-review-r1.log` review round 1's proofs (R1 to
 R3) red before their fix. `rework-outcomes.json` is a synthetic 72-hour EB6
 sidecar over WR6's three-PR rework journey (one defect in three mature PRs). The BEFORE run (RL0b, #2571) keeps its bundle private in
 `private/evidence/review-loops/before/`.
+
+## CI time budgets (C1, C8)
+
+`budgets.py` separates normal (`trace=false, planted=false`), traced
+(`trace=true, planted=false`) and planted (`planted=true`, including when
+`trace=true`) execution. Each marked job has three rows in `budgets.tsv` and
+three timeout branches. The formula stays `ceil(1.5 * p95 / 60)` minutes with a
+five-minute floor; p95 is nearest rank per matrix leg, then the slowest leg.
+At least five eligible job samples are required. Ordinary successful and failed
+jobs still count; cancelled/skipped jobs do not. A planted job must additionally
+finish its workload: success, or a trace-record upload reached after execution.
+An early test failure is not a completed planted duration.
+
+Refresh from real records, keeping downloaded records outside public Git:
+
+```sh
+python3 -I tools/war-room/budgets.py collect --workflow ci.yml --runs 150 --since 2026-11-15T23:33:42Z --out /tmp/budget-window
+python3 -I tools/war-room/budgets.py collect --workflow privacy.yml --runs 150 --since 2026-11-15T23:33:42Z --out /tmp/budget-window
+python3 -I tools/war-room/budgets.py table /tmp/budget-window --out /tmp/budgets.tsv
+python3 -I tools/war-room/test_budgets.py
+python3 -I tools/war-room/budgets.py check
+```
+
+Collection saves `modes.json` beside the existing bench-shaped `jobs.jsonl`.
+It reads each latest attempt's persisted `ci-selection-<attempt>` artifact,
+checks selection run/attempt identity and the dispatch's selection hash, and
+keeps the actual boolean dispatch flags and artifact source. Missing, expired,
+unreadable or ambiguous evidence stays unknown. A combined trace/planted upload
+that ran cannot distinguish those modes. A skipped upload after clean steps can
+still establish normal execution. Unknown runs are reported and excluded from
+mode-specific samples.
+
+C1's fallback remains each rare job/mode's own last 150 eligible runs, with its
+actual window; never another mode's runs. Shape-changed release/skills/fleet jobs
+still require their post-merge window (`--after`, `--after-jobs`). Existing
+approved export-twin derivations stay explicit (`--derive rust=rust-export
+web=web-export`) and must use the same mode. No new twin relationship is implied.
+
+`table` writes planted duration provenance to `<table-stem>.samples.json` and
+references it as `measured:<path relative to table>` in the source column. Keep
+that file with a reviewed table, adjusting the relative path when moving it.
+`check` validates planted mode flags, completion, count and p95 against those
+observations, rejects missing planted rows and legacy shared timeouts, and checks
+each mode's timeout against its own row. A planted twin must reference the same
+mode and values. It reads no network during checking.
+
+If five completed samples do not exist, generation fails unless the gap is
+explicitly represented with `--unmeasured JOB:planted=AUTHORIZED_MINUTES`.
+The [C8 ruling](https://github.com/openwizdev/OpenWiz/issues/1097#issuecomment-6967769682)
+applies C1 question 4: undersampled planted rows restore their pre-#782
+90-minute limit, explicitly unmeasured. A provenance reference may be recorded
+as `unmeasured:<path relative to table>`; the committed rows point to the
+[C8 evidence](../../docs/evidence/1097/measurements.md), including run
+43586844977 attempt 1's observed 70m33s. This is not a five-sample p95 or a value
+computed from that one duration. Rows with five eligible samples stay measured
+by the unchanged formula and minimum, even if a fallback option is configured.
+
+An explicit `--derive rust=rust-export web=web-export` also inherits a twin's
+same-mode unmeasured fallback (for example,
+`--unmeasured rust-export:planted=90 web-export:planted=90`). The derived row keeps
+the twin's counts/window and p95 unknown (`0` in the TSV); the check validates the
+same-mode twin and does not apply the measured formula to its unknown p95.
+[Non-blocking follow-up #1109](https://github.com/openwizdev/OpenWiz/issues/1109)
+tracks a later re-read once eligible completed workloads exist. It authorizes
+no fresh measurements, reruns, sample waiver or automatic timeout changes.

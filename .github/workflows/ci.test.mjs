@@ -247,3 +247,23 @@ test('pull requests and merge groups run the full suite and every required check
   const kept = workflow.replace(ci, "  ci:\n    needs: $1\n    if: ${{ always() && github.event_name != 'push' }}");
   assert.ok(simulate(kept, 'merge_group', FULL_PLAN).includes('ci'));
 });
+
+test('marked jobs choose planted, traced and normal timeout branches independently', () => {
+  const jobs = [...workflow.matchAll(/^  ([a-z-]+):\n((?:    .*\n|\n)*)/gm)]
+    .filter(([, , body]) => body.includes("if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'"));
+  assert.ok(jobs.length > 0);
+  for (const [, job, body] of jobs) {
+    const expression = body.match(/^    timeout-minutes: \$\{\{ (.+) \}\}$/m)?.[1];
+    assert.ok(expression, `${job} has a mode timeout`);
+    // Independent sentinels test branch selection even when real budgets are equal.
+    let i = 0;
+    const branches = expression.replace(/\b\d+\b/g, () => String([101, 202, 303][i++]));
+    for (const [planted, trace, expected] of [
+      ['true', 'false', 101], ['true', 'true', 101],
+      ['false', 'true', 202], ['false', 'false', 303],
+    ]) {
+      assert.equal(runInNewContext(branches, { needs: { changes: { outputs: { planted, trace } } } }),
+        expected, `${job}: planted=${planted} trace=${trace}`);
+    }
+  }
+});
