@@ -13,11 +13,15 @@ up to a whole minute, at least 5 minutes. WORKFLOW defaults to the CI and
 Privacy workflows. Python 3 standard library only, and gh. See README.md.
 """
 import argparse
+import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import re
 import sys
+import subprocess
+import zipfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -25,16 +29,16 @@ TABLE = HERE / "budgets.tsv"
 WORKFLOWS = [ROOT / ".github/workflows/ci.yml", ROOT / ".github/workflows/privacy.yml"]
 RUNS, FLOOR, MIN_SAMPLES = 150, 5, 5
 COLUMNS = ["workflow", "job", "mode", "timeout", "p95_seconds", "samples", "runs", "first", "last", "source"]
-# measured: from the job's own runs; derived:<job>: from a twin with the same steps, for a job that has
+# measured[:samples-file]: from the job's own runs; derived:<job>: from a twin with the same steps, for a job that has
 # never run; unmeasured: today's timeout kept until the job has enough runs (#782 question 4).
-SOURCE = re.compile(r"measured|unmeasured|derived:[A-Za-z0-9_-]+")
-# A job that runs trace.py or planted.py's records in traced and planted runs
-# carries this step; its timeout then has a traced budget and a normal one.
+SOURCE = re.compile(r"measured(?::[^\t\n]+)?|unmeasured|derived:[A-Za-z0-9_-]+")
+# Marked jobs execute three distinct modes. Planted takes precedence when both flags are true.
 MARK = "if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'"
-TRACED = ("${{ (needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true')"
-          " && %d || %d }}")
-TRACED_RE = re.compile(r"\$\{\{ \(needs\.changes\.outputs\.trace == 'true' \|\| needs\.changes\.outputs\.planted"
-                       r" == 'true'\) && (\d+) \|\| (\d+) \}\}")
+THREE = ("${{ needs.changes.outputs.planted == 'true' && %d || "
+         "needs.changes.outputs.trace == 'true' && %d || %d }}")
+THREE_RE = re.compile(r"\$\{\{ needs\.changes\.outputs\.planted == 'true' && (\d+) \|\| "
+                      r"needs\.changes\.outputs\.trace == 'true' && (\d+) \|\| (\d+) \}\}")
+MODES = ("planted", "traced", "normal")
 COUNTED = {"success", "failure"}
 
 
@@ -127,13 +131,11 @@ def read_workflow(path):
 
 
 def parse_timeout(value):
-    """('all', n) for a plain number, ('traced', traced, normal) for the traced form, None otherwise."""
+    """A plain timeout or the planted, traced, normal expression; legacy mixed forms refuse."""
     if re.fullmatch(r"\d+", value):
         return ("all", int(value))
-    m = TRACED_RE.fullmatch(value)
-    if m:
-        return ("traced", int(m[1]), int(m[2]))
-    return None
+    m = THREE_RE.fullmatch(value)
+    return ("modes", *map(int, m.groups())) if m else None
 
 
 # ---------------------------------------------------------------- the table
@@ -150,8 +152,8 @@ def read_table(path):
         r = dict(zip(COLUMNS, f))
         if not SOURCE.fullmatch(r["source"]):
             raise Fail(f"{path} line {n}: source {r['source']!r} is not measured, derived:<job> or unmeasured")
-        if r["mode"] not in ("all", "normal", "traced"):
-            raise Fail(f"{path} line {n}: mode {r['mode']!r} is not all, normal or traced")
+        if r["mode"] not in ("all", "normal", "traced", "planted"):
+            raise Fail(f"{path} line {n}: mode {r['mode']!r} is not all, normal, traced or planted")
         for k in ("timeout", "p95_seconds", "samples", "runs"):
             if not re.fullmatch(r"\d+", r[k]):
                 raise Fail(f"{path} line {n}: {k} {r[k]!r} is not a whole number")
@@ -171,19 +173,72 @@ def write_table(path, rows):
 
 
 def expected(rows, wf, key):
-    """The timeout a job's rows give it: ('all', n) or ('traced', traced, normal)."""
+    """A marked job needs all three independent mode rows."""
     modes = {m: r for (w, j, m), r in rows.items() if (w, j) == (wf, key)}
     if not modes:
         return None
     if set(modes) == {"all"}:
         return ("all", modes["all"]["timeout"])
-    if set(modes) == {"normal", "traced"}:
-        return ("traced", modes["traced"]["timeout"], modes["normal"]["timeout"])
-    raise Fail(f"{wf} job {key}: its rows must be one all row, or one normal and one traced row")
+    if set(modes) == set(MODES):
+        return ("modes", *(modes[m]["timeout"] for m in MODES))
+    raise Fail(f"{wf} job {key}: its rows must be one all row, or normal, traced and planted rows")
 
 
 def timeout_text(want):
-    return str(want[1]) if want[0] == "all" else TRACED % (want[1], want[2])
+    return str(want[1]) if want[0] == "all" else THREE % want[1:]
+
+
+def planted_evidence(table, rows, r):
+    """Validate a planted row against its offline, mode-bound duration observations."""
+    source = r["source"]
+    if source == "unmeasured":
+        if r["p95_seconds"] != 0:
+            raise Fail("planted evidence: an unmeasured row cannot claim a p95")
+        return
+    if source.startswith("derived:"):
+        twin = rows.get((r["workflow"], source.split(":", 1)[1], "planted"))
+        if twin is None or twin["source"].startswith("derived:"):
+            raise Fail("planted evidence: missing measured planted twin")
+        if any(r[k] != twin[k] for k in COLUMNS if k not in ("job", "source")):
+            raise Fail("planted evidence: derived row differs from its planted twin")
+        return
+    if not source.startswith("measured:"):
+        raise Fail("planted evidence: a measured planted row needs its own sample provenance")
+    path = Path(table).parent / source.split(":", 1)[1]
+    data = B.as_list(B.strict_json(B.read_file(path), str(path)), str(path))
+    got, seen = [], set()
+    for sample in data:
+        B.as_obj(sample, str(path))
+        if (sample.get("workflow"), sample.get("job")) != (r["workflow"], r["job"]):
+            continue
+        if execution_mode(sample) != "planted":
+            raise Fail("planted evidence: traced, normal or unknown sample attributed to planted")
+        if (any(type(sample.get(k)) is not int or sample[k] < 1 for k in ("run", "attempt"))
+                or not isinstance(sample.get("leg"), str)
+                or not (sample["leg"] == r["job"] or sample["leg"].startswith(r["job"] + " ("))):
+            raise Fail("planted evidence: invalid run, attempt or job identity")
+        created = B.as_time(sample, "created_at", str(path))
+        if not (r["first"] <= created <= r["last"]):
+            raise Fail("planted evidence: sample outside the row's window")
+        ident = (sample["run"], sample["attempt"], sample["leg"])
+        if (ident in seen or sample.get("conclusion") not in COUNTED
+                or sample.get("complete") is not True):
+            raise Fail("planted evidence: duplicate or incomplete sample")
+        seen.add(ident)
+        seconds = sample.get("seconds")
+        if type(seconds) is not int or seconds < 0:
+            raise Fail("planted evidence: invalid duration")
+        got.append(sample)
+    if len({sample["run"] for sample in got}) > r["runs"]:
+        raise Fail("planted evidence: more sample runs than the row records")
+    if len(got) < MIN_SAMPLES or len(got) != r["samples"]:
+        raise Fail("planted evidence: missing samples or fewer than five")
+    legs = {}
+    for sample in got:
+        legs.setdefault(sample["leg"], []).append(sample["seconds"])
+    p95 = max(B.nearest_rank(v, 0.95) for v in legs.values())
+    if r["p95_seconds"] != p95:
+        raise Fail("planted evidence: row p95 differs from its own samples")
 
 
 def check(table, workflows):
@@ -193,6 +248,11 @@ def check(table, workflows):
         if r["source"] != "unmeasured" and r["timeout"] != budget(r["p95_seconds"]):
             errors.append(f"{wf} {key} {mode}: timeout {r['timeout']}, but 1.5x its p95 of {r['p95_seconds']} s"
                           f" is {budget(r['p95_seconds'])}")
+        if mode == "planted":
+            try:
+                planted_evidence(table, rows, r)
+            except Fail as e:
+                errors.append(f"{wf} {key}: {e}")
     seen = set()
     for path in workflows:
         wf = Path(path).name
@@ -203,21 +263,22 @@ def check(table, workflows):
             if want is None:
                 errors.append(f"{wf} job {key} has no budget row")
                 continue
+            if j["marked"] and want[0] == "all":
+                errors.append(f"{wf} job {key}: missing normal, traced and planted budgets")
+                continue
             if j["timeout"] is None:
                 errors.append(f"{wf} job {key} has no timeout-minutes")
                 continue
             got = parse_timeout(j["timeout"][1])
             if got is None:
                 errors.append(f"{wf} job {key}: timeout-minutes {j['timeout'][1]!r} is neither a number nor the"
-                              " traced form")
-            elif got[0] == "all" and want[0] == "traced":
-                errors.append(f"{wf} job {key}: timeout-minutes {got[1]} has no traced budget")
-            elif got[0] == "traced" and want[0] == "all":
-                errors.append(f"{wf} job {key}: a traced timeout-minutes, but its budget has no traced row")
+                              " planted/traced/normal form")
+            elif got[0] != want[0]:
+                errors.append(f"{wf} job {key}: timeout-minutes has no matching planted/traced/normal budget")
             elif got[0] == "all" and got[1] != want[1]:
                 errors.append(f"{wf} job {key}: timeout-minutes {got[1]}, its budget is {want[1]}")
-            elif got[0] == "traced":
-                for mode, g, w in (("traced", got[1], want[1]), ("normal", got[2], want[2])):
+            elif got[0] == "modes":
+                for mode, g, w in zip(MODES, got[1:], want[1:]):
                     if g != w:
                         errors.append(f"{wf} job {key}: {mode} timeout-minutes {g}, its budget is {w}")
     for wf, key in sorted({(w, j) for w, j, _ in rows} - seen):
@@ -249,6 +310,37 @@ def apply(table, workflows):
 
 # ---------------------------------------------------------------- reading runs
 
+def collect_mode(base, run):
+    """Read the persisted dispatcher flags, paired by plan hash and run/attempt identity."""
+    rid, attempt = run["id"], run["attempt"]
+    unknown = {"attempt": attempt, "source": "unknown", "reason": "no matching dispatch artifact"}
+    listed = [a for a, _ in B.pages(f"{base}/runs/{rid}/artifacts?per_page=100", "artifacts", "artifacts")]
+    artifacts = [a for a in listed if a.get("name") == f"ci-selection-{attempt}" and a.get("expired") is False]
+    if len(artifacts) != 1:
+        return unknown
+    artifact = artifacts[0]
+    result = subprocess.run(["gh", "api", f"{base}/artifacts/{artifact['id']}/zip"], capture_output=True)
+    if result.returncode:
+        return dict(unknown, reason="dispatch artifact download failed")
+    try:
+        with zipfile.ZipFile(io.BytesIO(result.stdout)) as archive:
+            if any(archive.namelist().count(name) != 1 for name in ("ci-selection.json", "ci-dispatch.json")):
+                return dict(unknown, reason="missing or duplicate dispatch artifact files")
+            plan_bytes = archive.read("ci-selection.json")
+            plan = B.as_obj(B.strict_json(plan_bytes.decode(), "selection artifact"), "selection artifact")
+            dispatch = B.as_obj(B.strict_json(archive.read("ci-dispatch.json").decode(), "dispatch artifact"), "dispatch artifact")
+            B.as_obj(plan.get("run"), "selection run")
+        if (plan.get("schema") != "openwiz.ci-selection.v1" or plan.get("run", {}).get("id") != rid
+                or plan["run"].get("attempt") != attempt
+                or dispatch.get("plan_sha256") != hashlib.sha256(plan_bytes).hexdigest()
+                or type(dispatch.get("trace")) is not bool or type(dispatch.get("planted")) is not bool):
+            return dict(unknown, reason="dispatch artifact identity, hash or flags mismatch")
+    except (Fail, KeyError, ValueError, UnicodeError, zipfile.BadZipFile):
+        return dict(unknown, reason="unreadable dispatch artifact")
+    return {"attempt": attempt, "trace": dispatch["trace"], "planted": dispatch["planted"],
+            "source": artifact["archive_download_url"], "plan_sha256": dispatch["plan_sha256"]}
+
+
 def collect(workflow, runs, since, out, per_page=100):
     base = "repos/{owner}/{repo}/actions"
     query = "status=completed" + (f"&created=>={since}" if since else "")
@@ -273,7 +365,7 @@ def collect(workflow, runs, since, out, per_page=100):
                            "created_at": B.as_time(run, "created_at", at), "attempt": B.as_int(run, "run_attempt", at)})
         page += 1
     listed = listed[:runs]
-    lines = []
+    lines, modes = [], {}
     for run in listed:
         rid = run["id"]
         for job, where in B.pages(f"{base}/runs/{rid}/jobs?filter=latest&per_page=100", "jobs", "jobs"):
@@ -295,6 +387,8 @@ def collect(workflow, runs, since, out, per_page=100):
                       "id": B.as_int(job, "id", at), "run_attempt": B.as_int(job, "run_attempt", at),
                       "collected_attempt": run["attempt"], "run_created_at": run["created_at"]}
             lines.append(json.dumps(record, sort_keys=True))
+        if workflow == "ci.yml":
+            modes[str(rid)] = collect_mode(base, run)
         # A rerun between the list and the jobs would mix attempts (bench.py, #383 R2).
         where = f"gh api {base}/runs/{rid}"
         again = B.as_obj(B.gh(f"{base}/runs/{rid}"), where)
@@ -304,6 +398,8 @@ def collect(workflow, runs, since, out, per_page=100):
             raise Fail(f"{where}: run {rid} changed while it was read; read again once its reruns have finished")
     d = Path(out) / workflow.removesuffix(".yml")
     d.mkdir(parents=True, exist_ok=True)
+    if workflow == "ci.yml":
+        B.write(d / "modes.json", json.dumps(modes, indent=2, sort_keys=True) + "\n")
     created = sorted(r["created_at"] for r in listed)
     B.write(d / "window.json", json.dumps({"workflow": workflow, "runs": len(listed),
                                            "first": created[0] if created else None,
@@ -317,50 +413,61 @@ def read_window(d, workflow):
     d = Path(d) / workflow.removesuffix(".yml")
     w = B.as_obj(B.strict_json(B.read_file(d / "window.json"), f"{d}/window.json"), f"{d}/window.json")
     jobs = B.read_jobs(d) if B.read_file(d / "jobs.jsonl") else []
+    mode_file = d / "modes.json"
+    modes = B.as_obj(B.strict_json(B.read_file(mode_file), str(mode_file)), str(mode_file)) if mode_file.exists() else {}
+    for job in jobs:
+        job["execution"] = B.as_obj(modes.get(str(job["run"]), {}), str(mode_file))
     return w, jobs
 
 
-def run_modes(jobs, wjobs):
-    """(traced runs, unclear runs), from the workflow's own trace steps (MARK).
+def execution_mode(evidence):
+    if (type(evidence.get("trace")) is not bool or type(evidence.get("planted")) is not bool
+            or not isinstance(evidence.get("source"), str) or not evidence["source"]):
+        return None
+    return "planted" if evidence["planted"] else "traced" if evidence["trace"] else "normal"
 
-    Every MARK step tests the same trace/planted flags. One that ran (success
-    or failure) makes its run traced. One skipped after only successful or
-    skipped steps makes it normal. One skipped after a failure, or a step list
-    that doesn't match the workflow, says nothing. A scheduled (nightly) run
-    is traced. A run with no clear answer, or with both, is unclear, and is left
-    out of two-mode jobs rather than guessed (R1)."""
-    yes, no, runs = set(), set(), set()
+
+def run_modes(jobs, wjobs):
+    """Actual dispatch flags, bound to the collected attempt; legacy ambiguous uploads stay unknown."""
+    answers, runs = {}, set()
     for j in jobs:
-        runs.add(j["run"])
-        if j["event"] == "schedule":
-            yes.add(j["run"])
-        steps = j["steps"]
+        rid = j["run"]
+        runs.add(rid)
+        e = j.get("execution", {})
+        mode = execution_mode(e) if type(e.get("attempt")) is int and e["attempt"] == j.get("run_attempt") else None
+        j["mode_complete"] = j["conclusion"] == "success"
         for at, name in wjobs.get(j["name"].split(" (")[0], {}).get("marks", []):
-            if at >= len(steps) or steps[at]["name"] != name:
-                continue
-            if steps[at]["conclusion"] in COUNTED:
-                yes.add(j["run"])
-            elif steps[at]["conclusion"] == "skipped" and all(x["conclusion"] in ("success", "skipped")
-                                                              for x in steps[:at]):
-                no.add(j["run"])
-    scheduled = {j["run"] for j in jobs if j["event"] == "schedule"}
-    unclear = (runs - yes - no) | ((yes & no) - scheduled)
-    return yes - unclear, unclear
+            if at < len(j["steps"]) and j["steps"][at]["name"] == name and j["steps"][at]["conclusion"] in COUNTED:
+                j["mode_complete"] = True
+        if mode is None:
+            # Both flags false is observable in a skipped combined step after clean steps.
+            # A combined step that ran cannot tell traced from planted, even on a schedule.
+            for at, name in wjobs.get(j["name"].split(" (")[0], {}).get("marks", []):
+                if (at < len(j["steps"]) and j["steps"][at]["name"] == name
+                        and j["steps"][at]["conclusion"] == "skipped"
+                        and all(s["conclusion"] in ("success", "skipped") for s in j["steps"][:at])):
+                    mode = "normal"
+        if mode:
+            answers.setdefault(rid, set()).add(mode)
+    known = {r: next(iter(a)) for r, a in answers.items() if len(a) == 1}
+    return known, runs - set(known)
 
 
 def samples(jobs, key, mode, modes):
-    """(leg, run, run created, running seconds) for each job named KEY or KEY (matrix values) that ran to
-    success or failure; for a two-mode job, only the runs whose mode (run_modes) is MODE."""
-    traced, unclear = modes
+    """Eligible complete durations from this job and this execution mode only."""
+    known, _ = modes
     out = []
     for j in jobs:
         if j["name"] != key and not j["name"].startswith(key + " ("):
             continue
         if j["conclusion"] not in COUNTED or B.never_ran(j):
             continue
-        if mode != "all" and (j["run"] in unclear or (j["run"] in traced) != (mode == "traced")):
+        if mode != "all" and known.get(j["run"]) != mode:
             continue
-        out.append((j["name"], j["run"], j.get("run_created_at", j["created_at"]), B.secs(j["completed_at"]) - B.secs(j["started_at"])))
+        if mode == "planted" and not j.get("mode_complete"):
+            continue
+        out.append((j["name"], j["run"], j.get("run_created_at", j["created_at"]),
+                    B.secs(j["completed_at"]) - B.secs(j["started_at"])))
     return out
 
 
@@ -386,19 +493,19 @@ def current_shape(jobs, keys):
 
 
 def note(wf, jobs, wjobs, unclear):
-    """Say how many runs left out of two-mode jobs had a sample in one."""
+    """Say how many runs left out of mode-specific jobs had a sample in one."""
     marked = {k for k, j in wjobs.items() if j["marked"]}
     hit = {j["run"] for j in jobs if j["run"] in unclear and j["name"].split(" (")[0] in marked
            and j["conclusion"] in COUNTED and not B.never_ran(j)}
     if hit:
         n = len(hit)
-        print(f"budgets: {wf}: {n} run{'' if n == 1 else 's'} with no clear traced or normal mode,"
-              " left out of two-mode jobs")
+        print(f"budgets: {wf}: {n} run{'' if n == 1 else 's'} with no clear normal, traced or planted mode,"
+              " left out of mode-specific jobs")
 
 
 def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=None, unmeasured=None):
     derive, unmeasured = derive or {}, unmeasured or {}
-    rows, errors = [], []
+    rows, errors, evidence = [], [], []
     for path in workflows:
         wf = Path(path).name
         _, wjobs = read_workflow(path)
@@ -412,7 +519,7 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
             # A job that has never run reads its twin's runs (derive).
             twin = derive.get(key, key)
             second = after if twin in after_jobs else fallback
-            for mode in (("normal", "traced") if j["marked"] else ("all",)):
+            for mode in (("normal", "traced", "planted") if j["marked"] else ("all",)):
                 w, jobs = primary
                 runs, first, last = w["runs"], w["first"], w["last"]
                 if twin in after_jobs:
@@ -429,9 +536,11 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
                     if twin in after_jobs:
                         sjobs = current_shape(sjobs, wjobs)[0]
                     got, runs, first, last = own_runs(samples(sjobs, twin, mode, straced))
+                    jobs = sjobs
                 n = len(got)
-                if key in unmeasured:
-                    rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": unmeasured[key], "p95_seconds": 0,
+                unmeasured_key = f"{key}:{mode}" if f"{key}:{mode}" in unmeasured else key
+                if unmeasured_key in unmeasured:
+                    rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": unmeasured[unmeasured_key], "p95_seconds": 0,
                                  "samples": n, "runs": runs, "first": first, "last": last, "source": "unmeasured"})
                     continue
                 if n < MIN_SAMPLES:
@@ -443,15 +552,30 @@ def table(window, fallback, out, workflows, after=None, after_jobs=(), derive=No
                     legs.setdefault(leg, []).append(seconds)
                 # The slowest leg's p95: one timeout covers every matrix leg.
                 p95 = max(B.nearest_rank(v, 0.95) for v in legs.values())
+                if mode == "planted" and twin == key:
+                    selected = {(leg, rid) for leg, rid, _, _ in got}
+                    for record in jobs:
+                        if (record["name"], record["run"]) in selected:
+                            evidence.append(dict(record["execution"], workflow=wf, job=key, leg=record["name"],
+                                                 run=record["run"], conclusion=record["conclusion"], complete=record["mode_complete"],
+                                                 created_at=record.get("run_created_at", record["created_at"]),
+                                                 seconds=B.secs(record["completed_at"]) - B.secs(record["started_at"])))
                 rows.append({"workflow": wf, "job": key, "mode": mode, "timeout": budget(p95), "p95_seconds": p95,
                              "samples": n, "runs": runs, "first": first, "last": last,
-                             "source": "measured" if twin == key else f"derived:{twin}"})
+                             "source": ("measured:" + Path(out).with_suffix(".samples.json").name if mode == "planted" else "measured")
+                             if twin == key else f"derived:{twin}"})
     for e in errors:
         print(f"budgets: {e}", file=sys.stderr)
     if errors:
         return 1
+    if evidence:
+        B.write(Path(out).with_suffix(".samples.json"), json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     write_table(out, rows)
     for r in rows:
+        if r["source"] == "unmeasured":
+            print(f"{r['workflow']} {r['job']} {r['mode']}: p95 unknown, {r['samples']} eligible samples;"
+                  f" retained unmeasured timeout {r['timeout']} min")
+            continue
         print(f"{r['workflow']} {r['job']} {r['mode']}: p95 {r['p95_seconds'] / 60:.1f} min over {r['samples']}"
               f" jobs in {r['runs']} runs -> {r['timeout']} min")
     return 0
@@ -472,7 +596,7 @@ def main(argv):
     t.add_argument("--after")
     t.add_argument("--after-jobs", nargs="+", default=[])
     t.add_argument("--derive", nargs="+", default=[], metavar="JOB=TWIN")
-    t.add_argument("--unmeasured", nargs="+", default=[], metavar="JOB=MINUTES")
+    t.add_argument("--unmeasured", nargs="+", action="extend", default=[], metavar="JOB=MINUTES")
     t.add_argument("--out", default=str(TABLE))
     t.add_argument("--workflows", nargs="+", default=[str(w) for w in WORKFLOWS])
     for name in ("apply", "check"):
