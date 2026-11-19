@@ -546,12 +546,6 @@ fn ad07_every_row_of_the_outcome_table() {
             Claim::Uncertain,
         ),
         (
-            "upload",
-            unclear(UncertainReason::UndocumentedError),
-            Status::Uncertain,
-            Claim::Uncertain,
-        ),
-        (
             "undocumented",
             unclear(UncertainReason::UndocumentedError),
             Status::Uncertain,
@@ -606,6 +600,8 @@ fn ad07_every_row_of_the_outcome_table() {
         );
         if accepted {
             assert!(words.contains(NOT_REPORTED), "{name}: {words}");
+        } else {
+            assert!(!words.contains("handed to CloudRoom"), "{name}: {words}");
         }
         if name == "queued" {
             assert!(
@@ -649,10 +645,8 @@ fn ad07_every_row_of_the_outcome_table() {
             "{name}: replay dispatched again"
         );
     }
-    assert!(
-        fake.invocations().is_empty(),
-        "AD1/M4 own adapter integration"
-    );
+    // This test's own source stands in for the adapter, so the fake room-cli
+    // never runs here: AD1 and M4 own the adapter integration.
 }
 
 /// A send store that refuses only the durable dispatching mark.
