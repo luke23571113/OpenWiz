@@ -297,12 +297,12 @@ checkouts="$(awk '
   inside && /^        / { print; next }
   { inside = 0 }
 ' "$WORKFLOW")"
-for job in changes always web-build rust rust-export web web-export site release skills launch-fleet select-map ci web-test main-light; do
+for job in changes always web-build rust rust-export web web-export site release skills launch-fleet select-map ci web-test main-light owned-paths; do
   steps="$(printf '%s\n' "$checkouts" | grep -cxF "job $job")"
   with="$(printf '%s\n' "$checkouts" | awk -v j="job $job" '/^job / { on = ($0 == j); next } on')"
   if [ "$steps" = 1 ] && [ "$with" = "$want_with" ]; then ok "ci.yml: $job checks out blobless and sparse, private/ only as ci-reads.txt lists"; else bad "ci.yml: $job has $steps checkout steps, with [$(printf '%s\n' "$with" | sed 's/^ *//' | tr '\n' ';')]"; fi
 done
-if [ "$(printf '%s\n' "$checkouts" | grep -c '^job ')" = 15 ]; then ok "ci.yml: fifteen main checkout steps (X5, launch-fleet's shards and main-light)"; else bad "ci.yml: $(printf '%s\n' "$checkouts" | grep -c '^job ') checkout steps"; fi
+if [ "$(printf '%s\n' "$checkouts" | grep -c '^job ')" = 16 ]; then ok "ci.yml: sixteen main checkout steps (X5, launch-fleet's shards, main-light and owned-paths)"; else bad "ci.yml: $(printf '%s\n' "$checkouts" | grep -c '^job ') checkout steps"; fi
 # The patterns as CI uses them: web-build's (the check above holds all three
 # to the same list). Keep this tied to the actual workflow: pending X5's
 # update must remain a failing checkout proof, never a substituted pattern.
