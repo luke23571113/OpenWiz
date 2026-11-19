@@ -3237,6 +3237,43 @@
         },
         "complete": {
           "$ref": "#/$defs/boolean"
+        },
+        "last_record": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z-]*( [a-z][a-z-]*)*$"
+            }
+          ]
+        },
+        "gaps": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/time"
+                  },
+                  "until": {
+                    "$ref": "#/$defs/time"
+                  }
+                },
+                "required": [
+                  "from",
+                  "until"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ]
         }
       },
       "required": [
@@ -3246,7 +3283,9 @@
         "verdict_at",
         "last_observed_at",
         "ci_pending",
-        "complete"
+        "complete",
+        "last_record",
+        "gaps"
       ],
       "additionalProperties": false
     },
