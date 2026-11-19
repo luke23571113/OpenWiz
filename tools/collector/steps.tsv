@@ -84,6 +84,7 @@ setup	Prepare lane
 setup	Prune unused inputs
 setup	Record passed lane
 setup	Every planned lane passed
+setup	Record each job's time
 setup	Legacy checks follow ci
 # #1266 (X8): the Rust shards; each member's share, the ci job's count, and the balancer's own tests.
 setup	The Rust shard

@@ -33,10 +33,12 @@ sys.path.insert(0, HERE)
 import pick  # noqa: E402
 import trace  # noqa: E402
 
-# (path, old, new, catchers): `old` is in the file exactly once; `catchers`
-# names the lanes whose picked tests must catch the edit (at least one), as
-# run 42330800061 recorded (private/evidence/infra-ci-scale/k15/README.md).
+# (path, old, new, catchers[, as]): `old` is in the file exactly once;
+# `catchers` names the lanes whose picked tests must catch the edit (at least
+# one), as run 42330800061 recorded (private/evidence/infra-ci-scale/k15/README.md).
 # A named lane that catches nothing fails: an edit no test sees proves no skip.
+# `as` is the path a diff shows for the edit, when that is another file: the
+# installed skills change only through their pin (wizskills.lock).
 CASES = [
     ('tests/fixtures/envelopes/ls-long-complete.json', '"schema": "openwiz.inventory.v1",',
      '"schema": "openwiz.inventory.v9",', ('rust', 'web')),
@@ -52,6 +54,11 @@ CASES = [
     # C5 (#783): the deliberate PR's hidden edit, reached only through the map.
     ('tools/install/setup/setup.py', "{'code': code, 'revision': bound, 'at': now}",
      "{'code': code, 'revision': bound + 1, 'at': now}", ('web',)),
+    # #1335: the docs and skills rule (pick.py, rule 9) still selects a doc
+    # and a skill that Rust tests read.
+    ('docs/agents/fleet.md', '\n## Builder for small tickets\n', '\n## Builder for little tickets\n', ('rust',)),
+    ('skills/setup/templates/fleet.md', '\n## Reviewer for GPT-built\n', '\n## Reviewer for other models\n',
+     ('rust',), 'wizskills.lock'),
 ]
 EXPORT_INPUT = ('apps/web/',)
 NOT_EXPORT = ('apps/web/test/', 'apps/web/out/', 'apps/web/node_modules/')
@@ -122,10 +129,10 @@ def main(argv):
     if args.lane == 'web':
         subprocess.run(['node', '-e', "import('./test/support/rust.mjs').then((m) => m.buildBinaries())"],
                        cwd=os.path.join(root, 'apps/web'), check=True)
-    for path, old, new, catchers in CASES:
+    for path, old, new, catchers, *seen_as in CASES:
         if not catchers or not set(catchers) <= {'rust', 'web'}:
             raise SystemExit(f'planted: {path}: no lanes named to catch it')
-        sel = pick.select([('M', path)], mp, every, lambda p: None, lambda ps: set())
+        sel = pick.select([('M', (seen_as or [path])[0])], mp, every, lambda p: None, lambda ps: set())
         picked = set(sel['tests'])
         export = path.startswith(EXPORT_INPUT) and not path.startswith(NOT_EXPORT)
         original = apply(root, path, old, new)
@@ -149,7 +156,7 @@ def main(argv):
                 replace_contents(keep_out, out_dir)
                 shutil.rmtree(keep_out, ignore_errors=True)
         v = verdict(picked & set(todo), results)
-        row = {'lane': args.lane, 'path': path, 'edit': [old, new], 'selection': sel['mode'],
+        row = {'lane': args.lane, 'path': path, 'as': (seen_as or [path])[0], 'edit': [old, new], 'selection': sel['mode'],
                'picked': sorted(picked & set(todo)), 'skipped': sorted(set(todo) - picked), **v,
                'catchers': list(catchers),
                'verdict': 'FAIL: a skipped test failed' if v['hidden'] else
