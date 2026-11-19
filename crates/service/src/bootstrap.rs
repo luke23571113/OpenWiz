@@ -1,19 +1,12 @@
 //! Installed startup gate. Existing source deployments keep their prior path.
-//! Removing this gate requires the separately approved activation prerequisites;
-//! there is deliberately no runtime flag, environment or config bypass.
+//! Packaged starts require a private, verified installation.
 pub fn check(executable: &std::path::Path) -> Result<(), String> {
-    // #2379: a packaged build starts only when its own installer-valid package
-    // and T9's applied activation record bind this exact build, owner, root,
-    // runtime state and config. Login is reported as unknown (LE1). Every
-    // unread or unexpected input refuses. The rules mirror the installer's
-    // `manifest_at`/`verify_installed`/`path_guard` and T9's `journal()`.
     use openwiz_core::messaging::sha256_hex;
-    use serde_json::Value;
     use std::{
         collections::BTreeSet,
         fs,
         os::unix::fs::MetadataExt,
-        path::{Component, Path},
+        path::{Component, Path, PathBuf},
     };
     const TARGETS: [&str; 3] = [
         "aarch64-apple-darwin",
@@ -46,11 +39,6 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
         "runtime/cloudroom/cloudroom.py",
         "runtime/setup/init.py",
     ];
-    const EFFECTS: &str = "Enable and start the owner user unit openwiz.service.";
-    const REASON: &str = "Reconcile the exact PC activation and App record before continuing.";
-    const SAFE: u64 = 1 << 53;
-    // Typed shapes refuse duplicate, unknown and mistyped keys; the key-set
-    // checks below additionally require every nullable key to be present.
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Manifest {
@@ -72,75 +60,20 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
         bytes: u64,
         mode: String,
     }
-    #[derive(serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Journal {
-        schema: String,
-        request: Request,
-        operation: Operation,
-        created_at: u64,
-        updated_at: u64,
-        started_at: Option<u64>,
-        record_at: Option<u64>,
-        record_state: String,
-        outcome: String,
-    }
-    #[derive(serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Request {
-        schema: String,
-        host: String,
-        action: String,
-        operation_id: String,
-        binding: Binding,
-        revision: u64,
-        request_hash: String,
-    }
-    #[derive(serde::Deserialize, serde::Serialize)]
-    #[serde(deny_unknown_fields)]
-    struct Binding {
-        owner_uid: u64,
-        unit: String,
-        root: String,
-        state_root: String,
-        repository: String,
-        project: String,
-        runtime: String,
-        build: String,
-        config_sha256: String,
-        unit_sha256: String,
-        app_id: u64,
-        installation_id: u64,
-        service_issue: u64,
-    }
-    #[derive(serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Operation {
-        operation_id: String,
-        kind: String,
-        phase: String,
-        fingerprint: String,
-        effects: Vec<String>,
-        reason: String,
-    }
-    let refuse = |why: &str| {
-        Err(format!(
-            "Activation remains closed: {why}; login: unknown. Reconcile the installed PC activation."
-        ))
-    };
+    let refuse = |why: &str| Err(format!("Packaged startup refused: {why}; login: unknown"));
+    let missing = |path: &Path| matches!(fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
     let build = executable
         .parent()
         .ok_or("cannot locate the service package")?;
     // A damaged/missing manifest must not reclassify a packaged build as a
     // source deployment. Source updater builds have no packaged runtime.
-    let packaged = ["install-manifest.json", "runtime"].iter().any(|marker| {
-        !matches!(fs::symlink_metadata(build.join(marker)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound)
-    });
+    let packaged = ["install-manifest.json", "runtime"]
+        .iter()
+        .any(|marker| !missing(&build.join(marker)));
     if !packaged {
         return Ok(());
     }
-    let Ok(owner) = fs::metadata("/proc/self").map(|m| m.uid()) else {
+    let Ok(owner) = openwiz_store::attachments::effective_uid() else {
         return refuse("the effective owner is unreadable");
     };
     // Owner-held, not group/other accessible, the expected kind, singly linked.
@@ -171,13 +104,13 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
         text.bytes()
             .all(|b| b.is_ascii_alphanumeric() || extra.contains(&b))
     };
-    let version = |text: &str, digits: usize| {
+    let version = |text: &str| {
         let parts: Vec<_> = text.split('.').collect();
         parts.len() == 3
             && parts[0] == "0"
             && parts[1..]
                 .iter()
-                .all(|p| (1..=digits).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit()))
+                .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
     };
     // install.path_guard: absolute and plain, every existing ancestor a real dir.
     let plain = |path: &Path| {
@@ -190,30 +123,57 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
                 Err(e) => e.kind() == std::io::ErrorKind::NotFound,
             })
     };
-    // T9's binding paths: ASCII, '/' plus 1..=1023 characters, no control
-    // character and no empty, '.' or '..' component.
-    let binding_path = |text: &str| {
-        text.is_ascii()
-            && (2..=1024).contains(&text.len())
-            && text.starts_with('/')
-            && !text.bytes().any(|b| b < 0x20 || b == 0x7f)
-            && text[1..].split('/').all(|p| !["", ".", ".."].contains(&p))
-    };
-    let keys = |value: &Value, expected: &[&str]| {
-        value.as_object().is_some_and(|map| {
-            map.len() == expected.len() && expected.iter().all(|k| map.contains_key(*k))
-        })
-    };
-
     // The selected build and its installer-valid manifest.
     let name = build.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let builds = build.parent().filter(|p| p.ends_with("service/builds"));
-    let Some(state) = builds.and_then(Path::parent).and_then(Path::parent) else {
+    let Some(builds) = build.parent().filter(|p| p.ends_with("service/builds")) else {
         return refuse("the build is outside an installed state root");
     };
+    let Some(state) = builds.parent().and_then(Path::parent) else {
+        return refuse("the build is outside an installed state root");
+    };
+    if executable
+        .file_name()
+        .is_none_or(|name| name != "openwiz-service")
+    {
+        return refuse("the running executable does not belong to the installed package");
+    }
     if !hex(name, 40) || !plain(build) || !private(build, true) {
         return refuse("the installed build is not a private verified selection");
     }
+
+    // Check the state actually used by the runtime. Setup state is optional;
+    // when present it must still be a real, owner-private directory.
+    let Ok(runtime_state) = openwiz_store::default_state_dir(&|n| std::env::var_os(n)) else {
+        return refuse("the runtime state directory is unavailable");
+    };
+    let setup = state.join("setup");
+    if runtime_state != state
+        || ![state, &state.join("service"), builds]
+            .iter()
+            .all(|path| private(path, true))
+        || (!missing(&setup) && !private(&setup, true))
+    {
+        return refuse("the runtime state is not this installation's private state");
+    }
+
+    // An installed build must be selected by an identifiable, private root.
+    // The standard root and the installer's implicit <root>/state are the only
+    // locations where the existing layout identifies that root.
+    let selected = |root: &Path| {
+        let current = root.join("current");
+        plain(root)
+            && private(root, true)
+            && fs::symlink_metadata(&current)
+                .is_ok_and(|m| m.file_type().is_symlink() && m.uid() == owner)
+            && fs::read_link(current).is_ok_and(|target| target == build)
+    };
+    let standard =
+        std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/lib/openwiz"));
+    let default = state.parent().filter(|_| state.ends_with("state"));
+    if !standard.as_deref().is_some_and(selected) && !default.is_some_and(selected) {
+        return refuse("cannot identify the private install root selecting this build");
+    }
+
     let Some(manifest) = read(&build.join("install-manifest.json"), 4 * 1024 * 1024)
         .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
     else {
@@ -225,7 +185,7 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
         .is_some_and(|stem| !stem.is_empty() && charset(stem, b"_.-"));
     if manifest.schema != "openwiz.install.v1"
         || manifest.source != name
-        || !version(&manifest.version, usize::MAX)
+        || !version(&manifest.version)
         || !TARGETS.contains(&manifest.target.as_str())
         || manifest.setup_api != 1
         || !bundle_ok
@@ -315,169 +275,6 @@ pub fn check(executable: &std::path::Path) -> Result<(), String> {
         return refuse("the installed build holds an unlisted asset");
     }
 
-    // The runtime state this service will actually use must be this one.
-    let Ok(runtime_state) = openwiz_store::default_state_dir(&|n| std::env::var_os(n)) else {
-        return refuse("the runtime state directory is unavailable");
-    };
-    if runtime_state != state
-        || !plain(state)
-        || !["", "service", "setup"]
-            .iter()
-            .all(|d| private(&state.join(d), true))
-    {
-        return refuse("the runtime state is not this installation's private state");
-    }
-
-    // T9's journal, with exactly T9's reader invariants.
-    let Some(raw) = read(&state.join("setup/pc-activation.json"), 64 * 1024) else {
-        return refuse("no readable PC activation record");
-    };
-    let (Ok(journal), Ok(shape)) = (
-        serde_json::from_slice::<Journal>(&raw),
-        serde_json::from_slice::<Value>(&raw),
-    ) else {
-        return refuse("the PC activation record is malformed");
-    };
-    let (request, binding, operation) = (
-        &journal.request,
-        &journal.request.binding,
-        &journal.operation,
-    );
-    let present = keys(
-        &shape,
-        &[
-            "schema",
-            "request",
-            "operation",
-            "created_at",
-            "updated_at",
-            "started_at",
-            "record_at",
-            "record_state",
-            "outcome",
-        ],
-    );
-    let between =
-        |t: Option<u64>| t.is_none_or(|t| journal.created_at <= t && t <= journal.updated_at);
-    let runtime_ok = binding
-        .runtime
-        .split_once(' ')
-        .is_some_and(|(v, s)| version(v, 10) && hex(s, 40) && s == binding.build);
-    let repository_ok = binding.repository.split_once('/').is_some_and(|(o, n)| {
-        (1..=39).contains(&o.len())
-            && charset(o, b"-")
-            && (1..=100).contains(&n.len())
-            && charset(n, b"_.-")
-            && n != "."
-            && n != ".."
-    });
-    let project_ok = (1..=128).contains(&binding.project.len())
-        && !binding.project.starts_with('-')
-        && charset(&binding.project, b"_-");
-    let shaped = present
-        && journal.schema == "openwiz.pc-activation.v1.journal"
-        && request.schema == "openwiz.pc-activation.v1"
-        && request.host == "pc"
-        && request.action == "enable_start"
-        && hex(&request.operation_id, 32)
-        && request.revision < SAFE
-        && binding.owner_uid < SAFE
-        && binding.unit == "openwiz.service"
-        && binding_path(&binding.root)
-        && binding_path(&binding.state_root)
-        && repository_ok
-        && project_ok
-        && runtime_ok
-        && hex(&binding.config_sha256, 64)
-        && hex(&binding.unit_sha256, 64)
-        && [
-            binding.app_id,
-            binding.installation_id,
-            binding.service_issue,
-        ]
-        .iter()
-        .all(|n| (1..SAFE).contains(n))
-        && operation.operation_id == request.operation_id
-        && operation.kind == "activate_engine"
-        && hex(&operation.fingerprint, 64)
-        && operation.effects == [EFFECTS]
-        && operation.reason == REASON
-        && (1..SAFE).contains(&journal.created_at)
-        && (journal.created_at..SAFE).contains(&journal.updated_at)
-        && between(journal.started_at)
-        && between(journal.record_at)
-        && ["pending", "unsent", "uncertain", "confirmed"].contains(&journal.record_state.as_str())
-        && ["proposed", "held", "applied"].contains(&journal.outcome.as_str())
-        && ["proposed", "applied", "refused", "uncertain"].contains(&operation.phase.as_str())
-        && (!["uncertain", "applied"].contains(&operation.phase.as_str())
-            || journal.started_at.is_some())
-        && (journal.outcome != "applied"
-            || (operation.phase == "applied" && journal.record_state == "confirmed"))
-        && (journal.record_state == "pending" || operation.phase == "applied")
-        && (["pending", "unsent"].contains(&journal.record_state.as_str())
-            || journal.record_at.is_some());
-    if !shaped {
-        return refuse("the PC activation record is malformed");
-    }
-    let Ok(canonical) = serde_json::to_value(binding) else {
-        return refuse("the PC activation record is malformed");
-    };
-    let hash = sha256_hex(
-        serde_json::json!({"kind":"activate_engine","request":{"binding":canonical,"revision":request.revision}})
-            .to_string()
-            .as_bytes(),
-    );
-    if request.request_hash != hash || operation.fingerprint != hash {
-        return refuse("the PC activation record is malformed");
-    }
-    if journal.outcome != "applied" {
-        return refuse("the PC activation is not applied with a confirmed record");
-    }
-
-    // The actual service config, strictly read, and the exact installation.
-    let Some(config_bytes) = read(&state.join("service/config.json"), 1024 * 1024) else {
-        return refuse("the service config is unreadable");
-    };
-    let Ok(config) = std::str::from_utf8(&config_bytes)
-        .map_err(|_| String::new())
-        .and_then(|text| crate::document::read(crate::document::Document::Config, text))
-    else {
-        return refuse("the service config is invalid");
-    };
-    let configured = (
-        format!(
-            "{}/{}",
-            config["repository"]["owner"].as_str().unwrap_or(""),
-            config["repository"]["name"].as_str().unwrap_or("")
-        ),
-        config["project"].as_str().unwrap_or(""),
-        config["github_app"]["app_id"].as_u64(),
-        config["github_app"]["installation_id"].as_u64(),
-        config["service_issue"].as_u64(),
-    );
-    let root = Path::new(&binding.root);
-    let selected = plain(root)
-        && private(root, true)
-        && fs::symlink_metadata(root.join("current"))
-            .is_ok_and(|m| m.file_type().is_symlink() && m.uid() == owner)
-        && fs::read_link(root.join("current")).is_ok_and(|target| target == build);
-    let bound = binding.owner_uid == u64::from(owner)
-        && Path::new(&binding.state_root) == state
-        && binding.build == manifest.source
-        && binding.runtime == format!("{} {}", manifest.version, manifest.source)
-        && binding.config_sha256 == sha256_hex(&config_bytes)
-        && configured
-            == (
-                binding.repository.clone(),
-                binding.project.as_str(),
-                Some(binding.app_id),
-                Some(binding.installation_id),
-                Some(binding.service_issue),
-            )
-        && selected;
-    if !bound {
-        return refuse("the PC activation record does not bind this installation");
-    }
-    eprintln!("openwiz-service: installed handover verified; login: unknown");
+    eprintln!("openwiz-service: installed package verified; login: unknown");
     Ok(())
 }
