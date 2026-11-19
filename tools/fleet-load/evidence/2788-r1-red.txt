@@ -1,4 +1,0 @@
-FAIL WZ-PROBE: changed ticks retain immediate snapshot reuse with identical due lines: run 5 read GraphQL 4 times
-FAIL WZ-PROBE: expired ticks retain immediate snapshot reuse with identical due lines: run 5 read GraphQL 4 times
-ok   every gh call was one of fleet.sh's reads
-2 cases, 2 failed

@@ -1,3 +1,0 @@
-FAIL WZ-PROBE: merged PR checks cannot invalidate identical due lines: run 4 read GraphQL 4 times
-ok   every gh call was one of fleet.sh's reads
-1 cases, 1 failed

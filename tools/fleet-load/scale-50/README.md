@@ -5,6 +5,6 @@
 The contract is [report-format.md](report-format.md); its synthetic examples are in [fixtures/](fixtures/README.md).
 
 ```sh
-python3 -I tools/scale-50/report.py REPORT [--compare CANDIDATE]
-python3 -I tools/scale-50/test_report.py
+python3 -I tools/fleet-load/scale-50/report.py REPORT [--compare CANDIDATE]
+python3 -I tools/fleet-load/scale-50/test_report.py
 ```

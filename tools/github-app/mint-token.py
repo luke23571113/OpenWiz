@@ -3,7 +3,7 @@
 
 --repository is required (C8, #2315): the token covers exactly those selected
 repositories of one owner. Stdout is two lines: the token, then its expiry in
-Unix seconds. Agent reads use this through tools/github-reads/read.py only.
+Unix seconds. Agent reads use this through the carried WizSkills reader only.
 
 The installation is read back first (C-G1/J48, #606): a user's own App mints
 only on its owner's account; OPENWIZ_GITHUB_APP_MODE=factory is the explicit

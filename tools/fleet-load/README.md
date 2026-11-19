@@ -2,22 +2,18 @@
 
 WZ4 (#2634) moved these load tests here from `skills/launch-fleet/test/load/`,
 unchanged in cases, so the skill stands alone in WizSkills: they drive
-OpenWiz's own scale harness (`cargo`, `tests/`, `tools/scale-50`). They still
+OpenWiz's own scale harness (`cargo`, `tests/`, `tools/fleet-load/scale-50`). They still
 run the skill's real `fleet.sh` and fixtures at `skills/launch-fleet/scripts/`.
 
 ```sh
 sh tools/fleet-load/ci.sh   # full suite: CI release:fleet-load
 python3 -I tools/fleet-load/test_carried.py
-python3 -I tools/fleet-load/standalone/dry_run_report.py   # WZ-P3/P4 for launch-fleet
 ```
 
-`test_carried.py` fails, naming the copy, when any file launch-fleet carries in
-`scripts/carried/` (and its stage-bench fixture) differs from its ClosedWiz
-source under `tools/`, is missing, or is unlisted. Change the source, then copy
-it. `ci.sh` also runs `tools/review-relay/test_router.py`, which launch-fleet's
-`test-loop.sh` used to run. `dry_run_report.py` runs the skills copy's dry run
-and prints launch-fleet's standalone and privacy results; it exits 0 only when
-both pass. `evidence/` holds its red run.
+`test_carried.py` names missing copies, unlisted files and drift from shared
+OpenWiz sources under `tools/`. WizSkills owns the carried GitHub reader. The
+App mint script's executable bytes are compared while WizSkills carries the
+older docstring.
 
 Two expectations follow the current `fleet.sh`, since these tests ran in no
 CI: an event wake on an owned fleet prints only its `wake fleet #S` line (GI2,
@@ -165,8 +161,8 @@ and re-checks resume the appropriate agent through the same admission queue.
 ```sh
 python3 -I tools/fleet-load/test.py \
   --report /tmp/fa3-scale-trace.json --scale-report /tmp/scale-baseline.json
-python3 -I tools/scale-50/report.py /tmp/scale-baseline.json
-python3 -I tools/scale-50/test_report.py
+python3 -I tools/fleet-load/scale-50/report.py /tmp/scale-baseline.json
+python3 -I tools/fleet-load/scale-50/test_report.py
 ```
 
 Every installed-tick invocation first refreshes the fixture CLI example with an incremental
@@ -181,7 +177,7 @@ no installed write/lifecycle parity or installed HTTP measurement is claimed.
 internal exchanges (revision reads and writes). Shared consumers have separate
 request events. REST requests and GraphQL requests/costs are independently
 checked across reset windows. Live gh internals, allowances and secondary limits
-remain unknown. See `tools/scale-50/report-format.md` for timing boundaries,
+remain unknown. See `tools/fleet-load/scale-50/report-format.md` for timing boundaries,
 comparison refusal, synthetic assumptions and downstream seams.
 
 Additional mutations remove an internal response page, exceed the HTTP cost

@@ -29,7 +29,7 @@ python3 -I ci/shard/test.py
 
 ## The release and launch-fleet lanes (#743)
 
-`lanes.py` splits these two lanes the same way. Their units, named by `run.py`: each planned release proof (`release:<id>`), each part of `tools/open-tickets/test.sh` (`release:open-tickets:<part>`, from its `--list`), the combined `site` work when it rides on release, each launch-fleet suite command (`skill:launch-fleet:<path>`) and each of launch-fleet `test.sh`'s groups (`…/test.sh:group:<n>`). `lanes.tsv` times them; the rule is the Rust one above (`shard.lpt`), with an unmeasured unit counted as the longest and a group past the file's last row given to shard ((n - 1) mod N) + 1, so stale times cost only balance.
+`lanes.py` splits these two lanes the same way. Their units, named by `run.py`: each planned release proof (`release:<id>`), the combined `site` work when it rides on release, each launch-fleet suite command (`skill:launch-fleet:<path>`) and each of launch-fleet `test.sh`'s groups (`…/test.sh:group:<n>`). `lanes.tsv` times them; the rule is the Rust one above (`shard.lpt`), with an unmeasured unit counted as the longest and a group past the file's last row given to shard ((n - 1) mod N) + 1, so stale times cost only balance.
 
 ```sh
 python3 -I .github/actions/docs-only/run.py execute PLAN release --shard K/N RAN      # a member: its share, recorded in RAN
