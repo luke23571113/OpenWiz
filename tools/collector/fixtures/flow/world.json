@@ -37,5 +37,17 @@
   },
   "[\"api\", \"graphql\", \"-f\", \"query=query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){issue(number:$number){number closedByPullRequestsReferences(first:100,after:$cursor,includeClosedPrs:true){nodes{number repository{nameWithOwner} baseRefName mergedAt closedAt closingIssuesReferences(first:100){nodes{number repository{nameWithOwner}} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}\", \"-f\", \"owner=example\", \"-f\", \"name=factory\", \"-F\", \"number=4101\"]": {
     "stdout": "{\"data\":{\"repository\":{\"issue\":{\"number\":4101,\"closedByPullRequestsReferences\":{\"nodes\":[{\"number\":4201,\"baseRefName\":\"main\",\"mergedAt\":\"2030-01-02T03:15:00Z\",\"closedAt\":\"2030-01-02T03:15:00Z\",\"closingIssuesReferences\":{\"nodes\":[{\"number\":4101,\"repository\":{\"nameWithOwner\":\"example/factory\"}}],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}},\"repository\":{\"nameWithOwner\":\"example/factory\"}}],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}}}"
+  },
+  "[\"api\", \"--method\", \"GET\", \"repos/example/factory/actions/workflows/ci.yml/runs?event=merge_group&created=2030-01-02T03:00:00Z..2030-01-02T03:15:00Z&per_page=100&page=1\"]": {
+    "stdout": "{\"total_count\":1,\"workflow_runs\":[{\"id\":6201,\"head_branch\":\"gh-readonly-queue/main/pr-4201-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"head_sha\":\"cccccccccccccccccccccccccccccccccccccccc\",\"event\":\"merge_group\",\"pull_requests\":[],\"created_at\":\"2030-01-02T03:02:00Z\",\"updated_at\":\"2030-01-02T03:13:00Z\",\"run_attempt\":1,\"status\":\"completed\"}]}"
+  },
+  "[\"api\", \"--method\", \"GET\", \"repos/example/factory/actions/runs/6201/attempts/1/jobs?per_page=100&page=1\"]": {
+    "stdout": "{\"total_count\":1,\"jobs\":[{\"id\":62011,\"run_attempt\":1,\"status\":\"completed\",\"conclusion\":\"success\",\"started_at\":\"2030-01-02T03:10:00Z\",\"completed_at\":\"2030-01-02T03:13:00Z\"}]}"
+  },
+  "[\"api\", \"--method\", \"GET\", \"repos/example/factory/actions/workflows/privacy.yml/runs?event=merge_group&created=2030-01-02T03:00:00Z..2030-01-02T03:15:00Z&per_page=100&page=1\"]": {
+    "stdout": "{\"total_count\":1,\"workflow_runs\":[{\"id\":6202,\"head_branch\":\"gh-readonly-queue/main/pr-4201-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"head_sha\":\"cccccccccccccccccccccccccccccccccccccccc\",\"event\":\"merge_group\",\"pull_requests\":[],\"created_at\":\"2030-01-02T03:02:00Z\",\"updated_at\":\"2030-01-02T03:13:00Z\",\"run_attempt\":1,\"status\":\"completed\"}]}"
+  },
+  "[\"api\", \"--method\", \"GET\", \"repos/example/factory/actions/runs/6202/attempts/1/jobs?per_page=100&page=1\"]": {
+    "stdout": "{\"total_count\":1,\"jobs\":[{\"id\":62021,\"run_attempt\":1,\"status\":\"completed\",\"conclusion\":\"success\",\"started_at\":\"2030-01-02T03:11:00Z\",\"completed_at\":\"2030-01-02T03:13:00Z\"}]}"
   }
 }

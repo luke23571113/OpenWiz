@@ -265,7 +265,7 @@ class FlowFacts(unittest.TestCase):
     args = ('read', '--repo', DAILY_REPO, '--fact', 'flow', '--spec', '4001',
             '--now', '2030-01-03T06:00:00Z')
 
-    # catches: charging rerun jobs twice, using edited times for claims, counting
+    # catches: missing merge-group jobs, charging rerun jobs twice, using edited times for claims, counting
     # impostors or duplicate verdicts, and conflating ticket time with spec span.
     def test_merged_ticket_and_whole_spec(self):
         p, _ = cli('../flow/world.json', *self.args,
@@ -278,7 +278,7 @@ class FlowFacts(unittest.TestCase):
         self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['state']), (4101, [4201], 'merged'))
         self.assertEqual(ticket['cost'], {
             'builder': {'credits': 7, 'tokens': 550}, 'reviewer': {'credits': 2, 'tokens': 130},
-            'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 10})
+            'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 15})
         self.assertEqual(ticket['stages_seconds'], {
             'waiting_to_start': 900, 'building': 5100, 'in_review': 1080, 'in_queue': 900})
         self.assertEqual((ticket['elapsed_seconds'], ticket['review_rounds'], ticket['stall_count']), (9000, 1, 2))
@@ -297,7 +297,7 @@ class FlowFacts(unittest.TestCase):
         spec, = value['specs']
         self.assertEqual((spec['tickets'], spec['elapsed_seconds'], spec['review_rounds']), ([4101, 4102], 18000, 1))
         self.assertEqual([t['cost']['ci_minutes'] for t in value['tickets']], [None, None])
-        self.assertEqual(spec['cost']['ci_minutes'], 10)
+        self.assertEqual(spec['cost']['ci_minutes'], 15)
 
     # catches: a per-ticket read depending on the repository-wide PR inventory
     # and losing its facts when an unrelated inventory page cannot be read.
@@ -310,7 +310,7 @@ class FlowFacts(unittest.TestCase):
         value = envelope(p)['factory']['flow']['value']
         self.assertIsNotNone(value, 'the ticket has readable linked pulls')
         ticket, = value['tickets']
-        self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['cost']['ci_minutes']), (4101, [4201], 10))
+        self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['cost']['ci_minutes']), (4101, [4201], 15))
 
     # catches: unreadable jobs or missing usage emitted as zero, or a missing
     # cost source taking unrelated timing and progress away.
