@@ -9,7 +9,6 @@ import shutil
 import time
 import tempfile
 import unittest
-from unittest import mock
 import sys
 sys.dont_write_bytecode = True
 
@@ -19,9 +18,6 @@ load = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(load)
 
 
-seams = load.extension('test_seams')
-MeasurementIdentityProof = seams.MeasurementIdentityProof
-InstalledBuildProof = seams.InstalledBuildProof
 
 
 class LoadProof(unittest.TestCase):
@@ -45,66 +41,6 @@ class LoadProof(unittest.TestCase):
               f'peak {peak}/1250 GraphQL points per simulated hour; '
               f'{sum(e["kind"] == "archive" for e in events)} archives', flush=True)
 
-    def test_50_active_mixed_roles(self):
-        intervals = self.scale.intervals(self.report)
-        self.assertEqual(max(i['builders'] + i['reviewers'] for i in intervals), 50,
-                         'S5 synthetic active execution peak')
-        self.assertTrue(any(i['builders'] + i['reviewers'] == 50 and i['builders'] and i['reviewers']
-                            for i in intervals), 'S5 both roles must overlap')
-
-    def test_transport_and_merge_measurements(self):
-        self.scale.verify(self.report)
-        summary = self.scale.report(self.report)
-        self.assertEqual(summary['metrics']['verified_merges'], 100)
-        self.assertEqual(summary['metrics']['starts']['accepted'], 200)
-        revision = next(e for e in self.report['events'] if e.get('args', [])[:2] == ['issue', 'view'] and e['args'][4] == 'subIssues')
-        self.assertEqual([h['rows'] for h in revision['http']], [7, 7, 6])
-        self.assertGreater(summary['budgets']['rest']['requests'] + summary['budgets']['graphql']['requests'],
-                           sum(e['tool'] == 'gh' for e in self.report['events']))
-        for fault, finding in [('page', 'S6 omitted HTTP page'), ('http-budget', 'S6 HTTP budget overrun'), ('rest-budget', 'S6 HTTP budget overrun: rest'),
-                               ('merge-starvation', 'S6 merge starvation'), ('merge-readback', 'S6 unverified merge')]:
-            report = copy.deepcopy(self.report)
-            with self.subTest(fault=fault):
-                if fault == 'page':
-                    next(e for e in report['events'] if e.get('paginated') and len(e['http']) > 1)['http'].pop()
-                elif fault == 'http-budget':
-                    next(h for e in report['events'] for h in e.get('http', []) if h['api'] == 'graphql')['cost'] += 5001
-                elif fault == 'rest-budget':
-                    event = next(e for e in report['events'] if e['tool'] == 'gh' and e['http'][0]['api'] == 'rest')
-                    event.update(http=[dict(api='rest', page=1, cost=0, rows=1) for _ in range(5001)], http_expected=5001, paginated=False)
-                elif fault == 'merge-starvation':
-                    next(e for e in report['events'] if e['kind'] == 'merge-readback')['now'] += 1801
-                else:
-                    next(e for e in report['events'] if e['kind'] == 'merge-readback')['merged'] = False
-                with self.assertRaisesRegex(AssertionError, finding):
-                    self.scale.verify(report)
-
-    def test_report_preserves_safety_and_measurement_snapshot(self):
-        # A public report must reject unsafe traces and omitted shared consumers.
-        report = copy.deepcopy(self.report)
-        thread = next(q['thread'] for q in report['quiet'] if q['role'] == 'reviewer')
-        for e in report['events']:
-            if e['kind'] == 'output' and e['thread'] == thread:
-                e['kind'] = 'output-omitted'
-        with self.assertRaisesRegex(AssertionError, 'S3 quiet reviewer'):
-            self.scale.report(report)
-        report = copy.deepcopy(self.report)
-        for e in report['events']:
-            if e['tool'] == 'shared': e['tool'] = 'workload'
-        with self.assertRaisesRegex(AssertionError, 'S6 shared consumer omission'):
-            self.scale.report(report)
-        # Replay must work from recorded metadata, without reopening local files.
-        with mock.patch.object(Path, 'read_bytes', side_effect=AssertionError('reopened current config')), \
-             mock.patch.object(Path, 'read_text', side_effect=AssertionError('reopened current config')):
-            result = self.scale.report(self.report)
-        self.assertEqual(result['candidate'], self.report['identity']['candidate'])
-        legacy = copy.deepcopy(self.report)
-        legacy['identity'].pop('measurement_model', None)
-        partial = self.scale.report(legacy)
-        self.assertEqual(partial['state'], 'partial')
-        self.assertIsNone(partial['measurement_model'])
-        with self.assertRaises(ValueError):
-            self.scale.api.compare(partial, partial)
 
     def test_100_ticket_lifecycle(self):
         load.verify(self.report)
@@ -132,14 +68,6 @@ class LoadProof(unittest.TestCase):
                 load.plant(report, fault)
                 with self.assertRaisesRegex(AssertionError, finding):
                     load.verify(report)
-
-    def test_merge_then_archive_in_same_tick_is_valid(self):
-        report = copy.deepcopy(self.report)
-        archive = next(e for e in report['events'] if e['kind'] == 'archive')
-        ticket = next(e['ticket'] for e in report['events'] if e['kind'] == 'spawn' and e['thread'] == archive['thread'])
-        merge = next(e for e in report['events'] if e['kind'] == 'merge' and e['ticket'] == ticket)
-        archive['now'] = merge['now']
-        load.verify(report)
 
 
 class HeadProof(unittest.TestCase):

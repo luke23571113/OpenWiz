@@ -165,7 +165,6 @@
     "tools/test-value/evidence/**",
     "tools/test-value/measure.py",
     "tools/test-value/test_budget.py",
-    "tools/test-value/test_count.py",
     "tools/test-value/test_measure.py",
     "tools/test-value/test_unread_fixtures.py",
     "tools/test-value/unread_fixtures.py",
