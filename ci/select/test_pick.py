@@ -149,7 +149,7 @@ class Synthetic(unittest.TestCase):
 
     def test_an_odd_status_counts_as_new(self):
         self.full(sel([('T', 'docs/q/p01_coverage')]), 'unknown_path')
-        self.full(sel([('X', 'docs/never/seen.md')]), 'unknown_path')
+        self.full(sel([('X', 'tools/never/seen.py')]), 'unknown_path')
 
     # Modified paths.
     def test_a_modified_file_selects_its_readers_only(self):
@@ -199,7 +199,7 @@ class Synthetic(unittest.TestCase):
         self.picked(result, has=['rust:test:proof'], lacks=['rust:test:web-api'])
         result = pick.select([A('.claude/skills/probed/SKILL.md')], mp, UNITS, read, nobody)
         self.picked(result, has=['rust:test:web-api'], lacks=['rust:test:proof'])
-        self.full(sel([A('docs/zzz/p01_coverage.md')]), 'unknown_path')
+        self.full(sel([A('docs/zzz/p01_coverage')]), 'unknown_path')
 
     def test_a_new_path_beside_the_docs_and_skills_classes_still_runs_everything(self):
         # catches: a class pattern loose enough to skip a new source, test or tool file.

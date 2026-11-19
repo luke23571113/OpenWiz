@@ -233,7 +233,8 @@ def _select(plain, map_dir, root, repo, keys, units_file, classify, fetch_keys):
         paths = units_mod.web_units(root)
         files = ' '.join(sorted(paths[t] for t in lane['web'].split()))
     mp = pick.strict_json(data.decode('utf-8'))
-    step_plan = steps.plan(result['tests'], pick.diff(root, commit, 'HEAD'), pick.check_map(mp), root, classify)
+    step_plan = steps.plan(result['tests'], pick.diff(root, commit, 'HEAD'), pick.check_map(mp), root, classify,
+                           own_lane=())  # this rust-tests answer runs checks in the rust lane
     run = len(result['tests'])
     return {**step_plan, 'selection': 'selected', 'rust-tests': lane['rust'], 'web-tests': lane['web'], 'web-files': files,
             'detail': f'map of {commit} (run {claims.get("run_id")}, {claims["event_name"]}); '

@@ -29,8 +29,10 @@ so a map that has fallen behind only makes more tests run. The rules:
    none did, and a file some test reads names it: everything.
 8. A new path (or one of any other status): if a file some test reads names
    it, everything; else the tests that looked for it or listed a folder
-   above it; if none did, the map doesn't know it: everything.
-9. A test the map doesn't know (a new one): always runs. So does ALWAYS.
+   above it; if none did, the map doesn't know it: everything, unless it is
+   9. A new doc or skill (DOCS_OR_SKILLS, #1335): nothing. No test was seen
+   to look for it, list a folder above it, or name it.
+10. A test the map doesn't know (a new one): always runs. So does ALWAYS.
 """
 import argparse
 import json
@@ -53,6 +55,10 @@ ALWAYS = ['rust:test:checks']
 # Never under private/, which no job reads (classify.sh).
 CI_CHANGE = re.compile(r'(?!private/)(?:\.github/.+|ci/(select|runner)/.+|ci/[^/]+|Cargo\.toml|Cargo\.lock|(.+/)?package-lock\.json'
                        r'|rust-toolchain(\.toml)?|\.nvmrc|\.node-version|\.tool-versions)')
+# Docs and skills (#1335): prose and agent skills, which no test is built
+# from. A new one that no test looked for, listed a folder above, or names
+# reaches no test (rule 9); planted.py keeps a reachable edit of each class.
+DOCS_OR_SKILLS = re.compile(r'docs/.+|[^/]+\.md|\.(claude|agents)/skills/.+')
 TEST_ID = re.compile(r'(rust:lib|rust:test|web:unit|web:browser):[A-Za-z0-9._-]+')
 COMMIT = re.compile(r'[0-9a-f]{40}')
 SKIPPED = 'no changed path reaches it'
@@ -209,7 +215,7 @@ def select(changes, mp, units, read, nobody):
                 picked |= readers | walkers
                 reach(readers, 'looked for', path)
                 reach(walkers, 'lists a folder above', path)
-            else:
+            elif not DOCS_OR_SKILLS.fullmatch(path):
                 unknown.append(path)
     except Exception as e:  # a read that failed: never "nothing names it"
         return full('selector_error', detail=f'reading the head failed: {e}')

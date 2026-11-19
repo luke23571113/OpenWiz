@@ -7,12 +7,13 @@ new trace proves otherwise. Non-plain runs and errors use FULL in job.py.
 import os
 import subprocess
 
+from pick import ALWAYS
 from skills import SUITES
 
 FLAGS = ('build-web', 'lint-rust', 'export-rust', 'export-web', 'build-site', 'image-skills')
 
 
-def plan(tests, changes, known, root, classify=True):
+def plan(tests, changes, known, root, classify=True, own_lane=ALWAYS):
     paths = [p for _, p in changes]
     folders = {p.split('/')[1] for p in paths if p.startswith('skills/') and len(p.split('/')) > 2}
     skill_tests = sorted(folders & set(SUITES))
@@ -31,7 +32,9 @@ def plan(tests, changes, known, root, classify=True):
         return False
 
     def export(lane):
-        return any(needs_export(t) for t in tests if t.startswith(lane + ':'))
+        # own_lane: tests run in a lane of their own that never waits for the
+        # export (plan.py's always lane, #1335), so mapped or not they need none.
+        return any(needs_export(t) for t in tests if t.startswith(lane + ':') and t not in own_lane)
 
     rust_export, web_export = export('rust'), export('web')
     # The build type-checks tests too; any app input change still checks it.
