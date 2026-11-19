@@ -804,12 +804,13 @@ def flow_progress(issue_at, claim, merge, records, prs, cutoff, covered):
     }, timeline
 
 
-def flow_gaps(claim, merge, covered, timeline):
-    """Every gap of at least 30 minutes between successive progress events, from claim to merge or the last
-    observed event, dated; None without complete coverage."""
+def flow_gaps(claim, end, covered, timeline):
+    """Every gap of at least 30 minutes between successive progress events, from claim to the merge or
+    unmerged closure END, or to the last observed event while open, dated; None without complete coverage."""
     if not covered or claim is None:
         return None
-    times = [at for at in timeline if claim <= at and (merge is None or at <= merge)]
+    times = [at for at in timeline if claim <= at and (end is None or at <= end)]
+    times += [end] if end and end not in times else []
     return [{'from': a, 'until': b} for a, b in zip(times, times[1:]) if flow_seconds(a, b) >= 30 * 60]
 
 
@@ -874,8 +875,10 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache, links_known
         p['head_history'] and p['ci_history'] and p['verdict_history'] for p in observed)
     progress, timeline = flow_progress(opened, claim, merge, records, observed, cutoff, covered)
     latest = max(records, key=lambda record: (record[2], record[1]), default=None)
-    progress['last_record'] = flow_record_kind(latest[0]) if fully_read and latest else None
-    progress['gaps'] = flow_gaps(claim, merge, covered, timeline)
+    # A record edited after the cutoff hides its body and edit time at the cutoff: its kind is unknown.
+    as_of_bodies = all(updated <= cutoff for _, _, updated in records)
+    progress['last_record'] = flow_record_kind(latest[0]) if fully_read and latest and as_of_bodies else None
+    progress['gaps'] = flow_gaps(claim, merge or (closed if closed and closed <= as_of else None), covered, timeline)
     roles = flow_role_cost(usage, n, claim, cutoff)
     ci = {p['number']: p['ci_seconds'] for p in observed}
     # A shared PR's work cannot be charged in full to each ticket.
@@ -1143,7 +1146,7 @@ def validate_flow(value, point):
         gaps = progress['gaps']
         require(gaps is None or progress['complete'], 'dated gaps need a complete progress history')
         require(all(when(g['until']) - when(g['from']) >= timedelta(minutes=30) and
-                    when(g['until']) <= when(observed) for g in gaps or []), 'gaps are 30 minutes, by the observation')
+                    when(g['until']) <= when(point) for g in gaps or []), 'gaps are 30 minutes, by the read point')
         require(row['stall_count'] is None or gaps is None or row['stall_count'] == len(gaps),
                 'the stall count counts the dated gaps')
     for row in specs.values():

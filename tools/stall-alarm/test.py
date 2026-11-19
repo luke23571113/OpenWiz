@@ -970,7 +970,7 @@ class FlowStalls(unittest.TestCase):
 
         out = self.stalls(self.collector_read("2030-01-02T02:45:00Z", no_issue))
         self.assertEqual((out["stalls"], out["unknown"], out["daily"]["count"]),
-                         ([], [{"ticket": 4101, "spec": 4001, "reason": "state"}], None))
+                         ([], [{"ticket": 4101, "spec": None, "reason": "state"}], None))  # its parent is unread too
 
     def test_record_edited_after_the_read_point_is_not_its_cause(self):
         # catches (R3): a wait marker written after the read point tagging an earlier stall as `jake`.

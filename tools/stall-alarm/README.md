@@ -46,12 +46,19 @@ python3 -I tools/stall-alarm/stalls.py --input snapshot.json
 - **One cause,** from a fixed list, first match: `ci` (a pending workflow
   attempt), `jake` (the latest factory record is `asked the orchestrator`,
   `told the user`, `parked` or `needs approval`), `limit` (`builder fallback
-  due`), `stuck` (CI is not pending and the latest record names no outside
-  wait), else `unknown`. A flow fact without `last_record` leaves every cause
-  but `ci` unknown.
+  due`, or a valid REST or GraphQL budget under 10% in the snapshot's
+  `ci.queue` observation), `stuck` (CI is not pending, the latest record names
+  no outside wait and no usable budget is low), else `unknown`. A flow fact
+  without `last_record`, or a record whose kind at the read point is unknown
+  (null `last_record` with a `record_at`), leaves every cause but `ci` unknown.
+  With no usable budget observation, the cause rests on the flow fact alone.
+- A ticket whose state can't be read is listed under `unknown`, never skipped
+  as unclaimed, and the day's count is null.
 - **The daily count** is the number of stalls that began (30 minutes after
   their last progress) on the read point's UTC day, up to the read point: the
-  ticket's dated `gaps` plus the open stalls. It is null when any ticket active
+  ticket's dated `gaps` plus the open stalls. A ticket closed without a merge
+  keeps its last stall in `gaps` (to its closure), so closing it leaves the
+  day's count unchanged. It is null when any ticket active
   that day has an unknown history.
 - An unavailable or absent flow fact gives null `stalls`, `unknown` and
   count, never an empty list or zero.
@@ -67,7 +74,9 @@ Fixture proof: `python3 -B -I tools/stall-alarm/test.py FlowStalls`, over
 [`evidence/1171-red-unknown.log`](evidence/1171-red-unknown.log),
 [`evidence/1171-red-collector.log`](evidence/1171-red-collector.log) (the
 collector's `last_record` and `gaps`) and
-[`evidence/1171-red-integration.log`](evidence/1171-red-integration.log).
+[`evidence/1171-red-integration.log`](evidence/1171-red-integration.log),
+[`evidence/1171-red-shape.log`](evidence/1171-red-shape.log) and
+[`evidence/1171-red-review.log`](evidence/1171-red-review.log) (review R1 to R4).
 
 ## What fires
 

@@ -44,18 +44,35 @@ def maybe(text):
     return None if text is None else when(text)
 
 
-def cause(progress):
+def budget_low(doc):
+    """True when the snapshot's CI queue observation holds a valid REST or GraphQL budget under 10%;
+    None when it holds no usable budget (the cause then rests on the flow fact alone)."""
+    queue = (doc.get("ci") or {}).get("queue")
+    if not isinstance(queue, dict) or not isinstance(queue.get("value"), dict):
+        return None
+    budgets = (queue["value"].get("observation") or {}).get("budgets") or {}
+    usable = [b for b in (budgets.get("rest"), budgets.get("graphql")) if isinstance(b, dict)
+              and type(b.get("remaining")) is int and type(b.get("limit")) is int and 0 <= b["remaining"] <= b["limit"]
+              and b["limit"] > 0]
+    return any(b["remaining"] * 10 < b["limit"] for b in usable) or None
+
+
+def cause(progress, low):
     """One cause from the fixed list. A fact the snapshot lacks leaves it unknown."""
     if progress["ci_pending"] is True:
         return "ci"
     if "last_record" not in progress:  # a flow fact written before the record kind existed
         return "unknown"
     record = progress["last_record"]
+    if record is None and progress["record_at"] is not None:
+        return "unknown"  # a record exists, but its kind at the read point is unknown
     if record in JAKE:
         return "jake"
     if record in LIMIT:
         return "limit"
-    return "stuck" if progress["ci_pending"] is False else "unknown"
+    if progress["ci_pending"] is None:
+        return "unknown"
+    return "limit" if low else "stuck"
 
 
 def gaps(progress):
@@ -84,7 +101,7 @@ def stall_list(doc):
     at = when(fact["point"])
     day = at.replace(hour=0, minute=0, second=0)
     out["at"], out["daily"]["date"] = stamp(at), at.date().isoformat()
-    stalls, unknown, starts, history = [], [], [], True
+    stalls, unknown, starts, history, low = [], [], [], True, budget_low(doc)
     for row in fact["value"]["tickets"]:
         progress = row["progress"]
         require(row["state"] in ("open", "closed", "merged", "unknown"), "invalid state")
@@ -92,6 +109,9 @@ def stall_list(doc):
                 and type(progress["complete"]) is bool,
                 "invalid progress flags")
         require(progress.get("last_record") is None or isinstance(progress["last_record"], str), "invalid record")
+        if row["state"] == "unknown":  # its claim, state and history can't be read: never skipped as unclaimed
+            unknown.append({"ticket": row["ticket"], "spec": row["spec"], "reason": "state"})
+            continue
         claimed, merged = maybe(row["claimed_at"]), maybe(row["merged_at"])
         if claimed is None or (merged is not None and merged < day):
             continue  # never started, or finished before the day
@@ -101,9 +121,7 @@ def stall_list(doc):
         else:
             starts += [start + STALL for start in past]
         if row["state"] != "open" or merged is not None:
-            if row["state"] == "unknown":
-                unknown.append({"ticket": row["ticket"], "spec": row["spec"], "reason": "state"})
-            continue
+            continue  # merged or closed: its past stalls are counted, it has no current one
         last = maybe(progress["last_observed_at"])
         if last is not None and at - last < STALL:
             continue  # progress inside 30 minutes is never a stall, even on a partial history
@@ -113,7 +131,7 @@ def stall_list(doc):
         starts.append(last + STALL)
         stalls.append({"ticket": row["ticket"], "spec": row["spec"], "pull_requests": row["pull_requests"],
                        "since": stamp(last), "minutes": int((at - last).total_seconds() // 60),
-                       "cause": cause(progress)})
+                       "cause": cause(progress, low)})
     stalls.sort(key=lambda s: (-s["minutes"], s["ticket"]))
     out["stalls"], out["unknown"] = stalls, unknown
     if history and not unknown:
