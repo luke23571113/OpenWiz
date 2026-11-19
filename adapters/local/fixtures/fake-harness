@@ -4,7 +4,8 @@
 It takes only the shape that harness's real CLI takes (`claude -p <prompt> --model <m>`,
 `codex exec --model <m> <prompt>`) and exits 2 on any other. Then, like the kit's fake harness,
 it posts (or, when woken, edits) one builder status note in the tracker named by KIT_TRACKER, and
-leaves a detached child in its own session that `stop` must also end.
+leaves a detached child in its own session that `stop` must also end. Its turn then ends, or, while the
+file named by FAKE_HOLD exists, keeps running.
 """
 import json, os, re, subprocess, sys, time
 
@@ -35,4 +36,5 @@ else:
 with open(path + '.%d' % os.getpid(), 'w') as f:
     json.dump(tracker, f)
 os.replace(path + '.%d' % os.getpid(), path)
-time.sleep(120)
+while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
+    time.sleep(0.05)

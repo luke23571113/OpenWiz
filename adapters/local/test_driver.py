@@ -109,6 +109,43 @@ class Local(unittest.TestCase):
         self.assertEqual(self.driver('wake', {'run': runs[1]}), (0, {'run': runs[1], 'woke': True}))
         self.assertEqual(self.driver('wake', {'run': runs[0]})[0], 1)
 
+    def turns(self, run):
+        """The run's live harness turns (the fake's detached child is not one)."""
+        found = []
+        for pid in self.marked('OPENWIZ_RUN=' + run):
+            try:
+                with open('/proc/%d/cmdline' % pid, 'rb') as f:
+                    if f.read().split(b'\0')[2:3] in ([b'-p'], [b'exec']):
+                        found.append(pid)
+            except OSError:
+                pass
+        return found
+
+    def until(self, ready):
+        end = time.monotonic() + 15
+        while not ready() and time.monotonic() < end:
+            time.sleep(0.05)
+        self.assertTrue(ready())
+
+    def test_wake_while_a_turn_runs_starts_no_second_turn(self):
+        # catches: a wake during a long turn starting a second agent on the same ticket (#1469), and a
+        # wake after the turn ends starting nothing.
+        hold = os.path.join(self.folder, 'hold')
+        open(hold, 'w').close()
+        self.env['FAKE_HOLD'] = hold
+        run = self.start()[1]['run']
+        self.until(lambda: len(self.turns(run)) == 1)
+        self.assertEqual(self.driver('wake', {'run': run}), (0, {'run': run, 'woke': True}))
+        self.assertEqual(len(self.turns(run)), 1)
+        os.remove(hold)
+        self.until(lambda: not self.turns(run))
+        self.assertEqual(self.driver('wake', {'run': run}), (0, {'run': run, 'woke': True}))
+        self.until(lambda: 'woke and read' in self.note())
+
+    def note(self):
+        with open(self.tracker) as f:
+            return json.load(f)['comments'][0]['body']
+
     def test_missing_or_unknown_harness_is_an_error_with_next(self):
         # catches: a missing harness crashing, answering a run id that never runs, or an error an agent
         # can't act on; and a harness name outside the allowlist being run from PATH.
