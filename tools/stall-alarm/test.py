@@ -916,6 +916,91 @@ class FlowStalls(unittest.TestCase):
         out = self.stalls(collector.envelope(collector.cli("../flow/world.json", *args)[0]))
         self.assertEqual(out["unknown"], [{"ticket": 4101, "spec": 4001, "reason": "progress"}])  # no PR yet
 
+    def queue(self, remaining, pool="rest"):
+        fact = json.loads((FIXTURES / "read-queue.json").read_text())["ci"]["queue"]
+        fact["value"]["observation"]["budgets"][pool]["remaining"] = remaining
+        return fact
+
+    def test_low_github_budget_is_a_limit(self):
+        # catches (R1): an exhausted REST or GraphQL budget in the snapshot shown as `stuck`, a healthy one
+        # turning a stuck ticket into `limit`, or the budget overriding pending CI or a recorded owner wait.
+        for pool in ("rest", "graphql"):
+            doc = self.fixture(drop=(105, 107))
+            doc["ci"]["queue"] = self.queue(0, pool)
+            causes = {s["ticket"]: s["cause"] for s in self.stalls(doc)["stalls"]}
+            self.assertEqual(causes, {101: "ci", 102: "jake", 103: "limit", 104: "limit", 106: "unknown"}, pool)
+        doc = self.fixture(drop=(105, 107))
+        doc["ci"]["queue"] = self.queue(4000)
+        causes = {s["ticket"]: s["cause"] for s in self.stalls(doc)["stalls"]}
+        self.assertEqual(causes[104], "stuck")
+
+    def collector_read(self, now, *edits):
+        sys.path.insert(0, str(HERE.parent / "collector"))
+        try:
+            import test_collect_factory as collector
+        finally:
+            sys.path.pop(0)
+
+        def edit(world):
+            for change in edits:
+                change(world)
+
+        args = (*collector.FlowFacts.args[:-1], now)
+        return collector.envelope(collector.cli("../flow/world.json", *args, edit=edit)[0])
+
+    @staticmethod
+    def answer(world, fragment):
+        key = next(key for key in world if fragment in key)
+        return key, json.loads(world[key]["stdout"])
+
+    ISSUE = "issue(number:$number){number url createdAt closedAt body"
+    PULL = "pullRequest(number:$number)"
+
+    def no_queue_record(self, world):
+        key = next(key for key in world if self.PULL in key and "body author{login}" in key)
+        response = json.loads(world[key]["stdout"])
+        nodes = response["data"]["repository"]["pullRequest"]["comments"]["nodes"]
+        nodes[:] = [c for c in nodes if not c["body"].startswith("launch-fleet: merge queued")]
+        world[key]["stdout"] = json.dumps(response)
+
+    def test_unreadable_issue_stays_unknown(self):
+        # catches (R2): a ticket whose issue history can't be read dropped from both lists with a definite count.
+        def no_issue(world):
+            del world[next(key for key in world if self.ISSUE in key)]
+
+        out = self.stalls(self.collector_read("2030-01-02T02:45:00Z", no_issue))
+        self.assertEqual((out["stalls"], out["unknown"], out["daily"]["count"]),
+                         ([], [{"ticket": 4101, "spec": 4001, "reason": "state"}], None))
+
+    def test_record_edited_after_the_read_point_is_not_its_cause(self):
+        # catches (R3): a wait marker written after the read point tagging an earlier stall as `jake`.
+        def late_edit(world):
+            key, response = self.answer(world, self.ISSUE)
+            response["data"]["repository"]["issue"]["comments"]["nodes"].append(
+                {"databaseId": 5109, "url": "https://github.com/example/factory/issues/4101#issuecomment-5109",
+                 "createdAt": "2030-01-02T01:10:00Z", "updatedAt": "2030-01-02T03:11:00Z",
+                 "body": "launch-fleet: asked the orchestrator", "author": {"login": "openwiz[bot]"}})
+            world[key]["stdout"] = json.dumps(response)
+
+        read = self.collector_read("2030-01-02T03:10:00Z", self.no_queue_record, late_edit)
+        progress = read["factory"]["flow"]["value"]["tickets"][0]["progress"]
+        self.assertEqual((progress["record_at"], progress["last_record"]), ("2030-01-02T02:12:00Z", None))
+        out = self.stalls(read)
+        self.assertEqual([(s["ticket"], s["cause"]) for s in out["stalls"]], [(4101, "unknown")])
+
+    def test_unmerged_closure_keeps_the_days_stall(self):
+        # catches (R4): closing a stalled ticket without a merge erasing its last stall from the day's count.
+        def closed(world):
+            key, response = self.answer(world, self.ISSUE)
+            response["data"]["repository"]["issue"]["closedAt"] = "2030-01-02T03:12:00Z"
+            world[key]["stdout"] = json.dumps(response)
+
+        before = self.stalls(self.collector_read("2030-01-02T03:11:00Z", self.no_queue_record, closed))
+        after = self.stalls(self.collector_read("2030-01-02T03:13:00Z", self.no_queue_record, closed))
+        self.assertEqual([s["ticket"] for s in before["stalls"]], [4101])
+        self.assertEqual((after["stalls"], after["unknown"]), ([], []))
+        self.assertEqual((before["daily"]["count"], after["daily"]["count"]), (2, 2))
+
     def test_invalid_document_is_refused(self):
         # catches: a malformed document, or a value outside the collector's forms, read as a stall-free
         # list or an unknown cause instead of refused.
