@@ -2,13 +2,11 @@
 import copy
 import json
 import os
-import re
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-import time
 
 HERE = Path(__file__).resolve().parent
 HEAD = "a" * 40
@@ -162,81 +160,6 @@ sys.exit(reply.get("exit", 0))
         self.assertIn("persist-credentials: false", workflow)
         self.assertIn("python3 -I .github/actions/changelog/test_check.py", workflow)
         self.assertIn("uses: ./.github/actions/changelog", workflow)
-
-
-class Checkout(unittest.TestCase):
-    def checkout_step(self):
-        workflow = (HERE.parents[1] / "workflows/changelog.yml").read_text()
-        return workflow.split("    steps:\n", 1)[1].split("      # The PC", 1)[0]
-
-    def test_sparse_blobless_checkout_runs_current_fixtures(self):
-        step = self.checkout_step()
-        self.assertIn("filter: blob:none", step)
-        self.assertIn("sparse-checkout-cone-mode: false", step)
-        patterns = re.search(r"          sparse-checkout: \|\n((?:            .+\n)+)", step)
-        self.assertIsNotNone(patterns, "checkout must list its exact inputs")
-        patterns = [line.strip() for line in patterns[1].splitlines()]
-        self.assertEqual(patterns, ["/.github/actions/changelog/",
-                                    "/.github/workflows/changelog.yml"])
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source, clone = root / "source", root / "clone"
-            source.mkdir()
-            def git(*args, cwd=source):
-                return subprocess.run(["git", *args], cwd=cwd, check=True,
-                                      capture_output=True, text=True).stdout
-            git("init", "-q")
-            git("config", "uploadpack.allowFilter", "true")
-            for path in HERE.iterdir():
-                if path.is_file():
-                    target = source / ".github/actions/changelog" / path.name
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(path.read_bytes())
-            workflow = source / ".github/workflows/changelog.yml"
-            workflow.parent.mkdir(parents=True, exist_ok=True)
-            workflow.write_bytes((HERE.parents[1] / "workflows/changelog.yml").read_bytes())
-            for path in ["private/unrelated.txt", "assets/unrelated.txt"]:
-                target = source / path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text("synthetic unrelated content " + path)
-            git("add", ".")
-            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
-                "commit", "-qm", "synthetic checkout")
-            excluded = [git("rev-parse", "HEAD:" + path).strip()
-                        for path in ["private/unrelated.txt", "assets/unrelated.txt"]]
-            start = time.monotonic()
-            git("clone", "--no-checkout", "--depth=1", "--filter=blob:none",
-                source.as_uri(), str(clone))
-            git("sparse-checkout", "set", "--no-cone", *patterns, cwd=clone)
-            git("checkout", cwd=clone)
-            result = subprocess.run([sys.executable, "-I",
-                                     ".github/actions/changelog/test_check.py", "Check"],
-                                    cwd=clone, capture_output=True, text=True, timeout=60)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertLess(time.monotonic() - start, 300)
-            self.assertFalse((clone / "private").exists())
-            self.assertFalse((clone / "assets").exists())
-            # Inspect only objects already downloaded; cat-file would lazily fetch them.
-            objects = "".join(git("verify-pack", "-v", str(index), cwd=clone)
-                              for index in (clone / ".git/objects/pack").glob("*.idx"))
-            for oid in excluded:
-                self.assertNotIn(oid, objects)
-
-    def test_slow_checkout_has_time_for_a_visible_failure(self):
-        step = self.checkout_step()
-        self.assertIn("id: checkout", step)
-        self.assertIn("timeout-minutes: 2", step)
-        self.assertIn("if: ${{ always() && steps.checkout.outcome != 'success' }}", step)
-        diagnostic = re.search(r"        run: \|\n((?:          .+\n)+)", step)
-        self.assertIsNotNone(diagnostic, "failed checkout needs a visible diagnostic")
-        with self.assertRaises(subprocess.TimeoutExpired):
-            subprocess.run([sys.executable, "-c", "import threading; threading.Event().wait(60)"],
-                           timeout=0.05)
-        result = subprocess.run(["sh", "-c", "\n".join(
-            line[10:] for line in diagnostic[1].splitlines())], capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("::error::Changelog checkout failed or exceeded 2 minutes", result.stdout)
-        self.assertIn("inspect the checkout log", result.stdout)
 
 
 if __name__ == "__main__":

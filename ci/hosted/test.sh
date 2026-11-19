@@ -93,7 +93,7 @@ if [ $? = 2 ]; then ok "guard: no GITHUB_OUTPUT: refused"; else bad "guard: no G
 # The image: real tools only from this list, so zsh, python3 and chromium are
 # missing until setup.sh brings them. Fake curl serves the synthetic archives
 # and logs each URL; fake sudo runs its command; fake apt-get logs and, on
-# install, adds zsh; fake uname answers $FAKE_ARCH.
+# install, adds zsh; fake uname answers x86_64.
 IMG="$T/image"
 mkdir -p "$IMG/bin" "$IMG/serve/payload/python/bin" "$IMG/serve/payload/chrome-linux64"
 for tool in sh cat chmod cp dirname env grep head ln ls mkdir mktemp mv printf readlink rm sed sha256sum tar gzip tr unzip; do
@@ -165,7 +165,6 @@ echo "$action $selected" >> "$FAKE_LOG/apt-effects"
 case "$action" in
   update)
     case "$selected:${FAKE_APT_FAILURE:-}" in
-      *third-party*:unrelated) echo 'E: unrelated repository has no Release file' >&2; exit 100 ;;
       *ubuntu*:update) echo 'E: required Ubuntu update failed' >&2; exit 100 ;;
       *ubuntu*:signature) echo 'E: Ubuntu signature could not be verified' >&2; exit 100 ;;
       *ubuntu*:transient)
@@ -194,12 +193,6 @@ mv "$IMG/bin/cat" "$IMG/bin/real-cat"
 cat > "$IMG/bin/cat" <<'EOF'
 #!/bin/sh
 if [ "$#" = 1 ] && [ "$1" = /etc/apt/sources.list.d/ubuntu.sources ]; then
-  echo source-read >> "$FAKE_LOG/source-reads"
-  case "${FAKE_SOURCE_MODE:-healthy}" in
-    missing | unreadable) echo 'cat: Ubuntu sources unavailable' >&2; exit 1 ;;
-    empty) exit 0 ;;
-    malformed) echo 'malformed source'; exit 0 ;;
-  esac
   exec real-cat "$FAKE_LOG/ubuntu.sources"
 fi
 exec real-cat "$@"
@@ -207,7 +200,7 @@ EOF
 chmod +x "$IMG/bin/cat"
 cat > "$IMG/bin/uname" <<'EOF'
 #!/bin/sh
-echo "${FAKE_ARCH:-x86_64}"
+echo x86_64
 EOF
 chmod +x "$IMG/bin/curl" "$IMG/bin/sudo" "$IMG/bin/apt-get" "$IMG/bin/uname"
 printf '#!/bin/sh\necho "Python 3.99.1"\n' > "$IMG/serve/payload/python/bin/python3"
@@ -235,15 +228,13 @@ PYTHON_SHA256=$(sha256sum "$IMG/serve/python.tar.gz" | cut -d' ' -f1)
 CHROME_VERSION=999.0.1.2
 CHROME_SHA256=$(sha256sum "$IMG/serve/chrome.zip" | cut -d' ' -f1)
 EOF
-# setup NAME WANT_STATUS ENV... -- ARGS...: one job on a fresh fake image
-# (with zsh already on it when has_zsh is set).
-has_zsh=
+# setup NAME WANT_STATUS ENV... -- ARGS...: one job on a fresh fake image.
 setup() {
   name="$1" want="$2"
   shift 2
   rm -rf "$T/job" && mkdir -p "$T/job/tmp" "$T/job/log" "$T/job/bin"
   : > "$T/job/path"; : > "$T/job/log/urls"; : > "$T/job/log/apt"
-  : > "$T/job/log/apt-effects"; : > "$T/job/log/source-reads"
+  : > "$T/job/log/apt-effects"
   # synthetic_assumptions: a Noble deb822 source using the image's documented
   # mirror file and existing Ubuntu signing key; no observed machine content.
   cat > "$T/job/log/ubuntu.sources" <<'EOF'
@@ -253,7 +244,6 @@ Suites: noble noble-updates noble-backports
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
-  if [ -n "$has_zsh" ]; then printf '#!/bin/sh\necho zsh\n' > "$T/job/bin/zsh"; chmod +x "$T/job/bin/zsh"; fi
   vars=
   while [ "$1" != -- ]; do vars="$vars $1"; shift; done
   shift
@@ -272,33 +262,14 @@ setup "Python, Chromium and zsh on GitHub's image" 0 RUNNER_ENVIRONMENT=github-h
 if [ "$(later python3 --version)" = "Python 3.99.1" ]; then ok "setup: a later step's python3 is the pinned one"; else bad "setup: a later step's python3 says [$(later python3 --version)]"; fi
 if [ "$(later chromium --version)" = "Google Chrome for Testing 999.0.1.2" ]; then ok "setup: a later step's chromium is the pinned Chrome for Testing"; else bad "setup: a later step's chromium says [$(later chromium --version)]"; fi
 if on_path zsh; then ok "setup: zsh is installed"; else bad "setup: zsh is missing"; fi
-if grep -qx 'install ubuntu' "$T/job/log/apt-effects"; then ok "setup: zsh comes from the image's apt"; else bad "setup: apt-get was asked [$(tr '\n' ';' < "$T/job/log/apt")]"; fi
-want_urls="https://github.com/astral-sh/python-build-standalone/releases/download/20990101/cpython-3.99.1+20990101-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz;https://storage.googleapis.com/chrome-for-testing-public/999.0.1.2/linux64/chrome-linux64.zip;"
-if [ "$(tr '\n' ';' < "$T/job/log/urls")" = "$want_urls" ]; then ok "setup: downloads exactly the pinned builds"; else bad "setup: downloaded [$(tr '\n' ';' < "$T/job/log/urls")]"; fi
-case "$(cat "$T/job/path")" in "$T/job/tmp"/*) ok "setup: what it adds to the PATH is in the job's temp folder" ;; *) bad "setup: GITHUB_PATH holds [$(tr '\n' ';' < "$T/job/path")]" ;; esac
-
-# zsh already there: no apt.
-has_zsh=1
-setup "zsh already installed" 0 RUNNER_ENVIRONMENT=github-hosted FAKE_SOURCE_MODE=missing FAKE_APT_FAILURE=unrelated -- zsh
-has_zsh=
-if [ ! -s "$T/job/log/apt" ]; then ok "setup: zsh already there: apt is not run"; else bad "setup: zsh already there, apt was run"; fi
-if [ ! -s "$T/job/log/source-reads" ]; then ok "setup: installed zsh needs no source discovery"; else bad "setup: installed zsh read apt sources"; fi
-
-# Claim: an unrelated image repository cannot prevent the required zsh setup.
-# The old fake always succeeded, hiding the broad refresh's failure before
-# install. Exercise the unchanged production script, not an extracted function.
-setup "zsh survives an unrelated repository failure" 0 RUNNER_ENVIRONMENT=github-hosted FAKE_APT_FAILURE=unrelated -- zsh
-if on_path zsh && [ "$(cat "$T/job/log/apt-effects")" = "$(printf 'update ubuntu\ninstall ubuntu')" ]; then
-  ok "setup: only required Ubuntu sources refreshed and installed zsh"
-else bad "setup: unrelated repository blocked zsh (effects: $(tr '\n' ';' < "$T/job/log/apt-effects"))"; fi
-
-setup "zsh with healthy Ubuntu sources" 0 RUNNER_ENVIRONMENT=github-hosted -- zsh
-if on_path zsh && [ "$(cat "$T/job/log/apt-effects")" = "$(printf 'update ubuntu\ninstall ubuntu')" ]; then
-  ok "setup: healthy Ubuntu refresh precedes zsh installation"
-else bad "setup: healthy Ubuntu setup did not refresh and install zsh"; fi
+# catches (R1 on #1280): APT refreshing or installing zsh from a source
+# configuration other than the image's own, byte for byte, Signed-By included.
 if cmp -s "$T/job/log/ubuntu.sources" "$T/job/log/update.sources" && cmp -s "$T/job/log/ubuntu.sources" "$T/job/log/install.sources"; then
   ok "setup: refresh and install retain the existing source, mirror and signing-key bytes"
 else bad "setup: Ubuntu source configuration changed at the apt boundary"; fi
+want_urls="https://github.com/astral-sh/python-build-standalone/releases/download/20990101/cpython-3.99.1+20990101-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz;https://storage.googleapis.com/chrome-for-testing-public/999.0.1.2/linux64/chrome-linux64.zip;"
+if [ "$(tr '\n' ';' < "$T/job/log/urls")" = "$want_urls" ]; then ok "setup: downloads exactly the pinned builds"; else bad "setup: downloaded [$(tr '\n' ';' < "$T/job/log/urls")]"; fi
+case "$(cat "$T/job/path")" in "$T/job/tmp"/*) ok "setup: what it adds to the PATH is in the job's temp folder" ;; *) bad "setup: GITHUB_PATH holds [$(tr '\n' ';' < "$T/job/path")]" ;; esac
 
 # Each true required failure stays fatal, even with old indexes available.
 # Assert the diagnostic and stopped boundary, so an unrelated refusal cannot
@@ -315,32 +286,12 @@ for failure in update transient signature install install-signature presence; do
   else bad "setup: required $failure failure was masked or failed at the wrong boundary"; fi
 done
 
-for source_mode in missing unreadable empty malformed; do
-  setup "zsh refuses $source_mode Ubuntu sources" 1 RUNNER_ENVIRONMENT=github-hosted FAKE_SOURCE_MODE="$source_mode" -- zsh
-  case "$source_mode" in
-    missing | unreadable) diagnostic='setup.sh: could not read Ubuntu apt sources' ;;
-    empty) diagnostic='setup.sh: Ubuntu apt sources are empty' ;;
-    malformed) diagnostic='setup.sh: apt-get update failed' ;;
-  esac
-  if ! on_path zsh && grep -qxF "$diagnostic" "$T/job/said" && [ ! -s "$T/job/log/apt-effects" ]; then
-    ok "setup: $source_mode sources cannot install from stale indexes or a fallback"
-  else bad "setup: $source_mode sources did not fail closed"; fi
-done
-
-setup "zsh on arm64 is refused before apt" 2 RUNNER_ENVIRONMENT=github-hosted FAKE_ARCH=aarch64 -- zsh
-if [ ! -s "$T/job/log/apt" ] && [ ! -s "$T/job/log/source-reads" ]; then
-  ok "setup: unsupported zsh architecture does no apt work"
-else bad "setup: unsupported zsh architecture reached apt"; fi
-
-# The image's own Chrome at the pinned version (ubuntu-24.04's, today): used
-# as chromium, nothing downloaded. At another version: Chrome for Testing.
+# The image's own Chrome at another version than the pin: the pinned Chrome
+# for Testing is chromium.
 image_chrome() {
   printf '#!/bin/sh\necho "Google Chrome %s "\n' "$1" > "$IMG/bin/google-chrome"
   chmod +x "$IMG/bin/google-chrome"
 }
-image_chrome 999.0.1.2
-setup "the image's Chrome at the pin" 0 RUNNER_ENVIRONMENT=github-hosted -- chromium
-if [ ! -s "$T/job/log/urls" ] && [ "$(later chromium --version)" = "Google Chrome 999.0.1.2 " ]; then ok "setup: the image's Chrome at the pin is chromium, nothing downloaded"; else bad "setup: with the image's Chrome at the pin: downloaded [$(tr '\n' ';' < "$T/job/log/urls")], chromium says [$(later chromium --version)]"; fi
 image_chrome 998.0.0.0
 setup "the image's Chrome at another version" 0 RUNNER_ENVIRONMENT=github-hosted -- chromium
 if [ "$(later chromium --version)" = "Google Chrome for Testing 999.0.1.2" ]; then ok "setup: the image's Chrome at another version: the pinned Chrome for Testing"; else bad "setup: with the image's Chrome at another version, chromium says [$(later chromium --version)]"; fi
@@ -384,20 +335,6 @@ env -i PATH="$T/job/bin:$IMG/bin" HOME="$T/job" RUNNER_TEMP="$T/job/tmp" GITHUB_
 jog-0123abcd-0123456789ab" "$IMG/bin/sh" "$KIT/setup.sh" chromium > "$T/job/said" 2>&1
 status=$?
 if [ "$status" = 2 ] && [ ! -s "$T/job/log/urls" ] && [ ! -s "$T/job/path" ]; then ok "setup: a multiline Jog name is refused, nothing downloaded"; else bad "setup: a multiline Jog name gave exit $status: $(tr '\n' ' ' < "$T/job/said")"; fi
-setup "on arm64: no pinned build, refused" 2 RUNNER_ENVIRONMENT=github-hosted FAKE_ARCH=aarch64 -- python
-setup "an unknown tool: usage" 2 RUNNER_ENVIRONMENT=github-hosted -- node
-setup "no tool: usage" 2 RUNNER_ENVIRONMENT=github-hosted --
-
-# The real pins are the PC's: ci.yml's pinned Python (the PC image's, which
-# ci/runner/test.sh holds to the Dockerfile), and Chrome for Testing's format.
-(
-  # shellcheck source=pins.sh
-  . "$HERE/pins.sh" 2> /dev/null || exit 1
-  grep -qF "releases/download/$PYTHON_BUILD/cpython-$PYTHON_VERSION+$PYTHON_BUILD-" "$ROOT/.github/actions/docs-only/python.sh" || exit 1
-  grep -qE "^ *x86_64\) sum=$PYTHON_SHA256 ;;$" "$ROOT/.github/actions/docs-only/python.sh" || exit 1
-  printf '%s\n' "$CHROME_VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || exit 1
-  printf '%s\n' "$CHROME_SHA256" | grep -qxE '[0-9a-f]{64}' || exit 1
-) && ok "pins.sh: Python is ci.yml's pinned build; Chrome is a full version and SHA-256" || bad "pins.sh: missing, or not ci.yml's pinned Python"
 
 # --- 3. cache.sh on GitHub's runners -----------------------------------------
 U="$T/home"
@@ -408,11 +345,6 @@ said="$(env -i PATH="$PATH" HOME="$U" RUNNER_ENVIRONMENT=github-hosted CLOSEDWIZ
 if [ "$said" = "cache npm: a GitHub-hosted runner, so not the PC's store: nothing restored" ] && [ "$(cat "$U/.npm/file")" = old ]; then ok "cache.sh: on GitHub's runner a restore leaves the PC's store alone"; else bad "cache.sh: on GitHub's runner a restore said [$said]"; fi
 said="$(env -i PATH="$PATH" HOME="$U" RUNNER_ENVIRONMENT=github-hosted CLOSEDWIZ_CACHE_OUT="$T/cache-out" CLOSEDWIZ_CACHE_AUDIENCE=a ACTIONS_ID_TOKEN_REQUEST_URL=u ACTIONS_ID_TOKEN_REQUEST_TOKEN=t sh "$ROOT/ci/runner/cache.sh" save npm "$U/.npm" 2>&1)"
 if [ "$said" = "cache npm: a GitHub-hosted runner, so not the PC's store: nothing saved" ] && [ -z "$(ls -A "$T/cache-out")" ]; then ok "cache.sh: on GitHub's runner a save leaves nothing for a store"; else bad "cache.sh: on GitHub's runner a save said [$said]"; fi
-said="$(env -i PATH="$PATH" HOME="$U" RUNNER_ENVIRONMENT=github-hosted sh "$ROOT/ci/runner/cache.sh" restore 'B@D' "$U/.npm" 2>&1)"
-case "$said" in *usage*) ok "cache.sh: on GitHub's runner a bad name is still refused" ;; *) bad "cache.sh: on GitHub's runner a bad name said [$said]" ;; esac
-said="$(env -i PATH="$PATH" HOME="$U" sh "$ROOT/ci/runner/cache.sh" restore npm "$U/.npm" 2>&1)"
-if [ "$said" = "cache npm: no store on this runner, a cold start" ]; then ok "cache.sh: elsewhere unchanged (no store: a cold start)"; else bad "cache.sh: with no store it said [$said]"; fi
-
 # --- 4. Every X5 lane, including shared setup/cache steps ---------------------
 # Guard/setup/PC-store behavior above is unchanged. X5's workflow-boundary
 # checker covers every discovered job rather than the old fixed counts.

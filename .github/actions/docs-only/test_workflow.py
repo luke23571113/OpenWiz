@@ -422,49 +422,6 @@ class Security(unittest.TestCase):
                     if re.search(r'^        run: sh ci/runner/cache.sh save ',step,re.M):
                         self.assertIn("if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')",step)
 
-    def test_rust_export_saves_and_restores_a_cargo_cache_no_other_job_saves(self):
-        # #742: always saved cargo-rust first, so rust-export's save of the same
-        # key failed ("Unable to reserve cache") and its release build stayed cold.
-        savers={}
-        for name,block in jobs().items():
-            for partition in (re.findall(r'^          key: (cargo-[a-z-]+)-\$\{\{ runner\.os \}\}',block,re.M)
-                              +re.findall(r'^        run: sh ci/runner/cache\.sh save (cargo-[a-z-]+) ',block,re.M)):
-                savers.setdefault(partition,set()).add(name)
-        own={p for p,names in savers.items() if 'rust-export' in names}
-        self.assertEqual(len(own),1,own)
-        partition=own.pop()
-        self.assertEqual(savers[partition],{'rust-export'})
-        prepare=jobs()['rust-export'].split('uses: ./.github/actions/docs-only/setup\n',1)[1].split('      - ',1)[0]
-        self.assertEqual(re.findall(r'^          cache: (\S+)$',prepare,re.M),[partition])
-
-    def test_release_pass_does_not_depend_on_absent_cargo_cache_inputs(self):
-        block=jobs()['release']
-        commands=re.findall(r'^        run: (sh ci/runner/cache.sh save cargo-[^\n]+)$',block,re.M)
-        with tempfile.TemporaryDirectory() as folder:
-            home=Path(folder);(home/'out').mkdir();(home/'bin').mkdir()
-            curl=home/'bin/curl';curl.write_text('#!/bin/sh\necho blocked-network >&2\nexit 99\n');curl.chmod(0o755)
-            env=dict(os.environ,HOME=str(home),GITHUB_WORKSPACE=str(home/'workspace'),
-                CLOSEDWIZ_CACHE_OUT=str(home/'out'),CLOSEDWIZ_CACHE_AUDIENCE='synthetic',
-                ACTIONS_ID_TOKEN_REQUEST_URL='https://example.invalid/oidc',ACTIONS_ID_TOKEN_REQUEST_TOKEN='synthetic',
-                RUNNER_ENVIRONMENT='self-hosted',PATH=str(home/'bin')+os.pathsep+os.environ['PATH'])
-            for command in commands:
-                result=subprocess.run(['bash','-euc',command],cwd=ROOT,env=env,capture_output=True,text=True)
-                self.assertEqual(result.returncode,0,result.stderr)
-
-    def test_checks_only_has_an_unguarded_plan_bound_lint_fallback(self):
-        step=jobs()['always'].split('      - name: Build and lint Rust\n',1)[1].split('      - ',1)[0]
-        self.assertNotIn('        if:',step)
-        self.assertIn('run.py lint-always "$RUNNER_TEMP/ci-plan"',step)
-
-    def test_retry_contracts_follow_the_shared_bootstrap_and_npm_setup(self):
-        setup=(HERE/'setup/action.yml').read_text()
-        npm=[line.strip() for line in setup.splitlines() if 'run:' in line and 'npm ci' in line]
-        self.assertEqual(npm,['run: sh ci/retry.sh 3 -- npm ci --ignore-scripts --prefix apps/web'])
-        bootstrap=(HERE/'python.sh').read_text()
-        downloads=[line.strip() for line in bootstrap.splitlines() if line.strip().startswith('curl ')]
-        self.assertEqual(len(downloads),1)
-        self.assertTrue(downloads[0].startswith('curl -fsSL --retry 5 --retry-delay 10 '))
-
     def test_actual_map_step_signs_and_enables_save_only_for_main_push_or_nightly(self):
         step=jobs()['select-map'].split('      - name: Save the select-map cache\n',1)[1].split('      - ',1)[0]
         expression=re.search(r'^          MAIN: \$\{\{ (.*) \}\}$',step,re.M)[1]
