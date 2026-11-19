@@ -390,6 +390,9 @@ fn only_the_factory_s_comments_confirm_a_health_delivery() {
             .push(json!({"id":200,"author":author,"body":body,"created":1000,"updated":1000}));
         assert_eq!(w.engine().pass(1200).is_ok(), counts, "{author}");
         assert_eq!(w.posts(), 3, "{author}: never a second post");
+        // #848: a stranger's copy fails the pass whatever reconcile decides
+        // (the open claim stops the post), so the receipt is reconcile's proof.
+        assert_eq!(receipt(&w, &body), counts, "{author}");
     }
     // A stranger's copy beside the factory's leaves the delivery unique.
     let w = World::new();
@@ -408,6 +411,16 @@ fn only_the_factory_s_comments_confirm_a_health_delivery() {
     fs::write(w.root.join("no-record-authors"), "").unwrap();
     assert!(w.engine().pass(1200).is_err());
     assert_eq!(w.posts(), 3);
+    assert!(!receipt(&w, &body));
+}
+
+/// Whether reconcile wrote the delivery receipt for `body`'s claim on #901.
+fn receipt(w: &World, body: &Value) -> bool {
+    let digest =
+        openwiz_core::messaging::sha256_hex(format!("901\n{}", body.as_str().unwrap()).as_bytes());
+    w.root
+        .join(format!("service/health/confirmed-{digest}"))
+        .exists()
 }
 
 /// Catches a lost post reply whose comment never landed being posted again.
