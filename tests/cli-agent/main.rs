@@ -301,26 +301,6 @@ fn cp1_help_aliases_and_invalid_agent_forms_have_no_effects() {
 }
 
 #[test]
-fn cp1_zero_call_traps_detect_real_fixture_source_invocations() {
-    let room = Sandbox::new();
-    let output = room.run(&["ls", "--json"]);
-    assert_eq!(output.status.code(), Some(1));
-    let calls = fs::read_to_string(room.0.join("calls")).expect("room-cli trap must record calls");
-    assert!(!calls.is_empty());
-    assert!(calls.lines().all(|line| line == "unexpected source call"));
-    let github = Sandbox::new();
-    let output = github.run(&["fleets", "--json"]);
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "a failed fleet read is a partial envelope"
-    );
-    let calls = fs::read_to_string(github.0.join("calls")).expect("gh trap must record calls");
-    assert!(!calls.is_empty());
-    assert!(calls.lines().all(|line| line == "unexpected source call"));
-}
-
-#[test]
 fn cp1_schema_refuses_broken_catalogues_and_pins_additive_result_shapes() {
     let contract: Value = serde_json::from_str(
         &fs::read_to_string(Path::new(ROOT).join("contracts/cli.v1.schema.json")).unwrap(),

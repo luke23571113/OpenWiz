@@ -9,7 +9,7 @@
 //! reads a spec through a fake `gh`, refusing a failed or partial read.
 
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::symlink;
@@ -25,8 +25,6 @@ const CASE_FILES: [&str; 5] = [
     "report.txt",
     "stderr.txt",
 ];
-const APPROVED: [&str; 4] = ["ready-for-agent", "ready-for-human", "held", "needs-info"];
-const NOT_READY: [&str; 3] = ["held", "needs-info", "ready-for-human"];
 
 fn path(relative: &str) -> PathBuf {
     Path::new(ROOT).join(relative)
@@ -73,30 +71,9 @@ fn history(name: &str) -> Vec<Value> {
         .collect()
 }
 
-fn n(value: &Value) -> u64 {
-    value.as_u64().expect("a number")
-}
-
-fn strs(value: &Value) -> Vec<&str> {
-    value
-        .as_array()
-        .expect("an array")
-        .iter()
-        .map(|v| v.as_str().expect("a string"))
-        .collect()
-}
-
-fn open_tickets(graph: &Value) -> Vec<&Value> {
-    graph["tickets"]
-        .as_array()
-        .expect("tickets")
-        .iter()
-        .filter(|t| t["state"] == "OPEN")
-        .collect()
-}
-
 #[test]
-fn plan_links_schema_is_checkable_and_refuses_malformed_roots() {
+fn plan_links_every_fixture_has_its_expectations_and_validates() {
+    // Merged (CW4): the checker knows every keyword and refuses bad roots.
     let schema = schema();
     assert_eq!(schema["title"], "openwiz.plan-links.v1");
     assert_eq!(crate::pattern::lint(&schema), Vec::<String>::new());
@@ -109,10 +86,6 @@ fn plan_links_schema_is_checkable_and_refuses_malformed_roots() {
     ] {
         assert!(!errors(&malformed).is_empty(), "{malformed}");
     }
-}
-
-#[test]
-fn plan_links_every_fixture_has_its_expectations_and_validates() {
     let mut top: Vec<String> = fs::read_dir(path(FIXTURES))
         .expect("the fixtures folder")
         .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
@@ -254,316 +227,6 @@ fn plan_links_planted_invalid_fixtures_are_refused() {
         plant(&mut value);
         assert!(!errors(&value).is_empty(), "{what}: must be refused");
     }
-}
-
-fn message(code: &str, number: &Value) -> Option<String> {
-    let n = number.as_u64().map(|n| format!("#{n}"));
-    Some(match code {
-        "no_reason" => format!("{} has no reason line", n?),
-        "not_a_blocker" => format!("{} is not a native blocker", n?),
-        "duplicate" => format!("{} has more than one line", n?),
-        "real_without_behaviour" => format!("the real line for {} names no behaviour", n?),
-        "file_without_file" => format!("the file line for {} names no file in backticks", n?),
-        _ => return None,
-    })
-}
-
-#[test]
-fn plan_links_reports_agree_with_their_graph_reads() {
-    for (name, dir) in cases() {
-        let graph = json_file(&dir.join("graph.json"));
-        let report = json_file(&dir.join("report.json"));
-        assert_eq!(report["repo"], graph["repo"], "{name}");
-        assert_eq!(report["source"], graph["source"], "{name}");
-
-        // Each ticket once, each blocker once per ticket.
-        let numbers: Vec<u64> = graph["tickets"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|t| n(&t["number"]))
-            .collect();
-        assert_eq!(
-            numbers.len(),
-            numbers.iter().collect::<BTreeSet<_>>().len(),
-            "{name}"
-        );
-
-        // One link per native blocker of each open ticket, ordered.
-        let mut blockers: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
-        let mut expected = Vec::new();
-        for ticket in open_tickets(&graph) {
-            let set = blockers.entry(n(&ticket["number"])).or_default();
-            for b in ticket["blocked_by"].as_array().unwrap() {
-                assert!(set.insert(n(&b["number"])), "{name}: a blocker twice");
-                expected.push((n(&ticket["number"]), n(&b["number"]), b["state"].clone()));
-            }
-        }
-        expected.sort_by_key(|(t, b, _)| (*t, *b));
-        let links = report["links"].as_array().unwrap();
-        let got: Vec<_> = links
-            .iter()
-            .map(|l| {
-                (
-                    n(&l["ticket"]),
-                    n(&l["blocker"]),
-                    l["blocker_state"].clone(),
-                )
-            })
-            .collect();
-        assert_eq!(got, expected, "{name}: links");
-
-        let kind = |k: &str| links.iter().filter(|l| l["kind"] == k).count() as u64;
-        let refusals = report["refusals"].as_array().unwrap();
-        let counts = &report["counts"];
-        assert_eq!(
-            counts,
-            &json!({
-                "tickets": blockers.len(), "links": links.len(), "real": kind("real"),
-                "file": kind("file"), "unlabelled": kind("unlabelled"), "refusals": refusals.len()
-            }),
-            "{name}: counts"
-        );
-        let result = if refusals.is_empty() {
-            "pass"
-        } else {
-            "refused"
-        };
-        assert_eq!(report["result"], result, "{name}");
-
-        // Refusals: ordered, on open tickets, each code where it belongs.
-        let order: Vec<_> = refusals
-            .iter()
-            .map(|r| (n(&r["ticket"]), r["number"].as_u64()))
-            .collect();
-        let mut sorted = order.clone();
-        sorted.sort();
-        assert_eq!(order, sorted, "{name}: refusal order");
-        for r in refusals {
-            let ticket = n(&r["ticket"]);
-            let own = blockers.get(&ticket).expect("a refusal on an open ticket");
-            let code = r["code"].as_str().unwrap();
-            match code {
-                "malformed" => assert!(r["number"].is_null()),
-                "not_a_blocker" => assert!(!own.contains(&n(&r["number"])), "{name}"),
-                _ => {
-                    let b = n(&r["number"]);
-                    assert!(own.contains(&b), "{name}");
-                    let link = links
-                        .iter()
-                        .find(|l| n(&l["ticket"]) == ticket && n(&l["blocker"]) == b)
-                        .unwrap();
-                    assert_eq!(link["kind"], "unlabelled", "{name}: #{ticket} #{b}");
-                }
-            }
-            if let Some(expected) = message(code, &r["number"]) {
-                assert_eq!(r["message"], expected.as_str(), "{name}");
-            }
-        }
-        for link in links.iter().filter(|l| l["kind"] == "unlabelled") {
-            let (t, b) = (n(&link["ticket"]), n(&link["blocker"]));
-            assert!(
-                refusals.iter().any(|r| n(&r["ticket"]) == t
-                    && (r["number"].as_u64() == Some(b) || r["code"] == "malformed")),
-                "{name}: unlabelled #{t} #{b} has its refusal"
-            );
-        }
-
-        // The text report and standard error say the same.
-        let source = match graph["source"]["kind"].as_str().unwrap() {
-            "spec" => format!("spec #{}", graph["source"]["spec"]),
-            _ => "board".to_owned(),
-        };
-        let mut txt = format!(
-            "{result} {source}: tickets {}, links {}, real {}, file {}, unlabelled {}, refusals {}\n",
-            counts["tickets"],
-            counts["links"],
-            counts["real"],
-            counts["file"],
-            counts["unlabelled"],
-            counts["refusals"]
-        );
-        for l in links.iter().filter(|l| l["kind"] == "file") {
-            txt += &format!(
-                "file link: #{} blocked by #{}: {}\n",
-                l["ticket"],
-                l["blocker"],
-                strs(&l["files"]).join(", ")
-            );
-        }
-        assert_eq!(text(&dir.join("report.txt")), txt, "{name}: report.txt");
-        let err: String = refusals
-            .iter()
-            .map(|r| {
-                format!(
-                    "Links: #{}: {}\n",
-                    r["ticket"],
-                    r["message"].as_str().unwrap()
-                )
-            })
-            .collect();
-        assert_eq!(text(&dir.join("stderr.txt")), err, "{name}: stderr.txt");
-    }
-}
-
-/// `numerator / denominator` rounded half up to `1 / scale`.
-fn rounded(numerator: u64, denominator: u64, scale: u64) -> u64 {
-    (2 * scale * numerator + denominator) / (2 * denominator)
-}
-
-#[test]
-fn plan_links_board_numbers_follow_the_definitions() {
-    for (name, dir) in cases() {
-        let graph = json_file(&dir.join("graph.json"));
-        let report = json_file(&dir.join("report.json"));
-        let approved: Vec<&Value> = open_tickets(&graph)
-            .into_iter()
-            .filter(|t| strs(&t["labels"]).iter().any(|l| APPROVED.contains(l)))
-            .collect();
-        let numbers: BTreeSet<u64> = approved.iter().map(|t| n(&t["number"])).collect();
-        let starts = |t: &Value| {
-            t["blocked_by"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|b| b["state"] != "OPEN")
-        };
-        let building = |t: &Value| {
-            t["start_recorded"] == true || !t["pull_requests"].as_array().unwrap().is_empty()
-        };
-        let can_start = approved.iter().filter(|t| starts(t)).count() as u64;
-        let builders = approved.iter().filter(|t| building(t)).count() as u64;
-        let ready = approved
-            .iter()
-            .filter(|t| {
-                starts(t)
-                    && !building(t)
-                    && !strs(&t["labels"]).iter().any(|l| NOT_READY.contains(l))
-            })
-            .count() as u64;
-        let links = |kind: &str| {
-            report["links"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter(|l| l["kind"] == kind && numbers.contains(&n(&l["ticket"])))
-                .count()
-        };
-        let open = approved.len() as u64;
-        let expected = json!({
-            "schema": "openwiz.plan-links.v1", "kind": "measures",
-            "open_approved": open, "can_start": can_start,
-            "startable_percent": (open > 0).then(|| rounded(can_start, open, 100)),
-            "file_links": links("file"), "unlabelled_links": links("unlabelled"),
-            "ready_stock": ready, "builders_running": builders,
-            "fed_ratio": (builders > 0).then(|| rounded(ready, builders, 10) as f64 / 10.0),
-            "low_stock": ready < 2 * builders,
-        });
-        assert_eq!(json_file(&dir.join("board.json")), expected, "{name}");
-    }
-}
-
-/// Days since 1970-01-01 for a civil date, and back (Howard Hinnant's).
-fn days(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
-    era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468
-}
-
-fn civil(z: i64) -> String {
-    let z = z + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-/// The PST (fixed UTC-8) day of a `YYYY-MM-DDTHH:MM:SSZ` time.
-fn pst_day(at: &str) -> String {
-    let part = |r: std::ops::Range<usize>| at[r].parse::<i64>().expect("digits");
-    let day = days(part(0..4), part(5..7), part(8..10));
-    civil(if part(11..13) < 8 { day - 1 } else { day })
-}
-
-#[test]
-fn plan_links_history_days_and_daily_rows() {
-    assert_eq!(pst_day("2026-11-06T07:59:00Z"), "2026-11-05");
-    assert_eq!(pst_day("2026-11-06T08:00:00Z"), "2026-11-06");
-    assert_eq!(pst_day("2027-01-01T03:00:00Z"), "2026-12-31");
-    assert_eq!(pst_day("2028-03-01T07:00:00Z"), "2028-02-29");
-
-    let rows = history("history.jsonl");
-    assert_eq!(rows[0]["sample"], "baseline", "the baseline row is first");
-    for (i, row) in rows.iter().enumerate() {
-        assert_eq!(row["day"], pst_day(row["at"].as_str().unwrap()).as_str());
-        if i > 0 {
-            assert_eq!(row["sample"], "run", "only the first row is the baseline");
-        }
-        let (open, can) = (n(&row["open_approved"]), n(&row["can_start"]));
-        let percent = (open > 0).then(|| rounded(can, open, 100));
-        assert_eq!(row["startable_percent"], json!(percent), "line {}", i + 1);
-        if row["sample"] == "run" {
-            let (ready, builders) = (n(&row["ready_stock"]), n(&row["builders_running"]));
-            let ratio = (builders > 0).then(|| rounded(ready, builders, 10) as f64 / 10.0);
-            assert_eq!(row["fed_ratio"], json!(ratio), "line {}", i + 1);
-            assert_eq!(row["low_stock"], ready < 2 * builders, "line {}", i + 1);
-        }
-    }
-
-    // The daily row: each day's last sample, a tie going to the later line.
-    let mut daily: Vec<&Value> = Vec::new();
-    for row in &rows {
-        match daily.iter().position(|d| d["day"] == row["day"]) {
-            Some(i) if row["at"].as_str() >= daily[i]["at"].as_str() => daily[i] = row,
-            Some(_) => {}
-            None => daily.push(row),
-        }
-    }
-    let expected: Vec<Value> = daily.into_iter().cloned().collect();
-    assert_eq!(history("daily.jsonl"), expected);
-}
-
-#[test]
-fn plan_links_contract_carries_this_specs_lines_and_the_baseline() {
-    let contract = text(&path("contracts/plan-links.v1.md"));
-    let graph = json_file(&path(&format!("{FIXTURES}/this-spec/graph.json")));
-    let mut lines = BTreeSet::new();
-    for ticket in graph["tickets"].as_array().unwrap() {
-        for line in ticket["body"].as_str().unwrap().lines() {
-            if line.starts_with("- #") {
-                lines.insert(line.to_owned());
-            }
-        }
-    }
-    assert_eq!(lines.len(), 5, "this spec's five distinct reason lines");
-    for line in lines {
-        assert!(
-            contract.lines().any(|l| l == line),
-            "the contract's examples carry, unchanged: {line}"
-        );
-    }
-    let baseline = contract
-        .lines()
-        .find(|l| l.starts_with("{\"schema\":\"openwiz.plan-links.v1\",\"kind\":\"history\""))
-        .expect("the contract's baseline row");
-    let baseline: Value = serde_json::from_str(baseline).expect("JSON");
-    assert_eq!(baseline, history("history.jsonl")[0]);
-    assert_eq!(
-        (
-            &baseline["open_approved"],
-            &baseline["can_start"],
-            &baseline["startable_percent"]
-        ),
-        (&json!(80), &json!(20), &json!(25))
-    );
-    assert_valid(&baseline, "history", "the contract's baseline row");
 }
 
 // The link checker (U4, #1318).

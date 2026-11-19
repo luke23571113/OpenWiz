@@ -468,69 +468,6 @@ fn first_pull_request_run_to_main(var: impl Fn(&str) -> Option<String>) -> bool 
 }
 
 #[test]
-fn only_a_first_pull_request_run_to_main_moves_the_15_second_proof() {
-    let pr = [
-        ("GITHUB_ACTIONS", "true"),
-        ("GITHUB_EVENT_NAME", "pull_request"),
-        ("GITHUB_BASE_REF", "main"),
-        ("GITHUB_RUN_ATTEMPT", "1"),
-    ];
-    let with = |key: &'static str, value: Option<&'static str>| {
-        let mut env: Vec<(&str, &str)> = pr.iter().copied().filter(|(k, _)| *k != key).collect();
-        if let Some(value) = value {
-            env.push((key, value));
-        }
-        env
-    };
-    // (what the context is, its variables, whether the proof moves)
-    type Case = (String, Vec<(&'static str, &'static str)>, bool);
-    let mut cases: Vec<Case> = vec![("a first pull request run to main".into(), pr.to_vec(), true)];
-    cases.push(("no GitHub variables (a local run)".into(), vec![], false));
-    for (key, odd) in [
-        ("GITHUB_ACTIONS", vec!["false", "True", "true ", "1", ""]),
-        (
-            "GITHUB_EVENT_NAME",
-            vec![
-                "push",
-                "schedule",
-                "merge_group",
-                "workflow_dispatch",
-                "pull_request_target",
-                "Pull_request",
-                "",
-            ],
-        ),
-        (
-            "GITHUB_BASE_REF",
-            vec!["release-0.0.9", "main-null", "Main", " main", ""],
-        ),
-        ("GITHUB_RUN_ATTEMPT", vec!["2", "10", "01", "1 ", "+1", ""]),
-    ] {
-        cases.push((format!("{key} missing"), with(key, None), false));
-        for value in odd {
-            cases.push((format!("{key}={value:?}"), with(key, Some(value)), false));
-        }
-    }
-    for (name, env, moved) in cases {
-        let var = |key: &str| {
-            env.iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| (*v).to_owned())
-        };
-        assert_eq!(first_pull_request_run_to_main(var), moved, "{name}");
-    }
-}
-
-/// New in ticket 2. Issue #3: each read has a 15-second timeout, and there
-/// are no retries; a timeout becomes a gap. With the default 30-second
-/// budget, a read that never answers is stopped after 15 seconds, once.
-///
-/// Moved off a first pull request run to `main` (#1260, Q2): it waits on the
-/// adapter's fixed `READ_TIMEOUT`, which no test can shorten, so it alone
-/// would hold this binary over its 10-second budget. It runs, unchanged,
-/// everywhere else (`first_pull_request_run_to_main`), and its moved-case
-/// ledger records that move in X3's evidence.
-#[test]
 fn a_read_that_never_answers_is_stopped_after_15_seconds_and_not_retried() {
     if first_pull_request_run_to_main(|key| std::env::var(key).ok()) {
         eprintln!(

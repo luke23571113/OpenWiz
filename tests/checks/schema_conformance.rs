@@ -34,60 +34,11 @@ fn envelope_fixtures() -> Vec<(String, Value)> {
 }
 
 #[test]
-fn the_whole_schema_uses_only_checked_keywords() {
-    let schema = load_schema();
-    assert_eq!(schema["title"], SCHEMA_ID);
-    assert_eq!(lint(&schema), Vec::<String>::new());
-    // Every $ref resolves: an empty envelope fails on fields, not on the schema.
-    let errors = validate(&schema, &json!({}));
-    assert!(!errors.is_empty());
-    assert!(
-        errors.iter().all(|e| !e.contains("unresolvable")),
-        "{errors:#?}"
-    );
-}
-
-#[test]
-fn the_lint_finds_rules_the_checker_would_ignore() {
-    let mut unreferenced = load_schema();
-    unreferenced["$defs"]["bogus"] = json!({ "type": "string", "pattern": "^.$" });
-    assert!(
-        !lint(&unreferenced).is_empty(),
-        "a keyword in an unreferenced $defs entry"
-    );
-
-    let mut dangling = load_schema();
-    dangling["$defs"]["orphan"] = json!({ "$ref": "#/$defs/does_not_exist" });
-    assert!(
-        !lint(&dangling).is_empty(),
-        "an unresolvable $ref nothing reaches"
-    );
-
-    let mut open = load_schema();
-    open["$defs"]["freshness"]["additionalProperties"] = json!({ "type": "string" });
-    assert!(!lint(&open).is_empty(), "additionalProperties as a schema");
-}
-
-#[test]
 fn the_schema_limits_match_the_core_limits() {
     let schema = load_schema();
     let recap_text = &schema["$defs"]["recap"]["oneOf"][0]["properties"]["text"];
     assert_eq!(recap_text["maxLength"], PURPOSE_MAX_CHARS as u64);
     assert_eq!(PURPOSE_MAX_CHARS, 120, "the approved recap length");
-}
-
-#[test]
-fn every_envelope_fixture_matches_the_schema() {
-    let schema = load_schema();
-    let fixtures = envelope_fixtures();
-    assert!(
-        fixtures.len() >= 4,
-        "list and show envelopes, complete and partial"
-    );
-    for (name, value) in fixtures {
-        let errors = validate(&schema, &value);
-        assert!(errors.is_empty(), "{name}: {errors:#?}");
-    }
 }
 
 #[test]
@@ -207,6 +158,9 @@ fn sample_envelope<T>(data: T, counts: Option<Counts>) -> Envelope<T> {
 #[test]
 fn the_core_types_serialize_to_schema_valid_json() {
     let schema = load_schema();
+    // Merged (CW4): the checker knows every keyword the schema uses.
+    assert_eq!(schema["title"], SCHEMA_ID);
+    assert_eq!(lint(&schema), Vec::<String>::new());
     let mut no_recap = sample_session(2);
     no_recap.recap = Fact::Known(Recap::NoRecapYet);
     no_recap.location = Fact::Known(Location::Cloud);

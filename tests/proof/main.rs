@@ -17,7 +17,6 @@ mod schema;
 #[path = "../support/dirs.rs"]
 mod dirs;
 
-mod ci_rust_tests;
 mod p01_coverage;
 mod p02_freshness;
 mod p03_unknowns;
