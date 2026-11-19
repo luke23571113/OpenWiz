@@ -1,0 +1,17 @@
+ci3: step 'The PR test-code budget' (job /code/openwiz/.github/workflows/ci.yml) matches no row of /code/openwiz/tools/collector/steps.tsv
+Exit status: 1
+F
+======================================================================
+FAIL: test_check_steps_covers_ci_and_refuses_a_step_with_no_row (__main__.Steps.test_check_steps_covers_ci_and_refuses_a_step_with_no_row)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/collector/test_ci3.py", line 298, in test_check_steps_covers_ci_and_refuses_a_step_with_no_row
+    self.assertEqual(ok.returncode, 0, ok.stderr)
+AssertionError: 1 != 0 : ci3: step 'The PR test-code budget' (job /code/openwiz/.github/workflows/ci.yml) matches no row of /code/openwiz/tools/collector/steps.tsv
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.057s
+
+FAILED (failures=1)
+Regression test exit status: 1

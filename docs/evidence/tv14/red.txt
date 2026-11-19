@@ -1,0 +1,379 @@
+test_allowance (__main__.BudgetTests.test_allowance)
+catches: allowances covering the total rather than just the overage. ... 
+  test_allowance (__main__.BudgetTests.test_allowance) (allowance=99)
+catches: allowances covering the total rather than just the overage. ... FAIL
+  test_allowance (__main__.BudgetTests.test_allowance) (allowance=100)
+catches: allowances covering the total rather than just the overage. ... FAIL
+  test_allowance (__main__.BudgetTests.test_allowance) (allowance=150)
+catches: allowances covering the total rather than just the overage. ... FAIL
+test_binary_test_file (__main__.BudgetTests.test_binary_test_file)
+catches: binary test changes silently counted as zero. ... FAIL
+test_boundary_and_offsets (__main__.BudgetTests.test_boundary_and_offsets)
+catches: off-by-one and gross counting instead of net growth. ... 
+  test_boundary_and_offsets (__main__.BudgetTests.test_boundary_and_offsets) (added=401, deleted=0)
+catches: off-by-one and gross counting instead of net growth. ... FAIL
+  test_boundary_and_offsets (__main__.BudgetTests.test_boundary_and_offsets) (added=400, deleted=0)
+catches: off-by-one and gross counting instead of net growth. ... FAIL
+  test_boundary_and_offsets (__main__.BudgetTests.test_boundary_and_offsets) (added=600, deleted=250)
+catches: off-by-one and gross counting instead of net growth. ... FAIL
+test_committed_diff (__main__.BudgetTests.test_committed_diff)
+catches: working-tree deletions masking committed growth. ... 
+  test_committed_diff (__main__.BudgetTests.test_committed_diff) (source='dirty tree')
+catches: working-tree deletions masking committed growth. ... FAIL
+test_committed_diff (__main__.BudgetTests.test_committed_diff)
+catches: working-tree deletions masking committed growth. ... ERROR
+test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance)
+catches: malformed, empty-reason and duplicate allowances granting growth. ... 
+  test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Test budget allowance: -100 lines. Why: synthetic')
+catches: malformed, empty-reason and duplicate allowances granting growth. ... FAIL
+  test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Test budget allowance: 100 lines. Why: ')
+catches: malformed, empty-reason and duplicate allowances granting growth. ... FAIL
+  test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Test budget allowance: 100 lines. Why: synthetic\nTest budget allowance: 100 lines. Why: synthetic\n')
+catches: malformed, empty-reason and duplicate allowances granting growth. ... FAIL
+  test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='> Test budget allowance: 100 lines. Why: synthetic')
+catches: malformed, empty-reason and duplicate allowances granting growth. ... FAIL
+  test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Example Test budget allowance: 100 lines. Why: synthetic')
+catches: malformed, empty-reason and duplicate allowances granting growth. ... FAIL
+test_renames_and_unusual_names (__main__.BudgetTests.test_renames_and_unusual_names)
+catches: renamed files and tab/newline paths escaping accounting. ... FAIL
+test_test_paths_only (__main__.BudgetTests.test_test_paths_only)
+catches: omitted test patterns and unrelated files charged as tests. ... FAIL
+test_unreadable_description (__main__.BudgetTests.test_unreadable_description)
+catches: unreadable descriptions passing even with no growth. ... 
+  test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{')
+catches: unreadable descriptions passing even with no growth. ... FAIL
+  test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{}')
+catches: unreadable descriptions passing even with no growth. ... FAIL
+  test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{"pull_request":{"body":42}}')
+catches: unreadable descriptions passing even with no growth. ... FAIL
+  test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'\xff')
+catches: unreadable descriptions passing even with no growth. ... FAIL
+  test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{"pull_request":{"body":"","body":"other"}}')
+catches: unreadable descriptions passing even with no growth. ... FAIL
+test_unreadable_description (__main__.BudgetTests.test_unreadable_description)
+catches: unreadable descriptions passing even with no growth. ... FAIL
+test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions)
+catches: missing or invalid commits treated as an empty diff. ... 
+  test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='', head='HEAD')
+catches: missing or invalid commits treated as an empty diff. ... FAIL
+  test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='missing-base', head='HEAD')
+catches: missing or invalid commits treated as an empty diff. ... FAIL
+  test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='--help', head='HEAD')
+catches: missing or invalid commits treated as an empty diff. ... FAIL
+  test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='019adc8da37baf2fce82dc5ce80da03e522969b5', head='missing-head')
+catches: missing or invalid commits treated as an empty diff. ... FAIL
+
+======================================================================
+ERROR: test_committed_diff (__main__.BudgetTests.test_committed_diff)
+catches: working-tree deletions masking committed growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 148, in test_committed_diff
+    self.git('checkout', '-q', '-b', 'advanced-base', self.base)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 31, in git
+    return subprocess.run(['git', *args], cwd=self.repo, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['git', 'checkout', '-q', '-b', 'advanced-base', '019adc8da37baf2fce82dc5ce80da03e522969b5']' returned non-zero exit status 1.
+
+======================================================================
+FAIL: test_allowance (__main__.BudgetTests.test_allowance) (allowance=99)
+catches: allowances covering the total rather than just the overage.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 74, in test_allowance
+    self.check_budget(status, f'net=500 ceiling=400 allowance={allowance}')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_allowance (__main__.BudgetTests.test_allowance) (allowance=100)
+catches: allowances covering the total rather than just the overage.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 74, in test_allowance
+    self.check_budget(status, f'net=500 ceiling=400 allowance={allowance}')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 54, in check_budget
+    self.assertIn(message, proc.stdout)
+AssertionError: 'net=500 ceiling=400 allowance=100' not found in 'test budget: enforcement not implemented\n'
+
+======================================================================
+FAIL: test_allowance (__main__.BudgetTests.test_allowance) (allowance=150)
+catches: allowances covering the total rather than just the overage.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 74, in test_allowance
+    self.check_budget(status, f'net=500 ceiling=400 allowance={allowance}')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 54, in check_budget
+    self.assertIn(message, proc.stdout)
+AssertionError: 'net=500 ceiling=400 allowance=150' not found in 'test budget: enforcement not implemented\n'
+
+======================================================================
+FAIL: test_binary_test_file (__main__.BudgetTests.test_binary_test_file)
+catches: binary test changes silently counted as zero.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 139, in test_binary_test_file
+    self.check_budget(1, 'uncountable test diff')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_boundary_and_offsets (__main__.BudgetTests.test_boundary_and_offsets) (added=401, deleted=0)
+catches: off-by-one and gross counting instead of net growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 65, in test_boundary_and_offsets
+    self.check_budget(status, message)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_boundary_and_offsets (__main__.BudgetTests.test_boundary_and_offsets) (added=400, deleted=0)
+catches: off-by-one and gross counting instead of net growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 65, in test_boundary_and_offsets
+    self.check_budget(status, message)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 54, in check_budget
+    self.assertIn(message, proc.stdout)
+AssertionError: 'net=400' not found in 'test budget: enforcement not implemented\n'
+
+======================================================================
+FAIL: test_boundary_and_offsets (__main__.BudgetTests.test_boundary_and_offsets) (added=600, deleted=250)
+catches: off-by-one and gross counting instead of net growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 65, in test_boundary_and_offsets
+    self.check_budget(status, message)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 54, in check_budget
+    self.assertIn(message, proc.stdout)
+AssertionError: 'added=600 deleted=250 net=350' not found in 'test budget: enforcement not implemented\n'
+
+======================================================================
+FAIL: test_committed_diff (__main__.BudgetTests.test_committed_diff) (source='dirty tree')
+catches: working-tree deletions masking committed growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 147, in test_committed_diff
+    self.check_budget(1, 'net=401', head=head)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Test budget allowance: -100 lines. Why: synthetic')
+catches: malformed, empty-reason and duplicate allowances granting growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 133, in test_malformed_allowance
+    self.check_budget(1, 'test budget:')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Test budget allowance: 100 lines. Why: ')
+catches: malformed, empty-reason and duplicate allowances granting growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 133, in test_malformed_allowance
+    self.check_budget(1, 'test budget:')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Test budget allowance: 100 lines. Why: synthetic\nTest budget allowance: 100 lines. Why: synthetic\n')
+catches: malformed, empty-reason and duplicate allowances granting growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 133, in test_malformed_allowance
+    self.check_budget(1, 'test budget:')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='> Test budget allowance: 100 lines. Why: synthetic')
+catches: malformed, empty-reason and duplicate allowances granting growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 133, in test_malformed_allowance
+    self.check_budget(1, 'test budget:')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_malformed_allowance (__main__.BudgetTests.test_malformed_allowance) (line='Example Test budget allowance: 100 lines. Why: synthetic')
+catches: malformed, empty-reason and duplicate allowances granting growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 133, in test_malformed_allowance
+    self.check_budget(1, 'test budget:')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_renames_and_unusual_names (__main__.BudgetTests.test_renames_and_unusual_names)
+catches: renamed files and tab/newline paths escaping accounting.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 96, in test_renames_and_unusual_names
+    self.check_budget(1, 'net=401')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_test_paths_only (__main__.BudgetTests.test_test_paths_only)
+catches: omitted test patterns and unrelated files charged as tests.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 89, in test_test_paths_only
+    self.check_budget(1, 'added=440 deleted=0 net=440')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{')
+catches: unreadable descriptions passing even with no growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 116, in test_unreadable_description
+    self.check_budget(1, 'unreadable description')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{}')
+catches: unreadable descriptions passing even with no growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 116, in test_unreadable_description
+    self.check_budget(1, 'unreadable description')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{"pull_request":{"body":42}}')
+catches: unreadable descriptions passing even with no growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 116, in test_unreadable_description
+    self.check_budget(1, 'unreadable description')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'\xff')
+catches: unreadable descriptions passing even with no growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 116, in test_unreadable_description
+    self.check_budget(1, 'unreadable description')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_description (__main__.BudgetTests.test_unreadable_description) (data=b'{"pull_request":{"body":"","body":"other"}}')
+catches: unreadable descriptions passing even with no growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 116, in test_unreadable_description
+    self.check_budget(1, 'unreadable description')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_description (__main__.BudgetTests.test_unreadable_description)
+catches: unreadable descriptions passing even with no growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 118, in test_unreadable_description
+    self.check_budget(1, 'unreadable description')
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='', head='HEAD')
+catches: missing or invalid commits treated as an empty diff.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 108, in test_unreadable_revisions
+    self.check_budget(1, message, base=base, head=head)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='missing-base', head='HEAD')
+catches: missing or invalid commits treated as an empty diff.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 108, in test_unreadable_revisions
+    self.check_budget(1, message, base=base, head=head)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='--help', head='HEAD')
+catches: missing or invalid commits treated as an empty diff.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 108, in test_unreadable_revisions
+    self.check_budget(1, message, base=base, head=head)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+======================================================================
+FAIL: test_unreadable_revisions (__main__.BudgetTests.test_unreadable_revisions) (base='019adc8da37baf2fce82dc5ce80da03e522969b5', head='missing-head')
+catches: missing or invalid commits treated as an empty diff.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 108, in test_unreadable_revisions
+    self.check_budget(1, message, base=base, head=head)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: enforcement not implemented
+
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.803s
+
+FAILED (failures=25, errors=1)

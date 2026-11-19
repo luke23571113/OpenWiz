@@ -207,6 +207,8 @@ Source: Jake, 2026-10-31: held tickets carry `held` without a ready label so the
 
 ## Test commands
 
+Builders have a ceiling of 400 net new test lines per PR in `tests/**`, `crates/*/tests/**`, `**/test_*.py`, `**/*_test.py`, `**/*.test.mjs`, `**/*.test.ts(x)` and `**/__tests__/**` (fixtures/evidence count only there); offset excess with deletions or record `Test budget allowance: <N> lines. Why: <reason>` in the description, with N covering the overage and the reviewer judging the reason.
+
 Locally, a builder runs the red/green proof and only the tests its change can affect, plus `cargo fmt --check` and `cargo clippy -p <touched-crate> --all-targets -- -D warnings` for the crates it touched. Never run the full workspace or browser suites locally. After a failure, fix it and rerun only the failed checks. Open the ready pull request once these scoped local checks pass; CI runs the full suites below, and its passing result at the exact head is the hand-back gate. Reviewers review the diff and CI's results, reproducing only specific findings. Exact-head review and M1 stay unchanged.
 
 Source: Jake, 2026-11-03: run affected tests locally and leave the full set to CI; reaffirmed 2026-11-06 ([private record](https://github.com/jparker2006/ClosedWiz/issues/1724#issuecomment-6697900652)).
