@@ -21,7 +21,7 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 FLOW = HERE / 'fixtures' / 'flow'
 FAKE_GH = HERE / 'fixtures' / 'collector-factory' / 'fake_gh.py'
-SCRIPT = HERE / 'cost.py'
+SCRIPT = HERE / 'cost_line.py'
 REPO, PR, NOW = 'example/factory', '4201', '2030-01-03T06:00:00Z'
 USAGE = ('--flow-threads', str(FLOW / 'assignments.json'), '--flow-usage', str(FLOW / 'usage.json'))
 # GitHub's answer for one PR: its own merge time and its closing issues.

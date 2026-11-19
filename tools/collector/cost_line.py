@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FM4 (#1172): the one-line cost of a merged pull request. Reads only.
 
-  python3 -I tools/collector/cost.py --repo OWNER/NAME --pr N
+  python3 -I tools/collector/cost_line.py --repo OWNER/NAME --pr N
       [--flow-threads FILE --flow-usage FILE ...] [--now UTC]
 
 Prints one line for the PR's ticket: builder, reviewer, CI and total, from
