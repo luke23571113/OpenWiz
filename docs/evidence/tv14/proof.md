@@ -47,3 +47,6 @@ J110 kind 1 covers this ticket's one exact `build` row in
 `tools/collector/steps.tsv`, beside the carriage guard; it supports the owned
 PR workflow step without changing that workflow or the collector's logic.
 R2 (#1162) and R3 (#1163) remain separate polish work.
+After the row is added, `ci3.py check-steps` covers 165 CI steps and all 33
+`test_ci3.py` cases pass (`passing-r1.txt`); all nine budget proofs still pass.
+No helpers were started; all checks were run by the builder.
