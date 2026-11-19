@@ -1,8 +1,8 @@
-//! The send store's state directory: where it is by default, that it is
+//! The command's state directory: where it is by default, that it is
 //! never inside a repository, and that every directory and record it makes
-//! is synced. Moved here from `tests/messaging/m10_record.rs` (M10) by #809;
-//! the M10 cases that send through the core and the fake `room-cli` stay
-//! there.
+//! is synced. Moved here from `tests/messaging/m10_record.rs` (M10) by #809,
+//! and beside the state module it checks by #1264, through the start record
+//! now that the send record is gone.
 
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use openwiz_store::{FileStore, default_state_dir};
+use openwiz_cli::state::{StartFileStore, default_state_dir};
 
 /// The repository root.
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
@@ -23,7 +23,7 @@ const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 fn run_root() -> &'static Path {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
-        let parent = std::env::temp_dir().join("openwiz-store-tests");
+        let parent = std::env::temp_dir().join("openwiz-state-tests");
         private_dir_all(&parent);
         let planted = fs::symlink_metadata(&parent).map_or(true, |m| !m.is_dir());
         assert!(!planted, "{parent:?} is not a plain directory");
@@ -50,7 +50,7 @@ fn private_dir_all(dir: &Path) {
 }
 
 fn store_source() -> String {
-    fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs")).unwrap()
+    fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/state/mod.rs")).unwrap()
 }
 
 fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {
@@ -196,13 +196,13 @@ fn a_state_directory_inside_a_repository_is_refused() {
     let _ = fs::remove_dir_all(&repo);
     private_dir_all(&repo.join(".git"));
     let state = repo.join("nested").join("state");
-    assert!(FileStore::open(&state).is_err());
+    assert!(StartFileStore::open(&state).is_err());
     assert!(!state.exists(), "nothing created inside the repository");
     // Through a symlink from outside, too.
     let link = run_root().join("m10_repo_link");
     let _ = fs::remove_file(&link);
     std::os::unix::fs::symlink(&repo, &link).unwrap();
-    assert!(FileStore::open(&link.join("state")).is_err());
+    assert!(StartFileStore::open(&link.join("state")).is_err());
     let _ = fs::remove_file(&link);
     let _ = fs::remove_dir_all(&repo);
 }
@@ -216,15 +216,15 @@ fn every_opener_syncs_the_whole_directory_chain() {
     let _ = fs::remove_dir_all(&base);
     // Another opener made the chain and was stopped before syncing it.
     let state = base.join("a").join("state");
-    private_dir_all(&state.join("sends"));
+    private_dir_all(&state.join("starts"));
     let synced = Mutex::new(Vec::<PathBuf>::new());
     let record = |dir: &Path| {
         synced.lock().unwrap().push(dir.to_path_buf());
         Ok(())
     };
-    let store = FileStore::open_with_sync(&state, &record).unwrap();
+    let store = StartFileStore::open_with_sync(&state, &record).unwrap();
     let synced = synced.into_inner().unwrap();
-    let resolved = state.join("sends").canonicalize().unwrap();
+    let resolved = state.join("starts").canonicalize().unwrap();
     for dir in resolved.ancestors() {
         assert!(
             synced
@@ -237,7 +237,7 @@ fn every_opener_syncs_the_whole_directory_chain() {
     let _ = fs::remove_dir_all(&base);
 }
 
-/// Sol S4, round 2: a `sends` that leads into a repository, and a path
+/// Sol S4, round 2: a `starts` that leads into a repository, and a path
 /// that only reaches one through `..`, are both refused; nothing is written
 /// in the repository.
 #[test]
@@ -249,11 +249,11 @@ fn no_path_trick_puts_the_record_inside_a_repository() {
     let inside = repo.join("records");
     DirBuilder::new().mode(0o700).create(&inside).unwrap();
 
-    // 1. An outside state directory whose `sends` is a symlink into it.
+    // 1. An outside state directory whose `starts` is a symlink into it.
     let outside = base.join("outside-state");
     private_dir_all(&outside);
-    std::os::unix::fs::symlink(&inside, outside.join("sends")).unwrap();
-    assert!(FileStore::open(&outside).is_err(), "a sends symlink");
+    std::os::unix::fs::symlink(&inside, outside.join("starts")).unwrap();
+    assert!(StartFileStore::open(&outside).is_err(), "a starts symlink");
 
     // 2. A path that reaches the repository through `..` of a missing
     //    directory.
@@ -262,7 +262,7 @@ fn no_path_trick_puts_the_record_inside_a_repository() {
         .join("..")
         .join("synthetic-repo")
         .join("state");
-    assert!(FileStore::open(&dotted).is_err(), "a .. path");
+    assert!(StartFileStore::open(&dotted).is_err(), "a .. path");
     assert!(
         !repo.join("state").exists(),
         "nothing made in the repository"

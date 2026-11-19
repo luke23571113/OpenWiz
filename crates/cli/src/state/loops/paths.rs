@@ -138,9 +138,9 @@ fn inspect_once(root: &Path) -> Result<Option<Metadata>, Failure> {
         );
     }
     #[cfg(target_os = "macos")]
-    let uid = crate::attachments::owner_uid_from_private_state(root)?;
+    let uid = crate::state::owner::owner_uid_from_private_state(root)?;
     #[cfg(not(target_os = "macos"))]
-    let uid = crate::attachments::effective_uid()?;
+    let uid = crate::state::owner::effective_uid()?;
     for ancestor in root.ancestors() {
         let meta = fs::symlink_metadata(ancestor)
             .map_err(|_| "cannot inspect state directory ancestors".to_owned())?;

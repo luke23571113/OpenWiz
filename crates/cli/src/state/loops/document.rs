@@ -23,8 +23,10 @@ pub fn read(kind: &str, text: &str) -> Result<Value, String> {
 pub fn validate(kind: &str, value: &Value) -> Result<(), String> {
     static SCHEMA: OnceLock<Value> = OnceLock::new();
     let schema = SCHEMA.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../../contracts/loops.v1.schema.json"))
-            .expect("compiled loops schema")
+        serde_json::from_str(include_str!(
+            "../../../../../contracts/loops.v1.schema.json"
+        ))
+        .expect("compiled loops schema")
     });
     let rule = schema["$defs"]
         .get(kind)
@@ -90,8 +92,10 @@ impl<'de, const MATHEMATICAL: bool> Deserialize<'de> for Strict<MATHEMATICAL> {
 pub fn service_config(text: &str) -> Result<Value, String> {
     static SCHEMA: OnceLock<Value> = OnceLock::new();
     let schema = SCHEMA.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../../contracts/service.v1.schema.json"))
-            .expect("compiled service schema")
+        serde_json::from_str(include_str!(
+            "../../../../../contracts/service.v1.schema.json"
+        ))
+        .expect("compiled service schema")
     });
     let value = parse_with::<false>(text)?;
     check(schema, &schema["$defs"]["config"], &value, "$")?;

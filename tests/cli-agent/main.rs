@@ -119,25 +119,6 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("help.agent", "--agent"),
         ("ls", "-l -a --hidden --limit --offset --json --help"),
         ("show", "--json --help"),
-        (
-            "send",
-            "--steer --op-id --json --resume-paused-queue --accept-possible-duplicate --attach --attachment -- --help",
-        ),
-        ("send.preview", "--preview --steer --json -- --help"),
-        ("send.check", "--check --op-id --json -- --help"),
-        (
-            "new",
-            "--project-id --harness --model --effort --op-id --text-sha256 --attach --attachment --json -- --help --yes",
-        ),
-        (
-            "new.preview",
-            "--project-id --harness --model --effort --op-id --text-sha256 --attach --attachment --json -- --help",
-        ),
-        ("new.status", "--status --json -- --help"),
-        ("models", "--json --help"),
-        ("attachment.add", "--json -- --help"),
-        ("attachment.ls", "--json -- --help"),
-        ("attachment.rm", "--json -- --help"),
         ("fleets", "--json --help"),
         ("fleet", "--json"),
         ("fleet.tick.preview", "--dry-run --json"),
@@ -211,7 +192,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
             }
         }
         // Parse documented examples at the public parser seam, never dispatch
-        // a write. Loop/models/fleets lack a public parser; checked below/help.
+        // a write. Loop/fleets lack a public parser; checked below/help.
         for example in command["examples"].as_array().unwrap() {
             let args: Vec<String> = example
                 .as_array()
@@ -224,22 +205,13 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
                 "help" | "ls" | "show" => {
                     openwiz_cli::parse(&args).unwrap();
                 }
-                "send" => {
-                    openwiz_cli::send::parse_send(&args[1..]).unwrap();
-                }
-                "new" => {
-                    openwiz_cli::new_thread::parse_new(&args[1..]).unwrap();
-                }
-                "attachment" => {
-                    openwiz_cli::attachment::parse_attachment(&os).unwrap();
-                }
                 "fleet" if matches!(args[1].as_str(), "tick" | "due") => {
                     openwiz_cli::fleet::tick::parse(&os).unwrap();
                 }
                 "fleet" => {
                     openwiz_cli::fleet::parse(&os).unwrap();
                 }
-                "loop" | "models" | "fleets" => {}
+                "loop" | "fleets" => {}
                 // The packaged Python parser is exercised by the existing
                 // package-proof stage after CI provisions Python.
                 "init" => {}
@@ -251,14 +223,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
     let flag = |name| flags.iter().find(|f| f["name"] == name).unwrap();
     assert_eq!(flag("--limit")["default"], "100");
     assert_eq!(flag("--offset")["default"], "0");
-    assert_eq!(flag("--steer")["default"], "false");
     assert_eq!(flag("--help")["aliases"], serde_json::json!(["-h"]));
-    for name in ["--harness", "--model", "--effort"] {
-        assert!(flag(name)["default"].is_null());
-    }
-    for name in ["--attach", "--attachment"] {
-        assert_eq!(flag(name)["repeatable"], true);
-    }
 }
 
 #[test]
@@ -270,10 +235,6 @@ fn cp1_help_aliases_and_invalid_agent_forms_have_no_effects() {
         vec!["-h"],
         vec!["ls", "--help"],
         vec!["show", "-h"],
-        vec!["send", "--help"],
-        vec!["new", "-h"],
-        vec!["models", "--help"],
-        vec!["attachment", "--help"],
         vec!["fleets", "-h"],
         vec!["loop", "--help"],
         vec!["loop", "-h"],
@@ -353,26 +314,13 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             "help.agent" => "help",
             "ls" => "ls",
             "show" => "show thread-synthetic",
-            "send" => "send thread-synthetic hello",
-            "send.preview" => "send thread-synthetic --preview",
-            "send.check" => "send thread-synthetic --check --op-id op-synthetic",
-            "new" => {
-                "new --project-id project-synthetic --harness codex --model model-synthetic --effort high --yes hello"
-            }
-            "new.preview" => {
-                "new --project-id project-synthetic --harness codex --model model-synthetic --effort high hello"
-            }
-            "new.status" => "new --status op-synthetic",
-            "attachment.add" => "attachment add synthetic.txt",
-            "attachment.ls" => "attachment ls",
-            "attachment.rm" => "attachment rm attachment-synthetic",
             "fleet" => "fleet 123",
             "fleet.tick.preview" => "fleet tick --dry-run",
             "fleet.due" => "fleet due --github-only",
             // These three parsers are private; their flags are checked through
             // real processes below, using only trap sources or absent config.
-            "fleets" | "models" | "loop.off" | "loop.on" | "loop.validate" | "loop.export"
-            | "loop.plan" | "loop.apply" => continue,
+            "fleets" | "loop.off" | "loop.on" | "loop.validate" | "loop.export" | "loop.plan"
+            | "loop.apply" => continue,
             "init" | "init.apply" => continue,
             "github.token" => {
                 for flag in command["flags"].as_array().unwrap() {
@@ -396,12 +344,6 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
                 let value = match flag {
                     "--limit" => Some("10"),
                     "--offset" => Some("2"),
-                    "--op-id" => Some("op-synthetic"),
-                    "--attach" => Some("synthetic.txt"),
-                    "--attachment" => Some("attachment-synthetic"),
-                    "--text-sha256" => {
-                        Some("1111111111111111111111111111111111111111111111111111111111111111")
-                    }
                     _ => None,
                 };
                 if let Some(value) = value {
@@ -411,9 +353,6 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             let os: Vec<_> = args[1..].iter().map(std::ffi::OsString::from).collect();
             let accepted = match args[0].as_str() {
                 "help" | "ls" | "show" => openwiz_cli::parse(&args).is_ok(),
-                "send" => openwiz_cli::send::parse_send(&args[1..]).is_ok(),
-                "new" => openwiz_cli::new_thread::parse_new(&args[1..]).is_ok(),
-                "attachment" => openwiz_cli::attachment::parse_attachment(&os).is_ok(),
                 "fleet" if matches!(args[1].as_str(), "tick" | "due") => {
                     openwiz_cli::fleet::tick::parse(&os).is_ok()
                 }
@@ -425,7 +364,6 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
     }
     for (args, code) in [
         (vec!["fleets", "--json"], 0),
-        (vec!["models", "--json"], 13),
         (vec!["fleet", "tick", "--dry-run", "--json"], 1),
         (vec!["fleet", "due", "--github-only"], 1),
         (vec!["loop", "off", "loop-synthetic", "--json"], 1),
@@ -543,16 +481,6 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "help.agent",
             "ls",
             "show",
-            "send",
-            "send.preview",
-            "send.check",
-            "new",
-            "new.preview",
-            "new.status",
-            "models",
-            "attachment.add",
-            "attachment.ls",
-            "attachment.rm",
             "fleets",
             "fleet",
             "fleet.tick.preview",

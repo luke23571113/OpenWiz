@@ -1,26 +1,17 @@
-//! The send record on disk: one owner-only directory of JSON files that
-//! implements the core's [`SendStore`]. OpenWiz 0.0.4 adds the
-//! `new_thread` record kind beside it, in `new-threads/` ([`new_thread`],
-//! ClosedWiz#11), on the same rules and through the same code: [`Store`] is
-//! generic over the record's [`Kind`]. [`FileStore`] is `Store<Sends>`, and
-//! [`NewThreadFileStore`] is `Store<NewThreads>`.
+//! The command's state directory (#1264: folded from the old store crate):
+//! one owner-only directory whose areas are opened through
+//! the same checks. The start record lives in `starts/` ([`starts`]): one
+//! record per builder or reviewer start, so a ticket never gets two builders
+//! (OpenWiz 0.0.6, B4, ClosedWiz#120). [`StartFileStore`] is `Store<Starts>`.
+//! The loop switches live in [`loops`].
 //!
-//! The staged attachments (OpenWiz 0.0.4, ClosedWiz#14) live in
-//! `attachments/` ([`attachments`]): not a record kind, but an [`Area`] of
-//! the same state directory, opened through the same checks.
-//! [`AttachmentStore`] is `Store<Attachments>`.
+//! Layout, under the state directory (0700), for each kind (`starts/` for
+//! the start record):
 //!
-//! OpenWiz 0.0.6 (B4, ClosedWiz#120) adds the start record, in `starts/`
-//! ([`starts`]): one record per builder or reviewer start, so a ticket never
-//! gets two builders. [`StartFileStore`] is `Store<Starts>`.
-//!
-//! Layout, under the state directory (0700), for each kind (`sends/` here;
-//! `new-threads/` the same):
-//!
-//! - `sends/` (0700);
-//! - `sends/<op id>.json` (0600): the record, replaced atomically (written
+//! - `starts/` (0700);
+//! - `starts/<op id>.json` (0600): the record, replaced atomically (written
 //!   to a temporary file, synced, renamed, and the directory synced);
-//! - `sends/<op id>.lock` (0600): the claim. The process that owns an op id
+//! - `starts/<op id>.lock` (0600): the claim. The process that owns an op id
 //!   holds an exclusive lock on it until it finishes or stops. The lock is
 //!   released by the operating system when the process ends, which is how
 //!   a stopped owner is recognised and its record recovered.
@@ -35,38 +26,25 @@ pub mod loops;
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::fs::{self, DirBuilder, File, OpenOptions, TryLockError};
+use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::marker::PhantomData;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
-use std::thread;
-use std::time::{Duration, Instant};
 
-use openwiz_core::messaging::record::{
-    Claim, RecordState, SendRecord, SendStore, StoreError, recover,
-};
-use openwiz_core::messaging::send::Delivery;
-use openwiz_core::messaging::{Binding, OpId, RECORD_SCHEMA_ID};
+use openwiz_core::messaging::OpId;
+use openwiz_core::messaging::record::StoreError;
 use openwiz_core::model::Timestamp;
 
-pub mod attachments;
-pub mod new_thread;
-pub mod setup;
+pub mod owner;
 pub mod starts;
 
-pub use attachments::{AttachmentStore, Attachments};
-pub use new_thread::{NewThreadFileStore, NewThreads};
 pub use starts::{StartFileStore, Starts};
 
 /// Overrides the state directory, for tests and for owners who want it
 /// elsewhere.
 pub const STATE_DIR_ENV: &str = "OPENWIZ_STATE_DIR";
-
-/// How long a claimer waits for a live owner's record to appear before it
-/// reports the op id as pending.
-pub const PENDING_WAIT_MS: u64 = 2_000;
 
 /// The default state directory: `$OPENWIZ_STATE_DIR`; else on macOS
 /// `~/Library/Application Support/openwiz`; else `$XDG_STATE_HOME/openwiz`
@@ -104,10 +82,6 @@ pub fn default_state_dir(var: &dyn Fn(&str) -> Option<OsString>) -> Result<PathB
 /// Syncs one directory: a real `fsync`, or a test's recorder.
 type SyncDir<'a> = dyn Fn(&Path) -> io::Result<()> + 'a;
 
-/// A test hook: runs with an op id just before this store tries the lock of
-/// a record it has already read.
-type BeforeLock = Box<dyn Fn(&OpId) + Send + Sync>;
-
 /// One directory of the state directory: its name, and what it is called
 /// in messages. Opening it runs the store's directory checks, the same for
 /// every area.
@@ -137,56 +111,6 @@ pub trait Kind: Area {
     fn body(record: &Self::Record) -> Result<Vec<u8>, String>;
 }
 
-/// The send record (OpenWiz 0.0.3, ClosedWiz#8): `sends/`.
-#[derive(Debug)]
-pub struct Sends;
-
-impl Area for Sends {
-    const DIR: &'static str = "sends";
-    const WHAT: &'static str = "send record";
-}
-
-impl Kind for Sends {
-    type Record = SendRecord;
-
-    fn op_id(record: &SendRecord) -> &OpId {
-        &record.op_id
-    }
-
-    fn is_finished(record: &SendRecord) -> bool {
-        record.state == RecordState::Finished
-    }
-
-    fn is_claimed(record: &SendRecord) -> bool {
-        record.state == RecordState::Claimed
-    }
-
-    fn recover(record: &SendRecord, now: Timestamp) -> SendRecord {
-        recover(record, now)
-    }
-
-    /// The 0.0.3 reader, and (B2) the record's attachments read strictly
-    /// (each with exactly its five keys) and checked against the binding's
-    /// digest: a record whose attachments don't agree with what its op id
-    /// binds is refused.
-    /// Only the supported schema is read; unknown versions are refused
-    /// without migration. Existing v1 defaults remain supported.
-    fn read(text: &str) -> Result<SendRecord, String> {
-        let record: SendRecord = serde_json::from_str(text).map_err(|_| String::new())?;
-        if record.schema != RECORD_SCHEMA_ID {
-            return Err(format!("its schema is not {RECORD_SCHEMA_ID}"));
-        }
-        if !record.attachments_agree() {
-            return Err("its attachments are not the ones its binding holds".to_owned());
-        }
-        Ok(record)
-    }
-
-    fn body(record: &SendRecord) -> Result<Vec<u8>, String> {
-        serde_json::to_vec_pretty(record).map_err(|e| e.to_string())
-    }
-}
-
 /// An acquired claim. A concurrent fork can inherit the file until exec;
 /// explicitly unlock before closing ours so that copy cannot retain it.
 struct ClaimLock(File);
@@ -204,12 +128,8 @@ pub struct Store<K: Area> {
     held: Mutex<HashMap<OpId, ClaimLock>>,
     /// Refuses every write: opened by [`Store::open_read_only`].
     read_only: bool,
-    before_lock: Option<BeforeLock>,
     kind: PhantomData<K>,
 }
-
-/// The file-backed send record.
-pub type FileStore = Store<Sends>;
 
 impl<K: Area> std::fmt::Debug for Store<K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -269,14 +189,6 @@ fn io_error(what: &str, path: &Path, e: &io::Error) -> StoreError {
     StoreError(format!("could not {what} {}: {e}", path.display()))
 }
 
-/// What claiming an op id found, for any kind.
-enum Claimed<R> {
-    Owned,
-    Existing(R),
-    InProgress(R),
-    Pending,
-}
-
 impl<K: Area> Store<K> {
     /// Opens (and creates, 0700) the store under `state_dir`. Refuses a
     /// directory that group or others can read, write or enter, and one
@@ -291,7 +203,7 @@ impl<K: Area> Store<K> {
     /// - `state_dir` must be absolute, with no `.` or `..` component;
     /// - it must not be inside a repository, before anything is created, and
     ///   neither may the resolved state directory or the kind's directory
-    ///   (`sends/`, `new-threads/`) afterwards;
+    ///   (`starts/`) afterwards;
     /// - the kind's directory must be a real directory, not a symlink;
     /// - every directory from the resolved kind's directory up to the root is
     ///   synced on every open, so a chain another process created and has
@@ -319,7 +231,6 @@ impl<K: Area> Store<K> {
             dir,
             held: Mutex::new(HashMap::new()),
             read_only,
-            before_lock: None,
             kind: PhantomData,
         }
     }
@@ -405,7 +316,7 @@ impl<K: Area> Store<K> {
         Ok(Some(records))
     }
 
-    /// The kind's directory (`sends/`, `new-threads/`), or the area's.
+    /// The kind's directory (`starts/`), or the area's.
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -422,14 +333,6 @@ impl<K: Area> Store<K> {
 }
 
 impl<K: Kind> Store<K> {
-    /// Sets a test hook that runs with an op id just before this store
-    /// tries the lock of a record it has already read, so a test can change
-    /// the record in between. `open` sets none.
-    pub fn with_before_lock(mut self, hook: impl Fn(&OpId) + Send + Sync + 'static) -> Self {
-        self.before_lock = Some(Box::new(hook));
-        self
-    }
-
     /// The record file of `op_id`.
     pub fn record_path(&self, op_id: &OpId) -> PathBuf {
         self.dir.join(format!("{op_id}.json"))
@@ -460,7 +363,7 @@ impl<K: Kind> Store<K> {
     }
 
     fn read_record(&self, path: &Path) -> Result<Option<K::Record>, StoreError> {
-        // O_NONBLOCK on the targets guarded by attachments' compile_error:
+        // O_NONBLOCK on the targets guarded by the compile_error below:
         // a FIFO substituted before open must not wait for a writer.
         let nonblock = if cfg!(target_vendor = "apple") {
             0x0004
@@ -542,60 +445,6 @@ impl<K: Kind> Store<K> {
             .contains_key(op_id)
     }
 
-    /// Claims `record`'s op id: atomic across processes, through the lock.
-    fn claim_record(
-        &self,
-        record: &K::Record,
-        now: Timestamp,
-    ) -> Result<Claimed<K::Record>, StoreError> {
-        self.refuse_if_read_only()?;
-        let op_id = K::op_id(record);
-        let lock = self.lock_file(op_id)?;
-        let started = Instant::now();
-        loop {
-            match lock.try_lock() {
-                Ok(()) => break,
-                Err(TryLockError::WouldBlock) => {
-                    // A live owner. Its record follows its lock within
-                    // moments; if the owner lets go first, try again.
-                    if let Some(existing) = self.record(op_id)? {
-                        return Ok(if K::is_finished(&existing) {
-                            Claimed::Existing(existing)
-                        } else {
-                            Claimed::InProgress(existing)
-                        });
-                    }
-                    if started.elapsed() >= Duration::from_millis(PENDING_WAIT_MS) {
-                        return Ok(Claimed::Pending);
-                    }
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(TryLockError::Error(e)) => {
-                    return Err(io_error("lock", &self.lock_path(op_id), &e));
-                }
-            }
-        }
-        // This process holds the lock: nobody else is using this op id.
-        let lock = ClaimLock(lock);
-        match self.record(op_id)? {
-            None => {
-                self.write_record(record)?;
-                self.held
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .insert(op_id.clone(), lock);
-                Ok(Claimed::Owned)
-            }
-            Some(existing) if K::is_finished(&existing) => Ok(Claimed::Existing(existing)),
-            Some(abandoned) => {
-                // Its owner stopped: the lock was free. Never redispatched.
-                let recovered = K::recover(&abandoned, now);
-                self.write_record(&recovered)?;
-                Ok(Claimed::Existing(recovered))
-            }
-        }
-    }
-
     /// Writes the owner's new version of a claimed record, synced.
     fn update_record(&self, record: &K::Record) -> Result<(), StoreError> {
         self.refuse_if_read_only()?;
@@ -615,227 +464,22 @@ impl<K: Kind> Store<K> {
             .unwrap_or_else(|p| p.into_inner())
             .remove(op_id);
     }
-
-    /// The record of `op_id`, never written: a record whose owner stopped
-    /// is shown as recovery would finish it, in memory only.
-    fn inspect_record(
-        &self,
-        op_id: &OpId,
-        now: Timestamp,
-    ) -> Result<Option<K::Record>, StoreError> {
-        let Some(record) = self.record(op_id)? else {
-            return Ok(None);
-        };
-        if K::is_finished(&record) || self.held_by_me(op_id) {
-            return Ok(Some(record));
-        }
-        // Is its owner still live? The lock file is opened for reading,
-        // never made; without one, the owner can't be ruled out.
-        let path = self.lock_path(op_id);
-        let lock = match File::open(&path) {
-            Ok(lock) => lock,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Some(record)),
-            Err(e) => return Err(io_error("open", &path, &e)),
-        };
-        if let Some(hook) = &self.before_lock {
-            hook(op_id);
-        }
-        match lock.try_lock() {
-            // Its owner stopped. Read again under the lock (it may have been
-            // finished or withdrawn), and show what recovery would make of
-            // it, in memory only: the next use of this op id records it.
-            Ok(()) => {
-                let _lock = ClaimLock(lock);
-                Ok(self.record(op_id)?.map(|current| K::recover(&current, now)))
-            }
-            Err(TryLockError::WouldBlock) => Ok(Some(record)),
-            Err(TryLockError::Error(e)) => Err(io_error("lock", &path, &e)),
-        }
-    }
 }
 
-impl Store<Sends> {
-    /// The `sends/` directory.
-    pub fn sends_dir(&self) -> &Path {
-        &self.dir
-    }
-
-    /// Recovers `record`, as read from disk, if its owner has stopped:
-    /// takes its lock without waiting, reads it again under the lock, and
-    /// finishes it with the core's recovery rule. Returns the record as it
-    /// now is, and whether its owner is still live; `None` when it is gone
-    /// under the lock: its owner withdrew it, and it is never recreated.
-    fn recover_if_abandoned(
-        &self,
-        record: SendRecord,
-        now: Timestamp,
-    ) -> Result<Option<(SendRecord, bool)>, StoreError> {
-        self.refuse_if_read_only()?;
-        if record.state == RecordState::Finished {
-            return Ok(Some((record, false)));
-        }
-        if self.held_by_me(&record.op_id) {
-            return Ok(Some((record, true)));
-        }
-        let lock = self.lock_file(&record.op_id)?;
-        if let Some(hook) = &self.before_lock {
-            hook(&record.op_id);
-        }
-        match lock.try_lock() {
-            Ok(()) => {
-                let _lock = ClaimLock(lock);
-                // Read again under the lock: the owner may have finished,
-                // or withdrawn it.
-                let Some(current) = self.record(&record.op_id)? else {
-                    return Ok(None);
-                };
-                let recovered = recover(&current, now);
-                if recovered != current {
-                    self.write_record(&recovered)?;
-                }
-                Ok(Some((recovered, false)))
-            }
-            Err(TryLockError::WouldBlock) => Ok(Some((record, true))),
-            Err(TryLockError::Error(e)) => {
-                Err(io_error("lock", &self.lock_path(&record.op_id), &e))
-            }
-        }
-    }
-
-    /// Every record, other than `except`'s, whose binding has the target and
-    /// text hash of `binding` (any mode), as it is on disk.
-    fn same_text(&self, binding: &Binding, except: &OpId) -> Result<Vec<SendRecord>, StoreError> {
-        let entries = fs::read_dir(&self.dir).map_err(|e| io_error("list", &self.dir, &e))?;
-        let mut found = Vec::new();
-        for entry in entries {
-            let path = entry.map_err(|e| io_error("list", &self.dir, &e))?.path();
-            let is_record = path.extension().is_some_and(|e| e == "json")
-                && !path
-                    .file_name()
-                    .is_some_and(|n| n.to_string_lossy().starts_with('.'));
-            if !is_record {
-                continue;
-            }
-            let Some(record) = self.read_record(&path)? else {
-                continue;
-            };
-            if record.op_id != *except
-                && record.binding.target == binding.target
-                && record.binding.text_sha256 == binding.text_sha256
-            {
-                found.push(record);
-            }
-        }
-        Ok(found)
-    }
-}
-
-impl<K: Kind> Store<K> {
-    /// Removes the record of `op_id`, which this process holds and which is
-    /// still in the claimed state, and syncs the directory.
-    fn withdraw_claimed(&self, op_id: &OpId) -> Result<(), StoreError> {
-        if !self.held_by_me(op_id) {
-            return Err(StoreError(format!(
-                "op {op_id} is not claimed by this process"
-            )));
-        }
-        let path = self.record_path(op_id);
-        match self.read_record(&path)? {
-            Some(record) if K::is_claimed(&record) => {}
-            Some(_) => {
-                return Err(StoreError(format!(
-                    "op {op_id} is past its claim, so its record is kept"
-                )));
-            }
-            None => return Ok(()),
-        }
-        fs::remove_file(&path).map_err(|e| io_error("remove", &path, &e))?;
-        File::open(&self.dir)
-            .and_then(|dir| dir.sync_all())
-            .map_err(|e| io_error("sync", &self.dir, &e))
-    }
-}
-
-impl SendStore for Store<Sends> {
-    fn load(&self, op_id: &OpId) -> Result<Option<SendRecord>, StoreError> {
-        self.record(op_id)
-    }
-
-    fn claim(&self, record: &SendRecord, now: Timestamp) -> Result<Claim, StoreError> {
-        Ok(match self.claim_record(record, now)? {
-            Claimed::Owned => Claim::Owned,
-            Claimed::Existing(r) => Claim::Existing(r),
-            Claimed::InProgress(r) => Claim::InProgress(r),
-            Claimed::Pending => Claim::Pending,
-        })
-    }
-
-    fn update(&self, record: &SendRecord) -> Result<(), StoreError> {
-        self.update_record(record)
-    }
-
-    fn release(&self, op_id: &OpId) {
-        self.release_claim(op_id);
-    }
-    fn uncertain_matching(
-        &self,
-        binding: &Binding,
-        except: &OpId,
-        now: Timestamp,
-    ) -> Result<Vec<SendRecord>, StoreError> {
-        // Recovery may write: never through a read-only store.
-        self.refuse_if_read_only()?;
-        let same_text = |r: &SendRecord| {
-            r.binding.target == binding.target && r.binding.text_sha256 == binding.text_sha256
-        };
-        let mut found = Vec::new();
-        for record in self.same_text(binding, except)? {
-            let Some((record, _live)) = self.recover_if_abandoned(record, now)? else {
-                continue;
-            };
-            // Matched again: it may have been read again under its lock.
-            if same_text(&record) && matches!(record.delivery, Some(Delivery::Uncertain { .. })) {
-                found.push(record);
-            }
-        }
-        found.sort_by(|a, b| (a.claimed_at, &a.op_id).cmp(&(b.claimed_at, &b.op_id)));
-        Ok(found)
-    }
-
-    fn in_flight_matching(
-        &self,
-        binding: &Binding,
-        except: &OpId,
-        now: Timestamp,
-    ) -> Result<Vec<SendRecord>, StoreError> {
-        // Recovery may write: never through a read-only store.
-        self.refuse_if_read_only()?;
-        let mut found = Vec::new();
-        for record in self.same_text(binding, except)? {
-            if record.binding != *binding {
-                continue;
-            }
-            let Some((record, live)) = self.recover_if_abandoned(record, now)? else {
-                continue;
-            };
-            // Matched again: it may have been read again under its lock.
-            if live && record.state != RecordState::Finished && record.binding == *binding {
-                found.push(record);
-            }
-        }
-        found.sort_by(|a, b| (a.claimed_at, &a.op_id).cmp(&(b.claimed_at, &b.op_id)));
-        Ok(found)
-    }
-
-    fn inspect(&self, op_id: &OpId, now: Timestamp) -> Result<Option<SendRecord>, StoreError> {
-        self.inspect_record(op_id, now)
-    }
-
-    fn withdraw(&self, op_id: &OpId) -> Result<(), StoreError> {
-        self.refuse_if_read_only()?;
-        let withdrawn = self.withdraw_claimed(op_id);
-        // Dropping the lock releases the claim, after the record is gone.
-        self.release(op_id);
-        withdrawn
-    }
-}
+// The O_NONBLOCK values above are recorded only for Darwin and Linux's
+// generic ones; any other target fails to build rather than guess. Moved
+// here from the deleted attachment store (#1264), which held this guard.
+#[cfg(not(any(
+    target_vendor = "apple",
+    all(
+        target_os = "linux",
+        any(
+            target_arch = "x86",
+            target_arch = "x86_64",
+            target_arch = "arm",
+            target_arch = "aarch64",
+            target_arch = "riscv64"
+        )
+    )
+)))]
+compile_error!("O_NONBLOCK's value isn't recorded for this target (crates/cli/src/state/mod.rs)");

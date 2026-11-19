@@ -1,7 +1,7 @@
 //! The start record on disk (OpenWiz 0.0.6 spec 2, B4, ClosedWiz#120): one
 //! record per start (a ticket's builder, or a reviewer for one pull request
-//! at one head commit), in the same state directory as the send and
-//! new-thread records, through the same [`Store`] code: the directory
+//! at one head commit), in the command's state directory, through the
+//! [`Store`] code: the directory
 //! checks, the lock files and the atomic, synced writes.
 //!
 //! Layout, under the state directory (0700):
@@ -40,7 +40,7 @@ use openwiz_core::new_thread::Settings;
 use openwiz_core::new_thread::read::StrictJson;
 use serde_json::{Map, Value};
 
-use crate::{Area, Kind, Store, io_error};
+use super::{Area, Kind, Store, io_error};
 
 /// The start record (OpenWiz 0.0.6, ClosedWiz#120): `starts/`.
 #[derive(Debug)]
@@ -98,7 +98,7 @@ impl StartStore for Store<Starts> {
                 return Err(io_error("lock", &self.lock_path(&id), &e));
             }
         }
-        let lock = crate::ClaimLock(lock);
+        let lock = super::ClaimLock(lock);
         // Under the lock: the record as it is now, never as it was read
         // before.
         let record = self.record(&id)?;

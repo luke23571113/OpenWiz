@@ -27,14 +27,22 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 #[path = "../support/dirs.rs"]
 mod dirs;
 
-#[path = "t2_process.rs"]
-mod process;
+// #1264: the one helper this file used from the deleted `t2_process.rs`,
+// moved here unchanged when this file moved from the `service` target.
+#[path = "../support/place.rs"]
+mod place;
 
-#[path = "t2_docs.rs"]
-mod docs;
+mod process {
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
 
-#[path = "t2_bundle_pair.rs"]
-mod bundle_pair;
+    use super::place::place_script;
+
+    pub(super) fn executable(path: &Path, script: &str) {
+        place_script(path, script);
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
 
 const TAIL: &str = "resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/room-cli";
 

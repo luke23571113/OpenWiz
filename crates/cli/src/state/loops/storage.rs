@@ -25,7 +25,7 @@ impl Drop for Storage {
 fn inspect(path: &Path, directory: bool) -> Result<(), String> {
     let meta =
         fs::symlink_metadata(path).map_err(|_| "cannot inspect private loop state".to_owned())?;
-    let uid = crate::attachments::effective_uid()?;
+    let uid = crate::state::owner::effective_uid()?;
     if meta.uid() != uid
         || meta.mode() & 0o077 != 0
         || if directory {
