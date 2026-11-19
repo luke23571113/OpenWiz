@@ -193,7 +193,7 @@ drops an unmeasured member.
 | `stages_seconds.waiting_to_start` | First GitHub `ready-for-agent` label event to claim | Null without both endpoints |
 | `stages_seconds.building`, `stages_seconds.in_review` | One linked PR with a matched review sequence. Building is from claim or the preceding verdict to the next head-matched review request. In review is from recorded start or re-check confirmation to its verdict. Review admission time and time from final approval to queue entry may fall outside those stages | Null when the review sequence cannot be paired through approval of the current head |
 | `stages_seconds.in_queue` | Head-matched `merge queued` after approval through GitHub merge | Null without both endpoints |
-| `review_rounds` | Surviving unedited independent factory verdicts, including re-checks, deduplicated per PR by verdict, reviewed head and body | Null if the PRs or a recorded review cannot be established |
+| `review_rounds` | Surviving independent factory verdicts at their creation time, including re-checks, deduplicated per PR by verdict, reviewed head and body. An edited comment counts when the complete GitHub edit history confirms the verdict line and independent-review marker stayed the same | Null if a PR or recorded review cannot be established. Changed or unreadable verdict history also leaves building, review and queue durations that depend on it null |
 | `stall_count` | Number of distinct gaps of at least 30 minutes between successive progress events, bounded by verified claim and merge, with the progress coverage below. Claim and merge are endpoints. FM3 uses the progress fields to supply the active stall list, causes and daily count | Null when the interval or any required progress history is unavailable |
 | `span_seconds` (spec) | Spec issue creation to the last member merge | Null without complete membership and a merge for each member |
 
@@ -208,13 +208,19 @@ branch-tip activity, or an unedited first-successful-push receipt from a
 factory author when that is the only observation. `record_at` comes from
 the factory's ticket and PR records and includes observed edits.
 `ci_result_at` is the latest observed completion of an associated workflow
-attempt. `verdict_at` is the latest observed independent verdict.
-`last_observed_at` is the latest of these times and any observed issue
-creation, claim or merge. Each timestamp is null when unreadable.
+attempt. `verdict_at` is the latest observed independent verdict at its
+creation time and is null when verdict edit history is uncertain.
+`last_observed_at` is the latest verified progress, including observed issue
+creation, claim or merge. It remains a lower bound when coverage is incomplete.
+Each timestamp is null when unreadable.
 `ci_pending` is true when either workflow has an observed pending attempt,
 false when both were observed and neither is pending, and null when that
 cannot be established. `complete` means the ticket and PR comment pages,
 branch-tip chains and associated workflow attempt histories were readable.
+Edited factory PR comments also need complete GitHub edit history so an
+edited or removed verdict cannot silently shorten that history. If the
+history is incomplete, the PR's review evidence and dependent stall count
+are unknown. The collector retains no comment revisions.
 GitHub's surviving records cannot recover deleted comments. A receipt can
 establish an observed push without establishing complete push history.
 

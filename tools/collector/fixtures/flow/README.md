@@ -21,3 +21,9 @@ The shared-PR proof adds a second ticket with the same closing PR. Review rounds
 and runner minutes count once in the spec. Ticket-level runner attribution stays
 unknown. The scoped read proof removes the repository PR inventory and uses
 the ticket's native closing-PR connection.
+
+The R1 proof varies an edited CHANGES report between an unchanged verdict
+line, a changed verdict or head, a removed verdict and an unreadable edit
+history. The history uses the GitHub edit response shape and synthetic full
+comment versions. Only the first case supports a two-round count and a
+complete stage and progress history.

@@ -454,7 +454,10 @@ def prs_per_hour(r, started):
 # --- FM2: ticket and spec facts ----------------------------------------------
 
 FLOW_ISSUE = J.ISSUE.replace('updatedAt body', 'updatedAt body author{login}')
-FLOW_PULL = J.PULL.replace('updatedAt body', 'updatedAt body author{login}')
+FLOW_PULL = J.PULL.replace('updatedAt body', 'updatedAt body author{login} id')
+FLOW_COMMENT_HISTORY = ('query($id:ID!){node(id:$id){...on IssueComment{id createdAt updatedAt '
+                        'userContentEdits(first:100){totalCount pageInfo{hasNextPage} '
+                        'nodes{editedAt deletedAt diff}}}}}')
 FLOW_SPEC = ('query($owner:String!,$name:String!,$number:Int!,$cursor:String)'
              '{repository(owner:$owner,name:$name){issue(number:$number){number createdAt '
              'subIssues(first:100,after:$cursor){nodes{number repository{nameWithOwner}} '
@@ -502,7 +505,11 @@ def flow_subject(c, query, kind, n, authors):
     M.require(top.get('number') == n, 'an answer for another subject')
     nodes = [row for row in nodes if row.get('author') is not None
              and J.text(M.obj(row['author']).get('login')).casefold() in authors]
-    return top, c.comments(nodes)
+    comments = c.comments(nodes)
+    if kind == 'pullRequest':
+        for comment, node in zip(comments, nodes):
+            comment['node_id'] = node.get('id')
+    return top, comments
 
 
 def flow_members(c, n):
@@ -686,6 +693,41 @@ def flow_ci(repo, workflow, pull, base, queued, cutoff):
             'pending': active if seconds else None}
 
 
+def flow_verdict_identity(body):
+    line = J.first_line(body)
+    if not line.startswith('VERDICT:'):
+        return None
+    independent = J.first_line(body, 1).startswith(('Full review by ', 'Re-check '))
+    return line, independent
+
+
+def flow_stable_verdict(comment):
+    """Only complete revisions can establish that an edit preserved verdict identity."""
+    node_id = J.text(comment['node_id'])
+    M.require(bool(node_id), 'missing comment identity')
+    doc = M.obj(M.gh('api', 'graphql', '-f', 'query=' + FLOW_COMMENT_HISTORY, '-f', 'id=' + node_id))
+    M.require(not doc.get('errors'), 'comment history unavailable')
+    node = M.obj(M.obj(doc.get('data')).get('node'))
+    M.require((node.get('id'), node.get('createdAt'), node.get('updatedAt')) ==
+              (node_id, comment['at'], comment['updated']), 'comment changed during the read')
+    history = M.obj(node.get('userContentEdits'))
+    edits = M.array(history.get('nodes'))
+    M.require(M.obj(history.get('pageInfo')).get('hasNextPage') is False and
+              M.integer(history.get('totalCount')) == len(edits), 'incomplete edit history')
+    versions = {}
+    for item in edits:
+        edit = M.obj(item)
+        at = J.when(edit.get('editedAt'))
+        M.require(J.field(edit, 'deletedAt') is None and at not in versions and
+                  comment['at'] <= at <= comment['updated'], 'unavailable or ambiguous edit')
+        versions[at] = J.text(edit.get('diff'))
+    # GitHub can record updatedAt after the last user-content edit.
+    M.require(comment['at'] in versions and versions[max(versions)] == comment['body'],
+              'missing original or current comment body')
+    identity = flow_verdict_identity(comment['body'])
+    return all(flow_verdict_identity(body) == identity for body in versions.values())
+
+
 def flow_pr(c, n, base, authors, cutoff):
     top, comments = flow_subject(c, FLOW_PULL, 'pullRequest', n, authors)
     J.when(top.get('createdAt'))
@@ -696,10 +738,11 @@ def flow_pr(c, n, base, authors, cutoff):
     if top['createdAt'] > cutoff:
         return None
     comments = [com for com in comments if com['at'] <= cutoff]
+    supported = [com for com in comments if not com['edited'] or flow_read(flow_stable_verdict, com)]
     events, _ = J.pr_events(c, {'created': top['createdAt'], 'url': c.link(top.get('url')),
-                               'comments': [com for com in comments if not com['edited']],
-                               'merged': None}, [])
-    verdicts = [e for e in events if J.rounds_of(e) and not e['edited']]
+                               'comments': supported, 'merged': None}, [])
+    verdicts = [e for e in events if J.rounds_of(e)]
+    verdict_history = len(comments) == len(supported)
     records = [(J.first_line(com['body']), com['at'], com['updated'])
                for com in comments if J.first_line(com['body']).startswith('launch-fleet:')]
     pushes = [m[1] for com in comments if not com['edited'] and (m := FLOW_PUSH.fullmatch(J.first_line(com['body'])))
@@ -711,7 +754,7 @@ def flow_pr(c, n, base, authors, cutoff):
           for workflow in ('ci.yml', 'privacy.yml')]
     ci_seconds = flow_totals(item['seconds'] if item else None for item in ci)
     pending = [item['pending'] if item else None for item in ci]
-    return {'number': n, 'head': head, 'verdicts': verdicts, 'records': records,
+    return {'number': n, 'head': head, 'verdicts': verdicts, 'verdict_history': verdict_history, 'records': records,
             'pushes': pushes, 'head_history': tips is not None,
             'ci_seconds': ci_seconds, 'ci_history': all(item and item['complete'] for item in ci),
             'ci_results': [at for item in ci if item for at in item['results']],
@@ -721,7 +764,7 @@ def flow_pr(c, n, base, authors, cutoff):
 def flow_stage_times(claim, ready, merge, pr):
     stages = dict.fromkeys(FLOW_STAGES)
     stages['waiting_to_start'] = flow_seconds(ready, claim)
-    if claim is None or pr is None or not pr['verdicts']:
+    if claim is None or pr is None or not pr['verdict_history'] or not pr['verdicts']:
         return stages
     available = [(m[1], at, updated) for line, at, updated in pr['records']
                  if (m := FLOW_REVIEW_START.fullmatch(line))]
@@ -753,7 +796,8 @@ def flow_progress(issue_at, claim, merge, records, prs, cutoff, covered):
     pending = [p['ci_pending'] for p in prs]
     return {
         'commit_at': max(pushes, default=None), 'record_at': max(changes, default=None),
-        'ci_result_at': max(results, default=None), 'verdict_at': max(verdicts, default=None),
+        'ci_result_at': max(results, default=None),
+        'verdict_at': max(verdicts, default=None) if all(p['verdict_history'] for p in prs) else None,
         'last_observed_at': timeline[-1] if timeline else None,
         'complete': covered, 'ci_pending': True if True in pending else False if pending and set(pending) == {False}
         else None,
@@ -802,9 +846,11 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache, links_known
     fully_read = links_known and issue is not None and len(observed) == len(prs)
     stage_pr = observed[0] if fully_read and len(observed) == 1 else None
     stages = flow_stage_times(claim, ready, merge, stage_pr)
-    review_counts = {p['number']: len(p['verdicts']) or None for p in observed}
+    review_counts = {p['number']: (len(p['verdicts']) or None) if p['verdict_history'] else None
+                     for p in observed}
     rounds = flow_totals(review_counts.get(p) for p in prs) if fully_read else None
-    covered = fully_read and bool(observed) and all(p['head_history'] and p['ci_history'] for p in observed)
+    covered = fully_read and bool(observed) and all(
+        p['head_history'] and p['ci_history'] and p['verdict_history'] for p in observed)
     progress, timeline = flow_progress(opened, claim, merge, records, observed, cutoff, covered)
     roles = flow_role_cost(usage, n, claim, cutoff)
     ci = {p['number']: p['ci_seconds'] for p in observed}

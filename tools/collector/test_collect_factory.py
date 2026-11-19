@@ -260,13 +260,13 @@ class CarriedJourneys(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
-def add_comment_history(world, node, created, updated, original, current):
+def add_comment_history(world, node, created, updated, edited, original, current):
     query = ('query($id:ID!){node(id:$id){...on IssueComment{id createdAt updatedAt '
              'userContentEdits(first:100){totalCount pageInfo{hasNextPage} '
              'nodes{editedAt deletedAt diff}}}}}')
     key = json.dumps(['api', 'graphql', '-f', f'query={query}', '-f', f'id={node}'])
     history = [{'editedAt': at, 'deletedAt': None, 'diff': body}
-               for at, body in ((updated, current), (created, original))]
+               for at, body in ((edited, current), (created, original))]
     response = {'data': {'node': {'id': node, 'createdAt': created, 'updatedAt': updated,
                                   'userContentEdits': {'totalCount': 2, 'pageInfo': {'hasNextPage': False},
                                                        'nodes': history}}}}
@@ -356,7 +356,7 @@ class FlowFacts(unittest.TestCase):
                 ])
                 world[key]['stdout'] = json.dumps(response)
                 if previous is not None:
-                    add_comment_history(world, 'synthetic-verdict', opened, updated, previous, visible)
+                    add_comment_history(world, 'synthetic-verdict', opened, updated, '2030-01-02T02:10:59Z', previous, visible)
 
             with self.subTest(scenario):
                 p, _ = cli('../flow/world.json', *self.args, edit=edit)
@@ -371,6 +371,7 @@ class FlowFacts(unittest.TestCase):
                         'in_review': 1320 if supported else None, 'in_queue': 900 if supported else None})
                 ticket, = fact['value']['tickets']
                 self.assertEqual(ticket['progress']['complete'], supported)
+                self.assertEqual(ticket['progress']['verdict_at'], '2030-01-02T02:30:00Z' if supported else None)
                 self.assertEqual(ticket['stall_count'], 2 if supported else None)
 
     # catches: unreadable jobs or missing usage emitted as zero, or a missing
