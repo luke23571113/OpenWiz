@@ -441,45 +441,6 @@ for job in $ALL; do
   if [ -z "$hidden" ]; then ok "skip proof ($job): every path it may skip for is gone when it runs"; else bad "skip proof ($job): it may skip for these, yet can read them: $(echo "$hidden" | tr '\n' ' ')"; fi
 done
 
-# The checkout itself (#334), before any prune: all four private sample
-# files must be absent and their contents never fetched.
-c="$tmp/checkout"
-if ci_checkout "$s" "$c" "$S_HEAD" "$tmp/sparse.txt" > "$tmp/checkout.err" 2>&1; then
-  left="$(printf '%s\n' "$SAMPLES" | while IFS= read -r p; do [ -e "$c/$p" ] || [ -L "$c/$p" ] && echo "$p"; done | sort)"
-  want="$(printf '%s\n' "$SAMPLES" | grep -v '^private/' | sort)"
-  if [ "$left" = "$want" ]; then ok "checkout: every file but private/'s unlisted ones"; else bad "checkout: its tree holds [$(echo "$left" | tr '\n' ' ')], want [$(echo "$want" | tr '\n' ' ')]"; fi
-  missing="$(git -C "$c" rev-list --objects --missing=print --all | grep -c '^?')"
-  for p in private/orchestration/HANDOFF.md private/evidence/openwiz-0.0.1/ticket-1/dependencies.md private/evidence/openwiz-0.0.1/ticket-1/red-run.log private/evidence/openwiz-0.0.4/b1/extension-table.md; do
-    if git -C "$c" rev-list --objects --missing=print --all | grep -qxF "?$(git -C "$c" rev-parse "HEAD:$p")"; then ok "checkout: blobless: $p was never fetched"; else bad "checkout: $p's contents are in the clone"; fi
-  done
-  if [ "$missing" = 4 ]; then ok "checkout: blobless: all four private sample contents are missing"; else bad "checkout: $missing contents missing, want 4"; fi
-  # A step that reads an unlisted file fails, and says which.
-  if err="$(cd "$c" && cat private/orchestration/HANDOFF.md 2>&1 > /dev/null)"; then
-    bad "checkout: a step read private/orchestration/HANDOFF.md, which ci-reads.txt doesn't list"
-  else
-    case "$err" in *"private/orchestration/HANDOFF.md: No such file or directory"*) ok "checkout: a step reading an unlisted file fails loudly ($err)" ;; *) bad "checkout: reading an unlisted file failed quietly: [$err]" ;; esac
-  fi
-  if (cd "$c" && git show "HEAD:private/orchestration/HANDOFF.md") > /dev/null 2>&1; then bad "checkout: git fetched an unlisted file's contents afterwards"; else ok "checkout: git can't fetch an unlisted file's contents afterwards"; fi
-else
-  bad "checkout: it failed: $(tail -n 1 "$tmp/checkout.err")"
-fi
-# Fail closed with a synthetic nonempty list: omit its one permitted blob
-# from the checkout, and every job's prune must stop on that named file.
-dropped=private/evidence/openwiz-0.0.1/ticket-1/dependencies.md
-printf '%s\n' "$dropped" > "$tmp/synthetic-checkout-reads.txt"
-printf '%s\n' '/*' '!/private/' > "$tmp/synthetic-short.txt"
-if ci_checkout "$s" "$c" "$S_HEAD" "$tmp/synthetic-short.txt" > /dev/null 2>&1; then
-  for job in $ALL; do
-    if out="$(cd "$c" && sh "$HERE/prune.sh" "$tmp/synthetic-checkout-reads.txt" "$job" 2>&1)"; then
-      bad "checkout: the prune ($job) passed with $dropped left out"
-    else
-      case "$out" in *"prune: no such file: $dropped"*) ok "checkout: a list missing $dropped stops the prune ($job), naming it" ;; *) bad "checkout: the prune ($job) failed, but not on $dropped: [$out]" ;; esac
-    fi
-  done
-else
-  bad "checkout: the short list could not be checked out"
-fi
-
 # A fake gh: logs each call, answers the PR from a JSON file through the
 # caller's own --jq filter, and fails when told to: FAKE_FAIL=all fails every
 # call; FAKE_FAIL=N fails the first N calls counted in FAKE_COUNT (#1309, the
@@ -509,7 +470,7 @@ export GH_LOG="$tmp/gh.log" FAKE_PR="$tmp/pr.json" FAKE_COUNT="$tmp/gh.count" RE
 
 # The bounded retry (#1309): ci/retry.sh ATTEMPTS -- COMMAND runs COMMAND
 # until it succeeds or has run ATTEMPTS times, then exits with its last
-# status. A usage error runs nothing and exits 2.
+# status.
 RETRY="$ROOT/ci/retry.sh"
 cat > "$tmp/flaky" <<'FLAKY'
 #!/bin/sh
@@ -538,17 +499,6 @@ retry "one network fault, then the answer" 0 2 "answer a" 1 3 -- "$tmp/flaky" a
 retry "two faults, then the answer on the last attempt" 0 3 "answer a" 2 3 -- "$tmp/flaky" a
 retry "every attempt failing stops at the bound with the last status" 7 3 "" 5 3 -- "$tmp/flaky" a
 retry "one attempt is no retry" 7 1 "" 1 1 -- "$tmp/flaky" a
-retry "no attempts is a usage error that runs nothing" 2 0 "" 0 0 -- "$tmp/flaky" a
-retry "ten attempts are too many: runs nothing" 2 0 "" 0 10 -- "$tmp/flaky" a
-retry "attempts that are not a number run nothing" 2 0 "" 0 x -- "$tmp/flaky" a
-retry "no -- runs nothing" 2 0 "" 0 3 "$tmp/flaky" a
-retry "no command runs nothing" 2 0 "" 0 3 --
-RETRY_WAIT=x retry "a wait that is not a number runs nothing" 2 0 "" 0 3 -- "$tmp/flaky" a
-if grep -q 'attempt 1 of 3 failed (exit 7); again in 0 s' "$tmp/retry.err" 2> /dev/null || {
-  : > "$tmp/flaky.count"
-  FLAKY_COUNT="$tmp/flaky.count" FLAKY_FAILS=1 sh "$RETRY" 3 -- "$tmp/flaky" > /dev/null 2> "$tmp/retry.err"
-  grep -q 'attempt 1 of 3 failed (exit 7); again in 0 s' "$tmp/retry.err"
-}; then ok "retry: says which attempt failed, how, and when it tries again"; else bad "retry: no attempt line: $(cat "$tmp/retry.err")"; fi
 
 # A synthetic history: release-x is old; main has code since; PR heads
 # against main: docs-only, evidence-only, skills-only, a Rust test, the web

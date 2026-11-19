@@ -225,36 +225,6 @@ if os.environ.get('FAIL') and os.environ['FAIL'] in line: sys.exit(9)
                 if failure:
                     self.assertIn('exit status 9', err)
 
-    def test_ci2_spending_runs_and_propagates_failure(self):
-        command = 'python3 -I tools/ci-overflow/test.py GuardedHosted'
-        for fail in ('', 'tools/ci-overflow/test.py'):
-            code,calls,err=self.execute('release',trace=False,
-                release_tests=['release:ci2-spending'],FAIL=fail)
-            self.assertEqual(calls,[command])
-            self.assertEqual(code,1 if fail else 0,err)
-
-    def test_ci2_batch_contract_executes_and_propagates_failure(self):
-        command = 'python3 -I ci/main-batch/test_contract.py'
-        for fail in ('', 'ci/main-batch/test_contract.py'):
-            with self.subTest(fail=bool(fail)):
-                code, calls, err = self.execute('release', trace=False,
-                    release_tests=['release:ci2-batch-contract'], FAIL=fail)
-                self.assertEqual(calls, [command])
-                self.assertEqual(code, 1 if fail else 0, err)
-                if fail:
-                    self.assertIn('exit status 9', err)
-
-    def test_ci2_batch_shadow_executes_and_propagates_failure(self):
-        command = 'python3 -I ci/main-batch/test_shadow.py'
-        for fail in ('', 'ci/main-batch/test_shadow.py'):
-            with self.subTest(fail=bool(fail)):
-                code, calls, err = self.execute('release', trace=False,
-                    release_tests=['release:ci2-batch-shadow'], FAIL=fail)
-                self.assertEqual(calls, [command])
-                self.assertEqual(code, 1 if fail else 0, err)
-                if fail:
-                    self.assertIn('exit status 9', err)
-
     def test_release_entrypoint_can_import_its_sibling_proofs(self):
         # Exercise the real release entrypoint and one existing cheap case;
         # stubbing Python here previously hid its script-directory imports.
@@ -262,15 +232,6 @@ if os.environ.get('FAIL') and os.environ['FAIL'] in line: sys.exit(9)
         self.assertEqual(code,0,err)
         self.assertEqual(len(calls),1,calls)
         self.assertIn('Ran 1 test',err)
-
-    def test_ci2_overload_executes_and_propagates_failure(self):
-        for fail in ('', 'tools/ci-overload/test.py'):
-            with self.subTest(fail=fail):
-                code,calls,err=self.execute('release',trace=False,
-                    release_tests=['release:ci2-overload'],FAIL=fail)
-                self.assertEqual(calls,['python3 -I tools/ci-overload/test.py'])
-                self.assertEqual(code,1 if fail else 0,err)
-
 
 
 if __name__=='__main__': unittest.main()

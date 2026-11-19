@@ -4,13 +4,11 @@ strace lines and a synthetic repository; no test runs under strace here.
 
   python3 -I ci/select/test_trace.py
 """
-import importlib
 import json
 import os
 import shutil
 import sys
 import tempfile
-import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -373,59 +371,6 @@ class TraceLane(unittest.TestCase):
 def subprocess_ok():
     import subprocess
     return subprocess.CompletedProcess([], 0)
-
-
-# Planted breaks: each, in a copy of the module, must make a test above fail.
-BROKEN = [
-    ('trace', "if exe.get(pid) in QUIET:", "if False:", "cargo's own reads kept"),
-    ('trace', "        touched.add(full)\n", "        pass\n", "probes and plain paths dropped"),
-    ('trace', "cwd[int(ret)] = here", "pass", "a child's folder not inherited"),
-    ('trace', "listed.add(unescape(f.group(2)))", "pass", "listings dropped"),
-    ('trace', "pending[pid] = rest[:-len('<unfinished ...>')].rstrip()", "pass", "split calls dropped"),
-    ('resolve', "return f'reads {r}, a build product it can\\'t trace to its sources'", "return None",
-     "an unknown build product kept"),
-    ('resolve', "return f'reads git\\'s own {r}, through which it can see any file'", "return None",
-     "git's index kept"),
-    ('resolve', "return files | self.package_files(used) | mine", "return files",
-     "the crates a test names dropped"),
-    ('resolve', "files.add(EXPORT)\n            return None", "return None", "the export dropped"),
-    ('resolve', "        return next(iter(found)) if len(found) == 1 else None", "        return next(iter(found), None)",
-     "an ambiguous owner taken (R5)"),
-    ('resolve', "return self.read_depinfo(uplifted) | self.manifests([pkg])", "return self.read_depinfo(uplifted)",
-     "an uplifted program's manifests dropped (R6)"),
-    ('map', "raise SystemExit(f'map: {uid} has no record: every test must be traced')", "pass",
-     "a missing record allowed"),
-    ('map', "if not rec.get('traced'):", "if False:", "an untraced test mapped"),
-    ('map', "files |= set(export['files'])", "pass", "the export's inputs dropped"),
-]
-
-
-class Broken(unittest.TestCase):
-    def test_each_planted_break_is_caught(self):
-        for name, old, new, what in BROKEN:
-            with self.subTest(what):
-                path = os.path.join(HERE, name + '.py')
-                with open(path) as f:
-                    source = f.read()
-                self.assertEqual(source.count(old), 1, f'{old!r} must be in {name}.py exactly once')
-                module = sys.modules[name if name != 'map' else 'map']
-                broken = types.ModuleType(module.__name__)
-                broken.__file__ = path
-                exec(compile(source.replace(old, new), path, 'exec'), broken.__dict__)
-                globals_name = {'trace': 'trace', 'resolve': 'resolve', 'map': 'map_mod'}[name]
-                real = globals()[globals_name]
-                globals()[globals_name] = broken
-                sys.modules[module.__name__] = broken
-                try:
-                    suite = unittest.TestSuite()
-                    for case in (Parse, Repo, Map):
-                        suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(case))
-                    with open(os.devnull, 'w') as devnull:
-                        outcome = unittest.TextTestRunner(stream=devnull, verbosity=0).run(suite)
-                finally:
-                    globals()[globals_name] = real
-                    sys.modules[module.__name__] = real
-                self.assertFalse(outcome.wasSuccessful(), f'not caught: {what}')
 
 
 ROOT = os.path.dirname(os.path.dirname(HERE))

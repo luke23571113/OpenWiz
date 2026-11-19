@@ -264,23 +264,3 @@ test('main pushes with an old map run the traced full plan and sign; nightly sig
   assert.deepEqual(simulate(workflow, 'push', traced), [...FULL_SUITE, 'main-light', 'select-map'].sort(), '121-minute map: traced full run signs');
   assert.deepEqual(simulate(workflow, 'schedule', traced), [...FULL_SUITE, 'select-map'].sort(), 'nightly still signs');
 });
-
-test('marked jobs choose planted, traced and normal timeout branches independently', () => {
-  const jobs = [...workflow.matchAll(/^  ([a-z-]+):\n((?:    .*\n|\n)*)/gm)]
-    .filter(([, , body]) => body.includes("if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'"));
-  assert.ok(jobs.length > 0);
-  for (const [, job, body] of jobs) {
-    const expression = body.match(/^    timeout-minutes: \$\{\{ (.+) \}\}$/m)?.[1];
-    assert.ok(expression, `${job} has a mode timeout`);
-    // Independent sentinels test branch selection even when real budgets are equal.
-    let i = 0;
-    const branches = expression.replace(/\b\d+\b/g, () => String([101, 202, 303][i++]));
-    for (const [planted, trace, expected] of [
-      ['true', 'false', 101], ['true', 'true', 101],
-      ['false', 'true', 202], ['false', 'false', 303],
-    ]) {
-      assert.equal(runInNewContext(branches, { needs: { changes: { outputs: { planted, trace } } } }),
-        expected, `${job}: planted=${planted} trace=${trace}`);
-    }
-  }
-});

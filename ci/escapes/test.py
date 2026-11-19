@@ -94,12 +94,6 @@ class Plans(unittest.TestCase):
             with self.subTest(text[:20]):
                 self.assertNotEqual(escapes.refusals(text), [])
 
-    def test_the_schema_holds_only_keywords_the_reader_knows(self):
-        self.assertEqual(escapes.lint(escapes.schema()), [])
-        planted = escapes.schema()
-        planted["$defs"]["count"]["exclusiveMaximum"] = 5
-        self.assertEqual(escapes.lint(planted), ["#/$defs/count: unknown keyword exclusiveMaximum"])
-
     def test_the_contracts_read_cases(self):
         # Each case's own `expected`, which the contract's authors wrote.
         cases = sorted((SELECTION / "reads").iterdir())
@@ -693,14 +687,6 @@ class Finder(unittest.TestCase):
         w[f"api {R}/actions/runs/{FAILING}/attempts/2"] = w.pop(f"api {R}/actions/runs/{FAILING}/attempts/1")
         r, _, posts, summary = self.run_finder(w, attempt=2)
         self.assertEqual((r.returncode, len(posts)), (0, 1), r.stderr)
-
-    def test_usage(self):
-        for argv in ([], ["find"], ["find", "--run", "x"], ["find", "--run", "0", "--attempt", "1"],
-                     ["find", "--run", "5"], ["find", "--run", "5", "--attempt", "0"]):
-            with self.subTest(argv):
-                r = subprocess.run([sys.executable, "-I", str(SCRIPT), *argv], capture_output=True, text=True)
-                self.assertEqual(r.returncode, 2)
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

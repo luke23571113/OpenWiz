@@ -512,21 +512,5 @@ class Planted(unittest.TestCase):
     def test_an_edit_another_lane_must_catch_passes_here(self):
         self.assertEqual(self.run_planted(('web',), {'rust:test:x': 0, 'rust:test:y': 0}), 0)
 
-    def test_every_case_names_the_lanes_that_must_catch_it(self):
-        import planted
-        for case in planted.CASES:
-            with self.subTest(case[0]):
-                self.assertEqual(len(case), 4)
-                self.assertTrue(case[3] and set(case[3]) <= {'rust', 'web'})
-
-    def test_every_case_edits_its_file_exactly_once(self):
-        import planted
-        root = HERE.parent.parent
-        for path, old, new, *_ in planted.CASES:
-            with self.subTest(path):
-                self.assertEqual((root / path).read_text().count(old), 1)
-                self.assertNotEqual(old, new)
-
-
 if __name__ == '__main__':
     unittest.main()

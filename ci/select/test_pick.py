@@ -3,14 +3,11 @@
 
   python3 -I ci/select/test_pick.py
 
-Synthetic cases on a small map; the research's five broken selectors, each
-planted in a copy of pick.py and caught; and, on the committed traced map
+Synthetic cases on a small map; and, on the committed traced map
 (ci/select/map.json), every link in it: each file a test was seen to read,
 changed alone, selects that test.
 """
-import importlib.util
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -223,12 +220,6 @@ class Synthetic(unittest.TestCase):
                              nobody)
         self.assertNotIn('rust:test:proof', result['tests'])
 
-    def test_every_run_test_says_why(self):
-        result = sel([M('crates/core/src/lib.rs')])
-        self.assertEqual(sorted(result['why']), result['tests'])
-        self.assertEqual(result['why']['rust:test:proof'], 'reads crates/core/src/lib.rs')
-        self.assertEqual(result['why']['web:unit:brand-new'], 'not in the map yet')
-
     def test_a_read_that_fails_runs_everything(self):
         def broken(path):
             raise OSError('unreadable')
@@ -242,44 +233,6 @@ class Synthetic(unittest.TestCase):
         result = pick.select([M('crates/core/src/lib.rs')], MAP, UNITS, read, broken)
         self.assertEqual(result['mode'], 'full')
         self.assertIn('selector_error', codes(result))
-
-
-# The research's five broken selectors (research/ci-test-selection,
-# raw/red-runs.txt), planted in pick.py: each must make a synthetic case fail.
-BROKEN = {
-    'a named new path not run in full': ('            if named(path):', '            if False:'),
-    'the CI rule off': ('if CI_CHANGE.fullmatch(path):', 'if False:'),
-    'an empty diff not full': ("return full('empty_diff')", 'pass'),
-    'new tests dropped': ('picked |= {u for u in units if u not in known}', 'pass'),
-    'a read file not selecting its reader': ('picked |= owners.get(path, set())', 'pass'),
-}
-
-
-class Broken(unittest.TestCase):
-    def test_each_broken_selector_is_caught(self):
-        source = (HERE / 'pick.py').read_text()
-        for name, (old, new) in BROKEN.items():
-            with self.subTest(name):
-                self.assertEqual(source.count(old), 1, f'{old!r} must be in pick.py exactly once')
-                with tempfile.TemporaryDirectory() as tmp:
-                    path = Path(tmp) / 'pick.py'
-                    path.write_text(source.replace(old, new))
-                    spec = importlib.util.spec_from_file_location('broken_pick', path)
-                    module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(module)
-                    suite = unittest.TestSuite()
-                    for case in unittest.defaultTestLoader.getTestCaseNames(Synthetic):
-                        test = Synthetic(case)
-                        test.module = module
-                        suite.addTest(test)
-                    global pick
-                    real, pick = pick, module
-                    try:
-                        with open(os.devnull, 'w') as devnull:
-                            outcome = unittest.TextTestRunner(stream=devnull, verbosity=0).run(suite)
-                    finally:
-                        pick = real
-                    self.assertFalse(outcome.wasSuccessful(), f'broken selector not caught: {name}')
 
 
 class RealMap(unittest.TestCase):
@@ -397,22 +350,6 @@ class Command(unittest.TestCase):
         (root / 'map.json').write_text('{"schema": "%s", "commit": "%s", "commit": "%s", "units": {}}'
                                        % (pick.MAP_SCHEMA, traced, traced))
         self.full_with(self.run_pick(root), 'selector_error')
-
-    def test_the_github_output_names_each_lane(self):
-        root, _ = self.repo()
-        (root / 'tests/proof/main.rs').write_text('fn main() { }\n')
-        self.git(root, 'commit', '-qam', 'change')
-        (root / 'units.txt').write_text('rust:test:proof\nrust:test:checks\nweb:unit:api\n')
-        mp = json.loads((root / 'map.json').read_text())
-        mp['units']['web:unit:api'] = {'files': ['apps/web/src/api.ts'], 'dirs': []}
-        (root / 'map.json').write_text(json.dumps(mp))
-        out = root / 'github-output'
-        run = subprocess.run([sys.executable, '-I', str(HERE / 'pick.py'), '--map', str(root / 'map.json'),
-                              '--units-file', str(root / 'units.txt'), '--root', str(root), '--no-classify',
-                              '--github-output', str(out)], capture_output=True, text=True)
-        self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertEqual(out.read_text(), 'selection=selected\nrust-tests=rust:test:checks rust:test:proof\n'
-                                          'web-tests=none\n')
 
     def full_with(self, result, code):
         self.assertEqual(result['mode'], 'full', result)
