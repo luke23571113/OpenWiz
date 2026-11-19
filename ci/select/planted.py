@@ -64,6 +64,22 @@ EXPORT_INPUT = ('apps/web/',)
 NOT_EXPORT = ('apps/web/test/', 'apps/web/out/', 'apps/web/node_modules/')
 
 
+# The job whose prune (classify.sh --skips) each lane's checkout went through.
+PRUNE_JOB = {'rust': 'rust', 'web': 'web-test'}
+
+
+def pruned(root, lane, path):
+    """Whether this lane's prune deletes the path, or a folder or link above
+    it: the skip proof, so no test of the lane can read it (#1335)."""
+    parts = path.split('/')
+    paths = ['/'.join(parts[:i]) for i in range(1, len(parts) + 1)]
+    here = os.path.join(root, '.github/actions/docs-only')
+    out = subprocess.run(['sh', os.path.join(here, 'classify.sh'), '--skips', PRUNE_JOB[lane]],
+                         input='\n'.join(paths) + '\n', capture_output=True, text=True, check=True,
+                         env=dict(os.environ, READS=os.path.join(here, 'ci-reads.txt')))
+    return bool(set(out.stdout.splitlines()) & set(paths))
+
+
 def verdict(picked, results):
     """{'caught_by', 'hidden'}: the picked and the skipped tests that failed."""
     failed = {u for u, rc in results.items() if rc != 0}
@@ -134,6 +150,15 @@ def main(argv):
             raise SystemExit(f'planted: {path}: no lanes named to catch it')
         sel = pick.select([('M', (seen_as or [path])[0])], mp, every, lambda p: None, lambda ps: set())
         picked = set(sel['tests'])
+        if not os.path.isfile(os.path.join(root, path)):
+            # Only a lane that need not catch it may lack it, and only through its own prune.
+            if args.lane in catchers or not pruned(root, args.lane, path):
+                raise SystemExit(f'planted: {path} is not in this {args.lane} checkout')
+            row = {'lane': args.lane, 'path': path, 'as': (seen_as or [path])[0], 'edit': [old, new],
+                   'catchers': list(catchers), 'verdict': 'not in this lane: its prune deletes it'}
+            print('planted: ' + json.dumps(row, sort_keys=True), flush=True)
+            record(args.out, row)
+            continue
         export = path.startswith(EXPORT_INPUT) and not path.startswith(NOT_EXPORT)
         original = apply(root, path, old, new)
         try:

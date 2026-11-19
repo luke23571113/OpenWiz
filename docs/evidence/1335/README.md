@@ -12,6 +12,14 @@
   runs (`unknown_path`). A docs-only and a skills-only pull request plan the
   Rust, web and export jobs.
 
+- [red-planted.log](red-planted.log): `test_job.py` before the `planted.py`
+  fix. A planted case whose file the lane's checkout lacks dies on a bare
+  `FileNotFoundError`, as the web-export job did in CI run 44521193678: the
+  web lanes' prune (`classify.sh --skips web-test`) deletes `docs/` and the
+  `skills` link, which only Rust tests read. Now such a case is recorded as
+  "not in this lane: its prune deletes it" in a lane that need not catch it;
+  any other missing file fails with its name.
+
 ## Why Rust never skipped (observed)
 
 The nightly map on `main` (run 44367525793, the `select-map` job's log) mapped
