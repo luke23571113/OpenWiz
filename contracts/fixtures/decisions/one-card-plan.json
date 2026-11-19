@@ -1,0 +1,20 @@
+{
+  "schema": "openwiz.decisions.v1",
+  "kind": "one_card_plan",
+  "id": "synthetic-card-4201",
+  "status": "resolved",
+  "risk": "ordinary",
+  "ticket": 4201,
+  "title": "Fix the café help text",
+  "owned_paths": [
+    "docs/help.md"
+  ],
+  "acceptance": [
+    "The help text describes the existing option"
+  ],
+  "proof": "Read the corrected help text",
+  "approvals": [
+    "https://github.com/synthetic-records/archive/issues/9001#issuecomment-9000000002"
+  ],
+  "fingerprint": "4b8fd51cb81d1636ec301b078962c2e9d7cf0191c61b0a9e6f5df625b30bc0b0"
+}
