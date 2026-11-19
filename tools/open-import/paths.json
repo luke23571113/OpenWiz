@@ -87,6 +87,7 @@
     "ci/select/**",
     "ci/selection/**",
     "ci/test_rust_tests.py",
+    "docs/cleanup/wave1-contracts.md",
     "docs/cli-parts/**",
     "docs/decisions/public-offer.md",
     "docs/live-checks/**",
