@@ -10,7 +10,7 @@ the base's 1,136 tests: 964 kept, 172 deleted.
 | File | Deleted | Kept | Lines | Why |
 | --- | ---: | ---: | ---: | --- |
 | `skills-eval/test.py` | 72 | 2 | 1,063 → 65 | The paid run, its fake tool world and the shipped-skill check stop at `check`, which reads `.claude-plugin/plugin.json`, retired in #555. Scoring, records and token counts are maintainer measures. The case privacy scan stays |
-| `skills-eval/weekly/test_weekly.py` | 43 | 4 | 992 → 178 | Checkpoint, routing and promotion of skill fixes are maintainer logic. The report's identifier refusal, the candidate refusal and the fail-closed GitHub and handoff reads stay |
+| `skills-eval/weekly/test_weekly.py` | 43 | 4 + 1 new | 992 → 220 | Checkpoint, routing and promotion of skill fixes are maintainer logic. The report's identifier refusal, the candidate refusal and the fail-closed GitHub and handoff reads stay, and one new test drives the handoff command on an unreadable issue |
 | `skills-eval/test_openrouter.py` | 7 | 0 | 167 → 0 | The paid OpenRouter run stops at `check` before any request |
 | `skills-eval/test_parallel.py` | 2 | 0 | 59 → 0 | The same, through `parallel.py`'s `E.check` |
 | `fleet-load/test.py` | 4 | 8 | 253 → 181 | #77's scale target, budgets and report format (closed, not planned), and a harness self-check. The routing, planted-violation, head and target proofs stay |
@@ -35,15 +35,15 @@ WizRoom's `experiments/controls.py` loads it as a module.
 `python3 -I tools/test-value/count.py <commit>`; full results in
 [count-before.json](count-before.json) and [count-after.json](count-after.json).
 
-| Area | Before (`e817c9a`) | After (`891e9d7`) | Change |
+| Area | Before (`e817c9a`) | After (`30a77e2`) | Change |
 | --- | ---: | ---: | ---: |
-| `tools/` | 35,276 | 33,980 | −1,296 |
-| All test lines | 193,452 | 192,156 | −1,296 |
+| `tools/` | 35,276 | 34,022 | −1,254 |
+| All test lines | 193,452 | 192,198 | −1,254 |
 | Share of tracked lines | 36.23% | 36.10% | −0.13 points |
 
 The counter's classifier counts `test_*.py` but not files named `test.py`.
 Counting every one of this pass's 59 test files by `wc -l`: 29,251 lines
-before, 26,197 after (−3,054), and 4 files fewer.
+before, 26,239 after (−3,012), and 4 files fewer.
 
 ## Coverage
 
@@ -70,7 +70,9 @@ before, 26,197 after (−3,054), and 4 files fewer.
   case privacy scan (`cases.privacy_problems`), the weekly result's
   identifier refusal (`render`), and the fail-closed GitHub and handoff-issue
   reads (`gh_reader`, `gh_issue`). [r1-weekly-mutations.txt](r1-weekly-mutations.txt)
-  shows each failing when its guard is removed. The paid run's lines (`run`,
+  shows each failing when its guard is removed, and
+  [r1-handoff-red.txt](r1-handoff-red.txt) shows the handoff command's proof
+  failing when an unreadable issue is read as empty. The paid run's lines (`run`,
   `parallel`, `driver`, the fake world) can't be reached past `check`.
   Scoring, compare, token counts and the weekly checkpoint and routing lose
   their tests as maintainer measures.
@@ -97,4 +99,11 @@ which owns those steps, to cut with them.
 
 ## New tests
 
-No new test: this pass only deletes.
+One, for R1's re-check: `tools/skills-eval/weekly/test_weekly.py::HandoffCommand::test_unreadable_issue_posts_nothing_and_stays_pending`.
+It runs `run.py handoff` through `main()` with a fake `gh` runner whose issue read fails (exit 1) or is
+malformed, for a queued and an unresolved action. It asserts the refusal, that the only `gh` call was the
+read (no POST), that the ledger file is byte-for-byte unchanged and that `pending` still lists the action.
+catches: a handoff that treats a failed or partial issue read as "no earlier handoff" and posts the
+routing instruction again. [r1-handoff-red.txt](r1-handoff-red.txt) is its red run against that mutant,
+committed before the green head. It is the keeper for the deleted `test_r11_unreadable_source_posts_nothing`
+and `test_r13_unreadable_issue_posts_nothing_and_says_uncertain`.
