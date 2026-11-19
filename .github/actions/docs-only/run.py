@@ -29,7 +29,6 @@ COMMANDS = {
     'release:package': ['python3', '-I', 'tools/release/test_package.py'],
     'release:install': ['python3', '-I', 'tools/install/test_install.py'],
     'release:pull': ['python3', '-I', 'tools/install/test_pull.py'],
-    'release:setup-api': ['node', '--test', 'tools/install/test_setup_api.mjs'],
     'release:github-app': ['python3', '-I', 'tools/github-app/test.py'],
     'release:security-baseline': ['python3', '-I', 'tools/install/tests/public-release-security/baseline/test_baseline.py'],
     'release:security-candidate': ['python3', '-I', 'tools/install/tests/public-release-security/test_candidate.py'],

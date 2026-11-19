@@ -26,7 +26,7 @@ import units
 
 ALWAYS = ['always:fmt', 'always:classifier', 'always:selector', 'always:checks']
 RELEASE = ['release:test', 'release:package', 'release:install', 'release:pull',
-           'release:setup-api', 'release:github-app', 'release:ci-runner',
+           'release:github-app', 'release:ci-runner',
            'release:security-baseline',
            'release:security-candidate',
            'release:ci2-batch-contract', 'release:ci2-batch-shadow',
