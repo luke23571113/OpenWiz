@@ -3154,26 +3154,10 @@
       "type": "object",
       "properties": {
         "credits": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "number",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_number"
         },
         "tokens": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         }
       },
       "required": [
@@ -3195,15 +3179,7 @@
           "$ref": "#/$defs/flow_role_cost"
         },
         "ci_minutes": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "number",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_number"
         }
       },
       "required": [
@@ -3218,48 +3194,16 @@
       "type": "object",
       "properties": {
         "waiting_to_start": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "building": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "in_review": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "in_queue": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         }
       },
       "required": [
@@ -3274,67 +3218,25 @@
       "type": "object",
       "properties": {
         "commit_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "record_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "ci_result_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "verdict_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "last_observed_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "ci_pending": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "const": true
-            },
-            {
-              "const": false
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_boolean"
+        },
+        "complete": {
+          "$ref": "#/$defs/boolean"
         }
       },
       "required": [
@@ -3343,7 +3245,8 @@
         "ci_result_at",
         "verdict_at",
         "last_observed_at",
-        "ci_pending"
+        "ci_pending",
+        "complete"
       ],
       "additionalProperties": false
     },
@@ -3382,60 +3285,22 @@
           ]
         },
         "claimed_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "merged_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "elapsed_seconds": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "stages_seconds": {
           "$ref": "#/$defs/flow_stages"
         },
         "review_rounds": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "stall_count": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "cost": {
           "$ref": "#/$defs/flow_cost"
@@ -3483,71 +3348,25 @@
           ]
         },
         "created_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "last_merge_at": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/time"
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_time"
         },
         "span_seconds": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "elapsed_seconds": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "stages_seconds": {
           "$ref": "#/$defs/flow_stages"
         },
         "review_rounds": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "stall_count": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+          "$ref": "#/$defs/flow_nullable_count"
         },
         "cost": {
           "$ref": "#/$defs/flow_cost"
@@ -3566,6 +3385,48 @@
         "cost"
       ],
       "additionalProperties": false
+    },
+    "flow_nullable_count": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": 0
+        }
+      ]
+    },
+    "flow_nullable_number": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "number",
+          "minimum": 0
+        }
+      ]
+    },
+    "flow_nullable_time": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/time"
+        }
+      ]
+    },
+    "flow_nullable_boolean": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/boolean"
+        }
+      ]
     }
   }
 }

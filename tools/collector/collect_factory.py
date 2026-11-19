@@ -584,12 +584,20 @@ def flow_attempt_jobs(repo, rid, attempt):
     return flow_totals(owned) if owned else (0 if rows else None)
 
 
+def flow_attempt(repo, run, rid, attempt, latest):
+    if attempt != latest:
+        run = M.obj(M.rest(f'repos/{repo}/actions/runs/{rid}/attempts/{attempt}'))
+        M.require(M.integer(run.get('id')) == rid and M.integer(run.get('run_attempt')) == attempt,
+                  'a result for another attempt')
+    return J.when(run.get('updated_at')) if run.get('status') == 'completed' else None
+
+
 def flow_ci(repo, workflow, pull, cutoff):
     n, branch, opened, closed = (pull[key] for key in ('number', 'headRefName', 'createdAt', 'closedAt'))
     path = (f'repos/{repo}/actions/workflows/{workflow}/runs?branch={quote(branch, safe="")}'
             f'&event=pull_request&per_page={B.PAGE}')
     rows = B.pages(path, 'workflow_runs', 'runs', M.rest)
-    results, seconds, seen, active = [], [], set(), False
+    results, seconds, seen, active, complete = [], [], set(), False, True
     for run, _ in rows:
         rid = M.integer(M.obj(run).get('id'))
         M.require(rid not in seen and run.get('head_branch') == branch and run.get('event') == 'pull_request',
@@ -606,17 +614,15 @@ def flow_ci(repo, workflow, pull, cutoff):
             if J.text(head_repo).casefold() != repo.casefold():
                 continue  # A same-named branch in a fork.
         M.require(not (links - {n}), 'run linked to multiple pull requests')
-        attempts = M.integer(run.get('run_attempt'))
-        status = J.text(run.get('status'))
-        if status == 'completed':
-            ended = J.when(run.get('updated_at'))
-            M.require(created <= ended, 'CI run ends before creation')
-            if ended <= cutoff:
-                results.append(ended)
-        else:
-            active = True
-        seconds.extend(flow_read(flow_attempt_jobs, repo, rid, attempt) for attempt in range(1, attempts + 1))
-    return {'seconds': flow_totals(seconds), 'result_at': max(results, default=None),
+        latest = M.integer(run.get('run_attempt'))
+        for attempt in range(1, latest + 1):
+            at = flow_read(flow_attempt, repo, run, rid, attempt, latest)
+            complete &= at is not None and at >= created
+            if at is not None and created <= at <= cutoff:
+                results.append(at)
+            seconds.append(flow_read(flow_attempt_jobs, repo, rid, attempt))
+        active |= run.get('status') in ('queued', 'in_progress', 'requested', 'waiting', 'pending')
+    return {'seconds': flow_totals(seconds), 'results': results, 'complete': bool(seconds) and complete,
             'pending': active if seconds else None}
 
 
@@ -643,9 +649,9 @@ def flow_pr(c, n, authors, cutoff):
     ci_seconds = flow_totals(item['seconds'] if item else None for item in ci)
     pending = [item['pending'] if item else None for item in ci]
     return {'number': n, 'head': head, 'verdicts': verdicts, 'records': records,
-            'commit_at': max(pushes, default=None), 'head_history': tips is not None,
-            'ci_seconds': ci_seconds, 'ci_read': all(item is not None for item in ci),
-            'ci_result_at': max((item['result_at'] for item in ci if item and item['result_at']), default=None),
+            'pushes': pushes, 'head_history': tips is not None,
+            'ci_seconds': ci_seconds, 'ci_history': all(item and item['complete'] for item in ci),
+            'ci_results': [at for item in ci if item for at in item['results']],
             'ci_pending': True if True in pending else False if pending == [False, False] else None}
 
 
@@ -675,17 +681,27 @@ def flow_stage_times(claim, ready, merge, pr):
     return stages
 
 
-def flow_progress(issue_at, claim, merge, records, prs, cutoff):
-    progress = {
-        'commit_at': max((p['commit_at'] for p in prs if p['commit_at']), default=None),
-        'record_at': max((at for _, _, at in records if at <= cutoff), default=None),
-        'ci_result_at': max((p['ci_result_at'] for p in prs if p['ci_result_at']), default=None),
-        'verdict_at': max((v['at'] for p in prs for v in p['verdicts']), default=None),
-    }
-    progress['last_observed_at'] = max((at for at in (*progress.values(), issue_at, claim, merge) if at), default=None)
+def flow_progress(issue_at, claim, merge, records, prs, cutoff, covered):
+    pushes = [at for p in prs for at in p['pushes']]
+    changes = [at for _, created, updated in records for at in (created, updated) if at <= cutoff]
+    results = [at for p in prs for at in p['ci_results']]
+    verdicts = [v['at'] for p in prs for v in p['verdicts']]
+    timeline = sorted({at for at in (*pushes, *changes, *results, *verdicts, issue_at, claim, merge) if at})
     pending = [p['ci_pending'] for p in prs]
-    progress['ci_pending'] = True if True in pending else False if pending and set(pending) == {False} else None
-    return progress
+    return {
+        'commit_at': max(pushes, default=None), 'record_at': max(changes, default=None),
+        'ci_result_at': max(results, default=None), 'verdict_at': max(verdicts, default=None),
+        'last_observed_at': timeline[-1] if timeline else None,
+        'complete': covered, 'ci_pending': True if True in pending else False if pending and set(pending) == {False}
+        else None,
+    }, timeline
+
+
+def flow_stall_count(claim, merge, covered, timeline):
+    if not covered or flow_seconds(claim, merge) is None:
+        return None
+    times = [at for at in timeline if claim <= at <= merge]
+    return sum(flow_seconds(a, b) >= 30 * 60 for a, b in zip(times, times[1:]))
 
 
 def flow_cost(roles, ci_seconds):
@@ -697,9 +713,10 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of):
     top, comments = issue if issue is not None else ({}, [])
     parent = top.get('parent')
     prs = [p for p, data in pulls.items() if n in data['tickets']]
-    merged = sorted(M.iso(pulls[p]['merged']) for p in prs if pulls[p]['merged'] is not None)
+    merged = sorted(M.iso(pulls[p]['merged']) for p in prs if pulls[p]['merged'] is not None and M.iso(pulls[p]['merged']) <= as_of)
     merge = merged[-1] if merged else None
-    cutoff = merge or top.get('closedAt') or as_of
+    closed = top.get('closedAt')
+    cutoff = merge or (closed if closed and closed <= as_of else as_of)
     opened = top.get('createdAt')
     issue_records = [(J.first_line(com['body']), com['at'], com['updated']) for com in comments
                      if com['at'] <= cutoff and J.first_line(com['body']).startswith('launch-fleet:')]
@@ -713,8 +730,8 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of):
     stage_pr = observed[0] if fully_read and len(observed) == 1 else None
     stages = flow_stage_times(claim, ready, merge, stage_pr)
     rounds = sum(len(p['verdicts']) for p in observed) if fully_read else 0
-    # The legacy collector can identify recorded wait episodes but cannot establish
-    # the FM3 stall count from incomplete historical progress. Leave that field unknown.
+    covered = fully_read and bool(observed) and all(p['head_history'] and p['ci_history'] for p in observed)
+    progress, timeline = flow_progress(opened, claim, merge, records, observed, cutoff, covered)
     roles = flow_role_cost(usage, n, claim, cutoff)
     ci = {p['number']: p['ci_seconds'] for p in observed}
     # A shared PR's work cannot be charged in full to each ticket.
@@ -725,9 +742,9 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of):
         'state': 'merged' if merge else 'closed' if top.get('closedAt') else 'open' if issue else 'unknown',
         'claimed_at': claim, 'merged_at': merge,
         'elapsed_seconds': flow_seconds(claim, merge), 'stages_seconds': stages,
-        'review_rounds': rounds or None, 'stall_count': None, 'cost': cost,
-        'progress': flow_progress(opened, claim, merge, records, observed if fully_read else [], cutoff),
-    }, ci, fully_read and all(p['head_history'] and p['ci_read'] for p in observed)
+        'review_rounds': rounds or None, 'stall_count': flow_stall_count(claim, merge, covered, timeline), 'cost': cost,
+        'progress': progress,
+    }, ci, covered
 
 
 def flow_spec(n, members, tickets, pulls, job_seconds):
