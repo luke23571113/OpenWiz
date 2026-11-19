@@ -642,6 +642,41 @@ pub fn only_listener(
     Ok(())
 }
 
+/// The updater proofs' listener check refuses every service-owned listener
+/// but `127.0.0.1:7370` (IPv4 or IPv6), a missing one and an unreadable
+/// table, and ignores other processes' and non-listening sockets. Catches: a
+/// checker that ignores `tcp6` or extra listeners, so a candidate exposing
+/// the service beyond loopback still passes (CW2 R2, #1143).
+#[test]
+fn only_the_loopback_listener_passes_the_listener_check() {
+    const HEAD: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
+    let line = |local: &str, state: &str, inode: &str| {
+        format!(
+            "   0: {local} 00000000:0000 {state} 00000000:00000000 00:00000000 00000000  1000        0 {inode} 1 0 100 0 0 10 0\n"
+        )
+    };
+    let table = |lines: &[String]| format!("{HEAD}\n{}", lines.concat());
+    // The service owns inodes 1001 and 1002; 2001 is another process's.
+    let sockets = ["1001", "1002"].map(str::to_owned).into();
+    let check =
+        |tcp: &[String], tcp6: &[String]| only_listener(&table(tcp), &table(tcp6), &sockets, 7370);
+    let http = line("0100007F:1CCA", "0A", "1001");
+    let any6 = "00000000000000000000000000000000:1F90";
+    let loop6 = "00000000000000000000000001000000:1CCA";
+    let other = [line(any6, "0A", "2001"), line(loop6, "01", "1002")];
+    assert_eq!(check(std::slice::from_ref(&http), &other), Ok(()));
+    for local in [any6, loop6] {
+        let refused = check(std::slice::from_ref(&http), &[line(local, "0A", "1002")]);
+        assert!(refused.is_err_and(|e| e.contains("IPv6")), "{local}");
+    }
+    assert!(check(&[http.clone(), line("00000000:1F90", "0A", "1002")], &[]).is_err());
+    assert!(check(&[], &[]).is_err());
+    assert!(check(&[line("0100007F:1CCB", "0A", "1001")], &[]).is_err());
+    let tcp = table(std::slice::from_ref(&http));
+    assert!(only_listener(&tcp, "", &sockets, 7370).is_err());
+    assert!(only_listener(&tcp, &format!("{HEAD}\n   0: short 0A\n"), &sockets, 7370).is_err());
+}
+
 // Fixture programs are placed by a separate `cp` (#811), shared.
 #[path = "../support/place.rs"]
 // t6-update also loads it through install_engine_app_support.rs: two
