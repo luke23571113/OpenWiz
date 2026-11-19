@@ -19,7 +19,7 @@ state and checks four safety rules on each:
       decided before a release revives it
   P4  every claim is held, released or lapsed: at most one live note per kind
 
-Run: python3 -I kernel/records/model/model.py [--variant NAME] [--writes atomic|split]
+Run: python3 -I kernel/records/model/model.py [--variant NAME] [--writes atomic|split|fixed]
 Exit 0: every rule holds. 1: a rule broke; each broken rule prints with its
 shortest trace. 2: bad arguments.
 """
@@ -32,8 +32,10 @@ CLAIMING = ('working', 'asking')
 RELEASED = ('done', 'stopped')
 AGENTS = (('builder 1', 'builder'), ('builder 2', 'builder'), ('fleet', 'fleet'))
 MAX_NOTES = 4        # notes posted on the ticket, in all
+FIXED_NOTES = 3      # the fixed model's cap: a full search with 4 notes and two wakes runs too long for CI
 # Wakes per agent: in the split model builder 1 has a second wake that resumes late.
-RUNS = {'atomic': (1, 1, 1), 'split': (2, 1)}
+# The fixed model (#1441) is the split one with the writer's edit read-back.
+RUNS = {'atomic': (1, 1, 1), 'split': (2, 1), 'fixed': (2, 1)}
 
 RULES = {
     'P1': 'never two live holders: a claim write succeeded but its note does not hold the claim',
@@ -81,6 +83,7 @@ class Model:
         self.claiming = ('working',) if variant == 'asking-not-claiming' else CLAIMING
         # Kinds never compete, so the split model keeps only the builders, to stay small.
         self.agents = AGENTS if writes == 'atomic' else AGENTS[:2]
+        self.max_notes = FIXED_NOTES if writes == 'fixed' else MAX_NOTES
 
     def initial(self):
         return ((), tuple((None,) * n for n in RUNS[self.writes]))
@@ -99,6 +102,10 @@ class Model:
             return None
         if h is not None and h != i and not (self.variant == 'older-only-fence' and h > i):
             return None
+        if self.writes == 'fixed' and state in CLAIMING:
+            # #1441: a claim edit reads back. It keeps what GitHub's edit history shows it
+            # replaced, and what its own read showed.
+            return put(notes, i, agent, state), ('edited', i, state, notes[i], mine_state)
         return put(notes, i, agent, state), None
 
     def post(self, view, notes, agent, state):
@@ -113,13 +120,30 @@ class Model:
             return put(notes, i, notes[i][0], 'stopped'), 'lost claim'
         return notes, 'kept'
 
+    def readback_edit(self, notes, pending):
+        """#1441: the fixed writer's read-back after a claim edit: (notes, what it did).
+
+        As status.py write does: a release it never read, which its edit replaced, is put back,
+        even when a later edit has changed the note since, unless the note is released again
+        (#1463 R1); otherwise a note that no longer reads as written is not its to settle (it
+        fails, and the edit that changed it has its own read-back); and it steps down when
+        another live note of its kind exists, older or newer."""
+        _, i, state, was, mine_state = pending
+        if was[1] in RELEASED and was[1] != mine_state and notes[i][1] in CLAIMING:
+            return put(notes, i, notes[i][0], was[1]), f'puts the {was[1]} back'
+        if notes[i][1] != state:
+            return notes, None
+        if any(j != i and kind(n[0]) == kind(notes[i][0]) and live(n) for j, n in enumerate(notes)):
+            return put(notes, i, notes[i][0], 'stopped'), 'lost claim'
+        return notes, 'kept'
+
     def writes_for(self, view, notes, agent):
         """Every write the agent may try from VIEW: (label, result, note id, target state)."""
         mine, mine_state, _ = view
         for state in CLAIMING + RELEASED:
             if mine is not None:
                 yield f'edit note {mine} to {state}', self.edit(view, notes, agent, mine, state), mine, state
-        if (mine is None or mine_state == 'stopped') and len(notes) < MAX_NOTES:
+        if (mine is None or mine_state == 'stopped') and len(notes) < self.max_notes:
             for state in CLAIMING:
                 yield f'post a {state} note', self.post(view, notes, agent, state), len(notes), state
 
@@ -145,6 +169,15 @@ class Model:
                     continue
                 elif run[0] == 'read':
                     view = run[1]
+                elif run[0] == 'edited':
+                    after, how = self.readback_edit(notes, run[1])
+                    # A failed read-back confirms no claim, but P3 still judges its write (#1463 R1):
+                    # the edit that changed the note since has its own read-back for the rest.
+                    events = [('settled', agent, run[1], after, how is None)] + (
+                        [] if how is None else [('claimed', agent, run[1][1], notes, after)])
+                    yield (f'{who} wake {r + 1} reads back note {run[1][1]}: {how or "not as written, fails"}',
+                           (after, with_run(None)), events)
+                    continue
                 else:
                     after, how = self.readback(notes, run[1])
                     yield (f'{who} wake {r + 1} reads back note {run[1]}: {how}', (after, with_run(None)),
@@ -158,9 +191,12 @@ class Model:
                     if pending is not None and self.writes == 'atomic':
                         after, how = self.readback(after, pending)
                         label += f', reads back: {how}'
+                    elif isinstance(pending, tuple):
+                        done = ('edited', pending)
                     elif pending is not None:
                         done = ('posted', pending)
-                    events = [('write', agent, i, state, view, notes, after)]
+                    # A write that reads back is judged once its read-back settles it.
+                    events = [] if isinstance(pending, tuple) else [('write', agent, i, state, view, notes, after)]
                     if state in CLAIMING and done is None:
                         events.append(('claimed', agent, i, notes, after))
                     yield f'{who} wake {r + 1}: {label}', (after, with_run(done)), events
@@ -170,7 +206,17 @@ class Model:
         notes, runs = s
         found = []
         for e in events:
-            if e[0] == 'claimed':
+            if e[0] == 'settled':
+                # P2 and P3 for a write that reads back: the note it revived is still live once
+                # the read-back settled it.
+                _, agent, (_, i, state, was, mine_state), after, failed = e
+                if live(after[i]):
+                    if not failed and was[1] in CLAIMING and was[2] >= LEASE and any(
+                            j > i and kind(n[0]) == kind(agent) and live(n) for j, n in enumerate(after)):
+                        found.append('P2')
+                    if was[1] == 'stopped' or (was[1] in RELEASED and mine_state not in RELEASED):
+                        found.append('P3')
+            elif e[0] == 'claimed':
                 _, agent, i, before, after = e
                 if after[i][1] in CLAIMING and holder(after, kind(agent)) != i:
                     found.append('P1')
@@ -183,7 +229,7 @@ class Model:
                         found.append('P2')
                     if was[1] == 'stopped' or (was[1] in RELEASED and view[1] not in RELEASED):
                         found.append('P3')
-        if not any(run is not None and run[0] == 'posted' for rs in runs for run in rs):
+        if not any(run is not None and run[0] in ('posted', 'edited') for rs in runs for run in rs):
             for k in {k for _, k in AGENTS}:
                 if sum(1 for n in notes if kind(n[0]) == k and live(n)) > 1:
                     found.append('P4')
@@ -244,7 +290,8 @@ def main(argv):
     p.add_argument('--variant', choices=sorted(VARIANTS), help='check a broken variant of the writer')
     p.add_argument('--writes', choices=sorted(RUNS), default='atomic',
                    help='atomic: each write re-reads in the same step (the rules as stated); '
-                        'split: the pinned writer reads, then writes, with two wakes per agent')
+                        'split: the pinned writer reads, then writes, with two wakes per agent; '
+                        'fixed: split, with the #1441 writer reading back after each edit')
     args = p.parse_args(argv)
     model = Model(args.variant, args.writes)
     states, broken, seen = check(model)

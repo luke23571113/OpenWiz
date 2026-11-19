@@ -6,6 +6,7 @@ An exhaustive model check of the claim and lease rules that [records v1](../../r
 python3 -I kernel/records/model/model.py                       # the current rules: exit 0
 python3 -I kernel/records/model/model.py --variant <name>      # a broken variant: exit 1, with a trace
 python3 -I kernel/records/model/model.py --writes split        # the pinned writer's read-then-write order
+python3 -I kernel/records/model/model.py --writes fixed        # that order with the #1441 edit read-back: exit 0
 python3 -I kernel/records/model/test_model.py                  # the model's own tests
 ```
 
@@ -31,10 +32,11 @@ One ticket, two builders and one fleet agent. Each agent posts a note, edits it 
 
 These situations must all be reached, or the pass is vacuous: a lapsed note beside a newer holder, a builder and the fleet holding at once, an agent's second note holding, an `asking` note holding, and a `done` note beside a holder.
 
-## Two write orders
+## Three write orders
 
 - **`atomic`** (the default) is the rules as records v1 states them. Each write re-reads the ticket and writes in one step. Every rule holds.
 - **`split`** is the order the pinned `status.py write` actually runs. It reads the ticket in one call and writes in another, and other writers can act in between. Builder 1 also gets a second wake that can overlap its first. This mode stops once every rule has a counterexample. P1, P2 and P4 break with one wake per agent: a lapsed note re-reads, a newer note claims and reads back, and the lapsed note's edit still lands. P3 breaks only when two wakes of one agent overlap. This finding is reported on spec #1365. The rules are unchanged.
+- **`fixed`** is the split order with the #1441 writer's edit read-back. A claim edit still reads, then writes, but then reads back as a post does. If the edit replaced a release (`done` or `stopped`) that its own read never saw, it puts that release back, even when a later edit has changed the note since, unless the note is released again. Otherwise, if the note no longer reads as written, the edit fails and leaves the rest to the read-back of the edit that changed it; P3 still judges a failed read-back. If another live note of its kind exists, older or newer, it steps down to `stopped`. P2 and P3 are judged on such a write once its read-back settles it, and P4 waits for the read-back too, as for a post. It searches every reachable state with builder 1's two overlapping wakes, capped at 3 notes to fit CI, and every rule holds.
 
 ## Broken variants
 

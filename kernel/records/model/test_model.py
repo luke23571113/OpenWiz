@@ -76,6 +76,37 @@ class SplitWrites(unittest.TestCase):
         self.assertEqual(set(overlapping), {'P1', 'P2', 'P3', 'P4'})
 
 
+class FixedWrites(unittest.TestCase):
+    # #1441: the writer's fixed order. Still two calls, but an edit reads back as a post does:
+    # it puts back a release it never read, and steps down when another live note of its kind
+    # exists. The model must hold every rule with it, over every reachable state.
+    def test_the_fixed_write_order_holds_every_rule(self):
+        # catches: a writer fix that leaves any of KN10's split-order breaks in place.
+        code, out, err = run('--writes', 'fixed')
+        self.assertEqual((code, err), (0, ''), out)
+        self.assertEqual(len(out), 1, out)
+        self.assertRegex(out[0], r'^ok: fixed writes, current rules: P1 to P4 hold over \d+ states$')
+
+    def test_a_release_lost_under_a_failed_readback_breaks_p3(self):
+        # catches: #1463 R1, a read-back that fails because a later edit changed the note and
+        # so never puts back the release its own edit replaced.
+        class NoRestoreOnFailure(model.Model):
+            def readback_edit(self, notes, pending):
+                if notes[pending[1]][1] != pending[2]:
+                    return notes, None
+                return super().readback_edit(notes, pending)
+        _, found, _ = model.check(NoRestoreOnFailure(None, 'fixed'))
+        self.assertEqual(set(found), {'P3'})
+
+    def test_the_fixed_order_without_its_edit_readback_breaks_again(self):
+        # catches: a fixed mode that passes for a reason other than the edit's read-back.
+        class NoReadback(model.Model):
+            def readback_edit(self, notes, pending):
+                return notes, 'kept'
+        _, found, _ = model.check(NoReadback(None, 'fixed'))
+        self.assertEqual(set(found), {'P1', 'P2', 'P3', 'P4'})
+
+
 class NotVacuous(unittest.TestCase):
     def test_the_current_rules_meet_every_witness(self):
         _, found, seen = model.check(model.Model())
