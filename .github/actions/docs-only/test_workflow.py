@@ -178,7 +178,7 @@ class Workflow(unittest.TestCase):
         blocks=jobs()
         self.assertEqual(set(blocks),{'changes','always','web-build','rust','rust-export','web','web-export',
                                       'site','release','skills','launch-fleet','select-map','ci','web-test',
-                                      'main-light'})
+                                      'main-light','owned-paths'})
         for name in ('always','web-build','rust','web','site','release','skills','launch-fleet'):
             self.assertRegex(blocks[name],r'^    needs: changes\n')
         for name in ('rust-export','web-export'):
@@ -214,10 +214,10 @@ class Workflow(unittest.TestCase):
                     if eval(condition, {'__builtins__': {}}, {'contains': lambda a, b: b in a}):
                         active.append(name)
                 self.assertEqual(active, ['changes', 'always', *([] if combined else ['site']),
-                                           'release', 'ci', 'web-test'])
+                                           'release', 'owned-paths', 'ci', 'web-test'])
                 # A site-only PR also starts the separate Privacy and Changelog
                 # workflows. No matrix is active for this selected fixture.
-                self.assertEqual(len(active) + 2, 7 if combined else 8)
+                self.assertEqual(len(active) + 2, 8 if combined else 9)
         self.assertIn('site-in-release: ${{ steps.plan.outputs.site-in-release }}', blocks['changes'])
         # #743: each release member records its share; the ci job stamps the
         # separate receipts only after every unit is checked to have run once.
@@ -261,7 +261,7 @@ class Workflow(unittest.TestCase):
     def test_final_ci_waits_for_all_jobs_and_always_runs(self):
         block=jobs()['ci']
         deps=re.search(r'^    needs: \[(.*)\]$',block,re.M)[1].split(', ')
-        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','main-light'})
+        self.assertEqual(set(deps),set(jobs())-{'ci','select-map','web-test','main-light','owned-paths'})
         self.assertIn('NEEDS: ${{ toJSON(needs) }}',block)
 
     def test_actual_ci_script_refuses_failure_cancellation_and_missing_lane(self):
@@ -317,7 +317,7 @@ class Security(unittest.TestCase):
                         self.assertEqual(actual,'ubuntu-24.04' if head=='fork/repo' else expected)
 
     def test_runner_choices_keep_small_jobs_independent_and_forks_hosted(self):
-        small={'changes','select-map','ci','web-test','main-light'}
+        small={'changes','select-map','ci','web-test','main-light','owned-paths'}
         rust={'always','rust','rust-export'}
         web={'web-build','web','web-export','site','release','skills','launch-fleet'}
         blocks=jobs()
@@ -380,7 +380,7 @@ class Security(unittest.TestCase):
                 self.assertIn('run: sh ci/hosted/guard.sh',steps[1])
                 self.assertIn('HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}',steps[1])
                 self.assertNotIn('        if:',steps[1])
-                if name not in ('changes','ci','select-map','web-test','main-light'):
+                if name not in ('changes','ci','select-map','web-test','main-light','owned-paths'):
                     prepare=[s for s in steps if 'uses: ./.github/actions/docs-only/setup\n' in s]
                     self.assertEqual(len(prepare),1,name)
                     self.assertIn('hosted: ${{ steps.guard.outputs.hosted }}',prepare[0])
