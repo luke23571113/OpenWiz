@@ -136,6 +136,32 @@ class Read:
                 'point': point, 'window': window, 'fresh_until': None, 'freshness': 'unknown', 'source': src,
                 'evidence': list(dict.fromkeys(evidence)), 'prerequisites': list(prerequisites), 'value': value}
 
+    def pull_links(self, pr, n):
+        """The same complete forward links for inventory and one-ticket reads."""
+        M.require('mergedAt' in pr and 'closedAt' in pr, 'missing merge/closure timestamp')
+        base = pr.get('baseRefName')
+        M.require(type(base) is str and bool(base), 'invalid base branch')
+        links, link_cursor = M.connection(pr.get('closingIssuesReferences'))
+        seen, link_cursors, tickets = set(), set(), []
+        while True:
+            for value in links:
+                issue = M.obj(value)
+                t = M.integer(issue.get('number'))
+                owner = M.obj(issue.get('repository')).get('nameWithOwner')
+                M.require(type(owner) is str and (owner.lower(), t) not in seen, 'invalid or duplicate linked issue')
+                seen.add((owner.lower(), t))
+                if owner.lower() == self.repo.lower():
+                    tickets.append(t)
+            if link_cursor is None:
+                break
+            M.require(link_cursor not in link_cursors, 'repeated link cursor')
+            link_cursors.add(link_cursor)
+            links, link_cursor = M.connection(M.obj(M.graph(self.repo, link_cursor, n).get('pullRequest'))
+                                              .get('closingIssuesReferences'))
+        return {'merged': None if pr['mergedAt'] is None else M.timestamp(pr['mergedAt']),
+                  'closed': None if pr['closedAt'] is None else M.timestamp(pr['closedAt']),
+                  'tickets': sorted(tickets), 'base': base}
+
     def prs(self):
         """Every PR: merge, closure, base and same-repository closing tickets (metrics.collect_prs, plus base)."""
         if self._prs is not None:
@@ -147,29 +173,7 @@ class Read:
                 pr = M.obj(node)
                 n = M.integer(pr.get('number'))
                 M.require(n not in prs, 'duplicate PR')
-                M.require('mergedAt' in pr and 'closedAt' in pr, 'missing merge/closure timestamp')
-                base = pr.get('baseRefName')
-                M.require(type(base) is str and bool(base), 'invalid base branch')
-                links, link_cursor = M.connection(pr.get('closingIssuesReferences'))
-                seen, link_cursors, tickets = set(), set(), []
-                while True:
-                    for value in links:
-                        issue = M.obj(value)
-                        t = M.integer(issue.get('number'))
-                        owner = M.obj(issue.get('repository')).get('nameWithOwner')
-                        M.require(type(owner) is str and (owner.lower(), t) not in seen, 'invalid or duplicate linked issue')
-                        seen.add((owner.lower(), t))
-                        if owner.lower() == self.repo.lower():
-                            tickets.append(t)
-                    if link_cursor is None:
-                        break
-                    M.require(link_cursor not in link_cursors, 'repeated link cursor')
-                    link_cursors.add(link_cursor)
-                    links, link_cursor = M.connection(M.obj(M.graph(self.repo, link_cursor, n).get('pullRequest'))
-                                                      .get('closingIssuesReferences'))
-                prs[n] = {'merged': None if pr['mergedAt'] is None else M.timestamp(pr['mergedAt']),
-                          'closed': None if pr['closedAt'] is None else M.timestamp(pr['closedAt']),
-                          'tickets': sorted(tickets), 'base': base}
+                prs[n] = self.pull_links(pr, n)
             if following is None:
                 break
             M.require(following not in cursors, 'repeated PR cursor')
@@ -455,6 +459,12 @@ FLOW_SPEC = ('query($owner:String!,$name:String!,$number:Int!,$cursor:String)'
              '{repository(owner:$owner,name:$name){issue(number:$number){number createdAt '
              'subIssues(first:100,after:$cursor){nodes{number repository{nameWithOwner}} '
              'pageInfo{hasNextPage endCursor}}}}}')
+FLOW_TICKET_PRS = ('query($owner:String!,$name:String!,$number:Int!,$cursor:String)'
+                   '{repository(owner:$owner,name:$name){issue(number:$number){number '
+                   'closedByPullRequestsReferences(first:100,after:$cursor,includeClosedPrs:true)'
+                   '{nodes{number repository{nameWithOwner} baseRefName mergedAt closedAt '
+                   'closingIssuesReferences(first:100){nodes{number repository{nameWithOwner}} '
+                   'pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}')
 FLOW_REVIEW_START = re.compile(r'launch-fleet: (?:review started|re-check sent) ([0-9a-f]{40})')
 FLOW_QUEUE = re.compile(r'launch-fleet: merge queued ([0-9a-f]{40}): .+')
 FLOW_PUSH = re.compile(r'First successful push: [0-9a-f]{40} at (\S+)')
@@ -503,6 +513,22 @@ def flow_members(c, n):
     local = sorted(row['number'] for row in nodes
                    if row['repository']['nameWithOwner'].casefold() == c.repo.casefold())
     return created, local if len(local) == len(nodes) else None
+
+
+def flow_linked_pulls(r, c, n):
+    def identity(pr):
+        return J.text(M.obj(pr.get('repository')).get('nameWithOwner')).casefold(), M.integer(pr.get('number'))
+
+    top, nodes = c.pages(FLOW_TICKET_PRS, n, ('issue', 'closedByPullRequestsReferences'), identity)
+    M.require(top.get('number') == n, 'links for another ticket')
+    pulls = {}
+    for pr in nodes:
+        repo, number = identity(pr)
+        M.require(repo == r.repo.casefold(), 'cross-repository closing PR')
+        data = r.pull_links(pr, number)
+        M.require(n in data['tickets'], 'reverse and forward PR links disagree')
+        pulls[number] = data
+    return pulls
 
 
 def flow_totals(values):
@@ -727,10 +753,10 @@ def flow_cost(roles, ci_seconds):
             'ci_minutes': None if ci_seconds is None else round(ci_seconds / 60, 6)}
 
 
-def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache):
+def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache, links_known):
     top, comments = issue if issue is not None else ({}, [])
     parent = top.get('parent')
-    prs = [p for p, data in pulls.items() if n in data['tickets']]
+    prs = sorted(p for p, data in pulls.items() if links_known and n in data['tickets'])
     merged = sorted(M.iso(pulls[p]['merged']) for p in prs if pulls[p]['merged'] is not None and M.iso(pulls[p]['merged']) <= as_of)
     merge = merged[-1] if merged else None
     closed = top.get('closedAt')
@@ -746,7 +772,7 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache):
             pr_cache[p, cutoff] = flow_read(flow_pr, c, p, authors, cutoff)
     observed = [pr_cache[p, cutoff] for p in prs if pr_cache[p, cutoff] is not None]
     records = issue_records + [rec for p in observed for rec in p['records']]
-    fully_read = issue is not None and len(observed) == len(prs)
+    fully_read = links_known and issue is not None and len(observed) == len(prs)
     stage_pr = observed[0] if fully_read and len(observed) == 1 else None
     stages = flow_stage_times(claim, ready, merge, stage_pr)
     review_counts = {p['number']: len(p['verdicts']) or None for p in observed}
@@ -760,7 +786,8 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache):
                      if all(pulls[p]['tickets'] == [n] for p in prs) else None)
     return {
         'ticket': n, 'spec': parent['number'] if parent else None, 'pull_requests': prs,
-        'state': 'merged' if merge else 'closed' if closed and closed <= as_of else 'open' if issue else 'unknown',
+        'state': ('merged' if merge else 'unknown' if not (issue and links_known) else
+                  'closed' if closed and closed <= as_of else 'open'),
         'claimed_at': claim, 'merged_at': merge,
         'elapsed_seconds': flow_seconds(claim, merge), 'stages_seconds': stages,
         'review_rounds': rounds, 'stall_count': flow_stall_count(claim, merge, covered, timeline), 'cost': cost,
@@ -797,7 +824,6 @@ def flow(r, started):
     authors = flow_authors()
     requested = set(r.tickets or [])
     specs = set(r.specs)
-    inventory = r.prs()
     implicit = not requested and not specs
     if implicit:
         requested.update(t for pr in r.merged().values() for t in pr['tickets'])
@@ -819,13 +845,27 @@ def flow(r, started):
             requested.update(member[1])
     for n in sorted(requested - issues.keys()):
         issues[n] = flow_read(read_issue, n)
-    # Do not spend PR reads on unrelated work from the inventory.
-    pulls = {p: data for p, data in inventory.items() if requested.intersection(data['tickets'])}
+    incomplete_links = set()
+    if implicit or specs:
+        pulls = {p: data for p, data in r.prs().items() if requested.intersection(data['tickets'])}
+    else:
+        pulls = {}
+        for n in sorted(requested):
+            linked = flow_read(flow_linked_pulls, r, c, n)
+            if linked is None:
+                incomplete_links.add(n)
+                continue
+            for p, pr in linked.items():
+                paths = pulls.get(p)
+                if paths is not None and paths != pr:
+                    incomplete_links.update(set(paths['tickets']) | set(pr['tickets']))
+                pulls[p] = pr
     usage = flow_read(flow_usage, r.repo, r.flow_threads, r.flow_usage) or ({}, {})
     tickets, jobs, reviews, pr_cache = {}, {}, {}, {}
     incomplete_progress = False
     for n, issue in issues.items():
-        ticket, ci, counts, covered = flow_ticket(c, n, issue, pulls, authors, usage, started, pr_cache)
+        ticket, ci, counts, covered = flow_ticket(
+            c, n, issue, pulls, authors, usage, started, pr_cache, n not in incomplete_links)
         tickets[n] = ticket
         for totals, observed in ((jobs, ci), (reviews, counts)):
             for p, measurement in observed.items():
@@ -839,7 +879,8 @@ def flow(r, started):
     value = {'tickets': [tickets[n] for n in sorted(tickets)], 'specs': spec_rows}
     rows = value['tickets'] + spec_rows
     gaps = {
-        'scope': any(i is None for i in issues.values()) or any(s['tickets'] is None for s in spec_rows),
+        'scope': bool(incomplete_links) or any(i is None for i in issues.values()) or
+                 any(s['tickets'] is None for s in spec_rows),
         'github': any(t['elapsed_seconds'] is None or t['review_rounds'] is None or
                       None in t['stages_seconds'].values() for t in rows) or
                   any(s['span_seconds'] is None for s in spec_rows),
