@@ -69,7 +69,7 @@ Nothing else is stored. A tool reads the rest from GitHub itself:
 | --- | --- |
 | L1 | An open issue with an agent-state label |
 | L2 | An open issue with `held` and a ready label |
-| L3 | An open ticket whose parent lacks `spec`, or an open ticket that carries `spec` |
+| L3 | An open ticket whose open parent lacks `spec`, or an open ticket that carries `spec` |
 | S1 | Two or more live notes of one kind on one open issue |
 | S2 | A record author's v1-marked comment that doesn't read as a v1 note |
 | T1 | An open spec or ticket missing a template section, each missing part on its own line |

@@ -25,7 +25,8 @@ BREAKS = {
     'missing-template-part': ['#2 T1: ticket lacks ## Proof', '#2 T1: ticket lacks **Relies on:**'],
     'spec-missing-section': ['#1 T1: spec lacks ## Out of Scope'],
     'human-missing-done-by': ['#4 T1: ticket lacks ## Done by'],
-    'blocker-not-planned': ['#2 B2: blocker #9 is closed as not_planned, not completed'],
+    'blocker-not-completed': ['#2 B2: blocker #9 is closed as not_planned, not completed',
+                              '#2 B2: blocker #10 is closed as duplicate, not completed'],
 }
 
 
@@ -71,6 +72,7 @@ class Kit(unittest.TestCase):
             'bad blocker reason': lambda d: d['issues'][1]['blocked_by'][0].update(state_reason='done'),
             'open blocker with reason': lambda d: d['issues'][1]['blocked_by'][0].update(state='open'),
             'bad time': lambda d: d.update(now='2030-01-02 04:00'),
+            'impossible time': lambda d: d.update(now='2030-13-02T04:00:00Z'),
             'comment author missing': lambda d: drop(d['issues'][1]['comments'][0], 'author'),
             'other tracker version': lambda d: d.update(tracker='openwiz:records-kit tracker v2'),
         }
