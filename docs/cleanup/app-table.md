@@ -293,8 +293,9 @@ Granted beside the table on #1264, each "behaviour gone": `tests/fleet/lock_rele
 new-thread file store's claim lock), `tests/checks/cockpit_schema_conformance.rs` (321, the cockpit
 contract), `tools/install/test_setup_api.mjs` (89, the web setup client),
 `tools/install/tests/first-hour/providers/recording.ts` (241, the web page's fault cases), and
-`tools/install/platform/runtime.py` and `test_runtime.py` (311 and 226, the local service supervisor):
-1332 lines.
+`tools/install/platform/runtime.py` and `test_runtime.py` (311 and 226, the local service supervisor),
+and `tools/live-smoke/browser.mjs` (89, the web view's live browser sitting) with its probe rule and
+cases: 1421 lines in the files.
 
 ## The rows
 
