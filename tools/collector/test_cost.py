@@ -24,17 +24,18 @@ FAKE_GH = HERE / 'fixtures' / 'collector-factory' / 'fake_gh.py'
 SCRIPT = HERE / 'cost.py'
 REPO, PR, NOW = 'example/factory', '4201', '2030-01-03T06:00:00Z'
 USAGE = ('--flow-threads', str(FLOW / 'assignments.json'), '--flow-usage', str(FLOW / 'usage.json'))
-# GitHub's closing-issue page for one PR, as tools/collector/metrics.py asks for it.
+# GitHub's answer for one PR: its own merge time and its closing issues.
 LINKS = ['api', 'graphql', '-f', 'query=query($owner:String!,$name:String!,$number:Int!,$cursor:String)'
-         '{repository(owner:$owner,name:$name){pullRequest(number:$number){closingIssuesReferences'
+         '{repository(owner:$owner,name:$name){pullRequest(number:$number){mergedAt closingIssuesReferences'
          '(first:100,after:$cursor){nodes{number repository{nameWithOwner}} pageInfo{hasNextPage endCursor}}}}}',
          '-f', 'owner=example', '-f', 'name=factory', '-F', 'number=' + PR]
 
 
-def closes(*tickets):
+def closes(*tickets, merged='2030-01-02T03:15:00Z'):
     nodes = [{'number': t, 'repository': {'nameWithOwner': REPO}} for t in tickets]
     page = {'nodes': nodes, 'pageInfo': {'hasNextPage': False, 'endCursor': None}}
-    return {'stdout': json.dumps({'data': {'repository': {'pullRequest': {'closingIssuesReferences': page}}}})}
+    pull = {'mergedAt': merged, 'closingIssuesReferences': page}
+    return {'stdout': json.dumps({'data': {'repository': {'pullRequest': pull}}})}
 
 
 def without(*fragments):
@@ -110,7 +111,7 @@ class CostLine(unittest.TestCase):
     def test_no_line_without_one_merged_ticket(self):
         cases = {
             'not merged yet': (('--now', '2030-01-02T02:30:00Z'), closes(4101), None, 'not merged'),
-            'superseded by a merged PR': (('--now', NOW, *USAGE), closes(4101), superseded, 'not merged'),
+            'superseded by a merged PR': (('--now', NOW, *USAGE), closes(4101, merged=None), superseded, 'not merged'),
             'no ticket': (('--now', NOW), closes(), None, 'closes no ticket'),
             'two tickets': (('--now', NOW), closes(4101, 4102), None, 'closes more than one ticket'),
             'links unreadable': (('--now', NOW), None, None, 'closing tickets could not be read'),

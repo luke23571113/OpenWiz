@@ -13,7 +13,7 @@ are the flow fact's private role assignments and daily usage exports;
 without them builder and reviewer are unknown. `--now` fixes the clock.
 
 Exit 0 with the line; 1, with nothing on stdout, when the PR closes no
-ticket or more than one, its tickets cannot be read, its ticket is not
+ticket or more than one, its tickets cannot be read, the PR itself is not
 merged, or the read is refused for privacy; 2 for a bad command line.
 """
 import argparse
@@ -33,19 +33,29 @@ class NoLine(Exception):
     """The PR has no one merged ticket to cost; the reason is printed."""
 
 
-def closing_tickets(repo, pr):
-    """The PR's same-repository closing tickets, every page."""
-    tickets, cursor, cursors = [], None, set()
+# The PR's own merge time and its closing tickets, in one fixed query.
+LINKS = ('query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name)'
+         '{pullRequest(number:$number){mergedAt closingIssuesReferences(first:100,after:$cursor)'
+         '{nodes{number repository{nameWithOwner}} pageInfo{hasNextPage endCursor}}}}}')
+
+
+def links(repo, pr):
+    """The PR's merge time (or None) and its same-repository closing tickets, every page."""
+    merged, tickets, cursor, cursors = None, [], None, set()
     while True:
-        links, cursor = M.connection(M.obj(M.graph(repo, cursor, pr).get('pullRequest')).get('closingIssuesReferences'))
-        for value in links:
+        node = M.obj(M.graphql(repo, LINKS, cursor, pr).get('pullRequest'))
+        if not cursors:
+            M.require('mergedAt' in node, 'missing merge timestamp')
+            merged = None if node['mergedAt'] is None else F.when(node['mergedAt'])
+        found, cursor = M.connection(node.get('closingIssuesReferences'))
+        for value in found:
             issue = M.obj(value)
             owner = M.obj(issue.get('repository')).get('nameWithOwner')
             M.require(type(owner) is str, 'invalid linked issue')
             if owner.casefold() == repo.casefold():
                 tickets.append(M.integer(issue.get('number')))
         if cursor is None:
-            return sorted(set(tickets))
+            return merged, sorted(set(tickets))
         M.require(cursor not in cursors, 'repeated link cursor')
         cursors.add(cursor)
 
@@ -80,7 +90,7 @@ UNKNOWN = {'builder': {'credits': None, 'tokens': None}, 'reviewer': {'credits':
 
 def cost_line(repo, pr, *, clock=F.now, flow_threads=None, flow_usage=()):
     try:
-        tickets = closing_tickets(repo, pr)
+        merged, tickets = links(repo, pr)
     except (M.ReadError, ValueError, TypeError, KeyError):
         raise NoLine(f"PR #{pr}'s closing tickets could not be read")
     if not tickets:
@@ -88,14 +98,14 @@ def cost_line(repo, pr, *, clock=F.now, flow_threads=None, flow_usage=()):
     if len(tickets) > 1:
         raise NoLine(f'PR #{pr} closes more than one ticket')
     ticket, = tickets
+    if merged is None or merged > F.when(clock()):
+        raise NoLine(f'PR #{pr} is not merged')
     try:
         doc = F.read(repo, ['flow'], tickets=[ticket], clock=clock, flow_threads=flow_threads, flow_usage=flow_usage)
     except F.Refused:
         raise NoLine('the read was refused for privacy')
     value = doc['factory']['flow']['value']
     row = next((t for t in value['tickets'] if t['ticket'] == ticket), None) if value else None
-    if row is not None and row['state'] != 'unknown' and (row['state'] != 'merged' or pr not in row['pull_requests']):
-        raise NoLine(f'PR #{pr} or its ticket #{ticket} is not merged')
     return line(pr, ticket, row['cost'] if row else UNKNOWN)
 
 
