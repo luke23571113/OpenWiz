@@ -47,6 +47,8 @@
     "docs/evidence/1093/**",
     "docs/evidence/1097/**",
     "docs/evidence/1172/**",
+    "kernel/records.v1.md",
+    "kernel/records-kit/**",
     "loops/**",
     "release/**",
     "tests/**",

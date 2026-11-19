@@ -1,0 +1,169 @@
+# Red run: python3 -I kernel/records-kit/test_check.py, with check.py reading trackers but no rules yet (exit 1)
+test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) ... 
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [wrong-label] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [held-and-ready] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [ticket-carries-spec] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [spec-lacks-label] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [two-live-notes] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [unreadable-note] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [missing-template-part] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [spec-missing-section] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [human-missing-done-by] ... FAIL
+  test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [blocker-not-planned] ... FAIL
+test_reader_refuses_any_other_shape (__main__.Kit.test_reader_refuses_any_other_shape) ... ok
+test_valid_tracker_passes (__main__.Kit.test_valid_tracker_passes) ... ok
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [wrong-label]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 L1: label building says what an agent is doing; read it from GitHub'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 L1: label building says what an agent is doing; read it from GitHub']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [held-and-ready]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 L2: held beside ready-for-agent'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 L2: held beside ready-for-agent']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [ticket-carries-spec]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 L3: a ticket carries spec'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 L3: a ticket carries spec']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [spec-lacks-label]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 L3: its spec #1 lacks spec', '#4 L3: its spec #1 lacks spec'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 L3: its spec #1 lacks spec', '#4 L3: its spec #1 lacks spec']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [two-live-notes]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 S1: 2 live builder notes: 202, 208'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 S1: 2 live builder notes: 202, 208']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [unreadable-note]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 S2: note 208 does not read as openwiz:status v1'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 S2: note 208 does not read as openwiz:status v1']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [missing-template-part]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 T1: ticket lacks ## Proof', '#2 T1: ticket lacks **Relies on:**'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 T1: ticket lacks ## Proof', '#2 T1: ticket lacks **Relies on:**']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [spec-missing-section]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#1 T1: spec lacks ## Out of Scope'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#1 T1: spec lacks ## Out of Scope']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [human-missing-done-by]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#4 T1: ticket lacks ## Done by'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#4 T1: ticket lacks ## Done by']) : 
+
+======================================================================
+FAIL: test_each_planted_break_is_reported (__main__.Kit.test_each_planted_break_is_reported) [blocker-not-planned]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "./kernel/records-kit/test_check.py", line 57, in test_each_planted_break_is_reported
+    self.assertEqual((code, out), (1, want), err)
+AssertionError: Tuples differ: (0, []) != (1, ['#2 B2: blocker #9 is closed as not_planned, not completed'])
+
+First differing element 0:
+0
+1
+
+- (0, [])
++ (1, ['#2 B2: blocker #9 is closed as not_planned, not completed']) : 
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.488s
+
+FAILED (failures=10)
