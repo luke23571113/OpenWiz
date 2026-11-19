@@ -389,10 +389,13 @@ jobs:
           python3 -I tools/fleet-load/test_carried.py
           python3 -I tools/fleet-load/test_seams.py
           python3 -I tools/collector/test_ci3.py Smoke
-      # #1419: the records v1 claim and lease model check and its broken
-      # variants (seconds, offline). Folds into #1394's kit-tests step.
-      - name: The records v1 claim and lease model
+      # #1394/#1417/#1419: the kernel kits' own offline tests and the records v1
+      # claim and lease model check with its broken variants (about 20s), so a
+      # break in a kit's checker, template, shared helpers or the model fails CI.
+      - name: The kernel kits' tests
         run: |
+          python3 -I kernel/records-kit/test_check.py
+          python3 -I kernel/driver-kit/test_kit.py
           python3 -I kernel/records/model/test_model.py
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
