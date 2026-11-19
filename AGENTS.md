@@ -83,7 +83,7 @@ Only a ready PR's first ordinary attempt against `main`, with current live base/
 
 ## Doing the work
 
-- **Install the pre-push hook first,** once per clone: `git config core.hooksPath .githooks`. Each push then runs format and the fast checks on the commit it sends, and stops on a mistake ([.githooks/pre-push](.githooks/pre-push)).
+- **Install the pre-push hook first,** once per clone: `git config core.hooksPath .githooks`. The hook checks the commits being pushed for privacy violations and stops the push if the check refuses them ([.githooks/pre-push](.githooks/pre-push)). CI runs format, lint and tests.
 - One ticket attempt, one owner, one branch. Stay inside the ticket's owned paths.
 - **Live tests and spikes (ADR 0015).** Full live tests run on the PC (the always-on CloudRoom hub), from a Local thread there. Under ADR 0016, an approved live kit covers its own steps without per-step prompts; use only its throwaway test threads within approved counts, allowlist and spending. ADR 0020's future public-source release path retains this scope; it creates no live authority before verified cut-over.
   A quick Mac check is optional feedback after publication under ADR 0020, not another pre-publish human gate. Any separately authorized check records the version, result and limits; no Mac installation or access is authorized by this paragraph.
