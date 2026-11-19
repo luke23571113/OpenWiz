@@ -1,0 +1,41 @@
+F.F
+======================================================================
+FAIL: test_merged_ticket_and_whole_spec (__main__.FlowFacts.test_merged_ticket_and_whole_spec)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 279, in test_merged_ticket_and_whole_spec
+    self.assertEqual(ticket['cost'], {
+AssertionError: {'bui[77 chars]0}, 'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': None} != {'bui[77 chars]0}, 'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 10}
+  {'builder': {'credits': 7, 'tokens': 550},
+-  'ci_minutes': None,
+?                ^^^^
+
++  'ci_minutes': 10,
+?                ^^
+
+   'reviewer': {'credits': 2, 'tokens': 130},
+   'total': {'credits': 9, 'tokens': 680}}
+
+======================================================================
+FAIL: test_whole_spec_counts_shared_pull_once (__main__.FlowFacts.test_whole_spec_counts_shared_pull_once)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 298, in test_whole_spec_counts_shared_pull_once
+    self.assertEqual((spec['tickets'], spec['elapsed_seconds'], spec['review_rounds']), ([4101, 4102], 18000, 1))
+AssertionError: Tuples differ: ([4101, 4102], 18000, 2) != ([4101, 4102], 18000, 1)
+
+First differing element 2:
+2
+1
+
+- ([4101, 4102], 18000, 2)
+?                       ^
+
++ ([4101, 4102], 18000, 1)
+?                       ^
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.058s
+
+FAILED (failures=2)

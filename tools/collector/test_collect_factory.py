@@ -288,6 +288,17 @@ class FlowFacts(unittest.TestCase):
         self.assertEqual((spec['cost'], spec['stages_seconds'], spec['elapsed_seconds'], spec['review_rounds']),
                          (ticket['cost'], ticket['stages_seconds'], 9000, 1))
 
+    # catches: dropping a second spec member or counting a shared PR's
+    # review twice at spec level or assigning all its runner minutes to each ticket.
+    def test_whole_spec_counts_shared_pull_once(self):
+        p, _ = cli('../flow/world-shared.json', *self.args)
+        value = envelope(p)['factory']['flow']['value']
+        self.assertEqual([t['ticket'] for t in value['tickets']], [4101, 4102])
+        spec, = value['specs']
+        self.assertEqual((spec['tickets'], spec['elapsed_seconds'], spec['review_rounds']), ([4101, 4102], 18000, 1))
+        self.assertEqual([t['cost']['ci_minutes'] for t in value['tickets']], [None, None])
+        self.assertEqual(spec['cost']['ci_minutes'], 10)
+
     # catches: unreadable jobs or missing usage emitted as zero, or a missing
     # cost source taking unrelated timing and progress away.
     def test_missing_sources_keep_independent_facts(self):
