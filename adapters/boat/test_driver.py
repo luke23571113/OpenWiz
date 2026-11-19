@@ -61,8 +61,8 @@ class Boat(unittest.TestCase):
             return [(c['id'], c['body'].split('step: ')[1].split('\n')[0]) for c in json.load(f)['comments']]
 
     def test_kit_passes_all_five(self):
-        # catches: a wake that opens a new boat conversation (a second note), a stop that leaves the local
-        # `boat prompt` running, a start that answers before the run exists, a token passed through.
+        # catches: a wake that opens a new boat conversation (a second note), a start that answers before
+        # the agent's turn is queued, a token passed into the `boat` processes the driver starts.
         p = subprocess.run([sys.executable, '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
                             '--ticket', '7', '--harness', 'claude', '--model', 'claude-opus-5-5',
                             '--tracker', self.tracker, '--wait', '8'],

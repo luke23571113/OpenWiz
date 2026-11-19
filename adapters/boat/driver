@@ -1,22 +1,35 @@
 #!/usr/bin/env python3
-"""A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
+"""The boat.dev driver (kernel/driver.v1.md): each run is one boat.dev sandbox and one agent conversation in it.
 
-Each turn of a run is a local process: `start` runs the first turn, `wake` another, `stop` ends them.
-Adapt `command` to your harness, and `launch` and `end` to your host. Linux; standard library only.
+`start` creates a sandbox (`boat new`) and prompts its integrated agent in a new conversation; `wake`
+resumes the sandbox if boat stopped it and prompts that conversation again; `stop` ends the local
+prompts, interrupts the agent and stops the sandbox (`boat stop` keeps its disk). It calls only the
+user's own signed-in `boat` CLI and never reads a login. Linux; standard library only.
 """
-import json, os, re, secrets, shutil, signal, subprocess, sys
+import json, os, re, secrets, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE = os.environ.get('OPENWIZ_TEMPLATE_STATE') or os.path.expanduser('~/.local/state/openwiz-template')
-VERSION = {'driver': 'boat', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
+STATE = os.environ.get('OPENWIZ_BOAT_STATE') or os.path.expanduser('~/.local/state/openwiz-boat')
+VERSION = {'driver': 'boat', 'records': ['openwiz:records v1'],
+           'can': ['start', 'wake', 'stop', 'many-at-once', 'own-sandbox']}
+# The agent harnesses boat runs with `boat prompt --provider` (docs.boat.dev, 2026-11-19).
+HARNESSES = ('claude', 'codex', 'pi', 'opencode', 'prime', 'kimi', 'mistral')
 START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
+ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
+QUEUED_WAIT = 90  # seconds for a prompt to be queued; the kit gives a command 120
 
 
 class Refused(Exception):
     pass
+
+
+def line(text):
+    """One line of at most 300 characters, as driver v1's errors need."""
+    text = ' '.join(str(text).split()) or 'no detail'
+    return text if len(text) <= 300 else text[:297] + '...'
 
 
 def unique(pairs):
@@ -40,27 +53,94 @@ def read(fields):
     return req
 
 
-def command(req, woken):
-    """Adapt: your harness's own signed-in command. Never add a login or a token."""
-    what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
-    prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
-    return [req['harness'], '--model', req['model'], '-p', prompt]
+def boat_program():
+    found = shutil.which('boat')
+    if not found:
+        raise Refused('the boat CLI is not installed here',
+                      'install it (curl -fsSL https://boat.dev/install | sh), sign in to it yourself, then retry')
+    return found
 
 
-def launch(req, run, woken):
-    """Start one turn; return what `end` needs to stop it."""
-    if not shutil.which(req['harness']):
-        raise Refused('harness %s is not installed here' % req['harness'],
-                      'install %s and sign in to it yourself, then start again' % req['harness'])
+def boat_error(what, lines, stderr=''):
+    """Refused, from boat's last `{"event": "error"}` line or its stderr."""
+    errors = [x for x in lines if x.get('event') == 'error']
+    detail = '%s (%s)' % (errors[-1].get('error'), errors[-1].get('code')) if errors else stderr or 'no answer'
+    if 'provider_not_configured' in detail:
+        step = "connect that harness's key or subscription in boat's dashboard (Agents & Proxying) yourself"
+    elif re.search(r'sign|login|auth|401', detail, re.I):
+        step = 'sign in to boat yourself with `boat login`'
+    else:
+        step = 'fix what boat said'
+    return Refused(line('boat %s failed: %s' % (what, detail)), line(step + ', then retry'))
+
+
+def parse(text):
+    found = []
+    for raw in text.splitlines():
+        try:
+            item = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(item, dict):
+            found.append(item)
+    return found
+
+
+def boat(*args):
+    """Run one `boat ... --json` command to its end; its JSON lines, or Refused."""
     try:
-        return subprocess.Popen(command(req, woken), env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
-                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid
-    except OSError as e:
-        raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror), 'check that it runs by hand')
+        p = subprocess.run([boat_program()] + list(args) + ['--json'], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=100)
+    except subprocess.TimeoutExpired:
+        raise Refused('boat %s took too long' % args[0], 'check `boat list --all` and retry')
+    lines = parse(p.stdout)
+    if p.returncode != 0 or any(x.get('event') == 'error' for x in lines):
+        raise boat_error(args[0], lines, p.stderr)
+    return lines
 
 
-def end(pid, run):
-    """Stop one turn: signal its process group only while it is still this run's."""
+def prompt_text(req, woken):
+    what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
+    return ('%s: GitHub repository %s, ticket #%d, with the %s skill. Clone the repository if it is not here '
+            'yet, and follow its instructions.' % (what, req['repository'], req['ticket'], req['skill']))
+
+
+def path(run, name):
+    return os.path.join(STATE, '%s.%s' % (run, name))
+
+
+def prompt(state, run):
+    """Start one agent turn as a local `boat prompt` in its own process group; wait until boat queues it.
+
+    The turn's output goes to an owner-only log in the state folder, which `stop` deletes."""
+    req, turn = state['request'], len(state['turns'])
+    args = [boat_program(), 'prompt', state['sandbox']]
+    args += ['--resume', state['conversation']] if state['conversation'] else ['--new']
+    args += ['--provider', req['harness'], '--model', req['model'], '--json', prompt_text(req, turn > 0)]
+    log = path(run, '%d.log' % turn)
+    with open(os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as out:
+        p = subprocess.Popen(args, env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
+    state['turns'].append(p.pid)
+    saved(run, state)
+    end = time.monotonic() + QUEUED_WAIT
+    while True:
+        with open(log) as f:
+            lines = parse(f.read())
+        queued = [x for x in lines if x.get('event') == 'queued' and ID.fullmatch(str(x.get('conversationId')))]
+        if queued:
+            state['conversation'] = queued[0]['conversationId']
+            return saved(run, state)
+        if p.poll() is not None or time.monotonic() > end:
+            end_turn(p.pid, run)
+            p.poll()
+            with open(log) as f:
+                raise boat_error('prompt', lines, f.read().strip()[-200:])
+        time.sleep(0.2)
+
+
+def end_turn(pid, run):
+    """Stop one local turn: signal its process group only while it is still this run's."""
     try:
         with open('/proc/%d/environ' % pid, 'rb') as f:
             if ('OPENWIZ_RUN=' + run).encode() in f.read().split(b'\0'):
@@ -69,19 +149,81 @@ def end(pid, run):
         pass
 
 
+def sandbox_state(sandbox):
+    info = [x for x in boat('info', sandbox) if 'state' in x]
+    return str(info[-1]['state']) if info else 'unknown'
+
+
+def end_sandbox(state, run):
+    """End everything the run started: its local turns, the agent's work and the sandbox itself."""
+    for pid in state['turns']:
+        end_turn(pid, run)
+    if state['sandbox'] and sandbox_state(state['sandbox']) not in ('stopped', 'archived'):
+        if state['conversation']:
+            boat('interrupt', state['sandbox'])
+        boat('stop', state['sandbox'])
+    for name in os.listdir(STATE):
+        if name.startswith(run + '.') and name.endswith('.log'):
+            os.remove(os.path.join(STATE, name))
+    state['ended'] = True
+    return saved(run, state)
+
+
 def saved(run, state=None):
-    path = os.path.join(STATE, run + '.json')
     if state is not None:
         os.makedirs(STATE, mode=0o700, exist_ok=True)
-        with open(path + '.new', 'w') as f:
+        with open(path(run, 'json.new'), 'w') as f:
             json.dump(state, f)
-        os.replace(path + '.new', path)
+        os.replace(path(run, 'json.new'), path(run, 'json'))
         return state
     try:
-        with open(path) as f:
+        with open(path(run, 'json')) as f:
             return json.load(f)
     except FileNotFoundError:
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
+
+
+def start(req):
+    if req['harness'] not in HARNESSES:
+        raise Refused('boat has no harness %s' % req['harness'], 'use one of: ' + ', '.join(HARNESSES))
+    run = 'run-' + secrets.token_hex(6)
+    state = saved(run, {'request': req, 'sandbox': None, 'conversation': None, 'turns': [],
+                        'stopped': False, 'ended': False})
+    ready = [x for x in boat('new', '--name', 'openwiz-' + run) if x.get('event') == 'ready']
+    if not ready or not ID.fullmatch(str(ready[-1].get('id'))):
+        raise Refused('boat new gave no sandbox id', 'check `boat list` and stop any new sandbox yourself')
+    state['sandbox'] = ready[-1]['id']
+    saved(run, state)
+    try:
+        prompt(state, run)
+    except Refused:
+        state['stopped'] = True
+        end_sandbox(state, run)
+        raise
+    return {'run': run}
+
+
+def wake(run):
+    state = saved(run)
+    if state['stopped']:
+        raise Refused('run %s is stopped' % run, 'start a new run')
+    now = sandbox_state(state['sandbox'])
+    if now in ('stopped', 'archived'):
+        boat('resume', state['sandbox'])
+    elif now in ('stopping', 'archiving'):
+        raise Refused('the sandbox of run %s is still stopping' % run, 'wake it again in a minute')
+    prompt(state, run)
+    return {'run': run, 'woke': True}
+
+
+def stop(run):
+    state = saved(run)
+    if not state['stopped']:
+        state['stopped'] = True
+        saved(run, state)
+    if not state['ended']:
+        end_sandbox(state, run)
+    return {'run': run, 'stopped': True}
 
 
 def answer(cmd):
@@ -91,22 +233,10 @@ def answer(cmd):
         with open(os.path.join(HERE, 'schema.json')) as f:
             return json.load(f)
     if cmd == 'start':
-        req, run = read(START), 'run-' + secrets.token_hex(6)
-        saved(run, {'request': req, 'turns': [launch(req, run, False)], 'stopped': False})
-        return {'run': run}
+        return start(read(START))
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
-        state = saved(run)
-        if cmd == 'stop':
-            for pid in state['turns']:
-                end(pid, run)
-            saved(run, dict(state, stopped=True))
-            return {'run': run, 'stopped': True}
-        if state['stopped']:
-            raise Refused('run %s is stopped' % run, 'start a new run')
-        state['turns'].append(launch(state['request'], run, True))
-        saved(run, state)
-        return {'run': run, 'woke': True}
+        return wake(run) if cmd == 'wake' else stop(run)
     raise Refused('unknown command', 'run one of: version, schema, start, wake, stop')
 
 

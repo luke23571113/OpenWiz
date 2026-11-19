@@ -103,10 +103,12 @@ def prompt(args):
 
 def main():
     cmd, rest = (ARGS[0], ARGS[1:]) if ARGS else ('', [])
-    if cmd == 'new' and len(rest) == 3 and rest[0] == '--json' and rest[1] == '--name':
+    if cmd != 'prompt':  # every call the driver makes passes --json once, anywhere
+        rest = [a for a in rest if a != '--json'] + ['--json'] * (rest.count('--json') == 1)
+    if cmd == 'new' and len(rest) == 3 and rest[0] == '--name' and rest[2] == '--json':
         def create(state):
             sid = 'bx_fake%04d' % (len(state['sandboxes']) + 1)
-            state['sandboxes'][sid] = {'name': rest[2], 'state': 'running', 'conversations': {}, 'interrupts': 0}
+            state['sandboxes'][sid] = {'name': rest[1], 'state': 'running', 'conversations': {}, 'interrupts': 0}
             return sid
         sid = update(create)
         say(event='creating', id=sid)
