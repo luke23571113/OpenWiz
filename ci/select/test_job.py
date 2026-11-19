@@ -512,5 +512,48 @@ class Planted(unittest.TestCase):
     def test_an_edit_another_lane_must_catch_passes_here(self):
         self.assertEqual(self.run_planted(('web',), {'rust:test:x': 0, 'rust:test:y': 0}), 0)
 
+    def run_missing(self, catchers, pruned):
+        """planted.main() for the rust lane on a case whose file this checkout lacks."""
+        import planted
+        import tempfile as tf
+        with tf.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'map.json'), 'w') as f:
+                json.dump({'schema': pick.MAP_SCHEMA, 'commit': COMMIT,
+                           'units': {'rust:test:x': {'files': ['f.txt'], 'dirs': []}}}, f)
+            ran = []
+            saved = (planted.CASES, planted.HERE, planted.trace.commands, planted.trace.plain_run,
+                     getattr(planted, 'pruned', None), os.getcwd())
+            planted.CASES = [('docs/gone.md', 'old', 'new', catchers)]
+            planted.HERE = tmp
+            planted.trace.commands = lambda lane, root, threads: {'rust:test:x': (['x'], root)}
+            planted.trace.plain_run = lambda argv, cwd, env, log: ran.append(argv) or (0, 0.0)
+            planted.pruned = lambda root, lane, path: pruned
+            out = os.path.join(tmp, 'out.jsonl')
+            try:
+                os.chdir(tmp)
+                rc = planted.main(['rust', out])
+            finally:
+                (planted.CASES, planted.HERE, planted.trace.commands, planted.trace.plain_run, planted.pruned,
+                 cwd) = saved
+                if planted.pruned is None:
+                    del planted.pruned
+                os.chdir(cwd)
+            with open(out) as f:
+                return rc, json.loads(f.read()), ran
+
+    def test_a_case_its_lane_prunes_and_need_not_catch_is_recorded_not_planted(self):
+        # catches: the web lane crashing on a Rust-only doc its prune deleted (#1335, web-export).
+        rc, row, ran = self.run_missing(('web',), True)
+        self.assertEqual((rc, row['path'], row['verdict'], ran),
+                         (0, 'docs/gone.md', 'not in this lane: its prune deletes it', []))
+
+    def test_a_case_whose_file_is_missing_otherwise_fails_with_its_name(self):
+        # catches: a planted case that silently proves nothing, or dies on a bare FileNotFoundError.
+        for catchers, pruned in ((('web',), False), (('rust',), True), (('rust',), False)):
+            with self.subTest(catchers=catchers, pruned=pruned):
+                with self.assertRaises(SystemExit) as e:
+                    self.run_missing(catchers, pruned)
+                self.assertIn('docs/gone.md', str(e.exception))
+
 if __name__ == '__main__':
     unittest.main()
