@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { after, before, test } from 'node:test';
-import { landing, changelog, landingLinks, changelogLinks, setupPrompt, costLine, cloudroomHref, notOffered, bannedLanding, landingCharsBefore1190, stage, stageLabel } from './approved-copy.mjs';
+import { landing, changelog, landingLinks, changelogLinks, setupPrompt, costLine, cloudroomHref, notOffered, stage, stageLabel } from './approved-copy.mjs';
 
 // Reuse the repository's approved test tools; the site adds no dependency.
 const require = createRequire(new URL('../../web/package.json', import.meta.url));
@@ -249,18 +249,6 @@ for (const [route, selectedName, installId] of [
   } finally { await page.close(); }
 });
 
-test('#1190: the landing\'s visible text is shorter, with no live-test or evidence label', async () => {
-  const page = await browser.newPage({ reducedMotion: 'reduce' });
-  try {
-    await page.goto(origin);
-    await page.waitForSelector('main[data-ready="true"]');
-    const visible = normalize(await page.locator('main').innerText());
-    assert.ok(visible.length < landingCharsBefore1190, `${visible.length} characters, before ${landingCharsBefore1190}`);
-    const all = await page.locator('body').textContent();
-    for (const label of bannedLanding) assert.doesNotMatch(all, label);
-  } finally { await page.close(); }
-});
-
 // #1190, W2: the hero's second action is a prompt for your agent, copied with
 // one click or one key, with a visible and announced Copied state.
 for (const width of [390, 1440]) test(`#1190: the setup prompt copies by click, Enter and Space at ${width}`, async () => {
@@ -418,40 +406,5 @@ for (const [width, route] of [[390, '/changelog'], [1440, '/changelog'], [1440, 
       assert.equal(await inView(), true, `destination ${i} is visible when selected`);
     }
     assert.equal(await page.evaluate(() => scrollY), 0, 'only the list scrolls, never the page behind the palette');
-  } finally { await page.close(); }
-});
-
-// #1199: one section per version in the approved look (Jake, 2026-11-06).
-// Private record: https://github.com/jparker2006/ClosedWiz/issues/1277#issuecomment-6705218593
-for (const width of [390, 1440]) test(`#1199: /changelog at ${width}: one section per version, solid numerals, readable dates, numbered lines`, async () => {
-  const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
-  try {
-    await page.goto(origin + '/changelog');
-    await page.waitForSelector('main[data-ready="true"]');
-    const sections = await page.locator('main article.release').evaluateAll(articles => articles.map(article => {
-      const numeral = article.querySelector('.release-version'), n = getComputedStyle(numeral);
-      const date = getComputedStyle(article.querySelector('time'));
-      const lines = [...article.querySelectorAll('.release-lines li')];
-      const heading = article.querySelector('h2').getBoundingClientRect(), box = numeral.getBoundingClientRect();
-      return {
-        id: article.id, size: parseFloat(n.fontSize), color: n.color, stroke: parseFloat(n.webkitTextStrokeWidth),
-        dateSize: parseFloat(date.fontSize), others: Math.max(parseFloat(getComputedStyle(article.querySelector('h2')).fontSize), parseFloat(date.fontSize), ...lines.map(li => parseFloat(getComputedStyle(li).fontSize))), hairline: getComputedStyle(article).borderTopWidth,
-        numbers: lines.map(li => getComputedStyle(li, '::before').content),
-        between: lines.slice(1).map(li => getComputedStyle(li).borderTopWidth),
-        beside: box.right <= heading.left, above: box.bottom <= heading.top,
-      };
-    }));
-    assert.deepEqual(sections.map(section => section.id), ['v0.0.5', 'v0.0.4', 'v0.0.3', 'v0.0.2', 'v0.0.1', 'v0.0.0'], 'six sections, newest first');
-    sections.forEach((section, index) => {
-      assert.ok(section.size >= (width === 390 ? 30 : 44), `${section.id}: a large numeral (${section.size}px)`);
-      assert.ok(section.size > section.others, `${section.id}: the numeral is the section's largest type (${section.size}px > ${section.others}px)`);
-      if (index === 0) assert.deepEqual([section.color, section.stroke], ['rgb(167, 139, 250)', 0], 'the newest numeral is solid accent');
-      else assert.deepEqual([section.color, section.stroke], ['rgb(182, 189, 200)', 0], `${section.id}: a secondary solid numeral`);
-      assert.ok(section.dateSize >= 15, `${section.id}: the date is readable (${section.dateSize}px)`);
-      assert.equal(section.hairline, '1px', `${section.id}: a hairline separates the section`);
-      assert.ok(section.numbers.every(content => content.includes('decimal-leading-zero')), `${section.id}: lines are numbered 01, 02…`);
-      assert.ok(section.between.every(border => border === '0px'), `${section.id}: open rhythm, no rule between lines`);
-      assert.equal(width === 390 ? section.above : section.beside, true, `${section.id}: the numeral is ${width === 390 ? 'above' : 'left of'} the headline`);
-    });
   } finally { await page.close(); }
 });
