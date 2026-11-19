@@ -64,7 +64,8 @@ def room(*args):
     except subprocess.TimeoutExpired:
         raise Refused('room-cli thread %s did not answer within 100 seconds; its outcome is unknown' % args[1],
                       'read `room-cli thread list` before you try again, so nothing happens twice')
-    said = ([x.strip() for x in p.stderr.splitlines() if x.strip()] or ['no reason given'])[-1][:200]
+    said = ([x.strip() for x in p.stderr.splitlines() if x.strip()] or ['no reason given'])[-1]
+    said = re.sub(r'thr_[A-Za-z0-9_-]*', '<thread>', said)[:200]  # a run id never shows its thread
     return p.returncode, p.stdout, said
 
 
