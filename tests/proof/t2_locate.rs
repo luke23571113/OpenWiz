@@ -24,8 +24,8 @@ use openwiz_adapter_cloudroom::locate::{
 };
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-#[path = "../support/dirs.rs"]
-mod dirs;
+// The proof target's own `dirs` module (#1264: this file moved into it).
+use crate::dirs;
 
 // #1264: the one helper this file used from the deleted `t2_process.rs`,
 // moved here unchanged when this file moved from the `service` target.
