@@ -32,3 +32,18 @@ Results: all nine CLI proofs pass after enforcement. The initial red run is
 diff incorrectly grants 600 deleted lines of credit when main advances.
 `passing.txt` records the complete passing fixture suite. No campaign speed
 claim is made from these local logs; timing comparisons require CI lanes.
+
+## R1: the budget step must be classified by the collector
+
+Claim: the approved budget step has exactly one CI measurement category,
+so the workflow coverage check and CI benchmark can read PR runs containing it.
+Existing owning proof:
+`tools/collector/test_ci3.py::Steps::test_check_steps_covers_ci_and_refuses_a_step_with_no_row`.
+Catches: a new CI step missing from the collector table, or a checker that
+accepts an unknown step. Available locally through `ci3.py check-steps` and
+`test_ci3.py`; no new test is needed because this existing test fails for R1.
+`red-r1.txt` records both the checker refusal and this test's assertion failure.
+J110 kind 1 covers this ticket's one exact `build` row in
+`tools/collector/steps.tsv`, beside the carriage guard; it supports the owned
+PR workflow step without changing that workflow or the collector's logic.
+R2 (#1162) and R3 (#1163) remain separate polish work.
