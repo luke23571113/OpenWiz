@@ -1278,32 +1278,10 @@ jobs:
         run: |
           python3 -I .github/actions/docs-only/run.py check-shards "$RUNNER_TEMP/ci-plan" skill:launch-fleet "$RUNNER_TEMP"/shard-ran/launch-fleet-*.json
           python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" skill:launch-fleet "$RUNNER_TEMP/receipts"
-      - name: Every planned lane passed
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          printf '%s' "$NEEDS" > "$RUNNER_TEMP/needs.json"
-          python3 -I .github/actions/docs-only/run.py finish "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts"
-      # C7 shadow evidence: finish is not terminal ci or complete coverage.
-      - name: Preserve incomplete combined-main evidence
-        id: main_shadow
-        continue-on-error: true
-        if: success() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main'))
-        run: |
-          mkdir -p "$RUNNER_TEMP/main-shadow"
-          python3 -I ci/main-batch/shadow.py capture "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts" "$RUNNER_TEMP/main-shadow/observation.json"
-      - name: Keep the incomplete combined-main evidence
-        continue-on-error: true
-        if: success() && steps.main_shadow.outcome == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main'))
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: main-shadow-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/main-shadow/observation.json
-          if-no-files-found: error
-          retention-days: 30
       # #1335 (F3): every job's time at this head, slowest first, on the run's
-      # page. Jobs that start after this check (select-map, the web-test
-      # bridge) show as not finished. A record only: it never fails ci.
+      # page; every lane has finished (ci needs them all). This job and those
+      # after it (select-map, the web-test bridge) show as not finished. A
+      # record only: it never fails ci, and stays out of the C7 shadow block.
       - name: Record each job's time
         if: always()
         continue-on-error: true
@@ -1337,6 +1315,29 @@ jobs:
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('### Job times (#1335)\n\n```text\n' + text + '```\n')
           PY_TIMES
+      - name: Every planned lane passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s' "$NEEDS" > "$RUNNER_TEMP/needs.json"
+          python3 -I .github/actions/docs-only/run.py finish "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts"
+      # C7 shadow evidence: finish is not terminal ci or complete coverage.
+      - name: Preserve incomplete combined-main evidence
+        id: main_shadow
+        continue-on-error: true
+        if: success() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main'))
+        run: |
+          mkdir -p "$RUNNER_TEMP/main-shadow"
+          python3 -I ci/main-batch/shadow.py capture "$RUNNER_TEMP/ci-plan" "$RUNNER_TEMP/needs.json" "$RUNNER_TEMP/receipts" "$RUNNER_TEMP/main-shadow/observation.json"
+      - name: Keep the incomplete combined-main evidence
+        continue-on-error: true
+        if: success() && steps.main_shadow.outcome == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main'))
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: main-shadow-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/main-shadow/observation.json
+          if-no-files-found: error
+          retention-days: 30
 
   # Transition bridge: the ruleset still names web-test until the orchestrator
   # switches it at merge. It follows ci so that this PR can satisfy that old
