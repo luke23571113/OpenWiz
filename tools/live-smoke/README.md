@@ -20,8 +20,7 @@ agent smoke the pre-publish gate. This tool executes a reviewed run sheet;
 fixture success or a dry run is not a live pass. It never publishes, tags,
 installs, activates a service, changes permissions or pushes a release branch.
 No dependency is added. Python 3 on Linux, the accepted prebuilt programs and
-existing PC kit are used; browser steps use the project's approved
-`playwright-core` and the installed Chromium.
+existing PC kit are used.
 
 Start from PR #1765's `private/evidence/release-prep/common-live-check.md` and
 version plans, `.claude/skills/live-quick-check/SKILL.md`, ADRs 0016/0019, and
@@ -51,7 +50,7 @@ phone reply, App permissions, read safety controls) is
 these steps, and its `release.gaps` lists the rest.
 
 The runner keeps its general capabilities (the fleet read-back block, the
-reviewed browser/cleanup probes) for kits without a `claims` declaration, which
+reviewed cleanup probe) for kits without a `claims` declaration, which
 mean #1844's full combined set. The sections below on those describe the runner,
 not this sheet.
 
@@ -96,8 +95,7 @@ inputs/kit or argv. This sheet has no App-permission step, so it needs no
 `OPENWIZ_SMOKE_APP_TOKEN`; token values in the kit environment are refused.
 
 **Never 7370 (#772).** On the PC, 7370 is my.openwiz.dev's server. Any step
-that reaches 7370 (`--port 7370`, the HTTP probe's port, a browser config
-origin), the old `default_terminal_port` key, or a launch that falls back to the
+that reaches 7370 (`--port 7370`, the HTTP probe's port), the old `default_terminal_port` key, or a launch that falls back to the
 default port (bare `openwiz`, `openwiz ui` without `--port`, bare
 `openwiz-terminal`) refuses before any step (`reserved_port`).
 
@@ -135,8 +133,7 @@ state directory. A run without it can resume but yields no receipts
 (`unbound_run`).
 
 In live mode a fleet-claim write is only the whole reviewed invocation of one
-of this folder's probes: a real `node` program (ELF, not a script) running
-`browser.mjs` with one config argument, or the runner's own Python running
+of this folder's probe: the runner's own Python running
 `-I cleanup.py --gh <ELF program> --repo R --ticket T --action unlabel|close`.
 A wrapper, even one whose arguments name a reviewed probe, is refused before any
 step. The fleet claim needs no write of its own: its evidence can be reads
@@ -211,34 +208,8 @@ private paths, prompts and credentials never enter reports/checkpoints.
 
 ## Browser observations
 
-Runner capability for combined kits; the SHIP-3 sheet has no browser step.
-
-`browser.mjs` takes one pinned private JSON config: `checkout`, `chromium`,
-`origin` (`http://127.0.0.1:PORT/` only), `viewport` (desktop or 390x844 phone),
-`allowed_requests` (exact `[method, path]` pairs), `max_writes` (0 or 1), optional
-`allowed_host` (the server's configured host), and `steps`. Each step has `kind`
-and either a CSS `selector` or exact accessible `role`/`name`. Kinds: `click`,
-`fill`/`press` with `value`, `visible`, `text`, `attribute` with `attribute`,
-`count`, `viewport` with `value`, and `offline` with a boolean `value`.
-Visible/text/attribute/count append observations to `facts`; the run sheet
-compares the **exact** resulting array. It also compares zero errors and the
-exact write count. Unknown requests abort before dispatch; no external pages,
-screenshots or saved browser profile. Chromium/context always close. The local
-Host/Origin emulation is recorded as a gap for real TLS/radios/WebKit.
-
-- Loops: desktop Views → Loops; wait for the reviewed loaded row selector, expand
-  healthy rows, compare every row/order/value to independent definitions/records.
-  Resize to phone; compare retained rows. Read-only config has `max_writes: 0`.
-- Cockpit: Views → Cockpit; compare exact Needs you and agent/project rows, inspect
-  one approved target/preview, cancel, verify no POST. Phone viewport retains
-  the grouping and honest gaps. Read-only config has `max_writes: 0`.
-- Decisions: navigate to Decisions; inspect the designated current ordinary
-  synthetic request, exact wording/target/effects, fill one harmless reply,
-  preview and confirm **once**. Allow exactly that target's messages POST;
-  `max_writes: 1`. Read back delivery and the orchestrator's saved source record
-  on a later event (`await`), never resend to make it resolve. Do not exercise a
-  live/release/publish approval. Optional network-cut observations consume no
-  extra write and uncertainty stops the run.
+The browser probe, `browser.mjs`, went with the web view in #1264: no kit drives
+a browser sitting any more, and `cleanup.py` is the one reviewed probe.
 
 No kit has a terminal claim: the visual terminal app was removed in 0.0.16
 (#776), so no step drives `openwiz ui` or a no-argument `openwiz`.
@@ -339,7 +310,6 @@ python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz 
 python3 -I tools/live-smoke/test_review.py
 python3 -I tools/live-smoke/test_kit.py          # #772: declared claims, owner-only inputs, 7370 refusal
 python3 -I tools/live-smoke/test_receipt.py      # also registered in tools/release/test.py (CI)
-node --check tools/live-smoke/browser.mjs
 cargo fmt --check
 ```
 

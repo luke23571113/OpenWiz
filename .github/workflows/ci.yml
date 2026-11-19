@@ -49,15 +49,9 @@ jobs:
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.plan.outputs.rust }}
-      web: ${{ steps.plan.outputs.web }}
-      site: ${{ steps.plan.outputs.site }}
-      site-in-release: ${{ steps.plan.outputs.site-in-release }}
       release: ${{ steps.plan.outputs.release }}
       skills: ${{ steps.plan.outputs.skills }}
       skill-jobs: ${{ steps.plan.outputs.skill-jobs }}
-      build-web: ${{ steps.plan.outputs.build-web }}
-      export-rust: ${{ steps.plan.outputs.export-rust }}
-      export-web: ${{ steps.plan.outputs.export-web }}
       trace: ${{ steps.plan.outputs.trace }}
       planted: ${{ steps.plan.outputs.planted }}
     steps:
@@ -374,7 +368,6 @@ jobs:
           rust-version: ${{ env.RUST_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           cargo: 'true'
-          npm: 'false'
           browser: 'false'
       - name: Python for the offline installer and release proofs
         run: sh .github/actions/docs-only/python.sh
@@ -436,80 +429,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  web-build:
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.build-web == 'true' }}
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 5 || needs.changes.outputs.trace == 'true' && 5 || 5 }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/private/
-      - name: The runner guard
-        id: guard
-        env:
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: sh ci/hosted/guard.sh
-      - name: Prune unused inputs
-        run: sh .github/actions/docs-only/prune.sh .github/actions/docs-only/ci-reads.txt web-build
-      - name: Prepare lane
-        uses: ./.github/actions/docs-only/setup
-        with:
-          hosted: ${{ steps.guard.outputs.hosted }}
-          save: ${{ steps.guard.outputs.save }}
-          rust-version: ${{ env.RUST_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          cargo: 'false'
-          npm: 'true'
-          browser: 'false'
-      - name: Python for the offline installer and release proofs
-        run: sh .github/actions/docs-only/python.sh
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ci-selection-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-plan
-      - name: Run npm run build
-        run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" build:web_export
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: web-out
-          path: apps/web/out
-          if-no-files-found: error
-          retention-days: 1
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'
-        with:
-          name: select-records-web-build-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/select-records/*.json*
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Save the npm cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
-        run: sh ci/runner/cache.sh save npm "$HOME/.npm"
-      - name: Save the GitHub npm cache
-        if: steps.guard.outputs.save == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
-      - name: Record passed lane
-        run: python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" build:web_export "$RUNNER_TEMP/receipts"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: lane-web-build-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/receipts/*.json
-          if-no-files-found: error
-          retention-days: 30
-
   rust:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.export-rust == 'false' }}
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.rust == 'true' }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || needs.changes.outputs.trace == 'true' && 54 || 22 }}
     # #1266: the Rust tests split across this many members, a setting per
@@ -545,7 +467,6 @@ jobs:
           rust-version: ${{ env.RUST_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           cargo: 'true'
-          npm: ${{ needs.changes.outputs.planted == 'true' }}
           browser: 'false'
       - name: Python for the offline installer and release proofs
         run: sh .github/actions/docs-only/python.sh
@@ -624,348 +545,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  rust-export:
-    needs: [changes, web-build]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.export-rust == 'true' && needs.web-build.result == 'success' }}
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || needs.changes.outputs.trace == 'true' && 54 || 22 }}
-    # #1266: the Rust tests split across this many members, a setting per
-    # runner kind (its runs-on label); a kind not named runs one, so a paid
-    # runner never fans out. Traced and planted runs keep one: they run the
-    # whole lane through run.py.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON((needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true') && '[1]' || fromJSON('{"closedwiz-pc":"[1]","ubuntu-24.04":"[1,2,3,4]"}')[github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_RUST_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04'] || '[1]') }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/private/
-      - name: The runner guard
-        id: guard
-        env:
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: sh ci/hosted/guard.sh
-      - name: Prune unused inputs
-        run: sh .github/actions/docs-only/prune.sh .github/actions/docs-only/ci-reads.txt rust
-      - name: Prepare lane
-        uses: ./.github/actions/docs-only/setup
-        with:
-          hosted: ${{ steps.guard.outputs.hosted }}
-          save: ${{ steps.guard.outputs.save }}
-          rust-version: ${{ env.RUST_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          # #742: its own partition. always saves cargo-rust first on main, so
-          # a save of that key here failed and the release build stayed cold.
-          # cargo-rust seeds it until main has saved one.
-          cache: cargo-rust-export
-          fallback: cargo-rust
-          cargo: 'true'
-          npm: ${{ needs.changes.outputs.planted == 'true' }}
-          browser: 'false'
-      - name: Python for the offline installer and release proofs
-        run: sh .github/actions/docs-only/python.sh
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ci-selection-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-plan
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: web-out
-          path: apps/web/out
-      - name: Build and lint Rust
-        if: strategy.job-index == 0
-        run: python3 -I .github/actions/docs-only/run.py lint "$RUNNER_TEMP/ci-plan"
-      # #1266: the shard balancer's, its check's and this wiring's own proofs.
-      - name: The shard balancer's tests
-        if: strategy.job-index == 0
-        run: python3 -I ci/shard/test.py
-      # #1266: this member's share of the selected Rust tests, balanced by
-      # ci/shard/times.tsv. One member runs the whole lane through run.py, as
-      # before; the ci job checks that every share passed and together they
-      # hold every selected Rust test exactly once.
-      - name: The Rust shard
-        env:
-          SHARDS: ${{ strategy.job-total }}
-          SHARD: ${{ matrix.shard }}
-        run: |
-          python3 -I ci/shard/shard.py share "$RUNNER_TEMP/ci-plan/ci-selection.json" --shards "$SHARDS" --shard "$SHARD" --times ci/shard/times.tsv > "$RUNNER_TEMP/rust-share.txt"
-          echo "rust shard $SHARD of $SHARDS: $(paste -sd ' ' "$RUNNER_TEMP/rust-share.txt")"
-      - name: Run cargo test --workspace
-        env:
-          SHARDS: ${{ strategy.job-total }}
-          SHARD: ${{ matrix.shard }}
-        run: |
-          if [ "$SHARDS" = 1 ]; then
-            python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" rust
-          elif [ -s "$RUNNER_TEMP/rust-share.txt" ]; then
-            # Only the first member builds the workspace (Build and lint
-            # Rust), yet tests run its binaries (tests/loops' target/debug/
-            # openwiz): each member builds them first (R2 on #2113).
-            cargo build --workspace --bins --locked
-            sh ci/rust-tests.sh --only "$(paste -sd ' ' "$RUNNER_TEMP/rust-share.txt")"
-          else
-            echo "rust shard $SHARD of $SHARDS: no test for this member"
-          fi
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'
-        with:
-          name: select-records-rust-export-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/select-records/*.json*
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Save the cargo-rust-export cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') && strategy.job-index == 0
-        run: sh ci/runner/cache.sh save cargo-rust-export "$HOME/.cargo/registry" "$GITHUB_WORKSPACE/target"
-      - name: Save the GitHub cargo-rust-export cache
-        if: steps.guard.outputs.save == 'true' && strategy.job-index == 0
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path:  |
-            ~/.cargo/registry
-            target
-          key: cargo-rust-export-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
-      # Only once its tests passed: the ci job counts these records.
-      - name: Record passed lane
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: mkdir -p "$RUNNER_TEMP/rust-ran" && cp "$RUNNER_TEMP/rust-share.txt" "$RUNNER_TEMP/rust-ran/ran-$SHARD.txt"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: rust-ran-${{ github.run_attempt }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/rust-ran/ran-${{ matrix.shard }}.txt
-          if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: strategy.job-index == 0
-        with:
-          name: lane-rust-export-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/receipts/*.json
-          if-no-files-found: ignore
-          retention-days: 30
-
-  web:
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.web == 'true' && needs.changes.outputs.export-web == 'false' }}
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || needs.changes.outputs.trace == 'true' && 21 || 16 }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/private/
-      - name: The runner guard
-        id: guard
-        env:
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: sh ci/hosted/guard.sh
-      - name: Prune unused inputs
-        run: sh .github/actions/docs-only/prune.sh .github/actions/docs-only/ci-reads.txt web-test
-      - name: Prepare lane
-        uses: ./.github/actions/docs-only/setup
-        with:
-          hosted: ${{ steps.guard.outputs.hosted }}
-          save: ${{ steps.guard.outputs.save }}
-          rust-version: ${{ env.RUST_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          cargo: 'true'
-          cache: cargo-web-test
-          npm: 'true'
-          browser: 'true'
-      - name: Python for the offline installer and release proofs
-        run: sh .github/actions/docs-only/python.sh
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ci-selection-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-plan
-      - name: Run npm test
-        run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" web
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'
-        with:
-          name: select-records-web-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/select-records/*.json*
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Save the cargo-web-test cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
-        run: sh ci/runner/cache.sh save cargo-web-test "$HOME/.cargo/registry" "$GITHUB_WORKSPACE/target"
-      - name: Save the GitHub cargo-web-test cache
-        if: steps.guard.outputs.save == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path:  |
-            ~/.cargo/registry
-            target
-          key: cargo-web-test-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
-      - name: Save the npm cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
-        run: sh ci/runner/cache.sh save npm "$HOME/.npm"
-      - name: Save the GitHub npm cache
-        if: steps.guard.outputs.save == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
-      - name: Record passed lane
-        run: python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" web "$RUNNER_TEMP/receipts"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: lane-web-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/receipts/*.json
-          if-no-files-found: error
-          retention-days: 30
-
-  web-export:
-    needs: [changes, web-build]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.web == 'true' && needs.changes.outputs.export-web == 'true' && needs.web-build.result == 'success' }}
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ needs.changes.outputs.planted == 'true' && 90 || needs.changes.outputs.trace == 'true' && 21 || 16 }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/private/
-      - name: The runner guard
-        id: guard
-        env:
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: sh ci/hosted/guard.sh
-      - name: Prune unused inputs
-        run: sh .github/actions/docs-only/prune.sh .github/actions/docs-only/ci-reads.txt web-test
-      - name: Prepare lane
-        uses: ./.github/actions/docs-only/setup
-        with:
-          hosted: ${{ steps.guard.outputs.hosted }}
-          save: ${{ steps.guard.outputs.save }}
-          rust-version: ${{ env.RUST_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          cargo: 'true'
-          cache: cargo-web-test
-          npm: 'true'
-          browser: 'true'
-      - name: Python for the offline installer and release proofs
-        run: sh .github/actions/docs-only/python.sh
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ci-selection-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-plan
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: web-out
-          path: apps/web/out
-      - name: Run npm test
-        run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" web
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.changes.outputs.trace == 'true' || needs.changes.outputs.planted == 'true'
-        with:
-          name: select-records-web-export-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/select-records/*.json*
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Save the cargo-web-test cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
-        run: sh ci/runner/cache.sh save cargo-web-test "$HOME/.cargo/registry" "$GITHUB_WORKSPACE/target"
-      - name: Save the GitHub cargo-web-test cache
-        if: steps.guard.outputs.save == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path:  |
-            ~/.cargo/registry
-            target
-          key: cargo-web-test-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
-      - name: Save the npm cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
-        run: sh ci/runner/cache.sh save npm "$HOME/.npm"
-      - name: Save the GitHub npm cache
-        if: steps.guard.outputs.save == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
-      - name: Record passed lane
-        run: python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" web "$RUNNER_TEMP/receipts"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: lane-web-export-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/receipts/*.json
-          if-no-files-found: error
-          retention-days: 30
-
-  site:
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.site == 'true' && needs.changes.outputs.site-in-release != 'true' }}
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/private/
-      - name: The runner guard
-        id: guard
-        env:
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: sh ci/hosted/guard.sh
-      - name: Prune unused inputs
-        run: sh .github/actions/docs-only/prune.sh .github/actions/docs-only/ci-reads.txt web-build
-      - name: Prepare lane
-        uses: ./.github/actions/docs-only/setup
-        with:
-          hosted: ${{ steps.guard.outputs.hosted }}
-          save: ${{ steps.guard.outputs.save }}
-          rust-version: ${{ env.RUST_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          cargo: 'false'
-          npm: 'true'
-          browser: 'true'
-      - name: Python for the offline installer and release proofs
-        run: sh .github/actions/docs-only/python.sh
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ci-selection-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-plan
-      - name: Build and test the public static site
-        run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" site
-      - name: Save the npm cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
-        run: sh ci/runner/cache.sh save npm "$HOME/.npm"
-      - name: Save the GitHub npm cache
-        if: steps.guard.outputs.save == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
-      - name: Record passed lane
-        run: python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" site "$RUNNER_TEMP/receipts"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: lane-site-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/receipts/*.json
-          if-no-files-found: error
-          retention-days: 30
-
   # #743: the release proofs split across this many members by measured
   # time (ci/shard/lanes.py, ci/shard/lanes.tsv), a setting per runner kind
   # as for the Rust lane: a kind not named runs one, so a paid runner never
@@ -1005,8 +584,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cargo: 'true'
           cache: cargo-web-test
-          npm: 'true'
-          browser: 'true'
       - name: Python for the offline installer and release proofs
         run: sh .github/actions/docs-only/python.sh
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -1018,15 +595,6 @@ jobs:
           SHARDS: ${{ strategy.job-total }}
           SHARD: ${{ matrix.shard }}
         run: python3 -I .github/actions/docs-only/run.py execute "$RUNNER_TEMP/ci-plan" release --shard "$SHARD/$SHARDS" "$RUNNER_TEMP/shard-ran/release-$SHARD.json"
-      - name: Save the npm cache
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') && strategy.job-index == 0
-        run: sh ci/runner/cache.sh save npm "$HOME/.npm"
-      - name: Save the GitHub npm cache
-        if: steps.guard.outputs.save == 'true' && strategy.job-index == 0
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
       # Only once its share passed: the ci job checks these records.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1070,7 +638,6 @@ jobs:
           rust-version: ${{ env.RUST_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           cargo: 'false'
-          npm: ${{ matrix.skill == 'image' }}
           browser: ${{ matrix.skill == 'image' }}
       - name: Python for the offline installer and release proofs
         run: sh .github/actions/docs-only/python.sh
@@ -1126,7 +693,6 @@ jobs:
           rust-version: ${{ env.RUST_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           cargo: 'false'
-          npm: 'false'
           browser: 'false'
       - name: Python for the offline installer and release proofs
         run: sh .github/actions/docs-only/python.sh
@@ -1151,7 +717,7 @@ jobs:
   # records each traced job kept become one map (map.py, which refuses a map
   # missing any test). A push or the nightly run on main signs it (GitHub's
   # OIDC token, bound to the map's bytes) and keeps both in GitHub's cache,
-  # where web-build's selector finds the newest; any run keeps them as an
+  # where the changes job's selector finds the newest; any run keeps them as an
   # artifact too (a PR that changes the tracer: its proof map). Not a
   # required check: without it, pull requests run every test.
   select-map:
@@ -1214,7 +780,7 @@ jobs:
           key: ci-select-map-${{ github.run_id }}-${{ github.run_attempt }}
 
   ci:
-    needs: [changes, always, web-build, rust, rust-export, web, web-export, site, release, skills, launch-fleet]
+    needs: [changes, always, rust, release, skills, launch-fleet]
     if: ${{ always() && (github.event_name != 'push' || needs.changes.result != 'success' || needs.changes.outputs.trace == 'true') }}
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 5
@@ -1245,7 +811,7 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/receipts
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: needs.rust.result == 'success' || needs.rust-export.result == 'success'
+        if: needs.rust.result == 'success'
         with:
           pattern: rust-ran-${{ github.run_attempt }}-*
           merge-multiple: true
@@ -1254,7 +820,7 @@ jobs:
       # its share; together they must hold every selected Rust test exactly
       # once, and only then is the Rust lane's receipt written.
       - name: Every Rust test ran exactly once
-        if: needs.rust.result == 'success' || needs.rust-export.result == 'success'
+        if: needs.rust.result == 'success'
         run: |
           python3 -I ci/shard/shard.py check "$RUNNER_TEMP/ci-plan/ci-selection.json" "$RUNNER_TEMP"/rust-ran/ran-*.txt
           python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" rust "$RUNNER_TEMP/receipts"
