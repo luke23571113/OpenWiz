@@ -1,0 +1,24 @@
+{
+  "date": "2030-01-02",
+  "complete": true,
+  "claude": [
+    {
+      "thread": "synthetic-reviewer",
+      "tokens": 130,
+      "credits": 2,
+      "usd": null
+    }
+  ],
+  "gpt": [
+    {
+      "thread": "synthetic-builder",
+      "tokens": 550,
+      "credits": 7,
+      "usd": null
+    }
+  ],
+  "sandbox": {
+    "hours": null,
+    "usd": null
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "repository": "example/factory",
+  "tickets": {
+    "4101": {
+      "builder": [
+        "synthetic-builder"
+      ],
+      "reviewer": [
+        "synthetic-reviewer"
+      ]
+    }
+  }
+}

@@ -260,6 +260,53 @@ class CarriedJourneys(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class FlowFacts(unittest.TestCase):
+    fixture = HERE / 'fixtures' / 'flow'
+    args = ('read', '--repo', DAILY_REPO, '--fact', 'flow', '--spec', '4001',
+            '--now', '2030-01-03T06:00:00Z')
+
+    # catches: charging rerun jobs twice, using edited times for claims, counting
+    # impostors or duplicate verdicts, and conflating ticket time with spec span.
+    def test_merged_ticket_and_whole_spec(self):
+        p, _ = cli('../flow/world.json', *self.args,
+                   '--flow-threads', str(self.fixture / 'assignments.json'),
+                   '--flow-usage', str(self.fixture / 'usage.json'))
+        fact = envelope(p)['factory']['flow']
+        value = fact['value']
+        ticket, = value['tickets']
+        spec, = value['specs']
+        self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['state']), (4101, [4201], 'merged'))
+        self.assertEqual(ticket['cost'], {
+            'builder': {'credits': 7, 'tokens': 550}, 'reviewer': {'credits': 2, 'tokens': 130},
+            'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 10})
+        self.assertEqual(ticket['stages_seconds'], {
+            'waiting_to_start': 900, 'building': 5100, 'in_review': 1080, 'in_queue': 900})
+        self.assertEqual((ticket['elapsed_seconds'], ticket['review_rounds']), (9000, 1))
+        self.assertEqual(ticket['progress']['commit_at'], '2030-01-02T01:58:00Z')
+        self.assertEqual((spec['spec'], spec['tickets'], spec['span_seconds']), (4001, [4101], 11700))
+        self.assertEqual((spec['cost'], spec['stages_seconds'], spec['elapsed_seconds'], spec['review_rounds']),
+                         (ticket['cost'], ticket['stages_seconds'], 9000, 1))
+
+    # catches: unreadable jobs or missing usage emitted as zero, or a missing
+    # cost source taking unrelated timing and progress away.
+    def test_missing_sources_keep_independent_facts(self):
+        def without_jobs(world):
+            key = next(key for key in world if 'runs/6101/attempts/1/jobs' in key)
+            del world[key]
+
+        p, _ = cli('../flow/world.json', *self.args, edit=without_jobs)
+        fact = envelope(p)['factory']['flow']
+        self.assertEqual(fact['state'], 'partial')
+        ticket, = fact['value']['tickets']
+        spec, = fact['value']['specs']
+        for row in (ticket, spec):
+            self.assertEqual(row['cost'], {
+                'builder': {'credits': None, 'tokens': None}, 'reviewer': {'credits': None, 'tokens': None},
+                'total': {'credits': None, 'tokens': None}, 'ci_minutes': None})
+            self.assertEqual((row['elapsed_seconds'], row['review_rounds'], row['stall_count']), (9000, 1, None))
+        self.assertEqual(ticket['progress']['last_observed_at'], '2030-01-02T03:15:00Z')
+
+
 class CapacityAndOpenPrs(unittest.TestCase):
     # catches: PRs an hour computed another way than ci-bench's headline (robot-minutes per
     # successful code run). By hand: run 201's two jobs, 115 s + 180 s = 4.9167 robot-minutes;
