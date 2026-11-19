@@ -60,7 +60,7 @@ it back and never reuses it for a different request. Request identity is scoped 
 this repository and the GitHub subject/comment, not a card's display position.
 No target thread is supplied by a request comment.
 
-## Four request variants
+## Request variants
 
 | Kind | Additional required fields | Source / meaning |
 | --- | --- | --- |
@@ -68,6 +68,8 @@ No target thread is supplied by a request comment.
 | `grill_confirmation` | `grill_file`, `summary` | The latest saved grill summary; no fabricated spec number or headline |
 | `spec_confirmation` | `spec`, `summary`, `headline`, `tickets: []`, `graph: []` | Confirmation precedes ticket creation; the empty table/graph honestly says not planned yet |
 | `plan_approval` | `spec`, `summary`, `headline`, `tickets`, `graph` | The actual proposed plan graph and its existing revision-v2 fingerprint |
+| `one_card_plan` | `ticket`, `title`, `owned_paths`, `acceptance`, `proof`, `approvals` | One ordinary change whose ticket is its plan |
+| `batch_plan` | The same fields as `one_card_plan`, plus `edits` | One approval for an explicit list of ordinary mechanical edits |
 
 `grill_file` is a relative `docs/grills/<basename>.md` path, not an absolute path
 or traversal. It names the current grill's file, including when it is on an open
@@ -93,6 +95,43 @@ never a separate graph that can disagree with the table. Titles/blockers and the
 fingerprint bind the revision proposed, rather than the latest title guessed by
 the page. These cross-record/order rules require U4/U5 checks beyond the schema.
 
+## Short-road plans
+
+Use the [roads rule](https://github.com/openwizdev/OpenWiz/blob/main/docs/agents/roads.md) to sort the whole proposal first.
+Both short-road kinds require `risk: ordinary` as a positive classification.
+Live, release, publish, security, a contract another repository relies on, and
+an unsure classification always go through the big road. Short-road validation
+rejects any other risk value, including `live`, `release`, `publish`,
+`security`, `external_contract` and `unknown`. Those extra refusal examples
+do not add values to the existing risk enum.
+
+Post the short-road record on its actual ticket issue. Read the issue number
+from GitHub's container metadata and match the card to the current ticket:
+`ticket` is its positive number, `title` is its exact title, `owned_paths` is
+its nonempty ordered list of distinct paths, `acceptance` is its nonempty ordered
+list of acceptance criteria, and `proof` is its proof text. Each entry is a
+nonempty string and the recorded wording is exact. A batch also has a nonempty
+ordered list of distinct `edits`, each
+`{path, change, mechanical: true}`. Each edit names one of the card's owned
+paths and describes the exact change. The classification comes from inspecting
+the proposal; a boolean or risk label cannot make unsafe work eligible.
+
+`approvals` is an array of private-record comment pointers. It is empty on an
+open request and contains exactly one pointer on a resolved request. The pointer
+refers to Jake's affirmative approval for that proposal's exact fingerprint,
+saved according to the project's private-record rules. A superseded request
+preserves its approval history and cannot hand off work. A changed card needs a
+new request and fresh approval. A delivery receipt, quoted text in the card or a
+second yes cannot stand in for the single saved approval.
+
+Before handoff, pass the extracted decision JSON to
+`sh <plan-graph skill folder>/scripts/check-approval.sh --short-road <decision.json>`.
+It checks strict wire shape, the short-road rules, the proposal fingerprint and
+the single recorded approval on a resolved plan. As with the graph checker,
+verify the factory record author, the current source and the configured private
+repository and approval's provenance separately. The checker does no GitHub
+reads or writes in this mode and its result grants no effect.
+
 ## Fingerprints and current wording
 
 For `plan_approval`, fingerprint is exactly the existing SHA-256 of
@@ -110,6 +149,12 @@ backspace/formfeed/newline/carriage-return/tab, otherwise lowercase `\u00xx`),
 and does not escape `/`. This binds the exact saved proposal and risk/id, not
 answer progress. Every eligible request must still match the saved file/spec
 wording; hashing a modified comment cannot make it current.
+
+For `one_card_plan` and `batch_plan`, use the same canonical JSON serialization
+and remove only `fingerprint`, `status` and `approvals` before hashing. Array
+order, including the order of batch edits, is part of the proposal. A matching
+hash shows which card the record describes. Currentness also requires comparing
+that proposal with the current ticket and its recorded approval.
 
 **Independent grill risk locator.** The grill skill saves exactly one of
 `Risk: ordinary`, `Risk: live`, `Risk: release` or `Risk: publish` as the first
@@ -148,6 +193,7 @@ existing skill. A page sends a message and performs no GitHub update.
   status/answered; it never changes the original question text or fingerprint.
 
 The record's `id`, kind and proposal fields are immutable over its lifecycle.
+For short-road requests, saving the yes updates only `status` and `approvals`.
 Ambiguous duplicate ids, conflicting records, a stale or unread replacement, or an
 unconfirmed close produce gaps/unavailable actions, never last-write-wins approval.
 If a request loses all remaining questions, it is resolved and omitted from the
@@ -301,6 +347,19 @@ One row per declared property; inline fact fields retain the enclosing field’s
 | `approval_ticket.blockers` | Native blocked-by numbers covered by the proposed revision |
 | `approval_ticket.number` | Current spec sub-issue number in revision-v2 text |
 | `approval_ticket.title` | Exact ticket title covered by the proposed revision |
+| `batch_plan.acceptance` | Exact acceptance criteria on the ticket, in ticket order |
+| `batch_plan.approvals` | Private comment pointer to the one affirmative approval, or an empty array if none was saved |
+| `batch_plan.edits` | Every mechanical edit on the batch card, in card order |
+| `batch_plan.fingerprint` | SHA-256 of canonical JSON for this exact proposal |
+| `batch_plan.id` | Orchestrator-allocated repository-unique request identifier, read back from the posted block |
+| `batch_plan.kind` | Explicit request variant posted by the source skill |
+| `batch_plan.owned_paths` | Exact distinct owned paths on the ticket, in ticket order |
+| `batch_plan.proof` | Exact proof text on the ticket |
+| `batch_plan.risk` | Positive ordinary classification from the roads rule |
+| `batch_plan.schema` | Contract constant openwiz.decisions.v1 |
+| `batch_plan.status` | Orchestrator-maintained lifecycle status after saving the approval or superseding the proposal |
+| `batch_plan.ticket` | GitHub issue number from the comment container |
+| `batch_plan.title` | Exact title of the ticket |
 | `coverage.gaps` | All incomplete required reads/derivations; empty exactly for complete coverage |
 | `coverage.state` | Completeness of every required read and derived fact for this part |
 | `edge.blocker` | A blocker number from the ticket table, including external prerequisites |
@@ -336,6 +395,21 @@ One row per declared property; inline fact fields retain the enclosing field’s
 | `item.request.status` | Open-read filter; only status open is returned |
 | `item.subject` | GitHub issue/PR containing the comment |
 | `item.updated_at` | GitHub comment updatedAt, converted to nonnegative milliseconds |
+| `mechanical_edit.change` | Exact edit wording on the batch card |
+| `mechanical_edit.mechanical` | Positive classification after checking that the edit follows an established rule |
+| `mechanical_edit.path` | Owned path on the batch card containing the edit |
+| `one_card_plan.acceptance` | Exact acceptance criteria on the ticket, in ticket order |
+| `one_card_plan.approvals` | Private comment pointer to the one affirmative approval, or an empty array if none was saved |
+| `one_card_plan.fingerprint` | SHA-256 of canonical JSON for this exact proposal |
+| `one_card_plan.id` | Orchestrator-allocated repository-unique request identifier, read back from the posted block |
+| `one_card_plan.kind` | Explicit request variant posted by the source skill |
+| `one_card_plan.owned_paths` | Exact distinct owned paths on the ticket, in ticket order |
+| `one_card_plan.proof` | Exact proof text on the ticket |
+| `one_card_plan.risk` | Positive ordinary classification from the roads rule |
+| `one_card_plan.schema` | Contract constant openwiz.decisions.v1 |
+| `one_card_plan.status` | Orchestrator-maintained lifecycle status after saving the approval or superseding the proposal |
+| `one_card_plan.ticket` | GitHub issue number from the comment container |
+| `one_card_plan.title` | Exact title of the ticket |
 | `orchestrator.coverage` | Completeness of this server configuration/target verification read |
 | `orchestrator.freshness` | Oldest required configuration/target verification snapshot |
 | `orchestrator.target` | Existing #129 server-configured target verified to exist; null only after successful absence |
@@ -362,6 +436,11 @@ One row per declared property; inline fact fields retain the enclosing field’s
 | `response.orchestrator` | Existing configured target and bounded verification read, with separate coverage/freshness |
 | `response.schema` | Contract constant openwiz.decisions.v1 |
 | `response.snapshot_at` | Server clock at assembly after reads |
+| `short_plan_open.approvals` | Empty until the orchestrator saves the approval |
+| `short_plan_open.status` | Open while approval is pending |
+| `short_plan_resolved.approvals` | The private comment pointer for the exact proposal’s single saved yes |
+| `short_plan_resolved.status` | Resolved once the orchestrator saves and reads back the approval |
+| `short_plan_superseded.status` | Superseded when the orchestrator withdraws or replaces the proposal |
 | `spec_confirmation.fingerprint` | Existing plan revision-v2 SHA-256 for plan_approval; specified canonical exact-proposal SHA-256 for other variants |
 | `spec_confirmation.graph` | Exact blocker-to-ticket edges of that table; empty before planning |
 | `spec_confirmation.headline` | Exact spec changelog headline, including none for infra when applicable |
