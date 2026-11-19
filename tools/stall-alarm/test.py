@@ -900,6 +900,22 @@ class FlowStalls(unittest.TestCase):
                          {101: "ci", 102: "unknown", 103: "unknown", 104: "unknown", 106: "unknown"})
         self.assertIsNone(out["daily"]["count"])
 
+    def test_real_collector_flow_read(self):
+        # catches: the stall rule reading field names or shapes the collector does not write, so the
+        # snapshot FM5 passes it gives a null count or a ticket hidden from both lists.
+        sys.path.insert(0, str(HERE.parent / "collector"))
+        try:
+            import test_collect_factory as collector
+        finally:
+            sys.path.pop(0)
+        args = (*collector.FlowFacts.args[:-1], "2030-01-02T02:45:00Z")
+        read = collector.envelope(collector.cli("../flow/world.json", *args)[0])
+        out = self.stalls(read)  # last progress 02:30, one past gap 01:00 to 01:58 (FM2's world)
+        self.assertEqual((out["stalls"], out["unknown"], out["daily"]), ([], [], {"date": "2030-01-02", "count": 1}))
+        args = (*collector.FlowFacts.args[:-1], "2030-01-02T01:45:00Z")
+        out = self.stalls(collector.envelope(collector.cli("../flow/world.json", *args)[0]))
+        self.assertEqual(out["unknown"], [{"ticket": 4101, "spec": 4001, "reason": "progress"}])  # no PR yet
+
     def test_invalid_document_is_refused(self):
         # catches: a malformed document read as an empty, stall-free list.
         doc = self.fixture()
