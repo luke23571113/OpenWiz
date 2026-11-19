@@ -38,7 +38,8 @@
       "stalls",
       "open_prs",
       "journeys",
-      "cost"
+      "cost",
+      "flow"
     ],
     "ci": [
       "runs",
@@ -2903,6 +2904,9 @@
         },
         "cost": {
           "$ref": "#/$defs/fact_cost"
+        },
+        "flow": {
+          "$ref": "#/$defs/fact_flow"
         }
       },
       "required": [
@@ -2980,6 +2984,9 @@
             },
             "cost": {
               "$ref": "#/$defs/fact_cost"
+            },
+            "flow": {
+              "$ref": "#/$defs/fact_flow"
             }
           },
           "required": [],
@@ -3014,6 +3021,549 @@
         "requested_at",
         "factory",
         "ci"
+      ],
+      "additionalProperties": false
+    },
+    "fact_flow": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "const": "flow"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "read": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/read"
+            }
+          ]
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/window"
+            }
+          ]
+        },
+        "fresh_until": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/source"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/prerequisites"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/flow_value"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fact",
+        "state",
+        "read",
+        "point",
+        "window",
+        "fresh_until",
+        "freshness",
+        "source",
+        "evidence",
+        "prerequisites",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "flow_value": {
+      "type": "object",
+      "properties": {
+        "tickets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flow_ticket"
+          },
+          "uniqueItems": true
+        },
+        "specs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flow_spec"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "tickets",
+        "specs"
+      ],
+      "additionalProperties": false
+    },
+    "flow_role_cost": {
+      "type": "object",
+      "properties": {
+        "credits": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ]
+        },
+        "tokens": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        }
+      },
+      "required": [
+        "credits",
+        "tokens"
+      ],
+      "additionalProperties": false
+    },
+    "flow_cost": {
+      "type": "object",
+      "properties": {
+        "builder": {
+          "$ref": "#/$defs/flow_role_cost"
+        },
+        "reviewer": {
+          "$ref": "#/$defs/flow_role_cost"
+        },
+        "total": {
+          "$ref": "#/$defs/flow_role_cost"
+        },
+        "ci_minutes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ]
+        }
+      },
+      "required": [
+        "builder",
+        "reviewer",
+        "total",
+        "ci_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "flow_stages": {
+      "type": "object",
+      "properties": {
+        "waiting_to_start": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "building": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "in_review": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "in_queue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        }
+      },
+      "required": [
+        "waiting_to_start",
+        "building",
+        "in_review",
+        "in_queue"
+      ],
+      "additionalProperties": false
+    },
+    "flow_progress": {
+      "type": "object",
+      "properties": {
+        "commit_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "record_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "ci_result_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "verdict_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "last_observed_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "ci_pending": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": true
+            },
+            {
+              "const": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "commit_at",
+        "record_at",
+        "ci_result_at",
+        "verdict_at",
+        "last_observed_at",
+        "ci_pending"
+      ],
+      "additionalProperties": false
+    },
+    "flow_ticket": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spec": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ]
+        },
+        "pull_requests": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uniqueItems": true
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed",
+            "merged",
+            "unknown"
+          ]
+        },
+        "claimed_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "merged_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "elapsed_seconds": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "stages_seconds": {
+          "$ref": "#/$defs/flow_stages"
+        },
+        "review_rounds": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "stall_count": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "cost": {
+          "$ref": "#/$defs/flow_cost"
+        },
+        "progress": {
+          "$ref": "#/$defs/flow_progress"
+        }
+      },
+      "required": [
+        "ticket",
+        "spec",
+        "pull_requests",
+        "state",
+        "claimed_at",
+        "merged_at",
+        "elapsed_seconds",
+        "stages_seconds",
+        "review_rounds",
+        "stall_count",
+        "cost",
+        "progress"
+      ],
+      "additionalProperties": false
+    },
+    "flow_spec": {
+      "type": "object",
+      "properties": {
+        "spec": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tickets": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "uniqueItems": true
+            }
+          ]
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "last_merge_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/time"
+            }
+          ]
+        },
+        "span_seconds": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "elapsed_seconds": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "stages_seconds": {
+          "$ref": "#/$defs/flow_stages"
+        },
+        "review_rounds": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "stall_count": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "cost": {
+          "$ref": "#/$defs/flow_cost"
+        }
+      },
+      "required": [
+        "spec",
+        "tickets",
+        "created_at",
+        "last_merge_at",
+        "span_seconds",
+        "elapsed_seconds",
+        "stages_seconds",
+        "review_rounds",
+        "stall_count",
+        "cost"
       ],
       "additionalProperties": false
     }
