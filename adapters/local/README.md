@@ -12,7 +12,7 @@ adapters/local/driver version               # {"driver": "local", ..., "can": [.
 
 - **Harnesses:** `claude` runs `claude -p <prompt> --model <model>`; `codex` runs `codex exec --model <model> <prompt>`. Each is found on `PATH` when the run starts. A harness that isn't installed, or isn't one of these, is a JSON error whose `next` says what to do.
 - **Logins:** none. The driver adds no login, token or permission flag. Each turn inherits the environment of whoever runs the driver, unchanged, plus `OPENWIZ_RUN`; the harness's own sign-in and settings decide what its agent may do.
-- **Runs:** `start` runs the first turn, `wake` another turn on the same ticket (the agent edits its own status note), and `stop` ends every process carrying the run's `OPENWIZ_RUN` mark, its turns and anything they started, even in their own session: a polite signal, then a kill after 10 seconds. Several runs at once are independent.
+- **Runs:** `start` runs the first turn, and `wake` runs another turn on the same ticket, in which the agent edits its own status note. While the run's last turn is still running, `wake` answers `woke: true` and starts no second turn, so one ticket never has two agents. `stop` ends every process carrying the run's `OPENWIZ_RUN` mark, its turns and anything they started, even in their own session: a polite signal, then a kill after 10 seconds. Several runs at once are independent.
 - **State:** each run's request and each turn's output log, owner-only, in `$OPENWIZ_LOCAL_STATE` (default `~/.local/state/openwiz-local`).
 - **On a VPS:** sign in to the harness there, and run the driver there, for example over `ssh`.
 

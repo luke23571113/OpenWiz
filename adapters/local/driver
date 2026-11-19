@@ -66,14 +66,14 @@ def prompt(req, woken):
 
 
 def launch(state, run, woken):
-    """Start one turn as its own session, with the person's environment and this run's mark."""
+    """Start one turn as its own session, with the person's environment and this run's mark; its pid."""
     req = state['request']
     os.makedirs(STATE, mode=0o700, exist_ok=True)
     log = os.open(os.path.join(STATE, run + '.log'), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     try:
-        subprocess.Popen([state['program']] + HARNESSES[req['harness']](req['model'], prompt(req, woken)),
+        return subprocess.Popen([state['program']] + HARNESSES[req['harness']](req['model'], prompt(req, woken)),
                          env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
-                         stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+                         stdin=subprocess.DEVNULL, stdout=log, stderr=log).pid
     except OSError as e:
         raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror),
                       'run %s by hand once to check it works, then start again' % req['harness'])
@@ -144,7 +144,7 @@ def answer(cmd):
         path = os.path.join(STATE, run + '.json')
         save(path, state)
         try:
-            launch(state, run, False)
+            save(path, dict(state, turn=launch(state, run, False)))
         except Refused:
             save(path, dict(state, stopped=True))
             raise
@@ -158,7 +158,10 @@ def answer(cmd):
             return {'run': run, 'stopped': True}
         if saved.state['stopped']:
             raise Refused('run %s is stopped' % run, 'start a new run')
-        launch(saved.state, run, True)
+        # One agent per ticket: while the run's last turn still runs, that agent is already awake and
+        # will read the ticket again itself, so the wake starts no second turn (#1469).
+        if saved.state.get('turn') not in processes(run):
+            save(saved.path, dict(saved.state, turn=launch(saved.state, run, True)))
         return {'run': run, 'woke': True}
     raise Refused('unknown command', 'run one of: version, schema, start, wake, stop')
 
