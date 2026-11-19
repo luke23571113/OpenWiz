@@ -66,6 +66,3 @@ package version for the program, preserving protocol versions, and checks the
 program's compiled source and its native executable architecture.
 
 For the future public-source release path, the [release candidate contract](release-candidate.v1.md#minimum-product-identity-rl4) adds a producer-side compiled-product identity interface: the CLI embeds and exposes its version/source/target without effects, and runtime bytes are checked against the tracked source selection. Cross-target collectors verify the embedded identity and architecture against hash-bound native build receipts without executing incompatible programs. A packaging stamp or requested version alone is insufficient. This does not change `openwiz.install.v1`, its assets/stamps, offline integrity checks, update channel or activation rules; implementation and live verification remain separate work.
-
-The server, the service and the web export, and with them `--serve`, `--open`
-and the setup page, went in #1264 (Jake's approval of AP11's contract edit).

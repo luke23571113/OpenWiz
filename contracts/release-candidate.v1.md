@@ -95,9 +95,7 @@ runtime payload as canonical JSON of its complete path-sorted inventory of
 hashes are the program file hashes. Build receipts bind these hashes, source,
 version, target and method. Keep the existing `runtime/openwiz-build.txt` package
 stamp and install manifest; stamps are additional integrity checks, not
-compiled source evidence. (The server, the service and the web export, with
-their identities and `web-build` receipt, went in #1264, with Jake's approval
-of AP11's contract edit.) No verifier may trust a requested stamp as provenance.
+compiled source evidence. No verifier may trust a requested stamp as provenance.
 
 ## Two actual decisions (P1)
 
