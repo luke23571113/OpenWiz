@@ -47,10 +47,10 @@ Each file is a valid plan with one planted break. "Schema" means the schema refu
 | `invalid/empty-diff-unnamed.json` | Rule 5: an empty diff without `empty_diff` |
 | `invalid/extra-field.json` | Schema: a field the record doesn't have |
 | `invalid/failed-diff-unnamed.json` | Rule 5: a failed diff without `failed_diff` |
-| `invalid/full-lane-skipped.json` | Schema: a full run skips a lane |
+| `invalid/full-lane-skipped.json` | Schema: a full run skips a lane other than `web` (#1264) |
 | `invalid/full-reason-unknown.json` | Schema: a reason code the contract doesn't have |
 | `invalid/full-test-skipped.json` | Schema: a full run skips a test |
-| `invalid/full-web-export-skipped.json` | Schema: a full run skips the web export |
+| `invalid/full-web-export-skipped.json` | Schema: a full run skips the web export without a reason (it may skip, #1264) |
 | `invalid/full-without-reason.json` | Schema: a full run with no reason |
 | `invalid/head-not-a-sha.json` | Schema: a head that is not a commit |
 | `invalid/lane-extra.json` | Schema: a lane the contract doesn't have |
