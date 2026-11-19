@@ -178,7 +178,35 @@ class Synthetic(unittest.TestCase):
         self.full(sel([A(f'{FIX}/z/p01_coverage')]), 'unknown_path')
 
     def test_a_new_file_the_map_does_not_know_runs_everything(self):
-        self.full(sel(DOCS[:20] + [A('docs/grills/brand-new.md')] + DOCS[20:]), 'unknown_path')
+        self.full(sel(DOCS[:20] + [A('tools/brand-new/run.py')] + DOCS[20:]), 'unknown_path')
+
+    # #1335: new docs and skills no test looks for, lists or names.
+    def test_a_new_doc_or_skill_nobody_looks_for_reaches_no_test(self):
+        # catches: a docs-only or skills-only PR that adds a file running every Rust and web test.
+        for path in ('docs/cleanup/brand-new.md', 'docs/evidence/1335/red.log', 'NOTES.md',
+                     '.claude/skills/brand-new/SKILL.md', '.agents/skills/brand-new'):
+            with self.subTest(path):
+                result = sel(DOCS[:20] + [A(path), M('docs/adr/0001.md')] + DOCS[20:])
+                self.picked(result, has=pick.ALWAYS, lacks=['rust:test:proof', 'rust:test:web-api',
+                                                             'rust:lib:openwiz-core', 'web:unit:api'])
+
+    def test_a_new_doc_or_skill_a_test_can_reach_still_selects_or_runs_everything(self):
+        # catches: the docs and skills rule skipping a test that lists, probes for or names the new file.
+        mp = json.loads(json.dumps(MAP))
+        mp['units']['rust:test:proof']['dirs'].append('docs/agents')
+        mp['units']['rust:test:web-api']['files'].append('.claude/skills/probed/SKILL.md')
+        result = pick.select([A('docs/agents/new.md')], mp, UNITS, read, nobody)
+        self.picked(result, has=['rust:test:proof'], lacks=['rust:test:web-api'])
+        result = pick.select([A('.claude/skills/probed/SKILL.md')], mp, UNITS, read, nobody)
+        self.picked(result, has=['rust:test:web-api'], lacks=['rust:test:proof'])
+        self.full(sel([A('docs/zzz/p01_coverage.md')]), 'unknown_path')
+
+    def test_a_new_path_beside_the_docs_and_skills_classes_still_runs_everything(self):
+        # catches: a class pattern loose enough to skip a new source, test or tool file.
+        for path in ('docsx/new.md', 'tools/notes/new.md', 'deploy/pc/notes.md', 'apps/webx/new.md',
+                     '.claude/settings.json', '.claude/skillsx/new', 'skills2/new.md', 'tests/docs/new.md'):
+            with self.subTest(path):
+                self.full(sel([A(path)]), 'unknown_path')
 
     def test_a_new_file_under_a_listed_folder_selects_the_lister(self):
         self.picked(sel(DOCS[:20] + [A('crates/core/src/brand_new.rs')] + DOCS[20:]), has=['rust:test:checks'],
@@ -233,6 +261,97 @@ class Synthetic(unittest.TestCase):
         result = pick.select([M('crates/core/src/lib.rs')], MAP, UNITS, read, broken)
         self.assertEqual(result['mode'], 'full')
         self.assertIn('selector_error', codes(result))
+
+
+class PullRequestPlan(unittest.TestCase):
+    """#1335: a ready PR's plan (plan.py, the record every lane reads) on a
+    synthetic repository and signed map. As in main's maps, rust:test:checks
+    (the always lane's) is left out: it reads git's objects."""
+
+    def setUp(self):
+        import importlib.util
+        import test_job as signing
+        self.signing = signing
+        spec = importlib.util.spec_from_file_location('plan', ROOT / '.github/actions/docs-only/plan.py')
+        self.plan = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.plan)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name) / 'repo'
+        files = {
+            'Cargo.toml': '[workspace]\nmembers=["crates/core", "tests"]\n',
+            'crates/core/Cargo.toml': '[package]\nname="openwiz-core"\n', 'crates/core/src/lib.rs': '//\n',
+            'tests/Cargo.toml': '[package]\nname="openwiz-tests"\nautobins=false\nautotests=false\n'
+                                'autoexamples=false\nautobenches=false\n[[test]]\nname="checks"\npath="c.rs"\n'
+                                '[[test]]\nname="fleet"\npath="f.rs"\n',
+            'tests/c.rs': '//\n', 'tests/f.rs': '//\n', 'apps/web/test/unit/api.test.ts': '//\n',
+            'apps/web/src/api.ts': '//\n', 'docs/agents/fleet.md': 'synthetic\n', 'docs/ROADMAP.md': 'synthetic\n',
+            'wizskills.lock': '{}\n', '.claude/skills/old/SKILL.md': 'synthetic\n',
+            '.github/actions/docs-only/classify.sh': (ROOT / '.github/actions/docs-only/classify.sh').read_text(),
+            '.github/actions/docs-only/ci-reads.txt': '',
+        }
+        for name, body in files.items():
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_text(body)
+        self.git('init', '-q')
+        self.commit()
+        self.base = self.git('rev-parse', 'HEAD')
+        mp = {'schema': pick.MAP_SCHEMA, 'commit': self.base, 'units': {
+            'rust:lib:openwiz-core': {'files': ['crates/core/src/lib.rs'], 'dirs': [], 'web_export': False},
+            'rust:test:fleet': {'files': ['tests/f.rs', 'docs/agents/fleet.md', 'wizskills.lock'], 'dirs': [],
+                                'web_export': False},
+            'web:unit:api': {'files': ['apps/web/test/unit/api.test.ts', 'apps/web/src/api.ts'], 'dirs': [],
+                             'web_export': False}}}
+        data = json.dumps(mp).encode()
+        self.maps = Path(tmp.name) / 'maps'
+        self.maps.mkdir()
+        (self.maps / 'map.json').write_bytes(data)
+        (self.maps / 'map.jwt').write_text(signing.sign(signing.claims(aud=signing.job.audience(data), sha=self.base),
+                                                        signing.KEY))
+
+    def git(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.root), '-c', 'user.name=Synthetic', '-c',
+                                        'user.email=synthetic@example.invalid', *args], text=True).strip()
+
+    def commit(self):
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'synthetic')
+
+    def plan_for(self, *edits):
+        self.git('checkout', '-q', '--detach', self.base)
+        for name in edits:
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            with (self.root / name).open('a') as f:
+                f.write('synthetic change\n')
+        self.commit()
+        run = dict(id=9000100, attempt=1, event='pull_request', action='synchronize', base_branch='main',
+                   base=self.base, head=self.git('rev-parse', 'HEAD'), pull_request=909)
+        live = dict(draft=False, base={'ref': 'main', 'sha': self.base}, head={'sha': run['head']})
+        record, _ = self.plan.build(self.root, run, live, self.maps, self.signing.REPO,
+                                    keys=self.signing.jwks(self.signing.KEY))
+        return record
+
+    def decisions(self, record):
+        return {k: record['lanes'][k]['decision'] for k in ('rust', 'web')} | {
+            'export': record['builds']['web_export']['decision'], 'mode': record['selection']['mode']}
+
+    def test_a_docs_only_or_skills_only_pr_skips_the_rust_and_web_jobs(self):
+        # catches: a PR changing only docs or skills running the Rust, web and export jobs.
+        skip = {'rust': 'skip', 'web': 'skip', 'export': 'skip', 'mode': 'selected'}
+        for edits in (('docs/ROADMAP.md', 'docs/cleanup/new-table.md', 'NOTES.md'),
+                      ('.claude/skills/old/SKILL.md', '.claude/skills/new/SKILL.md', '.agents/skills/new/x')):
+            with self.subTest(edits):
+                self.assertEqual(self.decisions(self.plan_for(*edits)), skip)
+
+    def test_a_doc_or_pin_a_rust_test_reads_and_the_old_web_view_still_run_their_jobs(self):
+        # catches: the docs/skills skip dropping a reachable reader, or an old web view change skipping its export.
+        for edit, lane, test in (('docs/agents/fleet.md', 'rust', 'rust:test:fleet'),
+                                 ('wizskills.lock', 'rust', 'rust:test:fleet'),
+                                 ('apps/web/src/api.ts', 'web', 'web:unit:api')):
+            with self.subTest(edit):
+                record = self.plan_for(edit)
+                self.assertEqual(record['lanes'][lane]['tests'], [test])
+        self.assertEqual(record['builds']['web_export'], {'decision': 'run'})
 
 
 class RealMap(unittest.TestCase):
