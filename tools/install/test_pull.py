@@ -38,7 +38,7 @@ class Pull(unittest.TestCase):
         self.assertEqual(candidate['source'], '2' * 40)
         pull.stage(target, '0.0.99', '2' * 40, digest, f.root, f.root / 'state', fetch=fetch)
         self.assertEqual((f.root / 'current').readlink(), before)
-        self.assertTrue((f.root / 'state/service/builds' / ('2' * 40) / 'web/setup.html').exists())
+        self.assertTrue((f.root / 'state/service/builds' / ('2' * 40) / 'runtime/install.py').exists())
         self.assertEqual(calls, [
             'https://github.com/openwizdev/OpenWiz/releases/latest/download/openwiz-x86_64-unknown-linux-gnu.sha256',
             'https://github.com/openwizdev/OpenWiz/releases/latest/download/openwiz-x86_64-unknown-linux-gnu.manifest.json',

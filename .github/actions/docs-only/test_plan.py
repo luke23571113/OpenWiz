@@ -46,7 +46,6 @@ class Plans(unittest.TestCase):
             'tests/Cargo.toml': '[package]\nname="openwiz-tests"\nversion="0.0.0"\nautobins=false\nautotests=false\nautoexamples=false\nautobenches=false\n[[test]]\nname="checks"\npath="checks/main.rs"\n[[test]]\nname="proof"\npath="proof/main.rs"\n',
             'tests/checks/main.rs': '// synthetic checks\n',
             'tests/proof/main.rs': '// synthetic proof\n',
-            'apps/web/test/unit/api.test.ts': '// synthetic unit\n',
             'skills/launch-fleet/scripts/fleet.sh': '# synthetic skill\n',
             'skills/build-ticket/scripts/check-helpers.sh': '# synthetic skill\n',
             'ci/hosted/guard.sh': '# synthetic guard\n',
@@ -66,10 +65,9 @@ class Plans(unittest.TestCase):
         self.map = self.root.parent / 'map-cache'
         self.map.mkdir()
         mp = {'schema': 'openwiz.ci-select-map.v1', 'commit': self.base, 'units': {
-            'rust:lib:openwiz-core': {'files': ['crates/core/src/lib.rs'], 'dirs': [], 'web_export': False},
-            'rust:test:checks': {'files': ['tests/checks/main.rs'], 'dirs': [], 'web_export': False},
-            'rust:test:proof': {'files': ['tests/proof/main.rs'], 'dirs': [], 'web_export': False},
-            'web:unit:api': {'files': ['apps/web/test/unit/api.test.ts'], 'dirs': [], 'web_export': False},
+            'rust:lib:openwiz-core': {'files': ['crates/core/src/lib.rs'], 'dirs': []},
+            'rust:test:checks': {'files': ['tests/checks/main.rs'], 'dirs': []},
+            'rust:test:proof': {'files': ['tests/proof/main.rs'], 'dirs': []},
         }}
         data = json.dumps(mp).encode()
         (self.map / 'map.json').write_bytes(data)
@@ -101,21 +99,22 @@ class Plans(unittest.TestCase):
     def assert_full(self, record, code):
         self.assertEqual(record['selection']['mode'], 'full')
         self.assertIn(code, [r['code'] for r in record['selection']['reasons']])
-        for lane in [record['lanes'][k] for k in ('always', 'rust', 'web', 'site')] + record['lanes']['skills']:
+        for lane in [record['lanes'][k] for k in ('always', 'rust', 'site')] + record['lanes']['skills']:
             self.assertEqual(lane['decision'], 'run')
             self.assertEqual(lane['skipped'], [])
-        self.assertEqual(record['builds']['web_export']['decision'], 'run')
+        # #1264: the web view and its export went; even a full run skips them.
+        self.assertEqual(record['lanes']['web']['decision'], 'skip')
+        self.assertEqual(record['builds']['web_export']['decision'], 'skip')
 
-    def test_selected_site_release_cut_keeps_every_planned_test(self):
+    def test_selected_release_cut_keeps_every_planned_test(self):
         git(self.root, 'checkout', '-q', '--detach', self.base)
-        site = self.root / 'apps/site/index.html'
-        site.parent.mkdir(parents=True, exist_ok=True)
-        site.write_text('synthetic site\n')
+        release = self.root / 'tools/release/synthetic.py'
+        release.parent.mkdir(parents=True, exist_ok=True)
+        release.write_text('# synthetic release proof\n')
         self.commit()
         # A new unmeasured path must retain full fallback.
         record, _ = self.run_plan()
         self.assert_full(record, 'unknown_path')
-        self.assertFalse(self.plan.combine_site_release(record))
         # Establish the modified input in the signed map's base, as a real
         # selected plan requires; no map edges or trust checks are removed.
         self.base = git(self.root, 'rev-parse', 'HEAD')
@@ -125,13 +124,12 @@ class Plans(unittest.TestCase):
         (self.map / 'map.json').write_bytes(data)
         (self.map / 'map.jwt').write_text(signing.sign(signing.claims(
             aud=signing.job.audience(data), sha=self.base), signing.KEY))
-        self.change('apps/site/index.html')
+        self.change('tools/release/synthetic.py')
         record, dispatch = self.run_plan()
         self.assertEqual(record['selection'], {'mode': 'selected'})
-        self.assertTrue(self.plan.combine_site_release(record))
-        self.assertTrue({'site:build', 'site:test', 'site:ci', 'release:install',
-                         'release:package', 'release:ci2-batch-contract'} <= set(record['lanes']['site']['tests']))
-        self.assertTrue(dispatch['site'])
+        self.assertTrue({'release:install', 'release:package', 'release:ci2-batch-contract'}
+                        <= set(record['lanes']['site']['tests']))
+        self.assertFalse([t for t in record['lanes']['site']['tests'] if t.startswith('site:')])
         self.assertTrue(dispatch['release'])
         self.assertEqual(record['lanes']['always']['tests'],
                          ['always:fmt', 'always:classifier', 'always:selector', 'always:checks'])
@@ -167,7 +165,7 @@ class Plans(unittest.TestCase):
                  contextlib.redirect_stdout(io.StringIO()):
                 self.plan.main([str(home / 'plan')])
             emitted = dict(line.split('=', 1) for line in output.read_text().splitlines())
-            self.assertIs(json.loads(emitted['site-in-release']), not full)
+            self.assertNotIn('site-in-release', emitted)
             # #743: launch-fleet runs in its own sharded job, never also in the skills matrix.
             skills, jobs = json.loads(emitted['skills']), json.loads(emitted['skill-jobs'])
             self.assertEqual(jobs, [s for s in skills if s != 'launch-fleet'])
@@ -183,7 +181,6 @@ class Plans(unittest.TestCase):
             with self.subTest(context=context):
                 full, _ = self.run_plan(**context)
                 self.assertEqual(full['selection']['mode'], 'full')
-                self.assertFalse(self.plan.combine_site_release(full))
 
     def test_release_readers_run_for_selected_doc_and_tool_changes(self):
         # Existing modified inputs are not map-owned; the release suites,
@@ -288,21 +285,6 @@ class Plans(unittest.TestCase):
         (self.map / 'map.jwt').write_text('untrusted')
         record, _ = self.run_plan()
         self.assert_full(record, 'selector_error')
-
-    def test_changed_input_invalidates_a_negative_export_trace(self):
-        self.change('tests/proof/main.rs')
-        record, dispatch = self.run_plan()
-        self.assertEqual(record['lanes']['rust']['tests'], ['rust:test:proof'])
-        self.assertTrue(dispatch['export-rust'])
-        self.assertEqual(record['builds']['web_export']['decision'], 'run')
-        mp = json.loads((self.map / 'map.json').read_text())
-        del mp['units']['rust:test:proof']['web_export']
-        data = json.dumps(mp).encode()
-        (self.map / 'map.json').write_bytes(data)
-        (self.map / 'map.jwt').write_text(signing.sign(signing.claims(aud=signing.job.audience(data), sha=self.base), signing.KEY))
-        record, dispatch = self.run_plan()
-        self.assertTrue(dispatch['export-rust'])
-        self.assertEqual(record['builds']['web_export']['decision'], 'run')
 
 
 if __name__ == '__main__':

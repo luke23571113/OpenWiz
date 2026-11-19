@@ -140,11 +140,10 @@ or expired authorization never establishes phone readiness.
 
 ## Proof registration and references
 
-`apps/web/test/browser/install-access.test.mjs` runs the focused Python proofs,
-the actual setup page and installed tool against recording provider/edge
-fixtures. The existing browser runner discovers this file; the CI classifier
-retains `tools/install/` and `apps/web/`. Required fixtures are under
-`apps/web/test/fixtures/install-access/`, never optional private evidence. The
+`python3 -I tools/install/access/test_access.py` runs the focused Python
+proofs against recording provider/edge fixtures. (The browser test that also
+drove the setup page went with the web view in #1264.) Required fixtures are
+under `tools/install/access/fixtures/`, never optional private evidence. The
 collector packages only `access.py`, never tests or recording providers.
 
 Sources checked 2026-11-07: [Cloudflare JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/),

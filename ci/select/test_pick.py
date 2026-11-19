@@ -21,7 +21,7 @@ import pick  # noqa: E402
 
 FIX = 'tests/fixtures/room-cli'
 UNITS = sorted([
-    'rust:test:proof', 'rust:test:web-api', 'rust:test:checks', 'rust:lib:openwiz-core',
+    'rust:test:proof', 'rust:test:widget', 'rust:test:checks', 'rust:lib:openwiz-core',
     'web:browser:v1-faithful', 'web:unit:api', 'web:unit:brand-new',
 ])
 COMMIT = 'a' * 40
@@ -31,20 +31,20 @@ MAP = {
     'units': {
         'rust:test:proof': {'files': ['crates/core/src/lib.rs', 'tests/proof/main.rs', f'{FIX}/a/scenario.json'],
                             'dirs': [FIX]},
-        'rust:test:web-api': {'files': ['crates/server/src/lib.rs', 'crates/core/src/lib.rs', 'tests/web-api/main.rs',
+        'rust:test:widget': {'files': ['crates/widget/src/lib.rs', 'crates/core/src/lib.rs', 'tests/widget/main.rs',
                                         'tests/fixtures/probe/optional.json'], 'dirs': []},
         'rust:test:checks': {'files': ['tests/checks/main.rs'], 'dirs': ['crates', 'crates/core', 'crates/core/src']},
         'rust:lib:openwiz-core': {'files': ['crates/core/src/lib.rs', 'crates/core/Cargo.toml'], 'dirs': []},
-        'web:browser:v1-faithful': {'files': ['apps/web/src/App.tsx', 'apps/web/test/browser/v1-faithful.test.mjs'],
-                                    'dirs': ['apps/web/src']},
-        'web:unit:api': {'files': ['apps/web/src/api.ts', 'apps/web/test/unit/api.test.ts'], 'dirs': []},
+        'web:browser:v1-faithful': {'files': ['tools/war-room/src/App.tsx', 'tools/war-room/test/browser/v1-faithful.test.mjs'],
+                                    'dirs': ['tools/war-room/src']},
+        'web:unit:api': {'files': ['tools/war-room/src/api.ts', 'tools/war-room/test/unit/api.test.ts'], 'dirs': []},
     },
 }
 # What each file a test reads holds at the head: the selector greps these for a new file's name.
 TEXT = {
     'tests/proof/main.rs': b'let p = root.join("p01_coverage");',
     'tests/checks/main.rs': b'walk("crates")',
-    'apps/web/test/unit/api.test.ts': b'import "../../src/api.ts"',
+    'tools/war-room/test/unit/api.test.ts': b'import "../../src/api.ts"',
 }
 NOBODY = ('STATUS.md', 'AGENTS.md')
 DOCS = [('M', f'private/notes/{i}.md') for i in range(40)] + [('M', 'STATUS.md'), ('A', 'AGENTS.md')]
@@ -93,30 +93,30 @@ class Synthetic(unittest.TestCase):
 
     # The map itself.
     def test_no_map_runs_everything(self):
-        self.full(sel([M('apps/web/src/api.ts')], mp=None), 'selector_error')
+        self.full(sel([M('tools/war-room/src/api.ts')], mp=None), 'selector_error')
 
     def test_a_map_of_another_schema_runs_everything(self):
-        self.full(sel([M('apps/web/src/api.ts')], mp=dict(MAP, schema='other')), 'selector_error')
+        self.full(sel([M('tools/war-room/src/api.ts')], mp=dict(MAP, schema='other')), 'selector_error')
 
     def test_a_map_without_units_runs_everything(self):
-        self.full(sel([M('apps/web/src/api.ts')], mp=dict(MAP, units={})), 'selector_error')
+        self.full(sel([M('tools/war-room/src/api.ts')], mp=dict(MAP, units={})), 'selector_error')
 
     def test_a_unit_without_files_runs_everything(self):
         bad = dict(MAP, units=dict(MAP['units'], **{'web:unit:api': {'dirs': []}}))
-        self.full(sel([M('apps/web/src/api.ts')], mp=bad), 'selector_error')
+        self.full(sel([M('tools/war-room/src/api.ts')], mp=bad), 'selector_error')
 
     def test_a_map_with_an_extra_key_runs_everything(self):
-        self.full(sel([M('apps/web/src/api.ts')], mp=dict(MAP, extra=1)), 'selector_error')
+        self.full(sel([M('tools/war-room/src/api.ts')], mp=dict(MAP, extra=1)), 'selector_error')
 
     def test_a_map_with_a_path_outside_the_repository_runs_everything(self):
         bad = dict(MAP, units=dict(MAP['units'], **{'web:unit:api': {'files': ['../x'], 'dirs': []}}))
-        self.full(sel([M('apps/web/src/api.ts')], mp=bad), 'selector_error')
+        self.full(sel([M('tools/war-room/src/api.ts')], mp=bad), 'selector_error')
 
     def test_a_map_commit_that_is_not_a_commit_runs_everything(self):
-        self.full(sel([M('apps/web/src/api.ts')], mp=dict(MAP, commit='HEAD')), 'selector_error')
+        self.full(sel([M('tools/war-room/src/api.ts')], mp=dict(MAP, commit='HEAD')), 'selector_error')
 
     def test_no_units_runs_everything(self):
-        result = pick.select([M('apps/web/src/api.ts')], MAP, [], read, nobody)
+        result = pick.select([M('tools/war-room/src/api.ts')], MAP, [], read, nobody)
         self.assertEqual(result['mode'], 'full')
         self.assertIn('selector_error', codes(result))
 
@@ -131,7 +131,7 @@ class Synthetic(unittest.TestCase):
     def test_ci_and_toolchain_paths_hidden_in_docs_run_everything(self):
         for p in ['.github/workflows/ci.yml', '.github/actions/docs-only/classify.sh', 'ci/select/pick.py',
                   'ci/select/map.json', 'ci/runner/cache.sh', 'ci/runner/Dockerfile', 'ci/rust-tests.sh',
-                  'Cargo.toml', 'Cargo.lock', 'apps/web/package-lock.json', 'apps/site/package-lock.json',
+                  'Cargo.toml', 'Cargo.lock', 'tools/war-room/package-lock.json', 'tools/x/package-lock.json',
                   'rust-toolchain.toml', '.nvmrc']:
             with self.subTest(p):
                 result = sel(DOCS[:20] + [M(p)] + DOCS[20:])
@@ -145,7 +145,7 @@ class Synthetic(unittest.TestCase):
                 self.picked(sel(DOCS + [A(p)]), has=pick.ALWAYS, lacks=['rust:test:proof'])
 
     def test_a_path_with_a_control_character_runs_everything(self):
-        self.full(sel([M('apps/web/src/a\nb.ts')]), 'unknown_path')
+        self.full(sel([M('tools/war-room/src/a\nb.ts')]), 'unknown_path')
 
     def test_an_odd_status_counts_as_new(self):
         self.full(sel([('T', 'docs/q/p01_coverage')]), 'unknown_path')
@@ -154,15 +154,15 @@ class Synthetic(unittest.TestCase):
     # Modified paths.
     def test_a_modified_file_selects_its_readers_only(self):
         self.picked(sel([M('crates/core/src/lib.rs')]),
-                    has=['rust:test:proof', 'rust:test:web-api', 'rust:lib:openwiz-core'],
+                    has=['rust:test:proof', 'rust:test:widget', 'rust:lib:openwiz-core'],
                     lacks=['web:unit:api', 'web:browser:v1-faithful'])
 
     def test_a_fixture_read_only_at_run_time_hidden_in_docs_selects_its_reader(self):
         self.picked(sel(DOCS + [M(f'{FIX}/a/scenario.json')]), has=['rust:test:proof'],
-                    lacks=['rust:test:web-api', 'web:browser:v1-faithful'])
+                    lacks=['rust:test:widget', 'web:browser:v1-faithful'])
 
     def test_a_web_source_selects_its_readers_only(self):
-        self.picked(sel([M('apps/web/src/api.ts')]), has=['web:unit:api'],
+        self.picked(sel([M('tools/war-room/src/api.ts')]), has=['web:unit:api'],
                     lacks=['rust:test:proof', 'web:browser:v1-faithful'])
 
     def test_a_traced_file_no_test_touched_selects_nothing_more(self):
@@ -185,14 +185,14 @@ class Synthetic(unittest.TestCase):
                     lacks=['rust:test:proof'])
 
     def test_a_new_path_with_a_space_under_a_listed_folder_selects_the_lister(self):
-        self.picked(sel([A(f'{FIX}/a b.json')]), has=['rust:test:proof'], lacks=['rust:test:web-api'])
+        self.picked(sel([A(f'{FIX}/a b.json')]), has=['rust:test:proof'], lacks=['rust:test:widget'])
 
     def test_a_new_web_source_selects_whatever_lists_its_folder(self):
-        self.picked(sel([A('apps/web/src/new.ts')]), has=['web:browser:v1-faithful'],
+        self.picked(sel([A('tools/war-room/src/new.ts')]), has=['web:browser:v1-faithful'],
                     lacks=['rust:test:proof', 'web:unit:api'])
 
     def test_a_new_file_a_test_probed_for_selects_the_prober(self):
-        self.picked(sel([A('tests/fixtures/probe/optional.json')]), has=['rust:test:web-api'],
+        self.picked(sel([A('tests/fixtures/probe/optional.json')]), has=['rust:test:widget'],
                     lacks=['rust:test:proof'])
 
     def test_a_path_that_is_a_prefix_of_a_mapped_one_is_another_file(self):
@@ -200,7 +200,7 @@ class Synthetic(unittest.TestCase):
 
     # Deleted paths.
     def test_a_deleted_fixture_selects_its_reader_and_the_lister(self):
-        self.picked(sel([D(f'{FIX}/a/scenario.json')]), has=['rust:test:proof'], lacks=['rust:test:web-api'])
+        self.picked(sel([D(f'{FIX}/a/scenario.json')]), has=['rust:test:proof'], lacks=['rust:test:widget'])
 
     def test_a_deleted_file_nobody_read_listed_or_named_selects_nothing_more(self):
         self.picked(sel([D('docs/adr/0001.md')]), lacks=['rust:test:proof', 'web:unit:api'])
@@ -210,10 +210,10 @@ class Synthetic(unittest.TestCase):
 
     # Units.
     def test_a_test_the_map_has_never_seen_always_runs(self):
-        self.picked(sel([M('apps/web/src/api.ts')]), has=['web:unit:brand-new'])
+        self.picked(sel([M('tools/war-room/src/api.ts')]), has=['web:unit:brand-new'])
 
     def test_the_always_run_set_always_runs(self):
-        self.picked(sel([M('apps/web/src/api.ts')]), has=pick.ALWAYS)
+        self.picked(sel([M('tools/war-room/src/api.ts')]), has=pick.ALWAYS)
 
     def test_a_mapped_test_no_longer_in_the_tree_is_not_run(self):
         result = pick.select([M('crates/core/src/lib.rs')], MAP, [u for u in UNITS if u != 'rust:test:proof'], read,
@@ -265,13 +265,13 @@ class Lanes(unittest.TestCase):
 
     def test_a_selected_run_names_each_lane_s_tests(self):
         self.assertEqual(pick.lanes(sel([M('crates/core/src/lib.rs')])),
-                         {'rust': 'rust:lib:openwiz-core rust:test:checks rust:test:proof rust:test:web-api',
+                         {'rust': 'rust:lib:openwiz-core rust:test:checks rust:test:proof rust:test:widget',
                           'web': 'web:unit:brand-new'})
 
     def test_a_lane_with_nothing_selected_is_none(self):
         mp = dict(MAP, units=dict(MAP['units'], **{'web:unit:brand-new': {'files': ['x.ts'], 'dirs': []}}))
-        self.assertEqual(pick.lanes(sel([M('crates/server/src/lib.rs')], mp=mp)),
-                         {'rust': 'rust:test:checks rust:test:web-api', 'web': 'none'})
+        self.assertEqual(pick.lanes(sel([M('crates/widget/src/lib.rs')], mp=mp)),
+                         {'rust': 'rust:test:checks rust:test:widget', 'web': 'none'})
 
     def test_an_answer_that_is_not_a_plain_selection_is_all(self):
         good = sel([M('crates/core/src/lib.rs')])

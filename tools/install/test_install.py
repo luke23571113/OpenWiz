@@ -18,8 +18,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 SOURCE = '1' * 40
-REQUIRED = ['web/openwiz-build.txt', 'runtime/openwiz-build.txt', 'openwiz', 'openwiz-service', 'openwiz-server', 'web/index.html',
-            'web/setup.html', 'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
+REQUIRED = ['runtime/openwiz-build.txt', 'openwiz', 'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
             'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
             'runtime/skills/launch-fleet/scripts/fleet.sh', 'runtime/install.py', 'runtime/pull.py']
 # #1105 (R9): the setup and App connection tools an installed consumer runs.
@@ -49,25 +48,23 @@ class Bundles(unittest.TestCase):
 
     def bundle(self, target=TARGETS[2], source=SOURCE, mutate=None, extra=None, version='0.0.99', omit=None, override=None):
         self.counter += 1
-        files = {path: (b'#!/bin/sh\nexit 0\n' if path in ('openwiz', 'openwiz-service', 'openwiz-server') else
-                        b'<h1>Set up OpenWiz</h1><p>CloudRoom: unknown. Connect CloudRoom to continue.</p>'
-                        if path.endswith('.html') else b'Synthetic runtime\n') for path in REQUIRED if path != omit}
+        files = {path: (b'#!/bin/sh\nexit 0\n' if path == 'openwiz' else b'Synthetic runtime\n')
+                 for path in REQUIRED if path != omit}
         files.update(override or {})
         identity = f'openwiz.package.v1\n{version}\n{source}\n{target}\n'.encode()
-        files['web/openwiz-build.txt'] = identity
         files['runtime/openwiz-build.txt'] = identity
         manifest = {'schema': 'openwiz.install.v1', 'version': version, 'source': source,
                     'target': target, 'setup_api': 1, 'archive': 'bundle.tar.gz',
                     'archive_sha256': '', 'archive_bytes': 0,
                     'assets': [{'path': path, 'sha256': sha(data), 'bytes': len(data),
-                                'mode': '0700' if path in ('openwiz', 'openwiz-service', 'openwiz-server') or path.endswith('.sh') else '0600'}
+                                'mode': '0700' if path == 'openwiz' or path.endswith('.sh') else '0600'}
                                for path, data in sorted(files.items())]}
         archive = self.base / f'archive-{self.counter}.tar.gz'
         with tarfile.open(archive, 'w:gz', format=tarfile.USTAR_FORMAT) as tar:
             for path, data in files.items():
                 info = tarfile.TarInfo(path)
                 info.size = len(data)
-                info.mode = 0o700 if path in ('openwiz', 'openwiz-service', 'openwiz-server') or path.endswith('.sh') else 0o600
+                info.mode = 0o700 if path == 'openwiz' or path.endswith('.sh') else 0o600
                 tar.addfile(info, io.BytesIO(data))
             if extra:
                 info = tarfile.TarInfo(extra[0])
@@ -108,14 +105,13 @@ class Install(Bundles):
                 self.root = self.base / target
                 b = self.bundle(target)
                 result = self.run_install(b, target)
-                self.assertEqual(result['setup_url'], 'http://127.0.0.1:7370/setup')
+                self.assertNotIn('setup_url', result)
                 self.assertEqual(result['source'], SOURCE)
                 self.assertEqual(result['target'], target)
                 selected = self.root / 'current'
                 self.assertTrue(selected.is_symlink())
                 for path, data in b[2].items():
                     self.assertEqual((selected / path).read_bytes(), data)
-                self.assertIn(b'CloudRoom', (selected / 'web/setup.html').read_bytes())
                 settings = self.root / 'owner-settings.json'
                 settings.write_text('synthetic owner settings')
                 before = self.installed()
@@ -185,7 +181,7 @@ class Install(Bundles):
         self.run_install(b, ok=False)
         self.assertEqual(os.readlink(self.root / 'current'), str(self.base))
 
-    def test_program_web_runtime_identity_cannot_be_relabelled_as_another_version(self):
+    def test_program_runtime_identity_cannot_be_relabelled_as_another_version(self):
         self.run_install(self.bundle())
         before = self.installed()
         self.run_install(self.bundle(source='2' * 40, mutate=lambda m: m.update(version='0.0.100')), ok=False)
