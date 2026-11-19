@@ -1,6 +1,5 @@
-// One first-hour `recovery` document per fault case (contracts/first-hour.v1.md,
-// "Recovery cases"), built from what the case observed, and its codes, as
-// #2200's checks give them (`codes.py`, which loads
+// One first-hour `recovery` document per fault case, built from its observations
+// and the codes reported by #2200's checks (`codes.py`, which loads
 // tools/install/tests/first-hour-contract/check.py by path). Nothing here
 // decides an outcome: the checks do, from the observations.
 

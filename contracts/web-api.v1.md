@@ -561,7 +561,7 @@ serve the matching exported setup.html under the existing page CSP and no-store.
 
 ## First-hour retention and recovery (#2200, contract only)
 
-What the first hour ([first-hour.v1](first-hour.v1.md)) may rely on from this API
+What the first hour ([first-hour.v1](../tools/install/tests/first-hour/README.md#evidence-and-validation)) may rely on from this API
 when a reply is lost or the browser, server, update or removal interrupts it. It
 restates existing guarantees and adds **no route, method, header, bound, write
 authorization or storage**.

@@ -7,10 +7,10 @@
 // then compares the owner's work before and after: drafts by their exact
 // bytes, the pending intents' ids and request fingerprints, and the
 // provider's own effect and call counts. Every comparison is a first-hour
-// `recovery` document (contracts/first-hour.v1.md, "Recovery cases"); #2200's
-// checks give its codes, and each case's expected codes are written here by
-// hand from the contract. A recording is never a pass: `not_live` and
-// `candidate_unknown` stay in every one.
+// `recovery` document. The first-hour evidence README describes the records.
+// #2200's checks give the codes and each case's expected codes are written by
+// hand. A recording is never a pass: `not_live` and `candidate_unknown` stay in
+// every one.
 //
 // Scope (J13, 2026-11-13): drafts are kept within the same tab (reload) and
 // across a server restart through the tab's sessionStorage. After a browser

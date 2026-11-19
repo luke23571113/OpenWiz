@@ -55,7 +55,7 @@ Reviewed on 2026-11-13 against `main`:
 | --- | --- | --- |
 | #1109 (install journey), What to build | OpenWiz is free and an upgrade purchases CloudRoom | OpenWiz is free; CloudRoom and model purchases are optional and separate; Paid plans come later |
 | #1109, acceptance: product and site upgrade CTAs | Upgrade CTAs explain the CloudRoom purchase | No OpenWiz upgrade CTA; any CloudRoom link is an upstream purchase with the verified owner-supplied referral, or says verification is unavailable |
-| [first-hour.v1](../../contracts/first-hour.v1.md), the `paid_offer` gate | Decided by this ticket as paid benefits, payment arrangement and trial; `unresolved` | The same gate and schema, settled by the free-only decision and its verified producer |
+| [first-hour evidence](../../tools/install/tests/first-hour/README.md#evidence-and-validation), the `paid_offer` gate | Decided by this ticket as paid benefits, payment arrangement and trial; `unresolved` | The same gate and schema, settled by the free-only decision and its verified producer |
 
 No shipped product, site, install guide or skill copy mentions a paid OpenWiz
 plan, price or trial today; the gaps above are in planned work. This review read

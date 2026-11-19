@@ -5,7 +5,7 @@ One attempt (journey.py) runs #1109's installed journey unchanged with a fresh
 idea on the owner's own repository, then the fleet, independent review, CI and
 merge, decided by the installed launch-fleet frontier on recording GitHub and
 CloudRoom providers. #2222's fault cases rerun at this journey's seams. Every
-expected code below is written by hand from contracts/first-hour.v1.md; #2200's
+expected code below is written by hand from the first-hour evidence rules; #2200's
 checks give the actual ones. A recording is never a pass: these prove
 behaviour on fixtures, never a live first hour, a usable login or real time.
 """

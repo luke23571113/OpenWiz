@@ -110,7 +110,7 @@ class Archive:
         self.put('README.md', 'synthetic archive\n')
         self.blobs_root = self.root / 'tree'
         self.blobs = {}
-        for path in ('ci/main-batch/shadow.py', 'contracts/ci-main-batch.v1.md'):
+        for path in ('ci/main-batch/shadow.py', 'ci/main-batch/README.md'):
             target = self.blobs_root / path
             target.parent.mkdir(parents=True, exist_ok=True)
             data = (ROOT / path).read_bytes()

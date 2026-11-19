@@ -83,7 +83,7 @@ def refuse_reserved_port(kit, argv):
 
 def retired(kit, argv):
     """`openwiz fleet tick` in any form, and `openwiz engine`: the engine
-    retirement removes them (contracts/engine-retirement.v1.md, section 9).
+    retirement and the smoke restriction are documented in the adjacent README.
 
     The program is the pinned `openwiz` by its path, by file identity (a
     symlink or hardlink to it) or by its pinned bytes (a pinned copy). The

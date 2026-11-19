@@ -1,4 +1,4 @@
-# Recorded dependency set, version 1
+# Approved dependency ledger
 
 The approved direct dependencies are `serde` (with `derive`) and `serde_json`.
 The visual terminal crate and its `ratatui`/`crossterm` pair were removed with

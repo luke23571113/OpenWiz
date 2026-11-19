@@ -28,7 +28,7 @@ def coverage_refusals(raw, context):
     checked-in schemas is performed here.
     """
     try:
-        schema = gate.escapes.strict_json((ROOT / 'contracts/ci-main-batch.v1.schema.json').read_text())
+        schema = gate.escapes.strict_json((FIXTURES.parent / 'combined-coverage.schema.json').read_text())
         errors = gate.escapes.lint(schema)
         if errors:
             return errors

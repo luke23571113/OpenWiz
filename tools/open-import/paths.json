@@ -84,6 +84,7 @@
     "tools/skills-eval/**",
     "ci/main-batch/README.md",
     "ci/main-batch/admit.py",
+    "ci/main-batch/fixtures/combined-coverage.schema.json",
     "ci/main-batch/fixtures/contract/complete.json",
     "ci/main-batch/fixtures/contract/expected.json",
     "ci/main-batch/fixtures/contract/red-coverage.log",

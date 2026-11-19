@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""#2200 (PR1-PR7, contract proof only): contracts/first-hour.v1 refuses what it says it refuses.
+"""#2200 (PR1-PR7): validate the first-hour result and recovery evidence.
 
 Every expected code comes from tests/fixtures/first-hour/README.md, written by hand from
 the contract's rules. These are synthetic examples: they prove interface consistency,
@@ -26,7 +26,6 @@ def _load(name, path):
 
 
 check = _load('first_hour_check', HERE / 'check.py')
-CONTRACT = (ROOT / 'contracts/first-hour.v1.md').read_text()
 FENCE = re.compile(r'^```json\n(.*?)\n^```$', re.S | re.M)
 BLOCKS = FENCE.findall((ROOT / 'tests/fixtures/first-hour/README.md').read_text())
 assert len(BLOCKS) == 1, 'the fixture README holds exactly one JSON map'
@@ -161,26 +160,7 @@ class FirstHourContract(unittest.TestCase):
                         self.assertEqual(report(doc),
                                          {'problems': [], 'failures': [], 'unproven': []})
 
-    def test_the_contract_lists_every_code_the_checks_give(self):
-        rows = re.findall(r'^\| `([a-z_]+)(?::[^`]*)?` \| (problem|failure|unproven) \|', CONTRACT, re.M)
-        table = dict(rows)
-        self.assertEqual(len(table), len(rows), 'a code listed twice')
-        given = {'not_strict_json': 'problem'}  # check_text's, proven above
-        docs = [e['document'] for e in EXAMPLES.values()]
-        docs += [apply(EXAMPLES[v['from']]['document'], v) for v in VARIANTS.values()]
-        for doc in docs:
-            r = check.check(doc)
-            for kind, codes in (('problem', r.problems), ('failure', r.failures), ('unproven', r.unproven)):
-                given.update((c.split(':')[0], kind) for c in codes)
-        self.assertEqual(given, table)
 
-    def test_the_contract_stage_table_is_the_checks_order_and_evidence(self):
-        rows = re.findall(r'^\| (\d+) \| `([a-z_]+)` \| `([a-z_]+)`', CONTRACT, re.M)
-        self.assertEqual([int(n) for n, _, _ in rows], list(range(1, 11)))
-        self.assertEqual([(s, b) for _, s, b in rows], list(check.ESTABLISH.items()))
-
-
-GATE_ROW = re.compile(r'^\| `(cloudroom_setup|paid_offer|feedback)` \| (.+) \| (.+) \|$', re.M)
 SETTLED = 'offer-settled-by-free-only-producer'
 
 
@@ -188,16 +168,6 @@ class FreeOnlyOfferGate(unittest.TestCase):
     """#2293 (PR6, gate portion only): the legacy `paid_offer` gate and its schema stay;
     the free-only decision (#2202) and its one producer (#2293) settle it. No paid trial
     receipt is needed or invented. Synthetic records: this proves no free use or merge."""
-
-    def test_the_contract_keeps_three_gates_and_names_the_free_only_producer(self):
-        rows = {name: (decision, today) for name, decision, today in GATE_ROW.findall(CONTRACT)}
-        self.assertEqual(list(rows), ['cloudroom_setup', 'paid_offer', 'feedback'])
-        decision, today = rows['paid_offer']
-        self.assertTrue(decision.startswith('#2202: the free-only friends-first release'), decision)
-        self.assertIn('Its one approved producer is #2293', decision)
-        self.assertIn('settles no paid benefit, payment arrangement or trial', decision)
-        self.assertEqual(today, "`unresolved` until #2293's verified merge; then `settled`, with producers `[2293]`")
-        self.assertEqual(rows['cloudroom_setup'][1], '`unresolved`', 'the setup gate is unchanged')
 
     def test_only_the_free_only_producer_settles_the_offer_gate_and_never_alone(self):
         doc = apply(EXAMPLES['recording-feedback-settled']['document'], VARIANTS[SETTLED])

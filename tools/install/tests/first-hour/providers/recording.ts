@@ -1,5 +1,5 @@
 // The recording and fault provider for the first hour's browser-state fault
-// cases (#2222, contracts/first-hour.v1.md, "Recovery cases").
+// cases (#2222, described in the first-hour evidence README).
 //
 // It stands where OpenWiz's loopback server and its core stand for the web
 // page: the send (`POST /api/v1/sessions/{id}/messages`), its lookup, the

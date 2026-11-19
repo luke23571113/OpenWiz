@@ -363,7 +363,7 @@ apps/web/src/App.tsx
 apps/web/package.json
 apps/web/package-lock.json
 contracts/fleet.v1.md
-contracts/dependencies.v1.md
+tests/checks/dependencies.md
 .github/workflows/ci.yml
 README.md
 release/openwiz/README.md
@@ -383,13 +383,13 @@ apps/web/src/App.tsx
 apps/web/package.json
 apps/web/package-lock.json
 contracts/fleet.v1.md
-contracts/dependencies.v1.md
 .github/workflows/ci.yml
 README.md
 release/openwiz/README.md
 .gitignore
 newdir/x.md'
 KEEP_WEB_BUILD="$KEEP_ANY
+tests/checks/dependencies.md
 ci/rust-tests.sh
 tests/checks/skills.rs
 tests/pending-ticket-2.txt"
@@ -846,7 +846,7 @@ for case in 'web-test skills' 'web-test docs/agents/fleet.md' 'web-test tests/ch
   run_on_main "$1" "$2"
   case $? in 1) ok "skip proof: $1 reading $2, which it may skip for, fails on main" ;; 0) bad "skip proof: $1 read $2, which it may skip for, and passed on main" ;; *) bad "skip proof: $1 on main: the checkout, decide or the prune failed" ;; esac
 done
-for case in 'web-test apps/web/src/App.tsx' 'web-test Cargo.lock' 'rust skills' 'web-build tests/checks/skills.rs' 'rust contracts/dependencies.v1.md'; do
+for case in 'web-test apps/web/src/App.tsx' 'web-test Cargo.lock' 'rust skills' 'web-build tests/checks/skills.rs' 'rust tests/checks/dependencies.md'; do
   # shellcheck disable=SC2086 # two words, split on purpose
   set -- $case
   if run_on_main "$1" "$2"; then ok "control: $1 reading $2, which it reads, passes on main"; else bad "control: $1 reading $2, which it reads, failed on main"; fi
