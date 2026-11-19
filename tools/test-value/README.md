@@ -10,6 +10,30 @@ contract others rely on or a safety invariant, adds something not already
 covered, and names the bug it catches. Never mock-returns-stub, source
 mirroring, compiler re-checks, quota tests or unreachable cases.
 
+For cleanup wave #1141 (DL4), keep a test only for a **user-visible
+behaviour**, a **contract another repository relies on**, or a **safety
+gate** for privacy, security, data loss, money or release. Name the
+reason and the specific behaviour, contract or gate in the ledger.
+
+Measure test lines before and after each pass:
+
+```sh
+python3 -I tools/test-value/count.py BASE_COMMIT
+python3 -I tools/test-value/count.py HEAD_COMMIT
+```
+
+The counter uses the budget guard's file classifier. It reports test
+lines per area, their sum, and their percentage of all tracked text lines
+at the requested commit (default `HEAD`). Git counts blank lines and a
+final line without a newline, and excludes binary content. Use a Git
+version that supports `--attr-source` so the requested commit supplies
+the file attributes. Inline Rust test modules in otherwise unclassified
+source files contribute only to the whole-tree total. A fixture contributes
+to the test count when its path matches the same classifier.
+
+Compare the rows your pass owns. The [CW1 baseline](evidence/cw1/baseline.json)
+records the starting commit and totals for CW19's wave comparison.
+
 ## The pull request test-code budget (#1139)
 
 Every pull request may add **400 net test lines** without an allowance:
@@ -48,31 +72,32 @@ python3 -I tools/test-value/budget.py --base=BASE_SHA --head=HEAD_SHA --event=PR
 ## The ledger
 
 One row for **every test the group touches or reviews**, in the group's
-evidence folder as `tools/test-value/evidence/tv<N>/ledger.md`. A test is
+evidence folder as `tools/test-value/evidence/cw<N>/ledger.md` (or
+`tv<N>/ledger.md` for spec #787). A test is
 named `path::name`: its file from the repository root and its function, with
 any module path inside the file (`tests/fleet/a4_board.rs::board::orders_by_spec`).
 
-| Test | Outcome | Keeper | Catches |
-| --- | --- | --- | --- |
-| `tests/fleet/a4_board.rs::orders_by_spec` | kept | itself | a board that lists specs out of order |
-| `tests/fleet/a5_detail.rs::detail_reads_once` | moved | `crates/cli/tests/fleet_detail.rs::detail_reads_once` | a detail view that reads `gh` twice per issue |
-| `tests/fleet/a5_detail.rs::detail_reads_once_twice` | merged | `crates/cli/tests/fleet_detail.rs::detail_reads_once` | (as its keeper) |
-| `tests/fleet/a3_seams.rs::fake_gh_prints_help` | deleted | `tests/fleet/a3_fake_gh.rs::fake_gh_refuses_unknown_args` | a fake `gh` that accepts calls the real one refuses |
-| `tests/fleet/b2_legacy.rs::legacy_flag_still_parses` | deleted | behaviour gone: `--legacy` removed by #612 | |
+| Test | Outcome | Keep reason | Keeper or gone reason | Catches |
+| --- | --- | --- | --- | --- |
+| `tests/fleet/board.rs::orders_by_spec` | kept | user-visible behaviour: the board displays specs in number order | itself | a board that displays specs in input order |
+| `tests/fleet/board.rs::sorts_reverse_input` | deleted | | `tests/fleet/board.rs::orders_by_spec` | |
+| `tests/fleet/fake.rs::help_mentions_fixture` | deleted | | internal fixture help text serves no user-visible behaviour, cross-repository contract or safety gate | |
 
 (Synthetic rows: they show the form, not real tests.)
 
 The four outcomes, and what each row must carry:
 
-- **kept:** the test stays where it is. Keeper: `itself`. Catches: the bug, in one line.
+- **kept:** the test stays where it is. Give its keep reason, name
+  `itself` as keeper and describe the bug in one line.
 - **moved:** the test is kept at a new place, normally its crate's own
-  `tests/` folder. Keeper: its new `path::name`. Catches: the bug.
+  `tests/` folder. Give its keep reason, new `path::name` and the bug.
 - **merged:** its case now lives in another test, which checks it. Keeper:
-  that test's `path::name`. Catches: the bug, or `(as its keeper)`.
-- **deleted:** Keeper: an existing test, by `path::name`, that still
-  catches the same bug at the pull request's head; or `behaviour gone:
-  <the behaviour> removed by <issue, pull request or commit>`. Catches stays
-  empty.
+  that test's `path::name`. Give its keep reason and the bug it catches.
+- **deleted:** name an existing test by `path::name` that catches the
+  same bug at the pull request's head, or explain why the tested behaviour
+  falls outside all three keep reasons. If the behaviour was removed, name
+  it and cite the issue, pull request or commit. Leave Keep reason and
+  Catches empty.
 
 A keeper is checked, not assumed: the reviewer can break the code the
 deleted test guarded and see the keeper fail. "Covered elsewhere" without a
