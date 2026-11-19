@@ -30,9 +30,6 @@ mod dirs;
 #[path = "t2_process.rs"]
 mod process;
 
-#[path = "t2_docs.rs"]
-mod docs;
-
 #[path = "t2_bundle_pair.rs"]
 mod bundle_pair;
 

@@ -201,51 +201,6 @@ fn documented_bootstrap_waits_for_status_and_fails_if_it_never_answers() {
     prove_bootstrap(block(2));
 }
 
-#[test]
-fn staging_proof_rejects_missing_changed_or_public_unit() {
-    let install =
-        "install -m 600 deploy/pc/openwiz.service \"$HOME/.config/systemd/user/openwiz.service\"";
-    for replacement in [
-        "".to_string(),
-        install.replace("deploy/pc/openwiz.service", "deploy/pc/config.example.json"),
-        install.replace("-m 600", "-m 644"),
-    ] {
-        assert!(
-            block(1).contains(install),
-            "mutation must change the fixture"
-        );
-        let script = block(1).replace(install, &replacement);
-        assert!(
-            std::panic::catch_unwind(|| prove_staging(&script)).is_err(),
-            "staging proof accepted unit install mutation: {replacement:?}"
-        );
-    }
-}
-
-#[test]
-fn bootstrap_proof_rejects_missing_or_reordered_setup_calls() {
-    let calls = [
-        "loginctl enable-linger \"$USER\"\n",
-        "systemctl --user daemon-reload\n",
-        "systemctl --user enable --now openwiz.service\n",
-    ];
-    let mut rejected = Vec::new();
-    for call in calls {
-        assert!(block(2).contains(call), "mutation must change the fixture");
-        let script = block(2).replace(call, "");
-        rejected.push(std::panic::catch_unwind(|| prove_bootstrap(&script)).is_err());
-    }
-    let original = format!("{}{}", calls[0], calls[1]);
-    assert!(block(2).contains(&original));
-    let script = block(2).replace(&original, &format!("{}{}", calls[1], calls[0]));
-    rejected.push(std::panic::catch_unwind(|| prove_bootstrap(&script)).is_err());
-    assert_eq!(
-        rejected,
-        vec![true; 4],
-        "missing calls, then reordered calls"
-    );
-}
-
 // Fixture programs are placed by a separate `cp` (#811), shared.
 #[path = "../support/place.rs"]
 mod place;

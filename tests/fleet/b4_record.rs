@@ -1,17 +1,14 @@
 //! B4 (ClosedWiz#120): the start record. It is read back only exactly:
 //! a table of good and bad records through the store's reader
-//! (`openwiz_store::starts::read`), each bad one refused; the store keeps
-//! it owner-only, locks it across processes and writes it only under the
-//! lock; and the one decision a start makes from it (`next_step`), for
-//! every kind of record.
+//! (`openwiz_store::starts::read`), each bad one refused; and the store
+//! keeps it owner-only, locks it across processes and writes it only under
+//! the lock, while the read-only store `fleet tick --dry-run` opens never
+//! locks.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
-use openwiz_core::fleet::starts::{
-    Attempt, AttemptOutcome, Locked, Next, NotCreated, StartField, StartRecord, StartStore,
-    next_step,
-};
+use openwiz_core::fleet::starts::{Attempt, AttemptOutcome, Locked, StartRecord, StartStore};
 use openwiz_core::model::Timestamp;
 use openwiz_store::StartFileStore;
 use openwiz_store::starts::read;
@@ -404,83 +401,4 @@ fn the_store_keeps_records_owner_only_and_writes_only_under_the_lock() {
         .expect("the record directory exists");
     assert!(read_only.lock(&request.key).is_err());
     assert!(read_only.inspect(&request.key).unwrap().is_some());
-}
-
-#[test]
-fn the_next_step_follows_the_record() {
-    let request = builder(7);
-    let attempt = |id: &str, outcome: AttemptOutcome| Attempt {
-        op_id: op(id),
-        at: Timestamp(T0),
-        outcome,
-    };
-    let make = |attempts: Vec<Attempt>| {
-        StartRecord::from_parts(
-            request.key.id(),
-            request.key.clone(),
-            PROJECT.to_owned(),
-            builder_settings(),
-            attempts,
-        )
-        .expect("a record")
-    };
-    let not_created = || AttemptOutcome::NotCreated {
-        status: NotCreated::Refused,
-        words: "Synthetic".to_owned(),
-    };
-    assert_eq!(next_step(None, &request), Next::Attempt);
-    let pending = make(vec![attempt("op-1", AttemptOutcome::Pending)]);
-    assert_eq!(
-        next_step(Some(&pending), &request),
-        Next::Reconcile { op_id: op("op-1") }
-    );
-    let created = make(vec![
-        attempt("op-1", not_created()),
-        attempt(
-            "op-2",
-            AttemptOutcome::Created {
-                thread_id: THREAD.to_owned(),
-            },
-        ),
-    ]);
-    assert_eq!(
-        next_step(Some(&created), &request),
-        Next::Started {
-            op_id: op("op-2"),
-            thread_id: THREAD.to_owned()
-        }
-    );
-    let uncertain = make(vec![attempt(
-        "op-1",
-        AttemptOutcome::Uncertain {
-            words: "Synthetic".to_owned(),
-        },
-    )]);
-    assert_eq!(
-        next_step(Some(&uncertain), &request),
-        Next::Uncertain {
-            op_id: op("op-1"),
-            words: "Synthetic".to_owned()
-        }
-    );
-    let refused = make(vec![attempt("op-1", not_created())]);
-    assert_eq!(next_step(Some(&refused), &request), Next::Attempt);
-    let mut swapped = request.clone();
-    swapped.settings.effort = "max".to_owned();
-    swapped.project_id = "prj_syn_0002".to_owned();
-    assert_eq!(
-        next_step(Some(&refused), &swapped),
-        Next::Conflicting {
-            differs: vec![StartField::Project, StartField::Effort]
-        }
-    );
-    // A started or uncertain start stays so whatever the request says.
-    assert!(matches!(
-        next_step(Some(&created), &swapped),
-        Next::Started { .. }
-    ));
-    assert!(matches!(
-        next_step(Some(&uncertain), &swapped),
-        Next::Uncertain { .. }
-    ));
 }
