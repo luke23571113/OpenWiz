@@ -20,6 +20,14 @@
   "not in this lane: its prune deletes it" in a lane that need not catch it;
   any other missing file fails with its name.
 
+- [red-pin.log](red-pin.log): `test_pick.py Synthetic` before `pick.py`
+  read pins and links. On a map traced before this resolver (the committed
+  `map.json`), a `wizskills.lock` pin move skipped `rust:test:fleet`, which
+  reads the installed `skills/setup/templates/fleet.md`: CI's planted run at
+  `742f107` found it. [planted-rust-green.log](planted-rust-green.log): the
+  two #1335 planted cases in the rust lane after the fix, both caught, none
+  hidden.
+
 ## Why Rust never skipped (observed)
 
 The nightly map on `main` (run 44367525793, the `select-map` job's log) mapped

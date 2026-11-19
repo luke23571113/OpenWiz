@@ -59,6 +59,10 @@ CI_CHANGE = re.compile(r'(?!private/)(?:\.github/.+|ci/(select|runner)/.+|ci/[^/
 # from. A new one that no test looked for, listed a folder above, or names
 # reaches no test (rule 9); planted.py keeps a reachable edit of each class.
 DOCS_OR_SKILLS = re.compile(r'docs/.+|[^/]+\.md|\.(claude|agents)/skills/.+')
+# The installed skills (#1335): read through these, they change in a diff
+# only through their pin, wizskills.lock (a map from before #1335's resolver
+# lacks the pin; this keeps it safe).
+INSTALLED, PIN = ('skills/', '.wizskills/', '.claude/skills/', '.agents/skills/'), 'wizskills.lock'
 TEST_ID = re.compile(r'(rust:lib|rust:test|web:unit|web:browser):[A-Za-z0-9._-]+')
 COMMIT = re.compile(r'[0-9a-f]{40}')
 SKIPPED = 'no changed path reaches it'
@@ -124,8 +128,20 @@ def index_map(mp):
     for uid, u in known.items():
         for f in u['files']:
             owners.setdefault(f, set()).add(uid)
+            # #1335: a test reading beneath a path (through a link such as
+            # `skills`) also reads that path; installed skills read their pin.
+            parts = f.split('/')
+            for i in range(1, len(parts)):
+                owners.setdefault('/'.join(parts[:i]), set()).add(uid)
+            if f.startswith(INSTALLED):
+                owners.setdefault(PIN, set()).add(uid)
         for d in u['dirs']:
             listers.setdefault(d, set()).add(uid)
+            parts = d.split('/')
+            for i in range(1, len(parts) + 1):
+                owners.setdefault('/'.join(parts[:i]), set()).add(uid)
+            if d.startswith(INSTALLED) or d in ('skills', '.wizskills'):
+                owners.setdefault(PIN, set()).add(uid)
     answer = (known, {k: frozenset(v) for k, v in owners.items()}, {k: frozenset(v) for k, v in listers.items()})
     _INDEXED[:] = [mp, answer]
     return answer

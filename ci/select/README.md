@@ -46,7 +46,7 @@ In web-build's docs-only step, before its prune (`job.py select`, `pick.py`):
 3. **The change is every path between the map's commit and the tested merge commit,** so drift on `main` since the trace counts too.
 4. **The rules** are listed in `pick.py`'s docstring:
    - **Everything** for any CI or toolchain change, an unknown path, or a new file a test names.
-   - **Its readers** for a modified file.
+   - **Its readers** for a modified file. A test reading beneath a path (through a link such as `skills`) reads that path too, and one reading the installed skills reads `wizskills.lock`, even on a map traced before #1335's resolver.
    - **Its readers and the tests that listed a folder above it** for a new or deleted file.
    - **Nothing** for a new doc or skill (`docs/`, a top-level `.md`, `.claude/skills/`, `.agents/skills/`) that no test looked for, listed a folder above, or names (#1335).
    - **Always** for a test the map doesn't know, and for the always-run `rust:test:checks`.
