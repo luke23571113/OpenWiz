@@ -20,9 +20,10 @@ The step and skill rules added by K16 (#433) are described below. The pending li
 On every push to `main` and every nightly run, the rust and web-test jobs run every test under `strace --seccomp-bpf` (`trace.py`), each test on its own and as CI runs it. They keep every repository path it, or anything it started, opened, looked for (a missing file counts), executed or listed. web-build traces `npm run build`.
 
 `resolve.py` turns those paths into repository files:
-- **A Rust build product under `target/`** becomes its dep-info sources.
+- **A Rust build product under `target/`** becomes its dep-info sources. A library's `lib<crate>-<hash>.rlib` has `<crate>-<hash>.d`; an uplifted program without dep-info is the `deps/` unit it is hard-linked to; a test name two packages share (`loops`) belongs to the one whose folder holds the unit's sources; a registry crate becomes `Cargo.lock` (#1335).
 - **`apps/web/out`** becomes the export's inputs.
 - **`node_modules`** becomes the lockfile.
+- **A path through a repository link** (`skills`, `.claude/skills/<name>`) also needs the link, and one inside the installed skills (`.wizskills/`) needs `wizskills.lock`, their pin (#1335).
 
 A test touching anything else it can't account for (git's index, an unknown build product) is left out of the map, and so always runs. So is a test that failed under strace: it runs again without strace, and that run decides the job.
 
@@ -47,6 +48,7 @@ In web-build's docs-only step, before its prune (`job.py select`, `pick.py`):
    - **Everything** for any CI or toolchain change, an unknown path, or a new file a test names.
    - **Its readers** for a modified file.
    - **Its readers and the tests that listed a folder above it** for a new or deleted file.
+   - **Nothing** for a new doc or skill (`docs/`, a top-level `.md`, `.claude/skills/`, `.agents/skills/`) that no test looked for, listed a folder above, or names (#1335).
    - **Always** for a test the map doesn't know, and for the always-run `rust:test:checks`.
 5. **Anything missing, untrusted, unreadable or failing** runs everything.
 
@@ -73,6 +75,30 @@ python3 -I ci/select/pick.py --map ci/select/map.json   # what this checkout's c
 - **The map knows what the tests did on the traced commit.** A test that reads a file only on some runs, or only through something strace can't see, can be missed. The full runs on `main` and the nightly run still run everything, and X6 (#1264) will report a test a PR skipped that then fails there.
 - **A newly published GitHub signing key needs the next map.** Until a map signed with a key GitHub publishes exists, PRs run everything.
 - **The runner kit's static checks are not updated.** `ci/runner/test.sh` counts three jobs and allows no cache writer but Namespace's. It is not run in CI and already fails on `main`; see the pull request.
+
+## Fast CI (#1335, FF5)
+
+Before #1335 every Rust test was left out of main's maps (`resolve.py` could
+not trace a library artifact, a shared test name or an uplifted program), so
+every selected pull request ran every Rust test, and `steps.py` counted the
+unmapped always-run `rust:test:checks` as an export reader, so it built the
+web export too. Now:
+
+- Rust tests are mapped, so a modified doc, skill or site file runs only its
+  measured readers; `rust:test:checks` (git's objects) stays left out, in the
+  always lane.
+- A new doc or skill no test can find reaches no test (`pick.py`, rule 9).
+- The always lane never waits for the export, so its tests never require it
+  (`steps.plan`'s `own_lane`; `job.py`'s older answer keeps `()`).
+- The old web view's export (`build-web`) runs when `apps/web/` changes or a
+  selected test reads it, until AP11 (#1264) deletes it.
+- [`planted.py`](planted.py) plants a reachable doc (`docs/agents/fleet.md`)
+  and a reachable skill (a pin move, seen as `wizskills.lock`): Rust tests
+  read both, and the selector must pick them.
+- The `ci` job's last step lists every job's time at the head, slowest first.
+
+This applies to pull-request selection only: main-push tracing and signing,
+the 120-minute gate, concurrency and merge groups' full suite are unchanged.
 
 ## Step and skill selection (#433, K16)
 
