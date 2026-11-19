@@ -3,25 +3,29 @@
 The bolder rule (`tools/test-value/README.md`, from CW1 #1142) over every test
 in the `tools/` folders the CW7 table keeps, except `tools/war-room/` and
 `tools/collector/` (#979). The [ledger](ledger.md) has one row for each of
-the base's 1,136 tests: 950 kept, 186 deleted.
+the base's 1,136 tests: 964 kept, 172 deleted.
 
 ## What went
 
-| File | Tests | Lines | Why |
-| --- | ---: | ---: | --- |
-| `skills-eval/test.py` | 74 | 1,063 | Unreachable: every skills-eval entry first reads `.claude-plugin/plugin.json`, retired in #555. 13 already failed at the base |
-| `skills-eval/weekly/test_weekly.py` | 47 | 992 | The same; 37 already failed at the base |
-| `skills-eval/test_openrouter.py` | 7 | 167 | The same; its spend caps guard paid runs that stop at `check` before any request |
-| `skills-eval/test_parallel.py` | 2 | 59 | The same, through `parallel.py`'s `E.check` |
-| `fleet-load/test.py` | 12 | 253 | Measures WizSkills' launch-fleet at 50 threads for #77 (closed, not planned) |
-| `fleet-load/scale-50/test_report.py` | 7 | 178 | #77's internal scale report format; no CI job ran it |
-| `test-value/test_count.py` | 1 | 78 | A maintainer measure; no CI job ran it |
-| `stall-alarm/test.py`, class `Alarm` and its helpers | 35 | 621 | The factory alarm's own detection, for the maintainer |
-| `github-app/test.py`, `LiveCheckDocumentationTests` | 1 | 67 | A runbook snippet's shell, not the product |
+| File | Deleted | Kept | Lines | Why |
+| --- | ---: | ---: | ---: | --- |
+| `skills-eval/test.py` | 72 | 2 | 1,063 → 65 | The paid run, its fake tool world and the shipped-skill check stop at `check`, which reads `.claude-plugin/plugin.json`, retired in #555. Scoring, records and token counts are maintainer measures. The case privacy scan stays |
+| `skills-eval/weekly/test_weekly.py` | 43 | 4 | 992 → 178 | Checkpoint, routing and promotion of skill fixes are maintainer logic. The report's identifier refusal, the candidate refusal and the fail-closed GitHub and handoff reads stay |
+| `skills-eval/test_openrouter.py` | 7 | 0 | 167 → 0 | The paid OpenRouter run stops at `check` before any request |
+| `skills-eval/test_parallel.py` | 2 | 0 | 59 → 0 | The same, through `parallel.py`'s `E.check` |
+| `fleet-load/test.py` | 4 | 8 | 253 → 181 | #77's scale target, budgets and report format (closed, not planned), and a harness self-check. The routing, planted-violation, head and target proofs stay |
+| `fleet-load/scale-50/test_report.py` | 7 | 0 | 178 → 0 | #77's internal scale report format; no CI job ran it |
+| `test-value/test_count.py` | 1 | 0 | 78 → 0 | A maintainer measure; no CI job ran it |
+| `stall-alarm/test.py`, class `Alarm` and its helpers | 35 | 3 | 839 → 218 | The factory alarm's own detection, for the maintainer |
+| `github-app/test.py`, `LiveCheckDocumentationTests` | 1 | 53 | 1,780 → 1,713 | A runbook snippet's shell, not the product |
+
+Each deleted test's own reason is its ledger row.
 
 Helpers read only by deleted tests went with them: the stall alarm's `pull`,
-`comment`, `SHA`, `OTHER` and `Harness.once_clear_recur`, and the
-`tools/fleet-load/test.py` line in `tools/fleet-load/ci.sh`. The
+`comment`, `SHA`, `OTHER` and `Harness.once_clear_recur`; the weekly suite's
+checkpoint, routing and report fixtures; skills-eval's fake-world, scoring and
+query fixtures; and `fleet-load/test.py`'s re-run of `test_seams`' classes,
+which `ci.sh` already runs. The
 `tools/test-value/test_count.py` row in `tools/open-import/paths.json` went
 with its file. `tools/skills-eval/precheck/test_contract.py` stays untouched:
 WizRoom's `experiments/controls.py` loads it as a module.
@@ -31,15 +35,15 @@ WizRoom's `experiments/controls.py` loads it as a module.
 `python3 -I tools/test-value/count.py <commit>`; full results in
 [count-before.json](count-before.json) and [count-after.json](count-after.json).
 
-| Area | Before (`e817c9a`) | After (`8b66e33`) | Change |
+| Area | Before (`e817c9a`) | After (`891e9d7`) | Change |
 | --- | ---: | ---: | ---: |
-| `tools/` | 35,276 | 33,802 | −1,474 |
-| All test lines | 193,452 | 191,978 | −1,474 |
-| Share of tracked lines | 36.23% | 36.19% | −0.04 points |
+| `tools/` | 35,276 | 33,980 | −1,296 |
+| All test lines | 193,452 | 192,156 | −1,296 |
+| Share of tracked lines | 36.23% | 36.10% | −0.13 points |
 
 The counter's classifier counts `test_*.py` but not files named `test.py`.
 Counting every one of this pass's 59 test files by `wc -l`: 29,251 lines
-before, 25,773 after (−3,478), and 7 files fewer.
+before, 26,197 after (−3,054), and 4 files fewer.
 
 ## Coverage
 
@@ -62,13 +66,21 @@ before, 25,773 after (−3,478), and 7 files fewer.
   - `main` 338–350: read-failure lines, clearing alarms and the 30-minute
     escalation to Jake.
   - The module's 364–365: the configuration-failure line.
-- **skills-eval:** every test is gone. The tool can't run at the base (above),
-  so no reachable line loses a test.
-- **fleet-load:** `load.py`'s `run`, `verify` and `plant`, and `scale.py`'s
-  `report` and `verify`, lose their only test: the #77 measurement.
-  `test_seams.py` still loads `load.py` and `scale.py`. The full simulation
-  was not traced: it takes about 11 minutes uninstrumented in CI
-  (`ci/shard/lanes.tsv`).
+- **skills-eval:** what can still run keeps its safety tests. These cover the
+  case privacy scan (`cases.privacy_problems`), the weekly result's
+  identifier refusal (`render`), and the fail-closed GitHub and handoff-issue
+  reads (`gh_reader`, `gh_issue`). [r1-weekly-mutations.txt](r1-weekly-mutations.txt)
+  shows each failing when its guard is removed. The paid run's lines (`run`,
+  `parallel`, `driver`, the fake world) can't be reached past `check`.
+  Scoring, compare, token counts and the weekly checkpoint and routing lose
+  their tests as maintainer measures.
+- **fleet-load:** every routing line keeps its test. `load.py`'s `run`,
+  `verify` and `plant` stay under the kept lifecycle and planted-violation
+  proofs. Only `scale.py`'s budget and report checks lose the #77 measurement
+  cases. [r2-routing-plants.txt](r2-routing-plants.txt) shows the verifier
+  catching a finding sent to the wrong agent and a re-check sent to the wrong
+  role. The full simulation was not traced: it takes about 11 minutes
+  uninstrumented in CI (`ci/shard/lanes.tsv`).
 - **`count.py`** loses its only test. **github-app's** deleted test ran the
   runbook's shell against a fake `python3`, so no line of the App tool loses
   coverage.
