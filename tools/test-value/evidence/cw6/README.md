@@ -25,7 +25,7 @@ The second test pass over every `#[test]` under `crates/`: the crates' own
 | whole tree test lines | 203732 | 203561 |
 
 The counter puts inline `#[cfg(test)]` modules in no area; this pass also
-removes 277 lines of them (`crates/core/src`: 127; `crates/adapters/github/src`: 150).
+removes 278 lines of them (`crates/core/src`: 127; `crates/adapters/github/src`: 151).
 
 ## Coverage
 
