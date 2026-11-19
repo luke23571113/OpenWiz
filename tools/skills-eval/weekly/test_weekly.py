@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -106,6 +107,47 @@ class WeeklyProcess(WeeklyFixture):
         report['gaps'].append('see thr_synthabc')
         with self.assertRaises(ValueError):
             W.render(report)
+
+
+def experiment(tag):
+    """A synthetic owner import summary whose research and CF4 stages passed."""
+    stages = {k: {'status': 'not_run', 'artifact_hash': None, 'source': None, 'at': None}
+              for k in ('research', 'cf4', 'replay', 'live')}
+    for n, k in enumerate(('research', 'cf4'), 1):
+        stages[k] = {'status': 'pass', 'artifact_hash': f'{n:064x}', 'source': 's1', 'at': f'2030-01-0{n}T12:00:00Z'}
+    return {'tag': tag, 'experiment_hash': 'c' * 64, 'stages': stages,
+            'sources': {'s1': 'https://github.com/example/work/issues/4950'}}
+
+
+class HandoffCommand(WeeklyFixture):
+    """The handoff command reads the target issue before it writes anything."""
+
+    def test_unreadable_issue_posts_nothing_and_stays_pending(self):
+        # catches: a handoff that treats a failed or partial issue read as "no earlier
+        # handoff" and posts the routing instruction again.
+        W.weekly(self.state, WEEK, cases_dir=self.cases, provenance=None, skills=SKILLS,
+                 read_page=FakeSources().read, synthesize=lambda item: None,
+                 start_gate=lambda: 'allowed', route=lambda action: 'queued',
+                 experiments=[experiment('cf4-syn-c')])
+        key = 'cf4-syn-c:replay-ready'
+        ledger = json.loads((self.state / 'weekly.json').read_text())
+        for status, answer in (('queued', (1, '')), ('unresolved', (0, '[[{"id": 1}], 7]'))):
+            ledger['actions'][key]['status'] = status
+            (self.state / 'weekly.json').write_text(json.dumps(ledger))
+            before = (self.state / 'weekly.json').read_bytes()
+            calls = []
+
+            def gh(argv):
+                calls.append(argv)
+                return (0, json.dumps({'id': 6800000011})) if '--method' in argv else answer
+            with self.subTest(status=status), mock.patch.object(W, 'run_gh', gh):
+                with self.assertRaisesRegex(ValueError, 'uncertain, nothing posted'):
+                    W.main(['handoff', '--state', str(self.state), '--repo', 'example/work',
+                            '--issue', '4950', '--key', key])
+                self.assertEqual(calls, [['gh', 'api', 'repos/example/work/issues/4950/comments?per_page=100',
+                                          '--paginate', '--slurp']])
+                self.assertEqual((self.state / 'weekly.json').read_bytes(), before)
+                self.assertEqual([(a['key'], a['status']) for a in W.pending(self.state)], [(key, status)])
 
 
 def measured(ev):
