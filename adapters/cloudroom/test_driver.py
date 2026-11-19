@@ -113,5 +113,20 @@ class Driver(unittest.TestCase):
                                  if os.path.isdir(self.env['OPENWIZ_CLOUDROOM_STATE']) else [])
 
 
+    def test_start_that_cannot_save_its_run_never_says_retry(self):
+        # catches: a start whose run can't be saved answering "retry", which starts a second builder for the
+        # ticket while the first has no run id that `stop` can reach.
+        state, blocker = self.env['OPENWIZ_CLOUDROOM_STATE'], os.path.join(self.folder, 'a-file')
+        open(blocker, 'w').close()
+        code, out = self.call('start', START, OPENWIZ_CLOUDROOM_STATE=os.path.join(blocker, 'state'))
+        self.assertEqual((code, os.path.exists(self.log)), (1, False), 'it spawned with nowhere to keep the run')
+        self.assertNotIn('retry', json.dumps(out))
+        code, out = self.call('start', START, FAKE_ROOM_BREAK=state)
+        self.assertEqual((code, [c[1] for c in self.calls()]), (1, ['spawn']))
+        self.assertIn('unknown', out['error'])
+        self.assertIn('room-cli thread list', out['next'])
+        self.assertNotIn('retry', json.dumps(out))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
