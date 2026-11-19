@@ -170,8 +170,10 @@ class Model:
                     view = run[1]
                 elif run[0] == 'edited':
                     after, how = self.readback_edit(notes, run[1])
-                    events = [] if how is None else [('claimed', agent, run[1][1], notes, after),
-                                                     ('settled', agent, run[1], after)]
+                    # A failed read-back confirms no claim, but P3 still judges its write (#1463 R1):
+                    # the edit that changed the note since has its own read-back for the rest.
+                    events = [('settled', agent, run[1], after, how is None)] + (
+                        [] if how is None else [('claimed', agent, run[1][1], notes, after)])
                     yield (f'{who} wake {r + 1} reads back note {run[1][1]}: {how or "not as written, fails"}',
                            (after, with_run(None)), events)
                     continue
@@ -206,9 +208,9 @@ class Model:
             if e[0] == 'settled':
                 # P2 and P3 for a write that reads back: the note it revived is still live once
                 # the read-back settled it.
-                _, agent, (_, i, state, was, mine_state), after = e
+                _, agent, (_, i, state, was, mine_state), after, failed = e
                 if live(after[i]):
-                    if was[1] in CLAIMING and was[2] >= LEASE and any(
+                    if not failed and was[1] in CLAIMING and was[2] >= LEASE and any(
                             j > i and kind(n[0]) == kind(agent) and live(n) for j, n in enumerate(after)):
                         found.append('P2')
                     if was[1] == 'stopped' or (was[1] in RELEASED and mine_state not in RELEASED):
