@@ -1,0 +1,59 @@
+Baseline checker, valid-plan assertions
+
+FAIL: test_one_card_and_batch (__main__.ShortRoadApprovalTest.test_one_card_and_batch) (kind='one_card_plan')
+AssertionError: 2 != 0 : usage: sh check-approval.sh <spec issue number>
+FAIL: test_one_card_and_batch (__main__.ShortRoadApprovalTest.test_one_card_and_batch) (kind='batch_plan')
+AssertionError: 2 != 0 : usage: sh check-approval.sh <spec issue number>
+
+Always-pass checker, refusal assertions
+
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='one_card_plan', risk='live')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='one_card_plan', risk='release')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='one_card_plan', risk='publish')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='one_card_plan', risk='security')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='one_card_plan', risk='external_contract')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='one_card_plan', risk='unknown')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='batch_plan', risk='live')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='batch_plan', risk='release')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='batch_plan', risk='publish')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='batch_plan', risk='security')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='batch_plan', risk='external_contract')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_always_big_risk_refuses_both_short_roads (__main__.ShortRoadApprovalTest.test_always_big_risk_refuses_both_short_roads) (kind='batch_plan', risk='unknown')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_batch_requires_explicit_edits_on_owned_paths (__main__.ShortRoadApprovalTest.test_batch_requires_explicit_edits_on_owned_paths)
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_duplicate_wire_key_refuses (__main__.ShortRoadApprovalTest.test_duplicate_wire_key_refuses)
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_fingerprint_binds_the_approved_content (__main__.ShortRoadApprovalTest.test_fingerprint_binds_the_approved_content)
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_nonmechanical_batch_refuses_even_with_an_approval (__main__.ShortRoadApprovalTest.test_nonmechanical_batch_refuses_even_with_an_approval)
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_only_one_recorded_yes_for_a_resolved_plan (__main__.ShortRoadApprovalTest.test_only_one_recorded_yes_for_a_resolved_plan) (kind='one_card_plan', approvals=[])
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_only_one_recorded_yes_for_a_resolved_plan (__main__.ShortRoadApprovalTest.test_only_one_recorded_yes_for_a_resolved_plan) (kind='one_card_plan', approvals=['https://github.com/synthetic-records/archive/issues/9001#issuecomment-9000000002', 'https://github.com/synthetic-records/archive/issues/9001#issuecomment-9000000002'])
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_only_one_recorded_yes_for_a_resolved_plan (__main__.ShortRoadApprovalTest.test_only_one_recorded_yes_for_a_resolved_plan) (kind='one_card_plan', approvals=['https://github.com/synthetic-records/archive/issues/9001#issuecomment-9000000002', 'https://github.com/synthetic-records/archive/issues/9001#issuecomment-90000000021'])
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_only_one_recorded_yes_for_a_resolved_plan (__main__.ShortRoadApprovalTest.test_only_one_recorded_yes_for_a_resolved_plan) (kind='one_card_plan', status='open')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_only_one_recorded_yes_for_a_resolved_plan (__main__.ShortRoadApprovalTest.test_only_one_recorded_yes_for_a_resolved_plan) (kind='one_card_plan', status='superseded')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_only_one_recorded_yes_for_a_resolved_plan (__main__.ShortRoadApprovalTest.test_only_one_recorded_yes_for_a_resolved_plan)
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_short_road_requires_complete_card (__main__.ShortRoadApprovalTest.test_short_road_requires_complete_card) (field='owned_paths')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_short_road_requires_complete_card (__main__.ShortRoadApprovalTest.test_short_road_requires_complete_card) (field='acceptance')
+AssertionError: 0 != 1 : short-road approval is valid
+FAIL: test_short_road_requires_complete_card (__main__.ShortRoadApprovalTest.test_short_road_requires_complete_card) (field='proof')
+AssertionError: 0 != 1 : short-road approval is valid

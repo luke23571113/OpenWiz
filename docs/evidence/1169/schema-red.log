@@ -1,0 +1,7 @@
+FAIL one-card-plan: expected accept, got ['$: matches 0 of oneOf']
+FAIL one-card-plan/open: expected accept, got ['$: matches 0 of oneOf']
+FAIL one-card-plan/superseded: expected accept, got ['$: matches 0 of oneOf']
+FAIL batch-plan: expected accept, got ['$: matches 0 of oneOf']
+FAIL batch-plan/open: expected accept, got ['$: matches 0 of oneOf']
+FAIL batch-plan/superseded: expected accept, got ['$: matches 0 of oneOf']
+28 matching verdicts, 6 mismatches
