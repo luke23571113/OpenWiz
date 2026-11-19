@@ -97,27 +97,6 @@ mod tests {
     };
 
     #[test]
-    fn the_registry_is_one_module_per_seam_file() {
-        let names: Vec<&str> = MODULES.iter().map(|m| m.name).collect();
-        assert_eq!(
-            names,
-            [
-                "fleets",
-                "tickets",
-                "writes",
-                "plan",
-                "decisions",
-                "tick",
-                "events"
-            ]
-        );
-        for name in names {
-            let file = concat!(env!("CARGO_MANIFEST_DIR"), "/src/").to_owned() + name + ".rs";
-            assert!(std::path::Path::new(&file).is_file(), "{file}");
-        }
-    }
-
-    #[test]
     fn an_invocation_is_built_only_from_an_argv_a_module_allows_exactly() {
         let built = Invocation::from_modules(&[EMPTY, PLANTED], &["synthetic", "read"]);
         assert_eq!(

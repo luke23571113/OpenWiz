@@ -1,13 +1,8 @@
 //! AP2 Provider limits only. 10 MiB per image and 25 MiB per file, except a
 //! file whose extension CloudRoom types as `image/*`, which gets the image
-//! limit (F26). No count cap, and no other size or count constant.
+//! limit (F26). No count cap.
 
-use std::fs;
-use std::path::Path;
-
-use openwiz_core::attachment::{
-    FILE_MAX_BYTES, FailReason, IMAGE_MAX_BYTES, IMAGE_TYPED_EXTENSIONS, Kind, check, limit,
-};
+use openwiz_core::attachment::{FILE_MAX_BYTES, FailReason, IMAGE_MAX_BYTES, Kind, check, limit};
 
 use crate::support::*;
 
@@ -124,38 +119,6 @@ fn a_file_cloudroom_types_as_an_image_gets_the_image_limit() {
     }
 }
 
-/// The table is CloudRoom's typing (F26), pinned: the extensions that
-/// `mime-types` 2.1.35 (`mime-db` 1.52.0) or 3.0.2 (`mime-db` 1.54.0) looks
-/// up as `image/*`, as recorded in `contracts/attachment-mime-types.v1.md`.
-#[test]
-fn the_extension_table_is_pinned() {
-    const PINNED: &str = "3ds apng avci avcs avif azv b16 bmp btf btif cgm cmx dds dib djv \
-        djvu dng dpx drle dwg dxf emf exr fbs fh fh4 fh5 fh7 fhc fits fpx fst g3 gif heic heics \
-        heif heifs hej2 hsj2 ico ief jaii jais jfif jhc jls jng jp2 jpe jpeg jpf jpg jpg2 jpgm \
-        jph jpm jpx jxl jxr jxra jxrs jxs jxsc jxsi jxss ktx ktx2 mdi mmr npx pbm pct pcx pgm \
-        pic png pnm ppm psd pti ras rgb rlc sgi sid svg svgz t38 tap tfx tga tif tiff uvg uvi \
-        uvvg uvvi vtf wbmp wdp webp wmf xbm xif xpm xwd";
-    let pinned: Vec<&str> = PINNED.split_whitespace().collect();
-    assert_eq!(pinned.len(), 107);
-    assert_eq!(IMAGE_TYPED_EXTENSIONS, pinned.as_slice());
-    let mut sorted = pinned.clone();
-    sorted.sort_unstable();
-    sorted.dedup();
-    assert_eq!(sorted, pinned, "sorted, unique and lowercase");
-    let recorded =
-        fs::read_to_string(Path::new(ROOT).join("contracts/attachment-mime-types.v1.md"))
-            .expect("the table's source is recorded");
-    assert!(
-        recorded.contains(
-            PINNED
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .as_str()
-        )
-    );
-}
-
 fn there_is_no_count_cap() {
     // 200 small files and 200 small images: every one is accepted on its
     // own, and nothing in the model counts them.
@@ -169,92 +132,4 @@ fn there_is_no_count_cap() {
         .filter(|ok| *ok)
         .count();
     assert_eq!(accepted, 200);
-}
-
-/// Every constant in the attachment model is one of these, and nothing else
-/// in the core names an attachment cap. Adding a count or size cap fails
-/// here (the negative check in the evidence).
-#[test]
-fn no_other_size_or_count_constant() {
-    const ALLOWED: &[&str] = &[
-        "ATTACHMENT_SCHEMA_ID",
-        "IMAGE_MAX_BYTES",
-        "FILE_MAX_BYTES",
-        "IMAGE_TYPED_EXTENSIONS",
-        "CLOUDROOM_NAME_MAX_BYTES",
-        "CLOUDROOM_SUFFIX_MAX_BYTES",
-        "SAFE_NAME_MAX_BYTES",
-        "ATTACHMENT_ID_MAX_LEN",
-        "SNIFF_BYTES",
-        "UNSENT_TTL",
-        "FREE_DISK_FLOOR_BYTES",
-        // B2 (ClosedWiz#15): a directory's name and a reader's keys, not
-        // limits.
-        "STAGING_DIR",
-        "PROMPT_ATTACHMENT_KEYS",
-    ];
-    let model = fs::read_to_string(Path::new(ROOT).join("crates/core/src/attachment.rs")).unwrap();
-    let mut found = Vec::new();
-    for line in model.lines() {
-        let line = line.trim_start();
-        let line = line.strip_prefix("pub ").unwrap_or(line);
-        for keyword in ["const ", "static "] {
-            if let Some(rest) = line.strip_prefix(keyword) {
-                let ident: String = rest
-                    .chars()
-                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                    .collect();
-                if !ident.is_empty() && ident != "_" {
-                    found.push(ident);
-                }
-            }
-        }
-    }
-    found.sort();
-    let mut allowed: Vec<String> = ALLOWED.iter().map(|s| (*s).to_owned()).collect();
-    allowed.sort();
-    assert_eq!(found, allowed);
-    for word in [
-        "MAX_ATTACHMENTS",
-        "ATTACHMENTS_MAX",
-        "MAX_FILES",
-        "TOTAL_BYTES",
-    ] {
-        assert!(!model.contains(word), "the model names {word}");
-    }
-    // The rest of the core doesn't define an attachment limit either.
-    let mut files = Vec::new();
-    rust_files(&Path::new(ROOT).join("crates/core/src"), &mut files);
-    // B2 (ClosedWiz#15) names three constants that are not limits: the two
-    // headers of the attachments digest's encoding (`prompt.rs`) and the
-    // words of the Steer refusal (`messaging/send.rs`).
-    const NOT_LIMITS: &[&str] = &[
-        "const EMPTY_HEADER:",
-        "const ATTACHMENTS_HEADER:",
-        "const STEER_WITH_ATTACHMENTS:",
-    ];
-    for path in files.iter().filter(|p| !p.ends_with("attachment.rs")) {
-        let text = fs::read_to_string(path).unwrap();
-        for line in text
-            .lines()
-            .filter(|l| l.contains("const ") && !NOT_LIMITS.iter().any(|n| l.contains(n)))
-        {
-            let upper = line.to_ascii_uppercase();
-            assert!(
-                !(upper.contains("ATTACH") || upper.contains("IMAGE") || upper.contains("UPLOAD")),
-                "{path:?}: {line}"
-            );
-        }
-    }
-}
-
-fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
 }

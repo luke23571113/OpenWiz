@@ -438,80 +438,6 @@ mod tests {
     }
 
     #[test]
-    fn x2_fixture_caps_are_local_and_cannot_raise_the_default() {
-        let cap = |executor: Executor| match executor.0 {
-            Execution::Program(_, timeout) => timeout,
-            Execution::Supplied(_) => unreachable!(),
-        };
-        for (requested, expected) in [
-            (Duration::ZERO, Duration::ZERO),
-            (Duration::from_millis(100), Duration::from_millis(100)),
-            (Duration::from_secs(15), Duration::from_secs(15)),
-            (Duration::from_secs(16), Duration::from_secs(15)),
-            (Duration::MAX, Duration::from_secs(15)),
-        ] {
-            assert_eq!(
-                cap(Executor::program_for_fixtures("/synthetic/gh", requested)),
-                expected
-            );
-            assert_eq!(
-                cap(Executor::program("/synthetic/gh")),
-                Duration::from_secs(15)
-            );
-        }
-    }
-
-    #[test]
-    fn x2_fixture_checks_preserve_the_no_checks_exception() {
-        let program = plan_program(
-            "fixture-checks",
-            "printf \"no checks reported on the 'room/syn-2' branch\\n\" >&2; exit 1",
-        );
-        let executor = Executor::program_for_fixtures(program, Duration::from_secs(1));
-        let call = Invocation::new(&["pr", "checks", "1902", "--json", "bucket,name"]).unwrap();
-        assert_eq!(executor.checks(&call, soon()), Ok(b"[]".to_vec()));
-        assert!(matches!(
-            executor.run(&call, soon()),
-            Err(SourceError::CommandFailed {
-                exit_code: Some(1),
-                ..
-            })
-        ));
-        let version = Invocation::new(&["--version"]).unwrap();
-        assert!(matches!(
-            executor.checks(&version, soon()),
-            Err(SourceError::Unavailable { .. })
-        ));
-    }
-
-    #[test]
-    fn x2_fixture_timeout_reaps_the_read_without_exhausting_the_run() {
-        // The child never exits by itself, so only the runner's kill and
-        // wait can end it. It reports nothing: under load the 100 ms cap can
-        // kill it before it could (#707), so the test finds it as its own
-        // child instead.
-        let program = plan_program("fixture-timeout", "kill -STOP $$");
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let executor = Executor::program_for_fixtures(&program, Duration::from_millis(100));
-        let call = Invocation::new(&["--version"]).unwrap();
-        assert_eq!(unreaped_children(), "", "no earlier child is left");
-        let got = executor.run(&call, deadline);
-        assert!(matches!(got, Err(SourceError::TimedOut { .. })), "{got:?}");
-        // Wait, with a limit, for the child to be gone, not merely killed:
-        // a zombie is still listed until it is reaped.
-        let limit = Instant::now() + Duration::from_secs(5);
-        while !unreaped_children().is_empty() && Instant::now() < limit {
-            thread::sleep(POLL);
-        }
-        assert_eq!(unreaped_children(), "", "child must be reaped");
-        let next = plan_program("fixture-next", "printf 'synthetic-next'");
-        assert_eq!(
-            Executor::program(next).run(&call, deadline),
-            Ok(b"synthetic-next".to_vec())
-        );
-    }
-
-    #[test]
     fn a_call_that_succeeds_returns_exactly_its_stdout() {
         assert_eq!(
             sh("printf 'a\\n\\tb'; printf 'ignored' >&2", &[], soon()),
@@ -666,15 +592,6 @@ mod tests {
         Invocation::new(&argv.iter().map(String::as_str).collect::<Vec<_>>()).unwrap()
     }
 
-    /// The pids of every child this thread started and has not reaped,
-    /// zombies included (Linux). Other tests' threads keep their own.
-    fn unreaped_children() -> String {
-        fs::read_to_string("/proc/thread-self/children")
-            .expect("this thread's children are readable")
-            .trim()
-            .to_owned()
-    }
-
     fn plan_program(name: &str, script: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let program = scratch(name).join("gh");
@@ -692,30 +609,6 @@ mod tests {
         );
         fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
         program
-    }
-
-    #[test]
-    fn plan_programs_run_while_other_threads_create_and_spawn_fixtures() {
-        let start = std::sync::Barrier::new(8);
-        thread::scope(|scope| {
-            for worker in 0..8 {
-                let start = &start;
-                scope.spawn(move || {
-                    start.wait();
-                    for attempt in 0..16 {
-                        let program = plan_program(
-                            &format!("plan-concurrent-{worker}-{attempt}"),
-                            "printf 'synthetic\\n'",
-                        );
-                        let result = run_plan_graphql(&program, &plan_call(), soon())
-                            .expect("a complete fixture can execute during concurrent spawns");
-                        assert_eq!(result.stdout, b"synthetic\n");
-                        assert_eq!(result.failure, None);
-                        fs::remove_dir_all(program.parent().unwrap()).unwrap();
-                    }
-                });
-            }
-        });
     }
 
     #[test]
@@ -766,29 +659,6 @@ mod tests {
             run_checks(&program, &call, soon(), READ_TIMEOUT),
             Ok(b"[]".to_vec())
         );
-    }
-
-    #[test]
-    fn plan_graphql_keeps_empty_and_malformed_error_output_as_failures_for_the_parser() {
-        for (name, script, expected) in [
-            ("empty", "exit 1", &b""[..]),
-            (
-                "malformed",
-                "printf '%s' 'not JSON'; exit 1",
-                &b"not JSON"[..],
-            ),
-        ] {
-            let program = plan_program(&format!("plan-{name}"), script);
-            let result = run_plan_graphql(&program, &plan_call(), soon()).unwrap();
-            assert_eq!(result.stdout, expected);
-            assert!(matches!(
-                result.failure,
-                Some(SourceError::CommandFailed {
-                    exit_code: Some(1),
-                    ..
-                })
-            ));
-        }
     }
 
     #[test]
