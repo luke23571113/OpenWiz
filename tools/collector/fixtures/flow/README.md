@@ -8,8 +8,8 @@ an outsider's imitation records, and a job relisted by a rerun, and a skipped jo
 
 The positive proof uses ticket 4101 in spec 4001. Claim to merge takes 2 h
 30 min. It waited 15 min to be claimed, spent 85 min building, 18 min in
-review, and 15 min in the merge queue. The jobs took 4 + 4 + 2 runner
-minutes. One distinct independent verdict was recorded. Push, CI and factory
+review, and 15 min in the merge queue. The jobs took 4 + 4 + 2 PR runner
+minutes and 3 + 2 merge-group runner minutes. One distinct independent verdict was recorded. Push, CI and factory
 records leave two gaps of at least 30 minutes between claim and merge. The spec was open
 for 3 h 15 min before the final merge.
 

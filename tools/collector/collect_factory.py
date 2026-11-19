@@ -623,17 +623,33 @@ def flow_attempt(repo, run, rid, attempt, latest):
     return status, J.when(run.get('updated_at')) if status == 'completed' else None
 
 
-def flow_ci(repo, workflow, pull, cutoff):
+def flow_queue_runs(repo, workflow, n, base, entered, cutoff):
+    path = (f'repos/{repo}/actions/workflows/{workflow}/runs?event=merge_group'
+            f'&created={entered}..{cutoff}&per_page={B.PAGE}')
+    branch = re.compile(rf'gh-readonly-queue/{re.escape(base)}/pr-{n}-[0-9a-f]{{40}}')
+    matched = []
+    for run, _ in B.pages(path, 'workflow_runs', 'merge groups', M.rest):
+        M.require(M.obj(run).get('event') == 'merge_group', 'non-group run in group search')
+        ref = J.text(run.get('head_branch'))
+        if not branch.fullmatch(ref):
+            continue
+        J.commit(run.get('head_sha'))
+        if entered <= J.when(run.get('created_at')) <= cutoff:
+            matched.append(run)
+    return matched
+
+
+def flow_ci(repo, workflow, pull, base, queued, cutoff):
     n, branch, opened, closed = (pull[key] for key in ('number', 'headRefName', 'createdAt', 'closedAt'))
     path = (f'repos/{repo}/actions/workflows/{workflow}/runs?branch={quote(branch, safe="")}'
             f'&event=pull_request&per_page={B.PAGE}')
     rows = B.pages(path, 'workflow_runs', 'runs', M.rest)
-    results, seconds, seen, active, complete = [], [], set(), False, True
+    groups = flow_read(flow_queue_runs, repo, workflow, n, base, queued, cutoff) if queued else []
+    group_gap = groups is None or (queued and pull['mergedAt'] == cutoff and not groups)
+    matched = list(groups or [])
     for run, _ in rows:
-        rid = M.integer(M.obj(run).get('id'))
-        M.require(rid not in seen and run.get('head_branch') == branch and run.get('event') == 'pull_request',
-                  'ambiguous PR run')
-        seen.add(rid)
+        M.require(M.obj(run).get('head_branch') == branch and run.get('event') == 'pull_request',
+                  'run for another branch or event')
         links = {M.integer(M.obj(link).get('number')) for link in M.array(run.get('pull_requests'))}
         created = J.when(run.get('created_at'))
         if created > cutoff or (links and n not in links):
@@ -645,6 +661,13 @@ def flow_ci(repo, workflow, pull, cutoff):
             if J.text(head_repo).casefold() != repo.casefold():
                 continue  # A same-named branch in a fork.
         M.require(not (links - {n}), 'run linked to multiple pull requests')
+        matched.append(run)
+    results, seconds, seen, active, complete = [], [], set(), False, not group_gap
+    for run in matched:
+        rid = M.integer(run.get('id'))
+        M.require(rid not in seen, 'ambiguous PR run')
+        seen.add(rid)
+        created = J.when(run.get('created_at'))
         latest = M.integer(run.get('run_attempt'))
         for attempt in range(1, latest + 1):
             result = flow_read(flow_attempt, repo, run, rid, attempt, latest)
@@ -658,14 +681,16 @@ def flow_ci(repo, workflow, pull, cutoff):
                 if attempt == latest:
                     active |= status != 'completed' or (at is not None and at > cutoff)
             seconds.append(flow_read(flow_attempt_jobs, repo, rid, attempt))
-    return {'seconds': flow_totals(seconds), 'results': results, 'complete': bool(seconds) and complete,
+    return {'seconds': None if group_gap else flow_totals(seconds), 'results': results,
+            'complete': bool(seconds) and complete,
             'pending': active if seconds else None}
 
 
-def flow_pr(c, n, authors, cutoff):
+def flow_pr(c, n, base, authors, cutoff):
     top, comments = flow_subject(c, FLOW_PULL, 'pullRequest', n, authors)
     J.when(top.get('createdAt'))
     J.when(J.field(top, 'closedAt'), True)
+    J.when(J.field(top, 'mergedAt'), True)
     head, branch = J.commit(top.get('headRefOid')), J.text(top.get('headRefName'))
     M.require(bool(branch), 'missing PR branch')
     if top['createdAt'] > cutoff:
@@ -681,7 +706,9 @@ def flow_pr(c, n, authors, cutoff):
               and flow_read(when, m[1]) is not None and m[1] <= com['at']]
     tips = flow_read(J.head_windows, c, branch, head)
     pushes.extend(at for _, at, _ in tips or [] if at <= cutoff)
-    ci = [flow_read(flow_ci, c.repo, workflow, top, cutoff) for workflow in ('ci.yml', 'privacy.yml')]
+    queued = min((at for line, at, _ in records if FLOW_QUEUE.fullmatch(line)), default=None)
+    ci = [flow_read(flow_ci, c.repo, workflow, top, base, queued, cutoff)
+          for workflow in ('ci.yml', 'privacy.yml')]
     ci_seconds = flow_totals(item['seconds'] if item else None for item in ci)
     pending = [item['pending'] if item else None for item in ci]
     return {'number': n, 'head': head, 'verdicts': verdicts, 'records': records,
@@ -769,7 +796,7 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache, links_known
     ready = flow_read(c.ready, n) if issue is not None else None
     for p in prs:
         if (p, cutoff) not in pr_cache:
-            pr_cache[p, cutoff] = flow_read(flow_pr, c, p, authors, cutoff)
+            pr_cache[p, cutoff] = flow_read(flow_pr, c, p, pulls[p]['base'], authors, cutoff)
     observed = [pr_cache[p, cutoff] for p in prs if pr_cache[p, cutoff] is not None]
     records = issue_records + [rec for p in observed for rec in p['records']]
     fully_read = links_known and issue is not None and len(observed) == len(prs)
