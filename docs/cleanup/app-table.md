@@ -301,6 +301,10 @@ Kept beside the table by J233 (#1264): `openwiz models --json`, read-only, becau
 check and onboarding read it. Its read and rendering moved from the deleted `crates/cli/src/new_thread.rs`
 to `crates/cli/src/models.rs` (about 100 lines); `new`'s write paths went as the row says.
 
+The CI budget table (`tools/war-room/budgets.tsv`) loses the rows of the removed `web-build`, `web`,
+`web-export`, `rust-export` and `site` jobs (13 rows); `rust`'s three rows, derived from the
+`rust-export` twin with the same steps, now carry that twin's own sources.
+
 ## The rows
 
 ### The web view (`apps/web`)
