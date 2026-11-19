@@ -1,0 +1,41 @@
+Scoped local checks at 50c0ea23a14269e05d7c76a07842f0602f52de1d
+
+$ python3 -I adapters/cloudroom/test_driver.py
+test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... ok
+test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... ok
+test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.038s
+
+OK
+exit 0
+
+$ python3 -I tools/open-import/guard.py --base=615cb4166af145b21aacb01d0bbff4108918a79e --head=HEAD
+carriage guard: all 9 added paths are classified
+exit 0
+
+$ python3 -I tools/collector/ci3.py check-steps
+covered 165 CI steps
+exit 0
+
+$ python3 -I tools/test-value/budget.py --base=615cb4166af145b21aacb01d0bbff4108918a79e --head=HEAD --event=<tmp>
+test budget: added=117 deleted=0 net=117 ceiling=400 allowance=0
+test budget: PASS; reviewer must judge any allowance reason
+exit 0
+
+$ python3 -I <wizskills>/skills/build-ticket/scripts/ticket.py scope openwizdev/OpenWiz 1369 --supporting tools/open-import/paths.json --supporting changes/1369.md --supporting .github/workflows/ci.yml
+supporting: .github/workflows/ci.yml
+owned: adapters/cloudroom/README.md
+owned: adapters/cloudroom/driver
+owned: adapters/cloudroom/evidence/live-smoke.txt
+owned: adapters/cloudroom/evidence/red-thread-in-error.txt
+owned: adapters/cloudroom/evidence/red.txt
+owned: adapters/cloudroom/fixtures/room-cli
+owned: adapters/cloudroom/schema.json
+owned: adapters/cloudroom/test_driver.py
+supporting: changes/1369.md
+supporting: tools/open-import/paths.json
+scope: ok
+exit 0
+
