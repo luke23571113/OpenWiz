@@ -68,3 +68,18 @@ AssertionError: None != ['Cargo.lock'] : reads target/debug/deps/libitoa-4444444
 Ran 16 tests in 0.052s
 
 FAILED (failures=8)
+
+$ python3 -I ci/select/test_trace.py Repo.test_an_uplifted_program_without_dep_info_is_the_unit_it_is_linked_to   # second slice: an example's hashed unit
+F
+======================================================================
+FAIL: test_an_uplifted_program_without_dep_info_is_the_unit_it_is_linked_to (__main__.Repo.test_an_uplifted_program_without_dep_info_is_the_unit_it_is_linked_to)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/ci/select/test_trace.py", line 274, in test_an_uplifted_program_without_dep_info_is_the_unit_it_is_linked_to
+    self.assertIsNone(why)
+AssertionError: "reads target/release/examples/openwiz_server-8888888888888888, a build product it can't trace to its sources" is not None
+
+----------------------------------------------------------------------
+Ran 1 test in 0.005s
+
+FAILED (failures=1)

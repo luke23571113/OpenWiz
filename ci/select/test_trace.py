@@ -237,8 +237,6 @@ class Repo(unittest.TestCase):
         self.write('target/debug/deps/loops-aaaaaaaaaaaaaaaa.d', '/x/loops: crates/core/tests/loops/main.rs\n')
         self.write('target/debug/deps/loops-bbbbbbbbbbbbbbbb', '')
         self.write('target/debug/deps/loops-bbbbbbbbbbbbbbbb.d', '/x/loops: tests/loops/main.rs\n')
-        self.write('target/debug/deps/loops-cccccccccccccccc', '')
-        self.write('target/debug/deps/loops-cccccccccccccccc.d', '/x/loops: elsewhere/loops.rs\n')
         meta = self.metadata()
         for p in meta['packages']:
             if p['name'] in ('openwiz-core', 'openwiz-tests'):
@@ -251,6 +249,10 @@ class Repo(unittest.TestCase):
         tests, _, why = self.r.resolve(self.at('target/debug/deps/loops-bbbbbbbbbbbbbbbb'), set())
         self.assertIsNone(why)
         self.assertTrue({'tests/loops/main.rs', 'crates/store/src/lib.rs', 'tests/Cargo.toml'} <= set(tests))
+        # A unit of that name whose sources neither package holds: no one owner, left out.
+        self.write('target/debug/deps/loops-cccccccccccccccc', '')
+        self.write('target/debug/deps/loops-cccccccccccccccc.d', '/x/loops: elsewhere/loops.rs\n')
+        self.r._depinfo = None
         self.assertIsNotNone(self.r.resolve(self.at('target/debug/deps/loops-cccccccccccccccc'), set())[2])
 
     def test_an_uplifted_program_without_dep_info_is_the_unit_it_is_linked_to(self):
@@ -264,6 +266,13 @@ class Repo(unittest.TestCase):
         files, _, why = self.r.resolve(self.at('target/debug/fake-room-cli'), set())
         self.assertIsNone(why)
         self.assertIn('tests/fake-room-cli/main.rs', files)
+        # An example's own unit beside it (examples/<crate>-<hash>), as a release build leaves it.
+        self.write('target/release/examples/openwiz_server-8888888888888888', 'program')
+        self.write('target/release/examples/openwiz_server-8888888888888888.d',
+                   '/x/openwiz_server: tests/fixture-entrypoints/server.rs\n')
+        files, _, why = self.r.resolve(self.at('target/release/examples/openwiz_server-8888888888888888'), set())
+        self.assertIsNone(why)
+        self.assertTrue({'tests/fixture-entrypoints/server.rs', 'tests/Cargo.toml'} <= set(files), files)
 
     def test_a_read_through_a_repository_link_or_into_installed_skills_keeps_the_link_and_the_pin(self):
         # catches: a wizskills.lock pin move, or a changed skill link, that
@@ -276,6 +285,9 @@ class Repo(unittest.TestCase):
         self.write('target/debug/deps/fleet-7777777777777777', '')
         self.write('target/debug/deps/fleet-7777777777777777.d', '/x/fleet: tests/fleet/main.rs skills/setup/templates/fleet.md\n')
         self.write('tests/fleet/main.rs')
+        meta = self.metadata()
+        meta['packages'][-1]['targets'].append({'name': 'fleet', 'kind': ['test']})
+        self.r._meta = resolve.index(meta, os.path.realpath(self.root))
         for touched, listed, want in (
                 (['.claude/skills/grill/SKILL.md'], [], {'.claude/skills/grill', 'skills', 'wizskills.lock'}),
                 (['.wizskills/skills/grill/SKILL.md'], [], {'wizskills.lock'}),
