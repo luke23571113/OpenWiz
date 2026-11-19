@@ -13,6 +13,7 @@
     "GLOSSARY.md",
     "README.md",
     "STATUS.md",
+    "adapters/local/**",
     "adapters/template/**",
     "apps/**",
     "changes/**",
