@@ -599,6 +599,7 @@ class Check(unittest.TestCase):
                "| Record authors | `-a` |", "| Record authors | `a-` |", "| Record authors | a |",
                "| Record authors | `a`, |", "| Record authors | `a` `b` |", "| Record authors | `a@b` |",
                "| Record authors | `a[bot]x` |", "| Record authors | `a` | extra |",
+               "| Record authors | `a` | extra", "| Record authors | `a`",
                "| Record authors | `a` |\n| Record authors | `b` |", "| Record author | `a` |"]
         with tempfile.TemporaryDirectory() as tmp:
             fleet = Path(tmp) / "fleet.md"
@@ -630,7 +631,11 @@ class Check(unittest.TestCase):
                 with mock.patch.object(ci3_check, "FLEET", fleet), Collector(gh):
                     lines = ci3_check.check(NOW, read=gh, record=RECORD).splitlines()
                 self.assertEqual(lines[:4] + lines[5:], NORMAL[:4] + NORMAL[5:], why)
-                self.assertTrue(lines[4].startswith("Against the last note: unknown ("), (why, lines[4]))
+                self.assertTrue(lines[4].startswith("Against the last note: unknown (cannot read the record authors:"
+                                                    " docs/agents/fleet.md: " if why != "malformed" else
+                                                    "Against the last note: unknown (docs/agents/fleet.md names no"
+                                                    " record authors)."), (why, lines[4]))
+                self.assertNotIn(tmp, "\n".join(lines), why)
                 self.assertFalse([p for p in gh.asked if "/comments" in p], why)
 
     def test_the_real_before_record_reads(self):
