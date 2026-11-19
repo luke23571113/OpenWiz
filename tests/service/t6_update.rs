@@ -1150,6 +1150,28 @@ fn only_the_complete_fixed_gate_can_run() {
         ("/bin/cp", vec!["--", source, target, "--preserve"]),
         ("/bin/cp", vec!["--", &source[1..], target]),
         ("/bin/cp", vec!["--", source, &target[1..]]),
+        // #1130: each row below is admitted once its copy_commit guard is
+        // deleted: the literal `--`, the two absolute() checks (both paths
+        // relative; either check alone covers the shared build prefix), and
+        // the `builds` and `service` directory names.
+        ("/bin/cp", vec!["-f", source, target]),
+        ("/bin/cp", vec!["--", &source[1..], &target[1..]]),
+        (
+            "/bin/cp",
+            vec![
+                "--",
+                "/tmp/synthetic/service/other/1111111111111111111111111111111111111111/source/target/release/openwiz-service",
+                "/tmp/synthetic/service/other/1111111111111111111111111111111111111111/openwiz-service",
+            ],
+        ),
+        (
+            "/bin/cp",
+            vec![
+                "--",
+                "/tmp/synthetic/other/builds/1111111111111111111111111111111111111111/source/target/release/openwiz-service",
+                "/tmp/synthetic/other/builds/1111111111111111111111111111111111111111/openwiz-service",
+            ],
+        ),
         (
             "/bin/cp",
             vec![
