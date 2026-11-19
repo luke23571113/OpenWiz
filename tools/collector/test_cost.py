@@ -44,6 +44,20 @@ def without(*fragments):
     return edit
 
 
+def superseded(world):
+    """PR 4201 closed unmerged; a replacement, PR 4299, merged ticket 4101 at the same time."""
+    key = next(key for key in world if 'closedByPullRequestsReferences' in key)
+    answer = json.loads(world[key]['stdout'])
+    nodes = answer['data']['repository']['issue']['closedByPullRequestsReferences']['nodes']
+    replacement = json.loads(json.dumps(nodes[0]))
+    replacement['number'] = 4299
+    nodes[0]['mergedAt'] = None
+    nodes.append(replacement)
+    world[key]['stdout'] = json.dumps(answer)
+    key = next(key for key in world if 'pullRequest(number:$number)' in key and '"number=4201"' in key)
+    world[key]['stdout'] = world[key]['stdout'].replace('"mergedAt":"2030-01-02T03:15:00Z"', '"mergedAt":null')
+
+
 def run(*args, links=closes(4101), edit=None):
     world = json.loads((FLOW / 'world.json').read_text())
     if links is not None:
@@ -90,18 +104,20 @@ class CostLine(unittest.TestCase):
                 self.assertEqual(p.returncode, 0, p.stderr)
                 self.assertEqual(p.stdout, 'Ticket #4101 cost (PR #4201): ' + parts + '\n')
 
-    # catches: a cost posted for a PR that is not merged, that closes no ticket or several,
-    # or whose tickets cannot be read: each prints nothing and exits 1 with its reason.
+    # catches: a cost posted for a PR that is not merged (even when another PR merged its
+    # ticket), that closes no ticket or several, or whose tickets cannot be read: each prints
+    # nothing and exits 1 with its reason.
     def test_no_line_without_one_merged_ticket(self):
         cases = {
-            'not merged yet': (('--now', '2030-01-02T02:30:00Z'), closes(4101), 'not merged'),
-            'no ticket': (('--now', NOW), closes(), 'closes no ticket'),
-            'two tickets': (('--now', NOW), closes(4101, 4102), 'closes more than one ticket'),
-            'links unreadable': (('--now', NOW), None, 'closing tickets could not be read'),
+            'not merged yet': (('--now', '2030-01-02T02:30:00Z'), closes(4101), None, 'not merged'),
+            'superseded by a merged PR': (('--now', NOW, *USAGE), closes(4101), superseded, 'not merged'),
+            'no ticket': (('--now', NOW), closes(), None, 'closes no ticket'),
+            'two tickets': (('--now', NOW), closes(4101, 4102), None, 'closes more than one ticket'),
+            'links unreadable': (('--now', NOW), None, None, 'closing tickets could not be read'),
         }
-        for scenario, (args, links, reason) in cases.items():
+        for scenario, (args, links, edit, reason) in cases.items():
             with self.subTest(scenario):
-                p = run(*args, links=links)
+                p = run(*args, links=links, edit=edit)
                 self.assertEqual((p.returncode, p.stdout), (1, ''))
                 self.assertIn(reason, p.stderr)
 

@@ -1,0 +1,28 @@
+test_bad_command_line (__main__.CostLine.test_bad_command_line) ... ok
+test_line_from_synthetic_facts (__main__.CostLine.test_line_from_synthetic_facts) ... ok
+test_no_line_without_one_merged_ticket (__main__.CostLine.test_no_line_without_one_merged_ticket) ... 
+  test_no_line_without_one_merged_ticket (__main__.CostLine.test_no_line_without_one_merged_ticket) [superseded by a merged PR] ... FAIL
+test_unreadable_parts_are_unknown (__main__.CostLine.test_unreadable_parts_are_unknown) ... ok
+
+======================================================================
+FAIL: test_no_line_without_one_merged_ticket (__main__.CostLine.test_no_line_without_one_merged_ticket) [superseded by a merged PR]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/collector/test_cost.py", line 121, in test_no_line_without_one_merged_ticket
+    self.assertEqual((p.returncode, p.stdout), (1, ''))
+AssertionError: Tuples differ: (0, 'Ticket #4101 cost (PR #4201): builder[118 chars]s\n') != (1, '')
+
+First differing element 0:
+0
+1
+
++ (1, '')
+- (0,
+-  'Ticket #4101 cost (PR #4201): builder 7 credits, 550 tokens; reviewer 2 '
+-  'credits, 130 tokens; CI unknown; total 9 credits, 680 tokens, unknown runner '
+-  'minutes\n')
+
+----------------------------------------------------------------------
+Ran 4 tests in 2.732s
+
+FAILED (failures=1)
