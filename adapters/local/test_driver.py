@@ -112,7 +112,10 @@ class Local(unittest.TestCase):
     def test_missing_or_unknown_harness_is_an_error_with_next(self):
         # catches: a missing harness crashing, answering a run id that never runs, or an error an agent
         # can't act on; and a harness name outside the allowlist being run from PATH.
-        bare = dict(self.env, PATH='/usr/bin:/bin')
+        python = os.path.join(self.folder, 'python')  # a PATH with only python3: no harness on it
+        os.mkdir(python)
+        os.symlink(sys.executable, os.path.join(python, 'python3'))
+        bare = dict(self.env, PATH=python)
         schema = kit.load_schema()['error']
         for harness, env, says in (('claude', bare, 'install claude'), ('codex', bare, 'install codex'),
                                    ('fake-harness', self.env, 'claude, codex')):
