@@ -25,7 +25,6 @@ import steps
 import units
 
 ALWAYS = ['always:fmt', 'always:classifier', 'always:selector', 'always:checks']
-SITE = ['site:build', 'site:test', 'site:ci']
 RELEASE = ['release:test', 'release:package', 'release:install', 'release:pull',
            'release:setup-api', 'release:github-app', 'release:ci-runner',
            'release:security-baseline',
@@ -60,15 +59,6 @@ def lane(all_tests, selected):
         return {'decision': 'skip', 'reason': SKIP}
     return {'decision': 'run', 'tests': tests,
             'skipped': [{'test': t, 'reason': SKIP} for t in sorted(set(all_tests) - set(tests))]}
-
-
-def combine_site_release(record):
-    # Only an already validated selected PR plan shares the existing release
-    # checkout. Keep both logical test sets and their independent receipts.
-    tests = record['lanes']['site'].get('tests', [])
-    return (record['selection']['mode'] == 'selected'
-            and any(t.startswith('site:') for t in tests)
-            and any(t.startswith('release:') for t in tests))
 
 
 def event_reasons(run):
@@ -187,7 +177,9 @@ def build(root, run, live, map_dir, repo, keys=None):
         requirements = {k: 'true' for k in steps.FLAGS}
         selected_skills = list(skills.SUITES)
     paths = diff.get('paths', [])
-    site = bool(reasons) or requirements['build-site'] == 'true'
+    # The site lane holds only the release proofs since the site copy went
+    # (#1264); `build-site` is a change to their inputs.
+    release_inputs = bool(reasons) or requirements['build-site'] == 'true'
     try:
         readers=legacy_readers(root,paths) if not reasons else {'rust','web-test'}
     except Exception as error:
@@ -195,20 +187,19 @@ def build(root, run, live, map_dir, repo, keys=None):
         chosen=set(inventory)
         requirements={k:'true' for k in steps.FLAGS}
         selected_skills=list(skills.SUITES)
-        site=True
+        release_inputs=True
         readers={'rust','web-test'}
-    release = bool(reasons) or site or bool(readers & {'rust','web-test'})
+    release = bool(reasons) or release_inputs or bool(readers & {'rust','web-test'})
     # The whole checks binary is in the always lane (architecture, privacy,
     # contract/static checks and pending markers), exactly once in every run.
     rust_all = [t for t in inventory if t.startswith('rust:') and t != 'rust:test:checks']
     web_all = [t for t in inventory if t.startswith('web:')]
     record = {'schema': 'openwiz.ci-selection.v1', 'run': run, 'diff': diff,
         'selection': {'mode': 'full', 'reasons': reasons} if reasons else {'mode': 'selected'},
-        'builds': {'web_export': {'decision': 'run'} if requirements['build-web'] == 'true' else
-                   {'decision': 'skip', 'reason': 'no selected test or web input needs the export'}},
+        'builds': {'web_export': {'decision': 'skip', 'reason': 'the web view and its export went in #1264'}},
         'lanes': {'always': {'decision': 'run', 'tests': ALWAYS, 'skipped': []},
             'rust': lane(rust_all, chosen), 'web': lane(web_all, chosen),
-            'site': lane(SITE + RELEASE, (SITE if site else []) + (RELEASE if release else [])),
+            'site': lane(RELEASE, RELEASE if release else []),
             'skills': [dict(skill=s, **lane(['skill:' + s], ['skill:' + s] if s in selected_skills else []))
                        for s in skills.SUITES]},
         'store': {'artifact': f"ci-selection-{run['attempt']}", 'file': 'ci-selection.json'}}
@@ -217,8 +208,7 @@ def build(root, run, live, map_dir, repo, keys=None):
         raise ValueError('refused generated plan: ' + '; '.join(errors))
     dispatch = {k: requirements[k] == 'true' for k in steps.FLAGS}
     dispatch.update(skills=selected_skills,
-        rust=record['lanes']['rust']['decision'] == 'run', web=record['lanes']['web']['decision'] == 'run',
-        site=site, release=release,
+        rust=record['lanes']['rust']['decision'] == 'run', release=release,
         trace=job.traces(run['event'], 'refs/heads/' + run['base_branch'], paths),
         planted=job.plants(run['event'], paths, (root / 'ci/select/map.json').is_file()))
     return record, dispatch
@@ -259,7 +249,7 @@ def main(argv):
     dispatch['plan_sha256'] = hashlib.sha256(raw.encode()).hexdigest()
     (out / 'ci-dispatch.json').write_text(json.dumps(dispatch, indent=2) + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-        for key, value in dict(dispatch, **{'site-in-release': combine_site_release(record),
+        for key, value in dict(dispatch, **{
                 'skill-jobs': [s for s in dispatch['skills'] if s not in skills.SHARDED]}).items():
             f.write(key + '=' + json.dumps(value, separators=(',', ':')) + '\n')
     lines = [f"CI selection: {record['selection']['mode']}"]

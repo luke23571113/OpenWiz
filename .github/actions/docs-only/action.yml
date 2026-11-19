@@ -48,7 +48,7 @@ outputs:
     description: "The Rust tests to run: test ids, space-separated, or 'all' (#432)"
     value: ${{ steps.select.outputs.rust-tests }}
   web-files:
-    description: "The web tests to run: files under apps/web, 'none' or 'all' (#432)"
+    description: "The web tests to run: 'none' since #1264, or 'all' (#432)"
     value: ${{ steps.select.outputs.web-files }}
   skill-tests:
     description: "K16: skill suite folders, all or none; missing means run"
