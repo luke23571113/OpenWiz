@@ -8,7 +8,7 @@ first-hour journey (journey.py, #2204, joined in #636) with the user's App and
 again with the explicit skip, and checks the recording receipt, fleet start,
 action log and the key and brain faults it produces at the installed seams.
 Every expected code and refusal below is written by hand from
-contracts/setup-onboard.v1.md, contracts/first-hour.v1.md and
+contracts/setup-onboard.v1.md, the first-hour evidence rules and
 first-hour-live-kit.md. Nothing here is live, timed or on a real account.
 """
 import contextlib
@@ -344,7 +344,7 @@ class Eligibility(unittest.TestCase):
 
 journey = load('first_merge_journey', HERE / 'journey.py')
 RECORDING = ['candidate_unknown', 'not_live']
-# Written by hand from contracts/first-hour.v1.md for this recording (test_journey.py's own list).
+# Written by hand from the first-hour evidence rules for this recording (test_journey.py's own list).
 RESULT_UNPROVEN = sorted(['not_live', 'clock_unknown', 'stage_unverified:connections', 'gap:PR1', 'gap:PR4',
                           'gate_unresolved:cloudroom_setup'])
 # A recording receipt: no clock, no fresh machine or initial record, a seeded repository; written by hand

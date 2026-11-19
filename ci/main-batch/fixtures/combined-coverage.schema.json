@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:openwiz:schema:ci-main-batch:v1",
   "title": "openwiz.ci-main-batch.v1",
-  "description": "Offline combined-main coverage evidence; conformance grants no live or switch authority. See ci-main-batch.v1.md.",
+  "description": "Offline combined-main coverage evidence; conformance grants no live or switch authority. See ci/main-batch/README.md.",
   "$ref": "#/$defs/coverage",
   "$defs": {
     "count": {

@@ -57,7 +57,7 @@ none of these is chosen, and no ticket plans speculative billing code.
 
 ## Consumers
 
-- **First-hour offer gate.** [first-hour.v1](first-hour.v1.md) keeps its
+- **First-hour offer gate.** [first-hour evidence](../tools/install/tests/first-hour/README.md#evidence-and-validation) keeps its
   `paid_offer` gate and schema. Its free-only meaning and producer are set by
   the approved copy and evidence follow-up (#2293), not by this contract. This
   decision alone settles no gate and proves no PR6 evidence.

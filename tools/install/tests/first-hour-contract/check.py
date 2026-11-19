@@ -1,8 +1,8 @@
-"""The cross-field checks of contracts/first-hour.v1.md (#2200).
+"""Cross-field checks for the installed first-hour evidence (#2200).
 
 `check(document)` and `check_text(text)` return a Report of three sorted lists of codes:
 problems (the document is refused), failures (the attempt failed) and unproven (not
-proven yet). The contract's code table names every code. Stdlib only; the schema subset
+proven yet). Stdlib only; the schema subset
 validator is tools/skills-eval/records.py's. A seam for #2204, #2222 and #2207's result
 validation: they load this file by path and report its codes.
 """
@@ -11,14 +11,15 @@ from pathlib import Path
 import sys
 
 sys.dont_write_bytecode = True
-ROOT = Path(__file__).resolve().parents[4]
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[3]
 _spec = importlib.util.spec_from_file_location('first_hour_records', ROOT / 'tools/skills-eval/records.py')
 records = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(records)
 strict_json = records.strict_json
-SCHEMA = strict_json((ROOT / 'contracts/first-hour.v1.schema.json').read_text())
+SCHEMA = strict_json((HERE / 'first-hour.schema.json').read_text())
 
-# The contract's stage table: each stage, in order, and the one basis that establishes it.
+# Each stage in order, with the evidence required to establish it.
 ESTABLISH = {
     'public_instruction': 'instruction_opened',
     'install': 'install_result',

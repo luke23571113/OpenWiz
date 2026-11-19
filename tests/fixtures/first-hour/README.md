@@ -1,9 +1,10 @@
 # Synthetic first-hour contract examples
 
 synthetic_assumptions: every candidate, repository, time, digest, operation id,
-finding and ticket number below is invented to exercise
-contracts/first-hour.v1.md. None is an observation of an install, a CloudRoom or
-GitHub account, a harness, a review, CI or a merge, and none is a live pass. The
+finding and ticket number below is invented to exercise the
+[first-hour evidence rules](../../../tools/install/tests/first-hour/README.md#evidence-and-validation).
+None is an observation of an install, a CloudRoom or GitHub account, a harness,
+a review, CI or a merge, and none is a live pass. The
 recording example stands in for #2204's recording-provider journey; the recovery
 examples stand in for #2222's fault cases.
 

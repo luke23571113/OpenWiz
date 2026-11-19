@@ -91,7 +91,7 @@ fn the_store_depends_only_inward() {
     assert!(cli.contains("openwiz-store") && cli.contains("openwiz-core"));
     // Every crate outside the workspace is one 0.0.1 recorded and approved.
     let recorded =
-        fs::read_to_string(Path::new(ROOT).join("contracts/dependencies.v1.md")).unwrap();
+        fs::read_to_string(Path::new(ROOT).join("tests/checks/dependencies.md")).unwrap();
     let approved: BTreeSet<String> = recorded
         .lines()
         .filter_map(|l| l.strip_prefix("| `"))

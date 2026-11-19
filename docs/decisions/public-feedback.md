@@ -61,7 +61,7 @@ Both are in #2194's approved revision 8, with native links already in the graph
 
 | Ticket | Builds | Relies on | Native links | Proof it owes |
 | --- | --- | --- | --- | --- |
-| #2292 (P14) | Sender and sharing: the packaged `feedback` skill and its offline operation helper; the app's chosen-public-content handoff and share affordance | `contracts/feedback.v1.md`, `contracts/first-hour.v1.md`, its schema, `contracts/setup.v1.md`, `contracts/web-api.v1.md`, `contracts/open-development.v1.md` | blocked by #2203 and #2200; blocks #2204, #2205, #2206, #2207 | The contract's sender and sharing rows, red first, on recording GitHub and clipboard seams; it settles the first-hour `feedback` gate only after its verified merge |
+| #2292 (P14) | Sender and sharing: the packaged `feedback` skill and its offline operation helper; the app's chosen-public-content handoff and share affordance | `contracts/feedback.v1.md`, `tools/install/tests/first-hour/README.md`, its schema, `contracts/setup.v1.md`, `contracts/web-api.v1.md`, `contracts/open-development.v1.md` | blocked by #2203 and #2200; blocks #2204, #2205, #2206, #2207 | The contract's sender and sharing rows, red first, on recording GitHub and clipboard seams; it settles the first-hour `feedback` gate only after its verified merge |
 | #2557 (P16) | Receiver: the packaged `feedback-triage` skill, its queue, review and reply helper | `contracts/feedback.v1.md`, `contracts/open-development.v1.md` | blocked by #2203; blocks #2208 | The contract's receiver rows, red first, on a recording GitHub with synthetic injection-style issues |
 
 The installed journey (#2204), pages (#2205), independent security review

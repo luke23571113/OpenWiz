@@ -1,7 +1,7 @@
 # First-hour recording and fault providers (#2222)
 
-P12 of #2194: the recovery and recording component of the first hour, at the
-[first-hour contract](../../../../../contracts/first-hour.v1.md)'s seam. The
+P12 of #2194: the recovery and recording providers for
+[first-hour evidence](../README.md#evidence-and-validation). The
 fault cases are in
 [apps/web/test/unit/first-hour-recovery.test.ts](../../../../../apps/web/test/unit/first-hour-recovery.test.ts),
 which the web unit suite runs:

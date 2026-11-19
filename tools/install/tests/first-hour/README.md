@@ -20,11 +20,37 @@ CI runs the first two suites from `tests/checks/skills.rs` (`install_journey_and
 | --- | --- |
 | `journey.py` | One attempt. It runs #1109's install journey (`../journey/test_journey.py`) unchanged, swapping only its conversation for `first-hour.json`, then the join: the tick's starts land on a recording CloudRoom (a fake `room-cli thread list`) and a recording GitHub (#1108's fake gh world); at each step the **installed** `runtime/skills/launch-fleet/scripts/fleet.sh spec` decides what is due (review, then merge, then the archive and the next ticket), reading those providers. It builds the attempt's first-hour `result` document and one `recovery` document per fault case. |
 | `first-hour.json` | The recorded conversation: one fresh small idea on the owner's own selected repository (the one setup prepared, not the demo), separate spec confirmation and plan approval, and the user's explicit harness, model, effort and Cloud choice, with the other-family reviewer's sign-in explained before the plan. |
-| `test_journey.py` | The proofs. Every expected code is written by hand from contracts/first-hour.v1.md; #2200's checks (through #2222's `providers/codes.py`) give the actual ones. `KnownWaysToFail` reruns the attempt with one realistic bug each (a blind merge retry, a restart that starts the reviewer again, red CI, a stale verdict). |
+| `test_journey.py` | The proofs. Every expected code is written by hand from the first-hour rules below; #2200's checks (through #2222's `providers/codes.py`) give the actual ones. `KnownWaysToFail` reruns the attempt with one realistic bug each (a blind merge retry, a restart that starts the reviewer again, red CI, a stale verdict). |
 | `kit.py`, `test_kit.py` | The offline dry run, eligibility check and result validator of [first-hour-live-kit.md](../../first-hour-live-kit.md). |
 | `providers/` | #2222's recording and fault providers (its own folder). |
 | `first_merge_kit.py`, `test_first_merge.py` | #637: the 0.0.16 kit's offline dry run, eligibility check and receipt validator (first-hour-live-kit.md's 0.0.16 extension), and the proofs of it and of the journey's recording receipt. Fixtures: `tests/fixtures/first-hour/setup-onboard/`. |
 | `evidence/` | #637's red runs. |
+
+## Evidence and validation
+
+The [schema](../first-hour-contract/first-hour.schema.json) and
+[cross-field checks](../first-hour-contract/check.py) read a strict JSON
+`openwiz.first-hour.v1` document. A `result` records the whole attempt.
+A `recovery` records one fault, including retained work, operation identity,
+effect counts and reconciliation. Unknown reads stay unknown. Recovery must
+preserve prior work and resolve uncertain effects by read-back before any
+retry. Use the [synthetic examples](../../../../tests/fixtures/first-hour/README.md)
+for established codes and verdicts.
+
+The first-hour clock starts at opening the public install instruction and
+ends at GitHub's read-back of the first verified merge. It includes waits and
+help, with a limit of 3,600,000 ms. Recorded stages require their own evidence,
+including the user's saved spec and plan approvals, independent review,
+required checks and the merged head. A live pass also requires a candidate
+binding, private evidence pointer and settled gates. The ten-minute fleet
+measure and the 0.0.16 receipt have separate verdicts.
+
+The three gates are `cloudroom_setup` (#2201), `paid_offer` (the
+[free-only offer decision](../../../../docs/decisions/public-offer.md), settled
+by #2293) and `feedback` (#2203, settled by #2292). Settled gates require evidence
+from their approved and merged producers. The `paid_offer` field records the
+free-only copy and review. Fixtures and recording providers supply synthetic
+evidence only.
 
 ## The fault cases on this journey
 

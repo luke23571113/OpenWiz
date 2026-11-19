@@ -402,7 +402,7 @@ def reconcile(gh, packet, context, state, inventory):
         exact(packet, 'plan receipts event rust complete reason')
         exact(packet['event'], 'repository run')
         need(packet['complete'] is False and packet['reason'] == 'terminal checks pending', 'capture claimed authority')
-        schema = strict_json((ROOT/'contracts/ci-main-batch.v1.schema.json').read_text())
+        schema = strict_json((HERE / 'fixtures/combined-coverage.schema.json').read_text())
         errors = executor.gate.escapes.errors_of(schema, schema['$defs']['context'], context, '$context')
         need(not errors, 'invalid independent C6 context')
         batch = context['batch']

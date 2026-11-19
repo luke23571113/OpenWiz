@@ -5,7 +5,7 @@ Synthetic records only: every pointer, commit, digest and repository is
 invented. These prove the kit's shape and rules, never a live run. The
 documents start from #2200's synthetic `recording-complete` example
 (tests/fixtures/first-hour/README.md); each expectation is written by hand
-from first-hour-live-kit.md and contracts/first-hour.v1.md.
+from first-hour-live-kit.md and the first-hour evidence rules.
 """
 import copy
 import importlib.util

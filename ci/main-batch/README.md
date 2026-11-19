@@ -1,8 +1,17 @@
 # Combined-main shadow observation (C7)
 
-The [C6 contract](../../contracts/ci-main-batch.v1.md) is authoritative.
-The implementation adds no admission mechanism. Main full per-push and nightly
-runs, every required check, independent review and M1 remain mandatory.
+The [combined coverage schema](fixtures/combined-coverage.schema.json) defines
+the offline `openwiz.ci-main-batch.v1` record. It binds a contiguous main range
+and its ordered PR merges to the exact combined head, workflow run and current
+attempt. The actual workflow event base may be an intermediate merge within
+that range. Preserve earlier pending members until a complete run covers them.
+
+A complete record needs the exact persisted CI selection plan, the trusted
+candidate's full work inventory, every successful job and matrix receipt, and
+the current required checks at that head. Compare against independent context
+through `coverage_refusals` in [test_contract.py](test_contract.py). Schema
+validation alone establishes shape. The observer adds no admission mechanism.
+Every required check, independent review and M1 remain mandatory.
 
 Two finite stages implement the invocation disposition on #2314,
 comment 6777332857:
