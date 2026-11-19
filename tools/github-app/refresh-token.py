@@ -25,12 +25,15 @@ import fcntl
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
 import time
 
-import app
+# The documented `python3 -I` drops this folder from sys.path: add exactly it.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import app  # noqa: E402
 
 # Refresh with five minutes or less left (contracts/github-identity.v1.md's boundary).
 REFRESH = 300
@@ -172,6 +175,8 @@ def save(directory, name, token, expiry):
 def main():
     # No child process inherits the key: it is read once, then dropped from the environment.
     secret = os.environ.pop(SECRET_KEY, "")
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):  # nor a caller's token (R2, #1456)
+        os.environ.pop(name, None)
     args = parser().parse_args()
     if not args.repository:
         print("App token refused: --repository is required.", file=sys.stderr)
