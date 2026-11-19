@@ -28,6 +28,39 @@ orchestrator verifies it before installation. Direct CLI invocations use
 not a supported deployment. Installation, activation and delivery remain
 pending; the builder proves the command boundary with fakes.
 
+## The ticket stall rule (FM3, #1171)
+
+`stalls.py` reads one collector snapshot or flow read (the `flow` fact of
+[collector v1](../collector/collector.v1.md)) and prints the stall list and
+the daily count. It reads nothing else and writes nothing.
+
+```sh
+python3 -I tools/stall-alarm/stalls.py --input snapshot.json
+```
+
+- **The rule:** a claimed, unmerged, open ticket whose `last_observed_at`
+  (its latest commit, record, CI result or verdict) is 30 minutes or more
+  before the flow fact's read point is a stall. Progress inside 30 minutes is
+  never a stall, even on a partial history. With 30 minutes or more and an
+  incomplete history, the ticket is listed under `unknown`, never stall-free.
+- **One cause,** from a fixed list, first match: `ci` (a pending workflow
+  attempt), `jake` (the latest factory record is `asked the orchestrator`,
+  `told the user`, `parked` or `needs approval`), `limit` (`builder fallback
+  due`), `stuck` (CI is not pending and the latest record names no outside
+  wait), else `unknown`. A flow fact without `last_record` leaves every cause
+  but `ci` unknown.
+- **The daily count** is the number of stalls that began (30 minutes after
+  their last progress) on the read point's UTC day, up to the read point: the
+  ticket's dated `gaps` plus the open stalls. It is null when any ticket active
+  that day has an unknown history.
+- An unavailable or absent flow fact gives null `stalls`, `unknown` and
+  count, never an empty list or zero.
+
+Fixture proof: `python3 -B -I tools/stall-alarm/test.py FlowStalls`, over
+[`fixtures/flow-read.json`](fixtures/flow-read.json) (synthetic). Red runs:
+[`evidence/1171-red-first.log`](evidence/1171-red-first.log) and
+[`evidence/1171-red-unknown.log`](evidence/1171-red-unknown.log).
+
 ## What fires
 
 | Alarm | Evidence read at this tick | Clears when |

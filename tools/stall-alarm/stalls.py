@@ -44,10 +44,76 @@ def maybe(text):
     return None if text is None else when(text)
 
 
+def cause(progress):
+    """One cause from the fixed list. A fact the snapshot lacks leaves it unknown."""
+    if progress["ci_pending"] is True:
+        return "ci"
+    if "last_record" not in progress:  # a flow fact written before the record kind existed
+        return "unknown"
+    record = progress["last_record"]
+    if record in JAKE:
+        return "jake"
+    if record in LIMIT:
+        return "limit"
+    return "stuck" if progress["ci_pending"] is False else "unknown"
+
+
+def gaps(progress):
+    """The ticket's dated past stalls, or None when its history is unknown."""
+    items = progress.get("gaps")
+    if items is None:
+        return None
+    require(isinstance(items, list), "invalid gaps")
+    out = []
+    for gap in items:
+        require(isinstance(gap, dict) and set(gap) == {"from", "until"}, "invalid gap")
+        start, end = when(gap["from"]), when(gap["until"])
+        require(end - start >= STALL, "a gap shorter than a stall")
+        out.append(start)
+    return out
+
+
 def stall_list(doc):
-    """The stall list and the daily count at the flow fact's read point. Not built yet: nothing is known."""
-    return {"schema": SCHEMA, "repository": None, "at": None, "stalls": None, "unknown": None,
-            "daily": {"date": None, "count": None}}
+    """The stall list and the daily count at the flow fact's read point."""
+    require(isinstance(doc, dict) and doc.get("schema") in DOCUMENTS, "not a collector document")
+    fact = (doc.get("factory") or {}).get("flow")
+    out = {"schema": SCHEMA, "repository": doc.get("repository"), "at": None,
+           "stalls": None, "unknown": None, "daily": {"date": None, "count": None}}
+    if fact is None or fact.get("value") is None:
+        return out  # no flow fact, or an unavailable one: the whole list is unknown, never empty
+    at = when(fact["point"])
+    day = at.replace(hour=0, minute=0, second=0)
+    out["at"], out["daily"]["date"] = stamp(at), at.date().isoformat()
+    stalls, unknown, starts, history = [], [], [], True
+    for row in fact["value"]["tickets"]:
+        progress = row["progress"]
+        claimed, merged = maybe(row["claimed_at"]), maybe(row["merged_at"])
+        if claimed is None or (merged is not None and merged < day):
+            continue  # never started, or finished before the day
+        past = gaps(progress) if progress["complete"] else None
+        if past is None:
+            history = False
+        else:
+            starts += [start + STALL for start in past]
+        if row["state"] != "open" or merged is not None:
+            if row["state"] == "unknown":
+                unknown.append({"ticket": row["ticket"], "spec": row["spec"], "reason": "state"})
+            continue
+        last = maybe(progress["last_observed_at"])
+        if last is not None and at - last < STALL:
+            continue  # progress inside 30 minutes is never a stall, even on a partial history
+        if last is None or not progress["complete"]:
+            unknown.append({"ticket": row["ticket"], "spec": row["spec"], "reason": "progress"})
+            continue
+        starts.append(last + STALL)
+        stalls.append({"ticket": row["ticket"], "spec": row["spec"], "pull_requests": row["pull_requests"],
+                       "since": stamp(last), "minutes": int((at - last).total_seconds() // 60),
+                       "cause": cause(progress)})
+    stalls.sort(key=lambda s: (-s["minutes"], s["ticket"]))
+    out["stalls"], out["unknown"] = stalls, unknown
+    if history and not unknown:
+        out["daily"]["count"] = sum(day <= start <= at for start in starts)
+    return out
 
 
 def main(argv):
