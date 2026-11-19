@@ -42,13 +42,13 @@ function scheduler() {
   };
 }
 
-test('Rust and web lanes read the plan\'s planted output', () => {
+test('The Rust lane reads the plan\'s planted output', () => {
   const changes = workflow.match(/^  changes:\n((?:    .*\n|\n)*)/m)?.[1];
   assert.match(changes, /^      planted: \$\{\{ steps\.plan\.outputs\.planted \}\}$/m);
-  for (const lane of ['rust', 'rust-export', 'web', 'web-export']) {
+  for (const lane of ['rust']) {
     const job = workflow.match(new RegExp(`^  ${lane}:\\n((?:    .*\\n|\\n)*)`, 'm'))?.[1];
     assert.ok(job, `${lane} job exists`);
-    assert.match(job, /^    needs: (?:changes|\[changes, web-build\])$/m);
+    assert.match(job, /^    needs: changes$/m);
   }
 });
 
@@ -222,12 +222,11 @@ function simulate(source, event_name, outputs = {}, initialResults = {}) {
   return Object.keys(results).filter((name) => results[name] === 'success').sort();
 }
 
-// A full plan (every reason forces one on these events): every lane, both exports.
-const FULL_PLAN = { changes: { rust: 'true', web: 'true', site: 'true',
-  'site-in-release': 'false', release: 'true', skills: '["image","launch-fleet"]', 'skill-jobs': '["image"]', 'build-web': 'true',
-  'export-rust': 'true', 'export-web': 'true', trace: 'false', planted: 'false' } };
+// A full plan (every reason forces one on these events): every lane.
+const FULL_PLAN = { changes: { rust: 'true', release: 'true', skills: '["image","launch-fleet"]',
+  'skill-jobs': '["image"]', trace: 'false', planted: 'false' } };
 // #743: launch-fleet and release retain their sharded jobs on a full run.
-const FULL_SUITE = ['always', 'changes', 'ci', 'launch-fleet', 'release', 'rust-export', 'site', 'skills', 'web-build', 'web-export', 'web-test'];
+const FULL_SUITE = ['always', 'changes', 'ci', 'launch-fleet', 'release', 'rust', 'skills', 'web-test'];
 
 test('PR, nightly and merge-group coverage stays full; main pushes follow the map-age decision', () => {
   // #1418: the owned-paths check runs beside the suite on pull requests only.

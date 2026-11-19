@@ -174,24 +174,20 @@ class Workflow(unittest.TestCase):
             with self.subTest(altered=event,before=before), self.assertRaisesRegex(AssertionError,event+' trigger contract'):
                 self.assert_trigger_contract(source.replace(before,after))
 
-    def test_independent_jobs_wait_for_export_only_when_needed(self):
+    def test_independent_jobs_need_only_the_plan(self):
         blocks=jobs()
-        self.assertEqual(set(blocks),{'changes','always','web-build','rust','rust-export','web','web-export',
-                                      'site','release','skills','launch-fleet','select-map','ci','web-test',
-                                      'main-light','owned-paths'})
-        for name in ('always','web-build','rust','web','site','release','skills','launch-fleet'):
+        self.assertEqual(set(blocks),{'changes','always','rust','release','skills','launch-fleet',
+                                      'select-map','ci','web-test','main-light','owned-paths'})
+        for name in ('always','rust','release','skills','launch-fleet'):
             self.assertRegex(blocks[name],r'^    needs: changes\n')
-        for name in ('rust-export','web-export'):
-            self.assertRegex(blocks[name],r'^    needs: \[changes, web-build\]\n')
-            self.assertIn("needs.web-build.result == 'success'",blocks[name])
         self.assertIn('fail-fast: false',blocks['skills'])
         self.assertIn('fromJSON(needs.changes.outputs.skill-jobs)',blocks['skills'])
         self.assertIn('fail-fast: false',blocks['launch-fleet'])
 
-    def test_selected_site_cut_uses_one_job_but_full_runs_keep_both(self):
+    def test_a_selected_release_change_starts_only_its_lanes(self):
         blocks = jobs()
-        for combined in (True, False):
-            with self.subTest(combined=combined):
+        for _ in (None,):
+            with self.subTest():
                 active = []
                 for name, block in blocks.items():
                     match = re.search(r'^    if: (.*)$', block, re.M)
@@ -199,11 +195,9 @@ class Workflow(unittest.TestCase):
                         active.append(name)
                         continue
                     condition = match[1].removeprefix('${{ ').removesuffix(' }}')
-                    outputs = dict.fromkeys(('rust', 'web', 'build-web',
-                        'export-rust', 'export-web', 'trace', 'planted'), 'false')
-                    outputs.update(site='true', release='true', skills='[]', **{'skill-jobs': '[]'},
-                                   **{'site-in-release': str(combined).lower()})
-                    values = {'needs.changes.result': 'success', 'needs.web-build.result': 'skipped',
+                    outputs = dict.fromkeys(('rust', 'trace', 'planted'), 'false')
+                    outputs.update(release='true', skills='[]', **{'skill-jobs': '[]'})
+                    values = {'needs.changes.result': 'success',
                               'needs.ci.result': 'success', 'github.event_name': 'pull_request',
                               'github.ref': 'refs/pull/909/merge'}
                     values.update({'needs.changes.outputs.' + key: value for key, value in outputs.items()})
@@ -213,12 +207,10 @@ class Workflow(unittest.TestCase):
                     condition = condition.replace('&&', ' and ').replace('||', ' or ')
                     if eval(condition, {'__builtins__': {}}, {'contains': lambda a, b: b in a}):
                         active.append(name)
-                self.assertEqual(active, ['changes', 'always', *([] if combined else ['site']),
-                                           'release', 'owned-paths', 'ci', 'web-test'])
-                # A site-only PR also starts the separate Privacy and Changelog
+                self.assertEqual(active, ['changes', 'always', 'release', 'owned-paths', 'ci', 'web-test'])
+                # Such a PR also starts the separate Privacy and Changelog
                 # workflows. No matrix is active for this selected fixture.
-                self.assertEqual(len(active) + 2, 8 if combined else 9)
-        self.assertIn('site-in-release: ${{ steps.plan.outputs.site-in-release }}', blocks['changes'])
+                self.assertEqual(len(active) + 2, 8)
         # #743: each release member records its share; the ci job stamps the
         # separate receipts only after every unit is checked to have run once.
         self.assertIn('run.py execute "$RUNNER_TEMP/ci-plan" release --shard ', blocks['release'])
@@ -252,7 +244,7 @@ class Workflow(unittest.TestCase):
         self.assertIn('python3 -I .github/actions/docs-only/plan.py ',blocks['changes'])
         self.assertIn('name: ci-selection-${{ github.run_attempt }}',blocks['changes'])
         self.assertIn('retention-days: 30',blocks['changes'])
-        for name in ('always','web-build','rust','rust-export','web','web-export','site','release','skills','launch-fleet','ci'):
+        for name in ('always','rust','release','skills','launch-fleet','ci'):
             self.assertIn('name: ci-selection-${{ github.run_attempt }}',blocks[name])
         self.assertNotIn('uses: ./.github/actions/docs-only\n',workflow)
 
@@ -280,8 +272,8 @@ class Workflow(unittest.TestCase):
             (fixture.path/'ci-plan'/name).write_bytes((fixture.path/name).read_bytes())
         for state in ('success','failure','cancelled',None):
             needs=json.loads(json.dumps(fixture.needs))
-            if state is None: del needs['rust-export']
-            else: needs['rust-export']['result']=state
+            if state is None: del needs['rust']
+            else: needs['rust']['result']=state
             env=dict(os.environ,RUNNER_TEMP=str(fixture.path),NEEDS=json.dumps(needs),
                      GITHUB_RUN_ID=str(fixture.plan['run']['id']),GITHUB_RUN_ATTEMPT='1',GITHUB_EVENT_NAME='schedule')
             result=subprocess.run(['bash','-euo','pipefail','-c',script],cwd=ROOT,env=env,capture_output=True,text=True)
@@ -318,8 +310,8 @@ class Security(unittest.TestCase):
 
     def test_runner_choices_keep_small_jobs_independent_and_forks_hosted(self):
         small={'changes','select-map','ci','web-test','main-light','owned-paths'}
-        rust={'always','rust','rust-export'}
-        web={'web-build','web','web-export','site','release','skills','launch-fleet'}
+        rust={'always','rust'}
+        web={'release','skills','launch-fleet'}
         blocks=jobs()
         self.assertEqual(set(blocks),small|rust|web)
         # Literal expectations describe the runner pool, independently of the
@@ -385,27 +377,11 @@ class Security(unittest.TestCase):
                     self.assertEqual(len(prepare),1,name)
                     self.assertIn('hosted: ${{ steps.guard.outputs.hosted }}',prepare[0])
                     self.assertIn('save: ${{ steps.guard.outputs.save }}',prepare[0])
-                    if name in ('always','rust','rust-export','web','web-export','release'):
+                    if name in ('always','rust','release'):
                         self.assertIn("cargo: 'true'",prepare[0])
-                    if name in ('web-build','web','web-export','site','release'):
-                        self.assertIn("npm: 'true'",prepare[0])
-                    if name in ('rust','rust-export'):
-                        npm=re.findall(r'^          npm: (.+)$',prepare[0],re.M)
-                        self.assertEqual(len(npm),1,name+' npm prerequisite')
-                        for planted,want in [('true','true'),('false','false')]:
-                            with self.subTest(planted=planted):
-                                value=npm[0]
-                                if value.startswith('${{'):
-                                    expression=value[3:-2].strip().replace(
-                                        'needs.changes.outputs.planted',repr(planted))
-                                    value=eval(expression.replace('&&',' and ').replace('||',' or '),
-                                               {'__builtins__':{}},{})
-                                else: value=value.strip("'\"")
-                                self.assertEqual(str(value).lower(),want,name+' npm prerequisite')
-                    if name in ('web','web-export','site','release'):
-                        self.assertIn("browser: 'true'",prepare[0])
+                    # #1264: no lane installs the web view's packages any more.
+                    self.assertNotIn('npm:',prepare[0])
                     if name=='skills':
-                        self.assertIn("npm: ${{ matrix.skill == 'image' }}",prepare[0])
                         self.assertIn("browser: ${{ matrix.skill == 'image' }}",prepare[0])
                 for step in steps:
                     if 'uses: actions/cache/restore@' in step:

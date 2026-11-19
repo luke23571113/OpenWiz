@@ -10,7 +10,7 @@ Each line has its own numbers. A number on one line never implies anything about
 
 | Line | Current | Where it is recorded |
 | --- | --- | --- |
-| **OpenWiz** (the product) | `0.0.5`: update combining 0.0.3–0.0.5; fixture-tested send, creation and attachments, plus fleet skills accepted with gaps. *Updated for 0.0.5* | `CHANGELOG.md`, `Cargo.toml` and `apps/web/package.json`; current live limits in [the agent and contributor guide](AGENTS.md). The server reports its package version on health; the CLI does not print its own version or commit yet. *Updated for 0.0.5* |
+| **OpenWiz** (the product) | `0.0.5`: update combining 0.0.3–0.0.5; fixture-tested send, creation and attachments, plus fleet skills accepted with gaps. *Updated for 0.0.5* | `CHANGELOG.md` and `Cargo.toml`; current live limits in [the agent and contributor guide](AGENTS.md). The server reports its package version on health; the CLI does not print its own version or commit yet. *Updated for 0.0.5* |
 | **PACP** (the protocol) | `v0.1` (draft) | [PACP versioning](docs/pacp/v0.1.md#13-versioning) and its version history |
 | **Adapters** (one per personal agent) | none exist | each adapter's own notes, when one exists |
 
