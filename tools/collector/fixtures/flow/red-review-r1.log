@@ -1,0 +1,45 @@
+FFFFF
+======================================================================
+FAIL: test_edited_verdict_history_keeps_only_supported_rounds (__main__.FlowFacts.test_edited_verdict_history_keeps_only_supported_rounds) [body only]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 366, in test_edited_verdict_history_keeps_only_supported_rounds
+    self.assertEqual(row['review_rounds'], 2 if supported else None)
+AssertionError: 1 != 2
+
+======================================================================
+FAIL: test_edited_verdict_history_keeps_only_supported_rounds (__main__.FlowFacts.test_edited_verdict_history_keeps_only_supported_rounds) [changed verdict]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 366, in test_edited_verdict_history_keeps_only_supported_rounds
+    self.assertEqual(row['review_rounds'], 2 if supported else None)
+AssertionError: 1 != None
+
+======================================================================
+FAIL: test_edited_verdict_history_keeps_only_supported_rounds (__main__.FlowFacts.test_edited_verdict_history_keeps_only_supported_rounds) [changed head]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 366, in test_edited_verdict_history_keeps_only_supported_rounds
+    self.assertEqual(row['review_rounds'], 2 if supported else None)
+AssertionError: 1 != None
+
+======================================================================
+FAIL: test_edited_verdict_history_keeps_only_supported_rounds (__main__.FlowFacts.test_edited_verdict_history_keeps_only_supported_rounds) [removed verdict]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 366, in test_edited_verdict_history_keeps_only_supported_rounds
+    self.assertEqual(row['review_rounds'], 2 if supported else None)
+AssertionError: 1 != None
+
+======================================================================
+FAIL: test_edited_verdict_history_keeps_only_supported_rounds (__main__.FlowFacts.test_edited_verdict_history_keeps_only_supported_rounds) [missing history]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 366, in test_edited_verdict_history_keeps_only_supported_rounds
+    self.assertEqual(row['review_rounds'], 2 if supported else None)
+AssertionError: 1 != None
+
+----------------------------------------------------------------------
+Ran 1 test in 1.782s
+
+FAILED (failures=5)
