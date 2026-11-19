@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -583,6 +584,60 @@ class Check(unittest.TestCase):
         self.assertEqual((window["since"], window["until"], len(window["heads"])),
                          ("2025-12-30T00:00:00Z", "2026-01-06T00:00:00Z", 2))
 
+    def test_the_record_authors_are_the_rules_files_whole_row(self):
+        # catches: the note's last-note read trusting a commenter the rules
+        # file does not name, or keeping the logins that parsed from a broken
+        # row (#641's rule, as contracts/fleet-tick.v1.md words it). Each
+        # expected set is written by hand from its row.
+        head = "# Fleet\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n"
+        good = [("| Record authors | `Synthetic-App[bot]`, `synthetic-owner` |",
+                 {"synthetic-app[bot]", "synthetic-owner"}),
+                ("|Record authors|`a`|", {"a"}),
+                ("|  Record authors  |  `a` ,`b-c`  |  ", {"a", "b-c"}),
+                ("| Record authors | `A1` |\r", {"a1"})]
+        bad = ["| Record authors | |", "| Record authors | `` |", "| Record authors | `a--b` |",
+               "| Record authors | `-a` |", "| Record authors | `a-` |", "| Record authors | a |",
+               "| Record authors | `a`, |", "| Record authors | `a` `b` |", "| Record authors | `a@b` |",
+               "| Record authors | `a[bot]x` |", "| Record authors | `a` | extra |",
+               "| Record authors | `a` | extra", "| Record authors | `a`",
+               "| Record authors | `a` |\n| Record authors | `b` |", "| Record author | `a` |"]
+        with tempfile.TemporaryDirectory() as tmp:
+            fleet = Path(tmp) / "fleet.md"
+            with mock.patch.object(ci3_check, "FLEET", fleet):
+                for row, want in good:
+                    fleet.write_text(head + row + "\n\n## Next\n")
+                    self.assertEqual(ci3_check.record_authors(), frozenset(want), row)
+                for row in bad:
+                    fleet.write_text(head + row + "\n\n## Next\n")
+                    with self.assertRaises(ci3_check.Fail, msg=row):
+                        ci3_check.record_authors()
+                # The row counts only inside its own section.
+                fleet.write_text("# Fleet\n\n## Other\n\n| Record authors | `a` |\n\n## GitHub identity\n")
+                with self.assertRaises(ci3_check.Fail):
+                    ci3_check.record_authors()
+
+    def test_an_unreadable_author_source_is_said_in_the_finding(self):
+        # catches #1208: an author source that is gone, a folder, not UTF-8 or
+        # malformed stops the whole check (FileNotFoundError, UnicodeDecodeError)
+        # instead of saying the last note is unknown; or the comments are read
+        # and trusted with no authors at all.
+        with tempfile.TemporaryDirectory() as tmp:
+            sources = {"gone": Path(tmp) / "gone.md", "a folder": Path(tmp)}
+            (Path(tmp) / "latin1.md").write_bytes(b"## GitHub identity\n| Record authors | `caf\xe9` |\n")
+            (Path(tmp) / "broken.md").write_text("## GitHub identity\n| Record authors | `a`, `b c` |\n")
+            sources.update({"not UTF-8": Path(tmp) / "latin1.md", "malformed": Path(tmp) / "broken.md"})
+            for why, fleet in sources.items():
+                gh = github()
+                with mock.patch.object(ci3_check, "FLEET", fleet), Collector(gh):
+                    lines = ci3_check.check(NOW, read=gh, record=RECORD).splitlines()
+                self.assertEqual(lines[:4] + lines[5:], NORMAL[:4] + NORMAL[5:], why)
+                self.assertTrue(lines[4].startswith("Against the last note: unknown (cannot read the record authors:"
+                                                    " docs/agents/fleet.md: " if why != "malformed" else
+                                                    "Against the last note: unknown (docs/agents/fleet.md names no"
+                                                    " record authors)."), (why, lines[4]))
+                self.assertNotIn(tmp, "\n".join(lines), why)
+                self.assertFalse([p for p in gh.asked if "/comments" in p], why)
+
     def test_the_real_before_record_reads(self):
         # Bug: docs/ci3.md's BEFORE block changes form and every note compares
         # with nothing. Its numbers, 22.4 and 50.9, are the published record's.
@@ -595,20 +650,57 @@ class Check(unittest.TestCase):
         check(gh)
         self.assertTrue(all(p.startswith((B + "/", "organizations/{owner}/")) for p in gh.asked), gh.asked)
 
-    def test_the_cli_prints_the_note_when_gh_fails(self):
+
+# The smoke run (#1208): the loop's own command on this checkout, offline. Network, any program but
+# `gh`, and any read under skills/ (the gitignored WizSkills install) are refused, so the check can
+# depend on nothing a fresh clone lacks. argv: the checkout, then the command's own arguments.
+SMOKE = r"""
+import os, runpy, sys
+root = os.path.realpath(sys.argv[1])
+banned = [os.path.join(root, "skills"), os.path.join(root, ".wizskills")]
+def refuse(event, args):
+    if event == "open" and isinstance(args[0], (str, bytes)):
+        path = os.fsdecode(args[0])
+        for p in {os.path.abspath(path), os.path.realpath(path)}:
+            if any(p == b or p.startswith(b + os.sep) for b in banned):
+                raise PermissionError(f"smoke: a read under skills/: {path}")
+    elif event.startswith("socket.") and event not in ("socket.__new__", "socket.gethostname"):
+        raise PermissionError(f"smoke: network: {event}")
+    elif event in ("subprocess.Popen", "os.posix_spawn", "os.exec", "os.system") and \
+            os.path.basename(os.fsdecode(args[0] if event != "subprocess.Popen" else args[1][0])) != "gh":
+        raise PermissionError(f"smoke: a program other than gh: {args[0]}")
+sys.addaudithook(refuse)
+sys.argv = [os.path.join(root, "tools", "collector", "ci3_check.py"), *sys.argv[2:]]
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
+
+
+class Smoke(unittest.TestCase):
+    """CI runs this class on every pull request (ci.yml's always lane): seconds, offline, on the
+    real files the loop reads, with no fixture in their place."""
+
+    def test_the_loops_command_prints_its_finding_offline(self):
         # Bug: the loop's command exits nonzero or prints nothing when GitHub
-        # can't be read, so no agent wakes and Jake hears nothing.
+        # can't be read, so no agent wakes and Jake hears nothing. And #1208:
+        # it loads a file a fresh clone lacks (launch-fleet's removed helper)
+        # or one that moved, and crashes before its finding. Only `gh` is on
+        # PATH, and it fails: no read reaches GitHub. The BEFORE record, the
+        # record authors and the definition are the checkout's own.
         with tempfile.TemporaryDirectory() as tmp:
             gh = Path(tmp) / "gh"
             gh.write_text("#!/bin/sh\necho 'synthetic: not logged in' >&2\nexit 1\n")
             gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
-            env = dict(os.environ, PATH=f"{tmp}{os.pathsep}{os.environ['PATH']}")
-            run = subprocess.run([sys.executable, "-I", str(HERE / "ci3_check.py"), "check", "--now", NOW,
-                                  "--record", str(RECORD)], capture_output=True, text=True, env=env, timeout=60)
+            env = {"PATH": tmp, "HOME": tmp, "OPENWIZ_COLLECTOR_STORE": str(Path(tmp) / "store")}
+            run = subprocess.run([sys.executable, "-I", "-c", SMOKE, str(ROOT), "check", "--now", NOW],
+                                 capture_output=True, text=True, env=env, timeout=60)
         self.assertEqual(run.returncode, 0, run.stderr)
         lines = run.stdout.splitlines()
         self.assertEqual(lines[0], NORMAL[0])
         self.assertTrue(lines[1].startswith("Time to a PR's result: unknown ("), lines[1])
+        # The real BEFORE record read (no "Against BEFORE: unknown" line), and the real record authors
+        # read, so the last note's read reached the comments, which `gh` refused.
+        self.assertEqual(lines[2], "Against the last note: unknown (gh api repos/{owner}/{repo}/issues/780/"
+                                   "comments?per_page=100&page=1 failed (exit 1): synthetic: not logged in).")
         self.assertTrue(lines[-2].startswith("Actions minutes in 2026-01 so far: unknown ("), lines[-2])
         self.assertLess(len(run.stdout.encode()), 16384)
 

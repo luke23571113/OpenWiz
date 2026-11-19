@@ -18,7 +18,6 @@ Python 3 standard library only, and gh.
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
-import importlib.util
 import json
 import math
 import os
@@ -104,16 +103,37 @@ def read_before(path):
     return rec
 
 
+# The record authors' row, by #641's rule (contracts/fleet-tick.v1.md, `## GitHub identity`), as
+# the service's readers take it: `| Record authors |` at a line's start, and its whole value cell
+# backticked logins (letters and digits, single inner `-`, maybe a final `[bot]`) separated by commas.
+AUTHORS_ROW = re.compile(r"\| *Record authors *\|")
+LOGIN = r"`[A-Za-z0-9](?:-?[A-Za-z0-9])*(?:\[bot\])?`"
+AUTHORS_CELL = re.compile(rf"\s*{LOGIN}(?:\s*,\s*{LOGIN})*\s*")
+
+
 def record_authors():
-    """The factory's record authors, as launch-fleet reads them from docs/agents/fleet.md (#641)."""
-    spec = importlib.util.spec_from_file_location("launch_fleet_grants",
-                                                  ROOT / "skills" / "launch-fleet" / "scripts" / "grants.py")
-    grants = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(grants)
+    """The factory's record authors (#641), lowercase, from this checkout's docs/agents/fleet.md:
+    exactly one `Record authors` row in its `## GitHub identity` table, with nothing after the value
+    cell. No row, two rows, an empty, malformed or extra entry, or a file that can't be read as UTF-8
+    refuses the whole setting (Fail); it never keeps the logins that did parse (#1208: no longer
+    through launch-fleet's grants.py, which left the repository with the skills, #555)."""
     try:
-        return grants.record_authors(bench.read_file(FLEET))
-    except ValueError as e:
-        raise Fail(str(e))
+        text = FLEET.read_bytes().decode("utf-8")
+    except OSError as e:
+        raise Fail(f"cannot read the record authors: docs/agents/fleet.md: {e.strerror}")
+    except UnicodeDecodeError as e:
+        raise Fail(f"cannot read the record authors: docs/agents/fleet.md: {e.reason} at byte {e.start}")
+    section, rows = None, []
+    for line in text.split("\n"):
+        line = line.removesuffix("\r")
+        if line.startswith("## "):
+            section = line
+        elif section == "## GitHub identity" and AUTHORS_ROW.match(line):
+            rows.append(line)
+    cells = rows[0].split("|") if len(rows) == 1 else []
+    if len(cells) != 4 or cells[3].strip() or not AUTHORS_CELL.fullmatch(cells[2]):
+        raise Fail("docs/agents/fleet.md names no record authors")
+    return frozenset(x.lower() for x in re.findall(r"`([^`]*)`", cells[2]))
 
 
 def read_note(body, where):
