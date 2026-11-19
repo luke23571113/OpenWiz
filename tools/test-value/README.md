@@ -10,6 +10,41 @@ contract others rely on or a safety invariant, adds something not already
 covered, and names the bug it catches. Never mock-returns-stub, source
 mirroring, compiler re-checks, quota tests or unreachable cases.
 
+## The pull request test-code budget (#1139)
+
+Every pull request may add **400 net test lines** without an allowance:
+added lines minus deleted lines, from the PR's common ancestor with its base
+to its head. Product changes and evidence outside test paths do not count.
+The counted paths are `tests/**`, `crates/*/tests/**`, `**/test_*.py`,
+`**/*_test.py`, `**/*.test.mjs`, `**/*.test.ts`, `**/*.test.tsx` and
+`**/__tests__/**` (including root-level matching files/folders); fixtures
+and evidence count only where they sit under those paths.
+
+Offset growth with deletions, or put one standalone line in the PR description:
+
+```text
+Test budget allowance: <N> lines. Why: <reason>
+```
+
+`N` is a nonnegative integer covering at least the overage above 400, not
+necessarily the total growth: 500 net lines needs at least 100. The reason
+must be nonempty; the ordinary reviewer judges whether it is justified.
+An insufficient, malformed or duplicate allowance fails. Keep this line
+separate from the PR's numbered Rulings section.
+
+The single PR-only step in `ci.yml` runs the synthetic proofs and
+`budget.py`; merge groups, pushes and schedules skip it. It reads Git and
+the PR event's description, never product data or external services. Missing
+or unreadable revisions, history, diffs or descriptions fail closed with a
+message; binary test diffs refuse because their line growth is uncountable.
+A GitHub null body is a readable empty description. Renames count both sides
+by their paths; dirty working-tree files cannot affect the result.
+
+```sh
+python3 -I tools/test-value/test_budget.py
+python3 -I tools/test-value/budget.py --base=BASE_SHA --head=HEAD_SHA --event=PR_EVENT_JSON
+```
+
 ## The ledger
 
 One row for **every test the group touches or reviews**, in the group's

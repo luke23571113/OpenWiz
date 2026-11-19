@@ -1,0 +1,22 @@
+test_committed_diff (__main__.BudgetTests.test_committed_diff)
+catches: working-tree deletions masking committed growth. ... 
+  test_committed_diff (__main__.BudgetTests.test_committed_diff) (source='base advanced independently')
+catches: working-tree deletions masking committed growth. ... FAIL
+
+======================================================================
+FAIL: test_committed_diff (__main__.BudgetTests.test_committed_diff) (source='base advanced independently')
+catches: working-tree deletions masking committed growth.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/code/openwiz/tools/test-value/test_budget.py", line 153, in test_committed_diff
+    self.check_budget(1, 'net=401', base=advanced, head=head)
+  File "/code/openwiz/tools/test-value/test_budget.py", line 53, in check_budget
+    self.assertEqual(proc.returncode, status, proc.stdout)
+AssertionError: 0 != 1 : test budget: added=401 deleted=600 net=-199 ceiling=400 allowance=0
+test budget: PASS; reviewer must judge any allowance reason
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.108s
+
+FAILED (failures=1)

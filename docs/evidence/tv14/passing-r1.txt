@@ -1,0 +1,9 @@
+covered 165 CI steps
+..............collected 2 PR heads of 1 PRs and 0 merge groups into /tmp/tmppg61sh8e/w.json
+.collected 2 PR heads of 1 PRs and 0 merge groups into /tmp/tmp9b7g25h1/w.json
+.collected 2 PR heads of 1 PRs and 0 merge groups into /tmp/tmp2msj6a90/w.json
+.................
+----------------------------------------------------------------------
+Ran 33 tests in 3.993s
+
+OK
