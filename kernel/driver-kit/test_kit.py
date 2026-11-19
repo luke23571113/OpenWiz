@@ -33,6 +33,8 @@ PLANTED = {
     'stop-leaves-run': PASS[:3] + ['fail stop: a process the run started still runs after stop', PASS[4]],
     'wake-does-nothing': PASS[:2] + ['fail wake: builder status note 2 did not change after the wake'] + PASS[3:],
     'old-records': ['fail version: it names no openwiz:records v1'] + PASS[1:],
+    'error-without-next': PASS[:3] + ['fail stop: next is not a string',
+                                      'fail token: its answer to a token field: next is not a string'],
 }
 
 
