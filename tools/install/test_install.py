@@ -159,8 +159,7 @@ class Install(unittest.TestCase):
         b[0].write_text(b[0].read_text().replace('"schema":', '"schema":"duplicate","schema":'))
         self.run_install(b, ok=False)
         for member in [('../escape', 'file'), ('/tmp/escape', 'file'),
-                       ('runtime/escape', 'symlink'), ('web/index.html', 'file'),
-                       ('openwiz-server', 'file')]:
+                       ('runtime/escape', 'symlink'), ('web/index.html', 'file')]:
             self.run_install(self.bundle(source='2' * 40, extra=member), ok=False)
         self.assertEqual(self.installed(), before)
 

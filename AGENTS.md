@@ -4,18 +4,20 @@
 
 OpenWiz is developed in the public repository `openwizdev/OpenWiz`; ClosedWiz stays private for exact decision words, grills, live evidence, machine details and orchestration state. These instructions are prepared in ClosedWiz until the separately approved cut-over; this edit activates nothing. See the [open development contract](contracts/open-development.v1.md). OpenWiz 0.0.1 is one outcome: a read-only Rust inventory of real CloudRoom sessions, read through `room-cli`.
 
-**Build and acceptance are separate.** The 0.0.1 inventory, 0.0.3 send, 0.0.4 new-thread and attachment flows are implemented. 0.0.5 was accepted with recorded gaps ([#106](https://github.com/jparker2006/ClosedWiz/issues/106#issuecomment-6550891204)). Check [STATUS.md](STATUS.md) and each version's acceptance record for its current gates; fixture tests alone never prove live behaviour.
+**The app lives at [openwiz.dev/app](https://openwiz.dev/app).** This repository is the command, the adapters and the engine (spec #1223); the old web view, the act-from-the-UI pieces, the site copy, the server, the service and the store went in #1264.
+
+**Build and acceptance are separate.** The 0.0.1 inventory is implemented; the 0.0.3 send and 0.0.4 new-thread and attachment commands went in #1264. 0.0.5 was accepted with recorded gaps ([#106](https://github.com/jparker2006/ClosedWiz/issues/106#issuecomment-6550891204)). Check [STATUS.md](STATUS.md) and each version's acceptance record for its current gates; fixture tests alone never prove live behaviour.
 
 **First step for any agent: if `.wizskills/` is missing, run `python3 -I tools/wizskills/install.py` from the repository root.** It installs the pinned WizSkills release, so every `skills/<name>/SKILL.md` path resolves.
 
 Always true:
 - **Private.** No personal context, transcripts, credentials, live session content or real identifiers in any file. Fixtures are synthetic only.
-- **Two writes: `send` and `new`.** OpenWiz never launches or merges anything, and starts nothing but the one new thread `openwiz new --yes` asks for. Its writes are:
-  - `openwiz send`: one text message to one existing session, through `room-cli thread tell <id> --mode queue|steer --json -- <text>` (documented, not observed; the argument shape must be rechecked on the owner's endpoint before any live send);
-  - `openwiz new --yes` (0.0.4, #11): one new Cloud thread in one existing project, through `room-cli thread spawn --project <id> --machine cloud --provider <p> --model <m> --reasoning-level <l> --request-id <rid> --json --prompt <text>` (its flags observed in spike run 3's help, the call itself never run). Without `--yes`, `new` only reads and shows the effects. There is no retry (sheet A-3).
-  - **Attachments (0.0.4, #15, sheet B-1 to B-10)** ride on those two writes and add no other call: `--file <path>` and `--image <path>`, only with a staged copy's absolute path (B-7), after `--json` and before the text's `--` or `--prompt`, built only by the allowlist's `attachment_args`. `send` and `new` take them as `--attach <path>` (staged first, as `openwiz attachment add` does) and `--attachment <id>`. Every one must be ready, or nothing is read or sent; Steer can't carry them; the op id binds them; an accepted outcome's staged copies are deleted once it is recorded. `room-cli` uploads each file to CloudRoom, which keeps its own copy (B-1): that is part of the write. Never a separate upload (`project attachment upload`).
+- **Two write shapes: `tell` and `spawn`.** OpenWiz never launches or merges anything. The `openwiz send` and `openwiz new` commands went in #1264; the allowlist keeps their two write shapes:
+  - one text message to one existing session, through `room-cli thread tell <id> --mode queue|steer --json -- <text>` (documented, not observed; the argument shape must be rechecked on the owner's endpoint before any live send);
+  - one new Cloud thread in one existing project, through `room-cli thread spawn --project <id> --machine cloud --provider <p> --model <m> --reasoning-level <l> --request-id <rid> --json --prompt <text>` (its flags observed in spike run 3's help, the call itself never run). There is no retry (sheet A-3).
+  - **Attachments (0.0.4, #15, sheet B-1 to B-10)** ride on those two writes and add no other call: `--file <path>` and `--image <path>`, only with a staged copy's absolute path (B-7), after `--json` and before the text's `--` or `--prompt`, built only by the allowlist's `attachment_args`. Steer can't carry them. `room-cli` uploads each file to CloudRoom, which keeps its own copy (B-1): that is part of the write. Never a separate upload (`project attachment upload`).
 
-  Every `room-cli` call must come from the allowlist in `crates/adapters/cloudroom/src/allowlist.rs`. **The `room-cli` version is not a gate**, for `send`, `new` and the reads (#37; version policy, recorded 2026-11-07: report the version without making it a gate; [private record](https://github.com/jparker2006/ClosedWiz/issues/1275#issuecomment-6704671951)): it is reported, and every other safeguard still applies. Live effects require the existing scoped kit authority; the future public-source release path follows ADR 0020 after verified cut-over, without per-step prompts or wider permissions.
+  Every `room-cli` call must come from the allowlist in `crates/adapters/cloudroom/src/allowlist.rs`. **The `room-cli` version is not a gate**, for the writes and the reads (#37; version policy, recorded 2026-11-07: report the version without making it a gate; [private record](https://github.com/jparker2006/ClosedWiz/issues/1275#issuecomment-6704671951)): it is reported, and every other safeguard still applies. Live effects require the existing scoped kit authority; the future public-source release path follows ADR 0020 after verified cut-over, without per-step prompts or wider permissions.
 - **Proof first.** A claim without its evidence stays Unverified. Tests never prove live behaviour.
 - **Frozen:** the 0.0.0 files under `release/openwiz/` never change.
 
@@ -27,44 +29,35 @@ Always true:
 | --- | --- |
 | `crates/core` (`openwiz-core`) | The inventory model, the honest envelope, the `SessionSource` interface, and the `list`/`show` operations. Depends on no other crate here |
 | `crates/adapters/cloudroom` | The `room-cli` allowlist and the CloudRoom `SessionSource`. Depends on the core |
-| `crates/cli` (`openwiz-cli`, program `openwiz`) | Parses commands and prints results. Depends on the core and the adapter |
-| `crates/server` (`openwiz-server`) | The loopback HTTP API and optional static web export. It serves inventory/session/health reads, send and new-thread preview/status/write routes, and local attachment staging/list/removal; see [contracts/web-api.v1.md](contracts/web-api.v1.md). std-only HTTP. Depends on the core and the adapter; only `openwiz-service` embeds it (#269, approved one-process exception) |
-| `apps/web` | The static web app (Next.js static export) over the HTTP API, including inventory, send, new-thread and attachment flows; see [apps/web/AGENTS.md](apps/web/AGENTS.md) |
+| `crates/cli` (`openwiz-cli`, program `openwiz`) | Parses commands and prints results; its `state` module is the owner's state directory (start records, loop switches). Depends on the core and the adapters |
 | `skills` | The fleet skills, from [WizSkills](https://github.com/openwizdev/WizSkills): a tracked link to the gitignored `.wizskills/skills`, installed from the release `wizskills.lock` pins; `.claude/skills/` and `.agents/skills/` link through it. Change a skill in WizSkills and move the pin; ClosedWiz's remaining checks over them read the installed copy (`tests/checks/skills.rs`): see [tools/wizskills/README.md](tools/wizskills/README.md) |
-| `contracts/web-api.v1.md` | The web API: routes, parameters, statuses, headers and bounds |
 | `contracts/inventory.v1.schema.json` | The `openwiz.inventory.v1` JSON envelope |
 | `tests/proof/` | Proof cases P1 to P12, one module each |
-| `tests/web-api/` | The web API's proof tests A3 to A8 and its contract check |
 | `tests/checks/` | Dependency direction, the fixture scan, schema conformance, the pending list |
 | `tests/fixtures/` | Synthetic `room-cli` 0.43.1 responses, with their provenance in its `README.md` |
 | `tests/fake-room-cli/` | The fake `room-cli` the tests run |
 | Pull request proof records | Red run, dependencies, review results and gaps; private evidence remains in ClosedWiz, linked by private-record comment pointers |
 
-Dependencies point inward: `cli → adapter → core`, `cli → core`, and the same for `server`. The core never depends on an adapter or a client.
+Dependencies point inward: `cli → adapter → core`, `cli → core`. The core never depends on an adapter or a client.
 
 ## Commands
 
-Rust 1.99.1 with `rustfmt` and `clippy`, and zsh (`sudo apt-get install -y zsh`): the new-thread proofs run printed commands in it and fail without it, so it is required, like Rust and Node 24.22.1. There is deliberately no `rust-toolchain.toml`.
+Rust 1.99.1 with `rustfmt` and `clippy`, and zsh (`sudo apt-get install -y zsh`), which some fleet proofs run printed commands in. There is deliberately no `rust-toolchain.toml`.
 
 ```sh
 cargo build --workspace
-cargo test --workspace                                         # P1-P12, M1-M18, N1-N19, AP1-AP12, A3-A8 and the checks, on the fake room-cli only; about 40 s (two 15-second timeout proofs, and a release build). A8 needs apps/web/out (npm run build, below) and fails without it
-cargo test -p openwiz-tests --test messaging                   # M1-M18 only: send, on the fake room-cli and a private state directory; and #15's AD proofs for send, and B-8's memory measurement (Linux)
-cargo test -p openwiz-tests --test new-thread                  # N1-N19 only: new, new --status and models, on the fake room-cli and a private state directory; and #15's AD proofs for new
-cargo test -p openwiz-tests --test attachments                 # AP1-AP12 only: the attachment model, staging and attachment add, ls, rm, in a private state directory; no room-cli. AP6 measures memory through /proc (Linux), and AP5 needs a user other than root; and #15's rules and static checks (AD8, AD11)
+cargo test --workspace                                         # P1-P12, the kept M, N and AP cases and the checks, on the fake room-cli only
+cargo test -p openwiz-tests --test messaging                   # M12: the allowlist's tell shape
+cargo test -p openwiz-tests --test new-thread                  # the kept N cases: the core's new-thread rules the engine starts agents through
+cargo test -p openwiz-tests --test attachments                 # the kept AP cases: the core attachment and prompt rules (#15's AD8, AD11)
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test -p openwiz-tests --test checks pending              # the pending markers match tests/pending-ticket-2.txt (empty after ticket 2)
 cargo build --release                                          # target/release/openwiz
-cargo run -q -p openwiz-cli -- --help                          # usage, sort order, send and new (with --attach and --attachment), models, attachment and exit codes; reads nothing
-cargo test -p openwiz-tests --test web-api                     # the web API proofs (A3-A7, with A7's planted room-cli diagnostics; A8, the web page, over apps/web/out) on the fake room-cli; about 30 s (15-second timeout cases)
-cargo run -q -p openwiz-server -- --help                       # the server's usage; reads nothing
-cd apps/web && npm ci --ignore-scripts && npm run build         # the web app's static export (apps/web/out); Node 24.22.1
-cd apps/web && npm run typecheck && npm run check               # the web app's tsc and static checks (V1, V3, V10, spacing)
-cd apps/web && npm test                                         # the web proofs V1-V11 on fixtures and ticket 1's server, the browser files 3 at a time, longest first (test/run-browser.mjs, #431); needs out/ and cargo
+cargo run -q -p openwiz-cli -- --help                          # usage, sort order and exit codes; reads nothing
 ```
 
-**CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), #1262) writes one [selection record](contracts/ci-selection.v1.md) in `changes`. Every run executes format, classifier/selector proofs and the cheap architecture/privacy/static checks. The selected Rust, web, site, release and individual skill jobs start independently; only export consumers wait for `apps/web/out`. Each lane reads the persisted plan, and `ci` requires every planned job and individual matrix receipt to pass. Failed, cancelled or missing work fails. The orchestrator changes the ruleset's required checks to `ci` at merge and reads it back; the temporary `web-test` bridge follows `ci` during that transition.
+**CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), #1262) writes one [selection record](contracts/ci-selection.v1.md) in `changes`. Every run executes format, classifier/selector proofs and the cheap architecture/privacy/static checks. The selected Rust, release and individual skill jobs start independently. Each lane reads the persisted plan, and `ci` requires every planned job and individual matrix receipt to pass. Failed, cancelled or missing work fails. The orchestrator changes the ruleset's required checks to `ci` at merge and reads it back; the temporary `web-test` bridge follows `ci` during that transition.
 
 Only a ready PR's first ordinary attempt against `main`, with current live base/head and a trusted measured map, can narrow coverage. Nightly runs, reruns, release branches, merge groups, ready-for-review, stale events, unknown paths, empty/failed diffs and selector doubts run everything. A push to `main` keeps `main-light` (format; `privacy.yml` also checks it) and reads the newest cached signed map in `changes`: only a verified map older than 120 minutes admits a full traced plan and signing, while unreadable age refuses the decision (#1055); the nightly run stays full, also signs the map and refreshes the trusted caches. A draft fails. Before a lane runs it prunes its legacy classifier reader's unused files and `private/` outside [ci-reads.txt](.github/actions/docs-only/ci-reads.txt); a newly required file needs its reader row. Hosted fork routing, guarded setup and trusted cache writes remain as #1265 defined them. Tests use synthetic fixtures and no application secrets. The classifier retains `.claude/skills/export-review/SKILL.md` and `.claude/skills/live-quick-check/SKILL.md` for its Rust reader; other local skill entrypoints remain skippable.
 
@@ -73,13 +66,9 @@ Only a ready PR's first ordinary attempt against `main`, with current live base/
 
 `sh .github/actions/docs-only/test.sh` checks the classifier, diff/event guard, prune/checkout, Rust runner, plan, dispatch and final-job boundary. The Rust lane uses `ci/rust-tests.sh --only` for the exact planned IDs, retaining its cgroup-aware concurrency and sequential fallback. The checks binary runs once in the always lane; by hand, `cargo test --workspace` remains the full command.
 
-`openwiz-server` listens on `127.0.0.1` only (`--port`, default 7370) and serves the static web export only with `--web-root DIR` (normally `apps/web/out`). Like `openwiz`, it can perform **live reads** through the verified bundled `room-cli`, never one found on `PATH`, including for inventory, session, fleet detail, send preview, `GET /api/v1/cloud-options`, new-thread preview and new-thread status requests. The health route, send lookup and attachment routes make no `room-cli` call. Its send and create routes perform live writes when used, subject to the configured host and request checks. The host check is not authentication. Access control is the tunnel's and Access's (see [contracts/web-api.v1.md](contracts/web-api.v1.md#host-dns-rebinding-defence)). Ask Jake first. Never put it behind a tunnel or a public hostname without his approval.
+`openwiz ls`, `openwiz show` and `openwiz fleet <spec>` run the verified bundled `room-cli`, never one found on `PATH`. Outside the tests that is a **live read**: ask Jake first. In-process tests inject an absolute fake program. Subprocess tests run the test-only fixture CLI example with an isolated bundle around the fake (`OPENWIZ_FIXTURE_PROGRAM` is read only by that fixture entrypoint), and point `OPENWIZ_STATE_DIR` (the start records and loop switches) at a private test directory. The production binaries have no fixture environment or feature bypass.
 
-`openwiz ls`, `openwiz show`, `openwiz models`, `openwiz fleet <spec>`, `openwiz new` without `--yes` and `openwiz new --status` run the verified bundled `room-cli`, never one found on `PATH`. Outside the tests that is a **live read**: ask Jake first. `openwiz send` and `openwiz new --yes` outside the tests are **live writes**, with or without attachments (each attached file is uploaded to CloudRoom by `room-cli`): never without Jake's go-ahead. In-process tests inject an absolute fake program. Subprocess tests run the test-only fixture CLI/server examples with an isolated bundle around the fake (`OPENWIZ_FIXTURE_PROGRAM` is read only by those fixture entrypoints), and point `OPENWIZ_STATE_DIR` (the send and new-thread records and the staged attachments) at a private test directory. The production binaries have no fixture environment or feature bypass.
-
-`openwiz attachment add`, `ls` and `rm` never run `room-cli` and send nothing: they copy files the owner names into the attachment store in the owner's state directory (`attachments/`, owner-only), list them and delete them. Outside the tests that changes only that directory. `add` runs one other program, `/bin/df -P -k <state dir>` with `LC_ALL=C` only, for the 1 GiB free-disk floor, and stages nothing if it fails (Jake, 2026-10-31, #14: P8(a)'s one exception); separately, [Jake approved macOS App signing](https://github.com/jparker2006/ClosedWiz/issues/1102#issuecomment-6672035698) to run only absolute `/usr/bin/python3 -I -c <compiled-in reviewed security.py> inspect|sign <private root>`, with `.env_clear()`, no `PATH`, fallback or production override (2026-11-05; this adds no store program). The tests use a private state directory and synthetic files they write themselves.
-
-`apps/site`: `npm run build` exports the public landing and `/changelog` to `dist/`; `npm test` checks the export and browser proofs (uses the existing `apps/web` test tools and Chromium).
+[Jake approved macOS App signing](https://github.com/jparker2006/ClosedWiz/issues/1102#issuecomment-6672035698) to run only absolute `/usr/bin/python3 -I -c <compiled-in reviewed security.py> inspect|sign <private root>`, with `.env_clear()`, no `PATH`, fallback or production override (2026-11-05; this adds no store program). The tests use a private state directory and synthetic files they write themselves.
 
 ## Doing the work
 

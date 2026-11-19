@@ -1,7 +1,5 @@
 //! Shared helpers for the messaging proofs: the fake `room-cli` set to a
-//! send scenario, a private state directory for the send record, the core's
-//! `send`, `openwiz send` in-process and as a release process, and the
-//! store-level harness.
+//! send scenario, its call counters and the messaging schema.
 
 #![allow(dead_code)]
 
