@@ -1,13 +1,9 @@
-//! #789 (LC1): the loop CLI's contract files. The pinned WizLoops copy
-//! matches its record, and the stubs' real output matches
-//! `contracts/loop-cli.v1.schema.json`. These read `contracts/`, so they live
-//! here rather than in the CLI crate, whose tests also run where only the
-//! crates are copied (the service's update proofs).
-use serde_json::Value;
-use std::fs;
+//! #789 (LC1): the pinned WizLoops copy matches its record. This reads
+//! `contracts/`, so it lives here rather than in the CLI crate, whose tests
+//! also run where only the crates are copied (the service's update proofs).
 use std::path::Path;
 
-use super::{ROOT, schema};
+use super::ROOT;
 
 // OpenWiz's own SHA-256 (no crate is approved for it), compiled in here.
 #[allow(dead_code)]
@@ -16,27 +12,6 @@ mod sha256;
 
 // catches: a stub whose real output, through the fixture binary, drifts from
 // the contract's not_built schema, or one that reads room-cli or state.
-#[test]
-fn the_stubs_print_the_schemas_not_built_document_and_read_nothing() {
-    let contract: Value = serde_json::from_str(
-        &fs::read_to_string(Path::new(ROOT).join("contracts/loop-cli.v1.schema.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(schema::lint(&contract), Vec::<String>::new());
-    // validate is built (#790): loop_validate.rs checks its real output
-    // against the same schema and that it reads no source.
-    // export (#791) is built: its keeper is loop_export.rs, which checks
-    // its real output against export_report in the same schema.
-    // plan (#792) is built: its keeper is tests/cli-agent/loop_plan.rs,
-    // whose every document is checked against this schema.
-    // apply (#793) is built: its keeper is tests/cli-agent/loop_apply.rs,
-    // whose every document is checked against this schema and whose every
-    // test checks the room-cli calls made. No stub is left.
-}
-
-// catches: a pinned WizLoops file that drifts from the pinned commit (an
-// edit in place, or a tool that strips crlf.md's carriage returns), or a
-// fixture added or lost without re-pinning.
 #[test]
 fn the_pinned_wizloops_files_match_their_record() {
     let root = Path::new(ROOT);

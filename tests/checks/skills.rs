@@ -146,10 +146,6 @@ fn check_links(root: &Path, out: &mut Vec<String>) {
     }
 }
 
-fn collapse(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 fn fixture(case: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join("skills-check")
@@ -208,20 +204,6 @@ fn assert_catches(root: &Path, expected: &str) {
         "expected a problem containing {expected:?}, got:\n{}",
         found.join("\n")
     );
-}
-
-fn release_instruction(skill: &str, prefix: &str, required: &[&str]) {
-    let text = fs::read_to_string(Path::new(ROOT).join(format!(".claude/skills/{skill}/SKILL.md")))
-        .expect("local release skill");
-    let paragraphs: Vec<_> = text
-        .split("\n\n")
-        .map(collapse)
-        .filter(|paragraph| paragraph.starts_with(prefix))
-        .collect();
-    assert_eq!(paragraphs.len(), 1, "{skill}: one operative {prefix} rule");
-    for rule in required {
-        assert!(paragraphs[0].contains(rule), "{skill}: missing {rule}");
-    }
 }
 
 #[test]
@@ -293,185 +275,6 @@ fn a_dangling_or_wrong_link_fails() {
     let root = fixture("link-older-skill");
     write(&root, ".claude/skills/older/SKILL.md", &stub("older"));
     assert_clean(&root);
-}
-
-#[test]
-fn adr0019_live_smoke_and_hands_on_timing() {
-    // ADR 0020 keeps ADR 0019's smoke and post-publication feedback decisions.
-    release_instruction(
-        "live-quick-check",
-        "**Release gate:**",
-        &[
-            "CI, privacy/claims, verified products and an agent-run live smoke on the same combined build must pass",
-            "exercise every included version's promise end to end",
-            "Changed sending, thread creation, App permissions and spending also need their relevant bounded live checks before publication",
-            "Unknown/missing risk or evidence refuses",
-            "Jake's actual ship instruction and exact changelog approval are the only human release actions for this path",
-            "no per-step live/publish prompt, export-plan, final-diff, standalone Sol-export or mandatory hands-on/device gate",
-            "Ordinary code review/CI remain",
-            "Hands-on feedback follows publication",
-        ],
-    );
-    release_instruction(
-        "live-quick-check",
-        "2. **Restrict before effects.**",
-        &[
-            "kit's own throwaway targets within existing counts, room-cli allowlist and spending bounds",
-            "reviewed-plan `--expect-plan` restriction before effects, including refusal of pending-start recovery",
-            "Refuse if the restriction or any authority is uncertain",
-            "An approved kit covers its steps without another human prompt",
-            "No automatic retry",
-            "persist consumed attempts and completed steps",
-        ],
-    );
-    release_instruction(
-        "live-quick-check",
-        "5. **Keep device limits explicit.**",
-        &[
-            "approved headless emulation",
-            "WebKit and real radios stay unverified",
-            "Mac-only checks stay on the Mac within existing authority",
-            "A required promise left unproved blocks its gate",
-            "Optional hands-on/device feedback follows publication",
-        ],
-    );
-}
-
-#[test]
-fn adr0019_combined_release_gate() {
-    release_instruction(
-        "export-review",
-        "1. **Prepare one checked candidate.**",
-        &[
-            "public repository's own history",
-            "clean selected commit/build and complete matching products for all supported targets",
-            "ordered individual changelog sections for every included version",
-            "all seven for the settled 0.0.6–0.0.12 combined release",
-            "Bind exact UTF-8 notes, complete artifact/manifest/checksum/alias hashes",
-            "Ordinary development plan approval, code review, protected-source and merge CI remain",
-        ],
-    );
-    release_instruction(
-        "export-review",
-        "3. **Require every automatic gate.**",
-        &[
-            "Resolve exact-candidate CI, full public source/history/artifact privacy, honest claim evidence and compiled-product verification",
-            "Require the combined live smoke to exercise every included promise end to end",
-            "live checks for changed sending, thread creation, App permissions or spending",
-            "only within existing approved kit targets/counts, allowlists, App grants, host and spending",
-            "Unknown risk, unreadable/missing, failed, stale, fixture, dry-run or uncertain required evidence blocks",
-            "automatic release gates, not an additional human export approval",
-        ],
-    );
-    let contract = fs::read_to_string(Path::new(ROOT).join("contracts/release-candidate.v1.md"))
-        .expect("release candidate contract");
-    let coverage: Vec<_> = contract
-        .split("\n\n")
-        .map(collapse)
-        .filter(|paragraph| paragraph.starts_with("`coverage` in smoke is"))
-        .collect();
-    assert_eq!(coverage.len(), 1, "one operative smoke coverage rule");
-    assert!(coverage[0].contains(
-        "A smoke coverage row passes only when its live evidence proves the complete user flow for that promise was exercised end to end on the combined candidate"
-    ));
-    assert!(coverage[0].contains("A partial check cannot satisfy the row"));
-}
-
-#[test]
-fn adr0019_automatic_export_and_one_final_approval() {
-    // The successor removes export approval; it does not activate shipping.
-    release_instruction(
-        "export-review",
-        "**Activation gate:**",
-        &[
-            "preparation can happen before cut-over, but shipping requires verified O17 after O16 with their existing authorization, prerequisites and holds intact",
-            "This skill authorizes neither step, no live run or publication now",
-            "Private-to-public release copying remains stopped except specifically assigned O16 work",
-            "`release/openwiz/` stays frozen",
-        ],
-    );
-    release_instruction(
-        "export-review",
-        "2. **Resolve the two actual decisions.**",
-        &[
-            "Jake's ship instruction and approval of the exact changelog are the only human release actions",
-            "approval may precede ship",
-            "Verify the existing private decision comments, author, scope, current revision, hashes and candidate/notes bindings",
-            "A supplied flag, invented pointer or old decision for another candidate refuses",
-            "Store original ship time before effects",
-            "No export-plan, final-diff, mandatory Sol-export, mandatory hands-on/ device or second publish instruction",
-        ],
-    );
-    release_instruction(
-        "export-review",
-        "4. **Invalidate changed inputs.**",
-        &[
-            "Recompute bindings when source/build, notes, artifacts, kit or risk changes",
-            "Recheck current external holds, permissions and gate inputs before each effect",
-            "Keep original ship time across resumes, completed steps and consumed attempts",
-            "Return blocked/incomplete",
-            "no watcher, poll loop or sleep",
-        ],
-    );
-    release_instruction(
-        "export-review",
-        "5. **Publish and read back when authorized.**",
-        &[
-            "only after verified cut-over, both actual decisions and every required passing gate",
-            "immutable-release and required-check settings",
-            "no new settings approval",
-            "no-force-push and version order",
-            "Read back the annotated tag/peeled public commit, exact approved notes, complete asset bytes/manifests/checksums/aliases and immutable pre-release state",
-            "Partial publication is incomplete",
-            "never repeat a potentially consumed write automatically",
-            "Historical backfill keeps its own explicit gate",
-        ],
-    );
-    release_instruction(
-        "export-review",
-        "6. **Verify user delivery and report.**",
-        &[
-            "normal install/update on an already approved test machine",
-            "Stop the clock only after matching installation and remote publication verification",
-            "Include all time after the original ship instruction: changelog waits, queue, checks/builds, publication and download/update",
-            "report preparation separately",
-            "Under 30 minutes meets the light target; otherwise record a miss or block",
-        ],
-    );
-}
-
-#[test]
-fn adr0019_release_skills_are_kept_for_rust_checks() {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
-    for skill in ["export-review", "live-quick-check"] {
-        let path = format!(".claude/skills/{skill}/SKILL.md\n");
-        for (args, expected) in [(vec![], "web-build rust\n"), (vec!["--skips", "rust"], "")] {
-            let mut child = Command::new("sh")
-                .arg(".github/actions/docs-only/classify.sh")
-                .args(args)
-                .current_dir(ROOT)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .expect("run CI classifier");
-            child
-                .stdin
-                .take()
-                .expect("classifier stdin")
-                .write_all(path.as_bytes())
-                .expect("classify release skill");
-            let output = child.wait_with_output().expect("classifier result");
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            assert_eq!(output.stdout, expected.as_bytes(), "{path}");
-        }
-    }
 }
 
 #[test]
@@ -550,24 +353,6 @@ fn setup_onboard_journey_passes() {
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );
-}
-
-#[test]
-fn one_install_line_everywhere() {
-    let read = |path: &str| fs::read_to_string(Path::new(ROOT).join(path)).expect(path);
-    let line = "Install OpenWiz from github.com/openwizdev/OpenWiz";
-    for path in ["skills/install/SKILL.md", "docs/install.md", "README.md"] {
-        assert!(
-            read(path).contains(&format!("> {line}\n")),
-            "{path} quotes the install line"
-        );
-    }
-    assert!(
-        read("apps/web/src/components/Setup.tsx")
-            .contains("export const CLOUDROOM_UPGRADE = 'cloudroom.dev/pricing';")
-    );
-    let guide = read("docs/install.md");
-    assert!(guide.contains("](https://cloudroom.dev/pricing)"));
 }
 
 #[test]

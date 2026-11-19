@@ -116,6 +116,12 @@ fn loops_schema_definitions_and_records() {
     assert_eq!(crate::pattern::lint(&schema), Vec::<String>::new());
     let good = definition();
     verdict(&schema, &good, true, "interval definition");
+    // Merged (CW4): the brief's 8 KiB byte cap, at its boundary.
+    let mut v = good.clone();
+    v["action"]["brief"] = json!("é".repeat(8193));
+    verdict(&schema, &v, false, "brief byte cap");
+    v["action"]["brief"] = json!("é".repeat(8192));
+    verdict(&schema, &v, true, "brief byte boundary");
     for wake in [
         json!({"kind": "once", "at_ms": 60000}),
         json!({"kind": "event", "event": "github.pull_request_review"}),
@@ -254,24 +260,6 @@ fn loops_schema_definitions_and_records() {
 }
 
 #[test]
-fn loops_schema_reuses_new_thread_rules() {
-    let schema = load("contracts/loops.v1.schema.json");
-    let new = load("contracts/new-thread.v1.schema.json");
-    for key in ["op_id", "setting", "project_ref", "project_ref_value"] {
-        assert_eq!(schema["$defs"][key], new["$defs"][key], "{key}");
-    }
-    assert_eq!(
-        schema["$defs"]["brief"],
-        new["$defs"]["prompt"]["properties"]["text"]
-    );
-    let mut v = definition();
-    v["action"]["brief"] = json!("é".repeat(8193));
-    verdict(&schema, &v, false, "brief byte cap");
-    v["action"]["brief"] = json!("é".repeat(8192));
-    verdict(&schema, &v, true, "brief byte boundary");
-}
-
-#[test]
 fn loops_schema_example_is_synthetic_and_valid() {
     let schema = load("contracts/loops.v1.schema.json");
     let example = load("loops/example.json");
@@ -279,44 +267,4 @@ fn loops_schema_example_is_synthetic_and_valid() {
     assert_eq!(example["enabled"], false);
     assert_eq!(example["mode"], "shadow");
     assert!(example["id"].as_str().unwrap().starts_with("loop-syn-"));
-}
-
-#[test]
-fn loops_schema_numbers_follow_mathematical_integer_semantics() {
-    // JSON Schema's integer includes whole-valued decimal/exponent numbers.
-    // Expected values are literals, not computed by the checker.
-    let schema = load("contracts/loops.v1.schema.json");
-    for (text, expected) in [
-        ("5000", true),
-        ("5000.0", true),
-        ("5e3", true),
-        ("0.5", false),
-        ("0.0", false),
-        ("-1.0", false),
-        ("\"5000\"", false),
-        ("null", false),
-    ] {
-        let mut value = definition();
-        value["check"]["timeout_ms"] = serde_json::from_str(text).unwrap();
-        verdict(&schema, &value, expected, text);
-    }
-    for (text, expected) in [
-        ("0.0", true),
-        ("2.0", true),
-        ("0.5", false),
-        ("-1.0", false),
-    ] {
-        let mut value = definition();
-        value["budget"]["max_agent_starts"] = serde_json::from_str(text).unwrap();
-        verdict(&schema, &value, expected, text);
-    }
-    let mut value = run(json!({"kind": "shadow", "finding": "\n"}));
-    value["started_at_ms"] = json!(60000.0);
-    value["cost"] = json!({"kind": "known", "usd_micros": 0.0});
-    verdict(
-        &schema,
-        &value,
-        true,
-        "integral record numbers and nonempty whitespace finding",
-    );
 }

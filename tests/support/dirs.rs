@@ -1,7 +1,7 @@
 //! Directories the tests make, each with an explicit mode (0700), never the
 //! umask's (#170). The store refuses a state directory group or others can
 //! use, so a test that left the mode to the umask passed only where the
-//! umask was 077. `checks/dir_modes.rs` refuses any other way to make one.
+//! umask was 077.
 
 use std::fs::DirBuilder;
 use std::io;

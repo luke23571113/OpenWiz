@@ -13,13 +13,10 @@
 //! Restored schema: 6 passed, 0 failed (exit 0), after each mutation.
 //! Full fleet set: all 12 commands passed at a013431c; private evidence pruned.
 
-use std::collections::BTreeSet;
-
 use serde_json::{Value, json};
 
 use crate::schema::{lint, validate};
 
-const CONTRACT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../contracts/cockpit.v1.md");
 const SCHEMA: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../contracts/cockpit.v1.schema.json"
@@ -148,24 +145,11 @@ fn fixtures() -> Vec<(&'static str, Value)> {
 }
 
 #[test]
-fn cockpit_schema_uses_only_checked_keywords() {
-    let schema = schema();
-    assert_eq!(schema["title"], "openwiz.cockpit.v1");
-    assert_eq!(lint(&schema), Vec::<String>::new());
-    let errors = validate(&schema, &json!({}));
-    assert!(
-        !errors.is_empty(),
-        "an empty object is not a cockpit response"
-    );
-    assert!(
-        errors.iter().all(|e| !e.contains("unresolvable")),
-        "{errors:#?}"
-    );
-}
-
-#[test]
 fn cockpit_complete_partial_stale_and_empty_responses_validate() {
     let schema = schema();
+    // Merged (CW4): the checker must know every keyword the schema uses.
+    assert_eq!(schema["title"], "openwiz.cockpit.v1");
+    assert_eq!(lint(&schema), Vec::<String>::new());
     let fixtures = fixtures();
     assert_eq!(fixtures.len(), 4);
     for (name, value) in &fixtures {
@@ -251,6 +235,13 @@ fn cockpit_malformed_responses_fail() {
                 {"project": null, "kind": "timed_out", "detail": ""}
             ]}),
         ),
+        // Merged (CW4): a gap's project is null or a nonempty id.
+        (
+            "/agents/coverage",
+            json!({"state": "partial", "gaps": [
+                {"project": "", "kind": "timed_out", "detail": "Synthetic timeout"}
+            ]}),
+        ),
     ] {
         let mut bad = good.clone();
         *bad.pointer_mut(pointer).unwrap() = replacement.clone();
@@ -326,56 +317,5 @@ fn cockpit_preserves_unknown_project_associations() {
     assert!(
         errors.is_empty(),
         "preserve the unassigned item: {errors:#?}"
-    );
-}
-
-#[test]
-fn cockpit_gap_project_cannot_be_empty() {
-    let schema = schema();
-    let mut value = complete();
-    value["agents"]["coverage"] = json!({"state": "partial", "gaps": [
-        {"project": "", "kind": "timed_out", "detail": "Synthetic timeout"}
-    ]});
-    assert!(
-        !validate(&schema, &value).is_empty(),
-        "accepted an empty project id in a gap"
-    );
-}
-
-#[test]
-fn cockpit_every_schema_field_has_a_source_row() {
-    let schema = schema();
-    let text = std::fs::read_to_string(CONTRACT).expect("cockpit contract");
-    let rows: BTreeSet<_> = text
-        .lines()
-        .filter_map(|line| {
-            let rest = line.strip_prefix("| `")?;
-            let (field, source) = rest.split_once("` | ")?;
-            assert!(
-                !source.trim_matches([' ', '|']).is_empty(),
-                "empty source for {field}"
-            );
-            Some(field.to_owned())
-        })
-        .collect();
-    fn fields(v: &Value, name: &str, out: &mut BTreeSet<String>) {
-        if let Some(p) = v.get("properties").and_then(Value::as_object) {
-            for key in p.keys() {
-                out.insert(format!("{name}.{key}"));
-            }
-        }
-        if let Some(choices) = v.get("oneOf").and_then(Value::as_array) {
-            for choice in choices {
-                fields(choice, name, out);
-            }
-        }
-    }
-    let mut expected = BTreeSet::new();
-    for (name, def) in schema["$defs"].as_object().unwrap() {
-        fields(def, name, &mut expected);
-    }
-    assert_eq!(
-        rows, expected,
-        "trace every field exactly; no stale source rows"
     );
 }

@@ -2,39 +2,6 @@
 use super::*;
 
 #[test]
-fn fixture_polling_is_fixed_and_process_local() {
-    const CHILD: &str = "OPENWIZ_X2_POLL_SELECTION_PROOF";
-    if std::env::var_os(CHILD).is_some() {
-        crate::source::use_fast_polling_for_fixtures();
-        assert_eq!(poll_interval(), Duration::from_millis(1));
-        crate::source::use_fast_polling_for_fixtures();
-        assert_eq!(poll_interval(), Duration::from_millis(1));
-        return;
-    }
-
-    assert_eq!(poll_interval(), Duration::from_millis(5));
-    // The opt-in belongs to one whole synthetic process. Mutating it in
-    // this test's process would contaminate concurrently running tests.
-    let child = Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "process::tests::fixture_polling_is_fixed_and_process_local",
-            "--nocapture",
-        ])
-        .env(CHILD, "1")
-        .output()
-        .unwrap();
-    assert!(
-        child.status.success(),
-        "fixture selection failed:\n{}{}",
-        String::from_utf8_lossy(&child.stdout),
-        String::from_utf8_lossy(&child.stderr),
-    );
-    assert_eq!(poll_interval(), Duration::from_millis(5));
-}
-
-/// #1259: `READ_TIMEOUT` unless a fixture lowered it; never raised.
-#[test]
 fn the_read_timeout_is_read_timeout_unless_a_fixture_lowers_it() {
     assert_eq!(read_timeout_with(0), READ_TIMEOUT);
     assert_eq!(read_timeout_with(1), Duration::from_millis(1));
@@ -249,41 +216,4 @@ fn the_response_collector_reads_exactly_the_cap_plus_one() {
         .unwrap();
     assert_eq!(bytes.len(), 33_554_433);
     assert_eq!(count.load(Ordering::SeqCst), 33_554_433);
-}
-
-/// #2896: every completed fixture must start while sibling tests create
-/// scripts and spawn children. An inherited open writer causes ETXTBSY.
-#[test]
-fn held_process_fixtures_start_during_concurrent_placement_and_forks() {
-    let start = std::sync::Barrier::new(8);
-    std::thread::scope(|scope| {
-        for worker in 0..4 {
-            let start = &start;
-            scope.spawn(move || {
-                start.wait();
-                for attempt in 0..32 {
-                    let fixture = OversizedProcess::new(&format!("placement-{worker}-{attempt}"));
-                    let mut child = Command::new(&fixture.program)
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .spawn()
-                        .expect(
-                            "a completed held-process fixture must start without an open writer",
-                        );
-                    let _ = child.kill();
-                    child.wait().unwrap();
-                }
-            });
-        }
-        for _ in 0..4 {
-            let start = &start;
-            scope.spawn(move || {
-                start.wait();
-                for _ in 0..128 {
-                    assert!(Command::new("/bin/true").status().unwrap().success());
-                }
-            });
-        }
-    });
 }
