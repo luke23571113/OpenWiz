@@ -6,9 +6,6 @@
 
 use openwiz_core::attachment::SafeName;
 
-/// The repository root, from this crate's folder.
-pub const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-
 pub const MIB: u64 = 1024 * 1024;
 
 /// A synthetic file: `magic`, padded with `0x5a` to exactly `len` bytes.

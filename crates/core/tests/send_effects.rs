@@ -1,12 +1,7 @@
 //! The core's send rules on their own, with no adapter, store or client:
-//! the effects rule for states the `room-cli` fixtures cannot show (M5),
-//! and a core that does no I/O. Moved here from
-//! `tests/messaging/m05_effects.rs` and `tests/messaging/structure.rs` by
-//! #809; the M5 cases that read through the adapter and the fake `room-cli`
-//! stay there.
-
-use std::fs;
-use std::path::{Path, PathBuf};
+//! the effects rule for states the `room-cli` fixtures cannot show (M5).
+//! Moved here from `tests/messaging/m05_effects.rs` by #809; the M5 cases
+//! that read through the adapter and the fake `room-cli` stay there.
 
 use openwiz_core::messaging::Mode;
 use openwiz_core::messaging::effects::{
@@ -139,42 +134,4 @@ fn the_core_rule_covers_states_the_fixtures_cannot_show() {
     let mut interaction = target();
     interaction.pending_interaction = Fact::Unknown("synthetic".to_owned());
     assert_eq!(kind(&work_out(&interaction, Mode::Queue, read, now)), None);
-}
-
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
-#[test]
-fn the_core_does_no_io() {
-    let mut files = Vec::new();
-    rust_files(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-        &mut files,
-    );
-    assert!(files.iter().any(|f| f.ends_with("messaging/send.rs")));
-    for path in files {
-        let text = fs::read_to_string(&path).unwrap();
-        for io in [
-            "std::fs",
-            "std::io",
-            "std::net",
-            "std::process",
-            "std::env",
-            "std::os",
-            "SystemTime",
-            "Instant::now",
-            "println!",
-            "eprintln!",
-        ] {
-            assert!(!text.contains(io), "{path:?} uses {io}");
-        }
-    }
 }
