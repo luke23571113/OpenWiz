@@ -6,9 +6,9 @@ act on the approved rows after explicit go. The **Done** column is for CW9.
 - OpenWiz `8653e417df2ae9c36ae081401163553a10adbdbe` was `origin/main` at inventory time.
   WizSkills main was `89fc285ce551f341b8d308732bcd8d4467ace353`. OpenWiz's `wizskills.lock` pins
   `c112b993d0ec582d2aae370cf8011810fde9aea2`. Caller checks include that installed release.
-- **34,507 lines deleted** across 41 proposed delete rows.
+- **30,872 lines deleted** across 37 proposed delete rows.
   2 move rows relocate 686 lines with zero net removals.
-  66 keep rows remove zero lines. The inventory contains
+  70 keep rows remove zero lines. The inventory contains
   109 rows and 185,520 text lines. Counts are for the listed
   directories at the pin. CW9 will measure caller edits and actual removals.
 - WizRoom (#979) owns `tools/war-room/`, `tools/collector/` and
@@ -111,7 +111,7 @@ checked-in sources. Unversioned invocations and deployment state are unverified.
 | `tools/install/access` | Product Access client and setup interface | `packages.yml#package` packages `access/access.py` through `build_products.py`. WizSkills `setup` uses the installed Access tool | **keep** | 1,138 | 0 | |
 | `tools/install/cloudroom` | Cloudroom prerequisite setup tool | `packages.yml#package` packages `cloudroom/cloudroom.py` through `build_products.py` | **keep** | 1,974 | 0 | |
 | `tools/install/cloudroom/fixtures` | Synthetic Cloudroom downloads and sign-in state | `ci.yml#web` and `#web-export` → `apps/web/test/browser/cloudroom-setup.test.mjs` → `test_cloudroom.py` | **keep** | 124 | 0 | |
-| `tools/install/completion` | Standalone completion checkpoint verifier | None found in workflows, WizSkills or product. The checkpoint contract documents its manual replay command and its own tests exercise it | **delete** | 1,360 | 1,360 | |
+| `tools/install/completion` | Completion checkpoint verifier | `ci.yml#release` → `release:install` → `test_install.py::FirstHourContract.test_completion_checkpoint` checks the first-hour completion contract | **keep** | 1,360 | 0 | |
 | `tools/install/platform` | Runtime manager and platform security helper | `packages.yml#package` packages `runtime.py`. The OpenWiz CLI GitHub App adapter compiles in `security.py` | **keep** | 779 | 0 | |
 | `tools/install/setup` | Project init, store, GitHub login and setup API | `packages.yml#package` packages these through `build_products.py`. WizSkills `setup` calls the installed setup API and GitHub login | **keep** | 2,514 | 0 | |
 | `tools/install/tests` | Installer and onboarding scenario suites | `ci.yml#release` runs the setup/onboard contract, init, journey and release-security units below | **keep** | 0 | 0 | |
@@ -123,10 +123,10 @@ checked-in sources. Unversioned invocations and deployment state are unverified.
 | `tools/install/tests/first-hour/providers/evidence` | Saved first-hour provider proofs | None found outside the proof history | **delete** | 131 | 131 | |
 | `tools/install/tests/init` | Project init contract and fake GitHub | `ci.yml#release` → `release:setup-onboard-init` runs `test_init.py` for the installed init tool | **keep** | 582 | 0 | |
 | `tools/install/tests/init/evidence` | Saved init fixture runs | None found outside the proof history | **delete** | 427 | 427 | |
-| `tools/install/tests/journey` | Synthetic installer-to-product journey | No workflow or skill runs this standalone synthetic installer journey. Check its installer-to-setup assertions against `release:install` and `release:setup-onboard-journey` before removal | **delete** | 888 | 888 | |
-| `tools/install/tests/onboard` | Onboarding journey fixture and fakes | No workflow runs the standalone onboard journey against its fakes. The installed WizSkills `onboard` skill remains supported. Require a keeper for its first-fleet assertions before removal | **delete** | 1,248 | 1,248 | |
+| `tools/install/tests/journey` | Synthetic installer-to-product journey | `ci.yml#always` → `always:checks` → `tests/checks/skills.rs::install_journey_and_live_kit_pass` runs `test_journey.py` | **keep** | 888 | 0 | |
+| `tools/install/tests/onboard` | Onboarding journey fixture and fakes | `ci.yml#always` → `always:checks` → `tests/checks/skills.rs::onboard_journey_fixtures_pass` runs `test_journey.py` against WizSkills `onboard` | **keep** | 1,248 | 0 | |
 | `tools/install/tests/onboard/evidence` | Historical onboard journey runs | None found outside the proof history | **delete** | 342 | 342 | |
-| `tools/install/tests/onboard/journeys` | Synthetic first-fleet journey fixture | Parent delete. The standalone `tools/install/tests/onboard/test_journey.py` is the fixture reader | **delete** | 59 | 59 | |
+| `tools/install/tests/onboard/journeys` | Synthetic first-fleet journey fixture | `ci.yml#always` → `always:checks` → `onboard_journey_fixtures_pass` → `tools/install/tests/onboard/test_journey.py` reads the fixture | **keep** | 59 | 0 | |
 | `tools/install/tests/public-release-security` | Public release security boundary checks | `ci.yml#release` → `release:security-baseline` and `release:security-candidate` guard public packaging | **keep** | 515 | 0 | |
 | `tools/install/tests/public-release-security/baseline` | Public-only claims-scan regression suite | `ci.yml#release` → `release:security-baseline` runs `test_baseline.py` | **keep** | 433 | 0 | |
 | `tools/install/tests/setup-onboard-contract` | Setup and onboarding receipt validators | `ci.yml#release` → `release:setup-onboard-contract` runs `test_contract.py`. The first-merge and init tests also import `check.py` | **keep** | 796 | 0 | |
@@ -136,7 +136,7 @@ checked-in sources. Unversioned invocations and deployment state are unverified.
 | `tools/live-smoke/evidence/772` | Release smoke scope proof archive | Parent delete. No current release gate reads these records | **delete** | 431 | 431 | |
 | `tools/live-smoke/evidence/828` | Engine-retirement smoke proof archive | Parent delete. No current release gate reads these records | **delete** | 167 | 167 | |
 | `tools/open-import` | Public import and frozen repository guards | `ci.yml#changes` runs `guard.py` and uses `import.py` for public tree inspection. `frozen.yml#frozen` runs `frozen.py` | **keep** | 2,520 | 0 | |
-| `tools/open-import/fixtures` | Synthetic public import, deny and carry inputs | `ci.yml#changes` runs `test_guard.py`. The fixture suite also exercises the public importer | **keep** | 39 | 0 | |
+| `tools/open-import/fixtures` | Saved grill-index red run | None found. The only tracked file is `grill-index-red.txt`. `ci.yml#changes` runs `test_guard.py` with its own inputs | **delete** | 39 | 39 | |
 | `tools/open-settings` | Public cut-over settings apply and recovery tool | None found in a workflow, skill or product. Only the cut-over runbook and offline tests were found | **delete** | 2,070 | 2,070 | |
 | `tools/open-settings/fixtures` | Synthetic settings and recovery inputs | Parent delete. Only the cut-over settings tool's tests | **delete** | 135 | 135 | |
 | `tools/open-tickets` | ClosedWiz ticket and PR migration tooling | None found beyond tests and test enumeration. `ci.yml#release` still runs `release:open-tickets`, and the dispatcher and shard fixtures enumerate it | **delete** | 5,755 | 5,755 | |
@@ -150,7 +150,7 @@ checked-in sources. Unversioned invocations and deployment state are unverified.
 | `tools/release/evidence` | Saved release and packaging proof records | None found in the active candidate verifier or package job | **delete** | 0 | 0 | |
 | `tools/release/evidence/1281` | Export-plan and review proof archive | Parent delete. The candidate verifier uses current release evidence | **delete** | 500 | 500 | |
 | `tools/release/evidence/739` | Release package proof archive | Parent delete. `packages.yml#package` generates its own artifact evidence | **delete** | 420 | 420 | |
-| `tools/release/public` | Legacy public release instructions template | Only the historical backfill package check in `test_backfill.py` was found. Current packages use the committed product and manifest | **delete** | 119 | 119 | |
+| `tools/release/public` | Public release instructions template used as a negative fixture | `ci.yml#release` → `release:test` → `test_backfill.py::test_r3_historical_keeps_the_published_releasing_not_the_current_template` reads it to guard immutable release backfills | **keep** | 119 | 0 | |
 | `tools/review-relay` | Legacy minute relay and prepared ops inbox adapter | No enabled route established by repository search. `ci.yml#always`, `#release` and `#launch-fleet` run router or inbox fixtures. The skills' finite wakes read GitHub independently when inbox delivery is absent | **delete** | 2,037 | 2,037 | |
 | `tools/review-relay/fixtures` | Synthetic relay and inbox inputs | Parent delete. Relay and router fixtures are the readers | **delete** | 73 | 73 | |
 | `tools/roadmap` | Release roadmap generator | `tools/release/entry.py` calls `roadmap.py --public` for the product release check. `loops/README.md` also documents standalone private and public regeneration | **keep** | 1,507 | 0 | |
