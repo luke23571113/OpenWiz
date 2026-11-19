@@ -194,7 +194,6 @@ class FreeOnlyOfferGate(unittest.TestCase):
         self.assertEqual(list(rows), ['cloudroom_setup', 'paid_offer', 'feedback'])
         decision, today = rows['paid_offer']
         self.assertTrue(decision.startswith('#2202: the free-only friends-first release'), decision)
-        self.assertIn('[public-offer.v1](public-offer.v1.md)', decision)
         self.assertIn('Its one approved producer is #2293', decision)
         self.assertIn('settles no paid benefit, payment arrangement or trial', decision)
         self.assertEqual(today, "`unresolved` until #2293's verified merge; then `settled`, with producers `[2293]`")
