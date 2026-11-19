@@ -263,6 +263,14 @@ class GeneratedParts(Case):
         after = [(p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in (self.roadmap, self.status)]
         self.assertEqual(after, before)
 
+    def test_status_md_is_neither_read_nor_written(self):
+        # #1301: STATUS.md is deleted; the default run writes docs/ROADMAP.md only.
+        (self.root / "STATUS.md").unlink()
+        r = self.run_roadmap()
+        self.assertEqual((r.code, r.err, r.out), (0, "", "docs/ROADMAP.md: updated\n"))
+        self.assertEqual(self.read(self.roadmap), expected_roadmap())
+        self.assertEqual(sorted(p.name for p in self.root.iterdir()), ["docs"])
+
     def test_it_makes_exactly_these_reads_and_nothing_else(self):
         r = self.run_roadmap()
         self.assertEqual(r.code, 0, r.err)
