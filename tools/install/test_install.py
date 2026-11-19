@@ -364,7 +364,8 @@ class InstalledCommand(Bundles):
         applied = openwiz('--yes', '--operation', preview['operation_id'])
         self.assertEqual((applied['kind'], applied['outcome']), ('init_result', 'applied'))
         repo = json.loads(world.read_text())['repos'][REPO]
-        self.assertEqual(repo['labels'], ['openwiz'])
+        # #1361: the records v1 labels a first fleet needs, beside init's own.
+        self.assertEqual(sorted(repo['labels']), sorted(['openwiz', 'spec', 'ready-for-agent', 'ready-for-human', 'needs-info', 'held']))
         self.assertTrue(any(path.startswith('.openwiz/brain/') for branch in repo['branches'].values()
                             for path in branch), repo['branches'])
         self.assertFalse((self.base / 'build-tools.log').exists())
