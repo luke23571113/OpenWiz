@@ -52,6 +52,7 @@
     "kernel/records-kit/**",
     "kernel/driver.v1.md",
     "kernel/driver-kit/**",
+    "kernel/records/model/**",
     "loops/**",
     "release/**",
     "tests/**",

@@ -3,6 +3,7 @@
 /target/
 /tools/war-room/node_modules/
 /tools/**/__pycache__/
+/kernel/**/__pycache__/
 
 # WizSkills, installed from wizskills.lock (#555); never tracked
 /.wizskills/
