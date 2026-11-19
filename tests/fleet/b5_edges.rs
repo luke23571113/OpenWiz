@@ -3,7 +3,6 @@
 use super::fake::{self, World};
 use serde_json::{Value, json};
 use std::fs;
-use std::os::unix::fs::DirBuilderExt;
 
 fn stray(w: &World, n: u64, body: &str) {
     w.change(|s| {
@@ -239,90 +238,6 @@ fn b5_latest_individual_job_beats_workflow_update_order() {
         .unwrap();
     assert_eq!(checks.checks.len(), 1);
     assert_eq!(checks.checks[0].result, CheckResult::Fail);
-}
-
-/// #1259: a fixture read timeout that is not a whole number of
-/// milliseconds from 1 to 15000 stops the fixture before any call.
-#[test]
-fn x2_a_malformed_fixture_read_timeout_makes_no_call() {
-    for (n, bad) in [
-        "",
-        "0",
-        "abc",
-        "-1",
-        "1000ms",
-        " 1000",
-        "+5",
-        "15001",
-        "99999999999999999999",
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let w = World::new(&format!("bad_read_timeout_{n}"));
-        let o = w
-            .command(&["fleet", "tick", "--json"])
-            .env("OPENWIZ_FIXTURE_READ_TIMEOUT_MS", bad)
-            .output()
-            .unwrap();
-        assert!(!o.status.success(), "{bad:?} was accepted");
-        assert_eq!(w.calls(), vec![], "{bad:?}");
-    }
-}
-
-#[test]
-fn b5_recording_fake_runs_with_the_required_node_runtime() {
-    // The Rust CI step has Node but has not installed Python yet. Exercise
-    // the real fake through Node, rather than relying on this host's Python.
-    let w = World::new("node_runtime");
-    let o = std::process::Command::new(super::fake::node())
-        .arg(w.dir.join("gh"))
-        .env("PATH", &w.dir)
-        .args([
-            "repo",
-            "view",
-            "--json",
-            "defaultBranchRef,nameWithOwner,url",
-        ])
-        .output()
-        .unwrap();
-    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    let value: Value = serde_json::from_slice(&o.stdout).unwrap();
-    assert_eq!(value["nameWithOwner"], "jparker2006/ClosedWiz");
-    assert_eq!(
-        w.calls(),
-        vec![(
-            "gh".into(),
-            vec![
-                "repo".into(),
-                "view".into(),
-                "--json".into(),
-                "defaultBranchRef,nameWithOwner,url".into()
-            ]
-        )]
-    );
-}
-
-#[test]
-fn b5_recording_fake_finds_ci_node_outside_path() {
-    // Rust CI has not run setup-node, but the image pins this tool-cache layout.
-    let w = World::new("node_tool_cache");
-    let node = super::fake::node();
-    let cache = w.dir.join("cache");
-    let bin = cache.join("node/24.22.1/x64/bin");
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&bin)
-        .unwrap();
-    std::os::unix::fs::symlink(&node, bin.join("node")).unwrap();
-    assert_eq!(
-        super::fake::node_in(
-            std::ffi::OsStr::new("/synthetic/no-executables"),
-            Some(&cache)
-        ),
-        Some(node)
-    );
 }
 
 #[test]

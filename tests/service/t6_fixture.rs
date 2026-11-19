@@ -642,78 +642,39 @@ pub fn only_listener(
     Ok(())
 }
 
-#[cfg(test)]
-mod listener {
-    use super::only_listener;
-    const HEADER: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
-    const HEADER6: &str = "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
-    /// One synthetic table line: local address, state, inode.
-    fn line(local: &str, state: &str, inode: &str) -> String {
+/// The updater proofs' listener check refuses every service-owned listener
+/// but `127.0.0.1:7370` (IPv4 or IPv6), a missing one and an unreadable
+/// table, and ignores other processes' and non-listening sockets. Catches: a
+/// checker that ignores `tcp6` or extra listeners, so a candidate exposing
+/// the service beyond loopback still passes (CW2 R2, #1143).
+#[test]
+fn only_the_loopback_listener_passes_the_listener_check() {
+    const HEAD: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
+    let line = |local: &str, state: &str, inode: &str| {
         format!(
-            "   0: {local} 00000000:0000 {state} 00000000:00000000 00:00000000 00000000  1000        0 {inode} 1 0000000000000000 100 0 0 10 0"
+            "   0: {local} 00000000:0000 {state} 00000000:00000000 00:00000000 00000000  1000        0 {inode} 1 0 100 0 0 10 0\n"
         )
+    };
+    let table = |lines: &[String]| format!("{HEAD}\n{}", lines.concat());
+    // The service owns inodes 1001 and 1002; 2001 is another process's.
+    let sockets = ["1001", "1002"].map(str::to_owned).into();
+    let check =
+        |tcp: &[String], tcp6: &[String]| only_listener(&table(tcp), &table(tcp6), &sockets, 7370);
+    let http = line("0100007F:1CCA", "0A", "1001");
+    let any6 = "00000000000000000000000000000000:1F90";
+    let loop6 = "00000000000000000000000001000000:1CCA";
+    let other = [line(any6, "0A", "2001"), line(loop6, "01", "1002")];
+    assert_eq!(check(std::slice::from_ref(&http), &other), Ok(()));
+    for local in [any6, loop6] {
+        let refused = check(std::slice::from_ref(&http), &[line(local, "0A", "1002")]);
+        assert!(refused.is_err_and(|e| e.contains("IPv6")), "{local}");
     }
-    fn table(header: &str, lines: &[String]) -> String {
-        let mut text = format!("{header}\n");
-        for line in lines {
-            text.push_str(line);
-            text.push('\n');
-        }
-        text
-    }
-    /// The service owns inodes 1001 and 1002; 2001 is another process's.
-    fn check(tcp: &[String], tcp6: &[String]) -> Result<(), String> {
-        let sockets = ["1001", "1002"].map(str::to_owned).into();
-        only_listener(&table(HEADER, tcp), &table(HEADER6, tcp6), &sockets, 7370)
-    }
-    /// 127.0.0.1:7370, listening, the service's socket.
-    fn http() -> String {
-        line("0100007F:1CCA", "0A", "1001")
-    }
-    const ANY6: &str = "00000000000000000000000000000000:1F90";
-    const LOOP6: &str = "00000000000000000000000001000000:1CCA";
-
-    #[test]
-    fn the_existing_loopback_listener_alone_passes() {
-        assert_eq!(check(&[http()], &[]), Ok(()));
-    }
-    #[test]
-    fn a_planted_ipv6_listener_of_the_service_is_refused() {
-        for local in [ANY6, LOOP6] {
-            let result = check(&[http()], &[line(local, "0A", "1002")]);
-            assert!(
-                result.as_ref().is_err_and(|e| e.contains("IPv6")),
-                "{local}: {result:?}"
-            );
-        }
-    }
-    #[test]
-    fn ipv6_entries_outside_the_inode_filter_or_not_listening_pass() {
-        let tcp6 = [line(ANY6, "0A", "2001"), line(LOOP6, "01", "1002")];
-        assert_eq!(check(&[http()], &tcp6), Ok(()));
-    }
-    #[test]
-    fn the_ipv4_rule_still_refuses_extra_or_missing_listeners() {
-        let extra = line("00000000:1F90", "0A", "1002");
-        assert!(check(&[http(), extra], &[]).is_err());
-        assert!(check(&[], &[]).is_err());
-        assert!(check(&[line("0100007F:1CCB", "0A", "1001")], &[]).is_err());
-    }
-    #[test]
-    fn an_unrecognised_table_is_refused() {
-        let sockets = ["1001"].map(str::to_owned).into();
-        let tcp = table(HEADER, &[http()]);
-        assert!(only_listener(&tcp, "", &sockets, 7370).is_err());
-        assert!(
-            only_listener(
-                &tcp,
-                &format!("{HEADER6}\n   0: short 0A\n"),
-                &sockets,
-                7370
-            )
-            .is_err()
-        );
-    }
+    assert!(check(&[http.clone(), line("00000000:1F90", "0A", "1002")], &[]).is_err());
+    assert!(check(&[], &[]).is_err());
+    assert!(check(&[line("0100007F:1CCB", "0A", "1001")], &[]).is_err());
+    let tcp = table(std::slice::from_ref(&http));
+    assert!(only_listener(&tcp, "", &sockets, 7370).is_err());
+    assert!(only_listener(&tcp, &format!("{HEAD}\n   0: short 0A\n"), &sockets, 7370).is_err());
 }
 
 // Fixture programs are placed by a separate `cp` (#811), shared.

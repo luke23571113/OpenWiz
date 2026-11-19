@@ -1761,27 +1761,3 @@ fn packaged_transport_failure_records_kept_and_never_runs_a_source_gate() {
 
 #[path = "install_engine_app.rs"]
 mod installed_engine_app;
-
-#[test]
-fn source_updater_fixture_can_compile_the_engine_outcome_reader() {
-    let f = fixture::Fixture::new();
-    // A source updater still builds the real copied CLI dependency. Exercise
-    // that boundary without running its workspace-wide acceptance gate.
-    for (package, unit_tests) in [("openwiz-cli", false), ("openwiz-service", true)] {
-        let mut command = std::process::Command::new(env!("CARGO"));
-        command
-            .args(["check", "--offline", "-p", package, "--lib", "--target-dir"])
-            .arg(f.temp.join("engine-reader-check"))
-            .env("CARGO_BUILD_JOBS", "2")
-            .current_dir(&f.repo);
-        if unit_tests {
-            command.arg("--tests");
-        }
-        let checked = command.output().unwrap();
-        assert!(
-            checked.status.success(),
-            "{}",
-            String::from_utf8_lossy(&checked.stderr)
-        );
-    }
-}

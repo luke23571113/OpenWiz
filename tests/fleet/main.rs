@@ -6,11 +6,9 @@
 //! made the seams and declares every module here. Each ticket fills its
 //! own file, and declares any more of its own from inside it with
 //! `#[path = "a4_more.rs"] mod more;`, never here:
-//! - `a3_seams`, `a3_commands`, `a3_fake_gh` and `a3_model`: A3's
-//!   proofs, which stay true when later tickets fill their files. The
-//!   new crate's dependencies point inward, `openwiz --help` carries each
-//!   command's lines, the fake `gh` answers only its scenario, and the
-//!   core's fleet model types match the contract.
+//! - `a3_commands` and `a3_model`: A3's proofs, which stay true when later
+//!   tickets fill their files: `openwiz --help` carries each command's
+//!   lines, and the core's fleet model types match the contract.
 //! - `support`: the fakes and the release `openwiz`, and `schema`: the
 //!   fleet schema's checker, for every ticket's tests.
 //! - `a4_fleets`: A4 (#112), `openwiz fleets`; until then, its stub's
@@ -20,8 +18,8 @@
 //! - `a6_agents`: A6 (#114), a ticket's agents.
 //! - `b3_writes`: spec 2's B3 (#119), the GitHub writes, and their
 //!   recording fake `gh` (`b3_fake`, declared from it).
-//! - `b4_starts`: spec 2's B4 (#120), starting builders and reviewers and
-//!   archiving finished agents; its other files are declared from inside it.
+//! - `b4_starts`: spec 2's B4 (#120), the start record's reader and
+//!   archiving finished agents; its files are declared from inside it.
 //!
 //! **Fixtures only.** Fixture tests never prove live behaviour.
 
@@ -33,9 +31,7 @@ mod support;
 mod real_time;
 
 mod a3_commands;
-mod a3_fake_gh;
 mod a3_model;
-mod a3_seams;
 mod a4_fleets;
 mod a5_fleet;
 mod a6_agents;

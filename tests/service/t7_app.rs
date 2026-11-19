@@ -31,8 +31,7 @@ mod fake_gh;
 mod forms;
 #[path = "t7_privacy.rs"]
 mod privacy;
-#[path = "t7_python.rs"]
-mod python;
+
 struct Time(AtomicU64);
 impl Clock for Time {
     fn now_s(&self) -> u64 {

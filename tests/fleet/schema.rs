@@ -12,8 +12,7 @@
 //! can't rely on a rule this checker ignores.
 //!
 //! [`Coverage`] records which branches a value took: every `oneOf`
-//! alternative, `enum` value, `type` of a list, and property. With
-//! [`branches`], a test can show a set of values reaches all of them.
+//! alternative, `enum` value, `type` of a list, and property.
 
 #![allow(dead_code)]
 
@@ -269,59 +268,6 @@ fn check(
                 hits,
             );
         }
-    }
-}
-
-/// Every branch reachable from the schema's root: what [`Coverage`] can
-/// record.
-pub fn branches(schema: &Value) -> BTreeSet<(String, String)> {
-    let mut out = BTreeSet::new();
-    let mut seen = BTreeSet::new();
-    walk(schema, "#", &mut out, &mut seen);
-    out
-}
-
-fn walk(root: &Value, at: &str, out: &mut BTreeSet<(String, String)>, seen: &mut BTreeSet<String>) {
-    if !seen.insert(at.to_owned()) {
-        return;
-    }
-    let Some(rules) = node(root, at).as_object() else {
-        return;
-    };
-    if let Some(reference) = rules.get("$ref").and_then(Value::as_str) {
-        walk(root, reference, out, seen);
-    }
-    if let Some(Value::Array(types)) = rules.get("type") {
-        for t in types.iter().filter_map(Value::as_str) {
-            out.insert((at.to_owned(), format!("type {t}")));
-        }
-    }
-    for option in rules
-        .get("enum")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        out.insert((at.to_owned(), format!("enum {option}")));
-    }
-    if let Some(options) = rules.get("oneOf").and_then(Value::as_array) {
-        for i in 0..options.len() {
-            out.insert((at.to_owned(), format!("oneOf {i}")));
-            walk(root, &format!("{at}/oneOf/{i}"), out, seen);
-        }
-    }
-    for key in rules
-        .get("properties")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flatten()
-        .map(|(k, _)| k)
-    {
-        out.insert((at.to_owned(), format!("property {key}")));
-        walk(root, &format!("{at}/properties/{}", escape(key)), out, seen);
-    }
-    if rules.contains_key("items") {
-        walk(root, &format!("{at}/items"), out, seen);
     }
 }
 

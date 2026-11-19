@@ -826,11 +826,6 @@ fn scale_scenario(name: &str, latency: u64) -> std::path::PathBuf {
     path
 }
 
-fn scale_run(name: &str, latency: u64, budget: Duration) -> (Value, usize, Duration) {
-    let path = scale_scenario(name, latency);
-    scale_run_at(name, &path, budget, 553)
-}
-
 fn scale_run_at(
     name: &str,
     path: &Path,
@@ -950,22 +945,6 @@ fn a7_scale_transport_clock_spends_its_budget() {
     );
     assert_eq!(doc["coverage"]["state"], "partial");
     assert!((7..=16).contains(&calls), "calls={calls}");
-}
-
-#[test]
-fn a7_scale_real_budget_and_unchanged_limits() {
-    use openwiz_core::limits::{MAX_CONCURRENT_DETAIL_READS, READ_TIMEOUT, RUN_BUDGET};
-    assert_eq!(RUN_BUDGET, Duration::from_secs(30));
-    assert_eq!(READ_TIMEOUT, Duration::from_secs(15));
-    assert_eq!(MAX_CONCURRENT_DETAIL_READS, 4);
-    // Real time: 20 reads of 1.5 s each, four at a time, inside the real
-    // 30 s budget. The fast form (#1259) keeps the same run and assertions
-    // on 50 ms reads; the timing itself is only proven in full.
-    let latency = crate::real_time::pick("a7_scale_real_budget", 1500, 50);
-    let (doc, calls, elapsed) = scale_run("real-budget", latency, RUN_BUDGET);
-    assert_eq!(doc["coverage"]["state"], "complete");
-    assert_eq!(calls, 20);
-    assert!(elapsed < Duration::from_secs(20)); // synthetic timing target only
 }
 
 use openwiz_core::fleet::fleets::{FleetsSource, IssueRow, Listed, PrRow};

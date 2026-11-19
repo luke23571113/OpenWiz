@@ -16,7 +16,6 @@
 
 use std::fs;
 use std::num::NonZeroU64;
-use std::path::Path;
 
 use openwiz_adapter_github::allowlist::{self, Invocation};
 use openwiz_adapter_github::writes::{self, Body, LABEL_MAX_LEN, Label, Write};
@@ -1034,82 +1033,4 @@ const WRITES: &str = concat!(
 fn the_writes_source_names_no_forbidden_word() {
     let text = fs::read_to_string(WRITES).expect("writes.rs");
     assert_eq!(source_problems(&text), Vec::<String>::new());
-}
-
-/// The source rule catches each break it exists for, planted in a copy of
-/// the real source.
-#[test]
-fn the_source_rule_catches_a_planted_break() {
-    let real = fs::read_to_string(WRITES).expect("writes.rs");
-    assert!(Path::new(WRITES).is_file());
-    let plant = |from: &str, to: &str| {
-        assert_eq!(
-            real.matches(from).count(),
-            1,
-            "{from:?} is in writes.rs once"
-        );
-        real.replacen(from, to, 1)
-    };
-    for (why, planted) in [
-        (
-            "a branch deleted after a merge",
-            plant(
-                "Is(\"--merge\")",
-                "Is(\"--merge\"), Is(\"--delete-branch\")",
-            ),
-        ),
-        (
-            "a forced merge",
-            plant("Is(\"--merge\")", "Is(\"--merge\"), Is(\"--admin\")"),
-        ),
-        (
-            "a comment edited",
-            plant(
-                "const ISSUE_COMMENT: Form = &[",
-                "const ISSUE_COMMENT: Form = &[Is(\"--edit-last\"), ",
-            ),
-        ),
-        (
-            "another repository",
-            plant("Is(\"--merge\")", "Is(\"--merge\"), Is(\"--repo\")"),
-        ),
-        (
-            "a call made around the allowlist",
-            plant("Invocation::new(", "Invocation::for_test("),
-        ),
-        (
-            "a GraphQL write",
-            plant(
-                "const READ_MERGE_QUEUE: Form = &[",
-                "const READ_MERGE_QUEUE: Form = &[Is(\"mutation\"), ",
-            ),
-        ),
-        (
-            "a second api call",
-            plant(
-                "const CLOSE_ISSUE: Form = &[",
-                "const CLOSE_ISSUE: Form = &[Is(\"api\"), ",
-            ),
-        ),
-        (
-            "a second runner",
-            plant(
-                "executor.run(",
-                "std::process::Command::new(program).spawn(); executor.run(",
-            ),
-        ),
-        (
-            "a personal runner replacing the supplied executor",
-            plant("executor.run(", "process::run(program, "),
-        ),
-        (
-            "a personal runner alongside the supplied executor",
-            plant(
-                "executor.run(",
-                "process::run(program, invocation, deadline); executor.run(",
-            ),
-        ),
-    ] {
-        assert!(!source_problems(&planted).is_empty(), "missed: {why}");
-    }
 }

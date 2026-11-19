@@ -1,5 +1,7 @@
-//! #502: a released start claim must not stay held by another thread's
-//! forked child. Fixtures only; no CloudRoom calls.
+//! #502: a new-thread claim that `inspect` released must not stay held by
+//! another thread's forked child. (The start-claim cases went with
+//! `start_agent`'s last caller, #800; CW2, #1143.) Fixtures only; no
+//! CloudRoom calls.
 
 use std::fs;
 use std::process::{Command, Stdio};
@@ -7,60 +9,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
 
-use openwiz_core::fleet::starts::{Locked, StartStore};
 use openwiz_core::model::Timestamp;
 use openwiz_core::new_thread::record::{Claim, NewThreadRecord, NewThreadStore};
 use openwiz_core::new_thread::{Binding, ProjectRef};
 use openwiz_core::prompt::empty_attachments_digest;
 
 use crate::b4_starts::fake::{Fake, builder};
-
-#[test]
-fn released_claims_are_free_while_other_threads_spawn_children() {
-    let fake = Fake::new("lock-release-fork-load", vec![]);
-    let owner = fake.starts();
-    let contender = fake.starts();
-    under_fork_load(20_000, |round| {
-        let key = builder(round as u64).key;
-        assert_eq!(owner.lock(&key).unwrap(), Locked::Mine(None));
-        assert_eq!(contender.lock(&key).unwrap(), Locked::Busy);
-        owner.unlock(&key);
-        match contender.lock(&key).unwrap() {
-            Locked::Mine(None) => {
-                contender.unlock(&key);
-                true
-            }
-            Locked::Busy => false,
-            other => panic!("unexpected handoff: {other:?}"),
-        }
-    });
-    fs::remove_dir_all(&fake.state).expect("remove temporary state");
-    assert!(!fake.state.try_exists().expect("check temporary state"));
-}
-
-#[test]
-fn failed_claims_are_free_while_other_threads_spawn_children() {
-    let fake = Fake::new("failed-lock-fork-load", vec![]);
-    let owner = fake.starts();
-    let contender = fake.starts();
-    under_fork_load(20_000, |round| {
-        let key = builder(round as u64).key;
-        let path = owner.record_path(&key.id());
-        fs::write(&path, "{broken").unwrap();
-        assert!(owner.lock(&key).is_err());
-        fs::remove_file(path).unwrap();
-        match contender.lock(&key).unwrap() {
-            Locked::Mine(None) => {
-                contender.unlock(&key);
-                true
-            }
-            Locked::Busy => false,
-            other => panic!("unexpected handoff: {other:?}"),
-        }
-    });
-    fs::remove_dir_all(&fake.state).expect("remove temporary state");
-    assert!(!fake.state.try_exists().expect("check temporary state"));
-}
 
 #[test]
 fn inspected_claims_are_free_while_other_threads_spawn_children() {
