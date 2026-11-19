@@ -17,7 +17,7 @@
       9047
     ],
     "openwiz-server": [
-      718,
+      719,
       6140
     ],
     "openwiz-service": [
@@ -30,11 +30,11 @@
     ]
   },
   "schema": "openwiz.test-value.measure.v1",
-  "seconds": 930.8,
+  "seconds": 860.3,
   "size": {
-    "bytes": 1384784,
-    "files": 85,
-    "lines": 38001
+    "bytes": 1390126,
+    "files": 86,
+    "lines": 38122
   },
   "targets": [
     "openwiz-tests:fleet",
@@ -56,7 +56,7 @@
   ],
   "tests": {
     "ignored": 0,
-    "passed": 463
+    "passed": 465
   },
   "toolchain": {
     "cargo-llvm-cov": "cargo-llvm-cov 0.9.1",
