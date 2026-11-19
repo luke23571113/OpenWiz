@@ -835,5 +835,79 @@ class CollectorFixtures(Harness):
         self.assertNotIn("gh", [c[0] for c in self.calls()])
 
 
+class FlowStalls(unittest.TestCase):
+    """FM3 (#1171): the 30-minute stall rule, its causes and the daily count, read from the collector's flow fact."""
+
+    FIXTURE = HERE / "fixtures" / "flow-read.json"
+
+    def run_stalls(self, doc):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "doc.json"
+            path.write_text(json.dumps(doc))
+            proc = subprocess.run([sys.executable, "-I", str(HERE / "stalls.py"), "--input", str(path)],
+                                  capture_output=True, text=True, timeout=30)
+        return proc
+
+    def stalls(self, doc):
+        proc = self.run_stalls(doc)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def fixture(self, drop=(), strip=()):
+        doc = json.loads(self.FIXTURE.read_text())
+        rows = doc["factory"]["flow"]["value"]["tickets"]
+        rows[:] = [r for r in rows if r["ticket"] not in drop]
+        for r in rows:
+            for key in strip:
+                del r["progress"][key]
+        return doc
+
+    def test_each_cause_and_the_30_minute_boundary(self):
+        # catches: a wrong or missing cause, an off-by-one at exactly 30 minutes, recent progress on a partial
+        # history flagged, or an unprovable ticket shown as stall-free instead of unknown.
+        out = self.stalls(self.fixture())
+        self.assertEqual(out["at"], "2030-01-03T12:00:00Z")
+        self.assertEqual([(s["ticket"], s["cause"], s["since"], s["minutes"]) for s in out["stalls"]], [
+            (103, "limit", "2030-01-03T10:00:00Z", 120),
+            (101, "ci", "2030-01-03T11:00:00Z", 60),
+            (106, "unknown", "2030-01-03T11:00:00Z", 60),
+            (102, "jake", "2030-01-03T11:20:00Z", 40),
+            (104, "stuck", "2030-01-03T11:30:00Z", 30),
+        ])
+        self.assertEqual(out["stalls"][0]["pull_requests"], [203])
+        self.assertEqual(out["unknown"], [{"ticket": 107, "spec": 100, "reason": "progress"}])
+        self.assertEqual(out["daily"], {"date": "2030-01-03", "count": None})
+
+    def test_daily_count_takes_only_the_days_stalls(self):
+        # catches: counting yesterday's stalls or a ticket finished before the day, or dropping a ticket's
+        # earlier stalls that already ended today.
+        out = self.stalls(self.fixture(drop=(105, 107)))
+        self.assertEqual(out["unknown"], [])
+        self.assertEqual(out["daily"], {"date": "2030-01-03", "count": 6})
+
+    def test_unknown_facts_stay_unknown(self):
+        # catches: an unavailable or missing flow fact, or an older flow fact without the record kind and
+        # dated gaps, shown as no stalls, a zero count or a guessed cause.
+        doc = self.fixture()
+        doc["factory"]["flow"].update(state="unavailable", value=None)
+        out = self.stalls(doc)
+        self.assertEqual((out["stalls"], out["unknown"], out["daily"]["count"]), (None, None, None))
+        snapshot = json.loads((FIXTURES / "snapshot.json").read_text())  # written before FM2: no flow fact
+        out = self.stalls(snapshot)
+        self.assertEqual((out["stalls"], out["daily"]["count"]), (None, None))
+        out = self.stalls(self.fixture(drop=(105, 107), strip=("last_record", "gaps")))
+        self.assertEqual({s["ticket"]: s["cause"] for s in out["stalls"]},
+                         {101: "ci", 102: "unknown", 103: "unknown", 104: "unknown", 106: "unknown"})
+        self.assertIsNone(out["daily"]["count"])
+
+    def test_invalid_document_is_refused(self):
+        # catches: a malformed document read as an empty, stall-free list.
+        doc = self.fixture()
+        doc["factory"]["flow"]["value"]["tickets"][0]["progress"]["last_observed_at"] = "yesterday"
+        for bad in ({"schema": "something.else"}, doc):
+            proc = self.run_stalls(bad)
+            self.assertEqual((proc.returncode, proc.stdout), (1, ""))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
