@@ -99,8 +99,9 @@ No new test: this pass only deletes. The two runner cases that lost the unused
 
 ## Gaps
 
-- `ci/main-batch/README.md` still names the two deleted shadow fixtures. It
-  is outside this ticket's owned paths.
+- `ci/main-batch/README.md` still names the two deleted shadow fixtures, and
+  a comment in `ci/rust-tests.sh` (line 271) still names
+  `ci/test_rust_tests.py`. Both are outside this ticket's owned paths.
 - `ci/rust-tests.sh`'s main-only skips (only a pull request to main skips four
   proofs) have no running test, as before this pass: the deleted file never
   ran in CI.
