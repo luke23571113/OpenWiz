@@ -66,3 +66,37 @@ package version for the program, preserving protocol versions, and checks the
 program's compiled source and its native executable architecture.
 
 For the future public-source release path, the [release candidate contract](release-candidate.v1.md#minimum-product-identity-rl4) adds a producer-side compiled-product identity interface: the CLI embeds and exposes its version/source/target without effects, and runtime bytes are checked against the tracked source selection. Cross-target collectors verify the embedded identity and architecture against hash-bound native build receipts without executing incompatible programs. A packaging stamp or requested version alone is insufficient. This does not change `openwiz.install.v1`, its assets/stamps, offline integrity checks, update channel or activation rules; implementation and live verification remain separate work.
+
+## Harness skills (#1361)
+
+`tools/install/install skills --root ROOT [--state-root STATE]` puts the
+selected build's skills where the user's agent finds them. It reads only the
+build `status` verifies: every file under its `runtime/skills/`, with its
+installed mode. It copies each skill folder into one canonical folder,
+`<ROOT>/skills/`, and then into each harness below that is present. A harness is
+present when its folder is a real directory this user owns. An absent harness
+is reported `absent` with what to do next, and nothing is created for it.
+
+| Harness | Present when this is a directory | Skills copy |
+| --- | --- | --- |
+| `claude-code` | `~/.claude` | `~/.claude/skills/<skill>/` |
+| `codex` | `~/.codex` (or `$CODEX_HOME` when set) | `~/.codex/skills/<skill>/` |
+| `cursor` | `~/.cursor` | `~/.cursor/skills/<skill>/` |
+| `opencode` | `~/.config/opencode` | `~/.config/opencode/skills/<skill>/` |
+| `grok` | `~/.grok` | `~/.grok/skills/<skill>/` |
+
+Each copy is marked with an `.openwiz-skill` file and is replaced only when
+that mark is there. A same-named skill without it is the user's own and is
+never touched. Before any write, the step checks every destination. A link, a
+folder that isn't the user's, or an unmarked same-named skill refuses the
+whole step (exit 5) and changes nothing. A repeated run gives the same files.
+Other skills in those folders, and skills a newer build no longer ships, stay.
+The result is one `openwiz.skills-install.v1` JSON object: version, source,
+canonical folder, skill names and one row per harness (`installed`, `absent`
+or `refused`, its folder and a plain `next`).
+
+The step needs no Rust, Cargo, Node or npm. It doesn't put anything on `PATH`.
+The installed command is the build's own `openwiz`, beside its `runtime/`,
+reached through `<ROOT>/current/openwiz`. Its `init` uses the packaged setup
+runtime and the user's `gh` login to set up the repository's `openwiz` label
+and brain records ([cli.v1](cli.v1.md)).

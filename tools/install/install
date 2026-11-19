@@ -15,6 +15,12 @@
   install status --root ROOT [--state-root STATE]
       Verifies the selected build against its state and reads its identity and
       update channel. No effects.
+  install skills --root ROOT [--state-root STATE]
+      Verifies the selected build, then copies its skills into ROOT/skills and
+      into each harness present here: Claude Code, Codex, Cursor, OpenCode and
+      Grok (contracts/install.v1.md, "Harness skills", #1361). An absent
+      harness gets nothing; an unsafe folder or the user's own same-named
+      skill refuses the whole step before any write.
 
 Every command prints one JSON object. Exit codes: 0 done, 1 failed,
 2 usage, 5 refused (nothing selected or changed). Python 3.9+, standard
@@ -36,6 +42,7 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import install as installer  # noqa: E402
+import harness  # noqa: E402
 import pull  # noqa: E402
 
 HOSTS = {('Darwin', 'arm64'): 'aarch64-apple-darwin', ('Darwin', 'x86_64'): 'x86_64-apple-darwin',
@@ -218,6 +225,9 @@ def main(argv=None, fetch=pull.fetch_bytes, host=None, stdout=None):
     s = commands.add_parser('status')
     s.add_argument('--root', required=True)
     s.add_argument('--state-root')
+    k = commands.add_parser('skills')
+    k.add_argument('--root', required=True)
+    k.add_argument('--state-root')
     try:
         args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     except Usage as usage:
@@ -235,6 +245,10 @@ def main(argv=None, fetch=pull.fetch_bytes, host=None, stdout=None):
             value, code = download(args.target, args.dir, fetch), 0
         elif args.command == 'install':
             value, code = install(args.assets, args.target, args.root, args.state_root), 0
+        elif args.command == 'skills':
+            build, _, manifest, _ = selected(args.root, args.state_root)
+            value, code = harness.install_skills(build, manifest, args.root, Path.home(),
+                                                 os.environ.get('CODEX_HOME'))
         else:
             value, code = status(args.root, args.state_root), 0
     except (installer.Refused, OSError, ValueError, KeyError, TypeError, tarfile.TarError) as refusal:

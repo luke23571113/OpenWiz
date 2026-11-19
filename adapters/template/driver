@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
+
+Each turn of a run is a local process: `start` runs the first turn, `wake` another, `stop` ends them.
+Adapt `command` to your harness, and `launch` and `end` to your host. Linux; standard library only.
+"""
+import json, os, re, secrets, shutil, signal, subprocess, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATE = os.environ.get('OPENWIZ_TEMPLATE_STATE') or os.path.expanduser('~/.local/state/openwiz-template')
+VERSION = {'driver': 'template', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
+START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
+         'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
+         'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
+RUN = {'run': r'run-[0-9a-f]{12}'}
+
+
+class Refused(Exception):
+    pass
+
+
+def unique(pairs):
+    if len({k for k, _ in pairs}) != len(pairs):
+        raise Refused('a key is repeated', 'send each key once')
+    return dict(pairs)
+
+
+def read(fields):
+    """The request on stdin, with exactly these fields, each valid, or Refused."""
+    try:
+        req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
+    except ValueError:
+        raise Refused('the input is not JSON', 'send one JSON object on stdin, as `driver schema` shows')
+    if not isinstance(req, dict) or set(req) != set(fields):
+        raise Refused('the input needs exactly ' + ', '.join(fields), 'send only those fields; never a login')
+    for key, pattern in fields.items():
+        v = req[key]
+        if not (type(v) is int and v > 0 if pattern is None else isinstance(v, str) and re.fullmatch(pattern, v)):
+            raise Refused(key + ' is not valid', 'fix ' + key + ' as `driver schema` shows')
+    return req
+
+
+def command(req, woken):
+    """Adapt: your harness's own signed-in command. Never add a login or a token."""
+    what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
+    prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
+    return [req['harness'], '--model', req['model'], '-p', prompt]
+
+
+def launch(req, run, woken):
+    """Start one turn; return what `end` needs to stop it."""
+    if not shutil.which(req['harness']):
+        raise Refused('harness %s is not installed here' % req['harness'],
+                      'install %s and sign in to it yourself, then start again' % req['harness'])
+    try:
+        return subprocess.Popen(command(req, woken), env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid
+    except OSError as e:
+        raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror), 'check that it runs by hand')
+
+
+def end(pid, run):
+    """Stop one turn: signal its process group only while it is still this run's."""
+    try:
+        with open('/proc/%d/environ' % pid, 'rb') as f:
+            if ('OPENWIZ_RUN=' + run).encode() in f.read().split(b'\0'):
+                os.killpg(pid, signal.SIGTERM)
+    except (FileNotFoundError, ProcessLookupError):
+        pass
+
+
+def saved(run, state=None):
+    path = os.path.join(STATE, run + '.json')
+    if state is not None:
+        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        with open(path + '.new', 'w') as f:
+            json.dump(state, f)
+        os.replace(path + '.new', path)
+        return state
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise Refused('no run ' + run, 'check the run id that `driver start` printed')
+
+
+def answer(cmd):
+    if cmd == 'version':
+        return VERSION
+    if cmd == 'schema':
+        with open(os.path.join(HERE, 'schema.json')) as f:
+            return json.load(f)
+    if cmd == 'start':
+        req, run = read(START), 'run-' + secrets.token_hex(6)
+        saved(run, {'request': req, 'turns': [launch(req, run, False)], 'stopped': False})
+        return {'run': run}
+    if cmd in ('wake', 'stop'):
+        run = read(RUN)['run']
+        state = saved(run)
+        if cmd == 'stop':
+            for pid in state['turns']:
+                end(pid, run)
+            saved(run, dict(state, stopped=True))
+            return {'run': run, 'stopped': True}
+        if state['stopped']:
+            raise Refused('run %s is stopped' % run, 'start a new run')
+        state['turns'].append(launch(state['request'], run, True))
+        saved(run, state)
+        return {'run': run, 'woke': True}
+    raise Refused('unknown command', 'run one of: version, schema, start, wake, stop')
+
+
+def main():
+    try:
+        out, code = answer(sys.argv[1] if len(sys.argv) == 2 else ''), 0
+    except Refused as e:
+        out, code = {'error': e.args[0], 'next': e.args[1]}, 1
+    except Exception as e:
+        out, code = {'error': 'the driver failed: ' + type(e).__name__, 'next': 'read its code, fix it, retry'}, 1
+    print(json.dumps(out))
+    sys.exit(code)
+
+
+if __name__ == '__main__':
+    main()

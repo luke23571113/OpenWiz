@@ -686,10 +686,11 @@ class InstallJourney(unittest.TestCase):
         j.replay(until='grill')
         writes = c.github_writes()
         brain = 'repos/%s/' % self.repository
-        self.assertEqual(writes, [['POST', brain + 'labels'], ['POST', brain + 'git/refs']]
+        # #1361: init's own label and the five records v1 labels, each created once.
+        self.assertEqual(writes, [['POST', brain + 'labels']] * 6 + [['POST', brain + 'git/refs']]
                          + [['PUT', brain + 'contents/.openwiz/brain/' + f]
                             for f in ('README.md', 'settings.json', 'grills/README.md', 'decisions/README.md')]
-                         + [['POST', brain + 'pulls']], 'one label, branch, four files and one pull request')
+                         + [['POST', brain + 'pulls']], 'six labels, one branch, four files and one pull request')
         before = (j.state.read_text(), (self.state / 'setup/state.json').read_text())
         init_ops = [o for o in json.loads(before[1])['operations'] if 'brain' in ' '.join(o['effects']).lower()]
         self.assertTrue(init_ops, 'init saved its operation')
