@@ -200,13 +200,15 @@ impl GitHub for Tickets {
         issue(&self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?)
     }
 
+    /// Reads the record authors setting first, as launch-fleet does, then
+    /// the issue and its start-record comments: an unread or malformed
+    /// setting stops the read before any comment is read.
     fn stock_issue(
         &self,
         number: Number,
         deadline: Instant,
     ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
         let n = number.to_string();
-        // The setting is read before any comment, as launch-fleet does.
         let authors = self.record_authors(deadline)?;
         let issue = self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?;
         let comments = self.run(
