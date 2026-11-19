@@ -201,6 +201,19 @@ class Synthetic(unittest.TestCase):
         self.picked(result, has=['rust:test:web-api'], lacks=['rust:test:proof'])
         self.full(sel([A('docs/zzz/p01_coverage')]), 'unknown_path')
 
+    def test_a_pin_move_or_a_changed_link_selects_the_tests_reading_through_it(self):
+        # catches: a wizskills.lock pin move or a changed skill link skipping a test
+        # that reads the installed skills, on a map traced before #1335's resolver
+        # recorded the pin and the links (planted.py's skills case, CI at 742f107).
+        mp = json.loads(json.dumps(MAP))
+        mp['units']['rust:test:proof']['files'].append('skills/setup/templates/fleet.md')
+        mp['units']['rust:test:web-api']['files'].append('.claude/skills/grill/SKILL.md')
+        for change, has, lacks in ((M('wizskills.lock'), ['rust:test:proof', 'rust:test:web-api'], ['rust:lib:openwiz-core']),
+                                   (M('skills'), ['rust:test:proof'], ['rust:test:web-api']),
+                                   (M('.claude/skills/grill'), ['rust:test:web-api'], ['rust:test:proof'])):
+            with self.subTest(change):
+                self.picked(pick.select([change], mp, UNITS, read, nobody), has=has, lacks=lacks)
+
     def test_a_new_path_beside_the_docs_and_skills_classes_still_runs_everything(self):
         # catches: a class pattern loose enough to skip a new source, test or tool file.
         for path in ('docsx/new.md', 'tools/notes/new.md', 'deploy/pc/notes.md', 'apps/webx/new.md',
