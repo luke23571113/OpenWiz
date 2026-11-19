@@ -648,6 +648,7 @@ fn product_sources() -> Vec<(PathBuf, String)> {
 /// process, `gh` with an allowlisted invocation only (#111, Q3 (a)).
 const GITHUB_RUNNER: &str = "../crates/adapters/github/src/process.rs";
 const GITHUB_APP: &str = "../crates/adapters/github/src/app.rs";
+const GITHUB_APP_TRANSPORT_TESTS: &str = "../crates/adapters/github/src/app_transport_tests.rs";
 
 const LOOP_REPOSITORY: &str = "../crates/cli/src/state/loops/repository.rs";
 
@@ -732,6 +733,15 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
         .canonicalize()
         .unwrap();
     let mut signed = false;
+    // #1264: T7's curl transport test moved, unchanged, from
+    // `tests/service/` to beside `app.rs`. It is that file's
+    // `#[cfg(test)]` module only, never product code, so it keeps the
+    // process start it had outside `crates/`, and nothing else does.
+    let app_transport_tests = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(GITHUB_APP_TRANSPORT_TESTS)
+        .canonicalize()
+        .unwrap();
+    let mut transport_tests = false;
     let init_launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(INIT_LAUNCHER)
         .canonicalize()
@@ -779,6 +789,21 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
             init_launched = true;
             continue;
         }
+        if canonical == app_transport_tests {
+            let app_text = fs::read_to_string(&app).unwrap();
+            assert_eq!(
+                app_text
+                    .matches(
+                        "#[cfg(test)]\n#[path = \"app_transport_tests.rs\"]\nmod transport_tests;"
+                    )
+                    .count(),
+                1,
+                "{GITHUB_APP_TRANSPORT_TESTS} is only app.rs's test module"
+            );
+            assert_eq!(app_text.matches("app_transport_tests.rs").count(), 1);
+            transport_tests = true;
+            continue;
+        }
         if canonical == app {
             assert_eq!(
                 app_source_problems(&text),
@@ -808,6 +833,10 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
     }
     assert!(ran, "{GITHUB_RUNNER} was not checked");
     assert!(signed, "{GITHUB_APP} was not checked");
+    assert!(
+        transport_tests,
+        "{GITHUB_APP_TRANSPORT_TESTS} was not checked"
+    );
     assert!(init_launched, "{INIT_LAUNCHER} was not checked");
     assert_eq!(checked_loops, [true; 1], "the canonical L3 gate checked");
 }
