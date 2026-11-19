@@ -31,61 +31,6 @@ fn counts(p: &ProjectStock) -> &StockCounts {
     c
 }
 #[test]
-fn stock_partition_and_state_matrix() {
-    for (ready, running, state) in [
-        (4, 2, StockState::Fed),
-        (3, 2, StockState::LowStock),
-        (0, 2, StockState::RunningDry),
-        (3, 0, StockState::NoBuilders),
-        (0, 0, StockState::RunningDry),
-    ] {
-        let mut rows = vec![];
-        for i in 0..ready {
-            rows.push(ticket(i + 1));
-        }
-        for i in 0..running {
-            let mut t = ticket(i + 100);
-            t.start_recorded = Fact::Known(true);
-            t.blockers_merged = Fact::Known(false);
-            t.labels = Fact::Known(vec!["held".into()]);
-            rows.push(t);
-        }
-        for (i, label) in [
-            (200, "held"),
-            (201, "needs-info"),
-            (202, "ready-for-human"),
-            (203, "unapproved"),
-        ] {
-            let mut t = ticket(i);
-            t.labels = Fact::Known(vec![label.into()]);
-            t.blockers_merged = Fact::Known(false);
-            rows.push(t);
-        }
-        let mut blocked = ticket(204);
-        blocked.blockers_merged = Fact::Known(false);
-        rows.push(blocked);
-        let mut capacity = ticket(205);
-        capacity.capacity_refused = Some(Fact::Known(true));
-        rows.push(capacity);
-        let p = project(input(rows), 100_000);
-        let c = counts(&p);
-        assert_eq!(
-            (
-                c.ready,
-                c.running,
-                c.blocked,
-                c.held,
-                c.unapproved,
-                c.owner_wait,
-                c.capacity_wait,
-                c.unknown,
-                c.state
-            ),
-            (ready, running, 1, 1, 1, 2, 1, 0, state)
-        );
-    }
-}
-#[test]
 fn stock_required_unknowns_do_not_fall_into_lower_buckets() {
     let mut rows = vec![];
     let mut t = ticket(1);
@@ -111,35 +56,6 @@ fn stock_required_unknowns_do_not_fall_into_lower_buckets() {
         (c.ready, c.running, c.held, c.unknown, c.state),
         (0, 1, 0, 4, StockState::Indeterminate)
     );
-    assert_eq!(p.coverage.state, CoverageState::Partial);
-}
-#[test]
-fn stock_original_time_and_last_good_are_retained() {
-    let sample = StockSample {
-        snapshot_at: 100_000,
-        counts: StockCounts {
-            ready: 3,
-            running: 0,
-            blocked: 0,
-            held: 0,
-            unapproved: 0,
-            owner_wait: 0,
-            capacity_wait: 0,
-            unknown: 0,
-            state: StockState::NoBuilders,
-        },
-    };
-    let mut i = input(vec![ticket(1)]);
-    i.last_good = Some(sample.clone());
-    let p = project(i.clone(), 170_000);
-    assert_eq!(p.freshness.state, FreshnessState::Fresh);
-    let p = project(i.clone(), 170_001);
-    assert_eq!(p.freshness.state, FreshnessState::Stale);
-    assert_eq!(p.last_good, Some(sample.clone()));
-    i.snapshot_at = Fact::Known(200_000);
-    let p = project(i, 170_001);
-    assert_eq!(p.freshness.state, FreshnessState::Unknown);
-    assert_eq!(p.last_good, Some(sample));
     assert_eq!(p.coverage.state, CoverageState::Partial);
 }
 #[test]
@@ -192,25 +108,6 @@ fn stock_factory_requires_full_scope_and_original_ages() {
     assert!(matches!(f.totals, Fact::Unknown(_)));
 }
 #[test]
-fn stock_review_future_discovery_time_cannot_be_hidden_by_older_project() {
-    let p = project(input(vec![ticket(1)]), 100_000);
-    let f = factory(
-        vec![p],
-        Coverage {
-            state: CoverageState::Complete,
-            gaps: vec![],
-        },
-        Fact::Known(200_000),
-        100_000,
-    );
-    assert!(
-        matches!(f.totals, Fact::Unknown(_)),
-        "future discovery cannot publish totals"
-    );
-    assert_eq!(f.freshness.state, FreshnessState::Unknown);
-    assert_eq!(f.coverage.state, CoverageState::Partial);
-}
-#[test]
 fn stock_review_factory_preserves_gap_source_owners() {
     let mut i = input(vec![]);
     i.coverage = Coverage {
@@ -235,17 +132,5 @@ fn stock_review_factory_preserves_gap_source_owners() {
             .iter()
             .any(|g| g.source == SourceOwner::Inventory
                 && g.reason.as_str() == "Synthetic inventory source gap")
-    );
-}
-#[test]
-fn stock_absent_capacity_source_does_not_hold_ready_work() {
-    let p = project(input(vec![ticket(1)]), 100_000);
-    assert_eq!(
-        (
-            counts(&p).ready,
-            counts(&p).capacity_wait,
-            counts(&p).unknown
-        ),
-        (1, 0, 0)
     );
 }

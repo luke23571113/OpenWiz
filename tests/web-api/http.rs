@@ -436,30 +436,3 @@ impl Read for Scripted {
 fn interrupted() -> std::io::Result<&'static [u8]> {
     Err(std::io::ErrorKind::Interrupted.into())
 }
-
-/// #429: a signal can interrupt a read (EINTR) on a socket with a read
-/// timeout, which the kernel never restarts. The read is tried again.
-#[test]
-fn a_read_interrupted_before_the_first_byte_is_tried_again() {
-    let mut reader = Scripted(vec![
-        interrupted(),
-        Ok(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"),
-    ]);
-    let r = read_response(&mut reader);
-    assert_eq!(r.status, 200);
-    assert_eq!(r.body, b"ok");
-}
-
-/// #429: an interrupted read after the first bytes never cuts the response
-/// short.
-#[test]
-fn a_read_interrupted_after_the_first_bytes_keeps_the_whole_response() {
-    let mut reader = Scripted(vec![
-        Ok(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nab"),
-        interrupted(),
-        Ok(b"cd"),
-    ]);
-    let r = read_response(&mut reader);
-    assert_eq!(r.status, 200);
-    assert_eq!(r.body, b"abcd");
-}

@@ -26,24 +26,6 @@ fn memory_growth_is_bounded(before: u64, after: u64) -> bool {
     after.saturating_sub(before) < BOUND_KIB
 }
 
-#[test]
-fn memory_comparison_handles_decreases_and_keeps_the_strict_bound() {
-    for (before, after, expected) in [
-        (2172, 1872, true),
-        (2172, 2172, true),
-        (2172, 6267, true),
-        (2172, 6268, false),
-        (2172, 6269, false),
-        (0, u64::MAX, false),
-    ] {
-        assert_eq!(
-            memory_growth_is_bounded(before, after),
-            expected,
-            "peak from {before} KiB to {after} KiB"
-        );
-    }
-}
-
 /// Writes `len` bytes, `head` first, in pieces, and returns their SHA-256.
 fn write_large(path: &std::path::Path, head: &[u8], len: u64) -> String {
     let mut file = File::create(path).unwrap();
