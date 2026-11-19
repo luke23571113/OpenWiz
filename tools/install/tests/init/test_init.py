@@ -33,6 +33,7 @@ COMPANION = 'synthetic-owner/synthetic-app-brain'
 # #1361: the five labels people set, read from records v1 itself (section 1's table), plus init's own.
 RECORDS_LABELS = re.findall(r'^\| `([a-z-]+)` \|', (ROOT / 'kernel/records.v1.md').read_text()
                             .split('## 1. Labels', 1)[1].split('\n## ', 1)[0], re.M)
+FACTORY_LABELS = ['openwiz'] + RECORDS_LABELS
 FILES = {'.openwiz/brain/README.md', '.openwiz/brain/settings.json',
          '.openwiz/brain/grills/README.md', '.openwiz/brain/decisions/README.md'}
 
@@ -178,9 +179,9 @@ class Init(unittest.TestCase):
         self.assertEqual(set(self.files(COMPANION)), FILES)
         code = self.read()['repos'][CODE.lower()]
         self.assertEqual(code['branches'], {'main': {'README.md': 'Synthetic app.\n'}}, 'public code untouched')
-        self.assertEqual(code['labels'], ['openwiz'])
-        self.assertEqual(sum(1 for call in self.writes() if call[1].startswith(f'repos/{CODE}/')), 1,
-                         'only the label is written on public code')
+        self.assertEqual(code['labels'], FACTORY_LABELS)
+        self.assertEqual(sum(1 for call in self.writes() if call[1].startswith(f'repos/{CODE}/')), len(FACTORY_LABELS),
+                         'only the labels are written on public code')
         self.assertEqual(applied['private_content_written'], 'brain_repository')
 
     # Catches: visibility inferred from a missing, internal, contradictory,
@@ -265,7 +266,7 @@ class Init(unittest.TestCase):
                     self.assertEqual(sum(1 for c in world['log'] if c == ['POST', 'user/repos']),
                                      2 if (mode, path) == ('drop', 'user/repos') else 1)
                     self.assertEqual(len(world['repos'][COMPANION.lower()]['pulls']), 1)
-                    self.assertEqual(world['repos'][CODE.lower()]['labels'], ['openwiz'])
+                    self.assertEqual(world['repos'][CODE.lower()]['labels'], FACTORY_LABELS)
                     self.assertEqual(set(world['repos'][COMPANION.lower()]['branches']['openwiz/brain']), FILES)
                     retried = [e for e in done['effects'] if e['attempts'] > 1]
                     self.assertTrue(all(e['reconciliation'] == 'provider_read_back' for e in retried))
