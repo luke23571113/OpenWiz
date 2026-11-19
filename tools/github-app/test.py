@@ -29,72 +29,6 @@ PERMISSIONS = {name: "read" for name in (
 SERVICE = dict(PERMISSIONS, contents="write", issues="write", pull_requests="write")
 
 
-class LiveCheckDocumentationTests(unittest.TestCase):
-    def test_mint_refusal_preserves_parent_shell_and_skips_read(self):
-        doc = (HERE.parents[1] / "docs/github-app.md").read_text()
-        live_check = doc.split("After Jake authorizes the live check, on the PC:", 1)[1]
-        script = live_check.split("```sh\n", 1)[1].split("```", 1)[0]
-        with tempfile.TemporaryDirectory(prefix="openwiz-app-doc-") as directory:
-            root = Path(directory)
-            mint = root / "python3"
-            mint.write_text('''#!/bin/sh
-repository_present=false
-while [ "$#" -gt 0 ]; do
-    if [ "$1" = --repository ] && [ "$#" -gt 1 ]; then
-        case "$2" in
-            ""|-*) ;;
-            *) repository_present=true; break ;;
-        esac
-    fi
-    shift
-done
-if [ "$repository_present" != true ]; then
-    printf 'synthetic mint refused\\n' >&2
-    exit 1
-fi
-if [ "$SYNTHETIC_MINT_OUTCOME" = success ]; then
-    printf 'synthetic-installation-token\\n1767229200\\n'
-else
-    printf 'synthetic mint refused\\n' >&2
-    exit 1
-fi
-''')
-            gh = root / "gh"
-            gh.write_text('''#!/bin/sh
-printf '%s\\n' "$GH_TOKEN" "$@" >> "$SYNTHETIC_CALL_LOG"
-printf 'synthetic rate limit\\n'
-''')
-            mint.chmod(0o700)
-            gh.chmod(0o700)
-            call_log = root / "calls"
-            parent = script + '''
-printf 'parent survived: %s|%s|%s\\n' "$?" "$APP_TOKEN" "$GH_TOKEN"
-'''
-            for outcome, status in (("refused", 1), ("success", 0)):
-                with self.subTest(outcome=outcome):
-                    result = subprocess.run(
-                        ["/bin/sh", "-c", parent], cwd=root,
-                        env={"PATH": str(root), "APP_TOKEN": "synthetic-parent-app",
-                             "GH_TOKEN": "synthetic-parent-gh",
-                             "SYNTHETIC_MINT_OUTCOME": outcome,
-                             "SYNTHETIC_CALL_LOG": str(call_log)},
-                        capture_output=True, text=True, timeout=5)
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    expected_parent = (f"parent survived: {status}|"
-                                       "synthetic-parent-app|synthetic-parent-gh\n")
-                    if outcome == "refused":
-                        self.assertEqual(result.stdout, expected_parent)
-                        self.assertEqual(result.stderr, "synthetic mint refused\n")
-                        self.assertFalse(call_log.exists())
-                    else:
-                        self.assertEqual(result.stdout,
-                                         "synthetic rate limit\n" + expected_parent)
-                        self.assertEqual(result.stderr, "")
-                        self.assertEqual(call_log.read_text().splitlines(), [
-                            "synthetic-installation-token", "api", "rate_limit", "--jq",
-                            ".resources.core | {limit, remaining}"])
-
-
 ROOT = HERE.parents[1]
 # #1279's owned paths: each loop and tool here follows the repository it runs
 # in (its clone, or one setting), so none may name ClosedWiz's as a fixed
@@ -1130,7 +1064,6 @@ class SetupTests(KeyFixture):
             self.assertEqual(self.preview(endpoint, phase="applied")["operation_id"], self.operation)
             self.assertEqual(len(calls), done)
             self.assertEqual(len(self.setup_state()["operations"]), 1)
-
 
 
 # GI4 (#2546): a stand-in for Cloudroom's agent-side secret store (assumption

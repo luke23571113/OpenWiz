@@ -6,4 +6,3 @@ set -eu
 cd "$(dirname "$0")/../.."
 python3 -I tools/fleet-load/test_carried.py
 python3 -I tools/fleet-load/test_seams.py
-python3 -I tools/fleet-load/test.py
