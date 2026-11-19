@@ -426,10 +426,16 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
         answer["delay_ms"] = json!(600);
         answer
     };
-    // (case, answers before a write, answers after one, the calls made)
+    // Only the hung write needs a lower timeout, to be stopped soon. It is
+    // the whole process's timeout, so the first read shares it: it is 3 s,
+    // not 500 ms, for a loaded runner's slow read (#1239). The other cases'
+    // calls end at once and keep the ordinary timeout.
+    // (case, read timeout in ms, answers before a write, answers after one,
+    // the calls made)
     let cases = [
         (
             "the write hangs",
+            Some("3000"),
             vec![
                 slow_list(),
                 json!({"any_loop_write": "update", "hang": true}),
@@ -439,6 +445,7 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
         ),
         (
             "the write ends without an exit code",
+            None,
             vec![
                 slow_list(),
                 json!({"any_loop_write": "update", "abort": true}),
@@ -448,6 +455,7 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
         ),
         (
             "the read-back fails",
+            None,
             vec![slow_list(), accept()],
             vec![
                 json!({"argv": LIST, "stderr": "Error: HTTP 503: Service Unavailable", "exit": 1}),
@@ -455,13 +463,14 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
             vec![json!(LIST), update.clone(), json!(LIST)],
         ),
     ];
-    for (case, before, after, calls) in cases {
+    for (case, timeout, before, after, calls) in cases {
         let room = Room::new(before, after);
         let file = triage(&room, 3);
-        let (code, doc) = room.json_env(
-            &["syn-triage", "--from", &file],
-            &[("OPENWIZ_FIXTURE_READ_TIMEOUT_MS", "500")],
-        );
+        let env: Vec<_> = timeout
+            .map(|ms| ("OPENWIZ_FIXTURE_READ_TIMEOUT_MS", ms))
+            .into_iter()
+            .collect();
+        let (code, doc) = room.json_env(&["syn-triage", "--from", &file], &env);
         assert_eq!(code, 6, "{case}: {doc:#}");
         assert_eq!(
             (&doc["outcome"], &doc["read_back"], &doc["action"]),
