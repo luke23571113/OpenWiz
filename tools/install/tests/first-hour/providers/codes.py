@@ -69,7 +69,7 @@ def pending_items(value):
 def setup_interrupted(base):
     """configure_access: its one verification run stops before any reply; resuming reuses its id."""
     sys.path.insert(0, str(ROOT / 'tools/install/access'))
-    sys.path.insert(0, str(ROOT / 'apps/web/test/fixtures/install-access'))
+    sys.path.insert(0, str(ROOT / 'tools/install/access/fixtures'))
     import access
     from provider import Recording, credentials, selected
     state, plan_file, secret_file = base / 'state', base / 'plan.json', base / 'secrets.json'

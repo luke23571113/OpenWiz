@@ -1,4 +1,4 @@
-"""IF7 tool, privacy, recovery and packaging proofs; run by install-access.test.mjs.
+"""IF7 tool, privacy, recovery and packaging proofs: python3 -I tools/install/access/test_access.py.
 All providers are recording fixtures; no real accounts or external network.
 Signature verification uses production OpenSSL; transport checks use loopback.
 """
@@ -20,7 +20,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import access
-sys.path.insert(0, str(ROOT / 'apps/web/test/fixtures/install-access'))
+sys.path.insert(0, str(ROOT / 'tools/install/access/fixtures'))
 from provider import Recording, credentials, jwt, selected
 
 
