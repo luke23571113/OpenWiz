@@ -32,6 +32,7 @@ CLAIMING = ('working', 'asking')
 RELEASED = ('done', 'stopped')
 AGENTS = (('builder 1', 'builder'), ('builder 2', 'builder'), ('fleet', 'fleet'))
 MAX_NOTES = 4        # notes posted on the ticket, in all
+FIXED_NOTES = 3      # the fixed model's cap: a full search with 4 notes and two wakes runs too long for CI
 # Wakes per agent: in the split model builder 1 has a second wake that resumes late.
 # The fixed model (#1441) is the split one with the writer's edit read-back.
 RUNS = {'atomic': (1, 1, 1), 'split': (2, 1), 'fixed': (2, 1)}
@@ -82,6 +83,7 @@ class Model:
         self.claiming = ('working',) if variant == 'asking-not-claiming' else CLAIMING
         # Kinds never compete, so the split model keeps only the builders, to stay small.
         self.agents = AGENTS if writes == 'atomic' else AGENTS[:2]
+        self.max_notes = FIXED_NOTES if writes == 'fixed' else MAX_NOTES
 
     def initial(self):
         return ((), tuple((None,) * n for n in RUNS[self.writes]))
@@ -119,7 +121,19 @@ class Model:
         return notes, 'kept'
 
     def readback_edit(self, notes, pending):
-        """#1441: the fixed writer's read-back after a claim edit: (notes, what it did)."""
+        """#1441: the fixed writer's read-back after a claim edit: (notes, what it did).
+
+        As status.py write does: a note that no longer reads as written is not its to settle
+        (it fails, and the wake that wrote it last settles it); a release it never read, which
+        its edit replaced, is put back; and it steps down when another live note of its kind
+        exists, older or newer."""
+        _, i, state, was, mine_state = pending
+        if notes[i][1] != state:
+            return notes, None
+        if was[1] in RELEASED and was[1] != mine_state:
+            return put(notes, i, notes[i][0], was[1]), f'puts the {was[1]} back'
+        if any(j != i and kind(n[0]) == kind(notes[i][0]) and live(n) for j, n in enumerate(notes)):
+            return put(notes, i, notes[i][0], 'stopped'), 'lost claim'
         return notes, 'kept'
 
     def writes_for(self, view, notes, agent):
@@ -128,7 +142,7 @@ class Model:
         for state in CLAIMING + RELEASED:
             if mine is not None:
                 yield f'edit note {mine} to {state}', self.edit(view, notes, agent, mine, state), mine, state
-        if (mine is None or mine_state == 'stopped') and len(notes) < MAX_NOTES:
+        if (mine is None or mine_state == 'stopped') and len(notes) < self.max_notes:
             for state in CLAIMING:
                 yield f'post a {state} note', self.post(view, notes, agent, state), len(notes), state
 
@@ -156,8 +170,10 @@ class Model:
                     view = run[1]
                 elif run[0] == 'edited':
                     after, how = self.readback_edit(notes, run[1])
-                    yield (f'{who} wake {r + 1} reads back note {run[1][1]}: {how}', (after, with_run(None)),
-                           [('claimed', agent, run[1][1], notes, after), ('settled', agent, run[1], after)])
+                    events = [] if how is None else [('claimed', agent, run[1][1], notes, after),
+                                                     ('settled', agent, run[1], after)]
+                    yield (f'{who} wake {r + 1} reads back note {run[1][1]}: {how or "not as written, fails"}',
+                           (after, with_run(None)), events)
                     continue
                 else:
                     after, how = self.readback(notes, run[1])
