@@ -917,10 +917,15 @@ class FlowStalls(unittest.TestCase):
         self.assertEqual(out["unknown"], [{"ticket": 4101, "spec": 4001, "reason": "progress"}])  # no PR yet
 
     def test_invalid_document_is_refused(self):
-        # catches: a malformed document read as an empty, stall-free list.
+        # catches: a malformed document, or a value outside the collector's forms, read as a stall-free
+        # list or an unknown cause instead of refused.
         doc = self.fixture()
         doc["factory"]["flow"]["value"]["tickets"][0]["progress"]["last_observed_at"] = "yesterday"
-        for bad in ({"schema": "something.else"}, doc):
+        pending, state, record = self.fixture(), self.fixture(), self.fixture()
+        pending["factory"]["flow"]["value"]["tickets"][3]["progress"]["ci_pending"] = "yes"
+        state["factory"]["flow"]["value"]["tickets"][3]["state"] = "paused"
+        record["factory"]["flow"]["value"]["tickets"][3]["progress"]["last_record"] = ["parked"]
+        for bad in ({"schema": "something.else"}, doc, pending, state, record):
             proc = self.run_stalls(bad)
             self.assertEqual((proc.returncode, proc.stdout), (1, ""))
 
