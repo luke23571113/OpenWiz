@@ -8,8 +8,8 @@ the kept callers listed below and records the lines it removed in
 
 - **Base:** OpenWiz `e817c9a293f4317d210a13e8821bb7377fdbef5c` (`origin/main` at
   inventory time). WizSite `main` was `333bbb8078a3d6337fd0649c8536f42d30f106d4`.
-- **649 files, one row each:** 563 delete (135,340 lines), 22 fold (5,176 lines)
-  and 64 keep (21,884 lines). The [Totals](#totals) table splits them by part.
+- **649 files, one row each:** 560 delete (131,937 lines), 22 fold (5,176 lines)
+  and 67 keep (25,287 lines). The [Totals](#totals) table splits them by part.
 - **Order:** AP11 waits for #1150 (CW9: `.github/workflows/` and `tools/`) and
   #1160 (the cleanup wave's last sweep of `tests/`). Rows under `tests/` may
   change in that sweep; AP11 re-reads each row's file at its own base, and a
@@ -51,11 +51,62 @@ Spec #1223: "OpenWiz becomes the command, the adapters and the engine."
   `crates/cli/src/state/`. The send records (`FileStore`), the new-thread
   records, the attachment store and the setup-state reader go with the commands
   and routes that used them.
+- **The loop configuration stays as it is.** `openwiz loop on` and `off` take
+  their trusted context from the owner-only `service/config.json`, checked
+  against `contracts/service.v1.schema.json`. So that schema, its contract
+  `contracts/service.v1.md` and the example `deploy/pc/config.example.json` are
+  keep rows, and the file, its location and its shape do not change. See
+  [The loop configuration](#the-loop-configuration).
 
 Everything else in the five parts goes: every file of the web view, OpenWiz's
 copy of the website (WizSite serves the landing page and `/changelog` at its
 `main` above), the server, the service, and the commands `send`, `new`,
 `models` and `attachment`.
+
+## The loop configuration
+
+The service goes, but its configuration file stays, because the kept `openwiz
+loop` reads it. Read at the base; this table changes none of it.
+
+**The read path.** `openwiz loop on|off <name>` (`crates/cli/src/loops.rs:95`)
+calls `installed(checkout, state)` in `crates/store/src/loops/config.rs`, which
+folds unchanged into `crates/cli/src/state/loops/config.rs`. That reader:
+
+1. checks the private state with `paths::inspect` (`loops/paths.rs:168` to
+   `175`): `service/` and `service/config.json` are required, owner-only and
+   not symlinks; the service's other files (`state.json`, `app/`, `clone/`,
+   `builds/`) are checked only when present, so their absence after the
+   service goes refuses nothing;
+2. reads `<state>/service/config.json` and validates it with
+   `document::service_config` (`loops/document.rs:93`) against `$defs.config`
+   of `contracts/service.v1.schema.json`, compiled in with `include_str!`, plus
+   the port bound;
+3. requires a nonblank, NUL-free `operator`, and binds the context to the
+   config's `repository` and `project`, with the checkout's `origin` matching
+   that repository; each switch re-reads and rechecks all three.
+
+A missing or invalid file refuses the switch ("cannot read service
+configuration"). The fold keeps steps 1 to 3 byte for byte; only the
+`include_str!` paths change, for the new directory depth. The kept proofs of
+those checks, `tests/loops/l6_config.rs` and `tests/cli-agent/process.rs`,
+build their config from the `openwiz.service-config.v1` example in
+`contracts/service.v1.md`, which stays.
+
+**Existing installs.** The file was written by the owner's setup from
+`deploy/pc/config.example.json` (`deploy/pc/README.md:64`, then filled in by
+hand), as `contracts/service.v1.md` says ("written by Jake's setup, never by
+the service"). AP11 deletes no state and changes neither the reader nor the
+schema, so an existing `service/config.json` keeps working with no migration.
+Deleting `openwiz-service` leaves the file's service-only fields (`tick`,
+`health`, `server`, `orchestrator_thread`, `service_issue`, `github_app`,
+`loops`, `events`) unused, but still required by the schema.
+
+**Fresh installs.** Nothing writes the file today: `tools/install/install.py`
+creates only the `service/` directory, and no setup tool, CLI command or skill
+writes `service/config.json` (search: `config\.json` in `tools/install/setup`,
+`tools/install/install.py`, `tools/install/pull.py`, `crates/cli/src`). So on a
+fresh install `openwiz loop on|off` refuses until the owner writes the file by
+hand, before and after AP11 alike. D6 asks Jake whether that should change.
 
 ## Decisions for Jake
 
@@ -103,6 +154,19 @@ recommendation.
   `crates/cli/tests/`, `tests/proof/`, `crates/adapters/github/src/`,
   `tools/install/`) are outside them too. Recommended: AP10 adds each, shared,
   for only those lines, cases and moved files.
+- **D6. The loop configuration's home and provisioning.** The rows keep
+  `service/config.json`, `contracts/service.v1.schema.json`,
+  `contracts/service.v1.md` and `deploy/pc/config.example.json` unchanged, so
+  AP11 changes no configuration (see [The loop
+  configuration](#the-loop-configuration)). Changing any of it is a
+  configuration and contract change for Jake: (a) keep it as it is
+  (recommended for AP11); (b) later, a loop-only config contract with only
+  `repository`, `project` and `operator`, at a new or the same path, which
+  changes the reader (`state/loops/config.rs`, `document.rs`), the schema, the
+  two proofs (`tests/loops/l6_config.rs`, `tests/cli-agent/process.rs`) and
+  every existing install's file; (c) have setup write the file on fresh
+  installs, which changes `tools/install/setup/`. Recommended: (a) now; (b) and
+  (c), if wanted, as their own tickets.
 
 ## How to check this table
 
@@ -183,7 +247,7 @@ AP11" says whether AP11's current owned paths cover it.
 | C5 | `tools/collector/steps.tsv` | A step naming a deleted test target | No: WizRoom (#979) owns `tools/collector/` |
 | C6 | `tools/release/` (`check.py`, `scans.py`, `candidate.py`, `product_identity.py`, `README.md`, `findings.md`, `test*.py`) | Packaging and scans of the web export, site, server and service | Yes |
 | C7 | `crates/cli/src/main.rs`, `response.rs`, `lib.rs`, `build.rs`, `agent-catalogue.json`, `agent_help.rs`, `fleet_tick.rs`, `fleet_tick_graph.rs`, `loops.rs`, `loop_export.rs`; `crates/core/src/fleet/starts.rs` (comments) | Dispatch, help and catalogue rows of `send`, `new`, `models`, `attachment`; the `openwiz_store` imports that move to `crate::state` | No (D5) |
-| C8 | `tests/checks/` (`skills.rs`, `ci_selection.rs`, `cockpit_schema_conformance.rs`, `main.rs`), `tests/proof/p08a_allowlist_static.rs`, `tests/cli-agent/` (`main.rs`, `process.rs`, `review.rs`), `tests/fleet/` (`b4_fake.rs`, `b4_record.rs`), `tests/loops/` (`main.rs`, `fixture.rs`, `l6_cli.rs`, `l6_config.rs`, `l6_switches.rs`) | Paths, imports and cases of deleted parts; the store imports that fold; `cockpit_schema_conformance.rs` proves only the deleted cockpit contract | No (D5) |
+| C8 | `tests/checks/` (`skills.rs`, `ci_selection.rs`, `cockpit_schema_conformance.rs`, `main.rs`), `tests/proof/p08a_allowlist_static.rs`, `tests/cli-agent/` (`main.rs`, `process.rs`, `review.rs`), `tests/fleet/` (`b4_fake.rs`, `b4_record.rs`), `tests/loops/` (`main.rs`, `fixture.rs`, `l6_cli.rs`, `l6_config.rs`, `l6_switches.rs`) | Paths, imports and cases of deleted parts; the store imports that fold; `cockpit_schema_conformance.rs` proves only the deleted cockpit contract. `p08a_allowlist_static.rs`'s static cases that compile in deleted service and store source (lines 1424, 1486, 1516, 1590, 2238, 2254) go with those files. `tests/loops/l6_config.rs:6` and `tests/cli-agent/process.rs:892` compile the kept `contracts/service.v1.md` and need no edit | No (D5) |
 | C9 | `tools/install/` (`install.py`, `fixture_bundle.py`, `platform/runtime.py`, `platform/test_runtime.py`, `test_install.py`, `test_setup_api.mjs`, `setup/store.py`, `access/`, `cloudroom/`, `tests/first-hour/`, `tests/journey/test_journey.py`, `tests/public-release-security/`, `tests/setup-onboard-contract/`, `first-hour-live-kit.md`) | `--serve` and `--open`, the service and web export in the bundle, the web fixtures that fold here, the setup page's client (`api.ts`) and synthetic answers | No (D4) |
 | C10 | `tools/live-smoke/` (`browser.mjs`, `test_fixture.py`), `tools/skills-eval/` (`cases/*.json`, `required-text.json`) | The web view's npm tools; text cases naming the web view | No (D5) |
 | C11 | `tools/test-value/README.md`, `test_count.py`, `test_measure.py` | Counts and paths of the deleted targets and apps | No (D5) |
@@ -222,8 +286,8 @@ fourth acceptance criterion asks.
 | The store (`crates/store`) | 18 | 9 (3738) | 9 (3642) | 0 (0) | |
 | Act-from-the-UI pieces in the core, command line and adapters | 36 | 8 (3506) | 0 (0) | 28 (10475) | |
 | Their tests | 182 | 153 (53832) | 2 (913) | 27 (6816) | |
-| Their contracts, docs and deployment | 19 | 10 (5765) | 0 (0) | 9 (4593) | |
-| **Total** | **649** | **563 (135340)** | **22 (5176)** | **64 (21884)** | |
+| Their contracts, docs and deployment | 19 | 7 (2362) | 0 (0) | 12 (7996) | |
+| **Total** | **649** | **560 (131937)** | **22 (5176)** | **67 (25287)** | |
 
 ## The rows
 
@@ -658,8 +722,8 @@ fourth acceptance criterion asks.
 | `crates/store/Cargo.toml` | 15 | The `store` crate manifest | Workspace member; `cli` and `tests` depend on it until the fold (S5, C1) | **delete** |  |
 | `crates/store/src/attachments.rs` | 2013 | The staged attachments on disk (OpenWiz 0.0.4, B1 phase 2, ClosedWiz#14): the controller's private copy of… | Only `openwiz attachment`, `send`/`new --attach`, the server and attachment tests (S5) | **delete** |  |
 | `crates/store/src/lib.rs` | 841 | The send record on disk: one owner-only directory of JSON files that implements the core's [SendStore].… | Kept: `cli` `fleet_tick.rs` and `loops.rs` (`default_state_dir`), `fleet_tick_graph.rs` (via `starts`) (S5) | **fold** | `crates/cli/src/state/mod.rs`, without `FileStore` (send records) |
-| `crates/store/src/loops/config.rs` | 149 | Switch context from private install configuration; no discovery process. | Kept: `cli` `loops.rs` (`openwiz loop`), `tests/loops/*` (S5) | **fold** | `crates/cli/src/state/loops/` (same names) |
-| `crates/store/src/loops/document.rs` | 339 | Strict loop documents; validation reads the compiled loops.v1 schema. | Kept: `cli` `loops.rs` (`openwiz loop`), `tests/loops/*` (S5) | **fold** | `crates/cli/src/state/loops/` (same names) |
+| `crates/store/src/loops/config.rs` | 149 | Switch context from private install configuration; no discovery process. | Kept: `cli` `loops.rs:95` (`installed`, the trusted loop context of `openwiz loop on/off`), `tests/loops/l6_config.rs` (S5) | **fold** | `crates/cli/src/state/loops/config.rs`, reading the same `service/config.json` (see "The loop configuration") |
+| `crates/store/src/loops/document.rs` | 339 | Strict loop documents; validation reads the compiled loops.v1 schema. | Kept: `cli` `loops.rs` through `config.rs` (`service_config`, the loop config check), `tests/loops/*` (S5, S9) | **fold** | `crates/cli/src/state/loops/document.rs`; only its two `include_str!` paths (to the kept `contracts/loops.v1.schema.json` and `contracts/service.v1.schema.json`) change, for the new depth |
 | `crates/store/src/loops/mod.rs` | 199 | Local, durable switches for OpenWiz definitions. No CloudRoom loop calls. | Kept: `cli` `loops.rs` (`openwiz loop`), `tests/loops/*` (S5) | **fold** | `crates/cli/src/state/loops/` (same names) |
 | `crates/store/src/loops/paths.rs` | 555 | Private-state checks. macOS uses an ephemeral owner probe; never reads a key. | Kept: `cli` `loops.rs` (`openwiz loop`), `tests/loops/*` (S5) | **fold** | `crates/cli/src/state/loops/` (same names) |
 | `crates/store/src/loops/repository.rs` | 508 | Read immutable blobs from the checkout's verified default-branch ref. | Kept: `cli` `loops.rs` (`openwiz loop`), `tests/loops/*` (S5) | **fold** | `crates/cli/src/state/loops/` (same names) |
@@ -908,7 +972,7 @@ fourth acceptance criterion asks.
 
 ### Their contracts, docs and deployment
 
-19 files: 10 delete, 0 fold, 9 keep.
+19 files: 7 delete, 0 fold, 12 keep.
 
 | Path | Lines | What it does | Uses today (search) | Disposition | New home |
 | --- | ---: | --- | --- | --- | --- |
@@ -921,13 +985,13 @@ fourth acceptance criterion asks.
 | `contracts/plan.v1.md` | 234 | OpenWiz plan contract, version 1 (openwiz.plan.v1) | Kept: `github` adapter `plan.rs` builds this document; `tests/checks/plan_decisions_schema_conformance.rs` (S9, L1) | **keep** |  |
 | `contracts/plan.v1.schema.json` | 570 | Contract only. See plan.v1.md for provenance, cross-record rules and action guards. Fixtures prove no live… | Kept: `github` adapter `plan.rs`; `tests/checks/plan_decisions_schema_conformance.rs` (S9, L1) | **keep** |  |
 | `contracts/prompt.v1.schema.json` | 41 | OpenWiz 0.0.4's prompt payload, shared by send and new threads: the text and an ordered list of staged… | Kept core `prompt`; `tests/new-thread/schema_parity.rs` (S9) | **keep** |  |
-| `contracts/service.v1.md` | 611 | OpenWiz service contract, version 1 (openwiz.service.v1) | The service and its tests (S9) | **delete** |  |
-| `contracts/service.v1.schema.json` | 2767 | OpenWiz's always-on service (OpenWiz 0.0.8): its status report, config, state and GitHub records, told… | The service and its tests (S9) | **delete** |  |
+| `contracts/service.v1.md` | 611 | OpenWiz service contract, version 1 (openwiz.service.v1) | Kept: it defines `openwiz.service-config.v1`, the owner-only `service/config.json` the kept `openwiz loop` reads for its operator, repository and project; the kept proofs `tests/loops/l6_config.rs:6` and `tests/cli-agent/process.rs:892` compile its config example. Its service-only sections are D6's (S9, C8, D6) | **keep** |  |
+| `contracts/service.v1.schema.json` | 2767 | OpenWiz's always-on service (OpenWiz 0.0.8): its status report, config, state and GitHub records, told… | Kept: the kept loop reader compiles its `$defs.config` (`crates/store/src/loops/document.rs:93`, folding to `crates/cli/src/state/loops/`) (S9, D6) | **keep** |  |
 | `contracts/setup.v1.md` | 97 | Resumable setup v1 | Kept: the setup tools follow its operations and state (`tools/install/setup/init.py`, `store.py`, `setup.py`); only its `GET /api/v1/setup` route goes (S9, C12) | **keep** |  |
 | `contracts/setup.v1.schema.json` | 521 | OpenWiz resumable setup v1 | Kept with `setup.v1.md`: the setup tools' state; `tools/install/test_setup_api.mjs` checks the document (S9, C9) | **keep** |  |
 | `contracts/web-api.v1.md` | 590 | OpenWiz web API, version 1 | The server, `apps/web` and `tests/web-api`; named in `AGENTS.md` (S9, C12) | **delete** |  |
 | `deploy/pc/README.md` | 218 | PC service setup (T11) | The PC service unit and its setup; kept: `docs/github-app.md`, `tools/install/platform/test_runtime.py`, `tools/release/test_package.py` name it (S4, S9, C6, C9, C12) | **delete** |  |
-| `deploy/pc/config.example.json` | 25 | PC service deployment | The PC service unit and its setup; kept: `docs/github-app.md`, `tools/install/platform/test_runtime.py`, `tools/release/test_package.py` name it (S4, S9, C6, C9, C12) | **delete** |  |
+| `deploy/pc/config.example.json` | 25 | Synthetic example of `service/config.json` (`openwiz.service-config.v1`) | Kept: the template existing installs' `service/config.json` was provisioned from (`deploy/pc/README.md:64`); the only checked-in example of the config `openwiz loop` reads (S9, D6) | **keep** |  |
 | `deploy/pc/openwiz.service` | 16 | PC service deployment | The PC service unit and its setup; kept: `docs/github-app.md`, `tools/install/platform/test_runtime.py`, `tools/release/test_package.py` name it (S4, S9, C6, C9, C12) | **delete** |  |
 | `docs/service-install.md` | 116 | Private local runtime | Installing the service; a search for its name finds no kept file (S9) | **delete** |  |
 | `docs/web-access.md` | 281 | OpenWiz web access: setup guide and security model | Reaching the server from a browser; kept: `RELEASING.md` and `ci/select/map.json` name it (S9, C4, C12) | **delete** |  |
