@@ -1730,7 +1730,8 @@ class AgentTokenTests(KeyFixture):
         args = ["--state-dir", str(self.state), "--installation-id", "2002", "--api-base", endpoint,
                 *[a for r in repositories for a in ("--repository", r)], *extra]
         if now is None:
-            command = ["python3", str(HERE / script), *args]
+            # Exactly as docs/github-app.md runs it: isolated mode (R1, #1403).
+            command = ["python3", "-I", str(HERE / script), *args]
         else:
             command = ["python3", "-c", """
 import datetime, runpy, sys
@@ -1770,7 +1771,9 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
                     behavior.clear()
                     behavior.update(original, permissions=granted)
                     shutil.rmtree(self.state / "tokens", ignore_errors=True)  # mint every time
-                    result = self.run_tool("refresh-token.py", endpoint, "--write")
+                    result = self.run_tool("refresh-token.py", endpoint, "--write",
+                                           env={"GH_TOKEN": "synthetic-caller-token"})
+                    self.assert_hidden("synthetic-caller-token")  # never inherited by OpenSSL
                     if ok:
                         self.assertEqual((result.returncode, result.stdout, result.stderr),
                                          (0, b"synthetic-installation-token\n", b""))
