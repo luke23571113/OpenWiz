@@ -46,7 +46,12 @@ replacement preserve last-good selection on pre-activation failure. An interrupt
 staging directory is inert. Repetition verifies/reuses an identical complete
 build; a different manifest for the same source is refused. Previous builds and
 all owner work remain. `--stage-only` verifies/stages without selecting a build
-or changing channel metadata; the service's durable handover owns activation.
+or changing channel metadata. Packaged service startup verifies the installed
+manifest, its own executable and the owner-private state and install paths.
+It requires an owner-managed `current` link selecting its build at the standard
+install root or at the installer's default `<root>/state` layout. A split
+`--root` and `--state-root` layout whose install root cannot be identified fails
+closed. No PC activation record is required, and unknown login is allowed.
 
 Install result JSON names version, source, target, private build/state paths,
 activation state and the loopback setup URL. These local paths are not remote
