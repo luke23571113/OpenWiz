@@ -385,10 +385,8 @@ class Access(unittest.TestCase):
         collector = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(collector)
         source = self.root / 'source'
-        binaries, web = self.root / 'bin', self.root / 'web'
+        binaries = self.root / 'bin'
         binaries.mkdir()
-        web.mkdir()
-        (web / 'setup.html').write_text('Synthetic setup page')
         for name in ('install.py', 'pull.py', 'setup/setup.py', 'setup/store.py', 'platform/runtime.py', 'access/access.py'):
             target = source / 'tools/install' / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -396,7 +394,7 @@ class Access(unittest.TestCase):
         for name in ('setup.py', 'app.py', 'manifest.json'):
             target = source / 'tools/github-app' / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            # App behavior is outside this fixture; web-test prunes its real
+            # App behavior is outside this fixture; the lane prunes its real
             # sources. Supply explicit unused bytes for those collector slots.
             target.write_text('{"name":"Synthetic App fixture"}\n' if name.endswith('.json')
                               else '# Synthetic unused App resource.\n')
@@ -405,13 +403,13 @@ class Access(unittest.TestCase):
                       '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'Synthetic runtime fixture']):
             subprocess.run(['git', '-C', str(source), *args], check=True, capture_output=True)
         source_commit = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
-        # #1148: programs and web built with this identity, plus that job's receipts.
+        # #1148: the program built with this identity, plus that job's receipt.
         sys.path.insert(0, str(ROOT / 'tools/release'))
         from test_product_identity import build
-        receipts = build(binaries, web, source_commit, 'x86_64-unknown-linux-gnu', self.root, '0.0.13')
+        receipts = build(binaries, source_commit, 'x86_64-unknown-linux-gnu', self.root, '0.0.13')
         def collect(output):
-            return collector.collect(source, binaries, web, output, '0.0.13', source_commit, 'x86_64-unknown-linux-gnu',
-                                     receipts['program'], receipts['web'])[0]
+            return collector.collect(source, binaries, output, '0.0.13', source_commit, 'x86_64-unknown-linux-gnu',
+                                     receipts['program'])[0]
         products = self.root / 'products'
         manifest = collect(products)
         slots = [row for row in manifest['assets'] if row['path'].startswith('runtime/access/')]
