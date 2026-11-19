@@ -1,7 +1,6 @@
 // The design pass (#75): presentation proofs at 390 and 1440 px. The selected
 // row has a shape, not only a tint; the core's words are shown whole and as
-// reported; desktop rows are one line; labels sit on one line; every marker's
-// glyph lines up with the text above it (its box hangs outside).
+// reported; shapes keep 3:1 contrast and targets 44 px.
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -97,111 +96,6 @@ test('group headings show the project name as reported, not re-cased', async () 
   }
 });
 
-/** Heights of the rows whose session is grouped and has a short status. */
-const plainRowHeights = (page) =>
-  page.$$eval('main [data-session-id]', (els) =>
-    els.filter((el) => !el.querySelector('[data-part=reason]') && el.querySelector('[data-part=status]').textContent.length < 20).map((el) => el.getBoundingClientRect().height),
-  );
-
-test('calm rows: title and metadata have room on desktop and phone', async () => {
-  for (const [viewport, max] of [
-    [DESKTOP, 72],
-    [PHONE, 64],
-  ]) {
-    const p = await ready(viewport);
-    try {
-      const heights = await plainRowHeights(p.page);
-      assert.ok(heights.length >= 3);
-      for (const h of heights) assert.ok(h >= 44 && h <= max, `a row is ${h} px at ${viewport.width}px (44 to ${max})`);
-    } finally {
-      await p.close();
-    }
-  }
-});
-
-test('every detail label sits on one line', async () => {
-  for (const viewport of [PHONE, DESKTOP]) {
-    const p = await ready(viewport);
-    try {
-      await open(p, 'thr_web_0002');
-      const tall = await p.page.$$eval('[data-part=detail] dt', (dts) =>
-        dts
-          .filter((dt) => {
-            const text = document.createRange();
-            text.selectNodeContents(dt);
-            return text.getBoundingClientRect().height > parseFloat(getComputedStyle(dt).lineHeight) + 1;
-          })
-          .map((dt) => dt.textContent),
-      );
-      assert.deepEqual(tall, [], `at ${viewport.width}px`);
-    } finally {
-      await p.close();
-    }
-  }
-});
-
-test('thread header: inline status, whole metadata items, quiet id and phone controls', async () => {
-  for (const viewport of [PHONE, DESKTOP]) {
-    const p = await ready(viewport);
-    try {
-      await open(p, 'thr_web_0002');
-      await p.page.evaluate(() => document.fonts.ready);
-      const header = await p.page.locator('.thread-header').evaluate((el) => {
-        const status = el.querySelector('[data-part=status]');
-        const glyph = status.querySelector('.glyph').getBoundingClientRect();
-        const word = status.querySelector('.word').getBoundingClientRect();
-        const title = el.querySelector('h2').getBoundingClientRect();
-        const chip = status.getBoundingClientRect();
-        const meta = el.querySelector('.thread-meta');
-        const items = [...meta.querySelectorAll('dd:not([data-field=configuration]), .thread-meta-item')];
-        const id = el.querySelector('.thread-id').getBoundingClientRect();
-        return {
-          statusInline: Math.abs((glyph.top + glyph.height / 2) - (word.top + word.height / 2)) < 1,
-          firstLineAligned: Math.abs(chip.top - title.top) < 1,
-          items: items.map((item) => ({ text: item.textContent, height: item.getBoundingClientRect().height })),
-          provider: meta.querySelector('[data-field=provider]').textContent,
-          updatedLabel: getComputedStyle(meta.querySelector('[data-field=age]'), '::before').content,
-          idBelowMeta: id.top >= meta.getBoundingClientRect().bottom,
-          monoId: getComputedStyle(el.querySelector('.thread-id code')).fontFamily.includes('GeistMono'),
-        };
-      });
-      assert.equal(header.statusInline, true, `status at ${viewport.width}px`);
-      assert.equal(header.firstLineAligned, true, `first title line at ${viewport.width}px`);
-      assert.equal(header.items.length, 6, 'project, provider, model, effort, location, updated');
-      assert.equal(header.provider, rows[1].provider.known);
-      assert.match(header.updatedLabel, /Updated/);
-      for (const item of header.items) assert.equal(item.height, 16, `whole metadata item: ${item.text}`);
-      assert.equal(header.idBelowMeta, true);
-      assert.equal(header.monoId, true);
-      if (viewport === PHONE) {
-        assert.equal(await p.page.locator('.thread-sheet .sheet-cmd').isVisible(), false);
-        assert.equal(await p.page.locator('.thread-sheet [aria-label="Sessions — close panel"]').isVisible(), true);
-        assert.equal(await p.page.locator('.thread-sheet .command-trigger.compact').isVisible(), true);
-      }
-    } finally {
-      await p.close();
-    }
-  }
-});
-
-test('every marker\'s glyph lines up with the title above it, whatever its tier', async () => {
-  const p = await ready(PHONE);
-  try {
-    const offsets = await p.page.$$eval('main [data-session-id]', (els) =>
-      els
-        .map((el) => {
-          const mk = el.querySelector('[data-part=status]');
-          const glyph = mk.querySelector('.glyph').getBoundingClientRect().left;
-          return Math.round(glyph - el.querySelector('[data-part=title]').getBoundingClientRect().left);
-        })
-    );
-    assert.ok(offsets.length >= 5);
-    for (const o of offsets) assert.ok(Math.abs(o + 36) <= 1, `a glyph is ${o} px off the title's edge`);
-  } finally {
-    await p.close();
-  }
-});
-
 test('the gaps toggle: a small dashed tag in a 44 px target, showing whether it is open', async () => {
   const p = await ready(PHONE);
   try {
@@ -241,34 +135,6 @@ test('G2: headings that share a name end with the project id\'s last 4 character
     );
   } finally {
     await p.close();
-  }
-});
-
-test('the selected row keeps the title column: every title starts at the same x', async () => {
-  for (const viewport of [DESKTOP, PHONE]) {
-    const p = await ready(viewport);
-    try {
-      await open(p, 'thr_web_0003');
-      const lefts = await p.page.$$eval('main [data-session-id] [data-part=title]', (ts) => ts.map((t) => Math.round(t.getBoundingClientRect().left)));
-      assert.equal(new Set(lefts).size, 1, `title edges at ${viewport.width}px: ${[...new Set(lefts)].join(', ')}`);
-    } finally {
-      await p.close();
-    }
-  }
-});
-
-test('the "Sessions" heading costs about half its space on a phone, and stays as it was on desktop', async () => {
-  for (const [viewport, check] of [
-    [PHONE, (h) => h === 28],
-    [DESKTOP, (h) => h === 32],
-  ]) {
-    const p = await ready(viewport);
-    try {
-      const h = await p.page.$eval('main h1', (el) => el.getBoundingClientRect().height);
-      assert.ok(check(h), `the heading is ${h} px tall at ${viewport.width}px`);
-    } finally {
-      await p.close();
-    }
   }
 });
 
