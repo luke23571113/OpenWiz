@@ -8,16 +8,14 @@ Ids are the CI selection record's (contracts/ci-selection.v1.md, "Test ids"):
   openwiz-tests (`cargo test -p <package>`: its library, binaries and doc
   tests, a superset of the contract's `--lib`);
 - `rust:test:<target>`: one openwiz-tests `[[test]]` target
-  (`cargo test -p openwiz-tests --test <target>`);
-- `web:unit:<name>`, `web:browser:<name>`: one file of apps/web's
-  `test/unit/**/*.test.ts` or `test/browser/**/*.test.mjs` (package.json's
-  globs), by its name without folder or extension.
+  (`cargo test -p openwiz-tests --test <target>`).
+
+The record's `web:` ids have no tests since the web view went (#1264).
 
 Anything this can't account for is an error (the selector then runs
 everything): a workspace member it can't read, an openwiz-tests target
-`cargo test` would run that isn't a `[[test]]`, two files with one name.
+`cargo test` would run that isn't a `[[test]]`.
 """
-import glob
 import os
 import re
 import sys
@@ -25,8 +23,6 @@ import tomllib
 
 NAME = re.compile(r'[A-Za-z0-9._-]+')
 TESTS_PACKAGE = 'openwiz-tests'
-UNIT_GLOB = 'apps/web/test/unit/**/*.test.ts'
-BROWSER_GLOB = 'apps/web/test/browser/**/*.test.mjs'
 
 
 class UnitError(Exception):
@@ -86,20 +82,8 @@ def rust_units(root):
     return out
 
 
-def web_units(root):
-    """The web test ids, and for each, its file under apps/web."""
-    out = {}
-    for kind, pattern, suffix in (('unit', UNIT_GLOB, '.test.ts'), ('browser', BROWSER_GLOB, '.test.mjs')):
-        for path in sorted(glob.glob(pattern, root_dir=root, recursive=True)):
-            uid = f'web:{kind}:' + _name('file', os.path.basename(path)[:-len(suffix)])
-            if uid in out:
-                raise UnitError(f'two files named {uid}: {out[uid]} and {path}')
-            out[uid] = path[len('apps/web/'):]
-    return out
-
-
 def list_units(root):
-    units = {**rust_units(root), **web_units(root)}
+    units = rust_units(root)
     if not units:
         raise UnitError('no tests found')
     return units

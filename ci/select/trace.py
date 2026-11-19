@@ -3,32 +3,23 @@
 (#432, K15). Run from the repository root.
 
   python3 -I ci/select/trace.py rust OUT [--jobs N] [--alongside NAME CMD...]
-  python3 -I ci/select/trace.py web OUT [--jobs N]
-  python3 -I ci/select/trace.py export OUT     # npm run build, in apps/web
   python3 -I ci/select/trace.py ready          # exit 0 if strace can trace here
 
 Each test (units.py) runs on its own under `strace --seccomp-bpf -f`, as
-CI runs it: `cargo test --locked <its cargo arguments>` from the root, or
-`node --test --test-force-exit <its file>` from apps/web. Every repository
-path it, or any process it started, opened, looked for (a stat or an open
-that found nothing counts), executed or listed is kept, then resolved
-(resolve.py): a Rust program under target/ becomes the sources it was built
-from, apps/web/out the web export's inputs (`export`), node_modules the
-lockfile. The top-level cargo's own reads are left out: it only checks that
-every crate is built, and the programs it runs are resolved instead.
+CI runs it: `cargo test --locked <its cargo arguments>` from the root. Every
+repository path it, or any process it started, opened, looked for (a stat or
+an open that found nothing counts), executed or listed is kept, then
+resolved (resolve.py): a Rust program under target/ becomes the sources it
+was built from, node_modules the lockfile. The top-level cargo's own reads
+are left out: it only checks that every crate is built, and the programs it
+runs are resolved instead. (The web lane and the export trace went with the
+web view, #1264.)
 
 OUT/<test id>.json is that test's record: {"files", "dirs", "seconds",
 "exit", "traced"}. A test that fails under strace runs again without it: that
 run decides the exit status, and its record says "traced": false, so map.py
 leaves it out of the map and the selector always runs it. The exit status
 is 0 only if every test (and the --alongside command) passed in the end.
-
-`export` traces `npm run build` once and writes OUT/export.json: the files
-and folders the web export is built from.
-
-The web lane first builds the programs the browser proofs run, once (as
-run-browser.mjs does), and holds each file to run-browser.mjs's rule for a
-full run: nothing skipped (its log says `skipped 0`).
 
 `ready` installs strace when it is missing and `sudo -n` can (the cloud
 runners; the PC's image has no sudo), then checks it can trace a process
@@ -210,19 +201,9 @@ def commands(lane, root, threads):
     for uid, how in sorted(found.items()):
         if lane == 'rust' and uid.startswith('rust:'):
             out[uid] = (['cargo', 'test', '--locked', *how, '--', f'--test-threads={threads}'], root)
-        elif lane == 'web' and uid.startswith('web:'):
-            out[uid] = (['node', '--test', '--test-force-exit', '--test-reporter=spec', how],
-                        os.path.join(root, 'apps/web'))
     if not out:
         raise SystemExit(f'trace: no {lane} tests found')
     return out
-
-
-SKIPPED_NONE = re.compile(r'^\S* ?skipped 0$', re.M)
-# run-browser.mjs's coverage rule for a full run (soak-skip.mjs): the soak,
-# the top-level `soak: ` test of its file, ran and passed.
-SOAK_TEST = 'web:browser:v7-soak'
-SOAK_PASSED = re.compile(r'^\u2714 soak: ', re.M)
 
 
 def trace_lane(lane, out_dir, jobs, threads, root, only=None):
@@ -237,39 +218,16 @@ def trace_lane(lane, out_dir, jobs, threads, root, only=None):
         todo = {u: todo[u] for u in only}
     env = dict(os.environ)
     resolver = resolve.Resolver(root)
-    if lane == 'web':
-        # As run-browser.mjs: the server and the fake, built once before any file.
-        build = subprocess.run(['node', '-e', "import('./test/support/rust.mjs').then((m) => m.buildBinaries())"],
-                               cwd=os.path.join(root, 'apps/web'))
-        if build.returncode:
-            print(f'trace: building the browser proofs\' programs failed (exit {build.returncode})')
-            return 1
 
     def one(uid):
         argv, cwd = todo[uid]
         log = os.path.join(logs, uid.replace(':', '_') + '.log')
         rc, touched, listed, took = strace_run(argv, cwd, env, log)
         traced = rc == 0
-        decided = 0  # where the attempt that decides begins in the log
         if not traced:
             with open(log, 'ab') as lf:
                 lf.write(f'\n== trace: {uid} failed under strace (exit {rc}); once more without it\n'.encode())
-                decided = lf.tell()
             rc, took = plain_run(argv, cwd, env, log)
-        deciding = ''
-        if lane == 'web':
-            with open(log, 'rb') as f:
-                f.seek(decided)
-                deciding = f.read().decode(errors='replace')
-        if rc == 0 and lane == 'web':
-            if not SKIPPED_NONE.search(deciding):
-                rc = 1
-                with open(log, 'a') as lf:
-                    lf.write(f'\ntrace: {uid}: a full run skips nothing, and its log has no "skipped 0"\n')
-            elif uid == SOAK_TEST and not only and not SOAK_PASSED.search(deciding):
-                rc = 1
-                with open(log, 'a') as lf:
-                    lf.write(f'\ntrace: {uid}: a full run runs the soak, and its log shows no passing "soak: " test\n')
         files, dirs, why = resolver.resolve(touched, listed) if traced else ([], [], 'failed under strace')
         record = {'files': files, 'dirs': dirs, 'seconds': round(took, 1), 'exit': rc,
                   'traced': traced and why is None}
@@ -279,9 +237,6 @@ def trace_lane(lane, out_dir, jobs, threads, root, only=None):
             json.dump({'test': uid, **record}, f, indent=1, sort_keys=True)
         return uid, rc, log, record
 
-    if lane == 'web' and not only and SOAK_TEST not in todo:
-        print(f'trace: a full web run owes the soak ({SOAK_TEST}), and it is not here')
-        return 1
     results = []
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         for uid, rc, log, record in pool.map(one, sorted(todo)):
@@ -299,23 +254,6 @@ def trace_lane(lane, out_dir, jobs, threads, root, only=None):
         failed += rc != 0
     sys.stdout.flush()
     return failed
-
-
-def trace_export(out_dir, root):
-    os.makedirs(out_dir, exist_ok=True)
-    log = os.path.join(out_dir, 'export.log')
-    rc, touched, listed, took = strace_run(['npm', 'run', 'build'], os.path.join(root, 'apps/web'),
-                                           dict(os.environ), log)
-    with open(log, errors='replace') as f:
-        sys.stdout.write(f.read())
-    if rc != 0:
-        print(f'trace: npm run build failed (exit {rc})')
-        return 1
-    files, dirs = resolve.Resolver(root).export_inputs(touched, listed)
-    with open(os.path.join(out_dir, 'export.json'), 'w') as f:
-        json.dump({'files': files, 'dirs': dirs, 'seconds': round(took, 1)}, f, indent=1, sort_keys=True)
-    print(f'trace: the web export: {len(files)} files, {len(dirs)} folders, {round(took, 1)} s')
-    return 0
 
 
 def can_trace():
@@ -342,7 +280,7 @@ def main(argv):
     if argv == ['ready']:
         return ready()
     ap = argparse.ArgumentParser()
-    ap.add_argument('lane', choices=['rust', 'web', 'export'])
+    ap.add_argument('lane', choices=['rust'])
     ap.add_argument('out')
     ap.add_argument('--jobs', type=int, default=4)
     ap.add_argument('--threads', type=int, default=8, help='each Rust test binary\'s --test-threads')
@@ -359,10 +297,7 @@ def main(argv):
         print(f'trace: {name}, beside the traced tests: {" ".join(cmd)}')
         along = (name, subprocess.Popen(cmd, stdout=along_log, stderr=subprocess.STDOUT), along_log)
     try:
-        if args.lane == 'export':
-            failed = trace_export(args.out, root)
-        else:
-            failed = trace_lane(args.lane, args.out, args.jobs, args.threads, root, args.only)
+        failed = trace_lane(args.lane, args.out, args.jobs, args.threads, root, args.only)
     except BaseException:
         if along:  # the tracer failed: stop the other suite, which runs again with the tests
             along[1].kill()

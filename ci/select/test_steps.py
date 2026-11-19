@@ -26,8 +26,8 @@ class Dispatch(unittest.TestCase):
                 {'decision': 'skip', 'reason': 'not selected'})) for n in names]
             raw = json.dumps(record)
             (tmp/'ci-selection.json').write_text(raw)
-            flags = dict.fromkeys(('build-web','lint-rust','export-rust','export-web','build-site','image-skills',
-                                  'rust','web','site','release','trace','planted'),False)
+            flags = dict.fromkeys(('lint-rust','build-site','image-skills',
+                                  'rust','release','trace','planted'),False)
             flags.update(skills=[n for n in names if n in chosen],plan_sha256=hashlib.sha256(raw.encode()).hexdigest())
             (tmp/'ci-dispatch.json').write_text(json.dumps(flags))
             log = tmp/'calls'
@@ -58,11 +58,9 @@ class Dispatch(unittest.TestCase):
 
 class Validation(unittest.TestCase):
     FULL = {'selection': 'full', 'rust-tests': 'all', 'web-tests': 'all', 'web-files': 'all',
-            'skill-tests': 'all', 'build-web': 'true', 'lint-rust': 'true', 'export-rust': 'true',
-            'export-web': 'true', 'build-site': 'true', 'image-skills': 'true'}
+            'skill-tests': 'all', 'lint-rust': 'true', 'build-site': 'true', 'image-skills': 'true'}
     DOCS = {'selection': 'selected', 'rust-tests': 'rust:test:checks', 'web-tests': 'none', 'web-files': 'none',
-            'skill-tests': 'none', 'build-web': 'false', 'lint-rust': 'false', 'export-rust': 'false',
-            'export-web': 'false', 'build-site': 'false', 'image-skills': 'false'}
+            'skill-tests': 'none', 'lint-rust': 'false', 'build-site': 'false', 'image-skills': 'false'}
 
     def validate(self, text, code=0):
         action = (ROOT / '.github/actions/docs-only/action.yml').read_text()
@@ -96,12 +94,11 @@ sys.exit(subprocess.call([sys.executable, *sys.argv[1:]]))
         valid = ''.join(f'{k}={v}\n' for k, v in self.DOCS.items())
         self.assertEqual(self.validate(valid), self.DOCS)
         self.assertEqual(self.validate(valid, code=1), self.FULL)
-        for text in (None, '', valid.replace('skill-tests=none\n', ''), valid + 'build-web=false\n',
+        for text in (None, '', valid.replace('skill-tests=none\n', ''), valid + 'lint-rust=false\n',
                      valid.replace('lint-rust=false', 'lint-rust=FALSE'),
                      valid.replace('skill-tests=none', 'skill-tests=unknown'),
                      valid.replace('rust-tests=rust:test:checks', 'rust-tests=garbage'),
                      valid.replace('selection=selected', 'selection=full'), valid + 'unknown=false\n',
-                     valid.replace('export-rust=false', 'export-rust=true'),
                      valid.replace('skill-tests=none', 'skill-tests=image'),
                      valid.replace('web-tests=none', 'web-tests=web:unit:api')):
             with self.subTest(text=text):
@@ -110,7 +107,7 @@ sys.exit(subprocess.call([sys.executable, *sys.argv[1:]]))
 
 
 class Workflow(unittest.TestCase):
-    def scheduled(self, output, export_result='success'):
+    def scheduled(self, output):
         source=(ROOT/'.github/workflows/ci.yml').read_text().split('jobs:\n',1)[1]
         blocks=re.findall(r'^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)',source,re.M|re.S)
         ran=set()
@@ -118,23 +115,20 @@ class Workflow(unittest.TestCase):
             if name in ('changes','select-map','ci','web-test','main-light'): continue
             expression=re.search(r'^    if: \$\{\{ (.*) \}\}$',block,re.M)[1]
             expression=re.sub(r'needs\.changes\.outputs\.([a-z-]+)',lambda m:repr(output.get(m[1],'')),expression)
-            expression=expression.replace('needs.changes.result',repr('success')).replace('needs.web-build.result',repr(export_result))
+            expression=expression.replace('needs.changes.result',repr('success'))
             expression=expression.replace('github.event_name', repr('schedule')).replace('!cancelled()','True').replace('&&',' and ').replace('||',' or ')
             if eval(expression,{'__builtins__':{}},{'contains':lambda a,b:b in a}): ran.add(name)
         return ran
 
-    def test_skill_only_full_conditional_export_and_missing_answers(self):
-        full=dict.fromkeys(('rust','web','site','release','build-web','export-rust','export-web'),'true')
+    def test_skill_only_full_and_missing_answers(self):
+        full=dict.fromkeys(('rust','release'),'true')
         full['skills']='["triage","launch-fleet"]'
         full['skill-jobs']='["triage"]'
-        self.assertEqual(self.scheduled(full),{'always','web-build','rust-export','web-export','site','release','skills','launch-fleet'})
-        direct=dict(full,**{'export-rust':'false','export-web':'false'})
-        self.assertEqual(self.scheduled(direct),{'always','web-build','rust','web','site','release','skills','launch-fleet'})
+        self.assertEqual(self.scheduled(full),{'always','rust','release','skills','launch-fleet'})
         # #743: launch-fleet alone starts only its own sharded job, never an empty skills matrix.
         self.assertEqual(self.scheduled({'skills':'["launch-fleet"]','skill-jobs':'[]'}),{'always','launch-fleet'})
         self.assertEqual(self.scheduled({'skills':'["triage"]','skill-jobs':'["triage"]'}),{'always','skills'})
         self.assertEqual(self.scheduled({}),{'always'})
-        self.assertEqual(self.scheduled(full,'failure'),{'always','web-build','site','release','skills','launch-fleet'})
         # A missing answer does not certify skipped work: final-job fixture
         # tests require each plan-named job and every matrix receipt.
 

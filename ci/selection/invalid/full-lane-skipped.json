@@ -61,13 +61,8 @@
       "reason": "no changed path reaches it"
     },
     "site": {
-      "decision": "run",
-      "tests": [
-        "site:build",
-        "site:test",
-        "release:package"
-      ],
-      "skipped": []
+      "decision": "skip",
+      "reason": "no changed path reaches it"
     },
     "skills": [
       {
