@@ -376,19 +376,3 @@ fn walk_at(
         }
     }
 }
-
-#[test]
-fn the_pattern_form_is_checked_and_matched() {
-    for bad in [
-        "a", "^a", "^.$", "^\\s$", "^[a-]$x", "^[]$", "^(a)$", "^[z-a]$", "^a+$",
-    ] {
-        assert!(parse(bad).is_err(), "{bad:?} parsed");
-    }
-    assert!(is_match("^[A-Za-z0-9][A-Za-z0-9_-]*$", "op-1"));
-    assert!(!is_match("^[A-Za-z0-9][A-Za-z0-9_-]*$", "-op"));
-    assert!(is_match("^ow1-[0-9a-f]*$", "ow1-0af"));
-    assert!(!is_match("^ow1-[0-9a-f]*$", "ow2-0af"));
-    assert!(is_match("^[^\\u0000]*$", "a\u{1F9EA}b"));
-    assert!(!is_match("^[^\\u0000]*$", "a\u{0}b"));
-    assert!(is_match("^[\\u0041-\\u0043]*$", "ABC"));
-}

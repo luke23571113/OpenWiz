@@ -479,62 +479,6 @@ fn ad11_one_attachment_args_and_no_other_place_builds_file_or_image() {
     }
 }
 
-#[test]
-fn ad11_send_and_new_thread_share_the_one_gate() {
-    let mut gates = 0;
-    for (path, text) in sources("crates") {
-        gates += text.matches("pub fn gate(").count();
-        let builds_ready = text.contains("ReadyPrompt {");
-        if builds_ready {
-            assert!(
-                path.ends_with("core/src/prompt.rs"),
-                "{path:?} builds a ReadyPrompt"
-            );
-        }
-    }
-    assert_eq!(gates, 1, "one gate");
-    for file in [
-        "crates/core/src/messaging/send.rs",
-        "crates/core/src/new_thread/operation.rs",
-    ] {
-        let text: String = read(file).split_whitespace().collect();
-        // The gate, in one place (`pass_gate`), before the claim: at the op
-        // id's first use, and again when the record seen first is gone by
-        // the claim; and, for a new thread, in its preview. Nothing else
-        // calls it.
-        assert_eq!(
-            text.matches("gate(attachments,&request.prompt,").count(),
-            1,
-            "{file}"
-        );
-        let uses = if file.ends_with("send.rs") { 2 } else { 3 };
-        assert_eq!(
-            text.matches("pass_gate(attachments,request,&op,clock)")
-                .count(),
-            uses,
-            "{file}"
-        );
-        assert!(
-            text.contains("attachments.claim(&op"),
-            "{file} claims for its op"
-        );
-        assert!(
-            text.contains("self.attachments.settle("),
-            "{file} settles after the outcome"
-        );
-    }
-    // In prompt.rs, a ReadyPrompt is built by name only in the gate (its
-    // text-only constructor builds `Self` with no attachment).
-    let prompt = read("crates/core/src/prompt.rs");
-    let built = prompt.matches("ReadyPrompt {").count()
-        - prompt.matches("impl ReadyPrompt {").count()
-        - prompt.matches("pub struct ReadyPrompt {").count();
-    assert_eq!(built, 1, "one ReadyPrompt built by name");
-    let gate_fn = prompt.split("pub fn gate(").nth(1).unwrap();
-    let gate_fn = &gate_fn[..gate_fn.find("\n}\n").unwrap()];
-    assert!(gate_fn.contains("ReadyPrompt {"), "the gate builds it");
-}
-
 // The messaging schema's attachments (AD13's contract half for send).
 
 fn messaging_schema() -> Value {

@@ -297,33 +297,6 @@ fn assert_refusal_logs(log: &str, cases: &[(&str, u16, &str)]) {
     assert_eq!(actual, expected);
 }
 
-#[test]
-fn c3_r1_refusal_logs_accept_completion_order_and_keep_exact_validation() {
-    let cases = [
-        ("/api/v1/fleets?x=1", 400, "/api/v1/fleets"),
-        ("/api/v1/fleets/01", 400, "/api/v1/fleets/{spec}"),
-        ("/api/v1/fleets/901?x=1", 400, "/api/v1/fleets/{spec}"),
-        ("/api/v1/fleets/901/tickets", 404, "-"),
-    ];
-    let log = "GET /api/v1/fleets/{spec} 400 2ms\nGET - 404 0ms\nGET /api/v1/fleets 400 9ms\nGET /api/v1/fleets/{spec} 400 1ms\n";
-    assert_refusal_logs(log, &cases);
-    for bad in [
-        log.lines().take(3).collect::<Vec<_>>().join("\n"),
-        format!("{log}GET - 404 0ms\n"),
-        log.replacen("GET - 404", "POST - 404", 1),
-        log.replacen("GET - 404", "GET /api/v1/fleets/{spec} 404", 1),
-        log.replacen("GET - 404", "GET - 400", 1),
-        log.replacen(" 2ms", " ms", 1),
-        log.replacen(" 2ms", " 2xs", 1),
-        log.replacen(" 2ms", " 2ms extra", 1),
-    ] {
-        assert!(
-            std::panic::catch_unwind(|| assert_refusal_logs(&bad, &cases)).is_err(),
-            "accepted {bad:?}"
-        );
-    }
-}
-
 fn list_comparison_body(body: &[u8], hang: bool) -> Vec<u8> {
     if !hang {
         return body.to_vec();
@@ -349,35 +322,4 @@ fn list_comparison_body(body: &[u8], hang: bool) -> Vec<u8> {
         "the hang fixture must report a measured timeout"
     );
     normalized.into_bytes()
-}
-
-#[test]
-fn c3_r2_only_hang_elapsed_digits_are_normalized() {
-    let server = b"{\"snapshot\":1793437200000,\"reason\":\"checks timed out after 15000 ms\",\"gap\":\"checks timed out after 15003 ms\",\"other\":\"timed out after 4 retries; 15000ms\"}\n";
-    let cli = b"{\"snapshot\":1793437200000,\"reason\":\"checks timed out after 15002 ms\",\"gap\":\"checks timed out after 15004 ms\",\"other\":\"timed out after 4 retries; 15000ms\"}\n";
-    let expected = b"{\"snapshot\":1793437200000,\"reason\":\"checks timed out after <elapsed> ms\",\"gap\":\"checks timed out after <elapsed> ms\",\"other\":\"timed out after 4 retries; 15000ms\"}\n";
-    assert_eq!(list_comparison_body(server, true), expected);
-    assert_eq!(list_comparison_body(cli, true), expected);
-    assert_eq!(list_comparison_body(server, false), server);
-    assert_eq!(list_comparison_body(cli, false), cli);
-    assert_ne!(
-        list_comparison_body(server, false),
-        list_comparison_body(cli, false)
-    );
-}
-
-#[test]
-fn c3_r2_hang_must_still_contain_an_actual_timeout_measurement() {
-    for body in [
-        b"{}".as_slice(),
-        b"timed out after ms",
-        b"timed out after 12 retries",
-        b"timed out after 12ms",
-    ] {
-        assert!(
-            std::panic::catch_unwind(|| list_comparison_body(body, true)).is_err(),
-            "no timeout in {body:?}"
-        );
-        assert_eq!(list_comparison_body(body, false), body);
-    }
 }

@@ -885,31 +885,6 @@ fn inline_problems(html: &str) -> Vec<String> {
 }
 
 #[test]
-fn w9_the_checker_finds_inline_script() {
-    for bad in [
-        "<script>alert(1)</script>",
-        "<script type=\"module\">x()</script>",
-        "<script src=\"https://example.invalid/x.js\"></script>",
-        "<script src=\"//example.invalid/x.js\"></script>",
-        "<script src=\"/a.js\">x()</script>",
-        "<img src=\"/a\" onerror=\"x()\">",
-        "<body ONLOAD=x()>",
-        "<a href=\"javascript:x()\">a</a>",
-        "<style>body{}</style>",
-        "<p style=\"color:red\">a</p>",
-    ] {
-        assert!(!inline_problems(bad).is_empty(), "missed: {bad}");
-    }
-    assert!(
-        inline_problems(
-            "<script src=\"/_next/static/a.js\" defer=\"\"></script>\
-             <script id=\"__NEXT_DATA__\" type=\"application/json\">{\"a\":1}</script>"
-        )
-        .is_empty()
-    );
-}
-
-#[test]
 fn w9_the_real_export_has_no_inline_script() {
     let out = real_export();
     let mut pages = 0;

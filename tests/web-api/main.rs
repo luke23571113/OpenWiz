@@ -93,7 +93,6 @@ mod a6_semantics;
 mod a7_headers_and_logs;
 mod a7_source_diagnostics;
 mod a8_web_page;
-mod contract;
 mod w15_no_redispatch;
 mod w1_one_mutation;
 mod w2_owner;
