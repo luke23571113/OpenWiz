@@ -79,6 +79,7 @@
     "ci/select/**",
     "ci/selection/**",
     "docs/cleanup/wave1-contracts.md",
+    "docs/cleanup/docs-table.md",
     "docs/cli-parts/**",
     "docs/decisions/public-offer.md",
     "docs/live-checks/**",
