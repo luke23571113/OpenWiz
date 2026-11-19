@@ -87,6 +87,11 @@ def stall_list(doc):
     stalls, unknown, starts, history = [], [], [], True
     for row in fact["value"]["tickets"]:
         progress = row["progress"]
+        require(row["state"] in ("open", "closed", "merged", "unknown"), "invalid state")
+        require((progress["ci_pending"] is None or type(progress["ci_pending"]) is bool)
+                and type(progress["complete"]) is bool,
+                "invalid progress flags")
+        require(progress.get("last_record") is None or isinstance(progress["last_record"], str), "invalid record")
         claimed, merged = maybe(row["claimed_at"]), maybe(row["merged_at"])
         if claimed is None or (merged is not None and merged < day):
             continue  # never started, or finished before the day

@@ -55,11 +55,19 @@ python3 -I tools/stall-alarm/stalls.py --input snapshot.json
   that day has an unknown history.
 - An unavailable or absent flow fact gives null `stalls`, `unknown` and
   count, never an empty list or zero.
+- **Known gap:** a claimed ticket with no linked PR yet has no complete
+  progress history (its branch is found only through the PR), so it is listed
+  under `unknown` and the day's count is null, never a stall-free ticket.
+- The war room (FM5, #1173) runs this script over the snapshot it already
+  reads; the snapshot holds no stall fact of its own.
 
 Fixture proof: `python3 -B -I tools/stall-alarm/test.py FlowStalls`, over
 [`fixtures/flow-read.json`](fixtures/flow-read.json) (synthetic). Red runs:
-[`evidence/1171-red-first.log`](evidence/1171-red-first.log) and
-[`evidence/1171-red-unknown.log`](evidence/1171-red-unknown.log).
+[`evidence/1171-red-first.log`](evidence/1171-red-first.log),
+[`evidence/1171-red-unknown.log`](evidence/1171-red-unknown.log),
+[`evidence/1171-red-collector.log`](evidence/1171-red-collector.log) (the
+collector's `last_record` and `gaps`) and
+[`evidence/1171-red-integration.log`](evidence/1171-red-integration.log).
 
 ## What fires
 
