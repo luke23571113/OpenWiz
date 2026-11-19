@@ -181,9 +181,8 @@ class Lanes(unittest.TestCase):
 
     def test_shard_records_must_run_every_unit_once_and_add_up_to_the_total(self):
         # catches (#743): a member that never reported, a unit run twice, or a
-        # record from another plan. #555: launch-fleet's lane is one unit now
-        # (ClosedWiz's inbox check); its counted test.sh runs in WizSkills.
-        unit = 'skill:launch-fleet:tools/review-relay/test_inbox.py'
+        # record from another plan. The launch-fleet lane runs the pinned inbox suite.
+        unit = 'skill:launch-fleet:skills/launch-fleet/scripts/test-inbox.py'
         def member(k, units):
             return {'lane': 'skill:launch-fleet', 'shard': k, 'shards': 3, 'plan_sha256': self.sha,
                     'units': dict.fromkeys(units, 1.0), 'counts': {}}
@@ -195,33 +194,16 @@ class Lanes(unittest.TestCase):
         def missing(r): del r[2]
         def foreign(r): r[0]['plan_sha256'] = '0' * 64
         def dropped(r): r[0]['units'] = {}
-        for name, change, wants in [('twice', twice, ['test_inbox.py: ran 2 times']),
+        for name, change, wants in [('twice', twice, ['test-inbox.py: ran 2 times']),
                                     ('missing member', missing, ['shard 3 of 3 reported 0 times']),
                                     ('foreign plan', foreign, ['another lane or plan']),
-                                    ('dropped unit', dropped, ['test_inbox.py: never ran'])]:
+                                    ('dropped unit', dropped, ['test-inbox.py: never ran'])]:
             with self.subTest(name):
                 records = fleet(); change(records)
                 result = self.check_shards('skill:launch-fleet', records)
                 self.assertEqual(result.returncode, 1, result.stdout)
                 for want in wants:
                     self.assertIn(want, result.stderr)
-        # The release lane's open-tickets parts are units too: a dropped part fails.
-        self.plan['lanes']['site']['tests'] = ['site:build', 'site:test', 'release:package', 'release:open-tickets']
-        raw = json.dumps(self.plan); self.sha = hashlib.sha256(raw.encode()).hexdigest()
-        (self.path / 'ci-selection.json').write_text(raw)
-        (self.path / 'ci-dispatch.json').write_text(json.dumps(dict(self.dispatch, plan_sha256=self.sha)))
-        parts = subprocess.run(['sh', 'tools/open-tickets/test.sh', '--list'], cwd=ROOT,
-                               capture_output=True, text=True, check=True).stdout.split()
-        units = ['release:package', *('release:open-tickets:' + p for p in parts)]
-        for dropped in ([], ['release:open-tickets:carriage']):
-            with self.subTest(dropped=dropped):
-                ran = [u for u in units if u not in dropped]
-                result = self.check_shards('release', [
-                    {'lane': 'release', 'shard': k, 'shards': 2, 'plan_sha256': self.sha,
-                     'units': dict.fromkeys(ran[k - 1::2], 1.0), 'counts': {}} for k in (1, 2)])
-                self.assertEqual(result.returncode, 1 if dropped else 0, result.stderr)
-                if dropped:
-                    self.assertIn('release:open-tickets:carriage: never ran', result.stderr)
 
 
 if __name__=='__main__': unittest.main()

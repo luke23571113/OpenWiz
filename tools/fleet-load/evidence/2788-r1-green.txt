@@ -1,7 +1,0 @@
-ok   WZ-PROBE: merged PR checks cannot invalidate identical due lines
-R1 changed-probes GraphQL reads by tick: 4 4 0 4 0 4 0
-ok   WZ-PROBE: changed ticks retain immediate snapshot reuse with identical due lines
-R1 expired-probes GraphQL reads by tick: 4 4 0 4 0
-ok   WZ-PROBE: expired ticks retain immediate snapshot reuse with identical due lines
-ok   every gh call was one of fleet.sh's reads
-3 cases, 0 failed

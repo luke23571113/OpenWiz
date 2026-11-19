@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The release and launch-fleet lanes split across runners (#743).
 
-A lane's units (each release proof command, each open-tickets part, each of
-launch-fleet test.sh's groups and its other suites; `run.py` names them) go
+A lane's units (each release proof command, each of launch-fleet
+test.sh's groups and its other suites; `run.py` names them) go
 to N shards by measured time, with the Rust balancer's rule
 (`ci/shard/shard.py`: longest first, each to the least loaded shard, an
 unmeasured unit counted as the longest). Each member records what it ran;

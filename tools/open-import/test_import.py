@@ -45,12 +45,9 @@ CLASSIFIED_2405 = (
     ('docs/security/public-release-review.md', 'public', 'docs: the public release security review'),
     ('docs/spikes/ops-dispatch.md', 'public', 'docs: the ops dispatch discovery report'),
     ('tools/ci-overload/alarm.py', 'public', 'CS5 queue and API overload guard, not the retiring CI overflow switch'),
-    ('tools/ci2-live/batch-kit.md', 'public', 'C11 offline observation kit and its test'),
-    ('tools/github-reads/read.py', 'public', 'C8 agent GitHub reads code, tests and fixtures'),
     ('tools/live-smoke/restriction.py', 'public', 'live smoke expected-plan restriction code'),
     ('tools/live-smoke/test_restriction.py', 'public', 'its synthetic test'),
     ('tools/notifications/discovery-kit.md', 'public', 'notification discovery kit, schema and tests'),
-    ('tools/ops-live/controls/kit.py', 'public', 'OB8a offline kit controls, tests and synthetic fixtures'),
     ('tools/war-room/suite.py', 'public', 'war room contract, adapters, tests and fixtures'),
 )
 CARRIED = REVIEWED_CARRIAGE + tuple(row[0] for row in CLASSIFIED_2405)
@@ -201,15 +198,12 @@ class Import(unittest.TestCase):
                      # of a listed folder still needs its own review.
                      'tools/new-tool/run.py', 'docs/new-folder/notes.md',
                      'ci/main-batch-next/run.py', 'tools/war-room-next/run.py',
-                     'tools/ops-live-extra.md',
                      # #2405 R1: an unclassified file inside a folder whose
                      # classified paths are listed still refuses.
                      'ci/main-batch/unclassified.py', 'docs/evidence/unclassified.bin',
                      'docs/security/unclassified.md', 'docs/spikes/unclassified.md',
-                     'tools/ci-overload/unclassified.py', 'tools/ci2-live/unclassified.md',
-                     'tools/github-reads/unclassified.py',
+                     'tools/ci-overload/unclassified.py',
                      'tools/notifications/unclassified.py',
-                     'tools/ops-live/controls/unclassified.py',
                      'tools/war-room/unclassified.py'):
             with self.subTest(path=name):
                 base = self.head

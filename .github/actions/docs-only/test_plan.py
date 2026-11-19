@@ -52,9 +52,8 @@ class Plans(unittest.TestCase):
             'ci/hosted/guard.sh': '# synthetic guard\n',
             **{p: '# synthetic existing input\n' for p in ('docs/github-app.md', 'docs/ROADMAP.md',
                 'tools/roadmap/generate.py', 'tools/privacy-check/check.py',
-                'tools/war-room/report.py', 'loops/synthetic.json', 'tools/open-tickets/test.sh',
-                'tools/ops-live/controls/kit.py', 'tools/ci-overload/alarm.py',
-                'tools/ops-live/acceptance.py')},
+                'tools/war-room/report.py', 'loops/synthetic.json',
+                'tools/ci-overload/alarm.py')},
             '.github/actions/docs-only/classify.sh': (HERE / 'classify.sh').read_text(),
             '.github/actions/docs-only/ci-reads.txt': 'private/synthetic.md\n',
         }
@@ -190,8 +189,7 @@ class Plans(unittest.TestCase):
         # Existing modified inputs are not map-owned; the release suites,
         # rather than the Rust map, own this observable dependency contract.
         for path in ('docs/github-app.md', 'docs/ROADMAP.md', 'tools/roadmap/generate.py',
-                     'tools/privacy-check/check.py', 'tools/war-room/report.py', 'loops/synthetic.json',
-                     'tools/open-tickets/test.sh'):
+                     'tools/privacy-check/check.py', 'tools/war-room/report.py', 'loops/synthetic.json'):
             with self.subTest(path=path):
                 git(self.root, 'checkout', '-q', '--detach', self.base)
                 self.change(path)
@@ -199,40 +197,9 @@ class Plans(unittest.TestCase):
                 self.assertEqual(record['selection'], {'mode': 'selected'})
                 self.assertEqual(record['diff']['paths'], [path])
                 self.assertTrue(dispatch['release'], path)
-                self.assertIn('release:open-tickets',record['lanes']['site']['tests'])
                 self.assertIn('release:security-baseline',record['lanes']['site']['tests'])
                 self.assertIn('release:ci2-batch-contract',record['lanes']['site']['tests'])
                 self.assertTrue(set(self.plan.RELEASE) <= set(record['lanes']['site']['tests']))
-
-    def test_ops_live_controls_is_in_full_and_affected_plans(self):
-        path = 'tools/ops-live/controls/kit.py'
-        for mode in ('full', 'selected'):
-            with self.subTest(mode=mode):
-                if mode == 'full':
-                    record, dispatch = self.run_plan(attempt=2)
-                else:
-                    git(self.root, 'checkout', '-q', '--detach', self.base)
-                    self.change(path)
-                    record, dispatch = self.run_plan()
-                    self.assertEqual(record['diff']['paths'], [path])
-                self.assertEqual(record['selection']['mode'], mode)
-                self.assertTrue(dispatch['release'])
-                self.assertEqual(record['lanes']['site']['tests'].count('release:ops-live-controls'), 1)
-
-    def test_ops_live_acceptance_is_in_full_and_affected_plans(self):
-        path = 'tools/ops-live/acceptance.py'
-        for mode in ('full', 'selected'):
-            with self.subTest(mode=mode):
-                if mode == 'full':
-                    record, dispatch = self.run_plan(attempt=2)
-                else:
-                    git(self.root, 'checkout', '-q', '--detach', self.base)
-                    self.change(path)
-                    record, dispatch = self.run_plan()
-                    self.assertEqual(record['diff']['paths'], [path])
-                self.assertEqual(record['selection']['mode'], mode)
-                self.assertTrue(dispatch['release'])
-                self.assertEqual(record['lanes']['site']['tests'].count('release:ops-live-acceptance'), 1)
 
     def test_ci2_overload_registered_in_full_and_affected_plans(self):
         for mode in ('full', 'selected'):
@@ -245,61 +212,6 @@ class Plans(unittest.TestCase):
                 self.assertEqual(record['selection']['mode'], mode)
                 self.assertTrue(dispatch['release'])
                 self.assertEqual(record['lanes']['site']['tests'].count('release:ci2-overload'), 1)
-
-    def test_ci2_read_contract_is_in_full_and_affected_plans(self):
-        # C1-CI: registration survives selected readers and unknown-path fallback.
-        for mode in ('full', 'affected', 'new-validator'):
-            with self.subTest(mode=mode):
-                git(self.root, 'checkout', '-q', '--detach', self.base)
-                if mode == 'full':
-                    record, dispatch = self.run_plan(attempt=2)
-                elif mode == 'affected':
-                    self.change('docs/github-app.md')
-                    record, dispatch = self.run_plan()
-                    self.assertEqual(record['selection'], {'mode': 'selected'})
-                else:
-                    self.change('tools/github-reads/test_contract.py')
-                    record, dispatch = self.run_plan()
-                    self.assert_full(record, 'unknown_path')
-                    self.assertIn('tools/github-reads/test_contract.py', record['diff']['paths'])
-                self.assertTrue(dispatch['release'])
-                self.assertEqual(record['lanes']['site']['tests'].count('release:ci2-read-contract'), 1)
-
-    def test_ci2_shared_reads_is_in_full_and_affected_plans(self):
-        # C8-CI: the shared read helper's proofs run wherever the read contract runs.
-        for mode in ('full', 'affected', 'helper'):
-            with self.subTest(mode=mode):
-                git(self.root, 'checkout', '-q', '--detach', self.base)
-                if mode == 'full':
-                    record, dispatch = self.run_plan(attempt=2)
-                elif mode == 'affected':
-                    self.change('docs/github-app.md')
-                    record, dispatch = self.run_plan()
-                    self.assertEqual(record['selection'], {'mode': 'selected'})
-                else:
-                    self.change('tools/github-reads/read.py')
-                    record, dispatch = self.run_plan()
-                    self.assert_full(record, 'unknown_path')
-                self.assertTrue(dispatch['release'])
-                self.assertEqual(record['lanes']['site']['tests'].count('release:ci2-shared-reads'), 1)
-
-    def test_ci2_read_consumers_is_in_full_and_affected_plans(self):
-        # C10-CI: the participating readers' routing proofs run wherever the helper's do.
-        for mode in ('full', 'affected', 'consumer'):
-            with self.subTest(mode=mode):
-                git(self.root, 'checkout', '-q', '--detach', self.base)
-                if mode == 'full':
-                    record, dispatch = self.run_plan(attempt=2)
-                elif mode == 'affected':
-                    self.change('docs/github-app.md')
-                    record, dispatch = self.run_plan()
-                    self.assertEqual(record['selection'], {'mode': 'selected'})
-                else:
-                    self.change('tools/github-reads/test_consumers.py')
-                    record, dispatch = self.run_plan()
-                    self.assert_full(record, 'unknown_path')
-                self.assertTrue(dispatch['release'])
-                self.assertEqual(record['lanes']['site']['tests'].count('release:ci2-read-consumers'), 1)
 
     def use_fixture_planner(self, carried):
         # O16-P-RETIRED (#2429): release:ci2-spending depends on whether the
@@ -339,8 +251,6 @@ class Plans(unittest.TestCase):
                           if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') == 'RELEASE')
         self.assertNotIn('release:ci2-spending', discovered)
         missing_targets = {'release:ci2-overload': 'tools/ci-overload/test.py',
-                           'release:ci2-shared-reads': 'tools/github-reads/test_read.py',
-                           'release:ci2-read-consumers': 'tools/github-reads/test_consumers.py',
                            'release:test': 'tools/release/test.py'}
         for path in missing_targets.values():
             self.assertFalse((self.root / path).exists(), path)

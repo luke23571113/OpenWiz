@@ -190,7 +190,7 @@
         "tests/": "named only as a file pattern for the re-test guard's clash rule (test files); nothing there is read",
         "skills/": "Names the consumer skills folder only to say the bundled loop does not need it at runtime; no folder-wide text load.",
         "private/orchestration/": "names an alternative private routing-state storage folder; the configured JSON state file is used, not every file in this folder",
-        "tools/github-reads/read.py": "the installation read helper fleet.sh runs, not text it reads",
+        "skills/launch-fleet/scripts/carried/read.py": "the installation read helper fleet.sh runs, not text it reads",
         "contracts/github-identity.v1.md": "names the GitHub identity contract as the source of the inlined identity instructions; does not instruct reading it",
         ".github/workflows/": "names the push diff path whose changes use the existing account; no workflow text is read"
       }

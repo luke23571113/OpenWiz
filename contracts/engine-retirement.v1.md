@@ -186,7 +186,7 @@ The rest of `t5_execution.rs` tests repair fixes, which are gone.
 **Keepers:** `tests/web-api/ready_stock.rs`, `tests/notifications/stock.rs` and `apps/web/test/browser/ready-stock.test.mjs` keep the ready stock. `tests/web-api/e11_decisions_*.rs` keep Decisions. Everything else deleted is notification behaviour that is gone.
 
 **Closes as not needed:** #536, #560, #498, #497, #534. #753 is already closed.
-**Stays open:** #190 (`tools/review-relay`, which is not push notifications).
+**Historical follow-up:** #190 concerned the retired review relay (#1150), separate from push notifications.
 
 ## 6. ER2 (#796): retire the service's scheduled fleet tick
 

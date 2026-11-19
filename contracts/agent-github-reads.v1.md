@@ -183,21 +183,13 @@ controlled clock; no live exhaustion or destructive edge case is permitted.
 
 ## Offline proof and later seams
 
-Run `python3 -I tools/github-reads/test_contract.py`. The schema and semantic
-validator consume `fixtures/contract/base.json` plus literal mutation/expected
-outcome cases in `cases.json`. `--check RECORD --current BINDING` checks explicit
-local files only. Exit 0 is synthetic conformance (`fresh` or `display`); exit 1
-is refused/deferred, exit 2 is invalid invocation. No network or credentials
-are used. C8 can import `assess(record, current)` for conformance comparisons,
-while retaining real recording-API and separate-process proofs of its own.
-C9 uses the checklist; C10 uses the request/result/freshness interface; C13
-uses these distinctions to avoid claiming fixtures prove live sharing.
-
-`release:ci2-read-contract` registers the offline validator in existing full
-and affected release plans. The executor must propagate its failure. Red runs
-and claim mapping are under `tools/github-reads/fixtures/contract/`. Independent
-interface review of the exact head remains required. No schema/fixture pass
-verifies the runtime allowlist, credential protection, concurrency or account.
+The checkout validator, its release registration and its synthetic fixtures are
+historical evidence (#1150). The shared reader now lives in WizSkills at
+`skills/launch-fleet/scripts/carried/read.py`. C9 uses the checklist, C10 uses the
+request/result/freshness interface, and C13 uses the same distinctions when
+assessing live sharing. Independent interface review of the exact head remains
+required. Synthetic conformance does not verify runtime permissions, credential
+protection, concurrency or account.
 
 Provider semantics checked against GitHub's primary documentation on 2026-11-10:
 [installation authentication](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation),

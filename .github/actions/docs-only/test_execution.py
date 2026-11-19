@@ -26,7 +26,7 @@ class Execution(unittest.TestCase):
             (tmp/'apps/web/test/unit/api.test.ts').write_text('// synthetic')
             record=json.loads((ROOT/'ci/selection/valid/full-nightly.json').read_text())
             record['lanes']['web']['tests']=['web:unit:api']
-            record['lanes']['site']['tests']=['site:build','site:test','site:ci','release:package','release:install','release:open-tickets']
+            record['lanes']['site']['tests']=['site:build','site:test','site:ci','release:package','release:install']
             if over.get('RELEASE_SMOKE'):
                 record['lanes']['site']['tests']=['site:build','site:test','site:ci','release:test']
             if 'release_tests' in over:
@@ -61,8 +61,6 @@ class Execution(unittest.TestCase):
 import os,sys,subprocess,json
 sys.dont_write_bytecode=True
 line=os.path.basename(sys.argv[0])+' '+' '.join(sys.argv[1:])
-if line=='sh tools/open-tickets/test.sh --list':
-    os.execv('/bin/sh',['/bin/sh',os.path.join(os.environ['REAL_ROOT'],'tools/open-tickets/test.sh'),'--list'])
 with open(os.environ['CALLS'],'a') as f: f.write(line+'\\n')
 if os.environ.get('RELEASE_SMOKE') and 'tools/release/test.py' in sys.argv:
     os.chdir(os.environ['REAL_ROOT'])
@@ -102,21 +100,17 @@ if os.environ.get('FAIL') and os.environ['FAIL'] in line: sys.exit(9)
 
     def test_release_shards_together_run_every_command_once_with_its_build(self):
         # catches (#743): a member split that drops or doubles a release proof
-        # or open-tickets part, or runs the package proof without its build.
-        tests=['release:package','release:install','release:open-tickets','release:test','release:ci-runner']
+        # or runs the package proof without its build.
+        tests=['release:package','release:install','release:test','release:ci-runner']
         code,whole,err=self.execute('release',trace=False,release_tests=tests)
         self.assertEqual(code,0,err)
-        parts=[c for c in whole if c.startswith('sh tools/open-tickets/test.sh')]
-        self.assertEqual(parts,['sh tools/open-tickets/test.sh'])
-        listed=subprocess.run(['sh',str(ROOT/'tools/open-tickets/test.sh'),'--list'],capture_output=True,text=True,check=True).stdout.split()
-        want=sorted([c for c in whole if c not in parts]+['sh tools/open-tickets/test.sh --only '+p for p in listed])
+        want=sorted(whole)
         with tempfile.TemporaryDirectory() as keep:
             ran=[]
             for k in (1,2,3):
                 code,calls,err=self.execute('release',trace=False,release_tests=tests,KEEP_RAN=keep,
                     args=['--shard',f'{k}/3',f'ran-{k}.json'])
                 self.assertEqual(code,0,err)
-                calls=[c for c in calls if not c.endswith('--list')]
                 if any('test_package.py' in c for c in calls):
                     build=calls.index('cargo build --locked --jobs 2 -p openwiz-cli -p openwiz-service --bins')
                     self.assertEqual(calls[build+1],'python3 -I tools/release/test_package.py')
@@ -189,8 +183,7 @@ if os.environ.get('FAIL') and os.environ['FAIL'] in line: sys.exit(9)
     def test_selected_suite_failure_is_never_swallowed(self):
         for kind,fail in [('rust','ci/rust-tests.sh --only'),('web','npm test'),
                           ('site','npm test'),('release','tools/release/test_package.py'),
-                          ('release','cargo build'),
-                          ('release','tools/open-tickets/test.sh')]:
+                          ('release','cargo build')]:
             good,successful,err=self.execute(kind,trace=False)
             self.assertEqual(good,0,(successful,err))
             code,calls,err=self.execute(kind,trace=False,FAIL=fail)
@@ -230,61 +223,6 @@ if os.environ.get('FAIL') and os.environ['FAIL'] in line: sys.exit(9)
                 self.assertEqual(calls, expected[:count])
                 self.assertEqual(code, 1 if failure else 0, err)
                 if failure:
-                    self.assertIn('exit status 9', err)
-
-    def test_ops_live_controls_runs_the_exact_proof_and_propagates_failure(self):
-        command = 'python3 -I tools/ops-live/controls/test_kit.py'
-        for fail in ('', 'tools/ops-live/controls/test_kit.py'):
-            with self.subTest(fail=bool(fail)):
-                code,calls,err=self.execute('release',trace=False,
-                    release_tests=['release:ops-live-controls'],FAIL=fail)
-                self.assertEqual(calls,[command])
-                self.assertEqual(code,1 if fail else 0,err)
-                if fail:
-                    self.assertIn('exit status 9',err)
-
-    def test_ops_live_acceptance_runs_the_exact_proof_and_propagates_failure(self):
-        command = 'python3 -I tools/ops-live/test_acceptance.py'
-        for fail in ('', 'tools/ops-live/test_acceptance.py'):
-            with self.subTest(fail=bool(fail)):
-                code,calls,err=self.execute('release',trace=False,
-                    release_tests=['release:ops-live-acceptance'],FAIL=fail)
-                self.assertEqual(calls,[command])
-                self.assertEqual(code,1 if fail else 0,err)
-                if fail:
-                    self.assertIn('exit status 9',err)
-
-    def test_ci2_read_contract_executes_and_propagates_failure(self):
-        # C1-CI: a green plan cannot hide a missing or failed validator.
-        for fail in ('', 'tools/github-reads/test_contract.py'):
-            with self.subTest(fail=bool(fail)):
-                code, calls, err = self.execute('release', trace=False,
-                    release_tests=['release:ci2-read-contract'], FAIL=fail)
-                self.assertEqual(calls, ['python3 -I tools/github-reads/test_contract.py'])
-                self.assertEqual(code, 1 if fail else 0, err)
-                if fail:
-                    self.assertIn('exit status 9', err)
-
-    def test_ci2_shared_reads_executes_and_propagates_failure(self):
-        # C8-CI: a green plan cannot hide a missing or failed shared-read proof.
-        for fail in ('', 'tools/github-reads/test_read.py'):
-            with self.subTest(fail=bool(fail)):
-                code, calls, err = self.execute('release', trace=False,
-                    release_tests=['release:ci2-shared-reads'], FAIL=fail)
-                self.assertEqual(calls, ['python3 -I tools/github-reads/test_read.py'])
-                self.assertEqual(code, 1 if fail else 0, err)
-                if fail:
-                    self.assertIn('exit status 9', err)
-
-    def test_ci2_read_consumers_executes_and_propagates_failure(self):
-        # C10-CI: a green plan cannot hide a missing or failed consumer proof.
-        for fail in ('', 'tools/github-reads/test_consumers.py'):
-            with self.subTest(fail=bool(fail)):
-                code, calls, err = self.execute('release', trace=False,
-                    release_tests=['release:ci2-read-consumers'], FAIL=fail)
-                self.assertEqual(calls, ['python3 -I tools/github-reads/test_consumers.py'])
-                self.assertEqual(code, 1 if fail else 0, err)
-                if fail:
                     self.assertIn('exit status 9', err)
 
     def test_ci2_spending_runs_and_propagates_failure(self):

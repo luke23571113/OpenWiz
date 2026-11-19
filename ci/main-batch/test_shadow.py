@@ -571,12 +571,5 @@ console.log(JSON.stringify(cases.map(c=>expressions.map(e=>Boolean(runInNewConte
         self.assertEqual(json.loads(result.stdout),expected)
 
 
-def load_tests(loader, tests, pattern):
-    spec = importlib.util.spec_from_file_location('batch_kit', ROOT/'tools/ci2-live/test_batch_kit.py')
-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-    tests.addTests(loader.loadTestsFromModule(module))
-    return tests
-
-
 if __name__ == '__main__':
     unittest.main()

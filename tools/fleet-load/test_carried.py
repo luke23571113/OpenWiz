@@ -3,9 +3,9 @@
 
 python3 -I tools/fleet-load/test_carried.py
 
-The skill carries copies (scripts/carried/, scripts/github-app/ and one fixture)
-so it stands alone in WizSkills; ClosedWiz keeps the sources under tools/.
-Any difference fails, naming the copy. Missing is failure.
+The skill carries shared sources from tools/ and owns its GitHub reader.
+Shared copies must match, except for the mint script's docstring during the
+reader migration. Missing copies and unlisted files fail by name.
 """
 from pathlib import Path
 import sys
@@ -14,11 +14,10 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 CARRIED = 'skills/launch-fleet/scripts/carried/'
-# The exact list: copy -> source. A file appearing in carried/ but not here fails too.
+# Shared copies: copy -> OpenWiz source. The reader is maintained in WizSkills.
 PAIRS = {
     'alarm.py': 'tools/ci-overload/alarm.py',
     'healthy.json': 'tools/ci-overload/fixtures/healthy.json',
-    'read.py': 'tools/github-reads/read.py',
     'limits.py': 'tools/collector/limits.py',
     'limits.conf': 'tools/collector/limits.conf',
     # read.py finds these through its own parents[1]: scripts/github-app/ beside carried/.
@@ -30,19 +29,32 @@ PAIRS = {
 }
 
 
-def drift(root, pairs=PAIRS):
+def drift(root, pairs=PAIRS, skill_owned=()):
     """Each copy (repository-relative) that is missing, unreadable, different or unlisted."""
     found = []
     for copy, source in pairs.items():
         copy_path = (root / CARRIED / copy).resolve()
         name = str(copy_path.relative_to(root.resolve()))
         try:
-            same = copy_path.read_bytes() == (root / source).read_bytes()
+            carried, original = copy_path.read_bytes(), (root / source).read_bytes()
+            if source == 'tools/github-app/mint-token.py':
+                # WizSkills retains the old reader path in the module docstring.
+                # Compare everything before and after it byte for byte.
+                carried_parts = carried.split(b'"""', 2)
+                original_parts = original.split(b'"""', 2)
+                if len(carried_parts) == len(original_parts) == 3:
+                    carried_parts[1] = original_parts[1]
+                    carried = b'"""'.join(carried_parts)
+            same = carried == original
         except OSError:
             same = False
         if not same:
             found.append(name)
-    listed = {(root / CARRIED / copy).resolve() for copy in pairs}
+    listed = {(root / CARRIED / copy).resolve() for copy in (*pairs, *skill_owned)}
+    for name in skill_owned:
+        path = root / CARRIED / name
+        if not path.is_file():
+            found.append(CARRIED + name)
     # Every folder holding only carried copies: anything else in it is unlisted.
     folders = {path.parent for path in listed if path.parent.name in ('carried', 'github-app')}
     for folder in sorted(folders):
@@ -54,7 +66,7 @@ def drift(root, pairs=PAIRS):
 
 class Carried(unittest.TestCase):
     def test_every_carried_copy_matches_its_source(self):
-        self.assertEqual(drift(ROOT), [])
+        self.assertEqual(drift(ROOT, skill_owned=('read.py',)), [])
 
     def test_a_changed_missing_or_unlisted_copy_is_named(self):
         with tempfile.TemporaryDirectory() as name:

@@ -62,8 +62,7 @@ class MeasurementIdentityProof(unittest.TestCase):
     def test_changed_response_or_revision_model_cannot_compare_silently(self):
         with tempfile.TemporaryDirectory(prefix='scale-model-') as directory:
             root = Path(directory)
-            for source in [HERE, ROOT / 'tools/scale-50']:
-                shutil.copytree(source, root / source.relative_to(ROOT))
+            shutil.copytree(HERE, root / HERE.relative_to(ROOT))
             for relative in ['docs/agents/fleet.md', 'skills/launch-fleet/scripts/fixtures/check.json',
                              'skills/launch-fleet/scripts/fixtures/gh.py', 'skills/launch-fleet/scripts/fixtures/revision.sh',
                              'skills/launch-fleet/scripts/fleet.sh', 'tests/fleet/b5_fake.rs',
@@ -88,7 +87,7 @@ class MeasurementIdentityProof(unittest.TestCase):
                     self.assertNotEqual(before, after, 'changed measurement semantics retained the entire identity')
                     # The public comparator must treat this as a model change,
                     # rather than an allowed candidate optimization.
-                    baseline = scale.api.read(root / 'tools/scale-50/fixtures/report-v1.json')
+                    baseline = scale.api.read(root / 'tools/fleet-load/scale-50/fixtures/report-v1.json')
                     candidate = copy.deepcopy(baseline)
                     baseline['measurement_model'] = before['measurement_model']
                     candidate['measurement_model'] = after['measurement_model']
