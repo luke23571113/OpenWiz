@@ -23,7 +23,7 @@ CI facts. Nothing here is a live observation.
 
 | Word | Meaning here |
 | --- | --- |
-| **Fact** | One named thing the collector gathers, with its read bounds, its own time (a point or a window), its freshness, its source and its value. The registry below names all twelve |
+| **Fact** | One named thing the collector gathers, with its read bounds, its own time (a point or a window), its freshness, its source and its value. The registry below names each one |
 | **Snapshot** | One complete collection: every fact once, saved as one `openwiz.war-room.collector.v1` document. The five-minute collection and the hourly publish use it |
 | **On-demand read** | A fresh read of named facts, now, for one reader: an `openwiz.war-room.collector.read.v1` document. Never served from a saved snapshot |
 | **Carried fact** | A fact whose value is another producer's own validated record, kept unchanged (the same JSON value that producer wrote) (TL2's stage sidecar and bench, the journey document, the CI3 record, WR8's current CI observation). The collector adds the read, time and freshness around it; it never recomputes the record |
@@ -39,10 +39,11 @@ CI facts. Nothing here is a live observation.
 - `collected_at` is the collection's end: at or after every fact's
   `read.ended_at`. It is the collection's identity, never a fact's time.
 - `factory` holds exactly `merges`, `prs_per_hour`, `stage_waits`, `stalls`,
-  `open_prs`, `journeys` and `cost`; `ci` holds exactly `runs`, `minutes`,
+  `open_prs`, `journeys`, `cost` and `flow`; `ci` holds exactly `runs`, `minutes`,
   `ci3`, `activity` and `queue`. Every fact is present, in a snapshot, even when it could
   not be read: an absent source is an `unavailable` fact with its
-  prerequisite, never a missing key and never zero.
+  prerequisite, never a missing key and never zero. A snapshot written before
+  FM2 may omit `flow`. Readers treat that omission as unavailable.
 - A failed fact greys only itself; the others are kept. A privacy hit in any
   read refuses the whole collection, as gather does today (WR10).
 
@@ -90,6 +91,7 @@ for its own facts (the schema checks only the shape):
 | factory | `open_prs` | point | Open PRs now: head, draft, base, mergeable, required-check results at the head, the latest verdict and the latest fleet record | stall alarm |
 | factory | `journeys` | window | The merged cohort's journey document, carried, with its outcome sidecar | ci-bench trends, war room rework, cost and review loops |
 | factory | `cost` | window | One UTC day's Actions billing and CloudRoom usage, by provider and unit | factory-metrics |
+| factory | `flow` | point | Ticket and spec cost, time, review rounds, stalls and ticket progress | FM3 stall alarm, FM4 cost line, FM5 war room |
 | ci | `runs` | window | `ci.yml`'s completed runs (latest attempt): runs, jobs, successful code runs and their queued-to-done latency | ci-bench, war room `ci_bench` slot |
 | ci | `minutes` | window | Runner minutes and billed minutes by runner kind, and the list-rate estimate with its prices | ci-bench, war room cost |
 | ci | `ci3` | window | The CI3 measure: [`contracts/ci3.v1.md`](../../contracts/ci3.v1.md)'s record, carried | ci-bench `ci3.py`, `docs/ci3.md` |
@@ -160,6 +162,77 @@ for its own facts (the schema checks only the shape):
   are null. Units are never added to each other or converted. A total or a
   per-merge ratio is a reader's arithmetic over known components, with
   `merges`; any null component leaves it unknown.
+
+### Ticket and spec facts (FM2)
+
+Spec #1165 revision 1 adds the `flow` fact. Its value has `tickets` and
+`specs` arrays, ordered by issue number. Each ticket row has its `ticket`
+number, its parent `spec` or null, `pull_requests` (same-repository closing
+PR numbers), and `state` (`open`, `closed`, `merged` or `unknown`). A failed
+link read leaves the PR list empty and state unknown. Each spec row has its
+`spec` number, its full `tickets` membership or null, and its `created_at` and
+`last_merge_at` times.
+
+Run `collect_factory.py read --repo OWNER/NAME --fact flow` on demand.
+`--ticket N` selects just that issue and its linked PRs. `--spec N` selects the
+spec and every current same-repository sub-issue, even when some have no
+merge. Both options can be repeated and combined. Without either option,
+the merge window selects the tickets and the collector expands their parent
+specs to full membership. The window selects the default cohort. The
+measurements use the full recorded ticket lifetime through the earlier of
+its completion or the read's opening point. An unknown or cross-repository
+spec membership makes the aggregate unknown. A measured total never silently
+drops an unmeasured member.
+
+| Field | Source and unit | Unknown form |
+| --- | --- | --- |
+| `cost.builder`, `cost.reviewer` | Role-attributed CloudRoom daily export totals in `credits` and `tokens`, from claim day through merge, closure or observation day, inclusive | Null per unit for an absent assignment, date, thread row or reported unit |
+| `cost.total` | Builder plus reviewer in each unit. Runner minutes remain a separate unit in the cost record | Null when either same-unit part is null |
+| `cost.ci_minutes` | Sum of job start-to-completion seconds divided by 60 for `ci.yml` and `privacy.yml` PR runs, including reruns. A job relisted on a later attempt belongs to its original attempt. Explicit skipped or cancelled jobs with no steps and no runner consumed no runner time. Runs link to the PR by GitHub's association or, when the association is empty, the same repository and branch during the PR lifetime. Recorded queue entries also select merge-group runs with the PR's exact queue ref | Null when a workflow history, job duration or ownership cannot be established. Shared PRs have no ticket-level CI allocation |
+| `claimed_at`, `merged_at`, `elapsed_seconds` | Earliest surviving factory builder claim or confirmed-start comment's creation to the last linked GitHub merge | Null for an absent or unusable endpoint or duration |
+| `stages_seconds.waiting_to_start` | First GitHub `ready-for-agent` label event to claim | Null without both endpoints |
+| `stages_seconds.building`, `stages_seconds.in_review` | One linked PR with a matched review sequence. Building is from claim or the preceding verdict to the next head-matched review request. In review is from recorded start or re-check confirmation to its verdict. Review admission time and time from final approval to queue entry may fall outside those stages | Null when the review sequence cannot be paired through approval of the current head |
+| `stages_seconds.in_queue` | Head-matched `merge queued` after approval through GitHub merge | Null without both endpoints |
+| `review_rounds` | Surviving independent factory verdicts at their creation time, including re-checks, deduplicated per PR by verdict, reviewed head and body. An edited comment counts when the complete GitHub edit history confirms the verdict line and independent-review marker stayed the same | Null if a PR or recorded review cannot be established. Changed or unreadable verdict history also leaves building, review and queue durations that depend on it null |
+| `stall_count` | Number of distinct gaps of at least 30 minutes between successive progress events, bounded by verified claim and merge, with the progress coverage below. Claim and merge are endpoints. FM3 uses the progress fields to supply the active stall list, causes and daily count | Null when the interval or any required progress history is unavailable |
+| `span_seconds` (spec) | Spec issue creation to the last member merge | Null without complete membership and a merge for each member |
+
+The spec sums the ticket elapsed and stage seconds, role units and stall
+counts. Ticket-seconds can overlap when tickets run in parallel. The spec
+counts each associated PR's runners and review rounds once, even when that
+PR closes two members. A PR shared outside the spec makes those spec totals
+unknown. Missing units remain null independently of other numbers.
+
+Each ticket also has a `progress` object. `commit_at` comes from GitHub
+branch-tip activity, or an unedited first-successful-push receipt from a
+factory author when that is the only observation. `record_at` comes from
+the factory's ticket and PR records and includes observed edits.
+`ci_result_at` is the latest observed completion of an associated workflow
+attempt. `verdict_at` is the latest observed independent verdict at its
+creation time and is null when verdict edit history is uncertain.
+`last_observed_at` is the latest verified progress, including observed issue
+creation, claim or merge. It remains a lower bound when coverage is incomplete.
+Each timestamp is null when unreadable.
+`ci_pending` is true when either workflow has an observed pending attempt,
+false when both were observed and neither is pending, and null when that
+cannot be established. `complete` means the ticket and PR comment pages,
+branch-tip chains and associated workflow attempt histories were readable.
+Edited factory PR comments also need complete GitHub edit history so an
+edited or removed verdict cannot silently shorten that history. If the
+history is incomplete, the PR's review evidence and dependent stall count
+are unknown. The collector retains no comment revisions.
+GitHub's surviving records cannot recover deleted comments. A receipt can
+establish an observed push without establishing complete push history.
+
+To include role usage, pass `--flow-threads FILE` and one or more
+`--flow-usage FILE` arguments, or pass `flow_threads` and `flow_usage` to
+`collect_factory.read`. Use the existing complete daily usage export format
+for each day. The private assignment manifest is an object with a
+`repository` and a `tickets` map keyed by decimal issue number. Each entry
+contains `builder` and `reviewer` arrays of the usage export's thread keys.
+Each key may belong to one ticket and role. Manifest coverage must be
+complete for the roles it reports. The collector retains only role totals.
+It retains no thread keys, input paths, comment bodies or usage export rows.
 
 ### CI values
 
@@ -409,4 +482,6 @@ to either tool") cannot pass until each has an owner:
 A change that moves a fact's meaning, unit, time basis or a reader's bound is
 a new version, `collector.v2`, in a new file. Adding a fact or a field is a
 new version too: the schema's objects are closed. Wording that changes no
-fact keeps the version.
+fact keeps the version. The approved FM2 extension adds an optional v1
+snapshot property so saved v1 snapshots remain readable. New collections
+always include a `flow` fact, including an unavailable result when needed.

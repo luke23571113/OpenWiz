@@ -1,0 +1,24 @@
+F.
+======================================================================
+FAIL: test_merged_ticket_and_whole_spec (__main__.FlowFacts.test_merged_ticket_and_whole_spec)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 284, in test_merged_ticket_and_whole_spec
+    self.assertEqual((ticket['elapsed_seconds'], ticket['review_rounds'], ticket['stall_count']), (9000, 1, 2))
+AssertionError: Tuples differ: (9000, 1, None) != (9000, 1, 2)
+
+First differing element 2:
+None
+2
+
+- (9000, 1, None)
+?           ^^^^
+
++ (9000, 1, 2)
+?           ^
+
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.599s
+
+FAILED (failures=1)

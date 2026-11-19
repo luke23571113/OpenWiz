@@ -38,7 +38,7 @@ SCRIPT = HERE / 'collect_factory.py'
 DAILY_REPO, OPEN_REPO = 'example/factory', 'synthetic-owner/synthetic-repo'
 DAY = ('2030-01-02T00:00:00Z', '2030-01-03T00:00:00Z')
 C_LIMITS = 'tools/collector/limits.conf'  # TL1's settings file, which collect_factory reads
-FACTS = ['merges', 'prs_per_hour', 'stage_waits', 'stalls', 'open_prs', 'journeys', 'cost']
+FACTS = ['merges', 'prs_per_hour', 'stage_waits', 'stalls', 'open_prs', 'journeys', 'cost', 'flow']
 
 
 def load(name, path):
@@ -260,6 +260,141 @@ class CarriedJourneys(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+def add_comment_history(world, node, created, updated, edited, original, current):
+    query = ('query($id:ID!){node(id:$id){...on IssueComment{id createdAt updatedAt '
+             'userContentEdits(first:100){totalCount pageInfo{hasNextPage} '
+             'nodes{editedAt deletedAt diff}}}}}')
+    key = json.dumps(['api', 'graphql', '-f', f'query={query}', '-f', f'id={node}'])
+    history = [{'editedAt': at, 'deletedAt': None, 'diff': body}
+               for at, body in ((edited, current), (created, original))]
+    response = {'data': {'node': {'id': node, 'createdAt': created, 'updatedAt': updated,
+                                  'userContentEdits': {'totalCount': 2, 'pageInfo': {'hasNextPage': False},
+                                                       'nodes': history}}}}
+    world[key] = {'stdout': json.dumps(response)}
+
+
+class FlowFacts(unittest.TestCase):
+    fixture = HERE / 'fixtures' / 'flow'
+    args = ('read', '--repo', DAILY_REPO, '--fact', 'flow', '--spec', '4001',
+            '--now', '2030-01-03T06:00:00Z')
+
+    # catches: missing merge-group jobs, charging rerun jobs twice, using edited times for claims, counting
+    # impostors or duplicate verdicts, and conflating ticket time with spec span.
+    def test_merged_ticket_and_whole_spec(self):
+        p, _ = cli('../flow/world.json', *self.args,
+                   '--flow-threads', str(self.fixture / 'assignments.json'),
+                   '--flow-usage', str(self.fixture / 'usage.json'))
+        fact = envelope(p)['factory']['flow']
+        value = fact['value']
+        ticket, = value['tickets']
+        spec, = value['specs']
+        self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['state']), (4101, [4201], 'merged'))
+        self.assertEqual(ticket['cost'], {
+            'builder': {'credits': 7, 'tokens': 550}, 'reviewer': {'credits': 2, 'tokens': 130},
+            'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 15})
+        self.assertEqual(ticket['stages_seconds'], {
+            'waiting_to_start': 900, 'building': 5100, 'in_review': 1080, 'in_queue': 900})
+        self.assertEqual((ticket['elapsed_seconds'], ticket['review_rounds'], ticket['stall_count']), (9000, 1, 2))
+        self.assertEqual(ticket['progress']['commit_at'], '2030-01-02T01:58:00Z')
+        self.assertEqual(spec['stall_count'], 2)
+        self.assertEqual((spec['spec'], spec['tickets'], spec['span_seconds']), (4001, [4101], 11700))
+        self.assertEqual((spec['cost'], spec['stages_seconds'], spec['elapsed_seconds'], spec['review_rounds']),
+                         (ticket['cost'], ticket['stages_seconds'], 9000, 1))
+
+    # catches: dropping a second spec member or counting a shared PR's
+    # review twice at spec level or assigning all its runner minutes to each ticket.
+    def test_whole_spec_counts_shared_pull_once(self):
+        p, _ = cli('../flow/world-shared.json', *self.args)
+        value = envelope(p)['factory']['flow']['value']
+        self.assertEqual([t['ticket'] for t in value['tickets']], [4101, 4102])
+        spec, = value['specs']
+        self.assertEqual((spec['tickets'], spec['elapsed_seconds'], spec['review_rounds']), ([4101, 4102], 18000, 1))
+        self.assertEqual([t['cost']['ci_minutes'] for t in value['tickets']], [None, None])
+        self.assertEqual(spec['cost']['ci_minutes'], 15)
+
+    # catches: a per-ticket read depending on the repository-wide PR inventory
+    # and losing its facts when an unrelated inventory page cannot be read.
+    def test_ticket_read_needs_only_its_linked_pulls(self):
+        def without_inventory(world):
+            del world[next(key for key in world if 'pullRequests(first:100' in key)]
+
+        p, _ = cli('../flow/world.json', 'read', '--repo', DAILY_REPO, '--fact', 'flow', '--ticket', '4101',
+                   '--now', '2030-01-03T06:00:00Z', edit=without_inventory)
+        value = envelope(p)['factory']['flow']['value']
+        self.assertIsNotNone(value, 'the ticket has readable linked pulls')
+        ticket, = value['tickets']
+        self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['cost']['ci_minutes']), (4101, [4201], 15))
+
+    # catches: an edited CHANGES disappearing or unprovable verdict history
+    # producing partial round counts and attributing review time to building.
+    def test_edited_verdict_history_keeps_only_supported_rounds(self):
+        head = 'a' * 40
+        original = f'VERDICT: CHANGES at {head}\n\nFull review by a synthetic reviewer.'
+        current = original + '\n\nPolish issue recorded.'
+        cases = {
+            'body only': original,
+            'changed verdict': original.replace('CHANGES', 'APPROVE'),
+            'changed head': original.replace(head, 'b' * 40),
+            'removed verdict': current,
+            'missing history': None,
+        }
+        for scenario, previous in cases.items():
+            def edit(world):
+                key = next(key for key in world if 'pullRequest(number:$number)' in key and 'body author{login}' in key)
+                response = json.loads(world[key]['stdout'])
+                comments = response['data']['repository']['pullRequest']['comments']['nodes']
+                opened, updated = '2030-01-02T02:09:00Z', '2030-01-02T02:11:00Z'
+                visible = 'See the review discussion.' if scenario == 'removed verdict' else current
+                comments.extend([
+                    {'id': 'synthetic-review-start', 'databaseId': 5291, 'author': {'login': 'openwiz[bot]'},
+                     'url': 'https://github.com/example/factory/pull/4201#issuecomment-5291',
+                     'createdAt': '2030-01-02T02:05:00Z', 'updatedAt': '2030-01-02T02:05:00Z',
+                     'body': f'launch-fleet: review started {head}'},
+                    {'id': 'synthetic-verdict', 'databaseId': 5292, 'author': {'login': 'openwiz[bot]'},
+                     'url': 'https://github.com/example/factory/pull/4201#issuecomment-5292',
+                     'createdAt': opened, 'updatedAt': updated, 'body': visible},
+                ])
+                world[key]['stdout'] = json.dumps(response)
+                if previous is not None:
+                    add_comment_history(world, 'synthetic-verdict', opened, updated, '2030-01-02T02:10:59Z', previous, visible)
+
+            with self.subTest(scenario):
+                p, _ = cli('../flow/world.json', *self.args, edit=edit)
+                fact = envelope(p)['factory']['flow']
+                supported = scenario == 'body only'
+                for row in (*fact['value']['tickets'], *fact['value']['specs']):
+                    self.assertEqual(row['review_rounds'], 2 if supported else None)
+                    self.assertEqual(row['elapsed_seconds'], 9000)
+                    self.assertEqual(row['cost']['ci_minutes'], 15)
+                    self.assertEqual(row['stages_seconds'], {
+                        'waiting_to_start': 900, 'building': 4860 if supported else None,
+                        'in_review': 1320 if supported else None, 'in_queue': 900 if supported else None})
+                ticket, = fact['value']['tickets']
+                self.assertEqual(ticket['progress']['complete'], supported)
+                self.assertEqual(ticket['progress']['verdict_at'], '2030-01-02T02:30:00Z' if supported else None)
+                self.assertEqual(ticket['stall_count'], 2 if supported else None)
+
+    # catches: unreadable jobs or missing usage emitted as zero, or a missing
+    # cost source taking unrelated timing and progress away.
+    def test_missing_sources_keep_independent_facts(self):
+        def without_sources(world):
+            for fragment in ('runs/6101/attempts/1/jobs', '/activity?ref='):
+                key = next(key for key in world if fragment in key)
+                del world[key]
+
+        p, _ = cli('../flow/world.json', *self.args, edit=without_sources)
+        fact = envelope(p)['factory']['flow']
+        self.assertEqual(fact['state'], 'partial')
+        ticket, = fact['value']['tickets']
+        spec, = fact['value']['specs']
+        for row in (ticket, spec):
+            self.assertEqual(row['cost'], {
+                'builder': {'credits': None, 'tokens': None}, 'reviewer': {'credits': None, 'tokens': None},
+                'total': {'credits': None, 'tokens': None}, 'ci_minutes': None})
+            self.assertEqual((row['elapsed_seconds'], row['review_rounds'], row['stall_count']), (9000, 1, None))
+        self.assertEqual(ticket['progress']['last_observed_at'], '2030-01-02T03:15:00Z')
+
+
 class CapacityAndOpenPrs(unittest.TestCase):
     # catches: PRs an hour computed another way than ci-bench's headline (robot-minutes per
     # successful code run). By hand: run 201's two jobs, 115 s + 180 s = 4.9167 robot-minutes;
@@ -385,7 +520,7 @@ class Validate(unittest.TestCase):
     def test_validate_contract_rules(self):
         C = load('collect_factory', SCRIPT)
         snapshot = json.loads((COLLECTOR / 'snapshot.json').read_text())
-        for name in FACTS:
+        for name in snapshot['factory']:
             C.validate(snapshot['factory'][name])
             C.validate(json.loads((COLLECTOR / 'snapshot-unavailable.json').read_text())['factory'][name])
         merges = snapshot['factory']['merges']
