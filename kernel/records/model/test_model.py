@@ -87,6 +87,17 @@ class FixedWrites(unittest.TestCase):
         self.assertEqual(len(out), 1, out)
         self.assertRegex(out[0], r'^ok: fixed writes, current rules: P1 to P4 hold over \d+ states$')
 
+    def test_a_release_lost_under_a_failed_readback_breaks_p3(self):
+        # catches: #1463 R1, a read-back that fails because a later edit changed the note and
+        # so never puts back the release its own edit replaced.
+        class NoRestoreOnFailure(model.Model):
+            def readback_edit(self, notes, pending):
+                if notes[pending[1]][1] != pending[2]:
+                    return notes, None
+                return super().readback_edit(notes, pending)
+        _, found, _ = model.check(NoRestoreOnFailure(None, 'fixed'))
+        self.assertEqual(set(found), {'P3'})
+
     def test_the_fixed_order_without_its_edit_readback_breaks_again(self):
         # catches: a fixed mode that passes for a reason other than the edit's read-back.
         class NoReadback(model.Model):

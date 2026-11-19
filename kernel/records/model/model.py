@@ -123,15 +123,16 @@ class Model:
     def readback_edit(self, notes, pending):
         """#1441: the fixed writer's read-back after a claim edit: (notes, what it did).
 
-        As status.py write does: a note that no longer reads as written is not its to settle
-        (it fails, and the wake that wrote it last settles it); a release it never read, which
-        its edit replaced, is put back; and it steps down when another live note of its kind
-        exists, older or newer."""
+        As status.py write does: a release it never read, which its edit replaced, is put back,
+        even when a later edit has changed the note since, unless the note is released again
+        (#1463 R1); otherwise a note that no longer reads as written is not its to settle (it
+        fails, and the edit that changed it has its own read-back); and it steps down when
+        another live note of its kind exists, older or newer."""
         _, i, state, was, mine_state = pending
+        if was[1] in RELEASED and was[1] != mine_state and notes[i][1] in CLAIMING:
+            return put(notes, i, notes[i][0], was[1]), f'puts the {was[1]} back'
         if notes[i][1] != state:
             return notes, None
-        if was[1] in RELEASED and was[1] != mine_state:
-            return put(notes, i, notes[i][0], was[1]), f'puts the {was[1]} back'
         if any(j != i and kind(n[0]) == kind(notes[i][0]) and live(n) for j, n in enumerate(notes)):
             return put(notes, i, notes[i][0], 'stopped'), 'lost claim'
         return notes, 'kept'
