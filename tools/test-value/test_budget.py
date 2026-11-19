@@ -145,6 +145,7 @@ class BudgetTests(unittest.TestCase):
         self.write('tests/new.rs', 0)
         with self.subTest(source='dirty tree'):
             self.check_budget(1, 'net=401', head=head)
+        self.write('tests/new.rs', 401)  # Restore this synthetic fixture before switching.
         self.git('checkout', '-q', '-b', 'advanced-base', self.base)
         self.write('tests/main.rs', 600)
         advanced = self.commit()
