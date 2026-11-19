@@ -96,7 +96,7 @@ fn r1_help_precedence_matches_the_shipped_parser_and_catalogue() {
     // HX1: the two option-splitting parsers must agree with inline=false,
     // including empty values; standalone help and legacy precedence stay put.
     let mut cases = Vec::new();
-    for command in ["show", "ui"] {
+    for command in ["show", "models", "ui"] {
         for (flag, code) in [
             ("--help", 0),
             ("-h", 0),

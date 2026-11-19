@@ -284,6 +284,7 @@ fn nothing_is_defaulted() {
 }
 
 fn conflicting_catalogue_rows_are_unavailable_in_both_orders() {
+    use openwiz_cli::models::render_options;
     use serde_json::json;
 
     // synthetic_assumptions: duplicate catalogue rows and conflicting capabilities
@@ -338,6 +339,9 @@ fn conflicting_catalogue_rows_are_unavailable_in_both_orders() {
                 "unavailable (conflicting catalogue rows)"
             );
             assert!(validate_def("options", &serde_json::to_value(&o).unwrap()).is_empty());
+            let text = render_options(&o);
+            assert!(text.contains("codex: unavailable (conflicting catalogue rows)"));
+            assert!(!text.contains("syn-model:"), "{text}");
             for effort in ["low", "high"] {
                 let choice = settings("codex", "syn-model", effort);
                 assert!(o.offered(&choice).is_err());

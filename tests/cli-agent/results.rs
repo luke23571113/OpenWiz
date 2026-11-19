@@ -31,6 +31,7 @@ fn cp2_usage_errors_cover_every_dispatch_family_without_effects() {
     for (args, command) in [
         (vec!["ls", "--unknown", "--json"], "ls"),
         (vec!["show", "--json"], "show"),
+        (vec!["models", "--unknown", "--json"], "models"),
         (vec!["fleets", "--json", "--json"], "fleets"),
         (vec!["fleet", "--json"], "fleet"),
         (vec!["fleet", "tick", "--unknown", "--json"], "fleet.tick"),
@@ -71,6 +72,7 @@ fn cp2_json_help_is_one_document_with_no_reads_or_state() {
         vec!["--help", "--json"],
         vec!["ls", "--help", "--json"],
         vec!["show", "-h", "--json"],
+        vec!["models", "--help", "--json"],
         vec!["fleets", "-h", "--json"],
         vec!["loop", "--help", "--json"],
     ] {
@@ -101,7 +103,7 @@ fn cp2_json_selection_respects_values_delimiters_and_invalid_bytes() {
             "data must not select JSON: {args:?}"
         );
     }
-    for command in ["ls", "show", "fleets", "fleet", "loop"] {
+    for command in ["ls", "show", "models", "fleets", "fleet", "loop"] {
         let output = sandbox.run_os(&[
             OsString::from(command),
             OsString::from_vec(vec![0xff]),

@@ -119,6 +119,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
         ("help.agent", "--agent"),
         ("ls", "-l -a --hidden --limit --offset --json --help"),
         ("show", "--json --help"),
+        ("models", "--json --help"),
         ("fleets", "--json --help"),
         ("fleet", "--json"),
         ("fleet.tick.preview", "--dry-run --json"),
@@ -192,7 +193,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
             }
         }
         // Parse documented examples at the public parser seam, never dispatch
-        // a write. Loop/fleets lack a public parser; checked below/help.
+        // a write. Loop/models/fleets lack a public parser; checked below/help.
         for example in command["examples"].as_array().unwrap() {
             let args: Vec<String> = example
                 .as_array()
@@ -211,7 +212,7 @@ fn cp1_catalogue_covers_the_public_command_flag_and_schema_matrix() {
                 "fleet" => {
                     openwiz_cli::fleet::parse(&os).unwrap();
                 }
-                "loop" | "fleets" => {}
+                "loop" | "models" | "fleets" => {}
                 // The packaged Python parser is exercised by the existing
                 // package-proof stage after CI provisions Python.
                 "init" => {}
@@ -235,6 +236,7 @@ fn cp1_help_aliases_and_invalid_agent_forms_have_no_effects() {
         vec!["-h"],
         vec!["ls", "--help"],
         vec!["show", "-h"],
+        vec!["models", "--help"],
         vec!["fleets", "-h"],
         vec!["loop", "--help"],
         vec!["loop", "-h"],
@@ -319,8 +321,8 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
             "fleet.due" => "fleet due --github-only",
             // These three parsers are private; their flags are checked through
             // real processes below, using only trap sources or absent config.
-            "fleets" | "loop.off" | "loop.on" | "loop.validate" | "loop.export" | "loop.plan"
-            | "loop.apply" => continue,
+            "fleets" | "models" | "loop.off" | "loop.on" | "loop.validate" | "loop.export"
+            | "loop.plan" | "loop.apply" => continue,
             "init" | "init.apply" => continue,
             "github.token" => {
                 for flag in command["flags"].as_array().unwrap() {
@@ -364,6 +366,7 @@ fn cp1_advertised_flags_are_accepted_by_the_shipped_public_parsers() {
     }
     for (args, code) in [
         (vec!["fleets", "--json"], 0),
+        (vec!["models", "--json"], 13),
         (vec!["fleet", "tick", "--dry-run", "--json"], 1),
         (vec!["fleet", "due", "--github-only"], 1),
         (vec!["loop", "off", "loop-synthetic", "--json"], 1),
@@ -481,6 +484,7 @@ fn cp1_catalogue_is_discoverable_without_sources_or_state() {
             "help.agent",
             "ls",
             "show",
+            "models",
             "fleets",
             "fleet",
             "fleet.tick.preview",

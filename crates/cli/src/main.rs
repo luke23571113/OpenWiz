@@ -101,6 +101,16 @@ fn dispatch_args(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Wri
             openwiz_cli::loop_files::run(&args[1..], stdout, stderr)
         }
         Some("loop") => openwiz_cli::loops::run_local(&args[1..], &SystemClock, stdout, stderr),
+        Some("models") => match utf8(&args[1..], "nothing was read", stderr) {
+            Some(args) => openwiz_cli::models::run_models(
+                &args,
+                &CloudRoomSource::from_path(),
+                &SystemClock,
+                stdout,
+                stderr,
+            ),
+            None => EXIT_USAGE,
+        },
         _ => match utf8(args, "nothing was read", stderr) {
             Some(args) => openwiz_cli::run(
                 &args,

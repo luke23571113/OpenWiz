@@ -297,6 +297,10 @@ contract), `tools/install/test_setup_api.mjs` (89, the web setup client),
 and `tools/live-smoke/browser.mjs` (89, the web view's live browser sitting) with its probe rule and
 cases: 1421 lines in the files.
 
+Kept beside the table by J233 (#1264): `openwiz models --json`, read-only, because setup's harness
+check and onboarding read it. Its read and rendering moved from the deleted `crates/cli/src/new_thread.rs`
+to `crates/cli/src/models.rs` (about 100 lines); `new`'s write paths went as the row says.
+
 ## The rows
 
 ### The web view (`apps/web`)

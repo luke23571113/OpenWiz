@@ -24,6 +24,7 @@ pub mod github_token;
 pub mod init;
 pub mod loop_files;
 pub mod loops;
+pub mod models;
 pub mod response;
 pub mod state;
 
@@ -114,6 +115,7 @@ pub fn help() -> String {
 Usage:
   openwiz ls [-l] [-a] [--hidden] [--limit N] [--offset N] [--json]
   openwiz show <id> [--json]
+  openwiz models [--json]
 {fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{loop_files_usage}{init_usage}{github_usage}  openwiz help --agent
   openwiz help
   openwiz --help
@@ -139,6 +141,11 @@ Live-tested: the reads with {TESTED_VERSION}.
 Each read stops after {read} seconds and is not retried; a run stops after {budget} seconds.
 A result is complete or partial: its gaps say what is missing.
 
+models
+  The Cloud harnesses, models and efforts CloudRoom offers right now, from one cloud status
+  read, as reported (it may answer from a saved copy); harnesses it lists but OpenWiz
+  cannot offer, with the reason. Nothing is marked default. --json prints
+  openwiz.cloud-options.v1.
 {loops_help}{loop_files_help}{fleets_help}{fleet_help}{tick_help}{github_help}
 Exit codes:
   0  a result was printed, complete or partial
@@ -147,6 +154,8 @@ Exit codes:
      some of it may already be on stdout
   2  usage error, or a request out of bounds
   3  show: the session was not found
+  0  models: options were printed
+  13 models: nothing can be offered right now; the report says why
 {fleets_exit_codes}{fleet_exit_codes}On an error, stdout is empty unless ls, show or --help fails to write or flush output;
 some output may already be on stdout in that case.
 In either case, stderr has one line starting with \"openwiz: \".

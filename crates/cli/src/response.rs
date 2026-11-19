@@ -62,6 +62,7 @@ impl Request {
         let command = match command {
             "ls" => "ls",
             "show" => "show",
+            "models" => "models",
             "fleets" => "fleets",
             "fleet" => match first {
                 Some("due") => "fleet.due",
