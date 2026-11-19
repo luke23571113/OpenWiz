@@ -106,13 +106,17 @@ def handle_call(world, method, target, body):
             repo.update(body)
             return 200, repo_view(repo)
     if rest[:1] == ['labels']:
+        details = repo.setdefault('label_details', {})  # name -> colour and description, as created
         if method == 'GET' and len(rest) == 2:
-            return (200, {'name': rest[1]}) if rest[1] in repo['labels'] else (404, {'message': 'Not Found'})
+            if rest[1] not in repo['labels']:
+                return 404, {'message': 'Not Found'}
+            return 200, dict(details.get(rest[1], {}), name=rest[1])
         if method == 'POST' and len(rest) == 1:
             if body['name'] in repo['labels']:
                 return 422, {'message': 'already_exists'}
             repo['labels'].append(body['name'])
-            return 201, {'name': body['name']}
+            details[body['name']] = {k: body[k] for k in ('color', 'description') if k in body}
+            return 201, dict(details[body['name']], name=body['name'])
     if rest[:1] == ['pulls']:
         if method == 'GET':
             head = query.get('head', '').split(':', 1)[-1]

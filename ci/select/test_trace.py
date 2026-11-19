@@ -30,22 +30,22 @@ class Parse(unittest.TestCase):
         touched, _ = parse(f'''
 10 openat(AT_FDCWD<{R}>, "crates/core/src/lib.rs", O_RDONLY|O_CLOEXEC) = 3<{R}/crates/core/src/lib.rs>
 10 newfstatat(AT_FDCWD<{R}>, "tests/fixtures/maybe.json", 0x7ffd, 0) = -1 ENOENT (No such file or directory)
-10 statx(AT_FDCWD<{R}/apps/web>, "test/support/x.ts", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x1) = 0
+10 statx(AT_FDCWD<{R}/tools/war-room>, "test/support/x.js", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x1) = 0
 10 access("{R}/skills/a/SKILL.md", R_OK) = 0
 ''')
         self.assertEqual(touched, {f'{R}/crates/core/src/lib.rs', f'{R}/tests/fixtures/maybe.json',
-                                   f'{R}/apps/web/test/support/x.ts', f'{R}/skills/a/SKILL.md'})
+                                   f'{R}/tools/war-room/test/support/x.js', f'{R}/skills/a/SKILL.md'})
 
     def test_relative_paths_follow_each_process_s_folder(self):
         touched, _ = parse(f'''
-10 chdir("apps/web") = 0
+10 chdir("tools/war-room") = 0
 10 clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|SIGCHLD) = 11
-11 open("src/App.tsx", O_RDONLY) = 3<{R}/apps/web/src/App.tsx>
+11 open("charts/app.js", O_RDONLY) = 3<{R}/tools/war-room/charts/app.js>
 10 open("../../docs/x.md", O_RDONLY) = -1 ENOENT (No such file or directory)
 11 fchdir(4<{R}/tests>) = 0
 11 stat("fixtures/a.json", 0x1) = 0
 ''')
-        self.assertEqual(touched, {f'{R}/apps/web/src/App.tsx', f'{R}/docs/x.md', f'{R}/apps/web',
+        self.assertEqual(touched, {f'{R}/tools/war-room/charts/app.js', f'{R}/docs/x.md', f'{R}/tools/war-room',
                                    f'{R}/tests/fixtures/a.json'})
 
     def test_a_call_split_across_two_lines_is_read_whole(self):
@@ -66,10 +66,10 @@ class Parse(unittest.TestCase):
     def test_cargo_s_own_reads_are_left_out_but_the_programs_it_runs_are_not(self):
         touched, _ = parse(f'''
 10 execve("/home/synthetic/.cargo/bin/cargo", ["cargo", "test"], 0x1 /* 3 vars */) = 0
-10 newfstatat(AT_FDCWD<{R}>, "crates/store/src/lib.rs", 0x1, 0) = 0
+10 newfstatat(AT_FDCWD<{R}>, "crates/gadget/src/lib.rs", 0x1, 0) = 0
 10 openat(AT_FDCWD<{R}>, "target/debug/.fingerprint/x", O_RDONLY) = 3<{R}/target/debug/.fingerprint/x>
 10 clone3({{flags=CLONE_VM, exit_signal=SIGCHLD}}, 88) = 12
-12 openat(AT_FDCWD<{R}>, "crates/store/Cargo.toml", O_RDONLY) = 3<{R}/crates/store/Cargo.toml>
+12 openat(AT_FDCWD<{R}>, "crates/gadget/Cargo.toml", O_RDONLY) = 3<{R}/crates/gadget/Cargo.toml>
 12 execve("{R}/target/debug/deps/proof-0123456789abcdef", ["proof"], 0x1 /* 3 vars */) = 0
 12 openat(AT_FDCWD<{R}/tests>, "fixtures/a.json", O_RDONLY) = 3<{R}/tests/fixtures/a.json>
 ''')
@@ -105,30 +105,30 @@ class Repo(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root)
         files = {
             'crates/core/Cargo.toml': '', 'crates/core/src/lib.rs': '',
-            'crates/store/Cargo.toml': '', 'crates/store/src/lib.rs': '',
-            'crates/server/Cargo.toml': '', 'crates/server/src/main.rs': '', 'crates/server/src/web.rs': '',
+            'crates/gadget/Cargo.toml': '', 'crates/gadget/src/lib.rs': '',
+            'crates/widget/Cargo.toml': '', 'crates/widget/src/main.rs': '', 'crates/widget/src/parts.rs': '',
             'tests/Cargo.toml': '', 'tests/proof/main.rs': 'use openwiz_core::x; mod support;',
-            'tests/proof/support.rs': 'fn f() { openwiz_server::y(); }',
-            'apps/web/out/index.html': '', 'apps/web/node_modules/react/index.js': '', 'apps/web/package.json': '',
+            'tests/proof/support.rs': 'fn f() { openwiz_widget::y(); }',
+            'tools/war-room/node_modules/react/index.js': '', 'tools/war-room/package.json': '',
             'target/debug/deps/proof-0123456789abcdef': '',
             'target/debug/deps/proof-0123456789abcdef.d':
                 f'{self.root}/target/debug/deps/proof-0123456789abcdef: tests/proof/main.rs tests/proof/support.rs\n',
             'target/debug/deps/openwiz_core-1111111111111111.d':
                 f'{self.root}/target/debug/deps/libopenwiz_core-1111111111111111.rlib: crates/core/src/lib.rs\n',
-            'target/debug/deps/openwiz_store-2222222222222222.d':
-                f'{self.root}/target/debug/deps/libopenwiz_store-2222222222222222.rlib: crates/store/src/lib.rs\n',
-            'target/debug/deps/openwiz_server-3333333333333333.d':
-                f'{self.root}/target/debug/deps/libopenwiz_server-3333333333333333.rlib: '
-                f'{self.root}/crates/server/src/main.rs {self.root}/crates/server/src/web.rs\n',
-            'target/debug/openwiz-server': '',
-            'target/debug/openwiz-server.d':
-                f'{self.root}/target/debug/openwiz-server: {self.root}/crates/server/src/main.rs '
-                f'{self.root}/crates/server/src/web.rs {self.root}/crates/core/src/lib.rs\n',
-            'target/debug/examples/openwiz-server': '',
-            'target/debug/examples/openwiz-server.d':
-                f'{self.root}/target/debug/examples/openwiz-server: {self.root}/tests/fixture-entrypoints/server.rs '
-                f'{self.root}/crates/server/src/web.rs {self.root}/crates/core/src/lib.rs\n',
-            'crates/server/build.rs': '',
+            'target/debug/deps/openwiz_gadget-2222222222222222.d':
+                f'{self.root}/target/debug/deps/libopenwiz_gadget-2222222222222222.rlib: crates/gadget/src/lib.rs\n',
+            'target/debug/deps/openwiz_widget-3333333333333333.d':
+                f'{self.root}/target/debug/deps/libopenwiz_widget-3333333333333333.rlib: '
+                f'{self.root}/crates/widget/src/main.rs {self.root}/crates/widget/src/parts.rs\n',
+            'target/debug/openwiz-widget': '',
+            'target/debug/openwiz-widget.d':
+                f'{self.root}/target/debug/openwiz-widget: {self.root}/crates/widget/src/main.rs '
+                f'{self.root}/crates/widget/src/parts.rs {self.root}/crates/core/src/lib.rs\n',
+            'target/debug/examples/openwiz-widget': '',
+            'target/debug/examples/openwiz-widget.d':
+                f'{self.root}/target/debug/examples/openwiz-widget: {self.root}/tests/fixture-entrypoints/widget.rs '
+                f'{self.root}/crates/widget/src/parts.rs {self.root}/crates/core/src/lib.rs\n',
+            'crates/widget/build.rs': '',
             'target/debug/mystery': '',
             'target/tmp/scratch.txt': '',
         }
@@ -141,8 +141,9 @@ class Repo(unittest.TestCase):
 
     def metadata(self, extra=()):
         """A `cargo metadata --no-deps` answer with this tree's collision
-        (#1579 R5): the server's library and an openwiz-tests example are both
-        `openwiz-server`, so both are the crate name `openwiz_server`."""
+        (#1579 R5): a synthetic widget crate's library and an openwiz-tests
+        example are both `openwiz-widget`, so both are the crate name
+        `openwiz_widget`."""
         real = os.path.realpath(self.root)
 
         def pkg(name, folder, targets, deps=()):
@@ -151,12 +152,12 @@ class Repo(unittest.TestCase):
                     'targets': [{'name': n, 'kind': k} for n, k in targets]}
         return {'packages': [
             pkg('openwiz-core', 'crates/core', [('openwiz_core', ['lib'])]),
-            pkg('openwiz-store', 'crates/store', [('openwiz_store', ['lib'])], ['openwiz-core']),
-            pkg('openwiz-server', 'crates/server', [('openwiz_server', ['lib']), ('openwiz-server', ['bin'])],
+            pkg('openwiz-gadget', 'crates/gadget', [('openwiz_gadget', ['lib'])], ['openwiz-core']),
+            pkg('openwiz-widget', 'crates/widget', [('openwiz_widget', ['lib']), ('openwiz-widget', ['bin'])],
                 ['openwiz-core']),
-            pkg('openwiz-tests', 'tests', [('proof', ['test']), ('openwiz-server', ['example']),
+            pkg('openwiz-tests', 'tests', [('proof', ['test']), ('openwiz-widget', ['example']),
                                            ('fake-room-cli', ['bin'])],
-                ['openwiz-core', 'openwiz-store', 'openwiz-server']),
+                ['openwiz-core', 'openwiz-gadget', 'openwiz-widget']),
             *extra]}
 
     def at(self, *rels):
@@ -165,44 +166,44 @@ class Repo(unittest.TestCase):
     def test_a_test_binary_becomes_its_sources_and_the_crates_they_name(self):
         files, dirs, why = self.r.resolve(self.at('target/debug/deps/proof-0123456789abcdef'), set())
         self.assertIsNone(why)
-        self.assertEqual(files, ['crates/core/Cargo.toml', 'crates/core/src/lib.rs', 'crates/server/Cargo.toml',
-                                 'crates/server/build.rs', 'crates/server/src/main.rs', 'crates/server/src/web.rs',
+        self.assertEqual(files, ['crates/core/Cargo.toml', 'crates/core/src/lib.rs', 'crates/widget/Cargo.toml',
+                                 'crates/widget/build.rs', 'crates/widget/src/main.rs', 'crates/widget/src/parts.rs',
                                  'tests/Cargo.toml', 'tests/proof/main.rs', 'tests/proof/support.rs'])
 
     def test_a_program_a_test_ran_becomes_its_uplifted_dep_info(self):
-        files, _, why = self.r.resolve(self.at('target/debug/openwiz-server'), set())
+        files, _, why = self.r.resolve(self.at('target/debug/openwiz-widget'), set())
         self.assertIsNone(why)
-        self.assertEqual(files, ['crates/core/Cargo.toml', 'crates/core/src/lib.rs', 'crates/server/Cargo.toml',
-                                 'crates/server/build.rs', 'crates/server/src/main.rs', 'crates/server/src/web.rs'])
+        self.assertEqual(files, ['crates/core/Cargo.toml', 'crates/core/src/lib.rs', 'crates/widget/Cargo.toml',
+                                 'crates/widget/build.rs', 'crates/widget/src/main.rs', 'crates/widget/src/parts.rs'])
 
     def test_a_test_naming_a_crate_whose_name_an_example_shares_keeps_that_crate(self):
         files, _, why = self.r.resolve(self.at('target/debug/deps/proof-0123456789abcdef'), set())
         self.assertIsNone(why)
-        self.assertIn('crates/server/src/web.rs', files)
-        self.assertIn('crates/server/Cargo.toml', files)
+        self.assertIn('crates/widget/src/parts.rs', files)
+        self.assertIn('crates/widget/Cargo.toml', files)
 
     def test_an_uplifted_program_adds_its_package_s_manifests_and_build_scripts(self):
-        files, _, why = self.r.resolve(self.at('target/debug/examples/openwiz-server'), set())
+        files, _, why = self.r.resolve(self.at('target/debug/examples/openwiz-widget'), set())
         self.assertIsNone(why)
-        for f in ('crates/server/Cargo.toml', 'crates/server/build.rs', 'crates/core/Cargo.toml', 'tests/Cargo.toml',
-                  'crates/server/src/web.rs', 'tests/fixture-entrypoints/server.rs'):
+        for f in ('crates/widget/Cargo.toml', 'crates/widget/build.rs', 'crates/core/Cargo.toml', 'tests/Cargo.toml',
+                  'crates/widget/src/parts.rs', 'tests/fixture-entrypoints/widget.rs'):
             self.assertIn(f, files)
 
-    def test_a_crate_manifest_change_selects_the_browser_proof_running_that_program(self):
-        files, dirs, why = self.r.resolve(self.at('target/debug/examples/openwiz-server'), set())
+    def test_a_crate_manifest_change_selects_the_proof_running_that_program(self):
+        files, dirs, why = self.r.resolve(self.at('target/debug/examples/openwiz-widget'), set())
         mp = {'schema': pick.MAP_SCHEMA, 'commit': 'c' * 40,
-              'units': {'web:browser:v1-faithful': {'files': files, 'dirs': dirs}}}
-        result = pick.select([('M', 'crates/server/Cargo.toml')], mp, ['web:browser:v1-faithful'],
+              'units': {'rust:test:cli-agent': {'files': files, 'dirs': dirs}}}
+        result = pick.select([('M', 'crates/widget/Cargo.toml')], mp, ['rust:test:cli-agent'],
                              lambda p: b'', lambda ps: set())
-        self.assertEqual(result['tests'], ['web:browser:v1-faithful'])
+        self.assertEqual(result['tests'], ['rust:test:cli-agent'])
 
     def test_a_program_or_crate_name_two_packages_share_leaves_the_test_out(self):
         twin = {'name': 'openwiz-twin', 'manifest_path': f'{os.path.realpath(self.root)}/crates/twin/Cargo.toml',
-                'dependencies': [], 'targets': [{'name': 'openwiz-server', 'kind': ['bin']},
+                'dependencies': [], 'targets': [{'name': 'openwiz-widget', 'kind': ['bin']},
                                                 {'name': 'openwiz_core', 'kind': ['lib']}]}
         r = resolve.Resolver(self.root)
         r._meta = resolve.index(self.metadata([twin]), os.path.realpath(self.root))
-        self.assertIsNotNone(r.resolve(self.at('target/debug/openwiz-server'), set())[2])
+        self.assertIsNotNone(r.resolve(self.at('target/debug/openwiz-widget'), set())[2])
         self.assertIsNotNone(r.resolve(self.at('target/debug/deps/proof-0123456789abcdef'), set())[2])
 
     def test_cargo_s_bookkeeping_and_scratch_are_not_inputs(self):
@@ -222,155 +223,51 @@ class Repo(unittest.TestCase):
                 self.assertIsNotNone(self.r.resolve({f'{self.root}/{rel}'}, set())[2])
         self.assertIsNone(self.r.resolve({f'{self.root}/.git/HEAD', f'{self.root}/.git/refs/heads/main'}, set())[2])
 
-    def test_the_export_node_modules_and_missing_files(self):
+    def test_node_modules_and_missing_files(self):
         files, dirs, why = self.r.resolve(
-            self.at('apps/web/out/index.html', 'apps/web/node_modules/react/index.js', 'docs/missing.md',
-                    'crates/core'),
-            self.at('apps/web/out', 'tests/fixtures', 'apps/web/node_modules/react', 'target/debug', '.'))
+            self.at('tools/war-room/node_modules/react/index.js', 'docs/missing.md', 'crates/core'),
+            self.at('tests/fixtures', 'tools/war-room/node_modules/react', 'target/debug', '.'))
         self.assertIsNone(why)
-        self.assertEqual(files, [resolve.EXPORT, 'apps/web/package-lock.json', 'apps/web/package.json',
-                                 'docs/missing.md'])
+        self.assertEqual(files, ['docs/missing.md', 'tools/war-room/package-lock.json', 'tools/war-room/package.json'])
         self.assertEqual(dirs, ['.', 'tests/fixtures'])
-
-    def test_the_export_through_the_folder_it_is_mounted_from(self):
-        mount = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, mount)
-        shutil.rmtree(os.path.join(self.root, 'apps/web/out'))
-        os.symlink(mount, os.path.join(self.root, 'apps/web/out'))
-        r = resolve.Resolver(self.root)
-        files, _, why = r.resolve({os.path.join(mount, 'index.html')}, set())
-        self.assertEqual(files, [resolve.EXPORT])
-
-    def test_the_export_s_inputs_leave_out_tests_and_build_output(self):
-        files, dirs = self.r.export_inputs(
-            self.at('apps/web/package.json', 'apps/web/src/App.tsx', 'apps/web/test/unit/a.test.ts',
-                    'apps/web/node_modules/next/x.js', 'apps/web/.next/cache/y', 'apps/web/out/z.html'),
-            self.at('apps/web/src', 'apps/web/test/unit', 'apps/web/node_modules/next'))
-        self.assertEqual(files, ['apps/web/package-lock.json', 'apps/web/package.json', 'apps/web/src/App.tsx'])
-        self.assertEqual(dirs, ['apps/web/src'])
 
 
 class Map(unittest.TestCase):
-    LISTED = {'rust:test:proof', 'web:browser:v1', 'web:unit:api'}
-    EXPORT = {'files': ['apps/web/src/App.tsx'], 'dirs': ['apps/web/src']}
+    LISTED = {'rust:test:proof', 'rust:test:fleet', 'rust:test:loops'}
 
     def records(self):
         return {
             'rust:test:proof': {'files': ['tests/proof/main.rs'], 'dirs': [], 'seconds': 2.0, 'exit': 0, 'traced': True},
-            'web:browser:v1': {'files': [resolve.EXPORT, 'apps/web/test/browser/v1.test.mjs'], 'dirs': [],
-                               'seconds': 9.0, 'exit': 0, 'traced': True},
-            'web:unit:api': {'files': [], 'dirs': [], 'seconds': 1.0, 'exit': 0, 'traced': False,
-                             'untraced': 'failed under strace'},
+            'rust:test:fleet': {'files': ['tests/fleet/main.rs', 'crates/core/src/lib.rs'], 'dirs': ['tests/fleet'],
+                                'seconds': 9.0, 'exit': 0, 'traced': True},
+            'rust:test:loops': {'files': [], 'dirs': [], 'seconds': 1.0, 'exit': 0, 'traced': False,
+                                'untraced': 'failed under strace'},
         }
 
-    def test_the_export_is_replaced_by_its_inputs_and_untraced_tests_are_left_out(self):
-        mp, left = map_mod.build(self.records(), self.EXPORT, 'c' * 40, self.LISTED)
+    def test_untraced_tests_are_left_out(self):
+        mp, left = map_mod.build(self.records(), 'c' * 40, self.LISTED)
         self.assertEqual(mp['schema'], pick.MAP_SCHEMA)
-        self.assertEqual(mp['units']['web:browser:v1'],
-                         {'files': ['apps/web/src/App.tsx', 'apps/web/test/browser/v1.test.mjs'],
-                          'dirs': ['apps/web/src'], 'seconds': 9.0, 'web_export': True})
-        self.assertNotIn('web:unit:api', mp['units'])
-        self.assertEqual(left, {'web:unit:api': 'failed under strace'})
-
-    def test_k16_map_keeps_which_tests_need_the_export(self):
-        mp, _ = map_mod.build(self.records(), self.EXPORT, 'c' * 40, self.LISTED)
-        self.assertIs(mp['units']['web:browser:v1']['web_export'], True)
-        self.assertIs(mp['units']['rust:test:proof']['web_export'], False)
+        self.assertEqual(mp['units']['rust:test:fleet'],
+                         {'files': ['crates/core/src/lib.rs', 'tests/fleet/main.rs'],
+                          'dirs': ['tests/fleet'], 'seconds': 9.0})
+        self.assertNotIn('rust:test:loops', mp['units'])
+        self.assertEqual(left, {'rust:test:loops': 'failed under strace'})
 
     def test_a_test_without_a_record_refuses_the_map(self):
         recs = self.records()
         del recs['rust:test:proof']
         with self.assertRaises(SystemExit):
-            map_mod.build(recs, self.EXPORT, 'c' * 40, self.LISTED)
+            map_mod.build(recs, 'c' * 40, self.LISTED)
 
     def test_a_record_for_a_test_not_here_refuses_the_map(self):
         with self.assertRaises(SystemExit):
-            map_mod.build(self.records(), self.EXPORT, 'c' * 40, self.LISTED - {'web:unit:api'})
-
-    def test_the_export_needed_and_missing_refuses_the_map(self):
-        with self.assertRaises(SystemExit):
-            map_mod.build(self.records(), None, 'c' * 40, self.LISTED)
+            map_mod.build(self.records(), 'c' * 40, self.LISTED - {'rust:test:loops'})
 
     def test_the_selector_reads_the_map_it_builds(self):
-        mp, _ = map_mod.build(self.records(), self.EXPORT, 'c' * 40, self.LISTED)
-        result = pick.select([('M', 'apps/web/src/App.tsx')], json.loads(json.dumps(mp)), sorted(self.LISTED),
+        mp, _ = map_mod.build(self.records(), 'c' * 40, self.LISTED)
+        result = pick.select([('M', 'crates/core/src/lib.rs')], json.loads(json.dumps(mp)), sorted(self.LISTED),
                              lambda p: b'', lambda ps: set())
-        self.assertEqual(result['tests'], ['web:browser:v1', 'web:unit:api'])
-
-
-class TraceLane(unittest.TestCase):
-    """The web lane's own full-run rules, on the real trace_lane() with the
-    test runs stubbed (self-review on #1579): the attempt that decides is the
-    one checked, and a full run owes the soak, run and not skipped."""
-
-    SOAK_OK = 'ok soak\n\u2714 soak: 2 simulated hours, then failures, then a hidden hour (49.2ms)\n\u2139 skipped 0\n'
-    PLAIN_OK = '\u2714 a proof (1ms)\n\u2139 skipped 0\n'
-
-    def lane(self, logs, only=None, units=('web:unit:x', 'web:browser:v7-soak')):
-        """logs: {test: (traced exit, traced log, plain exit or None, plain log)}."""
-        out = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, out)
-        saved = (trace.commands, trace.strace_run, trace.plain_run, trace.subprocess.run, resolve.Resolver.resolve)
-
-        def strace_run(argv, cwd, env, log):
-            uid = argv[0]
-            with open(log, 'a') as f:
-                f.write(logs[uid][1])
-            return logs[uid][0], set(), set(), 0.1
-
-        def plain_run(argv, cwd, env, log):
-            uid = argv[0]
-            with open(log, 'a') as f:
-                f.write(logs[uid][3])
-            return logs[uid][2], 0.1
-
-        trace.commands = lambda lane, root, threads: {u: ([u], root) for u in units}
-        trace.strace_run, trace.plain_run = strace_run, plain_run
-        trace.subprocess.run = lambda *a, **k: subprocess_ok()
-        resolve.Resolver.resolve = lambda self, t, l: (['apps/web/x.ts'], [], None)
-        try:
-            with open(os.devnull, 'w') as devnull:
-                real, sys.stdout = sys.stdout, devnull
-                try:
-                    return trace.trace_lane('web', out, 2, 8, os.getcwd(), only)
-                finally:
-                    sys.stdout = real
-        finally:
-            trace.commands, trace.strace_run, trace.plain_run, trace.subprocess.run, resolve.Resolver.resolve = saved
-
-    def test_a_full_web_run_with_the_soak_run_passes(self):
-        self.assertEqual(self.lane({'web:unit:x': (0, self.PLAIN_OK, None, ''),
-                                    'web:browser:v7-soak': (0, self.SOAK_OK, None, '')}), 0)
-
-    def test_the_rerun_that_decides_is_the_one_checked_for_skips(self):
-        self.assertEqual(self.lane({'web:unit:x': (1, '\u2139 skipped 0\n', 0, '\u2139 skipped 1\n'),
-                                    'web:browser:v7-soak': (0, self.SOAK_OK, None, '')}), 1)
-
-    def test_a_rerun_that_skips_nothing_passes(self):
-        self.assertEqual(self.lane({'web:unit:x': (1, '\u2139 skipped 1\n', 0, self.PLAIN_OK),
-                                    'web:browser:v7-soak': (0, self.SOAK_OK, None, '')}), 0)
-
-    def test_a_full_web_run_without_the_soak_s_file_fails(self):
-        self.assertEqual(self.lane({'web:unit:x': (0, self.PLAIN_OK, None, '')}, units=('web:unit:x',)), 1)
-
-    def test_a_full_web_run_whose_soak_did_not_run_fails(self):
-        no_soak = '\u2714 a server retry hint far in the future is capped (Sol 3) (1ms)\n\u2139 skipped 0\n'
-        self.assertEqual(self.lane({'web:unit:x': (0, self.PLAIN_OK, None, ''),
-                                    'web:browser:v7-soak': (0, no_soak, None, '')}), 1)
-
-    def test_a_soak_that_ran_only_in_the_failed_traced_attempt_fails(self):
-        rerun_no_soak = '\u2714 a server retry hint far in the future is capped (Sol 3) (1ms)\n\u2139 skipped 0\n'
-        self.assertEqual(self.lane({'web:unit:x': (0, self.PLAIN_OK, None, ''),
-                                    'web:browser:v7-soak': (1, self.SOAK_OK, 0, rerun_no_soak)}), 1)
-
-    def test_a_chosen_few_by_hand_owe_no_soak(self):
-        self.assertEqual(self.lane({'web:unit:x': (0, self.PLAIN_OK, None, '')}, only=['web:unit:x'],
-                                   units=('web:unit:x',)), 0)
-
-
-def subprocess_ok():
-    import subprocess
-    return subprocess.CompletedProcess([], 0)
+        self.assertEqual(result['tests'], ['rust:test:fleet', 'rust:test:loops'])
 
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -403,7 +300,7 @@ class Privacy(unittest.TestCase):
 
     def test_a_planted_home_row_is_still_refused(self):
         # Split so this source line is not itself a home-shaped path.
-        planted = '"apps/web/' + 'home' + '/package.json",'
+        planted = '"tools/war-room/' + 'home' + '/package.json",'
 
         def plant(rel, text):
             if rel != 'ci/select/map.json':

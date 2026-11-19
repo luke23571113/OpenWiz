@@ -14,9 +14,9 @@ Run these tools in a terminal **on the host whose OpenWiz state keeps the key**,
 its browser. Never run real setup through a command that copies its response elsewhere.
 Python 3 and `openssl` are the only runtime tools. No package install is needed.
 
-Run as the same user as the service. The supplied [PC unit](../deploy/pc/openwiz.service)
-sets `OPENWIZ_STATE_DIR=%h/.local/state/openwiz`; pass the service's effective absolute
-state directory with `--state-dir` in every example below.
+Run as the owner of the OpenWiz state directory (by default
+`~/.local/state/openwiz`), and pass its absolute path with `--state-dir` in every
+example below.
 
 ```sh
 # 1. Preview: records the proposed connect_app operation and prints its effects and id.
@@ -179,9 +179,8 @@ python3 tools/github-app/test.py
 ```
 
 Tests generate disposable synthetic RSA keys in private temporary state and use
-an HTTP endpoint on `127.0.0.1`, never GitHub or CloudRoom. The setup check's proofs
-run in `apps/web/test/browser/install-connections.test.mjs` (`npm test`), against the
-real tool, server and page. `--api-base` exists for
+an HTTP endpoint on `127.0.0.1`, never GitHub or CloudRoom. (The setup page's browser
+proofs went with the web view in #1264.) `--api-base` exists for
 this seam: only the fixed production API or explicit HTTP `127.0.0.1:PORT` is
 accepted, and redirects are refused. Never use real keys with the test endpoint.
 The `rust` CI job runs these fixtures in its "The skills' tests" step

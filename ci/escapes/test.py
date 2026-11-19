@@ -216,8 +216,8 @@ class Logs(unittest.TestCase):
 
     def test_a_no_fail_fast_list(self):
         text = rust_tests_log({"plain": ["error: 2 targets failed:\n    `-p openwiz-tests --test messaging`\n"
-                                         "    `-p openwiz-tests --test web-api`\n", 101]})
-        self.assertEqual(escapes.failing_tests(text), ({"rust:test:messaging", "rust:test:web-api"}, []))
+                                         "    `-p openwiz-tests --test fleet`\n", 101]})
+        self.assertEqual(escapes.failing_tests(text), ({"rust:test:messaging", "rust:test:fleet"}, []))
 
     def test_a_later_steps_output_is_not_this_steps(self):
         text = rust_tests_log({"plain": [hint("web-api"), 101]}, after="##[group]Run cargo test -p openwiz-tests --test checks pending\n" + hint("checks"))

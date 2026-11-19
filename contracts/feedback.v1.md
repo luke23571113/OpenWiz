@@ -7,7 +7,7 @@ decision behind it and the consumer plan are in
 
 **Contract only.** This adds no OpenWiz server route, method, header or write
 authorization, no OpenWiz App permission and no stored credential. It changes no
-rule of [setup.v1](setup.v1.md), [web-api.v1](web-api.v1.md) or
+rule of [setup.v1](setup.v1.md), `web-api.v1` (retired in #1264) or
 [open-development.v1](open-development.v1.md). It sends nothing and grants no
 live, account, feedback-send, reply, spending or publication authority. Its
 consumers are #2292 (sender and sharing, P14) and #2557 (receiver queue, P16).
