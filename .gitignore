@@ -6,6 +6,7 @@
 /apps/web/out/
 /apps/web/.next/
 /tools/**/__pycache__/
+/kernel/**/__pycache__/
 
 # WizSkills, installed from wizskills.lock (#555); never tracked
 /.wizskills/
