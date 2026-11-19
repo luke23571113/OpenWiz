@@ -184,8 +184,7 @@ class Repo(unittest.TestCase):
         self.git('config', 'user.email', 't@example.invalid')
         self.git('config', 'user.name', 't')
         for rel, text in {'tests/proof/main.rs': 'a\n', 'docs/a.md': 'a\n', 'crates/core/src/lib.rs': 'a\n',
-                          'skills/image/scripts/screenshot.py': 'a\n', 'skills/triage/find-work.sh': 'a\n', 'skills/launch-fleet/scripts/fleet.sh': 'a\n',
-                          'apps/web/test/unit/api.test.ts': 'a\n'}.items():
+                          'skills/image/scripts/screenshot.py': 'a\n', 'skills/triage/find-work.sh': 'a\n', 'skills/launch-fleet/scripts/fleet.sh': 'a\n'}.items():
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
             (self.root / rel).write_text(text)
         self.git('add', '-A')
@@ -195,7 +194,7 @@ class Repo(unittest.TestCase):
         self.maps.mkdir()
         self.addCleanup(subprocess.run, ['rm', '-rf', str(self.maps)])
         self.units = self.root.parent / (self.root.name + '-units.txt')
-        self.units.write_text('rust:test:proof\nrust:test:checks\nrust:lib:openwiz-core\nweb:unit:api\n')
+        self.units.write_text('rust:test:proof\nrust:test:checks\nrust:lib:openwiz-core\n')
         self.addCleanup(self.units.unlink)
         self.write_map()
         self.plain = self.root.parent / (self.root.name + '-plain')
@@ -206,7 +205,6 @@ class Repo(unittest.TestCase):
         data = json.dumps({'schema': pick.MAP_SCHEMA, 'commit': commit or self.traced, 'units': {
             'rust:test:proof': {'files': ['tests/proof/main.rs'], 'dirs': []},
             'rust:lib:openwiz-core': {'files': ['crates/core/src/lib.rs'], 'dirs': []},
-            'web:unit:api': {'files': ['apps/web/test/unit/api.test.ts'], 'dirs': []},
         }}).encode()
         (self.maps / 'map.json').write_bytes(data)
         token = sign(claims(aud=job.audience(data), sha=commit or self.traced, event_name=event), sign_with)
@@ -237,24 +235,21 @@ class Repo(unittest.TestCase):
 
     def test_k16_docs_skip_unneeded_steps_but_main_runs_every_step(self):
         self.change('docs/a.md')
-        # Synthetic trace: checks reads no web export. Its own sources remain
-        # the map's file dependency; this does not supply the selection answer.
+        # Synthetic trace: checks's own sources remain the map's file
+        # dependency; this does not supply the selection answer.
         data = json.loads((self.maps / 'map.json').read_bytes())
-        data['units']['rust:test:checks'] = {
-            'files': ['tests/checks/main.rs'], 'dirs': [], 'web_export': False}
-        for unit in data['units'].values():
-            unit.setdefault('web_export', False)
+        data['units']['rust:test:checks'] = {'files': ['tests/checks/main.rs'], 'dirs': []}
         raw = json.dumps(data).encode()
         (self.maps / 'map.json').write_bytes(raw)
         (self.maps / 'map.jwt').write_text(sign(claims(aud=job.audience(raw), sha=self.traced), KEY))
         _, out = self.select()
         self.assertEqual(out['selection'], 'selected')
-        for key in ('build-web', 'lint-rust', 'export-rust', 'export-web', 'build-site', 'image-skills'):
+        for key in ('lint-rust', 'build-site', 'image-skills'):
             self.assertEqual(out[key], 'false', (key, out))
         self.assertEqual(out['skill-tests'], 'none')
         self.plain.unlink()  # main/nightly do not get decide.sh's plain marker
         _, full = self.select()
-        for key in ('build-web', 'lint-rust', 'export-rust', 'export-web', 'build-site', 'image-skills'):
+        for key in ('lint-rust', 'build-site', 'image-skills'):
             self.assertEqual(full[key], 'true', (key, full))
         self.assertEqual(full['skill-tests'], 'all')
 
@@ -273,81 +268,16 @@ class Repo(unittest.TestCase):
         _, out = self.select()
         self.assertEqual(out['skill-tests'], 'all')
 
-    def metadata(self, **flags):
-        data = json.loads((self.maps / 'map.json').read_bytes())
-        data['units']['rust:test:checks'] = {'files': ['tests/checks/main.rs'], 'dirs': []}
-        for uid, unit in data['units'].items():
-            unit['web_export'] = flags.get(uid, False)
-        raw = json.dumps(data).encode()
-        (self.maps / 'map.json').write_bytes(raw)
-        (self.maps / 'map.jwt').write_text(sign(claims(aud=job.audience(raw), sha=self.traced), KEY))
-
-    def test_k16_selected_export_reader_needs_producer_and_its_download(self):
-        self.metadata(**{'rust:test:proof': True})
-        self.change('tests/proof/main.rs')
-        _, out = self.select()
-        self.assertEqual((out['build-web'], out['export-rust'], out['export-web']), ('true', 'true', 'false'))
-        self.assertEqual(out['lint-rust'], 'true')
-
-    def test_k16_web_reader_and_nonreader(self):
-        self.metadata(**{'web:unit:api': True})
-        self.change('apps/web/test/unit/api.test.ts')
-        _, out = self.select()
-        self.assertEqual((out['build-web'], out['export-rust'], out['export-web']), ('true', 'false', 'true'))
-        # That negative trace describes the old test. This changed test may
-        # start reading the export, so its download must remain scheduled.
-        self.metadata()
-        _, out = self.select()
-        self.assertEqual((out['build-web'], out['export-rust'], out['export-web']), ('true', 'false', 'true'))
-
-    def test_k16_changed_source_can_add_an_export_dependency(self):
-        # CS7: old negative metadata must not suppress a new prerequisite.
-        # Existing positive-reader tests never change a nonreader into a reader.
-        self.metadata()
-        self.change('apps/web/test/unit/api.test.ts',
-                    "import fs from 'node:fs'; fs.readFileSync('out/index.html');\n")
-        _, out = self.select()
-        self.assertEqual(out['web-tests'], 'web:unit:api')
-        self.assertEqual((out['build-web'], out['export-web']), ('true', 'true'))
-        # The real tiny reader succeeds only when that scheduled artifact exists.
-        (self.root / 'apps/web/out').mkdir()
-        (self.root / 'apps/web/out/index.html').write_text('synthetic export')
-        proc = subprocess.run(['node', '--input-type=module', '-e',
-                               "import fs from 'node:fs'; fs.readFileSync('out/index.html');"],
-                              cwd=self.root / 'apps/web', capture_output=True, text=True)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-
-    def test_k16_old_maps_and_unmapped_tests_keep_the_export(self):
-        self.change('docs/a.md')
-        _, out = self.select()  # old map, no export metadata, checks absent
-        self.assertEqual((out['build-web'], out['export-rust']), ('true', 'true'))
-        self.metadata()
-        self.units.write_text(self.units.read_text() + 'rust:test:new-proof\n')
-        _, out = self.select()  # new test absent from the trusted map
-        self.assertEqual((out['build-web'], out['export-rust']), ('true', 'true'))
-
-    def test_k16_malformed_export_metadata_runs_everything(self):
-        self.change('docs/a.md')
-        self.metadata(**{'rust:test:proof': 'false'})
-        self.full('selector_error')
-
     def test_drift_on_main_since_the_trace_is_part_of_the_change(self):
         self.change('crates/core/src/lib.rs')  # merged to main after the trace
         self.change('tests/proof/main.rs')  # the pull request's own change
         _, out = self.select()
         self.assertEqual(out['rust-tests'], 'rust:lib:openwiz-core rust:test:checks rust:test:proof')
 
-    def test_web_tests_are_named_by_file_for_the_runner(self):
-        self.change('apps/web/test/unit/api.test.ts')
-        _, out = self.select()
-        self.assertEqual(out['web-tests'], 'web:unit:api')
-        self.assertEqual(out['web-files'], 'test/unit/api.test.ts')
-
     def full(self, why):
         answer, out = self.select()
         self.assertEqual(out, {'selection': 'full', 'rust-tests': 'all', 'web-tests': 'all', 'web-files': 'all',
-                               'skill-tests': 'all', 'build-web': 'true', 'lint-rust': 'true', 'export-rust': 'true',
-                               'export-web': 'true', 'build-site': 'true', 'image-skills': 'true'})
+                               'skill-tests': 'all', 'lint-rust': 'true', 'build-site': 'true', 'image-skills': 'true'})
         self.assertIn(why, answer['detail'])
 
     def test_no_plain_case_runs_everything(self):
@@ -409,8 +339,7 @@ class Repo(unittest.TestCase):
                             keys=None, units_file=str(self.units), classify=False, github_output=str(out),
                             fetch_keys=lambda: (_ for _ in ()).throw(OSError('no network')))
         self.assertEqual(out.read_text(), 'selection=full\nrust-tests=all\nweb-tests=all\nweb-files=all\n'
-                         'skill-tests=all\nbuild-web=true\nlint-rust=true\nexport-rust=true\n'
-                         'export-web=true\nbuild-site=true\nimage-skills=true\n')
+                         'skill-tests=all\nlint-rust=true\nbuild-site=true\nimage-skills=true\n')
         self.assertIn('no network', answer['detail'])
 
 
@@ -509,51 +438,27 @@ class Planted(unittest.TestCase):
     def test_an_edit_its_lane_catches_passes(self):
         self.assertEqual(self.run_planted(('rust',), {'rust:test:x': 1, 'rust:test:y': 0}), 0)
 
-    def test_an_edit_another_lane_must_catch_passes_here(self):
-        self.assertEqual(self.run_planted(('web',), {'rust:test:x': 0, 'rust:test:y': 0}), 0)
-
-    def run_missing(self, catchers, pruned):
-        """planted.main() for the rust lane on a case whose file this checkout lacks."""
+    def test_a_case_whose_file_is_missing_fails_with_its_name(self):
+        # catches: a planted case that dies on a bare FileNotFoundError, or passes
+        # silently, when its file is not in the lane's checkout (#1335, CI at bc6cf49).
         import planted
         import tempfile as tf
         with tf.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, 'map.json'), 'w') as f:
                 json.dump({'schema': pick.MAP_SCHEMA, 'commit': COMMIT,
                            'units': {'rust:test:x': {'files': ['f.txt'], 'dirs': []}}}, f)
-            ran = []
-            saved = (planted.CASES, planted.HERE, planted.trace.commands, planted.trace.plain_run,
-                     getattr(planted, 'pruned', None), os.getcwd())
-            planted.CASES = [('docs/gone.md', 'old', 'new', catchers)]
+            saved = (planted.CASES, planted.HERE, planted.trace.commands, os.getcwd())
+            planted.CASES = [('docs/gone.md', 'old', 'new', ('rust',))]
             planted.HERE = tmp
             planted.trace.commands = lambda lane, root, threads: {'rust:test:x': (['x'], root)}
-            planted.trace.plain_run = lambda argv, cwd, env, log: ran.append(argv) or (0, 0.0)
-            planted.pruned = lambda root, lane, path: pruned
-            out = os.path.join(tmp, 'out.jsonl')
             try:
                 os.chdir(tmp)
-                rc = planted.main(['rust', out])
-            finally:
-                (planted.CASES, planted.HERE, planted.trace.commands, planted.trace.plain_run, planted.pruned,
-                 cwd) = saved
-                if planted.pruned is None:
-                    del planted.pruned
-                os.chdir(cwd)
-            with open(out) as f:
-                return rc, json.loads(f.read()), ran
-
-    def test_a_case_its_lane_prunes_and_need_not_catch_is_recorded_not_planted(self):
-        # catches: the web lane crashing on a Rust-only doc its prune deleted (#1335, web-export).
-        rc, row, ran = self.run_missing(('web',), True)
-        self.assertEqual((rc, row['path'], row['verdict'], ran),
-                         (0, 'docs/gone.md', 'not in this lane: its prune deletes it', []))
-
-    def test_a_case_whose_file_is_missing_otherwise_fails_with_its_name(self):
-        # catches: a planted case that silently proves nothing, or dies on a bare FileNotFoundError.
-        for catchers, pruned in ((('web',), False), (('rust',), True), (('rust',), False)):
-            with self.subTest(catchers=catchers, pruned=pruned):
                 with self.assertRaises(SystemExit) as e:
-                    self.run_missing(catchers, pruned)
-                self.assertIn('docs/gone.md', str(e.exception))
+                    planted.main(['rust', os.path.join(tmp, 'out.jsonl')])
+            finally:
+                planted.CASES, planted.HERE, planted.trace.commands, cwd = saved
+                os.chdir(cwd)
+            self.assertIn('docs/gone.md', str(e.exception))
 
 if __name__ == '__main__':
     unittest.main()

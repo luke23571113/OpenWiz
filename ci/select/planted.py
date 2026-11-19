@@ -4,27 +4,20 @@ selector skips for an edit is run anyway, with the edit in place, and must
 pass. Runs in CI (it runs a lane's every test once per edit), on the run of
 a pull request that changes this file.
 
-  python3 -I ci/select/planted.py rust|web OUT.jsonl [--jobs N]
+  python3 -I ci/select/planted.py rust OUT.jsonl [--jobs N]
 
 For each CASE (a real file, a behaviour-changing edit): the selector picks
 the tests for that one modified path from the committed map
 (ci/select/map.json); then, with the edit in place, every test of the lane
 runs, picked or not. A skipped test that fails is a reader the map hid: the
 case fails, and so does this command (exit 1). A picked test that fails is
-the edit caught. An edit no test of either lane catches proves nothing
-(`void`); the two lanes' lines together say which.
-
-An edit to the web export's inputs (apps/web, not its tests) is built into
-apps/web/out the way the job's out/ came: in a copy of apps/web beside it,
-whose out/ replaces out/'s contents for that case, and the original
-contents are put back after. Each file is put back after its case, whatever
-happens.
+the edit caught. An edit no test catches proves nothing (`void`). Each file
+is put back after its case, whatever happens. (The web lane, its export and
+their cases went with the web view, #1264.)
 """
 import argparse
 import json
 import os
-import shutil
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -41,43 +34,18 @@ import trace  # noqa: E402
 # installed skills change only through their pin (wizskills.lock).
 CASES = [
     ('tests/fixtures/envelopes/ls-long-complete.json', '"schema": "openwiz.inventory.v1",',
-     '"schema": "openwiz.inventory.v9",', ('rust', 'web')),
+     '"schema": "openwiz.inventory.v9",', ('rust',)),
     ('crates/adapters/github/src/fleets.rs', 'fn allows(argv: &[&str]) -> bool {\n    match argv {',
      'fn allows(argv: &[&str]) -> bool {\n    if !argv.is_empty() {\n        return true;\n    }\n    match argv {',
      ('rust',)),
-    ('apps/web/src/poller.ts', 'const delay = settled.ok ? this.o.intervalMs :',
-     'const delay = settled.ok ? this.o.intervalMs * 2 :', ('web',)),
     ('contracts/attachment.v1.schema.json', '"minLength": 1,\n      "maxLength": 64,', '"minLength": 1,\n      "maxLength": 65,',
      ('rust',)),
-    ('crates/server/src/web.rs', '("css", "text/css; charset=utf-8"),', '("css", "text/plain; charset=utf-8"),',
-     ('rust', 'web')),
-    # C5 (#783): the deliberate PR's hidden edit, reached only through the map.
-    ('tools/install/setup/setup.py', "{'code': code, 'revision': bound, 'at': now}",
-     "{'code': code, 'revision': bound + 1, 'at': now}", ('web',)),
     # #1335: the docs and skills rule (pick.py, rule 9) still selects a doc
     # and a skill that Rust tests read.
     ('docs/agents/fleet.md', '\n## Builder for small tickets\n', '\n## Builder for little tickets\n', ('rust',)),
     ('skills/setup/templates/fleet.md', '\n## Reviewer for GPT-built\n', '\n## Reviewer for other models\n',
      ('rust',), 'wizskills.lock'),
 ]
-EXPORT_INPUT = ('apps/web/',)
-NOT_EXPORT = ('apps/web/test/', 'apps/web/out/', 'apps/web/node_modules/')
-
-
-# The job whose prune (classify.sh --skips) each lane's checkout went through.
-PRUNE_JOB = {'rust': 'rust', 'web': 'web-test'}
-
-
-def pruned(root, lane, path):
-    """Whether this lane's prune deletes the path, or a folder or link above
-    it: the skip proof, so no test of the lane can read it (#1335)."""
-    parts = path.split('/')
-    paths = ['/'.join(parts[:i]) for i in range(1, len(parts) + 1)]
-    here = os.path.join(root, '.github/actions/docs-only')
-    out = subprocess.run(['sh', os.path.join(here, 'classify.sh'), '--skips', PRUNE_JOB[lane]],
-                         input='\n'.join(paths) + '\n', capture_output=True, text=True, check=True,
-                         env=dict(os.environ, READS=os.path.join(here, 'ci-reads.txt')))
-    return bool(set(out.stdout.splitlines()) & set(paths))
 
 
 def verdict(picked, results):
@@ -98,29 +66,6 @@ def apply(root, path, old, new):
     return original
 
 
-def build_export(root):
-    """Build apps/web's export, edit included, into apps/web/out's contents."""
-    copy = os.path.join(root, 'apps/.planted-web')
-    shutil.rmtree(copy, ignore_errors=True)
-    shutil.copytree(os.path.join(root, 'apps/web'), copy, symlinks=True,
-                    ignore=shutil.ignore_patterns('node_modules', 'out', '.next', 'test-results'))
-    os.symlink(os.path.join(root, 'apps/web/node_modules'), os.path.join(copy, 'node_modules'))
-    try:
-        subprocess.run(['npm', 'run', 'build'], cwd=copy, check=True, stdout=subprocess.DEVNULL)
-        replace_contents(os.path.join(copy, 'out'), os.path.join(root, 'apps/web/out'))
-    finally:
-        shutil.rmtree(copy, ignore_errors=True)
-
-
-def replace_contents(src, dst):
-    for name in os.listdir(dst):
-        p = os.path.join(dst, name)
-        shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.unlink(p)
-    for name in os.listdir(src):
-        s, d = os.path.join(src, name), os.path.join(dst, name)
-        shutil.copytree(s, d, symlinks=True) if os.path.isdir(s) else shutil.copy2(s, d)
-
-
 def record(out, row):
     """Append one case's row to OUT, making its folder if a fallback left none (#1579 R9)."""
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
@@ -130,7 +75,7 @@ def record(out, row):
 
 def main(argv):
     ap = argparse.ArgumentParser()
-    ap.add_argument('lane', choices=['rust', 'web'])
+    ap.add_argument('lane', choices=['rust'])
     ap.add_argument('out')
     ap.add_argument('--jobs', type=int, default=4)
     args = ap.parse_args(argv)
@@ -139,33 +84,16 @@ def main(argv):
         mp = pick.strict_json(f.read())
     todo = trace.commands(args.lane, root, 8)
     every = sorted(set(todo) | set(mp['units']))
-    out_dir = os.path.join(root, 'apps/web/out')
-    keep_out = os.path.join(root, 'apps/.planted-out')
     failed = False
-    if args.lane == 'web':
-        subprocess.run(['node', '-e', "import('./test/support/rust.mjs').then((m) => m.buildBinaries())"],
-                       cwd=os.path.join(root, 'apps/web'), check=True)
     for path, old, new, catchers, *seen_as in CASES:
-        if not catchers or not set(catchers) <= {'rust', 'web'}:
+        if not catchers or not set(catchers) <= {'rust'}:
             raise SystemExit(f'planted: {path}: no lanes named to catch it')
         sel = pick.select([('M', (seen_as or [path])[0])], mp, every, lambda p: None, lambda ps: set())
         picked = set(sel['tests'])
         if not os.path.isfile(os.path.join(root, path)):
-            # Only a lane that need not catch it may lack it, and only through its own prune.
-            if args.lane in catchers or not pruned(root, args.lane, path):
-                raise SystemExit(f'planted: {path} is not in this {args.lane} checkout')
-            row = {'lane': args.lane, 'path': path, 'as': (seen_as or [path])[0], 'edit': [old, new],
-                   'catchers': list(catchers), 'verdict': 'not in this lane: its prune deletes it'}
-            print('planted: ' + json.dumps(row, sort_keys=True), flush=True)
-            record(args.out, row)
-            continue
-        export = path.startswith(EXPORT_INPUT) and not path.startswith(NOT_EXPORT)
+            raise SystemExit(f'planted: {path} is not in this {args.lane} checkout')  # never a silent pass
         original = apply(root, path, old, new)
         try:
-            if export:
-                shutil.rmtree(keep_out, ignore_errors=True)
-                shutil.copytree(out_dir, keep_out, symlinks=True)
-                build_export(root)
             logs = os.path.join(root, 'target/planted-logs')
             os.makedirs(logs, exist_ok=True)
 
@@ -177,9 +105,6 @@ def main(argv):
         finally:
             with open(os.path.join(root, path), 'wb') as f:
                 f.write(original)
-            if export:
-                replace_contents(keep_out, out_dir)
-                shutil.rmtree(keep_out, ignore_errors=True)
         v = verdict(picked & set(todo), results)
         row = {'lane': args.lane, 'path': path, 'as': (seen_as or [path])[0], 'edit': [old, new], 'selection': sel['mode'],
                'picked': sorted(picked & set(todo)), 'skipped': sorted(set(todo) - picked), **v,

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Turn what a traced test touched into repository files (#432, K15).
 
-Used by trace.py, in the job that ran the test (it needs that job's target/
-and apps/web/out). What a test touched becomes:
+Used by trace.py, in the job that ran the test (it needs that job's
+target/). What a test touched becomes:
 
 - a file in the repository: itself, whether or not it was there (a test
   that looked for a missing file is that file's reader, should it appear);
@@ -19,8 +19,6 @@ and apps/web/out). What a test touched becomes:
   scratch) is not an input. Any other build product that exists is one the
   selector can't account for: the test is left out of the map (the
   selector always runs it);
-- apps/web/out (the web export, also through the folder it is mounted
-  from): `@web-export`, which map.py replaces with the export's inputs;
 - a node_modules folder: its package's package.json and package-lock.json;
 - git's own index or objects: the test can see every file through git, so
   it is left out of the map;
@@ -38,15 +36,12 @@ import os
 import re
 import subprocess
 
-EXPORT = '@web-export'
 CRATE = re.compile(r'\bopenwiz_[a-z0-9_]+\b')
 BOOKKEEPING = re.compile(r'target(/[^/]+)?/(\.rustc_info\.json|CACHEDIR\.TAG|\.cargo-lock|\.fingerprint(/.*)?|'
                          r'build(/.*)?|incremental(/.*)?|tmp(/.*)?|.+\.d|\.package-cache)$|target/tmp(/.*)?$|target$')
 GIT_HARMLESS = re.compile(r'\.git(/(HEAD|config|commondir|description|info(/.*)?|hooks(/.*)?|refs(/.*)?|packed-refs'
                           r'|logs(/.*)?|shallow|FETCH_HEAD|ORIG_HEAD))?$')
 NODE = re.compile(r'((?:.+/)?)node_modules(/.*)?$')
-SCRATCH = re.compile(r'apps/web/(test-results|\.next)(/.*)?$')
-WEB_NOT_EXPORT = re.compile(r'apps/web/(node_modules|\.next|out|test|test-results)(/.*)?$')
 
 
 TESTS_PACKAGE = 'openwiz-tests'
@@ -89,15 +84,12 @@ class Resolver:
     def __init__(self, root):
         self.root = os.path.abspath(root)
         self.real = os.path.realpath(self.root)
-        self.export = os.path.realpath(os.path.join(self.root, 'apps/web/out'))
         self._meta = None
         self._depinfo = None
 
     # Paths.
     def rel(self, path):
         """The repository-relative path, or None for a path outside it."""
-        if path == self.export or path.startswith(self.export + '/'):
-            return 'apps/web/out' + path[len(self.export):]
         for base in (self.root, self.real):
             if path == base:
                 return '.'
@@ -293,14 +285,12 @@ class Resolver:
             r = self.rel(path)
             if r is None:
                 continue
-            if r == 'apps/web/out' or r.startswith('apps/web/out/'):
-                files.add(EXPORT)
-            elif r.startswith('target/') or r == 'target' or NODE.match(r) or SCRATCH.match(r) \
+            if r.startswith('target/') or r == 'target' or NODE.match(r) \
                     or r == '.git' or r.startswith('.git/'):
                 continue
             else:
                 dirs.add(r)
-        for p in sorted(files - {EXPORT}) + sorted(dirs):
+        for p in sorted(files) + sorted(dirs):
             files |= self.via(p)
         return sorted(files), sorted(dirs), None
 
@@ -325,14 +315,9 @@ class Resolver:
             if GIT_HARMLESS.match(r):
                 return None
             return f'reads git\'s own {r}, through which it can see any file'
-        if r == 'apps/web/out' or r.startswith('apps/web/out/'):
-            files.add(EXPORT)
-            return None
         n = NODE.match(r)
         if n:
             files.update({n.group(1) + 'package.json', n.group(1) + 'package-lock.json'})
-            return None
-        if SCRATCH.match(r):
             return None
         if r == 'target' or r.startswith('target/'):
             if BOOKKEEPING.match(r) or not os.path.isfile(full):
@@ -346,23 +331,3 @@ class Resolver:
             return None  # a folder looked at, not listed: its files are what count
         files.add(r)
         return None
-
-    def export_inputs(self, touched, listed):
-        """What `npm run build` read: the web export's inputs."""
-        files, dirs = set(), set()
-        for path in touched:
-            r = self.rel(path)
-            if r is None or r == '.' or r.startswith('.git') or r.startswith('target/'):
-                continue
-            n = NODE.match(r)
-            if n:
-                files.update({n.group(1) + 'package.json', n.group(1) + 'package-lock.json'})
-            elif not WEB_NOT_EXPORT.match(r) and not os.path.isdir(os.path.join(self.root, r)):
-                files.add(r)
-        for path in listed:
-            r = self.rel(path)
-            if r is None or r.startswith('.git') or r.startswith('target') or NODE.match(r) \
-                    or WEB_NOT_EXPORT.match(r):
-                continue
-            dirs.add(r)
-        return sorted(files), sorted(dirs)

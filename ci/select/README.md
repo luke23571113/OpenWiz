@@ -10,18 +10,17 @@ Each code PR runs only the tests its change can reach, from a measured map of wh
 | --- | --- |
 | `rust:lib:<package>` | `cargo test -p <package>`: every test of one workspace crate other than `openwiz-tests` |
 | `rust:test:<target>` | `cargo test -p openwiz-tests --test <target>` |
-| `web:unit:<name>` | `apps/web/test/unit/**/<name>.test.ts` |
-| `web:browser:<name>` | `apps/web/test/browser/**/<name>.test.mjs` |
+
+The record's `web:` ids name no test since the web view went (#1264).
 
 The step and skill rules added by K16 (#433) are described below. The pending list and non-skill tool suites keep their existing coverage.
 
 ## The map
 
-On every push to `main` and every nightly run, the rust and web-test jobs run every test under `strace --seccomp-bpf` (`trace.py`), each test on its own and as CI runs it. They keep every repository path it, or anything it started, opened, looked for (a missing file counts), executed or listed. web-build traces `npm run build`.
+On every push to `main` and every nightly run, the rust job runs every test under `strace --seccomp-bpf` (`trace.py`), each test on its own and as CI runs it. It keeps every repository path it, or anything it started, opened, looked for (a missing file counts), executed or listed.
 
 `resolve.py` turns those paths into repository files:
 - **A Rust build product under `target/`** becomes its dep-info sources. A library's `lib<crate>-<hash>.rlib` has `<crate>-<hash>.d`; an uplifted program without dep-info is the `deps/` unit it is hard-linked to; a test name two packages share (`loops`) belongs to the one whose folder holds the unit's sources; a registry crate becomes `Cargo.lock` (#1335).
-- **`apps/web/out`** becomes the export's inputs.
 - **`node_modules`** becomes the lockfile.
 - **A path through a repository link** (`skills`, `.claude/skills/<name>`) also needs the link, and one inside the installed skills (`.wizskills/`) needs `wizskills.lock`, their pin (#1335).
 
@@ -52,9 +51,8 @@ In web-build's docs-only step, before its prune (`job.py select`, `pick.py`):
    - **Always** for a test the map doesn't know, and for the always-run `rust:test:checks`.
 5. **Anything missing, untrusted, unreadable or failing** runs everything.
 
-rust and web-test read web-build's outputs:
+The rust job reads the answer:
 - **`rust-tests`:** `sh ci/rust-tests.sh --only IDS`.
-- **`web-files`:** `node test/run-browser.mjs --with-unit --only FILES`, or no web test at all.
 
 An empty or missing output is `all`.
 
@@ -80,25 +78,24 @@ python3 -I ci/select/pick.py --map ci/select/map.json   # what this checkout's c
 
 Before #1335 every Rust test was left out of main's maps (`resolve.py` could
 not trace a library artifact, a shared test name or an uplifted program), so
-every selected pull request ran every Rust test, and `steps.py` counted the
-unmapped always-run `rust:test:checks` as an export reader, so it built the
-web export too. Now:
+every selected pull request ran every Rust test. Now:
 
-- Rust tests are mapped, so a modified doc, skill or site file runs only its
-  measured readers; `rust:test:checks` (git's objects) stays left out, in the
-  always lane.
+- Rust tests are mapped, so a modified doc or skill runs only its measured
+  readers; `rust:test:checks` (git's objects) stays left out, in the always
+  lane.
 - A new doc or skill no test can find reaches no test (`pick.py`, rule 9).
-- The always lane never waits for the export, so its tests never require it
-  (`steps.plan`'s `own_lane`; `job.py`'s older answer keeps `()`).
-- The old web view's export (`build-web`) runs when `apps/web/` changes or a
-  selected test reads it, until AP11 (#1264) deletes it.
+- A pin move (`wizskills.lock`) or a changed skill link reaches every test
+  reading the installed skills, even on a map traced before #1335.
 - [`planted.py`](planted.py) plants a reachable doc (`docs/agents/fleet.md`)
   and a reachable skill (a pin move, seen as `wizskills.lock`): Rust tests
-  read both, and the selector must pick them.
-- The `ci` job's last step lists every job's time at the head, slowest first.
+  read both, and the selector must pick them. A case whose file is missing
+  fails with its name.
+- The `ci` job lists every job's time at the head, slowest first, just before
+  the required result.
 
-This applies to pull-request selection only: main-push tracing and signing,
-the 120-minute gate, concurrency and merge groups' full suite are unchanged.
+The web lane and its export went with the web view (AP11, #1264). This
+applies to pull-request selection only: main-push tracing and signing, the
+120-minute gate, concurrency and merge groups' full suite are unchanged.
 
 ## Step and skill selection (#433, K16)
 
@@ -107,21 +104,14 @@ map-to-head diff**, before pruning:
 
 | Output | Required when |
 | --- | --- |
-| `build-web` | An app path changed, or a selected test needs the web export; gates npm build/typecheck/check and the upload |
-| `export-rust`, `export-web` | A selected test in that job needs the export; gates its download |
 | `lint-rust` | A Rust source, crate input or Cargo manifest/lockfile changed; gates fmt, clippy and explicit workspace/release builds |
-| `build-site` | The existing classifier's site rows reach the change; gates web-build's site build |
+| `build-site` | The existing classifier's release rows reach the change; gates the release proofs |
 | `skill-tests` | Space-separated changed skill folders that have CI suites, or `all` / `none` |
 | `image-skills` | The image suite runs; gates its npm/Chromium dependencies |
 
-The map builder keeps `web_export: true/false` on each mapped test before
-expanding `@web-export` into its sources. Old maps without that field, and
-unmapped/new tests, conservatively require the export. A negative trace is also
-invalidated when one of that test's mapped inputs changes or an entry is added
-to/deleted from a folder it listed: the test may now start reading the export.
-A docs change can skip
-all explicit build/lint steps when its selected readers are known nonreaders
-of the export; an incomplete map can keep extra work.
+The web export, its build and the `build-web`, `export-rust` and `export-web`
+requirements went with the web view (#1264). A docs change can skip all
+explicit build/lint steps.
 
 `skills.py` runs the existing seven skill commands in their existing order,
 including both plan-graph commands and triage followed by where-are-we in a
@@ -165,8 +155,8 @@ A one-line behaviour change was caught by a test selected through the map.
   `missing`. [Independent verification](https://github.com/openwizdev/OpenWiz/issues/783#issuecomment-6941059608)
   records the same evidence.
 - **The offline case:** the `tools/install/setup/setup.py` row of `CASES` in
-  [`planted.py`](planted.py) plants exactly that edit and requires the web lane
-  to catch it. [Local red/green evidence](../../docs/evidence/783/planted-red-green.md)
+  `planted.py` planted exactly that edit and required the web lane to catch
+  it; it went with the web lane in #1264. [Local red/green evidence](../../docs/evidence/783/planted-red-green.md)
   records the catcher failing with the edit and passing after restoration.
 
 Option (b), manual dispatch signing, remains dropped and unmerged under

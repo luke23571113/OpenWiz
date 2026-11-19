@@ -4,8 +4,8 @@
 clean `release-<version>` branch. The separate private-to-public export retires.
 It never pushes, fetches, tags or creates a GitHub Release. Plans with an `entry` section read GitHub through `gh`;
 plans without an entry do not call it. Python 3.11+ (the privacy command and
-regression-successor manifest checks require it), git, Cargo with rustfmt and
-clippy, and (for a web export) npm, Node and Chromium must already be installed.
+regression-successor manifest checks require it), git, and Cargo with rustfmt and
+clippy must already be installed.
 No third-party Python packages are used.
 
 ```sh
@@ -234,7 +234,7 @@ its own reads at every gated effect; no caller receipt or comment counts for the
   check of that name was only skipped (a main push's `main-light` run) is not
   evidence and is ignored; with no other run, the gate is missing.
 - **D2, artifact privacy:** every archive is staged through the installer's own checks,
-  then the existing O3 checker scans the staged runtime and web files with the
+  then the existing O3 checker scans the staged runtime files with the
   operator's private `--literals` file. Any finding refuses.
 - **D3, `cutover`:** O17 (#1285) closed as completed, with no `held` label on it or on
   O16 (#1284). The public repository is public and not archived, with immutable
@@ -253,7 +253,7 @@ its own reads at every gated effect; no caller receipt or comment counts for the
   category's reviewed pattern can never be `no` for it. A category is `no` only if
   every row says `no`. Spending has no pattern yet.
 
-`products` takes RL4's native-query and web-build receipts and the runtime
+`products` takes RL4's native-query receipt and the runtime
 selection as inputs. The command then runs RL4's verifiers over each staged archive
 and requires their rows to equal the candidate's. `live` runs RL3's
 `tools/live-smoke/receipt.py` producer on the approved kit and run state, and
@@ -619,14 +619,12 @@ exported folder resolves; a fragment on it does not. Unknown URL hosts fail clos
 
 In the fresh clone, the commands run sequentially:
 
-1. For a web tree: `npm ci --ignore-scripts`, `npm run build`,
-   `npm run typecheck`, `npm run check` in `apps/web`.
-2. `cargo build --workspace --release --locked`,
+1. `cargo build --workspace --release --locked`,
    `cargo test --workspace --locked`, `cargo fmt --check`,
    `cargo clippy --workspace --all-targets --locked -- -D warnings`.
-3. For a web tree: `npm test` in `apps/web`.
-4. Applicable historical public regressions by name (nonzero exact counts),
+2. Applicable historical public regressions by name (nonzero exact counts),
    then the release binary's `--help`, checking trailing whitespace.
+   (The web and site build and test steps went with them in #1264.)
 
 A plan may name an approved successor for a renamed regression proof:
 `"regressions": [{"id": "0.0.3-R3", "proof": "tests/<target>/<file>.rs",
@@ -749,14 +747,14 @@ ledger and maintainer approval remain required. The checker never publishes.
 
 The manual `Packages` workflow assembles artifacts only for Apple silicon Mac,
 Intel Mac and Linux x86_64. It never publishes, tags or pushes. Each native job
-builds the same three programs and web export at its exact source commit, checks
-the embedded service commit and native executable architecture, copies the
+builds the program at its exact source commit, checks its compiled identity and
+native executable architecture, copies the
 tracked skill runtime, and writes a complete `openwiz.build-products.v1`
 inventory. `build_products.py` records every asset's path, size, mode and SHA-256;
 `package.py` refuses changed, missing, extra or linked products before assembly.
-The reviewed version is applied to the workspace package version for the three
-program builds; protocol/envelope versions stay independent. Matching build
-stamps in web/ and runtime/ bind the same version, source and target; a manifest
+The reviewed version is applied to the workspace package version for the
+program build; protocol/envelope versions stay independent. The runtime/ build
+stamp binds the same version, source and target; a manifest
 cannot relabel those bytes as another version.
 
 A target artifact contains its versioned tar.gz, manifest, SHA256SUMS, and stable

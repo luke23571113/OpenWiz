@@ -26,7 +26,7 @@ counts as changed. Anything else, missing, untrusted, unreadable or failing
 is a full run: `selection=full`, every lane `all`. The answer goes to
 GITHUB_OUTPUT as `selection`, `rust-tests` and `web-tests` (test ids, `all`
 or `none`), K16's step/skill requirements (steps.py), and `web-files`
-(the web tests' files under apps/web, for run-browser.mjs --only).
+(always `none` since the web view went, #1264).
 
 **Which runs trace.** A push to `main` and the nightly run, and a pull
 request that changes the tracer itself (its own proof run, which selects
@@ -48,7 +48,6 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import pick  # noqa: E402
-import units as units_mod  # noqa: E402
 import steps  # noqa: E402
 import skills  # noqa: E402
 
@@ -229,12 +228,8 @@ def _select(plain, map_dir, root, repo, keys, units_file, classify, fetch_keys):
     if result.get('mode') != 'selected' or 'all' in lane.values():
         return full(f'the selector runs everything: {reasons or "no answer"}')
     files = 'none'
-    if lane['web'] != 'none':
-        paths = units_mod.web_units(root)
-        files = ' '.join(sorted(paths[t] for t in lane['web'].split()))
     mp = pick.strict_json(data.decode('utf-8'))
-    step_plan = steps.plan(result['tests'], pick.diff(root, commit, 'HEAD'), pick.check_map(mp), root, classify,
-                           own_lane=())  # this rust-tests answer runs checks in the rust lane
+    step_plan = steps.plan(result['tests'], pick.diff(root, commit, 'HEAD'), pick.check_map(mp), root, classify)
     run = len(result['tests'])
     return {**step_plan, 'selection': 'selected', 'rust-tests': lane['rust'], 'web-tests': lane['web'], 'web-files': files,
             'detail': f'map of {commit} (run {claims.get("run_id")}, {claims["event_name"]}); '
@@ -286,8 +281,6 @@ def validate(path):
                                   os.path.basename(p).split('.test.')[0] for p in paths)
                 if ids != file_ids:
                     raise ValueError('web ids and files differ')
-            if (out['export-rust'] == 'true' or out['export-web'] == 'true') and out['build-web'] != 'true':
-                raise ValueError('an export consumer needs its producer')
             if out['image-skills'] != ('true' if 'image' in skills.selected(out['skill-tests']) else 'false'):
                 raise ValueError('image suite needs its dependencies')
         else:

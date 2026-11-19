@@ -23,8 +23,7 @@
   },
   "builds": {
     "web_export": {
-      "decision": "skip",
-      "reason": "no selected test reads apps/web/out"
+      "decision": "skip"
     }
   },
   "lanes": {

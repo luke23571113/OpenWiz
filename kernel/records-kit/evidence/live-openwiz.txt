@@ -1,0 +1,19 @@
+# Live read: python3 -I kernel/records-kit/check.py --repo openwizdev/OpenWiz, 2026-11-19 at 11:41 UTC (exit 1)
+# A read of the public repository's open issues; it wrote nothing. Breaks by rule:
+# 4 B2
+# 79 L3
+# 230 T1
+# Spec #1365's tickets, whose only break is their spec's missing label:
+#1366 L3: its spec #1365 lacks spec
+#1367 L3: its spec #1365 lacks spec
+#1368 L3: its spec #1365 lacks spec
+#1369 L3: its spec #1365 lacks spec
+#1370 L3: its spec #1365 lacks spec
+#1371 L3: its spec #1365 lacks spec
+#1372 L3: its spec #1365 lacks spec
+#1373 L3: its spec #1365 lacks spec
+# Every B2 break:
+#81 B2: blocker #74 is closed as not_planned, not completed
+#81 B2: blocker #70 is closed as not_planned, not completed
+#85 B2: blocker #74 is closed as not_planned, not completed
+#85 B2: blocker #70 is closed as not_planned, not completed
