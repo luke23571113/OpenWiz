@@ -1,9 +1,8 @@
 # Free-only release: no paid offer, no payment code (#2293)
 
 PR6's review portion for spec #2194: does the release offer no paid OpenWiz
-plan, and contain no payment code? The boundary is
-[public-offer.v1](../../contracts/public-offer.v1.md); the decision is
-[public-offer](../decisions/public-offer.md) (Jake, 2026-11-10, confirmed
+plan, and contain no payment code? The boundary is the
+[free-only release decision](../decisions/public-offer.md) (Jake, 2026-11-10, confirmed
 2026-11-13: free only, Paid plans come later).
 Private record: https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6763149732
 
