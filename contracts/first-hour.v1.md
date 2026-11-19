@@ -259,7 +259,7 @@ payment.
 | Gate | Decision ticket | Today |
 | --- | --- | --- |
 | `cloudroom_setup` | #2201: David's agreement on automatic installation, sign-in and branding, and the usable-login evidence source | `unresolved` |
-| `paid_offer` | #2202: the free-only friends-first release, agreed in [public-offer.v1](public-offer.v1.md): no paid offer or payment code, and Paid plans come later. Its one approved producer is #2293 (the free-only install, site and app copy and the no-paid-offer review); it settles no paid benefit, payment arrangement or trial, and needs no trial receipt | `unresolved` until #2293's verified merge; then `settled`, with producers `[2293]` |
+| `paid_offer` | #2202: the free-only friends-first release, agreed in [the free-only decision](../docs/decisions/public-offer.md): no paid offer or payment code, and Paid plans come later. Its one approved producer is #2293 (the free-only install, site and app copy and the no-paid-offer review); it settles no paid benefit, payment arrangement or trial, and needs no trial receipt | `unresolved` until #2293's verified merge; then `settled`, with producers `[2293]` |
 | `feedback` | #2203: the feedback destination and transport, consent and public-only sharing, agreed in [feedback.v1](feedback.v1.md). Its one approved producer is #2292 (the `feedback` skill and the app's handoff and share) | `unresolved` until #2292's verified merge; then `settled`, with producers `[2292]` |
 
 A gate is `unresolved` with no `producers`, or `settled` with its producer

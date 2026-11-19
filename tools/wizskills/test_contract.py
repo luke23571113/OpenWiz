@@ -11,7 +11,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / 'contracts/wizskills.v1.md'
-FIXTURES = ROOT / 'contracts/fixtures/wizskills'
+FIXTURES = Path(__file__).resolve().parent / 'fixtures/contract'
 
 
 def unique_object(pairs):

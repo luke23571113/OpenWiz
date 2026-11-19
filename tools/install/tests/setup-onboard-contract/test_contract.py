@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """#632 (P1-P7 at the shared interface only): contracts/setup-onboard.v1 refuses what it says.
 
-Every expected code comes from contracts/fixtures/setup-onboard/cases.json, written by
+Every expected code comes from fixtures/cases.json beside this test, written by
 hand from the contract's rules. The values are synthetic. These tests prove interface
 consistency only: never an installation, a usable account, a saved secret, a timing,
 an action count or a merge.
@@ -34,7 +34,7 @@ SCHEMA = json.loads((ROOT / 'contracts/setup-onboard.v1.schema.json').read_text(
 SETUP_SCHEMA = json.loads((ROOT / 'contracts/setup.v1.schema.json').read_text())
 FIRST_HOUR_SCHEMA = json.loads((ROOT / 'contracts/first-hour.v1.schema.json').read_text())
 IDENTITY = (ROOT / 'contracts/github-identity.v1.md').read_text()
-CASES_PATH = ROOT / 'contracts/fixtures/setup-onboard/cases.json'
+CASES_PATH = HERE / 'fixtures/cases.json'
 CASES = json.loads(CASES_PATH.read_text())
 EXAMPLES, VARIANTS, VIEWS = CASES['examples'], CASES['variants'], CASES['setup_views']
 # A synthetic pointer in the open-development contract's good form. In memory only.

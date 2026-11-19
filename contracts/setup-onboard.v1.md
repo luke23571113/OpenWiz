@@ -9,7 +9,7 @@ delivery (T3 #606), visibility-aware `openwiz init` and the brain reference
 (T5 #635), the joined continuation (T6 #636) and the 0.0.16 timing and action
 receipt (T7 #637, T9 #639). The schema is
 [setup-onboard.v1.schema.json](setup-onboard.v1.schema.json). Synthetic cases
-are in [fixtures/setup-onboard/cases.json](fixtures/setup-onboard/cases.json);
+are in [cases.json](../tools/install/tests/setup-onboard-contract/fixtures/cases.json);
 the checks are in `tools/install/tests/setup-onboard-contract/`.
 
 **This contract grants nothing.** It authorizes no sign-in, App registration or

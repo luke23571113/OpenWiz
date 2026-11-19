@@ -311,4 +311,4 @@ Run `python3 -I tools/wizskills/test_contract.py` in the source checkout for
 WZ-P1: explicit package, pin, changelog, reference and refusal fixtures. It
 also verifies that each named carried source exists. It is not the production
 standalone scanner or installer. Its failing-first record and claim boundaries
-are in `contracts/fixtures/wizskills/`; independent contract review is required.
+are in `tools/wizskills/fixtures/contract/`; independent contract review is required.

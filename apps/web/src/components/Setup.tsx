@@ -47,7 +47,7 @@ function SetupAccess() {
   </div>;
 }
 
-/** #1109, reconciled by #2293 (contracts/public-offer.v1.md): CloudRoom's own
+/** #1109, reconciled by #2293 (docs/decisions/public-offer.md): CloudRoom's own
  * pricing page, shown as text: the app makes no outbound links. OpenWiz is free
  * now and paid plans come later; a CloudRoom purchase is upstream and separate,
  * never an OpenWiz upgrade. No owner-supplied referral is verified, so none is

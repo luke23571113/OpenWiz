@@ -6,7 +6,7 @@
 // #1109 (0.0.13 T7): the one install line, the confirmed grill's I1 order at the public address.
 // An agent resolves it through the packaged install skill (skills/install/SKILL.md).
 export const setupPrompt = 'Install OpenWiz from github.com/openwizdev/OpenWiz';
-// #2293 (reconciling #1109's upgrade line, contracts/public-offer.v1.md): OpenWiz is free now and
+// #2293 (free-only release decision, docs/decisions/public-offer.md): OpenWiz is free now and
 // paid plans come later; CloudRoom and model charges are separate, never an OpenWiz upgrade. No
 // owner-supplied referral is verified, so the link is CloudRoom's own pricing page with none, and
 // the page says verification is unavailable.
