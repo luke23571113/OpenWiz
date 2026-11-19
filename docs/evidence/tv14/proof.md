@@ -15,7 +15,7 @@ and a PR event description. No existing test exercises this new CLI boundary.
 | `test_unreadable_description` | Missing, malformed or non-string descriptions silently passing | Available locally |
 | `test_malformed_allowance` | Accepting malformed, unjustified or duplicate allowances | Available locally |
 | `test_binary_test_file` | Uncountable test changes silently treated as zero | Available locally |
-| `test_committed_diff` | Reading dirty working-tree contents instead of the requested commits | Available locally |
+| `test_committed_diff` | Reading dirty working-tree contents or borrowing deletion credit from newer main-only tests | Available locally |
 
 The PR-only step's execution and pass require this PR's CI record; non-PR
 skipping is checked by inspecting the single step's event condition and CI
@@ -26,3 +26,9 @@ Supporting edits: this folder records acceptance proofs for `budget.py` and
 `test_budget.py` under J110; its wildcard carriage row registers only this
 folder. The two exact script rows use spec #787's narrow registry grant.
 No product changelog: this is infrastructure only.
+
+Results: all nine CLI proofs pass after enforcement. The initial red run is
+`red.txt`; `red-advanced-base.txt` additionally proves that a direct base/head
+diff incorrectly grants 600 deleted lines of credit when main advances.
+`passing.txt` records the complete passing fixture suite. No campaign speed
+claim is made from these local logs; timing comparisons require CI lanes.
