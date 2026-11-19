@@ -105,8 +105,8 @@ This table itself (`docs/cleanup/docs-table.md`) is not in the pinned tree, so i
 
 | Action | Files | Lines |
 | --- | ---: | ---: |
-| keep | 452 | 19,703 |
-| rewrite | 34 | 10,644 |
+| keep | 443 | 16,313 |
+| rewrite | 43 | 14,034 |
 | move | 123 | 12,130 |
 | delete | 3 | 262 |
 
@@ -114,12 +114,59 @@ This table itself (`docs/cleanup/docs-table.md`) is not in the pinned tree, so i
 - **rewrite:** stays, rewritten for the fewest tokens: no history, no repeated rules, no "updated for" notes. Settings a script or skill parses stay byte for byte.
 - **move:** goes to the private records at the path in **Where it went**. Every move goes to ClosedWiz `private/openwiz-docs/` under its OpenWiz path, so it can be found again. DS4 owns that folder.
 - **delete:** goes; any line still needed folds into the file the reason names.
-- **Owner** is the ticket whose owned paths hold the file. `none` means no DS ticket owns it. Five non-keep rows have no owner: `.claude/skills/export-review/evidence/1845-proof.md`, `apps/site/test/evidence-1114.md` and the three `apps/web/docs/evidence/1030/` files. DS2 decides whether DS4 widens to them or #1264 (AP11) removes them with the old web view.
-- Some rows name a reader in code (a test or tool that reads the file). That reader changes in the same pass as the move or delete, or the row waits. Rows for files #1264 (AP11) or #1160 (CW19) delete first need no DS action.
+- **Owner** is the ticket whose owned paths hold the file. `none` means no DS ticket owns it. 9 non-keep rows have no owner: `.claude/skills/export-review/evidence/1845-proof.md`, `.claude/skills/live-quick-check/SKILL.md`, `.claude/skills/live-spike/SKILL.md`, `apps/site/README.md`, `apps/site/test/evidence-1114.md`, `apps/web/docs/evidence/1030/README.md`, `apps/web/docs/evidence/1030/review-1/README.md`, `apps/web/docs/evidence/1030/review-2/README.md`, `ci/select/README.md`. DS2 decides who does each one: a DS ticket widens to it, or #1264 (AP11) removes it with the old web view. Until then, a move that one of these files waits on stays put.
+- **Readers first.** A move or delete row that something still links to or names in code says **Waits** and lists those readers. The file moves only after each reader has been updated in the same pass or earlier: its link replaced by the guidance the reader needs, by a working link, or by a private-record pointer. A reader that otherwise stays as it is becomes **rewrite**, and its reason says the link edit is the only change. Code that names a path is listed without judging whether it reads the file or only uses the name as a test sample; the ticket doing the move checks each one. Rows for files #1264 (AP11) or #1160 (CW19) delete first need no DS action.
 
 ## ADRs: the three tests
 
 An ADR is kept only when its decision is **non-obvious**, **a real trade-off** and **hard to reverse**. Kept: 0001, 0004, 0007, 0008. Kept and rewritten: 0011 (to its current rule) and 0020. The other 14 fail at least one test and move. Each ADR's row below says which test decided it.
+
+## Readers of removed files
+
+At the pin, 25 Markdown links in files that stay point to a file this table moves or deletes. The links were found by resolving every relative link in each staying file against the tree. Code that names a removed path (full path, outside evidence and import lists) is grouped by target below. The table rows carry the same facts.
+
+| Reader (stays) | Line | Links to | Target action | Reader owner |
+| --- | ---: | --- | --- | --- |
+| `.claude/skills/live-quick-check/SKILL.md` | 12 | `docs/adr/0016-agents-run-live-tests.md` | move | none |
+| `.claude/skills/live-spike/SKILL.md` | 10 | `docs/adr/0015-live-tests-on-the-pc.md` | move | none |
+| `AGENTS.md` | 7 | `STATUS.md` | delete | DS3 |
+| `AGENTS.md` | 22 | `STATUS.md` | delete | DS3 |
+| `AGENTS.md` | 92 | `docs/adr/0015-live-tests-on-the-pc.md` | move | DS3 |
+| `README.md` | 9 | `STATUS.md` | delete | DS3 |
+| `apps/site/README.md` | 51 | `docs/decisions/public-offer.md` | move | none |
+| `ci/select/README.md` | 143 | `docs/evidence/783/planted-red-green.md` | move | none |
+| `contracts/feedback.v1.md` | 6 | `docs/decisions/public-feedback.md` | move | DS6 |
+| `contracts/fleet.v1.md` | 5 | `STATUS.md` | delete | DS6 |
+| `contracts/public-cloudroom-setup.v1.md` | 6 | `docs/decisions/public-cloudroom-setup.md` | move | DS6 |
+| `contracts/service.v1.md` | 300 | `docs/adr/0002-no-artificial-cap-on-builders.md` | move | DS6 |
+| `docs/adr/0020-release-on-demand.md` | 25 | `docs/adr/0019-agent-live-smoke-gates-publishing.md` | move | DS4 |
+| `docs/adr/0020-release-on-demand.md` | 34 | `docs/adr/0016-agents-run-live-tests.md` | move | DS4 |
+| `docs/adr/0020-release-on-demand.md` | 36 | `docs/adr/0018-live-checks-early-publish-in-order.md` | move | DS4 |
+| `docs/agents/fleet.md` | 72 | `docs/adr/0014-huntr-approves-by-risk-tier.md` | move | DS7 |
+| `docs/agents/fleet.md` | 136 | `docs/adr/0002-no-artificial-cap-on-builders.md` | move | DS7 |
+| `docs/agents/huntr.md` | 3 | `docs/adr/0014-huntr-approves-by-risk-tier.md` | move | DS7 |
+| `docs/first-hour.md` | 35 | `docs/fleets.md` | move | DS4 |
+| `tests/fixtures/first-hour/README.md` | 23 | `docs/decisions/public-offer.md` | move | DS7 |
+| `tools/install/tests/first-hour/README.md` | 49 | `docs/decisions/public-offer.md` | move | DS5 |
+| `tools/release/README.md` | 437 | `tools/release/findings.md` | move | DS5 |
+| `tools/test-value/README.md` | 197 | `tools/test-value/evidence/baseline/README.md` | move | DS5 |
+| `tools/war-room/README.md` | 736 | `tools/war-room/design/brief.md` | move | DS5 |
+| `tools/war-room/README.md` | 961 | `docs/evidence/1097/measurements.md` | move | DS5 |
+
+| Removed file | Code files that name it |
+| --- | --- |
+| `RELEASING.md` (delete) | `tools/release/review_rules.py`, `tools/release/test_backfill.py`, `tools/release/test_export_review.py` |
+| `STATUS.md` (delete) | `.github/actions/changelog/check.py`, `.github/actions/changelog/test_check.py`, `.github/actions/docs-only/test.sh`, `.github/actions/docs-only/test_release_prune.py`, `ci/select/pick.py`, `ci/select/test_pick.py`, `tests/checks/plan_links.rs`, `tools/release/test_review.py`, `tools/roadmap/roadmap.py`, `tools/roadmap/test.py`, `tools/skills-eval/required-text.json`, `tools/skills-eval/test.py` |
+| `docs/ROADMAP.md` (move) | `.github/actions/docs-only/test_plan.py`, `tools/github-app/test.py`, `tools/roadmap/roadmap.py`, `tools/roadmap/test.py` |
+| `docs/adr/0010-infra-work-has-no-version.md` (move) | `.github/actions/docs-only/test.sh` |
+| `docs/decisions/public-offer.md` (move) | `apps/site/test/approved-copy.mjs`, `apps/web/src/components/Setup.tsx` |
+| `docs/evidence/1097/measurements.md` (move) | `tools/war-room/budgets.tsv` |
+| `docs/evidence/ci2-batch-proof.md` (move) | `ci/main-batch/admit.py` |
+| `docs/evidence/ci2-pr-cuts.md` (move) | `tools/open-import/test_import.py` |
+| `docs/fleets.md` (move) | `tools/release/test_backfill.py` |
+| `docs/security/public-release-review.md` (move) | `tools/open-import/test_import.py` |
+| `docs/spikes/ops-dispatch.md` (move) | `tools/open-import/test_import.py` |
+| `tools/test-value/evidence/tv12/ledger.md` (move) | `tests/checks/skills.rs` |
 
 ## Comments and doc blocks that teach rejected patterns
 
@@ -153,6 +200,21 @@ diff /tmp/tree.txt /tmp/rows.txt && uniq -d /tmp/rows.txt   # no output: each fi
 tok=$(mktemp -d)
 npm install --prefix "$tok" --no-save --ignore-scripts --package-lock=false js-tiktoken@1.0.21
 node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules/js-tiktoken"
+
+# readers of removed files: every staying file's relative links that land on a move or delete row
+python3 -I - <<'PY'
+import re, subprocess, posixpath
+C = 'a361f5f7f8b7c0d2991abe9afc050886e0ad86fd'
+rows = re.findall(r'^\| `([^`]+\.md)` \| \d+ \| (\w+) \|', open('docs/cleanup/docs-table.md').read(), re.M)
+gone = {p for p, a in rows if a in ('move', 'delete')}
+for p, a in rows:
+    if p in gone: continue
+    text = subprocess.run(['git', 'cat-file', 'blob', f'{C}:{p}'], capture_output=True).stdout.decode()
+    for n, line in enumerate(text.splitlines(), 1):
+        for u in re.findall(r'\]\(([^)\s#]+)', line):
+            t = u[1:] if u.startswith('/') else posixpath.normpath(posixpath.join(posixpath.dirname(p), u))
+            if not re.match(r'^[a-z]+:', u) and t in gone: print(f'{p}:{n} -> {t}')
+PY
 ```
 
 ```json
@@ -202,17 +264,17 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | --- | ---: | --- | --- | --- | --- |
 | `.claude/skills/export-review/SKILL.md` | 81 | keep | local skill; CI classifier keeps it for its Rust reader |  | none |
 | `.claude/skills/export-review/evidence/1845-proof.md` | 46 | move | proof record of #1845 | ClosedWiz `private/openwiz-docs/.claude/skills/export-review/evidence/1845-proof.md` | none |
-| `.claude/skills/live-quick-check/SKILL.md` | 74 | keep | local skill; CI classifier keeps it for its Rust reader |  | none |
-| `.claude/skills/live-spike/SKILL.md` | 39 | keep | local skill agents run before live claims |  | none |
+| `.claude/skills/live-quick-check/SKILL.md` | 74 | rewrite | local skill; CI classifier keeps it for its Rust reader; only change: its links to removed files (line 12 → `docs/adr/0016-agents-run-live-tests.md`) get the needed guidance or a working link, before those files move |  | none |
+| `.claude/skills/live-spike/SKILL.md` | 39 | rewrite | local skill agents run before live claims; only change: its links to removed files (line 10 → `docs/adr/0015-live-tests-on-the-pc.md`) get the needed guidance or a working link, before those files move |  | none |
 | `.github/actions/changelog/README.md` | 34 | keep | reader needs: how to run the changelog check |  | none |
-| `AGENTS.md` | 123 | rewrite | under 60 lines: what, where, one test command, skill pointers; drop enforced rules and history |  | DS3 |
+| `AGENTS.md` | 123 | rewrite | under 60 lines: what, where, one test command, skill pointers; drop enforced rules and history; also its links to removed files (line 7 → `STATUS.md`, line 22 → `STATUS.md`, line 92 → `docs/adr/0015-live-tests-on-the-pc.md`) |  | DS3 |
 | `CHANGELOG.md` | 251 | keep | release artifact; site and release tests read it |  | none |
 | `CONTRIBUTING.md` | 53 | delete | "Updated for" history; fold any needed line into README |  | DS3 |
 | `GLOSSARY.md` | 126 | rewrite | kept: makes short instructions mean one thing; tighten |  | DS3 |
-| `README.md` | 54 | rewrite | what OpenWiz is and how to start, briefly; 100+ code readers check its words |  | DS3 |
-| `RELEASING.md` | 81 | delete | fold needed lines into README; ADR 0020 and `tools/release/` carry the path; `tools/release/review_rules.py` names it |  | DS3 |
-| `STATUS.md` | 128 | delete | app and spec pages show status (spec); `tools/roadmap/roadmap.py` writes it, so that reader goes first |  | DS3 |
-| `apps/site/README.md` | 62 | keep | how to build and test the site; #1264 may delete the site copy |  | none |
+| `README.md` | 54 | rewrite | what OpenWiz is and how to start, briefly; 100+ code readers check its words; also its links to removed files (line 9 → `STATUS.md`) |  | DS3 |
+| `RELEASING.md` | 81 | delete | fold needed lines into README; ADR 0020 and `tools/release/` carry the path; `tools/release/review_rules.py` names it. **Waits** until these readers are updated: named in code by `tools/release/review_rules.py`, `tools/release/test_backfill.py`, `tools/release/test_export_review.py` |  | DS3 |
+| `STATUS.md` | 128 | delete | app and spec pages show status (spec); `tools/roadmap/roadmap.py` writes it, so that reader goes first. **Waits** until these readers are updated: linked from `AGENTS.md:7`, `AGENTS.md:22`, `README.md:9`, `contracts/fleet.v1.md:5`; named in code by `.github/actions/changelog/check.py`, `.github/actions/changelog/test_check.py`, `.github/actions/docs-only/test.sh`, `.github/actions/docs-only/test_release_prune.py`, `ci/select/pick.py`, `ci/select/test_pick.py`, `tests/checks/plan_links.rs`, `tools/release/test_review.py`, `tools/roadmap/roadmap.py`, `tools/roadmap/test.py`, `tools/skills-eval/required-text.json`, `tools/skills-eval/test.py` |  | DS3 |
+| `apps/site/README.md` | 62 | rewrite | how to build and test the site; #1264 may delete the site copy; only change: its links to removed files (line 51 → `docs/decisions/public-offer.md`) get the needed guidance or a working link, before those files move |  | none |
 | `apps/site/test/evidence-1114.md` | 81 | move | proof record of #1114 | ClosedWiz `private/openwiz-docs/apps/site/test/evidence-1114.md` | none |
 | `apps/web/AGENTS.md` | 28 | keep | folder instructions; #1264 deletes the old web view first |  | none |
 | `apps/web/docs/design-rules.md` | 435 | keep | rules the web code cites; #1264 deletes the old web view first |  | none |
@@ -468,7 +530,7 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `changes/notes/0.0.12.md` | 251 | keep | release note input |  | none |
 | `ci/escapes/README.md` | 46 | keep | reader needs: how to find selector escapes |  | none |
 | `ci/main-batch/README.md` | 83 | keep | reader needs: the combined-main observation record |  | none |
-| `ci/select/README.md` | 149 | keep | reader needs: how test selection works and how to test it |  | none |
+| `ci/select/README.md` | 149 | rewrite | reader needs: how test selection works and how to test it; only change: its links to removed files (line 143 → `docs/evidence/783/planted-red-green.md`) get the needed guidance or a working link, before those files move |  | none |
 | `ci/selection/README.md` | 112 | keep | reader needs: what the selection fixtures cover |  | none |
 | `ci/shard/README.md` | 40 | keep | reader needs: how to run the Rust shards |  | none |
 | `ci/wizroom/fixtures/contract/contracts/review.v1.md` | 4 | keep | test fixture |  | none |
@@ -481,7 +543,7 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `contracts/cli.v1.md` | 276 | keep | reader needs: the commands, flags, JSON and exit codes `openwiz` keeps compatible |  | DS6 |
 | `contracts/cockpit.v1.md` | 213 | keep | reader needs: the cockpit read shape; #1264 decides the old web view |  | DS6 |
 | `contracts/decisions.v1.md` | 406 | keep | reader needs: the decision request and `GET /api/v1/decisions` shapes |  | DS6 |
-| `contracts/feedback.v1.md` | 284 | keep | reader needs: what feedback sends and what sharing exposes |  | DS6 |
+| `contracts/feedback.v1.md` | 284 | rewrite | reader needs: what feedback sends and what sharing exposes; only change: its links to removed files (line 6 → `docs/decisions/public-feedback.md`) get the needed guidance or a working link, before those files move |  | DS6 |
 | `contracts/fixtures/wizloops/README.md` | 113 | keep | fixture loop tests read |  | DS6 |
 | `contracts/fixtures/wizloops/catalog/all-secrets.md` | 8 | keep | fixture loop tests read |  | DS6 |
 | `contracts/fixtures/wizloops/invalid-folder/duplicate-id/a.md` | 7 | keep | fixture loop tests read |  | DS6 |
@@ -547,7 +609,7 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `contracts/fixtures/wizloops/valid/short-check.md` | 8 | keep | fixture loop tests read |  | DS6 |
 | `contracts/fixtures/wizloops/valid/webhook-new.md` | 9 | keep | fixture loop tests read |  | DS6 |
 | `contracts/fleet-tick.v1.md` | 539 | rewrite | teaches 2 + 1 diagnoses (review-loops v2 is 1 + 1); keep what the tick code follows |  | DS6 |
-| `contracts/fleet.v1.md` | 1456 | rewrite | 1,456 lines with ticket status history; keep only what `openwiz fleet` prints |  | DS6 |
+| `contracts/fleet.v1.md` | 1456 | rewrite | 1,456 lines with ticket status history; keep only what `openwiz fleet` prints; also its links to removed files (line 5 → `STATUS.md`) |  | DS6 |
 | `contracts/github-identity.v1.md` | 296 | keep | reader needs: the App identity, token minting and record authors |  | DS6 |
 | `contracts/install.v1.md` | 83 | keep | reader needs: the install bundle: version, source, targets |  | DS6 |
 | `contracts/loop-cli.v1.md` | 288 | keep | reader needs: `openwiz loop` arguments, outputs and exit codes |  | DS6 |
@@ -556,11 +618,11 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `contracts/ops-dispatch.v1.md` | 307 | rewrite | teaches "2 + 1 correction counts" (now 1 + 1); keep what code follows |  | DS6 |
 | `contracts/plan-links.v1.md` | 254 | keep | reader needs: link reasons in ticket bodies and the checker interface |  | DS6 |
 | `contracts/plan.v1.md` | 234 | keep | reader needs: the `GET /api/v1/plan` response shape |  | DS6 |
-| `contracts/public-cloudroom-setup.v1.md` | 250 | keep | reader needs: the CloudRoom setup step: reuse, install, sign-in |  | DS6 |
+| `contracts/public-cloudroom-setup.v1.md` | 250 | rewrite | reader needs: the CloudRoom setup step: reuse, install, sign-in; only change: its links to removed files (line 6 → `docs/decisions/public-cloudroom-setup.md`) get the needed guidance or a working link, before those files move |  | DS6 |
 | `contracts/release-candidate.v1.md` | 239 | keep | reader needs: the checked public build record the release path binds |  | DS6 |
 | `contracts/review-loops.v1.md` | 284 | rewrite | v2 supersedes its rounds; keep only the shapes `tools/war-room/review_loops.py` reads, or move |  | DS6 |
 | `contracts/review-loops.v2.md` | 183 | keep | reader needs: the 1 + 1 review rule, VERDICT and ruling lines |  | DS6 |
-| `contracts/service.v1.md` | 611 | rewrite | 611 lines with ticket status; keep shapes the service prints; #1264 may delete the service |  | DS6 |
+| `contracts/service.v1.md` | 611 | rewrite | 611 lines with ticket status; keep shapes the service prints; #1264 may delete the service; also its links to removed files (line 300 → `docs/adr/0002-no-artificial-cap-on-builders.md`) |  | DS6 |
 | `contracts/setup-onboard.v1.md` | 368 | keep | reader needs: install to first merge: steps and records |  | DS6 |
 | `contracts/setup.v1.md` | 97 | keep | reader needs: the resumable `GET /api/v1/setup` read |  | DS6 |
 | `contracts/web-api.v1.md` | 590 | rewrite | revision history per version; keep routes the server serves; #1264 may delete the server |  | DS6 |
@@ -569,9 +631,9 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `contracts/wizroom.v1.md` | 297 | keep | reader needs: what stays public when the war room splits; `ci/wizroom/split.py` checks it |  | DS6 |
 | `contracts/wizskills.v1.md` | 314 | keep | reader needs: the WizSkills package and installer interface `install.py` follows |  | DS6 |
 | `deploy/pc/README.md` | 218 | keep | PC service setup; `tests/service/t4_setup.rs` reads it; #1264 may delete the service |  | none |
-| `docs/ROADMAP.md` | 75 | move | marked Private: themes, not specs; `tools/roadmap/roadmap.py` and `tools/github-app/test.py` read it, so those readers change first | ClosedWiz `private/openwiz-docs/docs/ROADMAP.md` | DS4 |
+| `docs/ROADMAP.md` | 75 | move | marked Private: themes, not specs; `tools/roadmap/roadmap.py` and `tools/github-app/test.py` read it, so those readers change first. **Waits** until these readers are updated: named in code by `.github/actions/docs-only/test_plan.py`, `tools/github-app/test.py`, `tools/roadmap/roadmap.py`, `tools/roadmap/test.py` | ClosedWiz `private/openwiz-docs/docs/ROADMAP.md` | DS4 |
 | `docs/adr/0001-one-orchestrator-per-project-one-fleet-per-spec.md` | 5 | keep | non-obvious (parent chain rejected), real trade-off, hard to reverse: fleets are found agent → branch → PR → ticket → spec |  | DS4 |
-| `docs/adr/0002-no-artificial-cap-on-builders.md` | 5 | move | real trade-off but easy to reverse: a cap is one setting | ClosedWiz `private/openwiz-docs/docs/adr/0002-no-artificial-cap-on-builders.md` | DS4 |
+| `docs/adr/0002-no-artificial-cap-on-builders.md` | 5 | move | real trade-off but easy to reverse: a cap is one setting. **Waits** until these readers are updated: linked from `contracts/service.v1.md:300`, `docs/agents/fleet.md:136` | ClosedWiz `private/openwiz-docs/docs/adr/0002-no-artificial-cap-on-builders.md` | DS4 |
 | `docs/adr/0003-skills-first-then-code.md` | 5 | move | done history (0.0.5 to 0.0.6); nothing left to reverse | ClosedWiz `private/openwiz-docs/docs/adr/0003-skills-first-then-code.md` | DS4 |
 | `docs/adr/0004-github-layout-for-versions-specs-tickets.md` | 3 | keep | non-obvious (labels and files rejected), real trade-off, hard to reverse: every record uses milestones and sub-issues |  | DS4 |
 | `docs/adr/0005-skills-any-harness-agent-invokable.md` | 5 | move | the skills moved to WizSkills; the decision is theirs now | ClosedWiz `private/openwiz-docs/docs/adr/0005-skills-any-harness-agent-invokable.md` | DS4 |
@@ -579,22 +641,22 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `docs/adr/0007-the-fleet-loop-is-separate-from-the-orchestrator.md` | 5 | keep | non-obvious, real trade-off (orchestrator context), hard to reverse: the tick code reads state only from GitHub |  | DS4 |
 | `docs/adr/0008-openwiz-merges-tickets-jake-approves-plans.md` | 5 | keep | non-obvious, real trade-off (speed against control), hard to reverse: the merge authority model; `tools/skills-eval/test.py` reads it |  | DS4 |
 | `docs/adr/0009-live-tests-run-while-jake-works.md` | 5 | move | a process rule, easy to reverse | ClosedWiz `private/openwiz-docs/docs/adr/0009-live-tests-run-while-jake-works.md` | DS4 |
-| `docs/adr/0010-infra-work-has-no-version.md` | 5 | move | a process rule, easy to reverse | ClosedWiz `private/openwiz-docs/docs/adr/0010-infra-work-has-no-version.md` | DS4 |
+| `docs/adr/0010-infra-work-has-no-version.md` | 5 | move | a process rule, easy to reverse. **Waits** until these readers are updated: named in code by `.github/actions/docs-only/test.sh` | ClosedWiz `private/openwiz-docs/docs/adr/0010-infra-work-has-no-version.md` | DS4 |
 | `docs/adr/0011-one-fleet-thread-per-spec.md` | 7 | rewrite | keep only the current rule (the admitted generation claim); drop the superseded thread-ownership history |  | DS4 |
 | `docs/adr/0012-plan-as-far-ahead-as-useful.md` | 5 | move | a planning rule, easy to reverse | ClosedWiz `private/openwiz-docs/docs/adr/0012-plan-as-far-ahead-as-useful.md` | DS4 |
 | `docs/adr/0013-huntr-approves-work-of-approved-kinds.md` | 5 | move | superseded by 0014 | ClosedWiz `private/openwiz-docs/docs/adr/0013-huntr-approves-work-of-approved-kinds.md` | DS4 |
-| `docs/adr/0014-huntr-approves-by-risk-tier.md` | 5 | move | a policy setting (the tier ceiling), easy to reverse; `docs/agents/fleet.md` and `huntr.md` link it | ClosedWiz `private/openwiz-docs/docs/adr/0014-huntr-approves-by-risk-tier.md` | DS4 |
-| `docs/adr/0015-live-tests-on-the-pc.md` | 15 | move | superseded by 0016 (per-step approval); where tests run is easy to reverse; AGENTS.md links it | ClosedWiz `private/openwiz-docs/docs/adr/0015-live-tests-on-the-pc.md` | DS4 |
-| `docs/adr/0016-agents-run-live-tests.md` | 11 | move | a live-test policy, easy to reverse | ClosedWiz `private/openwiz-docs/docs/adr/0016-agents-run-live-tests.md` | DS4 |
+| `docs/adr/0014-huntr-approves-by-risk-tier.md` | 5 | move | a policy setting (the tier ceiling), easy to reverse; `docs/agents/fleet.md` and `huntr.md` link it. **Waits** until these readers are updated: linked from `docs/agents/fleet.md:72`, `docs/agents/huntr.md:3` | ClosedWiz `private/openwiz-docs/docs/adr/0014-huntr-approves-by-risk-tier.md` | DS4 |
+| `docs/adr/0015-live-tests-on-the-pc.md` | 15 | move | superseded by 0016 (per-step approval); where tests run is easy to reverse; AGENTS.md links it. **Waits** until these readers are updated: linked from `.claude/skills/live-spike/SKILL.md:10`, `AGENTS.md:92` | ClosedWiz `private/openwiz-docs/docs/adr/0015-live-tests-on-the-pc.md` | DS4 |
+| `docs/adr/0016-agents-run-live-tests.md` | 11 | move | a live-test policy, easy to reverse. **Waits** until these readers are updated: linked from `.claude/skills/live-quick-check/SKILL.md:12`, `docs/adr/0020-release-on-demand.md:34` | ClosedWiz `private/openwiz-docs/docs/adr/0016-agents-run-live-tests.md` | DS4 |
 | `docs/adr/0017-codex-reviews-small-polish-prs.md` | 11 | move | teaches Codex fast mode and Terra, both rejected (2026-11-06 and 11-07); easy to reverse | ClosedWiz `private/openwiz-docs/docs/adr/0017-codex-reviews-small-polish-prs.md` | DS4 |
-| `docs/adr/0018-live-checks-early-publish-in-order.md` | 5 | move | a release-order rule, easy to reverse | ClosedWiz `private/openwiz-docs/docs/adr/0018-live-checks-early-publish-in-order.md` | DS4 |
-| `docs/adr/0019-agent-live-smoke-gates-publishing.md` | 3 | move | superseded in part by 0020 | ClosedWiz `private/openwiz-docs/docs/adr/0019-agent-live-smoke-gates-publishing.md` | DS4 |
-| `docs/adr/0020-release-on-demand.md` | 46 | rewrite | keep: non-obvious, real trade-off (speed against gates), hard to reverse (immutable public releases); drop the status and history lines |  | DS4 |
+| `docs/adr/0018-live-checks-early-publish-in-order.md` | 5 | move | a release-order rule, easy to reverse. **Waits** until these readers are updated: linked from `docs/adr/0020-release-on-demand.md:36` | ClosedWiz `private/openwiz-docs/docs/adr/0018-live-checks-early-publish-in-order.md` | DS4 |
+| `docs/adr/0019-agent-live-smoke-gates-publishing.md` | 3 | move | superseded in part by 0020. **Waits** until these readers are updated: linked from `docs/adr/0020-release-on-demand.md:25` | ClosedWiz `private/openwiz-docs/docs/adr/0019-agent-live-smoke-gates-publishing.md` | DS4 |
+| `docs/adr/0020-release-on-demand.md` | 46 | rewrite | keep: non-obvious, real trade-off (speed against gates), hard to reverse (immutable public releases); drop the status and history lines; also its links to removed files (line 25 → `docs/adr/0019-agent-live-smoke-gates-publishing.md`, line 34 → `docs/adr/0016-agents-run-live-tests.md`, line 36 → `docs/adr/0018-live-checks-early-publish-in-order.md`) |  | DS4 |
 | `docs/agents/domain.md` | 49 | keep | settings the skills read (pinned build-ticket) |  | DS7 |
-| `docs/agents/fleet.md` | 293 | rewrite | settings the skills and scripts read stay byte for byte; drop source history prose; teaches Haiku helpers (see Comments) |  | DS7 |
+| `docs/agents/fleet.md` | 293 | rewrite | settings the skills and scripts read stay byte for byte; drop source history prose; teaches Haiku helpers (see Comments); also its links to removed files (line 72 → `docs/adr/0014-huntr-approves-by-risk-tier.md`, line 136 → `docs/adr/0002-no-artificial-cap-on-builders.md`) |  | DS7 |
 | `docs/agents/github-app.md` | 154 | keep | `tools/github-app/setup.py` reads it; the person's App checklist |  | DS7 |
 | `docs/agents/helpers.md` | 118 | rewrite | pinned build-ticket 0.1.2 reads it; WizSkills main defers helpers and ticket briefs say no helper agents; shrink, go when the pin moves |  | DS7 |
-| `docs/agents/huntr.md` | 404 | rewrite | huntr settings stay; 404 lines of prose shrink |  | DS7 |
+| `docs/agents/huntr.md` | 404 | rewrite | huntr settings stay; 404 lines of prose shrink; also its links to removed files (line 3 → `docs/adr/0014-huntr-approves-by-risk-tier.md`) |  | DS7 |
 | `docs/agents/issue-tracker.md` | 55 | keep | settings the skills read (pinned build-ticket) |  | DS7 |
 | `docs/agents/roads.md` | 9 | keep | 9 lines: the three roads |  | DS7 |
 | `docs/agents/skills-ab.md` | 220 | rewrite | `tools/war-room/experiments/analysis.py` reads its settings; prose shrinks |  | DS7 |
@@ -605,9 +667,9 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `docs/cleanup/wave1-contracts.md` | 172 | keep | table for open cleanup wave #1141; DS4 and DS7 do not own it; move after #1141 closes |  | DS8 |
 | `docs/cleanup/wave1-scaffolding.md` | 184 | keep | table for open cleanup wave #1141; DS4 and DS7 do not own it; move after #1141 closes |  | DS8 |
 | `docs/cli.md` | 14 | rewrite | drop the removed terminal app history (#776); keep the command guide |  | DS4 |
-| `docs/decisions/public-cloudroom-setup.md` | 48 | move | old decision record | ClosedWiz `private/openwiz-docs/docs/decisions/public-cloudroom-setup.md` | DS4 |
-| `docs/decisions/public-feedback.md` | 78 | move | old decision record | ClosedWiz `private/openwiz-docs/docs/decisions/public-feedback.md` | DS4 |
-| `docs/decisions/public-offer.md` | 78 | move | old decision record; `apps/site/test/approved-copy.mjs` and `Setup.tsx` name it | ClosedWiz `private/openwiz-docs/docs/decisions/public-offer.md` | DS4 |
+| `docs/decisions/public-cloudroom-setup.md` | 48 | move | old decision record. **Waits** until these readers are updated: linked from `contracts/public-cloudroom-setup.v1.md:6` | ClosedWiz `private/openwiz-docs/docs/decisions/public-cloudroom-setup.md` | DS4 |
+| `docs/decisions/public-feedback.md` | 78 | move | old decision record. **Waits** until these readers are updated: linked from `contracts/feedback.v1.md:6` | ClosedWiz `private/openwiz-docs/docs/decisions/public-feedback.md` | DS4 |
+| `docs/decisions/public-offer.md` | 78 | move | old decision record; `apps/site/test/approved-copy.mjs` and `Setup.tsx` name it. **Waits** until these readers are updated: linked from `apps/site/README.md:51`, `tests/fixtures/first-hour/README.md:23`, `tools/install/tests/first-hour/README.md:49`; named in code by `apps/site/test/approved-copy.mjs`, `apps/web/src/components/Setup.tsx` | ClosedWiz `private/openwiz-docs/docs/decisions/public-offer.md` | DS4 |
 | `docs/evidence/1026/README.md` | 59 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/1026/README.md` | DS4 |
 | `docs/evidence/1044/README.md` | 85 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/1044/README.md` | DS4 |
 | `docs/evidence/1044/red-80dd129.md` | 67 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/1044/red-80dd129.md` | DS4 |
@@ -619,8 +681,8 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `docs/evidence/1089/README.md` | 45 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/1089/README.md` | DS4 |
 | `docs/evidence/1093/README.md` | 80 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/1093/README.md` | DS4 |
 | `docs/evidence/1093/review-r1.md` | 70 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/1093/review-r1.md` | DS4 |
-| `docs/evidence/1097/measurements.md` | 165 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/1097/measurements.md` | DS4 |
-| `docs/evidence/783/planted-red-green.md` | 181 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/783/planted-red-green.md` | DS4 |
+| `docs/evidence/1097/measurements.md` | 165 | move | evidence record. **Waits** until these readers are updated: linked from `tools/war-room/README.md:961`; named in code by `tools/war-room/budgets.tsv` | ClosedWiz `private/openwiz-docs/docs/evidence/1097/measurements.md` | DS4 |
+| `docs/evidence/783/planted-red-green.md` | 181 | move | evidence record. **Waits** until these readers are updated: linked from `ci/select/README.md:143` | ClosedWiz `private/openwiz-docs/docs/evidence/783/planted-red-green.md` | DS4 |
 | `docs/evidence/791/green.md` | 22 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/791/green.md` | DS4 |
 | `docs/evidence/791/red.md` | 145 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/791/red.md` | DS4 |
 | `docs/evidence/794/README.md` | 41 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/794/README.md` | DS4 |
@@ -634,8 +696,8 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `docs/evidence/936/README.md` | 53 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/936/README.md` | DS4 |
 | `docs/evidence/946/README.md` | 65 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/946/README.md` | DS4 |
 | `docs/evidence/ci2-app-installation.md` | 46 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/ci2-app-installation.md` | DS4 |
-| `docs/evidence/ci2-batch-proof.md` | 410 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/ci2-batch-proof.md` | DS4 |
-| `docs/evidence/ci2-pr-cuts.md` | 389 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/ci2-pr-cuts.md` | DS4 |
+| `docs/evidence/ci2-batch-proof.md` | 410 | move | evidence record. **Waits** until these readers are updated: named in code by `ci/main-batch/admit.py` | ClosedWiz `private/openwiz-docs/docs/evidence/ci2-batch-proof.md` | DS4 |
+| `docs/evidence/ci2-pr-cuts.md` | 389 | move | evidence record. **Waits** until these readers are updated: named in code by `tools/open-import/test_import.py` | ClosedWiz `private/openwiz-docs/docs/evidence/ci2-pr-cuts.md` | DS4 |
 | `docs/evidence/github-identity/live-run.md` | 56 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/github-identity/live-run.md` | DS4 |
 | `docs/evidence/github-identity/red-run.md` | 15 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/github-identity/red-run.md` | DS4 |
 | `docs/evidence/github-identity/review-1.md` | 44 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/github-identity/review-1.md` | DS4 |
@@ -656,8 +718,8 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `docs/evidence/release-on-demand.md` | 81 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/release-on-demand.md` | DS4 |
 | `docs/evidence/tv14/proof.md` | 52 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/tv14/proof.md` | DS4 |
 | `docs/evidence/war-room-gather-ci-reads.md` | 49 | move | evidence record | ClosedWiz `private/openwiz-docs/docs/evidence/war-room-gather-ci-reads.md` | DS4 |
-| `docs/first-hour.md` | 54 | keep | user guide; the app links it |  | DS4 |
-| `docs/fleets.md` | 128 | move | 0.0.5 design note, "Status: being grilled"; GLOSSARY and skills carry the words now | ClosedWiz `private/openwiz-docs/docs/fleets.md` | DS4 |
+| `docs/first-hour.md` | 54 | rewrite | user guide; the app links it; only change: its links to removed files (line 35 → `docs/fleets.md`) get the needed guidance or a working link, before those files move |  | DS4 |
+| `docs/fleets.md` | 128 | move | 0.0.5 design note, "Status: being grilled"; GLOSSARY and skills carry the words now. **Waits** until these readers are updated: linked from `docs/first-hour.md:35`; named in code by `tools/release/test_backfill.py` | ClosedWiz `private/openwiz-docs/docs/fleets.md` | DS4 |
 | `docs/github-app.md` | 197 | keep | user guide; `tools/github-app/test.py` reads it |  | DS4 |
 | `docs/how-openwiz-works.md` | 16 | keep | 16-line user overview with its picture |  | DS4 |
 | `docs/install.md` | 47 | keep | user install guide; journey test reads it |  | DS4 |
@@ -665,10 +727,10 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `docs/live-checks/0.0.12-parts/new-thread.md` | 39 | move | 0.0.12 live-check kit record; teaches the removed `openwiz ui` | ClosedWiz `private/openwiz-docs/docs/live-checks/0.0.12-parts/new-thread.md` | DS4 |
 | `docs/live-checks/0.0.12-parts/send.md` | 43 | move | 0.0.12 live-check kit record; teaches the removed `openwiz ui` | ClosedWiz `private/openwiz-docs/docs/live-checks/0.0.12-parts/send.md` | DS4 |
 | `docs/live-checks/0.0.12.md` | 30 | move | 0.0.12 live-check kit record; teaches the removed `openwiz ui` | ClosedWiz `private/openwiz-docs/docs/live-checks/0.0.12.md` | DS4 |
-| `docs/security/public-release-review.md` | 181 | move | release security review record (spec: security notes move) | ClosedWiz `private/openwiz-docs/docs/security/public-release-review.md` | DS4 |
+| `docs/security/public-release-review.md` | 181 | move | release security review record (spec: security notes move). **Waits** until these readers are updated: named in code by `tools/open-import/test_import.py` | ClosedWiz `private/openwiz-docs/docs/security/public-release-review.md` | DS4 |
 | `docs/service-install.md` | 116 | rewrite | user guide to the packaged runtime; drop internals; #1264 may delete the service |  | DS4 |
 | `docs/spikes/0.0.15-notifications.md` | 32 | move | spike record | ClosedWiz `private/openwiz-docs/docs/spikes/0.0.15-notifications.md` | DS4 |
-| `docs/spikes/ops-dispatch.md` | 208 | move | spike record | ClosedWiz `private/openwiz-docs/docs/spikes/ops-dispatch.md` | DS4 |
+| `docs/spikes/ops-dispatch.md` | 208 | move | spike record. **Waits** until these readers are updated: named in code by `tools/open-import/test_import.py` | ClosedWiz `private/openwiz-docs/docs/spikes/ops-dispatch.md` | DS4 |
 | `docs/web-access.md` | 281 | rewrite | security model a user needs; drop version history; `tests/service/t2_docs.rs` reads it |  | DS4 |
 | `loops/README.md` | 55 | keep | loop definitions folder; three tests read it |  | none |
 | `release/openwiz/CHANGELOG.md` | 34 | keep | frozen 0.0.0 release; AGENTS.md: changing it needs Jake |  | none |
@@ -683,7 +745,7 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `release/openwiz/docs/workflow.md` | 162 | keep | frozen 0.0.0 release; AGENTS.md: changing it needs Jake; teaches old 2 + 1, so AGENTS.md stops pointing to it (DS3) |  | none |
 | `tests/checks/dependencies.md` | 25 | keep | `tests/checks/dependencies.rs` reads the ledger |  | DS7 |
 | `tests/fixtures/README.md` | 62 | keep | fixture provenance; the fixture scan names it |  | DS7 |
-| `tests/fixtures/first-hour/README.md` | 2276 | keep | fixture document two tests read |  | DS7 |
+| `tests/fixtures/first-hour/README.md` | 2276 | rewrite | fixture document two tests read; only change: its links to removed files (line 23 → `docs/decisions/public-offer.md`) get the needed guidance or a working link, before those files move |  | DS7 |
 | `tests/fixtures/first-hour/setup-onboard/README.md` | 755 | keep | fixture documents `test_first_merge.py` reads |  | DS7 |
 | `tests/fixtures/github/fleets/README.md` | 10 | keep | 10-line fixture note |  | DS7 |
 | `tests/fixtures/release/candidate/README.md` | 65 | keep | fixture examples `test_receipt.py` reads |  | DS7 |
@@ -730,13 +792,13 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `tools/install/completion/checkpoint.v1.md` | 149 | keep | reader needs: the CP1 checkpoint JSON the code checks |  | DS5 |
 | `tools/install/first-hour-live-kit.md` | 165 | keep | reader needs: the first-hour live steps `kit.py` dry-runs |  | DS5 |
 | `tools/install/live-kit.md` | 51 | keep | reader needs: the 0.0.13 kit steps `live-kit-test.py` dry-runs |  | DS5 |
-| `tools/install/tests/first-hour/README.md` | 120 | rewrite | 120 lines; keep how to run the journey |  | DS5 |
+| `tools/install/tests/first-hour/README.md` | 120 | rewrite | 120 lines; keep how to run the journey; also its links to removed files (line 49 → `docs/decisions/public-offer.md`) |  | DS5 |
 | `tools/install/tests/first-hour/providers/README.md` | 43 | keep | reader needs: what the recording and fault providers inject |  | DS5 |
 | `tools/live-smoke/README.md` | 347 | rewrite | 347 lines; keep how to run the one live-check runner |  | DS5 |
 | `tools/open-import/README.md` | 236 | rewrite | 236 lines; keep how to run the import |  | DS5 |
 | `tools/privacy-check/README.md` | 129 | rewrite | 129 lines; keep how to run the check |  | DS5 |
-| `tools/release/README.md` | 791 | rewrite | 791 lines; keep how to run `release check` |  | DS5 |
-| `tools/release/findings.md` | 72 | move | record of past export findings; the private export retired | ClosedWiz `private/openwiz-docs/tools/release/findings.md` | DS5 |
+| `tools/release/README.md` | 791 | rewrite | 791 lines; keep how to run `release check`; also its links to removed files (line 437 → `tools/release/findings.md`) |  | DS5 |
+| `tools/release/findings.md` | 72 | move | record of past export findings; the private export retired. **Waits** until these readers are updated: linked from `tools/release/README.md:437` | ClosedWiz `private/openwiz-docs/tools/release/findings.md` | DS5 |
 | `tools/release/public/RELEASING.md` | 119 | keep | reader needs: the public RELEASING template `test_backfill.py` reads |  | DS5 |
 | `tools/roadmap/README.md` | 72 | rewrite | 72 lines; writes STATUS.md, which goes (DS3) |  | DS5 |
 | `tools/roadmap/fixtures/ROADMAP.md` | 26 | keep | fixture note the tests cite |  | DS5 |
@@ -749,8 +811,8 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `tools/skills-eval/replay/contract-fixtures/README.md` | 14 | keep | fixture note the tests cite |  | DS5 |
 | `tools/skills-eval/weekly/README.md` | 255 | rewrite | 255 lines; keep how to run the weekly core |  | DS5 |
 | `tools/stall-alarm/README.md` | 301 | rewrite | 301 lines; keep how to run it |  | DS5 |
-| `tools/test-value/README.md` | 202 | keep | reader needs: the ledger form and coverage method; wave #1141 relies on it |  | DS5 |
-| `tools/test-value/evidence/baseline/README.md` | 66 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/baseline/README.md` | DS5 |
+| `tools/test-value/README.md` | 202 | rewrite | reader needs: the ledger form and coverage method; wave #1141 relies on it; only change: its links to removed files (line 197 → `tools/test-value/evidence/baseline/README.md`) get the needed guidance or a working link, before those files move |  | DS5 |
+| `tools/test-value/evidence/baseline/README.md` | 66 | move | evidence record. **Waits** until these readers are updated: linked from `tools/test-value/README.md:197` | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/baseline/README.md` | DS5 |
 | `tools/test-value/evidence/cw11/README.md` | 116 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/cw11/README.md` | DS5 |
 | `tools/test-value/evidence/cw11/ledger.md` | 756 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/cw11/ledger.md` | DS5 |
 | `tools/test-value/evidence/cw3/README.md` | 67 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/cw3/README.md` | DS5 |
@@ -766,7 +828,7 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `tools/test-value/evidence/tv11/README.md` | 163 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv11/README.md` | DS5 |
 | `tools/test-value/evidence/tv11/ledger.md` | 351 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv11/ledger.md` | DS5 |
 | `tools/test-value/evidence/tv12/README.md` | 67 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv12/README.md` | DS5 |
-| `tools/test-value/evidence/tv12/ledger.md` | 97 | move | TV12 ledger record; a comment in `tests/checks/skills.rs` points to it | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv12/ledger.md` | DS5 |
+| `tools/test-value/evidence/tv12/ledger.md` | 97 | move | TV12 ledger record; a comment in `tests/checks/skills.rs` points to it. **Waits** until these readers are updated: named in code by `tests/checks/skills.rs` | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv12/ledger.md` | DS5 |
 | `tools/test-value/evidence/tv12/plan.md` | 65 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv12/plan.md` | DS5 |
 | `tools/test-value/evidence/tv3/coverage.md` | 66 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv3/coverage.md` | DS5 |
 | `tools/test-value/evidence/tv3/ledger.md` | 164 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv3/ledger.md` | DS5 |
@@ -782,11 +844,11 @@ node <WizSkills>/tools/measure/static-count.cjs manifest.json "$tok/node_modules
 | `tools/test-value/evidence/tv8/ledger.md` | 132 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv8/ledger.md` | DS5 |
 | `tools/test-value/evidence/tv9/README.md` | 104 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv9/README.md` | DS5 |
 | `tools/test-value/evidence/tv9/ledger.md` | 211 | move | evidence record | ClosedWiz `private/openwiz-docs/tools/test-value/evidence/tv9/ledger.md` | DS5 |
-| `tools/war-room/README.md` | 973 | rewrite | 973 lines of ticket seams; keep how to run it |  | DS5 |
+| `tools/war-room/README.md` | 973 | rewrite | 973 lines of ticket seams; keep how to run it; also its links to removed files (line 736 → `tools/war-room/design/brief.md`, line 961 → `docs/evidence/1097/measurements.md`) |  | DS5 |
 | `tools/war-room/assets/README.md` | 41 | keep | reader needs: what each embedded page asset is |  | DS5 |
 | `tools/war-room/charts/contract.md` | 173 | keep | reader needs: the chart build inputs and outputs `publish.py` uses |  | DS5 |
 | `tools/war-room/dependencies.md` | 67 | keep | reader needs: which locked packages the chart build uses, and why |  | DS5 |
-| `tools/war-room/design/brief.md` | 120 | move | frozen design brief for WRD3 (#631) | ClosedWiz `private/openwiz-docs/tools/war-room/design/brief.md` | DS5 |
+| `tools/war-room/design/brief.md` | 120 | move | frozen design brief for WRD3 (#631). **Waits** until these readers are updated: linked from `tools/war-room/README.md:736` | ClosedWiz `private/openwiz-docs/tools/war-room/design/brief.md` | DS5 |
 | `tools/war-room/design/site/after/README.md` | 7 | move | design hill-climb record (#883) | ClosedWiz `private/openwiz-docs/tools/war-room/design/site/after/README.md` | DS5 |
 | `tools/war-room/design/site/prototype/README.md` | 26 | move | throwaway prototypes record (#883) | ClosedWiz `private/openwiz-docs/tools/war-room/design/site/prototype/README.md` | DS5 |
 | `tools/war-room/fixtures/answer-time/README.md` | 28 | keep | fixture note the tests cite |  | DS5 |
