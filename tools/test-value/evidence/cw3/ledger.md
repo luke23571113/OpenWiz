@@ -650,8 +650,14 @@ or gate; Catches is the bug the test's own name states turning false.
 | `tests/notifications/stock.rs::stock_required_unknowns_do_not_fall_into_lower_buckets` | kept | user-visible behaviour: the cockpit's ready-stock counts never hide an unknown | itself | a change that makes this false: stock required unknowns do not fall into lower buckets |
 | `tests/notifications/stock.rs::stock_original_time_and_last_good_are_retained` | deleted | | `tests/web-api/ready_stock.rs::ready_stock_partial_stale_future_missing_and_last_good_keep_original_evidence` (stale and future snapshots keep `last_good` and its original time, through the cockpit route) | |
 | `tests/notifications/stock.rs::stock_factory_requires_full_scope_and_original_ages` | kept | user-visible behaviour: the cockpit's ready-stock counts never hide an unknown | itself | a change that makes this false: stock factory requires full scope and original ages |
-| `tests/notifications/stock.rs::stock_review_future_discovery_time_cannot_be_hidden_by_older_project` | deleted | | `tests/web-api/ready_stock.rs::ready_stock_review_stale_or_future_discovery_cannot_retire_a_project` (a future discovery time leaves freshness and totals unknown, through the cockpit route) | |
+| `tests/notifications/stock.rs::stock_review_future_discovery_time_cannot_be_hidden_by_older_project` | kept | user-visible behaviour: the cockpit's ready-stock counts never hide an unknown | itself | a change that makes this false: stock review future discovery time cannot be hidden by older project |
 | `tests/notifications/stock.rs::stock_review_factory_preserves_gap_source_owners` | kept | user-visible behaviour: the cockpit's ready-stock counts never hide an unknown | itself | a change that makes this false: stock review factory preserves gap source owners |
 | `tests/notifications/stock.rs::stock_absent_capacity_source_does_not_hold_ready_work` | deleted | | `tests/web-api/ready_stock.rs::ready_stock_injected_source_to_cockpit_count_matrix` (its ready rows have no capacity source and are counted ready, with zero capacity waits) | |
 
-Totals: 646 tests; 611 kept, 35 deleted, 0 moved, 0 merged.
+## Cases removed inside kept tests
+
+| Kept test | Case removed | Gone reason |
+| --- | --- | --- |
+| `tests/attachments/ap11_schema.rs::ap11_schema_contracts_preserve_all_original_cases` | `the_pattern_check_is_strict` | test-harness self-check: it exercises only test code (the schema `pattern` checker; it pinned the older attachments copy, `tests/attachments/pattern.rs`, removed in favour of the shared `tests/new-thread/pattern.rs`), not OpenWiz, so it guards no user-visible behaviour, cross-repository contract or safety gate |
+
+Totals: 646 tests; 612 kept, 34 deleted, 0 moved, 0 merged.

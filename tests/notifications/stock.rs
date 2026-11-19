@@ -108,6 +108,25 @@ fn stock_factory_requires_full_scope_and_original_ages() {
     assert!(matches!(f.totals, Fact::Unknown(_)));
 }
 #[test]
+fn stock_review_future_discovery_time_cannot_be_hidden_by_older_project() {
+    let p = project(input(vec![ticket(1)]), 100_000);
+    let f = factory(
+        vec![p],
+        Coverage {
+            state: CoverageState::Complete,
+            gaps: vec![],
+        },
+        Fact::Known(200_000),
+        100_000,
+    );
+    assert!(
+        matches!(f.totals, Fact::Unknown(_)),
+        "future discovery cannot publish totals"
+    );
+    assert_eq!(f.freshness.state, FreshnessState::Unknown);
+    assert_eq!(f.coverage.state, CoverageState::Partial);
+}
+#[test]
 fn stock_review_factory_preserves_gap_source_owners() {
     let mut i = input(vec![]);
     i.coverage = Coverage {

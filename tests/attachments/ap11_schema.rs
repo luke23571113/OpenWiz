@@ -81,7 +81,7 @@ fn sample(kind: Kind, original: &str) -> AttachmentRef {
 
 #[test]
 fn ap11_schema_contracts_preserve_all_original_cases() {
-    let cases: [(&str, fn()); 6] = [
+    let cases: [(&str, fn()); 5] = [
         (
             "every_reference_the_core_serializes_matches",
             every_reference_the_core_serializes_matches,
@@ -94,7 +94,6 @@ fn ap11_schema_contracts_preserve_all_original_cases() {
             "ids_and_hashes_are_checked_however_they_arrive",
             ids_and_hashes_are_checked_however_they_arrive,
         ),
-        ("the_pattern_check_is_strict", the_pattern_check_is_strict),
         (
             "the_schema_uses_only_checked_keywords",
             the_schema_uses_only_checked_keywords,
@@ -228,46 +227,4 @@ fn ids_and_hashes_are_checked_however_they_arrive() {
     value["id"] = json!("att_syn_0001");
     value["sha256"] = json!("Z".repeat(64));
     assert!(serde_json::from_value::<AttachmentRef>(value).is_err());
-}
-
-/// The pattern check takes only its one form, and means what it says.
-fn the_pattern_check_is_strict() {
-    use crate::pattern::{is_match, lint};
-    let id = "^[A-Za-z0-9][A-Za-z0-9_-]*$";
-    for (text, expected) in [
-        ("a", true),
-        ("A-0_z", true),
-        ("", false),
-        ("_a", false),
-        ("a.b", false),
-        ("a/b", false),
-    ] {
-        assert_eq!(is_match(id, text), expected, "{text:?}");
-    }
-    assert!(is_match("^[0-9a-f]*$", ""));
-    assert!(!is_match("^[0-9a-f]*$", "0A"));
-    let schema = attachment_schema();
-    for (what, unsupported) in [
-        ("a plus", "^[a-z]+$"),
-        ("an alternation", "^(a|b)$"),
-        ("no anchors", "[a-z]*"),
-        ("a negated class", "^[^/]*$"),
-        ("an escape", "^[\\w]*$"),
-        ("a dash not last", "^[-a]*$"),
-        ("a literal", "^a[a-z]*$"),
-    ] {
-        let mut bad = schema.clone();
-        bad["$defs"]["attachment_id"]["pattern"] = json!(unsupported);
-        assert!(!lint(&bad).is_empty(), "the lint took {what}");
-    }
-    let mut on_integer = schema.clone();
-    on_integer["$defs"]["attachment"]["properties"]["size_bytes"]["pattern"] = json!("^[0-9]*$");
-    assert!(!lint(&on_integer).is_empty(), "a pattern on an integer");
-    let mut under_one_of = schema.clone();
-    under_one_of["$defs"]["readiness"]["oneOf"][1]["properties"]["reason"] =
-        json!({ "$ref": "#/$defs/safe_name" });
-    assert!(
-        !lint(&under_one_of).is_empty(),
-        "a pattern reached from oneOf"
-    );
 }
