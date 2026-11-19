@@ -135,7 +135,20 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
-        saved(run, {'request': req, 'thread': spawn(req), 'stopped': False})
+        try:  # nowhere to keep the run: start nothing
+            os.makedirs(STATE, mode=0o700, exist_ok=True)
+            writable = os.access(STATE, os.W_OK | os.X_OK)
+        except OSError:
+            writable = False
+        if not writable:
+            raise Refused('the driver cannot keep runs in its state folder; nothing was started',
+                          'make OPENWIZ_CLOUDROOM_STATE (or ~/.local/state/openwiz-cloudroom) a folder you can write')
+        thread = spawn(req)
+        try:
+            saved(run, {'request': req, 'thread': thread, 'stopped': False})
+        except OSError:  # the thread exists but has no run id: unknown, never a retry
+            raise Refused('Cloudroom started a thread, but the driver could not save its run; the outcome is unknown',
+                          'read `room-cli thread list` first and stop that thread by hand before you start again')
         return {'run': run}
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
