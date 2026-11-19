@@ -1769,10 +1769,11 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
                 with self.subTest(granted=granted):
                     behavior.clear()
                     behavior.update(original, permissions=granted)
-                    result = self.run_tool("mint-token.py", endpoint, "--write")
+                    shutil.rmtree(self.state / "tokens", ignore_errors=True)  # mint every time
+                    result = self.run_tool("refresh-token.py", endpoint, "--write")
                     if ok:
-                        self.assertEqual((result.returncode, result.stderr), (0, b""))
-                        self.assertEqual(result.stdout.splitlines()[0], b"synthetic-installation-token")
+                        self.assertEqual((result.returncode, result.stdout, result.stderr),
+                                         (0, b"synthetic-installation-token\n", b""))
                     else:
                         self.assertEqual((result.returncode, result.stdout, result.stderr), (1, b"", self.REFUSED))
                     self.assertEqual(json.loads(mints(calls)[-1][2]),
@@ -1786,8 +1787,9 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
         secret = {"OPENWIZ_GITHUB_APP_KEY": self.secret, "OPENWIZ_GITHUB_APP_ID": "1001"}
         with fake_github(self.pem) as (endpoint, calls, behavior):
             behavior["permissions"] = SERVICE
-            result = self.run_tool("mint-token.py", endpoint, "--write", "--from-secret", env=secret)
-            self.assertEqual((result.returncode, result.stderr), (0, b""))
+            result = self.run_tool("refresh-token.py", endpoint, "--write", "--from-secret", env=secret)
+            self.assertEqual((result.returncode, result.stdout, result.stderr),
+                             (0, b"synthetic-installation-token\n", b""))
             self.assertEqual([c[0] for c in calls], OWNER_READS + ["/app/installations/2002/access_tokens"])
             self.assertIn(b"/dev/fd/", self.openssl_log.read_bytes())
             self.assert_hidden("synthetic-installation-token", result.stderr, repr(calls))
@@ -1796,7 +1798,8 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
                         dict(secret, OPENWIZ_GITHUB_APP_KEY="not base64!"),
                         dict(secret, OPENWIZ_GITHUB_APP_KEY=base64.b64encode(b"x" * 5000).decode())):
                 with self.subTest(bad=sorted(bad)):
-                    result = self.run_tool("mint-token.py", endpoint, "--write", "--from-secret", env=bad)
+                    shutil.rmtree(self.state / "tokens", ignore_errors=True)
+                    result = self.run_tool("refresh-token.py", endpoint, "--write", "--from-secret", env=bad)
                     self.assertEqual((result.returncode, result.stdout, result.stderr), (1, b"", self.REFUSED))
             self.assertEqual(len(calls), before)  # refused before any request
 

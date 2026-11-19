@@ -192,7 +192,8 @@ GH_TOKEN="$(python3 -I tools/github-app/refresh-token.py --write \
   reads it through a credential helper that reads the environment, never in a remote
   URL: `git -c credential.helper= -c 'credential.helper=!f() { [ "$1" = get ] &&
   printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push ...`.
-  The key reaches OpenSSL only by descriptor, and OpenSSL's environment holds only
+  The key reaches OpenSSL only by descriptor; the secret's key is dropped from the
+  helper's environment before any child starts, and on that route OpenSSL gets only
   `PATH`. `tools/github-app/test.py` (`AgentTokenTests`) checks each of these with a
   logging OpenSSL stand-in.
 - **Cloud threads: the Cloudroom secret.** A cloud thread adds `--from-secret`: the
@@ -203,6 +204,9 @@ GH_TOKEN="$(python3 -I tools/github-app/refresh-token.py --write \
   transcript or a command's output to get there, and it expires within the hour with
   no way to refresh while the PC sleeps; the secret refreshes on its own and is
   revocable separately (give it its own key, below).
+- **One minting path per profile.** `refresh-token.py` runs `mint-token.py`'s checks
+  through the same `app.py` guards. `mint-token.py` itself stays the read-only tool,
+  byte-identical to the copy `launch-fleet` carries (`tools/fleet-load/test_carried.py`).
 - **Commits stay the person's.** Commits keep their author and committer (the
   person's GitHub noreply address); only the push and the GitHub records are the App's.
 
