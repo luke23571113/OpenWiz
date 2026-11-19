@@ -419,12 +419,19 @@ fn a_differing_read_back_is_reported_and_never_retried() {
 #[test]
 fn an_unclear_outcome_is_unknown_and_never_retried() {
     let update = argv("loop|update|loop_syn_1|--priority|3");
+    // The first read answers in 600 ms, as a loaded CI runner's did (#1239):
+    // slow reads must not change any case's outcome.
+    let slow_list = || {
+        let mut answer = list(&account());
+        answer["delay_ms"] = json!(600);
+        answer
+    };
     // (case, answers before a write, answers after one, the calls made)
     let cases = [
         (
             "the write hangs",
             vec![
-                list(&account()),
+                slow_list(),
                 json!({"any_loop_write": "update", "hang": true}),
             ],
             vec![],
@@ -433,7 +440,7 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
         (
             "the write ends without an exit code",
             vec![
-                list(&account()),
+                slow_list(),
                 json!({"any_loop_write": "update", "abort": true}),
             ],
             vec![],
@@ -441,7 +448,7 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
         ),
         (
             "the read-back fails",
-            vec![list(&account()), accept()],
+            vec![slow_list(), accept()],
             vec![
                 json!({"argv": LIST, "stderr": "Error: HTTP 503: Service Unavailable", "exit": 1}),
             ],
