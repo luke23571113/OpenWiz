@@ -38,7 +38,7 @@ SCRIPT = HERE / 'collect_factory.py'
 DAILY_REPO, OPEN_REPO = 'example/factory', 'synthetic-owner/synthetic-repo'
 DAY = ('2030-01-02T00:00:00Z', '2030-01-03T00:00:00Z')
 C_LIMITS = 'tools/collector/limits.conf'  # TL1's settings file, which collect_factory reads
-FACTS = ['merges', 'prs_per_hour', 'stage_waits', 'stalls', 'open_prs', 'journeys', 'cost']
+FACTS = ['merges', 'prs_per_hour', 'stage_waits', 'stalls', 'open_prs', 'journeys', 'cost', 'flow']
 
 
 def load(name, path):
@@ -445,7 +445,7 @@ class Validate(unittest.TestCase):
     def test_validate_contract_rules(self):
         C = load('collect_factory', SCRIPT)
         snapshot = json.loads((COLLECTOR / 'snapshot.json').read_text())
-        for name in FACTS:
+        for name in snapshot['factory']:
             C.validate(snapshot['factory'][name])
             C.validate(json.loads((COLLECTOR / 'snapshot-unavailable.json').read_text())['factory'][name])
         merges = snapshot['factory']['merges']

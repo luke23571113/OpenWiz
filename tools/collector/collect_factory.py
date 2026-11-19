@@ -7,7 +7,7 @@
 
 Prints one `openwiz.war-room.collector.read.v1` envelope holding the named
 factory facts, read now: merges, prs_per_hour, stage_waits, stalls, open_prs,
-journeys and cost. Without --since/--until the window is the last complete UTC
+journeys, cost and flow. Without --since/--until the window is the last complete UTC
 day. A fact that cannot be read is `unavailable` with its prerequisite and
 greys only itself; a privacy hit anywhere refuses the whole read (exit 1,
 nothing on stdout). A bad command line exits 2 before any read.
@@ -24,7 +24,7 @@ names the tickets whose stage waits are read (the board's open approved work);
 import argparse
 import contextlib
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
+from decimal import Decimal
 import hashlib
 import importlib.util
 import io
@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from urllib.parse import quote
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -576,10 +577,11 @@ def flow_attempt_jobs(repo, rid, attempt):
         seen.add(key)
         if origin < attempt:
             continue  # Reused result from an earlier attempt, counted there.
+        if (job.get('status') == 'completed' and job.get('conclusion') in ('skipped', 'cancelled')
+                and job.get('steps') == [] and 'runner_name' in job and B.never_ran(job)):
+            continue
         begin = J.when(J.field(job, 'started_at'), True)
         end = J.when(J.field(job, 'completed_at'), True)
-        if job.get('conclusion') == 'skipped' and begin is None and end is None:
-            continue
         owned.append(flow_seconds(begin, end) if job.get('status') == 'completed' else None)
     return flow_totals(owned) if owned else (0 if rows else None)
 
@@ -589,7 +591,10 @@ def flow_attempt(repo, run, rid, attempt, latest):
         run = M.obj(M.rest(f'repos/{repo}/actions/runs/{rid}/attempts/{attempt}'))
         M.require(M.integer(run.get('id')) == rid and M.integer(run.get('run_attempt')) == attempt,
                   'a result for another attempt')
-    return J.when(run.get('updated_at')) if run.get('status') == 'completed' else None
+    status = run.get('status')
+    M.require(status in ('completed', 'queued', 'in_progress', 'requested', 'waiting', 'pending'),
+              'unknown run status')
+    return status, J.when(run.get('updated_at')) if status == 'completed' else None
 
 
 def flow_ci(repo, workflow, pull, cutoff):
@@ -616,12 +621,17 @@ def flow_ci(repo, workflow, pull, cutoff):
         M.require(not (links - {n}), 'run linked to multiple pull requests')
         latest = M.integer(run.get('run_attempt'))
         for attempt in range(1, latest + 1):
-            at = flow_read(flow_attempt, repo, run, rid, attempt, latest)
-            complete &= at is not None and at >= created
-            if at is not None and created <= at <= cutoff:
-                results.append(at)
+            result = flow_read(flow_attempt, repo, run, rid, attempt, latest)
+            if result is None:
+                complete = False
+            else:
+                status, at = result
+                complete &= (at is not None and at >= created) or (status != 'completed' and attempt == latest)
+                if at is not None and created <= at <= cutoff:
+                    results.append(at)
+                if attempt == latest:
+                    active |= status != 'completed' or (at is not None and at > cutoff)
             seconds.append(flow_read(flow_attempt_jobs, repo, rid, attempt))
-        active |= run.get('status') in ('queued', 'in_progress', 'requested', 'waiting', 'pending')
     return {'seconds': flow_totals(seconds), 'results': results, 'complete': bool(seconds) and complete,
             'pending': active if seconds else None}
 
@@ -704,12 +714,20 @@ def flow_stall_count(claim, merge, covered, timeline):
     return sum(flow_seconds(a, b) >= 30 * 60 for a, b in zip(times, times[1:]))
 
 
+def flow_units(costs, unit):
+    values = [cost[unit] for cost in costs]
+    if unit == 'credits':
+        credits = flow_totals(Decimal(str(value)) if value is not None else None for value in values)
+        return J.number(credits) if credits is not None else None
+    return flow_totals(values)
+
+
 def flow_cost(roles, ci_seconds):
-    return {**roles, 'total': {unit: flow_totals(roles[role][unit] for role in FLOW_ROLES) for unit in FLOW_UNITS},
+    return {**roles, 'total': {unit: flow_units(roles.values(), unit) for unit in FLOW_UNITS},
             'ci_minutes': None if ci_seconds is None else round(ci_seconds / 60, 6)}
 
 
-def flow_ticket(c, n, issue, pulls, authors, usage, as_of):
+def flow_ticket(c, n, issue, pulls, authors, usage, as_of, pr_cache):
     top, comments = issue if issue is not None else ({}, [])
     parent = top.get('parent')
     prs = [p for p, data in pulls.items() if n in data['tickets']]
@@ -723,13 +741,16 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of):
     claim = min((at for line, at, _ in issue_records if line == 'launch-fleet: starting' or J.STARTED.fullmatch(line)),
                 default=None)
     ready = flow_read(c.ready, n) if issue is not None else None
-    pr_data = [flow_read(flow_pr, c, p, authors, cutoff) for p in prs]
-    observed = [p for p in pr_data if p is not None]
+    for p in prs:
+        if (p, cutoff) not in pr_cache:
+            pr_cache[p, cutoff] = flow_read(flow_pr, c, p, authors, cutoff)
+    observed = [pr_cache[p, cutoff] for p in prs if pr_cache[p, cutoff] is not None]
     records = issue_records + [rec for p in observed for rec in p['records']]
     fully_read = issue is not None and len(observed) == len(prs)
     stage_pr = observed[0] if fully_read and len(observed) == 1 else None
     stages = flow_stage_times(claim, ready, merge, stage_pr)
-    rounds = sum(len(p['verdicts']) for p in observed) if fully_read else 0
+    review_counts = {p['number']: len(p['verdicts']) or None for p in observed}
+    rounds = flow_totals(review_counts.get(p) for p in prs) if fully_read else None
     covered = fully_read and bool(observed) and all(p['head_history'] and p['ci_history'] for p in observed)
     progress, timeline = flow_progress(opened, claim, merge, records, observed, cutoff, covered)
     roles = flow_role_cost(usage, n, claim, cutoff)
@@ -739,36 +760,34 @@ def flow_ticket(c, n, issue, pulls, authors, usage, as_of):
                      if all(pulls[p]['tickets'] == [n] for p in prs) else None)
     return {
         'ticket': n, 'spec': parent['number'] if parent else None, 'pull_requests': prs,
-        'state': 'merged' if merge else 'closed' if top.get('closedAt') else 'open' if issue else 'unknown',
+        'state': 'merged' if merge else 'closed' if closed and closed <= as_of else 'open' if issue else 'unknown',
         'claimed_at': claim, 'merged_at': merge,
         'elapsed_seconds': flow_seconds(claim, merge), 'stages_seconds': stages,
-        'review_rounds': rounds or None, 'stall_count': flow_stall_count(claim, merge, covered, timeline), 'cost': cost,
+        'review_rounds': rounds, 'stall_count': flow_stall_count(claim, merge, covered, timeline), 'cost': cost,
         'progress': progress,
-    }, ci, covered
+    }, ci, review_counts, covered
 
 
-def flow_spec(n, members, tickets, pulls, job_seconds):
+def flow_spec(n, members, tickets, pulls, job_seconds, review_counts):
     created, numbers = members if members is not None else (None, None)
     rows = [tickets[t] for t in numbers or []]
     complete = bool(rows) and all(row['spec'] == n for row in rows)
     rows = rows if complete else []
     merged = [row['merged_at'] for row in rows]
     latest = max(merged) if merged and all(merged) else None
-    if not complete:
-        ci = None
-    else:
-        cohort = {p for row in rows for p in row['pull_requests']}
-        # Deduplicate shared jobs at the spec level, but never charge another spec's share.
-        ci = flow_totals(job_seconds.get(p) for p in cohort) if all(
-            set(pulls[p]['tickets']) <= set(numbers) for p in cohort) else None
-    roles = {role: {unit: flow_totals(t['cost'][role][unit] for t in rows) for unit in FLOW_UNITS}
+    cohort = {p for row in rows for p in row['pull_requests']}
+    owns_cohort = complete and all(set(pulls[p]['tickets']) <= set(numbers) for p in cohort)
+    ci = flow_totals(job_seconds.get(p) for p in cohort) if owns_cohort else None
+    rounds = (flow_totals(review_counts.get(p) for p in cohort)
+              if owns_cohort and all(t['review_rounds'] is not None for t in rows) else None)
+    roles = {role: {unit: flow_units((t['cost'][role] for t in rows), unit) for unit in FLOW_UNITS}
              for role in FLOW_ROLES}
     return {
         'spec': n, 'tickets': numbers, 'created_at': created, 'last_merge_at': latest,
         'span_seconds': flow_seconds(created, latest),
         'elapsed_seconds': flow_totals(t['elapsed_seconds'] for t in rows),
         'stages_seconds': {stage: flow_totals(t['stages_seconds'][stage] for t in rows) for stage in FLOW_STAGES},
-        'review_rounds': flow_totals(t['review_rounds'] for t in rows),
+        'review_rounds': rounds,
         'stall_count': flow_totals(t['stall_count'] for t in rows), 'cost': flow_cost(roles, ci),
     }
 
@@ -803,15 +822,20 @@ def flow(r, started):
     # Do not spend PR reads on unrelated work from the inventory.
     pulls = {p: data for p, data in inventory.items() if requested.intersection(data['tickets'])}
     usage = flow_read(flow_usage, r.repo, r.flow_threads, r.flow_usage) or ({}, {})
-    tickets, jobs, incomplete_progress = {}, {}, False
+    tickets, jobs, reviews, pr_cache = {}, {}, {}, {}
+    incomplete_progress = False
     for n, issue in issues.items():
-        ticket, ci, covered = flow_ticket(c, n, issue, pulls, authors, usage, started)
+        ticket, ci, counts, covered = flow_ticket(c, n, issue, pulls, authors, usage, started, pr_cache)
         tickets[n] = ticket
-        for p, seconds in ci.items():
-            # A shared PR is read with each ticket's cutoff. Only agreement survives.
-            jobs[p] = seconds if p not in jobs or jobs[p] == seconds else None
+        for totals, observed in ((jobs, ci), (reviews, counts)):
+            for p, measurement in observed.items():
+                # A shared PR is read with each ticket's cutoff. Only agreement survives.
+                if p in totals and totals[p] != measurement:
+                    totals[p] = None
+                else:
+                    totals[p] = measurement
         incomplete_progress |= not covered
-    spec_rows = [flow_spec(n, members, tickets, pulls, jobs) for n, members in membership.items()]
+    spec_rows = [flow_spec(n, members, tickets, pulls, jobs, reviews) for n, members in membership.items()]
     value = {'tickets': [tickets[n] for n in sorted(tickets)], 'specs': spec_rows}
     rows = value['tickets'] + spec_rows
     gaps = {
@@ -953,9 +977,35 @@ def validate(fact):
         require(type(value['sidecar']) is dict and fact['point'] == value['sidecar'].get('read_at'),
                 "the point is TL2's read time")
         require(when(value['limits']['read_at']) >= when(fact['point']), 'limits read at or after TL2')
+    elif name == 'flow':
+        validate_flow(value, fact['point'])
     elif name == 'prs_per_hour':
         require((value['robot_minutes_per_code_run'] is None) == (value['capacity_prs_per_hour'] is None),
                 'capacity needs robot-minutes')
+
+
+def validate_flow(value, point):
+    require = suite.require
+    require(point is not None, 'flow needs its observation point')
+    tickets = {row['ticket']: row for row in value['tickets']}
+    specs = {row['spec']: row for row in value['specs']}
+    require(len(tickets) == len(value['tickets']) and len(specs) == len(value['specs']),
+            'flow lists a ticket or spec twice')
+    for row in tickets.values():
+        require(row['elapsed_seconds'] == flow_seconds(row['claimed_at'], row['merged_at']),
+                'elapsed time must match its endpoints')
+        require((row['state'] == 'merged') == (row['merged_at'] is not None), 'merged state needs the merge time')
+        progress = row['progress']
+        observed = progress['last_observed_at']
+        require(observed is None or when(observed) <= when(point), 'progress lies after the observation')
+        require(all(at is None or (observed and when(at) <= when(observed)) for key, at in progress.items()
+                    if key.endswith('_at')), 'progress sources lie by the latest observation')
+        require(row['stall_count'] is None or (progress['complete'] and row['elapsed_seconds'] is not None),
+                'stall counts need a bounded progress history')
+    for row in specs.values():
+        require(row['span_seconds'] == flow_seconds(row['created_at'], row['last_merge_at']),
+                'span must match its endpoints')
+        require(row['tickets'] is None or set(row['tickets']) <= tickets.keys(), 'a spec member is missing')
 
 
 # --- CLI ---------------------------------------------------------------------
