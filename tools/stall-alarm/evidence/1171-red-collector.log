@@ -1,0 +1,23 @@
+$ python3 -I tools/collector/test_collect_factory.py FlowFacts   # before progress.gaps and progress.last_record exist
+..FF..
+======================================================================
+FAIL: test_missing_sources_keep_independent_facts (__main__.FlowFacts.test_missing_sources_keep_independent_facts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/collector/test_collect_factory.py", line 429, in test_missing_sources_keep_independent_facts
+    self.assertIsNone(ticket['progress'].get('gaps', 'absent'))  # FM3: an incomplete history has no dated gaps
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'absent' is not None
+
+======================================================================
+FAIL: test_progress_dates_gaps_and_names_the_latest_record (__main__.FlowFacts.test_progress_dates_gaps_and_names_the_latest_record)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/collector/test_collect_factory.py", line 310, in test_progress_dates_gaps_and_names_the_latest_record
+    self.assertEqual(progress.get('gaps'), [
+AssertionError: None != [{'from': '2030-01-02T01:00:00Z', 'until'[88 chars]0Z'}]
+
+----------------------------------------------------------------------
+Ran 6 tests in 4.577s
+
+FAILED (failures=2)

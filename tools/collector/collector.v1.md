@@ -224,6 +224,20 @@ are unknown. The collector retains no comment revisions.
 GitHub's surviving records cannot recover deleted comments. A receipt can
 establish an observed push without establishing complete push history.
 
+FM3 (#1171) adds two progress fields for the stall alarm's rule.
+`last_record` is the kind of the latest factory record on the ticket and its
+linked PRs, by last edit: the lowercase words after `launch-fleet: ` up to the
+first head, number, `:` or `,` (such as `asked the orchestrator`, `parked` or
+`builder fallback due`). Only the kind is kept. It is null with no record,
+when the ticket or a linked PR could not be read, or when any record was edited
+after the read's cutoff (its body at the cutoff is unknown); `record_at`
+tells no record from an unknown kind. `gaps` lists each gap of at least 30
+minutes between successive progress events as `{from, until}`, from the claim
+to the merge or a verified unmerged closure, or to the latest observed event
+while the ticket is open, so the current open interval is never one. `stall_count` counts the same
+gaps. `gaps` is null without a claim or when `complete` is false, so a ticket
+with no linked PR yet has unknown gaps.
+
 To include role usage, pass `--flow-threads FILE` and one or more
 `--flow-usage FILE` arguments, or pass `flow_threads` and `flow_usage` to
 `collect_factory.read`. Use the existing complete daily usage export format

@@ -28,6 +28,56 @@ orchestrator verifies it before installation. Direct CLI invocations use
 not a supported deployment. Installation, activation and delivery remain
 pending; the builder proves the command boundary with fakes.
 
+## The ticket stall rule (FM3, #1171)
+
+`stalls.py` reads one collector snapshot or flow read (the `flow` fact of
+[collector v1](../collector/collector.v1.md)) and prints the stall list and
+the daily count. It reads nothing else and writes nothing.
+
+```sh
+python3 -I tools/stall-alarm/stalls.py --input snapshot.json
+```
+
+- **The rule:** a claimed, unmerged, open ticket whose `last_observed_at`
+  (its latest commit, record, CI result or verdict) is 30 minutes or more
+  before the flow fact's read point is a stall. Progress inside 30 minutes is
+  never a stall, even on a partial history. With 30 minutes or more and an
+  incomplete history, the ticket is listed under `unknown`, never stall-free.
+- **One cause,** from a fixed list, first match: `ci` (a pending workflow
+  attempt), `jake` (the latest factory record is `asked the orchestrator`,
+  `told the user`, `parked` or `needs approval`), `limit` (`builder fallback
+  due`, or a valid REST or GraphQL budget under 10% in the snapshot's
+  `ci.queue` observation), `stuck` (CI is not pending, the latest record names
+  no outside wait and no usable budget is low), else `unknown`. A flow fact
+  without `last_record`, or a record whose kind at the read point is unknown
+  (null `last_record` with a `record_at`), leaves every cause but `ci` unknown.
+  With no usable budget observation, the cause rests on the flow fact alone.
+- A ticket whose state can't be read is listed under `unknown`, never skipped
+  as unclaimed, and the day's count is null.
+- **The daily count** is the number of stalls that began (30 minutes after
+  their last progress) on the read point's UTC day, up to the read point: the
+  ticket's dated `gaps` plus the open stalls. A ticket closed without a merge
+  keeps its last stall in `gaps` (to its closure), so closing it leaves the
+  day's count unchanged. It is null when any ticket active
+  that day has an unknown history.
+- An unavailable or absent flow fact gives null `stalls`, `unknown` and
+  count, never an empty list or zero.
+- **Known gap:** a claimed ticket with no linked PR yet has no complete
+  progress history (its branch is found only through the PR), so it is listed
+  under `unknown` and the day's count is null, never a stall-free ticket.
+- The war room (FM5, #1173) runs this script over the snapshot it already
+  reads; the snapshot holds no stall fact of its own.
+
+Fixture proof: `python3 -B -I tools/stall-alarm/test.py FlowStalls`, over
+[`fixtures/flow-read.json`](fixtures/flow-read.json) (synthetic). Red runs:
+[`evidence/1171-red-first.log`](evidence/1171-red-first.log),
+[`evidence/1171-red-unknown.log`](evidence/1171-red-unknown.log),
+[`evidence/1171-red-collector.log`](evidence/1171-red-collector.log) (the
+collector's `last_record` and `gaps`) and
+[`evidence/1171-red-integration.log`](evidence/1171-red-integration.log),
+[`evidence/1171-red-shape.log`](evidence/1171-red-shape.log) and
+[`evidence/1171-red-review.log`](evidence/1171-red-review.log) (review R1 to R4).
+
 ## What fires
 
 | Alarm | Evidence read at this tick | Clears when |

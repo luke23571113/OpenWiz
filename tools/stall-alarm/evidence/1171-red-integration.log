@@ -1,0 +1,26 @@
+$ python3 -B -I tools/stall-alarm/test.py FlowStalls.test_real_collector_flow_read   # collector before progress.gaps and progress.last_record
+test_real_collector_flow_read (__main__.FlowStalls.test_real_collector_flow_read) ... FAIL
+
+======================================================================
+FAIL: test_real_collector_flow_read (__main__.FlowStalls.test_real_collector_flow_read)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/stall-alarm/test.py", line 914, in test_real_collector_flow_read
+    self.assertEqual((out["stalls"], out["unknown"], out["daily"]), ([], [], {"date": "2030-01-02", "count": 1}))
+AssertionError: Tuples differ: ([], [], {'count': None, 'date': '2030-01-02'}) != ([], [], {'date': '2030-01-02', 'count': 1})
+
+First differing element 2:
+{'count': None, 'date': '2030-01-02'}
+{'date': '2030-01-02', 'count': 1}
+
+- ([], [], {'count': None, 'date': '2030-01-02'})
+?                    ^^^^
+
++ ([], [], {'count': 1, 'date': '2030-01-02'})
+?                    ^
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.394s
+
+FAILED (failures=1)

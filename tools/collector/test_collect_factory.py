@@ -301,6 +301,39 @@ class FlowFacts(unittest.TestCase):
         self.assertEqual((spec['cost'], spec['stages_seconds'], spec['elapsed_seconds'], spec['review_rounds']),
                          (ticket['cost'], ticket['stages_seconds'], 9000, 1))
 
+    # catches (FM3, #1171): undated or missing stall gaps, gaps past the merge or before the claim, an open
+    # ticket's history dropped, or a latest record kind taken from the wrong record or with its head kept.
+    def test_progress_dates_gaps_and_names_the_latest_record(self):
+        p, _ = cli('../flow/world.json', *self.args)
+        progress = envelope(p)['factory']['flow']['value']['tickets'][0]['progress']
+        # By hand from the world: claim edit 01:00, push 01:58, verdict 02:30, merge queued 03:00, merge 03:15.
+        self.assertEqual(progress.get('gaps'), [
+            {'from': '2030-01-02T01:00:00Z', 'until': '2030-01-02T01:58:00Z'},
+            {'from': '2030-01-02T02:30:00Z', 'until': '2030-01-02T03:00:00Z'}])
+        self.assertEqual(progress.get('last_record'), 'merge queued')
+        # Read before the merge: the ticket is open, and the 02:30 gap is not over yet, so it is not a past gap.
+        args = (*self.args[:-1], '2030-01-02T02:45:00Z')
+        ticket = envelope(cli('../flow/world.json', *args)[0])['factory']['flow']['value']['tickets'][0]
+        self.assertEqual((ticket['state'], ticket['progress'].get('gaps')), (
+            'open', [{'from': '2030-01-02T01:00:00Z', 'until': '2030-01-02T01:58:00Z'}]))
+        self.assertEqual(ticket['progress'].get('last_record'), 'review started')
+        for line, kind in ((f'launch-fleet: parked {"a" * 40}: R2 for Jake', 'parked'),
+                           ('launch-fleet: builder fallback due, branch room/4101-synthetic', 'builder fallback due'),
+                           ('launch-fleet: asked the orchestrator', 'asked the orchestrator')):
+            def late_record(world, line=line):
+                key = next(key for key in world if 'pullRequest(number:$number)' in key and 'body author{login}' in key)
+                response = json.loads(world[key]['stdout'])
+                response['data']['repository']['pullRequest']['comments']['nodes'].append(
+                    {'id': 'synthetic-late', 'databaseId': 5299, 'author': {'login': 'openwiz[bot]'},
+                     'url': 'https://github.com/example/factory/pull/4201#issuecomment-5299',
+                     'createdAt': '2030-01-02T03:10:00Z', 'updatedAt': '2030-01-02T03:10:00Z', 'body': line})
+                world[key]['stdout'] = json.dumps(response)
+
+            with self.subTest(kind):
+                p, _ = cli('../flow/world.json', *self.args, edit=late_record)
+                progress = envelope(p)['factory']['flow']['value']['tickets'][0]['progress']
+                self.assertEqual(progress.get('last_record'), kind)
+
     # catches: dropping a second spec member or counting a shared PR's
     # review twice at spec level or assigning all its runner minutes to each ticket.
     def test_whole_spec_counts_shared_pull_once(self):
@@ -393,6 +426,7 @@ class FlowFacts(unittest.TestCase):
                 'total': {'credits': None, 'tokens': None}, 'ci_minutes': None})
             self.assertEqual((row['elapsed_seconds'], row['review_rounds'], row['stall_count']), (9000, 1, None))
         self.assertEqual(ticket['progress']['last_observed_at'], '2030-01-02T03:15:00Z')
+        self.assertIsNone(ticket['progress'].get('gaps', 'absent'))  # FM3: an incomplete history has no dated gaps
 
 
 class CapacityAndOpenPrs(unittest.TestCase):
