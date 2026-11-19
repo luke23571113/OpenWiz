@@ -3,11 +3,14 @@
 import hashlib
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+import urllib.request
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,36 +31,158 @@ SETUP_SOURCES = {'runtime/setup/setup.py': 'tools/install/setup/setup.py',
 
 
 class Package(unittest.TestCase):
-    def test_packaged_service_start_gate_stays_closed(self):
-        # D2 (#874): the kept fail-closed start gate (crates/service/src/bootstrap.rs).
-        # The real service, installed from a verified bundle with no engine runtime,
-        # refuses to start, and still refuses when its install manifest is gone.
+    def test_packaged_service_start_gate(self):
+        # catches: a verified install cannot serve its packaged web page without activation.
         target = Path(os.environ.get('CARGO_TARGET_DIR', ROOT / 'target'))
         if not target.is_absolute():
             target = ROOT / target
-        service = target/'debug/openwiz-service'
+        service = target / 'debug/openwiz-service'
         self.assertTrue(service.is_file(), 'Build the service before the packaged start-gate proof.')
+        build_id = subprocess.check_output([service, '--update-build'], text=True).strip()
         import fixture_bundle
-        with tempfile.TemporaryDirectory(prefix='openwiz-start-gate-') as temporary:
+
+        with tempfile.TemporaryDirectory(prefix='ow-gate-') as temporary:
             root = Path(temporary)
-            web, state, installed = root/'web', root/'state', root/'installed'
+            home, web = root / 'home', root / 'web'
             web.mkdir()
-            state.mkdir(mode=0o700)
-            (web/'index.html').write_text('Synthetic page, no accounts.')
-            bundle = fixture_bundle.create(root/'bundle', service, web, service=service)
-            result = subprocess.run([sys.executable, '-I', str(ROOT/'tools/install/install.py'),
-                '--manifest', bundle['manifest'], '--manifest-sha256', bundle['checksum'],
-                '--archive', bundle['archive'], '--target', 'x86_64-unknown-linux-gnu', '--root', str(installed)],
-                capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            env = {**os.environ, 'PATH': '/synthetic/no-build-tools', 'OPENWIZ_STATE_DIR': str(state)}
-            blocked = subprocess.run([str(installed/'current/openwiz-service')], env=env, capture_output=True, text=True)
-            self.assertEqual(blocked.returncode, 1)
-            self.assertIn('Activation remains closed', blocked.stderr)
-            (installed/'current/install-manifest.json').unlink()
-            damaged = subprocess.run([str(installed/'current/openwiz-service')], env=env, capture_output=True, text=True, timeout=10)
-            self.assertEqual(damaged.returncode, 1)
-            self.assertIn('Activation remains closed', damaged.stderr)
+            page = b'Synthetic page, no accounts.'
+            (web / 'index.html').write_bytes(page)
+            # Only the installed service can serve the page.
+            inert_server = root / 'inert-server'
+            inert_server.write_bytes(b'#!/bin/sh\nexit 1\n')
+            bundle = fixture_bundle.create(root / 'bundle', inert_server, web, service=service,
+                                           source=build_id)
+
+            for layout, installed in (
+                ('default', root / 'installed'),
+                ('standard', home / '.local/lib/openwiz'),
+                ('split', root / 'split-install'),
+            ):
+                with self.subTest(layout=layout):
+                    installed.parent.mkdir(parents=True, exist_ok=True)
+                    args = [sys.executable, '-I', str(ROOT / 'tools/install/install.py'),
+                            '--manifest', bundle['manifest'], '--manifest-sha256', bundle['checksum'],
+                            '--archive', bundle['archive'], '--target', 'x86_64-unknown-linux-gnu',
+                            '--root', str(installed)]
+                    if layout != 'default':
+                        args += ['--state-root', str(root / (layout + '-state'))]
+                    result = subprocess.run(args, capture_output=True, text=True, check=True)
+                    state = Path(json.loads(result.stdout)['state_root'])
+                    selected = installed / 'current'
+                    program = selected / 'openwiz-service'
+                    env = {'HOME': str(home), 'PATH': '/synthetic/no-build-tools',
+                           'OPENWIZ_STATE_DIR': str(state)}
+
+                    def refuse(executable, reason):
+                        denied = subprocess.run([executable], env=env, cwd=root,
+                                                capture_output=True, text=True, timeout=60)
+                        self.assertEqual(denied.returncode, 1, denied.stderr)
+                        self.assertIn(reason, denied.stderr)
+
+                    if layout == 'split':
+                        # catches: startup accepts an install root it cannot verify.
+                        refuse(program, 'cannot identify the private install root')
+                        continue
+
+                    # The offline config writer documented for PC setup is install(1).
+                    # Stage the example input with just the test's loopback port changed.
+                    with socket.socket() as listener:
+                        listener.bind(('127.0.0.1', 0))
+                        port = listener.getsockname()[1]
+                    example = json.loads((ROOT / 'deploy/pc/config.example.json').read_bytes())
+                    example['server']['port'] = port
+                    setup_input = root / 'config.example.json'
+                    setup_input.write_text(json.dumps(example))
+                    subprocess.run(['install', '-m', '600', setup_input, state / 'service/config.json'],
+                                   check=True)
+                    if layout == 'default':
+                        # Let main reach its activation-record check on the red run.
+                        (state / 'setup').mkdir(mode=0o700)
+                    self.assertFalse((state / 'setup/pc-activation.json').exists())
+                    with self.subTest(case='installed HTTP and login'):
+                        with tempfile.TemporaryFile(mode='w+b') as stderr:
+                            with subprocess.Popen([program], env=env, cwd=root, stderr=stderr) as child:
+                                try:
+                                    deadline = time.monotonic() + 60
+                                    while child.poll() is None and time.monotonic() < deadline:
+                                        if (state / 'service/status.sock').exists():
+                                            status = subprocess.run([program, 'status', '--json'], env=env,
+                                                                    cwd=root, capture_output=True, timeout=3)
+                                            if status.returncode == 0:
+                                                self.assertEqual(json.loads(status.stdout)['server']['port'], port)
+                                                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                                                with opener.open(f'http://127.0.0.1:{port}/', timeout=3) as response:
+                                                    self.assertEqual(response.read(), page)
+                                                break
+                                        time.sleep(0.05)
+                                    else:
+                                        stderr.seek(0)
+                                        self.fail(stderr.read().decode() or 'Installed service never answered status.')
+                                finally:
+                                    if child.poll() is None:
+                                        child.kill()
+                                    child.wait()
+                            stderr.seek(0)
+                            self.assertIn(b'login: unknown', stderr.read())
+                        self.assertFalse((state / 'setup/pc-activation.json').exists())
+
+                    if layout != 'default':
+                        continue
+                    with self.subTest(case='missing manifest'):
+                        # catches: a missing manifest is treated as a source deployment.
+                        manifest = selected / 'install-manifest.json'
+                        saved = manifest.read_bytes()
+                        manifest.unlink()
+                        try:
+                            refuse(program, 'the installed manifest is unreadable')
+                        finally:
+                            manifest.write_bytes(saved)
+                            manifest.chmod(0o600)
+
+                    for directory, reason in (
+                        (state, "the runtime state is not this installation's private state"),
+                        (state / 'setup', "the runtime state is not this installation's private state"),
+                        (state / 'service/builds', "the runtime state is not this installation's private state"),
+                        (installed, 'cannot identify the private install root'),
+                    ):
+                        with self.subTest(case='non-private directory', directory=directory.name):
+                            # catches: startup accepts group access to private paths.
+                            directory.chmod(0o750)
+                            try:
+                                refuse(program, reason)
+                            finally:
+                                directory.chmod(0o700)
+                    build = selected.resolve()
+                    with self.subTest(case='different selection'):
+                        # catches: a verified build no longer selected by its install root starts.
+                        selected.unlink()
+                        selected.symlink_to(root / 'a-different-build')
+                        try:
+                            refuse(build / 'openwiz-service', 'cannot identify the private install root')
+                        finally:
+                            selected.unlink()
+                            selected.symlink_to(build)
+                    with self.subTest(case='package outside state'):
+                        # catches: a relocated package is accepted outside its private state.
+                        moved = root / 'outside-package'
+                        build.rename(moved)
+                        try:
+                            refuse(moved / 'openwiz-service', 'the build is outside an installed state root')
+                        finally:
+                            moved.rename(build)
+                    with self.subTest(case='unlisted running executable'):
+                        # catches: a running executable absent from the package is accepted.
+                        foreign = selected / 'foreign-service'
+                        program.rename(foreign)
+                        try:
+                            refuse(foreign, 'the running executable does not belong to the installed package')
+                        finally:
+                            foreign.rename(program)
+                    with self.subTest(case='tampered asset'):
+                        # catches: the service starts with a mismatched asset hash.
+                        asset = selected / 'web/index.html'
+                        asset.write_bytes(b's' + page[1:])
+                        refuse(program, 'an installed asset differs from the verified manifest')
 
     def test_installed_platform_and_private_key_contracts(self):
         # Rust runs before Python is provisioned on the PC runner. Register the

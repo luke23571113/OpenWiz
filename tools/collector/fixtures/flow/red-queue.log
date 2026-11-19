@@ -1,0 +1,49 @@
+F.FF
+======================================================================
+FAIL: test_merged_ticket_and_whole_spec (__main__.FlowFacts.test_merged_ticket_and_whole_spec)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 279, in test_merged_ticket_and_whole_spec
+    self.assertEqual(ticket['cost'], {
+AssertionError: {'bui[77 chars]0}, 'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 10.0} != {'bui[77 chars]0}, 'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 15}
+  {'builder': {'credits': 7, 'tokens': 550},
+-  'ci_minutes': 10.0,
+?                 ^^^
+
++  'ci_minutes': 15,
+?                 ^
+
+   'reviewer': {'credits': 2, 'tokens': 130},
+   'total': {'credits': 9, 'tokens': 680}}
+
+======================================================================
+FAIL: test_ticket_read_needs_only_its_linked_pulls (__main__.FlowFacts.test_ticket_read_needs_only_its_linked_pulls)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 313, in test_ticket_read_needs_only_its_linked_pulls
+    self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['cost']['ci_minutes']), (4101, [4201], 15))
+AssertionError: Tuples differ: (4101, [4201], 10.0) != (4101, [4201], 15)
+
+First differing element 2:
+10.0
+15
+
+- (4101, [4201], 10.0)
+?                 ^^^
+
++ (4101, [4201], 15)
+?                 ^
+
+
+======================================================================
+FAIL: test_whole_spec_counts_shared_pull_once (__main__.FlowFacts.test_whole_spec_counts_shared_pull_once)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 300, in test_whole_spec_counts_shared_pull_once
+    self.assertEqual(spec['cost']['ci_minutes'], 15)
+AssertionError: 10.0 != 15
+
+----------------------------------------------------------------------
+Ran 4 tests in 1.248s
+
+FAILED (failures=3)

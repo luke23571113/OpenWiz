@@ -50,7 +50,7 @@ NAME = 'openwiz-' + TARGET
 BASE = 'https://github.com/openwizdev/OpenWiz/releases/'
 LINE = 'Install OpenWiz from github.com/openwizdev/OpenWiz'
 ORDER = ['Preflight', 'Verified install', 'Setup and connections', 'Explain', 'First fleet']
-# #2293 (PR6, copy only): contracts/public-offer.v1.md's free-only copy, as independent literals.
+# #2293 (PR6, copy only): independent literals for the free-only release copy.
 FREE_ONLY = ('OpenWiz is free now. Paid plans come later. '
              'CloudRoom and model charges are separate and not included.')
 NO_REFERRAL = 'Referral verification is unavailable. No referral is applied.'

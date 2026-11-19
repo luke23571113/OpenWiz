@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_ticket_read_needs_only_its_linked_pulls (__main__.FlowFacts.test_ticket_read_needs_only_its_linked_pulls)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/collector/test_collect_factory.py", line 311, in test_ticket_read_needs_only_its_linked_pulls
+    self.assertIsNotNone(value, 'the ticket has readable linked pulls')
+AssertionError: unexpectedly None : the ticket has readable linked pulls
+
+----------------------------------------------------------------------
+Ran 1 test in 0.124s
+
+FAILED (failures=1)

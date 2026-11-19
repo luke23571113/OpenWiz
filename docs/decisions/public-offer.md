@@ -11,8 +11,7 @@ CloudRoom and model charges stay separate.
 - 2026-11-13, confirmation that the release stays free only for now. Private record: https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6845243425
 
 Both private records were read back on 2026-11-13 and hold the exact words; this
-page paraphrases them. The boundary itself is
-[public-offer.v1](../../contracts/public-offer.v1.md).
+page paraphrases them. See the [site implementation note](../../apps/site/README.md#friends-first-release-copy).
 
 ## What was decided
 

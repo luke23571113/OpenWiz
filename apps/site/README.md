@@ -45,3 +45,18 @@ New font assets need an exact `scan_exceptions` review with `rule: "site-font"`,
 **Not yet in the release gate (follow-up, outside this folder):** Virgil (`apps/site/fonts/Virgil.woff2`, SHA-256 above) and its licence `apps/site/fonts/Virgil-OFL.txt` need a hash-pinned entry in `tools/release/scans.py`'s `SITE_FONTS` and a `site-font` review whose value names that licence, exactly like the Geist fonts. Until that lands, a public export that includes this page is refused by the gate, as it should be.
 
 The site's root-relative links resolve inside `apps/site` and check targets/fragments. Ordinary Markdown evidence remains relative to the public export. Only the target's exact inert favicon data URI is allowed, on the two site pages; other data URIs and schemes are refused.
+
+## Friends-first release copy
+
+The [free-only release decision](../../docs/decisions/public-offer.md) governs
+the site, app setup and install copy. OpenWiz runs for free on the user's own
+machines with public code and no licence wall. Where copy mentions paying for
+OpenWiz, use **Paid plans come later.** The release offers no price, trial or
+paid benefit and contains no checkout, billing, entitlement or payment code.
+
+CloudRoom and model charges are separate. Describe CloudRoom purchases as
+upstream purchases. Use only a verified owner-supplied referral. If verification
+is unavailable, say so and omit the referral. For cost estimates, use the
+[setup rules](../../contracts/setup.v1.md). The first-hour `paid_offer` gate
+still requires the verified free-only producer (#2293). Candidate-bound release
+evidence is tracked separately.

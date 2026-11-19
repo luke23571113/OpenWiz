@@ -19,8 +19,8 @@ tools/install/tests/first-hour-contract/ read the one fenced JSON map below:
   app's handoff and share): the mapping a record uses after #2292's verified
   merge. The setup and paid-offer gates stay unresolved, so it stays unproven.
 - The variant `offer-settled-by-free-only-producer` (#2293) also settles that
-  example's `paid_offer` gate, by its one approved producer, #2293 (the
-  free-only copy and offer evidence of contracts/public-offer.v1.md): the
+  example's `paid_offer` gate by its one approved producer, #2293, for the
+  [free-only release](../../../docs/decisions/public-offer.md). It models the
   mapping a record uses after #2293's verified merge. It is not a paid offer, a
   trial or a payment receipt, and needs none. The setup gate stays unresolved,
   so it stays unproven. The other `offer-` variants keep the gate: settled
