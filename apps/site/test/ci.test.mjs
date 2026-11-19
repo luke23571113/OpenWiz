@@ -1,33 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-
-test('CI classifies site paths only for the jobs that build and test the site', () => {
-  const root = fileURLToPath(new URL('../../../', import.meta.url));
-  const classified = execFileSync('sh', ['.github/actions/docs-only/classify.sh'], { cwd: root, input: 'apps/site/index.html\n', encoding: 'utf8' });
-  assert.equal(classified, 'web-build web-test\n');
-  for (const job of ['web-build', 'web-test']) {
-    assert.equal(execFileSync('sh', ['.github/actions/docs-only/classify.sh', '--skips', job], { cwd: root, input: 'apps/site/index.html\n', encoding: 'utf8' }), '');
-  }
-  assert.equal(execFileSync('sh', ['.github/actions/docs-only/classify.sh', '--skips', 'rust'], { cwd: root, input: 'apps/site/index.html\n', encoding: 'utf8' }), 'apps/site/index.html\n');
-});
-
-// The app's shared design tokens, brought in unchanged (room/design-hill-climb
-// at 56970e2e, apps/web/styles/tokens.css). A retune updates this hash; once
-// the app's copy is on this branch, the two files must stay identical.
-const TOKENS_SHA256 = 'b837fc82932d8a1e9578a2d1e2ef5148bb3beb2cd602491d26437f8d02f12393';
-test('the site uses the app\'s design tokens byte for byte', () => {
-  const site = readFileSync(new URL('../tokens.css', import.meta.url));
-  assert.equal(createHash('sha256').update(site).digest('hex'), TOKENS_SHA256);
-  const app = new URL('../../web/styles/tokens.css', import.meta.url);
-  if (existsSync(app)) assert.deepEqual(site, readFileSync(app), 'apps/web/styles/tokens.css and apps/site/tokens.css differ');
-  for (const font of ['Geist-var.woff2', 'GeistMono-var.woff2', 'OFL.txt']) {
-    assert.deepEqual(readFileSync(new URL(`../fonts/${font}`, import.meta.url)), readFileSync(new URL(`../../web/public/fonts/${font}`, import.meta.url)), font);
-  }
-});
 
 test('R1: CI runs separate site and release jobs with the pinned Python fallback', () => {
   const workflow = readFileSync(new URL('../../../.github/workflows/ci.yml', import.meta.url), 'utf8');

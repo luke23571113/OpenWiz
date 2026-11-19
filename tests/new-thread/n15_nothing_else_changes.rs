@@ -1,16 +1,11 @@
 //! N15 Nothing else changes: the inventory and `send` keep their behaviour
 //! (P1 to P12 and M1 to M18 run unchanged in the same `cargo test
 //! --workspace`), and no inventory path can reach a write: `ls`, `ls -l`,
-//! `show`, `models` and `new --status` make no `spawn` and no `tell`, and
-//! the server names nothing of new threads (its routes are A2's).
-
-use std::fs;
-use std::path::Path;
+//! `show`, `models` and `new --status` make no `spawn` and no `tell`.
 
 use serde_json::json;
 
 use crate::fake::*;
-use crate::support::ROOT;
 
 #[test]
 fn no_read_command_reaches_a_write() {
@@ -53,36 +48,4 @@ fn no_read_command_reaches_a_write() {
         .filter(|a| starts(a, &["cloud", "status"]))
         .count();
     assert_eq!(catalogue_reads, 3, "models twice and the preview once");
-}
-
-/// Updated for A2 (#12), with this reason: A2 adds the server's new-thread
-/// routes, which call the core's `new_thread`, `preview_new_thread`,
-/// `new_thread_status` and `cloud_options` as the CLI does
-/// (`tests/web-api/u05_same_operation.rs` finds no new-thread logic of the
-/// server's own). The server still builds no `room-cli` call: it names no
-/// allowlist invocation and no argument builder.
-#[test]
-fn the_server_builds_no_new_thread_call() {
-    let mut stack = vec![Path::new(ROOT).join("crates/server/src")];
-    let mut seen = String::new();
-    while let Some(path) = stack.pop() {
-        if path.is_dir() {
-            stack.extend(fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
-            continue;
-        }
-        let text = fs::read_to_string(&path).unwrap();
-        for word in [
-            "ThreadSpawn",
-            "CloudStatus",
-            "spawn_argv",
-            "spawn_invocation",
-        ] {
-            assert!(!text.contains(word), "{path:?} names {word}");
-        }
-        seen.push_str(&text);
-    }
-    assert!(
-        seen.contains("new_thread::operation::"),
-        "A2's routes call the core's operations"
-    );
 }

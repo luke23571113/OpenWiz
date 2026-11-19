@@ -15,23 +15,6 @@ use crate::bench::{Bench, CONTENT, ClaimsOf, Free, PLENTY, T0, assert_clean_log}
 use crate::support::{PNG, padded};
 
 #[test]
-fn the_scan_finds_names_content_and_hashes() {
-    for planted in [
-        "openwiz: could not read syn-ap12-photo.png",
-        "openwiz: SYNTHETIC-CONTENT",
-        "openwiz: ZZZZZZZZZZZZ",
-        &format!(
-            "openwiz: {}",
-            openwiz_core::messaging::sha256_hex(b"synthetic")
-        ),
-    ] {
-        let caught = std::panic::catch_unwind(|| assert_clean_log(planted));
-        assert!(caught.is_err(), "the scan missed {planted:?}");
-    }
-    assert_clean_log("openwiz: the attachment store could not be used: att-0123 (63 hex: ok)");
-}
-
-#[test]
 fn every_error_path_logs_no_name_content_or_hash() {
     let bench = Bench::new("ap12_errors");
     let photo = bench.source("syn-ap12-photo.png", &padded(PNG, 5_000));

@@ -11,4 +11,4 @@ OpenWiz's command line is for agents, scripts and people alike: explicit command
 
 ## The terminal app was removed
 
-0.0.12 shipped a visual terminal app (`openwiz ui`, and `openwiz` with no arguments in a terminal). It was removed in 0.0.16 (#776). `openwiz ui` now opens nothing: it is a usage error (exit 2) that says the app was removed. The app's code and tests are still in the git history: commit `c2b668d59c31d99e75411f55d9d676a7e33e2c4a` is the last commit on `main` that contains them.
+0.0.12 shipped a visual terminal app (`openwiz ui`, and `openwiz` with no arguments in a terminal). It was removed in 0.0.16 (#776). `openwiz ui` now opens nothing: it is a usage error (exit 2) that says the app was removed. The app's code and tests are still in the git history: commit `c2b668d59c31d99e75411f55d9d676a7e33e2c4a` is a commit that contains them.

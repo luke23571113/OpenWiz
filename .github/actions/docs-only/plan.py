@@ -27,12 +27,9 @@ import units
 ALWAYS = ['always:fmt', 'always:classifier', 'always:selector', 'always:checks']
 SITE = ['site:build', 'site:test', 'site:ci']
 RELEASE = ['release:test', 'release:package', 'release:install', 'release:pull',
-           'release:setup-api', 'release:github-app', 'release:open-tickets', 'release:ci-runner',
-           'release:ops-live-controls', 'release:ops-live-acceptance', 'release:security-baseline',
+           'release:setup-api', 'release:github-app', 'release:ci-runner',
+           'release:security-baseline',
            'release:security-candidate',
-           'release:ci2-read-contract',
-           'release:ci2-shared-reads',
-           'release:ci2-read-consumers',
            'release:ci2-batch-contract', 'release:ci2-batch-shadow',
            'release:ci2-main-batch-admit',
            'release:ci2-overload',

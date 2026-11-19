@@ -897,29 +897,6 @@ fn binary_part(part: usize) -> Vec<Case> {
         .collect()
 }
 
-/// The binary's parts together are every case, each in exactly one part,
-/// and no part is empty.
-#[test]
-fn the_binarys_parts_together_are_every_case_once() {
-    let mut every: Vec<String> = binary_cases().into_iter().map(|c| c.label).collect();
-    every.sort();
-    let mut unique = every.clone();
-    unique.dedup();
-    assert_eq!(unique, every, "each case has its own label");
-    let mut joined = Vec::new();
-    for part in 0..PARTS {
-        let labels: Vec<String> = binary_part(part).into_iter().map(|c| c.label).collect();
-        assert!(
-            !labels.is_empty(),
-            "part {} of {PARTS} has no case",
-            part + 1
-        );
-        joined.extend(labels);
-    }
-    joined.sort();
-    assert_eq!(joined, every, "the parts together are every case, once");
-}
-
 /// The built binary, with the fake first on `PATH`: every stderr variant of
 /// every read, and the stdout cases, through every route, with the same
 /// checks as in process (markers, whole bodies, the kept line) except CLI

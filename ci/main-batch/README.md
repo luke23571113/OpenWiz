@@ -60,8 +60,7 @@ or live success is established by these fixtures. A separate current required
 workflow is included in the observed job clocks. Nightly is separate evidence,
 never a member of a push batch or inferred from a batch green.
 
-Run `python3 -I ci/main-batch/test_shadow.py`. This includes the offline
-`tools/ci2-live/test_batch_kit.py` tests and is the single command registered as
+Run `python3 -I ci/main-batch/test_shadow.py`. This is the command registered as
 `release:ci2-batch-shadow` in the existing planner/executor. Red logs precede
 implementation in Git. `fixtures/shadow/github.json` and the reused C6 fixtures
 are synthetic, unobserved API assumptions with a deliberately small inventory;
@@ -74,7 +73,7 @@ The attempt-specific jobs endpoint supplies the attempt binding even on API
 versions whose job objects omit `run_attempt`; an exposed conflicting attempt
 is refused. Unknown job-created times remain missing timing evidence.
 
-The [candidate-bound C11 kit](../../tools/ci2-live/batch-kit.md) names the finite
+The retired C11 kit (#463) named the finite
 later invocation, its proposed read/resource ceilings, authorization, separate
 nightly receipt, stop conditions and rollback prerequisites. Nothing here opens
 the C12 switch gate, changes a permission, installs a controller or authorizes a

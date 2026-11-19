@@ -51,9 +51,6 @@ export const stageLabel = 'Building now, not released yet. Illustration: you typ
 // #1190, W1: none of these may appear anywhere on the landing, visible,
 // hidden or in an attribute. Labels from the ticket and the copy it replaces.
 export const bannedLanding = [/staged/i, /pending/i, /fixture/i, /live observation/i, /live[- ]test/i, /LIVE-/, /\bgaps?\b/i, /PACP/i, /evidence/i];
-// The landing's visible main text before #1190 (normalized, in characters):
-// the #1114 approved copy at 6b8649e8. The new landing must be shorter.
-export const landingCharsBefore1190 = 3594;
 
 // #1199: Jake approved one section per version, 2026-11-06.
 // Private record: https://github.com/jparker2006/ClosedWiz/issues/1277#issuecomment-6705218593

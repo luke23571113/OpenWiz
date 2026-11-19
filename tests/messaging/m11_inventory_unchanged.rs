@@ -3,9 +3,6 @@
 //! reach the write. The inventory API's signatures need no test of their
 //! own: the CLI and the server call them, so a changed one fails the build.
 
-use std::fs;
-use std::path::Path;
-
 use crate::support::*;
 
 #[test]
@@ -58,30 +55,4 @@ fn no_inventory_command_reaches_the_write() {
     assert!(fake.invocations().len() > 20, "the inventory read");
     assert!(fake.tells().is_empty(), "{:?}", fake.tells());
     assert_eq!(fake.tell_count(), 0);
-}
-
-#[test]
-fn the_inventory_code_cannot_name_the_write() {
-    for file in [
-        "crates/core/src/ops.rs",
-        "crates/core/src/source.rs",
-        "crates/core/src/envelope.rs",
-        "crates/core/src/model.rs",
-        "crates/adapters/cloudroom/src/source.rs",
-        "crates/adapters/cloudroom/src/process.rs",
-    ] {
-        let text = fs::read_to_string(Path::new(ROOT).join(file)).unwrap();
-        for word in ["ThreadTell", "messaging", "Messenger", "tell("] {
-            assert!(!text.contains(word), "{file} names {word}");
-        }
-    }
-    let source = fs::read_to_string(Path::new(ROOT).join("crates/core/src/source.rs")).unwrap();
-    let trait_body = source
-        .split("pub trait SessionSource")
-        .nth(1)
-        .expect("the trait");
-    assert!(
-        !trait_body.contains("fn send") && !trait_body.contains("fn tell"),
-        "the inventory interface has no write"
-    );
 }

@@ -22,9 +22,6 @@ sys.path.insert(0, str(HERE.parents[2] / 'ci/shard'))
 import lanes
 
 COMMANDS = {
-    'release:ci2-read-contract': ['python3', '-I', 'tools/github-reads/test_contract.py'],
-    'release:ci2-shared-reads': ['python3', '-I', 'tools/github-reads/test_read.py'],
-    'release:ci2-read-consumers': ['python3', '-I', 'tools/github-reads/test_consumers.py'],
     'release:ci2-batch-shadow': ['python3', '-I', 'ci/main-batch/test_shadow.py'],
     'release:ci2-batch-contract': ['python3', '-I', 'ci/main-batch/test_contract.py'],
     'release:ci2-main-batch-admit': ['python3', '-I', 'ci/main-batch/test_admit.py'],
@@ -38,11 +35,8 @@ COMMANDS = {
     'release:github-app': ['python3', '-I', 'tools/github-app/test.py'],
     'release:security-baseline': ['python3', '-I', 'tools/install/tests/public-release-security/baseline/test_baseline.py'],
     'release:security-candidate': ['python3', '-I', 'tools/install/tests/public-release-security/test_candidate.py'],
-    'release:open-tickets': ['sh', 'tools/open-tickets/test.sh'],
     'release:ci-runner': ['sh', '.github/actions/docs-only/test_rust_runner.sh'],
     'release:ci2-spending': ['python3', '-I', 'tools/ci-overflow/test.py', 'GuardedHosted'],
-    'release:ops-live-controls': ['python3', '-I', 'tools/ops-live/controls/test_kit.py'],
-    'release:ops-live-acceptance': ['python3', '-I', 'tools/ops-live/test_acceptance.py'],
     'release:ci2-overload': ['python3', '-I', 'tools/ci-overload/test.py'],
     'release:product-identity': ['python3', '-I', 'tools/release/test_product_identity.py'],
     'release:setup-onboard-contract': ['python3', '-I', 'tools/install/tests/setup-onboard-contract/test_contract.py'],
@@ -116,11 +110,7 @@ def units(record, kind):
         out.append(('site', [(COMMANDS[t], 'apps/site') for t in tests_for(record, 'site')]))
     for test in tests_for(record, kind):
         if test not in COMMANDS: raise ValueError('unknown planned test: '+test)
-        if test == 'release:open-tickets':
-            listed = subprocess.run([*COMMANDS[test], '--list'], check=True, capture_output=True, text=True).stdout.split()
-            if not listed or len(set(listed)) != len(listed): raise ValueError('open-tickets lists no parts, or one twice')
-            out += [(test + ':' + p, [([*COMMANDS[test], '--only', p], None)]) for p in listed]
-        elif test == 'release:package':
+        if test == 'release:package':
             out.append((test, [(PACKAGE_BUILD, None), (COMMANDS[test], None)]))
         else:
             out.append((test, [(COMMANDS[test], None)]))

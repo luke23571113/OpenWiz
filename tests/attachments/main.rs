@@ -39,7 +39,9 @@ mod dirs;
 #[path = "../support/forks.rs"]
 mod forks;
 
-// `pattern`, for the attachment schema only (Sol round 1, finding 3).
+// `pattern`, the shared schema keywords (one copy, in the new-thread target).
+#[allow(dead_code)]
+#[path = "../new-thread/pattern.rs"]
 mod pattern;
 
 mod ap02_limits;

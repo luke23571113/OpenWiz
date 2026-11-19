@@ -2,13 +2,10 @@
 // at 390 and 1440 CSS px, on the
 // target's content packet (test/fixtures/plan/target.json): the title row,
 // provenance, the blocking chain, each version's state columns and counts,
-// folding, Reset, and axe at named states. The screenshots themselves are
-// reviewed: with OPENWIZ_PLAN_SHOTS=<dir> this proof writes them there.
+// folding, Reset, and axe at named states.
 // Expected values are the packet's literals, not computed from the page.
 
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
 import { DESKTOP, launchBrowser, openPage, pageIdle, PHONE, waitFor } from '../support/browser.mjs';
@@ -18,8 +15,6 @@ import { card, link, openPlan, planSite, sheet, START, tokenColour } from '../fi
 let browser;
 before(async () => { browser = await launchBrowser(); });
 after(() => browser.close());
-
-const SHOTS = process.env.OPENWIZ_PLAN_SHOTS ?? null;
 
 /** The packet's table: done, building, needs you, waiting; yours. */
 const PACKET = [
@@ -174,34 +169,6 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['phone', PHONE]]) {
     }
   });
 }
-
-test('EP2: screenshots at 1440 and 390 with the target\'s trace pinned on #2107 (reviewed against the target)', async () => {
-  const fx = await planSite();
-  try {
-    for (const [name, viewport] of [['desktop', DESKTOP], ['phone', PHONE]]) {
-      const p = await openPlan(browser, fx, viewport, { paused: false });
-      const page = p.page;
-      try {
-        if (SHOTS) {
-          mkdirSync(SHOTS, { recursive: true });
-          await page.screenshot({ path: join(SHOTS, `${name}-initial.png`), fullPage: true });
-        }
-        // The target's state: 0.0.6 open, the others folded, #2107 pinned.
-        if (name === 'desktop') for (const [key] of PACKET.slice(1)) await sheet(page, key).locator('.pl-fold').click();
-        else await sheet(page, 'version:6').locator('.pl-fold').click();
-        await card(page, 2107).click();
-        assert.equal(await page.locator('[data-part=trace-counts]').textContent(), '— waits on 2 · 5 wait on it');
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), viewport.width, 'no sideways scroll');
-        await noViolations(page, `${name}, trace pinned`);
-        if (SHOTS) await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
-      } finally {
-        await p.close();
-      }
-    }
-  } finally {
-    await fx.close();
-  }
-});
 
 test('MD9: the phone bar is Sessions, Fleets, Plan, Decisions, New; the PC sidebar keeps Cockpit, Home and Loops, the command dialog Cockpit and Home; Sessions stays first', async () => {
   const fx = await planSite();

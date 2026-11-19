@@ -200,13 +200,15 @@ impl GitHub for Tickets {
         issue(&self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?)
     }
 
+    /// Reads the record authors setting first, as launch-fleet does, then
+    /// the issue and its start-record comments: an unread or malformed
+    /// setting stops the read before any comment is read.
     fn stock_issue(
         &self,
         number: Number,
         deadline: Instant,
     ) -> Result<(IssueAnswer, openwiz_core::model::Fact<bool>), SourceError> {
         let n = number.to_string();
-        // The setting is read before any comment, as launch-fleet does.
         let authors = self.record_authors(deadline)?;
         let issue = self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?;
         let comments = self.run(
@@ -1705,6 +1707,7 @@ mod tests {
         let app = |body: &str| row("synthetic-app[bot]", "Bot", body);
         let outsider = |body: &str| row("synthetic-outsider", "User", body);
         let flood: Vec<Value> = (0..15).map(|_| outsider("synthetic progress")).collect();
+        let later: Vec<Value> = (0..15).map(|_| app("synthetic progress")).collect();
         let cases: Vec<(Vec<Vec<Value>>, bool)> = vec![
             // The App's own start record counts.
             (vec![vec![app(start)]], true),
@@ -1715,6 +1718,13 @@ mod tests {
             // comments never push the App's record out of the window.
             (vec![vec![outsider(start)]], false),
             (vec![vec![app(start)], flood.clone()], true),
+            // Every page is read: a start record on a later page counts,
+            // and the App's own later comments there push an earlier one out.
+            (
+                vec![vec![outsider("synthetic progress")], vec![app(start)]],
+                true,
+            ),
+            (vec![vec![app(start)], later], false),
             (
                 vec![vec![json!({"login": null, "type": null, "body": start})]],
                 false,

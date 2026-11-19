@@ -5,8 +5,5 @@
 set -eu
 cd "$(dirname "$0")/../.."
 python3 -I tools/fleet-load/test_carried.py
-# #1456: the finite pass runner keeps the original router failures visible
-# (formerly run by launch-fleet's test-loop.sh).
-python3 -I tools/review-relay/test_router.py
 python3 -I tools/fleet-load/test_seams.py
 python3 -I tools/fleet-load/test.py

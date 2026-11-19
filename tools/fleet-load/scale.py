@@ -9,7 +9,7 @@ import platform
 import shutil
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / 'tools/scale-50'
+TOOLS = Path(__file__).resolve().parent / 'scale-50'
 spec = importlib.util.spec_from_file_location('scale_report', TOOLS / 'report.py')
 api = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(api)
@@ -34,8 +34,7 @@ def identity(fleet, installed):
         'tests/fleet/b5_fake.rs',
         'tests/fixture-entrypoints/cli.rs',
         'tests/fixture-entrypoints/fixture.rs',
-        'tools/scale-50/report.py',
-    )]
+    )] + [TOOLS / 'report.py']
     model_files = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                    for path in sorted(model_paths)}
     measurement_model = dict(files=model_files, sha256=api.model_digest(model_files))

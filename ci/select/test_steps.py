@@ -43,11 +43,10 @@ class Dispatch(unittest.TestCase):
                 if proc.returncode: code=proc.returncode; break
             return code,log.read_text().splitlines() if log.exists() else []
 
-    # #555: the skills' own suites run in WizSkills; the one lane left runs
-    # ClosedWiz's own inbox check over the installed launch-fleet.
+    # The launch-fleet lane runs the installed inbox suite.
     # catches: the lane passing although its check failed, or running when unselected.
-    def test_launch_fleet_lane_runs_closedwiz_inbox_check_and_fails_with_it(self):
-        proof = 'tools/review-relay/test_inbox.py'
+    def test_launch_fleet_lane_runs_pinned_inbox_check_and_fails_with_it(self):
+        proof = 'skills/launch-fleet/scripts/test-inbox.py'
         command = 'python3 -I ' + proof
         for selected, included in [('launch-fleet', True), ('all', True), ('none', False)]:
             for failure in ('', proof):

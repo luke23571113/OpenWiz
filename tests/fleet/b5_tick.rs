@@ -222,9 +222,9 @@ fn b5_additional_readers_and_allowlist_refuse_shape_drift() {
         json!([[{"id":1,"body":"Synthetic","created":100,"updated":100}]]),
         json!([[{"id":1,"author":7,"body":"Synthetic","created":100,"updated":100}]]),
         json!([[row.clone(), row.clone()]]),
-        json!([[{"id":1,"body":"Synthetic","created":100,"updated":99}]]),
-        json!([[{"id":"1","body":"Synthetic","created":100,"updated":100}]]),
-        json!([[{"id":1,"body":[],"created":100,"updated":100}]]),
+        json!([[{"id":1,"author":"syn-author","body":"Synthetic","created":100,"updated":99}]]),
+        json!([[{"id":"1","author":"syn-author","body":"Synthetic","created":100,"updated":100}]]),
+        json!([[{"id":1,"author":"syn-author","body":[],"created":100,"updated":100}]]),
     ] {
         assert!(comments(&bad).is_err(), "{bad}");
     }

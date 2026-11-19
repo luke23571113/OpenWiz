@@ -8,9 +8,8 @@ import subprocess
 import sys
 
 SUITES = {
-    # #555: the skills' own suites run in WizSkills (check/run.py). ClosedWiz
-    # keeps one lane for its own checks over the installed launch-fleet.
-    'launch-fleet': [['python3', '-I', 'tools/review-relay/test_inbox.py']],
+    # The launch-fleet lane runs the inbox suite from the pinned WizSkills release.
+    'launch-fleet': [['python3', '-I', 'skills/launch-fleet/scripts/test-inbox.py']],
 }
 # #743: suites CI runs as their own job, split across members by
 # ci/shard/lanes.py; the skills job's matrix runs the rest.

@@ -14,20 +14,8 @@ release:ci2-batch-contract	0.54
 release:ci2-batch-shadow	2.83
 release:ci2-main-batch-admit	0.54
 release:ci2-overload	4.39
-release:ci2-read-consumers	42.08
-release:ci2-read-contract	0.33
-release:ci2-shared-reads	74.71
 release:github-app	53.86
 release:install	12.42
-release:open-tickets:carriage	326.96
-release:open-tickets:collect	41.12
-release:open-tickets:graph	0.97
-release:open-tickets:move	266.49
-release:open-tickets:plan	3.41
-release:open-tickets:proposal	31.76
-release:open-tickets:text	2.13
-release:ops-live-acceptance	2.09
-release:ops-live-controls	0.18
 release:package	53.40
 release:product-identity	8.24
 release:pull	0.18
@@ -777,7 +765,6 @@ skill:launch-fleet:skills/launch-fleet/scripts/test.sh:group:97	1.80
 skill:launch-fleet:skills/launch-fleet/scripts/test.sh:group:98	1.14
 skill:launch-fleet:skills/launch-fleet/scripts/test.sh:group:99	0.94
 skill:launch-fleet:skills/launch-fleet/test/ops-protocol/test_protocol.py	0.19
-skill:launch-fleet:tools/review-relay/test_inbox.py	0.38
 site	24.00
-# #1132: four-CPU fixture workload plus all existing suite checks; evidence under tools/fleet-load/evidence/1132.
+# #1132: four-CPU fixture workload plus all existing suite checks; historical evidence in #1132.
 release:fleet-load	675.72
