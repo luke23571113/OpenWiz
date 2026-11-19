@@ -8,6 +8,9 @@ relies on**, or a **safety gate** (privacy, security, data loss, money,
 release). `tests/service/` files run as `openwiz-tests:service` (the `t2_*`
 files) or as `openwiz-service` targets that `crates/service/Cargo.toml` points
 here; `tests/loops/l6_executor.rs` runs as `openwiz-service:l6-switches`.
+Seven rowed tests (`t7_transport.rs`, `install_engine_target.rs`,
+`install_engine_record_factory.rs`) compile into crate unit tests instead
+([README.md](README.md)).
 
 - **Rows:** kept 469, deleted 45, moved 0, merged 0.
 - **Catches** is the bug the test fails on, carried from the test-value
