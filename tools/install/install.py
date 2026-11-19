@@ -15,17 +15,12 @@ import re
 import shutil
 import stat
 import sys
-import signal
-import subprocess
-import time
-import urllib.request
-import webbrowser
 import tarfile
 import tempfile
 
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
-PROGRAMS = {'openwiz', 'openwiz-service', 'openwiz-server'}
-REQUIRED = PROGRAMS | {'web/openwiz-build.txt', 'runtime/openwiz-build.txt', 'web/index.html', 'web/setup.html', 'runtime/install.py', 'runtime/pull.py',
+PROGRAMS = {'openwiz'}
+REQUIRED = PROGRAMS | {'runtime/openwiz-build.txt', 'runtime/install.py', 'runtime/pull.py',
     'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
     'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
     'runtime/skills/launch-fleet/scripts/fleet.sh',
@@ -69,7 +64,7 @@ def safe(path):
     require(isinstance(path, str) and re.fullmatch(r'[A-Za-z0-9_+./-]+', path), 'unsafe asset path')
     require(not path.startswith('/') and all(p not in ('', '.', '..') and not p.startswith('.')
             for p in path.split('/')), 'unsafe asset path')
-    require(path in PROGRAMS or path.startswith(('web/', 'runtime/')), 'unknown asset role')
+    require(path in PROGRAMS or path.startswith('runtime/'), 'unknown asset role')
     return path
 
 
@@ -96,10 +91,10 @@ def manifest_at(path, checksum, target):
         require(digest(item['sha256']) and type(item['bytes']) is int and item['bytes'] >= 0, 'invalid asset identity')
         require(item['mode'] == ('0700' if path in PROGRAMS or path.endswith('.sh') else '0600'), 'invalid asset mode')
         assets[path] = item
-    require(REQUIRED <= assets.keys(), 'incomplete programs, web or skill runtime')
+    require(REQUIRED <= assets.keys(), 'incomplete program or skill runtime')
     identity = f"openwiz.package.v1\n{value['version']}\n{value['source']}\n{target}\n".encode()
-    for path in ('web/openwiz-build.txt', 'runtime/openwiz-build.txt'):
-        require(assets[path]['sha256'] == sha(identity) and assets[path]['bytes'] == len(identity), 'web/runtime build identity mismatch')
+    stamp = assets['runtime/openwiz-build.txt']
+    require(stamp['sha256'] == sha(identity) and stamp['bytes'] == len(identity), 'runtime build identity mismatch')
     return value, assets, data
 
 
@@ -267,49 +262,7 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
             activate(build, root)
         return {'schema': 'openwiz.install-result.v1', 'version': value['version'], 'source': value['source'],
                 'target': target, 'build': str(build), 'state_root': str(state_root),
-                'setup_url': 'http://127.0.0.1:7370/setup', 'activated': not stage_only}
-
-
-def serve_installed(result, port, open_browser=False):
-    require(result['activated'] and type(port) is int and 1 <= port <= 65535, 'invalid setup launch')
-    build = Path(result['build'])
-    # The installed server opens only its startup-loaded web root. /setup and
-    # its API do not make an inventory or account request.
-    child = subprocess.Popen([str(build / 'openwiz-server'), '--web-root', str(build / 'web'),
-                              '--port', str(port)])
-    previous = {}
-    def stopped(_signum, _frame):
-        raise KeyboardInterrupt
-    try:
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            previous[sig] = signal.signal(sig, stopped)
-        url = f'http://127.0.0.1:{port}/setup'
-        until = time.monotonic() + 10
-        while True:
-            require(child.poll() is None, 'installed setup server did not start')
-            try:
-                with urllib.request.urlopen(url, timeout=1) as response:
-                    require(response.status == 200, 'installed setup is unavailable')
-                    require(response.read() == (build / 'web/setup.html').read_bytes(), 'wrong setup build at port')
-                break
-            except OSError:
-                require(time.monotonic() < until, 'installed setup did not become readable')
-                time.sleep(0.05)
-        if open_browser:
-            require(webbrowser.open(url), 'cannot open a browser; use the reported loopback URL')
-        return child.wait()
-    except KeyboardInterrupt:
-        return 0
-    finally:
-        if child.poll() is None:
-            child.terminate()
-            try:
-                child.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
+                'activated': not stage_only}
 
 
 def main():
@@ -318,22 +271,13 @@ def main():
         parser.add_argument('--' + flag, required=True)
     parser.add_argument('--state-root')
     parser.add_argument('--stage-only', action='store_true')
-    parser.add_argument('--serve', action='store_true', help='serve the installed setup on loopback until stopped')
-    parser.add_argument('--open', action='store_true', help='also open the installed setup in your browser')
-    parser.add_argument('--port', type=int, default=7370)
     args = vars(parser.parse_args())
-    serve, open_browser, port = args.pop('serve'), args.pop('open'), args.pop('port')
-    result = None
     try:
-        require(not (args['stage_only'] and (serve or open_browser)), 'staging cannot launch setup')
-        require(1 <= port <= 65535, 'invalid setup port')
         result = install(**args)
-        result['setup_url'] = f'http://127.0.0.1:{port}/setup'
         print(json.dumps(result, separators=(',', ':')), flush=True)
-        return serve_installed(result, port, open_browser) if serve or open_browser else 0
+        return 0
     except (Refused, OSError, ValueError, KeyError, TypeError, tarfile.TarError):
-        print('openwiz-install: verified installation is saved; setup could not be opened' if result else
-              'openwiz-install: refused; last-good selection and owner settings retained', file=sys.stderr)
+        print('openwiz-install: refused; last-good selection and owner settings retained', file=sys.stderr)
         return 1
 
 

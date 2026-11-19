@@ -2,8 +2,8 @@
 # Which jobs a change runs (#70, #86, #177). Reads the changed paths, one per
 # line, on stdin, and prints the jobs to run, in the workflow's order, on one
 # line: `web-build rust web-test`, some of them, or `none`. No paths at all
-# runs every job. web-build runs whenever another job does: they read its
-# apps/web/out.
+# runs every job. web-build runs whenever another job does (the legacy job
+# names; the web view went in #1264).
 #
 # With `--skips JOB`, prints instead each path JOB never reads, one per line.
 # The prune deletes them before JOB runs, so no job can read a path whose
@@ -16,7 +16,7 @@
 # inputs; missing or unreadable lists are never treated as empty.
 #
 # CLASSIFY_STEP answers for one step instead of the jobs: site (#1251)
-# selects web-test's public-site check. Its row reader selects that step.
+# selects the release proofs' step. Its row reader selects that step.
 # ci.yml asks decide.sh with it set, retaining the job's every-edge rules.
 # The step has no separate prune, so every input it reads must have its
 # reader in the table; full runs expose missing inputs.
@@ -45,12 +45,10 @@ trap 'rm -f "$table"' EXIT
 # Who reads each path: the first row whose pattern (an ERE) matches the whole
 # path wins. `-` is no job; `site` is a step reader (CLASSIFY_STEP, above),
 # never a job. A path no row matches is read by every job and the step
-# (fail closed): .github/ (the site's tests read ci.yml and this
-# file) and anything new. ci/runner/cache.sh, crates/, apps/web/,
+# (fail closed): .github/ and anything new. ci/runner/cache.sh, crates/,
 # contracts/, tests/Cargo.toml, tests/fake-room-cli/ and tests/fixtures/
-# (web-test builds the server and the fake, and serves the fixtures) are
-# read by every job, and the site step reads only the release proofs'
-# fixture there and the app's files it copies or loads its packages from.
+# are read by every job, and the site step reads only the release proofs'
+# fixture there.
 # So are changes/ and every other folder of tests/ and tools/, as before
 # (the last row), which the site step never reads.
 cat > "$table" <<'TABLE'
@@ -65,14 +63,13 @@ web-build,rust,web-test ci/escapes/escapes\.py
 web-build,rust  ci/rust-tests\.sh
 rust            skills|\.claude/skills/[^/]+|\.agents/skills/[^/]+
 rust            docs/.+|GLOSSARY\.md
-web-build,rust  tests/(attachments|checks|messaging|new-thread|proof|send-harness|support|web-api)/.+|tests/pending-ticket-2\.txt
+web-build,rust  tests/(attachments|checks|messaging|new-thread|proof|support)/.+|tests/pending-ticket-2\.txt
 rust,web-test   tools/install/.+
 rust,web-test,site tools/release/.+
 rust            tools/github-app/.+
-web-build,web-test,site apps/site/.+
 rust,web-test   Cargo\.toml|Cargo\.lock
-web-build,rust,web-test,site tests/fixtures/release/.+|apps/web/(package\.json|package-lock\.json|styles/tokens\.css|public/fonts/.+)
-web-build,rust,web-test ci/runner/cache\.sh|crates/.+|apps/web/.+|contracts/.+|tests/Cargo\.toml|tests/fake-room-cli/.+|tests/fixtures/.+
+web-build,rust,web-test,site tests/fixtures/release/.+
+web-build,rust,web-test ci/runner/cache\.sh|crates/.+|contracts/.+|tests/Cargo\.toml|tests/fake-room-cli/.+|tests/fixtures/.+
 web-build,rust,web-test changes/.+|tests/.+|tools/.+
 TABLE
 # Identify each file explicitly: an empty reads list has no first record.
