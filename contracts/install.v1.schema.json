@@ -303,5 +303,17 @@
         }
       ]
     }
+  },
+  "$defs": {
+    "harness": {
+      "$comment": "#1361: the harness targets of install.v1.md \"Harness skills\"; not part of the manifest.",
+      "enum": [
+        "claude-code",
+        "codex",
+        "cursor",
+        "opencode",
+        "grok"
+      ]
+    }
   }
 }
