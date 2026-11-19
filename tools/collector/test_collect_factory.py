@@ -281,8 +281,9 @@ class FlowFacts(unittest.TestCase):
             'total': {'credits': 9, 'tokens': 680}, 'ci_minutes': 10})
         self.assertEqual(ticket['stages_seconds'], {
             'waiting_to_start': 900, 'building': 5100, 'in_review': 1080, 'in_queue': 900})
-        self.assertEqual((ticket['elapsed_seconds'], ticket['review_rounds']), (9000, 1))
+        self.assertEqual((ticket['elapsed_seconds'], ticket['review_rounds'], ticket['stall_count']), (9000, 1, 2))
         self.assertEqual(ticket['progress']['commit_at'], '2030-01-02T01:58:00Z')
+        self.assertEqual(spec['stall_count'], 2)
         self.assertEqual((spec['spec'], spec['tickets'], spec['span_seconds']), (4001, [4101], 11700))
         self.assertEqual((spec['cost'], spec['stages_seconds'], spec['elapsed_seconds'], spec['review_rounds']),
                          (ticket['cost'], ticket['stages_seconds'], 9000, 1))
@@ -290,11 +291,12 @@ class FlowFacts(unittest.TestCase):
     # catches: unreadable jobs or missing usage emitted as zero, or a missing
     # cost source taking unrelated timing and progress away.
     def test_missing_sources_keep_independent_facts(self):
-        def without_jobs(world):
-            key = next(key for key in world if 'runs/6101/attempts/1/jobs' in key)
-            del world[key]
+        def without_sources(world):
+            for fragment in ('runs/6101/attempts/1/jobs', '/activity?ref='):
+                key = next(key for key in world if fragment in key)
+                del world[key]
 
-        p, _ = cli('../flow/world.json', *self.args, edit=without_jobs)
+        p, _ = cli('../flow/world.json', *self.args, edit=without_sources)
         fact = envelope(p)['factory']['flow']
         self.assertEqual(fact['state'], 'partial')
         ticket, = fact['value']['tickets']

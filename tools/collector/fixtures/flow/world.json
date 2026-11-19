@@ -28,5 +28,11 @@
   },
   "[\"api\", \"--method\", \"GET\", \"repos/example/factory/actions/runs/6102/attempts/1/jobs?per_page=100&page=1\"]": {
     "stdout": "{\"total_count\":1,\"jobs\":[{\"id\":61021,\"run_attempt\":1,\"status\":\"completed\",\"conclusion\":\"success\",\"started_at\":\"2030-01-02T02:03:00Z\",\"completed_at\":\"2030-01-02T02:05:00Z\"}]}"
+  },
+  "[\"api\", \"--method\", \"GET\", \"repos/example/factory/activity?ref=refs%2Fheads%2Froom%2F4101-flow&per_page=100\"]": {
+    "stdout": "[{\"id\":6100,\"ref\":\"refs/heads/room/4101-flow\",\"timestamp\":\"2030-01-02T01:58:00Z\",\"before\":\"0000000000000000000000000000000000000000\",\"after\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]"
+  },
+  "[\"api\", \"--method\", \"GET\", \"repos/example/factory/actions/runs/6101/attempts/1\"]": {
+    "stdout": "{\"id\":6101,\"run_attempt\":1,\"status\":\"completed\",\"updated_at\":\"2030-01-02T02:07:00Z\"}"
   }
 }
