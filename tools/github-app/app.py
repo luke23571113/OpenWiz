@@ -13,7 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# mint-token.py's downscoped read-only token for the live read check.
+# mint-token.py's downscoped read-only token (its default; --write asks for SERVICE).
 PERMISSIONS = dict.fromkeys(
     ("metadata", "contents", "issues", "pull_requests", "checks", "actions"), "read")
 # The service App's established profile (crates/adapters/github/src/app.rs):
@@ -50,10 +50,6 @@ def parse_json(data):
     value = json.loads(data, object_pairs_hook=object_once)
     require(isinstance(value, dict))
     return value
-
-
-def permissions(value):
-    require(value == PERMISSIONS)
 
 
 def service_permissions(value):
@@ -269,14 +265,28 @@ def get(base, path, jwt):
 
 
 def openssl(args, data, **kwargs):
+    # Only PATH: the signer never inherits the secret key's variables or a token.
     result = subprocess.run(["openssl", *args], input=data, capture_output=True,
-                            timeout=10, **kwargs)
+                            timeout=10, env={"PATH": os.environ.get("PATH", os.defpath)}, **kwargs)
     require(result.returncode == 0)
     return result.stdout
 
 
 def encode(data):
     return base64.urlsafe_b64encode(data).rstrip(b"=")
+
+
+def sign(fd, app_id):
+    """An App JWT signed with the key behind FD, which OpenSSL reads by descriptor."""
+    require(type(app_id) is int and app_id > 0)
+    now = int(time.time())
+    header = encode(b'{"alg":"RS256","typ":"JWT"}')
+    payload = encode(json.dumps({"iat": now - 60, "exp": now + 540,
+                                 "iss": str(app_id)}, separators=(",", ":")).encode())
+    message = header + b"." + payload
+    signature = openssl(["dgst", "-sha256", "-sign", f"/dev/fd/{fd}"],
+                        message, pass_fds=(fd,))
+    return (message + b"." + encode(signature)).decode("ascii")
 
 
 def jwt(directory, app_id):
@@ -286,16 +296,36 @@ def jwt(directory, app_id):
     try:
         checked(fd)
         require(0 < os.fstat(fd).st_size <= 16384)
-        now = int(time.time())
-        header = encode(b'{"alg":"RS256","typ":"JWT"}')
-        payload = encode(json.dumps({"iat": now - 60, "exp": now + 540,
-                                     "iss": str(app_id)}, separators=(",", ":")).encode())
-        message = header + b"." + payload
-        signature = openssl(["dgst", "-sha256", "-sign", f"/dev/fd/{fd}"],
-                            message, pass_fds=(fd,))
-        return (message + b"." + encode(signature)).decode("ascii")
+        return sign(fd, app_id)
     finally:
         os.close(fd)
+
+
+# G2 (#1402): the cloud route. The Cloudroom secret holds the key (base64 of
+# the PEM, one line), beside the public App id (contracts/github-identity.v1.md).
+SECRET_KEY, SECRET_ID = "OPENWIZ_GITHUB_APP_KEY", "OPENWIZ_GITHUB_APP_ID"
+
+
+def secret_app_id():
+    return int(positive_id(os.environ.get(SECRET_ID, "")))
+
+
+def secret_jwt(app_id):
+    """An App JWT from the secret's key, which reaches OpenSSL only through a pipe."""
+    value = os.environ.get(SECRET_KEY, "")
+    require(0 < len(value) <= 8192)
+    key = base64.b64decode(value.encode("ascii"), validate=True)
+    require(0 < len(key) <= 4096 and key.startswith(b"-----BEGIN "))
+    read, write = os.pipe()
+    try:
+        os.write(write, key)  # fits the pipe's buffer: at most 4096 bytes
+        os.close(write)
+        write = None
+        return sign(read, app_id)
+    finally:
+        os.close(read)
+        if write is not None:
+            os.close(write)
 
 
 def positive_id(value):
