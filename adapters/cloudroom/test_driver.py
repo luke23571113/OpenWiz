@@ -73,20 +73,22 @@ class Driver(unittest.TestCase):
 
     def test_wake_is_the_fleet_routes_queued_delivery(self):
         # catches: a wake that steers (interrupts) instead of queueing, passes its text as an argument, answers
-        # woke when Cloudroom refused the message, or reaches Cloudroom again after stop.
+        # woke when Cloudroom refused the message, shows the thread id in an error, or reaches Cloudroom after stop.
         code, out = self.call('start', START)
         self.assertEqual(code, 0)
         run, spawn = out['run'], self.calls()[0]
         self.assertEqual(spawn[:5] + spawn[5:9], ['thread', 'spawn', '--parent-self', '--project', PROJECT,
                                                   '--provider', 'claude-code', '--model', 'Opus 5.5'])
-        thread = 'thr_syn0001'
+        thread = 'thr_syn_0001'
         self.assertEqual(self.call('wake', {'run': run}), (0, {'run': run, 'woke': True}))
         tell = self.calls()[-1]
         self.assertEqual(tell[:6], ['thread', 'tell', thread, '--mode', 'queue', '--message-file'])
         self.assertEqual(len(tell), 7)
         self.assertFalse(os.path.exists(tell[6]), 'the message file is left behind')
-        self.assertEqual(self.call('wake', {'run': run}, FAKE_ROOM_REFUSE='tell')[0], 1)
-        self.assertEqual(self.call('stop', {'run': run}, FAKE_ROOM_REFUSE='archive')[0], 1)
+        for cmd, refuse in (('wake', 'tell'), ('stop', 'archive')):
+            code, out = self.call(cmd, {'run': run}, FAKE_ROOM_REFUSE=refuse)
+            self.assertEqual(code, 1)
+            self.assertNotIn(thread, json.dumps(out), "Cloudroom's refusal showed the run's thread")
         self.assertEqual(self.call('wake', {'run': run})[0], 0, 'a failed stop must leave the run live')
         self.assertEqual(self.call('stop', {'run': run}), (0, {'run': run, 'stopped': True}))
         self.assertEqual(self.calls()[-1], ['thread', 'archive', thread])
@@ -98,7 +100,7 @@ class Driver(unittest.TestCase):
     def test_start_refuses_a_run_cloudroom_did_not_make(self):
         # catches: a run id answered for a thread that doesn't exist, isn't safe to address, or is in another
         # project; and a missing project or room-cli reported as a crash instead of an error with next.
-        receipt = {'id': 'thr_syn0001', 'projectId': PROJECT}
+        receipt = {'id': 'thr_syn_0001', 'projectId': PROJECT}
         cases = {'no project': {'ROOM_PROJECT_ID': ''}, 'no room-cli': {'PATH': os.path.join(KIT, 'fixtures')},
                  'refused': {'FAKE_ROOM_REFUSE': 'spawn'}, 'not JSON': {'FAKE_ROOM_RECEIPT': 'Synthetic text'},
                  'no id': {'FAKE_ROOM_RECEIPT': json.dumps({'projectId': PROJECT})},
