@@ -262,6 +262,11 @@ setup "Python, Chromium and zsh on GitHub's image" 0 RUNNER_ENVIRONMENT=github-h
 if [ "$(later python3 --version)" = "Python 3.99.1" ]; then ok "setup: a later step's python3 is the pinned one"; else bad "setup: a later step's python3 says [$(later python3 --version)]"; fi
 if [ "$(later chromium --version)" = "Google Chrome for Testing 999.0.1.2" ]; then ok "setup: a later step's chromium is the pinned Chrome for Testing"; else bad "setup: a later step's chromium says [$(later chromium --version)]"; fi
 if on_path zsh; then ok "setup: zsh is installed"; else bad "setup: zsh is missing"; fi
+# catches (R1 on #1280): APT refreshing or installing zsh from a source
+# configuration other than the image's own, byte for byte, Signed-By included.
+if cmp -s "$T/job/log/ubuntu.sources" "$T/job/log/update.sources" && cmp -s "$T/job/log/ubuntu.sources" "$T/job/log/install.sources"; then
+  ok "setup: refresh and install retain the existing source, mirror and signing-key bytes"
+else bad "setup: Ubuntu source configuration changed at the apt boundary"; fi
 want_urls="https://github.com/astral-sh/python-build-standalone/releases/download/20990101/cpython-3.99.1+20990101-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz;https://storage.googleapis.com/chrome-for-testing-public/999.0.1.2/linux64/chrome-linux64.zip;"
 if [ "$(tr '\n' ';' < "$T/job/log/urls")" = "$want_urls" ]; then ok "setup: downloads exactly the pinned builds"; else bad "setup: downloaded [$(tr '\n' ';' < "$T/job/log/urls")]"; fi
 case "$(cat "$T/job/path")" in "$T/job/tmp"/*) ok "setup: what it adds to the PATH is in the job's temp folder" ;; *) bad "setup: GITHUB_PATH holds [$(tr '\n' ';' < "$T/job/path")]" ;; esac

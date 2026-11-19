@@ -4,7 +4,7 @@ The bolder rule (`tools/test-value/README.md`, from CW1 #1142) over every test
 in CI's own suites at the base `e817c9a`: the test files under `ci/` (but
 `ci/wizroom/`), under `.github/actions/`, and `.github/workflows/ci.test.mjs`.
 The [ledger](ledger.md) has one row for each of the base's 743 tests and shell
-cases: 572 kept, 171 deleted, none moved or merged.
+cases: 572 kept, 1 merged, 170 deleted, none moved.
 
 CI's job graph and selection safety stay guarded: every selector, planner,
 gate, receipt, shard exactly-once, fork-routing and pinned-setup case stays.
@@ -36,7 +36,8 @@ gate, receipt, shard exactly-once, fork-routing and pinned-setup case stays.
   `private/` file and is public. The prune, the sparse-checkout pin and the
   skip proof stay.
 - **Setup robustness and usage errors:** APT source handling, architecture and
-  argument refusals. Fatal APT update, signature and install failures stay.
+  argument refusals. Fatal APT update, signature and install failures stay,
+  and so do the source bytes (`Signed-By` included) at both APT calls.
 
 Fixtures read only by deleted tests went with them:
 `ci/main-batch/fixtures/shadow/github.json` and `ci-before.sha256`, with their
@@ -57,7 +58,7 @@ a test; they are left for CW19 (#1160).
 
 The counter's classifier does not see `test.sh` or `test.py` files. All lines
 of this pass's files (`wc -l`), including those and the two deleted fixtures:
-8,545 before, 6,107 after (−2,438).
+8,545 before, 6,112 after (−2,433).
 
 ## Coverage
 
@@ -90,12 +91,20 @@ of this pass's files (`wc -l`), including those and the two deleted fixtures:
   have no line-coverage tool here. Each deleted case names its keeper or why
   it is gone in the ledger. Ok-case counts: `test.sh` (with the runner suite
   it calls) 517 to 372; `test_rust_runner.sh` 170 to 43; `ci/hosted/test.sh`
-  98 to 71.
+  98 to 72.
 
 ## New tests
 
-No new test: this pass only deletes. The two runner cases that lost the unused
-`--alongside` argument keep their assertions.
+One merged case, no new behaviour: R1 on #1280 moved the hosted setup's
+source-byte check into the kept zsh success case (`ci/hosted/test.sh`,
+"Python, Chromium and zsh on GitHub's image"). catches: APT refreshing or
+installing zsh from a source configuration other than the image's own, byte
+for byte, `Signed-By` included. Red first: with a synthetic comment planted
+into `ci/hosted/setup.sh`'s copied sources, it fails
+([red-r1.log](red-r1.log)); on the real script it passes.
+
+The two runner cases that lost the unused `--alongside` argument keep their
+assertions.
 
 ## Gaps
 

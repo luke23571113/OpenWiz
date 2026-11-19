@@ -2,8 +2,8 @@
 
 Every test in CI's own suites at the base, `e817c9a293f4317d210a13e8821bb7377fdbef5c`:
 the test files under `ci/` (but `ci/wizroom/`), under `.github/actions/`, and
-`.github/workflows/ci.test.mjs`. 743 rows: 572 kept, 171 deleted, none
-moved or merged. Python tests are `path::Class::method`; Node tests by name.
+`.github/workflows/ci.test.mjs`. 743 rows: 572 kept, 1 merged, 170 deleted,
+none moved. Python tests are `path::Class::method`; Node tests by name.
 A shell suite's case is its line at the base (`path::L<n>`) with its label; a
 case run in a loop is one row, named by its template line.
 
@@ -716,11 +716,11 @@ Every kept test stays beside the CI code it exercises: none tests one crate.
 | `ci/hosted/test.sh::L282 setup "zsh already installed" 0 RUNNER_ENVIRONMENT=github-hosted FAKE_SOURCE_MODE=missing FAKE_APT_FAILURE=...` | deleted | | skips apt when zsh is present: run time | |
 | `ci/hosted/test.sh::L284 setup: zsh already there: apt is not run` | deleted | | skips apt when zsh is present: run time | |
 | `ci/hosted/test.sh::L285 setup: installed zsh needs no source discovery` | deleted | | skips apt when zsh is present: run time | |
-| `ci/hosted/test.sh::L290 setup "zsh survives an unrelated repository failure" 0 RUNNER_ENVIRONMENT=github-hosted FAKE_APT_FAILURE=un...` | deleted | | APT refresh scope and source bytes: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314 | |
-| `ci/hosted/test.sh::L292 setup: only required Ubuntu sources refreshed and installed zsh` | deleted | | APT refresh scope and source bytes: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314 | |
-| `ci/hosted/test.sh::L295 setup "zsh with healthy Ubuntu sources" 0 RUNNER_ENVIRONMENT=github-hosted -- zsh` | deleted | | APT refresh scope and source bytes: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314 | |
-| `ci/hosted/test.sh::L297 setup: healthy Ubuntu refresh precedes zsh installation` | deleted | | APT refresh scope and source bytes: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314 | |
-| `ci/hosted/test.sh::L300 setup: refresh and install retain the existing source, mirror and signing-key bytes` | deleted | | APT refresh scope and source bytes: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314 | |
+| `ci/hosted/test.sh::L290 setup "zsh survives an unrelated repository failure" 0 RUNNER_ENVIRONMENT=github-hosted FAKE_APT_FAILURE=un...` | deleted | | APT refresh scope: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314, and the source bytes at both APT calls by the merged L300 case | |
+| `ci/hosted/test.sh::L292 setup: only required Ubuntu sources refreshed and installed zsh` | deleted | | APT refresh scope: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314, and the source bytes at both APT calls by the merged L300 case | |
+| `ci/hosted/test.sh::L295 setup "zsh with healthy Ubuntu sources" 0 RUNNER_ENVIRONMENT=github-hosted -- zsh` | deleted | | APT refresh scope: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314, and the source bytes at both APT calls by the merged L300 case | |
+| `ci/hosted/test.sh::L297 setup: healthy Ubuntu refresh precedes zsh installation` | deleted | | APT refresh scope: setup robustness; a failure fails the job loudly. Fatal update, signature and install failures stay kept by L314, and the source bytes at both APT calls by the merged L300 case | |
+| `ci/hosted/test.sh::L300 setup: refresh and install retain the existing source, mirror and signing-key bytes` | merged | safety gate: security: APT refreshes and installs zsh only from the image's own source configuration, byte for byte, Signed-By included | `ci/hosted/test.sh::setup "Python, Chromium and zsh on GitHub's image"` (its case 'setup: refresh and install retain the existing source, mirror and signing-key bytes', R1 on #1280) | a changed source or signing-key restriction passed to apt-get update or install |
 | `ci/hosted/test.sh::L307 setup "zsh required $failure failure" 1 RUNNER_ENVIRONMENT=github-hosted FAKE_APT_FAILURE="$failure" -- zsh` | kept | safety gate: security: CI installs only the pinned, checksum-verified tools, only on GitHub's or Jog's runners, and APT failures stay fatal | itself | a regression of the hosted setup: setup "zsh required $failure failure" 1 RUNNER_ENVIRONMENT=github-hosted FAKE_APT_FAILURE="$failure" -- zsh |
 | `ci/hosted/test.sh::L314 setup: required $failure failure is retained` | kept | safety gate: security: CI installs only the pinned, checksum-verified tools, only on GitHub's or Jog's runners, and APT failures stay fatal | itself | a regression of the hosted setup: setup: required $failure failure is retained |
 | `ci/hosted/test.sh::L319 setup "zsh refuses $source_mode Ubuntu sources" 1 RUNNER_ENVIRONMENT=github-hosted FAKE_SOURCE_MODE="$sourc...` | deleted | | missing, empty or malformed sources fail the job: setup robustness. Fatal failures stay kept by L314 | |
