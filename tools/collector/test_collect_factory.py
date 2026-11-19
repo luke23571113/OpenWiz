@@ -299,6 +299,19 @@ class FlowFacts(unittest.TestCase):
         self.assertEqual([t['cost']['ci_minutes'] for t in value['tickets']], [None, None])
         self.assertEqual(spec['cost']['ci_minutes'], 10)
 
+    # catches: a per-ticket read depending on the repository-wide PR inventory
+    # and losing its facts when an unrelated inventory page cannot be read.
+    def test_ticket_read_needs_only_its_linked_pulls(self):
+        def without_inventory(world):
+            del world[next(key for key in world if 'pullRequests(first:100' in key)]
+
+        p, _ = cli('../flow/world.json', 'read', '--repo', DAILY_REPO, '--fact', 'flow', '--ticket', '4101',
+                   '--now', '2030-01-03T06:00:00Z', edit=without_inventory)
+        value = envelope(p)['factory']['flow']['value']
+        self.assertIsNotNone(value, 'the ticket has readable linked pulls')
+        ticket, = value['tickets']
+        self.assertEqual((ticket['ticket'], ticket['pull_requests'], ticket['cost']['ci_minutes']), (4101, [4201], 10))
+
     # catches: unreadable jobs or missing usage emitted as zero, or a missing
     # cost source taking unrelated timing and progress away.
     def test_missing_sources_keep_independent_facts(self):
