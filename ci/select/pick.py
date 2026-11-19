@@ -29,9 +29,9 @@ so a map that has fallen behind only makes more tests run. The rules:
    none did, and a file some test reads names it: everything.
 8. A new path (or one of any other status): if a file some test reads names
    it, everything; else the tests that looked for it or listed a folder
-   above it; if none did, the map doesn't know it: everything, unless it is
-   9. A new doc or skill (DOCS_OR_SKILLS, #1335): nothing. No test was seen
-   to look for it, list a folder above it, or name it.
+   above it; if none did, the map doesn't know it: everything (but 9).
+9. A new doc or skill (DOCS_OR_SKILLS, #1335) that no test looked for,
+   listed a folder above, or names: nothing.
 10. A test the map doesn't know (a new one): always runs. So does ALWAYS.
 """
 import argparse
