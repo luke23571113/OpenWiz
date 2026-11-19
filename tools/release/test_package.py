@@ -30,8 +30,8 @@ SETUP_SOURCES = {'runtime/setup/setup.py': 'tools/install/setup/setup.py',
 class Package(unittest.TestCase):
     def test_installed_platform_and_private_key_contracts(self):
         # Rust runs before Python is provisioned on the PC runner. Register the
-        # platform proofs in this existing Python stage, using its exact tool.
-        for name in ('test_runtime.py','test_security.py'):
+        # platform proof in this existing Python stage, using its exact tool.
+        for name in ('test_security.py',):
             with self.subTest(proof=name):
                 result = subprocess.run([sys.executable,'-I',
                     str(ROOT/'tools/install/platform'/name)], capture_output=True,text=True)
@@ -84,8 +84,6 @@ class Package(unittest.TestCase):
             scripts.mkdir(parents=True)
             for name in ('install.py', 'pull.py'):
                 (scripts / name).write_text('Synthetic runtime resource.')
-            (scripts / 'platform').mkdir()
-            (scripts / 'platform/runtime.py').write_bytes(b'Synthetic local runtime manager.\n')
             (scripts / 'access').mkdir()
             (scripts / 'access/access.py').write_bytes(b'Synthetic access verifier.\n')
             (scripts / 'cloudroom').mkdir()  # #2201
@@ -115,12 +113,7 @@ class Package(unittest.TestCase):
                                   'runtime/pc_activation/', 'runtime/completion/'))], [])
                 self.assertEqual((output/'runtime/cloudroom/cloudroom.py').read_bytes(), b'Synthetic CloudRoom setup tool.\n')
                 self.assertEqual(assets['runtime/cloudroom/cloudroom.py']['mode'], '0600')
-                self.assertIn('runtime/platform/runtime.py',assets)
-                resource = assets['runtime/platform/runtime.py']
-                self.assertEqual(resource['mode'],'0600')
-                self.assertEqual(resource['bytes'],len(b'Synthetic local runtime manager.\n'))
-                self.assertEqual(resource['sha256'],hashlib.sha256(b'Synthetic local runtime manager.\n').hexdigest())
-                self.assertEqual((output/'runtime/platform/runtime.py').read_bytes(),b'Synthetic local runtime manager.\n')
+                self.assertNotIn('runtime/platform/runtime.py', assets)
                 verifier = assets['runtime/access/access.py']
                 self.assertEqual(verifier['mode'], '0600')
                 self.assertEqual(verifier['bytes'], len(b'Synthetic access verifier.\n'))
@@ -155,17 +148,6 @@ class Package(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(Path(str(output) + '-bad').exists())
                 (binaries/'openwiz').write_bytes(header)
-                manager = scripts/'platform/runtime.py'
-                manager.unlink()
-                for suffix in ('missing-manager','linked-manager'):
-                    if suffix == 'linked-manager':
-                        manager.symlink_to(scripts/'install.py')
-                    bad = elsewhere(args, str(output)+'-'+suffix)
-                    refused = subprocess.run(bad,capture_output=True,text=True)
-                    self.assertNotEqual(refused.returncode,0)
-                    self.assertFalse(Path(str(output)+'-'+suffix).exists())
-                manager.unlink()
-                manager.write_bytes(b'Synthetic local runtime manager.\n')
 
     def bound_and_installed(self, root, target, identity_file, bundle):
         """#1148: the collected, packaged target's candidate artifact rows bind
@@ -207,7 +189,7 @@ class Package(unittest.TestCase):
                 payload = root / target
                 payload.mkdir()
                 rows = []
-                for name in [*REQUIRED,'runtime/platform/runtime.py']:
+                for name in REQUIRED:
                     data = (target + '\n0.0.99\n' + '1' * 40 + '\n' + name).encode()
                     if name == 'runtime/openwiz-build.txt':
                         data = ('openwiz.package.v1\n0.0.99\n' + '1' * 40 + '\n' + target + '\n').encode()
@@ -236,8 +218,8 @@ class Package(unittest.TestCase):
                     '--archive', str(archive), '--manifest-sha256', hashlib.sha256(manifest.read_bytes()).hexdigest(),
                     '--target', target], capture_output=True, text=True)
                 self.assertEqual(installed.returncode, 0, installed.stderr)
-                selected = root / (target + '-installed/current/runtime/platform/runtime.py')
-                self.assertEqual(selected.read_bytes(),(payload/'runtime/platform/runtime.py').read_bytes())
+                selected = root / (target + '-installed/current/runtime/install.py')
+                self.assertEqual(selected.read_bytes(),(payload/'runtime/install.py').read_bytes())
                 (payload / 'runtime/install.py').write_text('synthetic mismatched runtime')
                 result = subprocess.run(cmd[:-1] + [str(out) + '-bad'], capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)

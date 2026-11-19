@@ -46,9 +46,6 @@ def collect(root, binaries, output, version, source, target, program_receipt):
         path = root / tool
         require(path.is_file() and not path.is_symlink(), 'unsafe or missing setup tool')
         files['runtime/' + name] = path
-    manager = root / 'tools/install/platform/runtime.py'
-    require(manager.is_file() and not manager.is_symlink(), 'unsafe or missing platform runtime')
-    files['runtime/platform/runtime.py'] = manager
     # #1107: explicit production files only; never fixture providers or tests.
     access = root / 'tools/install/access/access.py'
     require(access.is_file() and access.stat().st_nlink == 1

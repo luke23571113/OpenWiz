@@ -387,7 +387,7 @@ class Access(unittest.TestCase):
         source = self.root / 'source'
         binaries = self.root / 'bin'
         binaries.mkdir()
-        for name in ('install.py', 'pull.py', 'setup/setup.py', 'setup/store.py', 'platform/runtime.py', 'access/access.py'):
+        for name in ('install.py', 'pull.py', 'setup/setup.py', 'setup/store.py', 'access/access.py'):
             target = source / 'tools/install' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / 'tools/install' / name, target)
