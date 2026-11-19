@@ -391,11 +391,14 @@ jobs:
       # #1208: the CI3 note's check, which read launch-fleet's removed helper,
       # smoke-run offline on this checkout (seconds; no step of its own, so
       # the CI3 step table is unchanged).
+      # #1369: the Cloudroom driver's tests, on a synthetic room-cli (seconds;
+      # in this step for the same reason).
       - name: The fleet load checks
         run: |
           python3 -I tools/fleet-load/test_carried.py
           python3 -I tools/fleet-load/test_seams.py
           python3 -I tools/collector/test_ci3.py Smoke
+          python3 -I adapters/cloudroom/test_driver.py
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-selection-${{ github.run_attempt }}

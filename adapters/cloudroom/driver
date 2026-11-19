@@ -1,18 +1,32 @@
 #!/usr/bin/env python3
-"""A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
+"""The Cloudroom driver (kernel/driver.v1.md): each run is one Cloudroom thread, made through the user's own
+signed-in `room-cli` from inside a Cloudroom thread of the project.
 
-Each turn of a run is a local process: `start` runs the first turn, `wake` another, `stop` ends them.
-Adapt `command` to your harness, and `launch` and `end` to your host. Linux; standard library only.
+start: `room-cli thread spawn --parent-self --project $ROOM_PROJECT_ID ...`, a child thread in its own sandbox.
+wake:  `room-cli thread tell <thread> --mode queue --message-file <file>`, the delivery the fleet's GitHub
+       event route uses, answered as woken only when room-cli accepts it.
+stop:  `room-cli thread archive <thread>`, which stops the thread and archives it.
+It never reads, adds or passes a login: room-cli runs with the caller's environment, unchanged.
+Linux or macOS; standard library only.
 """
-import json, os, re, secrets, shutil, signal, subprocess, sys
+import json, os, re, secrets, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get('OPENWIZ_CLOUDROOM_STATE') or os.path.expanduser('~/.local/state/openwiz-cloudroom')
-VERSION = {'driver': 'cloudroom', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
+VERSION = {'driver': 'cloudroom', 'records': ['openwiz:records v1'],
+           'can': ['start', 'wake', 'stop', 'many-at-once', 'own-sandbox']}
 START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
+THREAD, PROJECT = r'thr_[A-Za-z0-9_]{1,80}', r'[A-Za-z0-9_]{1,80}'
+PROVIDERS = {'claude': 'claude-code'}  # the harness names OpenWiz uses that Cloudroom names otherwise
+LOOKUP = ("Read 'skills/{s}/SKILL.md' if present, otherwise find '*/skills/{s}/SKILL.md' only inside your own "
+          "harness's configured plugin cache: Codex uses CODEX_HOME/plugins/cache (default HOME/.codex/plugins/cache); "
+          "Claude uses CLAUDE_CODE_PLUGIN_CACHE_DIR/cache when set, otherwise CLAUDE_CONFIG_DIR/plugins/cache (default "
+          "HOME/.claude/plugins/cache); for another harness use its installation metadata. Verify "
+          ".claude-plugin/plugin.json manifest name openwiz and entry ./skills/{s}; report missing, unreadable or "
+          "ambiguous matches, otherwise read the unique matching file and follow it.")
 
 
 class Refused(Exception):
@@ -40,47 +54,61 @@ def read(fields):
     return req
 
 
-def command(req, woken):
-    """Adapt: your harness's own signed-in command. Never add a login or a token."""
-    what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
-    prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
-    return [req['harness'], '--model', req['model'], '-p', prompt]
-
-
-def launch(req, run, woken):
-    """Naive draft (red run): spawn or tell, and trust whatever comes back."""
-    if woken:
-        subprocess.run(['room-cli', 'thread', 'tell', req['thread'], command(req, True)[-1]])
-        return req['thread']
-    out = subprocess.run(['room-cli', 'thread', 'spawn', '--parent-self', '--project', os.environ.get('ROOM_PROJECT_ID', ''),
-                          '--provider', req['harness'], '--model', req['model'], '--prompt', command(req, False)[-1]],
-                         capture_output=True, text=True).stdout
+def room(*args):
+    """Run the user's own `room-cli` with the caller's environment unchanged: (exit code, stdout, last stderr line)."""
     try:
-        return json.loads(out).get('id') or out
+        p = subprocess.run(['room-cli', *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=100)
+    except FileNotFoundError:
+        raise Refused('room-cli is not installed here',
+                      'run the driver inside a Cloudroom thread, where room-cli is signed in')
+    except subprocess.TimeoutExpired:
+        raise Refused('room-cli thread %s did not answer within 100 seconds; its outcome is unknown' % args[1],
+                      'read `room-cli thread list` before you try again, so nothing happens twice')
+    said = ([x.strip() for x in p.stderr.splitlines() if x.strip()] or ['no reason given'])[-1][:200]
+    return p.returncode, p.stdout, said
+
+
+def brief(req):
+    return ('You are the builder for %s#%d. Build it with the %s skill. ' % (req['repository'], req['ticket'], req['skill'])
+            + LOOKUP.format(s=req['skill']))
+
+
+def spawn(req):
+    project = os.environ.get('ROOM_PROJECT_ID', '')
+    if not re.fullmatch(PROJECT, project):
+        raise Refused('no Cloudroom project here: ROOM_PROJECT_ID is not set',
+                      "run the driver inside a Cloudroom thread of the repository's project")
+    code, out, said = room('thread', 'spawn', '--parent-self', '--project', project,
+                           '--provider', PROVIDERS.get(req['harness'], req['harness']), '--model', req['model'],
+                           '--title', '#%d: %s builder' % (req['ticket'], req['repository']), '--prompt', brief(req))
+    if code != 0:
+        raise Refused('Cloudroom refused the start: ' + said,
+                      'check the harness and model with `room-cli provider list`, then start again')
+    try:
+        receipt = json.loads(out)
     except ValueError:
-        return out
+        receipt = None
+    if not (isinstance(receipt, dict) and isinstance(receipt.get('id'), str) and re.fullmatch(THREAD, receipt['id'])
+            and receipt.get('projectId', project) == project):
+        raise Refused("Cloudroom's answer to the start names no thread of this project",
+                      'read `room-cli thread list` before you start again, so no builder runs twice')
+    return receipt['id']
 
 
-def _old_launch(req, run, woken):
-    """Start one turn; return what `end` needs to stop it."""
-    if not shutil.which(req['harness']):
-        raise Refused('harness %s is not installed here' % req['harness'],
-                      'install %s and sign in to it yourself, then start again' % req['harness'])
+def tell(state, req):
+    """The fleet route's delivery: queued, from a private file, woken only on room-cli's acceptance."""
+    text = ('You were woken for %s#%d: read the ticket again, edit your own status note, and carry on with the %s '
+            'skill.' % (req['repository'], req['ticket'], req['skill']))
+    fd, path = tempfile.mkstemp(prefix='wake-', dir=STATE)
     try:
-        return subprocess.Popen(command(req, woken), env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
-                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid
-    except OSError as e:
-        raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror), 'check that it runs by hand')
-
-
-def end(pid, run):
-    """Stop one turn: signal its process group only while it is still this run's."""
-    try:
-        with open('/proc/%d/environ' % pid, 'rb') as f:
-            if ('OPENWIZ_RUN=' + run).encode() in f.read().split(b'\0'):
-                os.killpg(pid, signal.SIGTERM)
-    except (FileNotFoundError, ProcessLookupError):
-        pass
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        code, _, said = room('thread', 'tell', state['thread'], '--mode', 'queue', '--message-file', path)
+    finally:
+        os.unlink(path)
+    if code != 0:
+        raise Refused('Cloudroom did not take the wake: ' + said,
+                      'leave the run as it is; the next GitHub event or safety-net check wakes it again')
 
 
 def saved(run, state=None):
@@ -106,21 +134,22 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
-        req['thread'] = launch(req, run, False)
-        saved(run, {'request': req, 'turns': [], 'stopped': False})
+        saved(run, {'request': req, 'thread': spawn(req), 'stopped': False})
         return {'run': run}
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
         state = saved(run)
         if cmd == 'stop':
-            for pid in state['turns']:
-                end(pid, run)
-            saved(run, dict(state, stopped=True))
+            if not state['stopped']:
+                code, _, said = room('thread', 'archive', state['thread'])
+                if code != 0:
+                    raise Refused('Cloudroom did not stop the run: ' + said, 'stop it again; the run is still live')
+                saved(run, dict(state, stopped=True))
             return {'run': run, 'stopped': True}
         if state['stopped']:
             raise Refused('run %s is stopped' % run, 'start a new run')
-        state['turns'].append(launch(state['request'], run, True))
-        saved(run, state)
+        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        tell(state, state['request'])
         return {'run': run, 'woke': True}
     raise Refused('unknown command', 'run one of: version, schema, start, wake, stop')
 
