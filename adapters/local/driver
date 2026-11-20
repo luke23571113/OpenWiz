@@ -11,6 +11,10 @@ import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, ti
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get('OPENWIZ_LOCAL_STATE') or os.path.expanduser('~/.local/state/openwiz-local')
+# The host owner's approved permission mode per repository and harness, saved by setup on this machine,
+# outside any repository: {"<owner>/<name>": {"<harness>": "<mode>"}}. A repository's own row must match it.
+APPROVALS = os.path.join(STATE, 'approvals.json')
+MODE = r'[A-Za-z][A-Za-z0-9_-]{0,39}'
 WRITABLE = 'make OPENWIZ_LOCAL_STATE (or ~/.local/state/openwiz-local) a folder you can write'
 VERSION = {'driver': 'local', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop', 'many-at-once']}
 START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
@@ -108,11 +112,37 @@ def permission_mode(folder, repository, harness):
     except OSError:
         rows = []
     values = re.findall(r'`([^`]*)`', rows[0]) if len(rows) == 1 else []
-    if len(values) != 1 or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,39}', values[0]):
+    if len(values) != 1 or not re.fullmatch(MODE, values[0]):
         raise Refused('%s has no single harness permission mode saved in docs/agents/fleet.md; nothing was started'
                       % repository, 'choose the mode %s may run in and save it there as the row '
                       '`| Harness permission mode | `<mode>` |`, then start again' % harness)
     return values[0]
+
+
+def approved_mode(repository, harness):
+    """The mode this machine's owner approved for the repository and harness (APPROVALS), or Refused. Only the
+    owner may be able to change that file; the driver never uses a mode it read only from a repository (R6)."""
+    setup = ('approve a mode on this machine: in %s, set "%s": {"%s": "<mode>"} (owner-only), then start again'
+             % (APPROVALS, repository, harness))
+    try:
+        fd = os.open(APPROVALS, os.O_RDONLY | os.O_NOFOLLOW)
+        with open(fd) as f:
+            info, approvals = os.fstat(f.fileno()), json.loads(f.read(), object_pairs_hook=unique)
+    except FileNotFoundError:
+        raise Refused('no permission mode is approved on this machine for %s with %s; nothing was started'
+                      % (repository, harness), setup)
+    except (OSError, ValueError, Refused):
+        raise Refused('the approvals file on this machine is unreadable; nothing was started',
+                      'fix %s as `adapters/local/README.md` shows, then start again' % APPROVALS)
+    if info.st_uid != os.getuid() or info.st_mode & 0o022:
+        raise Refused('others can change the approvals file on this machine; nothing was started',
+                      'make %s yours and owner-only (chmod 600), check what it approves, then start again' % APPROVALS)
+    mode = approvals.get(repository) if isinstance(approvals, dict) else None
+    mode = mode.get(harness) if isinstance(mode, dict) else None
+    if not isinstance(mode, str) or not re.fullmatch(MODE, mode):
+        raise Refused('no permission mode is approved on this machine for %s with %s; nothing was started'
+                      % (repository, harness), setup)
+    return mode
 
 
 def prompt(req, woken):
@@ -351,8 +381,14 @@ def answer(cmd):
         except OSError:
             raise Refused('the driver cannot save runs in its state folder; nothing was started', WRITABLE)
         try:  # its own clone, and the owner's saved permission mode, before anything runs
+            approved = approved_mode(req['repository'], req['harness'])  # before anything is cloned
             state['workspace'] = workspace(run, req['repository'])
-            state['mode'] = permission_mode(state['workspace'], req['repository'], req['harness'])
+            if permission_mode(state['workspace'], req['repository'], req['harness']) != approved:
+                raise Refused('the Harness permission mode row in %s does not match the mode approved on this '
+                              'machine; nothing was started' % req['repository'],
+                              'save the one mode you approve in both its docs/agents/fleet.md and %s, then start '
+                              'again' % APPROVALS)
+            state['mode'] = approved  # never a mode read only from the repository
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s in its state folder; nothing was started' % run, WRITABLE)

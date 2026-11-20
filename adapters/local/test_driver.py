@@ -92,7 +92,7 @@ class Local(unittest.TestCase):
         The repository `raiser` asks for more than its approval; `unapproved` has none."""
         os.makedirs(state, mode=0o700, exist_ok=True)
         modes = {'site': 'acceptEdits', 'blog': 'acceptEdits', 'refuser': 'refuse', 'expired': 'expired',
-                 'broken': 'fail', 'quick': 'quick', 'raiser': 'acceptEdits'}
+                 'broken': 'fail', 'quick': 'quick', 'raiser': 'acceptEdits', 'missing': 'acceptEdits'}
         path = os.path.join(state, 'approvals.json')
         with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
             json.dump({'example/' + repo: {'claude': mode, 'codex': mode} for repo, mode in modes.items()}, f)
