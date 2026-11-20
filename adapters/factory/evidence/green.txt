@@ -15,3 +15,19 @@ pass wake: the run edited builder status note 1
 pass stop: the run ended, and a wake after it is refused
 pass token: no login or token passed through the driver
 exit: 0
+
+# The owned-paths check, after the F4 grant on the ticket: python3 -I tools/owned-paths/check.py --repo openwizdev/OpenWiz --pr 2022
+owned: .github/workflows/ci.yml (by `.github/workflows/ci.yml`)
+owned: adapters/factory/README.md (by `adapters/factory/`)
+owned: adapters/factory/driver (by `adapters/factory/`)
+owned: adapters/factory/evidence/green.txt (by `adapters/factory/`)
+owned: adapters/factory/evidence/red.txt (by `adapters/factory/`)
+owned: adapters/factory/fixtures/bin/droid (by `adapters/factory/`)
+owned: adapters/factory/schema.json (by `adapters/factory/`)
+owned: adapters/factory/test_driver.py (by `adapters/factory/`)
+standing: changes/1998.md (by `changes/1998.md`)
+granted: changes/closedwiz-1998.md (by `changes/closedwiz-1998.md`)
+owned: tools/open-import/paths.json (by `tools/open-import/paths.json`)
+owned: tools/release/build_products.py (by `tools/release/build_products.py`)
+owned-paths: ok: 12 file(s) inside the owned paths and grants of ticket #1998
+exit: 0
