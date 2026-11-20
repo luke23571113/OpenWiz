@@ -40,6 +40,16 @@ class LinkedConfig(base.HarnessSkills):
                          base.skill_files(self.root / 'current/runtime/skills'))
         self.assertEqual(base.snapshot(dotfiles), {'other': 'dir'})
 
+    def test_a_config_file_in_place_of_the_folder_means_opencode_is_absent(self):
+        # catches: a plain file at ~/.config crashing the step (lstat's NotADirectoryError) or refusing it,
+        # when it only means OpenCode is not set up
+        (self.home / '.config').write_bytes(b'Synthetic dotfile.\n')
+        (self.home / '.claude').mkdir()
+        code, result = self.skills()
+        self.assertEqual((code, result.get('outcome')), (0, 'installed'), result)
+        self.assertEqual({r['id']: r['state'] for r in result['harnesses']}['opencode'], 'absent')
+        self.assertEqual((self.home / '.config').read_bytes(), b'Synthetic dotfile.\n')
+
     def test_a_present_harness_behind_a_linked_config_is_refused_on_its_own_row(self):
         # catches: a write through a linked ~/.config into the link's target; a refusal whose next is the bare
         # installer text with no folder or step; the refusal spilling onto the other harnesses' rows
