@@ -58,6 +58,12 @@ GIT_HELPER_KEY = "credential.https://github.com.helper"
 RUN_MARK, GIT_MARK = "OPENWIZ_AGENT_TOKEN_RUN", "OPENWIZ_AGENT_TOKEN_GIT_AT"
 EXEC_MARK = "OPENWIZ_AGENT_TOKEN_EXEC_WAS"  # "0" unset, else "1" and the owner's GIT_EXEC_PATH
 PATH_MARK = "OPENWIZ_AGENT_TOKEN_PATH_WAS"  # the same for the owner's PATH
+# Inside a run git may reach github.com only over HTTPS, where the App signs in: ssh
+# (the owner's key) runs a refusing command, and other transports such as ext:: are off.
+ALLOWED_PROTOCOLS, SSH_STAND_IN = "file:https:ssh", "openwiz-ssh"
+GUARDED = (("GIT_EXEC_PATH", EXEC_MARK), ("PATH", PATH_MARK),
+           ("GIT_SSH_COMMAND", "OPENWIZ_AGENT_TOKEN_SSH_WAS"),
+           ("GIT_ALLOW_PROTOCOL", "OPENWIZ_AGENT_TOKEN_PROTOCOLS_WAS"))
 TRANSPORTS = ("git-remote-http", "git-remote-https")
 CURL_TRACES = ("GIT_TRACE_CURL", "GIT_TRACE_CURL_NO_DATA", "GIT_CURL_VERBOSE")
 USAGE = ("agent-token.py start REQUEST | run REQUEST -- COMMAND [ARG...]; "
@@ -343,7 +349,7 @@ def without_inherited(env):
         return child
     child.pop(RUN_MARK)
     child.pop("GH_TOKEN", None)
-    for mark, key in ((EXEC_MARK, "GIT_EXEC_PATH"), (PATH_MARK, "PATH")):
+    for key, mark in GUARDED:
         was = child.pop(mark, "")
         if was.startswith("1"):
             child[key] = was[1:]
@@ -385,11 +391,9 @@ def run(args, env):
     farm = None
     try:
         farm = exec_folder(private, child)  # no guarded git, no App token: it refuses first
-        folder = os.path.join(private.path, farm)
-        for mark, key in ((EXEC_MARK, "GIT_EXEC_PATH"), (PATH_MARK, "PATH")):
+        for key, mark in GUARDED:
             child[mark] = "1" + child[key] if key in child else "0"
-        child["GIT_EXEC_PATH"] = folder
-        child["PATH"] = folder + os.pathsep + child.get("PATH", os.defpath)
+        child.update(guarded_env(os.path.join(private.path, farm), child))
         count = child.get("GIT_CONFIG_COUNT", "0") or "0"
         if not count.isdigit():
             raise Refused("GIT_CONFIG_COUNT must be a number")
@@ -406,14 +410,23 @@ def run(args, env):
             private.remove_folder(farm)
 
 
+def guarded_env(folder, child):
+    """The variables a run sets so git can only sign in to github.com as the App."""
+    return {"GIT_EXEC_PATH": folder, "PATH": folder + os.pathsep + child.get("PATH", os.defpath),
+            "GIT_SSH_COMMAND": shlex.quote(os.path.join(folder, SSH_STAND_IN)),
+            "GIT_ALLOW_PROTOCOL": ALLOWED_PROTOCOLS}
+
+
 def exec_folder(private, child):
     """The name of this run's git exec folder in the private directory, or Refused.
 
     It links every program of git's real exec folder, except git-remote-http(s),
     which run `transport` first, and `git` itself. The run puts the folder first on
-    PATH, and its `git` refuses unless GIT_EXEC_PATH is still this folder and no
-    `--exec-path=` overrides it, then starts the real git without GH_TOKEN, which
-    only gh needs. So git can't run unguarded or see the App token by accident.
+    PATH, and its `git` refuses unless GIT_EXEC_PATH, GIT_SSH_COMMAND and
+    GIT_ALLOW_PROTOCOL are still the run's and no `--exec-path=` overrides it, then
+    starts the real git without GH_TOKEN, which only gh needs. Its `openwiz-ssh`,
+    the run's GIT_SSH_COMMAND, refuses, since SSH has no App identity. So git can't
+    run unguarded, sign in with the owner's SSH key or see the App token by accident.
     """
     real_git = shutil.which("git", path=child.get("PATH", os.defpath))
     try:
@@ -430,16 +443,20 @@ def exec_folder(private, child):
     scripts = {
         entry: f"exec {shlex.quote(sys.executable)} -I {shlex.quote(os.path.abspath(__file__))} "
                f"transport {shlex.quote(os.path.join(real, entry))} \"$@\"\n" for entry in TRANSPORTS}
+    expected = guarded_env(folder, child)
+    checks = "".join(
+        f'if [ "${{{key}-}}" != {shlex.quote(expected[key])} ]; then\n  reason="{key} was changed"\nfi\n'
+        for key in ("GIT_EXEC_PATH", "GIT_SSH_COMMAND", "GIT_ALLOW_PROTOCOL"))
+    scripts[SSH_STAND_IN] = f'printf {shlex.quote(note)} "SSH has no openwiz[bot] identity" >&2\nexit 128\n'
     scripts["git"] = (
-        f'reason=\nif [ "${{GIT_EXEC_PATH-}}" != {shlex.quote(folder)} ]; then\n'
-        f'  reason="its exec path was changed"\nfi\n'
+        f'reason=\n{checks}'
         f'for arg in "$@"; do\n  case $arg in --exec-path=*) reason="an --exec-path override";; esac\ndone\n'
         f'if [ -n "$reason" ]; then\n  printf {shlex.quote(note)} "$reason" >&2\n  exit 128\nfi\n'
         f'unset GH_TOKEN\nexec {shlex.quote(real_git)} "$@"\n')
     os.mkdir(name, 0o700, dir_fd=private.fd)
     fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=private.fd)
     try:
-        for entry in {*names, "git"}:
+        for entry in {*names, *scripts}:
             if entry not in scripts:
                 os.symlink(os.path.join(real, entry), entry, dir_fd=fd)
                 continue

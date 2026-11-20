@@ -257,14 +257,21 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   print the token or sign in as the owner. The run also gives git its own exec folder
   (`GIT_EXEC_PATH`, removed when the command ends), put first on `PATH`. If it can't be
   built, for example because `git --exec-path` fails, the run refuses before handing
-  anything over. The folder's `git` refuses with the same note when `GIT_EXEC_PATH` was
-  changed or unset, or when an `--exec-path=` option overrides it. Otherwise it starts the
+  anything over. The folder's `git` refuses with the same note when `GIT_EXEC_PATH`,
+  `GIT_SSH_COMMAND` or `GIT_ALLOW_PROTOCOL` was changed or unset, or when an
+  `--exec-path=` option overrides it. Otherwise it starts the
   real git without `GH_TOKEN`, which only gh needs, so no git trace can show it. Its
   `git-remote-http(s)` checks first. It drops `GIT_TRACE_CURL`, `GIT_TRACE_CURL_NO_DATA` and `GIT_CURL_VERBOSE`, so
   no trace shows the Authorization header. For github.com it refuses with the same
   note unless this run's helper is the last credential helper, no `http.*.extraHeader`
   is set and the URL holds no credential, so a `-c` that replaces the helper list
-  can't sign git in as the owner. Nothing is exported to the agent's shell.
+  can't sign git in as the owner. SSH has no App identity, so the run sets
+  `GIT_SSH_COMMAND` to the folder's `openwiz-ssh`, which refuses with the same note
+  before the owner's ssh or key is used. This covers an SSH remote, an `insteadOf`
+  rewrite to SSH and any `core.sshCommand`, because the environment variable overrides
+  them. The run also sets `GIT_ALLOW_PROTOCOL=file:https:ssh`, so other transports,
+  such as `ext::`, which can run any command, are off whatever the configuration says.
+  Nothing is exported to the agent's shell.
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
   fresh request. An answer is used only when it names exactly the requested
   repositories and permissions and has more than 300 and at most 3900 seconds left.

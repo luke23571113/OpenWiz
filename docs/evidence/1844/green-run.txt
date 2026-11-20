@@ -7,7 +7,7 @@ test_no_service_configured_is_exactly_as_today (__main__.Fallback.test_no_servic
 test_unreachable_service_falls_back_with_one_note (__main__.Fallback.test_unreachable_service_falls_back_with_one_note) ... ok
 test_a_local_thread_runs_the_service_itself (__main__.MintedToken.test_a_local_thread_runs_the_service_itself) ... ok
 test_a_private_place_inside_a_git_tree_is_refused (__main__.MintedToken.test_a_private_place_inside_a_git_tree_is_refused) ... ok
-test_gh_and_git_use_the_minted_token (__main__.MintedToken.test_gh_and_git_use_the_minted_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 36253), raddr=('127.0.0.1', 41400)>
+test_gh_and_git_use_the_minted_token (__main__.MintedToken.test_gh_and_git_use_the_minted_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 41961), raddr=('127.0.0.1', 44118)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
@@ -15,6 +15,7 @@ test_refreshes_with_five_minutes_left_before_the_next_use (__main__.MintedToken.
 test_the_request_names_repositories_and_permissions_only (__main__.MintedToken.test_the_request_names_repositories_and_permissions_only) ... ok
 test_token_crosses_the_pairing_only_as_piped_stdout_of_one_call (__main__.MintedToken.test_token_crosses_the_pairing_only_as_piped_stdout_of_one_call) ... ok
 test_the_contract_refresh_boundary (__main__.Refresh.test_the_contract_refresh_boundary) ... ok
+test_r10_ssh_never_signs_git_in_as_the_owner (__main__.Review.test_r10_ssh_never_signs_git_in_as_the_owner) ... ok
 test_r1_a_git_credential_command_never_prints_the_token (__main__.Review.test_r1_a_git_credential_command_never_prints_the_token) ... ok
 test_r1_credential_answers_only_inside_git_exchange (__main__.Review.test_r1_credential_answers_only_inside_git_exchange) ... ok
 test_r2_a_symlinked_ancestor_into_a_git_tree_is_refused (__main__.Review.test_r2_a_symlinked_ancestor_into_a_git_tree_is_refused) ... ok
@@ -27,16 +28,16 @@ test_r6_a_failed_start_inside_a_run_hands_no_app_token_on (__main__.Review.test_
 test_r7_a_later_owner_helper_never_authenticates_git (__main__.Review.test_r7_a_later_owner_helper_never_authenticates_git) ... ok
 test_r7_a_replaced_helper_list_or_header_never_authenticates_git (__main__.Review.test_r7_a_replaced_helper_list_or_header_never_authenticates_git) ... ok
 test_r7_an_unguarded_git_never_signs_in_as_the_owner (__main__.Review.test_r7_an_unguarded_git_never_signs_in_as_the_owner) ... ok
-test_r8_git_http_tracing_never_shows_the_token (__main__.Review.test_r8_git_http_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 36533), raddr=('127.0.0.1', 32834)>
+test_r8_git_http_tracing_never_shows_the_token (__main__.Review.test_r8_git_http_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 39575), raddr=('127.0.0.1', 48176)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
-test_r9_git_process_tracing_never_shows_the_token (__main__.Review.test_r9_git_process_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 38285), raddr=('127.0.0.1', 40600)>
+test_r9_git_process_tracing_never_shows_the_token (__main__.Review.test_r9_git_process_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 36485), raddr=('127.0.0.1', 54942)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
 
 ----------------------------------------------------------------------
-Ran 27 tests
+Ran 28 tests
 
 OK
