@@ -1,5 +1,5 @@
-$ python3 -I docs/evidence/1817/test_ci_step.py   # with the comment-check step in ci.yml
+$ python3 -I docs/evidence/1817/test_ci_step.py   # after merging main with CC14 #1953 (fffe9a41): R1 case included
 ----------------------------------------------------------------------
-Ran 3 tests in 7.615s
+Ran 4 tests in 10.652s
 
 OK
