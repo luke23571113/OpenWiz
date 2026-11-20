@@ -75,4 +75,4 @@ Nothing else is stored. A tool reads the rest from GitHub itself:
 | T1 | An open spec or ticket missing a template section, each missing part on its own line |
 | B2 | An open issue with a native blocker closed as anything but completed |
 
-B1 is not checked: a text "blocked by" and a reason line's wording need a reader's judgement. Rules on closed issues are not checked: their records are history.
+B1 is checked in part: the kit reports a ticket's native blocker with no reason line or more than one, and a malformed `## Links` section, as the plan links contract reads them; it is narrower than that contract's checker, never reporting a line that names no native blocker, a reason line's wording or a text "blocked by", which need a reader's judgement. Rules on closed issues are not checked: their records are history.
