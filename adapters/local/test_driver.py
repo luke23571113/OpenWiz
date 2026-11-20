@@ -25,6 +25,7 @@ import kit  # noqa: E402
 
 # A synthetic value in a GitHub token's shape, built here so no file holds one.
 TOKEN = 'gh' + 'p_' + 'Synthetic0Local0Value' * 2 + '00'
+OPAQUE = 'opaque-fixture-value-7Kq2Zr9w'  # what the fakes print in their failures, in no credential shape
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
         'pass start: the run posted builder status note 1',
         'pass wake: the run edited builder status note 1',
@@ -303,16 +304,23 @@ class Local(unittest.TestCase):
 
     def test_a_first_turn_that_ends_at_once_fails_start_with_its_reason(self):
         # catches: a harness that refuses, or whose sign-in expired, or that fails, ending its first turn at
-        # once while start answers a run id and the kit waits 15 minutes in silence (L1); and a first turn that
-        # simply finished cleanly being reported as a failure.
-        for repo, says in (('refuser', 'permission to use Bash was denied'), ('expired', 'OAuth session expired'),
-                           ('broken', 'exit 3')):
+        # once while start answers a run id and the kit waits 15 minutes in silence (L1); a first turn that
+        # simply finished cleanly being reported as a failure; and the harness's or gh's raw output, which can
+        # hold a credential in a shape no pattern knows, reaching the caller's JSON instead of the owner's log (R5).
+        for repo, says in (('refuser', 'refused'), ('expired', 'not signed in'), ('broken', 'exit 3'),
+                           ('missing', 'could not clone')):
             with self.subTest(repo):
                 code, err = self.start(repository='example/' + repo)
                 self.assertEqual(code, 1, err)
                 self.assertIsNone(kit.invalid(err, kit.load_schema()['error']), err)
                 self.assertIn(says, err['error'])
+                self.assertNotIn(OPAQUE, json.dumps(err))
                 run = re.search(r'run-[0-9a-f]{12}', err['error']).group()
+                log = os.path.join(self.env['OPENWIZ_LOCAL_STATE'], run + '.log')
+                self.assertIn(log, err['next'])
+                with open(log) as f:
+                    self.assertIn(OPAQUE, f.read())
+                self.assertEqual(os.stat(log).st_mode & 0o777, 0o600)
                 self.assertEqual(self.marked('OPENWIZ_RUN=' + run), [])
                 self.assertEqual(self.driver('wake', {'run': run})[0], 1)
         code, out = self.start(repository='example/quick')

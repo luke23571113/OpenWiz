@@ -6,7 +6,7 @@ It takes only the shape that harness's real CLI takes, permission mode included
 or the same without a permission mode (logged as `-`, so a driver that drops it is seen), and exits 2 on
 any other. With the mode `refuse` it does what a harness whose permissions refuse every tool
 does: it prints why and ends its turn at once, exit 0, posting nothing. Mode `expired` prints a sign-in line
-and exits 0; `fail` exits 3; `quick` prints a plain line and exits 0, a turn that simply finished.
+and exits 0; `fail` exits 3 (each of the three lines holds a synthetic opaque value); `quick` prints a plain line and exits 0, a turn that simply finished.
 
 Otherwise it leaves a detached child in its own session that `stop` must also end (with FAKE_CLEAN set, the
 child gets only PATH, so it carries no mark it inherited), and appends `<turn pid> <child pid> first|woken
@@ -16,6 +16,8 @@ hands the note to a worker and ends. Once the turn has ended, the worker posts (
 builder status note in the tracker named by KIT_TRACKER, as the kit's fake harness does.
 """
 import json, os, re, subprocess, sys, time
+
+OPAQUE = 'opaque-fixture-value-7Kq2Zr9w'  # a synthetic value the driver must never repeat in its JSON
 
 worker = sys.argv[1:2] == ['--worker']
 name, args = os.path.basename(sys.argv[0]), sys.argv[2 if worker else 1:]
@@ -31,9 +33,9 @@ skill = re.search(r'with the ([a-z0-9-]+) skill', prompt).group(1)
 woken = prompt.startswith('You were woken')
 
 if not worker:
-    quick = {'refuse': ('Fake harness: permission to use Bash was denied, so it could not read the ticket.', 0),
-             'expired': ('Fake harness: OAuth session expired. Please run /login.', 0),
-             'fail': ('Fake harness: it stopped with an error.', 3), 'quick': ('Fake harness: nothing to do.', 0)}
+    quick = {'refuse': ('Fake harness: permission to use Bash was denied (%s).' % OPAQUE, 0),
+             'expired': ('Fake harness: OAuth session expired (%s). Please run /login.' % OPAQUE, 0),
+             'fail': ('Fake harness: it stopped with an error (%s).' % OPAQUE, 3), 'quick': ('Fake harness: nothing to do.', 0)}
     if mode in quick:
         print(quick[mode][0])
         sys.exit(quick[mode][1])
