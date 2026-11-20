@@ -580,4 +580,3 @@ Investigate prj_planted42 start failures
 - The named literals are not checked in CI on the public repository.
 - **Decisions across two repositories** are owned by #2141 and verified on configured fixture feeds. Single-repository mode remains the default until a pair is explicitly configured. The rehearsal and cut-over must still verify the real settings and both feed reads; fixture results do not establish live discovery.
 - Text inside images is not read by the check.
-- Today's `rust` job in `.github/workflows/ci.yml` falls back to a runner label not on F2's list, so the check refuses it until the CI specs change it. Today's builder commits use an address C3 refuses, so builders need GitHub's private address before the cut-over. The rehearsal (O16) finds both on its dry run.
