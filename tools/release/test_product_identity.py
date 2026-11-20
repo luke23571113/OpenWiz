@@ -311,7 +311,6 @@ class CandidateSourceInstall(_wizskills_fixture().Fixture):
                   ['skills/alpha/SKILL.md', 'skills/alpha/scripts/run.sh',
                    *(p.relative_to(install).as_posix() for p in (install / 'contracts').iterdir())]}
         rl4.verify_runtime(bare, commit, skills, install)
-        # catches: a packaged contract that differs from, or is missing against, the locked release (#2014).
         for changed in ({**skills, 'skills/alpha/SKILL.md': b'Edited.\n'},
                         {**skills, 'contracts/cli.v1.md': b'Edited.\n'},
                         {p: d for p, d in skills.items() if p != 'contracts/cli.v1.md'}):

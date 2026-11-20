@@ -105,13 +105,6 @@ def install_locked(root, source, scratch):
 
 
 def locked_skills(root, source, tree=None, install=None):
-    """When `source` tracks `skills` as the WizSkills link: the verified
-    install's {path: blob oid} for its skills/ and, #2014, its contracts/
-    (launch-fleet's scripts load contracts/ops-dispatch.v1.schema.json and
-    the skills link the contracts they tell agents to read), carried at their
-    release paths, after checking the install (by
-    default `root`'s .wizskills) is exactly the lock's release tree. None for
-    a source that tracks its skills."""
     tree = tree if tree is not None else source_tree(root, source)
     if tree.get('skills', ('', '', ''))[:2] != LINK:
         return None
@@ -153,7 +146,6 @@ def verify_runtime(root, source, runtime, install=None):
     tree = source_tree(root, source)
     installed = locked_skills(root, source, tree, install)
     if installed is not None:
-        # #2014: the release's contracts/ are carried beside its skills and checked alike.
         released = lambda p: skill(p) or p.startswith('contracts/')
         require(set(installed) == {p for p in runtime if released(p)},
                 'packaged skills differ from the locked WizSkills release')

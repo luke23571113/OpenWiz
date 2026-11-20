@@ -197,14 +197,10 @@ class Package(unittest.TestCase):
             self.assertEqual(checked.stdout.splitlines()[:1],
                              ['pass version: openwiz:records v1, and the schema is driver v1'], checked.stderr)
 
-    # catches: an installed build whose skills crash reading a WizSkills root file (#2014:
-    # launch-fleet's host.py loads the ops-dispatch schema from contracts/), because the
-    # package carried only the release's skills/.
     def test_installed_build_carries_the_wizskills_root_files_its_skills_read(self):
         release = ROOT / '.wizskills'
         self.assertTrue((release / '.git').is_dir(), 'Install the pinned WizSkills first: tools/wizskills/install.py')
         show = lambda *a: subprocess.check_output(['git', '-C', str(release), *a])
-        # The root files the shipped skills read at run time: the contracts their code loads and their links name.
         roots = [p for p in show('ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', 'contracts').decode().split('\0') if p]
         with tempfile.TemporaryDirectory(prefix='openwiz-wizskills-products-') as temporary:
             root = Path(temporary)
@@ -232,13 +228,10 @@ class Package(unittest.TestCase):
             self.bound_and_installed(root, target, Path(str(output) + '.json'), bundle,
                                      products=output, home=root / 'installed')
             runtime = root / 'installed/current/runtime'
-            # The host-setting step's read: host.py loads the ops-dispatch schema before it parses
-            # its arguments, so a bare call reaches its usage line only when the schema is there.
             host = subprocess.run([sys.executable, '-I', str(runtime / 'skills/launch-fleet/scripts/host.py')],
                                   cwd=root, capture_output=True, text=True, timeout=60, env={'PATH': os.environ['PATH']})
             self.assertNotIn('FileNotFoundError', host.stderr)
             self.assertIn('usage: which', host.stderr)
-            # Each root file is the pinned release's own bytes, and nothing else of its root is carried.
             for path in roots:
                 self.assertEqual((runtime / path).read_bytes(), show('show', 'HEAD:' + path), path)
             assets = json.loads(Path(str(output) + '.json').read_bytes())['assets']
