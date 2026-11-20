@@ -339,5 +339,67 @@ class Fallback(Helper):
         self.assertFalse(self.private.exists())
 
 
+class Review(Helper):
+    """The review's findings R1 to R4 and R6 on #1916, each red first."""
+    REQ = ("--requester", "builder-1", "--repository", REPO)
+
+    def shell(self, script, *extra, **env):
+        env = dict({"PY": sys.executable, "H": str(HELPER)}, **env)
+        return self.helper("run", *self.REQ, "--", "sh", "-c", script, *extra, **env)
+
+    def test_r1_credential_answers_only_inside_git_exchange(self):
+        # catches: the credential subcommand printing the token when run by hand.
+        self.answers(answer())
+        self.start()
+        direct = self.helper("credential", "get", stdin="protocol=https\nhost=github.com\n\n")
+        self.assertEqual((direct.stdout, direct.stderr), ("", ""))
+        by_hand = self.shell('printf "protocol=https\\nhost=github.com\\n\\n" | '
+                             '"$PY" -I "$H" credential --snapshot "$OPENWIZ_AGENT_TOKEN_RUN" get | cat')
+        self.assertNotIn(TOKEN, by_hand.stdout + by_hand.stderr)
+
+    def test_r2_a_symlinked_ancestor_into_a_git_tree_is_refused(self):
+        # catches: the lexical Git-tree guard followed through a symlink into a working tree.
+        self.answers(answer())
+        tree = self.root / "work"
+        (tree / ".git").mkdir(parents=True)
+        (tree / "sub").mkdir()
+        (self.root / "link").symlink_to(tree / "sub")
+        refused = self.start(OPENWIZ_AGENT_TOKEN_DIR=str(self.root / "link" / "private"))
+        self.assertEqual((refused.returncode, self.calls()), (2, []))
+        self.assertFalse((tree / "sub" / "private").exists())
+
+    def test_r3_two_agents_on_one_account_keep_their_own_scopes(self):
+        # catches: a second agent's start replacing the first's request, so one gets the other's token.
+        self.answers(answer(), answer(token=TOKEN2, permissions=READ))
+        self.start()
+        self.helper("start", "--requester", "reviewer-2", "--repository", REPO, "--read")
+        first = self.helper("run", *self.REQ, "--", "gh", "pr", "list")
+        second = self.helper("run", "--requester", "reviewer-2", "--repository", REPO, "--read",
+                             "--", "gh", "pr", "view", "1")
+        self.assertEqual([c["gh_token"] for c in self.calls("gh")], [sha(TOKEN), sha(TOKEN2)])
+        self.assertEqual(len(self.service_calls()), 2)
+        self.assert_never_exposed(first, second)
+
+    def test_r4_a_command_scope_helper_never_gets_the_token(self):
+        # catches: `git -c credential.helper=store` adding a persisting helper after the reset.
+        self.answers(answer())
+        self.start()
+        fill = self.helper("run", *self.REQ, "--", "git", "-c", "credential.helper=store",
+                           "credential", "fill", stdin="protocol=https\nhost=github.com\n\n")
+        self.helper("run", *self.REQ, "--", "git", "-c", "credential.helper=store",
+                    "credential", "approve", stdin=fill.stdout + "\n")
+        self.assertNotIn(TOKEN, fill.stdout)
+        self.assertFalse((self.home / ".git-credentials").exists())
+
+    def test_r6_a_failed_start_inside_a_run_hands_no_app_token_on(self):
+        # catches: a fallback forwarding an inherited App token because the cache was already cleared.
+        self.answers(answer())
+        req = " ".join(self.REQ)
+        ran = self.shell(f'OPENWIZ_TOKEN_SERVICE_READBACK=failed "$PY" -I "$H" start {req}; '
+                         f'OPENWIZ_TOKEN_SERVICE_READBACK=failed "$PY" -I "$H" run {req} -- gh pr list')
+        self.assertEqual([c["gh_token"] for c in self.calls("gh")], [None])
+        self.assertEqual(ran.stderr, (NOTE.replace("<reason>", "pairing-off") + "\n") * 2)
+
+
 if __name__ == "__main__":
     unittest.main()
