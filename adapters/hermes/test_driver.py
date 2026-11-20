@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import io
 import json
 import os
 import re
@@ -18,9 +19,10 @@ FAKE = os.path.join(HERE, 'fixtures', 'bin', 'hermes')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Hermes0Value' * 2
 API_KEY = 'synthetic-' + 'hermes-api-server-value'
 CALLER_ONLY = 'synthetic-caller-only-value'
+LOCALE_LOOKALIKE = 'synthetic-lc-named-app-value'
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'synthetic-model-1'}
-CHILD_ENV_ALLOWED = {'HOME', 'PATH', 'LANG', 'OPENWIZ_RUN', 'OPENWIZ_KIT_RUN'}
+CHILD_ENV_ALLOWED = {'HOME', 'PATH', 'LANG', 'LC_ALL', 'OPENWIZ_RUN', 'OPENWIZ_KIT_RUN'}
 
 
 def alive(pid):
@@ -49,7 +51,8 @@ class Hermes(unittest.TestCase):
         self.envs, self.state = os.path.join(self.folder, 'envs'), os.path.join(self.folder, 'state')
         self.configure()
         self.env = {'HOME': self.folder, 'LANG': 'C.UTF-8', 'GH_TOKEN': TOKEN, 'API_SERVER_KEY': API_KEY,
-                    'CALLER_ONLY_SETTING': CALLER_ONLY, 'OPENWIZ_HERMES_STATE': self.state,
+                    'CALLER_ONLY_SETTING': CALLER_ONLY, 'LC_ALL': 'C.UTF-8',
+                    'LC_APPLICATION_SETTING': LOCALE_LOOKALIKE, 'OPENWIZ_HERMES_STATE': self.state,
                     'PATH': os.pathsep.join([os.path.join(HERE, 'fixtures', 'bin'), '/usr/bin', '/bin'])}
         reachable = {name: shutil.which(name, path=self.env['PATH']) for name in ('claude', 'codex', 'hermes')}
         self.assertEqual(reachable, {'claude': None, 'codex': None, 'hermes': FAKE},
@@ -171,10 +174,37 @@ class Hermes(unittest.TestCase):
         with open(self.envs) as f:
             [seen] = [json.loads(line)['env'] for line in f]
         self.assertLessEqual(set(seen), CHILD_ENV_ALLOWED, 'a caller variable reached Hermes')
-        for value in (TOKEN, API_KEY, CALLER_ONLY):
+        for value in (TOKEN, API_KEY, CALLER_ONLY, LOCALE_LOOKALIKE):
             self.assertNotIn(value, json.dumps(seen))
-        self.assertEqual((seen['HOME'], seen['OPENWIZ_KIT_RUN'], seen['OPENWIZ_RUN']),
-                         (self.folder, 'synthetic-mark', out['run']))
+        self.assertEqual((seen['HOME'], seen['LC_ALL'], seen['OPENWIZ_KIT_RUN'], seen['OPENWIZ_RUN']),
+                         (self.folder, 'C.UTF-8', 'synthetic-mark', out['run']))
+
+    def test_cleanup_reads_no_process_before_it_knows_the_process_is_ours(self):
+        open(self.hold, 'w').close()
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: self.logged()), 'the turn never began')
+        owned, strays, real = {str(os.getpid())}, [], open
+
+        def recording(path, *args, **kwargs):
+            f = real(path, *args, **kwargs)
+            parts = path.split('/') if isinstance(path, str) else []
+            if parts[:2] == ['', 'proc'] and parts[2].isdigit():
+                if parts[2] not in owned:
+                    strays.append(path)
+                if parts[-1] == 'children':
+                    text = f.read()
+                    f.close()
+                    owned.update(text.split())
+                    return io.StringIO(text)
+            return f
+        globals()['open'] = recording
+        try:
+            found = self.ours()
+        finally:
+            del globals()['open']
+        self.assertEqual(strays, [], 'cleanup read a process before it knew the process was ours')
+        self.assertTrue({self.logged()[0][0], self.logged()[0][1]} <= set(found), 'cleanup missed the held turn')
 
     def test_the_turns_output_never_reaches_the_disk(self):
         self.configure(loud=2000)
