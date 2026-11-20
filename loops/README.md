@@ -41,15 +41,12 @@ repository, spec #1257) is a fresh clone or that setting, never an edit:
 | Loop or tool | Its repository comes from | To switch it |
 | --- | --- | --- |
 | A definition in this folder | The CloudRoom project's checkout | Point the CloudRoom project at the new repository; nothing here changes |
-| The stall alarm (`tools/stall-alarm/`, a Local script-only loop) | Its `--repo OWNER/NAME`, baked into the loop's stored script | Rebuild the script with the new `--repo` and a new state file (a state file kept for another repository is refused), then replace the loop's stored script, as its README says |
-| The war room's collector (`tools/war-room/collect_factory.py`, `collect_ci.py`; no loop installed) | Its required `--repo OWNER/NAME`, on every run | Pass the new repository |
 | The roadmap (`tools/roadmap/`) | The clone it runs in (`gh` reads `git remote`); release tags from `--public-repo` (default `jparker2006/OpenWiz`) | Run `python3 tools/roadmap/roadmap.py --public FILE` in a clone of the new repository; it reads that repository's milestones and writes a page with no links. Pass `--public-repo` only if the tags move elsewhere |
 | The read-only GitHub App's setup (`tools/github-app/setup.py`) | Its `--repo OWNER/NAME`, or else the clone's GitHub `origin` | Run it from a clone of the new repository, or pass `--repo`. An App already made keeps its homepage until it is edited in GitHub's App settings; install it on the new repository there too. `mint-token.py` requires `--repository OWNER/NAME`; pass the new repository |
 | The orchestrator's board renderer (private, kept with the private records) | Its `--repo OWNER/NAME`, whose default is the private repository | Pass `--repo` with the public repository for development; keep the default for a view of the private record. Changing its checkout alone does not switch it |
 | The CloudRoom loops that name the repository (the merge sweep, the orchestrator watch, the polish waves, the standby check) | Their prompts, and the scripts they run from a clone | Name the new repository in each prompt, and run each script from a clone of it. Their prompts and scripts are private, so the cut-over runbook (#1284) lists each one with its read-back |
 
 Not switched here, and listed in the cut-over runbook instead: the CI
-specs' tools (`tools/pc-capacity/`, `tools/ci-overflow/` and the runner kit
-in `ci/runner/`). `python3 tools/github-app/test.py` checks that no file in
-this folder, the stall alarm, the GitHub App or the roadmap names a fixed
+specs' tools (`tools/pc-capacity/` and `tools/ci-overflow/`). `python3 tools/github-app/test.py` checks that no file in
+this folder, the GitHub App or the roadmap names a fixed
 repository (#1279).

@@ -1,0 +1,9 @@
+# Green run at 47e691d: python3 -I adapters/boat/test_driver.py -v
+test_a_start_that_fails_leaves_no_sandbox_running (__main__.Boat.test_a_start_that_fails_leaves_no_sandbox_running) ... ok
+test_kit_passes_all_five (__main__.Boat.test_kit_passes_all_five) ... ok
+test_wake_resumes_after_auto_stop_and_stop_ends_the_sandbox (__main__.Boat.test_wake_resumes_after_auto_stop_and_stop_ends_the_sandbox) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.650s
+
+OK

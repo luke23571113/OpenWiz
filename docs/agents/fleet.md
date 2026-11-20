@@ -68,7 +68,7 @@ How `launch-fleet` is woken; the loop and webhook identities stay in private orc
 
 Every ticket may make these edits beside its owned paths without asking:
 
-1. **Its own rows in shared registries:** `tools/open-import/paths.json`, the CLI test catalogue in `tests/cli-agent/main.rs`, and CI step lists such as `tools/collector/steps.tsv`.
+1. **Its own rows in shared registries:** `tools/open-import/paths.json` and the CLI test catalogue in `tests/cli-agent/main.rs`.
 2. **Its changelog line** as `changes/<ticket>.md`, whatever its owned paths name.
 3. **Its own evidence folder** under `docs/evidence/`.
 4. **Synthetic answers to test fakes its change breaks,** with no assertion change.
@@ -96,7 +96,6 @@ Rust 1.99.1 with `rustfmt` and `clippy`; there is no `rust-toolchain.toml`.
 
 | # | Folder | Command | CI check |
 | --- | --- | --- | --- |
-| 1 | root | `sh .github/actions/docs-only/test.sh` | `ci` |
 | 2 | root | `cargo fmt --check` | `ci` |
 | 3 | root | `cargo clippy --workspace --all-targets -- -D warnings` | `ci` |
 | 4 | root | `cargo build --workspace` | `ci` |
