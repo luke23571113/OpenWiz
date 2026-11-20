@@ -96,6 +96,13 @@ class CommentCheckStep(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertEqual((run.stdout, run.stderr.splitlines()[-1:]), ('', ['comment-check: ok']))
 
+    def test_a_hash_quoted_inside_a_command_substitution_passes(self):
+        pr = PullRequest(self)
+        pr.commit('src/label.sh', '#!/bin/sh\nlabel="$(printf \'%s\' "Issue #123")"\necho "$label"\n')
+        run = pr.run_step()
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertEqual((run.stdout, run.stderr.splitlines()[-1:]), ('', ['comment-check: ok']))
+
 
 if __name__ == '__main__':
     unittest.main()
