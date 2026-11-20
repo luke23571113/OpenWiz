@@ -12,9 +12,9 @@ test_wake_checks_its_save_before_and_after_spawn (__main__.Local.test_wake_check
 test_wake_while_a_turn_runs_starts_no_second_turn (__main__.Local.test_wake_while_a_turn_runs_starts_no_second_turn) ... ok
 
 ----------------------------------------------------------------------
-Ran 12 tests in 29.117s
+Ran 12 tests in 29.869s
 
 OK
-Ran 5 tests in 29.729s
+Ran 5 tests in 29.867s
 
 OK

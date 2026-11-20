@@ -27,6 +27,9 @@ GRACE = 10  # seconds a stopped process has to exit before it is killed
 SETTLE = float(os.environ.get('OPENWIZ_LOCAL_SETTLE') or 30)  # seconds start watches the first turn
 SECRET = re.compile(r'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|xox[abposr]-|sk-[A-Za-z0-9_-]{20,}'
                     r'|Bearer\s|(?i:token|secret|password|api[-_]?key)\s*[=:]')
+# A first-turn log line that says the harness was refused, or isn't signed in.
+REFUSED = re.compile(r'(?i)denied|refused|not allowed|permission|oauth|log ?in\b|sign ?in\b|authenticat|unauthori[sz]ed'
+                     r'|expired|credential')
 
 
 class Refused(Exception):
@@ -161,9 +164,32 @@ def supervise(cmd):
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
     while True:
         try:
-            os.wait()
+            pid, status = os.wait()
         except ChildProcessError:
             return
+        if pid == harness.pid:  # its exit code, for `start` to read (`exited`)
+            try:
+                with open(exit_file(os.environ['OPENWIZ_RUN'], pid), 'w') as f:
+                    f.write(str(os.waitstatus_to_exitcode(status)))
+            except OSError:
+                pass
+
+
+def exit_file(run, pid):
+    return os.path.join(STATE, '%s-%d.exit' % (run, pid))
+
+
+def exited(run, turn):
+    """The ended harness's exit code, as its supervisor saved it, or None if unknown."""
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            with open(exit_file(run, turn['pid'])) as f:
+                return int(f.read())
+        except (OSError, ValueError):
+            if time.monotonic() > deadline:
+                return None
+        time.sleep(0.05)
 
 
 def launch(state, run, woken):
@@ -260,20 +286,27 @@ def saved(run, state=None):
 
 
 def ended_at_once(run, turn):
-    """Watch a first turn for SETTLE seconds. One that has already ended has refused or failed, as a harness
-    whose permissions refuse every tool does: end what is left and say why, from the turn's last log line."""
+    """Watch a first turn for SETTLE seconds. One that has already ended with a non-zero (or unknown) exit, or
+    with a refusal or sign-in line in its log (a harness whose permissions refuse every tool still exits 0),
+    has failed: end what is left and say why. One that ended cleanly simply finished: the run started."""
     deadline = time.monotonic() + SETTLE
     while running(turn) and time.monotonic() < deadline:
         time.sleep(0.1)
     if running(turn):
         return
-    end([turn], run)
+    code = exited(run, turn)
     try:
         with open(os.path.join(STATE, run + '.log'), errors='replace') as f:
-            last = one_line(f.read())
+            log = f.read()
     except OSError:
-        last = ''
-    raise Refused('run %s: the first turn ended at once: %s' % (run, last or 'it printed nothing the driver kept'),
+        log = ''
+    said = [line for line in log.splitlines() if REFUSED.search(line)]
+    if code == 0 and not said:
+        return
+    end([turn], run)
+    why = 'exit %s' % ('unknown' if code is None else code)
+    last = one_line('\n'.join(said) or log)
+    raise Refused('run %s: the first turn ended at once (%s): %s' % (run, why, last or 'it printed nothing the driver kept'),
                   'read %s, fix what the harness refused, then start again' % os.path.join(STATE, run + '.log'))
 
 
