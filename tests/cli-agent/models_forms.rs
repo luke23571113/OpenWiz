@@ -611,3 +611,134 @@ fn an_id_the_older_readers_refuse_stays_in_the_models_table_only() {
         "{got}"
     );
 }
+
+/// Runs `step` on another thread over and over until `body` returns.
+fn racing<T>(step: impl Fn() + Send + Sync, body: impl FnOnce() -> T) -> T {
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                step();
+            }
+        });
+        let out = body();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        out
+    })
+}
+
+// catches (R1, re-check): a write checked once and then made by pathname, so
+// `docs/agents` swapped for a link to a folder outside the checkout between
+// the check and the staging write, rename or cleanup puts the file there.
+#[test]
+fn every_write_goes_through_the_directory_it_checked() {
+    let fake = project("one-table/fleet.md", catalogue());
+    let agents = fake.0.0.join("docs/agents");
+    let aside = fake.0.0.join("docs/agents-aside");
+    let outside = fake.0.0.join("outside");
+    fs::create_dir(&outside).unwrap();
+    let fleet = fixture("one-table/fleet.md");
+    fs::write(outside.join("fleet.md"), &fleet).unwrap();
+    racing(
+        || {
+            if fs::rename(&agents, &aside).is_ok() {
+                std::os::unix::fs::symlink(&outside, &agents).unwrap();
+                fs::remove_file(&agents).unwrap();
+                fs::rename(&aside, &agents).unwrap();
+            }
+        },
+        || {
+            for _ in 0..400 {
+                let _ = run(&fake, &["list", "--save"]);
+            }
+        },
+    );
+    let mut left: Vec<_> = fs::read_dir(&outside)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    left.sort();
+    assert_eq!(left, ["fleet.md"], "a write landed outside the checkout");
+    assert_eq!(fs::read_to_string(outside.join("fleet.md")).unwrap(), fleet);
+}
+
+/// `openwiz models <args>` as a process under the common 022 umask, so a
+/// file created with the default mode is world-readable whatever this
+/// test's own umask; returns its exit code.
+fn under_umask_022(fake: &Models, args: &[&str]) -> i32 {
+    let root = &fake.0.0;
+    let path = format!(
+        "{}:{}",
+        root.join("bin").display(),
+        std::env::var("PATH").unwrap()
+    );
+    std::process::Command::new("sh")
+        .args([
+            "-c",
+            "umask 022; exec \"$0\" models \"$@\"",
+            &super::fixture_cli().to_string_lossy(),
+        ])
+        .args(args)
+        .env_clear()
+        .env("PATH", path)
+        .env("HOME", root.join("home"))
+        .env("OPENWIZ_STATE_DIR", root.join("state"))
+        .env("OPENWIZ_FIXTURE_PROGRAM", root.join("bin/room-cli"))
+        .current_dir(root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .status()
+        .unwrap()
+        .code()
+        .expect("exited")
+}
+
+// catches (R5): a staged copy created with the process's default mode
+// (0644 under a 022 umask) while the file it replaces is owner-only.
+#[test]
+fn a_staged_copy_is_never_more_readable_than_its_target() {
+    use std::os::unix::fs::PermissionsExt;
+    let fake = project("one-table/fleet.md", catalogue());
+    let agents = fake.0.0.join("docs/agents");
+    let owner_only = fs::Permissions::from_mode(0o600);
+    fs::write(agents.join("models-offered.json"), "{}\n").unwrap();
+    for name in ["fleet.md", "models-offered.json"] {
+        fs::set_permissions(agents.join(name), owner_only.clone()).unwrap();
+    }
+    let seen = std::sync::Mutex::new(Vec::new());
+    racing(
+        || {
+            for entry in fs::read_dir(&agents).unwrap().flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if let (true, Ok(meta)) = (name.starts_with('.'), entry.metadata()) {
+                    seen.lock()
+                        .unwrap()
+                        .push((name, meta.permissions().mode() & 0o777));
+                }
+            }
+        },
+        || {
+            for effort in ["high", "medium"].iter().cycle().take(40) {
+                let args = ["set", "reviewer", "codex", "gpt-6.2-sol", effort];
+                assert_eq!(under_umask_022(&fake, &args), 0);
+            }
+        },
+    );
+    let seen = seen.into_inner().unwrap();
+    assert!(!seen.is_empty(), "never saw a staged copy");
+    let mut open: Vec<_> = seen
+        .iter()
+        .filter(|(_, mode)| mode & 0o077 != 0)
+        .map(|(name, mode)| format!("{} {mode:o}", name.split('.').nth(1).unwrap_or("")))
+        .collect();
+    open.sort();
+    open.dedup();
+    assert!(open.is_empty(), "staged copies of 600 targets: {open:?}");
+    for name in ["fleet.md", "models-offered.json"] {
+        let mode = fs::metadata(agents.join(name))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "{name}");
+    }
+}
