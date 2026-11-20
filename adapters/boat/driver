@@ -331,8 +331,14 @@ def conversation(item):
 
 
 def sandbox_state(sandbox):
-    info = [x for x in boat('stop the run', 'info', sandbox) if 'state' in x]
-    return str(info[-1]['state']) if info else 'unknown'
+    """The sandbox's state from `boat info --json`: under its `sandbox` key, as live boat answers (#1874), or at
+    the top, as an older answer does; 'unknown' if neither has one."""
+    found = 'unknown'
+    for x in boat('stop the run', 'info', sandbox):
+        box = x.get('sandbox') if isinstance(x.get('sandbox'), dict) else x
+        if 'state' in box:
+            found = str(box['state'])
+    return found
 
 
 def end_sandbox(sandbox, conversation):
