@@ -73,6 +73,7 @@ Nothing else is stored. A tool reads the rest from GitHub itself:
 | S1 | Two or more live notes of one kind on one open issue |
 | S2 | A record author's v1-marked comment that doesn't read as a v1 note |
 | T1 | An open spec or ticket missing a template section, each missing part on its own line |
+| B1 | An open ticket's native blocker with no reason line or more than one in `## Links`, or a malformed `## Links` section, as the plan links contract reads them |
 | B2 | An open issue with a native blocker closed as anything but completed |
 
 B1 is checked in part: the kit reports a ticket's native blocker with no reason line or more than one, and a malformed `## Links` section, as the plan links contract reads them; it is narrower than that contract's checker, never reporting a line that names no native blocker, a reason line's wording or a text "blocked by", which need a reader's judgement. Rules on closed issues are not checked: their records are history.
