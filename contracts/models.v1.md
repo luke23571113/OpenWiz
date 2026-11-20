@@ -176,7 +176,29 @@ An older row whose resolution waits can't be written: `set` leaves it as it
 was and reports it `kept`, beside the same-family warning; until the older
 tables go, their readers start that row's old choice. An older row whose new
 model id holds a `/` is also left as it was and reported `kept`: today's
-older-table readers take no `/` and would refuse the whole file. A `set` on a file with
+older-table readers take no `/` and would refuse the whole file (ruling 14,
+accepted by the planner, 2026-11-20).
+
+**A kept row is never silent.** While the older tables are present, each
+older row that differs from what the Models table resolves to (a `kept`
+row, or one edited by hand) is named in both `show` and the `set` report,
+as an `older_table_kept` warning, one per row in the table order above,
+after any same-family warning, with exactly this text:
+
+```text
+Models table: vendor/demo; older Reviewer for Claude-built table kept at gpt-6.2-sol; fleets start gpt-6.2-sol until launch-fleet reads the Models table (MD4)
+```
+
+`Models table: <new>; older <table> table kept at <old>; fleets start <old> until launch-fleet reads the Models table (MD4)`,
+where `<table>` is the older row's name as `older_tables` spells it
+(`Builder`, `Builder for small tickets`, `Reviewer for Claude-built`,
+`Reviewer for GPT-built`, `Fixer, Claude`, `Fixer, GPT`), and the values are
+the two model ids, or `waits` for a rule that waits; when the model ids are
+equal, the model id and effort; when those are too, the provider, model id
+and effort, each joined by a space. Fixtures: `set-older-namespaced/` (a
+`set` that writes `vendor/demo` on a five-older-tables project keeps two
+rows, and its report and the `show` of the written file both name them),
+`both/` (a hand-edited stale row). A `set` on a file with
 only the older tables first inserts a `## Models` section, immediately
 before the first older table's heading and followed by one blank line, with
 all five rows written as choices from the older reading (Small builder and
@@ -261,7 +283,8 @@ read and older tables are also present), `roles` (each role's `follows`,
 `builder` or null, and its `choice`; a following role's choice is the
 Builder's), `reviews` and `fixers` (for each builder family, `from` the
 role or older table that serves it, with its choice, or `waits` with a null
-choice) and `warnings` (the same-family warning, or none).
+choice) and `warnings` (the same-family warning, then one
+`older_table_kept` line per older row that differs, or none).
 
 Text, one line per role, then each family's review and fix round, then
 each warning:
@@ -329,16 +352,19 @@ empty when there are none), `files` (the paths written), `warnings`,
 - **Nothing offered** (`no_options`, exit 13): nothing is written; the
   refusal text is the read's own no-options text.
 - **Same family:** the change is made, exit 0, with the warning.
+- **Kept older rows:** the change is made, exit 0; each older row left
+  differing from the Models table is `kept` in `older_tables` and named by
+  its `older_table_kept` warning, as `show` names it.
 
 Text: `<Role>: <before> -> <after>` (each as in `show`), one
-`<older row>: changed|kept` line per older row not unchanged, the warning,
-then `wrote <path>` per file; or the refusal text and the offered list.
+`<older row>: changed|kept` line per older row not unchanged, each
+warning's text (a kept row's line included), then `wrote <path>` per file; or the refusal text and the offered list.
 Exits: 0 changed or unchanged; 1 `fleet.md` missing, unreadable or refused,
 a failed write, or an output failure; 2 usage (an unknown role, a wrong
 number of operands, `follows-builder` for a role that can't follow, any
 option but `--json`); 5 not offered or not writable; 13 nothing offered. Fixtures:
-`set-older/`, `set-same-family/`, `set-namespaced/`, `unoffered/`,
-`unwritable/` (each `case.json` names the
+`set-older/`, `set-same-family/`, `set-namespaced/`,
+`set-older-namespaced/`, `unoffered/`, `unwritable/` (each `case.json` names the
 starting `fleet.md`, the arguments, the exit and the expected written
 files).
 

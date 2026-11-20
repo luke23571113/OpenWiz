@@ -135,5 +135,13 @@
       }
     }
   },
-  "warnings": []
+  "warnings": [
+    {
+      "kind": "older_table_kept",
+      "table": "Builder for small tickets",
+      "models_table": "claude-opus-5-5",
+      "older": "claude-sonnet-5-5",
+      "text": "Models table: claude-opus-5-5; older Builder for small tickets table kept at claude-sonnet-5-5; fleets start claude-sonnet-5-5 until launch-fleet reads the Models table (MD4)"
+    }
+  ]
 }

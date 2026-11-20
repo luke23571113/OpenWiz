@@ -346,6 +346,45 @@ fn older_tables(text: &str) -> Result<Read, String> {
     })
 }
 
+/// An older-tables reading in `show`'s shape, for `older_rows`.
+fn older_view(older: &Read) -> Value {
+    let (reviews, fixers) = (
+        older.reviews.as_ref().unwrap(),
+        older.fixers.as_ref().unwrap(),
+    );
+    json!({
+        "roles": {"builder": {"choice": older.roles[1].2}, "small_builder": {"choice": older.roles[3].2}},
+        "reviews": {"claude": reviews[0], "gpt": reviews[1]},
+        "fixers": {"claude": fixers[0], "gpt": fixers[1]},
+    })
+}
+
+/// The kept line's two values: the model ids, or `waits`; when the model ids
+/// are equal, the model and effort; when those are too, all three ids.
+fn values(now: &Value, was: &Value) -> (String, String) {
+    let shown = |c: &Value, keys: &[&str]| {
+        if c.is_null() {
+            "waits".to_owned()
+        } else {
+            keys.iter()
+                .map(|k| c[k].as_str().unwrap())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    };
+    for keys in [
+        &["model"][..],
+        &["model", "effort"],
+        &["provider", "model", "effort"],
+    ] {
+        let (a, b) = (shown(now, keys), shown(was, keys));
+        if a != b {
+            return (a, b);
+        }
+    }
+    unreachable!("the two choices differ")
+}
+
 fn read(text: &str) -> Result<Value, String> {
     let older_present = OLDER
         .iter()
@@ -391,6 +430,26 @@ fn read(text: &str) -> Result<Value, String> {
             "kind": "same_family", "family": fam,
             "text": format!("The Reviewer and the Builder are both {shown} models, so reviews of {shown}-built work wait (ADR 0008)."),
         }));
+    }
+    let resolved = json!({
+        "roles": {"builder": {"choice": builder}, "small_builder": {"choice": role("small_builder")}},
+        "reviews": reviews.clone(), "fixers": fixers.clone(),
+    });
+    if read.form == "models_table"
+        && older_present
+        && let Ok(older) = older_tables(text)
+    {
+        let kept = older_rows(&older_view(&older));
+        for (i, (table, now)) in older_rows(&resolved).into_iter().enumerate() {
+            let was = &kept[i].1;
+            if &now != was {
+                let (new, old) = values(&now, was);
+                warnings.push(json!({
+                    "kind": "older_table_kept", "table": table, "models_table": new, "older": old,
+                    "text": format!("Models table: {new}; older {table} table kept at {old}; fleets start {old} until launch-fleet reads the Models table (MD4)"),
+                }));
+            }
+        }
     }
     let roles: serde_json::Map<String, Value> = read
         .roles
@@ -603,19 +662,27 @@ fn every_set_fixture_writes_what_its_report_says() {
                 || before["older_tables_present"] == true
         );
         if after["older_tables_present"] == true {
-            let older = older_tables(&text(fleet.unwrap())).unwrap();
-            let older = json!({
-                "roles": {"builder": {"choice": older.roles[1].2}, "small_builder": {"choice": older.roles[3].2}},
-                "reviews": {"claude": older.reviews.as_ref().unwrap()[0], "gpt": older.reviews.as_ref().unwrap()[1]},
-                "fixers": {"claude": older.fixers.as_ref().unwrap()[0], "gpt": older.fixers.as_ref().unwrap()[1]},
-            });
+            let older = older_view(&older_tables(&text(fleet.unwrap())).unwrap());
             let rows = older_rows(&before);
             for (i, (table, want)) in older_rows(&after).into_iter().enumerate() {
-                assert_eq!(older_rows(&older)[i].1, want, "{case}: {table} out of step");
-                let changed = rows[i].1 != want;
+                let in_file = &older_rows(&older)[i].1;
+                let outcome = if in_file == &want {
+                    if rows[i].1 != want {
+                        "changed"
+                    } else {
+                        "unchanged"
+                    }
+                } else {
+                    // Kept (ruling 14): left as it was; the warning names it.
+                    assert_eq!(
+                        in_file, &rows[i].1,
+                        "{case}: {table} neither in step nor kept"
+                    );
+                    "kept"
+                };
                 assert_eq!(
                     report["older_tables"][i],
-                    json!({"table": table, "outcome": if changed { "changed" } else { "unchanged" }}),
+                    json!({"table": table, "outcome": outcome}),
                     "{case}"
                 );
             }

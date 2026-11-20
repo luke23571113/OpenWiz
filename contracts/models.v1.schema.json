@@ -291,36 +291,78 @@
       }
     },
     "warning": {
-      "description": "The Reviewer and Builder share a family: that family's work has no other-family reviewer and waits.",
-      "type": "object",
-      "required": [
-        "kind",
-        "family",
-        "text"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "const": "same_family"
+      "description": "same_family: the Reviewer and Builder share a family, so that family's work waits for review. older_table_kept: while the older tables are present, an older row differs from what the Models table resolves to (set kept it, ruling 14); its text is exactly 'Models table: <models_table>; older <table> table kept at <older>; fleets start <older> until launch-fleet reads the Models table (MD4)'.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "family",
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "same_family"
+            },
+            "family": {
+              "enum": [
+                "claude",
+                "gpt"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "family": {
-          "enum": [
-            "claude",
-            "gpt"
-          ]
-        },
-        "text": {
-          "type": "string",
-          "minLength": 1
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "table",
+            "models_table",
+            "older",
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "older_table_kept"
+            },
+            "table": {
+              "enum": [
+                "Builder",
+                "Builder for small tickets",
+                "Reviewer for Claude-built",
+                "Reviewer for GPT-built",
+                "Fixer, Claude",
+                "Fixer, GPT"
+              ]
+            },
+            "models_table": {
+              "type": "string",
+              "minLength": 1
+            },
+            "older": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
-      }
+      ]
     },
     "warnings": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/warning"
       },
-      "maxItems": 1
+      "maxItems": 7
     },
     "show_report": {
       "description": "openwiz models show --json.",
