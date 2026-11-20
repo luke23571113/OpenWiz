@@ -8,6 +8,7 @@ the user doesn't have. Python 3.9+, standard library only.
 """
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import stat
@@ -19,6 +20,7 @@ HARNESSES = (('claude-code', '.claude', 'Claude Code'), ('codex', '.codex', 'Cod
              ('cursor', '.cursor', 'Cursor'), ('opencode', '.config/opencode', 'OpenCode'),
              ('grok', '.grok', 'Grok'))
 MARK = '.openwiz-skill'
+MARKED = re.compile(rb'openwiz\.skill-copy\.v1\n[0-9a-f]{40}\n')  # mark()'s bytes for a verified source
 
 
 def mark(source):
@@ -63,9 +65,19 @@ def leftovers(folder, name):
 
 def ours(path):
     """True when nothing is there or it is an OpenWiz copy: a real folder of
-    this user's holding the copy mark, which every staging folder gets first."""
-    marked = path / MARK
-    return not owned_dir(path) or (marked.is_file() and not marked.is_symlink())
+    this user's holding the copy mark exactly as mark() writes it, which every
+    staging folder gets first. A same-named file with other text proves nothing."""
+    if not owned_dir(path):
+        return True
+    try:  # never through a link, and never waiting on a pipe
+        fd = os.open(path / MARK, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return False
+    try:
+        text = os.read(fd, 64) if stat.S_ISREG(os.fstat(fd).st_mode) else b''  # one byte past the 63-byte mark
+    finally:
+        os.close(fd)
+    return MARKED.fullmatch(text) is not None
 
 
 def place(folder, skills, names, source):
