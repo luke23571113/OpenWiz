@@ -145,16 +145,23 @@ def lock(run):
         raise Refused('the driver cannot lock run %s in its state folder' % run, WRITABLE)
 
 
+STOPPED_AT = 0  # a stop sets the lock file's modification time to this: no write ever sets it
+
+
 def marked(run, mark=None):
-    """The run's lock file holds `live` until a stop begins, then `stop` for good. The file already exists, so a
-    stop can mark it even when its folder takes no new file, and the same length takes no new space (#1705)."""
+    """The run's lock file holds `live` until a stop begins, then `stop` for good, and a stop also sets its
+    modification time to STOPPED_AT. The file already exists, so its text needs no new file or space, and its
+    owner can set its time even when neither it nor its folder takes a write (#1705). Either mark is a stop."""
     path = os.path.join(STATE, run + '.lock')
     if mark is None:
         try:
+            if os.stat(path).st_mtime == STOPPED_AT:
+                return 'stop'
             with open(path) as f:
                 return f.read().strip()
         except OSError:
             return 'stop'  # unreadable: fail closed
+    kept = None
     try:
         fd = os.open(path, os.O_WRONLY)
         try:
@@ -162,9 +169,15 @@ def marked(run, mark=None):
             os.fsync(fd)
         finally:
             os.close(fd)
-        return mark
+        kept = mark
     except OSError:
-        return None
+        pass
+    try:  # after the text, which would move the time
+        os.utime(path, (STOPPED_AT, STOPPED_AT))
+        kept = mark
+    except OSError:
+        pass
+    return kept
 
 
 def threads(state):
@@ -219,7 +232,8 @@ def start(req, run):
 def stop(run, state):
     if state.get('archived'):
         return {'run': run, 'stopped': True}
-    marked(run, 'stop')  # first, and for good: no wake ever reaches this run again, even if no save below works
+    marked(run, 'stop')  # first, and for good: no wake reaches this run again (one it can't mark is gone or unreadable,
+    # and wake refuses that too), so the archive below always runs
     try:
         saved(run, dict(state, stopped=True))
         kept = True
