@@ -89,10 +89,10 @@
       "share/preview-other-repository.txt": {"result": "refused", "code": "share-preview"}
     },
     "admission": {
-      "admission/ready.json": {"exit": 0, "read": "ready: yes"},
-      "admission/no-start-record.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author"},
-      "admission/start-by-other-account.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author"},
-      "admission/caller-signs-and-hooks.json": {"exit": 0, "read": "ready: yes", "signer": false, "hook": false}
+      "admission/ready.json": {"exit": 0, "read": "ready: yes", "environ": ["PATH"]},
+      "admission/no-start-record.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author", "environ": ["PATH"]},
+      "admission/start-by-other-account.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author", "environ": ["PATH"]},
+      "admission/caller-signs-and-hooks.json": {"exit": 0, "read": "ready: yes", "signer": false, "hook": false, "environ": ["PATH"]}
     }
   }
 }

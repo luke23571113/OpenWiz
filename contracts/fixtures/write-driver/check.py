@@ -7,6 +7,7 @@ checks are exactly the driver contract's and the kit's. Exit 0 when every
 fixture reads as expected.json says, 1 naming each one that doesn't. Run from
 anywhere: python3 -I contracts/fixtures/write-driver/check.py
 """
+from collections.abc import MutableMapping
 import json
 import os
 from pathlib import Path
@@ -233,14 +234,39 @@ def read_preview(text, b, f):
             'host': m['host'], 'minutes': minutes(m['time'])}
 
 
-def caller_env(case, tmp):
-    """The environment of whoever runs this check. A case's `caller` gives it a Git config: `global` keys
-    in its home's .gitconfig, `env` keys through GIT_CONFIG_COUNT. `<signer>` is a fake signer and
-    `<hooks>` a folder of fake hooks; each writes its own marker file under tmp and nothing else."""
-    env = dict(os.environ)
+class Watched(MutableMapping):
+    """The check's own environment while an admission fixture runs: the parent's, with the fixture's
+    synthetic caller settings on top, recording what was read: `PATH`, `other` for any other name, `*` for
+    a listing or a copy. Only these three words are reported, never the parent's names or values."""
+    def __init__(self, parent, caller):
+        self.parent, self.caller, self.read = parent, caller, set()
+
+    def __getitem__(self, name):
+        self.read.add(name if name == 'PATH' else 'other')
+        return self.caller[name] if name in self.caller.keys() else self.parent[name]
+
+    def __iter__(self):
+        self.read.add('*')
+        return iter(set(self.parent.keys()) | set(self.caller.keys()))
+
+    def __len__(self):
+        self.read.add('*')
+        return len(set(self.parent.keys()) | set(self.caller.keys()))
+
+    def __setitem__(self, name, value):
+        raise TypeError('the admission reading never sets the environment')
+
+    def __delitem__(self, name):
+        raise TypeError('the admission reading never sets the environment')
+
+
+def caller_settings(case, tmp):
+    """A case's synthetic caller, built from its `caller` field alone: `global` keys in a home's .gitconfig,
+    `env` keys through GIT_CONFIG_COUNT. `<signer>` is a fake signer and `<hooks>` a folder of fake hooks;
+    each writes its own marker file under tmp and nothing else."""
     caller = case.get('caller')
     if caller is None:
-        return env
+        return {}
     home, hooks = tmp / 'caller-home', tmp / 'caller-hooks'
     home.mkdir()
     hooks.mkdir()
@@ -257,16 +283,16 @@ def caller_env(case, tmp):
         section, name = key.rsplit('.', 1)
         sections.setdefault(section, []).append(f'\t{name} = {value(v)}')
     (home / '.gitconfig').write_text(''.join(f'[{s}]\n' + '\n'.join(lines) + '\n' for s, lines in sections.items()))
-    env['HOME'] = str(home)
+    settings = {'HOME': str(home), 'GIT_CONFIG_COUNT': str(len(caller['env']))}
     for i, (key, v) in enumerate(caller['env'].items()):
-        env[f'GIT_CONFIG_KEY_{i}'], env[f'GIT_CONFIG_VALUE_{i}'] = key, value(v)
-    env['GIT_CONFIG_COUNT'] = str(len(caller['env']))
-    return env
+        settings[f'GIT_CONFIG_KEY_{i}'], settings[f'GIT_CONFIG_VALUE_{i}'] = key, value(v)
+    return settings
 
 
 def read_admission(text, b, f):
-    """Run the pinned `ticket.py read` on a throwaway ticket through its fake gh: its last line, and for a
-    case with a `caller`, whether that caller's fake signer or fake hooks ran."""
+    """Run the pinned `ticket.py read` on a throwaway ticket through its fake gh: its last line, the names
+    the reading read from this check's environment, and for a case with a `caller` (set on top of that
+    environment while it runs), whether that caller's fake signer or fake hooks ran."""
     case = strict(text)
     if not TICKET_PY.is_file() or not FAKE_GH.is_file():
         raise FileNotFoundError('the pinned build-ticket skill is not installed: run tools/wizskills/install.py')
@@ -278,7 +304,23 @@ def read_admission(text, b, f):
                 for i, c in enumerate(case['comments'], 1)]
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        caller = caller_env(case, tmp)
+        parent = os.environ
+        os.environ = Watched(parent, caller_settings(case, tmp))
+        try:
+            got = admit(issue, comments, case, tmp)
+        finally:
+            read, os.environ = os.environ.read, parent
+        got['environ'] = sorted(read)
+        if 'caller' in case:
+            got.update(signer=(tmp / 'signer-ran').exists(), hook=(tmp / 'hook-ran').exists())
+    return got
+
+
+def admit(issue, comments, case, tmp):
+    """The admission itself, in tmp: the scratch repository's Git, then `ticket.py read`, each with only
+    PATH from this check's environment."""
+    if True:
+        caller = dict(os.environ)
         (tmp / 'bin').mkdir()
         gh = tmp / 'bin' / 'gh'
         gh.write_text(f'#!/bin/sh\nexec {shutil.which("python3")} -I {FAKE_GH} "$@"\n')
@@ -304,8 +346,6 @@ def read_admission(text, b, f):
             r = subprocess.run([sys.executable, '-I', str(TICKET_PY), 'read', REPO, '7', '--fleet-ref', 'HEAD'],
                                cwd=repo, env=env, capture_output=True, text=True, timeout=60)
             got = {'exit': r.returncode, 'read': (r.stdout.strip().splitlines() or [''])[-1]}
-        if 'caller' in case:
-            got.update(signer=(tmp / 'signer-ran').exists(), hook=(tmp / 'hook-ran').exists())
     return got
 
 
