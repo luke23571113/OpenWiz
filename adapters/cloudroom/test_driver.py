@@ -233,6 +233,26 @@ class Driver(unittest.TestCase):
         self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
         self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
 
+    def test_a_wake_refuses_a_run_whose_lock_file_was_lost(self):
+        # catches: after a stop that could not save and whose archive was refused, storage recovery keeping the
+        # live run record but losing the lock file, and a wake recreating an empty lock and telling the builder.
+        if os.geteuid() == 0:
+            self.skipTest('root ignores read-only files')
+        state = self.env['OPENWIZ_CLOUDROOM_STATE']
+        code, out = self.call('start', START)
+        lockfile = os.path.join(state, out['run'] + '.lock')
+        os.chmod(lockfile, 0o400)
+        os.chmod(state, 0o500)
+        try:
+            self.assertEqual(self.call('stop', out, FAKE_ROOM_REFUSE='archive')[0], 1)
+        finally:
+            os.chmod(state, 0o700)
+        os.remove(lockfile)  # recovery kept the run record, not the lock file
+        self.assertEqual(self.call('wake', out)[0], 1, 'a wake reached a builder whose lock file was lost')
+        self.assertNotIn('tell', [c[1] for c in self.calls()])
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+        self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
