@@ -28,7 +28,6 @@ mod loop_export;
 mod loop_plan;
 mod loop_validate;
 mod models;
-// #1803 (MD1): the models contract's fixture checks, kept beside the fixtures.
 #[path = "../../contracts/fixtures/models/models_contract.rs"]
 mod models_contract;
 mod process;
