@@ -264,7 +264,10 @@ def models_usable(text, body):
             [], ['Small builder'], ['Fixer'], ['Small builder', 'Fixer']):
         return False
     for role, harness, model, effort, flags in rows[2:]:
-        if harness == 'follows Builder' and role in ('Small builder', 'Fixer') and not (model or effort or flags):
+        # Review R1: the reserved value is never a choice; only an optional role may follow, with empty cells.
+        if harness == 'follows Builder':
+            if role not in ('Small builder', 'Fixer') or model or effort or flags:
+                return False
             continue
         if not (harness and model and effort) or not MODEL_FLAGS.fullmatch(flags):
             return False
@@ -277,7 +280,8 @@ def fleet_settings_usable(text):
     CI check; a merge rule; each with its Source line; no unfilled template
     placeholder. Empty headings or the bare template are not settings. A
     `## Models` table (contracts/models.v1.md, #1807) stands for the builder and
-    reviewer tables; when present it must be whole, and is read before them."""
+    reviewer tables; when present it must be whole, and older tables beside it
+    are ignored, as that contract's readers ignore them."""
     found = sections(text)
     reviewers = [name for name in found if name.startswith('Reviewer')]
     # Re-check R2: every builder table present counts, small-ticket builders included.
@@ -287,6 +291,7 @@ def fleet_settings_usable(text):
         if not models_usable(text, found['Models']):
             return False
         needed.insert(0, 'Models')
+        builders = reviewers = []  # Review R2 of #1947: readers ignore the older tables beside a Models table
     elif not reviewers:
         return False
     else:
