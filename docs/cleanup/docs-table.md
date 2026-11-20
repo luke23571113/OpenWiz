@@ -258,6 +258,52 @@ PY
 }
 ```
 
+## Reproduce the after (DS8)
+
+Run from the OpenWiz checkout at the after pin, with `$tok` and `<WizSkills>` as above; every check prints nothing wrong and exits 0.
+
+```sh
+# the after score: the after manifest below saved as after.json; the same harness and tokenizer as the before
+node <WizSkills>/tools/measure/static-count.cjs after.json "$tok/node_modules/js-tiktoken"
+! grep -nE '^\| (Tokens at ticket start|Markdown).* \| unknown \|$' docs/cleanup/docs-table.md   # no After is unknown
+
+# Markdown files and lines at a commit: Python splitlines() on each blob, as the before
+python3 -I - d5cf339f29d952853bcfcda6a5bcde0a026b131f <<'PY'
+import subprocess, sys
+paths = subprocess.run(['git', 'ls-tree', '-r', '--name-only', sys.argv[1]], capture_output=True, text=True).stdout.split('\n')
+blobs = [subprocess.run(['git', 'cat-file', 'blob', f'{sys.argv[1]}:{p}'], capture_output=True).stdout for p in paths if p.endswith('.md')]
+print(len(blobs), 'files', sum(len(b.decode().splitlines()) for b in blobs), 'lines')
+PY
+
+# where it went: a row still in the tree says nothing (or "not moved"); a gone row says where it went.
+# CLOSEDWIZ=<private checkout at main> also checks each moved file against its last OpenWiz blob, byte for byte.
+python3 -I - <<'PY'
+import re, os, subprocess, sys
+rows = re.findall(r'^\| `([^`]+\.md)` \| \d+ \| (\w+) \| .*? \| (.*?) \| \S+ \|$', open('docs/cleanup/docs-table.md').read(), re.M)
+cw = os.environ.get('CLOSEDWIZ')
+def git(*a, cwd='.'): return subprocess.run(['git', '-C', cwd, *a], capture_output=True, text=True).stdout.strip()
+bad = 0
+for p, a, w in rows:
+    here = os.path.exists(p)
+    if here:
+        ok = w == '' or w.startswith('not moved')
+    elif w.startswith('ClosedWiz'):
+        ok = w.startswith(f'ClosedWiz `private/openwiz-docs/{p}`')
+        if ok and cw:
+            last = git('log', '-1', '--format=%H', 'HEAD', '--', p)
+            ok = git('rev-parse', f'{last}^:{p}') == git('hash-object', f'private/openwiz-docs/{p}', cwd=cw)
+    else:
+        ok = w.startswith('deleted by')
+    if not ok:
+        bad += 1; print(f'{p}: {a}, {"present" if here else "gone"}, where: {w or "(empty)"}')
+print(f'where-it-went: {len(rows)} rows, {bad} wrong')
+sys.exit(1 if bad else 0)
+PY
+
+# the sweep's own lines: no present-tense terminal app left in the live-smoke comments
+! git grep -nE 'TUI always connects|would fall back to' -- tools/live-smoke/smoke.py
+```
+
 ## The table
 
 | Path | Lines | Action | Reason | Where it went | Owner |
