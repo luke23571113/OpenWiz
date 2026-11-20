@@ -6,11 +6,13 @@ Run: python3 -I adapters/cloudroom/test_driver.py   (Linux: the kit watches /pro
 """
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.dont_write_bytecode = True
@@ -109,10 +111,13 @@ class Driver(unittest.TestCase):
         for name, env in cases.items():
             with self.subTest(name):
                 self.assertEqual(self.call('start', START, **env)[0], 1)
-                self.assertFalse(os.listdir(self.env['OPENWIZ_CLOUDROOM_STATE'])
-                                 if os.path.isdir(self.env['OPENWIZ_CLOUDROOM_STATE']) else [])
+                for run in self.runs():  # a run kept so stop can reach what it may have started is never woken
+                    self.assertEqual(self.call('wake', {'run': run})[0], 1)
+                self.assertNotIn('tell', [c[1] for c in self.calls()] if os.path.exists(self.log) else [])
 
-
+    def runs(self):
+        state = self.env['OPENWIZ_CLOUDROOM_STATE']
+        return [f[:-5] for f in os.listdir(state) if f.endswith('.json')] if os.path.isdir(state) else []
     def test_start_that_cannot_save_its_run_never_says_retry(self):
         # catches: a start whose run can't be saved answering "retry", which starts a second builder for the
         # ticket while the first has no run id that `stop` can reach.
@@ -122,10 +127,65 @@ class Driver(unittest.TestCase):
         self.assertEqual((code, os.path.exists(self.log)), (1, False), 'it spawned with nowhere to keep the run')
         self.assertNotIn('retry', json.dumps(out))
         code, out = self.call('start', START, FAKE_ROOM_BREAK=state)
-        self.assertEqual((code, [c[1] for c in self.calls()]), (1, ['spawn']))
+        self.assertEqual((code, [c[1] for c in self.calls()]), (1, ['spawn', 'archive']), 'its thread runs on')
         self.assertIn('unknown', out['error'])
         self.assertIn('room-cli thread list', out['next'])
         self.assertNotIn('retry', json.dumps(out))
+
+    def test_a_start_it_could_not_finish_stays_starting(self):
+        # catches: a start whose final save fails leaving a live thread no `stop` can reach, or a record a later
+        # wake on the run id from the error uses to reach that thread (R5).
+        if os.geteuid() == 0:
+            self.skipTest('root ignores a read-only folder')
+        state = self.env['OPENWIZ_CLOUDROOM_STATE']
+        code, out = self.call('start', START, FAKE_ROOM_READONLY=state, FAKE_ROOM_REFUSE='archive')
+        os.chmod(state, 0o700)
+        self.assertEqual(code, 1, out)
+        self.assertIn('unknown', out['error'])
+        self.assertNotIn('retry', json.dumps(out))
+        self.assertRegex(json.dumps(out), r'run-[0-9a-f]{12}', 'the error names no run for stop to reach')
+        run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(out)).group()}
+        self.assertEqual(self.call('wake', run)[0], 1)
+        self.assertNotIn('tell', [c[1] for c in self.calls()], 'a wake reached the thread of a run never started')
+        self.assertEqual(self.call('stop', run), (0, dict(run, stopped=True)))
+        self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'], 'stop did not reach the thread')
+
+    def test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake(self):
+        # catches: a stop whose save fails answering "retry" and leaving a live record that a later wake uses to
+        # reach the archived thread (R3).
+        code, out = self.call('start', START)
+        os.mkdir(os.path.join(self.env['OPENWIZ_CLOUDROOM_STATE'], out['run'] + '.json.new'))
+        code, err = self.call('stop', out)
+        self.assertEqual(code, 1, err)
+        self.assertNotIn('retry', json.dumps(err))
+        self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
+        self.assertEqual(self.call('wake', out)[0], 1)
+        self.assertNotIn('tell', [c[1] for c in self.calls()], 'a wake reached the stopped run')
+
+    def test_a_stop_waits_for_a_wake_in_progress(self):
+        # catches: a stop that archives the thread while a wake is still delivering to it, so the wake answers
+        # woke for a run that has ended (the per-run lock).
+        code, out = self.call('start', START)
+        hold = os.path.join(self.folder, 'hold')
+        wake = subprocess.Popen([sys.executable, DRIVER, 'wake'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                env=dict(self.env, FAKE_ROOM_HOLD=hold))
+        wake.stdin.write(json.dumps(out).encode())
+        wake.stdin.close()
+        for _ in range(3000):  # until the wake is inside its tell
+            if os.path.exists(hold + '.held'):
+                break
+            time.sleep(0.01)
+        stop = subprocess.Popen([sys.executable, DRIVER, 'stop'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                env=self.env)
+        stop.stdin.write(json.dumps(out).encode())
+        stop.stdin.close()
+        try:  # without a lock the stop finishes now; with one it waits for the wake
+            stop.wait(3)
+        except subprocess.TimeoutExpired:
+            pass
+        open(hold, 'w').close()
+        self.assertEqual([wake.wait(30), stop.wait(30)], [0, 0])
+        self.assertEqual([c[1] for c in self.calls()], ['spawn', 'tell', 'told', 'archive'])
 
 
 if __name__ == '__main__':
