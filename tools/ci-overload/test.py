@@ -388,7 +388,7 @@ class Scheduled(unittest.TestCase):
         for name in ('skills/launch-fleet/scripts/loop.sh',
                      'skills/launch-fleet/scripts/fleet.sh',
                      'skills/launch-fleet/scripts/records.py',
-                     'skills/plan-graph/revision.sh', 'tools/ci-overload/alarm.py'):
+                     'skills/to-tickets/revision.sh', 'tools/ci-overload/alarm.py'):
             target = self.install / name.replace('tools/ci-overload/', 'skills/launch-fleet/scripts/carried/')
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(repo / name, target)

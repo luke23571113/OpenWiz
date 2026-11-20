@@ -313,7 +313,7 @@ BOARD_MEASURE_KEYS = HISTORY_KEYS[6:]
 BASELINE_NULL = ('file_links', 'unlabelled_links', 'ready_stock', 'builders_running', 'fed_ratio', 'low_stock')
 CREDIT_KEYS = ['at', 'credits', 'credits_limit', 'extra_credits', 'extra_credits_total']
 SEED_KEYS = ['at', 'extra_credits', 'only']
-CHECK_LINKS = ROOT / 'skills/plan-graph/check-links.sh'
+CHECK_LINKS = ROOT / 'skills/to-tickets/check-links.sh'
 
 
 def board_strict(line):

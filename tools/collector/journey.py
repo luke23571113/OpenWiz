@@ -951,7 +951,7 @@ REVIEW_RECORD = re.compile(r'launch-fleet: (review starting|review started|re-ch
 FIXED = re.compile(r'(?:- )?(R[1-9][0-9]*) fixed at ([0-9a-f]{7,40})\b')
 DISPUTED = re.compile(r'(?:- )?R[1-9][0-9]* disputed\b')
 DEFERRAL = re.compile(r'investigation continues|still investigating|no decision|pending|deferred', re.I)
-REVISION = HERE.parent.parent / 'skills' / 'plan-graph' / 'revision.sh'
+REVISION = HERE.parent.parent / 'skills' / 'to-tickets' / 'revision.sh'
 FINGERPRINT = re.compile(r'^Fingerprint: `([0-9a-f]{64})`$', re.M)
 CORRECTED = ('resolved at', 'withdrawn', 'follow-up')  # a finding listed this way needs no fix
 ZERO = '0' * 40
@@ -1011,7 +1011,7 @@ def intersect(a, b):
 
 
 def current_fingerprint(repo, spec):
-    """plan-graph's own revision.sh (read-only gh reads), hashed as its approvals record; None if unreadable."""
+    """to-tickets's own revision.sh (read-only gh reads), hashed as its approvals record; None if unreadable."""
     try:
         p = subprocess.run(['sh', str(REVISION), str(spec)], capture_output=True, timeout=120,
                            env={**os.environ, 'GH_REPO': repo})
@@ -1183,7 +1183,7 @@ def collect_stage_waits(c, doc, issues, specs, pulls, inventory, read_at):
         history, current, blockers = stage_reads(c, n)
         times += [at for at, _, _ in history]
         # The spec's latest plan approval: unedited, naming this ticket, and recording the fingerprint of
-        # plan-graph's current revision. Anything else is Unknown, never an older or a guessed approval.
+        # to-tickets's current revision. Anything else is Unknown, never an older or a guessed approval.
         latest = max((x for x in (specs[t['spec']]['comments'] if t['spec'] in specs else [])
                       if first_line(x['body']).startswith('**Plan graph approved')), key=lambda x: x['at'], default=None)
         if latest is None or latest['edited'] or not re.search(rf'#{n}(?![0-9])', latest['body']):
