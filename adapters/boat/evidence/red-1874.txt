@@ -87,3 +87,19 @@ FAIL: test_kit_passes_all_five (__main__.Boat.test_kit_passes_all_five)
 FAIL: test_simultaneous_wakes_start_one_turn (__main__.Boat.test_simultaneous_wakes_start_one_turn)
 Ran 12 tests in 23.508s
 FAILED (failures=7)
+
+# Red run (#1876 ruling A): the stopped-refusal test, now asserting its reason, at 8a2089c (main's driver, the live nested fixture).
+F
+======================================================================
+FAIL: test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it (__main__.Boat.test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 218, in test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it
+    self.assertIn('is stopped, not running', err['error'])  # its reason: boat's state, read where boat puts it
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'is stopped, not running' not found in 'the sandbox of run run-82185439e42b is unknown, not running, so the run is not woken'
+
+----------------------------------------------------------------------
+Ran 1 test in 0.466s
+
+FAILED (failures=1)

@@ -215,6 +215,7 @@ class Boat(unittest.TestCase):
         subprocess.run(['boat', 'stop', sid, '--json'], env=self.env, capture_output=True, check=True)
         code, err = self.driver('wake', started)
         self.assertEqual((code, self.sandboxes(), self.notes()), (1, {sid: 'stopped'}, [(1, 'started the throwaway ticket')]))
+        self.assertIn('is stopped, not running', err['error'])  # its reason: boat's state, read where boat puts it
         self.assertIn('start a new run', err['next'])
         for _ in range(2):  # stopping a stopped run answers again
             self.assertEqual(self.driver('stop', started), (0, dict(started, stopped=True)))
