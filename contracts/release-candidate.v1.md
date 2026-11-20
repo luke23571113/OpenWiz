@@ -89,7 +89,11 @@ unverified caller-supplied job receipt establishes compiled provenance.
 
 The runtime's files/modes are compared to the selected public Git tree's complete
 tracked skill/runtime selection (`tracked-tree`); the receipt identifies that
-selection and any reviewed deterministic build transformations. Hash the
+selection and any reviewed deterministic build transformations. The selection
+pairs each runtime path with its tracked path; the host drivers and driver kit
+keep theirs, so `runtime/adapters/<host>/<file>` is `adapters/<host>/<file>` and
+`runtime/kernel/<file>` is `kernel/<file>` at the source commit
+([install contract](install.v1.md), #1699). Hash the
 runtime payload as canonical JSON of its complete path-sorted inventory of
 `{path, mode, bytes, sha256}` rows, using install-relative paths. Native payload
 hashes are the program file hashes. Build receipts bind these hashes, source,
