@@ -35,6 +35,21 @@ def broken(state, run, *rest):
 t.prompt = broken
 t.main()
 '''
+# A driver whose `prompt` raises an error the driver doesn't expect (not Refused), before it runs `boat prompt`
+# or once the turn has begun, as an unexpected boat answer did on the live run (L2).
+RAISES = '''import importlib.machinery, importlib.util, os, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_loader('boat', importlib.machinery.SourceFileLoader('boat', %r))
+t = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(t)
+prompt = t.prompt
+def broken(*args):
+    if os.environ['RAISE'] == 'after':
+        prompt(*args)
+    raise KeyError('planted')
+t.prompt = broken
+t.main()
+'''
 # A driver whose wake pauses once it reads the sandbox's state, until the file named by RELEASE exists.
 PAUSES_IN_WAKE = '''import importlib.machinery, importlib.util, os, sys, time
 sys.dont_write_bytecode = True
@@ -282,6 +297,25 @@ class Boat(unittest.TestCase):
                 self.assertIn('stop it again', err['next'])
                 self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
                 self.assertEqual(self.driver('wake', out)[0], 1)
+
+    def test_an_unexpected_error_leaves_nothing_running(self):
+        # catches: an error that isn't Refused (a KeyError on the live run) skipping the cleanup once the sandbox
+        # exists, leaving the sandbox running with its agent working and the local turn alive (L2).
+        program = self.wrapper('raises', RAISES)
+        for when in ('before', 'after'):
+            with self.subTest(command='start', when=when):
+                code, err = self.driver('start', REQUEST, program=program, RAISE=when)
+                self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
+                self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
+                self.assertEqual(set(self.sandboxes().values()), {'stopped'}, 'its sandbox still runs')
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
+        open(self.hold, 'w').close()
+        before = set(self.marked())  # the first turn's worker still runs
+        code, err = self.driver('wake', out, program=program, RAISE='after')
+        self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
+        self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the woken turn still runs')
 
 
 if __name__ == '__main__':

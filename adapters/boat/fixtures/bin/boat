@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """A synthetic `boat` CLI for the boat driver's tests. Synthetic assumptions, not observed on a live
-account: the JSON Lines shapes below follow docs.boat.dev's CLI reference (2026-11-19), and the
-`state` field of `boat info --json` is assumed.
+account, except where marked: the JSON Lines shapes below follow docs.boat.dev's CLI reference
+(2026-11-19). Observed on the owner's live kit run (boat CLI 1.0.103): `boat prompt --json`'s queued
+line nests its ids under `data`, its turn ends with an `{"event": "chat", "final": true}` line, and
+`boat info --json` carries a top-level `state`.
 
 It keeps its sandboxes in the JSON file FAKE_BOAT_STATE. `boat prompt` plays the agent: a new
 conversation posts one builder status note in the local tracker KIT_TRACKER, and each later prompt
@@ -90,7 +92,8 @@ def prompt(args):
         return cid, box['interrupts']
 
     cid, interrupts = update(queue)
-    say(event='queued', conversationId=cid)
+    # The live shape (boat CLI 1.0.103): the ids are nested under `data`.
+    say(data={'conversationId': cid, 'promptId': 'p%d' % os.getpid(), 'status': 'queued'}, event='queued')
     # The turn leaves a detached worker in its own session behind, as a CLI that starts a helper might
     # (with FAKE_CLEAN, in a clean environment that carries no inherited mark), and logs
     # `<prompt pid> <worker pid> <conversation> first|woken` to FAKE_TURNS.
@@ -104,10 +107,10 @@ def prompt(args):
     while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
         box = update(lambda s: s['sandboxes'][sid])
         if box['state'] != 'running' or box['interrupts'] != interrupts:
-            say(event='interrupted', conversationId=cid)
+            say(data={'conversationId': cid, 'status': 'interrupted'}, event='chat', final=True)
             return
         time.sleep(0.05)
-    say(event='finished', conversationId=cid)
+    say(data={'conversationId': cid, 'status': 'finished'}, event='chat', final=True)
 
 
 def main():
