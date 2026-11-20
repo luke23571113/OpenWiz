@@ -106,7 +106,9 @@ def manifest_at(path, checksum, target, selected=False):
         require(path not in assets and not any(path.startswith(p + '/') or p.startswith(path + '/') for p in assets),
                 'duplicate or overlapping asset')
         require(digest(item['sha256']) and type(item['bytes']) is int and item['bytes'] >= 0, 'invalid asset identity')
-        require(item['mode'] == ('0700' if path in programs or path.endswith('.sh') else '0600'), 'invalid asset mode')
+        require(item['mode'] == ('0700' if path in programs or path.endswith('.sh')  # #1699: and a host driver
+                                 or re.fullmatch(r'runtime/adapters/[a-z0-9-]+/driver', path) else '0600'),
+                'invalid asset mode')
         assets[path] = item
     required = LEGACY_REQUIRED if legacy else REQUIRED
     layouts = (required, previous(required)) if selected else (required,)
