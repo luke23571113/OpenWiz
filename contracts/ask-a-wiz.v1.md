@@ -1,0 +1,331 @@
+# Ask a Wiz v1 (`openwiz.ask-a-wiz.v1`)
+
+FA1 of spec #1898 (0.1.1), its contract-first ticket (#1899). This contract
+fixes openwiz.dev's "Ask a Wiz..." FAQ row end to end: the request, the
+streamed answer and every refusal, the exact not-covered answer, the rate
+limit, the daily cap, the docs index the answers draw from, the names of the
+secret, the settings and the counter store, the off switch, and what is
+stored. FA2 (#1900) builds the index, FA3 (#1901) the function, FA4 (#1902)
+the row, and FA5 (#1903) is Jake setting the secret, the store and the cap.
+They build to this contract.
+
+**This contract grants nothing.** It sets no secret, binds no store, calls no
+model, turns no switch on and spends nothing. A fixture or test that passes
+here proves the contract is consistent, never that any of it is live. Every
+fixture is synthetic: its questions, answers, passages, visitors and counter
+values are made up, and its upstream is a fake OpenRouter.
+
+## The pin
+
+The JSON block below is the machine-readable pin.
+[`fixtures/ask-a-wiz/test_fixtures.py`](fixtures/ask-a-wiz/test_fixtures.py)
+checks every fixture against it. The prose explains it. Where they disagree,
+the contract is wrong and must be fixed.
+
+```json
+{
+  "schema": "openwiz.ask-a-wiz.v1",
+  "authority": {"secret": false, "store": false, "model_call": false, "switch": false, "spend": false},
+  "endpoint": {"path": "/api/ask", "probe": "GET", "ask": "POST"},
+  "names": {
+    "secret": "OPENROUTER_API_KEY",
+    "store": "ASK_A_WIZ_COUNTERS",
+    "store_kind": "d1",
+    "switch": "ASK_A_WIZ",
+    "switch_on": "on",
+    "model": "ASK_A_WIZ_MODEL",
+    "daily_cap": "ASK_A_WIZ_DAILY_CAP",
+    "index_path": "/ask-index.json"
+  },
+  "request": {
+    "content_type": "application/json",
+    "keys": ["question"],
+    "max_body_bytes": 4096,
+    "max_question_chars": 300,
+    "min_question_chars": 1,
+    "same_origin": true
+  },
+  "response": {
+    "content_type": "application/x-ndjson; charset=utf-8",
+    "cache_control": "no-store",
+    "escaped": {"<": "\\u003c", ">": "\\u003e", "&": "\\u0026", " ": "\\u2028", " ": "\\u2029"}
+  },
+  "events": {
+    "text": ["type", "text"],
+    "sources": ["type", "sources"],
+    "done": ["type"],
+    "not_covered": ["type", "text", "links"],
+    "refused": ["type", "reason", "message"]
+  },
+  "max_sources": 6,
+  "source_url_prefixes": ["https://openwiz.dev/", "https://github.com/openwizdev/"],
+  "not_covered": {
+    "text": "The OpenWiz docs don't cover that yet, so I won't guess. Book a call or open a GitHub issue, and we'll answer it.",
+    "links": [
+      {"label": "Book a call", "href": "https://openwiz.dev/team/#book"},
+      {"label": "GitHub issues", "href": "https://github.com/openwizdev/openwiz/issues"}
+    ],
+    "sentinel": "NOT_COVERED"
+  },
+  "refusals": {
+    "bad_request": {"status": 400, "message": "That question couldn't be read. Try again."},
+    "too_long": {"status": 413, "message": "That question is too long. Keep it under 300 characters."},
+    "rate_limited": {"status": 429, "message": "That's a lot of questions at once. Try again in a few minutes."},
+    "daily_cap": {"status": 429, "message": "Ask a Wiz has answered all it can for today. Try again tomorrow."},
+    "upstream_error": {"status": 502, "message": "Ask a Wiz couldn't answer just now. Try again."},
+    "unavailable": {"status": 503, "message": "Ask a Wiz isn't available right now."}
+  },
+  "rate_limit": {"per_visitor": 10, "window": "utc_hour"},
+  "daily_cap": {"counts": "model_calls", "day": "utc", "min": 1, "max": 100000, "unset_or_invalid": 0},
+  "upstream": {
+    "url": "https://openrouter.ai/api/v1/chat/completions",
+    "stream": true,
+    "max_tokens": 500,
+    "temperature": 0,
+    "max_passages": 6,
+    "max_passage_chars": 1200
+  },
+  "index": {"schema": "openwiz.ask-a-wiz.index.v1", "keys": ["schema", "sources", "passages"], "max_bytes": 2000000},
+  "stored": {
+    "tables": {"ask_counters": ["day", "key", "count"]},
+    "keys": ["cap", "salt:<64 hex>", "visitor:<32 hex>:<hour>"],
+    "nothing_else": true
+  },
+  "fixtures": [
+    "answer", "answer-escaped", "not-covered", "not-covered-model", "too-long", "rate-limited",
+    "daily-cap", "upstream-error", "upstream-error-midstream", "bad-request", "unavailable",
+    "off", "probe-on", "probe-off"
+  ]
+}
+```
+
+## The names Jake uses
+
+All of them belong to the openwiz.dev Cloudflare Pages project. FA5 (#1903)
+sets the first two and the cap; Jake turns the switch on after FA6's go.
+
+| Name | Kind | Holds |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | Pages secret (encrypted) | The OpenRouter key, and nothing else |
+| `ASK_A_WIZ_COUNTERS` | D1 database binding | The counter store (see "What is stored") |
+| `ASK_A_WIZ_MODEL` | Pages variable | The OpenRouter model id, such as a cheap chat model's id |
+| `ASK_A_WIZ_DAILY_CAP` | Pages variable | The most model calls a UTC day may make, an integer from 1 to 100000 |
+| `ASK_A_WIZ` | Pages variable | The off switch: exactly `on` turns Ask a Wiz on; anything else, or unset, is off |
+
+The key is read only as `env.OPENROUTER_API_KEY` inside the function, and is
+sent only in the `Authorization` header of the upstream call. It never
+appears in a response, an event, a log line, an error, the index, a fixture,
+the repository, chat, an issue or a pull request. The function writes no log
+line at all.
+
+**The switch is off by default.** The row ships behind it. Production keeps it
+unset until Jake's preview go (FA6, #1904); a preview deploy may set it to
+`on`. When it is off, the function answers every request `404` with no
+body, and the row does not appear.
+
+## The probe: `GET /api/ask`
+
+The row asks once, on page load, whether Ask a Wiz is on.
+
+- **On** (`ASK_A_WIZ` is `on`): `200`, `Cache-Control: no-store`, the JSON
+  `{"schema": "openwiz.ask-a-wiz.v1", "enabled": true, "max_question_chars": 300}`.
+- **Off:** `404`, no body. The row stays hidden; the FAQ shows only its
+  hand-written rows.
+
+The probe reads no secret, no store and no counter. It says only that the
+switch is on; a missing secret, model or store shows as `unavailable` on the
+first question.
+
+## The request: `POST /api/ask`
+
+- `Content-Type: application/json`; the body is at most 4096 bytes and is a
+  JSON object with exactly one key, `question`, a string.
+- The question is trimmed of white space at both ends, then counted in Unicode
+  code points. It must be 1 to 300 of them.
+- The request's `Origin` header must equal the origin of the request's own
+  URL (so production and a preview deploy both work, and no other site does).
+- Anything else (another method, content type or key, bad JSON, a body over
+  4096 bytes, a missing or foreign `Origin`, an empty question) is
+  `bad_request`. A question of 301 or more code points is `too_long`.
+
+## The answer stream
+
+Every `POST` response is `Content-Type: application/x-ndjson; charset=utf-8`
+with `Cache-Control: no-store`: one JSON object per line, each line ending in
+`\n`, each object an **event** with a `type`. Each event has exactly the keys
+the pin lists for its type.
+
+| Event | Keys | Means |
+| --- | --- | --- |
+| `text` | `type`, `text` | The next piece of the answer, a non-empty plain-text string. Pieces join with nothing between them |
+| `sources` | `type`, `sources` | The pages the answer drew on: 1 to 6 `{"title", "url"}` objects, each URL once and under `https://openwiz.dev/` or `https://github.com/openwizdev/` |
+| `done` | `type` | The answer is complete |
+| `not_covered` | `type`, `text`, `links` | The docs don't cover the question: exactly the pin's text and links |
+| `refused` | `type`, `reason`, `message` | A refusal, with exactly its reason's message from the pin |
+
+A stream is exactly one of these shapes:
+
+1. **An answer:** status `200`; one or more `text`, then one `sources`, then
+   `done`.
+2. **Not covered:** status `200`; one `not_covered` and nothing else.
+3. **A refusal before any text:** the reason's status; one `refused` and
+   nothing else.
+4. **An upstream error mid-answer:** status `200`; one or more `text`, then
+   one `refused` with reason `upstream_error`. No `sources`, no `done`.
+
+The last event is always `done`, `not_covered` or `refused`. A stream that
+ends without one of them (the visitor stopped it, or the connection dropped)
+is incomplete; the row offers retry and shows nothing it received as a
+finished answer.
+
+**Plain text, escaped.** Every string in every event is plain text, never
+HTML or Markdown to be rendered. The function writes `<`, `>`, `&`, U+2028
+and U+2029 inside JSON strings as `<`, `>`, `&`, ` ` and
+` `, so no response body ever holds one of those characters raw. The row
+sets text only as text (never through `innerHTML`), and renders links only
+from the not-covered event, whose hrefs must equal the pin's.
+
+## The not-covered answer
+
+When the docs don't cover a question the answer says so, and never guesses:
+
+> The OpenWiz docs don't cover that yet, so I won't guess. Book a call or open
+> a GitHub issue, and we'll answer it.
+
+with two links, in this order: **Book a call** to
+`https://openwiz.dev/team/#book`, and **GitHub issues** to
+`https://github.com/openwizdev/openwiz/issues`.
+
+It is given in two cases:
+
+- **No supporting passage.** The index's keyword scoring finds no passage
+  with a score above zero. The function calls no model, and the daily cap is
+  not touched.
+- **The model says so.** The model is told to answer only from the passages
+  it is given and, when they don't answer the question, to reply with
+  exactly `NOT_COVERED`. The function holds back the answer's first 16
+  characters; if the answer, trimmed, starts with `NOT_COVERED`, it sends the
+  not-covered event and nothing else. The sentinel itself never reaches the
+  visitor.
+
+## Refusals
+
+| Reason | Status | Message | When |
+| --- | --- | --- | --- |
+| `bad_request` | 400 | That question couldn't be read. Try again. | The request breaks "The request" |
+| `too_long` | 413 | That question is too long. Keep it under 300 characters. | 301 or more code points |
+| `rate_limited` | 429 | That's a lot of questions at once. Try again in a few minutes. | The visitor's hour is used up |
+| `daily_cap` | 429 | Ask a Wiz has answered all it can for today. Try again tomorrow. | The day's model calls are used up, or the cap is unset or invalid |
+| `upstream_error` | 502, or 200 mid-answer | Ask a Wiz couldn't answer just now. Try again. | OpenRouter refused, failed, timed out or sent something unreadable |
+| `unavailable` | 503 | Ask a Wiz isn't available right now. | The switch is on but the secret, the model, the store or the index is missing |
+
+A `429` carries a `Retry-After` header: the whole seconds until the visitor's
+UTC hour ends (`rate_limited`) or the UTC day ends (`daily_cap`). No refusal
+names a provider, a URL, a status from upstream, a setting's value or the
+key.
+
+### The order of checks
+
+The function checks in this order, and stops at the first that fails:
+
+1. The switch (off: `404`, no body).
+2. The configuration (`unavailable`).
+3. The request (`bad_request`), then its length (`too_long`).
+4. The visitor's rate limit (`rate_limited`). A question that passes counts,
+   whatever its outcome.
+5. The passages (none: `not_covered`, no model call).
+6. The daily cap (`daily_cap`). A question that passes counts one model call.
+7. The model call (`upstream_error`, the model's `NOT_COVERED`, or the answer).
+
+## The rate limit and the daily cap
+
+- **Rate limit:** at most 10 questions per visitor per UTC clock hour. The
+  visitor is the request's `CF-Connecting-IP`, kept only as a hash (see "What
+  is stored"). The 11th question in the same hour is `rate_limited`.
+- **Daily cap:** at most `ASK_A_WIZ_DAILY_CAP` model calls per UTC day, across
+  all visitors. An unset, non-integer or out-of-range value counts as `0`, so
+  every question that reaches step 6 is `daily_cap`: it fails closed. A call
+  counts when it is made, before its answer, so the cap is never passed, even
+  by questions asked at the same moment (the store's update is atomic: one
+  `UPDATE ... RETURNING` per count).
+- **What a day can spend:** every call sends at most 6 passages of at most
+  1200 characters and asks for at most 500 output tokens, so a day spends at
+  most the cap times one such call's price. FA5 records the cap value Jake
+  sets.
+
+## The model call
+
+`POST https://openrouter.ai/api/v1/chat/completions` with
+`Authorization: Bearer <OPENROUTER_API_KEY>`, `model` from `ASK_A_WIZ_MODEL`,
+`stream: true`, `max_tokens: 500` and `temperature: 0`. The messages hold the
+system instruction (answer only from the passages; otherwise reply exactly
+`NOT_COVERED`), the chosen passages and the question. Tests use a fake
+OpenRouter only; no test or fixture calls the real one.
+
+## The docs index
+
+FA2 builds it into the site as `/ask-index.json`, a public static file holding
+only public docs and site pages. The function reads it through the site's own
+assets. Its form:
+
+```json
+{
+  "schema": "openwiz.ask-a-wiz.index.v1",
+  "sources": [{"title": "Synthetic page", "url": "https://openwiz.dev/synthetic/"}],
+  "passages": [{"source": 0, "text": "Synthetic passage text."}]
+}
+```
+
+- `sources`: one or more `{"title", "url"}`, each URL once, under the two
+  prefixes above. `title` is 1 to 200 characters.
+- `passages`: one or more `{"source", "text"}`. `source` is an index into
+  `sources`; `text` is 1 to 1200 characters of plain text.
+- The whole file is at most 2,000,000 bytes, with no other keys.
+
+A `sources` event lists the sources of the passages sent to the model, each
+once, in the order first used.
+
+## What is stored
+
+Only the daily counters, in the `ASK_A_WIZ_COUNTERS` D1 database, in one
+table: `ask_counters (day TEXT, key TEXT, count INTEGER, PRIMARY KEY (day, key))`.
+The function creates it if it is missing. `day` is the UTC date, `YYYY-MM-DD`.
+`key` is one of:
+
+| Key | Count |
+| --- | --- |
+| `cap` | The day's model calls |
+| `salt:<64 hex digits>` | Always `0`: the row only holds the day's salt, 32 random bytes as 64 lower-case hex digits, made on the day's first question |
+| `visitor:<hash>:<hour>` | One visitor's questions in that UTC hour (`00` to `23`) |
+
+`<hash>` is the first 32 lower-case hex digits of SHA-256 of `<salt>:<ip>`.
+On the day's first write, every row of an earlier day is deleted, its salt
+included, so yesterday's hashes can no longer be linked to anyone.
+
+Nothing else is stored or logged: no question, answer, IP address, user
+agent, cookie, header or timestamp beyond the day and hour. The function sets
+no cookie.
+
+## Fixtures
+
+[`fixtures/ask-a-wiz/`](fixtures/ask-a-wiz/) holds one file per case named in
+the pin, plus `index.json` (a valid index) and `store.json` (the store after
+some synthetic questions). Each case is a JSON object:
+
+| Key | What |
+| --- | --- |
+| `case` | Its name, the file's name without `.json` |
+| `now` | The synthetic UTC time the case runs at, ISO 8601 |
+| `request` | `{"method", "headers", "body"}`, sent to `https://openwiz.dev/api/ask`; `body` is the exact request body string, or `null` |
+| `settings` | The Pages settings and bindings the case runs with: the secret as the synthetic value `fake-openrouter-key`, a bound store as `"bound"`, an unset one left out |
+| `passages` | Optional, `false` when no index passage scores above zero for the question |
+| `store` | The counter rows before the request, as `{"day", "key", "count"}` objects |
+| `upstream` | What the fake OpenRouter does: `null` (never called), `{"chunks": [...]}` (it streams these content pieces), or `{"fails": true}` (it errors, before or after `after_chunks` pieces) |
+| `response` | `{"status", "headers", "body"}`; `body` is the exact response body string (the NDJSON lines), or `null` |
+
+`test_fixtures.py` checks every case: the shape of each event and stream,
+the statuses and messages, the escaping, the not-covered text and links, the
+store's keys, that the synthetic key never appears in a response, and that
+the index fixture is valid. FA3 replays the cases against the function with a
+fake OpenRouter and a fake counter store; FA4 replays their bodies as fake
+streams.
