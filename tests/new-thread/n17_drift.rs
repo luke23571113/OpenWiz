@@ -14,7 +14,7 @@ use crate::support::*;
 
 #[test]
 fn n17_drift_affected_contracts_preserve_original_cases() {
-    let cases: [(&str, fn()); 3] = [
+    let cases: [(&str, fn()); 4] = [
         (
             "an_unexpected_catalogue_gives_no_options_and_no_call",
             an_unexpected_catalogue_gives_no_options_and_no_call,
@@ -26,6 +26,10 @@ fn n17_drift_affected_contracts_preserve_original_cases() {
         (
             "an_untested_or_unreadable_version_is_reported_never_a_gate",
             an_untested_or_unreadable_version_is_reported_never_a_gate,
+        ),
+        (
+            "the_schema_says_new_has_its_own_tested_version",
+            the_schema_says_new_has_its_own_tested_version,
         ),
     ];
     for (name, proof) in cases {
@@ -132,4 +136,13 @@ fn an_untested_or_unreadable_version_is_reported_never_a_gate() {
             assert!(!report.gaps.is_empty(), "{version:?}: a gap");
         }
     }
+}
+
+// Keeper for #1016: genuine string-valued reports alone cannot catch a
+// widened schema that also accepts numbers or null for tested_version.
+fn the_schema_says_new_has_its_own_tested_version() {
+    assert_eq!(
+        schema()["$defs"]["source"]["properties"]["tested_version"],
+        serde_json::json!({"type": "string"})
+    );
 }
