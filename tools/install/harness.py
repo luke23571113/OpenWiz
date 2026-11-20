@@ -108,6 +108,18 @@ def place(folder, skills, names, source):
             shutil.rmtree(old)
 
 
+def guard_parent(base, plain):
+    """A present harness behind a linked or non-folder parent is refused with the folder to fix."""
+    try:
+        installer.path_guard(base.parent)
+    except installer.Refused:
+        culprit = next((p for p in (base.parent, *base.parent.parents)
+                        if p.is_symlink() or (p.exists() and not p.is_dir())), base.parent)
+        raise installer.Refused(f'{culprit} is a link or not a folder, so OpenWiz will not write {plain}\'s skills '
+                                f'through it; nothing was changed. Make {culprit} a real folder, or move {base} away '
+                                f'if you don\'t use {plain}, then run this again.') from None
+
+
 def install_skills(build, value, root, home, codex_home=None):
     """The step's result and exit code (0 done, 5 refused with nothing changed)."""
     skills = build / 'runtime/skills'
@@ -121,9 +133,12 @@ def install_skills(build, value, root, home, codex_home=None):
         row = {'id': harness, 'path': str(base / 'skills')}
         try:
             installer.require(base.is_absolute(), f'{base} is not an absolute folder')
-            installer.path_guard(base.parent)
-            present = owned_dir(base)
+            try:  # #1423: the harness's own folder first, so a linked parent of an absent harness blocks nothing
+                present = owned_dir(base)
+            except NotADirectoryError:
+                present = False
             if present:
+                guard_parent(base, plain)
                 check(base / 'skills', names)
                 folders.append(base / 'skills')
             row.update(state='installed' if present else 'absent',
