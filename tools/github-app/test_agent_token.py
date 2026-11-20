@@ -402,7 +402,7 @@ class Fallback(Helper):
 
 
 class Review(Helper):
-    """The review's findings R1 to R4 and R6 to R9 on #1916, each red first."""
+    """The review's findings R1 to R4 and R6 to R10 on #1916, each red first."""
     REQ = REQ
 
     def shell(self, script, *extra, **env):
@@ -563,6 +563,39 @@ class Review(Helper):
         self.assertTrue(trace.is_file(), "git traced")
         self.assertEqual(set(github.seen), {sha(f"x-access-token:{TOKEN}")})
         self.assert_never_exposed(ran)
+
+    def test_r10_ssh_never_signs_git_in_as_the_owner(self):
+        # catches: an SSH remote, an owner's insteadOf rewrite to SSH, or an ext:: transport
+        # starting the owner's ssh (and key) inside a run where the App identity was chosen.
+        self.answers(answer())
+        self.start()
+        ssh_log = self.root / "owner-ssh.log"
+        fake_ssh = self.root / "owner-ssh"
+        fake_ssh.write_text(f'#!/bin/sh\necho "$@" >> "{ssh_log}"\nexit 1\n')
+        fake_ssh.chmod(0o755)
+        (self.home / ".gitconfig").write_text(
+            f'[url "ssh://git@github.com/"]\n\tinsteadOf = https://github.com/\n'
+            f'[core]\n\tsshCommand = {fake_ssh}\n')
+        ext = f"ext::{fake_ssh} git@github.com %S {REPO}"
+        cases = {
+            "insteadOf": (["git", "ls-remote", URL], 1),
+            "scp-like remote": (["git", "ls-remote", f"git@github.com:{REPO}"], 1),
+            "command-line sshCommand": (["git", "-c", f"core.sshCommand={fake_ssh}", "ls-remote",
+                                         f"ssh://git@github.com/{REPO}"], 1),
+            "GIT_SSH_COMMAND changed": (["env", f"GIT_SSH_COMMAND={fake_ssh}", "git", "ls-remote",
+                                         f"git@github.com:{REPO}"], 1),
+            "ext transport": (["git", "-c", "protocol.ext.allow=always", "ls-remote", ext], 0),
+            "GIT_ALLOW_PROTOCOL widened": (["env", "GIT_ALLOW_PROTOCOL=ext", "git", "-c",
+                                            "protocol.ext.allow=always", "ls-remote", ext], 1),
+        }
+        for name, (args, notes) in cases.items():
+            with self.subTest(name):
+                ssh_log.unlink(missing_ok=True)
+                ran = self.helper("run", *self.REQ, "--", *args)
+                self.assertFalse(ssh_log.exists(), "the owner's ssh never starts")
+                self.assertNotEqual(ran.returncode, 0)
+                self.assertEqual(ran.stderr.count(WITHHELD), notes, ran.stderr)
+                self.assert_never_exposed(ran)
 
     def test_r7_a_later_owner_helper_never_authenticates_git(self):
         # catches: the helper declining for a later helper, so git silently signs in as the owner.
