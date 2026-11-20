@@ -319,33 +319,32 @@ def read_admission(text, b, f):
 def admit(issue, comments, case, tmp):
     """The admission itself, in tmp: the scratch repository's Git, then `ticket.py read`, each with only
     PATH from this check's environment."""
-    if True:
-        caller = dict(os.environ)
-        (tmp / 'bin').mkdir()
-        gh = tmp / 'bin' / 'gh'
-        gh.write_text(f'#!/bin/sh\nexec {shutil.which("python3")} -I {FAKE_GH} "$@"\n')
-        gh.chmod(0o755)
-        (tmp / 'world.json').write_text(json.dumps({'issues': {'7': issue}, 'comments': {'7': comments}}))
-        repo = tmp / 'repo'
-        (repo / 'docs' / 'agents').mkdir(parents=True)
-        (repo / 'docs' / 'agents' / 'fleet.md').write_text(text_of(HERE / case['fleet']) + '\n')
-        # Git and ticket.py see only PATH, an empty home and the fake gh's world: no caller config, signer or hook.
-        (tmp / 'home').mkdir()
-        (tmp / 'no-hooks').mkdir()
-        env = {'PATH': f'{tmp / "bin"}{os.pathsep}{caller.get("PATH", os.defpath)}', 'HOME': str(tmp / 'home'),
-               'FAKE_GH_WORLD': str(tmp / 'world.json'), 'GIT_CONFIG_GLOBAL': os.devnull,
-               'GIT_CONFIG_SYSTEM': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1'}
-        git = ['git', '-C', str(repo), '-c', 'user.name=synthetic', '-c', 'user.email=synthetic@example.invalid',
-               '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false', '-c', f'core.hooksPath={tmp / "no-hooks"}']
-        got = None
-        for step in (['init', '-q'], ['add', '-A'], ['commit', '-q', '-m', 'throwaway']):
-            if subprocess.run(git + step, env=env, capture_output=True).returncode:
-                got = {'exit': 'git', 'read': f'git {step[0]} failed'}
-                break
-        if got is None:
-            r = subprocess.run([sys.executable, '-I', str(TICKET_PY), 'read', REPO, '7', '--fleet-ref', 'HEAD'],
-                               cwd=repo, env=env, capture_output=True, text=True, timeout=60)
-            got = {'exit': r.returncode, 'read': (r.stdout.strip().splitlines() or [''])[-1]}
+    path = os.environ.get('PATH', os.defpath)
+    (tmp / 'bin').mkdir()
+    gh = tmp / 'bin' / 'gh'
+    gh.write_text(f'#!/bin/sh\nexec {shutil.which("python3")} -I {FAKE_GH} "$@"\n')
+    gh.chmod(0o755)
+    (tmp / 'world.json').write_text(json.dumps({'issues': {'7': issue}, 'comments': {'7': comments}}))
+    repo = tmp / 'repo'
+    (repo / 'docs' / 'agents').mkdir(parents=True)
+    (repo / 'docs' / 'agents' / 'fleet.md').write_text(text_of(HERE / case['fleet']) + '\n')
+    # Git and ticket.py see only PATH, an empty home and the fake gh's world: no caller config, signer or hook.
+    (tmp / 'home').mkdir()
+    (tmp / 'no-hooks').mkdir()
+    env = {'PATH': f'{tmp / "bin"}{os.pathsep}{path}', 'HOME': str(tmp / 'home'),
+           'FAKE_GH_WORLD': str(tmp / 'world.json'), 'GIT_CONFIG_GLOBAL': os.devnull,
+           'GIT_CONFIG_SYSTEM': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1'}
+    git = ['git', '-C', str(repo), '-c', 'user.name=synthetic', '-c', 'user.email=synthetic@example.invalid',
+           '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false', '-c', f'core.hooksPath={tmp / "no-hooks"}']
+    got = None
+    for step in (['init', '-q'], ['add', '-A'], ['commit', '-q', '-m', 'throwaway']):
+        if subprocess.run(git + step, env=env, capture_output=True).returncode:
+            got = {'exit': 'git', 'read': f'git {step[0]} failed'}
+            break
+    if got is None:
+        r = subprocess.run([sys.executable, '-I', str(TICKET_PY), 'read', REPO, '7', '--fleet-ref', 'HEAD'],
+                           cwd=repo, env=env, capture_output=True, text=True, timeout=60)
+        got = {'exit': r.returncode, 'read': (r.stdout.strip().splitlines() or [''])[-1]}
     return got
 
 
