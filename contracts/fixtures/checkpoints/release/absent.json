@@ -1,0 +1,13 @@
+{
+  "spec": "spec/absent.md",
+  "final": true,
+  "head": {
+    "pr": 4012,
+    "commit": "1111111111111111111111111111111111111111"
+  },
+  "record_authors": [
+    "synthetic-fleet[bot]",
+    "synthetic-owner"
+  ],
+  "comments": []
+}
