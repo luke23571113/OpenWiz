@@ -205,6 +205,11 @@ class Hermes(unittest.TestCase):
         self.assertEqual((code, out['error']), (1, 'hermes is not installed here'))
         self.assertEqual((self.logged(), self.ours()), ([], []))
 
+    def test_the_readme_says_where_the_login_lives_under_its_title(self):
+        with open(os.path.join(HERE, 'README.md')) as f:
+            lines = f.read().splitlines()
+        self.assertEqual(lines[:3], ['# Hermes driver', '', 'Login: stays on your machine'])
+
     def test_the_readme_leads_with_the_fixture_run(self):
         with open(os.path.join(HERE, 'README.md')) as f:
             kit = f.read().split('## The kit', 1)[1]
