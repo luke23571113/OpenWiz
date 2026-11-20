@@ -1287,10 +1287,15 @@ class Candidate(World):
 
     def test_1836_a_0_1_0_release_read_back_under_another_name_is_incomplete(self):
         self.ready_public()
-        # The release is created remotely and its response lost, so the next run only reads back.
-        self.assertEqual(self.publish(FAIL_ACTION='release-response')[0], 1)
+        # The remote release reads back under the name in RENAME, whatever --title the tool sent.
+        fake = self.bin / 'gh'
+        fake.write_text(fake.read_text().replace('"title": args[args.index("--title") + 1]',
+                                                 '"title": os.environ["RENAME"]'))
         meta = self.releases / 'v0.1.0' / 'meta.json'
-        for name in ('OpenWiz 0.1.0', 'OpenWiz 0.01 ', 'openwiz 0.01', 'OpenWiz 0.1'):
+        self.assertEqual(self.publish(RENAME='OpenWiz 0.1.0'),
+                         (1, {'status': 'incomplete', 'reasons': ['readback_release_identity']}))
+        # A resume re-reads only: each other name stays incomplete.
+        for name in ('OpenWiz 0.01 ', 'openwiz 0.01', 'OpenWiz 0.1', 'OpenWiz 0.01.0'):
             with self.subTest(name=name):
                 meta.write_text(json.dumps(dict(json.loads(meta.read_text()), title=name)))
                 self.assertEqual(self.publish(), (1, {'status': 'incomplete', 'reasons': ['readback_release_identity']}))
