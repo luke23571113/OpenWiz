@@ -17,6 +17,7 @@ QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 12
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
 DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
 SHOWN_LIMIT_TYPES = {'auth_expiry': 'auth_expiry', 'rate_limit': 'rate_limit'}
+LOOK_AGAIN = 0.2  # seconds between a macOS supervisor's looks at its turn's processes
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
 
@@ -180,9 +181,6 @@ LINUX = os.path.isdir('/proc/self') and hasattr(os, 'pidfd_open')
 PR_SET_CHILD_SUBREAPER = 36
 
 
-TURN = re.compile(r'\s--turn\s')
-
-
 def ps(*args):
     try:
         p = subprocess.Popen(['ps'] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -195,17 +193,19 @@ def ps(*args):
     return out.splitlines(), p.pid
 
 
-def members(roots, run):
-    rows, me = ps('-A', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'command=', '-E')
-    mark = re.compile(r'(?:^|\s)OPENWIZ_RUN=%s(?:\s|$)' % re.escape(run))
-    found, children = set(), {}
+def members(roots, recorded):
+    """The live processes in the roots' process groups, the recorded ones (pid: start time) still running,
+    and every process under any of them, as {pid: start time}: from ps's process table alone."""
+    rows, me = ps('-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'lstart=')
+    started, children, found = {}, {}, set()
     for row in rows:
         f = row.split(None, 4)
-        if len(f) < 4 or f[3].startswith('Z'):
+        if len(f) < 5 or f[3].startswith('Z'):
             continue
         pid, ppid, group = int(f[0]), int(f[1]), int(f[2])
+        started[pid] = ' '.join(f[4].split())
         children.setdefault(ppid, []).append(pid)
-        if group in roots or len(f) > 4 and mark.search(f[4]) and not TURN.search(f[4]):
+        if group in roots or recorded.get(pid) == started[pid]:
             found.add(pid)
     todo = list(roots) + list(found)
     while todo:
@@ -213,14 +213,14 @@ def members(roots, run):
             if c not in found:
                 found.add(c)
                 todo.append(c)
-    return found - set(roots) - {os.getpid(), me}
+    return {p: started[p] for p in found - set(roots) - {os.getpid(), me}}
 
 
 def since(pid):
     """When process pid started, or None once it has exited: with its pid, this names one process."""
     if not LINUX:
         row = ps('-o', 'stat=', '-o', 'lstart=', '-p', str(pid))[0]
-        return row[0].split(None, 1)[1].strip() if row and not row[0].lstrip().startswith('Z') else None
+        return ' '.join(row[0].split()[1:]) if row and not row[0].lstrip().startswith('Z') else None
     try:
         with open('/proc/%d/stat' % pid) as f:
             fields = f.read().rpartition(')')[2].split()
@@ -249,10 +249,10 @@ def descendants(pid):
     return found
 
 
-def record_this_supervisor_before_its_turn(log):
+def record_this_supervisor(log, kept=None):
     record = '%s.%d.sup' % (log[:-len('.log')], os.getpid())
     with open(record + '.new', 'w') as f:
-        json.dump({'supervisor': os.getpid(), 'supervisor_since': since(os.getpid())}, f)
+        json.dump({'supervisor': os.getpid(), 'supervisor_since': since(os.getpid()), 'kept': kept or {}}, f)
     os.replace(record + '.new', record)
 
 
@@ -264,7 +264,7 @@ def supervise(log, cmd):
         print(json.dumps({'error': "this host cannot keep a turn's processes together"}), flush=True)
         return
     try:
-        record_this_supervisor_before_its_turn(log)
+        record_this_supervisor(log)
         with open(log, 'a') as out:
             turn = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
     except OSError as e:
@@ -273,13 +273,35 @@ def supervise(log, cmd):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
     print(json.dumps({'pid': turn.pid, 'since': since(turn.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+    if LINUX:
+        while True:
+            try:
+                os.wait()
+            except ChildProcessError:
+                return
+    kept = {}
+    while True:
+        children_left = reap_exited_children()
+        now = members({os.getpid()}, kept)
+        if now != kept:
+            kept = now
+            try:
+                record_this_supervisor(log, {str(p): t for p, t in kept.items()})
+            except OSError:
+                pass
+        if not children_left and not kept:
+            return
+        time.sleep(LOOK_AGAIN)
+
+
+def reap_exited_children():
+    """Whether any child is still running, once every exited one is reaped."""
     while True:
         try:
-            os.wait()
+            if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                return True
         except ChildProcessError:
-            if LINUX or not members({os.getpid()}, os.environ['OPENWIZ_RUN']):
-                return
-            time.sleep(0.2)
+            return False
 
 
 def running(turn):
@@ -298,7 +320,7 @@ def end(turns, run):
             if not kept:
                 return
             if not LINUX:
-                for p in members({s for s, _ in kept}, run) - sent:
+                for p in set(members({s for s, _ in kept}, recorded_by(run, {s for s, _ in kept}))) - sent:
                     try:
                         os.kill(p, sig)
                         sent.add(p)
@@ -527,6 +549,20 @@ def supervisor_records(run):
 
 # PRIVACY: finds a run's unsaved turns only by the records their supervisors wrote in its state folder, never
 # by reading another process's environment.
+def recorded_by(run, supervisors):
+    """The processes these supervisors recorded as their turns' (pid: start time), for a host with no subreaper."""
+    recorded = {}
+    for name in supervisor_records(run):
+        try:
+            with open(name) as f:
+                kept = json.load(f)
+            if kept['supervisor'] in supervisors:
+                recorded.update({int(p): t for p, t in kept['kept'].items() if isinstance(t, str)})
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return recorded
+
+
 def strays(run, known):
     found = []
     for name in supervisor_records(run):

@@ -185,6 +185,17 @@ class Boat(unittest.TestCase):
                 todo.append(c)
         return found
 
+    def recorded_by_supervisors(self, run):
+        state, found = self.env['OPENWIZ_BOAT_STATE'], set()
+        for name in os.listdir(state):
+            if name.startswith(run + '.') and name.endswith('.sup'):
+                try:
+                    with open(os.path.join(state, name)) as f:
+                        found.update(int(p) for p in json.load(f)['kept'])
+                except (OSError, ValueError):
+                    pass
+        return found
+
     def logged(self):
         """The turns the fake `boat prompt` logged: [(prompt pid, worker pid, conversation, first|woken)]."""
         try:
@@ -581,10 +592,18 @@ class Boat(unittest.TestCase):
                 self.tearDown()
                 self.setUp()
                 macos['PATH'] = NO_PROC + os.pathsep + self.env['PATH']
+                detached = not worker
+                if detached:
+                    open(self.hold, 'w').close()
                 code, out = self.driver('start', REQUEST, **macos, **worker)
                 self.assertEqual(code, 0, out)
-                self.assertTrue(self.until(lambda: len(self.logged()) == 1 and not alive(self.logged()[0][0])))
+                self.assertTrue(self.until(lambda: len(self.logged()) == 1))
                 worker_pid = self.logged()[0][1]
+                if detached:
+                    self.assertTrue(self.until(lambda: worker_pid in self.recorded_by_supervisors(out['run'])),
+                                    'the supervisor never recorded the detached worker')
+                    os.remove(self.hold)
+                self.assertTrue(self.until(lambda: not alive(self.logged()[0][0])))
                 self.assertTrue(alive(worker_pid))
                 self.assertEqual(self.driver('stop', out, **macos), (0, dict(out, stopped=True)))
                 self.assertFalse(alive(worker_pid), 'a worker the prompt left still runs after stop')
@@ -595,7 +614,7 @@ class Boat(unittest.TestCase):
         p = subprocess.run([os.path.join(NO_PROC, 'python3'), '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
                             '--ticket', '7', '--harness', 'claude', '--model', 'claude-opus-5-5',
                             '--tracker', self.tracker, '--wait', '8'],
-                           env=dict(self.env, **macos), capture_output=True, text=True, timeout=300)
+                           env=dict(self.env, FAKE_SAME_GROUP='1', **macos), capture_output=True, text=True, timeout=300)
         self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
             'pass version: openwiz:records v1, and the schema is driver v1',
             'pass start: the run posted builder status note 1',
