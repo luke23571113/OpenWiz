@@ -79,10 +79,12 @@ def next_rows(text):
 
 
 READ = {
+    'fleet-tick.v1.md': lambda t: fences(t, 'json'),
     'fleet.v1.md': lambda t: (fences(t, 'json'), t.split('\n## Examples\n')[1:2] and fences(t.split('\n## Examples\n')[1], 'json')),
     'service.v1.md': config_line,
     'review-loops.v1.md': lambda t: (fences(t, 'json'), fences(t, 'md'), next_rows(t)),
     'review-loops.v2.md': lambda t: (fences(t, 'md'), next_rows(t)),
+    'open-development.v1.md': lambda t: re.findall(r'^\| `[^`]+` \| `[^`]+` \|$', t.split('## Fleet records\n')[1].split('\n**Finding')[0], re.M),
 }
 for name, part in READ.items():
     path = 'contracts/' + name
