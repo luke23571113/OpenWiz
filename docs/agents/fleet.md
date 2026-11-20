@@ -179,7 +179,7 @@ Source: Jake, 2026-11-01: webhook wakes handle named work immediately, with a sl
 
 The project's standing supporting-edit rule. Every ticket of every fleet may make these edits without asking, beside its owned paths:
 
-1. **Its own rows in shared registries:** `tools/open-import/paths.json`, the CLI test catalogue in `tests/cli-agent/main.rs`, and CI step lists such as `tools/war-room/steps.tsv`.
+1. **Its own rows in shared registries:** `tools/open-import/paths.json`, the CLI test catalogue in `tests/cli-agent/main.rs`, and CI step lists such as `tools/collector/steps.tsv`.
 2. **Its changelog line** as `changes/<ticket>.md`, whatever its owned paths name.
 3. **Its own evidence folder** under `docs/evidence/`.
 4. **Synthetic answers to test fakes its change breaks,** with no assertion change.
