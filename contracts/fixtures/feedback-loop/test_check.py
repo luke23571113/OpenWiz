@@ -111,6 +111,20 @@ class PlantedBreaks(unittest.TestCase):
         self.refused(case('landed', lambda d: d['input']['pull_request'].update(merged=False)),
                      'landed.json: posts must be []', 'fixtures: no landed case')
 
+    def test_the_landed_comment_follows_the_brief_link(self):
+        # catches: a landed comment posted on a report the merge closed directly,
+        # without a record author's brief linking to it.
+        self.refused(case('landed', lambda d: d['input']['pull_request'].update(closes=[9101])),
+                     'landed.json: posts must be []', 'fixtures: no landed case')
+
+    def test_a_report_link_counts_only_from_a_record_author_and_last(self):
+        # catches: anyone's issue, or a link line not last, steering the landed comment.
+        self.refused(case('report-link-forged', lambda d: d['input']['issue'].update(author='synthetic-maintainer')),
+                     'report-link-forged.json: report is 9101, the case expects None', 'fixtures: no forged link case')
+        moved = 'Report: #9101\n\nKeep the approve button above the footer.'
+        self.refused(case('report-link', lambda d: d['input']['issue'].update(body=moved)),
+                     'report-link.json: report is None, the case expects 9101', 'fixtures: no report link case')
+
     def test_a_marker_counts_only_as_the_last_line(self):
         # catches: an issue quoting a marker mid-body treated as a report.
         self.refused(case('not-a-report', lambda d: d['expect'].update(is_report=True)),

@@ -4,6 +4,7 @@
   "input": {
     "report": {
       "number": 9104,
+      "author": "synthetic-user",
       "pull_request": false,
       "title": "Add a dark theme",
       "body": "Please add a dark theme to every page.\n\nOpenWiz feedback operation 0b1c2d3e4f5a69788796a5b4c3d2e1f0",

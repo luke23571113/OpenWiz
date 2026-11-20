@@ -12,6 +12,7 @@
     "issues": {
       "9107": {
         "number": 9107,
+        "author": "synthetic-maintainer",
         "pull_request": false,
         "title": "An ordinary ticket",
         "body": "An ordinary ticket.",

@@ -26,7 +26,8 @@ account, issue number and text below and in the fixtures is synthetic.
 - **`feedback` label:** the one label every report carries once triaged, with
   the description "A public report about OpenWiz". The skill that first needs
   it creates it once.
-- **Brief:** the ticket triage writes for a report it sends to a fleet.
+- **Brief:** the ticket triage writes for a report it sends to a fleet. It
+  carries the report link (see "The report link").
 - **Record author:** an account in the `## GitHub identity` table of
   `docs/agents/fleet.md`.
 
@@ -90,18 +91,37 @@ A report is **small and clear** only when every one of these holds:
 
 | Outcome | When | The report gets | Anything else |
 | --- | --- | --- | --- |
-| **To a fleet** | Small and clear | Labels exactly `feedback`; the brief's milestone | One brief: a new issue on the destination labelled exactly `ready-for-agent`, with that milestone (the next release's version, `X.Y.Z`), written in triage's own words, holding the line `Report: #<report>` once. launch-fleet starts it like any ready ticket |
+| **To a fleet** | Small and clear | Labels exactly `feedback`; the brief's milestone | One brief: a new issue on the destination labelled exactly `ready-for-agent`, with that milestone (the next release's version, `X.Y.Z`), written in triage's own words, ending with the report link. launch-fleet starts it like any ready ticket |
 | **Held for the owner** | Any code fails, or triage can't tell | Labels exactly `feedback` and `needs-triage`; no milestone | No brief. Triage's short note goes to the owner's private queue, never to the report |
 
 A brief copies no link, command or code from the report. The fix's pull
 request closes both the brief and the report (`Closes #<brief>`,
 `Closes #<report>`).
 
+## The report link
+
+The fixed, machine-readable link from a brief back to its report. A brief's
+body ends with one blank line and then exactly this line, its last, with no
+trailing newline:
+
+```text
+Report: #<report>
+```
+
+`<report>` is the report's issue number on the destination, in decimal with no
+leading zero. The body holds no other line of this form. An issue **carries a
+report link** only when its author is a record author and its body ends so; the
+same line on anyone else's issue, or anywhere but last, is no link. A link
+leads only to an issue that is itself a report. launch-fleet follows the link
+from the brief to the report; it never reads a report number from anywhere else.
+
 ## The landed comment
 
 When launch-fleet verifies a merge, for each issue the pull request closes that
-is a report with a version milestone, it posts this comment on the report,
-exactly, as one line with no trailing newline:
+carries a report link, it follows the link; when the issue it reaches is a
+report with a version milestone, it posts this comment on that report (never
+on the brief), exactly, as one line with no trailing newline. Two briefs
+linking the same report lead to one comment.
 
 ```text
 Landed: the fix for this report merged in #<pull request> and will ship in OpenWiz <version>.
@@ -112,7 +132,9 @@ Landed: the fix for this report merged in #<pull request> and will ship in OpenW
 that will carry the fix). It is posted **once per report**, ever: when a record
 author's comment on the report already has this form (any pull request, any
 version), it posts nothing. It posts nothing for a pull request closed without
-merging, an issue that is not a report, or a report with no version milestone.
+merging, a closed issue that carries no report link (a report closed directly
+included), a link to an issue that is not a report, or a report with no version
+milestone.
 A landed comment is sent only once read back on the report with these exact
 bytes; a lost response is uncertain and is reconciled on the report, never
 retried blind.
@@ -121,8 +143,9 @@ retried blind.
 
 [`fixtures/feedback-loop/`](fixtures/feedback-loop/) holds one synthetic case
 per file: reports from both routes and a non-report, both triage outcomes
-(including a small bug that carries an instruction, held), a landed comment, a
-second merge and a merge that closes no report, each posting nothing. Its
+(including a small bug that carries an instruction, held), a brief's report
+link and a forged one, a landed comment, a second merge and a merge that closes
+no report, each posting nothing. Its
 `check.py` checks every case and the template against the block below, which is
 this contract's machine-readable form; `test_check.py` proves the check refuses
 each planted break. Run `python3 -I contracts/fixtures/feedback-loop/test_check.py`.
@@ -151,7 +174,7 @@ These prove the rules on fixtures only, never a live report.
     "fleet": {"report_labels": ["feedback"], "brief_labels": ["ready-for-agent"]},
     "held": {"report_labels": ["feedback", "needs-triage"]}
   },
-  "brief_line": "Report: #{report}",
+  "report_link": "^Report: #([1-9][0-9]*)$",
   "version": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
   "landed": "Landed: the fix for this report merged in #{pr} and will ship in OpenWiz {version}."
 }

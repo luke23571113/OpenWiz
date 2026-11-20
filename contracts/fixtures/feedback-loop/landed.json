@@ -13,6 +13,7 @@
     "issues": {
       "9106": {
         "number": 9106,
+        "author": "synthetic-maintainer",
         "pull_request": false,
         "title": "Keep the approve button above the footer",
         "body": "Keep the approve button above the footer.\n\nReport: #9101",
@@ -24,6 +25,7 @@
       },
       "9101": {
         "number": 9101,
+        "author": "synthetic-user",
         "pull_request": false,
         "title": "Plan page hides the approve button on a narrow phone",
         "body": "On a 360-pixel screen the approve button sits under the footer.\n\nOpenWiz feedback operation 3f2a9c4e1b7d40a6958e0c2d7b1a4f63",
