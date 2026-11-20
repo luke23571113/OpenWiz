@@ -145,6 +145,15 @@ class Diff(unittest.TestCase):
         code, out, _ = repo.check('diff', '--base', base)
         self.assertEqual((code, failures(out)), (1, {('src/old.rs', 4, 'comment')}))
 
+    def test_quoted_paths_and_undecodable_files_fail_closed(self):
+        repo = Repo(self)
+        base = repo.git('rev-parse', 'HEAD')
+        repo.write('odd "name".py', '# New narration.\nX = 1\n')
+        (repo.root / 'latin.rs').write_bytes(b'// caf\xe9 narration\nfn f() {}\n')
+        repo.commit()
+        code, out, _ = repo.check('diff', '--base', base)
+        self.assertEqual((code, failures(out)), (1, {('odd "name".py', 1, 'comment'), ('latin.rs', 1, 'unreadable')}))
+
     def test_excluded_files_never_fail(self):
         repo = Repo(self)
         base = repo.git('rev-parse', 'HEAD')

@@ -36,6 +36,8 @@ DIRECTIVE = re.compile(
     r'shellcheck\s|yamllint\s|stylelint-(disable|enable)|istanbul\s+ignore\b|c8\s+ignore\b|v8\s+ignore\b)')
 REASON = re.compile(r'\s(--|#)\s*\S')
 CODING = re.compile(r'^[ \t\f]*#.*?coding[:=]')
+PINNED = re.compile(r'\buses:\s*\S+@[0-9a-f]{40}\s*$')
+VERSION = re.compile(r'^v?[0-9][0-9A-Za-z.+-]*$')
 
 
 class Span:
@@ -444,6 +446,8 @@ class Judged:
             return True
         if lang == 'python' and sp.l1 <= 2 and CODING.match(self.src[sp.l1 - 1]):
             return True
+        if lang == 'yaml' and PINNED.search(self.src[sp.l1 - 1][:sp.c1]) and VERSION.match(sp.text):
+            return True
         if DIRECTIVE.match(sp.text):
             if REASON.search(sp.text):
                 return True
@@ -506,7 +510,8 @@ MESSAGES = {
 def git(*args, binary=False):
     run = subprocess.run(['git', *args], capture_output=True)
     if run.returncode:
-        raise SystemExit(f'comment-check: git {" ".join(args)}: {run.stderr.decode(errors="replace").strip()}')
+        print(f'comment-check: git {" ".join(args)}: {run.stderr.decode(errors="replace").strip()}', file=sys.stderr)
+        sys.exit(2)
     return run.stdout if binary else run.stdout.decode()
 
 
