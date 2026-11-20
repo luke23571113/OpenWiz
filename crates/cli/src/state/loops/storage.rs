@@ -406,10 +406,14 @@ mod tests {
 
     #[test]
     fn an_indexed_run_without_its_record_is_refused_never_an_empty_history() {
-        let dir = std::env::temp_dir().join(format!("openwiz-loop-index-{}", std::process::id()));
+        let dir = (0..100)
+            .map(|n| {
+                std::env::temp_dir().join(format!("openwiz-loop-index-{}-{n}", std::process::id()))
+            })
+            .find(|dir| DirBuilder::new().mode(0o700).create(dir).is_ok())
+            .expect("a fresh fixture folder");
         DirBuilder::new()
             .mode(0o700)
-            .recursive(true)
             .create(dir.join("runs"))
             .unwrap();
         OpenOptions::new()
