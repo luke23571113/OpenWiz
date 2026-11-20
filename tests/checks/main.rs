@@ -1,6 +1,6 @@
 //! Foundation checks that pass in ticket 1: the approved dependency set, the
 //! fixture scan, schema conformance and the pending list.
-//! OpenWiz 0.0.5 (ClosedWiz#96) adds the skills folder's static check.
+//! `skills` runs the install, onboarding and setup journeys.
 
 #[path = "../support/schema.rs"]
 mod schema;
