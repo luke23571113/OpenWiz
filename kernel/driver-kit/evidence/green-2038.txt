@@ -27,3 +27,16 @@ kernel/driver-kit/test_kit.py: Ran 8 tests, OK
 adapters/template/test_driver.py: Ran 10 tests, OK
 adapters/local/test_driver.py: Ran 14 tests, OK
 adapters/boat/test_driver.py: Ran 13 tests, OK
+
+R1 (probe readiness signal), kit.py change on top of 7b9ea73ea74705f6cc57dcabcce62d408896e2e8:
+readiness test: OK
+slowed listing (0.5 s ps -E delay): OK
+kit visibility check, by probe (fixture ps on PATH):
+signals: visible (0.0s)
+never signals: ps shows no process's environment here, so the kit cannot tell which processes the driver started (30.0s)
+exits at once: ps shows no process's environment here, so the kit cannot tell which processes the driver started (0.0s)
+test_without_proc_as_on_macos_the_template_passes_all_five, 50 runs in a row: 50-run: 50/50 passed
+kernel/driver-kit/test_kit.py Ran 8 tests in 42.304s OK
+adapters/template/test_driver.py Ran 10 tests in 9.840s OK
+adapters/local/test_driver.py Ran 14 tests in 40.850s OK
+adapters/boat/test_driver.py Ran 13 tests in 24.819s OK
