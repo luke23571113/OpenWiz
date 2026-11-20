@@ -33,7 +33,6 @@ mod models_contract;
 mod process;
 mod results;
 mod review;
-// #1853 (KN20): the roster contract's fixture checks, kept beside the fixtures.
 #[path = "../../contracts/fixtures/roster/roster_contract.rs"]
 mod roster_contract;
 mod ui;

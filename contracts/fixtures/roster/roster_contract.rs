@@ -1,11 +1,3 @@
-//! #1853 (KN20): the roster contract's fixtures agree with its rules.
-//! `contracts/roster.v1.md` is the contract; this file is registered in
-//! `tests/cli-agent/main.rs` and kept beside the fixtures it checks, so a
-//! later reader (KN21's launch-fleet pick, KN22's setup check) has one place
-//! to compare itself against. All values are synthetic.
-//!
-//! The reader below is the contract's reference reading of a `fleet.md`'s
-//! Roster, and its pick rule. It ships nowhere.
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -58,7 +50,6 @@ fn load(rel: &str) -> Value {
     serde_json::from_str(&text(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"))
 }
 
-/// The names in a fixture folder, or none when it is missing.
 fn listing(rel: &str) -> BTreeSet<String> {
     match fs::read_dir(dir().join(rel)) {
         Ok(entries) => entries
@@ -67,8 +58,6 @@ fn listing(rel: &str) -> BTreeSet<String> {
         Err(_) => BTreeSet::new(),
     }
 }
-
-// ---- The reference reading ------------------------------------------------
 
 #[derive(Debug)]
 struct Entry {
@@ -102,8 +91,6 @@ fn cells(line: &str) -> Option<Vec<String>> {
     Some(inner.split('|').map(|c| c.trim().to_owned()).collect())
 }
 
-/// Whether a line is a Markdown heading of any level or form whose text is
-/// "Roster", in any case: `## Roster ##`, `### roster` and `  ## Roster` too.
 fn names_roster(line: &str) -> bool {
     let line = line.trim();
     let level = line.chars().take_while(|c| *c == '#').count();
@@ -150,11 +137,8 @@ fn login_ok(s: &str) -> bool {
     word_ok(s, 39, |c| c.is_ascii_alphanumeric(), '-')
 }
 
-/// The Roster of a `fleet.md`: `Ok(None)` with no Roster heading, or the
-/// refusal line of the first broken rule.
 fn read(fleet: &str) -> Result<Option<Vec<Entry>>, String> {
     let lines: Vec<&str> = fleet.lines().map(str::trim_end).collect();
-    // A setext heading: `Roster` over a line of only `=` or only `-`.
     let underlined = |i: usize| {
         lines[i].trim().eq_ignore_ascii_case("roster")
             && lines.get(i + 1).is_some_and(|u| {
@@ -275,7 +259,6 @@ fn read(fleet: &str) -> Result<Option<Vec<Entry>>, String> {
     Ok(Some(entries))
 }
 
-/// The choices a one-table Models section writes, as `choice` objects.
 fn model_choices(fleet: &str) -> Vec<Value> {
     let mut out = Vec::new();
     let mut inside = false;
@@ -306,7 +289,6 @@ fn model_choices(fleet: &str) -> Vec<Value> {
     out
 }
 
-/// The harness name models.v1 writes for a provider.
 fn harness_name(provider: &str) -> &str {
     match provider {
         "claude-code" => "Claude Code",
@@ -315,7 +297,6 @@ fn harness_name(provider: &str) -> &str {
     }
 }
 
-/// The harness word a driver's `start` takes for a provider.
 fn driver_harness(provider: &str) -> &str {
     match provider {
         "claude-code" => "claude",
@@ -323,9 +304,6 @@ fn driver_harness(provider: &str) -> &str {
     }
 }
 
-/// Whether driver v1's `start` takes this harness word and model id: its
-/// schema's `^[a-z0-9][a-z0-9._-]{0,59}$` and
-/// `^[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}$`.
 fn driver_takes(harness: &str, model: &str) -> bool {
     let first = |s: &str, f: fn(&char) -> bool| s.chars().next().is_some_and(|c| f(&c));
     let harness_ok = harness.len() <= 60
@@ -341,9 +319,6 @@ fn driver_takes(harness: &str, model: &str) -> bool {
     harness_ok && model_ok
 }
 
-/// The status note's `model` field through driver v1: the Model name and
-/// `default effort`, at most 60 characters. A name over 45 characters keeps
-/// its first 42, trailing spaces dropped, then `...`.
 fn note_model(name: &str) -> String {
     let shown = if name.chars().count() > 45 {
         let cut: String = name.chars().take(42).collect();
@@ -354,8 +329,6 @@ fn note_model(name: &str) -> String {
     format!("{shown} default effort")
 }
 
-/// The contract's pick for one start: role R, choice C (null when models.v1
-/// waits), on `repository#ticket`.
 fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &Value) -> Value {
     let base = json!({"ticket": ticket, "role": role, "choice": choice});
     let with = |mut v: Value, extra: Value| {
@@ -403,12 +376,6 @@ fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &V
     with(base, json!({"pick": picked, "waits": null, "look": null}))
 }
 
-// ---- The tests ------------------------------------------------------------
-
-// catches: a reader that picks an entry for a role it may not take, ignores
-// table order, gives a harness entry another harness's choice, mislabels an
-// entry, hands a driver a model id driver v1 refuses, or treats a project
-// without a Roster as anything but today's.
 #[test]
 fn every_case_reads_and_picks_as_its_fixture_says() {
     let present = listing("");
@@ -460,11 +427,6 @@ fn every_case_reads_and_picks_as_its_fixture_says() {
     assert!(wrong.is_empty(), "picks that differ:\n{}", wrong.join("\n"));
 }
 
-// catches: a reader that guesses past a malformed Roster (an unknown role or
-// kind, a repeated role, a row writing as another account or another
-// person's App, a Roster heading in another form, underlined headings too,
-// read as no Roster) instead
-// of refusing it by name, with the contract's line.
 #[test]
 fn a_malformed_roster_is_refused_by_name() {
     let refusals = if listing("invalid").contains("refusals.json") {
@@ -493,9 +455,6 @@ fn a_malformed_roster_is_refused_by_name() {
     }
 }
 
-// catches: a fixture whose choice is not one models.v1 could resolve from its
-// own fleet.md, so a reader passing it would prove nothing about the Models
-// table it reads.
 #[test]
 fn every_choice_is_a_row_of_its_cases_models_table() {
     for case in CASES {
@@ -515,11 +474,6 @@ fn every_choice_is_a_row_of_its_cases_models_table() {
     }
 }
 
-// catches: a per-entry or per-bot write rule: a token request, App or label
-// that depends on an entry's kind, a user project whose writes go anywhere
-// but its own person's App and repositories, or a status note claiming a
-// configured effort no driver v1 start applied, or a note field longer than
-// agent status v1's 60 characters.
 #[test]
 fn every_entry_writes_the_same_way() {
     let mut kinds = BTreeSet::new();
@@ -560,9 +514,6 @@ fn every_entry_writes_the_same_way() {
             for key in ["writes_as", "token"] {
                 assert_eq!(e[key], fixed[key], "{case}: ticket {} {key}", p["ticket"]);
             }
-            // R2 and R5: driver v1 applies no effort, so a note never claims
-            // the configured one, and its `model` field keeps agent status
-            // v1's limit: 1 to 60 characters, one line, no control character.
             let model = e["note"]["model"].as_str().unwrap();
             assert!(
                 model.ends_with(" default effort")
