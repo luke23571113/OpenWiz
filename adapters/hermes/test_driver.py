@@ -2,6 +2,7 @@
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -40,6 +41,10 @@ class Hermes(unittest.TestCase):
                     'FAKE_HOLD': self.hold, 'FAKE_HERMES_HOME': os.path.join(self.folder, 'hermes'),
                     'OPENWIZ_HERMES_STATE': os.path.join(self.folder, 'state'),
                     'PATH': os.pathsep.join([os.path.join(HERE, 'fixtures', 'bin'), '/usr/bin', '/bin'])}
+        reachable = {name: shutil.which(name, path=self.env['PATH']) for name in ('claude', 'codex', 'hermes')}
+        self.assertEqual(reachable, {'claude': None, 'codex': None,
+                                     'hermes': os.path.join(HERE, 'fixtures', 'bin', 'hermes')},
+                         'a real agent CLI is reachable on the test PATH: refusing to run')
 
     def tearDown(self):
         for pid in self.marked():

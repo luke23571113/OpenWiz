@@ -1,4 +1,4 @@
-# Green run: python3 -I adapters/hermes/test_driver.py, on fixtures/bin/hermes. PATH is fixtures/bin, /usr/bin and /bin only.
+# Green run: python3 -I adapters/hermes/test_driver.py, on fixtures/bin/hermes. PATH is fixtures/bin, /usr/bin and /bin only; each test first checks no real claude, codex or hermes is reachable on it.
 test_a_start_it_cannot_run_starts_nothing (__main__.Hermes.test_a_start_it_cannot_run_starts_nothing) ... ok
 test_a_start_without_a_session_starts_nothing_wakeable (__main__.Hermes.test_a_start_without_a_session_starts_nothing_wakeable) ... ok
 test_kit_passes_all_five (__main__.Hermes.test_kit_passes_all_five) ... ok
@@ -6,6 +6,6 @@ test_stop_interrupts_the_turn_then_ends_everything (__main__.Hermes.test_stop_in
 test_wake_resumes_the_session_its_start_reported (__main__.Hermes.test_wake_resumes_the_session_its_start_reported) ... ok
 
 ----------------------------------------------------------------------
-Ran 5 tests in 1.849s
+Ran 5 tests in 1.824s
 
 OK
