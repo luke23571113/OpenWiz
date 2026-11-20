@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run the tool.
+set -eu
+echo "# not a comment" # say it
