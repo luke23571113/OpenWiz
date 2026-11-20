@@ -6,9 +6,9 @@ A [driver v1](../../kernel/driver.v1.md) that runs each builder in [Hermes](http
 
 | Command | What it does in Hermes |
 | --- | --- |
-| `start` | `hermes chat --oneshot --format stream-json --source tool` with the ticket and skill as its query, under the driver's own supervisor. It answers once Hermes' first `system` `init` line names the session, and saves that `session_id` with the run. If no session is reported within 60 seconds, or the turn ends without one, it ends the turn and refuses. |
-| `wake` | While the last turn still runs, nothing: that agent is awake and reads the ticket itself. Otherwise the same command with `--resume <session_id>`: the same Hermes session and transcript, so the agent edits its own status note. A wake after `stop` is refused. |
-| `stop` | Sends the turn's processes SIGINT, Hermes' Ctrl-C, so the turn is interrupted and settles cancelled (its `result` ends `exit_code: 130`). Whatever still runs after 10 seconds it ends with SIGTERM and then SIGKILL, every process the run's turns started, through the template's supervisor. Then it deletes the turns' output logs. |
+| `start` | `hermes chat --oneshot --format stream-json --source tool` with the ticket and skill as its query, under the driver's own supervisor. It answers once Hermes' first `system` `init` line names the session, and saves that `session_id` with the run. The supervisor reads Hermes' output only for that id and discards the rest: no transcript is written to disk. If no session is reported within 60 seconds, or the turn ends without one, it ends the turn and refuses. |
+| `wake` | The same command with `--resume <session_id>`: the same Hermes session and transcript, so the agent edits its own status note. If the last turn still runs, the wake is saved and its supervisor runs that resumed turn as soon as the last one ends, so a wake is never dropped (several wakes during one turn give one resumed turn). A wake after `stop` is refused. |
+| `stop` | Sends the turn's processes SIGINT, Hermes' Ctrl-C, so the turn is interrupted and settles cancelled (its `result` ends `exit_code: 130`). Whatever still runs after 10 seconds it ends with SIGTERM and then SIGKILL, every process the run's turns started, through the template's supervisor. |
 
 The driver uses Hermes' CLI, not its API server. The API server needs `API_SERVER_KEY` on every request, and a driver never reads a credential (driver v1, N2). The choice is recorded on #1988.
 
@@ -30,7 +30,7 @@ Any other `harness` is refused. What this can't control:
 
 ## Before the first run (yours to do)
 
-The driver never touches a login (driver v1, N1 to N3). It runs `hermes` with your environment unchanged, and passes no key, token or password anywhere. It never reads `~/.hermes`.
+The driver never touches a login (driver v1, N1 to N3). It never reads `~/.hermes`, and passes no key, token or password anywhere. Hermes gets only these names from your environment: `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`, `LANG`, `LANGUAGE`, `LC_*`, `TZ`, `TERM`, `TMPDIR`, `HERMES_HOME`, the `XDG_*` folders, `SSH_AUTH_SOCK` (the path of your SSH agent's socket, so `git push` over SSH works; no key is in it) and the kit's `OPENWIZ_KIT_RUN` mark, plus the driver's `OPENWIZ_RUN`. Anything else you have exported, such as a token, stays behind: Hermes, `gh`, `git`, `claude` and `codex` use their own signed-in configuration.
 
 1. Install Hermes and set up its model and provider yourself (`hermes setup`).
 2. For `claude` or `codex`, install and sign in to that CLI yourself, and enable Hermes' bundled `claude-code` or `codex` skill.
@@ -38,10 +38,17 @@ The driver never touches a login (driver v1, N1 to N3). It runs `hermes` with yo
 
 ## The kit
 
+Check a checkout with the fixture tests. They run the kit's five checks on the synthetic `hermes` in `fixtures/bin/` and a local tracker, with PATH limited to that folder, `/usr/bin` and `/bin`, so no real Hermes, Claude Code or Codex is reached and nothing is spent:
+
 ```sh
+python3 -I adapters/hermes/test_driver.py
+```
+
+**The live check is a separate step, for a person only.** It runs the kit against the `hermes` on your PATH: real model turns that cost money and post on a real throwaway ticket. Run it only on purpose, on a throwaway repository and ticket you made for it (see [the kit's README](../../kernel/driver-kit/README.md)):
+
+```text
 python3 -I kernel/driver-kit/kit.py --driver adapters/hermes/driver \
   --repo <owner>/<throwaway> --ticket <n> --harness claude --model <model>
-python3 -I adapters/hermes/test_driver.py      # the fixture tests, on a synthetic hermes CLI
 ```
 
 `fixtures/bin/hermes` is a synthetic `hermes` CLI. Its arguments and JSON lines follow Hermes' CLI reference. They were not observed on a live install. `evidence/red*.txt` are the failing-first runs and `evidence/green.txt` is the passing run.
