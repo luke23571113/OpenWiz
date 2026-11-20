@@ -74,7 +74,6 @@ setup	Mount the web-test cache volume
 setup	Post Mount the * cache volume
 setup	Set up runner
 setup	The runner guard
-build	The carriage guard
 build	The changed-file privacy guard
 build	The owned-paths tests
 build	Every changed file is inside the ticket's owned paths
