@@ -6,6 +6,7 @@ The kit's five checks against the template are kernel/driver-kit/test_kit.py.
 """
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -20,7 +21,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'fake-harness',
          'model': 'Synthetic 1'}
-# A driver that breaks its own state folder once its turn has begun, as a full disk or a removed folder would.
+# A driver whose next save fails once its turn has begun, as a full disk or a removed folder would make it:
+# BREAK=folder replaces the state folder with a file; BREAK=write blocks only the run's next write.
 BREAKS_AFTER_SPAWN = '''import importlib.machinery, importlib.util, os, shutil, sys
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_loader('template', importlib.machinery.SourceFileLoader('template', %r))
@@ -29,8 +31,11 @@ spec.loader.exec_module(t)
 launch = t.launch
 def broken(req, run, woken):
     pid = launch(req, run, woken)
-    shutil.rmtree(t.STATE)
-    open(t.STATE, 'w').close()
+    if os.environ['BREAK'] == 'folder':
+        shutil.rmtree(t.STATE)
+        open(t.STATE, 'w').close()
+    else:
+        os.mkdir(os.path.join(t.STATE, run + '.json.new'))
     return pid
 t.launch = broken
 t.main()
@@ -146,11 +151,20 @@ class Template(unittest.TestCase):
         with open(driver, 'w') as f:
             f.write('#!%s\n' % sys.executable + BREAKS_AFTER_SPAWN % DRIVER)
         os.chmod(driver, 0o700)
-        code, out = self.call('start', START, driver=driver)
-        self.assertEqual(code, 1, out)
-        self.assertIn('unknown', out['error'])
-        self.assertNotIn('retry', json.dumps(out))
-        self.assertTrue(self.until(lambda: not self.marked()), 'the turn it could not save still runs')
+        for mode in ('folder', 'write'):
+            with self.subTest(mode=mode):
+                state = os.path.join(self.folder, 'state-' + mode)
+                code, out = self.call('start', START, driver=driver, BREAK=mode, OPENWIZ_TEMPLATE_STATE=state)
+                self.assertEqual(code, 1, out)
+                self.assertIn('unknown', out['error'])
+                self.assertNotIn('retry', json.dumps(out))
+                self.assertTrue(self.until(lambda: not self.marked()), 'the turn it could not save still runs')
+        # catches: the run's first save, still on disk, letting a wake on the run id in the error start it again.
+        run = re.search(r'run-[0-9a-f]{12}', out['error']).group()
+        turns = len(self.logged())
+        code, _ = self.call('wake', {'run': run}, OPENWIZ_TEMPLATE_STATE=state)
+        time.sleep(0.5)  # time for a turn to log itself, if one was started
+        self.assertEqual((code, len(self.logged()), self.marked()), (1, turns, []), 'a wake restarted the failed run')
 
 
 if __name__ == '__main__':
