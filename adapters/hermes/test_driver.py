@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
-import secrets
+import re
 import shutil
 import signal
 import subprocess
@@ -14,10 +14,13 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
+FAKE = os.path.join(HERE, 'fixtures', 'bin', 'hermes')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Hermes0Value' * 2
 API_KEY = 'synthetic-' + 'hermes-api-server-value'
+CALLER_ONLY = 'synthetic-caller-only-value'
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'synthetic-model-1'}
+CHILD_ENV_ALLOWED = {'HOME', 'PATH', 'LANG', 'OPENWIZ_RUN', 'OPENWIZ_KIT_RUN'}
 
 
 def alive(pid):
@@ -28,59 +31,56 @@ def alive(pid):
         return False
 
 
+def cmdline(pid):
+    try:
+        with open('/proc/%d/cmdline' % pid, 'rb') as f:
+            return f.read().decode(errors='replace').split('\0')
+    except OSError:
+        return []
+
+
 class Hermes(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.mkdtemp()
-        self.mark = secrets.token_hex(8)
         self.tracker = os.path.join(self.folder, 'tracker.json')
         with open(self.tracker, 'w') as f:
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
-        self.env = {'HOME': self.folder, 'LANG': 'C.UTF-8', 'KIT_TRACKER': self.tracker, 'KIT_TEST': self.mark,
-                    'GH_TOKEN': TOKEN, 'API_SERVER_KEY': API_KEY, 'FAKE_TURNS': self.turns,
-                    'FAKE_HOLD': self.hold, 'FAKE_HERMES_HOME': os.path.join(self.folder, 'hermes'),
-                    'OPENWIZ_HERMES_STATE': os.path.join(self.folder, 'state'),
+        self.envs, self.state = os.path.join(self.folder, 'envs'), os.path.join(self.folder, 'state')
+        self.configure()
+        self.env = {'HOME': self.folder, 'LANG': 'C.UTF-8', 'GH_TOKEN': TOKEN, 'API_SERVER_KEY': API_KEY,
+                    'CALLER_ONLY_SETTING': CALLER_ONLY, 'OPENWIZ_HERMES_STATE': self.state,
                     'PATH': os.pathsep.join([os.path.join(HERE, 'fixtures', 'bin'), '/usr/bin', '/bin'])}
         reachable = {name: shutil.which(name, path=self.env['PATH']) for name in ('claude', 'codex', 'hermes')}
-        self.assertEqual(reachable, {'claude': None, 'codex': None,
-                                     'hermes': os.path.join(HERE, 'fixtures', 'bin', 'hermes')},
+        self.assertEqual(reachable, {'claude': None, 'codex': None, 'hermes': FAKE},
                          'a real agent CLI is reachable on the test PATH: refusing to run')
 
     def tearDown(self):
-        for pid in self.marked():
+        for pid in self.ours():
             try:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
+        shutil.rmtree(self.folder, ignore_errors=True)
 
-    def marked(self):
-        found = []
+    def configure(self, **settings):
+        with open(os.path.join(self.folder, '.fake-hermes.json'), 'w') as f:
+            json.dump(dict({'hermes_home': os.path.join(self.folder, 'hermes'), 'tracker': self.tracker,
+                            'turns': self.turns, 'hold': self.hold, 'envs': self.envs}, **settings), f)
+
+    def ours(self):
+        pids = {p for t in self.logged() for p in t[:2]}
         for pid in filter(str.isdigit, os.listdir('/proc')):
-            try:
-                with open('/proc/%s/environ' % pid, 'rb') as f:
-                    if ('KIT_TEST=' + self.mark).encode() in f.read().split(b'\0') and alive(int(pid)):
-                        found.append(int(pid))
-            except OSError:
-                pass
-        return found
+            if any(self.folder in arg for arg in cmdline(int(pid))):
+                pids.add(int(pid))
+        return sorted(p for p in pids if alive(p) and cmdline(p)[:1] in (['sleep'], [sys.executable])
+                      or alive(p) and any(self.folder in arg for arg in cmdline(p)))
 
     def until(self, ready):
         deadline = time.monotonic() + 10
         while not ready() and time.monotonic() < deadline:
             time.sleep(0.05)
         return ready()
-
-    def test_kit_passes_all_five(self):
-        p = subprocess.run([sys.executable, '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
-                            '--ticket', '7', '--harness', 'claude', '--model', 'synthetic-model-1',
-                            '--tracker', self.tracker, '--wait', '8'],
-                           env=self.env, capture_output=True, text=True, timeout=300)
-        self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
-            'pass version: openwiz:records v1, and the schema is driver v1',
-            'pass start: the run posted builder status note 1',
-            'pass wake: the run edited builder status note 1',
-            'pass stop: the run ended, and a wake after it is refused',
-            'pass token: no login or token passed through the driver']), p.stderr)
 
     def driver(self, cmd, request, **env):
         p = subprocess.run([DRIVER, cmd], input=json.dumps(request), env=dict(self.env, **env),
@@ -98,6 +98,18 @@ class Hermes(unittest.TestCase):
     def notes(self):
         with open(self.tracker) as f:
             return [(c['id'], c['body'].split('step: ')[1].split('\n')[0]) for c in json.load(f)['comments']]
+
+    def test_kit_passes_all_five(self):
+        p = subprocess.run([sys.executable, '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
+                            '--ticket', '7', '--harness', 'claude', '--model', 'synthetic-model-1',
+                            '--tracker', self.tracker, '--wait', '8'],
+                           env=self.env, capture_output=True, text=True, timeout=300)
+        self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
+            'pass version: openwiz:records v1, and the schema is driver v1',
+            'pass start: the run posted builder status note 1',
+            'pass wake: the run edited builder status note 1',
+            'pass stop: the run ended, and a wake after it is refused',
+            'pass token: no login or token passed through the driver']), p.stderr)
 
     def test_wake_resumes_the_session_its_start_reported(self):
         for harness, skill in (('claude', 'claude-code'), ('codex', 'codex')):
@@ -121,23 +133,68 @@ class Hermes(unittest.TestCase):
         argv = self.until(lambda: len(self.logged()) == 5) and self.logged()[-1][4]
         self.assertEqual((argv[argv.index('-m') + 1], '-s' in argv), ('synthetic-model-1', False))
 
+    def test_a_wake_during_a_turn_runs_once_that_turn_ends(self):
+        open(self.hold, 'w').close()
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: self.logged()), 'the turn never began')
+        self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
+        self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
+        time.sleep(0.5)
+        self.assertEqual(len(self.logged()), 1, 'a wake started a second turn beside the running one')
+        os.remove(self.hold)
+        self.assertTrue(self.until(lambda: len(self.logged()) >= 2), 'the wake was dropped once the turn ended')
+        time.sleep(0.5)
+        first, woken = self.logged()
+        self.assertEqual((woken[3], woken[4][woken[4].index('--resume') + 1]), ('woken', first[2]))
+        self.assertEqual(self.notes(), [(1, 'woke and read the ticket again')])
+        self.assertTrue(self.until(lambda: not alive(woken[0])), 'the woken turn never ended')
+        self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
+        self.assertTrue(self.until(lambda: len(self.logged()) == 3), 'a wake after both turns started none')
+
     def test_stop_interrupts_the_turn_then_ends_everything(self):
         open(self.hold, 'w').close()
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: self.logged()), 'the turn never began')
+        self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
         self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
         self.assertEqual([t[3] for t in self.logged()], ['first', 'interrupted'], 'stop never interrupted Hermes')
-        self.assertEqual(self.marked(), [], 'a process the run started still runs after stop')
-        self.assertEqual([n for n in os.listdir(self.env['OPENWIZ_HERMES_STATE']) if n.endswith('.log')], [])
+        time.sleep(0.5)
+        self.assertEqual((len(self.logged()), self.ours()), (2, []), 'something of the run still runs after stop')
         self.assertEqual(self.driver('wake', out)[0], 1, 'a wake after stop was not refused')
 
+    def test_hermes_gets_only_the_environment_it_needs(self):
+        code, out = self.driver('start', REQUEST, OPENWIZ_KIT_RUN='synthetic-mark')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: os.path.exists(self.envs)), 'the turn never began')
+        with open(self.envs) as f:
+            [seen] = [json.loads(line)['env'] for line in f]
+        self.assertLessEqual(set(seen), CHILD_ENV_ALLOWED, 'a caller variable reached Hermes')
+        for value in (TOKEN, API_KEY, CALLER_ONLY):
+            self.assertNotIn(value, json.dumps(seen))
+        self.assertEqual((seen['HOME'], seen['OPENWIZ_KIT_RUN'], seen['OPENWIZ_RUN']),
+                         (self.folder, 'synthetic-mark', out['run']))
+
+    def test_the_turns_output_never_reaches_the_disk(self):
+        self.configure(loud=2000)
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: self.logged() and not alive(self.logged()[0][0])),
+                        'a turn with a lot of output never ended')
+        for root, _, files in os.walk(self.state):
+            for name in files:
+                self.assertRegex(name, r'^run-[0-9a-f]{12}\.(json|lock)$')
+                with open(os.path.join(root, name), errors='replace') as f:
+                    self.assertNotIn('SYNTHETIC-TRANSCRIPT-LINE', f.read())
+
     def test_a_start_without_a_session_starts_nothing_wakeable(self):
-        code, out = self.driver('start', REQUEST, FAKE_NO_INIT='1')
+        self.configure(no_init=True)
+        code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 1, out)
         self.assertIn('did not report a session', out['error'])
-        self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
-        run = out['error'].split('run ')[1].split(',')[0]
+        self.assertTrue(self.until(lambda: not self.ours()), 'its turn still runs')
+        run = re.search(r'run-[0-9a-f]{12}', out['error']).group()
         self.assertEqual(self.driver('wake', {'run': run})[0], 1)
         self.assertEqual(len(self.logged()), 1, 'a wake started the failed run')
 
@@ -146,7 +203,14 @@ class Hermes(unittest.TestCase):
         self.assertEqual((code, out['next']), (1, 'use one of: claude, codex, hermes'))
         code, out = self.driver('start', REQUEST, PATH='/usr/bin:/bin')
         self.assertEqual((code, out['error']), (1, 'hermes is not installed here'))
-        self.assertEqual((self.logged(), self.marked()), ([], []))
+        self.assertEqual((self.logged(), self.ours()), ([], []))
+
+    def test_the_readme_leads_with_the_fixture_run(self):
+        with open(os.path.join(HERE, 'README.md')) as f:
+            kit = f.read().split('## The kit', 1)[1]
+        commands = re.findall(r'^python3 .*$', kit.split('```sh', 1)[1].split('```', 1)[0], re.M)
+        self.assertTrue(commands[0].startswith('python3 -I adapters/hermes/test_driver.py'), commands)
+        self.assertNotIn('kit.py', kit.split('```sh', 1)[1].split('```', 1)[0])
 
 
 if __name__ == '__main__':

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 import fcntl, json, os, re, signal, subprocess, sys, time
 
-HOME, ARGS = os.environ['FAKE_HERMES_HOME'], sys.argv[1:]
+ARGS = sys.argv[1:]
+with open(os.path.join(os.environ['HOME'], '.fake-hermes.json')) as conf:
+    CONF = json.load(conf)
+HOME = CONF['hermes_home']
 
 
 def say(**line):
@@ -9,9 +12,8 @@ def say(**line):
 
 
 def log(*fields):
-    if os.environ.get('FAKE_TURNS'):
-        with open(os.environ['FAKE_TURNS'], 'a') as f:
-            f.write(' '.join(str(x) for x in fields) + ' ' + json.dumps(ARGS) + '\n')
+    with open(CONF['turns'], 'a') as f:
+        f.write(' '.join(str(x) for x in fields) + ' ' + json.dumps(ARGS) + '\n')
 
 
 def sessions(change):
@@ -32,7 +34,7 @@ def sessions(change):
 
 
 def note(session, woken, model, skill):
-    path, now = os.environ['KIT_TRACKER'], time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    path, now = CONF['tracker'], time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     body = '\n'.join(['<!-- openwiz:status v1 -->', 'agent: builder', 'state: working', 'harness: Fake',
                       'model: ' + model, 'skills: %s@0.1.2' % skill,
                       'step: ' + ('woke and read the ticket again' if woken else 'started the throwaway ticket'),
@@ -76,13 +78,16 @@ def chat(args):
         sys.exit(1)
     interrupted = []
     signal.signal(signal.SIGINT, lambda *_: interrupted.append(1))
-    if not os.environ.get('FAKE_NO_INIT'):
+    with open(CONF['envs'], 'a') as f:
+        f.write(json.dumps({'pid': os.getpid(), 'env': dict(os.environ)}) + '\n')
+    if not CONF.get('no_init'):
         say(type='system', subtype='init', model=model or 'hermes-default', session_id=sid)
     worker = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     log(os.getpid(), worker.pid, sid, 'woken' if resume else 'first')
-    say(type='text', text='Working on the ticket.')
-    while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']) and not interrupted:
+    for _ in range(CONF.get('loud', 1)):
+        say(type='text', text='SYNTHETIC-TRANSCRIPT-LINE ' + 'x' * 200)
+    while os.path.exists(CONF['hold']) and not interrupted:
         time.sleep(0.05)
     if interrupted:
         log(os.getpid(), worker.pid, sid, 'interrupted')
