@@ -320,8 +320,9 @@ class Fallback(Helper):
         # catches: an agent hanging on a pairing call that never returns.
         helper = load_helper()
         self.answers({"exit": 0, "stdout": "", "sleep": 5})
+        helper.TIMEOUT_S = 1  # the contract's 60 seconds, shortened for the test
         started = time.monotonic()
-        reason = helper.ask([str(self.bin / "room-cli"), "x"], b"{}", self.env, timeout=1)[0]
+        reason = helper.ask([str(self.bin / "room-cli"), "x"], b"{}", self.env)[0]
         self.assertEqual(reason, "unreachable")
         self.assertLess(time.monotonic() - started, 4)
 

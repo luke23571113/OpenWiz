@@ -37,6 +37,7 @@ NOTE = "openwiz: no openwiz[bot] token ({}); using the owner's GitHub account\n"
 REQUESTER = re.compile(r"[a-z][a-z0-9-]{0,63}")
 REPOSITORY = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+")
 TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
+REFUSAL_MESSAGE = re.compile(r"Token refused: [^\n]+\.")
 GIT_HELPER_KEY = "credential.https://github.com.helper"
 
 
@@ -62,7 +63,7 @@ def _parse(raw):
         return None
 
 
-def ask(argv, request, env, timeout=TIMEOUT_S):
+def ask(argv, request, env):
     """One service call: (None, answer) on exit 0, else (reason, None).
 
     The answer is read from a pipe and never echoed. The call's standard error
@@ -70,7 +71,7 @@ def ask(argv, request, env, timeout=TIMEOUT_S):
     """
     try:
         done = subprocess.run(argv, input=request, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, env=env, timeout=timeout)
+                              stderr=subprocess.DEVNULL, env=env, timeout=TIMEOUT_S)
     except (OSError, subprocess.SubprocessError):
         return "unreachable", None
     message = _parse(done.stdout)
@@ -81,7 +82,7 @@ def ask(argv, request, env, timeout=TIMEOUT_S):
             and isinstance(message["refusal"], str)
             and REFUSALS.get(message["refusal"]) == done.returncode
             and isinstance(message["message"], str)
-            and message["message"].startswith("Token refused: ")):
+            and REFUSAL_MESSAGE.fullmatch(message["message"])):
         return message["refusal"], None
     return ("bad-answer" if isinstance(message, dict) else "unreachable"), None
 
@@ -176,7 +177,8 @@ def _write(path, value):
 def held_token(directory, wanted, now):
     """The private file's token, while it covers exactly this request and is not due."""
     held = _read(directory / "token.json")
-    if not isinstance(held, dict) or not isinstance(held.get("token"), str):
+    if (not isinstance(held, dict) or not isinstance(held.get("token"), str)
+            or not TOKEN.fullmatch(held["token"])):
         return None
     if (type(held.get("expires_at")) is not int or needs_refresh(now, held["expires_at"])
             or held.get("repositories") != wanted["repositories"]
@@ -252,7 +254,10 @@ def run(args, env):
         if token:
             child["GH_TOKEN"] = token
             helper = f"!{shlex.quote(sys.executable)} -I {shlex.quote(os.path.abspath(__file__))} credential"
-            count = int(child.get("GIT_CONFIG_COUNT", "0") or "0")
+            count = child.get("GIT_CONFIG_COUNT", "0") or "0"
+            if not count.isdigit():
+                raise Refused("GIT_CONFIG_COUNT must be a number")
+            count = int(count)
             for offset, value in enumerate(("", helper)):  # "" resets git's helper list first
                 child[f"GIT_CONFIG_KEY_{count + offset}"] = GIT_HELPER_KEY
                 child[f"GIT_CONFIG_VALUE_{count + offset}"] = value
