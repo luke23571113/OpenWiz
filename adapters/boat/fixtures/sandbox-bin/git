@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""A synthetic `git` inside the fake sandbox, for the boat driver's tests. `git clone ... --branch v<version>
+https://github.com/openwizdev/WizSkills.git <dest>` copies the synthetic release (fixtures/wizskills) to <dest>;
+`git -C <dir> rev-parse HEAD` and `HEAD^{tree}` print the pin of OpenWiz's wizskills.lock, unless
+FAKE_WIZ_COMMIT names another commit (a tag that moved)."""
+import json, os, shutil, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(HERE, '..', '..', '..', '..', 'wizskills.lock')) as f:
+    LOCK = json.load(f)
+args = sys.argv[1:]
+if args[:1] == ['clone'] and args[-2] == 'https://github.com/openwizdev/WizSkills.git' \
+        and args[args.index('--branch') + 1] == 'v' + LOCK['version']:
+    shutil.copytree(os.path.join(HERE, '..', 'wizskills'), args[-1])
+elif args[:1] == ['-C'] and args[2:] == ['rev-parse', 'HEAD']:
+    print(os.environ.get('FAKE_WIZ_COMMIT') or LOCK['commit'])
+elif args[:1] == ['-C'] and args[2:] == ['rev-parse', 'HEAD^{tree}']:
+    print(LOCK['tree'])
+else:
+    print('git: unexpected arguments', file=sys.stderr)
+    sys.exit(128)

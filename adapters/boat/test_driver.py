@@ -367,6 +367,26 @@ class Boat(unittest.TestCase):
         self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
         self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the woken turn still runs')
 
+    def test_start_installs_the_pinned_skills_or_refuses(self):
+        # catches: a sandbox without the pinned WizSkills skills, so its agent can't follow the skill or post
+        # its note (L4, live run 3); a release whose commit isn't the lock's installed anyway; an existing
+        # different skill entry overwritten; and a failed install leaving the sandbox running.
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        home = self.env['FAKE_BOAT_STATE'] + '.homes/bx_fake0001'
+        for root in ('.claude', '.agents'):
+            self.assertTrue(os.path.islink(os.path.join(home, root, 'skills', 'build-ticket')), 'no skill in the sandbox')
+            self.assertEqual(os.readlink(os.path.join(home, root, 'skills', 'build-ticket')),
+                             os.path.join(home, 'wizskills', 'skills', 'build-ticket'))
+        os.makedirs(self.env['FAKE_BOAT_STATE'] + '.homes/bx_fake0003/.claude/skills/build-ticket')
+        for case, env in (('moved tag', {'FAKE_WIZ_COMMIT': '0' * 40}), ('existing entry', {})):
+            with self.subTest(case=case):
+                turns = len(self.logged())
+                code, err = self.driver('start', REQUEST, **env)
+                self.assertEqual((code, len(self.logged())), (1, turns), err)
+                self.assertIn('skills', err['error'])
+                self.assertEqual(list(self.sandboxes().values())[-1], 'stopped')
+
 
 if __name__ == '__main__':
     unittest.main()

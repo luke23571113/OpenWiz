@@ -9,7 +9,8 @@ It keeps its sandboxes in the JSON file FAKE_BOAT_STATE. `boat prompt` plays the
 conversation posts one builder status note in the local tracker KIT_TRACKER, and each later prompt
 in that conversation edits the same note; then the turn ends (see `prompt` for FAKE_HOLD).
 FAKE_BOAT_PROVIDERS (comma-separated) lists the connected providers; FAKE_BOAT_FAIL (comma-separated) names
-commands that fail."""
+commands that fail. `boat exec` runs its script for real, in the sandbox's own home folder, with the
+synthetic `git` of fixtures/sandbox-bin; the agent posts its note only if its skill is installed there."""
 import fcntl, json, os, re, subprocess, sys, time
 
 STATE, ARGS = os.environ['FAKE_BOAT_STATE'], sys.argv[1:]
@@ -45,6 +46,28 @@ def sandbox(state, sid):
     if sid not in state['sandboxes']:
         fail('sandbox_not_found', 'no sandbox ' + sid)
     return state['sandboxes'][sid]
+
+
+def home(sid):
+    """The sandbox's home folder: a folder of its own beside FAKE_BOAT_STATE."""
+    return os.path.join(STATE + '.homes', sid)
+
+
+def run_in_sandbox(args):
+    # boat exec <id> --timeout <seconds> -- sh -c <script>: run it with the sandbox's home, and a PATH whose `git`
+    # is the synthetic one; print its outcome as one JSON object (piped output is JSON) and exit with its code.
+    if len(args) != 7 or args[1] != '--timeout' or args[3:6] != ['--', 'sh', '-c']:
+        print('boat exec: unexpected arguments', file=sys.stderr)
+        sys.exit(2)
+    box = update(lambda s: sandbox(s, args[0]))
+    if box['state'] != 'running':
+        fail('sandbox_not_ready', 'the sandbox is %s' % box['state'])
+    os.makedirs(home(args[0]), exist_ok=True)
+    bin = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sandbox-bin')
+    p = subprocess.run(['sh', '-c', args[6]], capture_output=True, text=True, cwd=home(args[0]),
+                       env={'HOME': home(args[0]), 'PATH': bin + os.pathsep + os.environ['PATH']})
+    print(json.dumps({'exitCode': p.returncode, 'stdout': p.stdout, 'stderr': p.stderr}))
+    sys.exit(p.returncode)
 
 
 def note(conversation, woken, model, skill):
@@ -89,7 +112,11 @@ def prompt(args):
         elif resume not in box['conversations']:
             fail('conversation_not_found', 'no conversation ' + resume)
         cid = resume or cid
-        note(box['conversations'][cid], resume is not None, model, skill)
+        # The agent follows the skill, and posts its note, only if the skill is installed in the sandbox for
+        # its harness (live run 3: without it, no note).
+        found = os.path.join(home(sid), '.claude' if provider == 'claude' else '.agents', 'skills', skill, 'SKILL.md')
+        if os.path.exists(found):
+            note(box['conversations'][cid], resume is not None, model, skill)
         return cid, box['interrupts']
 
     cid, interrupts = update(queue)
@@ -118,7 +145,7 @@ def main():
     cmd, rest = (ARGS[0], ARGS[1:]) if ARGS else ('', [])
     if cmd in os.environ.get('FAKE_BOAT_FAIL', '').split(','):  # a planted failure of this command
         fail('internal_error', 'boat %s failed' % cmd)
-    if cmd != 'prompt':  # every call the driver makes passes --json once, anywhere
+    if cmd not in ('prompt', 'exec'):  # every other call the driver makes passes --json once, anywhere
         rest = [a for a in rest if a != '--json'] + ['--json'] * (rest.count('--json') == 1)
     if cmd == 'new' and len(rest) == 3 and rest[0] == '--name' and rest[2] == '--json':
         def create(state):
@@ -141,6 +168,8 @@ def main():
                 box['state'] = 'running' if cmd == 'resume' else 'stopped'
         update(act)
         say(event='ready' if cmd == 'resume' else 'done', id=rest[0])
+    elif cmd == 'exec':
+        run_in_sandbox(rest)
     elif cmd == 'prompt':
         prompt(rest)
     else:
