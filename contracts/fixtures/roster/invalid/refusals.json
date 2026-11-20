@@ -14,5 +14,6 @@
   "writes-as.md": "Roster refused: row 2 (Demo Bot): writes as its own account, not <person>'s App",
   "person.md": "Roster refused: row 2 (Demo Bot): writes as syn-other's App, not syn-owner's App like row 1",
   "label.md": "Roster refused: row 1 (A long synthetic entry name): A long synthetic entry name via syn-owner-with-a-longer-login is longer than 60 characters",
-  "heading-form.md": "Roster refused: the Roster heading must be exactly ## Roster: ## Roster ##"
+  "heading-form.md": "Roster refused: the Roster heading must be exactly ## Roster: ## Roster ##",
+  "heading-form-underlined.md": "Roster refused: the Roster heading must be exactly ## Roster: Roster"
 }

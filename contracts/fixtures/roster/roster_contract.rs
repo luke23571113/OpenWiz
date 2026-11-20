@@ -17,9 +17,10 @@ use super::ROOT;
 const HEADER: [&str; 5] = ["Name", "Kind", "Driver", "Roles", "Writes as"];
 const KINDS: [&str; 3] = ["harness", "host", "bot"];
 const ROLES: [&str; 4] = ["orchestrator", "builder", "reviewer", "helper"];
-const CASES: [&str; 6] = [
+const CASES: [&str; 7] = [
     "mixed",
     "namespaced",
+    "long-model",
     "role-not-allowed",
     "other-user",
     "starting",
@@ -437,7 +438,8 @@ fn every_case_reads_and_picks_as_its_fixture_says() {
 
 // catches: a reader that guesses past a malformed Roster (an unknown role or
 // kind, a repeated role, a row writing as another account or another
-// person's App, a Roster heading in another form read as no Roster) instead
+// person's App, a Roster heading in another form, underlined headings too,
+// read as no Roster) instead
 // of refusing it by name, with the contract's line.
 #[test]
 fn a_malformed_roster_is_refused_by_name() {
@@ -492,7 +494,8 @@ fn every_choice_is_a_row_of_its_cases_models_table() {
 // catches: a per-entry or per-bot write rule: a token request, App or label
 // that depends on an entry's kind, a user project whose writes go anywhere
 // but its own person's App and repositories, or a status note claiming a
-// configured effort no driver v1 start applied.
+// configured effort no driver v1 start applied, or a note field longer than
+// agent status v1's 60 characters.
 #[test]
 fn every_entry_writes_the_same_way() {
     let mut kinds = BTreeSet::new();
@@ -518,21 +521,32 @@ fn every_entry_writes_the_same_way() {
             kinds.insert(e["kind"].as_str().unwrap().to_owned());
             let fixed = json!({
                 "writes_as": format!("{person}'s App"),
-                "note": {
-                    "harness": format!("{} via {person}", e["name"].as_str().unwrap()),
-                    // R2: driver v1 applies no effort, so a note never claims
-                    // the configured one.
-                    "model": format!("{} default effort", p["choice"]["model_name"].as_str().unwrap()),
-                },
+                "note": format!("{} via {person}", e["name"].as_str().unwrap()),
                 "token": {
                     "service": person,
                     "requester": format!("{}-{}", p["role"].as_str().unwrap(), p["ticket"]),
                     "repositories": [repository],
                 },
             });
-            for key in ["writes_as", "note", "token"] {
+            assert_eq!(
+                e["note"]["harness"], fixed["note"],
+                "{case}: {}",
+                p["ticket"]
+            );
+            for key in ["writes_as", "token"] {
                 assert_eq!(e[key], fixed[key], "{case}: ticket {} {key}", p["ticket"]);
             }
+            // R2 and R5: driver v1 applies no effort, so a note never claims
+            // the configured one, and its `model` field keeps agent status
+            // v1's limit: 1 to 60 characters, one line, no control character.
+            let model = e["note"]["model"].as_str().unwrap();
+            assert!(
+                model.ends_with(" default effort")
+                    && model.chars().count() <= 60
+                    && !model.chars().any(char::is_control),
+                "{case}: ticket {} note model {model:?}",
+                p["ticket"]
+            );
         }
     }
     assert_eq!(
