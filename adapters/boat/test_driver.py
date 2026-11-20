@@ -399,7 +399,7 @@ class Boat(unittest.TestCase):
         self.assertNotIn('retry', json.dumps(err))
         os.rmdir(blocked)
         open(self.hold, 'w').close()
-        before = set(self.live_descendants_of_this_test())  # the first turn's worker still runs
+        before = set(self.live_descendants_of_this_test())
         code, err = self.driver('wake', out, program=self.wrapper('breaks', BREAKS_AFTER_SPAWN))
         self.assertEqual(code, 1, err)
         self.assertIn('unknown', err['error'])
@@ -494,7 +494,7 @@ class Boat(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
         open(self.hold, 'w').close()
-        before = set(self.live_descendants_of_this_test())  # the first turn's worker still runs
+        before = set(self.live_descendants_of_this_test())
         code, err = self.driver('wake', out, program=program, RAISE='after')
         self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
         self.assertTrue(self.until(lambda: set(self.live_descendants_of_this_test()) <= before), 'the woken turn still runs')
