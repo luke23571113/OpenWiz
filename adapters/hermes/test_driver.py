@@ -84,8 +84,6 @@ class Hermes(unittest.TestCase):
                             'turns': self.turns, 'hold': self.hold, 'envs': self.envs}, **settings), f)
 
     def ours(self):
-        """Every live process the test started. Each one stays a descendant (the test is a child subreaper),
-        and only processes already known to be descendants are read."""
         while True:
             try:
                 if os.waitpid(-1, os.WNOHANG)[0] == 0:
