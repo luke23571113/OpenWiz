@@ -1,5 +1,3 @@
-//! The exact fleet.md tables specified by fleet-tick.v1. No defaults.
-
 use std::collections::BTreeSet;
 
 use serde::Serialize;
@@ -17,7 +15,6 @@ pub struct RequiredCheck {
     pub required_on: Vec<String>,
 }
 
-/// Only the strict Markdown reader can construct rules.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Rules {
     pub(crate) builder: AgentRule,

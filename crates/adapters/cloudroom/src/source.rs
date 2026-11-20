@@ -1,19 +1,3 @@
-//! The CloudRoom implementation of [`SessionSource`]: runs the allowlisted
-//! `room-cli` reads and translates their 0.43.1 JSON.
-//!
-//! Schema drift is explicit. Unknown extra fields are ignored. A missing or
-//! mistyped field becomes `unknown (schema: <field>)`, with the gap
-//! `schema drift: <read> <field>`. A row without a readable id is unreadable.
-//! Output that is not JSON, or not the expected top-level shape, fails that
-//! read, as does any repeated object key (even identical or nested).
-//! Nothing is invented.
-//!
-//! Text `room-cli` prints is shown only where it is session data. A version
-//! other than `N.N.N`, a mismatched id and an unrecognised value that is not
-//! label-like are withheld; output that is not JSON is described by the
-//! parser's category and position only; the stderr of a failed read is
-//! sanitized in `process`.
-
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -32,24 +16,14 @@ use serde_json::{Map, Value};
 use crate::allowlist::{Invocation, ThreadId};
 use crate::{PROGRAM, TESTED_VERSION, process};
 
-/// **Test-only fixture programs only** (#1259): lowers every `room-cli`
-/// read timeout in this process to `timeout`, if that is lower than
-/// `READ_TIMEOUT`; it is never raised. The production binaries never call
-/// it and read no setting for it, so their reads keep `READ_TIMEOUT`. A
-/// fixture's real-time proofs use it for their short form.
 pub fn lower_read_timeout_for_fixtures(timeout: std::time::Duration) {
     process::lower_read_timeout(timeout);
 }
 
-/// **Synthetic fixture processes only** (#1259): check child completion
-/// every fixed 1 ms in this process. Repeated selection has no further effect.
-/// Ordinary production callers never select this and retain 5 ms polling.
-/// This changes no timeout, deadline, attachment allowance or cancellation.
 pub fn use_fast_polling_for_fixtures() {
     process::use_fast_polling_for_fixtures();
 }
 
-/// Reads sessions by running `room-cli`.
 #[derive(Clone, Debug)]
 pub struct CloudRoomSource {
     program: PathBuf,
@@ -57,7 +31,6 @@ pub struct CloudRoomSource {
 }
 
 impl CloudRoomSource {
-    /// Runs the given program as `room-cli`. Tests pass the fake here.
     pub fn new(program: impl Into<PathBuf>) -> Self {
         Self {
             program: program.into(),
@@ -65,12 +38,10 @@ impl CloudRoomSource {
         }
     }
 
-    /// Runs `room-cli` from `PATH`.
     pub fn from_path() -> Self {
         Self::new(PROGRAM)
     }
 
-    /// A lower per-read cap for this synthetic source only.
     pub fn with_read_timeout_for_fixtures(mut self, timeout: std::time::Duration) -> Self {
         self.read_timeout = self.read_timeout.min(timeout);
         self
@@ -133,7 +104,6 @@ impl CloudRoomSource {
         Ok(())
     }
 
-    /// Runs a detail read of `id`; a 404 is not-found.
     fn detail_read(
         &self,
         id: &SessionId,
@@ -341,8 +311,6 @@ impl SessionSource for CloudRoomSource {
     }
 }
 
-/// Retain ordinary JSON values, refusing repeated decoded keys before a
-/// `Value` can silently replace them. Unique extra fields stay tolerated.
 struct UniqueKeys(Value);
 
 impl<'de> Deserialize<'de> for UniqueKeys {
@@ -411,8 +379,6 @@ impl<'de> Visitor<'de> for UniqueKeysVisitor {
     }
 }
 
-/// Why output is not JSON, from the parser's category and position only,
-/// never from the output itself.
 fn not_json(error: &serde_json::Error) -> String {
     let what = match error.classify() {
         Category::Io => "a read error",
@@ -427,8 +393,6 @@ fn not_json(error: &serde_json::Error) -> String {
     )
 }
 
-/// A value shown in an unknown's reason: 1 to 32 lowercase ASCII letters,
-/// `-` or `_`, starting with a letter, like the labels 0.43.1 has.
 fn is_label(value: &str) -> bool {
     let b = value.as_bytes();
     (1..=32).contains(&b.len())
@@ -451,8 +415,6 @@ fn shape(expected: &str, got: &Value) -> SourceError {
     }
 }
 
-/// A list row's id and fields. A row that is not an object, or has no string
-/// id, is unreadable: its gap is added and `None` returned.
 fn identify<'a>(
     row: &'a Value,
     i: usize,
@@ -483,12 +445,9 @@ fn identify<'a>(
     None
 }
 
-/// Reads typed fields from one JSON object, recording each missing or
-/// mistyped one as a gap about `subject`.
 struct Fields<'a> {
     object: &'a Map<String, Value>,
     read: &'a str,
-    /// Where `object` sits in the response, such as `thread.`.
     prefix: &'a str,
     subject: String,
     problems: Vec<Gap>,
@@ -509,7 +468,6 @@ impl<'a> Fields<'a> {
         self.object.get(key)
     }
 
-    /// Records a drift gap and returns the unknown's reason.
     fn drift(&mut self, kind: GapKind, key: &str) -> String {
         let field = format!("{}{key}", self.prefix);
         self.problems.push(Gap {
@@ -528,7 +486,6 @@ impl<'a> Fields<'a> {
         self.drift(GapKind::WrongType, key)
     }
 
-    /// A value of the right type that 0.43.1 never had.
     fn unrecognised(&mut self, key: &str, value: &str) -> String {
         let field = format!("{}{key}", self.prefix);
         self.problems.push(Gap {
@@ -562,7 +519,6 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// A key that is always present, and may be null.
     fn nullable_string(&mut self, key: &str) -> Fact<Option<String>> {
         match self.get(key) {
             Some(Value::String(s)) => Fact::Known(Some(s.clone())),
@@ -583,7 +539,6 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// The fields `thread list` rows and `thread show`'s `thread` share.
     fn session(mut self, id: SessionId, placement: Fact<Placement>) -> SessionRecord {
         let hidden = match self.string("visibility") {
             Fact::Known(v) if v == "hidden" => Fact::Known(true),
@@ -610,9 +565,6 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// `startedAt`, a running-start time in Unix milliseconds, is optional:
-    /// room-cli 0.43.1 was not seen to report it. Only a nonnegative integer
-    /// is a start; anything else stays unknown without a drift gap.
     fn started_at(&self) -> Fact<Timestamp> {
         match self.get("startedAt") {
             None => Fact::Unknown("room-cli did not report a start time".to_owned()),
@@ -625,7 +577,6 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// `purpose` is optional; when present its `text` is required.
     fn purpose(&mut self) -> Fact<Option<String>> {
         match self.get("purpose") {
             None => Fact::Known(None),
@@ -638,7 +589,6 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// `executionTarget`, when present, says where the session runs.
     fn execution_target(&mut self) -> Option<Fact<Placement>> {
         Some(match self.get("executionTarget")? {
             Value::String(target) if target == "cloud" => Fact::Known(Placement::Cloud),
@@ -647,7 +597,6 @@ impl<'a> Fields<'a> {
         })
     }
 
-    /// A `thread list` row: `executionTarget`, else `environmentHostId`.
     fn list_placement(&mut self) -> Fact<Placement> {
         if let Some(placement) = self.execution_target() {
             return placement;
@@ -661,7 +610,6 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// `thread show`: `thread.executionTarget`, else `environment.hostId`.
     fn show_placement(&mut self, doc: &Map<String, Value>) -> Fact<Placement> {
         if let Some(placement) = self.execution_target() {
             return placement;

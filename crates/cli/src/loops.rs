@@ -1,4 +1,3 @@
-//! `loop off/on`: shared local switches with trusted context only.
 use crate::state::loops::{Context, SwitchError};
 use openwiz_core::ops::Clock;
 use std::{ffi::OsString, io::Write};
@@ -6,7 +5,6 @@ use std::{ffi::OsString, io::Write};
 pub const USAGE: &str = "  openwiz loop off <name> [--json]\n  openwiz loop on <name> [--json]\n";
 pub const HELP: &str = "loop off/on <name>\n  Switch one OpenWiz loop by its exact name or ID, recording the trusted operator\n  and time. Off admits no new check or agent; existing effects are kept. Requires\n  verified local repository/project and operator context; otherwise refuses.\n  Waits up to 30 seconds for a running pass; if still busy, retry the command.\n";
 
-/// Fixtures and trusted embedding supply context explicitly, never via flags.
 pub fn run(
     args: &[OsString],
     context: Option<&Context>,
@@ -77,8 +75,6 @@ fn parse(args: &[OsString]) -> Option<(bool, String, bool)> {
         .then(|| (enabled, target.to_owned(), json))
 }
 
-/// The real CLI: only local install config and the current checkout supply
-/// identity. Help and malformed forms read nothing. No product discovery call.
 pub fn run_local(
     args: &[OsString],
     clock: &dyn Clock,

@@ -1,25 +1,3 @@
-//! Reading a stored new-thread record back (A1 phase 2): hand-written and
-//! strict, never serde's derived readers.
-//!
-//! **Why not derived readers** (Sol, phase 1 round 2, and B1's rounds 1
-//! and 2): they also take a struct as a positional array, ignore an extra
-//! field, default a missing nullable one, and take a unit variant as an
-//! externally tagged object (`{"claimed": null}`). So no new-thread type
-//! has a serde reader at all (`no_readers` still proves it for every one).
-//! The bytes are read into a [`StrictJson`] tree, whose one hand-written
-//! reader refuses a key given twice, and [`NewThreadRecord::read`] reads the
-//! record from the tree on B1's rules:
-//! - an object only from a JSON object with **exactly** its keys: every one
-//!   required, none extra, each once;
-//! - a label only from a string in its fixed list;
-//! - a tagged outcome only with its `kind` and exactly that kind's keys;
-//! - every checked string (op id, request id, settings, hashes, the
-//!   project reference, the text) through the core's own rule;
-//! - everything else refused, with the path of what was refused.
-//!
-//! The contract tables in `tests/new-thread/contract_tables.rs` run every
-//! good and bad form through this reader and the schema alike.
-
 use std::fmt;
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -38,12 +16,9 @@ use super::{
     Binding, ProjectRef, ProjectView, RECORD_SCHEMA_ID, Settings, check_setting, request_id,
 };
 
-/// A JSON document read with every key at most once per object. Only an
-/// integer number is kept: no record field is a fraction.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StrictJson(Json);
 
-/// One JSON value of a [`StrictJson`] document.
 #[derive(Clone, Debug, PartialEq)]
 enum Json {
     Null,
@@ -51,12 +26,9 @@ enum Json {
     Int(i128),
     String(String),
     Array(Vec<Json>),
-    /// In document order; no key twice.
     Object(Vec<(String, Json)>),
 }
 
-/// Why a stored record could not be read: the path of what was refused, in
-/// OpenWiz's words. Never the record's content.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReadError(pub String);
 
@@ -130,14 +102,12 @@ impl<'de> Deserialize<'de> for StrictJson {
     }
 }
 
-/// What reading one value can give.
 type Read<T> = Result<T, ReadError>;
 
 fn refused<T>(path: &str, what: &str) -> Read<T> {
     Err(ReadError(format!("{path}: {what}")))
 }
 
-/// One JSON object with exactly its keys, each present once.
 struct Object<'a> {
     path: String,
     entries: &'a [(String, Json)],
@@ -160,7 +130,6 @@ impl<'a> Object<'a> {
         })
     }
 
-    /// The value of `key`, with its path.
     fn get(&self, key: &str) -> (&'a Json, String) {
         let value = self
             .entries
@@ -184,7 +153,6 @@ fn string(json: &Json, path: &str) -> Read<String> {
     }
 }
 
-/// A string of at least one character.
 fn text(json: &Json, path: &str) -> Read<String> {
     let s = string(json, path)?;
     if s.is_empty() {
@@ -234,7 +202,6 @@ fn list<T>(json: &Json, path: &str, read: impl Fn(&Json, &str) -> Read<T>) -> Re
         .collect()
 }
 
-/// A label from its fixed list: a string, and only one of these.
 fn label<T: Copy>(json: &Json, path: &str, labels: &[(&str, T)]) -> Read<T> {
     let Json::String(s) = json else {
         return refused(path, "not a string label");
@@ -246,7 +213,6 @@ fn label<T: Copy>(json: &Json, path: &str, labels: &[(&str, T)]) -> Read<T> {
         .map_or_else(|| refused(path, "not one of its labels"), Ok)
 }
 
-/// A string, checked by the core's own rule.
 fn checked<T>(
     json: &Json,
     path: &str,
@@ -503,7 +469,6 @@ fn outcome(json: &Json, path: &str) -> Read<Outcome> {
     })
 }
 
-/// A string, checked by an attachment type's own rule.
 fn attachment_checked<T>(
     json: &Json,
     path: &str,
@@ -513,8 +478,6 @@ fn attachment_checked<T>(
     rule(&s).or_else(|_| refused(path, "does not follow its rule"))
 }
 
-/// One attachment of the record (B2): exactly its five keys, each value by
-/// its own rule.
 fn attachment(json: &Json, path: &str) -> Read<PromptAttachment> {
     let o = Object::read(json, path, crate::attachment::PROMPT_ATTACHMENT_KEYS)?;
     Ok(PromptAttachment {
@@ -526,8 +489,6 @@ fn attachment(json: &Json, path: &str) -> Read<PromptAttachment> {
     })
 }
 
-/// The record's attachments, when the key is there (B2): a list of at
-/// least one, no id twice. Absent means none.
 fn attachments(json: &Json, path: &str) -> Read<Vec<PromptAttachment>> {
     let list = list(json, path, attachment)?;
     if list.is_empty() {
@@ -549,12 +510,8 @@ fn gap(json: &Json, path: &str) -> Read<Gap> {
     })
 }
 
-/// The keys of a claim file (B2, ClosedWiz#15).
 pub const OP_REF_KEYS: &[&str] = &["kind", "op_id"];
 
-/// The operation a claim file names (B2), read strictly: exactly `kind`
-/// (`messaging` or `new_thread`) and `op_id` (by its own rule), each once,
-/// and nothing else.
 pub fn op_ref(json: &StrictJson) -> Result<OpRef, ReadError> {
     let o = Object::read(&json.0, "claim", OP_REF_KEYS)?;
     let kinds = [
@@ -567,7 +524,6 @@ pub fn op_ref(json: &StrictJson) -> Result<OpRef, ReadError> {
     })
 }
 
-/// Every key of a stored record, in the order the core writes them.
 const RECORD_KEYS: &[&str] = &[
     "schema",
     "op_id",
@@ -590,14 +546,6 @@ const RECORD_KEYS: &[&str] = &[
 ];
 
 impl NewThreadRecord {
-    /// The record in `json`, read strictly (see the module documentation).
-    ///
-    /// Beyond the contract's shape, a record must also agree with itself:
-    /// its request id is its op id's, a kept text has the binding's hash
-    /// and the recorded size, and its attachments (absent means none, B2)
-    /// have the binding's digest. A created outcome requires a finished
-    /// state; this adds no timestamp invariant. A record that doesn't
-    /// agree with itself is refused.
     pub fn read(json: &StrictJson) -> Result<Self, ReadError> {
         let path = "record";
         let with_attachments = matches!(&json.0, Json::Object(entries)
@@ -704,8 +652,6 @@ mod tests {
 
     fn an_unexpected_nested_key_is_refused_without_its_text() {
         for key in ["SYNTHETIC_KEY", "SYNTHETIC_OTHER_KEY"] {
-            // Only fields read before binding need values: the refusal must
-            // occur at binding, before any of the remaining fields are read.
             let entries = RECORD_KEYS
                 .iter()
                 .map(|name| {

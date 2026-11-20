@@ -1,9 +1,3 @@
-//! The command's state directory: where it is by default, that it is
-//! never inside a repository, and that every directory and record it makes
-//! is synced. Moved here from `tests/messaging/m10_record.rs` (M10) by #809,
-//! and beside the state module it checks by #1264, through the start record
-//! now that the send record is gone.
-
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::DirBuilderExt;
@@ -13,13 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use openwiz_cli::state::{StartFileStore, default_state_dir};
 
-/// The repository root.
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-/// This run's own private directory, outside every repository (the
-/// target directory is inside this one, where the store refuses to write):
-/// named after the process and the time, so two runs at once never share
-/// one, and never reused.
 fn run_root() -> &'static Path {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
@@ -85,7 +74,6 @@ fn the_default_state_directory_is_the_owners_and_outside_the_repository() {
             .unwrap(),
             PathBuf::from("/synthetic-xdg/openwiz")
         );
-        // A relative XDG_STATE_HOME is ignored, as the XDG spec says.
         assert_eq!(
             default_state_dir(&env(&[("HOME", home), ("XDG_STATE_HOME", "relative")])).unwrap(),
             default
@@ -99,8 +87,6 @@ fn the_default_state_directory_is_the_owners_and_outside_the_repository() {
         .unwrap(),
         PathBuf::from("/synthetic-state")
     );
-    // Haiku A7: a relative `OPENWIZ_STATE_DIR` is refused, not silently
-    // replaced by the default.
     assert!(
         default_state_dir(&env(&[
             ("HOME", home),
@@ -111,7 +97,6 @@ fn the_default_state_directory_is_the_owners_and_outside_the_repository() {
     assert!(default_state_dir(&env(&[])).is_err(), "no HOME: no guess");
     assert!(default_state_dir(&env(&[("HOME", "relative")])).is_err());
 
-    // With the real HOME, the default is not inside this repository.
     if let Some(real) = std::env::var_os("HOME") {
         let real = default_state_dir(&env(&[("HOME", real.to_str().unwrap())])).unwrap();
         let repo = Path::new(ROOT).canonicalize().unwrap();
@@ -147,8 +132,6 @@ fn every_created_directory_is_synced_in_its_parent() {
         .expect("the store creates directories in one function, create_dir_synced");
     let body = &body[..body.find("\n}\n").expect("end of create_dir_synced")];
     assert!(body.contains("create_dir"), "{body}");
-    // Round 2: the parent is synced through the store's sync function,
-    // which `open` sets to a real fsync.
     assert!(body.contains("sync(parent)"), "{body}");
     let fsync = source.split("fn fsync_dir").nth(1).expect("fsync_dir");
     assert!(fsync[..fsync.find("\n}\n").unwrap()].contains("sync_all"));
@@ -158,8 +141,6 @@ fn every_created_directory_is_synced_in_its_parent() {
         .nth(1)
         .expect("open_with_sync");
     let open = &open[..open.find("\n    }\n").expect("end of open")];
-    // #79 (Sol round 1): the checks moved into `checked_sends`, shared with
-    // the read-only opener, which is given no sync and so makes nothing.
     assert!(
         open.contains("Self::checked_sends(state_dir, Some(sync))"),
         "{open}"
@@ -188,8 +169,6 @@ fn every_created_directory_is_synced_in_its_parent() {
     );
 }
 
-/// Sol S4: a state directory inside a repository is refused, however it is
-/// named.
 #[test]
 fn a_state_directory_inside_a_repository_is_refused() {
     let repo = run_root().join("m10_repo");
@@ -198,7 +177,6 @@ fn a_state_directory_inside_a_repository_is_refused() {
     let state = repo.join("nested").join("state");
     assert!(StartFileStore::open(&state).is_err());
     assert!(!state.exists(), "nothing created inside the repository");
-    // Through a symlink from outside, too.
     let link = run_root().join("m10_repo_link");
     let _ = fs::remove_file(&link);
     std::os::unix::fs::symlink(&repo, &link).unwrap();
@@ -207,14 +185,11 @@ fn a_state_directory_inside_a_repository_is_refused() {
     let _ = fs::remove_dir_all(&repo);
 }
 
-/// Sol S2, round 2: an opener syncs the whole directory chain every time,
-/// also when another opener created it and may not have synced it yet.
 #[test]
 fn every_opener_syncs_the_whole_directory_chain() {
     use std::sync::Mutex;
     let base = run_root().join("m10_chain");
     let _ = fs::remove_dir_all(&base);
-    // Another opener made the chain and was stopped before syncing it.
     let state = base.join("a").join("state");
     private_dir_all(&state.join("starts"));
     let synced = Mutex::new(Vec::<PathBuf>::new());
@@ -237,9 +212,6 @@ fn every_opener_syncs_the_whole_directory_chain() {
     let _ = fs::remove_dir_all(&base);
 }
 
-/// Sol S4, round 2: a `starts` that leads into a repository, and a path
-/// that only reaches one through `..`, are both refused; nothing is written
-/// in the repository.
 #[test]
 fn no_path_trick_puts_the_record_inside_a_repository() {
     let base = run_root().join("m10_repo_tricks");
@@ -249,14 +221,11 @@ fn no_path_trick_puts_the_record_inside_a_repository() {
     let inside = repo.join("records");
     DirBuilder::new().mode(0o700).create(&inside).unwrap();
 
-    // 1. An outside state directory whose `starts` is a symlink into it.
     let outside = base.join("outside-state");
     private_dir_all(&outside);
     std::os::unix::fs::symlink(&inside, outside.join("starts")).unwrap();
     assert!(StartFileStore::open(&outside).is_err(), "a starts symlink");
 
-    // 2. A path that reaches the repository through `..` of a missing
-    //    directory.
     let dotted = base
         .join("missing")
         .join("..")

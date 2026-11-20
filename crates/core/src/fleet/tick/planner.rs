@@ -3,9 +3,6 @@ use super::rules::{branch_matches, unique};
 use super::*;
 use std::collections::BTreeSet;
 
-/// Plan one snapshot. No clock or source is read here; repeated inputs give
-/// identical outputs. Failed global reads yield no document. Failed fleet or
-/// ticket reads yield one look, never an action using a guessed fact.
 pub fn plan(snapshot: &Snapshot, rules: &Rules, planned_at: u64) -> Result<Plan, PlanError> {
     let Observed::Complete(default) = &snapshot.default_branch else {
         return Err(PlanError::RepositoryUnread);
@@ -40,8 +37,6 @@ pub fn plan(snapshot: &Snapshot, rules: &Rules, planned_at: u64) -> Result<Plan,
         rules: rules.clone(),
         actions: vec![],
     };
-    // A repository whose default itself is a release line grants the tick
-    // no authority there, including no builder starts.
     if default.as_str().starts_with("release-") {
         return Ok(out);
     }
@@ -125,8 +120,6 @@ fn fleet(out: &mut Plan, input: &FleetInput) {
         return;
     }
     let approved = f.approval.as_ref();
-    // The current graph must contain every approved row, even when a ticket
-    // read failed. A missing row is not a completed or authorised ticket.
     if approved.is_some_and(|a| {
         a.rows
             .keys()
@@ -447,8 +440,6 @@ fn ticket(
         }
         return false;
     }
-    // Relays carry their own complete facts. A removed or stale plan row
-    // cannot hide a question, refusal, CI failure or review finding.
     if t.issue.labels.iter().any(|l| l.as_str() == "needs-info")
         && let Some(question) = t.question
         && t.records.question_passed.is_none_or(|c| question > c)
@@ -472,8 +463,6 @@ fn ticket(
         .approval
         .as_ref()
         .filter(|a| current && f.issue.state == IssueState::Open && a.rows.contains_key(&id))
-        // Doubtful contract placement withholds starts and merges, while
-        // relays with their own complete facts remain due.
         .filter(|_| hit.is_none() || t.builder.is_some());
     if let Some(PrInput::Open(p)) = &t.pr {
         open_actions(out, spec, id, t, p, authority);
@@ -564,7 +553,6 @@ fn ticket(
             },
         );
     }
-    // A restart is a one-time agent due item, not an automatic thread retry.
     if current
         && *role == Ready::Agent
         && !held
@@ -655,7 +643,6 @@ fn path_matches(pattern: &str, path: &str) -> bool {
     if pattern.ends_with('/') {
         return path.starts_with(pattern);
     }
-    // Match component by component: '*' cannot cross a directory boundary.
     let p = pattern.split('/').collect::<Vec<_>>();
     let f = path.split('/').collect::<Vec<_>>();
     p.len() == f.len() && p.iter().zip(f).all(|(p, f)| glob_component(p, f))
@@ -767,8 +754,6 @@ fn latest_report(p: &OpenPr) -> Result<Option<Report>, &'static str> {
         if rest.starts_with("disputed, kept:") {
             disputes.push((number, label.clone()));
         }
-        // Other status wording is a finding without a diagnosis, not an
-        // unreadable report. Only this exact decimal rounds form qualifies.
         if let Some(rest) = rest.strip_prefix("still open after ")
             && let Some((rounds, _)) = rest.split_once(" rounds:")
             && !rounds.is_empty()

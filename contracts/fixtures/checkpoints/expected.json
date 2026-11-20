@@ -20,7 +20,8 @@
     "spec/invalid-setext-heading.md": {"result": "invalid", "code": "section-heading", "early": true, "late": true},
     "spec/absent-fenced-example.md": {"result": "absent", "early": true, "late": false},
     "spec/both-no-fenced-example.md": {"result": "answered", "one_way_door": false, "user_visible": false, "release": false, "early": false, "late": false},
-    "spec/crlf.md": {"result": "answered", "one_way_door": false, "user_visible": true, "release": false, "early": false, "late": true}
+    "spec/crlf.md": {"result": "answered", "one_way_door": false, "user_visible": true, "release": false, "early": false, "late": true},
+    "spec/both-yes-inline-code.md": {"result": "answered", "one_way_door": true, "user_visible": true, "release": false, "early": true, "late": true}
   },
   "ask": {
     "ask/valid.md": {"result": "valid", "pr": 4012, "commit": "1111111111111111111111111111111111111111", "evidence": [
@@ -79,6 +80,7 @@
     "release/invalid-ask-empty-host.json": {"merge": "held", "why": "ask-due"},
     "release/indented-heading.json": {"merge": "held", "why": "ask-due"},
     "release/fenced-example.json": {"merge": "flows"},
+    "release/inline-code-span.json": {"merge": "held", "why": "ask-due"},
     "release/release-held.json": {"merge": "held", "why": "look-due"},
     "release/release-released.json": {"merge": "released"},
     "release/not-final.json": {"merge": "flows"},

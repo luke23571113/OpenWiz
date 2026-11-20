@@ -126,6 +126,8 @@ jobs:
           python3 -I kernel/records/model/test_model.py
           python3 -I adapters/template/test_driver.py
           python3 -I adapters/cloudroom/test_driver.py
+          python3 -I contracts/fixtures/write-driver/check.py
+          python3 -I contracts/fixtures/feedback-loop/test_check.py
       # #555: fail on any carried contract that differs from the pinned
       # WizSkills release by one byte.
       - name: The WizSkills installer
@@ -151,6 +153,7 @@ jobs:
           python3 -I tools/install/tests/init/test_init.py
           python3 -I -B tools/install/setup/test_github_login.py
           python3 -I tools/install/tests/first-hour/test_first_merge.py
+          python3 -I tools/install/tests/skills-linked-config/test_linked_config.py
       - name: The GitHub App
         if: matrix.part == 2
         run: |
@@ -180,6 +183,12 @@ jobs:
           persist-credentials: false
       - name: Python
         run: sh .github/actions/docs-only/python.sh
+      - name: The comment check (#1817)
+        run: |
+          python3 -I tools/comment-check/test_check.py
+          python3 -I docs/evidence/1817/test_ci_step.py
+          git fetch --no-tags --depth=2 origin "$GITHUB_SHA"
+          python3 -I tools/comment-check/check.py diff --base HEAD^1
       - name: The owned-paths tests
         run: python3 -I tools/owned-paths/test_check.py
       - name: Every changed file is inside the ticket's owned paths

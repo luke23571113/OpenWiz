@@ -1,12 +1,3 @@
-//! #1803 (MD1): the models contract's fixtures agree with its schema and its
-//! rules. `contracts/models.v1.md` is the contract; this file is registered
-//! in `tests/cli-agent/main.rs` and kept beside the fixtures it checks, so a
-//! later reader (MD2's CLI, MD4's launch-fleet, MD5's setup, MD6's app) has
-//! one place to compare itself against. All values are synthetic.
-//!
-//! The reader below is the contract's reference reading of a `fleet.md`:
-//! the Models table, or the older five tables when it is absent, then the
-//! follow, fixer and cross-family rules. It ships nowhere.
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -34,7 +25,6 @@ fn schema() -> Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
-/// The schema's definition for a document, by its `schema` id.
 fn definition(doc: &Value) -> &'static str {
     match doc["schema"].as_str() {
         Some("openwiz.models-show.v1") => "show_report",
@@ -54,7 +44,6 @@ fn check(schema: &Value, doc: &Value) -> Vec<String> {
     validate(&one, doc)
 }
 
-/// Every JSON fixture outside `invalid/`, except the case files.
 fn documents() -> Vec<String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(dir()).unwrap() {
@@ -75,10 +64,6 @@ fn documents() -> Vec<String> {
     out
 }
 
-// catches: a schema that lets a malformed report or snapshot through (a
-// waiting review that names a model, a builder that follows itself, a
-// refusal that changed files, a recommended Fixer, a snapshot with no read
-// time), or one that refuses a report the contract's fixtures print.
 #[test]
 fn the_schema_takes_every_report_fixture_and_refuses_each_malformed_one() {
     let schema = schema();
@@ -113,8 +98,6 @@ fn the_schema_takes_every_report_fixture_and_refuses_each_malformed_one() {
     }
 }
 
-// ---- The reference reading of a fleet.md --------------------------------
-
 const MODELS_HEADER: [&str; 5] = [
     "Role",
     "Harness",
@@ -135,7 +118,6 @@ fn cells(line: &str) -> Option<Vec<String>> {
     Some(inner.split('|').map(|c| c.trim().to_owned()).collect())
 }
 
-/// The lines under exactly one `## <name>` heading, to the next `## `.
 fn section<'a>(text: &'a str, name: &str) -> Result<Option<Vec<&'a str>>, String> {
     let lines: Vec<&str> = text.lines().collect();
     let heading = format!("## {name}");
@@ -164,8 +146,6 @@ fn id(word: &str) -> Result<String, String> {
     }
 }
 
-/// A model id: one or more id segments joined by `/` (no empty segment, no
-/// leading or trailing `/`), so `vendor/demo` is one.
 fn model_id(word: &str) -> Result<String, String> {
     for segment in word.split('/') {
         id(segment).map_err(|_| format!("bad model id {word:?}"))?;
@@ -191,7 +171,6 @@ fn choice(names: [&str; 3], ids: [String; 3]) -> Result<Value, String> {
     }))
 }
 
-/// `--provider P --model M --reasoning-level E`, in one code span.
 fn flags(cell: &str) -> Result<[String; 3], String> {
     let inner = cell
         .strip_prefix('`')
@@ -346,7 +325,6 @@ fn older_tables(text: &str) -> Result<Read, String> {
     })
 }
 
-/// An older-tables reading in `show`'s shape, for `older_rows`.
 fn older_view(older: &Read) -> Value {
     let (reviews, fixers) = (
         older.reviews.as_ref().unwrap(),
@@ -359,8 +337,6 @@ fn older_view(older: &Read) -> Value {
     })
 }
 
-/// The kept line's two values: the model ids, or `waits`; when the model ids
-/// are equal, the model and effort; when those are too, all three ids.
 fn values(now: &Value, was: &Value) -> (String, String) {
     let shown = |c: &Value, keys: &[&str]| {
         if c.is_null() {
@@ -463,14 +439,10 @@ fn read(text: &str) -> Result<Value, String> {
     }))
 }
 
-/// Harness, model and effort only: what spawns.
 fn spawned(c: &Value) -> Value {
     json!([c["provider"], c["model"], c["effort"]])
 }
 
-// catches: an older-tables fallback, or a one-table follow, fixer or
-// cross-family rule, that starts any role or any builder family's reviewer
-// or fixer on a different harness, model or effort than today's J255 tables.
 #[test]
 fn todays_choices_read_the_same_from_the_one_table_and_the_five_tables() {
     let one = read(&text("one-table/fleet.md")).unwrap();
@@ -498,8 +470,6 @@ fn todays_choices_read_the_same_from_the_one_table_and_the_five_tables() {
             assert_eq!(spawned(a), spawned(b), "{kind} of {fam}-built work");
         }
     }
-    // J255, as the contract records it: Claude-built work is reviewed by
-    // Codex Sol 6.2 Medium and GPT-built work by Opus 5.5 Medium.
     assert_eq!(
         spawned(&one["reviews"]["claude"]["choice"]),
         json!(["codex", "gpt-6.2-sol", "medium"])
@@ -510,12 +480,6 @@ fn todays_choices_read_the_same_from_the_one_table_and_the_five_tables() {
     );
 }
 
-// catches: a show fixture that disagrees with the contract's rules (an
-// absent or following row that doesn't follow the Builder, a stale older
-// table winning over the Models table, a same-family pair with no warning or
-// no waiting review), so every later reader would agree on a wrong answer;
-// or a namespaced model id (`vendor/demo`) that `set` writes but `show`
-// can't read back.
 #[test]
 fn every_show_fixture_is_its_fleet_files_reading() {
     for (file, show) in [
@@ -536,9 +500,6 @@ fn every_show_fixture_is_its_fleet_files_reading() {
     }
 }
 
-// catches: a malformed Models table that some reader would still take
-// (a missing or misplaced required row, a following Builder, broken flags),
-// so two readers start different models from the same file.
 #[test]
 fn a_malformed_models_table_is_refused_not_guessed() {
     let good = text("one-table/fleet.md");
@@ -565,8 +526,6 @@ fn a_malformed_models_table_is_refused_not_guessed() {
     }
 }
 
-/// The older rows a Models table resolves to, as the contract's `set` keeps
-/// them while both forms are present.
 fn older_rows(show: &Value) -> Vec<(&'static str, Value)> {
     vec![
         ("Builder", show["roles"]["builder"]["choice"].clone()),
@@ -587,11 +546,6 @@ fn older_rows(show: &Value) -> Vec<(&'static str, Value)> {
     ]
 }
 
-// catches: a set fixture whose written file reads as something other than
-// the report says, leaves the older tables out of step with the Models
-// table, changes another role, a not-offered refusal that names an offered
-// choice, or a choice set that the Models table can't hold (R1: an offered
-// namespaced model is listed, but refused as not writable).
 #[test]
 fn every_set_fixture_writes_what_its_report_says() {
     for case in [
@@ -673,7 +627,6 @@ fn every_set_fixture_writes_what_its_report_says() {
                         "unchanged"
                     }
                 } else {
-                    // Kept (ruling 14): left as it was; the warning names it.
                     assert_eq!(
                         in_file, &rows[i].1,
                         "{case}: {table} neither in step nor kept"
@@ -692,8 +645,6 @@ fn every_set_fixture_writes_what_its_report_says() {
     }
 }
 
-// catches: a hand-off line whose command sets another role or choice than
-// the line names, or names a choice the snapshot never offered.
 #[test]
 fn every_handoff_line_runs_the_set_it_names() {
     let offered = load("list/models-offered.json");

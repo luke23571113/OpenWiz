@@ -1,15 +1,3 @@
-//! Bundle discovery and the recorded PC launcher markers (#267).
-//!
-//! PC selection ties kernel process executable metadata to a verified bundle;
-//! stale mounts never select themselves. The marker check takes
-//! observed ownership, mode and prefix facts; neither function runs a program.
-//! The process runner resolves the default launcher anew for each call. Only
-//! test entrypoints inject a private root and synthetic ownership in code.
-//!
-//! BX1 (#2098): two running roots stay refused as ambiguous, except CloudRoom's
-//! GUI and its direct child bridge supervisor running from two mounts of one
-//! AppImage file with byte-identical launchers; see [`Discovery::locate`].
-
 use std::fs;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
@@ -24,8 +12,6 @@ use crate::allowlist::{MAC_BUNDLE_CLI, PC_BUNDLE_CLI, PC_BUNDLE_PREFIX, PC_BUNDL
 
 static DISCOVERY: OnceLock<Discovery> = OnceLock::new();
 
-/// Discovery inputs supplied in code by an entrypoint. Real binaries use
-/// fixed system discovery; fixture binaries supply their private filesystem.
 pub struct Discovery {
     root: PathBuf,
     metadata: fn(&fs::Metadata) -> LauncherMetadata,
@@ -34,8 +20,6 @@ pub struct Discovery {
 }
 
 impl Discovery {
-    /// Fixture filesystem seam for running-process evidence. System discovery
-    /// always uses Linux proc metadata, never an environment-selected path.
     pub fn with_process_root(mut self, root: PathBuf) -> Self {
         self.process_root = root;
         self
@@ -50,8 +34,6 @@ impl Discovery {
         }
     }
 
-    /// A fixed app-bundle launcher (the Mac's location), using the same
-    /// marker verification without scanning or consulting PATH.
     pub fn fixed(path: PathBuf, metadata: fn(&fs::Metadata) -> LauncherMetadata) -> Self {
         Self {
             root: path,
@@ -69,25 +51,10 @@ impl Discovery {
         }
     }
 
-    /// Finds and verifies the launcher anew. No candidate is executed here.
     pub fn resolve(&self) -> Result<PathBuf, LocateError> {
         self.locate().map(|located| located.launcher)
     }
 
-    /// [`Discovery::resolve`], with how the launcher was chosen, for
-    /// diagnostics. On the PC exactly one running root selects itself. Two
-    /// are accepted only as CloudRoom's AppImage pair (BX1, #2098): the GUI's
-    /// head process directly started the bridge's head process; the GUI's
-    /// launcher (the GUI head's parent) and the bridge head each record their
-    /// own mount as `APPDIR` and the same canonical `APPIMAGE` regular file;
-    /// both roots pass every launcher check; and their launchers are
-    /// byte-identical. The launcher then comes from the bridge's mount. Any
-    /// other shape of two or more roots is [`LocateError::Ambiguous`].
-    /// Helpers may descend through processes outside the mounts only when
-    /// stable kernel ancestry ties them back to the same verified root.
-    /// Verified locator descendants do not count as app heads. Ambiguity
-    /// gets at most three discovery attempts within a 100 ms retry budget;
-    /// each attempt rechecks the bundle, and executes nothing.
     pub fn locate(&self) -> Result<Located, LocateError> {
         retry_ambiguous(Duration::from_millis(100), || self.locate_once())
     }
@@ -106,7 +73,6 @@ impl Discovery {
         Ok(Located { launcher, basis })
     }
 
-    /// The launcher file's own checks: type, siblings, prefix, owner, mode.
     fn verify(&self, candidate: &Path) -> Result<(), LocateError> {
         let metadata = fs::symlink_metadata(candidate).map_err(|_| LocateError::Unreadable)?;
         if !metadata.is_file() {
@@ -118,9 +84,6 @@ impl Discovery {
             .and_then(|mut file| file.read_exact(&mut prefix))
             .map_err(|_| LocateError::UnexpectedFile)?;
         let owner = if self.fixed {
-            // A fixed Mac app is trusted at its installed location, and may
-            // be owned by the installing user rather than root. Require its
-            // launcher to retain the application's actual owner.
             let app = candidate
                 .ancestors()
                 .nth(8)
@@ -149,11 +112,6 @@ impl Discovery {
     ) -> Result<(PathBuf, Basis), LocateError> {
         check_directories(&self.root)?;
         check_directories(&self.process_root)?;
-        // Only this user's app processes are in scope. A root-owned app
-        // executable still runs as its installing user. Selection never reads
-        // argv, environment or process names; none of those establishes
-        // identity. Only the BX1 pair check reads two environment values,
-        // and only to refuse a pair the kernel facts already allow.
         let user = fs::metadata(self.process_root.join("self"))
             .map_err(|_| LocateError::Unreadable)?
             .uid();
@@ -167,16 +125,9 @@ impl Discovery {
             let (pid, mount, candidate) = match found {
                 Ok(Some(found)) => found,
                 Ok(None) => continue,
-                // Two roots were refused here before BX1; a later fault
-                // leaves their pair unverified, so it stays ambiguous.
                 Err(_) if roots.len() > 1 => return Err(LocateError::Ambiguous),
                 Err(error) => return Err(error),
             };
-            // A bundled CLI can run the app executable outside the GUI's
-            // process tree. Concurrent reads must not turn those children
-            // into extra heads in the BX1 pair. Exclude only descendants
-            // proven by stable kernel parent/starttime records; executable
-            // and launcher verification still apply before exclusion.
             if self.own_descendant(&pid, user) {
                 self.verify(&candidate)?;
                 let file = fs::symlink_metadata(&candidate).map_err(|_| LocateError::Unreadable)?;
@@ -197,9 +148,6 @@ impl Discovery {
                 }),
             }
         }
-        // Descent only removes an extra process head, never a distinct
-        // bundle. Require both the verified path and file identity to match
-        // a surviving root. With none, retain the no-running-app refusal.
         if !roots.is_empty()
             && descendants.iter().any(|(launcher, dev, ino)| {
                 !roots.iter().any(|root| {
@@ -212,7 +160,6 @@ impl Discovery {
         {
             return Err(LocateError::Ambiguous);
         }
-        // One order whatever the scan's: the pair check never depends on it.
         roots.sort_by(|a, b| a.launcher.cmp(&b.launcher));
         match roots.as_slice() {
             [one] => return Ok((one.launcher.clone(), Basis::OneRoot)),
@@ -223,16 +170,12 @@ impl Discovery {
             }
             _ => {}
         }
-        // Layout alone never selects a launcher. It only distinguishes an
-        // absent bundle from mounted bundles with no verified process match.
         match pc_bundle_candidate(&self.root) {
             Ok(_) | Err(LocateError::Ambiguous) => Err(LocateError::NoRunningApp),
             Err(error) => Err(error),
         }
     }
 
-    /// One process entry: its pid and its verified root's launcher, if it
-    /// runs an app directly in a mount with the recorded layout.
     fn running_root(
         &self,
         entry: &fs::DirEntry,
@@ -259,8 +202,6 @@ impl Discovery {
         let exe = process.join("exe");
         let target = match fs::read_link(&exe) {
             Ok(target) => target,
-            // Exited/zombie and non-dumpable processes supply no readable
-            // exe identity. Only a readable, verified app can select a mount.
             Err(error)
                 if matches!(
                     error.kind(),
@@ -291,8 +232,6 @@ impl Discovery {
         if target != mount.join(app) {
             return Err(LocateError::UnexpectedFile);
         }
-        // The executable's name alone is never identity. It must live
-        // directly in a mount containing the recorded CloudRoom layout.
         let Some(candidate) = bundle_file(&mount, false)? else {
             return Ok(None);
         };
@@ -351,7 +290,6 @@ impl Discovery {
         };
         let mut family = Vec::new();
         let mut child_start = u64::MAX;
-        // No unbounded proc walk, including cycles and unreadable ancestors.
         for _ in 0..64 {
             if current == ancestor {
                 return !family.is_empty()
@@ -377,9 +315,6 @@ impl Discovery {
         false
     }
 
-    /// Kernel parent pid and starttime (stat fields 4 and 22). Names,
-    /// argv and environment never establish descent. Starttime and a second
-    /// read of every link prevent a reused pid from supplying the proof.
     fn process_identity(&self, pid: u32, user: u32) -> Option<(u32, u64)> {
         let process = self.process_root.join(pid.to_string());
         let metadata = fs::symlink_metadata(&process).ok()?;
@@ -405,11 +340,7 @@ impl Discovery {
         Some((parent.parse().ok()?, start.parse().ok()?))
     }
 
-    /// BX1 (#2098): CloudRoom's GUI and its bridge supervisor, two mounts of
-    /// one AppImage file. `None` refuses the pair; the caller reports it as
-    /// ambiguous. Each condition below is required, with no fallback.
     fn appimage_pair(&self, user: u32, roots: [&Root; 2]) -> Option<(PathBuf, Basis)> {
-        // Every verified process of both roots, with its recorded parent.
         let mut family = Vec::new();
         for (index, root) in roots.iter().enumerate() {
             for pid in &root.pids {
@@ -417,11 +348,6 @@ impl Discovery {
                 family.push((pid, self.parent(pid)?, index));
             }
         }
-        // A GUI/bridge helper can be launched through an intermediate shell
-        // whose executable is outside the mounts. Collapse that gap only
-        // back to the SAME verified root, using stable kernel ancestry.
-        // Stop at the first app member: never turn an indirect cross-root
-        // edge into BX1's required direct GUI -> bridge relationship.
         for i in 0..family.len() {
             let (pid, parent, index) = family[i];
             if family.iter().any(|&(member, ..)| member == parent) {
@@ -444,8 +370,6 @@ impl Discovery {
             }
         }
         let member = |pid: u32| family.iter().find(|(member, ..)| *member == pid);
-        // Each root has exactly one head, whose parent is outside that root,
-        // and every other process of the root descends from it within it.
         let mut heads = [None; 2];
         for &(pid, parent, index) in &family {
             if member(parent).is_none_or(|&(.., root)| root != index)
@@ -467,7 +391,6 @@ impl Discovery {
                 return None;
             }
         }
-        // The bridge head's direct parent is the GUI head, one way round only.
         let parent_of = |index: usize| member(heads[index]).map(|&(_, parent, _)| parent);
         let bridge = match (parent_of(0)? == heads[1], parent_of(1)? == heads[0]) {
             (false, true) => 1,
@@ -475,10 +398,6 @@ impl Discovery {
             _ => return None,
         };
         let gui = 1 - bridge;
-        // The GUI's own environment is not readable as a record on the PC;
-        // its launcher, the GUI head's direct parent, carries it. That
-        // launcher runs as this user and from neither root. (The scan has
-        // already refused a pid entry that is not a directory.)
         let launcher = parent_of(gui)?;
         if member(launcher).is_some() {
             return None;
@@ -491,7 +410,6 @@ impl Discovery {
         if self.appimage_record(heads[bridge], &roots[bridge].mount)? != appimage {
             return None;
         }
-        // Both roots pass every launcher check, with byte-identical launchers.
         for root in roots {
             self.verify(&root.launcher).ok()?;
         }
@@ -509,8 +427,6 @@ impl Discovery {
         ))
     }
 
-    /// The parent pid from `<pid>/stat`: `<pid> (<comm>) <state> <ppid> ...`,
-    /// where the comm may itself hold spaces and parentheses.
     fn parent(&self, pid: u32) -> Option<u32> {
         let stat = read_bounded(
             &self.process_root.join(pid.to_string()).join("stat"),
@@ -526,9 +442,6 @@ impl Discovery {
         parent.parse().ok()
     }
 
-    /// One process's AppImage record: exactly one `APPDIR`, naming `mount`
-    /// exactly, and exactly one `APPIMAGE`, a canonical path to a
-    /// regular file. Returns that path with the file's device and inode.
     fn appimage_record(&self, pid: u32, mount: &Path) -> Option<(PathBuf, (u64, u64))> {
         let environ = read_bounded(
             &self.process_root.join(pid.to_string()).join("environ"),
@@ -547,7 +460,6 @@ impl Discovery {
             return None;
         }
         let path = Path::new(std::ffi::OsStr::from_bytes(only(b"APPIMAGE=")?));
-        // Canonical means absolute, with no symlink, `.` or `..` component.
         if fs::canonicalize(path).ok()?.as_os_str() != path.as_os_str() {
             return None;
         }
@@ -572,8 +484,6 @@ fn retry_ambiguous<T>(
             return result;
         }
         std::thread::sleep(Duration::from_millis(10).min(remaining));
-        // Scheduling and filesystem reads can overrun the budget. Never
-        // start another scan after it, or extend it following an ambiguity.
         if std::time::Instant::now() >= stop {
             return result;
         }
@@ -590,16 +500,6 @@ const LAUNCHER_LIMIT: u64 = 16 << 20;
 mod ambiguous_retry_tests {
     use super::*;
 
-    // Red (#2852, 2026-11-14):
-    // cargo test -p openwiz-adapter-cloudroom --lib ambiguous_retry_tests -- --nocapture
-    // assertion `left == right` failed
-    //   left: Err(Ambiguous)
-    //  right: Ok("verified fixture")
-    // test result: FAILED. 0 passed; 1 failed; 9 filtered out.
-    // Claim: transient ambiguity is rescanned, persistent ambiguity is
-    // bounded, and verification failures are never retried. Controlled
-    // outcomes avoid filesystem races; zero budget proves the time cap
-    // without asserting wall-clock timings.
     #[test]
     fn only_ambiguity_retries_with_attempt_and_time_bounds() {
         let mut calls = 0;
@@ -632,16 +532,6 @@ mod ambiguous_retry_tests {
         }
     }
 
-    // Claim (#2906): a positive budget caps retries in time, not only a
-    // zero one. The first scan sleeps past the 20 ms budget, so no second
-    // scan may start; a scaled budget (`budget * 1000`) would allow three.
-    // The sleep only ever lengthens the elapsed time, so the assertion
-    // never depends on how fast the machine is.
-    // Red (#2906, 2026-11-14), with `now() + budget * 1000`:
-    // cargo test -p openwiz-adapter-cloudroom --lib ambiguous_retry_tests
-    // assertion `left == right` failed
-    //   left: 3
-    //  right: 1
     #[test]
     fn a_positive_budget_stops_retries_once_a_scan_overruns_it() {
         let mut calls = 0;
@@ -657,7 +547,6 @@ mod ambiguous_retry_tests {
     }
 }
 
-/// A whole file of at most `limit` bytes; a longer one is refused.
 fn read_bounded(path: &Path, limit: u64) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
     fs::File::open(path)
@@ -668,28 +557,20 @@ fn read_bounded(path: &Path, limit: u64) -> Option<Vec<u8>> {
     (bytes.len() as u64 <= limit).then_some(bytes)
 }
 
-/// One distinct running root: its mount, its launcher and its processes.
 struct Root {
     mount: PathBuf,
     launcher: PathBuf,
     pids: Vec<String>,
 }
 
-/// How discovery chose the launcher, for diagnostics (#2098).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Basis {
-    /// The fixed app-bundle location (the Mac).
     Fixed,
-    /// The one running app mount.
     OneRoot,
-    /// CloudRoom's GUI and its direct child bridge supervisor, two mounts of
-    /// one AppImage file with byte-identical launchers. The launcher comes
-    /// from the bridge's mount.
     AppImagePair { gui: PathBuf, bridge: PathBuf },
 }
 
 impl Basis {
-    /// One line naming the choice, for an owner reading diagnostics.
     pub fn describe(&self) -> String {
         match self {
             Self::Fixed => "room-cli from the fixed app bundle".to_owned(),
@@ -704,8 +585,6 @@ impl Basis {
     }
 }
 
-/// A path for one diagnostic line: every control character (a newline, an
-/// escape sequence) becomes `?`, so a mount name cannot forge or style output.
 fn shown(path: &Path) -> String {
     path.display()
         .to_string()
@@ -714,14 +593,12 @@ fn shown(path: &Path) -> String {
         .collect()
 }
 
-/// A verified launcher and how it was chosen. Nothing here was executed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Located {
     pub launcher: PathBuf,
     pub basis: Basis,
 }
 
-/// No symlinked root, mount or directory component may redirect verification.
 fn check_directories(path: &Path) -> Result<(), LocateError> {
     if !path.is_absolute() {
         return Err(LocateError::UnexpectedFile);
@@ -750,17 +627,12 @@ fn real_metadata(metadata: &fs::Metadata) -> LauncherMetadata {
     }
 }
 
-/// Entry-point injection, once per process. Production passes `system()`;
-/// fixture entrypoints supply a private root and synthetic ownership in code.
-/// No environment variable or build feature selects a different discovery.
 pub fn install(discovery: Discovery) -> Result<(), LocateError> {
     DISCOVERY
         .set(discovery)
         .map_err(|_| LocateError::UnexpectedFile)
 }
 
-/// Resolves the legacy default program name at each call, never via PATH.
-/// Explicit absolute programs remain the adapter's in-process injection seam.
 pub fn program(program: &Path) -> Result<PathBuf, openwiz_core::source::SourceError> {
     if program == Path::new(crate::PROGRAM) {
         let located = DISCOVERY.get_or_init(Discovery::system).locate()?;
@@ -773,16 +645,6 @@ pub fn program(program: &Path) -> Result<PathBuf, openwiz_core::source::SourceEr
     }
 }
 
-/// The owner-visible record of an AppImage-pair choice (#2098): one
-/// sanitized stderr line beside any command output (the CLI contract's
-/// stderr diagnostics), written when the pair is chosen and again only after
-/// the choice changes, however many `room-cli` calls a process makes.
-///
-/// It is written through its own duplicate of file descriptor 2, never
-/// `eprintln!`: a caller may hold the process's stderr lock for a whole
-/// command while another thread resolves the launcher (`openwiz fleet`),
-/// and a write error (a full disk, a closed pipe) must not abort the
-/// command. A failed write loses only this note.
 fn report(basis: &Basis) {
     static LAST: Mutex<Option<Basis>> = Mutex::new(None);
     let mut last = LAST.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -807,8 +669,6 @@ impl From<LocateError> for openwiz_core::source::SourceError {
             LocateError::Unreadable => "unreadable app bundle",
         };
         let detail = format!("CloudRoom not running: room-cli could not be started ({reason})");
-        // Two or more running mounts: most often one app mid-update (#1336).
-        // `openwiz_core::ops::launch_failure_category` matches this exact text.
         let detail = if error == LocateError::Ambiguous {
             format!(
                 "{detail}. CloudRoom is mid-update (two running app mounts): \
@@ -821,7 +681,6 @@ impl From<LocateError> for openwiz_core::source::SourceError {
     }
 }
 
-/// Why bundle discovery could not supply a verified launcher.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LocateError {
     NotRunning,
@@ -831,16 +690,12 @@ pub enum LocateError {
     Unreadable,
 }
 
-/// Observed Unix ownership and mode of the launcher's regular file.
-/// Filesystem adapters supply real metadata; fixtures use synthetic facts.
 #[derive(Clone, Copy, Debug)]
 pub struct LauncherMetadata {
     pub uid: u32,
     pub mode: u32,
 }
 
-/// Checks the observed PC launcher's ownership, permissions and two-line
-/// prefix without running it. File type and sibling checks are separate.
 pub fn check_launcher_markers(
     metadata: LauncherMetadata,
     prefix: &[u8],
@@ -864,9 +719,6 @@ fn check_markers_for_owner(
     }
 }
 
-/// Selects a candidate under the supplied bundle root (a private fixture
-/// directory in tests). The result still requires identity verification.
-/// This function neither searches PATH nor executes a candidate.
 pub fn pc_bundle_candidate(root: &Path) -> Result<PathBuf, LocateError> {
     let entries = fs::read_dir(root).map_err(|error| match error.kind() {
         ErrorKind::NotFound => LocateError::NotRunning,
@@ -890,10 +742,6 @@ pub fn pc_bundle_candidate(root: &Path) -> Result<PathBuf, LocateError> {
     found.ok_or(LocateError::NotRunning)
 }
 
-/// Inspect each component without following symlinks. The shared /tmp prefix
-/// also contains unrelated apps and files: non-directory mount entries and
-/// paths this user cannot search supply no executable candidate. Wrong types
-/// inside a searchable bundle, and every other error, still fail closed.
 fn bundle_file(mount: &Path, skip_unsearchable: bool) -> Result<Option<PathBuf>, LocateError> {
     let mut path = mount.to_path_buf();
     let components: Vec<_> = Path::new(PC_BUNDLE_CLI).components().collect();
@@ -948,11 +796,6 @@ fn check_siblings(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-// #1036 red run (2026-11-05), before the NotFound handling fix:
-// cargo test -p openwiz-adapter-cloudroom --lib process_exit_tests
-// Exit 101: 2 passed; 4 failed. vanished_{target,exe_before_metadata,
-// exe_before_final_link}: Err(Unreadable), expected Err(NoRunningApp).
-// vanished_mount: Err(NotRunning), expected Ok(the synthetic survivor).
 #[cfg(test)]
 mod process_exit_tests {
     use super::*;
@@ -975,7 +818,6 @@ mod process_exit_tests {
         }
     }
 
-    // Synthetic proc/mount relationships only; no real process is inspected.
     fn scan(phase: usize, has_survivor: bool, mutation: fn(&Path)) -> Result<PathBuf, LocateError> {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let fixture = Fixture(Path::new("/tmp").join(format!(
@@ -1075,7 +917,6 @@ mod process_exit_tests {
         disappears(4);
     }
 
-    // The named cases and assertions stay intact; this table owns their shared contract.
     #[test]
     fn vanished_process_entries_are_skipped_at_every_read_phase() {
         let cases: [(&str, fn()); 4] = [
@@ -1119,14 +960,6 @@ mod process_exit_tests {
     }
 }
 
-// #1336: two running mounts stay refused, mid-update included. On the PC the
-// GUI, its helpers and the bridge all run the same app binary (the bridge is
-// started with the GUI's own executable), so neither the executable nor the
-// parent chain establishes which process is the bridge (#1339 R1). Synthetic
-// proc/mount relationships only; no real process is inspected. Each `stat`
-// line records a parent only to show that parentage alone selects nothing:
-// BX1's pair (#2098) also needs both AppImage records, which none of these
-// fixtures has.
 #[cfg(test)]
 mod mid_update_tests {
     use super::*;
@@ -1150,7 +983,6 @@ mod mid_update_tests {
     }
 
     impl Fixture {
-        /// Every mount gets the full recorded layout and a verified launcher.
         fn new(mounts: &[&str]) -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let fixture = Fixture(Path::new("/tmp").join(format!(
@@ -1175,8 +1007,6 @@ mod mid_update_tests {
             self.0.join(mount).join(PC_BUNDLE_CLI)
         }
 
-        /// A process running `binary` directly in `mount`, with its parent
-        /// recorded in `stat`, or no `stat` at all.
         fn runs(&self, pid: &str, mount: &str, binary: &str, ppid: Option<&str>) {
             let path = self.0.join(mount).join(binary);
             if !path.exists() {
@@ -1192,7 +1022,6 @@ mod mid_update_tests {
             }
         }
 
-        /// A process running the mount's one app binary, as on the PC.
         fn app(&self, pid: &str, mount: &str, ppid: &str) {
             self.runs(pid, mount, "synthetic-app", Some(ppid));
         }
@@ -1211,21 +1040,15 @@ mod mid_update_tests {
     const NEW: &str = ".mount_synthetic_new";
     const STALE: [&str; 2] = [".mount_synthetic_stale_a", ".mount_synthetic_stale_b"];
 
-    /// The PC's shape: the GUI on OLD launched the bridge supervisor on NEW.
     fn mid_update() -> Fixture {
         let f = Fixture::new(&[OLD, NEW, STALE[0], STALE[1]]);
-        f.app("201", OLD, "1"); // the GUI
-        f.app("202", OLD, "201"); // a GUI helper on its own mount
-        f.app("301", NEW, "201"); // the bridge supervisor, launched by the GUI
-        f.app("302", NEW, "301"); // the bridge, the supervisor's child
+        f.app("201", OLD, "1");
+        f.app("202", OLD, "201");
+        f.app("301", NEW, "201");
+        f.app("302", NEW, "301");
         f
     }
 
-    // An external shell must not turn indirect cross-root ancestry into
-    // BX1's required direct GUI -> bridge edge, even with valid identities.
-    // Red (#2989, 2026-11-14): remove `root == index &&`, then run
-    // cargo test -p openwiz-adapter-cloudroom --lib a_bridge_launched_through_a_shell
-    // exit 101: left Ok(<synthetic bridge launcher>), right Err(Ambiguous).
     #[test]
     fn a_bridge_launched_through_a_shell_under_the_gui_is_refused() {
         let f = Fixture::new(&[OLD, NEW]);
@@ -1267,8 +1090,6 @@ mod mid_update_tests {
         assert_eq!(mid_update().resolve(), Err(LocateError::Ambiguous));
     }
 
-    // R1 (#1339 review): each role runs its own synthetic binary; parentage
-    // would pick NEW in both, though a bridge runs on OLD.
     fn a_bridge_on_each_mount_under_one_gui_is_refused() {
         let f = Fixture::new(&[OLD, NEW]);
         f.runs("201", OLD, "synthetic-gui", Some("1"));
@@ -1326,7 +1147,6 @@ mod mid_update_tests {
         }
     }
 
-    // The named cases and assertions stay intact; this table owns their shared contract.
     #[test]
     fn multiple_running_mounts_remain_refused_for_all_process_shapes() {
         let cases: [(&str, fn()); 4] = [
@@ -1353,8 +1173,6 @@ mod mid_update_tests {
         }
     }
 
-    // The refusal tells the owner what to do, and core still recognises it
-    // as the "ambiguous bundle" category; the two strings change together.
     #[test]
     fn the_refusal_carries_the_mid_update_guidance_and_keeps_its_category() {
         let openwiz_core::source::SourceError::Unavailable { detail } =
@@ -1377,7 +1195,18 @@ mod mid_update_tests {
     #[test]
     fn stale_mounts_beside_one_running_mount_are_ignored() {
         let f = Fixture::new(&[NEW, STALE[0], STALE[1]]);
-        f.runs("301", NEW, "synthetic-app", None); // one mount needs no parent record
+        f.runs("301", NEW, "synthetic-app", None);
         assert_eq!(f.resolve(), Ok(f.cli(NEW)));
+    }
+}
+
+#[cfg(test)]
+mod shown_tests {
+    use super::*;
+
+    #[test]
+    fn a_mount_name_cannot_forge_or_style_a_diagnostic_line() {
+        let path = Path::new("/tmp/.mount_a\nopenwiz: note: forged\x1b[31m");
+        assert_eq!(shown(path), "/tmp/.mount_a?openwiz: note: forged?[31m");
     }
 }

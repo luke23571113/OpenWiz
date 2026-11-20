@@ -1,0 +1,40 @@
+$ python3 -I tools/comment-check/check.py count --at ea148ded8ba55a2ac38dadccb072e9d9a722f0f4
+{
+  "schema": "openwiz.comments.v1",
+  "paths": [],
+  "docs": [],
+  "exclude": [],
+  "before": null,
+  "after": {
+    "rev": "ea148ded8ba55a2ac38dadccb072e9d9a722f0f4",
+    "files": 417,
+    "comment_lines": 13224,
+    "disallowed_lines": 13065,
+    "languages": {
+      "python": {
+        "files": 168,
+        "comment_lines": 4862
+      },
+      "rust": {
+        "files": 219,
+        "comment_lines": 8163
+      },
+      "shell": {
+        "files": 17,
+        "comment_lines": 112
+      },
+      "toml": {
+        "files": 6,
+        "comment_lines": 21
+      },
+      "typescript": {
+        "files": 1,
+        "comment_lines": 15
+      },
+      "yaml": {
+        "files": 6,
+        "comment_lines": 51
+      }
+    }
+  }
+}
