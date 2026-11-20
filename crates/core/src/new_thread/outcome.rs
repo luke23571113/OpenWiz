@@ -1,85 +1,48 @@
-//! What a create came to: created, refused, failed or uncertain.
-//!
-//! | The provider says | Outcome |
-//! | --- | --- |
-//! | Exit 0 with a thread row | **Created**, with the thread id. CloudRoom recorded the thread and its first prompt. It does **not** mean the sandbox started or the prompt was accepted |
-//! | A documented refusal | **Refused**, with the reason. Nothing was created |
-//! | A timeout, a crash, output that is not JSON, an unexpected shape or an undocumented error | **Uncertain** |
-//!
-//! OpenWiz's own refusals (not offered, a project it won't start in) are
-//! **Refused** too, with no call. **Failed** means nothing was sent for a
-//! reason of OpenWiz's own, such as an interrupted claim.
-
 use serde::Serialize;
 
 use crate::messaging::send::{SendGap, UncertainReason};
 
-/// Something missing or wrong in a create, in OpenWiz's own words. Never
-/// the provider's raw output. The same shape as `send`'s.
 pub type Gap = SendGap;
 
-/// A refusal `thread spawn` documents, before anything is recorded
-/// (source-read, ClosedWiz#11; not observed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderRefusal {
-    /// 400, `Cloud supports new …`: an unsupported harness or option.
     Unsupported,
-    /// 400, `This model is unavailable on Cloud`.
     ModelUnavailable,
-    /// 400, `This reasoning level is unavailable`.
     EffortUnavailable,
-    /// 400, `Message is too long`.
     MessageTooLong,
-    /// 400, `Message is empty`.
     MessageEmpty,
-    /// 404, `Project not found`.
     ProjectNotFound,
-    /// 409, `Request ID was already used with different content`.
     RequestIdConflict,
-    /// 503, `Cloud model discovery is unavailable`.
     DiscoveryUnavailable,
 }
 
-/// What the adapter made of the provider's reply to the one call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SpawnReply {
-    /// Exit 0 with a thread row of the expected shape.
-    Created { thread_id: String },
-    /// A documented refusal.
+    Created {
+        thread_id: String,
+    },
     Refused(ProviderRefusal),
-    /// The command could not be started at all: nothing was sent.
     NotStarted,
-    /// The thread may or may not have been created.
     Unclear {
         reason: UncertainReason,
         gaps: Vec<Gap>,
     },
 }
 
-/// Why nothing was created.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RefusalReason {
-    // OpenWiz's own, before any call.
-    /// CloudRoom offers no options at all.
     NoOptions,
     HarnessNotOffered,
     ModelNotOffered,
     EffortNotOffered,
-    /// No project has this id or name.
     ProjectNotFound,
-    /// More than one project has this name.
     ProjectAmbiguous,
-    /// A personal project.
     ProjectPersonal,
-    /// Not a `standard` project, or its kind could not be read.
     ProjectNotStandard,
-    /// A standard project without a GitHub remote (sheet A-5).
     ProjectNoGithubRemote,
-    /// Whether the project has a GitHub remote could not be read.
     ProjectRemoteNotConfirmed,
-    // The provider's documented refusals.
     ProviderUnsupported,
     ProviderModelUnavailable,
     ProviderEffortUnavailable,
@@ -142,19 +105,13 @@ impl From<ProviderRefusal> for RefusalReason {
     }
 }
 
-/// Why nothing was sent, for a reason of OpenWiz's own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailReason {
-    /// The process stopped after the claim and before the dispatching mark.
     InterruptedBeforeDispatch,
-    /// The project list could not be read.
     ProjectsNotRead,
-    /// The dispatching mark could not be written.
     RecordNotWritten,
-    /// The budget ran out before the call.
     BudgetExhausted,
-    /// The provider's command could not be started.
     CallNotStarted,
 }
 
@@ -173,31 +130,28 @@ impl FailReason {
     }
 }
 
-/// What the create came to, in the core's words.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Outcome {
-    /// CloudRoom recorded the thread and its first prompt. **Not** that it
-    /// started: the start stage is read separately.
-    Created { thread_id: String, text: String },
-    /// Nothing was created. `offered` lists what is offered instead, for a
-    /// choice that isn't.
+    Created {
+        thread_id: String,
+        text: String,
+    },
     Refused {
         reason: RefusalReason,
         offered: Vec<String>,
         text: String,
     },
-    /// Nothing was sent.
-    Failed { reason: FailReason, text: String },
-    /// The thread may or may not have been created. The prompt is kept, and
-    /// nothing is retried.
+    Failed {
+        reason: FailReason,
+        text: String,
+    },
     Uncertain {
         reason: UncertainReason,
         text: String,
     },
 }
 
-/// The overall status of a report.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
@@ -209,7 +163,6 @@ pub enum Status {
     ConflictingReuse,
 }
 
-/// The words of a created outcome.
 pub const CREATED_WORDS: &str = "created: CloudRoom recorded the thread and its first prompt. \
      That is not a start: the start stage is shown separately";
 
@@ -221,10 +174,6 @@ impl Outcome {
         }
     }
 
-    /// The same outcome, saying that `count` attachments went with it when
-    /// the thread was created, and that their delivery to the agent's
-    /// machine is not reported (#15's outcome table). Unchanged for no attachment, or any other
-    /// outcome.
     pub fn with_attachments(self, count: usize) -> Self {
         match self {
             Self::Created { thread_id, text } if count > 0 => Self::Created {
@@ -265,7 +214,6 @@ impl Outcome {
         }
     }
 
-    /// The outcome of the provider's reply.
     pub fn from_reply(reply: SpawnReply) -> (Self, Vec<Gap>) {
         match reply {
             SpawnReply::Created { thread_id } => (Self::created(thread_id), vec![]),

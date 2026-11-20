@@ -1,11 +1,3 @@
-//! `openwiz loop export --project <project> [--out <dir>] [--json]` (LC3,
-//! #791; `contracts/loop-cli.v1.md`). One `room-cli loop list --json` read,
-//! then one loop file (and its check) per loop of the project, by the
-//! adapter's rules. A file that already exists is never replaced: the same
-//! bytes are `unchanged`, other bytes refuse that loop with `export-exists`.
-//! A loop the adapter cannot represent is reported with its refusals, and
-//! the others are still written.
-
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -19,14 +11,12 @@ use serde_json::{Value, json};
 
 use crate::loop_files::{Args, escape_untrusted};
 
-/// One loop's result in the report.
 struct Outcome {
     exported: Exported,
     result: &'static str,
     files: Vec<String>,
 }
 
-/// Runs export with parsed `args`; returns the exit code.
 pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     let project = args.project.as_deref().unwrap_or_default();
     let out = args.out.as_deref().unwrap_or(".");
@@ -94,11 +84,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     if printed.is_err() { 1 } else { code }
 }
 
-/// Writes one loop's files under `out`, never replacing one with other
-/// bytes. Every file is checked before any is written, so a refused loop
-/// writes nothing. A check is read and created only through its folder held
-/// open ([`Folder`]), so swapping that folder for a link between the check
-/// and the write cannot put the check anywhere else.
 fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
     if !exported.refusals.is_empty() {
         return Ok(refused(exported, Vec::new()));
@@ -134,8 +119,6 @@ fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
     if !missing.is_empty() {
         fs::create_dir_all(out)?;
     }
-    // The check first: if its folder turns out to be a link, nothing of this
-    // loop has been written yet.
     for (rel, text) in files.iter().rev().filter(|(rel, _)| missing.contains(rel)) {
         let Some((dir, name)) = rel.split_once('/') else {
             create_new(&out.join(rel), text)?;
@@ -171,7 +154,6 @@ fn write(out: &Path, mut exported: Exported) -> std::io::Result<Outcome> {
     })
 }
 
-/// The loop refused, with an `export-exists` refusal for each path.
 fn refused(mut exported: Exported, exists: Vec<PathBuf>) -> Outcome {
     for path in exists {
         exported.refusals.push(ExportRefusal {
@@ -191,18 +173,10 @@ fn refused(mut exported: Exported, exists: Vec<PathBuf>) -> Outcome {
     }
 }
 
-/// Whether a check's folder can be held open and written through: only on
-/// Linux, through `/proc/self/fd/<fd>`. Rust's standard library has no
-/// `openat`, and this workspace allows no unsafe code and no `libc`, so on
-/// macOS (and elsewhere) a check could be written only by pathname, which a
-/// folder swapped for a link redirects (review R1). There a run with a check
-/// is refused before anything is written.
 const HOLDS_FOLDERS: bool = cfg!(target_os = "linux");
 
 const NO_HELD_FOLDER: &str = "a loop with a check is exported only on Linux: this system cannot write a check through its folder held open, so a folder swapped for a link could put the check outside --out";
 
-/// `O_NOFOLLOW | O_NONBLOCK`, and `O_DIRECTORY`: Linux UAPI asm-generic, or
-/// arch/arm{,64} for ARM; XNU bsd/sys/fcntl.h for macOS.
 fn no_follow() -> i32 {
     if cfg!(target_vendor = "apple") {
         0x0100 | 0x0004
@@ -223,15 +197,12 @@ fn directory() -> i32 {
     }
 }
 
-/// What is at a file's path now.
 enum State {
     Missing,
     Same,
     Other,
 }
 
-/// Compares the file at `path` with `text`, never following a link there
-/// and reading at most one byte more than `text`.
 fn state(path: &Path, text: &str) -> std::io::Result<State> {
     let file = match fs::OpenOptions::new()
         .read(true)
@@ -240,7 +211,6 @@ fn state(path: &Path, text: &str) -> std::io::Result<State> {
     {
         Ok(file) => file,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(State::Missing),
-        // A link, or anything else that cannot be opened as a plain file.
         Err(e) => {
             return match fs::symlink_metadata(path) {
                 Ok(_) => Ok(State::Other),
@@ -261,7 +231,6 @@ fn state(path: &Path, text: &str) -> std::io::Result<State> {
     })
 }
 
-/// Creates `path` with `text`; never through a file or link already there.
 fn create_new(path: &Path, text: &str) -> std::io::Result<()> {
     fs::OpenOptions::new()
         .write(true)
@@ -271,16 +240,12 @@ fn create_new(path: &Path, text: &str) -> std::io::Result<()> {
         .write_all(text.as_bytes())
 }
 
-/// A check's folder, held open: opened without following a link, so every
-/// later read and write of the check goes to this folder, whatever its path
-/// points to by then.
 struct Folder {
     file: fs::File,
 }
 
 enum Held {
     Missing,
-    /// A link, a file or anything else that is not a folder.
     NotFolder,
     Folder(Folder),
 }
@@ -307,10 +272,6 @@ impl Folder {
         Ok(Held::Folder(Folder { file }))
     }
 
-    /// The path of `name` inside this held folder, through the open handle
-    /// (`/proc/self/fd/<fd>`), as the GitHub App key reader does. Only Linux
-    /// has that route ([`HOLDS_FOLDERS`]); elsewhere this refuses, never
-    /// falling back to the folder's pathname.
     fn entry(&self, name: &str) -> std::io::Result<PathBuf> {
         if !HOLDS_FOLDERS {
             return Err(std::io::Error::new(ErrorKind::Unsupported, NO_HELD_FOLDER));
@@ -387,8 +348,6 @@ fn text(
     Ok(())
 }
 
-/// A failure before any result: one line on stderr, and with `--json` one
-/// `openwiz.cli-error.v1` document that carries none of room-cli's text.
 fn failed(
     json: bool,
     kind: &str,
@@ -408,8 +367,6 @@ fn failed(
     1
 }
 
-/// Prints one line of human output with every untrusted part escaped: no
-/// line here carries a control of its own, so the whole line is escaped.
 fn line(stream: &mut dyn Write, text: &str) -> std::io::Result<()> {
     writeln!(stream, "{}", escape_untrusted(text))
 }
@@ -432,11 +389,6 @@ mod tests {
         root
     }
 
-    // catches: a check created by pathname after its folder was checked, so
-    // swapping the folder for a link in between writes the check outside
-    // --out (review R1, the window after the folder is opened). On Linux the
-    // check goes into the held folder; where no held-folder route exists
-    // (macOS), the check is refused, never resolved through the link.
     #[test]
     fn a_held_folder_keeps_the_check_inside_it_after_a_swap() {
         let root = scratch("swap");
@@ -465,8 +417,6 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    // catches: a folder opened through a link that appeared before it was
-    // opened (review R1, the window between the check and the open).
     #[test]
     fn a_folder_is_never_opened_through_a_link() {
         let root = scratch("link");
@@ -488,9 +438,6 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    // catches #987: a huge existing file read whole to compare it (out of
-    // memory under a small address-space limit), so the run failed instead
-    // of refusing that loop, and later loops were never exported.
     #[test]
     fn a_huge_sparse_collision_refuses_only_its_loop() {
         let root = scratch("sparse");

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The owned-paths check's proofs (#1418): python3 -I tools/owned-paths/test_check.py
+"""The owned-paths check's proofs (#1418, #1639): python3 -I tools/owned-paths/test_check.py
 
 Each fixture is one synthetic pull request, its linked tickets and their comments. The
 check runs as CI runs it, against a fake `gh` that answers its GraphQL reads from the
@@ -122,6 +122,19 @@ class Check(unittest.TestCase):
     # catches: files after the first page of 100 never checked
     def test_every_page_of_changed_files_is_checked(self):
         self.verdict('pages')
+
+    # catches (#1639): a ticket owning "X and its tests" (or ", plus its tests", or the wording
+    # inside the backticks) failing on X's own test files beside it, or the output not naming
+    # the owned path that admitted each file
+    def test_and_its_tests_admits_the_test_files_beside_x_naming_x(self):
+        self.verdict('its-tests')
+
+    # catches (#1639): the widening leaking to a non-test file beside X, a test file of another
+    # module or folder, or a path whose bullet does not say "and its tests"; review R1-R3: a test
+    # marker read as X's stem, X's folder name deep in a tests tree, and "and its tests are
+    # excluded" read as owning them
+    def test_and_its_tests_admits_nothing_else(self):
+        self.verdict('its-tests-not')
 
     # catches: an unreadable pull request passing as if it linked no ticket
     def test_an_unreadable_pull_request_is_an_error_not_a_pass(self):

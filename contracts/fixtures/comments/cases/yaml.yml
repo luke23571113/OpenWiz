@@ -1,0 +1,23 @@
+# Copyright 2030 Synthetic Example
+name: synthetic
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-24.04 # the runner
+    steps:
+      # Check out first.
+      - uses: actions/checkout@v9
+      - name: "Say # hello"
+        run: |
+          # Print the greeting.
+          echo '# not a comment'
+          echo hi
+      - name: Notes
+        env:
+          TEXT: |
+            # a block scalar line, not a comment
+        run: echo "$TEXT"
+      # SECURITY: this job never reads a secret.
+      - run: echo safe
+      - name: "Say \" # still inside the quotes"
+        run: echo quoted # the step

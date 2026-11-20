@@ -1,0 +1,28 @@
+......F......
+======================================================================
+FAIL: test_and_its_tests_admits_the_test_files_beside_x_naming_x (__main__.Check.test_and_its_tests_admits_the_test_files_beside_x_naming_x)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/owned-paths/test_check.py", line 130, in test_and_its_tests_admits_the_test_files_beside_x_naming_x
+    self.verdict('its-tests')
+  File "tools/owned-paths/test_check.py", line 74, in verdict
+    self.assertEqual(r.returncode, s['exit'], out)
+AssertionError: 1 != 0 : OUT: crates/core/src/widget.rs (ticket #7)
+OUT: crates/core/src/widget/tests.rs (ticket #7)
+OUT: crates/core/src/widget_tests.rs (ticket #7)
+owned: tools/install/harness.py
+OUT: tools/install/harness_test.py (ticket #7)
+OUT: tools/install/setup/init.test.mjs (ticket #7)
+OUT: tools/install/setup/init.test.tsx (ticket #7)
+OUT: tools/install/setup/setup.test.ts (ticket #7)
+OUT: tools/install/test/harness/fake.json (ticket #7)
+OUT: tools/install/test_install.py (ticket #7)
+OUT: tools/install/tests/test_harness_skills.py (ticket #7)
+owned-paths: note: this owned bullet names no path to check: `crates/core/src/widget.rs and its tests` (the wording inside the backticks)
+owned-paths: 10 file(s) outside the owned paths and grants of ticket #7: move them out, or ask on the ticket for an F4 supporting edit grant naming each path
+
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.994s
+
+FAILED (failures=1)

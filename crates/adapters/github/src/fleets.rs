@@ -1,31 +1,3 @@
-//! `openwiz fleets`' reads from GitHub (A4, ClosedWiz#112): its part of the
-//! allowlist, and the [`FleetsSource`] that runs them through `gh` and
-//! reads each answer strictly. What the answers mean is the core's
-//! (`openwiz_core::fleet::fleets`).
-//!
-//! **Pinned read forms, nothing else** ([`ALLOWLIST`]), each an exact
-//! argument list: `gh --version`; `gh repo view` (the name with its owner,
-//! of which only the name is kept); one `gh issue list` and one `gh pr
-//! list` of the whole repository; and for one pull request, `gh pr checks`,
-//! its comment bodies (`gh pr view`), and its merge commit compared with
-//! its base (`gh api`, a GET of REST `compare`), or the bounded batch
-//! ancestry query (`gh api graphql`). A number is decimal digits
-//! only, a commit 40 lowercase hex digits, and a branch a plain git branch
-//! name ([`is_branch`]). No form writes: no arbitrary `gh api` method, field or query,
-//! only the bounded ancestry GraphQL query below, no other subcommand.
-//!
-//! **Every answer is read strictly** (B1's pattern, PR #88): a JSON tree
-//! that refuses a key given twice, then an object only with exactly its
-//! keys, each of its own type, an enum only as one of its strings, a list
-//! only as an array. Anything else fails the read, named by its path in
-//! OpenWiz's words, never by `gh`'s text. Shapes are those A1's spike
-//! observed in A1's structure-only spike (#109), except
-//! the documented batch Comparison fields: raw SHA acceptance by headRef
-//! remains a fixture assumption until an approved live discovery.
-//!
-//! **A list of [`LIST_LIMIT`] rows may be cut short:** `gh` stops there,
-//! so the core treats what it can't settle as partial or failed.
-
 use std::fmt;
 use std::num::NonZeroU64;
 use std::path::PathBuf;
@@ -47,43 +19,29 @@ use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use crate::allowlist::{Invocation, Module};
 use crate::{PROGRAM, process};
 
-/// The `gh` version A1's spike read GitHub with (#109, 2026-10-31): the
-/// shapes these readers take. Reported, never a gate. No `openwiz fleets`
-/// run has been live-tested yet (A7, #115).
 pub const TESTED_VERSION: &str = "2.100.0";
 
-/// The most rows one list read asks for.
 pub const LIST_LIMIT: usize = 1000;
 
-/// [`LIST_LIMIT`] as `gh`'s `--limit` argument.
 const LIMIT: &str = "1000";
 
-/// The issue list's fields.
 const ISSUE_FIELDS: &str = "blockedBy,body,id,labels,milestone,number,state,subIssues,title";
 
-/// The pull request list's fields.
 pub const PR_FIELDS: &str = "baseRefName,closingIssuesReferences,headRefName,headRefOid,isDraft,mergeCommit,mergedAt,number,state,title";
 
-/// `gh pr checks`' fields.
 const CHECK_FIELDS: &str = "bucket,name";
 
-/// Keeps only the comment bodies, so no author or other field is read.
 const COMMENTS_JQ: &str = "[.comments[].body]";
 
-/// Keeps only the two fields of REST `compare` the merge read back uses.
 const COMPARE_JQ: &str = "{status: .status, behind_by: .behind_by}";
 
-/// The REST path before a compare's `<commit>...<branch>`; `gh` fills in
-/// `{owner}` and `{repo}` from the repository it runs in.
 const COMPARE_PATH: &str = "repos/{owner}/{repo}/compare/";
 
-/// This module's part of the allowlist.
 pub const ALLOWLIST: Module = Module {
     name: "fleets",
     allows,
 };
 
-/// Whether `argv` is exactly one of this module's pinned read forms.
 fn allows(argv: &[&str]) -> bool {
     match argv {
         ["--version"] | ["repo", "view", "--json", "nameWithOwner"] => true,
@@ -115,9 +73,6 @@ fn allows(argv: &[&str]) -> bool {
     }
 }
 
-/// Only one generated query shape, 1..=20 pairs. User values are fields,
-/// never query text. Rebuilding the complete argv rejects flags, duplicate
-/// fields, arbitrary GraphQL, mutations and even query near misses.
 fn allows_batch(argv: &[&str]) -> bool {
     if argv.len() < 12 || !(argv.len() - 8).is_multiple_of(4) {
         return false;
@@ -176,23 +131,16 @@ fn batch_args(pairs: &[(&str, &str)]) -> Vec<String> {
     args
 }
 
-/// An issue or pull request number: decimal digits, no leading zero, and
-/// at most a `u64`.
 fn is_number(s: &str) -> bool {
     s.bytes().all(|b| b.is_ascii_digit()) && !s.starts_with('0') && s.parse::<NonZeroU64>().is_ok()
 }
 
-/// `repos/{owner}/{repo}/compare/<commit>...<branch>`.
 fn is_compare_path(path: &str) -> bool {
     path.strip_prefix(COMPARE_PATH)
         .and_then(|rest| rest.split_once("..."))
         .is_some_and(|(commit, branch)| Commit::parse(commit).is_some() && is_branch(branch))
 }
 
-/// A plain branch name: segments of ASCII letters, digits, `.`, `_` and
-/// `-`, joined by `/`; no segment empty or starting with `.` or `-`, and
-/// no `..`. So it can't change the compare's path or query. No length
-/// limit: none was decided.
 pub fn is_branch(name: &str) -> bool {
     !name.contains("..")
         && name.split('/').all(|seg| {
@@ -204,18 +152,15 @@ pub fn is_branch(name: &str) -> bool {
         })
 }
 
-/// `openwiz fleets`' reads, through the `gh` it is given.
 pub struct GitHubFleets {
     executor: process::Executor,
 }
 
 impl GitHubFleets {
-    /// The `gh` on `PATH`.
     pub fn from_path() -> Self {
         Self::with_program(PROGRAM)
     }
 
-    /// Another `gh`, such as a test's fake.
     pub fn with_program(program: impl Into<PathBuf>) -> Self {
         Self::with_executor(process::Executor::program(program))
     }
@@ -224,7 +169,6 @@ impl GitHubFleets {
         Self { executor }
     }
 
-    /// Runs one of this module's forms; its stdout, or why not.
     fn call(&self, read: &str, argv: &[&str], deadline: Instant) -> Result<Vec<u8>, Failed> {
         let Some(invocation) = Invocation::new(argv) else {
             return Err(failed(
@@ -237,7 +181,6 @@ impl GitHubFleets {
             .map_err(|e| failure(read, &e))
     }
 
-    /// Runs one form and reads its JSON answer with `read_answer`.
     fn json<T>(
         &self,
         read: &str,
@@ -261,9 +204,6 @@ impl FleetsSource for GitHubFleets {
         TESTED_VERSION
     }
 
-    /// Any failure is `untested_version`, as the inventory's version read
-    /// is: the version "could not be read, or is not a recognised version
-    /// text".
     fn version(&self, deadline: Instant) -> Result<NonEmpty, Failed> {
         let read = "gh --version";
         let out = self
@@ -376,8 +316,6 @@ impl FleetsSource for GitHubFleets {
     }
 
     fn on_bases(&self, prs: &[MergedPr], deadline: Instant) -> Vec<Result<bool, Failed>> {
-        // Refuse non-plain bases per PR before checking the batch argv, so
-        // one unsupported base cannot prevent its plain-base peers' reads.
         let plain: Vec<_> = prs
             .iter()
             .filter(|pr| is_branch(pr.fields.base_branch.as_str()))
@@ -414,7 +352,6 @@ impl FleetsSource for GitHubFleets {
     }
 }
 
-/// The existing per-PR refusal, shared by single and batched reads.
 fn non_plain_base(pr: Number) -> Failed {
     failed(
         GapKind::Malformed,
@@ -431,9 +368,6 @@ fn failed(gap: GapKind, reason: String) -> Failed {
     }
 }
 
-/// A failed call in OpenWiz's words: the runner's diagnostic is already
-/// safe (an exit code and at most an HTTP status); a start failure's
-/// detail, which names the program's path, is withheld.
 fn failure(read: &str, e: &SourceError) -> Failed {
     match e {
         SourceError::CommandFailed {
@@ -470,10 +404,6 @@ fn listed<T>(rows: Vec<T>) -> Listed<T> {
     }
 }
 
-/// `gh --version`'s first line, `gh version <N.N.N> (<date>)`, or `gh
-/// version <N.N.N>` from a build without a date (gh's
-/// `pkg/cmd/version/version.go`): the version, only when it is a
-/// recognised version text.
 fn version_of(out: &[u8]) -> Option<NonEmpty> {
     let text = std::str::from_utf8(out).ok()?;
     let line = text.lines().next()?.strip_prefix("gh version ")?;
@@ -494,20 +424,14 @@ fn version_of(out: &[u8]) -> Option<NonEmpty> {
         .flatten()
 }
 
-// ---------------------------------------------------------------------
-// The strict JSON tree: every key at most once per object.
-
-/// One JSON value, with no key given twice.
 #[derive(Clone, Debug, PartialEq)]
 enum Json {
     Null,
     Bool(bool),
     Int(i128),
-    /// A fraction or a number too large: never a value any reader takes.
     Fraction,
     String(String),
     Array(Vec<Json>),
-    /// In document order.
     Object(Vec<(String, Json)>),
 }
 
@@ -577,11 +501,6 @@ impl<'de> Deserialize<'de> for StrictJson {
     }
 }
 
-// ---------------------------------------------------------------------
-// The readers: exactly the observed shapes.
-
-/// Why an answer can't be read: the gap, where, and what, in OpenWiz's
-/// words. Never a value from the answer.
 #[derive(Debug, PartialEq, Eq)]
 struct Bad {
     gap: GapKind,
@@ -612,8 +531,6 @@ fn bad<T>(gap: GapKind, at: &str, what: &'static str) -> Got<T> {
     })
 }
 
-/// An object with exactly `keys`, each once: their values, in `keys`'
-/// order.
 fn object<'j>(v: &'j Json, at: &str, keys: &[&str]) -> Got<Vec<&'j Json>> {
     let Json::Object(entries) = v else {
         return bad(GapKind::WrongType, at, "not an object");
@@ -693,7 +610,6 @@ fn null_or<'j, T>(
     }
 }
 
-/// `{"nameWithOwner": "<owner>/<name>"}`: the name only.
 fn repository_of(v: &Json) -> Got<Repository> {
     let f = object(v, "", &["nameWithOwner"])?;
     let full = string(f[0], ".nameWithOwner")?;
@@ -707,7 +623,6 @@ fn repository_of(v: &Json) -> Got<Repository> {
     }
 }
 
-/// One row of `gh issue list --json` with [`ISSUE_FIELDS`].
 fn issue_row(v: &Json, at: &str) -> Got<IssueRow> {
     let keys = [
         "blockedBy",
@@ -745,7 +660,6 @@ fn issue_row(v: &Json, at: &str) -> Got<IssueRow> {
     })
 }
 
-/// `{description, dueOn, number, title}`: the number and title.
 fn milestone(v: &Json, at: &str) -> Got<Milestone> {
     let f = object(v, at, &["description", "dueOn", "number", "title"])?;
     string(f[0], &format!("{at}.description"))?;
@@ -756,7 +670,6 @@ fn milestone(v: &Json, at: &str) -> Got<Milestone> {
     })
 }
 
-/// `{color, description, id, name}`: the name.
 fn label(v: &Json, at: &str) -> Got<NonEmpty> {
     let f = object(v, at, &["color", "description", "id", "name"])?;
     for (i, key) in [(0, "color"), (1, "description"), (2, "id")] {
@@ -765,7 +678,6 @@ fn label(v: &Json, at: &str) -> Got<NonEmpty> {
     non_empty(f[3], &format!("{at}.name"))
 }
 
-/// `{nodes: [{id, number, state, title, url}], totalCount}`.
 fn links(v: &Json, at: &str) -> Got<Links> {
     let f = object(v, at, &["nodes", "totalCount"])?;
     let nodes = list(f[0], &format!("{at}.nodes"), |v, at| {
@@ -784,7 +696,6 @@ fn links(v: &Json, at: &str) -> Got<Links> {
     })
 }
 
-/// One row of `gh pr list --json` with [`PR_FIELDS`].
 #[cfg(test)]
 fn pr_row(v: &Json, at: &str) -> Got<PrRow> {
     stock_pr_row(v, at).map(|row| row.pr)
@@ -860,8 +771,6 @@ fn stock_pr_row(v: &Json, at: &str) -> Got<StockPr> {
     }
 }
 
-/// `{id, number, repository: {id, name, owner: {id, login}}, url}`: the
-/// number and id. The owner is read only for its shape, and never kept.
 fn closing_reference(v: &Json, at: &str) -> Got<Link> {
     let f = object(v, at, &["id", "number", "repository", "url"])?;
     let r = object(f[2], &format!("{at}.repository"), &["id", "name", "owner"])?;
@@ -877,7 +786,6 @@ fn closing_reference(v: &Json, at: &str) -> Got<Link> {
     })
 }
 
-/// `{bucket, name}`, `bucket` one of `gh`'s five.
 fn check(v: &Json, at: &str) -> Got<Check> {
     let f = object(v, at, &["bucket", "name"])?;
     let result = match string(f[0], &format!("{at}.bucket"))? {
@@ -900,8 +808,6 @@ fn check(v: &Json, at: &str) -> Got<Check> {
     })
 }
 
-/// `{status, behind_by}`: on its base when `ahead` or `identical` with
-/// nothing behind; not when `behind` or `diverged`.
 fn on_base_of(v: &Json) -> Got<bool> {
     let f = object(v, "", &["status", "behind_by"])?;
     let behind = count(f[1], ".behind_by")?;
@@ -917,9 +823,6 @@ fn on_base_of(v: &Json) -> Got<bool> {
     }
 }
 
-/// The whole JSON tree is strict (including duplicate keys). Any GraphQL
-/// error fails the batch conservatively; no untrusted error text is kept.
-/// Missing/null/bad aliases otherwise fail only their own required records.
 fn batch_of(v: &Json, prs: &[MergedPr]) -> Got<Vec<Got<bool>>> {
     let Json::Object(root) = v else {
         return bad(GapKind::WrongType, "", "not an object");
@@ -1012,7 +915,6 @@ fn ancestry_of(v: &Json, at: &str, merge: &Commit) -> Got<bool> {
     }
 }
 
-/// `YYYY-MM-DDTHH:MM:SSZ`, as milliseconds since the Unix epoch.
 fn time(s: &str) -> Option<Timestamp> {
     let b = s.as_bytes();
     let shape = b.len() == 20
@@ -1050,7 +952,6 @@ fn time(s: &str) -> Option<Timestamp> {
     if h > 23 || min > 59 || sec > 59 {
         return None;
     }
-    // Days from the civil date (Howard Hinnant's algorithm).
     let (y, m) = if m <= 2 { (y - 1, m + 9) } else { (y, m - 3) };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -1151,9 +1052,6 @@ mod tests {
         }
     }
 
-    /// The JSON tree refuses a key given twice; a reader takes only the
-    /// exact shape: an object with exactly its keys, each of its own type,
-    /// never a positional array or a tagged object.
     #[test]
     fn a_reader_takes_only_the_exact_shape() {
         assert!(serde_json::from_str::<StrictJson>(r#"{"a": 1, "a": 1}"#).is_err());
@@ -1325,8 +1223,6 @@ mod tests {
             );
         }
     }
-    // AL1: exact bounded read authority and strict title-bearing wire records.
-    // Existing fixtures predate title and cannot catch a missing/ignored title.
     #[test]
     fn al1_pr_title_read_is_exactly_the_approved_field_expansion() {
         const FIELDS: &str = "baseRefName,closingIssuesReferences,headRefName,headRefOid,isDraft,mergeCommit,mergedAt,number,state,title";
@@ -1369,7 +1265,6 @@ mod tests {
                     )
                     .replace("\"mergedAt\":null", "\"mergedAt\":\"2030-01-15T09:00:00Z\"");
             }
-            // Each state is otherwise a valid row; only title is missing.
             let valid = missing.replacen('{', r#"{"title":"Synthetic stock work","#, 1);
             assert!(list(&tree(&valid), "", pr_row).is_ok());
             assert_eq!(

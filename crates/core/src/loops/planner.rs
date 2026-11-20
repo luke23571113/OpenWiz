@@ -2,13 +2,6 @@ use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 impl Snapshot {
-    /// Plan delivered `(loop_id, event, event_id)` occurrences alongside schedules.
-    /// Event checks share scheduled checks' capacity, priority and hold rules.
-    /// Deliveries are observed at `now_ms`; ties use loop ID then event identity.
-    /// Duplicate and already-recorded occurrences are not checked again, even
-    /// across revisions. Unknown loops, mismatched wakes and invalid event IDs
-    /// reject the whole pass. Save each admitted identity before any effect.
-    /// An empty delivery list is equivalent to `plan`.
     pub fn plan_with_events(
         &self,
         delivered: &[(OpId, Event, NonEmpty)],
@@ -19,7 +12,6 @@ impl Snapshot {
     }
 }
 
-/// Plan the next pass from supplied observations; never read time or do I/O.
 pub fn plan(snapshot: &Snapshot, now_ms: u64, limits: &Limits) -> Result<Plan, PlanError> {
     snapshot.plan_with_events(&[], now_ms, limits)
 }
@@ -76,9 +68,6 @@ fn plan_delivered(
             *charged.entry(run.loop_id.clone()).or_default() += 1;
         }
     }
-    // A recorded late admission covers [original due, admission time].
-    // Keep those ranges, rather than an update-time or global watermark:
-    // a later run must not erase an earlier uncovered occurrence.
     let mut covered: BTreeMap<&OpId, Vec<(u64, u64)>> = BTreeMap::new();
     for run in &snapshot.runs {
         if let Occurrence::Scheduled { due_at_ms } = run.wake {
@@ -198,10 +187,6 @@ fn plan_delivered(
     Ok(out)
 }
 
-/// Oldest uncovered occurrence, at most one per loop per pass (#544's
-/// recorded policy). A saved admission coalesces the intervening ticks;
-/// holding a proposal without saving a run never consumes them. Work is
-/// bounded by the saved records, never by the number of missed periods.
 fn next_scheduled(wake: &Wake, covered: &[(u64, u64)], now_ms: u64) -> Option<u64> {
     match *wake {
         Wake::Once { at_ms } => {
@@ -217,7 +202,6 @@ fn next_scheduled(wake: &Wake, covered: &[(u64, u64)], now_ms: u64) -> Option<u6
                     break;
                 }
                 if through >= due {
-                    // due >= anchor and through >= due: subtraction is safe.
                     let until_next = every_ms.get() - (through - anchor_ms) % every_ms;
                     due = through.checked_add(until_next)?;
                 }
@@ -249,7 +233,6 @@ impl Candidate {
     }
 }
 impl RunResult {
-    /// The saved mark never comes from an outcome's later update time.
     pub fn dispatch_at_ms(self) -> Option<u64> {
         match self {
             Self::Dispatching { dispatch_at_ms }
@@ -282,7 +265,6 @@ impl Used {
     }
 }
 
-/// Reject ambiguous projections globally before admitting any effects.
 fn validate(snapshot: &Snapshot, now_ms: u64, limits: &Limits) -> Result<(), PlanError> {
     if [limits.checks, limits.agents]
         .iter()

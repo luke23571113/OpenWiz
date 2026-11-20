@@ -1,0 +1,265 @@
+Red run: python3 -I tools/comment-check/test_check.py Review, one case per review finding R1 to R11 at 7040a53, against the checker at that head.
+
+test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) ... 
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R1 a Unicode Rust identifier] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R2 an added line that starts with "++ "] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R3 a newline in a path] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R3 a non-UTF-8 path byte] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R4 a deletion-only edit to a non-UTF-8 file] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R5 a here-string, a bitshift and an escaped space] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R6 YAML quotes across lines and inside plain values] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R7 a TOML closing run of four quotes] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R8 HTML attributes and script attributes] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R9 doc markers by language] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R10 quoted pins, only on a workflow uses field] ... FAIL
+  test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R11 directive reasons and directive-like strings] ... FAIL
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R1 a Unicode Rust identifier]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (1, set()) != (1, {('src/u.rs', 2, 'comment')})
+
+First differing element 1:
+set()
+{('src/u.rs', 2, 'comment')}
+
+- (1, set())
++ (1, {('src/u.rs', 2, 'comment')}) : Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/check.py", line 672, in <module>
+    sys.exit(main(sys.argv[1:]))
+             ^^^^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 668, in main
+    return diff_mode(args) if args.mode == 'diff' else count_mode(args)
+           ^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 633, in diff_mode
+    judged = Judged(text, lang, matches(path, args.docs))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 429, in __init__
+    for sp in SCANNERS[lang](text):
+              ^^^^^^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 125, in scan_rust
+    i = WORD.match(s, i).end()
+        ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'end'
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R2 an added line that starts with "++ "]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (1, {('a.rs', 1, 'comment')}) != (1, {('a.rs', 1, 'comment'), ('a.rs', 7, 'comment')})
+
+First differing element 1:
+{('a.rs', 1, 'comment')}
+{('a.rs', 1, 'comment'), ('a.rs', 7, 'comment')}
+
+- (1, {('a.rs', 1, 'comment')})
++ (1, {('a.rs', 1, 'comment'), ('a.rs', 7, 'comment')}) : comment-check: 1 disallowed comment(s) in added lines
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R3 a newline in a path]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (0, set()) != (1, {('"odd\\nname.py"', 1, 'comment')})
+
+First differing element 0:
+0
+1
+
+- (0, set())
++ (1, {('"odd\\nname.py"', 1, 'comment')}) : comment-check: ok
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R3 a non-UTF-8 path byte]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (1, set()) != (1, {('"\\377bad.py"', 1, 'comment')})
+
+First differing element 1:
+set()
+{('"\\377bad.py"', 1, 'comment')}
+
+- (1, set())
++ (1, {('"\\377bad.py"', 1, 'comment')}) : Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/check.py", line 672, in <module>
+    sys.exit(main(sys.argv[1:]))
+             ^^^^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 668, in main
+    return diff_mode(args) if args.mode == 'diff' else count_mode(args)
+           ^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 624, in diff_mode
+    marked = attributes(head, list(texts))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 552, in attributes
+    input='\0'.join(paths).encode() + b'\0', capture_output=True)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'utf-8' codec can't encode character '\udcff' in position 0: surrogates not allowed
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R4 a deletion-only edit to a non-UTF-8 file]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (1, set()) != (0, set())
+
+First differing element 0:
+1
+0
+
+- (1, set())
+?  ^
+
++ (0, set())
+?  ^
+ : Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/check.py", line 672, in <module>
+    sys.exit(main(sys.argv[1:]))
+             ^^^^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 668, in main
+    return diff_mode(args) if args.mode == 'diff' else count_mode(args)
+           ^^^^^^^^^^^^^^^
+  File "<checkout>/tools/comment-check/check.py", line 631, in diff_mode
+    found.append((path, min(added[path]), 'unreadable'))
+                        ^^^^^^^^^^^^^^^^
+ValueError: min() arg is an empty sequence
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R5 a here-string, a bitshift and an escaped space]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (0, set()) != (1, {('s.sh', 4, 'comment'), ('s.sh', 2, 'comment')})
+
+First differing element 0:
+0
+1
+
+- (0, set())
++ (1, {('s.sh', 4, 'comment'), ('s.sh', 2, 'comment')}) : comment-check: ok
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R6 YAML quotes across lines and inside plain values]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (1, {('c.yml', 2, 'comment')}) != (1, {('c.yml', 4, 'comment')})
+
+First differing element 1:
+{('c.yml', 2, 'comment')}
+{('c.yml', 4, 'comment')}
+
+- (1, {('c.yml', 2, 'comment')})
+?                ^
+
++ (1, {('c.yml', 4, 'comment')})
+?                ^
+ : comment-check: 1 disallowed comment(s) in added lines
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R7 a TOML closing run of four quotes]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (0, set()) != (1, {('c.toml', 1, 'comment')})
+
+First differing element 0:
+0
+1
+
+- (0, set())
++ (1, {('c.toml', 1, 'comment')}) : comment-check: ok
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R8 HTML attributes and script attributes]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (1, {('p.html', 1, 'comment')}) != (1, {('p.html', 3, 'comment')})
+
+First differing element 1:
+{('p.html', 1, 'comment')}
+{('p.html', 3, 'comment')}
+
+- (1, {('p.html', 1, 'comment')})
+?                 ^
+
++ (1, {('p.html', 3, 'comment')})
+?                 ^
+ : comment-check: 1 disallowed comment(s) in added lines
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R9 doc markers by language]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (0, set()) != (1, {('docs/a.js', 1, 'comment'), ('docs/site.css', 1, 'comment')})
+
+First differing element 0:
+0
+1
+
+- (0, set())
++ (1, {('docs/a.js', 1, 'comment'), ('docs/site.css', 1, 'comment')}) : comment-check: ok
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R10 quoted pins, only on a workflow uses field]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (1, {('.github/workflows/w.yml', 5, 'comment'), [38 chars]t')}) != (1, {('config.yml', 1, 'comment')})
+
+First differing element 1:
+{('.github/workflows/w.yml', 5, 'comment'), [37 chars]nt')}
+{('config.yml', 1, 'comment')}
+
++ (1, {('config.yml', 1, 'comment')})
+- (1,
+-  {('.github/workflows/w.yml', 4, 'comment'),
+-   ('.github/workflows/w.yml', 5, 'comment')}) : comment-check: 2 disallowed comment(s) in added lines
+
+
+======================================================================
+FAIL: test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) [R11 directive reasons and directive-like strings]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 262, in test_each_reviewed_break_is_read_right_by_both_modes
+    self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+AssertionError: Tuples differ: (0, set()) != (1, {('d.py', 2, 'comment'), ('d.py', 1, 'directive-reason')})
+
+First differing element 0:
+0
+1
+
+- (0, set())
++ (1, {('d.py', 2, 'comment'), ('d.py', 1, 'directive-reason')}) : comment-check: ok
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.825s
+
+FAILED (failures=12)

@@ -1,35 +1,3 @@
-//! Loop files in the pinned WizLoops format (`contracts/wizloops-loop.v1.md`,
-//! WizLoops c7c2ed4), for `openwiz loop` (`contracts/loop-cli.v1.md`).
-//!
-//! LC2 (#790) owns the reader: [`read_loop`] checks one file's bytes as the
-//! format's "Reading a file" says, [`read_loop_path`] reads one file from
-//! disk, and [`read_loop_folder`] a folder, with its "Folders" and
-//! "Catalogs" refusals. Each refusal's code, field and message are the
-//! format's, exactly. A valid file also gives its [`LoopFile`]: the parsed
-//! frontmatter with every default filled in, the body and the check's text,
-//! which the plan and export (LC3, LC4) map to and from `room-cli`.
-//!
-//! The frontmatter's one-line JSON values are parsed here, not with
-//! `serde_json`, because the format refuses a repeated key inside an object
-//! and tells `2` from `2.0`, which a parse into `serde_json::Value` loses.
-//!
-//! LC3 (#791), export, by the adapter rules
-//! (`contracts/wizloops-cloudroom.v1.md`): [`read_list`] makes the one `room-cli loop list
-//! --json` read, and [`export_project`] maps each of a project's loops back
-//! to a loop file and its check, or refuses it. [`marker_id`],
-//! [`derive_id`] and [`render_script`] are the adapter's identity and
-//! params rules, which plan and apply use in the other direction.
-//!
-//! LC4 (#792, plan) builds on that reader: [`read_paths`] reads the paths
-//! `plan` is given, [`parse_loop_list`] reads `room-cli loop list` with the
-//! same strict JSON parser, and [`plan`] maps each valid file to its
-//! `room-cli loop create` or `update` command and compares it with its
-//! managed loop, as `contracts/wizloops-cloudroom.v1.md` says.
-//!
-//! LC5 (#793, apply) runs plan's commands: [`CloudRoomSource::loop_files_write`]
-//! runs one, with the files it names, and [`read_back`] plans the file again
-//! against the `loop list` read after it. Nothing else here writes.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::Path;
@@ -47,7 +15,6 @@ use crate::{
     source::CloudRoomSource,
 };
 
-/// One refusal, as the format's tables write it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal {
     pub code: &'static str,
@@ -65,53 +32,32 @@ impl Refusal {
     }
 }
 
-/// A valid loop file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoopFile {
-    /// The frontmatter as JSON, with `secrets`, `priority` and `params`
-    /// filled in when left out (the format's defaults).
     pub frontmatter: Map<String, Value>,
-    /// The prompt, as written: its placeholders are not replaced.
     pub body: String,
-    /// The check script's text, when the file has a check.
     pub check: Option<String>,
 }
 
-/// One file's result.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileRead {
-    /// The file's `id`, when it has one that passed `bad-id`.
     pub id: Option<String>,
-    /// Every refusal, in the format's report order; empty when valid.
     pub refusals: Vec<Refusal>,
-    /// The parsed file, only when it has no refusal.
     pub file: Option<LoopFile>,
-    /// Whether its `secrets` line is exactly `"all"`, whatever its other
-    /// fields' refusals: a catalog refuses that on its own.
     pub all_secrets: bool,
 }
 
-/// A folder's result.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FolderRead {
-    /// Each `*.md` file directly inside, except `README.md`, in byte order
-    /// of name.
     pub files: Vec<(String, FileRead)>,
-    /// `duplicate-id`, then (in a catalog) `catalog-all-secrets`, each with
-    /// the refused file's name.
     pub refusals: Vec<(String, Refusal)>,
 }
 
-/// What a check path names, for [`read_loop`].
 pub enum CheckText {
-    /// A regular file of UTF-8 text with no NUL.
     Text(String),
-    /// Anything else: no file, a symlink, a folder or other bytes.
     NotFound,
 }
 
-/// Checks one loop file's bytes. `check` reads the text of a `check.run`
-/// path that passed `bad-check-path`, relative to the loop file's folder.
 pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> FileRead {
     let stop = |refusal| FileRead {
         id: None,
@@ -119,7 +65,6 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
         file: None,
         all_secrets: false,
     };
-    // Step 1: encoding.
     let text = match std::str::from_utf8(bytes) {
         Ok(text) if !text.starts_with('\u{feff}') && !text.contains(['\0', '\r']) => text,
         _ => {
@@ -130,9 +75,6 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
             ));
         }
     };
-    // Steps 2 and 3: the frontmatter's two `---` lines.
-    // A file of exactly `---` has its opening line; only its closing line
-    // is missing.
     let Some(rest) = text.strip_prefix("---\n").or((text == "---").then_some("")) else {
         return stop(Refusal::new(
             "frontmatter-start",
@@ -160,7 +102,6 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
             "frontmatter has no closing line of exactly ---",
         ));
     };
-    // Step 4: each line is one `key: value`.
     let mut refusals = Vec::new();
     let mut fields: Vec<(&str, Json)> = Vec::new();
     for (n, line) in lines.iter().enumerate() {
@@ -200,21 +141,17 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
     Fields::new(fields, body, check).read()
 }
 
-/// Reads one loop file from disk. Its check is looked up beside it.
 pub fn read_loop_path(path: &Path) -> io::Result<FileRead> {
     let bytes = std::fs::read(path)?;
     let folder = path.parent().unwrap_or(Path::new(""));
     Ok(read_loop(&bytes, &mut |run| check_text(folder, run)))
 }
 
-/// Reads a folder: every `*.md` file directly inside it, except
-/// `README.md`, then the folder's refusals; with `catalog`, as a catalog.
 pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
     let mut names = Vec::new();
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let name = entry.file_name();
-        // Selected by its bytes first: only a selected name must be UTF-8.
         let bytes = name.as_encoded_bytes();
         if !bytes.ends_with(b".md") || bytes == b"README.md" {
             continue;
@@ -225,8 +162,6 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
                 "a file name is not UTF-8",
             ));
         };
-        // A selected name whose metadata cannot be read fails the read,
-        // never drops the file; a folder named `*.md` is not a loop file.
         if std::fs::metadata(entry.path())?.is_file() {
             names.push(name.to_owned());
         }
@@ -266,8 +201,6 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
     Ok(FolderRead { files, refusals })
 }
 
-/// The check script at `run` inside `folder`: a regular file, reached
-/// through no symlink, of UTF-8 text with no NUL.
 fn check_text(folder: &Path, run: &str) -> CheckText {
     let mut path = folder.to_path_buf();
     for segment in run.split('/') {
@@ -285,8 +218,6 @@ fn check_text(folder: &Path, run: &str) -> CheckText {
         _ => CheckText::NotFound,
     }
 }
-
-// ---- The frontmatter subset ----
 
 enum LineError {
     Syntax,
@@ -323,8 +254,6 @@ fn read_line(line: &str) -> Result<(&str, Json), LineError> {
     }
 }
 
-/// One JSON value, keeping each object's keys in order and whether a
-/// number is an integer.
 #[derive(Debug, Clone, PartialEq)]
 enum Json {
     Null,
@@ -352,8 +281,6 @@ impl Json {
         }
     }
 
-    /// The integer's value; `None` for any other value. An integer too big
-    /// for `i64` reads as `i64::MAX` or `i64::MIN`, outside every range.
     fn integer(&self) -> Option<i64> {
         match self {
             Self::Number {
@@ -369,8 +296,6 @@ impl Json {
     }
 }
 
-/// A strict RFC 8259 parser for one line's value. It records the first
-/// repeated object key's dotted path instead of keeping either copy.
 struct Parser<'a> {
     s: &'a [u8],
     i: usize,
@@ -382,9 +307,6 @@ impl Parser<'_> {
         self.s.get(self.i).copied()
     }
 
-    /// JSON's whitespace. A frontmatter line never holds a line feed (lines
-    /// end there) or a carriage return (step 1 refuses it), so only `loop
-    /// list`'s document (LC4) meets those two.
     fn space(&mut self) {
         while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
             self.i += 1;
@@ -538,10 +460,6 @@ impl Parser<'_> {
     }
 }
 
-// ---- Fields (step 5), body and params (step 6) ----
-
-/// The refusal codes of the format's fields table, in its order: one
-/// line's refusals are reported in this order.
 const FIELD_ORDER: &[&str] = &[
     "unknown-field",
     "missing-field",
@@ -575,8 +493,6 @@ struct Fields<'a, 'c> {
     check: &'c mut dyn FnMut(&str) -> CheckText,
     refusals: Vec<Refusal>,
     id: Option<String>,
-    /// The check's text, once read; `None` with `check_unread` when a check
-    /// is given but could not be read.
     check_text: Option<String>,
     check_unread: bool,
 }
@@ -656,7 +572,6 @@ impl<'a, 'c> Fields<'a, 'c> {
         }
     }
 
-    /// One frontmatter line's refusals, in any order.
     fn field(&mut self, key: &str, value: &Json, same_thread: bool) -> Vec<Refusal> {
         let mut out = Vec::new();
         let string = match value {
@@ -763,10 +678,7 @@ impl<'a, 'c> Fields<'a, 'c> {
         }
     }
 
-    /// Step 6: the body's placeholders, the check's text and unused params.
     fn params_in_text(&mut self) {
-        // With `params` of the wrong type, its names are unknown, so no use
-        // or declaration is checked against it.
         let declared: Option<Vec<String>> = match self.get("params") {
             None => Some(Vec::new()),
             Some(Json::Object(pairs)) => Some(
@@ -811,7 +723,6 @@ impl<'a, 'c> Fields<'a, 'c> {
                         "body",
                         "{{ must start a placeholder {{name}}",
                     ));
-                    // One byte on: `{{{name}}}` holds `{{name}}` after it.
                     at = start + 1;
                 }
             }
@@ -844,8 +755,6 @@ impl<'a, 'c> Fields<'a, 'c> {
                 }
             }
         }
-        // A check that could not be read may use any param, so only a
-        // readable check (or none) lets a param be called unused.
         if !self.check_unread {
             for name in declared.unwrap_or_default() {
                 if !used.contains(&name) {
@@ -868,7 +777,6 @@ fn is_id(s: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
-/// The param name of the placeholder `text` starts with, if it is one.
 fn placeholder(text: &str) -> Option<&str> {
     let inner = text.strip_prefix("{{")?;
     let end = inner.find("}}")?;
@@ -881,7 +789,6 @@ enum CheckUse {
     Reference(String),
 }
 
-/// The check's placeholders and `WIZLOOP_PARAM_` references, in text order.
 fn check_uses(text: &str) -> Vec<CheckUse> {
     const PREFIX: &str = "WIZLOOP_PARAM_";
     let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -926,7 +833,6 @@ fn trigger(value: &Json, out: &mut Vec<Refusal>) {
         .map(|(k, _)| k.as_str())
         .filter(|k| KINDS.contains(k))
         .collect();
-    // `timezone` is unknown only beside one kind that is not `cron`.
     let lone_cron = kinds.len() == 1 && kinds[0] == "cron";
     for (k, _) in pairs {
         let known =
@@ -1009,7 +915,6 @@ fn timezone(value: Option<&Json>, out: &mut Vec<Refusal>) {
     }
 }
 
-/// `^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)+$`.
 fn is_area_city(zone: &str) -> bool {
     let part = |s: &str| {
         !s.is_empty()
@@ -1025,7 +930,6 @@ fn is_area_city(zone: &str) -> bool {
         && rest.iter().all(|p| part(p))
 }
 
-/// A decimal number with no sign and no leading zero (`0` itself is fine).
 fn is_number(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit()) && (s == "0" || !s.starts_with('0'))
 }
@@ -1053,8 +957,6 @@ fn is_cron(cron: &str) -> bool {
         })
 }
 
-/// An RFC 3339 time with seconds and an offset, using the same calendar,
-/// casing and leap-second rules as the adapter's instant comparison.
 fn is_rfc3339(at: &str) -> bool {
     instant(at).is_some()
 }
@@ -1173,10 +1075,6 @@ fn params(value: &Json, out: &mut Vec<Refusal>) {
     }
 }
 
-// ---- LC4 (#792): plan ----
-
-// ------------------------------------------------------------ the loop model
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Trigger {
     Cron { cron: String, timezone: String },
@@ -1186,7 +1084,6 @@ pub enum Trigger {
 }
 
 impl Trigger {
-    /// The trigger in the loop file's shape.
     pub fn to_json(&self) -> Value {
         match self {
             Trigger::Cron { cron, timezone } => json!({"cron": cron, "timezone": timezone}),
@@ -1201,7 +1098,6 @@ impl Trigger {
 pub struct Check {
     pub run: String,
     pub timeout: i64,
-    /// The check script's text, read from beside the loop file.
     pub text: String,
 }
 
@@ -1218,7 +1114,6 @@ impl Agent {
     }
 }
 
-/// `secrets`: every secret, or the names listed (empty for none).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Secrets {
     All,
@@ -1233,7 +1128,6 @@ impl Secrets {
         }
     }
 
-    /// `--secrets`' value: `none`, `all`, or the names joined by `,`.
     fn flag(&self) -> String {
         match self {
             Secrets::All => "all".into(),
@@ -1242,7 +1136,6 @@ impl Secrets {
         }
     }
 
-    /// Equal as the adapter compares: a list as a set; `all` only to `all`.
     fn same(&self, other: &Secrets) -> bool {
         match (self, other) {
             (Secrets::All, Secrets::All) => true,
@@ -1257,30 +1150,23 @@ impl Secrets {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanParam {
     Str(String),
-    /// An integer, as its decimal digits.
     Int(String),
 }
 
-/// One valid loop file in the adapter's terms, from LC2's [`LoopFile`]:
-/// what plan maps to `room-cli` and compares with a [`LiveLoop`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Loop {
     pub id: String,
     pub name: String,
     pub trigger: Trigger,
     pub check: Option<Check>,
-    /// `thread`: `"new"` is true, `"same"` false.
     pub new_thread: bool,
     pub agent: Option<Agent>,
     pub secrets: Secrets,
     pub priority: i64,
-    /// In byte order of name.
     pub params: Vec<(String, PlanParam)>,
     pub body: String,
 }
 
-/// A file LC2's reader accepted, as a [`Loop`]. `None` only for a shape
-/// the reader refuses, which a valid file never has.
 fn adapter_loop(file: &LoopFile) -> Option<Loop> {
     let get = |key: &str| file.frontmatter.get(key);
     let text = |v: &Value| v.as_str().map(str::to_owned);
@@ -1341,10 +1227,6 @@ fn adapter_loop(file: &LoopFile) -> Option<Loop> {
     })
 }
 
-/// Reads each path `plan` is given with LC2's reader: a loop file, or a
-/// folder, whose files are shown as the folder's path, `/` and the name,
-/// each with its folder refusals. `Err` names the first path that can't be
-/// read.
 pub fn read_paths(paths: &[String]) -> Result<Vec<(String, FileRead)>, String> {
     let mut files = Vec::new();
     for path in paths {
@@ -1390,9 +1272,6 @@ impl Json {
     }
 }
 
-/// One whole JSON document (`loop list`), keys in order, or `None` for
-/// anything else or a repeated key. `serde_json` checks it first, so its
-/// nesting limit bounds the order-keeping parser's recursion.
 fn parse_document(bytes: &[u8]) -> Option<Json> {
     serde_json::from_slice::<Value>(bytes).ok()?;
     let mut parser = Parser {
@@ -1406,8 +1285,6 @@ fn parse_document(bytes: &[u8]) -> Option<Json> {
     (parser.i == bytes.len() && parser.duplicate.is_none()).then_some(value)
 }
 
-/// Each cron field's allowed values, or `None` when the cron is not the
-/// format's five fields.
 fn cron_fields(cron: &str) -> Option<Vec<BTreeSet<u32>>> {
     let fields: Vec<&str> = cron.split(' ').collect();
     if fields.len() != 5 {
@@ -1442,8 +1319,6 @@ fn cron_field(field: &str, min: u32, max: u32) -> Option<BTreeSet<u32>> {
                 if !is_number(step) || step == "0" {
                     return None;
                 }
-                // A step larger than this field can only select the start.
-                // Clamp only for expansion, never for format validation.
                 let step = step.parse::<u32>().unwrap_or(max + 1).min(max + 1);
                 (base, Some(step))
             }
@@ -1468,9 +1343,6 @@ fn cron_field(field: &str, min: u32, max: u32) -> Option<BTreeSet<u32>> {
     Some(values)
 }
 
-/// An RFC 3339 time with seconds and an offset, as seconds since the epoch
-/// and its fraction's digits (trailing zeros dropped), so that two
-/// spellings of one instant are equal.
 pub fn instant(time: &str) -> Option<(i64, String)> {
     let b = time.as_bytes();
     let digits = |range: std::ops::Range<usize>| -> Option<i64> {
@@ -1541,7 +1413,6 @@ pub fn instant(time: &str) -> Option<(i64, String)> {
     {
         return None;
     }
-    // Days from the civil date (Howard Hinnant's algorithm).
     let y = if month <= 2 { year - 1 } else { year };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -1553,21 +1424,16 @@ pub fn instant(time: &str) -> Option<(i64, String)> {
     Some((seconds, fraction))
 }
 
-// ------------------------------------------------------- the adapter's maps
-
-/// The marker the adapter writes at the end of a managed loop's name.
 pub fn marker(id: &str) -> String {
     format!("[wizloop:{id}]")
 }
 
-/// A Cloudroom name's id and display name, when it ends with a marker.
 pub fn split_marker(name: &str) -> Option<(&str, &str)> {
     let open = name.rfind(" [wizloop:")?;
     let id = name[open + " [wizloop:".len()..].strip_suffix(']')?;
     is_id(id).then(|| (id, &name[..open]))
 }
 
-/// The id export derives from an unmarked loop's name.
 pub fn derived_id(name: &str) -> String {
     let mut id = String::new();
     for c in name.to_lowercase().chars() {
@@ -1587,7 +1453,6 @@ fn param_text(param: &PlanParam) -> &str {
     }
 }
 
-/// The body with its placeholders replaced: Cloudroom's `prompt`.
 pub fn rendered_body(file: &Loop) -> String {
     let mut out = String::new();
     let mut at = 0;
@@ -1611,7 +1476,6 @@ pub fn rendered_body(file: &Loop) -> String {
     out
 }
 
-/// The params a check uses, in byte order of their names.
 fn carried_params(file: &Loop, check: &Check) -> Vec<(String, PlanParam)> {
     let runs: BTreeSet<String> = check_uses(&check.text)
         .into_iter()
@@ -1630,8 +1494,6 @@ fn carried_params(file: &Loop, check: &Check) -> Vec<(String, PlanParam)> {
     carried
 }
 
-/// The check with its params preamble: Cloudroom's `script`. Call it only
-/// for a check the adapter accepts (see [`file_refusals`]).
 pub fn rendered_script(file: &Loop, check: &Check) -> String {
     let carried = carried_params(file, check);
     if carried.is_empty() {
@@ -1655,8 +1517,6 @@ pub fn rendered_script(file: &Loop, check: &Check) -> String {
     out
 }
 
-/// Minutes of the day a cron's minute and hour fields allow, checked for
-/// two runs less than 15 minutes apart (across midnight too).
 fn too_frequent(cron: &str) -> bool {
     let Some(fields) = cron_fields(cron) else {
         return false;
@@ -1673,7 +1533,6 @@ fn too_frequent(cron: &str) -> bool {
     gaps.chain(wrap).any(|gap| gap < 15)
 }
 
-/// The adapter's refusals of a file, whatever the live loop: its limits.
 pub fn file_refusals(file: &Loop) -> Vec<Refusal> {
     let mut refusals = Vec::new();
     if let Trigger::Cron { cron, .. } = &file.trigger
@@ -1717,9 +1576,6 @@ pub fn file_refusals(file: &Loop) -> Vec<Refusal> {
     refusals
 }
 
-/// One `room-cli` call, built by the allowlist and never run here. Its
-/// `@prompt` and `@script` operands stand for the files apply writes;
-/// `files` holds their text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomCommand {
     pub invocation: Invocation,
@@ -1727,7 +1583,6 @@ pub struct RoomCommand {
 }
 
 impl RoomCommand {
-    /// The arguments after `room-cli`, exactly as the allowlist builds them.
     pub fn argv(&self) -> Vec<String> {
         self.invocation.argv()
     }
@@ -1750,7 +1605,6 @@ fn agent_args(agent: &Agent) -> LoopAgentArgs {
     }
 }
 
-/// The adapter's `room-cli loop create` for a file.
 pub fn create_command(file: &Loop) -> RoomCommand {
     let mut files = vec![("@prompt".to_owned(), rendered_body(file))];
     let script_file = file.check.as_ref().map(|check| {
@@ -1779,17 +1633,12 @@ pub fn create_command(file: &Loop) -> RoomCommand {
     RoomCommand { invocation, files }
 }
 
-// ------------------------------------------------------- `room-cli loop list`
-
-/// One Cloudroom loop from `loop list`, with the keys the adapter maps.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveLoop {
     pub loop_id: String,
-    /// The same id, as `room-cli loop update` takes it.
     pub address: ThreadId,
     pub project_id: String,
     pub name: String,
-    /// The trigger in the file's shape, or the `cf-export-trigger` case.
     pub trigger: Option<Trigger>,
     pub new_thread: bool,
     pub script: Option<String>,
@@ -1798,13 +1647,9 @@ pub struct LiveLoop {
     pub priority: i64,
     pub prompt: String,
     pub enabled: bool,
-    /// Keys `list` gave that the adapter neither maps nor knows as run
-    /// state (`agent.<key>` inside the agent), in the order given.
     pub unmapped: Vec<String>,
 }
 
-/// Every key of a `list` loop the adapter knows: the mapped ones, its own
-/// identifiers and the run state it leaves out of a file.
 const LIST_KEYS: [&str; 19] = [
     "id",
     "project_id",
@@ -1828,16 +1673,12 @@ const LIST_KEYS: [&str; 19] = [
 ];
 
 impl CloudRoomSource {
-    /// `room-cli loop list --json`, read once: every loop on the account.
     pub fn loop_files_list(&self, deadline: Instant) -> Result<Vec<LiveLoop>, SourceError> {
         let out = process::run(self.program(), &Invocation::LoopList, deadline)?;
         parse_loop_list(&out).map_err(|detail| SourceError::Malformed { detail })
     }
 }
 
-/// `{"automations": [...]}`, each loop with every key the adapter maps.
-/// Strict: a duplicate key, a missing key or a wrong type refuses the whole
-/// list, so plan never compares against part of an account.
 pub fn parse_loop_list(stdout: &[u8]) -> Result<Vec<LiveLoop>, String> {
     let bad = |what: &str| {
         format!("loop list is not the expected {{\"automations\": [...]}} JSON: {what}")
@@ -1958,10 +1799,6 @@ pub fn parse_loop_list(stdout: &[u8]) -> Result<Vec<LiveLoop>, String> {
         .collect()
 }
 
-// ------------------------------------------------------------------- plan
-
-/// One difference: the field, the file's value and the live value, both in
-/// the loop file's shape.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Difference {
     pub field: &'static str,
@@ -1978,8 +1815,6 @@ pub enum Action {
 }
 
 impl Action {
-    /// `none` or `refused`; `create` and `update` are their command's
-    /// subcommand, as the allowlist spells it (see [`PlanItem::action_word`]).
     fn quiet_word(self) -> Option<&'static str> {
         match self {
             Action::None => Some("none"),
@@ -1989,7 +1824,6 @@ impl Action {
     }
 }
 
-/// One file's plan.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanItem {
     pub file: String,
@@ -2004,8 +1838,6 @@ pub struct PlanItem {
 }
 
 impl PlanItem {
-    /// The contract's `action`: a create or an update is named by its one
-    /// command's subcommand, so the word is spelled once, in the allowlist.
     pub fn action_word(&self) -> String {
         match (self.action.quiet_word(), self.commands.first()) {
             (Some(word), _) => word.to_owned(),
@@ -2018,18 +1850,13 @@ impl PlanItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
     pub items: Vec<PlanItem>,
-    /// `(loop, name)` for each loop of the project with no marker and no binding.
     pub unmanaged: Vec<(String, String)>,
-    /// `(loop, id)` for each managed loop with no file.
     pub orphans: Vec<(String, String)>,
 }
 
 const SAME_THREAD_NOTE: &str =
     "a same-thread run keeps its thread's own environment, whatever secrets says";
 
-/// Plans every file against the project's loops, as the adapter's "How plan
-/// compares" says. `now` is the current time in seconds since the epoch,
-/// for `cf-at-past`. Reads and writes nothing.
 pub fn plan(
     files: &[(String, FileRead)],
     live: &[LiveLoop],
@@ -2045,7 +1872,6 @@ pub fn plan(
             .filter(|l| split_marker(&l.name).is_some_and(|(m, _)| m == id))
             .collect()
     };
-    // Earlier files claim an id; a later file with the same id is refused.
     let mut claimed: BTreeMap<String, String> = BTreeMap::new();
     let mut bound: BTreeSet<String> = BTreeSet::new();
     let mut items = Vec::new();
@@ -2333,7 +2159,6 @@ fn plan_update(item: &mut PlanItem, file: &Loop, live: &LiveLoop, adopted: bool)
                 timezone: timezone.clone(),
             }),
             Trigger::At(at) => Some(LoopReschedule::At(at.clone())),
-            // Refused above: an `in` file, and a change to or from a webhook.
             Trigger::In(_) | Trigger::Webhook => None,
         },
         script_file,
@@ -2373,13 +2198,9 @@ fn plan_update(item: &mut PlanItem, file: &Loop, live: &LiveLoop, adopted: bool)
     }
 }
 
-/// The preamble's first line, after the check's first line.
 pub const PREAMBLE_START: &str = "# wizloop: params from the loop file, as data";
-/// The line that ends the preamble.
 pub const PREAMBLE_END: &str = "# wizloop: the check";
-/// The only check timeout Cloudroom runs ("Limits the adapter reports").
 pub const CHECK_TIMEOUT: u64 = 60;
-/// The first lines a check with params may start with.
 const SHELLS: [&str; 4] = [
     "#!/bin/sh\n",
     "#!/bin/bash\n",
@@ -2387,7 +2208,6 @@ const SHELLS: [&str; 4] = [
     "#!/usr/bin/env bash\n",
 ];
 
-/// The `list` keys the adapter maps to a file.
 const MAPPED: [&str; 11] = [
     "name",
     "cron",
@@ -2401,8 +2221,6 @@ const MAPPED: [&str; 11] = [
     "priority",
     "prompt",
 ];
-/// The `list` keys the adapter reads but never writes: run state, and
-/// Cloudroom's own identifiers.
 const NOT_MAPPED: [&str; 8] = [
     "enabled",
     "last_error",
@@ -2415,7 +2233,6 @@ const NOT_MAPPED: [&str; 8] = [
 ];
 const AGENT_KEYS: [&str; 3] = ["provider", "model", "reasoning"];
 
-/// One export refusal: the contract's `{"file", "code", "field", "message"}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExportRefusal {
     pub file: String,
@@ -2424,11 +2241,9 @@ pub struct ExportRefusal {
     pub message: String,
 }
 
-/// A param's value: a one-line string or an integer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Param {
     Text(String),
-    /// A canonical decimal integer token, kept without a magnitude bound.
     Integer(String),
 }
 
@@ -2441,26 +2256,14 @@ impl Param {
     }
 }
 
-/// One of the project's loops, exported or refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exported {
-    /// The Cloudroom loop id.
     pub loop_id: String,
-    /// The Cloudroom loop's name: a refusal's `file`.
     pub name: String,
-    /// The loop file's id, or `None` when refused before one exists.
     pub id: Option<String>,
-    /// Each file to write, as its path relative to the export folder and its
-    /// text: `<id>.md`, then `<id>/check` for a loop with a script. Empty
-    /// when refused.
     pub files: Vec<(String, String)>,
-    /// For an unmarked loop, the file id an `--adopt` binds to this loop.
     pub binding: Option<String>,
-    /// Empty when exported.
     pub refusals: Vec<ExportRefusal>,
-    /// Each key of the `list` item the adapter rules do not name
-    /// (`agent.<key>` inside the agent), in byte order: a recorded gap, not
-    /// a refusal. The file does not carry it.
     pub unmapped: Vec<String>,
 }
 
@@ -2470,9 +2273,6 @@ fn malformed(detail: &str) -> SourceError {
     }
 }
 
-/// The one `room-cli loop list --json` read: every item of `automations`,
-/// each an object with a string `id` and `project_id`. A duplicate key
-/// anywhere refuses the whole read.
 pub fn read_list(
     source: &CloudRoomSource,
     deadline: Instant,
@@ -2504,8 +2304,6 @@ pub fn read_list(
         .collect()
 }
 
-/// The id a name's marker carries, and the name before it: a name that ends
-/// with one space and `[wizloop:<id>]`, with a valid id.
 pub fn marker_id(name: &str) -> Option<(&str, &str)> {
     let rest = name.strip_suffix(']')?;
     let at = rest.rfind(" [wizloop:")?;
@@ -2513,10 +2311,6 @@ pub fn marker_id(name: &str) -> Option<(&str, &str)> {
     is_id(id).then_some((id, &name[..at]))
 }
 
-/// The id export derives from an unmarked loop's name, or `None` when that
-/// is not a valid id: lowercase it, turn each run of characters other than
-/// `a-z` and `0-9` into one `-`, trim `-` from both ends, keep at most 64
-/// characters and trim a trailing `-`.
 pub fn derive_id(name: &str) -> Option<String> {
     let mut id = String::new();
     for c in name.to_lowercase().chars() {
@@ -2531,9 +2325,6 @@ pub fn derive_id(name: &str) -> Option<String> {
     is_id(&id).then_some(id)
 }
 
-/// The names of the params a check uses, in upper case: each reference
-/// `WIZLOOP_PARAM_<run>`, where the text just before is not a letter, digit
-/// or `_`, gives its whole run, in order (the format's "Params").
 fn references(check: &str) -> Vec<String> {
     check_uses(check)
         .into_iter()
@@ -2544,8 +2335,6 @@ fn references(check: &str) -> Vec<String> {
         .collect()
 }
 
-/// Each `{{name}}` placeholder in `text`, in order, and whether any `{{`
-/// does not start one.
 fn placeholders(text: &str) -> (Vec<&str>, bool) {
     let (mut names, mut bad) = (Vec::new(), false);
     let mut from = 0;
@@ -2561,11 +2350,6 @@ fn placeholders(text: &str) -> (Vec<&str>, bool) {
     (names, bad)
 }
 
-/// The rendered script for a check `check` with `params` (the adapter's
-/// "Params: the body and the check's preamble"): the check byte for byte
-/// when it uses no param, else its first line, the preamble exporting each
-/// param it uses in byte order of name, and the rest. `Err` is the
-/// adapter's refusal code: `cf-check-preamble` or `cf-check-shell`.
 pub fn render_script(
     check: &str,
     params: &BTreeMap<String, Param>,
@@ -2605,9 +2389,6 @@ pub fn render_script(
     Ok(script)
 }
 
-/// Reads a script's preamble back ("Reading the preamble back"): the check
-/// and the params it carries, or `None` when the script is not exactly what
-/// [`render_script`] writes for them (`cf-export-preamble`).
 pub fn read_script(script: &str) -> Option<(String, BTreeMap<String, Param>)> {
     let Some(end) = script.find('\n') else {
         return Some((script.to_owned(), BTreeMap::new()));
@@ -2659,13 +2440,10 @@ pub fn read_script(script: &str) -> Option<(String, BTreeMap<String, Param>)> {
     (render_script(&check, &params).ok()? == script).then_some((check, params))
 }
 
-/// A JSON string, as the format's one-line value.
 fn string(s: &str) -> String {
     Value::from(s).to_string()
 }
 
-/// A JSON object in the given key order, written as the format's examples
-/// write one: `{"a": 1, "b": 2}`.
 fn json_object(pairs: &[(&str, String)]) -> String {
     let body: Vec<String> = pairs
         .iter()
@@ -2678,7 +2456,6 @@ fn control(c: char) -> bool {
     c <= '\u{1f}' || c == '\u{7f}'
 }
 
-/// The format's `name`.
 fn valid_name(name: &str) -> bool {
     (1..=100).contains(&name.chars().count())
         && !name.chars().any(control)
@@ -2692,8 +2469,6 @@ fn valid_secret(s: &str) -> bool {
                 .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'))
 }
 
-/// One item's keys, typed as the adapter maps them; `Err` names the key
-/// that is missing or of another type.
 struct Item<'a> {
     name: &'a str,
     cron: Option<&'a str>,
@@ -2745,9 +2520,6 @@ impl<'a> Item<'a> {
     }
 }
 
-/// Maps each loop of `project`, in `list` order, to its files or its
-/// refusals. `Err` when a loop of the project lacks a key the adapter maps,
-/// or has one of another type: the list is not the one the rules describe.
 pub fn export_project(
     items: &[Map<String, Value>],
     project: &str,
@@ -2791,7 +2563,6 @@ fn export_one(
         list: Vec::new(),
     };
 
-    // The file's id and name.
     let (id, name, binding) = match marker_id(item.name) {
         Some((id, name)) => {
             if markers.get(id).copied().unwrap_or(0) > 1 {
@@ -2820,8 +2591,6 @@ fn export_one(
         },
     };
 
-    // A key the adapter does not map, at the top or in the agent: named,
-    // never refused, so a new Cloudroom setting is seen rather than lost.
     let mut unmapped: Vec<String> = object
         .keys()
         .filter(|k| !MAPPED.contains(&k.as_str()) && !NOT_MAPPED.contains(&k.as_str()))
@@ -2837,7 +2606,6 @@ fn export_one(
     }
     unmapped.sort();
 
-    // The file itself must be UTF-8 with LF line ends and no NUL.
     if item.prompt.contains(['\r', '\0']) {
         r.invalid("file", "encoding");
     }
@@ -2845,7 +2613,6 @@ fn export_one(
         r.invalid("name", "bad-name");
     }
 
-    // The trigger: exactly one of cron, run_at and webhook.
     let kinds = usize::from(item.cron.is_some())
         + usize::from(item.run_at.is_some())
         + usize::from(item.webhook);
@@ -2887,7 +2654,6 @@ fn export_one(
         _ => Some(json_object(&[("webhook", "true".to_owned())])),
     };
 
-    // The check and the params its preamble carries.
     let mut params = BTreeMap::new();
     let mut check = None;
     if let Some(script) = item.script {
@@ -2912,7 +2678,6 @@ fn export_one(
         }
     }
 
-    // The agent.
     let agent = item.agent.map(|agent| {
         let mut pairs = Vec::new();
         for key in AGENT_KEYS {
@@ -2932,7 +2697,6 @@ fn export_one(
         json_object(&pairs)
     });
 
-    // Secrets: null is every secret; a list is kept exactly.
     let secrets = match item.secrets {
         None => string("all"),
         Some(list) => {
@@ -2964,8 +2728,6 @@ fn export_one(
         r.invalid("priority", "bad-priority");
     }
 
-    // The body: not empty, and no `{{`: export declares only the params the
-    // check's preamble carries, so a placeholder could not read back.
     if item.prompt.chars().all(char::is_whitespace) {
         r.invalid("body", "empty-body");
     }
@@ -2977,7 +2739,6 @@ fn export_one(
         r.invalid("body", "undeclared-param");
     }
 
-    // The check: no placeholder, and every reference set by the preamble.
     if let Some(text) = &check {
         if !placeholders(text).0.is_empty() {
             r.invalid("check", "param-in-check");
@@ -3045,7 +2806,6 @@ fn export_one(
     }
 }
 
-/// One loop's refusals, in the order found, each once.
 struct Refusals<'a> {
     file: &'a str,
     list: Vec<ExportRefusal>,
@@ -3064,7 +2824,6 @@ impl Refusals<'_> {
         }
     }
 
-    /// `cf-export-invalid`: the mapped loop would break the format's `code`.
     fn invalid(&mut self, field: &str, code: &str) {
         self.refuse(
             "cf-export-invalid",
@@ -3082,26 +2841,13 @@ fn loop_id(object: &Map<String, Value>) -> String {
         .to_owned()
 }
 
-// ------------------------------------------------------------------- apply
-
-// LC5 (#793): apply runs plan's own commands. Its two pieces here are one
-// write, with the files its `@` operands stand for, and the read-back's
-// comparison. Which commands run, and what each result means, is apply's.
-
-/// What one `room-cli loop create` or `update` did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Written {
-    /// It exited 0: Cloudroom accepted it. Its stdout.
     Accepted(String),
-    /// It exited with another code: Cloudroom refused it. The first
-    /// non-empty line of its error output, unchanged.
     Refused(String),
-    /// It timed out, ended without an exit code, or could not be run:
-    /// whether it changed anything is unknown. Why, in words.
     Unclear(String),
 }
 
-/// Writes `text` to the new file `path`, owner-only.
 fn write_private(path: &Path, text: &str) -> io::Result<()> {
     use std::io::Write as _;
     use std::os::unix::fs::OpenOptionsExt as _;
@@ -3114,12 +2860,6 @@ fn write_private(path: &Path, text: &str) -> io::Result<()> {
 }
 
 impl CloudRoomSource {
-    /// Runs one of plan's commands once, through the allowlist: writes each
-    /// of its files, owner-only, into `dir` (a private folder the caller
-    /// made and removes afterwards), and passes their paths where its
-    /// `@prompt` and `@script` operands stand. Never retried. `Err` when a
-    /// file could not be written, or the command is not a loop write: then
-    /// nothing was run.
     pub fn loop_files_write(
         &self,
         command: &RoomCommand,
@@ -3176,16 +2916,12 @@ impl CloudRoomSource {
     }
 }
 
-/// The address a webhook `create` printed: the first word of its output
-/// that starts with `https://`. The adapter's "A webhook address is shown
-/// once": the caller passes it on once and writes it nowhere.
 pub fn webhook_address(stdout: &str) -> Option<&str> {
     stdout
         .split_whitespace()
         .find(|word| word.starts_with("https://"))
 }
 
-/// An `in` delay in seconds: a whole number with `m`, `h` or `d`.
 fn delay_seconds(delay: &str) -> Option<i64> {
     let unit = match delay.as_bytes().last()? {
         b'm' => 60,
@@ -3199,16 +2935,6 @@ fn delay_seconds(delay: &str) -> Option<i64> {
         .checked_mul(unit)
 }
 
-/// The read-back: the file planned again, with no binding, against the
-/// `loop list` read after the last write, as plan compares.
-///
-/// An `in` file's delay became a run time when its loop was created, so
-/// that run time is checked on its own: `written` is the clock in whole
-/// seconds just before the first write (rounded down) and just after the
-/// last (rounded up), and the run time, read to the whole second, must fall
-/// within the delay after it. Out of that window it is a `trigger`
-/// difference; a run time that cannot be read, or a loop with no run time,
-/// leaves nothing to compare, and plan refuses it (`cf-in-existing`).
 pub fn read_back(
     shown: &str,
     read: &FileRead,
@@ -3245,7 +2971,6 @@ pub fn read_back(
                 live: json!({ "at": at }),
             });
         }
-        // Checked above: the rest of the loop is compared as plan compares.
         file.frontmatter
             .insert("trigger".into(), json!({ "at": at }));
     }
@@ -3253,7 +2978,6 @@ pub fn read_back(
         .items
         .remove(0);
     if let Some(difference) = late {
-        // In the contract's field order: after `name`, before the rest.
         let at = item
             .differences
             .iter()
@@ -3281,8 +3005,6 @@ mod polish_tests {
         .clone()
     }
 
-    // catches #988: export writing impossible month ends while exporting
-    // valid Gregorian leap days and unrelated valid loops in the same batch.
     #[test]
     fn export_checks_calendar_dates_per_loop() {
         let cases = [
@@ -3329,8 +3051,6 @@ mod polish_tests {
         }
     }
 
-    // catches #989: refusing canonical integer preambles above i64::MAX,
-    // changing their numeric JSON type or changing the check's bytes.
     #[test]
     fn export_keeps_integer_params_beyond_i64() {
         let check = "#!/bin/sh\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n";
@@ -3380,8 +3100,6 @@ mod polish_tests {
         }
     }
 
-    // catches #990: from_str_radix treating a sign as a Unicode hex digit,
-    // including in the low surrogate; legal escapes still decode normally.
     #[test]
     fn unicode_escapes_require_four_hex_digits() {
         for (name, valid) in [
@@ -3405,8 +3123,6 @@ mod polish_tests {
         }
     }
 
-    // catches #994: lowercase RFC 3339 separators and leap seconds refused
-    // by validate or export, or date/time/offset validation being weakened.
     #[test]
     fn timestamps_follow_rfc3339_in_both_directions() {
         for (at, valid) in [
@@ -3449,8 +3165,6 @@ mod polish_tests {
         }
     }
 
-    // catches #996: a bounded numeric parser rejecting a positive cron
-    // step or disabling the plan's frequency guard for an overflowing step.
     #[test]
     fn cron_steps_have_no_numeric_ceiling() {
         for (step, valid) in [
@@ -3510,18 +3224,12 @@ mod polish_tests {
 mod tests {
     use super::*;
 
-    // catches (review R3): an `in` file's created loop compared with its own
-    // run time, so any run time reads back as no difference; the window's
-    // edges at whole-second precision; and a run time that cannot be read
-    // reported as anything but a loop plan cannot compare.
     #[test]
     fn read_back_checks_an_in_files_run_time_against_the_write() {
         let file = read_loop(
             b"---\nid: \"in-same\"\nname: \"Look again\"\ntrigger: {\"in\": \"30m\"}\nthread: \"same\"\n---\nLook again.\n",
             &mut |_| CheckText::NotFound,
         );
-        // 2030-01-01T00:00:00Z is 1_893_456_000; the write ran in its first
-        // two seconds, so the loop is due from 00:30:00 to 00:30:02.
         let written = (1_893_456_000, 1_893_456_002);
         for (run_at, differs) in [
             ("2030-01-01T00:30:00Z", Some(false)),
@@ -3566,8 +3274,6 @@ mod tests {
 
     const HEAD: &str = "---\nid: \"a\"\nname: \"A\"\nthread: \"new\"\n";
 
-    // catches: a reader that collapses `{"a":1,"a":2}` or reads `2.0` as an
-    // integer, both of which serde_json would accept silently.
     #[test]
     fn repeated_keys_and_non_integers_are_refused() {
         assert_eq!(
@@ -3584,8 +3290,6 @@ mod tests {
         );
     }
 
-    // catches: refusals from several fields reported out of the format's
-    // order (frontmatter lines, then body, then missing fields last).
     #[test]
     fn several_refusals_come_in_report_order() {
         let got = read(
@@ -3612,8 +3316,6 @@ mod tests {
 mod plan_tests {
     use super::*;
 
-    // catches: a JSON reader that collapses a repeated key, accepts a value
-    // that is not exactly one JSON value, or reads 2.0 as an integer.
     #[test]
     fn the_strict_json_reader_keeps_order_and_refuses_duplicates() {
         assert_eq!(
@@ -3653,8 +3355,6 @@ mod plan_tests {
         }
     }
 
-    // catches: two spellings of one instant compared as different, or an
-    // invalid date taken as a time.
     #[test]
     fn instants_compare_across_spellings() {
         assert_eq!(
@@ -3680,8 +3380,6 @@ mod plan_tests {
         }
     }
 
-    // catches: the 15-minute rule missing a gap across midnight or an
-    // hour boundary, or refusing a loop that is due rarely enough.
     #[test]
     fn the_fifteen_minute_rule_reads_minute_and_hour() {
         for (cron, refused) in [
@@ -3718,8 +3416,6 @@ mod plan_tests {
     const WEBHOOK: &str =
         "---\nid: \"a\"\nname: \"A\"\ntrigger: {\"webhook\": true}\nthread: \"new\"\n";
 
-    // catches #992: a catalog file with secrets "all" and another field
-    // refused reporting only that field, never catalog-all-secrets.
     #[test]
     fn a_catalog_refuses_all_secrets_beside_other_refusals() {
         let root = scratch("catalog");
@@ -3738,8 +3434,6 @@ mod plan_tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
-    // catches #993: an unrelated non-UTF-8 name (here `\xff.txt`) failing
-    // the whole folder read, though only `*.md` names are selected.
     #[test]
     fn a_folder_ignores_unrelated_non_utf8_names() {
         use std::os::unix::ffi::OsStrExt;
@@ -3756,8 +3450,6 @@ mod plan_tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
-    // catches #997: a file of exactly `---` refused as frontmatter-start,
-    // though its first line is the opening delimiter.
     #[test]
     fn a_lone_opening_line_lacks_only_its_closing_line() {
         assert_eq!(codes("---"), [("frontmatter-end", "file".to_owned())]);
@@ -3765,8 +3457,6 @@ mod plan_tests {
         assert_eq!(codes("----"), [("frontmatter-start", "file".to_owned())]);
     }
 
-    // catches #995: `{{{repo}}}` hiding the placeholder `{{repo}}` one byte
-    // after a failed probe, in the check and in the body.
     #[test]
     fn overlapping_placeholders_are_each_checked() {
         let text = format!("{WEBHOOK}check: {{\"run\": \"check\", \"timeout\": 5}}\n---\nGo.\n");

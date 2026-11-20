@@ -1,11 +1,3 @@
-//! What a create does, worked out before creating, in the core's words,
-//! and the project rules it starts from (sheet A-5: `standard` projects with
-//! a GitHub remote).
-//!
-//! These are the documented effects of a Cloud create (ClosedWiz#11), not
-//! observations: the live check (#13) observes them, or records them as
-//! unobserved.
-
 use serde::Serialize;
 
 use crate::model::{Fact, Timestamp};
@@ -13,7 +5,6 @@ use crate::model::{Fact, Timestamp};
 use super::outcome::RefusalReason;
 use super::{ProjectRef, ProjectView};
 
-/// One effect of a create.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectKind {
@@ -32,7 +23,6 @@ pub struct Effect {
     pub text: String,
 }
 
-/// The effects of one create, from the project read at `read_at`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Effects {
     pub read_at: Timestamp,
@@ -40,8 +30,6 @@ pub struct Effects {
     pub effects: Vec<Effect>,
 }
 
-/// The effects of creating in `project`, read at `read_at`. A GitHub remote
-/// is required, so the start is always from GitHub.
 pub fn effects_for(project: &ProjectView, read_at: Timestamp) -> Effects {
     let name = match &project.name {
         Fact::Known(name) => name.clone(),
@@ -84,19 +72,14 @@ pub fn effects_for(project: &ProjectView, read_at: Timestamp) -> Effects {
     }
 }
 
-/// One project as the adapter read it from `project list`, for a create.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectCandidate {
     pub id: String,
     pub name: Fact<String>,
-    /// `standard`, `personal`, or anything else as reported.
     pub kind: Fact<String>,
-    /// Whether its remote is a GitHub remote.
     pub github_remote: Fact<bool>,
 }
 
-/// The names `candidate` answers to: its name, and the inventory's
-/// qualified `name~<last 6 characters of the id>`.
 fn display_names(candidate: &ProjectCandidate) -> Vec<String> {
     let Fact::Known(name) = &candidate.name else {
         return vec![];
@@ -108,14 +91,6 @@ fn display_names(candidate: &ProjectCandidate) -> Vec<String> {
     vec![name.clone(), format!("{name}~{tail}")]
 }
 
-/// The project `reference` names among `projects` (the default project
-/// list: hidden projects are not in it), if OpenWiz may create there.
-/// Otherwise why not. Nothing is created in an unknown, hidden, personal or
-/// non-standard project, or one without a GitHub remote.
-///
-/// A name matches every project that answers to it, by its literal name or
-/// its qualified one, and more than one project is ambiguous: a literal
-/// name never hides another project's qualified name (Sol round 1).
 pub fn resolve_project(
     reference: &ProjectRef,
     projects: &[ProjectCandidate],
@@ -134,8 +109,6 @@ pub fn resolve_project(
         [one] => *one,
         _ => return Err(RefusalReason::ProjectAmbiguous),
     };
-    // Names select an id, but every row for that id must confirm eligibility,
-    // including rows hidden by the name filter or duplicate-id removal above.
     for row in projects.iter().filter(|row| row.id == project.id) {
         match &row.kind {
             Fact::Known(kind) if kind == "standard" => {}

@@ -1,14 +1,3 @@
-//! The CloudRoom side of `send`: the target read and the one write, `thread
-//! tell`, translated for the core's [`Messenger`].
-//!
-//! The PC probe c687079 (#10, #571) observed sent (Queue or Steer), busy
-//! Queue, and Claude Code queued Steer receipts. Other forms are uncertain.
-//!
-//! Nothing `room-cli` prints reaches a reason, gap or message from here:
-//! receipts and errors are matched against fixed forms and turned into
-//! OpenWiz's own words. Only the validated queued message id is passed on,
-//! separately from those fixed words.
-
 use std::time::Instant;
 
 use openwiz_core::messaging::effects::{Activity, QueuedWork, TargetRecord};
@@ -26,28 +15,14 @@ use crate::allowlist::{Invocation, ThreadId};
 use crate::process;
 use crate::source::CloudRoomSource;
 
-/// The documented rejections before acceptance, as the first line `room-cli`
-/// prints on stderr. Only an exact match is a rejection; any other error is
-/// uncertain, the safe direction.
-///
-/// - The not-found line was observed for `thread show` and `thread output`
-///   in capture C. That `thread tell` prints the same line is **documented,
-///   not observed**.
-/// - The guide documents that invalid input and unsupported modes are
-///   rejected ("Explicit unsupported modes fail; no fallback"), **not their
-///   wording**. These two lines are placeholders, labelled synthetic in the
-///   fixtures. At the pre-live recheck they are replaced by the real
-///   wording; until then a real rejection of either kind reports uncertain.
 pub const DOCUMENTED_REJECTIONS: &[(&str, &str)] = &[
     ("Error: HTTP 404: Thread not found", "not_found"),
     ("Error: HTTP 400: Invalid input", "invalid_input"),
     ("Error: HTTP 400: Unsupported mode", "unsupported_mode"),
 ];
 
-/// How the runner describes a program that could not be started.
 const NOT_STARTED: &str = "could not be started";
 
-/// The exact keys observed for sent in either requested mode (#571).
 pub const RECEIPT_KEYS: &[&str] = &["threadId", "ok", "delivery", "mode"];
 
 impl Messenger for CloudRoomSource {
@@ -55,8 +30,6 @@ impl Messenger for CloudRoomSource {
         crate::PROGRAM
     }
 
-    /// Send's own, never the reads' (#200): `""` while no live send has
-    /// passed, which no version read equals.
     fn tested_version(&self) -> &str {
         crate::SEND_TESTED_VERSION.unwrap_or("")
     }
@@ -72,9 +45,6 @@ impl Messenger for CloudRoomSource {
 
     fn version(&self, deadline: Instant) -> Result<String, SourceError> {
         SessionSource::version(self, deadline).map_err(|e| match e {
-            // The version read's own malformed details are OpenWiz's fixed
-            // words (#21, #37), such as "printed a version that is not N.N.N
-            // or v<N> (detail withheld)": kept, as the reads show them.
             SourceError::Malformed { .. } => e,
             other => withhold(other),
         })
@@ -107,12 +77,6 @@ impl Messenger for CloudRoomSource {
         self.tell_prompt(id, mode, &ReadyPrompt::text(text), deadline)
     }
 
-    /// The one write with its attachments (B2): every staged attachment, in
-    /// the core's dispatch order, through the allowlist's one
-    /// `attachment_args`. A failure during `room-cli`'s own upload, before
-    /// or after the message, is matched like any other error: only a
-    /// documented rejection is a failure, anything else uncertain (some
-    /// copies may already be in CloudRoom, #15's F15).
     fn tell_prompt(
         &self,
         id: &SessionId,
@@ -121,12 +85,9 @@ impl Messenger for CloudRoomSource {
         deadline: Instant,
     ) -> TellReply {
         let Ok(thread_id) = ThreadId::parse(&id.0) else {
-            // Never reached: `send` checks the id first. Nothing is run.
             return TellReply::Rejected(Rejection::InvalidInput);
         };
         if mode == Mode::Steer && !prompt.attachments.is_empty() {
-            // Never reached: `send` refuses Steer with attachments first
-            // (B-11; a Cloud steer drops them, F16). Nothing is run.
             return TellReply::NotStarted;
         }
         let invocation = Invocation::ThreadTell {
@@ -164,8 +125,6 @@ impl Messenger for CloudRoomSource {
                 UncertainReason::UnexpectedReceipt,
                 "thread tell printed more than OpenWiz reads",
             ),
-            // The runner's own words for a program that never started
-            // (`process::run`); nothing of room-cli's is matched here.
             Err(SourceError::Unavailable { detail }) if detail.contains(NOT_STARTED) => {
                 TellReply::NotStarted
             }
@@ -178,8 +137,6 @@ impl Messenger for CloudRoomSource {
 }
 
 impl CloudRoomSource {
-    /// `queuedWork` and `hasPendingInteraction`, from the target's row in
-    /// `thread list`. Anything not read stays unknown, with a gap.
     fn add_list_row(&self, target: &mut TargetRecord, deadline: Instant) {
         let invocation = Invocation::ThreadList {
             include_hidden: false,
@@ -224,8 +181,6 @@ impl CloudRoomSource {
         target.pending_interaction = fields.boolean("hasPendingInteraction");
     }
 
-    /// For a local session, whether its host is connected, from `machine
-    /// list`.
     fn add_host(&self, target: &mut TargetRecord, deadline: Instant) {
         let Fact::Known(Placement::Host(host)) = &target.placement else {
             return;
@@ -247,7 +202,6 @@ impl CloudRoomSource {
                         let mut fields = Fields::new(row, "machine list", &mut target.problems);
                         match fields.string("status") {
                             Fact::Known(status) if status == "connected" => Fact::Known(true),
-                            // No other status value was observed or documented.
                             Fact::Known(_) => Fact::Unknown(fields.unrecognised("status")),
                             Fact::Unknown(why) => Fact::Unknown(why),
                         }
@@ -287,7 +241,6 @@ fn read_json(
         })
 }
 
-/// Drops `room-cli`'s own text from an error, keeping only its category.
 fn withhold(error: SourceError) -> SourceError {
     match error {
         SourceError::CommandFailed { exit_code, .. } => SourceError::CommandFailed {
@@ -304,7 +257,6 @@ fn withhold(error: SourceError) -> SourceError {
     }
 }
 
-/// A failed read in OpenWiz's own words.
 fn described(read: &str, error: &SourceError) -> String {
     match error {
         SourceError::CommandFailed {
@@ -325,7 +277,6 @@ fn read_gap(subject: &str, detail: &str) -> SendGap {
     }
 }
 
-/// Read send-target JSON without letting Value silently replace repeated keys.
 struct ReadDocument(Value);
 
 impl<'de> Deserialize<'de> for ReadDocument {
@@ -394,8 +345,6 @@ impl<'de> Visitor<'de> for ReadVisitor {
     }
 }
 
-/// The target as `thread show` reports it. Fields the effects need from
-/// other reads start unknown.
 fn parse_show(id: &SessionId, out: &[u8]) -> Result<TargetRecord, SourceError> {
     let malformed = |detail: &str| SourceError::Malformed {
         detail: detail.to_owned(),
@@ -460,8 +409,6 @@ fn parse_show(id: &SessionId, out: &[u8]) -> Result<TargetRecord, SourceError> {
     })
 }
 
-/// Typed fields of one JSON object. Each missing, mistyped or unrecognised
-/// one becomes a gap in OpenWiz's words, naming the field, never its value.
 struct Fields<'a> {
     object: &'a Value,
     read: &'static str,
@@ -504,7 +451,6 @@ impl<'a> Fields<'a> {
     }
 }
 
-/// A documented rejection, from the first stderr line, by exact match.
 fn rejection(first_line: &str) -> Option<Rejection> {
     let (_, kind) = DOCUMENTED_REJECTIONS
         .iter()
@@ -537,8 +483,6 @@ fn unexpected(detail: &str) -> TellReply {
     )
 }
 
-/// Read the original JSON once, rejecting repeated keys at every depth.
-/// A Value parse alone would silently replace a repeated key.
 struct ReceiptJson(Value);
 
 impl<'de> serde::Deserialize<'de> for ReceiptJson {
@@ -600,9 +544,6 @@ fn exact_object<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a serde_json::M
         .filter(|o| o.len() == keys.len() && keys.iter().all(|key| o.contains_key(*key)))
 }
 
-/// Only PC-observed sent and queued shapes (c687079, v141 W1-M08),
-/// bound to this request.
-/// Required null fields are checked as keys too, never treated as missing.
 fn receipt(out: &[u8], target: &SessionId, mode: Mode) -> TellReply {
     let value = match serde_json::from_slice::<ReceiptJson>(out) {
         Ok(ReceiptJson(value)) => value,
@@ -640,7 +581,6 @@ fn receipt(out: &[u8], target: &SessionId, mode: Mode) -> TellReply {
     }
 }
 
-/// The common sixteen keys; only the Local busy Queue adds hardQueue (false).
 const QUEUED_KEYS: &[&str] = &[
     "id",
     "initiator",
@@ -665,8 +605,6 @@ fn queued_receipt(value: &Value, target: &SessionId, mode: Mode) -> TellReply {
     let Some(q) = value.as_object() else {
         return bad();
     };
-    // The queued shape follows the host: Cloud uses the same row for
-    // Queue and Steer. The Local busy row remains Queue-only.
     let busy = q.contains_key("hardQueue");
     if (busy && mode != Mode::Queue)
         || q.len() != QUEUED_KEYS.len() + usize::from(busy)
@@ -736,8 +674,6 @@ fn queued_receipt(value: &Value, target: &SessionId, mode: Mode) -> TellReply {
     }
 }
 
-/// The observed Cloud queued id is a UUID. Validate only its wire grammar;
-/// no live identifier is embedded in code or fixtures.
 fn queued_uuid(id: &str) -> bool {
     let bytes = id.as_bytes();
     bytes.len() == 36

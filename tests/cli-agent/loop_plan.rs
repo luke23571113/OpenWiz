@@ -4,7 +4,7 @@
 //! literals from `contracts/wizloops-cloudroom.v1.md`, `loop-cli.v1.md` and
 //! the pinned `expected.json`, never computed by the code under test. These
 //! read `contracts/` and need the fake, so they live here rather than in
-//! the CLI crate (as LC1's `loop_contract.rs` does).
+//! the CLI crate.
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;

@@ -1,5 +1,0 @@
-# Green at the fix, with the ci-bench folder still present but no longer read by the collector.
-$ python3 -I tools/war-room/test_collect_factory.py -k prs_per_hour
-Ran 1 test in 0.769s
-
-OK

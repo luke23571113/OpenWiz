@@ -1,24 +1,3 @@
-//! Archiving a finished agent's thread (OpenWiz 0.0.6 spec 2, B4,
-//! ClosedWiz#120): spec #116's "New writes: CloudRoom `thread archive`".
-//!
-//! One thread, through exactly one [`Invocation::ThreadArchive`] (`thread
-//! archive <id> --json`; observed in help (0.43.1), the call never run), and
-//! read back:
-//!
-//! 1. **Read first:** `thread show <id> --json`. A thread already archived
-//!    is done, with no call (`launch-fleet`'s archive row: "one already
-//!    archived … is done"); one not found has nothing to archive; one that
-//!    can't be read is not archived blind.
-//! 2. **The one call**, never retried. What it prints is not observed, so
-//!    nothing reads it.
-//! 3. **Read back:** `thread show <id> --json` again. Only `archivedAt` set
-//!    there makes it [`ArchiveOutcome::Archived`]; anything else says so.
-//!
-//! A `thread show` is read only for its `thread.id` and `thread.archivedAt`,
-//! and only from JSON with no key given twice. Every message here is
-//! OpenWiz's own words; nothing `room-cli` prints reaches one, except the
-//! runner's safe first error line ([`SourceError`]'s own wording).
-
 use std::fmt;
 use std::time::Instant;
 
@@ -32,28 +11,18 @@ use crate::allowlist::{Invocation, ThreadId};
 use crate::process;
 use crate::source::CloudRoomSource;
 
-/// What archiving one thread came to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArchiveOutcome {
-    /// It was archived already. No call was made.
     AlreadyArchived,
-    /// The call was made, and `thread show` now shows it archived.
     Archived,
-    /// `thread show` found no such thread. No call was made.
     NotFound,
-    /// It could not be read first, so no call was made.
     NotRead { words: String },
-    /// The call was made, and `thread show` shows it still not archived.
     NotArchived { words: String },
-    /// The call was made, and whether it took can't be told: the read-back
-    /// failed.
     Unconfirmed { words: String },
 }
 
 impl CloudRoomSource {
-    /// Archives the thread `id`, once, within `deadline`. See the module
-    /// documentation.
     pub fn archive_thread(&self, id: &ThreadId, deadline: Instant) -> ArchiveOutcome {
         match self.archived(id, deadline) {
             Ok(Some(true)) => return ArchiveOutcome::AlreadyArchived,
@@ -82,8 +51,6 @@ impl CloudRoomSource {
         }
     }
 
-    /// Whether `thread show` says `id` is archived; `None` when it finds
-    /// no such thread; why not, when it can't be read.
     fn archived(&self, id: &ThreadId, deadline: Instant) -> Result<Option<bool>, String> {
         match process::run(
             self.program(),
@@ -101,8 +68,6 @@ impl CloudRoomSource {
     }
 }
 
-/// `thread.archivedAt` of a `thread show` for `id`: a time (archived) or
-/// null (not archived). Anything else is not read.
 fn archived_at(out: &[u8], id: &ThreadId) -> Result<bool, String> {
     serde_json::from_slice::<NoRepeatedKeys>(out)
         .map_err(|_| "thread show printed something that is not JSON, or a key twice".to_owned())?;
@@ -122,7 +87,6 @@ fn archived_at(out: &[u8], id: &ThreadId) -> Result<bool, String> {
     }
 }
 
-/// Any JSON value, read only to refuse a key given twice in one object.
 struct NoRepeatedKeys;
 
 impl<'de> Deserialize<'de> for NoRepeatedKeys {

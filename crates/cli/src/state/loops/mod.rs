@@ -1,4 +1,3 @@
-//! Local, durable switches for OpenWiz definitions. No CloudRoom loop calls.
 pub mod config;
 pub mod document;
 mod paths;
@@ -14,9 +13,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Supplied by trusted local wiring, never parsed from a request. Verification
-/// binds this checkout to the configured repository and project. The operator
-/// must come from a separately trusted source, never a definition's owner.
 pub trait Trust: Send + Sync {
     fn verify(&self, checkout: &Path, repository: &str, project: &str) -> bool;
     fn actor(&self) -> Option<String>;
@@ -52,11 +48,8 @@ pub struct Context {
     pub project: String,
     pub trust: Option<Arc<dyn Trust>>,
 }
-/// Maximum time a switch waits for an existing scheduler pass. This never
-/// retries the switch write; only acquiring its shared state lock is retried.
 pub const SWITCH_LOCK_WAIT: Duration = Duration::from_secs(30);
 impl Context {
-    /// Wait with the caller's monotonic clock, then record its current wall time.
     pub fn switch_with_clock(
         &self,
         target: &str,
@@ -65,7 +58,6 @@ impl Context {
     ) -> Result<Value, SwitchError> {
         self.switch_with_deadline(target, enabled, clock, None)
     }
-    /// Bound a switch by the caller's deadline as well as the lock budget.
     pub fn switch_with_clock_until(
         &self,
         target: &str,
@@ -128,7 +120,6 @@ impl Context {
             monotonic() < deadline
         };
         let state = storage::Storage::open_with_retry(&self.state, &mut retry)?;
-        // Repeat all authority and identity reads under the scheduler's lock.
         let (definition, actor) = self.resolve(target)?;
         let at_ms = at()?;
         let mut saved = state.switch_state()?;
