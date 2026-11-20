@@ -462,7 +462,7 @@ elif cmd == 'start':
     req = json.loads(body)
     assert type(req['ticket']) is int and os.environ['ROOM_PROJECT_ID'] == 'proj_synthetic'
     state.mkdir(exist_ok=True)
-    (state / 'run-0123456789ab.json').write_text(json.dumps({'thread': 'thr_synthetic_private', 'request': req}))
+    (state / 'run-0123456789ab.json').write_text(json.dumps({'thread': 'synthetic-child-thread', 'request': req}))
     (root / 'room-state').write_text(json.dumps({'projectId': 'proj_synthetic', 'archived': False}))
     out = {'run': 'run-0123456789ab'}
 elif cmd == 'wake':
@@ -475,8 +475,8 @@ print(json.dumps(out))
 FAKE_ROOM = """#!/usr/bin/env python3
 import json, pathlib, sys
 root = pathlib.Path(__file__).parent
-assert sys.argv[1:] == ['thread', 'show', 'thr_synthetic_private'], sys.argv
-print(json.dumps(dict(json.loads((root / 'room-state').read_text()), id='thr_synthetic_private', parent='thr_synthetic_private')))
+assert sys.argv[1:] == ['thread', 'show', 'synthetic-child-thread'], sys.argv
+print(json.dumps(dict(json.loads((root / 'room-state').read_text()), id='synthetic-child-thread', parent='synthetic-child-thread')))
 """
 FAKE_CLI = """#!/usr/bin/env python3
 import json, sys
@@ -531,7 +531,7 @@ class Sheet(unittest.TestCase):
                       release_products=[{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}],
                       release_gaps=['synthetic gap'], promise_install='synthetic_install',
                       promise_drivers='synthetic_drivers', promise_app='synthetic_app',
-                      expected_catalogue_commands=['synthetic'], send_thread='thr_synthetic_show',
+                      expected_catalogue_commands=['synthetic'], send_thread='synthetic-show-thread',
                       project='proj_synthetic', driver_repository='example/throwaway', driver_ticket='7',
                       driver_skill='synthetic-skill', harness='claude', model='synthetic-model',
                       app_repository='example/throwaway')
@@ -563,7 +563,7 @@ class Sheet(unittest.TestCase):
                                 capture_output=True, text=True, timeout=30,
                                 env=dict(os.environ, OPENWIZ_SMOKE_APP_TOKEN='synthetic-installation-token'))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertNotIn('thr_synthetic_private', result.stdout + result.stderr)
+        self.assertNotIn('synthetic-child-thread', result.stdout + result.stderr)
         self.assertEqual(json.loads(result.stdout)['claims'], {c: 'pass' for c in kit['claims']})
         calls = [json.loads(line) for line in (self.root / 'driver-calls').read_text().splitlines()]
         self.assertEqual([c for c, _ in calls], ['version', 'start', 'wake', 'stop'])
