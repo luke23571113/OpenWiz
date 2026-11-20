@@ -709,12 +709,15 @@ class Smoke(unittest.TestCase):
         # or one that moved, and crashes before its finding. Only `gh` is on
         # PATH, and it fails: no read reaches GitHub. The BEFORE record, the
         # record authors and the definition are the checkout's own.
+        argv = json.loads(DEFINITION.read_text())["check"]["argv"]
+        self.assertEqual(argv, ["python3", "-I", "tools/collector/ci3_check.py", "check"],
+                         "smoke: unsupported loop check.argv")
         with tempfile.TemporaryDirectory() as tmp:
             gh = Path(tmp) / "gh"
             gh.write_text("#!/bin/sh\necho 'synthetic: not logged in' >&2\nexit 1\n")
             gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
             env = {"PATH": tmp, "HOME": tmp, "OPENWIZ_COLLECTOR_STORE": str(Path(tmp) / "store")}
-            run = subprocess.run([sys.executable, "-I", "-c", SMOKE, str(ROOT), "check", "--now", NOW],
+            run = subprocess.run([sys.executable, "-I", "-c", SMOKE, str(ROOT), *argv[3:], "--now", NOW],
                                  capture_output=True, text=True, env=env, timeout=60)
         self.assertEqual(run.returncode, 0, run.stderr)
         lines = run.stdout.splitlines()

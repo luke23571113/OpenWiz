@@ -1147,6 +1147,8 @@ def validate_flow(value, point):
         require(gaps is None or progress['complete'], 'dated gaps need a complete progress history')
         require(all(when(g['until']) - when(g['from']) >= timedelta(minutes=30) and
                     when(g['until']) <= when(point) for g in gaps or []), 'gaps are 30 minutes, by the read point')
+        require(row['state'] == 'closed' or all(observed is not None and when(g['until']) <= when(observed)
+                                              for g in gaps or []), 'gaps end by observed progress')
         require(row['stall_count'] is None or gaps is None or row['stall_count'] == len(gaps),
                 'the stall count counts the dated gaps')
     for row in specs.values():
