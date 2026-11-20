@@ -3,9 +3,7 @@
 The repository-wide plan read, `openwiz.plan.v1` (0.0.11, #648, U1 #651). Its
 schema is [plan.v1.schema.json](plan.v1.schema.json). The GitHub adapter's
 bounded reads (`crates/adapters/github/src/plan.rs`) gather its sources; no
-OpenWiz route serves it since #1264. Inline synthetic
-conformance cases are in `tests/checks/plan_decisions_schema_conformance.rs`.
-They prove parsed shapes, not a graph calculation or live completeness.
+OpenWiz route serves it since #1264.
 
 Authority: the confirmed plan graph decisions, E1–E3, the approved build target,
 and the precise contract ruling on #651

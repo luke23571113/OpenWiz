@@ -1,9 +1,0 @@
-# #792 scoped local checks at bc1068c2ca0d64bba19d2e1c26b486be6fdbe2ab (after merging main)
-cargo test -p openwiz-tests --test cli-agent loop_: test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 61 filtered out; finished in 2.85s
-cargo test -p openwiz-tests --test messaging m12: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 0.24s
-cargo test -p openwiz-tests --test proof p08a: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 91 filtered out; finished in 0.92s
-cargo test -p openwiz-tests --test checks dir_modes: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 145 filtered out; finished in 0.41s
-cargo test -p openwiz-adapter-cloudroom: test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 35.11s
-cargo test -p openwiz-cli: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-cargo fmt --check: ok
-cargo clippy (adapter, cli, tests) -D warnings: ok

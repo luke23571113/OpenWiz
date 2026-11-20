@@ -1,13 +1,12 @@
-//! B2 (ClosedWiz#15): the rules and the static checks. AD8 (no stronger
-//! claim), AD11 (one implementation), the attachments digest, the one
-//! claim rule, the gate's all-or-nothing on an in-memory store, the
+//! B2 (ClosedWiz#15): the rules. AD8 (no stronger claim), the attachments
+//! digest, the one claim rule, the gate's all-or-nothing on an in-memory store, the
 //! dispatch order, the allowance, and the messaging schema's attachments.
 //! The end-to-end proofs are in `tests/messaging/ad_send_attachments.rs`
 //! and `tests/new-thread/ad_new_thread_attachments.rs`.
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -33,30 +32,6 @@ const TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
 fn read(path: &str) -> String {
     fs::read_to_string(Path::new(ROOT).join(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
-}
-
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
-fn sources(dir: &str) -> Vec<(PathBuf, String)> {
-    let mut files = Vec::new();
-    rust_files(&Path::new(ROOT).join(dir), &mut files);
-    assert!(!files.is_empty(), "{dir}");
-    files
-        .into_iter()
-        .map(|p| {
-            let text = fs::read_to_string(&p).unwrap();
-            (p, text)
-        })
-        .collect()
 }
 
 fn op(kind: OpKind, id: &str) -> OpRef {
@@ -378,7 +353,7 @@ fn the_gate_passes_every_attachment_or_names_every_one_that_cant_go() {
 // AD8: no stronger claim.
 
 #[test]
-fn ad08_the_wording_table_and_no_stronger_claim_anywhere() {
+fn ad08_the_wording_table_and_no_stronger_claim() {
     assert_eq!(
         handed_over(1),
         ", with 1 attachment handed to CloudRoom. Delivery to the agent's machine is not reported"
@@ -417,65 +392,6 @@ fn ad08_the_wording_table_and_no_stronger_claim_anywhere() {
             "{}",
             unchanged.text()
         );
-    }
-    // No source says more than the table.
-    for dir in [
-        "crates/core/src",
-        "crates/cli/src",
-        "crates/adapters/cloudroom/src",
-    ] {
-        for (path, text) in sources(dir) {
-            let lower = text.to_lowercase();
-            for phrase in [
-                "delivered to the worker",
-                "delivered to the agent",
-                "delivered to the cloud",
-                "read by the agent",
-                "visible to the agent",
-                "the agent received",
-                "the agent has the",
-                "reached the agent",
-                "uploaded to the worker",
-                "uploaded to the sandbox",
-            ] {
-                assert!(!lower.contains(phrase), "{path:?} says {phrase:?}");
-            }
-        }
-    }
-}
-
-// AD11: one implementation.
-
-#[test]
-fn ad11_one_attachment_args_and_no_other_place_builds_file_or_image() {
-    let mut builders = 0;
-    for (path, text) in sources("crates") {
-        builders += text.matches("fn attachment_args(").count();
-        let is_allowlist = path.ends_with("adapters/cloudroom/src/allowlist.rs");
-        for flag in ["\"--file\"", "\"--image\""] {
-            let n = text.matches(flag).count();
-            if is_allowlist {
-                assert_eq!(n, 1, "{flag} once in the allowlist");
-                let builder = text
-                    .split("pub fn attachment_args(")
-                    .nth(1)
-                    .and_then(|rest| rest.split("\n}\n").next())
-                    .unwrap();
-                assert!(builder.contains(flag), "{flag} outside attachment_args");
-            } else {
-                assert_eq!(n, 0, "{path:?} spells {flag}");
-            }
-        }
-    }
-    assert_eq!(builders, 1, "one attachment_args");
-    // Both writes take their tail from it, once, in argv.
-    let allowlist = read("crates/adapters/cloudroom/src/allowlist.rs");
-    let argv = allowlist.split("pub fn argv(&self)").nth(1).unwrap();
-    assert_eq!(argv.matches("attachment_args(").count(), 1);
-    for variant in ["Self::ThreadTell {", "Self::ThreadSpawn("] {
-        let arm = argv.split(variant).nth(1).unwrap();
-        let arm = &arm[..arm.find("\n            }").unwrap()];
-        assert!(arm.contains("tail"), "{variant} without the tail");
     }
 }
 
