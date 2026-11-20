@@ -36,7 +36,11 @@
       "lessons/expired-login-silent-start.json": {"result": "fail", "code": "silent-start"},
       "lessons/expired-login-vague-next.json": {"result": "fail", "code": "no-sign-in-next"},
       "lessons/expired-login-left-running.json": {"result": "fail", "code": "left-running"},
-      "lessons/invalid-unknown-lesson.json": {"result": "invalid", "code": "lesson-fields"}
+      "lessons/invalid-unknown-lesson.json": {"result": "invalid", "code": "lesson-fields"},
+      "lessons/invalid-repeated-key.json": {"result": "invalid", "code": "lesson-fields"},
+      "lessons/expired-login-exit-true.json": {"result": "invalid", "code": "lesson-fields"},
+      "lessons/expired-login-next-not-text.json": {"result": "invalid", "code": "lesson-fields"},
+      "lessons/wake-after-turn-not-bool.json": {"result": "invalid", "code": "lesson-fields"}
     },
     "ask": {
       "asks/cost.txt": {"result": "valid", "kind": "cost-or-machine", "effect": "cost money"},
@@ -45,7 +49,9 @@
       "asks/sign-in.txt": {"result": "valid", "kind": "sign-in"},
       "asks/invalid-no-effect.txt": {"result": "invalid", "code": "ask-form"},
       "asks/invalid-asks-for-key.txt": {"result": "invalid", "code": "credential"},
-      "asks/invalid-tells-not-asks.txt": {"result": "invalid", "code": "ask-form"}
+      "asks/invalid-tells-not-asks.txt": {"result": "invalid", "code": "ask-form"},
+      "asks/invalid-env-token.txt": {"result": "invalid", "code": "credential"},
+      "asks/invalid-pat.txt": {"result": "invalid", "code": "credential"}
     },
     "report": {
       "report/passed.txt": {"result": "passed", "host": "examplehost", "minutes": 23, "stopped": true, "share_offer": true},
