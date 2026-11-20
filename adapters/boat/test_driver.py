@@ -552,6 +552,15 @@ class Boat(unittest.TestCase):
         for detail in ('synthetic-app', '403', 'Permission', TOKEN, 'bx_fake'):
             self.assertNotIn(detail, json.dumps(err))
 
+    def test_the_push_refusal_fits_driver_v1_for_the_longest_repository_name(self):
+        longest = 'o' * 100 + '/' + 'r' * 100
+        code, err = self.driver('start', dict(REQUEST, repository=longest), FAKE_BOAT_PUSH='denied')
+        self.assertEqual(code, 1, err)
+        for key in ('error', 'next'):
+            self.assertLessEqual(len(err[key]), 300, err[key])
+            self.assertIn(longest, err[key])
+            self.assertIn('write access', err[key])
+
     def test_a_pushable_repository_starts_after_one_dry_run_push(self):
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
