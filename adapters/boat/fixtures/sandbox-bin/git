@@ -5,10 +5,7 @@ GitHub's WizSkills tag v<version> points at the pin of OpenWiz's wizskills.lock;
 elsewhere, and FAKE_WIZ_COMMIT=moved points it elsewhere from the second fetch on (a tag that moves between
 fetches); FAKE_WIZ_SAME_TREE makes that other commit a later one, with the pin in its history and the pin's tree. A URL rewritten by `url.<local>.insteadOf` (GIT_CONFIG_KEY_0) reads that local repository instead.
 A repository is a folder whose `fake.json` holds its tag's commit and tree. Supported: `init -q --bare`,
-`fetch` and `clone` of the tag, `rev-parse` of a tag, commit or HEAD and its tree, and `show <sha>:install.sh`.
-`init -q <dir>`, `commit -q --allow-empty -m <message>` and `push -q --dry-run <url> <refspec>` make a push check:
-each push is logged to $HOME/.fake-github-pushes, and with FAKE_BOAT_PUSH=denied GitHub refuses it as a read-only
-GitHub App's push is refused (a 403 naming a synthetic account)."""
+`fetch` and `clone` of the tag, `rev-parse` of a tag, commit or HEAD and its tree, and `show <sha>:install.sh`."""
 import json, os, shutil, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
