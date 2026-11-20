@@ -1,0 +1,15 @@
+.....F.......
+======================================================================
+FAIL: test_and_its_tests_admits_nothing_else (__main__.Check.test_and_its_tests_admits_nothing_else)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/owned-paths/test_check.py", line 137, in test_and_its_tests_admits_nothing_else
+    self.verdict('its-tests-not')
+  File "tools/owned-paths/test_check.py", line 76, in verdict
+    self.assertIn(line, out)
+AssertionError: 'OUT: tools/excluded/test_run.py (ticket #7)' not found in 'OUT: crates/core/src/gadget_tests.rs (ticket #7)\nOUT: crates/core/src/widget/mod.rs (ticket #7)\nowned: tools/excluded/test_run.py (tests of `tools/excluded/run.py`)\nOUT: tools/install/harness_helpers.py (ticket #7)\nOUT: tools/install/other/test_harness.py (ticket #7)\nOUT: tools/install/pull.py (ticket #7)\nOUT: tools/install/test_pull.py (ticket #7)\nOUT: tools/install/tests/fake_gh.py (ticket #7)\nowned: tools/install/tests/fixtures/install-connections/gh (tests of `tools/install/harness.py`)\nOUT: tools/plain/test_run.py (ticket #7)\nOUT: tools/plain/tests/test_run.py (ticket #7)\nowned: tools/release/test_product_identity.py (tests of `tools/release/test.py`)\nowned-paths: 9 file(s) outside the owned paths and grants of ticket #7: move them out, or ask on the ticket for an F4 supporting edit grant naming each path\n'
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.943s
+
+FAILED (failures=1)

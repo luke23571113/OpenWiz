@@ -1,23 +1,3 @@
-//! The `openwiz` command: parses `ls`, `ls -l`, `show` and `--json`, calls
-//! the core operations, and prints the results. `models`, `fleets`, `fleet`
-//! and `loop` have their own modules.
-//!
-//! Text and `--json` print the same envelope. The text follows the
-//! provisional text contract at the end of `tests/proof/support.rs`. Errors go
-//! to stderr as one `openwiz: ` line, with stdout left empty, except that
-//! output write or flush failures from `ls`, `show` and `--help` exit 1 and
-//! may leave some output on stdout. The exit codes are the `EXIT_*` constants,
-//! documented in [`help`].
-//!
-//! `models`, in [`models`], prints the Cloud options from one `cloud status`
-//! read; J233 kept it because setup and onboarding read it. `fleets` and
-//! `fleet <spec>` (OpenWiz 0.0.6) are in [`fleets`] and [`fleet`].
-//! `fleets` reads GitHub through `gh`, with no CloudRoom read;
-//! `fleet <spec>` makes only its allowlisted `gh` and `room-cli` reads.
-//! Those three are read-only. `loop off` and `loop on`, in [`loops`], write
-//! only OpenWiz's local loop switches; the other `loop` forms are in
-//! [`loop_files`].
-
 pub mod agent_help;
 pub mod fleet;
 pub mod fleets;
@@ -44,37 +24,23 @@ use openwiz_core::ops::{self, Clock, Detail, ListRequest, OpError, Report, ShowR
 use openwiz_core::source::{Read, SessionSource};
 use serde::Serialize;
 
-/// A result was printed, complete or partial.
 pub const EXIT_OK: i32 = 0;
-/// A read failed: the session list, or the session `show` asked for.
-/// Also used when `ls`, `show` or `--help` could not write or flush stdout;
-/// some output may already be on stdout in that case.
 pub const EXIT_READ_FAILED: i32 = 1;
-/// A usage error, or a request out of bounds. Nothing is read.
 pub const EXIT_USAGE: i32 = 2;
-/// `show`: the session was not found. Nothing more is read.
 pub const EXIT_NOT_FOUND: i32 = 3;
 
-/// A parsed command line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    /// `openwiz ls [-l] [-a] [--hidden] [--limit N] [--offset N] [--json]`
     Ls(LsArgs),
-    /// `openwiz show <id> [--json]`
     Show(ShowArgs),
-    /// `openwiz --help`
     Help,
-    /// `openwiz help --agent`: machine discovery, without sources or state.
     AgentHelp,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LsArgs {
-    /// `-l`
     pub long: bool,
-    /// `-a`: include archived sessions.
     pub all: bool,
-    /// `--hidden`: include hidden sessions.
     pub hidden: bool,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
@@ -87,11 +53,9 @@ pub struct ShowArgs {
     pub json: bool,
 }
 
-/// A command line that could not be parsed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UsageError(pub String);
 
-/// The wall clock and monotonic clock of this machine.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;
 
@@ -108,7 +72,6 @@ impl Clock for SystemClock {
     }
 }
 
-/// `openwiz --help`.
 pub fn help() -> String {
     format!(
         "openwiz: CloudRoom inventory and approved fleet actions.
@@ -183,7 +146,6 @@ In either case, stderr has one line starting with \"openwiz: \".
     )
 }
 
-/// Parses the arguments after the program name.
 pub fn parse(args: &[String]) -> Result<Command, UsageError> {
     if args == ["help", "--agent"] {
         return Ok(Command::AgentHelp);
@@ -279,7 +241,6 @@ fn parse_show(args: &[String]) -> Result<ShowArgs, UsageError> {
     }
 }
 
-/// Runs one command and returns the process exit code.
 pub fn run(
     args: &[String],
     source: &dyn SessionSource,
@@ -287,7 +248,6 @@ pub fn run(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    // `github token` (GI5) reads neither CloudRoom source nor the clock above.
     if args.first().is_some_and(|a| a == "github") {
         return github_token::run(&args[1..], github_token::Context::system(), stdout, stderr);
     }
@@ -352,7 +312,6 @@ pub fn run(
     }
 }
 
-/// The exit code and message for an operation error.
 fn failure(source: &dyn SessionSource, error: &OpError) -> (i32, String) {
     match error {
         OpError::ListFailed(e) => (
@@ -369,15 +328,12 @@ fn failure(source: &dyn SessionSource, error: &OpError) -> (i32, String) {
 }
 
 fn json<T: Serialize>(envelope: &Envelope<T>) -> String {
-    let mut text = serde_json::to_string_pretty(envelope).unwrap_or_else(|e| {
-        // Every type here serializes; this is never expected.
-        format!("{{\"error\": \"{e}\"}}")
-    });
+    let mut text = serde_json::to_string_pretty(envelope)
+        .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"));
     text.push('\n');
     text
 }
 
-/// The text for `ls` (`long == false`) or `ls -l`.
 pub fn render_list(report: &Report<Inventory>, long: bool) -> String {
     let envelope = &report.envelope;
     let mut out = header(if long { "ls -l" } else { "ls" }, envelope);
@@ -398,9 +354,6 @@ pub fn render_list(report: &Report<Inventory>, long: bool) -> String {
         ));
     }
     push_gaps(&mut out, envelope);
-    // Groups by identity (the verified project id, or ungrouped), in the
-    // order their first session appears; the page's order is kept inside
-    // each group.
     let mut groups: Vec<(GroupKey, &Grouping, Vec<&Session>)> = Vec::new();
     for session in &envelope.data.sessions {
         let key = GroupKey::of(&session.group);
@@ -431,7 +384,6 @@ pub fn render_list(report: &Report<Inventory>, long: bool) -> String {
     out
 }
 
-/// The text for `show`.
 pub fn render_show(report: &Report<SessionView>) -> String {
     let envelope = &report.envelope;
     let view = &envelope.data;
@@ -479,7 +431,6 @@ pub fn render_show(report: &Report<SessionView>) -> String {
     out
 }
 
-/// Line 1: the source and its version, the snapshot time and the coverage.
 fn header<T>(command: &str, envelope: &Envelope<T>) -> String {
     let state = match envelope.coverage.state {
         Completeness::Complete => "complete".to_owned(),
@@ -492,11 +443,6 @@ fn header<T>(command: &str, envelope: &Envelope<T>) -> String {
     )
 }
 
-/// `<source> <version> (tested)`, `(untested; live-tested: <version>)`, or,
-/// while nothing is live-tested for this kind of run, `(not live-tested for
-/// <what>)`: how `ls`, `show`, `send` and `new` report the version (#37).
-/// Each kind of run has its own tested version (#200), and `what` names the
-/// kind, such as `sending`.
 pub(crate) fn source_text(source: &SourceInfo, what: &str) -> String {
     let tested = if source.tested_version.is_empty() {
         format!("not live-tested for {what}")
@@ -526,8 +472,6 @@ fn push_gaps<T>(out: &mut String, envelope: &Envelope<T>) {
     }
 }
 
-/// The items every session line shows: id, status, age, location, parent,
-/// flags, title, and the reason when it is ungrouped.
 fn row(s: &Session) -> String {
     let parent = match &s.parent {
         Fact::Known(None) => "none".to_owned(),
@@ -580,7 +524,6 @@ fn recap(recap: &Fact<Recap>) -> String {
     }
 }
 
-/// A group's identity in the text: its verified project id, or ungrouped.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum GroupKey {
     Project(String),
@@ -598,12 +541,6 @@ impl GroupKey {
 
 const UNGROUPED: &str = "_ungrouped";
 
-/// The header path of each group, one per group and all different:
-/// `/factories/_ungrouped/`, or `/factories/<name>/`, with
-/// `~<last 6 characters of the id>` when the run's project list shares the
-/// name, when the name is `_ungrouped`, or when two groups here would
-/// otherwise print the same; the whole id if even that is not enough; and
-/// a last `~<n>` for anything still printed twice.
 fn group_paths<'g, T>(
     report: &Report<T>,
     groups: impl IntoIterator<Item = &'g Grouping>,
@@ -641,9 +578,6 @@ fn group_paths<'g, T>(
             }
         }
     }
-    // Anything still printed twice (a name can copy another group's widened
-    // header) keeps its first use; each later one gets the lowest `~<n>`
-    // that is free.
     let mut used: HashSet<String> = HashSet::new();
     for (i, group) in groups.iter().enumerate() {
         if matches!(group, Grouping::Ungrouped { .. }) {
@@ -695,7 +629,6 @@ fn unknown(why: &str) -> String {
     format!("unknown ({})", clean(why))
 }
 
-/// A cut text is shown with `…` right after what was kept.
 fn bounded(text: &BoundedText) -> String {
     let mut shown = clean(&text.text);
     if text.truncated {
@@ -704,9 +637,6 @@ fn bounded(text: &BoundedText) -> String {
     shown
 }
 
-/// Characters that could break a line, drive the terminal or reorder what
-/// it shows: controls, line and paragraph separators, bidi controls and
-/// zero-width or invisible format marks.
 fn unsafe_for_terminal(c: char) -> bool {
     c.is_control()
         || matches!(
@@ -722,8 +652,6 @@ fn unsafe_for_terminal(c: char) -> bool {
         )
 }
 
-/// What an unsafe character is shown as: `�`, or `?` where `�` would take
-/// more bytes than the character did, so a cut text never grows.
 fn replacement(c: char) -> char {
     if c.len_utf8() >= '\u{FFFD}'.len_utf8() {
         '\u{FFFD}'
@@ -732,7 +660,6 @@ fn replacement(c: char) -> char {
     }
 }
 
-/// One-line text: every character unsafe for the terminal is replaced.
 pub fn clean(text: &str) -> String {
     text.chars()
         .map(|c| {
@@ -745,7 +672,6 @@ pub fn clean(text: &str) -> String {
         .collect()
 }
 
-/// A block of text: as `clean`, but line breaks and tabs are kept.
 fn clean_block(text: &str) -> String {
     text.chars()
         .map(|c| {
@@ -758,7 +684,6 @@ fn clean_block(text: &str) -> String {
         .collect()
 }
 
-/// A known age: the whole number of the largest unit it reaches.
 fn age(ms: i64) -> String {
     let sign = if ms < 0 { "-" } else { "" };
     let s = ms.unsigned_abs() / 1_000;
@@ -770,11 +695,19 @@ fn age(ms: i64) -> String {
     format!("{sign}{s}s")
 }
 
-/// Milliseconds since the Unix epoch as RFC 3339 UTC, whole seconds.
 fn utc(at: Timestamp) -> String {
     let secs = at.0.div_euclid(1_000);
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
-    // Days to a civil date (H. Hinnant's algorithm).
+    let (year, month, day) = hinnant_civil_from_days(days);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rem / 3_600,
+        rem % 3_600 / 60,
+        rem % 60
+    )
+}
+
+fn hinnant_civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let (era, doe) = (z.div_euclid(146_097), z.rem_euclid(146_097));
     let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
@@ -783,10 +716,5 @@ fn utc(at: Timestamp) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        rem / 3_600,
-        rem % 3_600 / 60,
-        rem % 60
-    )
+    (year, month, day)
 }

@@ -1,72 +1,3 @@
-//! The GitHub writes of running fleets (spec 2's B3, ClosedWiz#119): five
-//! narrow writes through `gh`, each read back, and nothing else (spec
-//! #116; the 0.0.6 grill, Q6).
-//!
-//! | Write | Its call | Its read back |
-//! | --- | --- | --- |
-//! | comment on an issue | `issue comment <n> --body <text>` | `issue view <n> --json comments` |
-//! | comment on a pull request | `pr comment <n> --body <text>` | `pr view <n> --json comments` |
-//! | add a label | `issue edit <n> --add-label <label>` | `issue view <n> --json labels` |
-//! | remove a label | `issue edit <n> --remove-label <label>` | `issue view <n> --json labels` |
-//! | close an issue | `issue close <n>`, after `issue view <n> --json url` | `issue view <n> --json state` |
-//! | merge a pull request | `pr merge <n> --merge --match-head-commit <head> --body <text>`, after the merge-queue read below | `pr view <n> --json state,mergeCommit,headRefOid` |
-//!
-//! [`FORMS`] is that table, and the one place each form is spelt: the
-//! module's part of the allowlist allows exactly an argument list one form
-//! matches, with every value checked, and each [`Write`] fills its forms.
-//! Never a branch deleted, a merge forced, queued or squashed, a comment
-//! edited or deleted, another repository named, or any other `gh` command:
-//! no form has one.
-//!
-//! **Every value is checked by its type** before anything runs: a number is
-//! a [`Number`], written in full; a head a [`Commit`] (40 lowercase hex
-//! digits); a [`Label`] only lowercase ASCII letters, digits and `-`, not
-//! first (so never a flag, and never two labels: `gh` splits
-//! `--add-label` at commas); and a [`Body`] `send`'s text rules
-//! ([`validate_text`]). A text is passed byte for byte as one argument
-//! after `--body`, which `gh` (pflag) takes as the value even when it starts
-//! with `-` (gh 2.100.0's source, read for #119; not observed live).
-//!
-//! **A close is made only on an issue.** `gh issue close <n>` also closes a
-//! pull request without merging it (gh 2.100.0, `close.go`), so a close
-//! first reads the number's `url`, and closes only when it is that issue's
-//! own (`https://…/issues/<n>`): anything else is [`WriteError::NotAnIssue`],
-//! and nothing is written. A comment or a label on a pull request's number
-//! is the same kind of write, so those take any number.
-//!
-//! **A merge is made only when the base has no merge queue** (R1 of the
-//! review at `9aae308`). On a base with one, `gh pr merge --merge` turns on
-//! auto-merge instead (gh 2.100.0, `merge.go`), a later merge no check
-//! would see. `gh pr view --json` has no such field, so a merge first makes
-//! the one GraphQL read here, a query with `gh`'s own `{owner}` and
-//! `{repo}` placeholders:
-//! `api graphql -f query=<the query> -F owner={owner} -F repo={repo} -F number=<n>`,
-//! answered `{"data": {"repository": {"pullRequest": {"isMergeQueueEnabled": <bool>}}}}`.
-//! Only an exact `false` lets the merge run; `true` is
-//! [`WriteError::MergeQueue`], and a failed read or any other answer is
-//! [`WriteError::CheckFailed`]: nothing is written.
-//!
-//! **Each write is read back** ([`perform`]), and is confirmed only when the
-//! read back, read strictly, shows it (whoever made it):
-//! - a comment: `gh` prints the new comment's URL (gh 2.100.0's source, not
-//!   observed live), and exactly one comment has that URL, with exactly the
-//!   text sent;
-//! - a label added: one label has exactly its name; removed: none has it,
-//!   in any case, and fewer than 100 are read (`gh` reads at most 100, so a
-//!   full list may be cut off);
-//! - a close: the issue is `CLOSED`;
-//! - a merge: the pull request is `MERGED`, at the head asked for, with a
-//!   merge commit (`docs/agents/fleet.md`, "How a merge is done").
-//!
-//! A write that fails or is stopped is never read back: what it did is
-//! unknown, and the next tick's reads tell. Nothing is retried.
-//!
-//! **The readers are strict**, on B1's pattern (PR #88): an object only,
-//! with exactly the keys `gh` 2.100.0 prints (A1, `shapes.md`), each once,
-//! the kept ones each of its own type and every state from its fixed list.
-//! Only what a check needs is kept; no error shows anything `gh` printed or
-//! anything sent.
-
 use std::fmt;
 use std::path::Path;
 use std::time::Instant;
@@ -79,31 +10,22 @@ use serde::de::{self, Deserialize, Deserializer, IgnoredAny, MapAccess, SeqAcces
 use crate::allowlist::{Invocation, Module};
 use crate::process;
 
-/// This module's part of the allowlist.
 pub const ALLOWLIST: Module = Module {
     name: "writes",
     allows,
 };
 
-/// Whether `argv` is exactly one of [`FORMS`], every value checked.
 fn allows(argv: &[&str]) -> bool {
     FORMS.iter().any(|form| matches(form, argv))
 }
 
-/// One word of a form: itself, or the place of one checked value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Word {
-    /// Exactly this word.
     Is(&'static str),
-    /// An issue's or pull request's number, in full: a [`Number`].
     Num,
-    /// A [`Label`].
     Name,
-    /// A head: a [`Commit`].
     Head,
-    /// A [`Body`].
     Text,
-    /// A GraphQL variable: `number=` and a [`Number`], in full.
     NumVar,
 }
 
@@ -131,8 +53,6 @@ const READ_PR_COMMENTS: Form = &[Is("pr"), Is("view"), Num, Is("--json"), Is("co
 const READ_LABELS: Form = &[Is("issue"), Is("view"), Num, Is("--json"), Is("labels")];
 const READ_URL: Form = &[Is("issue"), Is("view"), Num, Is("--json"), Is("url")];
 const READ_STATE: Form = &[Is("issue"), Is("view"), Num, Is("--json"), Is("state")];
-/// The one GraphQL read: whether pull request `$number`'s base has a merge
-/// queue. A query; nothing else is ever sent to `api`.
 const MERGE_QUEUE_QUERY: &str = "query=query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){isMergeQueueEnabled}}}";
 const READ_MERGE_QUEUE: Form = &[
     Is("api"),
@@ -154,8 +74,6 @@ const READ_MERGE: Form = &[
     Is("state,mergeCommit,headRefOid"),
 ];
 
-/// Every form this module allows: the writes, the reads before a close and
-/// a merge, and the read backs.
 const FORMS: &[Form] = &[
     ISSUE_COMMENT,
     PR_COMMENT,
@@ -172,7 +90,6 @@ const FORMS: &[Form] = &[
     READ_MERGE,
 ];
 
-/// Whether `argv` is exactly `form`, each value checked.
 fn matches(form: Form, argv: &[&str]) -> bool {
     form.len() == argv.len()
         && form.iter().zip(argv).all(|(word, arg)| match word {
@@ -185,18 +102,14 @@ fn matches(form: Form, argv: &[&str]) -> bool {
         })
 }
 
-/// A number written in full: ASCII digits, no leading zero, 1 to
-/// `u64::MAX`.
 fn number(arg: &str) -> Option<Number> {
     let digits =
         !arg.is_empty() && !arg.starts_with('0') && arg.bytes().all(|b| b.is_ascii_digit());
     digits.then(|| arg.parse().ok()).flatten()
 }
 
-/// The start of the [`NumVar`] word.
 const NUMBER_VAR: &str = "number=";
 
-/// The values one write fills its forms with.
 #[derive(Clone, Copy)]
 struct Values<'a> {
     number: Number,
@@ -205,8 +118,6 @@ struct Values<'a> {
     text: Option<&'a Body>,
 }
 
-/// `form` filled with `values`. A place with no value is left empty, which
-/// no form allows, so it can never run.
 fn fill(form: Form, values: Values<'_>) -> Vec<String> {
     form.iter()
         .map(|word| match word {
@@ -228,14 +139,8 @@ fn fill(form: Form, values: Values<'_>) -> Vec<String> {
         .collect()
 }
 
-/// The longest label name accepted: GitHub's own limit.
 pub const LABEL_MAX_LEN: usize = 50;
 
-/// A label name that is safe to pass as one argument, and is one label:
-/// 1 to [`LABEL_MAX_LEN`] lowercase ASCII letters, digits and `-`, not
-/// starting with `-`. So it can't be read as a flag, `gh` can't split it
-/// into two labels at a comma, and no other label differs from it only in
-/// case.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Label(String);
 
@@ -255,10 +160,6 @@ impl Label {
     }
 }
 
-/// A comment's or a merge commit's text, on `send`'s text rules
-/// ([`validate_text`]): not empty or only whitespace, no NUL, at most
-/// 16 KiB of UTF-8. Anything else, a leading `-` or a line break, is passed
-/// as it is.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Body(String);
 
@@ -272,21 +173,27 @@ impl Body {
     }
 }
 
-/// One write, its values checked by their types.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Write {
-    /// A comment on an issue.
-    IssueComment { issue: Number, body: Body },
-    /// A comment on a pull request.
-    PrComment { pr: Number, body: Body },
-    /// A label added to an issue.
-    AddLabel { issue: Number, label: Label },
-    /// A label removed from an issue.
-    RemoveLabel { issue: Number, label: Label },
-    /// An issue closed; never a pull request.
-    CloseIssue { issue: Number },
-    /// A pull request merged with a merge commit, only at `head`, with
-    /// `body` as the merge commit's text.
+    IssueComment {
+        issue: Number,
+        body: Body,
+    },
+    PrComment {
+        pr: Number,
+        body: Body,
+    },
+    AddLabel {
+        issue: Number,
+        label: Label,
+    },
+    RemoveLabel {
+        issue: Number,
+        label: Label,
+    },
+    CloseIssue {
+        issue: Number,
+    },
     Merge {
         pr: Number,
         head: Commit,
@@ -295,7 +202,6 @@ pub enum Write {
 }
 
 impl Write {
-    /// The read before the write, its write, and its read back.
     fn forms(&self) -> (Option<Form>, Form, Form) {
         match self {
             Write::IssueComment { .. } => (None, ISSUE_COMMENT, READ_ISSUE_COMMENTS),
@@ -332,13 +238,10 @@ impl Write {
         }
     }
 
-    /// The write's own call: its arguments after `gh`.
     pub fn argv(&self) -> Vec<String> {
         fill(self.forms().1, self.values())
     }
 
-    /// Every call [`perform`] makes when all goes well, in order: a close's
-    /// or a merge's read before it, the write, then its read back.
     pub fn calls(&self) -> Vec<Vec<String>> {
         let (before, write, read_back) = self.forms();
         before
@@ -349,46 +252,23 @@ impl Write {
     }
 }
 
-/// What a confirmed write did, as its read back shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Confirmed {
-    /// The comment is there, at this URL (the one `gh` printed), with
-    /// exactly the text sent.
     Commented { url: String },
-    /// The label is on the issue.
     Labelled,
-    /// The label is not on the issue.
     Unlabelled,
-    /// The issue is closed.
     Closed,
-    /// The pull request is merged, at the head asked for, by this merge
-    /// commit.
     Merged { merge_commit: Commit },
 }
 
-/// Why a write is not confirmed. Never anything `gh` printed or anything
-/// sent: the reasons are OpenWiz's own words.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WriteError {
-    /// Nothing ran: a call is on no module's allowlist. Unreachable for a
-    /// [`Write`], whose values its types check; refused all the same.
     NotAllowed,
-    /// The read before a close or a merge failed, or isn't the exact
-    /// shape: nothing was written.
     CheckFailed(SourceError),
-    /// The number is not that issue's (a pull request's, say), so nothing
-    /// was closed.
     NotAnIssue,
-    /// The pull request's base has a merge queue, where a merge would turn
-    /// on auto-merge: nothing was written.
     MergeQueue,
-    /// The write failed, or was stopped: what it did on GitHub is unknown.
-    /// It was not read back.
     Failed(SourceError),
-    /// The write exited 0, but its read back failed, or isn't the exact
-    /// shape: not confirmed.
     ReadBackFailed(SourceError),
-    /// The write exited 0, and its read back doesn't show it: why.
     NotShown(String),
 }
 
@@ -406,14 +286,10 @@ impl fmt::Display for WriteError {
     }
 }
 
-/// Makes `write` through `program` (`gh`), then reads it back, each call
-/// stopped at `deadline` at the latest. Every call is built first, so
-/// nothing runs unless all of them are allowed.
 pub fn perform(program: &Path, write: &Write, deadline: Instant) -> Result<Confirmed, WriteError> {
     perform_with(&process::Executor::program(program), write, deadline)
 }
 
-/// The same preconditions and read-back, through an explicitly supplied executor.
 pub fn perform_with(
     executor: &process::Executor,
     write: &Write,
@@ -441,10 +317,9 @@ pub fn perform_with(
     shows(write, &printed, &read_back)
 }
 
-/// Whether the read before `write` lets it be made: a close only on that
-/// issue, a merge only on a base with no merge queue.
 fn allowed_after(write: &Write, answer: &[u8]) -> Result<(), WriteError> {
     match write {
+        // External: `gh issue close` also closes a pull request without merging it, https://github.com/cli/cli/blob/trunk/pkg/cmd/issue/close/close.go
         Write::CloseIssue { issue } => {
             let url = read_url(answer).map_err(WriteError::CheckFailed)?;
             if is_the_issue(&url, *issue) {
@@ -453,16 +328,15 @@ fn allowed_after(write: &Write, answer: &[u8]) -> Result<(), WriteError> {
                 Err(WriteError::NotAnIssue)
             }
         }
+        // External: on a base with a merge queue, `gh pr merge --merge` turns on auto-merge instead, https://github.com/cli/cli/blob/trunk/pkg/cmd/pr/merge/merge.go
         Write::Merge { .. } => match read_merge_queue(answer).map_err(WriteError::CheckFailed)? {
             false => Ok(()),
             true => Err(WriteError::MergeQueue),
         },
-        // No other write has a read before it.
         _ => Err(WriteError::NotAllowed),
     }
 }
 
-/// Whether the read back shows `write` done.
 fn shows(write: &Write, printed: &[u8], read_back: &[u8]) -> Result<Confirmed, WriteError> {
     let not_shown = |why: &str| Err(WriteError::NotShown(why.to_owned()));
     match write {
@@ -534,12 +408,8 @@ fn shows(write: &Write, printed: &[u8], read_back: &[u8]) -> Result<Confirmed, W
     }
 }
 
-/// The most labels `gh issue view --json labels` reads (gh 2.100.0,
-/// `labels(first: 100)`).
 const MAX_LABELS_READ: usize = 100;
 
-/// The comment URL `gh` printed: exactly one line, `https://`, printable
-/// ASCII with no space, ending `#issuecomment-` and its id's digits.
 fn comment_url(printed: &[u8]) -> Option<String> {
     let line = std::str::from_utf8(printed).ok()?.strip_suffix('\n')?;
     let id = line.rsplit_once("#issuecomment-")?.1;
@@ -550,8 +420,6 @@ fn comment_url(printed: &[u8]) -> Option<String> {
     ok.then(|| line.to_owned())
 }
 
-/// Whether `url` is issue `issue`'s own: `https://`, printable ASCII with
-/// no space, ending `/issues/<issue>`.
 fn is_the_issue(url: &str, issue: Number) -> bool {
     url.starts_with("https://")
         && url.bytes().all(|b| b.is_ascii_graphic())
@@ -560,18 +428,12 @@ fn is_the_issue(url: &str, issue: Number) -> bool {
             .is_some_and(|rest| rest.ends_with("/issues/"))
 }
 
-// The strict readers. `gh`'s answer is read into a [`Json`] tree by one
-// hand-written visitor that refuses a key given twice (`serde_json::Value`
-// would keep only the last), then read on B1's rules.
-
-/// One JSON value. Numbers are never read, so only their kind is kept.
 enum Json {
     Null,
     Bool(bool),
     Scalar,
     String(String),
     Array(Vec<Json>),
-    /// In document order; no key twice.
     Object(Vec<(String, Json)>),
 }
 
@@ -642,22 +504,18 @@ impl<'de> Deserialize<'de> for Strict {
     }
 }
 
-/// A read that isn't the exact shape, in OpenWiz's words only.
 fn malformed(what: &str) -> SourceError {
     SourceError::Malformed {
         detail: format!("{what} (withheld)"),
     }
 }
 
-/// The whole answer, as one JSON document.
 fn document(stdout: &[u8]) -> Result<Json, SourceError> {
     serde_json::from_slice::<Strict>(stdout)
         .map(|Strict(json)| json)
         .map_err(|_| malformed("not one JSON document with no key given twice"))
 }
 
-/// The values of exactly `keys`, in that order, from an object that has
-/// exactly those keys.
 fn object<'a, const N: usize>(
     json: &'a Json,
     keys: [&str; N],
@@ -700,7 +558,6 @@ fn commit(json: &Json, what: &str) -> Result<Commit, SourceError> {
         .ok_or_else(|| malformed(&format!("{what} is not a full commit")))
 }
 
-/// Every key of one comment, as `gh` 2.100.0 prints it (A1, `shapes.md`).
 const COMMENT_KEYS: [&str; 11] = [
     "id",
     "author",
@@ -715,7 +572,6 @@ const COMMENT_KEYS: [&str; 11] = [
     "viewerDidAuthor",
 ];
 
-/// Each comment's URL and text: `{"comments": [...]}`.
 fn read_comments(stdout: &[u8]) -> Result<Vec<(String, String)>, SourceError> {
     let json = document(stdout)?;
     let [comments] = object(&json, ["comments"], "the answer")?;
@@ -732,7 +588,6 @@ fn read_comments(stdout: &[u8]) -> Result<Vec<(String, String)>, SourceError> {
         .collect()
 }
 
-/// Each label's name: `{"labels": [{"id", "name", "description", "color"}]}`.
 fn read_labels(stdout: &[u8]) -> Result<Vec<String>, SourceError> {
     let json = document(stdout)?;
     let [labels] = object(&json, ["labels"], "the answer")?;
@@ -745,9 +600,6 @@ fn read_labels(stdout: &[u8]) -> Result<Vec<String>, SourceError> {
         .collect()
 }
 
-/// Whether the base has a merge queue: `{"data": {"repository":
-/// {"pullRequest": {"isMergeQueueEnabled": true | false}}}}`, each object
-/// with exactly that key, and the value a JSON boolean.
 fn read_merge_queue(stdout: &[u8]) -> Result<bool, SourceError> {
     let json = document(stdout)?;
     let [data] = object(&json, ["data"], "the answer")?;
@@ -760,7 +612,6 @@ fn read_merge_queue(stdout: &[u8]) -> Result<bool, SourceError> {
     }
 }
 
-/// The URL: `{"url": "…"}`.
 fn read_url(stdout: &[u8]) -> Result<String, SourceError> {
     let json = document(stdout)?;
     let [url] = object(&json, ["url"], "the answer")?;
@@ -772,7 +623,6 @@ enum IssueState {
     Closed,
 }
 
-/// An issue's state: `{"state": "OPEN" | "CLOSED"}`.
 fn read_issue_state(stdout: &[u8]) -> Result<IssueState, SourceError> {
     let json = document(stdout)?;
     let [state] = object(&json, ["state"], "the answer")?;
@@ -795,8 +645,6 @@ struct PrMerge {
     head: Commit,
 }
 
-/// A pull request's merge: `{"state": "OPEN" | "CLOSED" | "MERGED",
-/// "mergeCommit": null | {"oid": <commit>}, "headRefOid": <commit>}`.
 fn read_merge(stdout: &[u8]) -> Result<PrMerge, SourceError> {
     let json = document(stdout)?;
     let [state, merge_commit, head] =
@@ -819,4 +667,60 @@ fn read_merge(stdout: &[u8]) -> Result<PrMerge, SourceError> {
         merge_commit,
         head: commit(head, "headRefOid")?,
     })
+}
+
+#[cfg(test)]
+mod before_write_tests {
+    use super::*;
+
+    fn number(n: u64) -> Number {
+        Number::new(n).unwrap()
+    }
+
+    fn url(url: &str) -> Vec<u8> {
+        format!(r#"{{"url": "{url}"}}"#).into_bytes()
+    }
+
+    #[test]
+    fn a_close_runs_only_on_that_issues_own_url() {
+        let close = Write::CloseIssue { issue: number(7) };
+        let issue = url("https://github.invalid/synthetic/repo/issues/7");
+        assert!(allowed_after(&close, &issue).is_ok());
+        for other in [
+            "https://github.invalid/synthetic/repo/pull/7",
+            "https://github.invalid/synthetic/repo/issues/17",
+            "https://github.invalid/synthetic/repo/issues/7/",
+            "http://github.invalid/synthetic/repo/issues/7",
+        ] {
+            assert!(
+                matches!(
+                    allowed_after(&close, &url(other)),
+                    Err(WriteError::NotAnIssue)
+                ),
+                "{other}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_merge_runs_only_on_a_base_without_a_merge_queue() {
+        let merge = Write::Merge {
+            pr: number(8),
+            head: Commit::parse(&"a".repeat(40)).unwrap(),
+            body: Body::parse("synthetic merge").unwrap(),
+        };
+        let queue = |enabled: &str| {
+            format!(r#"{{"data": {{"repository": {{"pullRequest": {{"isMergeQueueEnabled": {enabled}}}}}}}}}"#)
+                .into_bytes()
+        };
+        assert!(allowed_after(&merge, &queue("false")).is_ok());
+        assert!(matches!(
+            allowed_after(&merge, &queue("true")),
+            Err(WriteError::MergeQueue)
+        ));
+        assert!(matches!(
+            allowed_after(&merge, &queue("null")),
+            Err(WriteError::CheckFailed(_))
+        ));
+    }
 }

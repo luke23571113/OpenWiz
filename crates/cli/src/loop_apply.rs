@@ -1,12 +1,3 @@
-//! `openwiz loop apply <id> --project <project> [--from <path>] [--adopt
-//! <id>=<loop>] [--json]` (LC5, #793). It plans the one file exactly as
-//! `openwiz loop plan` does, runs only that plan's commands for this id,
-//! once each and in order, then reads the loop back with one `room-cli loop
-//! list` and reports any difference. An unclear outcome is reported as
-//! `unknown` and never retried. The rules are the adapter's
-//! (`openwiz_adapter_cloudroom::loop_files`); the result and exits are
-//! `contracts/loop-cli.v1.md`'s.
-
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -19,7 +10,6 @@ use serde_json::{Value, json};
 
 use super::{Args, escape_untrusted as esc, loop_plan};
 
-/// The contract's `outcome`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Outcome {
     Created,
@@ -53,26 +43,20 @@ impl Outcome {
     }
 }
 
-/// One apply's result, as `apply_report` holds it.
 struct Report {
     file: String,
     action: String,
     loop_id: Option<String>,
     commands: Vec<RoomCommand>,
     outcome: Outcome,
-    /// `None` when no read-back was made.
     read_back: Option<Vec<Difference>>,
     refusals: Vec<Refusal>,
     webhook_address: Option<String>,
-    /// The adapter's reported limits, for a text run only.
     notes: Vec<String>,
-    /// Why an outcome is unknown, for a text run only.
     unclear: Option<String>,
-    /// Whether a text run already printed the preview.
     previewed: bool,
 }
 
-/// Runs a parsed `loop apply`.
 pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     let fail =
         |stdout: &mut dyn Write, stderr: &mut dyn Write, code: i32, kind: &str, message: String| {
@@ -88,7 +72,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
         };
     let id = args.operands[0].as_str();
     let project = args.project.as_deref().unwrap_or_default();
-    // A binding must be for this id; checked before any read.
     if let Some((other, _)) = args.adopt.iter().find(|(bound, _)| bound != id) {
         return fail(
             stdout,
@@ -179,9 +162,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
         }
         Action::Create | Action::Update => {}
     }
-    // Revision 3: a live setting the adapter does not map is never dropped.
-    // `update` passes only mapped flags, and nothing shows that Cloudroom
-    // keeps the rest, so such a loop is refused before any write.
     if let Some(target) = live
         .iter()
         .find(|l| Some(&l.loop_id) == item.loop_id.as_ref())
@@ -198,7 +178,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
         });
         return finish(args, project, id, &report, stdout, stderr);
     }
-    // The preview: a text run shows each exact command before it runs.
     if !args.json && stdout.write_all(preview(&report).as_bytes()).is_err() {
         let _ = writeln!(
             stderr,
@@ -219,8 +198,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
             );
         }
     };
-    // The clock around the writes, in whole seconds, for an `in` file's
-    // read-back: rounded down before the first, up after the last.
     let clock = || {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -283,7 +260,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     finish(args, project, id, &report, stdout, stderr)
 }
 
-/// The one `loop list` after the last command, compared as plan compares.
 fn read_back(
     report: &mut Report,
     action: Action,
@@ -316,7 +292,6 @@ fn read_back(
             };
             report.read_back = Some(item.differences);
         }
-        // No managed loop to compare, or one plan cannot compare.
         Action::Create | Action::Refused => {
             report.outcome = Outcome::Unknown;
             report.refusals.extend(item.refusals);
@@ -329,8 +304,6 @@ fn read_back(
     }
 }
 
-/// A new owner-only folder in the temporary directory, for the files a
-/// command names; apply removes it after its commands.
 fn private_folder() -> std::io::Result<PathBuf> {
     use std::os::unix::fs::DirBuilderExt as _;
     let stamp = SystemTime::now()
@@ -350,7 +323,6 @@ fn private_folder() -> std::io::Result<PathBuf> {
     }
 }
 
-/// Prints the result, and returns its exit code (1 when it can't be printed).
 fn finish(
     args: &Args,
     project: &str,
@@ -381,7 +353,6 @@ fn finish(
     code
 }
 
-/// The `openwiz.loop-apply.v1` document.
 fn document(report: &Report, project: &str, id: &str, code: i32) -> Value {
     let file = &report.file;
     let mut doc = json!({
@@ -401,8 +372,6 @@ fn document(report: &Report, project: &str, id: &str, code: i32) -> Value {
     doc
 }
 
-/// The text for people before any command runs: the file, what plan says
-/// to do, and each exact command, as plan prints it.
 fn preview(report: &Report) -> String {
     let file = esc(&report.file);
     let mut out = match &report.loop_id {
@@ -429,9 +398,6 @@ fn preview(report: &Report) -> String {
     out
 }
 
-/// The text for people after: the outcome, then each refusal and
-/// difference. Every untrusted string goes through [`esc`]; JSON keeps the
-/// originals.
 fn summary(report: &Report) -> String {
     let file = esc(&report.file);
     let mut out = match &report.loop_id {

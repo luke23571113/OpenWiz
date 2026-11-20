@@ -1,35 +1,3 @@
-//! `openwiz fleet <spec>`'s reads from GitHub (A5, ClosedWiz#113): its own
-//! part of the allowlist, and [`Tickets`], the core's
-//! [`GitHub`](openwiz_core::fleet::tickets::GitHub) source, which runs only
-//! those forms and reads each answer strictly.
-//!
-//! **The forms**, exactly, each a read (`N` is an issue's or pull
-//! request's number, written plainly):
-//! - `gh --version`;
-//! - `gh repo view --json nameWithOwner,url`: the repository's owner and
-//!   name (the contract's observed field; only the name is printed, and a
-//!   CloudRoom project's git remote must name both), and its address, which
-//!   tells its own issues and pull requests from others';
-//! - `gh issue view N --json` [`ISSUE_FIELDS`]: an issue's fields, its
-//!   sub-issues, its blocked-by links and the pull requests that close it;
-//! - `gh pr view N --json` [`PR_FIELDS`]: a pull request's own fields;
-//! - `gh pr checks N --json bucket,name`: the latest run of each check;
-//! - `gh pr view N --json comments --jq` [`VERDICTS_JQ`]: only the bodies
-//!   of the comments that start `VERDICT: `, so no author is ever read;
-//! - `gh api repos/{owner}/{repo}/issues/N/comments?per_page=100
-//!   --paginate --jq` [`START_COMMENTS_JQ`]: an issue's comments, oldest
-//!   first, each with its author's `user.login` and `user.type` (#740), so
-//!   a start record the App writes can be told from a user's;
-//! - `gh api repos/{owner}/{repo}/compare/<base>...<commit> --jq`
-//!   [`COMPARE_JQ`]: how many commits `<commit>` has that `<base>` hasn't:
-//!   none means the commit is on the base. `gh` fills `{owner}` and
-//!   `{repo}` in itself.
-//!
-//! **Strict readers** (B1's pattern, PR #88): an answer with a key twice,
-//! at any depth, is refused before it is read; every object has exactly its
-//! keys, each of its type. Anything else is malformed, and none of `gh`'s
-//! text is shown.
-
 use std::fmt;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -49,48 +17,34 @@ use serde_json::{Map, Value};
 use crate::allowlist::{Invocation, Module};
 use crate::process;
 
-/// This module's part of the allowlist.
 pub const ALLOWLIST: Module = Module {
     name: "tickets",
     allows,
 };
 
-/// The `gh` version A1's spike ran (#109): evidence, never a gate.
 pub const TESTED_VERSION: &str = "2.100.0";
 
-/// An issue's fields, as `gh issue view` takes them.
 pub const ISSUE_FIELDS: &str =
     "blockedBy,body,closedByPullRequestsReferences,comments,labels,milestone,state,subIssues,title";
 
-/// A pull request's fields, as `gh pr view` takes them.
 pub const PR_FIELDS: &str = "baseRefName,closingIssuesReferences,headRefName,headRefOid,isDraft,mergeCommit,mergedAt,number,state";
 
-/// The checks' fields, as `gh pr checks` takes them.
 pub const CHECK_FIELDS: &str = "bucket,name";
 
-/// The bodies of the comments that start `VERDICT: `, oldest first
-/// (`review-ticket`'s own read-back, as a list).
 pub const VERDICTS_JQ: &str = r#"[.comments[].body | select(startswith("VERDICT: "))]"#;
 
-/// Each comment's author login and type, and its body: REST gives an App's
-/// login as `name[bot]` with the type `Bot`, which `gh issue view` doesn't.
 pub const START_COMMENTS_JQ: &str = "map({login: .user.login, type: .user.type, body})";
 
-/// The start of an issue's comments path; `gh` fills in the repository.
 const ISSUES_PREFIX: &str = "repos/{owner}/{repo}/issues/";
 
-/// The start-record read's path for issue `n`.
 fn start_comments_path(n: &str) -> String {
     format!("{ISSUES_PREFIX}{n}/comments?per_page=100")
 }
 
-/// How many commits the compared commit has that the base hasn't.
 pub const COMPARE_JQ: &str = "{ahead_by: .ahead_by}";
 
-/// The start of a compare's path; `gh` fills in the repository.
 const COMPARE_PREFIX: &str = "repos/{owner}/{repo}/compare/";
 
-/// Whether `argv` is exactly one of this module's forms.
 fn allows(argv: &[&str]) -> bool {
     match argv {
         ["--version"] => true,
@@ -111,7 +65,6 @@ fn allows(argv: &[&str]) -> bool {
     }
 }
 
-/// A number as `gh` takes it: 1 to 10 digits, no leading zero.
 fn is_number(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= 10
@@ -119,16 +72,11 @@ fn is_number(text: &str) -> bool {
         && text.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// A compare path's base and commit, when `path` is exactly
-/// `repos/{owner}/{repo}/compare/<base>...<commit>`.
 fn compare_path(path: &str) -> Option<(&str, &str)> {
     let (base, commit) = path.strip_prefix(COMPARE_PREFIX)?.split_once("...")?;
     (is_branch(base) && Commit::parse(commit).is_some()).then_some((base, commit))
 }
 
-/// A branch name OpenWiz passes in a path: ASCII letters, digits, `-`,
-/// `_`, `.` and `/`, never starting with `-`, `.` or `/`, never ending
-/// with `.` or `/`, and no `..` or `//`.
 fn is_branch(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -140,14 +88,12 @@ fn is_branch(name: &str) -> bool {
         && !name.contains("//")
 }
 
-/// The core's GitHub source: `gh`, run only through this module's forms.
 #[derive(Clone, Debug)]
 pub struct Tickets {
     executor: process::Executor,
 }
 
 impl Tickets {
-    /// `gh` at `program`.
     pub fn new(program: impl Into<PathBuf>) -> Self {
         Self::with_executor(process::Executor::program(program))
     }
@@ -156,14 +102,10 @@ impl Tickets {
         Self { executor }
     }
 
-    /// The `gh` found on `PATH`.
     pub fn from_path() -> Self {
         Self::new(crate::PROGRAM)
     }
 
-    /// The record authors on the default branch's head, through the fleet
-    /// tick's existing forms: its repository, its branch and its
-    /// `docs/agents/fleet.md` reads. Unread or malformed is an error.
     pub fn record_authors(&self, deadline: Instant) -> Result<RecordAuthors, SourceError> {
         let unread = |_| SourceError::Unavailable {
             detail: "the record authors setting could not be read".to_owned(),
@@ -177,7 +119,6 @@ impl Tickets {
         RecordAuthors::read(&settings).map_err(|why| malformed("record authors", why))
     }
 
-    /// Runs one of this module's forms.
     fn run(&self, argv: &[&str], deadline: Instant) -> Result<Vec<u8>, SourceError> {
         let invocation = Invocation::new(argv).ok_or_else(|| SourceError::Unavailable {
             detail: "the call is not on the allowlist, so nothing was run".to_owned(),
@@ -200,9 +141,6 @@ impl GitHub for Tickets {
         issue(&self.run(&["issue", "view", &n, "--json", ISSUE_FIELDS], deadline)?)
     }
 
-    /// Reads the record authors setting first, as launch-fleet does, then
-    /// the issue and its start-record comments: an unread or malformed
-    /// setting stops the read before any comment is read.
     fn stock_issue(
         &self,
         number: Number,
@@ -266,15 +204,12 @@ impl GitHub for Tickets {
     }
 }
 
-/// `what`'s answer is malformed, in OpenWiz's words: never `gh`'s text.
 fn malformed(what: &str, why: &str) -> SourceError {
     SourceError::Malformed {
         detail: format!("gh's {what} answer: {why}"),
     }
 }
 
-/// `gh --version`'s first line, `gh version <x.y.z>`, optionally followed
-/// by ` (<date>)`: the version.
 pub fn version(stdout: &[u8]) -> Result<String, SourceError> {
     let bad = || malformed("--version", "no version in its first line");
     let text = std::str::from_utf8(stdout).map_err(|_| bad())?;
@@ -291,7 +226,6 @@ pub fn version(stdout: &[u8]) -> Result<String, SourceError> {
     }
 }
 
-/// Three dot-separated numbers.
 fn is_version(text: &str) -> bool {
     let parts: Vec<&str> = text.split('.').collect();
     parts.len() == 3
@@ -300,9 +234,6 @@ fn is_version(text: &str) -> bool {
             .all(|p| !p.is_empty() && p.len() <= 6 && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// `gh repo view --json nameWithOwner,url`: `<owner>/<name>`, exactly one
-/// `/` with text on each side, and the address. The name is the part after
-/// the `/`.
 pub fn repository(stdout: &[u8]) -> Result<RepositoryAnswer, SourceError> {
     let what = "repo view";
     let doc = document(stdout, what)?;
@@ -320,7 +251,6 @@ pub fn repository(stdout: &[u8]) -> Result<RepositoryAnswer, SourceError> {
     })
 }
 
-/// `gh issue view N --json` [`ISSUE_FIELDS`].
 pub fn issue(stdout: &[u8]) -> Result<IssueAnswer, SourceError> {
     let what = "issue view";
     let doc = document(stdout, what)?;
@@ -402,21 +332,10 @@ pub fn issue(stdout: &[u8]) -> Result<IssueAnswer, SourceError> {
     })
 }
 
-/// The factory's record authors (#641): the lowercase logins of the
-/// `Record authors` row in `docs/agents/fleet.md`'s `## GitHub identity`
-/// table, the factory's App and the account it falls back to. In a public
-/// repository anyone can comment, so a comment is a record only when one of
-/// them wrote it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordAuthors(std::collections::BTreeSet<String>);
 
 impl RecordAuthors {
-    /// Reads the setting by launch-fleet's rules (`grants.py`'s
-    /// `record_authors`, `fleet.sh`'s `settings`): exactly one
-    /// `| Record authors |` row in the section, whose whole value cell is
-    /// backticked logins separated by commas, with nothing after it. No row,
-    /// an empty one, or any malformed or extra entry refuses the whole row:
-    /// it never keeps only the logins that did parse.
     pub fn read(fleet_md: &str) -> Result<Self, &'static str> {
         const REFUSED: &str = "docs/agents/fleet.md names no record authors";
         let mut section = None;
@@ -451,12 +370,6 @@ impl RecordAuthors {
         Ok(Self(logins))
     }
 
-    /// Whether a REST comment's author, its `user.login` and `user.type`
-    /// (`None` when it has none), is a record author. Logins compare
-    /// case-insensitively, as GitHub's do; entries match exactly. An App
-    /// entry `name[bot]` matches only a `Bot` whose login is `name[bot]`, and
-    /// any other entry only a `User`: a user-typed login never counts as the
-    /// App, and a Bot never as a user (#740).
     pub fn wrote(&self, login: Option<&str>, kind: Option<&str>) -> bool {
         let (Some(login), Some(kind)) = (login, kind) else {
             return false;
@@ -472,7 +385,6 @@ impl RecordAuthors {
     }
 }
 
-/// `| Record authors |` at the start of a line, spaces allowed inside.
 fn is_authors_row(line: &str) -> bool {
     line.strip_prefix('|')
         .map(|l| l.trim_start_matches(' '))
@@ -480,8 +392,6 @@ fn is_authors_row(line: &str) -> bool {
         .is_some_and(|l| l.trim_start_matches(' ').starts_with('|'))
 }
 
-/// A login as the setting writes it: ASCII letters and digits with single
-/// inner hyphens, and an App's `[bot]` suffix.
 fn is_login(login: &str) -> bool {
     let name = login.strip_suffix("[bot]").unwrap_or(login);
     !name.is_empty()
@@ -491,9 +401,6 @@ fn is_login(login: &str) -> bool {
         && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
-/// `stdout` is `gh issue view`'s answer and `comments` the start-record
-/// read's ([`START_COMMENTS_JQ`], one page a line): whether the record
-/// authors' last fifteen comments hold a start record.
 pub fn stock_issue(
     stdout: &[u8],
     comments: &[u8],
@@ -504,10 +411,6 @@ pub fn stock_issue(
     Ok((i, openwiz_core::model::Fact::Known(started)))
 }
 
-/// Whether the record authors' last fifteen comments, in the start-record
-/// read's pages, hold a start record. Every page must read, and every row
-/// be exactly `login`, `type` (each text or null) and `body` (text):
-/// anything else is malformed and never establishes absence.
 fn started(comments: &[u8], authors: &RecordAuthors) -> Result<bool, SourceError> {
     let what = "start record comments";
     let pages = std::str::from_utf8(comments).map_err(|_| malformed(what, "not UTF-8"))?;
@@ -527,8 +430,6 @@ fn started(comments: &[u8], authors: &RecordAuthors) -> Result<bool, SourceError
             ));
         }
     }
-    // Only the factory's own comments: an outsider's, or one with no
-    // author, is dropped before the window is taken (#716).
     Ok(rows
         .into_iter()
         .filter(|(factory, _)| *factory)
@@ -537,8 +438,6 @@ fn started(comments: &[u8], authors: &RecordAuthors) -> Result<bool, SourceError
         .any(|(_, body)| body.starts_with("launch-fleet: start")))
 }
 
-/// Full gh comment objects are checked, but only question/provenance inputs
-/// reach the core; authors and reactions never reach an envelope.
 fn issue_comment(value: &Value) -> Result<IssueComment, SourceError> {
     let what = "issue comment";
     let c = object(
@@ -586,9 +485,6 @@ fn issue_comment(value: &Value) -> Result<IssueComment, SourceError> {
     })
 }
 
-/// The text after `label` on the body's one line that starts with it,
-/// trimmed: `None` when no line or more than one starts with it, or it's
-/// empty.
 fn template_line(body: &str, label: &str) -> Option<NonEmpty> {
     let mut found = body.split('\n').filter_map(|line| line.strip_prefix(label));
     let first = found.next()?;
@@ -598,7 +494,6 @@ fn template_line(body: &str, label: &str) -> Option<NonEmpty> {
     NonEmpty::new(first.trim())
 }
 
-/// A relation's `{nodes, totalCount}`.
 fn list(value: &Value, what: &str) -> Result<ListAnswer, SourceError> {
     let o = object(value, &["nodes", "totalCount"], what)?;
     let mut nodes = Vec::new();
@@ -622,7 +517,6 @@ fn link(number_value: &Value, url: &Value, what: &str) -> Result<Link, SourceErr
     })
 }
 
-/// `gh pr view N --json` [`PR_FIELDS`].
 pub fn pull_request(stdout: &[u8]) -> Result<PrAnswer, SourceError> {
     let what = "pull request";
     let doc = document(stdout, what)?;
@@ -700,7 +594,6 @@ pub fn pull_request(stdout: &[u8]) -> Result<PrAnswer, SourceError> {
     })
 }
 
-/// `gh pr checks N --json bucket,name`.
 pub fn checks(stdout: &[u8]) -> Result<Vec<Check>, SourceError> {
     let what = "pr checks";
     let doc = document(stdout, what)?;
@@ -728,8 +621,6 @@ pub fn checks(stdout: &[u8]) -> Result<Vec<Check>, SourceError> {
     Ok(checks)
 }
 
-/// [`VERDICTS_JQ`]'s answer: a list of comment bodies, each starting
-/// `VERDICT: `.
 pub fn verdict_comments(stdout: &[u8]) -> Result<Vec<String>, SourceError> {
     let what = "comments";
     let doc = document(stdout, what)?;
@@ -744,8 +635,6 @@ pub fn verdict_comments(stdout: &[u8]) -> Result<Vec<String>, SourceError> {
     Ok(bodies)
 }
 
-/// [`COMPARE_JQ`]'s answer: true when the commit has no commit the base
-/// hasn't, so it is on the base.
 pub fn on_base(stdout: &[u8]) -> Result<bool, SourceError> {
     let what = "compare";
     let doc = document(stdout, what)?;
@@ -756,7 +645,6 @@ pub fn on_base(stdout: &[u8]) -> Result<bool, SourceError> {
     Ok(ahead == 0)
 }
 
-/// `YYYY-MM-DDTHH:MM:SSZ`, as milliseconds since 1970 (UTC).
 fn iso_ms(text: &str) -> Option<Timestamp> {
     let b = text.as_bytes();
     let digits = |range: std::ops::Range<usize>| -> Option<i64> {
@@ -802,7 +690,6 @@ fn iso_ms(text: &str) -> Option<Timestamp> {
     if !valid {
         return None;
     }
-    // Days from 1970-01-01 to the date (Howard Hinnant's days_from_civil).
     let y = if month <= 2 { year - 1 } else { year };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -815,15 +702,12 @@ fn iso_ms(text: &str) -> Option<Timestamp> {
     ))
 }
 
-/// The answer, parsed, once no key is given twice at any depth: a read
-/// through `serde_json::Value` would silently keep only the last.
 fn document(stdout: &[u8], what: &str) -> Result<Value, SourceError> {
     serde_json::from_slice::<KeysOnce>(stdout)
         .map_err(|_| malformed(what, "not JSON, or a key given twice"))?;
     serde_json::from_slice(stdout).map_err(|_| malformed(what, "not JSON"))
 }
 
-/// An object with exactly `keys`.
 fn object<'a>(
     value: &'a Value,
     keys: &[&str],
@@ -863,7 +747,6 @@ fn non_empty(value: &Value, what: &str) -> Result<NonEmpty, SourceError> {
     NonEmpty::new(text(value, what)?).ok_or_else(|| malformed(what, "an empty string"))
 }
 
-/// A JSON integer of 1 or more: never `1.0`, `"1"` or `true`.
 fn number(value: &Value, what: &str) -> Result<Number, SourceError> {
     value
         .as_u64()
@@ -871,7 +754,6 @@ fn number(value: &Value, what: &str) -> Result<Number, SourceError> {
         .ok_or_else(|| malformed(what, "a number that is not a whole number of 1 or more"))
 }
 
-/// Any JSON document in which no object gives a key twice.
 struct KeysOnce;
 
 impl<'de> Deserialize<'de> for KeysOnce {
@@ -1194,7 +1076,6 @@ mod tests {
                 "query=synthetic".into(),
             ],
         ];
-        // The start-record read: exactly its path, pagination and fields.
         let comments = |path: &str, flags: &[&str]| -> Vec<String> {
             let mut argv = vec!["api".to_owned(), path.to_owned()];
             argv.extend(flags.iter().map(|&f| f.to_owned()));
@@ -1568,17 +1449,12 @@ mod tests {
             assert_eq!(iso_ms(bad), None, "{bad}");
         }
     }
-    /// Synthetic settings: one App login and one fallback account.
     const SETTINGS: &str = "# Fleet\n\n## GitHub identity\n\n| Setting | Value |\n| --- | --- |\n| Fallback | today's account |\n| Record authors | `synthetic-app[bot]`, `Synthetic-Owner` |\n\n## Next\n";
 
     fn authors() -> RecordAuthors {
         RecordAuthors::read(SETTINGS).unwrap()
     }
 
-    /// Catches: the factory's own later comments not pushing an old start
-    /// record out of its last fifteen, a start record counted from a body
-    /// that only contains the prefix, and a malformed start-record read
-    /// being taken as "not started" (#716, #740).
     #[test]
     fn stock_issue_counts_only_the_factorys_start_records_in_its_last_fifteen() {
         let row = |login: &str, kind: &str, body: Value| serde_json::json!({"login": login, "type": kind, "body": body});
@@ -1601,7 +1477,6 @@ mod tests {
         assert!(started(&rows));
         rows[15] = factory("progress launch-fleet: started");
         assert!(!started(&rows));
-        // A malformed read never establishes absence.
         assert!(read(&[]).is_err(), "no pages");
         for bad in [
             row("synthetic-app[bot]", "Bot", Value::Null),
@@ -1615,10 +1490,6 @@ mod tests {
         assert!(read(&[serde_json::json!({})]).is_err(), "a page is a list");
     }
 
-    /// Catches: a malformed `Record authors` setting being read as some or
-    /// all logins instead of refused. launch-fleet's rules (#641): one row,
-    /// in the `## GitHub identity` section, whose whole value cell is
-    /// backticked logins separated by commas, and nothing after it.
     #[test]
     fn record_authors_take_only_the_whole_well_formed_row() {
         let table = |row: &str| {
@@ -1628,9 +1499,6 @@ mod tests {
             "| Record authors | `synthetic-app[bot]`, `Synthetic-Owner` |",
         ))
         .unwrap();
-        // The shared App-login rule (#740), on REST's `user.login` and
-        // `user.type`: `name[bot]` matches only a Bot `name[bot]`; a
-        // user-typed login never counts as the App, nor a Bot as a user.
         for (login, kind, wrote) in [
             (Some("synthetic-app[bot]"), Some("Bot"), true),
             (Some("SYNTHETIC-APP[BOT]"), Some("Bot"), true),
@@ -1682,7 +1550,6 @@ mod tests {
         ] {
             assert!(refused(&table(row)), "{row}");
         }
-        // No row, or the row only outside its section, trusts nobody.
         assert!(refused("# Fleet\n"));
         assert!(refused(&table("| Fallback | today's account |")));
         assert!(refused(
@@ -1694,11 +1561,6 @@ mod tests {
         )));
     }
 
-    /// Catches: the start-record reader ignoring the start records the App
-    /// writes (#740), because `gh issue view` reports an App's login
-    /// without `[bot]` and no author type; and, once the type is read, a
-    /// user account named like the App, an outsider or a flood of
-    /// outsiders' comments deciding whether a ticket has started.
     #[test]
     fn the_start_record_reader_reads_each_authors_type() {
         use serde_json::json;
@@ -1709,17 +1571,11 @@ mod tests {
         let flood: Vec<Value> = (0..15).map(|_| outsider("synthetic progress")).collect();
         let later: Vec<Value> = (0..15).map(|_| app("synthetic progress")).collect();
         let cases: Vec<(Vec<Vec<Value>>, bool)> = vec![
-            // The App's own start record counts.
             (vec![vec![app(start)]], true),
-            // A user account with the App's name is never the App.
             (vec![vec![row("synthetic-app", "User", start)]], false),
             (vec![vec![row("Synthetic-App[bot]", "User", start)]], false),
-            // An outsider's start record never counts, and outsiders'
-            // comments never push the App's record out of the window.
             (vec![vec![outsider(start)]], false),
             (vec![vec![app(start)], flood.clone()], true),
-            // Every page is read: a start record on a later page counts,
-            // and the App's own later comments there push an earlier one out.
             (
                 vec![vec![outsider("synthetic progress")], vec![app(start)]],
                 true,
@@ -1739,8 +1595,6 @@ mod tests {
                 move |call: &Invocation, _| {
                     let argv: Vec<&str> = call.argv().iter().map(String::as_str).collect();
                     let mut issue: Value = serde_json::from_str(ISSUE).unwrap();
-                    // As `gh issue view` reports the App's record: a plain
-                    // login and no type.
                     issue["comments"] = json!([{"id":"synthetic-comment","author":{"login":"synthetic-app"},"authorAssociation":"NONE","body":start,"createdAt":"2030-01-15T09:00:00Z","includesCreatedEdit":false,"isMinimized":false,"minimizedReason":null,"reactionGroups":[],"url":"https://example.invalid/issues/1#synthetic","viewerDidAuthor":false}]);
                     let answer = match argv.as_slice() {
                         ["repo", "view", ..] => json!({"defaultBranchRef":{"name":"main"},"nameWithOwner":"synthetic/repo","url":"https://example.invalid/synthetic/repo"}).to_string(),

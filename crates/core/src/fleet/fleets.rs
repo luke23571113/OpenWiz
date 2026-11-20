@@ -1,38 +1,3 @@
-//! Every fleet in a project, with its progress (A4, ClosedWiz#112): the
-//! `fleets` view of `openwiz.fleet.v1` (`contracts/fleet.v1.md`), worked
-//! out from what a [`FleetsSource`] answers. Like the rest of the core, no
-//! I/O and no formatting: the GitHub adapter makes the calls and reads
-//! their answers strictly; this file decides what they mean.
-//!
-//! **A fleet** is an open issue with at least one sub-issue (a spec): the
-//! contract carries no approval in version 1, so it lists every one
-//! (#112, question 2). Its tickets are its sub-issues; their blockers are
-//! the issues their blocked-by links name.
-//!
-//! **The reads.** One issue list and one pull request list read the whole
-//! repository, so the issue, sub-issue, blocked-by and pull request records
-//! all come from two calls; only an open pull request's checks and
-//! comments need separate calls. Merge readbacks share bounded ancestry batches. Those
-//! run at most [`MAX_CONCURRENT_DETAIL_READS`] at once, and none starts
-//! after the run's deadline: it is recorded as failed (`budget_exhausted`),
-//! never left out.
-//!
-//! **The values** follow the contract's one dependency table: a worked-out
-//! value is known exactly when every read it requires, through every edge,
-//! is complete; otherwise it names exactly the incomplete ones, in the
-//! order of `reads` ([`worked`]). Known values come from [`ticket_state`]
-//! (the state table), [`merged`], [`ci`], [`verdict`], [`needs_you_kinds`]
-//! and [`template_line`]. All are public, so the other fleet view uses the
-//! same ones and never a copy (#112, question 1 (b)).
-//!
-//! **Which issue is which.** GitHub links issues by number and node id; a
-//! sub-issue, a blocker or a closing reference can be in another
-//! repository, with a number this one also has. So every link is checked
-//! against this repository's issue list by both: a link the list doesn't
-//! hold as the same issue (another repository's, or one a list cut short
-//! leaves out) makes the read that named it fail, never a guess at another
-//! issue's facts.
-
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Mutex;
 use std::sync::atomic::{self, AtomicUsize};
@@ -52,38 +17,25 @@ use super::model::{
     TicketState, Truncated, Verdict, View, WorkedOut,
 };
 
-/// The label a ticket is ready with, for an agent.
 pub const READY_FOR_AGENT: &str = "ready-for-agent";
-/// The label a ticket is ready with, for a person.
 pub const READY_FOR_HUMAN: &str = "ready-for-human";
-/// A builder's question.
 pub const NEEDS_INFO: &str = "needs-info";
-/// A held ticket (#155).
 pub const HELD: &str = "held";
 
-/// The most closing references `gh` reads for one pull request in a list,
-/// so a pull request with this many may close more: gh v2.100.0 asks for
-/// `closingIssuesReferences(first: 100)` (`api/query_builder.go`), and `pr
-/// list` pages no further (only `pr view`'s finder does).
 pub const MAX_CLOSING_REFERENCES: usize = 100;
 
-/// An issue GitHub links to: its number and its node id, which tells this
-/// repository's issue from another's with the same number.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Link {
     pub number: Number,
     pub id: NonEmpty,
 }
 
-/// A list of links as GitHub gives it: the ones it listed, and its own
-/// total, which can be more.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Links {
     pub nodes: Vec<Link>,
     pub total: u64,
 }
 
-/// One issue of the issue list, with its links.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IssueRow {
     pub number: Number,
@@ -91,16 +43,12 @@ pub struct IssueRow {
     pub title: String,
     pub state: IssueState,
     pub milestone: Option<Milestone>,
-    /// As read, in order.
     pub labels: Vec<NonEmpty>,
-    /// Read only for its two template lines ([`template_line`]); never
-    /// shown.
     pub body: String,
     pub sub_issues: Links,
     pub blocked_by: Links,
 }
 
-/// One issue comment as read; its full body is never printed in an envelope.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IssueComment {
     pub body: String,
@@ -108,19 +56,11 @@ pub struct IssueComment {
     pub asked_at: Timestamp,
 }
 
-/// Why the `fleets` view's Needs you items have no question facts: its one
-/// repository-wide issue list does not read comments (#539: with comments it
-/// outgrows the run budget). `openwiz fleet <spec>` reads them per ticket.
 pub const QUESTION_NOT_READ: &str =
     "the fleets view does not read comments; openwiz fleet <spec> reads the question";
 
-/// Why a ticket read with its comments has no question facts.
 pub const QUESTION_NOT_FOUND: &str = "no unique newest needs-you or Needs you comment was found";
 
-/// Select the newest comment whose first line starts with exactly
-/// `needs-you` or `Needs you`. `comments` must be the issue's complete list
-/// (`gh issue view --json comments` pages through all of them). A tie on
-/// the newest time cannot establish one pending question.
 pub fn pending_question(comments: &[IssueComment]) -> Option<PendingQuestion> {
     let mut marked: Vec<_> = comments
         .iter()
@@ -145,8 +85,6 @@ pub fn pending_question(comments: &[IssueComment]) -> Option<PendingQuestion> {
     })
 }
 
-/// The same enriched item for both fleet views, based only on recorded
-/// facts. `no_question` is the reason when the issue read has no question.
 pub fn needs_you_item(
     kind: NeedsYouKind,
     spec: Number,
@@ -192,7 +130,6 @@ pub fn needs_you_item(
     }
 }
 
-/// One pull request of the pull request list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrRow {
     Open(PrFacts),
@@ -201,14 +138,11 @@ pub enum PrRow {
         merge_commit: Commit,
         merged_at: Timestamp,
     },
-    /// Closed without a merge: never an issue's pull request.
     Closed {
         number: Number,
     },
 }
 
-/// An open or merged pull request's own fields, and the issues it closes
-/// (GitHub's closing references), as listed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrFacts {
     pub number: Number,
@@ -219,39 +153,26 @@ pub struct PrFacts {
     pub closes: Vec<Link>,
 }
 
-/// Internal stock evidence from a PR-list read. Not serialized into the public
-/// fleet envelope. Legacy providers retain an unknown title, never a false match.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StockPr {
     pub pr: PrRow,
     pub title: Fact<NonEmpty>,
 }
 
-/// A list read in one call, and whether it may be cut short: it came back
-/// with as many rows as the call asks for, so there may be more.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Listed<T> {
     pub rows: Vec<T>,
     pub cut_short: bool,
 }
 
-/// The most distinct merge/base pairs in one ancestry read.
 pub const MERGE_BATCH_SIZE: usize = 20;
 
-/// What `fleets` reads, one method per call. Each answer is already read
-/// strictly; a failure is a [`Failed`] in OpenWiz's own words.
 pub trait FleetsSource: Sync {
-    /// The version last live-tested: reported, never a gate.
     fn tested_version(&self) -> &str;
-    /// The source's version, only as a recognised version text.
     fn version(&self, deadline: Instant) -> Result<NonEmpty, Failed>;
-    /// The repository's name, never its owner.
     fn repository(&self, deadline: Instant) -> Result<Repository, Failed>;
-    /// Every issue of the repository, open and closed.
     fn issues(&self, deadline: Instant) -> Result<Listed<IssueRow>, Failed>;
-    /// Every pull request of the repository, open, merged and closed.
     fn pull_requests(&self, deadline: Instant) -> Result<Listed<PrRow>, Failed>;
-    /// Same bounded PR list with title evidence retained for stock consumers.
     fn stock_pull_requests(&self, deadline: Instant) -> Result<Listed<StockPr>, Failed> {
         self.pull_requests(deadline).map(|listed| Listed {
             cut_short: listed.cut_short,
@@ -267,20 +188,14 @@ pub trait FleetsSource: Sync {
                 .collect(),
         })
     }
-    /// An open pull request's checks: the latest run of each.
     fn checks(&self, pr: Number, deadline: Instant) -> Result<Vec<Check>, Failed>;
-    /// An open pull request's comment bodies, oldest first.
     fn comments(&self, pr: Number, deadline: Instant) -> Result<Vec<String>, Failed>;
-    /// Whether a merged pull request's merge commit is on its base branch.
     fn on_base(&self, pr: &MergedPr, deadline: Instant) -> Result<bool, Failed>;
-    /// Ancestry for a bounded chunk of distinct merge/base pairs, in input
-    /// order. Sources without a bulk transport retain their existing reads.
     fn on_bases(&self, prs: &[MergedPr], deadline: Instant) -> Vec<Result<bool, Failed>> {
         prs.iter().map(|pr| self.on_base(pr, deadline)).collect()
     }
 }
 
-/// `openwiz fleets`: every fleet, read within `budget`.
 pub fn fleets(source: &dyn FleetsSource, clock: &dyn Clock, budget: Duration) -> Envelope {
     let mut walk = Walk {
         source,
@@ -297,22 +212,14 @@ pub fn fleets(source: &dyn FleetsSource, clock: &dyn Clock, budget: Duration) ->
     walk.envelope()
 }
 
-// ---------------------------------------------------------------------
-// The known values: the contract's rules, on complete reads only.
-
-/// A pull request's CI, worked out from its checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ci {
     Failed,
     Pending,
     Passed,
-    /// No check, or every one skipped.
     None,
 }
 
-/// CI from the checks: `failed` if any failed or was cancelled; otherwise
-/// `pending` if any is pending; otherwise `passed` if any passed; otherwise
-/// `none`.
 pub fn ci(checks: &[Check]) -> Ci {
     let any = |r: &[CheckResult]| checks.iter().any(|c| r.contains(&c.result));
     if any(&[CheckResult::Fail, CheckResult::Cancel]) {
@@ -326,20 +233,11 @@ pub fn ci(checks: &[Check]) -> Ci {
     }
 }
 
-/// The latest comment starting [`VERDICT_PREFIX`] isn't in
-/// `review-ticket`'s form.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NotAVerdict;
 
-/// What a comment starts with to be a verdict (`review-ticket`).
 pub const VERDICT_PREFIX: &str = "VERDICT: ";
 
-/// The latest verdict among a pull request's comment bodies, oldest
-/// first: the latest one starting [`VERDICT_PREFIX`], whose first line must
-/// be exactly `VERDICT: APPROVE at <commit>` or `VERDICT: CHANGES at
-/// <commit>` (all 40 characters; a line may end `\r\n`). `Ok(None)`: no
-/// comment starts so. `Err`: the latest one isn't in that form, so no
-/// verdict can be told; an older one is never used instead.
 pub fn verdict(bodies: &[String]) -> Result<Option<Review>, NotAVerdict> {
     let Some(latest) = bodies.iter().rev().find(|b| b.starts_with(VERDICT_PREFIX)) else {
         return Ok(None);
@@ -357,9 +255,6 @@ pub fn verdict(bodies: &[String]) -> Result<Option<Review>, NotAVerdict> {
     Ok(Some(Review { verdict, commit }))
 }
 
-/// The text after `label` on the body's one line that starts with it
-/// (`**Owned paths:**`, `**Relies on:**`), trimmed: `None` when no line or
-/// more than one starts with it, or it's empty.
 pub fn template_line(body: &str, label: &str) -> Option<NonEmpty> {
     let mut found = body
         .split('\n')
@@ -372,16 +267,10 @@ pub fn template_line(body: &str, label: &str) -> Option<NonEmpty> {
     NonEmpty::new(first.trim())
 }
 
-/// A blocker's `merged`, and the state table's rule 1: its pull request is
-/// merged and its merge was read back on its base. Never an approval, a
-/// ready pull request or a closed issue.
 pub fn merged(pr: Option<&PullRequest>, on_base: Option<bool>) -> bool {
     matches!(pr, Some(PullRequest::Merged(_))) && on_base == Some(true)
 }
 
-/// A ticket's "needs you" kinds, from its labels, in the contract's
-/// order of kinds ([`needs_you_word`]): `held` for `held`, then
-/// `needs_info` for `needs-info`.
 pub fn needs_you_kinds(issue: &Issue) -> Vec<NeedsYouKind> {
     let has = |name: &str| issue.labels.iter().any(|l| l.as_str() == name);
     [
@@ -394,8 +283,6 @@ pub fn needs_you_kinds(issue: &Issue) -> Vec<NeedsYouKind> {
     .collect()
 }
 
-/// A "needs you" kind's contract word. "Needs you" is by spec, ticket,
-/// then kind, the kinds compared as these words (#297, R1).
 pub fn needs_you_word(kind: NeedsYouKind) -> &'static str {
     match kind {
         NeedsYouKind::Held => "held",
@@ -403,10 +290,6 @@ pub fn needs_you_word(kind: NeedsYouKind) -> &'static str {
     }
 }
 
-/// The read rule: a worked-out value is known exactly when every read in
-/// `requires` is complete; otherwise it names exactly the incomplete ones,
-/// in the order of `reads` (whose ids are given in that order). Every id
-/// in `requires` must be on the record.
 pub fn worked<T>(
     reads: &[Read],
     requires: &BTreeSet<ReadId>,
@@ -424,73 +307,52 @@ pub fn worked<T>(
     }
 }
 
-/// Every fact a ticket's state is worked out from, each from a complete
-/// read.
 #[derive(Clone, Copy, Debug)]
 pub struct StateFacts<'a> {
     pub issue: &'a Issue,
-    /// The `pr_discovery` read's value.
     pub pr: Option<&'a PullRequest>,
-    /// An open pull request's checks.
     pub checks: Option<&'a [Check]>,
-    /// An open pull request's verdict: `Some(None)`, none.
     pub review: Option<Option<&'a Review>>,
-    /// A merged pull request's merge read back.
     pub on_base: Option<bool>,
-    /// Each blocker's `merged`.
     pub blockers_merged: &'a [bool],
 }
 
-/// The state table (`contracts/fleet.v1.md`, "Ticket states"), in its
-/// order: the first rule that matches wins. Known or unknown, with its
-/// reason.
 pub fn ticket_state(f: &StateFacts) -> State {
     let labelled = |name: &str| f.issue.labels.iter().any(|l| l.as_str() == name);
     let unknown = |why: &str| State::Unknown(NonEmpty::new(why).expect("a reason"));
-    // 1: a merge read back.
     if merged(f.pr, f.on_base) {
         return State::Known(TicketState::Merged);
     }
-    // 2
     if f.issue.state == IssueState::Closed {
         return unknown("closed on GitHub, and no merge was read back");
     }
-    // 3
     if labelled(HELD) {
         return State::Known(TicketState::Held);
     }
     if let Some(PullRequest::Open(pr)) = f.pr {
         let review = f.review.flatten();
-        // 4
         if review.is_some_and(|r| r.verdict == Verdict::Changes && r.commit == pr.head_commit) {
             return State::Known(TicketState::ChangesRequested);
         }
-        // 5
         if pr.draft || f.checks.is_none_or(|c| ci(c) != Ci::Passed) {
             return State::Known(TicketState::Building);
         }
-        // 6
         return State::Known(TicketState::InReview);
     }
     match f.pr {
         None => {
             let ready = labelled(READY_FOR_AGENT) || labelled(READY_FOR_HUMAN);
-            // 7
             if !ready {
                 return unknown("no pull request, and no ready label: not approved yet");
             }
-            // 8
             if f.blockers_merged.contains(&false) {
                 return State::Known(TicketState::Blocked);
             }
-            // 9
             if labelled(READY_FOR_AGENT) {
                 return State::Known(TicketState::Ready);
             }
-            // 10
             unknown("ready for a person, and every blocker merged: no state for it")
         }
-        // 10
         Some(PullRequest::Several { .. }) => {
             unknown("several open pull requests close it: none of them is its")
         }
@@ -498,10 +360,6 @@ pub fn ticket_state(f: &StateFacts) -> State {
     }
 }
 
-// ---------------------------------------------------------------------
-// The walk: every read, in the order of `reads`.
-
-/// One read's identity: its kind and subject. One record per key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Key {
     Version,
@@ -516,7 +374,6 @@ enum Key {
     MergeReadback(Number),
 }
 
-/// A per-pull-request read, made after the walk.
 enum Job {
     Checks(Number),
     Comments(Number),
@@ -530,26 +387,20 @@ struct Walk<'a> {
     snapshot: Timestamp,
     reads: Vec<Read>,
     ids: HashMap<Key, ReadId>,
-    /// Each job's record, by index into `reads`.
     jobs: Vec<(usize, Job)>,
     issues: Option<Result<Issues, Failed>>,
     prs: Option<Result<Listed<PrRow>, Failed>>,
 }
 
-/// The issue list, by number.
 struct Issues {
     rows: Vec<IssueRow>,
     by_number: HashMap<Number, usize>,
     cut_short: bool,
 }
 
-/// What a link is, against the issue list.
 enum Whose {
-    /// This repository's issue: the list holds it, with the same id.
     Ours,
-    /// The list is cut short and doesn't hold it, so it can't be told.
     Unknown,
-    /// Not this repository's issue.
     Foreign,
 }
 
@@ -593,7 +444,6 @@ impl Walk<'_> {
         self.run_jobs();
     }
 
-    /// One sequential call, unless the budget has run out.
     fn call<T>(
         &self,
         f: impl FnOnce(&dyn FleetsSource, Instant) -> Result<T, Failed>,
@@ -615,7 +465,6 @@ impl Walk<'_> {
         self.ids.contains_key(&key)
     }
 
-    /// The `spec_list` record, and the specs it lists.
     fn spec_list(&mut self, issues: &Result<Issues, Failed>) -> Vec<Number> {
         let (outcome, specs) = match issues {
             Err(f) => (ListOutcome::Failed(f.clone()), Vec::new()),
@@ -679,7 +528,6 @@ impl Walk<'_> {
         self.pr_records(link, false);
     }
 
-    /// The issue list's row for `number`, or why it can't be had.
     fn row(&self, number: Number) -> Result<&IssueRow, Failed> {
         let list = match self.issues.as_ref().expect("the issue list is read first") {
             Ok(list) => list,
@@ -727,8 +575,6 @@ impl Walk<'_> {
         );
     }
 
-    /// The `sub_issues` (`Key::SubIssues`) or `blocked_by` record of
-    /// `owner`'s row, and the links it lists.
     fn links_record(&mut self, key: Key, owner: Number) -> Vec<Link> {
         let (what, whats) = match key {
             Key::SubIssues(_) => ("sub-issue", "sub-issues"),
@@ -769,8 +615,6 @@ impl Walk<'_> {
         listed
     }
 
-    /// The links, ascending, and a reason when GitHub listed fewer than
-    /// its total; or why they can't be taken.
     fn check_links(
         &self,
         owner: Number,
@@ -797,9 +641,6 @@ impl Walk<'_> {
                 "GitHub listed more of #{owner}'s {whats} than its own total"
             )));
         }
-        // A link the list can't tell to be this repository's issue fails
-        // the read: another repository's, or one a cut-short list doesn't
-        // hold.
         for l in &nodes {
             let n = l.number;
             match self.whose(l) {
@@ -834,7 +675,6 @@ impl Walk<'_> {
         Ok((nodes, cut))
     }
 
-    /// The links a `sub_issues` or `blocked_by` record lists.
     fn listed_links(&self, key: Key, owner: Number) -> Vec<Link> {
         let Some(id) = self.ids.get(&key) else {
             return Vec::new();
@@ -856,9 +696,6 @@ impl Walk<'_> {
             .collect()
     }
 
-    /// The issue's `pr_discovery` record, and the reads its pull request
-    /// needs: a ticket's open one its checks and comments, and any merged
-    /// one its merge read back.
     fn pr_records(&mut self, link: &Link, ticket: bool) {
         if !self.has(Key::PrDiscovery(link.number)) {
             let pr = self.discover(link);
@@ -892,8 +729,6 @@ impl Walk<'_> {
         }
     }
 
-    /// A per-pull-request record, read after the walk; until then (and if
-    /// the budget runs out first), not read.
     fn job(&mut self, key: Key, job: Job) {
         if self.has(key) {
             return;
@@ -917,9 +752,6 @@ impl Walk<'_> {
         self.jobs.push((self.reads.len() - 1, job));
     }
 
-    /// `pr_discovery`: the merged pull request that closes the issue, or
-    /// else its one open one, or several open ones, or none. The pull
-    /// request list is read once, when an issue first needs it.
     fn discover(&mut self, link: &Link) -> Result<Option<PullRequest>, Failed> {
         if self.prs.is_none() {
             self.prs = Some(self.call(|s, d| s.pull_requests(d)).and_then(unique_prs));
@@ -998,8 +830,6 @@ impl Walk<'_> {
         }
     }
 
-    /// A pull request's fields, with what it closes, ascending: only when
-    /// each closing reference is this repository's issue, once.
     fn pr_fields(&self, f: &PrFacts, link: &Link) -> Result<PrFields, Failed> {
         let p = f.number;
         let mut closes: Vec<Number> = Vec::new();
@@ -1032,9 +862,6 @@ impl Walk<'_> {
         })
     }
 
-    /// Runs the per-pull-request reads, at most
-    /// [`MAX_CONCURRENT_DETAIL_READS`] at once; none starts after the
-    /// deadline, and each one not read stays recorded as not read.
     fn run_jobs(&mut self) {
         enum Task {
             One(usize, Job),
@@ -1153,7 +980,6 @@ fn read_job(source: &dyn FleetsSource, job: &Job, deadline: Instant) -> ReadKind
     }
 }
 
-/// Checks, each name once.
 fn unique_checks(pr: Number, checks: Vec<Check>) -> Result<Vec<Check>, Failed> {
     let names: BTreeSet<&str> = checks.iter().map(|c| c.name.as_str()).collect();
     if names.len() != checks.len() {
@@ -1165,8 +991,6 @@ fn unique_checks(pr: Number, checks: Vec<Check>) -> Result<Vec<Check>, Failed> {
     Ok(checks)
 }
 
-/// The pull request list, each number once, or it isn't taken at all: one
-/// pull request listed twice, alike or not, can't be one value (#297, R2).
 fn unique_prs(list: Listed<PrRow>) -> Result<Listed<PrRow>, Failed> {
     let mut numbers = BTreeSet::new();
     for row in &list.rows {
@@ -1184,8 +1008,6 @@ fn unique_prs(list: Listed<PrRow>) -> Result<Listed<PrRow>, Failed> {
     Ok(list)
 }
 
-/// The issue list, indexed: each number and each id once, or it isn't
-/// taken at all.
 fn index_issues(list: Listed<IssueRow>) -> Result<Issues, Failed> {
     let mut by_number = HashMap::new();
     let mut ids = BTreeSet::new();
@@ -1204,7 +1026,6 @@ fn index_issues(list: Listed<IssueRow>) -> Result<Issues, Failed> {
     })
 }
 
-/// An issue record's value: its fields, each label once.
 fn issue_of(row: &IssueRow) -> Result<Issue, Failed> {
     let labels: BTreeSet<&str> = row.labels.iter().map(NonEmpty::as_str).collect();
     if labels.len() != row.labels.len() {
@@ -1224,7 +1045,6 @@ fn issue_of(row: &IssueRow) -> Result<Issue, Failed> {
     })
 }
 
-/// What a list outcome lists: its value, complete or partial.
 fn listed<T>(outcome: &ListOutcome<T>) -> &[T] {
     match outcome {
         ListOutcome::Complete { value } | ListOutcome::Partial { value, .. } => value,
@@ -1232,7 +1052,6 @@ fn listed<T>(outcome: &ListOutcome<T>) -> &[T] {
     }
 }
 
-/// Whether a read is complete: its outcome neither partial nor failed.
 pub fn is_complete(kind: &ReadKind) -> bool {
     fn done<T>(o: &Outcome<T>) -> bool {
         matches!(o, Outcome::Complete { .. })
@@ -1256,9 +1075,6 @@ pub fn is_complete(kind: &ReadKind) -> bool {
     }
 }
 
-// ---------------------------------------------------------------------
-// The view: pointers, and values worked out by the dependency table.
-
 impl Walk<'_> {
     fn id(&self, key: Key) -> ReadId {
         self.ids[&key]
@@ -1268,13 +1084,10 @@ impl Walk<'_> {
         self.ids.get(&key).map(|id| &self.read(*id).kind)
     }
 
-    /// A worked-out value: known exactly when every read in `requires` is
-    /// complete; otherwise the incomplete ones, in the order of `reads`.
     fn worked<T>(&self, requires: &BTreeSet<ReadId>, known: impl FnOnce() -> T) -> WorkedOut<T> {
         worked(&self.reads, requires, known)
     }
 
-    /// The `pr_discovery` value, when complete.
     fn pr(&self, issue: Number) -> Option<Option<&PullRequest>> {
         match self.get(Key::PrDiscovery(issue))? {
             ReadKind::PrDiscovery {
@@ -1285,9 +1098,6 @@ impl Walk<'_> {
         }
     }
 
-    /// The pointers of a `pr_discovery` read's pull request: `ci` and
-    /// `review` for an open one (a ticket's only), `on_base` for a merged
-    /// one.
     fn pr_pointers(&self, issue: Number) -> (Option<ReadId>, Option<ReadId>, Option<ReadId>) {
         match self.pr(issue) {
             Some(Some(PullRequest::Open(f))) => (
@@ -1304,16 +1114,12 @@ impl Walk<'_> {
         }
     }
 
-    /// `blocker.merged`'s reads: its `pr_discovery`, and its merged pull
-    /// request's merge read back.
     fn merged_requires(&self, blocker: Number) -> BTreeSet<ReadId> {
         let mut r = BTreeSet::from([self.id(Key::PrDiscovery(blocker))]);
         r.extend(self.pr_pointers(blocker).2);
         r
     }
 
-    /// `blocker.merged`, from complete reads: merged and read back on its
-    /// base.
     fn merged_known(&self, blocker: Number) -> bool {
         merged(self.pr(blocker).flatten(), self.on_base(blocker))
     }
@@ -1345,8 +1151,6 @@ impl Walk<'_> {
         }
     }
 
-    /// `ticket.state`'s reads: the ticket's own, its pull request's, and
-    /// each of its blockers' `merged`.
     fn state_requires(&self, ticket: Number) -> BTreeSet<ReadId> {
         let mut r = BTreeSet::from([
             self.id(Key::Issue(ticket)),
@@ -1410,7 +1214,6 @@ impl Walk<'_> {
         }
     }
 
-    /// `specs` and every fleet's `fleet.tickets`.
     fn fleet_lists_requires(&self) -> BTreeSet<ReadId> {
         let mut r = BTreeSet::from([self.id(Key::SpecList)]);
         r.extend(self.specs().into_iter().map(|s| self.id(Key::SubIssues(s))));
@@ -1626,7 +1429,6 @@ mod tests {
                 ],
                 Ok(Some(changes.clone())),
             ),
-            // The latest one is malformed: never an older one instead.
             (
                 vec![
                     body(&format!("VERDICT: APPROVE at {c}")),

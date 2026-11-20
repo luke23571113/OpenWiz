@@ -1,0 +1,101 @@
+{
+ "pr": {
+  "body": "Closes #7",
+  "baseRefOid": "0000000000000000000000000000000000000000",
+  "closingIssuesReferences": {
+   "nodes": [
+    {
+     "number": 7,
+     "repository": {
+      "nameWithOwner": "example/project"
+     }
+    }
+   ]
+  },
+  "files": [
+   {
+    "pageInfo": {
+     "hasNextPage": false,
+     "endCursor": null
+    },
+    "nodes": [
+     {
+      "path": "crates/core/src/widget.rs"
+     },
+     {
+      "path": "crates/core/src/widget/tests.rs"
+     },
+     {
+      "path": "crates/core/src/widget_tests.rs"
+     },
+     {
+      "path": "tools/install/harness.py"
+     },
+     {
+      "path": "tools/install/harness_test.py"
+     },
+     {
+      "path": "tools/install/setup/init.test.mjs"
+     },
+     {
+      "path": "tools/install/setup/init.test.tsx"
+     },
+     {
+      "path": "tools/install/setup/setup.test.ts"
+     },
+     {
+      "path": "tools/install/test/harness/fake.json"
+     },
+     {
+      "path": "tools/install/test_install.py"
+     },
+     {
+      "path": "tools/install/tests/test_harness_skills.py"
+     },
+     {
+      "path": "tools/release/test_release.py"
+     }
+    ]
+   }
+  ],
+  "comments": {
+   "pageInfo": {
+    "hasNextPage": false,
+    "endCursor": null
+   },
+   "nodes": []
+  }
+ },
+ "issues": {
+  "7": {
+   "__typename": "Issue",
+   "body": "## What to build\n\nSynthetic ticket.\n\n## Owned paths\n\n- `tools/install/harness.py` and its tests (shared: the staging only)\n- `tools/install/setup/init.py`, plus its tests\n- `crates/core/src/widget.rs and its tests` (the wording inside the backticks)\n- `tools/plain/run.py` (no tests named)\n- `tools/release/test.py` and its tests in `example/project` (shared: the runner)\n- `tools/excluded/run.py` and its tests are excluded from this change\n\n**Relies on:** nothing\n",
+   "comments": {
+    "pageInfo": {
+     "hasNextPage": false,
+     "endCursor": null
+    },
+    "nodes": []
+   }
+  }
+ },
+ "exit": 0,
+ "out": [
+  "owned: crates/core/src/widget.rs (by `crates/core/src/widget.rs`)",
+  "owned: crates/core/src/widget/tests.rs (tests of `crates/core/src/widget.rs`)",
+  "owned: crates/core/src/widget_tests.rs (tests of `crates/core/src/widget.rs`)",
+  "owned: tools/install/harness.py (by `tools/install/harness.py`)",
+  "owned: tools/install/harness_test.py (tests of `tools/install/harness.py`)",
+  "owned: tools/install/setup/init.test.mjs (tests of `tools/install/setup/init.py`)",
+  "owned: tools/install/setup/init.test.tsx (tests of `tools/install/setup/init.py`)",
+  "owned: tools/install/setup/setup.test.ts (tests of `tools/install/setup/init.py`)",
+  "owned: tools/install/test/harness/fake.json (tests of `tools/install/harness.py`)",
+  "owned: tools/install/test_install.py (tests of `tools/install/harness.py`)",
+  "owned: tools/install/tests/test_harness_skills.py (tests of `tools/install/harness.py`)",
+  "owned: tools/release/test_release.py (tests of `tools/release/test.py`)",
+  "owned-paths: ok"
+ ],
+ "absent": [
+  "OUT:"
+ ]
+}

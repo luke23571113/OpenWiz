@@ -1,31 +1,3 @@
-//! The start record on disk (OpenWiz 0.0.6 spec 2, B4, ClosedWiz#120): one
-//! record per start (a ticket's builder, or a reviewer for one pull request
-//! at one head commit), in the command's state directory, through the
-//! [`Store`] code: the directory
-//! checks, the lock files and the atomic, synced writes.
-//!
-//! Layout, under the state directory (0700):
-//!
-//! - `starts/` (0700);
-//! - `starts/<start id>.json` (0600): the record, replaced atomically. The
-//!   id is [`StartKey::id`]: a hash of the start's key, so a repository's
-//!   name never reaches a file name;
-//! - `starts/<start id>.lock` (0600): the start's lock. A tick holds it from
-//!   reading the record until it has recorded what came of its one call, so
-//!   two ticks never start one agent twice. The operating system lets go of
-//!   it when the tick stops.
-//!
-//! Unlike `send`'s and `new_thread`'s claims, the lock is taken again by
-//! every tick, and the record keeps changing: one attempt after another.
-//! A tick that stopped leaves its last attempt pending; nothing here
-//! recovers it, because only `new_thread`'s status read can say what came of
-//! it, and the core reads that before anything else
-//! ([`start_agent`](openwiz_core::fleet::starts::start_agent)).
-//!
-//! A record is read back strictly, by hand ([`read`]): never serde's derived
-//! readers. A record that isn't exactly its shape, or doesn't agree with
-//! itself, is refused, and nothing is started from it.
-
 use std::fs::TryLockError;
 
 use openwiz_core::fleet::model::{Commit, Number};
@@ -42,7 +14,6 @@ use serde_json::{Map, Value};
 
 use super::{Area, Kind, Store, io_error};
 
-/// The start record (OpenWiz 0.0.6, ClosedWiz#120): `starts/`.
 #[derive(Debug)]
 pub struct Starts;
 
@@ -51,10 +22,6 @@ impl Area for Starts {
     const WHAT: &'static str = "start record";
 }
 
-/// Only the record's reading, writing and file name are the store's
-/// [`Kind`] here. A start record is never claimed or recovered through the
-/// store's claims (see the module documentation), so it is always
-/// "finished" to them, never "claimed", and recovering one changes nothing.
 impl Kind for Starts {
     type Record = StartRecord;
 
@@ -83,7 +50,6 @@ impl Kind for Starts {
     }
 }
 
-/// The file-backed start record.
 pub type StartFileStore = Store<Starts>;
 
 impl StartStore for Store<Starts> {
@@ -99,8 +65,6 @@ impl StartStore for Store<Starts> {
             }
         }
         let lock = super::ClaimLock(lock);
-        // Under the lock: the record as it is now, never as it was read
-        // before.
         let record = self.record(&id)?;
         if let Some(r) = &record
             && r.key() != key
@@ -140,12 +104,6 @@ impl StartStore for Store<Starts> {
     }
 }
 
-/// Reads a start record's text, strictly: JSON with no key given twice and
-/// no fractional number ([`StrictJson`]); every object with exactly its
-/// keys, each of its own type; each label a string from its list; each
-/// outcome exactly its kind's keys; then the core's own checks
-/// ([`StartRecord::from_parts`]). Why not, in OpenWiz's words, with the path
-/// of what was refused, never the record's content.
 pub fn read(text: &str) -> Result<StartRecord, String> {
     serde_json::from_str::<StrictJson>(text)
         .map_err(|_| "not JSON, or a key given twice".to_owned())?;
@@ -172,8 +130,6 @@ pub fn read(text: &str) -> Result<StartRecord, String> {
 
 const RECORD_KEYS: [&str; 6] = ["schema", "id", "key", "project_id", "settings", "attempts"];
 
-/// `value` as an object with exactly `keys` (each once: the text was read
-/// with no key twice).
 fn exact<'a>(
     value: &'a Value,
     path: &str,
@@ -204,7 +160,6 @@ fn read_key(value: &Value) -> Result<StartKey, String> {
     let written = string(map, path, "repository")?;
     let repository =
         Repository::parse(&written).map_err(|_| format!("{path}.repository: not owner/name"))?;
-    // Only as the store writes it: in lower case (review R2).
     if repository.as_str() != written {
         return Err(format!("{path}.repository: not in lower case"));
     }
@@ -299,7 +254,6 @@ mod tests {
 
     use super::*;
 
-    /// A builder's record, its one attempt pending, by hand; synthetic.
     fn good() -> Value {
         let key = StartKey::builder(
             Repository::parse("synthetic-owner/synthetic-repo").unwrap(),

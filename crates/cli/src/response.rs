@@ -1,5 +1,3 @@
-//! Process response boundary: select JSON from syntax, preserve existing reports,
-//! and supply a declared error only when the command attempted no stdout write.
 use std::ffi::OsStr;
 use std::io::{self, Write};
 
@@ -25,7 +23,6 @@ impl Request {
         while index < args.len() {
             let bytes = args[index].as_ref().as_encoded_bytes();
             index += 1;
-            // Loop's target is a positional value, even when named --json.
             if command == "loop"
                 && index == 2
                 && args
@@ -49,8 +46,6 @@ impl Request {
                 }
                 continue;
             }
-            // Only an exact ASCII option token selects a switch. Unknown or
-            // malformed options do not stop scanning for a later genuine one.
             match bytes {
                 b"--json" => json = true,
                 b"--dry-run" => dry_run = true,
@@ -108,8 +103,6 @@ impl Write for Output<'_> {
     }
 }
 
-/// This boundary streams existing documents unchanged. Even a failed first
-/// write counts as an attempt: never append an error to a broken document.
 pub fn run(
     request: &Request,
     stdout: &mut dyn Write,
