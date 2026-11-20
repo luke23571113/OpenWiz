@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openwiz:schema:models:v1",
+  "title": "openwiz.models.v1",
+  "description": "Stub: every definition takes any object until the contract's shapes are written.",
+  "oneOf": [{"$ref": "#/$defs/show_report"}],
+  "$defs": {
+    "show_report": {"type": "object"},
+    "list_report": {"type": "object"},
+    "set_report": {"type": "object"},
+    "snapshot": {"type": "object"},
+    "handoff_fixture": {"type": "object"}
+  }
+}
