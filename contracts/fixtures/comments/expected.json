@@ -1,0 +1,22 @@
+{
+  "cases": {
+    "rust.rs": {"comment_lines": 14, "failures": [[18, "comment"], [20, "comment"], [23, "comment"], [28, "comment"], [34, "escape-tag-reason"], [37, "external-link"], [40, "comment"]], "docs": [23]},
+    "python.py": {"comment_lines": 8, "failures": [[4, "comment"], [14, "comment"], [15, "comment"], [17, "comment"], [26, "directive-reason"]], "docs": [4, 14]},
+    "shell.sh": {"comment_lines": 6, "failures": [[5, "comment"], [6, "comment"], [13, "directive-reason"]], "docs": []},
+    "yaml.yml": {"comment_lines": 5, "failures": [[6, "comment"], [8, "comment"], [12, "comment"]], "docs": []},
+    "toml.toml": {"comment_lines": 4, "failures": [[3, "comment"], [8, "comment"]], "docs": []},
+    "javascript.js": {"comment_lines": 9, "failures": [[2, "comment"], [4, "comment"], [6, "comment"], [14, "directive-reason"]], "docs": [6]},
+    "css.css": {"comment_lines": 4, "failures": [[3, "comment"], [6, "comment"]], "docs": []},
+    "html.html": {"comment_lines": 6, "failures": [[6, "comment"], [11, "comment"], [12, "comment"], [15, "comment"]], "docs": []}
+  },
+  "tree": {
+    "files": 3,
+    "comment_lines": 7,
+    "disallowed_lines": 7,
+    "languages": {
+      "python": {"files": 1, "comment_lines": 2},
+      "rust": {"files": 1, "comment_lines": 3},
+      "shell": {"files": 1, "comment_lines": 2}
+    }
+  }
+}
