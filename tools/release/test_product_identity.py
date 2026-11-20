@@ -306,11 +306,17 @@ class CandidateSourceInstall(_wizskills_fixture().Fixture):
         finally:
             os.environ.clear()
             os.environ.update(saved)
-        skills = {'skills/alpha/SKILL.md': (install / 'skills/alpha/SKILL.md').read_bytes(),
-                  'skills/alpha/scripts/run.sh': (install / 'skills/alpha/scripts/run.sh').read_bytes()}
+        # #2014: the release's contracts/ are carried beside its skills, checked against the lock alike.
+        skills = {path: (install / path).read_bytes() for path in
+                  ['skills/alpha/SKILL.md', 'skills/alpha/scripts/run.sh',
+                   *(p.relative_to(install).as_posix() for p in (install / 'contracts').iterdir())]}
         rl4.verify_runtime(bare, commit, skills, install)
-        with self.assertRaises(rl4.Refused):
-            rl4.verify_runtime(bare, commit, {**skills, 'skills/alpha/SKILL.md': b'Edited.\n'}, install)
+        # catches: a packaged contract that differs from, or is missing against, the locked release (#2014).
+        for changed in ({**skills, 'skills/alpha/SKILL.md': b'Edited.\n'},
+                        {**skills, 'contracts/cli.v1.md': b'Edited.\n'},
+                        {p: d for p, d in skills.items() if p != 'contracts/cli.v1.md'}):
+            with self.assertRaises(rl4.Refused):
+                rl4.verify_runtime(bare, commit, changed, install)
 
 
 class CompiledProductIdentity(Repository):
