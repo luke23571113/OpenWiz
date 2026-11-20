@@ -11,6 +11,7 @@
 
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs};
 use openwiz_core::limits::READ_TIMEOUT;
@@ -214,8 +215,10 @@ fn run_form(
         }
     };
     let form = args[0].as_str();
-    let fleet = std::fs::read_to_string(root.join(FLEET_FILE))
-        .map_err(|e| format!("cannot read {FLEET_FILE}: {e}"));
+    let fleet = || {
+        std::fs::read_to_string(root.join(FLEET_FILE))
+            .map_err(|e| format!("cannot read {FLEET_FILE}: {e}"))
+    };
     let read_options = || {
         cloud_options(
             client.catalogue(clock.monotonic() + READ_TIMEOUT),
@@ -231,7 +234,7 @@ fn run_form(
             );
             return emit(stdout, stderr, (EXIT_OK, text));
         }
-        Parsed::Show => fleet.and_then(|text| read_fleet(&text)).map(|show| {
+        Parsed::Show => fleet().and_then(|text| read_fleet(&text)).map(|show| {
             let out = if json {
                 document(&show)
             } else {
@@ -241,7 +244,7 @@ fn run_form(
         }),
         Parsed::List { save } => {
             let options = read_options();
-            let current = fleet.ok().and_then(|text| read_fleet(&text).ok());
+            let current = fleet().ok().and_then(|text| read_fleet(&text).ok());
             let snapshot = snapshot(&options, current.as_ref());
             let offered = matches!(options.state, OptionsState::Offered);
             let saved = save && offered;
@@ -268,9 +271,12 @@ fn run_form(
                 (code, out)
             })
         }
-        Parsed::Set { role, asked } => {
-            fleet.and_then(|text| run_set(&text, role, asked, root, json, &read_options))
-        }
+        // One setter at a time: the lock is held from before fleet.md is
+        // read until the last write (R2).
+        Parsed::Set { role, asked } => confined(root).and_then(|()| {
+            let _held = lock(root)?;
+            run_set(&fleet()?, role, asked, root, json, &read_options)
+        }),
     };
     match outcome {
         Ok(printed) => emit(stdout, stderr, printed),
@@ -370,6 +376,17 @@ fn run_set(
         }
     };
     let result = set(text, role, &chosen, &spawn_flags()?)?;
+    // Only setters take the lock: anything else that edited fleet.md while
+    // this read CloudRoom wins, and nothing is written (R2).
+    if std::fs::read_to_string(root.join(FLEET_FILE))
+        .ok()
+        .as_deref()
+        != Some(text)
+    {
+        return Err(format!(
+            "{FLEET_FILE} changed while set ran, so nothing was written; run it again"
+        ));
+    }
     let mut files = Vec::new();
     // The snapshot first: if fleet.md then fails, only the offered list moved.
     if let Some(options) = &options {
@@ -597,16 +614,65 @@ fn document(value: &impl serde::Serialize) -> String {
     out
 }
 
-/// Writes a project file whole: a temporary file beside it, then renamed.
+/// `docs` and `docs/agents` are directories of the checkout itself, never
+/// links out of it: nothing is read for a write or written otherwise (R1).
+fn confined(root: &Path) -> Result<(), String> {
+    for dir in ["docs", "docs/agents"] {
+        match std::fs::symlink_metadata(root.join(dir)) {
+            Ok(meta) if meta.is_dir() => {}
+            _ => {
+                return Err(format!(
+                    "{dir} is not a directory of this checkout (missing or a link); nothing was written"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Holds `docs/agents` locked for one `set`, so setters run one at a time;
+/// released when the returned handle is dropped. It creates no file.
+fn lock(root: &Path) -> Result<std::fs::File, String> {
+    let dir = std::fs::File::open(root.join("docs/agents"))
+        .map_err(|e| format!("cannot open docs/agents: {e}"))?;
+    dir.lock()
+        .map_err(|e| format!("cannot lock docs/agents: {e}"))?;
+    Ok(dir)
+}
+
+/// Writes a project file whole, inside the checkout (R1): the bytes go to a
+/// fresh file created exclusively beside it (never one already there, link
+/// or not), which is then renamed over the target. On a failure only that
+/// fresh file is removed; a target that is not a regular file is refused.
 fn put(root: &Path, rel: &str, text: &str) -> Result<(), String> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    confined(root)?;
+    let fail = |e: std::io::Error| format!("cannot write {rel}: {e}");
     let path = root.join(rel);
-    let temporary = root.join(format!("{rel}.openwiz-writing"));
-    std::fs::write(&temporary, text)
-        .and_then(|()| std::fs::rename(&temporary, &path))
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&temporary);
-            format!("cannot write {rel}: {e}")
+    let existing = std::fs::symlink_metadata(&path).ok();
+    if existing.as_ref().is_some_and(|meta| !meta.is_file()) {
+        return Err(format!("cannot write {rel}: it is not a regular file"));
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let temporary = path.with_file_name(format!(".{name}.openwiz-{}-{n}", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(fail)?;
+    let written = file
+        .write_all(text.as_bytes())
+        .and_then(|()| file.sync_all())
+        .and_then(|()| match existing {
+            Some(meta) => std::fs::set_permissions(&temporary, meta.permissions()),
+            None => Ok(()),
         })
+        .and_then(|()| std::fs::rename(&temporary, &path));
+    written.map_err(|e| {
+        let _ = std::fs::remove_file(&temporary);
+        fail(e)
+    })
 }
 
 fn emit(stdout: &mut dyn Write, stderr: &mut dyn Write, (code, text): (i32, String)) -> i32 {

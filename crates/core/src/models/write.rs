@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use super::{
     Choice, MODELS_HEADER, OLDER, OLDER_ROWS, Older, Role, RoleRead, Show, SpawnFlags, Warning,
-    parse, resolve, section,
+    older_form, parse, resolve, section,
 };
 
 /// What `set` was asked: a choice (already checked against the offered
@@ -117,16 +117,14 @@ pub fn set(text: &str, role: Role, asked: &Asked, f: &SpawnFlags) -> Result<Set,
     }
     let mut text = lines.concat();
     // The older rows, rewritten to what the Models table now resolves to,
-    // except one that waits or whose model id holds a `/` (ruling 14).
+    // except one that waits or whose ids today's older readers refuse (a
+    // `/`, an upper-case letter: ruling 14 and R4).
     let p2 = parse(&text, f)?;
     if let Some(older) = &p2.older {
         let want = resolve(&p2).older_rows();
         let have = older.rows();
         for (i, c) in want.iter().enumerate() {
-            let Some(c) = c
-                .as_ref()
-                .filter(|c| !c.model.contains('/') && **c != have[i])
-            else {
+            let Some(c) = c.as_ref().filter(|c| older_form(c) && **c != have[i]) else {
                 continue;
             };
             if i < 4 {

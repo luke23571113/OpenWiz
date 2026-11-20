@@ -180,6 +180,19 @@ pub struct SpawnFlags {
     pub effort: String,
 }
 
+/// Whether today's older-table readers take this choice's ids (the fleet
+/// tick's `Rules::parse`): each at most 128 bytes of lower-case letters,
+/// digits, `.`, `_` or `-`, starting with a letter or digit. `set` writes an
+/// older row only then; otherwise the row is kept and named.
+pub fn older_form(c: &Choice) -> bool {
+    [&c.provider, &c.model, &c.effort].iter().all(|id| {
+        let lower = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit();
+        id.len() <= 128
+            && id.bytes().next().is_some_and(lower)
+            && id.bytes().all(|b| lower(b) || b"._-".contains(&b))
+    })
+}
+
 /// A provider or effort id: letters, digits, `.`, `_` or `-`.
 pub fn is_id(word: &str) -> bool {
     !word.is_empty()
@@ -459,15 +472,46 @@ struct Older {
     fixers: [(Choice, usize); 2],
 }
 
-fn setting_table(
+/// The body rows of a section's one table, each with its line: exactly one
+/// table in the section, every row as wide as `header`, the header exactly
+/// `header`, then the separator. As strict as the fleet tick's reader of the
+/// older tables, so `set` never migrates or rewrites one it would refuse.
+fn one_table(
     lines: &[&str],
     (from, to): (usize, usize),
+    header: &[&str],
+) -> Result<Vec<(usize, Vec<String>)>, String> {
+    let at: Vec<usize> = (from + 1..to)
+        .filter(|&i| lines[i].starts_with('|'))
+        .collect();
+    if at.is_empty() || at[at.len() - 1] - at[0] + 1 != at.len() {
+        return Err(format!("not exactly one {} table", header[0]));
+    }
+    let rows: Vec<(usize, Vec<String>)> = at
+        .iter()
+        .map(|&i| cells(lines[i]).map(|c| (i, c)).ok_or("not a table row"))
+        .collect::<Result<_, _>>()?;
+    let separator = vec!["---"; header.len()];
+    if rows.len() < 2
+        || rows[0].1 != header
+        || rows[1].1 != separator
+        || rows.iter().any(|(_, r)| r.len() != header.len())
+    {
+        return Err(format!("bad {} table header", header[0]));
+    }
+    Ok(rows[2..].to_vec())
+}
+
+fn setting_table(
+    lines: &[&str],
+    range: (usize, usize),
     f: &SpawnFlags,
 ) -> Result<(Choice, [usize; 3]), String> {
-    let rows: Vec<(usize, Vec<String>)> = (from + 1..to)
-        .filter(|&i| lines[i].starts_with('|'))
-        .map(|i| cells(lines[i]).map(|c| (i, c)).ok_or("not a table row"))
-        .collect::<Result<_, _>>()?;
+    let header = ["Setting", "Value", "`room-cli thread spawn` flag"];
+    let rows = one_table(lines, range, &header)?;
+    if rows.len() != 3 {
+        return Err("an older table without exactly three rows".into());
+    }
     let mut names = Vec::new();
     let mut ids = Vec::new();
     let mut at = [0; 3];
@@ -480,18 +524,14 @@ fn setting_table(
     .into_iter()
     .enumerate()
     {
-        let (line, row) = rows.get(i + 2).ok_or("a short table")?;
+        let (line, row) = &rows[i];
         let value = row
             .get(2)
             .and_then(|c| c.strip_prefix('`'))
             .and_then(|c| c.strip_prefix(flag.as_str()))
             .and_then(|c| c.strip_prefix(' '))
             .and_then(|c| c.strip_suffix('`'))
-            .filter(|v| {
-                row.len() == 3
-                    && row[0] == setting
-                    && (if i == 1 { is_model_id(v) } else { is_id(v) })
-            })
+            .filter(|v| row[0] == setting && (if i == 1 { is_model_id(v) } else { is_id(v) }))
             .ok_or_else(|| format!("bad {setting} row"))?;
         names.push(row[1].as_str());
         ids.push(value);
@@ -509,14 +549,25 @@ fn older_tables(lines: &[&str], f: &SpawnFlags) -> Result<Older, String> {
         let range = section(lines, name)?.ok_or_else(|| format!("no ## {name}"))?;
         tables.push(setting_table(lines, range, f)?);
     }
-    let (from, to) = section(lines, "Fixer")?.ok_or("no ## Fixer")?;
+    let range = section(lines, "Fixer")?.ok_or("no ## Fixer")?;
+    let header = MODELS_HEADER.map(|h| if h == "Role" { "Builder family" } else { h });
+    let rows = one_table(lines, range, &header)?;
     let mut fixers = Vec::new();
     for family in Family::BOTH {
-        let (at, row) = (from + 1..to)
-            .filter_map(|i| cells(lines[i]).map(|c| (i, c)))
-            .find(|(_, r)| r.len() == 5 && r[0] == family.shown())
-            .ok_or_else(|| format!("no Fixer row {}", family.shown()))?;
-        fixers.push((choice([&row[1], &row[2], &row[3]], flags(&row[4], f)?)?, at));
+        let mine: Vec<_> = rows
+            .iter()
+            .filter(|(_, r)| r[0] == family.shown())
+            .collect();
+        let [(at, row)] = mine[..] else {
+            return Err(format!("not exactly one Fixer row {}", family.shown()));
+        };
+        fixers.push((
+            choice([&row[1], &row[2], &row[3]], flags(&row[4], f)?)?,
+            *at,
+        ));
+    }
+    if rows.len() != 2 {
+        return Err("a Fixer table without exactly its Claude and GPT rows".into());
     }
     if tables[0].0.family.is_none() {
         return Err("older Builder of no known family".into());

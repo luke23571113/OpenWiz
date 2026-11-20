@@ -516,10 +516,11 @@ fn set_never_loses_an_edit_made_while_it_reads_cloudroom() {
     assert_eq!((code, out.as_str()), (1, ""), "{err}");
     assert_eq!(fs::read_to_string(&fleet).unwrap(), edited);
     assert!(!fake.0.0.join(SNAPSHOT).exists(), "wrote a snapshot");
+    let fake = project("overridden/fleet.md", catalogue());
     let other = std::sync::Mutex::new(None::<Child>);
     let (code, _, err) = run_during(
         &fake,
-        &["set", "orchestrator", "codex", "gpt-6.2-sol", "high"],
+        &["set", "orchestrator", "codex", "gpt-6.2-sol", "medium"],
         || {
             let mut child = fake.spawn(&["models", "set", "fixer", "follows-builder"]);
             // Long enough for an unserialized setter to finish; a serialized
@@ -535,7 +536,7 @@ fn set_never_loses_an_edit_made_while_it_reads_cloudroom() {
     let (_, out, _) = run(&fake, &["show", "--json"]);
     let show: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(
-        show["roles"]["orchestrator"]["choice"]["effort"], "high",
+        show["roles"]["orchestrator"]["choice"]["effort"], "medium",
         "{show}"
     );
     assert_eq!(show["roles"]["fixer"]["follows"], "builder", "{show}");
