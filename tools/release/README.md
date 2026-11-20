@@ -18,8 +18,8 @@ python3 -I tools/release/test_package.py
 ## `release check`
 
 ```sh
-python3 tools/release/release check VERSION --repo CHECKOUT --plan PLAN.json \
-  --literals PRIVATE_TERMS.txt --staging NEW_DIR --evidence NEW_DIR
+python3 tools/release/release check "$VERSION" --repo "$CHECKOUT" --plan "$PLAN" \
+  --literals "$PRIVATE_TERMS" --staging "$NEW_STAGING_DIR" --evidence "$NEW_EVIDENCE_DIR"
 ```
 
 - The checkout holds the approved `main` commit named by the plan's `public_base`, an ancestor of the release branch. The repository name comes from its single github.com `origin`.
@@ -70,16 +70,20 @@ For a combined release `entry` is a list, newest first, of `{version, spec, date
 Each subcommand reads one private state folder, records the outcome in its `record.json` and prints one JSON object: exit 0 `prepared`, `recorded`, `ready`, `published` or `complete`; exit 1 `blocked`, `incomplete`, `uncertain` or `refused`, with every reason. It never waits: run it again on the next event.
 
 ```sh
-release candidate notes VERSION --repo CLONE --entry entry.json --out NOTES
-release candidate prepare --state S --repo CLONE --body body.json --artifacts DIR --entry entry.json --classification risk.json
-release candidate decide --state S --changelog <pointer> | --ship <pointer> | --waiver <pointer>
-release candidate gate --state S --gate products --receipt r.json --inputs i.json --repo CLONE --artifacts DIR
-release candidate live --state S --kit KIT --smoke-state RUN --record <pointer>
-release candidate evaluate --state S --repo CLONE --artifacts DIR --literals TERMS
-release candidate publish --state S --repo CLONE --artifacts DIR --literals TERMS
-release candidate install --state S --receipt install.json
-release candidate status --state S
+RC="python3 tools/release/release candidate"
+$RC notes "$VERSION" --repo "$CLONE" --entry entry.json --out "$NOTES_DIR"
+$RC prepare --state "$STATE" --repo "$CLONE" --body body.json --artifacts "$ARTIFACTS" --entry entry.json --classification risk.json
+$RC decide --state "$STATE" --changelog "$CHANGELOG_POINTER"
+$RC decide --state "$STATE" --ship "$SHIP_POINTER"
+$RC gate --state "$STATE" --gate products --receipt r.json --inputs i.json --repo "$CLONE" --artifacts "$ARTIFACTS"
+$RC live --state "$STATE" --kit "$KIT" --smoke-state "$SMOKE_STATE" --record "$RECORD_POINTER"
+$RC evaluate --state "$STATE" --repo "$CLONE" --artifacts "$ARTIFACTS" --literals "$TERMS"
+$RC publish --state "$STATE" --repo "$CLONE" --artifacts "$ARTIFACTS" --literals "$TERMS"
+$RC install --state "$STATE" --receipt install.json
+$RC status --state "$STATE"
 ```
+
+Each pointer is the URL of the private-record comment holding that decision. A recorded waiver is read the same way, with `decide --state "$STATE" --waiver "$WAIVER_POINTER"`.
 
 - **Notes** come from `changes/` at the clone's head (or a curated `changes/notes/<name>.md` named with its hashes in `entry.json`); five lines a section, except J6's recorded counts for the combined 0.0.6–0.0.12 release. The output is a proposal.
 - **Prepare** seals the candidate body: public repository, fixed anchor, a commit on public `main` or on its protected `release-<version>` branch, versions in order and newer than every tag, exact notes and `CHANGELOG.md`, a complete product inventory and a risk classification. Preparing again saves only a changed entry or classification.

@@ -4,8 +4,10 @@
 
 ```sh
 python3 -I tools/live-smoke/test_smoke.py       # offline proofs; also test_kit.py, test_review.py, test_receipt.py
-python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz --fake target/debug/fake-room-cli [--case ready-preview|queued-send]
+python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz --fake target/debug/fake-room-cli
 ```
+
+`test_fixture.py` needs those two prebuilt fixture programs; `--case ready-preview` or `--case queued-send` runs one case.
 
 ## The standard sheet
 
@@ -51,7 +53,7 @@ Exit 0 with `evidence: live` and every claim `pass` is a live pass. 1 is a wrong
 ## Receipts
 
 ```sh
-python3 -I tools/live-smoke/receipt.py produce --kit KIT --state CHECKPOINT --candidate CANDIDATE --record <private-record pointer>
+python3 -I tools/live-smoke/receipt.py produce --kit KIT --state CHECKPOINT --candidate CANDIDATE --record "$RECORD_POINTER"   # the run's private-record comment URL
 python3 -I tools/live-smoke/receipt.py check --gate smoke --receipts receipts.json --candidate CANDIDATE --kit KIT --state CHECKPOINT
 ```
 

@@ -26,15 +26,15 @@ Fixtures prove the code offline; live collection, publication and the phone view
 | `assets/` | The headings font and its provenance | |
 
 ```sh
-python3 -I tools/war-room/gather.py --remote URL --repo OWNER/REPO --run-url RUN_URL --out NEW_DIR \
-  [--data-remote URL] [--pool LABEL ...] [--stage DIR] [--journeys journeys.json --cohort cohort.json] [--answer-time provider.json]
-python3 -I tools/war-room/main.py --at UTC --source-root DIR --selection FILE --history DIR --page FILE
-python3 -I tools/war-room/charts/build.py --history DIR --at UTC [--source-root DIR --selection FILE] --out DIR
-python3 -I tools/war-room/weekly.py --history DIR --at UTC [--changes FILE] [--format json|markdown]
-python3 -I tools/war-room/review_loops.py bench|check-report|compare|project ...
+python3 -I tools/war-room/gather.py --remote "$REMOTE" --repo "$OWNER_REPO" --run-url "$RUN_URL" --out "$NEW_DIR"
+python3 -I tools/war-room/main.py --at "$UTC" --source-root "$SOURCES" --selection "$SELECTION" --history "$HISTORY" --page "$PAGE"
+python3 -I tools/war-room/charts/build.py --history "$HISTORY" --at "$UTC" --out "$CHART_DIR"
+python3 -I tools/war-room/weekly.py --history "$HISTORY" --at "$UTC"
+python3 -I tools/war-room/review_loops.py check-report tools/war-room/fixtures/review-loops/report-ok.md
+python3 -I tools/war-room/review_loops.py --help        # bench, check-report, compare and project
 ```
 
-`--data-remote` reads the `board` branch from another repository (read-only, depth 1); `--repo` still names every `gh` read.
+`gather.py` also takes `--data-remote URL` (read the `board` branch from another repository, read-only, depth 1; `--repo` still names every `gh` read), `--pool LABEL` (repeatable), `--stage DIR`, `--journeys FILE` with `--cohort FILE`, and `--answer-time FILE`. `charts/build.py` also takes `--source-root` and `--selection`. `weekly.py` also takes `--changes FILE` and `--format json` or `markdown`.
 
 ## Publish
 
