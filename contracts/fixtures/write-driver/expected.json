@@ -28,6 +28,9 @@
       "lessons/live-shape-nested.json": {"result": "fail", "code": "shape-differs"},
       "lessons/live-shape-type.json": {"result": "fail", "code": "shape-differs"},
       "lessons/live-shape-text-differs.json": {"result": "fail", "code": "shape-differs"},
+      "lessons/live-shape-dotted-key.json": {"result": "fail", "code": "shape-differs"},
+      "lessons/live-shape-empty-object.json": {"result": "fail", "code": "shape-differs"},
+      "lessons/live-shape-empty-member.json": {"result": "fail", "code": "shape-differs"},
       "lessons/wake-after-turn-pass.json": {"result": "pass"},
       "lessons/wake-after-turn-still-running.json": {"result": "fail", "code": "turn-still-running"},
       "lessons/wake-after-turn-refused.json": {"result": "fail", "code": "not-woken"},
@@ -35,6 +38,7 @@
       "lessons/expired-login-pass.json": {"result": "pass"},
       "lessons/expired-login-silent-start.json": {"result": "fail", "code": "silent-start"},
       "lessons/expired-login-vague-next.json": {"result": "fail", "code": "no-sign-in-next"},
+      "lessons/expired-login-says-do-not-sign-in.json": {"result": "fail", "code": "no-sign-in-next"},
       "lessons/expired-login-left-running.json": {"result": "fail", "code": "left-running"},
       "lessons/invalid-unknown-lesson.json": {"result": "invalid", "code": "lesson-fields"},
       "lessons/invalid-repeated-key.json": {"result": "invalid", "code": "lesson-fields"},
@@ -47,6 +51,8 @@
       "asks/machine.txt": {"result": "valid", "kind": "cost-or-machine", "effect": "start a machine"},
       "asks/both.txt": {"result": "valid", "kind": "cost-or-machine", "effect": "cost money and start a machine"},
       "asks/sign-in.txt": {"result": "valid", "kind": "sign-in"},
+      "asks/sign-in-key-host.txt": {"result": "valid", "kind": "sign-in"},
+      "asks/machine-key-host.txt": {"result": "valid", "kind": "cost-or-machine", "effect": "start a machine"},
       "asks/invalid-no-effect.txt": {"result": "invalid", "code": "ask-form"},
       "asks/invalid-asks-for-key.txt": {"result": "invalid", "code": "credential"},
       "asks/invalid-tells-not-asks.txt": {"result": "invalid", "code": "ask-form"},
@@ -81,6 +87,11 @@
       "share/preview.txt": {"result": "valid", "issue": 9001, "account": "example-user", "host": "examplehost", "minutes": 23},
       "share/preview-extra-field.txt": {"result": "refused", "code": "share-preview"},
       "share/preview-other-repository.txt": {"result": "refused", "code": "share-preview"}
+    },
+    "admission": {
+      "admission/ready.json": {"exit": 0, "read": "ready: yes"},
+      "admission/no-start-record.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author"},
+      "admission/start-by-other-account.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author"}
     }
   }
 }

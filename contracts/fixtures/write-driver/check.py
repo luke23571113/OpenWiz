@@ -8,9 +8,13 @@ fixture reads as expected.json says, 1 naming each one that doesn't. Run from
 anywhere: python3 -I contracts/fixtures/write-driver/check.py
 """
 import json
+import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -18,6 +22,10 @@ ROOT = HERE.parents[2]
 CONTRACT = ROOT / 'contracts' / 'write-driver.v1.md'
 DRIVER = ROOT / 'kernel' / 'driver.v1.md'
 KIT = ROOT / 'kernel' / 'driver-kit' / 'README.md'
+# The pinned build-ticket admission (`ticket.py read`) and its own synthetic gh, as installed from wizskills.lock.
+TICKET_PY = ROOT / 'skills' / 'build-ticket' / 'scripts' / 'ticket.py'
+FAKE_GH = ROOT / 'skills' / 'build-ticket' / 'scripts' / 'fixtures' / 'gh.py'
+REPO = 'example-user/examplehost-driver-kit'
 # A credential word, even joined to others by `_`, `-` or digits (`EXAMPLE_API_TOKEN`).
 CREDENTIAL = re.compile(r'(?i)(?<![a-z])(?:logins?|tokens?|keys?|apikeys?|passwords?|passphrases?|secrets?|credentials?'
                         r'|cookies?|pats?|oauth|bearer)(?![a-z])')
@@ -218,9 +226,41 @@ def read_preview(text, b, f):
             'host': m['host'], 'minutes': minutes(m['time'])}
 
 
+def read_admission(text, b, f):
+    """Run the pinned `ticket.py read` on a throwaway ticket through its fake gh: its last line."""
+    case = strict(text)
+    if not TICKET_PY.is_file() or not FAKE_GH.is_file():
+        raise FileNotFoundError('the pinned build-ticket skill is not installed: run tools/wizskills/install.py')
+    t = strict(text_of(HERE / case['ticket']))
+    issue = {'number': 7, 'title': t['title'], 'state': 'OPEN', 'body': t['body'],
+             'labels': [{'name': x} for x in t['labels']], 'parent': None,
+             'blockedBy': {'nodes': [], 'totalCount': 0}, 'blocking': {'nodes': [], 'totalCount': 0}}
+    comments = [{'id': i, 'user': {'login': c['author']}, 'body': text_of(HERE / c['file'])}
+                for i, c in enumerate(case['comments'], 1)]
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        (tmp / 'bin').mkdir()
+        gh = tmp / 'bin' / 'gh'
+        gh.write_text(f'#!/bin/sh\nexec {shutil.which("python3")} -I {FAKE_GH} "$@"\n')
+        gh.chmod(0o755)
+        (tmp / 'world.json').write_text(json.dumps({'issues': {'7': issue}, 'comments': {'7': comments}}))
+        repo = tmp / 'repo'
+        (repo / 'docs' / 'agents').mkdir(parents=True)
+        (repo / 'docs' / 'agents' / 'fleet.md').write_text(text_of(HERE / case['fleet']) + '\n')
+        git = ['git', '-C', str(repo), '-c', 'user.name=synthetic', '-c', 'user.email=synthetic@example.invalid']
+        for step in (['init', '-q'], ['add', '-A'], ['commit', '-q', '-m', 'throwaway']):
+            subprocess.run(git + step, check=True, capture_output=True)
+        env = {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
+        env.update(PATH=f'{tmp / "bin"}{os.pathsep}{env.get("PATH", "")}', FAKE_GH_WORLD=str(tmp / 'world.json'))
+        r = subprocess.run([sys.executable, '-I', str(TICKET_PY), 'read', REPO, '7', '--fleet-ref', 'HEAD'],
+                           cwd=repo, env=env, capture_output=True, text=True, timeout=60)
+    last = (r.stdout.strip().splitlines() or [''])[-1]
+    return {'exit': r.returncode, 'read': last}
+
+
 READERS = {'copy-line': read_copy, 'fleet': read_fleet, 'ticket': read_ticket, 'start': read_start,
            'ask': read_ask, 'lesson': read_lesson, 'report': read_report, 'share': read_share,
-           'preview': read_preview}
+           'preview': read_preview, 'admission': read_admission}
 
 
 def reuse(b):
