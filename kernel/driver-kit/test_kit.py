@@ -3,6 +3,8 @@
 
 Run: python3 -I kernel/driver-kit/test_kit.py   (Linux: the kit watches /proc)
 """
+import importlib.machinery
+import importlib.util
 import json
 import os
 import secrets
@@ -36,6 +38,20 @@ PLANTED = {
     'error-without-next': PASS[:3] + ['fail stop: next is not a string',
                                       'fail token: its answer to a token field: next is not a string'],
 }
+
+
+# The credential formats the pinned status contract lists (agent-status v1, "What it never holds").
+CONTRACT_FORMATS = ['token=', 'key=', 'secret=', 'password=', 'sig=', 'password:', 'Bearer', 'gh?_', 'github_pat_',
+                    'AKIA', 'xox?-', 'sk-']
+
+
+def planted(name):
+    """A planted driver's module, without running it."""
+    path = os.path.join(FIXTURES, 'planted', name)
+    spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(name, path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def tracker(folder):
@@ -83,6 +99,31 @@ class Kit(unittest.TestCase):
                 self.tearDown()
                 self.setUp()
                 self.assertEqual(self.kit(os.path.join(FIXTURES, 'planted', name))[:2], (1, lines))
+
+    def test_a_refusal_holding_a_credential_never_reaches_the_output(self):
+        # #1524: the kit used to print a refusal's error text as its diagnostic, credential and all.
+        sample = planted('refuses-with-credential').SAMPLE
+        self.assertNotIn(sample, self.env.values())
+        code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'refuses-with-credential'))
+        self.assertNotIn(sample, '\n'.join(out) + err)
+        self.assertEqual((code, out), (1, PASS[:3] + [
+            'fail stop: its stop output held a credential, which the kit does not show',
+            'fail token: the driver printed a credential; its answer to a token field: its start output held a '
+            'credential, which the kit does not show']))
+
+    def test_each_status_contract_credential_format_is_caught(self):
+        # #1568: the kit's shapes missed formats the status contract lists, when no secret of its environment held them.
+        formats = planted('leaks-format').FORMATS
+        self.assertLessEqual(set(CONTRACT_FORMATS), set(formats))
+        for name, sample in formats.items():
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                self.env['KIT_LEAK'] = name
+                self.assertNotIn(sample, self.env.values())
+                code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'leaks-format'))
+                self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the driver printed a credential']))
+                self.assertNotIn(sample, '\n'.join(out) + err)
 
     def test_template_and_schema_refuse_the_same_starts(self):
         sys.path.insert(0, HERE)
