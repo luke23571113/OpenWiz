@@ -1,7 +1,6 @@
 //! The kept OpenWiz 0.0.4 attachment proof cases (AP), ClosedWiz#14: the
 //! core attachment and prompt rules that the start record's prompt digest
-//! binds, and the allowlist's one `attachment_args` (D3 of
-//! `docs/cleanup/app-table.md`). AP1, AP2's model half, AP3 and the core's
+//! binds, and the allowlist's one `attachment_args`. AP1, AP2's model half, AP3 and the core's
 //! other rules are in its own `attachment` target
 //! (`crates/core/tests/attachment/`, #810). The attachment store and
 //! `openwiz attachment` went in #1264, with their cases.
