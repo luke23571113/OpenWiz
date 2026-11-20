@@ -139,8 +139,7 @@
     "tools/notifications/live-kit-result.schema.json",
     "tools/notifications/live-kit.md",
     "tools/notifications/test_discovery_kit.py",
-    "tools/notifications/test_live_kit.py",
-    "tools/test-value/evidence/**"
+    "tools/notifications/test_live_kit.py"
   ],
   "keep": [
     "docs/grills/README.md",

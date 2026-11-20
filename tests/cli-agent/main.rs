@@ -9,14 +9,15 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-#[allow(dead_code)]
 #[path = "../support/dirs.rs"]
 mod dirs;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/schema.rs"]
 mod schema;
 // Placing fixture programs without holding their writer (#811).
-#[allow(dead_code)]
 #[path = "../support/place.rs"]
 mod place;
 

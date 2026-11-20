@@ -3,8 +3,6 @@
 //! `PATH`, the release `openwiz`, and a command's `run` in-process. A
 //! ticket that needs more writes it in its own file, never here.
 
-#![allow(dead_code)]
-
 use std::ffi::OsString;
 use std::fs;
 use std::fs::DirBuilder;
@@ -63,12 +61,6 @@ impl FakeGh {
     /// Every argument list the fake received, in order.
     pub fn invocations(&self) -> Vec<Vec<String>> {
         lines(&self.dir.join("gh-invocations.log"))
-    }
-
-    /// For each call, in order, the names of its `GH_*` and `GITHUB_*`
-    /// variables, sorted.
-    pub fn environments(&self) -> Vec<Vec<String>> {
-        lines(&self.dir.join("gh-environment.log"))
     }
 
     /// The process id of a fake that hung, once it has written it.
