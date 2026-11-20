@@ -53,7 +53,8 @@
         "harness": "Claude Code",
         "provider": "claude-code",
         "model": "claude-opus-5-5",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Opus 5.5"
       },
       "pick": {
         "name": "Demo Bot",
@@ -63,7 +64,10 @@
           "harness": "claude",
           "model": "claude-opus-5-5"
         },
-        "label": "Demo Bot via syn-owner",
+        "note": {
+          "harness": "Demo Bot via syn-owner",
+          "model": "Opus 5.5 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",
@@ -83,7 +87,8 @@
         "harness": "Claude Code",
         "provider": "claude-code",
         "model": "claude-opus-5-5",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Opus 5.5"
       },
       "pick": {
         "name": "Claude Code",
@@ -93,7 +98,10 @@
           "harness": "claude",
           "model": "claude-opus-5-5"
         },
-        "label": "Claude Code via syn-owner",
+        "note": {
+          "harness": "Claude Code via syn-owner",
+          "model": "Opus 5.5 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",
@@ -113,7 +121,8 @@
         "harness": "Codex",
         "provider": "codex",
         "model": "gpt-6.2-sol",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Sol 6.2"
       },
       "pick": {
         "name": "Codex",
@@ -123,7 +132,10 @@
           "harness": "codex",
           "model": "gpt-6.2-sol"
         },
-        "label": "Codex via syn-owner",
+        "note": {
+          "harness": "Codex via syn-owner",
+          "model": "Sol 6.2 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",
@@ -143,7 +155,8 @@
         "harness": "Claude Code",
         "provider": "claude-code",
         "model": "claude-opus-5-5",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Opus 5.5"
       },
       "pick": {
         "name": "Claude Code",
@@ -153,7 +166,10 @@
           "harness": "claude",
           "model": "claude-opus-5-5"
         },
-        "label": "Claude Code via syn-owner",
+        "note": {
+          "harness": "Claude Code via syn-owner",
+          "model": "Opus 5.5 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",
@@ -173,7 +189,8 @@
         "harness": "Codex",
         "provider": "codex",
         "model": "gpt-6.2-sol",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Sol 6.2"
       },
       "pick": {
         "name": "Own computer",
@@ -183,7 +200,10 @@
           "harness": "codex",
           "model": "gpt-6.2-sol"
         },
-        "label": "Own computer via syn-owner",
+        "note": {
+          "harness": "Own computer via syn-owner",
+          "model": "Sol 6.2 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",
@@ -203,7 +223,8 @@
         "harness": "Claude Code",
         "provider": "claude-code",
         "model": "claude-opus-5-5",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Opus 5.5"
       },
       "pick": {
         "name": "Own computer",
@@ -213,7 +234,10 @@
           "harness": "claude",
           "model": "claude-opus-5-5"
         },
-        "label": "Own computer via syn-owner",
+        "note": {
+          "harness": "Own computer via syn-owner",
+          "model": "Opus 5.5 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",

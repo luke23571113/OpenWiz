@@ -17,14 +17,16 @@ use super::ROOT;
 const HEADER: [&str; 5] = ["Name", "Kind", "Driver", "Roles", "Writes as"];
 const KINDS: [&str; 3] = ["harness", "host", "bot"];
 const ROLES: [&str; 4] = ["orchestrator", "builder", "reviewer", "helper"];
-const CASES: [&str; 5] = [
+const CASES: [&str; 6] = [
     "mixed",
+    "namespaced",
     "role-not-allowed",
     "other-user",
     "starting",
     "no-roster",
 ];
-const CODES: [&str; 15] = [
+const CODES: [&str; 16] = [
+    "heading-form",
     "headings",
     "no-table",
     "header",
@@ -265,6 +267,7 @@ fn model_choices(fleet: &str) -> Vec<Value> {
         {
             out.push(json!({
                 "harness": c[1], "provider": provider, "model": model, "effort": effort,
+                "model_name": c[2],
             }));
         }
     }
@@ -330,12 +333,14 @@ fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &V
 
 // catches: a reader that picks an entry for a role it may not take, ignores
 // table order, gives a harness entry another harness's choice, mislabels an
-// entry, or treats a project without a Roster as anything but today's.
+// entry, hands a driver a model id driver v1 refuses, or treats a project
+// without a Roster as anything but today's.
 #[test]
 fn every_case_reads_and_picks_as_its_fixture_says() {
     let present = listing("");
     let missing: Vec<_> = CASES.iter().filter(|c| !present.contains(**c)).collect();
     assert!(missing.is_empty(), "missing fixture cases: {missing:?}");
+    let mut wrong = Vec::new();
     for case in CASES {
         let fleet = text(&format!("{case}/fleet.md"));
         let want = load(&format!("{case}/case.json"));
@@ -362,14 +367,29 @@ fn every_case_reads_and_picks_as_its_fixture_says() {
                 p["role"].as_str().unwrap(),
                 &p["choice"],
             );
-            assert_eq!(&got, p, "{case}: ticket {} {}", p["ticket"], p["role"]);
+            if &got != p {
+                let keys = ["pick", "waits", "look"];
+                let diff: Vec<String> = keys
+                    .iter()
+                    .filter(|k| got[**k] != p[**k])
+                    .map(|k| format!("{k}: got {} want {}", got[*k], p[*k]))
+                    .collect();
+                wrong.push(format!(
+                    "{case}: ticket {} {}: {}",
+                    p["ticket"],
+                    p["role"],
+                    diff.join("; ")
+                ));
+            }
         }
     }
+    assert!(wrong.is_empty(), "picks that differ:\n{}", wrong.join("\n"));
 }
 
 // catches: a reader that guesses past a malformed Roster (an unknown role or
 // kind, a repeated role, a row writing as another account or another
-// person's App) instead of refusing it by name, with the contract's line.
+// person's App, a Roster heading in another form read as no Roster) instead
+// of refusing it by name, with the contract's line.
 #[test]
 fn a_malformed_roster_is_refused_by_name() {
     let refusals = if listing("invalid").contains("refusals.json") {
@@ -421,8 +441,9 @@ fn every_choice_is_a_row_of_its_cases_models_table() {
 }
 
 // catches: a per-entry or per-bot write rule: a token request, App or label
-// that depends on an entry's kind, or a user project whose writes go
-// anywhere but its own person's App and repositories.
+// that depends on an entry's kind, a user project whose writes go anywhere
+// but its own person's App and repositories, or a status note claiming a
+// configured effort no driver v1 start applied.
 #[test]
 fn every_entry_writes_the_same_way() {
     let mut kinds = BTreeSet::new();
@@ -448,14 +469,19 @@ fn every_entry_writes_the_same_way() {
             kinds.insert(e["kind"].as_str().unwrap().to_owned());
             let fixed = json!({
                 "writes_as": format!("{person}'s App"),
-                "label": format!("{} via {person}", e["name"].as_str().unwrap()),
+                "note": {
+                    "harness": format!("{} via {person}", e["name"].as_str().unwrap()),
+                    // R2: driver v1 applies no effort, so a note never claims
+                    // the configured one.
+                    "model": format!("{} default effort", p["choice"]["model_name"].as_str().unwrap()),
+                },
                 "token": {
                     "service": person,
                     "requester": format!("{}-{}", p["role"].as_str().unwrap(), p["ticket"]),
                     "repositories": [repository],
                 },
             });
-            for key in ["writes_as", "label", "token"] {
+            for key in ["writes_as", "note", "token"] {
                 assert_eq!(e[key], fixed[key], "{case}: ticket {} {key}", p["ticket"]);
             }
         }

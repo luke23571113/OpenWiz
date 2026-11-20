@@ -32,7 +32,8 @@
         "harness": "Claude Code",
         "provider": "claude-code",
         "model": "claude-opus-5-5",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Opus 5.5"
       },
       "pick": {
         "name": "Claude Code",
@@ -42,7 +43,10 @@
           "harness": "claude",
           "model": "claude-opus-5-5"
         },
-        "label": "Claude Code via syn-owner",
+        "note": {
+          "harness": "Claude Code via syn-owner",
+          "model": "Opus 5.5 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",
@@ -62,7 +66,8 @@
         "harness": "Claude Code",
         "provider": "claude-code",
         "model": "claude-opus-5-5",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Opus 5.5"
       },
       "pick": null,
       "waits": "roster",
@@ -83,7 +88,8 @@
         "harness": "Claude Code",
         "provider": "claude-code",
         "model": "claude-opus-5-5",
-        "effort": "medium"
+        "effort": "medium",
+        "model_name": "Opus 5.5"
       },
       "pick": {
         "name": "Demo Bot",
@@ -93,7 +99,10 @@
           "harness": "claude",
           "model": "claude-opus-5-5"
         },
-        "label": "Demo Bot via syn-owner",
+        "note": {
+          "harness": "Demo Bot via syn-owner",
+          "model": "Opus 5.5 default effort"
+        },
         "writes_as": "syn-owner's App",
         "token": {
           "service": "syn-owner",
