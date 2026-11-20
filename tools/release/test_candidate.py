@@ -2002,7 +2002,7 @@ class Notes(World):
         # that is not the approved 0.0.6-0.0.12 release notes.
         raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
         self.assertEqual(sha(raw), 'e690a1652787865d67cb557fc1a2a59588b87a21a067b2e547b90a709f5e6e3d')
-        current, cut = (ROOT / 'CHANGELOG.md').read_bytes(), raw.index('\n## 0.0.12 '.encode()) + 1
+        current, cut = (ROOT / 'CHANGELOG.md').read_bytes(), raw.index(b'\n\n', raw.index(b'All OpenWiz versions')) + 2
         self.assertTrue(current.startswith(raw[:cut]) and current.endswith(raw[cut:]))
         self.untagged(raw.decode())
         (self.repo / 'changes/notes').mkdir()
