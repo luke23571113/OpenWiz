@@ -12,7 +12,7 @@ Grok Bot is xAI's always-on assistant, with its own cloud computer. This page sh
 
 ## Before you start
 
-- A plan that includes Grok Bot, for example The X Subscription Premium ($30 a month), or a paid Cursor plan linked to SuperGrok or X Premium+ through **Link Grok Account**. See [Get started](https://docs.x.ai/grok-bot/get-started).
+- A plan that includes Grok Bot: The X Subscription Premium ($30 a month) or higher, or a paid legacy Cursor plan. Separately, SuperGrok or X Premium+ subscribers can link that plan with **Link Grok Account**. See [Get started](https://docs.x.ai/grok-bot/get-started#which-plans-include-grok-bot).
 - The Grok Bot app for desktop or mobile, from [x.ai/bot](https://x.ai/bot).
 - One GitHub repository to try it on. A new private demo repository is best.
 
@@ -33,7 +33,7 @@ Every sign-in and connection below is your own click. OpenWiz never touches a lo
 
    Or ask "Use ask-wiz: what should I do first?"
 
-**About grok-bot.directory.** You may also find OpenWiz by searching [grok-bot.directory](https://grok-bot.directory). Its **Add to Grok Bot** button fills your Bot's message box; you send it and confirm each skill it saves. It snapshots the newest skills from WizSkills `main`, which can differ from `v0.1.2`. If you add from there, clone `main` in step 3 instead of the tag, so the scripts match. Untested.
+**About grok-bot.directory.** OpenWiz is submitted for listing on [grok-bot.directory](https://grok-bot.directory). The listing is pending and not yet checked. Install only from the pinned `v0.1.2` clone in step 3.
 
 ## Run a first fleet
 
