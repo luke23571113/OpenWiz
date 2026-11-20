@@ -29,7 +29,9 @@ A spec body carries one section, written by plan-graph's to-spec when the spec i
 - User-visible: <yes|yes, a release|no>
 ```
 
-- The heading is exactly `## Checkpoints`, once in the body. The section runs to the next line starting `## ` or the end of the body. Any other heading line that names checkpoints (`## Checkpoint answers`, `### checkpoints`) makes the body invalid, never absent.
+- **Lines.** A reader first turns every CRLF and lone CR into LF. A **fenced block** runs from a fence line (up to three spaces, then three or more backticks or tildes) to the next fence line of the same character at least as long, with nothing after it but spaces or tabs, or to the end of the body. No line inside a fenced block, its fences included, is ever a heading, so a spec may quote the template as an example.
+- **The heading** is a line exactly `## Checkpoints`, outside fenced blocks, once in the body. The section runs from it to the next level-one or level-two heading outside fenced blocks (up to three spaces, then `#` or `##`, then a space, a tab or the line's end), or to the end of the body.
+- **A near-miss is invalid, never absent.** Any other line outside fenced blocks that renders as, or nearly as, a heading naming checkpoints makes the body `invalid` with `section-heading`: up to three spaces, one or more `#`, optional spaces or tabs, then `checkpoint` in any case (` ## Checkpoints` with a leading space, `## Checkpoint answers`, `### checkpoints`, `##Checkpoints`), or a setext heading (a line of up to three spaces then `checkpoint` in any case, followed by a line of only `=` or only `-`).
 - Its non-blank lines are exactly these two, in this order, each value exactly as shown. The reason for an answer goes in the spec's other sections, never on these lines.
 - **One-way door: yes** gives the owner the early say. **User-visible: yes** gives the late look too.
 - **A release counts as user-visible.** A spec that publishes a release (a tag, a package or a published version) answers `User-visible: yes, a release`. A release is never `no`.
@@ -45,7 +47,7 @@ How a spec body reads:
 
 - **Absent is early only.** A spec approved before this contract, or any spec without the section, keeps today's behaviour: its merges flow. Whether a new spec may be absent is the approval check's rule (RC2): it refuses a new spec without both answers.
 - **Invalid is read as both yes.** The approval check refuses it. A fleet that finds one on an approved spec never guesses `no`: it holds the final merge for a late look like any user-visible spec.
-- Invalid codes: `section-heading` (a heading that names checkpoints but isn't exactly `## Checkpoints`), `section-repeated` (two `## Checkpoints` headings), `answer-missing` (fewer than two non-blank lines), `answer-line` (any other line, value, order or a repeated answer).
+- Invalid codes: `section-heading` (a near-miss heading, as above), `section-repeated` (two `## Checkpoints` headings), `answer-missing` (fewer than two non-blank lines), `answer-line` (any other line, value, order or a repeated answer).
 
 ## The evidence ask
 
@@ -54,16 +56,17 @@ When a user-visible spec's final merge has an approved, green, mergeable head, t
 ```text
 launch-fleet: late look asked #<P> at <commit>
 
-Evidence: <preview|screenshots|video> <https link>
+Evidence: <preview|screenshots|video> <link>
 Look for: <what the owner should see working, in plain words>
 ```
 
 - `#<P>` is the held pull request and `<commit>` its approved head, the full 40-character lowercase commit.
 - One or more `Evidence:` lines, then exactly one `Look for:` line, and nothing else: no code block, no diff, no other line. Blank lines don't count.
-- **Never code.** An evidence link to code is refused, whatever the letter case of its host: a GitHub pull request, commit, file, tree, compare, raw or blame page, a raw file host or a gist. Screenshot uploads (`https://github.com/user-attachments/…`) are evidence.
+- **A link** is an absolute URL, read by RFC 3986: the scheme `https` in any case, then `//`, a host of ASCII letters, digits, dots and hyphens, and an optional port. It has no user info (`@` before the host) and no backslash anywhere. Anything else is `evidence-link`. The host is compared in lower case without a trailing dot, whatever the port.
+- **Never code.** A link whose host is a code host (`code_hosts` below: GitHub, its gists, raw files, source archives and API) is `evidence-code`, whatever its path, with one exception: a screenshot or video uploaded to GitHub, whose host is `github.com` or `www.github.com` and whose path matches `uploaded_path` (`/user-attachments/assets/<id>` or `/user-attachments/files/<n>/<name>`). So pull requests, commits, files, trees, compares, source archives (`/archive/…`, `codeload.github.com`), raw files and gists are all refused, with or without a port.
 - It carries no thread id and no exact words, like every public record.
 - **One ask per head.** The fleet posts none while a valid ask for that pull request and commit exists. A new head needs a new ask.
-- Invalid codes: `ask-opening` (the first line), `evidence-missing` (no `Evidence:` line), `evidence-code` (a link to code), `ask-line` (any other line).
+- Invalid codes: `ask-opening` (the first line), `evidence-missing` (no `Evidence:` line), `evidence-link` (a link that isn't an absolute https URL with a host, as above), `evidence-code` (a link to code), `ask-line` (any other line).
 
 ## The late-look record
 
@@ -106,24 +109,31 @@ The fleet reads the spec's comments in creation order, keeping only valid asks a
 
 ## The forms, for readers
 
-The line forms as regular expressions, each matched against a whole line. Readers (RC2's approval check, RC3's merge helper and the fixtures' reader) read this block rather than copying it.
+The line forms, as regular expressions and host lists. Readers (RC2's approval check, RC3's merge helper and the fixtures' reader) read this block rather than copying it.
 
 ```checkpoints-v1
 {
   "section": "## Checkpoints",
-  "section_like": "(?i)#+ *checkpoint.*",
+  "section_like": "(?i) {0,3}#+[ \\t]*checkpoint.*",
+  "setext_text": "(?i) {0,3}checkpoint.*",
+  "setext_underline": " {0,3}(=+|-+)[ \\t]*",
+  "section_end": " {0,3}#{1,2}([ \\t].*)?",
+  "fence": " {0,3}(`{3,}|~{3,}).*",
   "one_way_door": "- One-way door: (yes|no)",
   "user_visible": "- User-visible: (yes|yes, a release|no)",
   "ask_opening": "launch-fleet: late look asked #([1-9][0-9]*) at ([0-9a-f]{40})",
-  "ask_evidence": "Evidence: (preview|screenshots|video) (https://\\S+)",
+  "ask_evidence": "Evidence: (preview|screenshots|video) (\\S+)",
   "ask_look_for": "Look for: (\\S.*)",
-  "code_link": "(?i)https://(www\\.)?(github\\.com/[^/]+/[^/]+/(pull|commit|commits|blob|tree|compare|raw|blame)([/?#]|$)|raw\\.githubusercontent\\.com/|gist\\.github\\.com/)",
+  "link_host": "[a-z0-9.-]+",
+  "code_hosts": ["github.com", "www.github.com", "gist.github.com", "codeload.github.com", "api.github.com", "raw.githubusercontent.com", "gist.githubusercontent.com"],
+  "uploaded_hosts": ["github.com", "www.github.com"],
+  "uploaded_path": "/user-attachments/(assets/[0-9a-f-]+|files/[0-9]+/[A-Za-z0-9_-][A-Za-z0-9._-]*)",
   "record_opening": "\\*\\*Late look by ([A-Z][A-Za-z-]*), ([0-9]{4}-[0-9]{2}-[0-9]{2}), #([1-9][0-9]*) at ([0-9a-f]{40}):\\*\\* (approved|changes asked): (\\S.*)",
   "record_pointer": "Private record: (https://github\\.com/jparker2006/ClosedWiz/(issues|pull)/[1-9][0-9]*#issuecomment-[1-9][0-9]*)"
 }
 ```
 
-`code_link` is matched at the start of an evidence link; the others match a whole line. `section_like` finds a near-miss heading: a line it matches that is not exactly `section` is `section-heading`.
+Each string form is matched against a whole line, or for `link_host` and `uploaded_path` against the link's lower-cased host and its path. `fence` opens a fenced block; `section_like`, and `setext_text` followed by `setext_underline`, find a near-miss heading; `section_end` ends the section. `code_hosts` and `uploaded_hosts` are compared with the host exactly.
 
 ## Fixtures
 

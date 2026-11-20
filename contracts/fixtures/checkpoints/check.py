@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlsplit
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -26,27 +27,55 @@ def forms():
         if len(blocks) != 1:
             return None
         raw = json.loads(blocks[0])
-        return {k: re.compile(v) for k, v in raw.items()}
+        return {k: re.compile(v) if isinstance(v, str) else set(v) for k, v in raw.items()}
     except (OSError, ValueError, AttributeError, TypeError, re.error):
         return None
 
 
+def text_of(path):
+    """A fixture's text with every CRLF and lone CR turned into LF."""
+    return path.read_bytes().decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
+
+
+def fenced(lines, f):
+    """The indexes of lines inside fenced blocks, their fences included."""
+    inside, opening = set(), None
+    for i, line in enumerate(lines):
+        if opening is None:
+            m = f['fence'].fullmatch(line)
+            if m:
+                opening = m.group(1)
+                inside.add(i)
+            continue
+        inside.add(i)
+        close = re.fullmatch(r' {0,3}(`+|~+)[ \t]*', line)
+        if close and close.group(1)[0] == opening[0] and len(close.group(1)) >= len(opening):
+            opening = None
+    return inside
+
+
 def read_spec(text, f):
     lines = text.split('\n')
-    starts = [i for i, line in enumerate(lines) if f['section'].fullmatch(line)]
+    inside = fenced(lines, f)
+    outside = [i for i in range(len(lines)) if i not in inside]
     bad = {'result': 'invalid', 'early': True, 'late': True}
-    if any(f['section_like'].fullmatch(line) and not f['section'].fullmatch(line) for line in lines):
-        return {**bad, 'code': 'section-heading'}
+    for i in outside:
+        exact = f['section'].fullmatch(lines[i])
+        setext = (f['setext_text'].fullmatch(lines[i]) and i + 1 in outside
+                  and f['setext_underline'].fullmatch(lines[i + 1]))
+        if setext or (f['section_like'].fullmatch(lines[i]) and not exact):
+            return {**bad, 'code': 'section-heading'}
+    starts = [i for i in outside if f['section'].fullmatch(lines[i])]
     if not starts:
         return {'result': 'absent', 'early': True, 'late': False}
     if len(starts) > 1:
         return {**bad, 'code': 'section-repeated'}
     body = []
-    for line in lines[starts[0] + 1:]:
-        if line.startswith('## '):
+    for i in range(starts[0] + 1, len(lines)):
+        if i not in inside and f['section_end'].fullmatch(lines[i]):
             break
-        if line.strip():
-            body.append(line)
+        if lines[i].strip():
+            body.append(lines[i])
     if len(body) < 2:
         return {**bad, 'code': 'answer-missing'}
     one = f['one_way_door'].fullmatch(body[0])
@@ -58,6 +87,24 @@ def read_spec(text, f):
             'release': user.group(1) == 'yes, a release', 'early': one_way, 'late': visible}
 
 
+def link_kind(url, f):
+    """None for an evidence link, else its refusal code."""
+    if '\\' in url:
+        return 'evidence-link'
+    try:
+        parts = urlsplit(url)
+        parts.port
+    except ValueError:
+        return 'evidence-link'
+    host = (parts.hostname or '').rstrip('.')
+    if (parts.scheme.lower() != 'https' or not url[len(parts.scheme):].startswith('://') or '@' in parts.netloc
+            or not f['link_host'].fullmatch(host)):
+        return 'evidence-link'
+    if host in f['uploaded_hosts'] and f['uploaded_path'].fullmatch(parts.path):
+        return None
+    return 'evidence-code' if host in f['code_hosts'] else None
+
+
 def read_ask(text, f):
     lines = [line for line in text.split('\n') if line.strip()]
     first = f['ask_opening'].fullmatch(lines[0]) if lines else None
@@ -65,8 +112,9 @@ def read_ask(text, f):
         return {'result': 'invalid', 'code': 'ask-opening'}
     evidence, rest = [], lines[1:]
     while rest and (m := f['ask_evidence'].fullmatch(rest[0])):
-        if f['code_link'].match(m.group(2)):
-            return {'result': 'invalid', 'code': 'evidence-code'}
+        kind = link_kind(m.group(2), f)
+        if kind:
+            return {'result': 'invalid', 'code': kind}
         evidence.append({'kind': m.group(1), 'url': m.group(2)})
         rest = rest[1:]
     if not evidence:
@@ -106,7 +154,7 @@ def read_record(text, f):
 
 
 def read_release(scenario, f):
-    spec = read_spec((HERE / scenario['spec']).read_text(encoding='utf-8'), f)
+    spec = read_spec(text_of(HERE / scenario['spec']), f)
     if not scenario['final'] or not spec['late']:
         return {'merge': 'flows'}
     head, authors, deciders = scenario['head'], set(scenario['record_authors']), set(scenario['deciders'])
@@ -114,7 +162,7 @@ def read_release(scenario, f):
     for comment in scenario['comments']:
         if comment['author'] not in authors:
             continue
-        text = (HERE / comment['body']).read_text(encoding='utf-8')
+        text = text_of(HERE / comment['body'])
         for reading in (read_ask(text, f), read_record(text, f)):
             if reading['result'] != 'valid' or (reading['pr'], reading['commit']) != (head['pr'], head['commit']):
                 continue
@@ -151,7 +199,7 @@ def main():
             elif kind == 'release':
                 got = read_release(json.loads((HERE / name).read_text(encoding='utf-8')), f)
             else:
-                got = READERS[kind]((HERE / name).read_text(encoding='utf-8'), f)
+                got = READERS[kind](text_of(HERE / name), f)
             if got != want:
                 failures.append(f'{name}: expected {json.dumps(want)}, got {json.dumps(got)}')
     for line in failures:
