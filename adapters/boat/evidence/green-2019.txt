@@ -1,4 +1,4 @@
-# Green run (#2019, after review R1 and R2): python3 -I adapters/boat/test_driver.py -v at 5fb17c89: the push-access tests (red in red-2019.txt and red-2019-review.txt) and every earlier driver test, the kit's five checks on Linux and on the no-/proc (macOS-style) fixture included.
+# Green run (#2019, after review R1 and R2, main merged in with #2024): python3 -I adapters/boat/test_driver.py -v at 81ca0b6d: the push-access tests (red in red-2019.txt and red-2019-review.txt) and every earlier driver test, the kit's five checks on Linux and on the no-/proc (macOS-style) fixture included.
 test_a_bad_settle_setting_refuses_start_and_never_blocks_stop (__main__.Boat.test_a_bad_settle_setting_refuses_start_and_never_blocks_stop) ... ok
 test_a_failed_stop_is_never_undone_by_a_wake (__main__.Boat.test_a_failed_stop_is_never_undone_by_a_wake) ... ok
 test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start (__main__.Boat.test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start) ... ok
