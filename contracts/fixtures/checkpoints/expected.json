@@ -15,7 +15,12 @@
     "spec/invalid-extra-line.md": {"result": "invalid", "code": "answer-line", "early": true, "late": true},
     "spec/invalid-order.md": {"result": "invalid", "code": "answer-line", "early": true, "late": true},
     "spec/invalid-two-sections.md": {"result": "invalid", "code": "section-repeated", "early": true, "late": true},
-    "spec/invalid-heading.md": {"result": "invalid", "code": "section-heading", "early": true, "late": true}
+    "spec/invalid-heading.md": {"result": "invalid", "code": "section-heading", "early": true, "late": true},
+    "spec/invalid-indented-heading.md": {"result": "invalid", "code": "section-heading", "early": true, "late": true},
+    "spec/invalid-setext-heading.md": {"result": "invalid", "code": "section-heading", "early": true, "late": true},
+    "spec/absent-fenced-example.md": {"result": "absent", "early": true, "late": false},
+    "spec/both-no-fenced-example.md": {"result": "answered", "one_way_door": false, "user_visible": false, "release": false, "early": false, "late": false},
+    "spec/crlf.md": {"result": "answered", "one_way_door": false, "user_visible": true, "release": false, "early": false, "late": true}
   },
   "ask": {
     "ask/valid.md": {"result": "valid", "pr": 4012, "commit": "1111111111111111111111111111111111111111", "evidence": [
@@ -27,6 +32,12 @@
       "look_for": "the settings page now shows a message when the name is empty."},
     "ask/invalid-code-link.md": {"result": "invalid", "code": "evidence-code"},
     "ask/invalid-code-link-case.md": {"result": "invalid", "code": "evidence-code"},
+    "ask/invalid-archive.md": {"result": "invalid", "code": "evidence-code"},
+    "ask/invalid-port.md": {"result": "invalid", "code": "evidence-code"},
+    "ask/invalid-userinfo.md": {"result": "invalid", "code": "evidence-link"},
+    "ask/invalid-empty-host.md": {"result": "invalid", "code": "evidence-link"},
+    "ask/invalid-codeload.md": {"result": "invalid", "code": "evidence-code"},
+    "ask/valid-port.md": {"result": "valid", "pr": 4012, "commit": "1111111111111111111111111111111111111111", "evidence": [{"kind": "preview", "url": "https://preview.example.com:8443/synthetic-4012"}], "look_for": "the new settings page."},
     "ask/invalid-no-evidence.md": {"result": "invalid", "code": "evidence-missing"},
     "ask/invalid-code-block.md": {"result": "invalid", "code": "ask-line"},
     "ask/invalid-short-commit.md": {"result": "invalid", "code": "ask-opening"}
@@ -63,6 +74,11 @@
     "release/ask-not-by-record-author.json": {"merge": "held", "why": "ask-due"},
     "release/invalid-record.json": {"merge": "held", "why": "look-due"},
     "release/invalid-ask.json": {"merge": "held", "why": "ask-due"},
+    "release/invalid-ask-archive.json": {"merge": "held", "why": "ask-due"},
+    "release/invalid-ask-port.json": {"merge": "held", "why": "ask-due"},
+    "release/invalid-ask-empty-host.json": {"merge": "held", "why": "ask-due"},
+    "release/indented-heading.json": {"merge": "held", "why": "ask-due"},
+    "release/fenced-example.json": {"merge": "flows"},
     "release/release-held.json": {"merge": "held", "why": "look-due"},
     "release/release-released.json": {"merge": "released"},
     "release/not-final.json": {"merge": "flows"},
