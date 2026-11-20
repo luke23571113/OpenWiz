@@ -141,10 +141,10 @@ Each string form is matched against a whole line, or for `link_host` and `upload
 
 | Folder | Cases |
 | --- | --- |
-| `spec/` | both answers yes, both no, each alone, a release, absent, and each invalid code |
-| `ask/` | a valid ask, a second head's ask, a code link, a code link in capitals, no evidence, a code block, a short commit |
+| `spec/` | both answers yes, both no, each alone, a release, absent, CRLF line endings, a template example in a fenced block (absent, and beside real answers), an indented and a setext heading, and each invalid code |
+| `ask/` | a valid ask, a second head's ask, a code link, a code link in capitals, a source archive, `codeload`, a port on GitHub, user info, an empty host, a port on a preview, no evidence, a code block, a short commit |
 | `record/` | approved, changes asked, a second head's record, quoted words, no pointer, a public link, a changed opening, an unknown outcome, an extra line, a date that isn't real, another decider |
-| `release/` | a fleet state (spec, whether the merge is final, head, record authors, the deciders list, comments in order) for every row of "Releasing the held merge", a release spec, and each case that flows |
+| `release/` | a fleet state (spec, whether the merge is final, head, record authors, the deciders list, comments in order) for every row of "Releasing the held merge", a release spec, asks refused for their links, a near-miss heading held, a fenced example that flows, and each case that flows |
 
 ## WizSkills copy
 
