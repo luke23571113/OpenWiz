@@ -3352,6 +3352,248 @@ pub fn read_back(
 }
 
 #[cfg(test)]
+mod polish_tests {
+    use super::*;
+
+    fn item(id: &str) -> Map<String, Value> {
+        json!({
+            "id": id, "project_id": "synthetic-project",
+            "name": format!("Calendar [wizloop:{id}]"),
+            "cron": null, "timezone": null, "run_at": "2030-01-02T03:04:05Z",
+            "webhook": false, "new_thread": true, "script": null,
+            "agent": null, "secrets": [], "priority": 3, "prompt": "Go.\n"
+        })
+        .as_object()
+        .unwrap()
+        .clone()
+    }
+
+    // catches #988: export writing impossible month ends while exporting
+    // valid Gregorian leap days and unrelated valid loops in the same batch.
+    #[test]
+    fn export_checks_calendar_dates_per_loop() {
+        let cases = [
+            ("2030-01-02T03:04:05Z", true),
+            ("2032-02-29T03:04:05Z", true),
+            ("2000-02-29T03:04:05Z", true),
+            ("2030-02-31T03:04:05Z", false),
+            ("2030-02-29T03:04:05Z", false),
+            ("1900-02-29T03:04:05Z", false),
+            ("2030-04-31T03:04:05Z", false),
+            ("2030-06-31T03:04:05Z", false),
+            ("2030-09-31T03:04:05Z", false),
+            ("2030-11-31T03:04:05Z", false),
+        ];
+        let items: Vec<_> = cases
+            .iter()
+            .enumerate()
+            .map(|(n, (at, _))| {
+                let mut loop_ = item(&format!("calendar-{n}"));
+                loop_.insert("run_at".into(), json!(at));
+                loop_
+            })
+            .collect();
+        let exported = export_project(&items, "synthetic-project").unwrap();
+        assert_eq!(exported.len(), cases.len());
+        for (loop_, (at, valid)) in exported.iter().zip(cases) {
+            if valid {
+                assert!(loop_.refusals.is_empty(), "{at}: {:?}", loop_.refusals);
+                assert_eq!(loop_.files.len(), 1, "{at}");
+                assert!(loop_.files[0].1.contains(at));
+            } else {
+                assert!(loop_.files.is_empty(), "{at}");
+                assert_eq!(
+                    loop_.refusals,
+                    [ExportRefusal {
+                        file: format!("Calendar [wizloop:{}]", loop_.loop_id),
+                        code: "cf-export-invalid".into(),
+                        field: "trigger.at".into(),
+                        message: "would be refused by the format as bad-at".into(),
+                    }],
+                    "{at}"
+                );
+            }
+        }
+    }
+
+    // catches #989: refusing canonical integer preambles above i64::MAX,
+    // changing their numeric JSON type or changing the check's bytes.
+    #[test]
+    fn export_keeps_integer_params_beyond_i64() {
+        let check = "#!/bin/sh\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n";
+        for digits in [
+            "9223372036854775807",
+            "9223372036854775808",
+            "18446744073709551615",
+            "-9223372036854775808",
+        ] {
+            let script = format!(
+                "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_COUNT={digits}\n# wizloop: the check\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n"
+            );
+            let mut loop_ = item("a");
+            loop_.insert("script".into(), json!(script));
+            let exported = export_project(&[loop_], "synthetic-project")
+                .unwrap()
+                .remove(0);
+            assert!(
+                exported.refusals.is_empty(),
+                "{digits}: {:?}",
+                exported.refusals
+            );
+            assert_eq!(exported.files.len(), 2);
+            assert!(
+                exported.files[0]
+                    .1
+                    .contains(&format!("params: {{\"count\": {digits}}}\n"))
+            );
+            assert_eq!(exported.files[1].1, check);
+            let read = read_loop(exported.files[0].1.as_bytes(), &mut |_| {
+                CheckText::Text(check.into())
+            });
+            assert!(read.refusals.is_empty(), "{:?}", read.refusals);
+            let parsed = read.file.unwrap();
+            let count = &parsed.frontmatter["params"]["count"];
+            assert!(count.is_number());
+            assert_eq!(count.to_string(), digits);
+            let (restored, params) = read_script(&script).unwrap();
+            assert_eq!(restored, check);
+            assert_eq!(render_script(&restored, &params).unwrap(), script);
+        }
+        for digits in ["+1", "01", "-0", "1.0"] {
+            let script = format!(
+                "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_COUNT={digits}\n# wizloop: the check\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n"
+            );
+            assert!(read_script(&script).is_none(), "{digits}");
+        }
+    }
+
+    // catches #990: from_str_radix treating a sign as a Unicode hex digit,
+    // including in the low surrogate; legal escapes still decode normally.
+    #[test]
+    fn unicode_escapes_require_four_hex_digits() {
+        for (name, valid) in [
+            (r#""\u+041""#, false),
+            (r#""\u-041""#, false),
+            (r#""\ud800\u+041""#, false),
+            (r#""\u0041""#, true),
+            (r#""\u00e9""#, true),
+            (r#""\uD83D\uDE00""#, true),
+        ] {
+            let text = format!(
+                "---\nid: \"a\"\nname: {name}\ntrigger: {{\"webhook\": true}}\nthread: \"new\"\n---\nGo.\n"
+            );
+            let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+            let expected = if valid {
+                vec![]
+            } else {
+                vec![Refusal::new("json", "name", "value is not one JSON value")]
+            };
+            assert_eq!(read.refusals, expected, "{name}");
+        }
+    }
+
+    // catches #994: lowercase RFC 3339 separators and leap seconds refused
+    // by validate or export, or date/time/offset validation being weakened.
+    #[test]
+    fn timestamps_follow_rfc3339_in_both_directions() {
+        for (at, valid) in [
+            ("2030-01-02t03:04:05z", true),
+            ("2030-01-02t03:04:05.125+05:30", true),
+            ("2016-12-31T23:59:60Z", true),
+            ("2016-12-31t23:59:60.5z", true),
+            ("1990-12-31T15:59:60-08:00", true),
+            ("1991-01-01T00:59:60+01:00", true),
+            ("2030-02-29t03:04:05z", false),
+            ("2030-01-02t24:04:05z", false),
+            ("2030-01-02t03:60:05z", false),
+            ("2030-01-02t03:04:61z", false),
+            ("2030-01-02t03:04:05+24:00", false),
+            ("2030-01-02t03:04:05+01:60", false),
+            ("2030-01-02t03:04:05.z", false),
+            ("2030-01-02t03:04:05", false),
+        ] {
+            let text = format!(
+                "---\nid: \"a\"\nname: \"Calendar\"\ntrigger: {{\"at\": \"{at}\"}}\nthread: \"new\"\n---\nGo.\n"
+            );
+            let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+            let expected = if valid {
+                vec![]
+            } else {
+                vec![Refusal::new(
+                    "bad-at",
+                    "trigger.at",
+                    "must be an RFC 3339 time with seconds and an offset",
+                )]
+            };
+            assert_eq!(read.refusals, expected, "{at}");
+            let mut loop_ = item("a");
+            loop_.insert("run_at".into(), json!(at));
+            let exported = export_project(&[loop_], "synthetic-project")
+                .unwrap()
+                .remove(0);
+            assert_eq!(exported.refusals.len(), usize::from(!valid), "{at}");
+            assert_eq!(exported.files.len(), usize::from(valid), "{at}");
+        }
+    }
+
+    // catches #996: a bounded numeric parser rejecting a positive cron
+    // step or disabling the plan's frequency guard for an overflowing step.
+    #[test]
+    fn cron_steps_have_no_numeric_ceiling() {
+        for (step, valid) in [
+            ("4294967295", true),
+            ("4294967296", true),
+            ("999999999999999999999999999999999999999999", true),
+            ("0", false),
+            ("01", false),
+            ("+1", false),
+            ("-1", false),
+        ] {
+            for base in ["*", "1-59", "1"] {
+                let text = format!(
+                    "---\nid: \"a\"\nname: \"Cron\"\ntrigger: {{\"cron\": \"{base}/{step} * * * *\", \"timezone\": \"UTC\"}}\nthread: \"new\"\n---\nGo.\n"
+                );
+                let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+                let expected = if valid {
+                    vec![]
+                } else {
+                    vec![Refusal::new(
+                        "bad-cron",
+                        "trigger.cron",
+                        "must be five cron fields: minute hour day-of-month month day-of-week",
+                    )]
+                };
+                assert_eq!(read.refusals, expected, "{base}/{step}");
+            }
+        }
+        for (cron, refused) in [
+            ("*/4294967296 * * * *", false),
+            ("*/4294967296,5 * * * *", true),
+            ("0,5 */999999999999999999999999 * * *", true),
+        ] {
+            let text = format!(
+                "---\nid: \"a\"\nname: \"Cron\"\ntrigger: {{\"cron\": \"{cron}\", \"timezone\": \"UTC\"}}\nthread: \"new\"\n---\nGo.\n"
+            );
+            let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+            let report = plan(&[("a.md".into(), read)], &[], "synthetic-project", &[], 0);
+            assert_eq!(
+                report.items[0]
+                    .refusals
+                    .iter()
+                    .map(|r| r.code)
+                    .collect::<Vec<_>>(),
+                if refused {
+                    vec!["cf-too-frequent"]
+                } else {
+                    vec![]
+                },
+                "{cron}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
