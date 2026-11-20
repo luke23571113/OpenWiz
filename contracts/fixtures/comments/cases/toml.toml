@@ -1,0 +1,11 @@
+# Copyright 2030 Synthetic Example
+[package]
+name = "synthetic" # the name
+note = "a # inside a string"
+text = """
+# inside a multi-line string
+"""
+# Pin the version because the old one broke.
+version = "1.0.0"
+# External: the synthetic registry refuses versions above 1.x, https://example.com/registry/issues/3
+max = '1.x'

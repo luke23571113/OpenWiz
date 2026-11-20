@@ -1,4 +1,3 @@
-//! Bounded repository-scoped GraphQL reads for the cockpit plan. No writes.
 use crate::allowlist::Module;
 
 pub const ALLOWLIST: Module = Module {
@@ -116,8 +115,6 @@ impl Request {
                 )
             }
         };
-        // Nested first pages have their own null cursor; the outer cursor
-        // must never skip their first rows when repository pages advance.
         let body = match self {
             Self::Issues => body
                 .replacen("labels(first:100,after:$cursor)", "labels(first:100)", 1)

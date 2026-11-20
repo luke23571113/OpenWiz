@@ -1,6 +1,3 @@
-//! Read-only deliveries for one explicitly configured existing repository hook.
-//! Wire shapes are documented assumptions, not observed endpoint evidence:
-//! https://docs.github.com/en/rest/repos/webhooks . No hook discovery or writes.
 use crate::{
     allowlist::{Invocation, Module},
     process::Executor,
@@ -15,7 +12,6 @@ pub const ALLOWLIST: Module = Module {
     allows,
 };
 const PREFIX: &str = "repos/{owner}/{repo}/hooks/";
-/// GitHub's documented maximum page size; the granted form has no cursor.
 pub const PAGE_SIZE: usize = 100;
 
 fn positive(s: &str) -> Option<NonZeroU64> {
@@ -42,14 +38,12 @@ fn allows(argv: &[&str]) -> bool {
         .is_some()
 }
 
-/// Only routing metadata survives the list read; no URLs or headers escape.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Summary {
     pub id: NonZeroU64,
     pub guid: String,
     pub event: String,
 }
-/// Payload is private transient data. Debug deliberately withholds it.
 pub struct Delivery {
     pub summary: Summary,
     pub payload: Vec<u8>,
@@ -74,7 +68,6 @@ impl Deliveries {
         rows.iter()
             .map(|row| {
                 let summary = summary(row, false)?;
-                // Redeliveries can have different numeric IDs but the same GUID.
                 if !ids.insert(summary.id) {
                     return Err(malformed());
                 }
@@ -121,8 +114,6 @@ impl Deliveries {
         if bytes.len() > crate::process::MAX_STDOUT_BYTES {
             return Err(malformed());
         }
-        // Delivery durations and payloads may contain decimals. This reader
-        // preserves JSON numbers while refusing duplicate keys at every depth.
         crate::decisions::document(&bytes).ok_or_else(malformed)
     }
 }
@@ -145,7 +136,6 @@ fn summary(value: &Value, detail: bool) -> Result<Summary, SourceError> {
         "installation_id",
         "repository_id",
     ];
-    // The documented throttle field is optional, but never an arbitrary key.
     if value.get("throttled_at").is_some() {
         keys.push("throttled_at");
     }

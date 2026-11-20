@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openwiz:schema:comments:v1",
+  "title": "openwiz.comments.v1",
+  "description": "The comment checker's count report: one repository's comment lines at one or two commits, counted the same way. See comments.v1.md for what counts as a comment and what is excluded.",
+  "$ref": "#/$defs/report",
+  "$defs": {
+    "report": {
+      "type": "object",
+      "required": [
+        "schema",
+        "paths",
+        "docs",
+        "exclude",
+        "before",
+        "after"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "openwiz.comments.v1"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "docs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "before": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/tally"
+            }
+          ]
+        },
+        "after": {
+          "$ref": "#/$defs/tally"
+        }
+      }
+    },
+    "tally": {
+      "type": "object",
+      "required": [
+        "rev",
+        "files",
+        "comment_lines",
+        "disallowed_lines",
+        "languages"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rev": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "comment_lines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "disallowed_lines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "languages": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/language"
+          },
+          "propertyNames": {
+            "enum": [
+              "rust",
+              "python",
+              "shell",
+              "yaml",
+              "toml",
+              "javascript",
+              "typescript",
+              "css",
+              "html"
+            ]
+          }
+        },
+        "by_file": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "language": {
+      "type": "object",
+      "required": [
+        "files",
+        "comment_lines"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "comment_lines": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
