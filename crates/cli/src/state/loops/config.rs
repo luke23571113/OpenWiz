@@ -1,4 +1,3 @@
-//! Switch context from private install configuration; no discovery process.
 use super::{Context, Trust, document, paths, valid_actor};
 use serde_json::Value;
 use std::{
@@ -49,8 +48,6 @@ impl Trust for Installed {
             .then(|| config["operator"].as_str().unwrap().to_owned())
     }
 }
-/// The checkout is supplied locally by the caller (the working directory),
-/// never by a switch request. Unknown Git layouts/origins refuse the write.
 pub fn installed(checkout: &Path, state: &Path) -> Result<Context, String> {
     let config = read(state)?;
     Ok(Context {
@@ -89,15 +86,13 @@ fn origin_matches(checkout: &Path, repository: &str) -> bool {
         }
         if line.starts_with('[') {
             let lower = line.to_ascii_lowercase();
-            // A config construct that changes the origin's meaning is refused:
+            // SECURITY: a config construct that changes the origin's meaning is refused:
             // an include, or a `[url ...]` section, can rewrite the fetch URL.
             if !line.ends_with(']') || lower.starts_with("[include") || lower.starts_with("[url") {
                 return false;
             }
             origin = false;
             if lower.starts_with("[remote") {
-                // Section/key names are case-insensitive; Git remote names
-                // are case-sensitive. Refuse unsupported alternate syntax.
                 if !lower.starts_with("[remote \"") || !line.ends_with("\"]") {
                     return false;
                 }
@@ -112,15 +107,13 @@ fn origin_matches(checkout: &Path, repository: &str) -> bool {
             }
         } else {
             let Some((key, value)) = line.split_once('=') else {
-                // A key/value line is required inside a remote section; a
-                // section-less bare word is ignored as before.
                 if origin {
                     return false;
                 }
                 continue;
             };
             let key = key.trim();
-            // Rewrite keys change what a remote URL means, wherever they sit.
+            // SECURITY: rewrite keys change what a remote URL means, wherever they sit.
             if key.eq_ignore_ascii_case("insteadOf") || key.eq_ignore_ascii_case("pushInsteadOf") {
                 return false;
             }

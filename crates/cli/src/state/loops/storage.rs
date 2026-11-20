@@ -1,4 +1,3 @@
-//! One owner per pass and atomic, synced private records. No repository writes.
 use super::{SwitchError, document};
 use openwiz_core::messaging::OpId;
 use serde_json::Value;
@@ -16,9 +15,6 @@ pub struct Storage {
 }
 impl Drop for Storage {
     fn drop(&mut self) {
-        // A concurrent fork can temporarily inherit the descriptor before
-        // exec closes it. Release the lock explicitly, as the service does,
-        // so that inherited descriptor cannot hold the next pass out.
         let _ = self._lock.unlock();
     }
 }
@@ -103,7 +99,6 @@ impl Storage {
                 }
             }
         }
-        // Re-read every snapshot only after taking this cross-process lock.
         let state = Self { dir, _lock: lock };
         if fresh {
             state.save("index.json", &serde_json::json!([]))?;
@@ -134,7 +129,6 @@ impl Storage {
     }
 }
 
-// Shared strict decoders; this handle neither creates state nor owns a lock.
 struct Reader {
     dir: PathBuf,
 }
@@ -201,8 +195,6 @@ impl Reader {
             &fs::read_to_string(path).map_err(|_| "cannot read durable loop switches")?,
         )?;
         let object = value.as_object().ok_or("invalid durable loop switches")?;
-        // L3's existing map contains only initial/effective states, no invented
-        // historical actor. First L6 save upgrades it atomically.
         if object.values().all(Value::is_boolean) {
             validate_enabled(object)?;
             return Ok(SwitchState {
@@ -287,14 +279,10 @@ impl Storage {
         if !ids.iter().any(|old| old == id) {
             ids.push(id.to_owned());
             ids.sort();
-            // Index the identity before its first record, which itself is
-            // saved before the check. A partial save cannot become an empty
-            // history and replay an occurrence on restart.
             self.save("index.json", &serde_json::json!(ids))?;
         }
         self.save(&format!("runs/{}.json", run["id"].as_str().unwrap()), run)
     }
-    /// Read optional settled observations under the pass lock; only absence is empty.
     pub fn settled_agents(&self) -> Result<Option<Value>, String> {
         let path = self.dir.join("settled.json");
         match fs::symlink_metadata(&path) {
@@ -340,7 +328,6 @@ impl Storage {
     }
 }
 
-/// Effective state and its audit are replaced in one durable write.
 pub struct SwitchState {
     pub enabled: serde_json::Map<String, Value>,
     pub events: Vec<Value>,
@@ -363,9 +350,6 @@ pub struct Snapshot {
     pub runs: Vec<Value>,
     pub enabled: serde_json::Map<String, Value>,
 }
-/// One bounded read of existing state, independent of the scheduler's lock.
-/// Two complete matching collections are required. A partial admission or a
-/// changing record refuses the snapshot; callers must preserve unknown.
 pub fn read_snapshot(root: &Path) -> Result<Snapshot, String> {
     if !root.is_absolute()
         || root.components().any(|c| {

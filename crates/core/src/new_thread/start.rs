@@ -1,18 +1,3 @@
-//! After creation: the start stage and the reported configuration, from one
-//! `thread show` read (sheet A-4: no `thread log`).
-//!
-//! | `thread.status` (and `lastError`) | Start stage |
-//! | --- | --- |
-//! | `pending` or `starting` | **Waiting to start** |
-//! | `active` | **Started:** first turn running, as reported |
-//! | `idle` | **Idle, as reported.** Whether the first prompt ran is not confirmed |
-//! | `error` | **Start failed**, with `lastError` in CloudRoom's words |
-//! | anything else, or a failed read | **unknown**, with the reason |
-//!
-//! The reported harness, model and effort are **reported configuration**:
-//! each is compared with the request and shown as differing when it does,
-//! and none is ever presented as the serving model.
-
 use std::time::Duration;
 
 use serde::Serialize;
@@ -26,37 +11,25 @@ use crate::source::SourceError;
 use super::operation::NewThreadClient;
 use super::outcome::Gap;
 
-/// The CLI follows the start for at most this many reads (sheet A-9).
 pub const FOLLOW_MAX_READS: u32 = 10;
 
-/// ... and for at most this long.
 pub const FOLLOW_WINDOW: Duration = Duration::from_secs(60);
 
-/// The wait between two follow reads.
 pub const FOLLOW_INTERVAL: Duration = Duration::from_secs(6);
 
-/// The label on every reported configuration.
 pub const REPORTED_LABEL: &str =
     "reported configuration: what CloudRoom reports, never the serving model";
 
-/// One new thread as the adapter read it from `thread show`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShownThread {
-    /// `thread.status`, as reported.
     pub status: Fact<String>,
-    /// `thread.lastError`: `Known(None)` when null.
     pub last_error: Fact<Option<String>>,
-    /// `thread.providerId`.
     pub provider: Fact<String>,
-    /// `execution.model`.
     pub model: Fact<String>,
-    /// `execution.reasoningLevel`.
     pub effort: Fact<String>,
-    /// Missing or mistyped fields, in OpenWiz's words.
     pub problems: Vec<Gap>,
 }
 
-/// Where the start is, as CloudRoom reports it. Separate from creation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StartStage {
@@ -70,7 +43,6 @@ pub enum StartStage {
         text: String,
     },
     StartFailed {
-        /// CloudRoom's own words, cut to the field cap.
         last_error: Fact<String>,
         text: String,
     },
@@ -81,7 +53,6 @@ pub enum StartStage {
 }
 
 impl StartStage {
-    /// The stage of a thread whose status reads `status`.
     pub fn from_shown(shown: &ShownThread) -> Self {
         let status = match &shown.status {
             Fact::Known(status) => status.as_str(),
@@ -121,7 +92,6 @@ impl StartStage {
         }
     }
 
-    /// Whether the stage can still change on its own: waiting, or unknown.
     pub fn is_settled(&self) -> bool {
         matches!(
             self,
@@ -130,12 +100,10 @@ impl StartStage {
     }
 }
 
-/// One reported setting beside the requested one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ReportedSetting {
     pub requested: String,
     pub reported: Fact<String>,
-    /// Unknown when the reported value is.
     pub differs_from_requested: Fact<bool>,
     pub text: String,
 }
@@ -164,31 +132,23 @@ impl ReportedSetting {
     }
 }
 
-/// What CloudRoom reports the new thread runs, beside the request. Never
-/// the serving model.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ReportedConfiguration {
-    /// Always [`REPORTED_LABEL`].
     pub label: String,
-    /// The reported `providerId`, against the requested `spawn` provider.
     pub provider: ReportedSetting,
     pub model: ReportedSetting,
     pub effort: ReportedSetting,
 }
 
-/// The start of one created thread, from one read.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct StartView {
     pub thread_id: String,
     pub read_at: Timestamp,
     pub stage: StartStage,
-    /// `None` when the read failed.
     pub reported: Option<ReportedConfiguration>,
     pub gaps: Vec<Gap>,
 }
 
-/// The start view of `thread_id` from one `thread show` read, `read`, made
-/// at `read_at`, against the requested `provider`, `model` and `effort`.
 pub fn start_view(
     thread_id: &str,
     requested: (&str, &str, &str),
@@ -225,9 +185,6 @@ pub fn start_view(
     }
 }
 
-/// How long to wait before the next follow read, after `reads` reads over
-/// `elapsed`, the last showing `stage`; `None` to stop and show the last
-/// stage. At most [`FOLLOW_MAX_READS`] reads within [`FOLLOW_WINDOW`].
 pub fn follow_next(reads: u32, elapsed: Duration, stage: &StartStage) -> Option<Duration> {
     if stage.is_settled() || reads >= FOLLOW_MAX_READS || elapsed + FOLLOW_INTERVAL > FOLLOW_WINDOW
     {
@@ -236,12 +193,6 @@ pub fn follow_next(reads: u32, elapsed: Duration, stage: &StartStage) -> Option<
     Some(FOLLOW_INTERVAL)
 }
 
-/// Follows the start of the created thread `thread_id` (sheet A-9): one
-/// `thread show` read, then one every [`FOLLOW_INTERVAL`] until the stage
-/// settles, [`FOLLOW_MAX_READS`] reads were made or [`FOLLOW_WINDOW`] has
-/// passed. Returns the last read's view and the number of reads. `wait`
-/// waits between reads (a real sleep in the CLI, a recorder in the tests).
-/// Reads only: it never creates, starts or retries anything.
 pub fn follow_start(
     client: &dyn NewThreadClient,
     clock: &dyn Clock,
@@ -257,8 +208,6 @@ pub fn follow_start(
         let read = client.show_thread(thread_id, deadline);
         reads += 1;
         let view = start_view(thread_id, requested, read, clock.now());
-        // A real wait shows on the monotonic clock; a test's recorded one
-        // only in `waited`.
         let elapsed = clock
             .monotonic()
             .saturating_duration_since(started)
