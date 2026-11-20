@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
+import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE = os.environ.get('OPENWIZ_FACTORY_STATE') or os.path.expanduser('~/.local/state/openwiz-factory')
+STATE = os.path.abspath(os.environ.get('OPENWIZ_FACTORY_STATE') or os.path.expanduser('~/.local/state/openwiz-factory'))
 VERSION = {'driver': 'factory', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
 START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
@@ -45,21 +45,45 @@ def command(req, session, work):
             + (['-s', session] if session else []) + [prompt])
 
 
+def session_file(run, n):
+    return os.path.join(STATE, '%s.%d.session' % (run, n))
+
+
 def session_of(run, turns):
     for n in reversed(range(len(turns))):
         try:
-            with open(os.path.join(STATE, '%s.%d.out' % (run, n))) as f:
-                lines = f.read().splitlines()
+            with open(session_file(run, n)) as f:
+                found = f.read()
         except OSError:
             continue
-        for line in reversed(lines):
-            try:
-                found = json.loads(line).get('session_id')
-            except (ValueError, AttributeError):
-                continue
-            if isinstance(found, str) and re.fullmatch(SESSION, found):
-                return found
+        if re.fullmatch(SESSION, found):
+            return found
     return None
+
+
+def session_in(line):
+    try:
+        found = json.loads(line).get('session_id')
+    except (ValueError, AttributeError):
+        return None
+    return found if isinstance(found, str) and re.fullmatch(SESSION, found) else None
+
+
+def owner_only(path, flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC):
+    return os.open(path, flags | os.O_NOFOLLOW, 0o600)
+
+
+def private_state():
+    try:
+        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        st = os.lstat(STATE)
+    except OSError:
+        raise Refused('the driver cannot make its state folder %s; nothing was started' % STATE,
+                      'make OPENWIZ_FACTORY_STATE (or ~/.local/state/openwiz-factory) a folder you can write')
+    if not os.path.isdir(STATE) or os.path.islink(STATE) or st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise Refused('the state folder %s is not yours alone, so runs there could be read by others; nothing '
+                      'was started' % STATE, 'run chmod 700 on it if it is your own folder, or point '
+                      'OPENWIZ_FACTORY_STATE at a new folder, then start again')
 
 
 def since(pid):
@@ -90,25 +114,38 @@ def descendants(pid):
     return found
 
 
-def supervise(out, cmd):
+def supervise(keep, cmd):
     if ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
-        log = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
-        os.close(log)
+        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL)
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+    found = []
+
+    def read():
+        for line in harness.stdout:
+            session = session_in(line)
+            if session:
+                found.append(session)
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
     while True:
         try:
-            os.wait()
+            pid, _ = os.wait()
         except ChildProcessError:
             return
+        if pid == harness.pid:
+            reader.join(5)
+            fd = owner_only(keep)
+            os.write(fd, (found[-1] if found else '').encode())
+            os.close(fd)
 
 
 def launch(req, run, n, session):
@@ -117,15 +154,14 @@ def launch(req, run, n, session):
                       'install droid and sign in to Factory yourself, then start again')
     work = os.path.join(STATE, 'work', run)
     try:
+        os.makedirs(os.path.dirname(work), mode=0o700, exist_ok=True)
         os.makedirs(work, mode=0o700, exist_ok=True)
     except OSError:
         raise Refused('the driver cannot make run %s a workspace; nothing was started' % run,
                       'make OPENWIZ_FACTORY_STATE (or ~/.local/state/openwiz-factory) a folder you can write')
-    out = os.path.join(STATE, '%s.%d.out' % (run, n))
     try:
-        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn', out]
-                               + command(req, session, work),
-                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
+        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn', session_file(run, n)]
+                               + command(req, session, work), start_new_session=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         with sup.stdout:
             line = sup.stdout.readline()
@@ -137,11 +173,17 @@ def launch(req, run, n, session):
         turn = {'error': 'its supervisor did not answer'}
     if 'pid' not in turn:
         raise Refused('droid did not start: %s' % turn['error'], 'check that `droid exec` runs by hand')
-    return {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid)}
+    return {'n': n, 'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid,
+            'supervisor_since': since(sup.pid)}
 
 
 def running(turn, run):
-    return bool(turn) and turn['since'] is not None and since(turn['pid']) == turn['since']
+    if not turn:
+        return False
+    if turn['since'] is not None and since(turn['pid']) == turn['since']:
+        return True
+    finishing = turn['supervisor_since'] is not None and since(turn['supervisor']) == turn['supervisor_since']
+    return finishing and not os.path.exists(session_file(run, turn['n']))
 
 
 def end(turns, run):
@@ -188,7 +230,7 @@ def saved(run, state=None):
     path = os.path.join(STATE, run + '.json')
     if state is not None:
         os.makedirs(STATE, mode=0o700, exist_ok=True)
-        with open(path + '.new', 'w') as f:
+        with os.fdopen(owner_only(path + '.new'), 'w') as f:
             json.dump(state, f)
         os.replace(path + '.new', path)
         return state
@@ -221,6 +263,7 @@ def answer(cmd):
         if req['harness'] != HARNESS:
             raise Refused('Factory runs only its own agent, not %s' % req['harness'],
                           'start again with harness droid, and pick its model with model')
+        private_state()
         state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}
         try:
             saved(run, state)
@@ -257,6 +300,7 @@ def answer(cmd):
                               'make OPENWIZ_FACTORY_STATE (or ~/.local/state/openwiz-factory) a folder you can '
                               'write, then stop it again')
             return {'run': run, 'stopped': True}
+        private_state()
         if state['stopped']:
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
@@ -266,8 +310,8 @@ def answer(cmd):
         session = state.get('session') or session_of(run, state['turns'])
         if not session:
             raise Refused('run %s has no Droid session to continue: its first turn ended before one began' % run,
-                          'read its output in OPENWIZ_FACTORY_STATE, sign in to Factory, then stop it and start '
-                          'a new run')
+                          'check by hand that `droid exec` runs and you are signed in to Factory, then stop this '
+                          'run and start a new one')
         state = dict(state, session=session)
         try:
             saved(run, state)

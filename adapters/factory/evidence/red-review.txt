@@ -22,7 +22,7 @@ FAIL: test_state_is_owner_only (__main__.Factory.test_state_is_owner_only)
 Traceback (most recent call last):
   File "adapters/factory/test_driver.py", line 174, in test_state_is_owner_only
     self.assertEqual({p: m for p, m in modes.items() if m}, {})
-AssertionError: {'<tmp>/state/work': 45, '/tmp/[40 chars]: 36} != {}
+AssertionError: {'<tmp>/state/work': 45, '<tmp>[40 chars]: 36} != {}
 + {}
 - {'<tmp>/state/run-0123456789ab.json': 36,
 -  '<tmp>/state/work': 45}
@@ -49,7 +49,7 @@ FAIL: test_turn_inherits_the_callers_environment_unchanged (__main__.Factory.tes
 Traceback (most recent call last):
   File "adapters/factory/test_driver.py", line 146, in test_turn_inherits_the_callers_environment_unchanged
     self.assertEqual(json.load(f), dict(self.env, FAKE_ENV_LOG=seen))
-AssertionError: {'HOM[451 chars]/tmphayfmbj5/turn-env.json', 'OPENWIZ_RUN': 'run-0123456789ab'} != {'HOM[451 chars]/tmphayfmbj5/turn-env.json'}
+AssertionError: {'HOM[451 chars]<tmp>/turn-env.json', 'OPENWIZ_RUN': 'run-0123456789ab'} != {'HOM[451 chars]<tmp>/turn-env.json'}
   {'FACTORY_API_KEY': 'fk-synthetic0factory0value',
    'FAKE_ENV_LOG': '<tmp>/turn-env.json',
    'FAKE_FACTORY_HOME': '<tmp>/factory',

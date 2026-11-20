@@ -1,10 +1,15 @@
-# Green run: python3 -I adapters/factory/test_driver.py, against the Factory driver. Its PATH is fixtures/bin plus a folder holding only python3, and setUp fails if a real droid, claude, codex, gh or other host program is reachable on it: the synthetic droid, never Factory.
+# Green run: python3 -I adapters/factory/test_driver.py, against the Factory driver after review findings R2 to R6. Its PATH is fixtures/bin plus a folder holding only python3, and setUp fails if a real droid, claude, codex, gh or other host program is reachable on it: the synthetic droid, never Factory.
 test_kit_passes_all_five (__main__.Factory.test_kit_passes_all_five) ... ok
 test_other_harness_is_refused_before_anything_runs (__main__.Factory.test_other_harness_is_refused_before_anything_runs) ... ok
+test_relative_state_still_runs_the_turn (__main__.Factory.test_relative_state_still_runs_the_turn) ... ok
+test_state_is_owner_only (__main__.Factory.test_state_is_owner_only) ... ok
+test_state_keeps_only_the_session_id (__main__.Factory.test_state_keeps_only_the_session_id) ... ok
+test_state_others_can_read_is_refused_before_anything_runs (__main__.Factory.test_state_others_can_read_is_refused_before_anything_runs) ... ok
+test_turn_inherits_the_callers_environment_unchanged (__main__.Factory.test_turn_inherits_the_callers_environment_unchanged) ... ok
 test_wake_without_a_session_starts_nothing (__main__.Factory.test_wake_without_a_session_starts_nothing) ... ok
 
 ----------------------------------------------------------------------
-Ran 3 tests in N.NNNs
+Ran 8 tests in N.NNNs
 
 OK
 
@@ -16,18 +21,6 @@ pass stop: the run ended, and a wake after it is refused
 pass token: no login or token passed through the driver
 exit: 0
 
-# The owned-paths check, after the F4 grant on the ticket: python3 -I tools/owned-paths/check.py --repo openwizdev/OpenWiz --pr 2022
-owned: .github/workflows/ci.yml (by `.github/workflows/ci.yml`)
-owned: adapters/factory/README.md (by `adapters/factory/`)
-owned: adapters/factory/driver (by `adapters/factory/`)
-owned: adapters/factory/evidence/green.txt (by `adapters/factory/`)
-owned: adapters/factory/evidence/red.txt (by `adapters/factory/`)
-owned: adapters/factory/fixtures/bin/droid (by `adapters/factory/`)
-owned: adapters/factory/schema.json (by `adapters/factory/`)
-owned: adapters/factory/test_driver.py (by `adapters/factory/`)
-standing: changes/1998.md (by `changes/1998.md`)
-granted: changes/closedwiz-1998.md (by `changes/closedwiz-1998.md`)
-owned: tools/open-import/paths.json (by `tools/open-import/paths.json`)
-owned: tools/release/build_products.py (by `tools/release/build_products.py`)
+# The owned-paths check: python3 -I tools/owned-paths/check.py --repo openwizdev/OpenWiz --pr 2022
 owned-paths: ok: 12 file(s) inside the owned paths and grants of ticket #1998
 exit: 0
