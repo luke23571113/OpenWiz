@@ -40,8 +40,8 @@ installed build's `runtime/adapters`, for example
 `<ROOT>/current/runtime/adapters`.
 
 The root and state directory must be absolute, owned, private directories with
-no symlink ancestors. New directories use 0700; data 0600; programs and shell
-runtime scripts 0700. Existing settings and credentials are never replaced.
+no symlink ancestors. New directories use 0700; data 0600; programs, shell
+runtime scripts and host drivers (`runtime/adapters/<host>/driver`) 0700. Existing settings and credentials are never replaced.
 An existing update channel is never silently migrated. A packaged install
 explicitly records `openwiz.update-channel.v1`, channel `packaged`, in
 `<root>/channel.json`; absent metadata keeps existing source installs unchanged.
