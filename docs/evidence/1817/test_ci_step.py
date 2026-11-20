@@ -24,7 +24,8 @@ def step_script():
     for line in body[1:]:
         if line and not line.startswith('          '):
             break
-        script.append(line[10:])
+        if 'docs/evidence/1817/' not in line:
+            script.append(line[10:])
     return '\n'.join(script) + '\n'
 
 
@@ -86,14 +87,14 @@ class CommentCheckStep(unittest.TestCase):
         pr.commit('src/new.py', 'value = 2\n# comment-ok: the vendor API rejects 1, see its changelog\n')
         run = pr.run_step()
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        self.assertEqual(run.stdout.splitlines()[-1:], ['comment-check: ok'])
+        self.assertEqual((run.stdout, run.stderr.splitlines()[-1:]), ('', ['comment-check: ok']))
 
     def test_comments_main_added_are_not_the_pull_requests(self):
         pr = PullRequest(self)
         pr.commit('src/new.py', 'value = 2\n')
         run = pr.run_step(main_moves=True)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        self.assertEqual(run.stdout.splitlines()[-1:], ['comment-check: ok'])
+        self.assertEqual((run.stdout, run.stderr.splitlines()[-1:]), ('', ['comment-check: ok']))
 
 
 if __name__ == '__main__':

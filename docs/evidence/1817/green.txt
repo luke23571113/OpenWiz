@@ -1,0 +1,5 @@
+$ python3 -I docs/evidence/1817/test_ci_step.py   # with the comment-check step in ci.yml
+----------------------------------------------------------------------
+Ran 3 tests in 7.615s
+
+OK
