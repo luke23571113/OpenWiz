@@ -1,7 +1,3 @@
-//! SHA-256 (FIPS 180-4), for the text hash an op id is bound to, and for
-//! each staged attachment's bytes ([`Sha256Hasher`], fed in pieces). No
-//! crate is approved for it, and it is pure computation, so it lives here.
-
 const K: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -17,14 +13,12 @@ const H0: [u32; 8] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-/// The SHA-256 of `data` as 64 lowercase hex digits.
 pub fn sha256_hex(data: &[u8]) -> String {
     let mut hasher = Sha256Hasher::new();
     hasher.update(data);
     hasher.finish()
 }
 
-/// Mixes one 64-byte block into the state.
 fn compress(h: &mut [u32; 8], block: &[u8; 64]) {
     let mut w = [0u32; 64];
     let (words, _) = block.as_chunks::<4>();
@@ -65,9 +59,6 @@ fn compress(h: &mut [u32; 8], block: &[u8; 64]) {
     }
 }
 
-/// SHA-256 over bytes that arrive in pieces, so a large file is hashed
-/// without being held in memory (OpenWiz 0.0.4, ClosedWiz#14). The same
-/// hash as [`sha256_hex`] of all the pieces together.
 #[derive(Clone, Debug)]
 pub struct Sha256Hasher {
     state: [u32; 8],
@@ -92,7 +83,6 @@ impl Sha256Hasher {
         }
     }
 
-    /// Adds the next piece.
     pub fn update(&mut self, mut data: &[u8]) {
         self.len = self.len.wrapping_add(data.len() as u64);
         while !data.is_empty() {
@@ -107,10 +97,8 @@ impl Sha256Hasher {
         }
     }
 
-    /// The SHA-256 of everything added, as 64 lowercase hex digits.
     pub fn finish(mut self) -> String {
         let bit_len = self.len.wrapping_mul(8);
-        // The padding: 0x80, zeros to 56 bytes into a block, the length.
         let zeros = (55usize.wrapping_sub(self.filled)) % 64;
         let mut tail = vec![0x80];
         tail.resize(1 + zeros, 0);

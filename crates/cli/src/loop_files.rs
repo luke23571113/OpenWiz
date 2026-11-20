@@ -1,13 +1,3 @@
-//! `openwiz loop validate|export|plan|apply`: loop files in the pinned WizLoops
-//! format (`contracts/wizloops-loop.v1.md`), with Cloudroom as the adapter
-//! (`contracts/wizloops-cloudroom.v1.md`). The arguments, results and exits
-//! are `contracts/loop-cli.v1.md`'s.
-//!
-//! LC1 (#789) ships [`parse`], the contract's argument rules, and stubs: each
-//! command parsed its arguments, then refused with the `not_built` result.
-//! LC2 to LC5 (#790 to #793) each replaced one stub in [`run`]; none is left.
-//! `loop off|on` stay in `loops.rs`, unchanged.
-
 use std::ffi::OsString;
 use std::io::Write;
 
@@ -36,15 +26,10 @@ pub const HELP: &str = "loop validate/export/plan/apply
   any difference; an unclear outcome exits 6 and is never retried.
 ";
 
-/// Untrusted text (a Cloudroom name, id or key, room-cli's error text, a
-/// path) made safe to print on a terminal: every control, bidi or invisible
-/// format character is replaced, as [`crate::clean`] does for the inventory.
-/// JSON output keeps the original value; only human output goes through this.
 pub fn escape_untrusted(text: &str) -> String {
     crate::clean(text)
 }
 
-/// The four loop-file commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
     Validate,
@@ -73,7 +58,6 @@ impl Command {
         }
     }
 
-    /// The ticket that builds this command.
     pub fn ticket(self) -> u32 {
         match self {
             Self::Validate => 790,
@@ -83,7 +67,6 @@ impl Command {
         }
     }
 
-    /// The options this command accepts, besides `--json` and `--help`.
     fn options(self) -> &'static [&'static str] {
         match self {
             Self::Validate => &["--catalog"],
@@ -94,42 +77,34 @@ impl Command {
     }
 }
 
-/// One parsed run, as the contract's "Arguments" pins it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Args {
     pub command: Command,
-    /// `validate` and `plan`: the paths; `apply`: the one id; `export`: none.
     pub operands: Vec<String>,
     pub catalog: bool,
     pub project: Option<String>,
     pub out: Option<String>,
     pub file: Option<String>,
-    /// `--adopt <id>=<loop>` bindings, in the order given.
     pub adopt: Vec<(String, String)>,
     pub json: bool,
 }
 
-/// What the arguments ask for.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Parsed {
     Run(Args),
     Help { json: bool },
 }
 
-/// Whether `word` is one of this module's commands, for the dispatcher.
 pub fn handles(word: Option<&str>) -> bool {
     word.and_then(Command::from_word).is_some()
 }
 
-/// Whether `--json` selects JSON: an exact token before `--`. No value may
-/// start with `-`, so this is the same answer [`parse`] gives.
 fn json_selected(args: &[OsString]) -> bool {
     args.iter()
         .take_while(|a| *a != "--")
         .any(|a| a == "--json")
 }
 
-/// Parses the arguments after `loop`, starting with the command word.
 pub fn parse(args: &[OsString]) -> Result<Parsed, String> {
     let strings: Vec<&str> = args
         .iter()
@@ -202,7 +177,6 @@ pub fn parse(args: &[OsString]) -> Result<Parsed, String> {
             return Err(format!("{token} appears more than once"));
         }
     }
-    // Everything after `--` is an operand, even one that starts with `-`.
     parsed
         .operands
         .extend(rest.iter().skip(options_end + 1).map(|a| (*a).to_owned()));
@@ -220,7 +194,6 @@ pub fn parse(args: &[OsString]) -> Result<Parsed, String> {
     Ok(Parsed::Run(parsed))
 }
 
-/// Runs `openwiz loop <command> ...`; `args` starts with the command word.
 pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     let name = args
         .first()
@@ -252,7 +225,6 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         }
         Ok(Parsed::Run(args)) => loop_apply::run(&args, stdout, stderr),
         Err(why) => {
-            // `openwiz loop --help` is `loop off|on`'s and omits these four.
             let help = match name {
                 "unknown" => "openwiz --help".to_owned(),
                 _ => format!("openwiz {} --help", name.replace('.', " ")),
@@ -262,8 +234,6 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
                 "openwiz: usage: {}; nothing was read (see {help})",
                 escape_untrusted(&why)
             );
-            // The required output is the JSON document with --json, otherwise
-            // the line; its failure is exit 1 (the contract's exit table).
             let written = if json_selected(args) {
                 let doc = serde_json::json!({
                     "schema": "openwiz.cli-error.v1", "command": name, "exit_code": 2,
@@ -294,12 +264,6 @@ mod tests {
         )
     }
 
-    // The stub test `each_stub_refuses_with_the_contracts_not_built_result`
-    // is gone with the last stub: apply (#793) is built, and its keeper is
-    // tests/cli-agent/loop_apply.rs, which checks apply's real results.
-
-    // catches: a parser that accepts a form the contract refuses (so a later
-    // command acts on arguments nobody pinned) or refuses a pinned form.
     #[test]
     fn arguments_follow_the_contract() {
         let project = Some("prj_syn_0001".to_owned());
@@ -466,7 +430,6 @@ mod tests {
         ] {
             let (code, out, err) = run_args(args);
             assert_eq!(code, 2, "{args:?}");
-            // `--json` is never a value, so `--project --json` still selects JSON.
             assert_eq!(out.is_empty(), !args.contains(&"--json"), "{args:?}");
             assert!(err.starts_with("openwiz: usage: "), "{args:?}: {err}");
             let mut json = args.to_vec();
@@ -494,9 +457,6 @@ mod tests {
         assert!(parse(&bad).is_err(), "not UTF-8");
     }
 
-    // catches: untrusted text printed with its control bytes, so a loop's
-    // name or room-cli's error can clear the screen, spoof a line or set the
-    // clipboard (OSC 52) when export prints it.
     #[test]
     fn escape_untrusted_replaces_terminal_controls() {
         assert_eq!(
@@ -509,9 +469,6 @@ mod tests {
         );
     }
 
-    // catches: a usage error that echoes an argument's control bytes to the
-    // terminal (an unknown option is printed back as given), so an argument
-    // can clear the screen or set the clipboard (OSC 52); JSON keeps it.
     #[test]
     fn a_usage_error_never_prints_a_terminal_control() {
         let bad = "--x\u{1b}]52;c;eA==\u{7}";
@@ -531,9 +488,6 @@ mod tests {
         );
     }
 
-    // catches: a usage error that sends the caller to `openwiz loop --help`,
-    // which is `loop off|on`'s and omits these commands, or that exits 2
-    // when its required output (the line, or the JSON document) failed.
     #[test]
     fn a_usage_error_names_its_help_and_exits_1_when_output_fails() {
         struct Broken;
@@ -562,7 +516,6 @@ mod tests {
         }
     }
 
-    // catches: help that reads, fails, or loses its JSON wrapper.
     #[test]
     fn help_lists_the_four_commands_and_reads_nothing() {
         let (code, out, err) = run_args(&["plan", "--help"]);
