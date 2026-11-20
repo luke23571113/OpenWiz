@@ -594,6 +594,7 @@ class Check(unittest.TestCase):
                  {"synthetic-app[bot]", "synthetic-owner"}),
                 ("|Record authors|`a`|", {"a"}),
                 ("|  Record authors  |  `a` ,`b-c`  |  ", {"a", "b-c"}),
+                ("| Record authors |\t`a`\u0085,\u00a0`b`\u2003|\u3000", {"a", "b"}),
                 ("| Record authors | `A1` |\r", {"a1"})]
         bad = ["| Record authors | |", "| Record authors | `` |", "| Record authors | `a--b` |",
                "| Record authors | `-a` |", "| Record authors | `a-` |", "| Record authors | a |",
@@ -601,6 +602,13 @@ class Check(unittest.TestCase):
                "| Record authors | `a[bot]x` |", "| Record authors | `a` | extra |",
                "| Record authors | `a` | extra", "| Record authors | `a`",
                "| Record authors | `a` |\n| Record authors | `b` |", "| Record author | `a` |"]
+        # Python's whitespace includes four control separators that Rust's trim rejects.
+        for separator in map(chr, range(0x1c, 0x20)):
+            bad.extend([f"| Record authors | {separator}`a`, `b` |",
+                        f"| Record authors | `a`{separator}, `b` |",
+                        f"| Record authors | `a`,{separator}`b` |",
+                        f"| Record authors | `a`, `b`{separator}|",
+                        f"| Record authors | `a`, `b` |{separator}"])
         with tempfile.TemporaryDirectory() as tmp:
             fleet = Path(tmp) / "fleet.md"
             with mock.patch.object(ci3_check, "FLEET", fleet):
@@ -678,6 +686,21 @@ runpy.run_path(sys.argv[0], run_name="__main__")
 class Smoke(unittest.TestCase):
     """CI runs this class on every pull request (ci.yml's always lane): seconds, offline, on the
     real files the loop reads, with no fixture in their place."""
+
+    def test_a_mismatched_loop_command_is_refused_before_launch(self):
+        # catches #1241: a definition-only change escaping the offline smoke.
+        definition = json.loads(DEFINITION.read_text())
+        for argv in (["python3", "-I", "tools/collector/ci3_check.py", "due"],
+                     ["python3", "-I", "tools/collector/missing.py", "check"],
+                     ["python3", "tools/collector/ci3_check.py", "check"]):
+            with self.subTest(argv=argv), tempfile.TemporaryDirectory() as tmp:
+                definition["check"]["argv"] = argv
+                path = Path(tmp) / "loops" / "ci3-weekly.json"
+                path.parent.mkdir()
+                path.write_text(json.dumps(definition))
+                with mock.patch.object(sys.modules[__name__], "DEFINITION", path):
+                    with self.assertRaisesRegex(AssertionError, "loop check.argv"):
+                        self.test_the_loops_command_prints_its_finding_offline()
 
     def test_the_loops_command_prints_its_finding_offline(self):
         # Bug: the loop's command exits nonzero or prints nothing when GitHub
