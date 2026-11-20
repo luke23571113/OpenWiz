@@ -27,6 +27,7 @@ mod loop_contract;
 mod loop_export;
 mod loop_plan;
 mod loop_validate;
+mod models;
 mod process;
 mod results;
 mod review;
