@@ -30,8 +30,8 @@
       "message": {
         "schema": "openwiz.token-service.v1",
         "kind": "refusal",
-        "refusal": "not-installed",
-        "message": "Token refused: a repository is not in the App's installation.",
+        "refusal": "usage",
+        "message": "Token refused: the request is not one valid token-service request.",
         "token": "synthetic-write-token"
       }
     },

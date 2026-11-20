@@ -171,6 +171,85 @@
       }
     },
     {
+      "name": "a request with a repeated key",
+      "argv": [
+        "room-cli",
+        "mac",
+        "run",
+        "--stdin",
+        "python3 -I '/synthetic/openwiz/tools/github-app/token-service.py' mint"
+      ],
+      "request": "{\"schema\": \"openwiz.token-service.v1\", \"kind\": \"request\", \"requester\": \"builder-1839\", \"repositories\": [\"synthetic-owner/work\"], \"permissions\": {\"metadata\": \"read\"}, \"permissions\": {\"contents\": \"write\"}}",
+      "out": {
+        "exit": 2,
+        "stderr": "",
+        "message": {
+          "schema": "openwiz.token-service.v1",
+          "kind": "refusal",
+          "refusal": "usage",
+          "message": "Token refused: the request is not one valid token-service request."
+        },
+        "log": {
+          "schema": "openwiz.token-service.v1",
+          "kind": "mint-log",
+          "at": 1000,
+          "requester": "-",
+          "outcome": "usage"
+        }
+      }
+    },
+    {
+      "name": "repository names match the installation in any case",
+      "argv": [
+        "room-cli",
+        "mac",
+        "run",
+        "--stdin",
+        "python3 -I '/synthetic/openwiz/tools/github-app/token-service.py' mint"
+      ],
+      "request": {
+        "schema": "openwiz.token-service.v1",
+        "kind": "request",
+        "requester": "builder-1839",
+        "repositories": [
+          "Synthetic-Owner/Work"
+        ],
+        "permissions": {
+          "metadata": "read"
+        }
+      },
+      "out": {
+        "exit": 0,
+        "stderr": "",
+        "message": {
+          "schema": "openwiz.token-service.v1",
+          "kind": "answer",
+          "token": "synthetic-case-token",
+          "expires_at": 4600,
+          "repositories": [
+            "Synthetic-Owner/Work"
+          ],
+          "permissions": {
+            "metadata": "read"
+          }
+        },
+        "log": {
+          "schema": "openwiz.token-service.v1",
+          "kind": "mint-log",
+          "at": 1000,
+          "requester": "builder-1839",
+          "repositories": [
+            "Synthetic-Owner/Work"
+          ],
+          "permissions": {
+            "metadata": "read"
+          },
+          "outcome": "minted",
+          "expires_at": 4600
+        }
+      }
+    },
+    {
       "name": "a request that names the key",
       "argv": [
         "room-cli",

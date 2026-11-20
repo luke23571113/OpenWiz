@@ -29,6 +29,20 @@ def pin_of(path):
     return json.loads(blocks[0])
 
 
+def strict(text):
+    """A request as the service reads it: one JSON object, each key once, or None."""
+    def once(pairs):
+        keys = [k for k, _ in pairs]
+        if len(set(keys)) != len(keys):
+            raise ValueError("repeated key")
+        return dict(pairs)
+    try:
+        value = json.loads(text, object_pairs_hook=once)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def resolve(schema, root):
     while "$ref" in schema:
         schema = root["$defs"][schema["$ref"].split("/")[-1]]
@@ -144,6 +158,8 @@ class Requests(Base):
         installed = {r.lower() for r in self.fixtures["requests.json"]["installed"]}
         for case in cases:
             name, request, out = case["name"], case["request"], case["out"]
+            if isinstance(request, str):
+                request = strict(request)
             self.assertEqual(self.valid(out["message"]), [], name)
             if isinstance(request, dict) and not self.valid(request):
                 repos = [r.lower() for r in request["repositories"]]
@@ -176,6 +192,15 @@ class Requests(Base):
             log = out["log"]
             self.assertEqual(self.valid(log), [], name)
             self.assertEqual(log["outcome"], "minted" if got == "answer" else got, name)
+
+    def test_the_pin_reads_requests_strictly(self):
+        # catches: a service that keeps the last of a repeated key or misses a case-only match.
+        rules = self.pin.get("request", {})
+        self.assertEqual(rules.get("repeated_key"), "usage")
+        self.assertEqual(rules.get("repository_case"), "insensitive")
+        names = {c["name"] for c in self.fixtures["requests.json"]["cases"]}
+        self.assertIn("a request with a repeated key", names)
+        self.assertIn("repository names match the installation in any case", names)
 
     def test_the_fixtures_cover_a_good_request_and_every_refusal(self):
         # catches: a refusal the contract names but no fixture shows.
