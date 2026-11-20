@@ -284,7 +284,7 @@ def answer(cmd):
             code = step(opening(req, run), run)
             if code != 0:
                 raise Refused('acpx could not open a %s session for run %s (exit %s); nothing was started'
-                              % (req['harness'], run, 'none: it took too long' if code is None else code),
+                              % (req['harness'], run, 'unknown' if code is None else code),
                               'check that you are signed in to %s yourself and that acpx runs it by hand; acpx\'s '
                               'output is in %s' % (req['harness'], log(run)))
             turn = launch(req, run, False)

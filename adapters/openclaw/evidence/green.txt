@@ -9,6 +9,6 @@ test_stop_ends_a_queue_owner_with_a_clean_environment (__main__.OpenClaw.test_st
 test_wake_while_a_prompt_runs_sends_no_second_one (__main__.OpenClaw.test_wake_while_a_prompt_runs_sends_no_second_one) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 2.878s
+Ran 8 tests in 2.911s
 
 OK
