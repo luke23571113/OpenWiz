@@ -14,7 +14,7 @@ render or scan publishes nothing, so the branch keeps its last good state and
 time. `collect` is the five-minute collection alone (history.collect): it adds
 only the new sample and renders nothing. With --gather (WRD1) it first gathers
 every source, the three health providers included, reading only; its run time
-is the gather's end.
+is the gather's end. A boundary already saved is reused before anything is gathered.
 A selected artifact that cannot be read refuses the run. publish.sh runs the tests first. With no selection every bench stays
 Unknown with its prerequisite. The caller authenticates git.
 """
@@ -275,9 +275,17 @@ def render(out, history, at, read, charts=None):
     return html
 
 
-def publish(remote, at, read, draw_page=True, charts=None):
+def boundary(at):
+    """The five-minute sample identity `at` falls in (history.collect's)."""
+    moment = suite._time(at)
+    return moment.replace(minute=moment.minute // 5 * 5, second=0).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def publish(remote, at, read, draw_page=True, charts=None, gather=None):
     """One tick and, with draw_page, the README and pictures; push only war-room.
-    Without draw_page (the five-minute collection) only a new sample is added."""
+    Without draw_page (the five-minute collection) only a new sample is added.
+    With `gather` (collection only), `at` is the check time: a boundary already saved
+    is reused before any source is read; otherwise gather() returns (gather end, read)."""
     with tempfile.TemporaryDirectory(prefix='war-room-') as tmp:
         work, history = Path(tmp) / 'branch', Path(tmp) / 'private' / 'history'
         work.mkdir()
@@ -320,7 +328,12 @@ def publish(remote, at, read, draw_page=True, charts=None):
             html = render(work, history, at, read, charts)
         else:
             # WRD1: the collection saves one sample and renders no page or picture.
-            main.history.collect(history, at, read)
+            # #647: the saved history is read and checked first, so a retry in a saved
+            # boundary reads no source; a new sample takes the gather's own end.
+            if gather is None or boundary(at) not in {r['sample_at'] for r in main.history.read_all(history)}:
+                if gather is not None:
+                    at, read = gather()
+                main.history.collect(history, at, read)  # its duplicate check, again at the end
             html = ''
         (work / 'samples').mkdir(exist_ok=True)
         for path in sorted(samples.glob('*.json')):
@@ -373,10 +386,12 @@ def cli(argv):
         if a.cmd == 'collect' and gathering:
             import gather  # gather imports this module: load it only when used
             with tempfile.TemporaryDirectory(prefix='war-room-collect-') as tmp:
-                gather.gather(Path(tmp) / 'gathered', remote=a.remote, repo=a.gather[0], run_url=a.gather[1])
-                at = gather.now()  # the run time is the gather's end, read once
-                read = selection_reader(Path(tmp) / 'gathered/root', Path(tmp) / 'gathered/selection.json')
-                head = publish(a.remote, at, read, draw_page=False)
+                def gathered():
+                    gather.gather(Path(tmp) / 'gathered', remote=a.remote, repo=a.gather[0], run_url=a.gather[1])
+                    # The run time is the gather's end, read once.
+                    return gather.now(), selection_reader(Path(tmp) / 'gathered/root',
+                                                          Path(tmp) / 'gathered/selection.json')
+                head = publish(a.remote, gather.now(), None, draw_page=False, gather=gathered)
             print('collected into war-room at %s' % head if head else 'boundary already collected')
             return 0
         suite._time(a.at)

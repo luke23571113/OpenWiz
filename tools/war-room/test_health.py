@@ -579,13 +579,13 @@ class Collection(unittest.TestCase):
         def saved():
             listed = subprocess.run(['git', '-C', str(self.origin), 'ls-tree', '-r', 'refs/heads/war-room'],
                                     check=True, capture_output=True, text=True).stdout
-            return sorted(line.split()[2:] for line in listed.splitlines())
+            return sorted(line.split()[:1:-1] for line in listed.splitlines())  # [name, blob]
 
         code, said = cli('2030-03-01T12:05:10Z', '2030-03-01T12:06:30Z')
         self.assertEqual(code, 0)
         self.assertTrue(said.startswith('collected into war-room at '))
         first = saved()
-        self.assertEqual([name for _, name in first], ['samples/2030-03-01T12-05-00Z.json'])
+        self.assertEqual([name for name, _ in first], ['samples/2030-03-01T12-05-00Z.json'])
         # A retry in that boundary reads nothing, so a gather that would now fail never runs.
         self.assertEqual(cli('2030-03-01T12:08:59Z', '2030-03-01T12:09:30Z', fail=True),
                          (0, 'boundary already collected\n'))
@@ -594,7 +594,7 @@ class Collection(unittest.TestCase):
         # Started in the unsaved 12:10 boundary, ended in 12:15: the new sample is the gather's end.
         self.assertEqual(cli('2030-03-01T12:14:30Z', '2030-03-01T12:15:30Z')[0], 0)
         crossed = saved()
-        self.assertEqual([name for _, name in crossed], ['samples/2030-03-01T12-05-00Z.json',
+        self.assertEqual([name for name, _ in crossed], ['samples/2030-03-01T12-05-00Z.json',
                                                           'samples/2030-03-01T12-15-00Z.json'])
         # Ended in a boundary saved meanwhile: the final duplicate check keeps the saved bytes.
         self.assertEqual(cli('2030-03-01T12:14:40Z', '2030-03-01T12:15:50Z'), (0, 'boundary already collected\n'))
