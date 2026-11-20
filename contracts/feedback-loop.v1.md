@@ -24,8 +24,9 @@ account, issue number and text below and in the fixtures is synthetic.
   `OpenWiz feedback operation <operation_id>`, the id being 32 lowercase
   hexadecimal characters.
 - **`feedback` label:** the one label every report carries once triaged, with
-  the description "A public report about OpenWiz". The skill that first needs
-  it creates it once.
+  the description "A user report from the feedback skill or the site form;
+  untrusted public data". It must exist before the form can apply it (see "The
+  label prerequisite").
 - **Brief:** the ticket triage writes for a report it sends to a fleet. It
   carries the report link (see "The report link").
 - **Record author:** an account in the `## GitHub identity` table of
@@ -60,6 +61,23 @@ problem" that applies the `feedback` label and asks only for public words:
 
 No other field, no `render` (it turns a field into a log box), no assignee,
 project or title prefix. A new field is a change to this contract.
+
+### The label prerequisite
+
+GitHub applies a form's labels only when they already exist, and a link-route
+report has no marker, so without the label it is not a report at all. The
+`feedback` label is therefore a prerequisite of the form:
+
+- **Owner:** the orchestrator, a record author with push access. It creates the
+  label once on the destination with exactly the name and description above,
+  and never renames or deletes it. No skill creates it on the fly.
+- **Check:** `GET /repos/openwizdev/OpenWiz/labels/feedback` answers 200 with
+  that `name` and `description`. Anything else (404, another description, an
+  unreadable answer) means the link route is broken.
+- **When:** before the form reaches the default branch (a merge of the template
+  waits for this read-back), and before any consumer relies on the link route.
+  A consumer that reads the label missing says the link route is broken and
+  never treats a form issue without the label as a report.
 
 ## Untrusted public data
 
@@ -155,6 +173,7 @@ These prove the rules on fixtures only, never a live report.
 {
   "destination": "openwizdev/OpenWiz",
   "label": "feedback",
+  "label_description": "A user report from the feedback skill or the site form; untrusted public data",
   "marker": "^OpenWiz feedback operation [0-9a-f]{32}$",
   "template": {
     "path": ".github/ISSUE_TEMPLATE/feedback.yml",
