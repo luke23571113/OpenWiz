@@ -27,11 +27,15 @@ _spec = importlib.util.spec_from_loader('records_kit', importlib.machinery.Sourc
 records_kit = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(records_kit)
 
-# Known credential shapes (the status contract's list), and any value of the kit's own environment
-# whose name says it is a secret.
-SHAPES = re.compile(r'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}'
-                    r'|xox[abposr]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|Bearer\s+[A-Za-z0-9._~+/-]{20,}'
-                    r'|(?i:token|secret|password|api[-_]?key)=[^\s&]{8,}')
+# Known credential shapes: the pinned status contract's credential rules, as its writer
+# (skills/launch-fleet/scripts/status.py at that commit) recognises them, then the kit's earlier shapes; and any
+# value of the kit's own environment whose name says it is a secret.
+SHAPES = re.compile(r'\b(?:[a-z_]*token|[a-z_]*key|secret|password|passwd|pwd|sig|signature|auth|credentials?)\s*='
+                    r'|\b(?:password|passwd|secret|token)\s*:\s*\S|\bbearer\s+\S'
+                    r'|\bgh[pousr]_[A-Za-z0-9]{8,}|\bgithub_pat_|\bAKIA[0-9A-Z]{16}\b'
+                    r'|\bxox[abprs]-|\bsk-[A-Za-z0-9_-]{16,}'
+                    r'|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}'
+                    r'|xox[abposr]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}', re.I)
 SECRETS = [v for k, v in os.environ.items()
            if re.search(r'TOKEN|SECRET|PASSWORD|CREDENTIAL|_KEY$|^KEY', k.upper()) and len(v) >= 8]
 KEYWORDS = {'$schema', 'type', 'required', 'additionalProperties', 'properties', 'pattern', 'minLength',
@@ -131,6 +135,20 @@ def records_version():
     return m.group(1)
 
 
+def texts(value):
+    """Every string and object key inside a decoded JSON value."""
+    stack = [value]
+    while stack:
+        v = stack.pop()
+        if isinstance(v, str):
+            yield v
+        elif isinstance(v, dict):
+            yield from v
+            stack += v.values()
+        elif isinstance(v, list):
+            stack += v
+
+
 def holds_credential(text):
     return bool(SHAPES.search(text)) or any(v in text for v in SECRETS)
 
@@ -219,10 +237,18 @@ class Kit:
             return 'bad', '%s did not finish: %s' % (cmd, e)
         if holds_credential(p.stdout + p.stderr):
             self.leak('the driver printed a credential')
+        held = 'bad', 'its %s output held a credential, which the kit does not show' % cmd
+        if holds_credential(p.stdout):
+            # Nothing of it is parsed or shown: any part could carry the credential into the kit's output.
+            return held
         try:
             out = parse(p.stdout)
         except ValueError:
             return 'bad', '%s printed no single JSON value' % cmd
+        if any(holds_credential(text) for text in texts(out)):
+            # Decoding can restore what the JSON text escaped (a \u escape): check every decoded string and key too.
+            self.leak('the driver printed a credential')
+            return held
         if p.returncode not in (0, 1):
             return 'bad', '%s exited %d' % (cmd, p.returncode)
         kind, s = ('ok', self.schema['commands'][cmd]['output']) if p.returncode == 0 else ('refused', self.schema['error'])
