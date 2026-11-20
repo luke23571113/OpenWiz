@@ -281,62 +281,103 @@ def boundary(at):
     return moment.replace(minute=moment.minute // 5 * 5, second=0).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
+def checkout(tmp, remote):
+    """war-room fetched into tmp and validated, its samples carried into a private history:
+    (work tree, history, saved sample bytes by name)."""
+    work, history = tmp / 'branch', tmp / 'private' / 'history'
+    work.mkdir()
+    git(work, 'init', '-q')
+    git(work, 'config', 'user.name', 'The War room')
+    git(work, 'config', 'user.email', 'war-room@users.noreply.github.com')
+    git(work, 'remote', 'add', 'origin', remote)
+    exists = git(work, 'ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/' + BRANCH, ok=(0, 2)).returncode == 0
+    names = []
+    if exists:
+        git(work, 'fetch', '-q', 'origin', 'refs/heads/' + BRANCH)
+        # Before anything is written: only plain files with the page's own names, never a link.
+        for entry in git(work, 'ls-tree', '-r', '-z', 'FETCH_HEAD').stdout.split('\0'):
+            if not entry:
+                continue
+            meta, name = entry.split('\t', 1)
+            if meta.split()[:2] != ['100644', 'blob'] or not (
+                    name in ('README.md', 'snapshot.json', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
+                raise Fail('the branch holds an unexpected file')
+            names.append(name)
+        # A saved sample is immutable: changed, removed or renamed in any commit, merges
+        # included (-m compares a merge with each parent), and nothing is published on top.
+        if git(work, 'log', '-m', '--format=', '--name-only', '--diff-filter=DMRT', 'FETCH_HEAD', '--', 'samples').stdout.strip():
+            raise Fail('a saved sample was rewritten on the branch')
+        git(work, 'checkout', '-q', '-B', BRANCH, 'FETCH_HEAD')
+    else:
+        git(work, 'checkout', '-q', '--orphan', BRANCH)
+    # Carry the saved samples forward, byte for byte, into a private history.
+    samples = history / 'samples'
+    samples.mkdir(parents=True, mode=0o700)
+    before = {}
+    for name in names:
+        if name.startswith('samples/'):
+            path = work / name
+            if path.is_symlink() or not path.is_file():
+                raise Fail('the branch holds an unexpected file')
+            before[path.name] = path.read_bytes()
+            (samples / path.name).write_bytes(before[path.name])
+    return work, history, before
+
+
+class Rejected(Fail):
+    """A push refused as not a fast-forward: another writer moved war-room meanwhile."""
+
+
+# R1 (#648): how many times a gathered collection pushes, each on a freshly fetched and validated tip.
+PUSH_TRIES = 3
+
+
+def push(work):
+    out = git(work, 'push', '--porcelain', 'origin', 'HEAD:refs/heads/' + BRANCH, ok=(0, 1))
+    if out.returncode:
+        # Only git's own porcelain status line decides; nothing of it is echoed (it names the remote).
+        if any(line.startswith('!\t') and ('(fetch first)' in line or '(non-fast-forward)' in line)
+               for line in out.stdout.splitlines()):
+            raise Rejected('git push rejected: war-room moved')
+        raise Fail('git push failed (exit %d)' % out.returncode)
+
+
+def saved_boundaries(remote):
+    """The sample identities war-room holds now, fetched and validated as a publish reads them."""
+    with tempfile.TemporaryDirectory(prefix='war-room-check-') as tmp:
+        _, history, _ = checkout(Path(tmp), remote)
+        return {r['sample_at'] for r in main.history.read_all(history)}
+
+
 def publish(remote, at, read, draw_page=True, charts=None, gather=None):
     """One tick and, with draw_page, the README and pictures; push only war-room.
     Without draw_page (the five-minute collection) only a new sample is added.
-    With `gather` (collection only), `at` is the check time: a boundary already saved
-    is reused before any source is read; otherwise gather() returns (gather end, read)."""
+
+    With `gather` (collection only), `at` is the check time. #647: a boundary already
+    saved is reused before any source is read; otherwise gather() returns (gather end,
+    read). R1: the branch is then fetched and validated again, so the final duplicate
+    check and the push base are current; a push another writer beat is retried on the
+    new tip with the same gathered read and time, at most PUSH_TRIES times."""
+    if gather is not None:
+        if boundary(at) in saved_boundaries(remote):
+            return None
+        at, read = gather()
+        for _ in range(PUSH_TRIES - 1):
+            try:
+                return publish(remote, at, read, draw_page=False)
+            except Rejected:
+                pass
+        return publish(remote, at, read, draw_page=False)
     with tempfile.TemporaryDirectory(prefix='war-room-') as tmp:
-        work, history = Path(tmp) / 'branch', Path(tmp) / 'private' / 'history'
-        work.mkdir()
-        git(work, 'init', '-q')
-        git(work, 'config', 'user.name', 'The War room')
-        git(work, 'config', 'user.email', 'war-room@users.noreply.github.com')
-        git(work, 'remote', 'add', 'origin', remote)
-        exists = git(work, 'ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/' + BRANCH, ok=(0, 2)).returncode == 0
-        names = []
-        if exists:
-            git(work, 'fetch', '-q', 'origin', 'refs/heads/' + BRANCH)
-            # Before anything is written: only plain files with the page's own names, never a link.
-            for entry in git(work, 'ls-tree', '-r', '-z', 'FETCH_HEAD').stdout.split('\0'):
-                if not entry:
-                    continue
-                meta, name = entry.split('\t', 1)
-                if meta.split()[:2] != ['100644', 'blob'] or not (
-                        name in ('README.md', 'snapshot.json', *SITE.values(), *PICTURES) or (name.startswith('samples/') and SAMPLE.fullmatch(name[8:]))):
-                    raise Fail('the branch holds an unexpected file')
-                names.append(name)
-            # A saved sample is immutable: changed, removed or renamed in any commit, merges
-            # included (-m compares a merge with each parent), and nothing is published on top.
-            if git(work, 'log', '-m', '--format=', '--name-only', '--diff-filter=DMRT', 'FETCH_HEAD', '--', 'samples').stdout.strip():
-                raise Fail('a saved sample was rewritten on the branch')
-            git(work, 'checkout', '-q', '-B', BRANCH, 'FETCH_HEAD')
-        else:
-            git(work, 'checkout', '-q', '--orphan', BRANCH)
-        # Carry the saved samples forward, byte for byte, into a private history.
-        samples = history / 'samples'
-        samples.mkdir(parents=True, mode=0o700)
-        before = {}
-        for name in names:
-            if name.startswith('samples/'):
-                path = work / name
-                if path.is_symlink() or not path.is_file():
-                    raise Fail('the branch holds an unexpected file')
-                before[path.name] = path.read_bytes()
-                (samples / path.name).write_bytes(before[path.name])
+        work, history, before = checkout(Path(tmp), remote)
         if draw_page:
             html = render(work, history, at, read, charts)
         else:
             # WRD1: the collection saves one sample and renders no page or picture.
-            # #647: the saved history is read and checked first, so a retry in a saved
-            # boundary reads no source; a new sample takes the gather's own end.
-            if gather is None or boundary(at) not in {r['sample_at'] for r in main.history.read_all(history)}:
-                if gather is not None:
-                    at, read = gather()
-                main.history.collect(history, at, read)  # its duplicate check, again at the end
+            main.history.collect(history, at, read)
             html = ''
         (work / 'samples').mkdir(exist_ok=True)
-        for path in sorted(samples.glob('*.json')):
+        for path in sorted((history / 'samples').glob('*.json')):
             data = path.read_bytes()
             if path.name in before:
                 if before[path.name] != data:
@@ -357,7 +398,7 @@ def publish(remote, at, read, draw_page=True, charts=None, gather=None):
         git(work, 'commit', '-q', '-m', 'Redraw the War room' if draw_page else 'Collect a War room sample')
         if git(work, 'symbolic-ref', '--short', 'HEAD').stdout.strip() != BRANCH:
             raise Fail('refusing to publish outside war-room')
-        git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/' + BRANCH)
+        push(work)
         return git(work, 'rev-parse', 'HEAD').stdout.strip()
 
 
@@ -412,7 +453,7 @@ def cli(argv):
         # Only the reason class: a source error can carry a private value. gather's Fail is its own class.
         if not isinstance(e, (Fail, ValueError, OSError, UnicodeError, RecursionError)) and type(e).__name__ != 'Fail':
             raise
-        print('war-room: %s; nothing published' % (e if type(e).__name__ == 'Fail' else type(e).__name__), file=sys.stderr)
+        print('war-room: %s; nothing published' % (e if isinstance(e, Fail) or type(e).__name__ == 'Fail' else type(e).__name__), file=sys.stderr)
         return 1
     return 0
 

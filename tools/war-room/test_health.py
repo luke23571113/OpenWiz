@@ -562,11 +562,12 @@ class Collection(unittest.TestCase):
         import itertools
         import gather
         import publish
-        real, calls = gather.gather, []
+        real, calls, outs = gather.gather, [], []
 
         def cli(check, end, fail=False, during=None):
             def gathered(out, **kw):
                 calls.append(check)
+                outs.append(out)
                 if fail:
                     raise gather.Fail('synthetic gather failure')
                 selection = real(out, **dict(kw, clock=Clock(check), pools=POOLS))
@@ -616,6 +617,38 @@ class Collection(unittest.TestCase):
         self.assertEqual([name for name, _ in saved()][-1], 'samples/2030-03-01T12-30-00Z.json')
         self.assertEqual(saved()[:4], moved)
         self.assertEqual(len(calls), 5)
+        # A writer beating every push is retried at most three times, one gather in all; any
+        # other push failure is not retried. Either way nothing new is saved.
+        kept = saved()
+        for refusal, tries, said in ((publish.Rejected, 3, 'git push rejected'), (publish.Fail, 1, 'git push failed')):
+            with self.subTest(said):
+                pushes, err = [], io.StringIO()
+
+                def beaten(work):
+                    pushes.append(work)
+                    raise refusal(said)
+                with patch.object(publish, 'push', beaten), contextlib.redirect_stderr(err):
+                    self.assertEqual(cli('2030-03-01T12:40:05Z', '2030-03-01T12:41:00Z')[0], 1)
+                self.assertEqual(len(pushes), tries)
+                self.assertIn(said, err.getvalue())
+                self.assertEqual(saved(), kept)
+        self.assertEqual(len(calls), 7)
+        # Another writer pushes between this collection's fresh fetch and its own push: git
+        # refuses it as not a fast-forward, and the same gathered sample lands on the new tip.
+        real_push, pushes = publish.push, []
+
+        def raced(work):
+            pushes.append(work)
+            if len(pushes) == 1:
+                publish.publish(str(self.origin), '2030-03-01T12:49:00Z',
+                                publish.selection_reader(outs[-1] / 'root', outs[-1] / 'selection.json'), draw_page=False)
+            real_push(work)
+        with patch.object(publish, 'push', raced):
+            self.assertEqual(cli('2030-03-01T12:45:05Z', '2030-03-01T12:50:30Z')[0], 0)
+        self.assertEqual((len(pushes), len(calls)), (3, 8))  # rejected, the other writer's, the retry
+        self.assertEqual([name for name, _ in saved()][-2:], ['samples/2030-03-01T12-45-00Z.json',
+                                                               'samples/2030-03-01T12-50-00Z.json'])
+        self.assertEqual(saved()[:5], kept)
 
     def test_collection_only_saves_a_sample_without_drawing(self):
         import publish
