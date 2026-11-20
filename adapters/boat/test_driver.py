@@ -37,7 +37,7 @@ t.main()
 '''
 # A driver with planted failures: with RAISE, its `prompt` raises an error the driver doesn't expect (not
 # Refused), before it runs `boat prompt` or once the turn has begun, as an unexpected boat answer did on the live
-# run (L2); with DENY_SIGNALS, every signal fails; with READ_ONLY, every mark and save fails.
+# run (L2); with DENY_PROC, listing /proc fails; with DENY_SIGNALS, every signal fails; with READ_ONLY, every mark and save fails.
 RAISES = '''import importlib.machinery, importlib.util, os, sys
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_loader('boat', importlib.machinery.SourceFileLoader('boat', %r))
@@ -50,6 +50,9 @@ def broken(*args):
     raise KeyError('planted')
 if os.environ.get('RAISE'):
     t.prompt = broken
+if os.environ.get('DENY_PROC'):  # Linux refuses to list /proc
+    listdir = os.listdir
+    t.os.listdir = lambda p='.': listdir(p) if p != '/proc' else (_ for _ in ()).throw(PermissionError(13, 'denied'))
 if os.environ.get('DENY_SIGNALS'):  # Linux refuses every signal the driver sends
     def denied(*args):
         raise PermissionError(1, 'Operation not permitted')
@@ -343,16 +346,16 @@ class Boat(unittest.TestCase):
                 self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
                 self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
                 self.assertEqual(set(self.sandboxes().values()), {'stopped'}, 'its sandbox still runs')
-        # catches: cleanup that gives up on `boat stop` when Linux denies the driver's signals (L2), in a failed
-        # start and in a stop; each failure is reported.
-        code, err = self.driver('start', REQUEST, program=program, RAISE='after', DENY_SIGNALS='1')
-        self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
-        self.assertIn('local processes', err['error'])
-        code, out = self.driver('start', REQUEST)
-        self.assertEqual(code, 0, out)
-        code, err = self.driver('stop', out, program=program, DENY_SIGNALS='1')
-        self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
-        self.assertIn('local processes', err['error'])
+        # catches: cleanup that gives up on `boat stop` when Linux denies the driver's signals, or its listing of
+        # /proc (L2), in a failed start and in a stop; each failure is reported.
+        for deny in ('DENY_SIGNALS', 'DENY_PROC'):
+            code, err = self.driver('start', REQUEST, program=program, RAISE='after', **{deny: '1'})
+            self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
+            self.assertIn('local processes', err['error'])
+            code, out = self.driver('start', REQUEST)
+            self.assertEqual(code, 0, out)
+            code, err = self.driver('stop', out, program=program, **{deny: '1'})
+            self.assertEqual((code, list(self.sandboxes().values())[-1], 'local processes' in err['error']), (1, 'stopped', True), err)
         # catches: a sandbox the driver could not stop going unreported (L2, the outcome).
         code, err = self.driver('start', REQUEST, program=program, RAISE='after', FAKE_BOAT_FAIL='info,stop')
         self.assertEqual(code, 1, err)
@@ -379,7 +382,8 @@ class Boat(unittest.TestCase):
             self.assertEqual(os.readlink(os.path.join(home, root, 'skills', 'build-ticket')),
                              os.path.join(home, 'wizskills', 'skills', 'build-ticket'))
         os.makedirs(self.env['FAKE_BOAT_STATE'] + '.homes/bx_fake0003/.claude/skills/build-ticket')
-        for case, env in (('moved tag', {'FAKE_WIZ_COMMIT': '0' * 40}), ('existing entry', {})):
+        for case, env in (('moved tag', {'FAKE_WIZ_COMMIT': '0' * 40}), ('existing entry', {}),
+                          ('tag moved after the first fetch', {'FAKE_WIZ_COMMIT': 'moved'})):
             with self.subTest(case=case):
                 turns = len(self.logged())
                 code, err = self.driver('start', REQUEST, **env)

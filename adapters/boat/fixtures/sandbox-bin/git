@@ -1,21 +1,76 @@
 #!/usr/bin/env python3
-"""A synthetic `git` inside the fake sandbox, for the boat driver's tests. `git clone ... --branch v<version>
-https://github.com/openwizdev/WizSkills.git <dest>` copies the synthetic release (fixtures/wizskills) to <dest>;
-`git -C <dir> rev-parse HEAD` and `HEAD^{tree}` print the pin of OpenWiz's wizskills.lock, unless
-FAKE_WIZ_COMMIT names another commit (a tag that moved)."""
+"""A synthetic `git` inside the fake sandbox, for the boat driver's tests, with a synthetic GitHub.
+
+GitHub's WizSkills tag v<version> points at the pin of OpenWiz's wizskills.lock; FAKE_WIZ_COMMIT=<sha> points it
+elsewhere, and FAKE_WIZ_COMMIT=moved points it elsewhere from the second fetch on (a tag that moves between
+fetches). A URL rewritten by `url.<local>.insteadOf` (GIT_CONFIG_KEY_0) reads that local repository instead.
+A repository is a folder whose `fake.json` holds its tag's commit and tree. Supported: `init -q --bare`,
+`fetch` and `clone` of the tag, `rev-parse` of a tag, commit or HEAD and its tree, and `show <sha>:install.sh`."""
 import json, os, shutil, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+RELEASE = os.path.join(HERE, '..', 'wizskills')
+GITHUB = 'https://github.com/openwizdev/WizSkills.git'
 with open(os.path.join(HERE, '..', '..', '..', '..', 'wizskills.lock')) as f:
     LOCK = json.load(f)
+
+
+def github():
+    """The commit and tree the tag has on this fetch from GitHub."""
+    seen = os.path.join(os.environ['HOME'], '.fake-github-fetches')
+    with open(seen, 'a+') as f:
+        f.write('.')
+        f.seek(0)
+        n = len(f.read())
+    moved = os.environ.get('FAKE_WIZ_COMMIT', '')
+    commit = LOCK['commit'] if not moved or moved == 'moved' and n == 1 else ('1' * 40 if moved == 'moved' else moved)
+    return {'commit': commit, 'tree': LOCK['tree'] if commit == LOCK['commit'] else '2' * 40}
+
+
+def source(url):
+    """The repository a URL reads, after a `url.<local>.insteadOf` rewrite of exactly that URL."""
+    key, value = os.environ.get('GIT_CONFIG_KEY_0', ''), os.environ.get('GIT_CONFIG_VALUE_0')
+    if key.startswith('url.') and key.endswith('.insteadOf') and value == url:
+        local = key[len('url.'):-len('.insteadOf')]
+        with open(os.path.join(local[len('file://'):] if local.startswith('file://') else local, 'fake.json')) as f:
+            return json.load(f)
+    if url != GITHUB:
+        sys.exit('git: unknown remote')
+    return github()
+
+
+def repo(folder):
+    with open(os.path.join(folder, 'fake.json')) as f:
+        return json.load(f)
+
+
 args = sys.argv[1:]
-if args[:1] == ['clone'] and args[-2] == 'https://github.com/openwizdev/WizSkills.git' \
-        and args[args.index('--branch') + 1] == 'v' + LOCK['version']:
-    shutil.copytree(os.path.join(HERE, '..', 'wizskills'), args[-1])
-elif args[:1] == ['-C'] and args[2:] == ['rev-parse', 'HEAD']:
-    print(os.environ.get('FAKE_WIZ_COMMIT') or LOCK['commit'])
-elif args[:1] == ['-C'] and args[2:] == ['rev-parse', 'HEAD^{tree}']:
-    print(LOCK['tree'])
+where = None
+if args[:1] in (['-C'], ['--git-dir']):
+    where, args = args[1], args[2:]
+    if args[:1] != ['init'] and os.path.isdir(os.path.join(where, '.git')):
+        where = os.path.join(where, '.git')
+if args[:3] == ['init', '-q', '--bare']:
+    os.makedirs(args[3])
+    with open(os.path.join(args[3], 'fake.json'), 'w') as f:
+        json.dump({}, f)
+elif where and args[:1] == ['fetch'] and args[-1] == 'refs/tags/v%s:refs/tags/v%s' % ((LOCK['version'],) * 2):
+    with open(os.path.join(where, 'fake.json'), 'w') as f:
+        json.dump(source(args[-2]), f)
+elif args[:1] == ['clone'] and args[args.index('--branch') + 1] == 'v' + LOCK['version']:
+    tag = source(args[-2])
+    shutil.copytree(RELEASE, args[-1])
+    os.makedirs(os.path.join(args[-1], '.git'))
+    with open(os.path.join(args[-1], '.git', 'fake.json'), 'w') as f:
+        json.dump(tag, f)
+elif where and args[:1] == ['rev-parse'] and len(args) == 2:
+    state, ref = repo(where), args[1]
+    name, _, kind = ref.partition('^')
+    if name not in ('HEAD', 'refs/tags/v' + LOCK['version'], state.get('commit')):
+        sys.exit('git: unknown revision')
+    print(state['tree'] if kind == '{tree}' else state['commit'])
+elif where and args[:1] == ['show'] and args[1] == '%s:install.sh' % repo(where).get('commit'):
+    with open(os.path.join(RELEASE, 'install.sh')) as f:
+        sys.stdout.write(f.read())
 else:
-    print('git: unexpected arguments', file=sys.stderr)
-    sys.exit(128)
+    sys.exit('git: unexpected arguments')
