@@ -338,8 +338,9 @@ def js_code(text, path):
     parens = []  # whether each opening parenthesis belongs to a control header
 
     def refuse(at, reason):
+        # Not a load: syntax the lexer cannot read past (#1102).
         no = text.count('\n', 0, at) + 1
-        raise Refused(f'{path}:{no} native load: {reason}')
+        raise Refused(f'{path}:{no} unreadable JavaScript: {reason}')
 
     while i < n:
         c = text[i]
@@ -665,6 +666,9 @@ class Python:
                 if scope is None:
                     return (UNKNOWN,)
                 scope = self.scope.get(scope)
+        if self.env_default(node) is not None:
+            # The caller's value, or else the repository default (#1118).
+            return e(self.env_default(node)) if (bind or {}).get(node) == 1 else (UNKNOWN,)
         if isinstance(node, ast.IfExp):
             pick = (bind or {}).get(node)
             if pick is not None:
@@ -725,7 +729,7 @@ class Python:
             fn = self.scope.get(fn)
         used = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
         local = self.assigns.get(fn, {})
-        ifs = [n for n in ast.walk(node) if isinstance(n, ast.IfExp)]
+        ifs = [n for n in ast.walk(node) if isinstance(n, ast.IfExp) or self.env_default(n) is not None]
         pending = list(used)
         while pending:  # a parameter can reach the sink through local assignments
             name = pending.pop()
@@ -734,13 +738,14 @@ class Python:
                     if isinstance(n, ast.Name) and n.id not in used:
                         used.add(n.id)
                         pending.append(n.id)
-                    elif isinstance(n, ast.IfExp) and n not in ifs:
+                    elif (isinstance(n, ast.IfExp) or self.env_default(n) is not None) and n not in ifs:
                         ifs.append(n)
         # A name a for loop binds to literal strings takes each of them in turn.
         loops = {**self.loops[None], **(self.loops.get(fn) or {})}
         looped = sorted(n for n in used if n in loops)
         choices = [dict(zip(looped, combo)) for combo in itertools.product(*[[(v,) for v in loops[n]] for n in looped])]
-        # A conditional expression takes each of its two branches in turn.
+        # A conditional expression, or an environment read with a default,
+        # takes each of its two branches in turn.
         ifs = ifs[:6]
         choices = [{**c, **dict(zip(ifs, picks))} for c in choices for picks in itertools.product((0, 1), repeat=len(ifs))]
         params = [p for p in self.params(fn) if p in used and p not in looped] if fn is not None else []
@@ -766,6 +771,14 @@ class Python:
                 out.append((call.lineno if call is not None else node.lineno,
                             self.ev(node, self.scope.get(node), {**bind, **choice})))
         return out
+
+    def env_default(self, node):
+        """The default of `os.environ.get(name, default)` or `os.getenv`, else None."""
+        if not isinstance(node, ast.Call) or self.name(node.func) not in ('os.environ.get', 'os.getenv'):
+            return None
+        if len(node.args) > 1:
+            return node.args[1]
+        return next((k.value for k in node.keywords if k.arg == 'default'), None)
 
     def name(self, func):
         """A called name with its imported aliases resolved: `load` from
