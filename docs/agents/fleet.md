@@ -70,10 +70,11 @@ Every ticket may make these edits beside its owned paths without asking:
 
 1. **Its own rows in shared registries:** `tools/open-import/paths.json`, the CLI test catalogue in `tests/cli-agent/main.rs`, and CI step lists such as `tools/collector/steps.tsv`.
 2. **Its changelog line** as `changes/<ticket>.md`, whatever its owned paths name.
-3. **Synthetic answers to test fakes its change breaks,** with no assertion change.
-4. **Updates to byte-identical carried copies** of a file it owns.
+3. **Its own evidence folder** under `docs/evidence/`.
+4. **Synthetic answers to test fakes its change breaks,** with no assertion change.
+5. **Updates to byte-identical carried copies** of a file it owns.
 
-Only its own rows and lines. The pull request lists each use with its kind and path, and the reviewer checks it. Still ask first for any contract or schema, workflow, dependency, protected guard, other ticket's logic, or anything outside these four kinds. Source: Jake, 2026-11-15 (J110; [private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6905144595)).
+Only its own rows and lines. The pull request lists each use with its kind and path, and the reviewer checks it. Still ask first for any contract or schema, workflow, dependency, protected guard, other ticket's logic, or anything outside these five kinds. Source: Jake, 2026-11-15 (J110; [private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6905144595)).
 
 ## Labels
 
