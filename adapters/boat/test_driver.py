@@ -382,7 +382,8 @@ class Boat(unittest.TestCase):
             self.assertEqual(os.readlink(os.path.join(home, root, 'skills', 'build-ticket')),
                              os.path.join(home, 'wizskills', 'skills', 'build-ticket'))
         os.makedirs(self.env['FAKE_BOAT_STATE'] + '.homes/bx_fake0003/.claude/skills/build-ticket')
-        for case, env in (('moved tag', {'FAKE_WIZ_COMMIT': '0' * 40}), ('existing entry', {})):
+        for case, env in (('moved tag', {'FAKE_WIZ_COMMIT': '0' * 40}), ('existing entry', {}),
+                          ('another commit, same tree', {'FAKE_WIZ_COMMIT': '3' * 40, 'FAKE_WIZ_SAME_TREE': '1'})):
             with self.subTest(case=case):
                 turns = len(self.logged())
                 code, err = self.driver('start', REQUEST, **env)
@@ -392,7 +393,7 @@ class Boat(unittest.TestCase):
         # catches: the installer fetching the tag again, after it moved, and that unverified release linked.
         code, out = self.driver('start', REQUEST, FAKE_WIZ_COMMIT='moved')
         with open(os.path.join(HERE, '..', '..', 'wizskills.lock')) as f, \
-                open(self.env['FAKE_BOAT_STATE'] + '.homes/bx_fake0004/wizskills/.git/fake.json') as g:
+                open(self.env['FAKE_BOAT_STATE'] + '.homes/bx_fake0005/wizskills/.git/fake.json') as g:
             self.assertEqual((code, json.load(g)['commit']), (0, json.load(f)['commit']), out)
 
 

@@ -127,24 +127,32 @@ def pinned_skills():
                       'run the driver from an OpenWiz checkout whose wizskills.lock pins a WizSkills release')
 
 
-# Run in the sandbox by `install_skills`: fetch only the pinned tag, check its commit and tree against the lock,
-# install it with that release's own install.sh (which checks the tag's release record and tree again), then link
-# each skill where the harnesses look, refusing an existing different entry.
+# Run in the sandbox by `install_skills`. One fetch of the pinned tag, into a local bare repository; its commit and
+# tree are checked against the lock. That commit's own install.sh (taken by its full sha, never by the tag name)
+# then runs with the release URL rewritten to that local repository, so it fetches nothing from the network. The
+# installed checkout must be exactly the pinned commit and tree before any skill is linked, and each link refuses
+# an existing different entry.
 INSTALL = r'''set -eu
-v=%(version)s c=%(commit)s t=%(tree)s
+v=%(version)s c=%(commit)s t=%(tree)s u=https://github.com/openwizdev/WizSkills.git
 d=$(mktemp -d)
 trap 'rm -rf "$d"' EXIT
-git clone --quiet --depth 1 --branch "v$v" https://github.com/openwizdev/WizSkills.git "$d/w"
-[ "$(git -C "$d/w" rev-parse HEAD)" = "$c" ] || { echo "refused: tag v$v is not the pinned commit" >&2; exit 1; }
-[ "$(git -C "$d/w" rev-parse 'HEAD^{tree}')" = "$t" ] || { echo "refused: tag v$v is not the pinned tree" >&2; exit 1; }
-sh "$d/w/install.sh" --version "$v" --dest "$HOME/wizskills"
+refuse() { echo "refused: $1" >&2; exit 1; }
+git init -q --bare "$d/r.git"
+git --git-dir "$d/r.git" fetch -q --no-tags "$u" "refs/tags/v$v:refs/tags/v$v"
+[ "$(git --git-dir "$d/r.git" rev-parse "refs/tags/v$v^{commit}")" = "$c" ] || refuse "tag v$v is not the pinned commit"
+[ "$(git --git-dir "$d/r.git" rev-parse "$c^{tree}")" = "$t" ] || refuse "commit $c is not the pinned tree"
+git --git-dir "$d/r.git" show "$c:install.sh" > "$d/install.sh"
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$d/r.git.insteadOf" GIT_CONFIG_VALUE_0="$u" \
+  sh "$d/install.sh" --version "$v" --dest "$HOME/wizskills"
+[ "$(git -C "$HOME/wizskills" rev-parse HEAD)" = "$c" ] || refuse "the installed release is not the pinned commit"
+[ "$(git -C "$HOME/wizskills" rev-parse 'HEAD^{tree}')" = "$t" ] || refuse "the installed release is not the pinned tree"
 for root in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
   mkdir -p "$root"
   for skill in "$HOME/wizskills/skills/"*/; do
     skill=${skill%%/}
     link=$root/${skill##*/}
     if [ -e "$link" ] || [ -L "$link" ]; then
-      [ "$(readlink "$link")" = "$skill" ] || { echo "refused: $link exists" >&2; exit 1; }
+      [ "$(readlink "$link")" = "$skill" ] || refuse "$link exists"
     else
       ln -s "$skill" "$link"
     fi
@@ -432,6 +440,9 @@ def shutdown(run, turns, sandbox, conversation, stop_sandbox):
         end(turns + strays(run, {t['supervisor'] for t in turns}), run)
     except Refused as e:
         failures.append(e)
+    except Exception as e:  # even a /proc this driver may not read (L2): the sandbox's stop below still runs
+        failures.append(Refused('the driver could not end its local processes: %s' % type(e).__name__,
+                                "end this run's processes by hand: they carry OPENWIZ_RUN=%s" % run))
     if sandbox and stop_sandbox:
         try:
             end_sandbox(sandbox, conversation)

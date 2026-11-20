@@ -3,7 +3,7 @@
 
 GitHub's WizSkills tag v<version> points at the pin of OpenWiz's wizskills.lock; FAKE_WIZ_COMMIT=<sha> points it
 elsewhere, and FAKE_WIZ_COMMIT=moved points it elsewhere from the second fetch on (a tag that moves between
-fetches). A URL rewritten by `url.<local>.insteadOf` (GIT_CONFIG_KEY_0) reads that local repository instead.
+fetches); FAKE_WIZ_SAME_TREE makes that other commit a later one, with the pin in its history and the pin's tree. A URL rewritten by `url.<local>.insteadOf` (GIT_CONFIG_KEY_0) reads that local repository instead.
 A repository is a folder whose `fake.json` holds its tag's commit and tree. Supported: `init -q --bare`,
 `fetch` and `clone` of the tag, `rev-parse` of a tag, commit or HEAD and its tree, and `show <sha>:install.sh`."""
 import json, os, shutil, sys
@@ -24,7 +24,8 @@ def github():
         n = len(f.read())
     moved = os.environ.get('FAKE_WIZ_COMMIT', '')
     commit = LOCK['commit'] if not moved or moved == 'moved' and n == 1 else ('1' * 40 if moved == 'moved' else moved)
-    return {'commit': commit, 'tree': LOCK['tree'] if commit == LOCK['commit'] else '2' * 40}
+    same = commit == LOCK['commit'] or os.environ.get('FAKE_WIZ_SAME_TREE')  # another commit, the same files
+    return {'commit': commit, 'tree': LOCK['tree'] if same else '2' * 40}
 
 
 def source(url):
@@ -66,10 +67,13 @@ elif args[:1] == ['clone'] and args[args.index('--branch') + 1] == 'v' + LOCK['v
 elif where and args[:1] == ['rev-parse'] and len(args) == 2:
     state, ref = repo(where), args[1]
     name, _, kind = ref.partition('^')
-    if name not in ('HEAD', 'refs/tags/v' + LOCK['version'], state.get('commit')):
+    if name == LOCK['commit'] and os.environ.get('FAKE_WIZ_SAME_TREE'):  # the pin, earlier in the tag's history
+        state = {'commit': LOCK['commit'], 'tree': LOCK['tree']}
+    elif name not in ('HEAD', 'refs/tags/v' + LOCK['version'], state.get('commit')):
         sys.exit('git: unknown revision')
     print(state['tree'] if kind == '{tree}' else state['commit'])
-elif where and args[:1] == ['show'] and args[1] == '%s:install.sh' % repo(where).get('commit'):
+elif where and args[:1] == ['show'] and args[1] in ['%s:install.sh' % c for c in (repo(where).get('commit'),
+        LOCK['commit'] if os.environ.get('FAKE_WIZ_SAME_TREE') else None)]:
     with open(os.path.join(RELEASE, 'install.sh')) as f:
         sys.stdout.write(f.read())
 else:
