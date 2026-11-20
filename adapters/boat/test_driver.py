@@ -91,7 +91,6 @@ def paused(*args):
 t.sandbox_state = paused
 t.main()
 '''
-# Every open of a process's environment by this test process, while WATCHING is set.
 ENVIRON_OPENS, WATCHING = [], []
 
 
@@ -102,10 +101,24 @@ def watch(event, args):
 
 
 sys.addaudithook(watch)
-# Every process these tests start that outlives its parent comes back to this process (a subreaper), so the
-# tests find their own processes by ancestry alone.
-if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
-    raise SystemExit('these tests need Linux, to keep the processes they start under them')
+PR_SET_CHILD_SUBREAPER = 36
+
+
+def adopt_every_orphan_of_these_tests():
+    if ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        raise SystemExit('these tests need Linux, to keep the processes they start under them')
+
+
+def reap_adopted_orphans():
+    while True:
+        try:
+            if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                return
+        except ChildProcessError:
+            return
+
+
+adopt_every_orphan_of_these_tests()
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'claude-opus-5-5'}
 
@@ -147,22 +160,15 @@ class Boat(unittest.TestCase):
         return tools
 
     def tearDown(self):
-        for pid in self.marked():
+        for pid in self.live_descendants_of_this_test():
             try:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
-        self.until(lambda: not self.marked())
-        while True:  # reap what came back here
-            try:
-                if os.waitpid(-1, os.WNOHANG)[0] == 0:
-                    break
-            except ChildProcessError:
-                break
+        self.until(lambda: not self.live_descendants_of_this_test())
+        reap_adopted_orphans()
 
-    def marked(self):
-        """Every live process under this test process: only processes these tests started, found by their
-        parent links, never by reading another process's environment."""
+    def live_descendants_of_this_test(self):
         children = {}
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
@@ -375,9 +381,9 @@ class Boat(unittest.TestCase):
         code, err = self.driver('stop', out)
         self.assertEqual(code, 1, err)
         self.assertNotIn('retry', json.dumps(err))
-        self.assertEqual((self.marked(), list(self.sandboxes().values())), ([], ['stopped']), 'stop left it working')
+        self.assertEqual((self.live_descendants_of_this_test(), list(self.sandboxes().values())), ([], ['stopped']), 'stop left it working')
         code, err = self.driver('wake', out)
-        self.assertEqual((code, len(self.logged()), self.marked()), (1, 1, []), 'a wake ran it again')
+        self.assertEqual((code, len(self.logged()), self.live_descendants_of_this_test()), (1, 1, []), 'a wake ran it again')
 
     def test_wake_checks_its_save_before_and_after_spawn(self):
         # catches: a wake that runs `boat prompt` before it knows it can save the turn, and a save failure
@@ -393,12 +399,12 @@ class Boat(unittest.TestCase):
         self.assertNotIn('retry', json.dumps(err))
         os.rmdir(blocked)
         open(self.hold, 'w').close()
-        before = set(self.marked())  # the first turn's worker still runs
+        before = set(self.live_descendants_of_this_test())  # the first turn's worker still runs
         code, err = self.driver('wake', out, program=self.wrapper('breaks', BREAKS_AFTER_SPAWN))
         self.assertEqual(code, 1, err)
         self.assertIn('unknown', err['error'])
         self.assertNotIn('retry', json.dumps(err))
-        self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the unsaved turn still runs')
+        self.assertTrue(self.until(lambda: set(self.live_descendants_of_this_test()) <= before), 'the unsaved turn still runs')
 
     def test_a_start_not_fully_saved_is_never_woken(self):
         # catches: a start whose last save fails after its turn began answering "retry", leaving the turn and
@@ -407,7 +413,7 @@ class Boat(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn('unknown', out['error'])
         self.assertNotIn('retry', json.dumps(out))
-        self.assertTrue(self.until(lambda: not self.marked()), 'the turn it could not save still runs')
+        self.assertTrue(self.until(lambda: not self.live_descendants_of_this_test()), 'the turn it could not save still runs')
         self.assertEqual(list(self.sandboxes().values()), ['stopped'])
         run = re.search(r'run-[0-9a-f]{12}', out['error']).group()
         os.rmdir(os.path.join(self.folder, 'state', run + '.json.new'))
@@ -467,7 +473,7 @@ class Boat(unittest.TestCase):
             with self.subTest(command='start', when=when, fails=fails):
                 code, err = self.driver('start', REQUEST, program=program, RAISE=when, FAKE_BOAT_FAIL=fails)
                 self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
-                self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
+                self.assertTrue(self.until(lambda: not self.live_descendants_of_this_test()), 'its turn still runs')
                 self.assertEqual(set(self.sandboxes().values()), {'stopped'}, 'its sandbox still runs')
         # catches: cleanup that gives up on `boat stop` when Linux denies the driver's signals, or its listing of
         # /proc (L2), in a failed start and in a stop; each failure is reported.
@@ -488,41 +494,38 @@ class Boat(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
         open(self.hold, 'w').close()
-        before = set(self.marked())  # the first turn's worker still runs
+        before = set(self.live_descendants_of_this_test())  # the first turn's worker still runs
         code, err = self.driver('wake', out, program=program, RAISE='after')
         self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
-        self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the woken turn still runs')
+        self.assertTrue(self.until(lambda: set(self.live_descendants_of_this_test()) <= before), 'the woken turn still runs')
 
     def test_stop_and_failure_cleanup_never_open_another_process_environment(self):
-        # catches: a stop or a failed start's cleanup that finds the run's unsaved turns by opening the
-        # environment of every process it can see, so it reads other programs' secrets (review R3).
         seen = os.path.join(self.folder, 'environ-opens')
         program = self.wrapper('audited', RAISES)
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: len(self.logged()) == 1 and not alive(self.logged()[0][0])))
-        before = set(self.marked())  # the first turn's worker still runs
+        first_turn_worker = set(self.live_descendants_of_this_test())
         code, err = self.driver('start', REQUEST, program=program, RAISE='after', AUDIT=seen)
         self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
         self.assertFalse(os.path.exists(seen), 'a failed start opened another process\'s environment')
         self.assertEqual(list(self.sandboxes().values())[-1], 'stopped')
-        self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the failed start\'s turn still runs')
+        self.assertTrue(self.until(lambda: set(self.live_descendants_of_this_test()) <= first_turn_worker),
+                        'the failed start\'s turn still runs')
         self.assertEqual(self.driver('stop', out, program=program, AUDIT=seen), (0, dict(out, stopped=True)))
         self.assertFalse(os.path.exists(seen), 'a stop opened another process\'s environment')
-        self.assertTrue(self.until(lambda: not self.marked()), 'a turn still runs')
+        self.assertTrue(self.until(lambda: not self.live_descendants_of_this_test()), 'a turn still runs')
 
     def test_the_tests_track_only_their_own_processes(self):
-        # catches: test cleanup that finds its processes by opening every visible process's environment,
-        # reading other programs' secrets on the machine that runs the tests (review R3).
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: len(self.logged()) == 1))
         del ENVIRON_OPENS[:]
         WATCHING.append(1)
         try:
-            self.assertTrue(self.marked(), 'the run\'s turn was not found')
+            self.assertTrue(self.live_descendants_of_this_test(), 'the run\'s turn was not found')
             self.tearDown()
-            self.assertTrue(self.until(lambda: not self.marked()), 'teardown left a process running')
+            self.assertTrue(self.until(lambda: not self.live_descendants_of_this_test()), 'teardown left a process running')
         finally:
             WATCHING.pop()
         self.assertEqual(ENVIRON_OPENS, [], 'the tests opened another process\'s environment')

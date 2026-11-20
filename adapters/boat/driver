@@ -249,6 +249,13 @@ def descendants(pid):
     return found
 
 
+def record_this_supervisor_before_its_turn(log):
+    record = '%s.%d.sup' % (log[:-len('.log')], os.getpid())
+    with open(record + '.new', 'w') as f:
+        json.dump({'supervisor': os.getpid(), 'supervisor_since': since(os.getpid())}, f)
+    os.replace(record + '.new', record)
+
+
 def supervise(log, cmd):
     """One turn, as `driver --turn <log> <boat prompt ...>`: run it with its output in log, and keep every
     process it starts as this turn's (an orphan comes back here, whatever its session or environment) until
@@ -256,11 +263,8 @@ def supervise(log, cmd):
     if LINUX and ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': "this host cannot keep a turn's processes together"}), flush=True)
         return
-    try:  # record this supervisor before its turn starts, so a command that dies before saving it is still found
-        record = '%s.%d.sup' % (log[:-len('.log')], os.getpid())
-        with open(record + '.new', 'w') as f:
-            json.dump({'supervisor': os.getpid(), 'supervisor_since': since(os.getpid())}, f)
-        os.replace(record + '.new', record)
+    try:
+        record_this_supervisor_before_its_turn(log)
         with open(log, 'a') as out:
             turn = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
     except OSError as e:
@@ -513,8 +517,7 @@ def stopping(run):
         return True
 
 
-def records(run):
-    """The supervisor records of this run's turns: each supervisor writes its own before its turn starts."""
+def supervisor_records(run):
     try:
         names = os.listdir(STATE)
     except FileNotFoundError:
@@ -522,12 +525,11 @@ def records(run):
     return sorted(os.path.join(STATE, n) for n in names if n.startswith(run + '.') and n.endswith('.sup'))
 
 
+# PRIVACY: finds a run's unsaved turns only by the records their supervisors wrote in its state folder, never
+# by reading another process's environment.
 def strays(run, known):
-    """This run's turn supervisors on this machine that its record doesn't name: a turn begun by a command
-    that then failed, or was killed, before it could save it. Found only by the records the supervisors wrote
-    in the run's state folder, never by reading another process's environment."""
     found = []
-    for name in records(run):
+    for name in supervisor_records(run):
         try:
             with open(name) as f:
                 kept = json.load(f)
@@ -690,8 +692,9 @@ def stop(run):
     except OSError:
         kept = False
     failures = shutdown(run, state['turns'], state['sandbox'], state['conversation'], True)  # whatever the save did
-    for name in os.listdir(STATE):  # a supervisor's record goes only once its processes have ended
-        if name.startswith(run + '.') and (name.endswith('.log') or name.endswith('.sup') and not failures):
+    every_process_ended = not failures
+    for name in os.listdir(STATE):
+        if name.startswith(run + '.') and (name.endswith('.log') or name.endswith('.sup') and every_process_ended):
             try:
                 os.remove(os.path.join(STATE, name))
             except OSError:
