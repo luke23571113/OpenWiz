@@ -1,6 +1,6 @@
 # Approved dependency ledger
 
-The approved direct dependencies are `serde` (with `derive`) and `serde_json`.
+The approved direct dependencies are `serde` (with `derive`), `serde_json` and `rustix`.
 The visual terminal crate and its `ratatui`/`crossterm` pair were removed with
 the terminal app in 0.0.16 (#776); no other crate is approved.
 
