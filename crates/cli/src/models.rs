@@ -10,7 +10,9 @@
 //! snapshot beside it, for the agent to commit.
 
 use std::io::Write;
-use std::path::Path;
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs};
@@ -249,7 +251,8 @@ fn run_form(
             let offered = matches!(options.state, OptionsState::Offered);
             let saved = save && offered;
             let written = if saved {
-                put(root, SNAPSHOT_FILE, &document(&snapshot))
+                Agents::open(root)
+                    .and_then(|agents| put(&agents, SNAPSHOT_FILE, &document(&snapshot)))
             } else {
                 Ok(())
             };
@@ -272,10 +275,12 @@ fn run_form(
             })
         }
         // One setter at a time: the lock is held from before fleet.md is
-        // read until the last write (R2).
-        Parsed::Set { role, asked } => confined(root).and_then(|()| {
-            let _held = lock(root)?;
-            run_set(&fleet()?, role, asked, root, json, &read_options)
+        // read until the last write (R2), and every read and write goes
+        // through the one `docs/agents` it checked and locked (R1).
+        Parsed::Set { role, asked } => Agents::open(root).and_then(|agents| {
+            agents.lock()?;
+            let text = agents.read(FLEET_FILE)?;
+            run_set(&text, role, asked, &agents, json, &read_options)
         }),
     };
     match outcome {
@@ -318,7 +323,7 @@ fn run_set(
     text: &str,
     role: Role,
     asked: Option<[String; 3]>,
-    root: &Path,
+    agents: &Agents,
     json: bool,
     read_options: &dyn Fn() -> CloudOptions,
 ) -> Result<(i32, String), String> {
@@ -378,11 +383,7 @@ fn run_set(
     let result = set(text, role, &chosen, &spawn_flags()?)?;
     // Only setters take the lock: anything else that edited fleet.md while
     // this read CloudRoom wins, and nothing is written (R2).
-    if std::fs::read_to_string(root.join(FLEET_FILE))
-        .ok()
-        .as_deref()
-        != Some(text)
-    {
+    if agents.read(FLEET_FILE).ok().as_deref() != Some(text) {
         return Err(format!(
             "{FLEET_FILE} changed while set ran, so nothing was written; run it again"
         ));
@@ -392,14 +393,14 @@ fn run_set(
     if let Some(options) = &options {
         let current = read_fleet(result.text.as_deref().unwrap_or(text)).ok();
         put(
-            root,
+            agents,
             SNAPSHOT_FILE,
             &document(&snapshot(options, current.as_ref())),
         )?;
         files.push(SNAPSHOT_FILE);
     }
     if let Some(new) = &result.text {
-        put(root, FLEET_FILE, new)?;
+        put(agents, FLEET_FILE, new)?;
         files.insert(0, FLEET_FILE);
     }
     let outcome = if result.text.is_some() {
@@ -614,61 +615,99 @@ fn document(value: &impl serde::Serialize) -> String {
     out
 }
 
-/// `docs` and `docs/agents` are directories of the checkout itself, never
-/// links out of it: nothing is read for a write or written otherwise (R1).
-fn confined(root: &Path) -> Result<(), String> {
-    for dir in ["docs", "docs/agents"] {
-        match std::fs::symlink_metadata(root.join(dir)) {
-            Ok(meta) if meta.is_dir() => {}
-            _ => {
-                return Err(format!(
-                    "{dir} is not a directory of this checkout (missing or a link); nothing was written"
-                ));
-            }
+/// The checkout's `docs/agents`, held open: `docs`, then `agents` inside
+/// it, each opened as a directory and never through a link, so nothing is
+/// read for a write or written otherwise (R1). Every later step names its
+/// file through this handle (`/proc/self/fd/<fd>/<name>`), so a folder
+/// swapped for a link after the check can't move a read, staging write,
+/// rename or cleanup anywhere else. The standard library has no `openat`
+/// and this workspace allows no unsafe code or `libc`, so only Linux has
+/// that route; elsewhere `set` and `list --save` write nothing.
+struct Agents(std::fs::File);
+
+impl Agents {
+    fn open(root: &Path) -> Result<Self, String> {
+        if !cfg!(target_os = "linux") {
+            return Err(
+                "this system can't write docs/agents through the folder it checked, so nothing was written".into(),
+            );
         }
+        let folder = |path: &Path, dir: &str| {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(NO_FOLLOW | DIRECTORY)
+                .open(path)
+                .map(Agents)
+                .map_err(|_| {
+                    format!("{dir} is not a directory of this checkout (missing or a link); nothing was written")
+                })
+        };
+        let docs = folder(&root.join("docs"), "docs")?;
+        folder(&docs.entry("agents"), "docs/agents")
     }
-    Ok(())
+
+    /// `name` (or a `docs/agents/<name>` path's last part) in this folder.
+    fn entry(&self, rel: &str) -> PathBuf {
+        let name = rel.rsplit('/').next().unwrap_or(rel);
+        PathBuf::from(format!("/proc/self/fd/{}/{name}", self.0.as_raw_fd()))
+    }
+
+    fn read(&self, rel: &str) -> Result<String, String> {
+        std::fs::read_to_string(self.entry(rel)).map_err(|e| format!("cannot read {rel}: {e}"))
+    }
+
+    /// Locks this folder for one `set`, so setters run one at a time;
+    /// released when it is dropped. It creates no file.
+    fn lock(&self) -> Result<(), String> {
+        self.0
+            .lock()
+            .map_err(|e| format!("cannot lock docs/agents: {e}"))
+    }
 }
 
-/// Holds `docs/agents` locked for one `set`, so setters run one at a time;
-/// released when the returned handle is dropped. It creates no file.
-fn lock(root: &Path) -> Result<std::fs::File, String> {
-    let dir = std::fs::File::open(root.join("docs/agents"))
-        .map_err(|e| format!("cannot open docs/agents: {e}"))?;
-    dir.lock()
-        .map_err(|e| format!("cannot lock docs/agents: {e}"))?;
-    Ok(dir)
-}
+/// `O_NOFOLLOW | O_NONBLOCK` and `O_DIRECTORY`: Linux UAPI asm-generic, or
+/// arch/arm{,64} for ARM (other systems never open [`Agents`]).
+const NO_FOLLOW: i32 = if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
+    0o100000 | 0o4000
+} else {
+    0o400000 | 0o4000
+};
+const DIRECTORY: i32 = if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
+    0o40000
+} else {
+    0o200000
+};
 
-/// Writes a project file whole, inside the checkout (R1): the bytes go to a
-/// fresh file created exclusively beside it (never one already there, link
-/// or not), which is then renamed over the target. On a failure only that
-/// fresh file is removed; a target that is not a regular file is refused.
-fn put(root: &Path, rel: &str, text: &str) -> Result<(), String> {
+/// Writes a project file whole, through `docs/agents` held open (R1): the
+/// bytes go to a fresh file created exclusively beside it (never one
+/// already there, link or not), owner-only and then given the target's
+/// permissions before any byte is written (R5), which is then renamed over
+/// the target. On a failure only that fresh file is removed; a target that
+/// is not a regular file is refused.
+fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    confined(root)?;
     let fail = |e: std::io::Error| format!("cannot write {rel}: {e}");
-    let path = root.join(rel);
+    let path = agents.entry(rel);
     let existing = std::fs::symlink_metadata(&path).ok();
     if existing.as_ref().is_some_and(|meta| !meta.is_file()) {
         return Err(format!("cannot write {rel}: it is not a regular file"));
     }
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let name = rel.rsplit('/').next().unwrap_or(rel);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let temporary = path.with_file_name(format!(".{name}.openwiz-{}-{n}", std::process::id()));
+    let temporary = agents.entry(&format!(".{name}.openwiz-{}-{n}", std::process::id()));
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(if existing.is_some() { 0o600 } else { 0o666 })
         .open(&temporary)
         .map_err(fail)?;
-    let written = file
-        .write_all(text.as_bytes())
-        .and_then(|()| file.sync_all())
-        .and_then(|()| match existing {
-            Some(meta) => std::fs::set_permissions(&temporary, meta.permissions()),
-            None => Ok(()),
-        })
-        .and_then(|()| std::fs::rename(&temporary, &path));
+    let written = match existing {
+        Some(meta) => file.set_permissions(meta.permissions()),
+        None => Ok(()),
+    }
+    .and_then(|()| file.write_all(text.as_bytes()))
+    .and_then(|()| file.sync_all())
+    .and_then(|()| std::fs::rename(&temporary, &path));
     written.map_err(|e| {
         let _ = std::fs::remove_file(&temporary);
         fail(e)
