@@ -101,6 +101,21 @@ fn cells(line: &str) -> Option<Vec<String>> {
     Some(inner.split('|').map(|c| c.trim().to_owned()).collect())
 }
 
+/// Whether a line is a Markdown heading of any level or form whose text is
+/// "Roster", in any case: `## Roster ##`, `### roster` and `  ## Roster` too.
+fn names_roster(line: &str) -> bool {
+    let line = line.trim();
+    let level = line.chars().take_while(|c| *c == '#').count();
+    let rest = &line[level..];
+    (1..=6).contains(&level)
+        && (rest.is_empty() || rest.starts_with([' ', '\t']))
+        && rest
+            .trim()
+            .trim_end_matches('#')
+            .trim()
+            .eq_ignore_ascii_case("roster")
+}
+
 fn is_heading(line: &str) -> bool {
     line.starts_with("# ") || line.starts_with("## ")
 }
@@ -138,6 +153,11 @@ fn login_ok(s: &str) -> bool {
 /// refusal line of the first broken rule.
 fn read(fleet: &str) -> Result<Option<Vec<Entry>>, String> {
     let lines: Vec<&str> = fleet.lines().map(str::trim_end).collect();
+    if let Some(odd) = lines.iter().find(|l| **l != "## Roster" && names_roster(l)) {
+        return Err(format!(
+            "Roster refused: the Roster heading must be exactly ## Roster: {odd}"
+        ));
+    }
     let at: Vec<usize> = (0..lines.len())
         .filter(|&i| lines[i] == "## Roster")
         .collect();
@@ -291,6 +311,24 @@ fn driver_harness(provider: &str) -> &str {
     }
 }
 
+/// Whether driver v1's `start` takes this harness word and model id: its
+/// schema's `^[a-z0-9][a-z0-9._-]{0,59}$` and
+/// `^[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}$`.
+fn driver_takes(harness: &str, model: &str) -> bool {
+    let first = |s: &str, f: fn(&char) -> bool| s.chars().next().is_some_and(|c| f(&c));
+    let harness_ok = harness.len() <= 60
+        && first(harness, |c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && harness
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "._-".contains(c));
+    let model_ok = model.len() <= 60
+        && first(model, char::is_ascii_alphanumeric)
+        && model
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || " ._:@+-".contains(c));
+    harness_ok && model_ok
+}
+
 /// The contract's pick for one start: role R, choice C (null when models.v1
 /// waits), on `repository#ticket`.
 fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &Value) -> Value {
@@ -305,7 +343,15 @@ fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &V
         return with(base, json!({"pick": null, "waits": "models", "look": null}));
     }
     let provider = choice["provider"].as_str().unwrap();
+    let model = choice["model"].as_str().unwrap();
     let harness = harness_name(provider);
+    if !driver_takes(driver_harness(provider), model) {
+        let look = format!(
+            "roster: driver v1 can't start {} {model}; choose another model in the Models table",
+            driver_harness(provider)
+        );
+        return with(base, json!({"pick": null, "waits": "driver", "look": look}));
+    }
     let found = entries
         .iter()
         .find(|e| e.roles.iter().any(|r| r == role) && (e.kind != "harness" || e.name == harness));
@@ -318,7 +364,10 @@ fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &V
         "kind": e.kind,
         "driver": e.driver,
         "start": {"harness": driver_harness(provider), "model": choice["model"]},
-        "label": e.label(),
+        "note": {
+            "harness": e.label(),
+            "model": format!("{} default effort", choice["model_name"].as_str().unwrap()),
+        },
         "writes_as": format!("{}'s App", e.person),
         "token": {
             "service": e.person,

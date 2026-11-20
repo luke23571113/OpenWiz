@@ -42,8 +42,12 @@ consistent, never that any of it is live. Every example is synthetic.
 
 ## The Roster table
 
-One `## Roster` section in `docs/agents/fleet.md`. Prose may come before its
-table; the section's first table is the Roster table, and must be:
+One `## Roster` section in `docs/agents/fleet.md`, its heading exactly the
+line `## Roster`. Any other Markdown heading whose text is `Roster` in any
+case (such as `## Roster ##`, `# Roster`, `### roster` or an indented
+`## Roster`) is refused, never read as no Roster, so a Roster that renders
+is never skipped. Prose may come before its table; the section's first table
+is the Roster table, and must be:
 
 ```md
 ## Roster
@@ -87,6 +91,7 @@ entries, from 1; `<name>` and `<cell>` are the trimmed cells as written.
 
 | Code | Refusal |
 | --- | --- |
+| `heading-form` | `Roster refused: the Roster heading must be exactly ## Roster: <line>` |
 | `headings` | `Roster refused: more than one ## Roster heading` |
 | `no-table` | `Roster refused: the Roster section has no table` |
 | `header` | `Roster refused: the header is not Name, Kind, Driver, Roles, Writes as` |
@@ -105,7 +110,8 @@ entries, from 1; `<name>` and `<cell>` are the trimmed cells as written.
 
 In `role` and `repeated-role`, `<role>` is the offending role as written; in
 `person`, `<first>` is row 1's person; in `writes-as`, `<person>'s App` is
-written as it stands.
+written as it stands; in `heading-form`, `<line>` is the first such heading
+line, trimmed of trailing spaces.
 
 **The starting Roster** (KN22) is one row: the person's own harness, every
 role, on the driver setup chose, such as
@@ -132,17 +138,32 @@ waits as models.v1 says: the Roster adds nothing and picks nothing.
 
 For a start with role R and choice C:
 
-1. **Candidates** are the entries whose Roles hold R, in table order.
-2. **A harness entry runs only its own harness:** it is a candidate only
+1. **What a driver can take:** a start goes only through driver v1, whose
+   `start` takes a harness word matching `^[a-z0-9][a-z0-9._-]{0,59}$` and a
+   model id matching `^[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}$`
+   ([its schema](../kernel/driver-kit/schema.json)). models.v1 allows more,
+   such as the namespaced `vendor/demo`. When C's harness word (step 6) or
+   model id doesn't match, no entry is picked: the start waits, the same for
+   every entry and driver, and the fleet says, exactly:
+
+   ```text
+   roster: driver v1 can't start codex vendor/demo; choose another model in the Models table
+   ```
+
+   `roster: driver v1 can't start <harness word> <model id>; choose another model in the Models table`.
+   A later driver version that takes such ids lifts this wait by its own
+   contract change. With no Roster, nothing here applies.
+2. **Candidates** are the entries whose Roles hold R, in table order.
+3. **A harness entry runs only its own harness:** it is a candidate only
    when its Name is C's harness as models.v1 names it (`Claude Code` for
    `claude-code`, `Codex` for `codex`, any other provider as its id). A host
    or bot entry is given C as it is; what a bot's own platform runs for it is
    its driver's business (driver v1, D4).
-3. **The first candidate is picked:** table order is the preference, as a
+4. **The first candidate is picked:** table order is the preference, as a
    shell takes the first match on its `PATH`. A picked entry whose start
    fails is retried and reported as any failed driver start is (KN11); the
    next candidate is never tried in its place.
-4. **No candidate:** the start waits, never swapped for an entry that may not
+5. **No candidate:** the start waits, never swapped for an entry that may not
    take R, and the fleet says, exactly:
 
    ```text
@@ -150,11 +171,12 @@ For a start with role R and choice C:
    ```
 
    `roster: no entry may take the <R> role with <C's harness name>`.
-5. **The start** calls the picked entry's driver,
+6. **The start** calls the picked entry's driver,
    `adapters/<driver>/driver start`, with the ticket's repository and
    number, the role's skill, the harness `claude` for `claude-code` and any
    other provider as its id (as launch-fleet's host start passes it today),
-   and C's model id. Driver v1 takes no effort.
+   and C's model id. Driver v1 takes no effort, so the start runs at the
+   harness's default effort, whatever C's effort says.
 
 ## How every entry writes
 
@@ -176,8 +198,13 @@ One rule, the same for every entry, of every kind:
    note; with no service configured, as today. An entry never writes with an
    account, token or App of its own.
 4. **Records show the label.** The agent's status note's `harness` field is
-   its label, `<name> via <person>` (such as `Demo Bot via syn-owner`); its
-   `model` field names C's model and effort as models.v1 names them.
+   its label, `<name> via <person>` (such as `Demo Bot via syn-owner`). Its
+   `model` field names the effort the agent runs at, never only the one
+   configured: through driver v1, which applies none, it is
+   `<C's model name> default effort` (such as `Opus 5.5 default effort` for
+   a Builder row set to High), the model name as the Models table's Model
+   cell writes it. A later driver version that applies the effort lets the
+   note name it.
 5. **The person's own login** keeps approvals, repository settings and
    changes to `.github/workflows/` (github-identity.v1's roles).
 
@@ -207,18 +234,20 @@ replaced.
 `case.json`: the `repository`, the `person`, the `roster` as read (each
 entry's `name`, `kind`, `driver`, `roles`, `writes_as` and `label`; null with
 no roster), and its `picks`. Each pick gives the `ticket`, the `role`, the
-`choice` (C as models.v1 resolves it from that `fleet.md`, or null when it
+`choice` (C as models.v1 resolves it from that `fleet.md`, with its
+`harness`, `provider`, `model`, `effort` and `model_name`, or null when it
 waits), and either the `pick` (the entry's `name`, `kind`, `driver`, its
-driver `start` harness and model, its `label`, `writes_as` and its `token`: the
-`service` that mints it, named by its person, and the request's `requester`
-and `repositories`), or `waits`: `models` or `roster`, with the roster's
-`look` line. `no-roster/case.json` is `{"roster": null, "starts": "today"}`.
+driver `start` harness and model, its status `note`'s `harness` and `model`,
+`writes_as` and its `token`: the `service` that mints it, named by its
+person, and the request's `requester` and `repositories`), or `waits`:
+`models`, `driver` or `roster`, with the `look` line of the last two. `no-roster/case.json` is `{"roster": null, "starts": "today"}`.
 
 | Case | Shows |
 | --- | --- |
 | `mixed/` | A harness, a host and a bot entry; table order; a harness entry skipped for another harness's choice |
 | `role-not-allowed/` | An entry never picked for a role it may not take; a role nobody may take waits; a models wait |
 | `other-user/` | A user project that isn't ours: its own person, App, repositories and token service, with a bot |
+| `namespaced/` | A namespaced model id driver v1 can't take waits; a Builder set to High whose note says `default effort` |
 | `starting/` | KN22's starting Roster |
 | `no-roster/` | No Roster: starts as today |
 
@@ -236,8 +265,6 @@ row of its case's Models table, and that every entry writes the same way.
 - The fixtures prove the contract's cases agree with its rules, read by the
   reference reader; they prove no reader. KN21's and KN22's tests must run
   them.
-- Driver v1 takes no effort, so a start through a driver runs the harness's
-  default effort for C's model until a later driver version takes one.
 - Whether a bot's own platform reaches the person's token service, and which
   GitHub login it holds when it can't, is that bot's driver's and its run's
   proof (KN7 to KN9); this contract can only require the rule.
