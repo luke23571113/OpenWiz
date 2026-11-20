@@ -14,6 +14,11 @@ POLICY = json.dumps({'autoApprove': ['read', 'search', 'edit', 'move', 'execute'
                      'autoDeny': ['delete', 'switch_mode'], 'defaultAction': 'deny'}, separators=(',', ':'))
 TTL = 60
 STEP = 120
+ALIASES = {'factory-droid': 'droid', 'factorydroid': 'droid'}
+CREDENTIAL = re.compile(r'\b(?:[a-z_]*token|[a-z_]*key|secret|password|passwd|pwd|sig|signature|auth|credentials?)\s*='
+                        r'|\b(?:password|passwd|secret|token)\s*:\s*\S|\bbearer\s+\S'
+                        r'|gh[pousr]_[A-Za-z0-9]{8,}|github_pat_|AKIA[0-9A-Z]{16}|xox[abposr]-|sk-[A-Za-z0-9_-]{16,}',
+                        re.I)
 
 
 class Refused(Exception):
@@ -37,10 +42,33 @@ def read(fields):
         v = req[key]
         if not (type(v) is int and v > 0 if pattern is None else isinstance(v, str) and re.fullmatch(pattern, v)):
             raise Refused(key + ' is not valid', 'fix ' + key + ' as `driver schema` shows')
+        if isinstance(v, str) and CREDENTIAL.search(v):
+            raise Refused(key + ' looks like a login or token, so nothing was saved or started',
+                          'never send a login or token: the driver uses your own sign-ins on this machine')
     return req
 
 
+def remapped(run, harness):
+    for path in (os.path.join(os.path.expanduser('~'), '.acpx', 'config.json'),
+                 os.path.join(STATE, 'work', run, '.acpxrc.json')):
+        try:
+            with open(path, 'rb') as f:
+                config = json.loads(f.read())
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            raise Refused('the acpx config file %s cannot be read' % path, 'fix or remove it, then try again')
+        agents = config.get('agents') if isinstance(config, dict) else []
+        if agents is None:
+            continue
+        if not isinstance(agents, dict) or any(ALIASES.get(k.strip().lower(), k.strip().lower()) == harness
+                                               for k in agents):
+            raise Refused('the acpx config file %s maps harness %s to a command of its own' % (path, harness),
+                          'remove that `agents` entry, so acpx runs its built-in %s adapter, then try again' % harness)
+
+
 def acpx(run, *args, harness=None):
+    remapped(run, harness)
     return ['acpx', '--cwd', os.path.join(STATE, 'work', run)] + list(args) + [harness]
 
 
@@ -89,7 +117,8 @@ def supervise(cmd):
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=2, stderr=2)
+        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
@@ -114,17 +143,13 @@ def installed():
                       'yourself, then start again')
 
 
-def log(run):
-    return os.path.join(STATE, run + '.log')
-
-
 def supervised(cmd, run):
     installed()
     try:
-        with open(os.open(log(run), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), 'ab') as out:
-            sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
-                                   env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
-                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=out, bufsize=0)
+        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
+                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                               bufsize=0)
         line = sup.stdout.readline()
     except OSError as e:
         raise Refused('acpx did not start: %s' % e.strerror, 'check that `acpx --version` runs by hand')
@@ -139,31 +164,38 @@ def supervised(cmd, run):
     return sup, turn
 
 
+def exit_code(sup):
+    with sup.stdout:
+        if select.select([sup.stdout], [], [], STEP)[0]:
+            try:
+                return json.loads(sup.stdout.readline())['exit']
+            except (ValueError, KeyError, TypeError):
+                pass
+    return None
+
+
 def launch(req, run, woken):
     sup, turn = supervised(command(req, woken, run), run)
-    sup.stdout.close()
-    return turn
+    code = exit_code(sup)
+    if code == 0:
+        return turn
+    end([turn], run)
+    if code is None:
+        raise Refused('acpx did not say whether it queued the prompt for run %s, so the driver ended it; its outcome '
+                      'is unknown' % run, 'read the ticket for what its agent did before you try again')
+    raise Refused('acpx refused the prompt for run %s (exit %d); nothing new was started' % (run, code),
+                  'check that you are signed in to %s yourself and that acpx runs it by hand' % req['harness'])
 
 
 def step(cmd, run):
     sup, turn = supervised(cmd, run)
-    deadline, code = time.monotonic() + STEP, None
-    with sup.stdout:
-        if select.select([sup.stdout], [], [], STEP)[0]:
-            try:
-                code = json.loads(sup.stdout.readline())['exit']
-            except (ValueError, KeyError, TypeError):
-                pass
+    deadline, code = time.monotonic() + STEP, exit_code(sup)
     try:
         sup.wait(max(0, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
         end([turn], run)
         return None
     return code
-
-
-def running(turn, run):
-    return bool(turn) and turn['since'] is not None and since(turn['pid']) == turn['since']
 
 
 def end(turns, run):
@@ -232,6 +264,13 @@ def unsaved(run, turn, cmd):
                   'read the ticket for what its agent did before you %s it again' % cmd)
 
 
+def polite(run, harness):
+    try:
+        return [acpx(run, harness=harness) + call for call in (['cancel', '-s', run], ['sessions', 'close', run])]
+    except Refused:
+        return []
+
+
 def answer(cmd):
     if cmd == 'version':
         return VERSION
@@ -241,7 +280,7 @@ def answer(cmd):
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
         if req['harness'] not in HARNESSES:
-            raise Refused('harness %s is not one this driver runs through acpx' % req['harness'],
+            raise Refused('the harness is not one this driver runs through acpx',
                           'use one of: ' + ', '.join(HARNESSES))
         installed()
         state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}
@@ -257,8 +296,8 @@ def answer(cmd):
             if code != 0:
                 raise Refused('acpx could not open a %s session for run %s (exit %s); nothing was started'
                               % (req['harness'], run, 'unknown' if code is None else code),
-                              'check that you are signed in to %s yourself and that acpx runs it by hand; acpx\'s '
-                              'output is in %s' % (req['harness'], log(run)))
+                              'check that you are signed in to %s yourself and that acpx runs it by hand'
+                              % req['harness'])
             turn = launch(req, run, False)
         except Refused:
             try:
@@ -283,8 +322,8 @@ def answer(cmd):
                 kept = False
             try:
                 if state['turns'] and shutil.which('acpx'):
-                    for call in (['cancel', '-s', run], ['sessions', 'close', run]):
-                        step(acpx(run, harness=state['request']['harness']) + call, run)
+                    for call in polite(run, state['request']['harness']):
+                        step(call, run)
             finally:
                 end(state['turns'], run)
             if not kept:
@@ -296,8 +335,6 @@ def answer(cmd):
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
-        if state['turns'] and running(state['turns'][-1], run):
-            return {'run': run, 'woke': True}
         try:
             saved(run, state)
         except OSError:
