@@ -8,6 +8,7 @@ the user doesn't have. Python 3.9+, standard library only.
 """
 import os
 from pathlib import Path
+import shlex
 import shutil
 import stat
 
@@ -43,8 +44,16 @@ def check(folder, names):
     if not owned_dir(folder):
         return
     for name in names:
-        for path in (folder / name, *leftovers(folder, name)):
-            installer.require(ours(path), f'{path} is not an OpenWiz copy; nothing was changed')
+        target = folder / name
+        installer.require(ours(target), f'{target} is not an OpenWiz copy; nothing was changed')
+        for path in leftovers(folder, name):
+            try:
+                clear = ours(path)
+            except installer.Refused:
+                clear = False
+            installer.require(clear, f'{path} is in the way and OpenWiz did not make it; nothing was changed. '
+                                     'Look inside it, and if it holds nothing you want, remove it and run this '
+                                     f'again: rm -rf -- {shlex.quote(str(path))}')
 
 
 def leftovers(folder, name):
