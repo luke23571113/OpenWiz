@@ -4,8 +4,9 @@
 It takes only the shape that harness's real CLI takes (`claude -p <prompt> --model <m>`,
 `codex exec --model <m> <prompt>`) and exits 2 on any other. Then, like the kit's fake harness,
 it posts (or, when woken, edits) one builder status note in the tracker named by KIT_TRACKER, and
-leaves a detached child in its own session that `stop` must also end. Its turn then ends, or, while the
-file named by FAKE_HOLD exists, keeps running.
+leaves a detached child in its own session that `stop` must also end (with FAKE_CLEAN set, the child gets
+only PATH, so it carries no mark it inherited). With FAKE_TURNS set, it appends `<turn pid> <child pid>
+first|woken` to that file. Its turn then ends, or, while the file named by FAKE_HOLD exists, keeps running.
 """
 import json, os, re, subprocess, sys, time
 
@@ -18,7 +19,11 @@ else:
     sys.exit(2)
 skill = re.search(r'with the ([a-z0-9-]+) skill', prompt).group(1)
 woken = prompt.startswith('You were woken')
-subprocess.Popen(['sleep', '120'], start_new_session=True)
+child = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL,
+                         env={'PATH': os.environ['PATH']} if os.environ.get('FAKE_CLEAN') else None)
+if os.environ.get('FAKE_TURNS'):
+    with open(os.environ['FAKE_TURNS'], 'a') as f:
+        f.write('%d %d %s\n' % (os.getpid(), child.pid, 'woken' if woken else 'first'))
 now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 body = '\n'.join(['<!-- openwiz:status v1 -->', 'agent: builder', 'state: working', 'harness: Fake',
                   'model: ' + model, 'skills: %s@0.1.2' % skill,

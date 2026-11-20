@@ -5,6 +5,7 @@ Run: python3 -I adapters/local/test_driver.py   (Linux: the driver and the kit r
 """
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -29,6 +30,32 @@ PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
         'pass wake: the run edited builder status note 1',
         'pass stop: the run ended, and a wake after it is refused',
         'pass token: no login or token passed through the driver']
+# A driver whose next save fails once its turn has begun, as a full disk or a removed folder would make it
+# (KN16's): BREAK=write blocks the run's next write; BREAK=readonly makes the state folder read-only.
+BREAKS_AFTER_SPAWN = '''import importlib.machinery, importlib.util, os, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_loader('local', importlib.machinery.SourceFileLoader('local', %r))
+t = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(t)
+launch = t.launch
+def broken(*args):
+    turn = launch(*args)
+    if os.environ['BREAK'] == 'write':
+        os.mkdir(os.path.join(t.STATE, args[1] + '.json.new'))
+    else:
+        os.chmod(t.STATE, 0o500)
+    return turn
+t.launch = broken
+t.main()
+'''
+
+
+def alive(pid):
+    try:
+        with open('/proc/%d/stat' % pid) as f:
+            return f.read().rpartition(')')[2].split()[0] != 'Z'
+    except OSError:
+        return False
 
 
 class Local(unittest.TestCase):
@@ -42,12 +69,16 @@ class Local(unittest.TestCase):
         with open(self.tracker, 'w') as f:
             json.dump({'record_authors': ['Example-Bot[bot]'], 'comments': []}, f)
         self.mark = secrets.token_hex(8)
-        self.env = dict(os.environ, KIT_TRACKER=self.tracker, LOCAL_TEST=self.mark, GH_TOKEN=TOKEN,
+        self.log = os.path.join(self.folder, 'turns')
+        self.env = dict(os.environ, KIT_TRACKER=self.tracker, LOCAL_TEST=self.mark, GH_TOKEN=TOKEN, FAKE_TURNS=self.log,
                         OPENWIZ_LOCAL_STATE=os.path.join(self.folder, 'state'),
                         PATH=self.bin + os.pathsep + os.environ.get('PATH', ''))
 
     def tearDown(self):
-        for pid in self.marked('LOCAL_TEST=' + self.mark):
+        for root, dirs, _ in os.walk(self.folder):
+            for d in dirs:
+                os.chmod(os.path.join(root, d), 0o700)
+        for pid in self.marked('LOCAL_TEST=' + self.mark) + [child for _, child, _ in self.logged()]:
             try:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
@@ -66,14 +97,115 @@ class Local(unittest.TestCase):
                 pass
         return found
 
-    def driver(self, cmd, request=None, env=None):
-        p = subprocess.run([DRIVER, cmd], input='' if request is None else json.dumps(request),
+    def logged(self):
+        """The turns the fake harness logged: [(turn pid, child pid, first|woken)]."""
+        try:
+            with open(self.log) as f:
+                return [(int(a), int(b), c) for a, b, c in (line.split() for line in f)]
+        except FileNotFoundError:
+            return []
+
+    def wrapper(self):
+        path = os.path.join(self.folder, 'breaks-after-spawn')
+        with open(path, 'w') as f:
+            f.write('#!%s\n' % sys.executable + BREAKS_AFTER_SPAWN % DRIVER)
+        os.chmod(path, 0o700)
+        return path
+
+    def driver(self, cmd, request=None, env=None, program=DRIVER):
+        p = subprocess.run([program, cmd], input='' if request is None else json.dumps(request),
                            env=env or self.env, capture_output=True, text=True, timeout=60)
         return p.returncode, json.loads(p.stdout)
 
-    def start(self, harness='claude', env=None):
+    def start(self, harness='claude', env=None, program=DRIVER):
         return self.driver('start', {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket',
-                                     'harness': harness, 'model': 'synthetic-1'}, env)
+                                     'harness': harness, 'model': 'synthetic-1'}, env, program)
+
+    def first_turn(self, **env):
+        """Start a run and wait for its first turn: (its answer, turn pid, child pid)."""
+        code, out = self.start(env=dict(self.env, **env))
+        self.assertEqual(code, 0, out)
+        self.until(lambda: len(self.logged()) == 1)
+        return out, self.logged()[0][0], self.logged()[0][1]
+
+    def no_new_turn(self, count):
+        time.sleep(0.5)  # time for a turn to log itself, if one was started
+        self.assertEqual(len(self.logged()), count, 'a turn was started')
+
+    def test_stop_ends_a_worker_with_a_clean_environment(self):
+        # catches: a stop that finds the run's processes only by the OPENWIZ_RUN mark they inherit, so a worker
+        # the harness started with a clean environment keeps working after stop answers stopped (R2).
+        out, turn, child = self.first_turn(FAKE_CLEAN='1')
+        self.until(lambda: not alive(turn))
+        self.assertTrue(alive(child))
+        self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(child), 'a worker without the mark still runs after stop')
+
+    def test_stop_ends_the_run_when_it_cannot_save(self):
+        # catches: a stop whose save fails before it signals anything, leaving the agent working with an error
+        # that says retry, and a wake that then launches it again (R3).
+        open(os.path.join(self.folder, 'hold'), 'w').close()
+        out, turn, child = self.first_turn(FAKE_HOLD=os.path.join(self.folder, 'hold'))
+        os.mkdir(os.path.join(self.folder, 'state', out['run'] + '.json.new'))
+        code, err = self.driver('stop', out)
+        self.assertEqual(code, 1, err)
+        self.assertNotIn('retry', json.dumps(err))
+        self.assertEqual((alive(turn), alive(child), self.marked('OPENWIZ_RUN=' + out['run'])), (False, False, []))
+        self.assertEqual(self.driver('wake', out)[0], 1)
+        self.no_new_turn(1)
+
+    def test_wake_checks_its_save_before_and_after_spawn(self):
+        # catches: a wake that launches before it knows it can save the turn, and a save failure after the
+        # launch answering "retry", whose retry starts a second turn beside the first (R4).
+        out, turn, _ = self.first_turn()
+        self.until(lambda: not alive(turn))
+        blocked = os.path.join(self.folder, 'state', out['run'] + '.json.new')
+        os.mkdir(blocked)
+        code, err = self.driver('wake', out)
+        self.assertEqual(code, 1, err)
+        self.no_new_turn(1)
+        self.assertIn('nothing was started', err['error'])
+        self.assertNotIn('retry', json.dumps(err))
+        os.rmdir(blocked)
+        code, err = self.driver('wake', out, dict(self.env, BREAK='write'), self.wrapper())
+        self.assertEqual(code, 1, err)
+        self.assertIn('unknown', err['error'])
+        self.assertNotIn('retry', json.dumps(err))
+        self.until(lambda: not alive(self.logged()[-1][1]))
+        self.assertEqual([alive(t) or alive(c) for t, c, _ in self.logged()[1:]], [False], 'the unsaved turn runs')
+
+    def test_start_with_nowhere_to_save_starts_nothing(self):
+        # catches: a start that launches before it saves the run, so a failed save leaves an agent running
+        # with no run id to stop it, under an error that says retry.
+        blocker = os.path.join(self.folder, 'a-file')
+        open(blocker, 'w').close()
+        code, err = self.start(env=dict(self.env, OPENWIZ_LOCAL_STATE=os.path.join(blocker, 'state')))
+        self.assertEqual(code, 1, err)
+        self.assertNotIn('retry', json.dumps(err))
+        self.no_new_turn(0)
+
+    def test_start_record_is_not_wakeable_before_it_is_confirmed(self):
+        # catches: a start whose save fails once its turn has begun answering "retry" and leaving the turn
+        # running, and its first record staying wakeable, so a wake on the run id in the error starts it (R5).
+        for mode in ('write', 'readonly'):
+            with self.subTest(mode=mode):
+                if mode == 'readonly' and os.geteuid() == 0:
+                    self.skipTest('root ignores a read-only folder')
+                state = os.path.join(self.folder, 'state-' + mode)
+                env = dict(self.env, BREAK=mode, OPENWIZ_LOCAL_STATE=state)
+                code, err = self.start(env=env, program=self.wrapper())
+                self.assertEqual(code, 1, err)
+                self.assertIn('unknown', err['error'])
+                self.assertNotIn('retry', json.dumps(err))
+                self.until(lambda: not any(alive(t) or alive(c) for t, c, _ in self.logged()))
+                os.chmod(state, 0o700)
+                if mode == 'write':
+                    os.rmdir(os.path.join(state, re.search(r'run-[0-9a-f]{12}', err['error']).group() + '.json.new'))
+                count = len(self.logged())
+                code, _ = self.driver('wake', {'run': re.search(r'run-[0-9a-f]{12}', err['error']).group()},
+                                      dict(self.env, OPENWIZ_LOCAL_STATE=state))
+                self.assertEqual(code, 1)
+                self.no_new_turn(count)
 
     def test_kit_passes_all_five_with_each_harness(self):
         # catches: a check the driver fails on its host (a stop that leaves the harness's detached child,
