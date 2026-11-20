@@ -255,8 +255,12 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   standard error, `openwiz: openwiz[bot] token withheld from git (<reason>); git stops
   rather than use another account`, and tells git to quit. git then fails, rather than
   print the token or sign in as the owner. The run also gives git its own exec folder
-  (`GIT_EXEC_PATH`, removed when the command ends) whose `git-remote-http(s)` checks
-  first. It drops `GIT_TRACE_CURL`, `GIT_TRACE_CURL_NO_DATA` and `GIT_CURL_VERBOSE`, so
+  (`GIT_EXEC_PATH`, removed when the command ends), put first on `PATH`. If it can't be
+  built, for example because `git --exec-path` fails, the run refuses before handing
+  anything over. The folder's `git` refuses with the same note when `GIT_EXEC_PATH` was
+  changed or unset, or when an `--exec-path=` option overrides it. Otherwise it starts the
+  real git without `GH_TOKEN`, which only gh needs, so no git trace can show it. Its
+  `git-remote-http(s)` checks first. It drops `GIT_TRACE_CURL`, `GIT_TRACE_CURL_NO_DATA` and `GIT_CURL_VERBOSE`, so
   no trace shows the Authorization header. For github.com it refuses with the same
   note unless this run's helper is the last credential helper, no `http.*.extraHeader`
   is set and the URL holds no credential, so a `-c` that replaces the helper list

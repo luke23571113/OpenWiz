@@ -32,6 +32,7 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import signal
 import stat
 import subprocess
@@ -56,6 +57,7 @@ REFUSAL_MESSAGE = re.compile(r"Token refused: [^\n]+\.")
 GIT_HELPER_KEY = "credential.https://github.com.helper"
 RUN_MARK, GIT_MARK = "OPENWIZ_AGENT_TOKEN_RUN", "OPENWIZ_AGENT_TOKEN_GIT_AT"
 EXEC_MARK = "OPENWIZ_AGENT_TOKEN_EXEC_WAS"  # "0" unset, else "1" and the owner's GIT_EXEC_PATH
+PATH_MARK = "OPENWIZ_AGENT_TOKEN_PATH_WAS"  # the same for the owner's PATH
 TRANSPORTS = ("git-remote-http", "git-remote-https")
 CURL_TRACES = ("GIT_TRACE_CURL", "GIT_TRACE_CURL_NO_DATA", "GIT_CURL_VERBOSE")
 USAGE = ("agent-token.py start REQUEST | run REQUEST -- COMMAND [ARG...]; "
@@ -341,11 +343,12 @@ def without_inherited(env):
         return child
     child.pop(RUN_MARK)
     child.pop("GH_TOKEN", None)
-    was = child.pop(EXEC_MARK, "")
-    if was.startswith("1"):
-        child["GIT_EXEC_PATH"] = was[1:]
-    elif was == "0":
-        child.pop("GIT_EXEC_PATH", None)
+    for mark, key in ((EXEC_MARK, "GIT_EXEC_PATH"), (PATH_MARK, "PATH")):
+        was = child.pop(mark, "")
+        if was.startswith("1"):
+            child[key] = was[1:]
+        elif was == "0":
+            child.pop(key, None)
     first = child.pop(GIT_MARK, "")
     count = child.get("GIT_CONFIG_COUNT", "0")
     if first.isdigit() and count.isdigit():
@@ -381,10 +384,12 @@ def run(args, env):
     private.write(name, {"token": token, "expires_at": expires_at})
     farm = None
     try:
-        farm, real = exec_folder(private, child)
-        if farm:
-            child[EXEC_MARK] = "1" + child["GIT_EXEC_PATH"] if "GIT_EXEC_PATH" in child else "0"
-            child["GIT_EXEC_PATH"] = os.path.join(private.path, farm)
+        farm = exec_folder(private, child)  # no guarded git, no App token: it refuses first
+        folder = os.path.join(private.path, farm)
+        for mark, key in ((EXEC_MARK, "GIT_EXEC_PATH"), (PATH_MARK, "PATH")):
+            child[mark] = "1" + child[key] if key in child else "0"
+        child["GIT_EXEC_PATH"] = folder
+        child["PATH"] = folder + os.pathsep + child.get("PATH", os.defpath)
         count = child.get("GIT_CONFIG_COUNT", "0") or "0"
         if not count.isdigit():
             raise Refused("GIT_CONFIG_COUNT must be a number")
@@ -402,37 +407,51 @@ def run(args, env):
 
 
 def exec_folder(private, child):
-    """(name, real) of this run's git exec folder in the private directory, or (None, None)
-    when git is not installed. It links every program of git's real exec folder, except
-    git-remote-http(s), which run `transport` first."""
+    """The name of this run's git exec folder in the private directory, or Refused.
+
+    It links every program of git's real exec folder, except git-remote-http(s),
+    which run `transport` first, and `git` itself. The run puts the folder first on
+    PATH, and its `git` refuses unless GIT_EXEC_PATH is still this folder and no
+    `--exec-path=` overrides it, then starts the real git without GH_TOKEN, which
+    only gh needs. So git can't run unguarded or see the App token by accident.
+    """
+    real_git = shutil.which("git", path=child.get("PATH", os.defpath))
     try:
-        real = subprocess.run(["git", "--exec-path"], env=child, capture_output=True, text=True,
-                              timeout=10).stdout.strip()
+        real = subprocess.run([real_git or "git", "--exec-path"], env=child, capture_output=True,
+                              text=True, timeout=10).stdout.strip() if real_git else ""
         names = os.listdir(real) if real.startswith("/") else []
     except (OSError, subprocess.SubprocessError):
-        return None, None
+        names = []
     if not names:
-        return None, None
+        raise Refused("cannot guard git's transport, so no openwiz[bot] token is handed over")
     name = f"exec-{secrets.token_hex(16)}"
+    folder = os.path.join(private.path, name)
+    note = WITHHELD.replace("{}", "%s").replace("\n", "\\n")
+    scripts = {
+        entry: f"exec {shlex.quote(sys.executable)} -I {shlex.quote(os.path.abspath(__file__))} "
+               f"transport {shlex.quote(os.path.join(real, entry))} \"$@\"\n" for entry in TRANSPORTS}
+    scripts["git"] = (
+        f'reason=\nif [ "${{GIT_EXEC_PATH-}}" != {shlex.quote(folder)} ]; then\n'
+        f'  reason="its exec path was changed"\nfi\n'
+        f'for arg in "$@"; do\n  case $arg in --exec-path=*) reason="an --exec-path override";; esac\ndone\n'
+        f'if [ -n "$reason" ]; then\n  printf {shlex.quote(note)} "$reason" >&2\n  exit 128\nfi\n'
+        f'unset GH_TOKEN\nexec {shlex.quote(real_git)} "$@"\n')
     os.mkdir(name, 0o700, dir_fd=private.fd)
     fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=private.fd)
     try:
-        for entry in names:
-            target = os.path.join(real, entry)
-            if entry not in TRANSPORTS:
-                os.symlink(target, entry, dir_fd=fd)
+        for entry in {*names, "git"}:
+            if entry not in scripts:
+                os.symlink(os.path.join(real, entry), entry, dir_fd=fd)
                 continue
             script = os.open(entry, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o700, dir_fd=fd)
             with os.fdopen(script, "w") as handle:
-                handle.write(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} -I "
-                             f"{shlex.quote(os.path.abspath(__file__))} transport "
-                             f"{shlex.quote(target)} \"$@\"\n")
+                handle.write("#!/bin/sh\n" + scripts[entry])
     except BaseException:
         os.close(fd)
         private.remove_folder(name)
         raise
     os.close(fd)
-    return name, real
+    return name
 
 
 def execute(command, env, wait=False):
