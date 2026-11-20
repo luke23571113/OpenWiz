@@ -1,8 +1,3 @@
-//! B5's additional GitHub reads. Every invocation is a fixed GET form;
-//! projections discard account data at the boundary. No product decisions or writes.
-//! REST shapes: docs.github.com/en/rest/{actions/workflow-runs,pulls/pulls,issues/events}.
-//! Projection shapes are synthetic until B6 observes them; failed or incomplete reads
-//! remain errors. In particular, CI provenance is never inferred from today's base.
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -92,8 +87,6 @@ pub type Result<T> = std::result::Result<T, &'static str>;
 #[derive(Clone, Debug)]
 pub struct Comment {
     pub id: Number,
-    /// The author's GitHub login, as read; None when GitHub names nobody
-    /// (#718). Which authors' records count is the caller's rule.
     pub author: Option<String>,
     pub body: String,
     pub created: u64,
@@ -107,13 +100,10 @@ impl Comment {
         }
     }
 }
-/// Complete pagination, with malformed identified issues withheld in full.
-/// An unread group never supplies an older approval or partial report list.
 pub struct RepositoryComments {
     pub comments: BTreeMap<Number, Vec<Comment>>,
     pub unread: BTreeSet<Number>,
 }
-/// The existing PR inventory, retaining closed PR links for agent cleanup.
 pub struct PullRequests {
     pub rows: Vec<openwiz_core::fleet::fleets::PrRow>,
     pub closed: BTreeMap<Number, Vec<(openwiz_core::fleet::fleets::Link, String)>>,
@@ -202,7 +192,6 @@ impl TickReads {
                 rows.push(PrRow::Closed { number });
                 continue;
             }
-            // PR-view decoding/records keep their exact pre-AL1 shape.
             let mut view = v.clone();
             view.as_object_mut()
                 .ok_or("PR is not an object")?
@@ -274,7 +263,6 @@ impl TickReads {
         let o = object(&v, &["sha"])?;
         commit(&o["sha"])
     }
-    /// Compare immutable commit identities, using the existing fleet compare form.
     pub fn contains(&self, merged: &Commit, base: &Commit, deadline: Instant) -> Result<bool> {
         let v = self.json(
             &[
@@ -311,8 +299,6 @@ impl TickReads {
             deadline,
         )?)
     }
-    /// One complete repository-wide snapshot, including PR conversation comments.
-    /// Successful pagination proves empty groups; write gates keep scoped reads.
     pub fn repository_comments(
         &self,
         repo: &Repository,
@@ -320,9 +306,6 @@ impl TickReads {
     ) -> Result<RepositoryComments> {
         self.repository_comments_with_page_deadline(repo, |_| Ok(deadline))
     }
-    /// One process per page, each subject to the runner's READ_TIMEOUT.
-    /// The caller supplies the run deadline for the total discovered page work;
-    /// returning an error or failing any page exposes no partial snapshot.
     pub fn repository_comments_with_page_deadline(
         &self,
         repo: &Repository,
@@ -363,7 +346,6 @@ impl TickReads {
                 ],
                 deadline(page)?,
             )?;
-            // Preserve the previous aggregate process's output bound.
             bytes_read = bytes_read
                 .checked_add(bytes.len())
                 .filter(|n| *n <= crate::process::MAX_STDOUT_BYTES)
@@ -490,13 +472,9 @@ impl TickReads {
         }
         Ok(string(&o["subject"])?.lines().next().unwrap_or("").into())
     }
-    /// Only jobs from pull_request runs explicitly naming this PR/head/base
-    /// may constitute its CI. Mixed bases are refused, never set to base-now.
     pub fn checks(&self, pr: Number, head: &Commit, deadline: Instant) -> Result<Option<CheckRun>> {
         self.checks_with_parallelism(pr, head, deadline, 1)
     }
-    /// The caller allocates these slots from its shared four-read planning cap.
-    /// A failed page withholds the whole CI observation; there is no retry.
     pub fn checks_with_parallelism(
         &self,
         pr: Number,

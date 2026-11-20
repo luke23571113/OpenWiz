@@ -1,13 +1,3 @@
-//! The new-thread readers of `room-cli`'s answers, through the adapter's
-//! public functions alone: the `spawn` receipt (Sol, round 1, R2: a strict,
-//! hand-written reader that sees every key as the text gives it, so a key
-//! given twice is refused at any depth), and the project list's kind and
-//! remote (N3, sheet A-5). Moved here from
-//! `tests/new-thread/` (`boundary_readers.rs`, `n03_existing_projects.rs`)
-//! by #808. The proofs that run the CLI against the fake `room-cli` stay
-//! there, and so does the catalogue table: M12 reads every file under
-//! `crates/` as product source and refuses the word `steer` it spells.
-
 use std::path::Path;
 
 use openwiz_adapter_cloudroom::new_thread::{is_github_remote, parse_projects, spawn_receipt};
@@ -16,7 +6,6 @@ use openwiz_core::model::Fact;
 use openwiz_core::new_thread::outcome::SpawnReply;
 use serde_json::{Value, json};
 
-/// The synthetic `room-cli` v127 new-thread answers (`tests/fixtures/`).
 const FIXTURES: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../tests/fixtures/room-cli-v127/new-thread"
@@ -30,8 +19,6 @@ fn fixture_json(name: &str) -> Value {
     serde_json::from_slice(&fixture(name)).unwrap_or_else(|e| panic!("fixture {name}: {e}"))
 }
 
-/// `text` with the first `from` replaced by `to`: a key given twice, which
-/// no `Value` can hold.
 fn twice(text: &str, from: &str, to: &str) -> String {
     let changed = text.replacen(from, to, 1);
     assert_ne!(changed, text, "{from} is in the document");
@@ -50,14 +37,12 @@ fn without(value: &Value, key: &str) -> String {
     v.to_string()
 }
 
-/// Sol's counterexample, as he ran it.
 const SOLS_RECEIPT: &str = r#"{"id":"thr_syn_wrong","id":"thr_syn_0021","projectId":"prj_syn_wrong","projectId":"prj_syn_0001","unexpected":true}"#;
 
 fn github(n: &str) -> String {
     format!("https://github.com/synthetic-owner/synthetic-repo-{n}.git")
 }
 
-/// The rows of `tests/new-thread/fake.rs`'s `project list` this proof reads.
 fn project_list() -> Value {
     let row = |id: &str, name: &str, kind: &str, remote: Value| {
         json!({
@@ -124,11 +109,8 @@ fn the_receipt_table() {
     let good = [
         text.clone(),
         documented.to_string(),
-        // #949: room-cli v155's declared receipt adds keys the old reader refused.
         String::from_utf8(fixture("spawn-receipt-created-v155.json")).unwrap(),
         json!({"id": "thr_syn_0021", "projectId": "prj_syn_0001", "status": "pending"}).to_string(),
-        // #949: only id and projectId are read; any other key, of any type,
-        // is not drift (an additive room-cli release must not break new).
         with(&receipt, "unexpected", json!(true)),
         with(&receipt, "thread", json!({})),
         with(
@@ -175,7 +157,6 @@ fn the_receipt_table() {
         with(&receipt, "projectId", json!({"id": "prj_syn_0001"})),
         with(&receipt, "id", Value::Null),
         with(&receipt, "projectId", Value::Null),
-        // #949: a key given twice inside a key OpenWiz does not read.
         twice(
             &with(&receipt, "syntheticExtraField", json!({"x": 1})),
             "\"x\":",
@@ -245,8 +226,6 @@ fn projects_are_read_with_their_kind_and_remote() {
         find("prj_syn_0003").kind,
         Fact::Known("personal".to_owned())
     );
-    // Drift: a missing or mistyped field is unknown, so the project is
-    // refused; a row without an id, or with an empty one, can't be named.
     let drift = json!([
         {"id": "prj_syn_0011", "kind": "standard", "name": "Synthetic a"},
         {"id": "prj_syn_0012", "kind": 3, "name": "Synthetic b", "gitRemoteUrl": github("0012")},

@@ -1,4 +1,3 @@
-//! Strict readers for the fixed plan queries. No product state or graph rules.
 use super::{Relation, Request};
 use crate::{allowlist::Invocation, process, tickets::Tickets};
 use openwiz_core::{
@@ -253,8 +252,6 @@ impl Reader {
                     break;
                 }
             };
-            // Preserve every usable page even when a later page fails or the
-            // source's total changes during the walk.
             if total.is_some_and(|t| t != count) {
                 list.gaps.push(failure(
                     GapKind::Truncated,
@@ -498,8 +495,6 @@ fn link(v: Value) -> Answer<Link> {
     })
 }
 
-// Deserialize every object through one visitor so a duplicate at any depth
-// cannot be silently replaced by serde_json::Value's map.
 struct Strict(Value);
 impl<'de> Deserialize<'de> for Strict {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -557,9 +552,6 @@ pub fn strict(bytes: &[u8]) -> Answer<Value> {
         .map_err(|_| malformed())
 }
 
-/// Error paths address response fields, including list indices. Resolve every
-/// path against the original data before removing any fields, so overlapping
-/// errors cannot shift indices or make a sibling look unresolved.
 fn mask_errors(data: &mut Value, errors: Option<&Value>) {
     let targets = errors
         .and_then(Value::as_array)
@@ -584,7 +576,6 @@ fn mask_errors(data: &mut Value, errors: Option<&Value>) {
 }
 
 fn error_target(data: &Value, path: &[Value]) -> Option<Vec<Value>> {
-    // Validate even the suffix hidden by null propagation before locating it.
     if path.is_empty()
         || !path.iter().all(|segment| match segment {
             Value::String(key) => !key.is_empty(),
@@ -601,8 +592,6 @@ fn error_target(data: &Value, path: &[Value]) -> Option<Vec<Value>> {
             Value::Number(n) => at.as_array()?.get(usize::try_from(n.as_u64()?).ok()?)?,
             _ => return None,
         };
-        // Non-null field errors can bubble to a nullable ancestor. That null
-        // is unavailable data, never a positively established absence.
         if at.is_null() || i + 1 == path.len() {
             return Some(path[..=i].to_vec());
         }
@@ -639,9 +628,6 @@ fn omit_field(data: &mut Value, path: &[Value]) {
     }
 }
 
-/// An unlocated failure cannot establish nullable absences or complete lists.
-/// Retain positive fields and list rows; the existing per-field/list readers
-/// turn omitted fields and pagination metadata into explicit unknowns/gaps.
 fn uncertain_absences(data: &mut Value) {
     match data {
         Value::Object(object) => {

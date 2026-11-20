@@ -1,4 +1,3 @@
-//! GitHub reads for decision requests. No write forms.
 use crate::{
     allowlist::{Invocation, Module},
     process,
@@ -132,8 +131,6 @@ pub struct Comment {
 }
 pub struct Discovery {
     pub comments: Vec<Comment>,
-    /// Duplicate identities within a single scan, as opposed to an edit
-    /// observed across scans. Consumers must not select a winner for these.
     pub duplicate_ids: BTreeSet<(String, u64)>,
     pub errors: Vec<SourceError>,
     pub snapshot_complete: bool,
@@ -177,8 +174,6 @@ impl GitHubDecisions {
         Self::with_program(crate::PROGRAM)
     }
 
-    /// Read only the optional role setting, never infer a private sibling.
-    /// A missing settings file preserves cwd; a bad setting never falls back.
     pub fn with_settings(mut self, path: &std::path::Path) -> Self {
         self.repositories = match std::fs::read(path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -267,14 +262,10 @@ impl GitHubDecisions {
         })
     }
 
-    /// Read only the named saved grill at this PR's current immutable head.
-    /// The blob read rechecks the PR head; a moved head or unavailable object
-    /// is an incomplete read, never a fallback to the default branch.
     pub fn grill(&self, n: u64, file: &str, deadline: Instant) -> Result<String, SourceError> {
         self.grill_in("", n, file, deadline)
     }
 
-    /// Bind the saved source to the verified comment repository, as subject_in does.
     pub fn grill_in(
         &self,
         repo: &str,
@@ -471,8 +462,6 @@ impl GitHubDecisions {
         self.read_with(deadline, |_| {})
     }
 
-    /// Observe each parsed comment before reading further pages. Consumers
-    /// can verify needed identities while the original budget is available.
     pub fn read_with(&self, deadline: Instant, mut observe: impl FnMut(&Comment)) -> Discovery {
         let mut all = Self::empty();
         let repos = match &self.repositories {
@@ -541,8 +530,6 @@ impl GitHubDecisions {
             snapshot_complete: true,
         }
     }
-    /// The configured role is a transport fact; consumers decide which
-    /// request kinds belong there. Single-repository mode has no role pair.
     pub fn private_role(&self, repo: &str) -> Option<bool> {
         self.repositories
             .as_ref()
@@ -572,8 +559,6 @@ impl GitHubDecisions {
                 errors: Vec::new(),
                 snapshot_complete: true,
             };
-            // Verification is another bounded observation under the same
-            // deadline, not a retry or a claim of an atomic GitHub snapshot.
             let checked = self.scan(repo, deadline, &mut verification, &mut observe);
             if checked.is_ok() && read.comments != verification.comments {
                 read.errors.push(malformed());
@@ -587,8 +572,6 @@ impl GitHubDecisions {
                 .collect();
             for row in verification.comments {
                 if !seen.get(&row.id).is_some_and(|&i| read.comments[i] == row) {
-                    // Preserve newly observed records and conflicting edits.
-                    // Duplicate identities remain ambiguous to the consumer.
                     read.comments.push(row);
                 }
             }
@@ -618,8 +601,6 @@ impl GitHubDecisions {
         read: &mut Discovery,
         observe: &mut impl FnMut(&Comment),
     ) -> Result<(), SourceError> {
-        // Newest pages come first so an incomplete read retains recent work.
-        // Full coverage still requires totals, unique ids and verification.
         let total = self.count(repo, deadline)?;
         let mut ids = BTreeSet::new();
         for page in 1..=total.div_ceil(100) {
