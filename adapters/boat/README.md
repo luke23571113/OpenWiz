@@ -1,5 +1,7 @@
 # boat.dev driver
 
+Login: held by boat.dev
+
 A [driver v1](../../kernel/driver.v1.md) that runs each builder in its own [boat.dev](https://boat.dev) cloud sandbox, through your own signed-in `boat` CLI. One Python file, standard library only. **Platforms:** Linux and macOS, Python 3.9 or later (on Linux it keeps each turn's processes with `/proc` and a subreaper; on macOS with each turn's process group and `ps`). Runs are saved in `$OPENWIZ_BOAT_STATE` (default `~/.local/state/openwiz-boat`), owner-only.
 
 | Command | What it does on boat.dev |
