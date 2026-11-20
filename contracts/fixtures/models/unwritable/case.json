@@ -5,7 +5,7 @@
     "set",
     "reviewer",
     "codex",
-    "syn-vendor/demo-model",
+    "syn-vendor/demo:latest",
     "medium",
     "--json"
   ],

@@ -443,18 +443,22 @@ fn todays_choices_read_the_same_from_the_one_table_and_the_five_tables() {
 // catches: a show fixture that disagrees with the contract's rules (an
 // absent or following row that doesn't follow the Builder, a stale older
 // table winning over the Models table, a same-family pair with no warning or
-// no waiting review), so every later reader would agree on a wrong answer.
+// no waiting review), so every later reader would agree on a wrong answer;
+// or a namespaced model id (`vendor/demo`) that `set` writes but `show`
+// can't read back.
 #[test]
 fn every_show_fixture_is_its_fleet_files_reading() {
-    for case in [
-        "one-table",
-        "five-tables",
-        "both",
-        "overridden",
-        "same-family",
+    for (file, show) in [
+        ("one-table/fleet.md", "one-table/show.json"),
+        ("five-tables/fleet.md", "five-tables/show.json"),
+        ("both/fleet.md", "both/show.json"),
+        ("overridden/fleet.md", "overridden/show.json"),
+        ("same-family/fleet.md", "same-family/show.json"),
+        ("set-namespaced/after.md", "set-namespaced/show.json"),
     ] {
-        let got = read(&text(&format!("{case}/fleet.md"))).unwrap();
-        assert_eq!(got, load(&format!("{case}/show.json")), "{case}");
+        let got = read(&text(file));
+        assert!(got.is_ok(), "{file} refused: {got:?}");
+        assert_eq!(got.unwrap(), load(show), "{file}");
     }
 }
 
@@ -516,7 +520,13 @@ fn older_rows(show: &Value) -> Vec<(&'static str, Value)> {
 // namespaced model is listed, but refused as not writable).
 #[test]
 fn every_set_fixture_writes_what_its_report_says() {
-    for case in ["set-older", "set-same-family", "unoffered", "unwritable"] {
+    for case in [
+        "set-older",
+        "set-same-family",
+        "set-namespaced",
+        "unoffered",
+        "unwritable",
+    ] {
         let spec = load(&format!("{case}/case.json"));
         let report = load(&format!("{case}/set.json"));
         let before = read(&text(spec["fleet"].as_str().unwrap())).unwrap();

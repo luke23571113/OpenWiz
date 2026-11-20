@@ -69,10 +69,16 @@
           ]
         },
         {
-          "model": "syn-vendor/demo-model",
+          "model": "vendor/demo",
           "efforts": [
             "medium",
             "high"
+          ]
+        },
+        {
+          "model": "syn-vendor/demo:latest",
+          "efforts": [
+            "medium"
           ]
         }
       ]

@@ -4,7 +4,7 @@
   "role": "reviewer",
   "asked": {
     "provider": "codex",
-    "model": "syn-vendor/demo-model",
+    "model": "syn-vendor/demo:latest",
     "effort": "medium"
   },
   "before": {
@@ -28,7 +28,7 @@
   "warnings": [],
   "refusal": {
     "reason": "not_writable",
-    "text": "cannot be written to the Models table: codex syn-vendor/demo-model medium; nothing was changed"
+    "text": "cannot be written to the Models table: codex syn-vendor/demo:latest medium; nothing was changed"
   },
   "offered": [
     {
@@ -69,10 +69,16 @@
           ]
         },
         {
-          "model": "syn-vendor/demo-model",
+          "model": "vendor/demo",
           "efforts": [
             "medium",
             "high"
+          ]
+        },
+        {
+          "model": "syn-vendor/demo:latest",
+          "efforts": [
+            "medium"
           ]
         }
       ]
