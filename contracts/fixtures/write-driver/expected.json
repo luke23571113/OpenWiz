@@ -91,7 +91,8 @@
     "admission": {
       "admission/ready.json": {"exit": 0, "read": "ready: yes"},
       "admission/no-start-record.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author"},
-      "admission/start-by-other-account.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author"}
+      "admission/start-by-other-account.json": {"exit": 1, "read": "ready: no: no launch-fleet start record from a record author"},
+      "admission/caller-signs-and-hooks.json": {"exit": 0, "read": "ready: yes", "signer": false, "hook": false}
     }
   }
 }

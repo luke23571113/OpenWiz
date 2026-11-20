@@ -233,8 +233,40 @@ def read_preview(text, b, f):
             'host': m['host'], 'minutes': minutes(m['time'])}
 
 
+def caller_env(case, tmp):
+    """The environment of whoever runs this check. A case's `caller` gives it a Git config: `global` keys
+    in its home's .gitconfig, `env` keys through GIT_CONFIG_COUNT. `<signer>` is a fake signer and
+    `<hooks>` a folder of fake hooks; each writes its own marker file under tmp and nothing else."""
+    env = dict(os.environ)
+    caller = case.get('caller')
+    if caller is None:
+        return env
+    home, hooks = tmp / 'caller-home', tmp / 'caller-hooks'
+    home.mkdir()
+    hooks.mkdir()
+    def fake(path, marker, code):
+        path.write_text(f'#!/bin/sh\necho invoked > {tmp / marker}\nexit {code}\n')
+        path.chmod(0o755)
+    fake(tmp / 'caller-signer', 'signer-ran', 1)
+    for hook in ('pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit'):
+        fake(hooks / hook, 'hook-ran', 0)
+    def value(v):
+        return v.replace('<signer>', str(tmp / 'caller-signer')).replace('<hooks>', str(hooks))
+    sections = {}
+    for key, v in caller['global'].items():
+        section, name = key.rsplit('.', 1)
+        sections.setdefault(section, []).append(f'\t{name} = {value(v)}')
+    (home / '.gitconfig').write_text(''.join(f'[{s}]\n' + '\n'.join(lines) + '\n' for s, lines in sections.items()))
+    env['HOME'] = str(home)
+    for i, (key, v) in enumerate(caller['env'].items()):
+        env[f'GIT_CONFIG_KEY_{i}'], env[f'GIT_CONFIG_VALUE_{i}'] = key, value(v)
+    env['GIT_CONFIG_COUNT'] = str(len(caller['env']))
+    return env
+
+
 def read_admission(text, b, f):
-    """Run the pinned `ticket.py read` on a throwaway ticket through its fake gh: its last line."""
+    """Run the pinned `ticket.py read` on a throwaway ticket through its fake gh: its last line, and for a
+    case with a `caller`, whether that caller's fake signer or fake hooks ran."""
     case = strict(text)
     if not TICKET_PY.is_file() or not FAKE_GH.is_file():
         raise FileNotFoundError('the pinned build-ticket skill is not installed: run tools/wizskills/install.py')
@@ -246,6 +278,7 @@ def read_admission(text, b, f):
                 for i, c in enumerate(case['comments'], 1)]
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
+        caller = caller_env(case, tmp)
         (tmp / 'bin').mkdir()
         gh = tmp / 'bin' / 'gh'
         gh.write_text(f'#!/bin/sh\nexec {shutil.which("python3")} -I {FAKE_GH} "$@"\n')
@@ -255,14 +288,20 @@ def read_admission(text, b, f):
         (repo / 'docs' / 'agents').mkdir(parents=True)
         (repo / 'docs' / 'agents' / 'fleet.md').write_text(text_of(HERE / case['fleet']) + '\n')
         git = ['git', '-C', str(repo), '-c', 'user.name=synthetic', '-c', 'user.email=synthetic@example.invalid']
+        got = None
         for step in (['init', '-q'], ['add', '-A'], ['commit', '-q', '-m', 'throwaway']):
-            subprocess.run(git + step, check=True, capture_output=True)
-        env = {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
-        env.update(PATH=f'{tmp / "bin"}{os.pathsep}{env.get("PATH", "")}', FAKE_GH_WORLD=str(tmp / 'world.json'))
-        r = subprocess.run([sys.executable, '-I', str(TICKET_PY), 'read', REPO, '7', '--fleet-ref', 'HEAD'],
-                           cwd=repo, env=env, capture_output=True, text=True, timeout=60)
-    last = (r.stdout.strip().splitlines() or [''])[-1]
-    return {'exit': r.returncode, 'read': last}
+            if subprocess.run(git + step, env=caller, capture_output=True).returncode:
+                got = {'exit': 'git', 'read': f'git {step[0]} failed'}
+                break
+        if got is None:
+            env = {k: v for k, v in caller.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
+            env.update(PATH=f'{tmp / "bin"}{os.pathsep}{env.get("PATH", "")}', FAKE_GH_WORLD=str(tmp / 'world.json'))
+            r = subprocess.run([sys.executable, '-I', str(TICKET_PY), 'read', REPO, '7', '--fleet-ref', 'HEAD'],
+                               cwd=repo, env=env, capture_output=True, text=True, timeout=60)
+            got = {'exit': r.returncode, 'read': (r.stdout.strip().splitlines() or [''])[-1]}
+        if 'caller' in case:
+            got.update(signer=(tmp / 'signer-ran').exists(), hook=(tmp / 'hook-ran').exists())
+    return got
 
 
 READERS = {'copy-line': read_copy, 'fleet': read_fleet, 'ticket': read_ticket, 'start': read_start,
