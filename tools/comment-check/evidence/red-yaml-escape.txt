@@ -1,0 +1,72 @@
+Red run: python3 -I tools/comment-check/test_check.py, with a YAML double-quoted value holding an escaped quote and a '#' added to the YAML case, against the checker at the previous commit (which also still lacks the fail-closed fix).
+
+test_before_and_after_are_counted_the_same_way (__main__.Count.test_before_and_after_are_counted_the_same_way) ... ok
+test_cases_count_their_comment_lines (__main__.Count.test_cases_count_their_comment_lines) ... FAIL
+test_count_matches_the_known_tree (__main__.Count.test_count_matches_the_known_tree) ... ok
+test_doc_comments_pass_only_under_a_published_docs_path (__main__.Diff.test_doc_comments_pass_only_under_a_published_docs_path) ... 
+  test_doc_comments_pass_only_under_a_published_docs_path (__main__.Diff.test_doc_comments_pass_only_under_a_published_docs_path) [yaml.yml] ... FAIL
+test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line (__main__.Diff.test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line) ... 
+  test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line (__main__.Diff.test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line) [yaml.yml] ... FAIL
+test_excluded_files_never_fail (__main__.Diff.test_excluded_files_never_fail) ... ok
+test_only_added_lines_fail (__main__.Diff.test_only_added_lines_fail) ... ok
+test_quoted_paths_and_undecodable_files_fail_closed (__main__.Diff.test_quoted_paths_and_undecodable_files_fail_closed) ... FAIL
+test_the_escape_tag_passes_only_with_a_reason (__main__.Diff.test_the_escape_tag_passes_only_with_a_reason) ... ok
+
+======================================================================
+FAIL: test_cases_count_their_comment_lines (__main__.Count.test_cases_count_their_comment_lines)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 193, in test_cases_count_their_comment_lines
+    self.assertEqual(by_file, {f'cases/{n}': c['comment_lines'] for n, c in EXPECTED['cases'].items()})
+AssertionError: {'cases/css.css': 4, 'cases/html.html': 6, 'cases[121 chars]': 7} != {'cases/rust.rs': 14, 'cases/python.py': 8, 'case[121 chars]': 6}
+  {'cases/css.css': 4,
+   'cases/html.html': 6,
+   'cases/javascript.js': 9,
+   'cases/python.py': 8,
+   'cases/rust.rs': 14,
+   'cases/shell.sh': 6,
+   'cases/toml.toml': 4,
+-  'cases/yaml.yml': 7}
+?                    ^
+
++  'cases/yaml.yml': 6}
+?                    ^
+
+
+======================================================================
+FAIL: test_doc_comments_pass_only_under_a_published_docs_path (__main__.Diff.test_doc_comments_pass_only_under_a_published_docs_path) [yaml.yml]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 121, in test_doc_comments_pass_only_under_a_published_docs_path
+    self.assertEqual(got, want)
+AssertionError: Items in the first set but not the second:
+(22, 'comment')
+
+======================================================================
+FAIL: test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line (__main__.Diff.test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line) [yaml.yml]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 108, in test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line
+    self.assertEqual(got, {tuple(f) for f in case['failures']})
+AssertionError: Items in the first set but not the second:
+(22, 'comment')
+
+======================================================================
+FAIL: test_quoted_paths_and_undecodable_files_fail_closed (__main__.Diff.test_quoted_paths_and_undecodable_files_fail_closed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 155, in test_quoted_paths_and_undecodable_files_fail_closed
+    self.assertEqual((code, failures(out)), (1, {('odd "name".py', 1, 'comment'), ('latin.rs', 1, 'unreadable')}))
+AssertionError: Tuples differ: (1, set()) != (1, {('odd "name".py', 1, 'comment'), ('latin.rs', 1, 'unreadable')})
+
+First differing element 1:
+set()
+{('odd "name".py', 1, 'comment'), ('latin.rs', 1, 'unreadable')}
+
+- (1, set())
++ (1, {('odd "name".py', 1, 'comment'), ('latin.rs', 1, 'unreadable')})
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.798s
+
+FAILED (failures=4)
