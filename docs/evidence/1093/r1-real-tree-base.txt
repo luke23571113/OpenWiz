@@ -1,8 +1,0 @@
-WM1 checker: e52db33776dbb56df91983ef750892c4ba3cac89
-Input: clean OpenWiz tree at 736da8fcbb36a58256c2ed465ad18539851cb0fe
-Input tree: 8c4e7f5809645e502183346935e3c4a6166d2836
-Command: python3 -I <checker> --root .
-Exit: 1; stdout empty; working tree unchanged.
-refused skills/launch-fleet/scripts/fixtures/timing-gh.py:22 native load: computed path could name a file in tools/war-room
-refused tools/war-room/fixtures/activity/replay.py:78 native load: computed path could name a file in tools/war-room
-split: refused 2 reference(s); no stay or move set
