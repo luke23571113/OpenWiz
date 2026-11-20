@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -104,7 +105,17 @@ class Boat(unittest.TestCase):
                         FAKE_TURNS=self.turns, FAKE_HOLD=self.hold,
                         FAKE_BOAT_STATE=os.path.join(self.folder, 'boat.json'),
                         OPENWIZ_BOAT_STATE=os.path.join(self.folder, 'state'), OPENWIZ_BOAT_SETTLE='2',
-                        PATH=os.path.join(HERE, 'fixtures', 'bin') + os.pathsep + os.environ.get('PATH', ''))
+                        PATH=os.path.join(HERE, 'fixtures', 'bin') + os.pathsep + self.only_these_tools())
+        for real in ('claude', 'codex', 'gh', 'git'):
+            self.assertIsNone(shutil.which(real, path=self.env['PATH']), 'a real %s is on the tests\' PATH' % real)
+        self.assertEqual(shutil.which('boat', path=self.env['PATH']), os.path.join(HERE, 'fixtures', 'bin', 'boat'))
+
+    def only_these_tools(self):
+        tools = os.path.join(self.folder, 'tools')
+        os.mkdir(tools)
+        for name in ('python3', 'sh', 'sleep', 'mktemp', 'rm', 'readlink', 'ln', 'mkdir'):
+            os.symlink(shutil.which(name), os.path.join(tools, name))
+        return tools
 
     def tearDown(self):
         for pid in self.marked() + [w for _, w, _, _ in self.logged() if alive(w)]:
