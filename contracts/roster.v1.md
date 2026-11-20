@@ -104,7 +104,8 @@ entries, from 1; `<name>` and `<cell>` are the trimmed cells as written.
 | `label` | `Roster refused: row <n> (<name>): <label> is longer than 60 characters` |
 
 In `role` and `repeated-role`, `<role>` is the offending role as written; in
-`person`, `<first>` is row 1's person.
+`person`, `<first>` is row 1's person; in `writes-as`, `<person>'s App` is
+written as it stands.
 
 **The starting Roster** (KN22) is one row: the person's own harness, every
 role, on the driver setup chose, such as
@@ -208,9 +209,10 @@ entry's `name`, `kind`, `driver`, `roles`, `writes_as` and `label`; null with
 no roster), and its `picks`. Each pick gives the `ticket`, the `role`, the
 `choice` (C as models.v1 resolves it from that `fleet.md`, or null when it
 waits), and either the `pick` (the entry's `name`, `kind`, `driver`, its
-driver `start` harness and model, its `label`, `writes_as` and the `token`
-request's `requester` and `repositories`), or `waits`: `models` or `roster`,
-with the roster's `look` line.
+driver `start` harness and model, its `label`, `writes_as` and its `token`: the
+`service` that mints it, named by its person, and the request's `requester`
+and `repositories`), or `waits`: `models` or `roster`, with the roster's
+`look` line. `no-roster/case.json` is `{"roster": null, "starts": "today"}`.
 
 | Case | Shows |
 | --- | --- |

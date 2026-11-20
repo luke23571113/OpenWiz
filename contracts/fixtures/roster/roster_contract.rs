@@ -317,7 +317,11 @@ fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &V
         "start": {"harness": driver_harness(provider), "model": choice["model"]},
         "label": e.label(),
         "writes_as": format!("{}'s App", e.person),
-        "token": {"requester": format!("{role}-{ticket}"), "repositories": [repository]},
+        "token": {
+            "service": e.person,
+            "requester": format!("{role}-{ticket}"),
+            "repositories": [repository],
+        },
     });
     with(base, json!({"pick": picked, "waits": null, "look": null}))
 }
@@ -446,6 +450,7 @@ fn every_entry_writes_the_same_way() {
                 "writes_as": format!("{person}'s App"),
                 "label": format!("{} via {person}", e["name"].as_str().unwrap()),
                 "token": {
+                    "service": person,
                     "requester": format!("{}-{}", p["role"].as_str().unwrap(), p["ticket"]),
                     "repositories": [repository],
                 },
