@@ -229,9 +229,9 @@ const FULL_PLAN = { changes: { rust: 'true', release: 'true', skills: '["image",
 const FULL_SUITE = ['always', 'changes', 'ci', 'launch-fleet', 'release', 'rust', 'skills', 'web-test'];
 
 test('PR, nightly and merge-group coverage stays full; main pushes follow the map-age decision', () => {
-  for (const event of ['pull_request', 'merge_group']) {
-    assert.deepEqual(simulate(workflow, event, FULL_PLAN), FULL_SUITE, event);
-  }
+  // #1418: the owned-paths check runs beside the suite on pull requests only.
+  assert.deepEqual(simulate(workflow, 'pull_request', FULL_PLAN), [...FULL_SUITE, 'owned-paths'].sort(), 'pull_request');
+  assert.deepEqual(simulate(workflow, 'merge_group', FULL_PLAN), FULL_SUITE, 'merge_group');
   assert.deepEqual(simulate(workflow, 'schedule', FULL_PLAN), FULL_SUITE, 'nightly');
   assert.deepEqual(simulate(workflow, 'push', { changes: {} }), ['changes', 'main-light'], 'fresh map: no plan or heavy lanes');
 
