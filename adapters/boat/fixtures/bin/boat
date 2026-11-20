@@ -15,6 +15,7 @@ synthetic `git` of fixtures/sandbox-bin; the agent posts its note only if its sk
 import fcntl, json, os, re, subprocess, sys, time
 
 STATE, ARGS = os.environ['FAKE_BOAT_STATE'], sys.argv[1:]
+TURN = os.environ.get('FAKE_TURN', '')
 PROVIDERS = os.environ.get('FAKE_BOAT_PROVIDERS', 'claude,codex').split(',')
 
 
@@ -118,7 +119,7 @@ def prompt(args):
         # The agent follows the skill, and posts its note, only if the skill is installed in the sandbox for
         # its harness (live run 3: without it, no note).
         found = os.path.join(home(sid), '.claude' if provider == 'claude' else '.agents', 'skills', skill, 'SKILL.md')
-        if os.path.exists(found):
+        if os.path.exists(found) and not TURN:
             note(box['conversations'][cid], resume is not None, model, skill)
         return cid, box['interrupts']
 
@@ -134,6 +135,13 @@ def prompt(args):
     if os.environ.get('FAKE_TURNS'):
         with open(os.environ['FAKE_TURNS'], 'a') as f:
             f.write('%d %d %s %s\n' % (os.getpid(), worker.pid, cid, 'woken' if resume else 'first'))
+    if TURN.startswith('usage_limit'):
+        limit = {'limitType': TURN.split(':')[1], 'provider': provider,
+                 'summary': 'Synthetic OAuth token expired ' + os.environ.get('GH_TOKEN', '')}
+        say(event='usage_limit', **(limit if TURN.startswith('usage_limit_flat') else {'data': limit}))
+    elif TURN != 'no_tools':
+        say(data={'conversationId': cid, 'content': '', 'tools': [{'use': {'id': 'call_1', 'type': 'tool_use',
+            'name': 'Bash', 'input': {'command': 'gh issue view'}}}]}, event='response')
     # The turn ends at once, or runs while the file FAKE_HOLD exists, its sandbox runs and nobody interrupts it.
     while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
         box = update(lambda s: s['sandboxes'][sid])

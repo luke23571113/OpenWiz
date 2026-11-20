@@ -15,6 +15,9 @@ ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
 UP = ('running', 'ready', 'idle')  # the sandbox states a wake may prompt in; any other refuses it
 QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 120
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
+DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
+SHOWN_LIMIT_TYPES = {'auth_expiry': 'auth_expiry', 'rate_limit': 'rate_limit'}
+MACOS_SECONDS_BETWEEN_LOOKS = 0.2
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
 
@@ -178,9 +181,6 @@ LINUX = os.path.isdir('/proc/self') and hasattr(os, 'pidfd_open')
 PR_SET_CHILD_SUBREAPER = 36
 
 
-TURN = re.compile(r'\s--turn\s')
-
-
 def ps(*args):
     try:
         p = subprocess.Popen(['ps'] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -193,17 +193,18 @@ def ps(*args):
     return out.splitlines(), p.pid
 
 
-def members(roots, run):
-    rows, me = ps('-A', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'command=', '-E')
-    mark = re.compile(r'(?:^|\s)OPENWIZ_RUN=%s(?:\s|$)' % re.escape(run))
-    found, children = set(), {}
+# PRIVACY: reads only ps's process table (pid, parent, group, state, start time), never any environment.
+def members(roots, recorded):
+    rows, me = ps('-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'lstart=')
+    started, children, found = {}, {}, set()
     for row in rows:
         f = row.split(None, 4)
-        if len(f) < 4 or f[3].startswith('Z'):
+        if len(f) < 5 or f[3].startswith('Z'):
             continue
         pid, ppid, group = int(f[0]), int(f[1]), int(f[2])
+        started[pid] = f[4].strip()
         children.setdefault(ppid, []).append(pid)
-        if group in roots or len(f) > 4 and mark.search(f[4]) and not TURN.search(f[4]):
+        if group in roots or recorded.get(pid) == started[pid]:
             found.add(pid)
     todo = list(roots) + list(found)
     while todo:
@@ -211,7 +212,7 @@ def members(roots, run):
             if c not in found:
                 found.add(c)
                 todo.append(c)
-    return found - set(roots) - {os.getpid(), me}
+    return {p: started[p] for p in found - set(roots) - {os.getpid(), me}}
 
 
 def since(pid):
@@ -247,6 +248,13 @@ def descendants(pid):
     return found
 
 
+def record_this_supervisor(log, kept=None):
+    record = '%s.%d.sup' % (log[:-len('.log')], os.getpid())
+    with open(record + '.new', 'w') as f:
+        json.dump({'supervisor': os.getpid(), 'supervisor_since': since(os.getpid()), 'kept': kept or {}}, f)
+    os.replace(record + '.new', record)
+
+
 def supervise(log, cmd):
     """One turn, as `driver --turn <log> <boat prompt ...>`: run it with its output in log, and keep every
     process it starts as this turn's (an orphan comes back here, whatever its session or environment) until
@@ -255,6 +263,7 @@ def supervise(log, cmd):
         print(json.dumps({'error': "this host cannot keep a turn's processes together"}), flush=True)
         return
     try:
+        record_this_supervisor(log)
         with open(log, 'a') as out:
             turn = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
     except OSError as e:
@@ -263,13 +272,34 @@ def supervise(log, cmd):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
     print(json.dumps({'pid': turn.pid, 'since': since(turn.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+    if LINUX:
+        while True:
+            try:
+                os.wait()
+            except ChildProcessError:
+                return
+    kept = {}
+    while True:
+        children_left = any_child_running_after_reaping()
+        now = members({os.getpid()}, kept)
+        if now != kept:
+            kept = now
+            try:
+                record_this_supervisor(log, {str(p): t for p, t in kept.items()})
+            except OSError:
+                pass
+        if not children_left and not kept:
+            return
+        time.sleep(MACOS_SECONDS_BETWEEN_LOOKS)
+
+
+def any_child_running_after_reaping():
     while True:
         try:
-            os.wait()
+            if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                return True
         except ChildProcessError:
-            if LINUX or not members({os.getpid()}, os.environ['OPENWIZ_RUN']):
-                return
-            time.sleep(0.2)
+            return False
 
 
 def running(turn):
@@ -288,7 +318,7 @@ def end(turns, run):
             if not kept:
                 return
             if not LINUX:
-                for p in members({s for s, _ in kept}, run) - sent:
+                for p in set(members({s for s, _ in kept}, recorded_by(run, {s for s, _ in kept}))) - sent:
                     try:
                         os.kill(p, sig)
                         sent.add(p)
@@ -361,6 +391,48 @@ def prompt(state, run):
             raise Refused('boat did not queue the turn within %d seconds; its outcome is unknown' % QUEUED_WAIT,
                           'check `boat conversations %s` for it, then stop the run' % state['sandbox'])
         time.sleep(0.1)
+
+
+def settle_seconds():
+    raw = os.environ.get('OPENWIZ_BOAT_SETTLE') or str(DEFAULT_SETTLE_SECONDS)
+    try:
+        seconds = float(raw)
+    except ValueError:
+        seconds = float('nan')
+    if not 0 < seconds <= MAX_SETTLE_SECONDS:
+        raise Refused('OPENWIZ_BOAT_SETTLE is not a number of seconds above 0 and at most %d; nothing was started'
+                      % MAX_SETTLE_SECONDS, 'unset it, or set it to a number of seconds up to %d, then start again'
+                      % MAX_SETTLE_SECONDS)
+    return seconds
+
+
+def refuse_a_dead_first_turn(run, turn, settle):
+    log, deadline = path(run, '0.log'), time.monotonic() + settle
+    while True:
+        ended_before_this_read = not running(turn)
+        try:
+            with open(log, errors='replace') as f:
+                lines = parse(f.read())
+        except OSError:
+            lines = []
+        limits = [x.get('data') if isinstance(x.get('data'), dict) else x
+                  for x in lines if x.get('event') == 'usage_limit']
+        if limits:
+            kind = limits[0].get('limitType')
+            why = 'hit a usage limit (%s)' % (SHOWN_LIMIT_TYPES.get(kind, 'unknown') if isinstance(kind, str) else 'unknown')
+            break
+        if ended_before_this_read:
+            if any(isinstance(x.get('data'), dict) and x['data'].get('tools') for x in lines):
+                return
+            why = 'finished with no tool call'
+            break
+        if time.monotonic() > deadline:
+            return
+        time.sleep(0.1)
+    end([turn], run)
+    raise Refused('run %s: the first turn %s, so the run did not start' % (run, why),
+                  line('read %s for why; for an expired login, sign that harness in again in boat\'s dashboard (Agents '
+                       '& Proxying) yourself; for a rate limit, wait for it to reset; then start again' % log))
 
 
 def text_id(value):
@@ -465,28 +537,40 @@ def stopping(run):
         return True
 
 
-def strays(run, known):
-    """This run's turn supervisors on this machine that its record doesn't name: a turn begun by a command
-    that then failed before it could save it. Found by the run's mark and the `--turn` argument."""
-    found = []
-    if not LINUX:
-        mark = re.compile(r'(?:^|\s)OPENWIZ_RUN=%s(?:\s|$)' % re.escape(run))
-        for row in ps('-A', '-ww', '-o', 'pid=', '-o', 'command=', '-E')[0]:
-            p, _, command = row.strip().partition(' ')
-            if re.search(r'\s--turn\s', command) and mark.search(command) and int(p) not in known \
-                    and since(int(p)) is not None:
-                found.append({'supervisor': int(p), 'supervisor_since': since(int(p))})
-        return found
-    for p in filter(str.isdigit, os.listdir('/proc')):
+def supervisor_records(run):
+    try:
+        names = os.listdir(STATE)
+    except FileNotFoundError:
+        return []
+    return sorted(os.path.join(STATE, n) for n in names if n.startswith(run + '.') and n.endswith('.sup'))
+
+
+def recorded_by(run, supervisors):
+    recorded = {}
+    for name in supervisor_records(run):
         try:
-            with open('/proc/%s/environ' % p, 'rb') as f:
-                mine = ('OPENWIZ_RUN=' + run).encode() in f.read().split(b'\0')
-            with open('/proc/%s/cmdline' % p, 'rb') as f:
-                turn = f.read().split(b'\0')[3:4] == [b'--turn']
-        except OSError:
+            with open(name) as f:
+                kept = json.load(f)
+            if kept['supervisor'] in supervisors:
+                recorded.update({int(p): t for p, t in kept['kept'].items() if isinstance(t, str)})
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
             continue
-        if mine and turn and int(p) not in known and since(int(p)) is not None:
-            found.append({'supervisor': int(p), 'supervisor_since': since(int(p))})
+    return recorded
+
+
+# PRIVACY: finds a run's unsaved turns only by the records their supervisors wrote in its state folder, never
+# by reading another process's environment.
+def strays(run, known):
+    found = []
+    for name in supervisor_records(run):
+        try:
+            with open(name) as f:
+                kept = json.load(f)
+            p, t = kept['supervisor'], kept['supervisor_since']
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if type(p) is int and p > 0 and p not in known and t is not None and since(p) == t:
+            found.append({'supervisor': p, 'supervisor_since': t})
     return found
 
 
@@ -552,6 +636,7 @@ def start(req):
     if req['harness'] not in HARNESSES:
         raise Refused('boat has no harness %s' % req['harness'], 'use one of: ' + ', '.join(HARNESSES))
     boat_program()
+    settle = settle_seconds()
     lock = pinned_skills()
     run = 'run-' + secrets.token_hex(6)
     state = {'request': req, 'sandbox': None, 'conversation': None, 'turns': [],
@@ -578,6 +663,8 @@ def start(req):
                           UNWRITABLE + ', then start again')  # the cleanup below stops it, or reports why not
         install_skills(state['sandbox'], lock)
         turn, talk = prompt(state, run)
+        state['conversation'] = talk
+        refuse_a_dead_first_turn(run, turn, settle)
         try:
             saved(run, dict(state, turns=[turn], conversation=talk, starting=False))
         except OSError:  # the turn began but its run is not saved: end it, and never say do it again
@@ -638,8 +725,9 @@ def stop(run):
     except OSError:
         kept = False
     failures = shutdown(run, state['turns'], state['sandbox'], state['conversation'], True)  # whatever the save did
+    every_process_ended = not failures
     for name in os.listdir(STATE):
-        if name.startswith(run + '.') and name.endswith('.log'):
+        if name.startswith(run + '.') and (name.endswith('.log') or name.endswith('.sup') and every_process_ended):
             try:
                 os.remove(os.path.join(STATE, name))
             except OSError:
