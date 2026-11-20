@@ -9,6 +9,9 @@
     "synthetic-fleet[bot]",
     "synthetic-owner"
   ],
+  "deciders": [
+    "Robin"
+  ],
   "comments": [
     {
       "author": "synthetic-passerby",
