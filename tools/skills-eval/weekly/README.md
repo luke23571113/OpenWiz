@@ -1,6 +1,6 @@
 # Weekly skills-eval tick
 
-Each week the loop turns last week's mistakes on GitHub into synthetic eval cases, scores them, and hands any fix or cut to the orchestrator as an ordinary ticket. `run.py` never starts a builder, reviewer, replay or live arm, never merges and never pays. Python standard library; its only program is `gh api`, used by `sources` and `handoff`.
+Each week the loop turns last week's mistakes on GitHub into synthetic eval cases, scores them, and hands any fix or cut to the orchestrator as an ordinary ticket. `run.py` never starts a builder, reviewer, replay or live arm, never merges and never pays. Python standard library; its only program is `gh api`, used by `sources`, `tick` and `handoff`.
 
 ```sh
 OPENWIZ_PRIVACY_LITERALS=<synthetic list> python3 -I tools/skills-eval/weekly/test_weekly.py   # offline proofs
