@@ -18,6 +18,11 @@ state and checks four safety rules on each:
   P3  a release is never lost: a stopped note never goes live again, and no write
       decided before a release revives it
   P4  every claim is held, released or lapsed: at most one live note per kind
+  P5  a heartbeat never reopens a final note: no heartbeat turns a done or
+      stopped note live (#1447)
+
+A heartbeat (status.py run, #1447) is an edit that keeps the state its own read
+shows, and writes nothing when that read shows a release.
 
 Run: python3 -I kernel/records/model/model.py [--variant NAME] [--writes atomic|split|fixed]
 Exit 0: every rule holds. 1: a rule broke; each broken rule prints with its
@@ -42,6 +47,7 @@ RULES = {
     'P2': 'a lapsed holder took the ticket back from a newer one',
     'P3': 'a release was lost',
     'P4': 'a claim is neither held, released nor lapsed: two live notes of one kind',
+    'P5': 'a heartbeat reopened a final note: a done or stopped note went live',
 }
 
 # Each broken variant drops one rule from the writer; the checker must catch it.
@@ -50,6 +56,7 @@ VARIANTS = {
     'older-only-fence': ('P2', 'the edit fence stops a note only for an older holder, not a newer one'),
     'edit-stopped': ('P3', 'the fence lets an agent edit its stopped note back to live'),
     'asking-not-claiming': ('P4', 'the writer counts only working notes as claiming, not asking ones'),
+    'heartbeat-reopens': ('P5', 'a heartbeat writes working on every beat, whatever its read showed'),
 }
 
 
@@ -96,7 +103,7 @@ class Model:
     # The writer, as status.py write does it. VIEW is what its last read showed;
     # NOTES is the ticket now. Returns (notes, pending readback note id) or None
     # when the fence stops it (nothing written).
-    def edit(self, view, notes, agent, i, state):
+    def edit(self, view, notes, agent, i, state, beat=False):
         _, mine_state, h = view
         if mine_state == 'stopped' and self.variant != 'edit-stopped':
             return None
@@ -105,8 +112,17 @@ class Model:
         if self.writes == 'fixed' and state in CLAIMING:
             # #1441: a claim edit reads back. It keeps what GitHub's edit history shows it
             # replaced, and what its own read showed.
-            return put(notes, i, agent, state), ('edited', i, state, notes[i], mine_state)
+            return put(notes, i, agent, state), ('edited', i, state, notes[i], mine_state, beat)
         return put(notes, i, agent, state), None
+
+    def heartbeat(self, view, notes, agent, i):
+        """#1447: one beat of status.py run. It edits the note to the state its read showed, so
+        GitHub's updated_at, the only time liveness counts, is new; a read showing a release
+        writes nothing, and run stops its command. The fence and read-back are the edit's."""
+        state = 'working' if self.variant == 'heartbeat-reopens' else view[1]
+        if state not in CLAIMING:
+            return None
+        return self.edit(view, notes, agent, i, state, beat=True)
 
     def post(self, view, notes, agent, state):
         if self.variant != 'no-post-fence' and view[2] is not None:
@@ -128,7 +144,7 @@ class Model:
         (#1463 R1); otherwise a note that no longer reads as written is not its to settle (it
         fails, and the edit that changed it has its own read-back); and it steps down when
         another live note of its kind exists, older or newer."""
-        _, i, state, was, mine_state = pending
+        _, i, state, was, mine_state, _ = pending
         if was[1] in RELEASED and was[1] != mine_state and notes[i][1] in CLAIMING:
             return put(notes, i, notes[i][0], was[1]), f'puts the {was[1]} back'
         if notes[i][1] != state:
@@ -138,14 +154,18 @@ class Model:
         return notes, 'kept'
 
     def writes_for(self, view, notes, agent):
-        """Every write the agent may try from VIEW: (label, result, note id, target state)."""
+        """Every write the agent may try from VIEW: (label, result, note id, target state, beat)."""
         mine, mine_state, _ = view
         for state in CLAIMING + RELEASED:
             if mine is not None:
-                yield f'edit note {mine} to {state}', self.edit(view, notes, agent, mine, state), mine, state
+                yield f'edit note {mine} to {state}', self.edit(view, notes, agent, mine, state), mine, state, False
+        if mine is not None:
+            beat = self.heartbeat(view, notes, agent, mine)
+            if beat is not None:
+                yield f'heartbeat note {mine}', beat, mine, beat[0][mine][1], True
         if (mine is None or mine_state == 'stopped') and len(notes) < self.max_notes:
             for state in CLAIMING:
-                yield f'post a {state} note', self.post(view, notes, agent, state), len(notes), state
+                yield f'post a {state} note', self.post(view, notes, agent, state), len(notes), state, False
 
     def steps(self, s):
         """Every step from state S: (label, next state, events to check)."""
@@ -183,7 +203,7 @@ class Model:
                     yield (f'{who} wake {r + 1} reads back note {run[1]}: {how}', (after, with_run(None)),
                            [('claimed', agent, run[1], notes, after)])
                     continue
-                for label, result, i, state in self.writes_for(view, notes, agent):
+                for label, result, i, state, beat in self.writes_for(view, notes, agent):
                     if result is None:
                         continue
                     after, pending = result
@@ -196,7 +216,7 @@ class Model:
                     elif pending is not None:
                         done = ('posted', pending)
                     # A write that reads back is judged once its read-back settles it.
-                    events = [] if isinstance(pending, tuple) else [('write', agent, i, state, view, notes, after)]
+                    events = [] if isinstance(pending, tuple) else [('write', agent, i, state, view, notes, after, beat)]
                     if state in CLAIMING and done is None:
                         events.append(('claimed', agent, i, notes, after))
                     yield f'{who} wake {r + 1}: {label}', (after, with_run(done)), events
@@ -209,8 +229,10 @@ class Model:
             if e[0] == 'settled':
                 # P2 and P3 for a write that reads back: the note it revived is still live once
                 # the read-back settled it.
-                _, agent, (_, i, state, was, mine_state), after, failed = e
+                _, agent, (_, i, state, was, mine_state, beat), after, failed = e
                 if live(after[i]):
+                    if beat and was[1] in RELEASED:
+                        found.append('P5')
                     if not failed and was[1] in CLAIMING and was[2] >= LEASE and any(
                             j > i and kind(n[0]) == kind(agent) and live(n) for j, n in enumerate(after)):
                         found.append('P2')
@@ -221,9 +243,11 @@ class Model:
                 if after[i][1] in CLAIMING and holder(after, kind(agent)) != i:
                     found.append('P1')
             else:
-                _, agent, i, state, view, before, after = e
+                _, agent, i, state, view, before, after, beat = e
                 if state in CLAIMING and i < len(before):
                     was = before[i]
+                    if beat and was[1] in RELEASED and live(after[i]):
+                        found.append('P5')
                     if was[1] in CLAIMING and was[2] >= LEASE and any(
                             j > i and kind(n[0]) == kind(agent) and live(n) for j, n in enumerate(before)):
                         found.append('P2')
@@ -306,7 +330,7 @@ def main(argv):
             print(f'  {n}. {label}')
     if broken or missed:
         return 1
-    print(f'ok: {what}: P1 to P4 hold over {states} states')
+    print(f'ok: {what}: P1 to P5 hold over {states} states')
     return 0
 
 
