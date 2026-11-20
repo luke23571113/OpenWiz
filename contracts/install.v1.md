@@ -25,7 +25,7 @@ PAX extension, absolute path, empty/dot/dot-dot segment or unlisted file is
 accepted. Only the named program `openwiz` and files under runtime/ are
 allowed. Every asset is hash-checked before activation, including repeated
 installs. The manifest lists every file (not directory globs). Runtime includes
-setup, grill, plan-graph and launch-fleet skills and their script resources.
+setup, grill, to-tickets and launch-fleet skills and their script resources.
 
 The root and state directory must be absolute, owned, private directories with
 no symlink ancestors. New directories use 0700; data 0600; programs and shell
