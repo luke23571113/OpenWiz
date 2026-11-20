@@ -518,6 +518,12 @@ class ConnectSettings(unittest.TestCase):
         self.assertTrue(self.setup.fleet_settings_usable(self.older), 'the older tables still pass')
         self.assertTrue(self.setup.fleet_settings_usable(self.models))
         self.assertTrue(self.setup.fleet_settings_usable(self.models.replace('| Fixer | follows Builder | | | |\n', '')))
+        # Review R2 of #1947: beside a whole Models table, a half-migrated older section is ignored, as the contract reads it.
+        start = self.models.index('## Test commands')
+        for older in ('## Builder\n\nMoving to the Models table.\n\n', self.older[self.older.index('## Reviewer\n'):
+                      self.older.index('## Test commands')].replace('Source: synthetic owner, 2026-11-06.\n', '')):
+            with self.subTest(older=older[:12]):
+                self.assertTrue(self.setup.fleet_settings_usable(self.models[:start] + older + self.models[start:]))
 
     # Catches: a Models table Connect counts as settings although the models
     # contract's readers refuse it, or the bare template counted as filled.
@@ -533,6 +539,11 @@ class ConnectSettings(unittest.TestCase):
                 ('flags broken', self.models.replace(builder, builder.replace('--model syn-claude', '--model  syn-claude'))),
                 ('model id broken', self.models.replace(reviewer, reviewer.replace('vendor/syn-codex', 'vendor//syn'))),
                 ('reviewer follows', self.models.replace(reviewer, '| Reviewer | follows Builder | | | |')),
+                # Review R1 of #1947: the reserved Harness value is no choice, even with its other cells filled.
+                ('reviewer follows, filled', self.models.replace(reviewer, reviewer.replace('| Codex |', '| follows Builder |'))),
+                ('fixer follows, leftover cells', self.models.replace(
+                    '| Fixer | follows Builder | | | |',
+                    '| Fixer | follows Builder | Synthetic | High | `--provider codex --model syn --reasoning-level high` |')),
                 ('header', self.models.replace('| Effort |', '| Level |')),
                 ('two headings', self.models + '## Models\n\nOld.\n'),
                 ('no test commands', self.models.replace('## Test commands', '## Commands'))):
