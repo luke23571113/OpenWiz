@@ -147,7 +147,11 @@ def launch(req, run, session, n):
         raise Refused('hermes is not installed here',
                       'install Hermes and set up its model yourself (hermes setup), then start again')
     out = turn_log(run, n)
-    os.close(os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+    try:
+        os.close(os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+    except OSError:
+        raise Refused('the driver cannot write run %s\'s log in its state folder; nothing was started' % run,
+                      'make OPENWIZ_HERMES_STATE (or ~/.local/state/openwiz-hermes) a folder you can write')
     try:
         sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn', out]
                                + command(req, session),
