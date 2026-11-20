@@ -88,7 +88,7 @@ web-build,rust,web-test,site * tests/fixtures/release/.+
 web-build,rust,web-test * ci/runner/cache\.sh|crates/.+|contracts/.+|tests/Cargo\.toml|tests/fake-room-cli/.+|tests/fixtures/.+
 web-build,rust,web-test * changes/.+|tests/.+|tools/.+
 # Read by every job, as a path no row knows; only their Rust tests are named.
-web-build,rust,web-test,site * \.githooks/.+|\.gitignore|LICENSE|adapters/.+|deploy/.+|kernel/.+|loops/.+|release/.+
+web-build,rust,web-test,site * \.githooks/.+|\.gitignore|LICENSE|adapters/.+|deploy/.+|kernel/.+|loops/.+
 # The pin moves the installed skills, so it reaches the template's reader.
 web-build,rust,web-test,site rust:test:fleet wizskills\.lock
 web-build,rust,web-test,site - [^/]+\.md|\.claude/skills/.+|\.agents/skills/.+
