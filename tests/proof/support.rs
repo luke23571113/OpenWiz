@@ -3,8 +3,6 @@
 //! `crates/core/tests/support/scripted.rs`, shared with `openwiz-core`'s own
 //! tests (#805), and are re-exported here.
 
-#![allow(dead_code)]
-
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
