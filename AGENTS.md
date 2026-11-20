@@ -39,7 +39,6 @@ cargo test --workspace   # all Rust proofs and checks, on the fake room-cli; sco
 
 Rust 1.99.1 with `rustfmt` and `clippy`; there is deliberately no `rust-toolchain.toml`. CI runs the full set on every ready pull request.
 
-- In CI every code run deletes `private/` except the files in [ci-reads.txt](.github/actions/docs-only/ci-reads.txt). A test that reads a new file there needs its row; never write one that passes when the file is missing.
 - Never retarget a pull request: close it and open a new one against the other base. CI judges the base it ran with.
 
 ## Live work and approvals

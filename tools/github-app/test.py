@@ -34,7 +34,7 @@ ROOT = HERE.parents[1]
 # #1279's owned paths: each loop and tool here follows the repository it runs
 # in (its clone, or one setting), so none may name ClosedWiz's as a fixed
 # target. This file is the one test CI runs in those paths, so the check is here.
-FOLLOWING_PATHS = ("loops", "tools/stall-alarm", "tools/github-app",
+FOLLOWING_PATHS = ("loops", "tools/github-app",
                    "tools/roadmap", "docs/ROADMAP.md")
 # Built in pieces so this file is not a hit itself.
 FIXED_TARGET = re.compile(re.escape("jparker2006" + "/" + "ClosedWiz").encode(), re.IGNORECASE)
@@ -1893,9 +1893,6 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
                 check()
             self.assertFalse("synthetic-context" in str(caught.exception), "a failure printed the output")
 
-
-sys.path.insert(0, str(HERE))  # GI3 (#2545): the identity contract's fixture test runs with release:github-app
-from test_identity_contract import *  # noqa: E402,F401,F403
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

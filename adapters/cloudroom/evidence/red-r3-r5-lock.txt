@@ -1,0 +1,69 @@
+$ python3 -I adapters/cloudroom/test_driver.py   # R3, R5 and the per-run lock, before the fix (red)
+test_a_start_it_could_not_finish_stays_starting (__main__.Driver.test_a_start_it_could_not_finish_stays_starting) ... FAIL
+test_a_stop_waits_for_a_wake_in_progress (__main__.Driver.test_a_stop_waits_for_a_wake_in_progress) ... FAIL
+/usr/lib/python3.11/unittest/case.py:622: ResourceWarning: unclosed file <_io.BufferedReader name=5>
+  with outcome.testPartExecutor(self):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.11/unittest/case.py:622: ResourceWarning: unclosed file <_io.BufferedReader name=6>
+  with outcome.testPartExecutor(self):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... ok
+test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... ok
+test_start_that_cannot_save_its_run_never_says_retry (__main__.Driver.test_start_that_cannot_save_its_run_never_says_retry) ... FAIL
+test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.Driver.test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake) ... FAIL
+test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
+
+======================================================================
+FAIL: test_a_start_it_could_not_finish_stays_starting (__main__.Driver.test_a_start_it_could_not_finish_stays_starting)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 146, in test_a_start_it_could_not_finish_stays_starting
+    self.assertRegex(json.dumps(out), r'run-[0-9a-f]{12}', 'the error names no run for stop to reach')
+AssertionError: Regex didn't match: 'run-[0-9a-f]{12}' not found in '{"error": "Cloudroom started a thread, but the driver could not save its run; the outcome is unknown", "next": "read `room-cli thread list` first and stop that thread by hand before you start again"}' : the error names no run for stop to reach
+
+======================================================================
+FAIL: test_a_stop_waits_for_a_wake_in_progress (__main__.Driver.test_a_stop_waits_for_a_wake_in_progress)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 188, in test_a_stop_waits_for_a_wake_in_progress
+    self.assertEqual([c[1] for c in self.calls()], ['spawn', 'tell', 'told', 'archive'])
+AssertionError: Lists differ: ['spawn', 'tell', 'archive', 'told'] != ['spawn', 'tell', 'told', 'archive']
+
+First differing element 2:
+'archive'
+'told'
+
+- ['spawn', 'tell', 'archive', 'told']
+?                            --------
+
++ ['spawn', 'tell', 'told', 'archive']
+?                  ++++++++
+
+
+======================================================================
+FAIL: test_start_that_cannot_save_its_run_never_says_retry (__main__.Driver.test_start_that_cannot_save_its_run_never_says_retry)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 130, in test_start_that_cannot_save_its_run_never_says_retry
+    self.assertEqual((code, [c[1] for c in self.calls()]), (1, ['spawn', 'archive']), 'its thread runs on')
+AssertionError: Tuples differ: (1, ['spawn']) != (1, ['spawn', 'archive'])
+
+First differing element 1:
+['spawn']
+['spawn', 'archive']
+
+- (1, ['spawn'])
++ (1, ['spawn', 'archive']) : its thread runs on
+
+======================================================================
+FAIL: test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.Driver.test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 160, in test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake
+    self.assertNotIn('retry', json.dumps(err))
+AssertionError: 'retry' unexpectedly found in '{"error": "the driver failed: IsADirectoryError", "next": "read its code, fix it, retry"}'
+
+----------------------------------------------------------------------
+Ran 7 tests in 1.378s
+
+FAILED (failures=4)

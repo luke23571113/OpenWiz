@@ -2,11 +2,12 @@
 """The onboarding journey (#1108, joined to install in #636), on fixtures only.
 
 Replays journeys/first-fleet.json, a recorded synthetic conversation, against
-the packaged skill: its step order comes from skills/onboard/SKILL.md, and each
-tool step runs the packaged helper skills/onboard/scripts/onboard.py. The
+the packaged skill: its step order comes from skills/install/SKILL.md's first
+fleet, and each tool step runs the packaged helper
+skills/install/scripts/first_fleet.py (onboard merged into install, #1187). The
 helper carries the setup that install recorded (a setup store written through
 setup's own validator, tools/install/setup/store.py), reads launch-fleet's real
-frontier (skills/launch-fleet/scripts/fleet.sh, with plan-graph's real
+frontier (skills/launch-fleet/scripts/fleet.sh, with to-tickets's real
 revision.sh) from launch-fleet's fake gh, starts the spec's fleet thread
 through a recording fake room-cli (fake_room_cli.py), and reads progress from a
 recording fake openwiz (fake_openwiz.py), which answers only the fleet view:
@@ -32,10 +33,10 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-SKILL = ROOT / 'skills/onboard/SKILL.md'
-HELPER = ROOT / 'skills/onboard/scripts/onboard.py'
+SKILL = ROOT / 'skills/install/SKILL.md'
+HELPER = ROOT / 'skills/install/scripts/first_fleet.py'
 FAKE_GH = HERE / 'fake_gh.py'
-REVISION = ROOT / 'skills/plan-graph/revision.sh'
+REVISION = ROOT / 'skills/to-tickets/revision.sh'
 JOURNEY = json.loads((HERE / 'journeys/first-fleet.json').read_text())
 NOW = 1793534400  # 2026-11-01T12:00:00Z, the synthetic clock fleet.sh reads
 REPO = JOURNEY['repo']
@@ -81,8 +82,10 @@ STORE = module('openwiz_setup_store', ROOT / 'tools/install/setup/store.py')
 
 
 def skill_steps():
-    """The journey's step names, in order, from the packaged skill's numbered sections."""
-    names = re.findall(r'^## [0-9]+\. (.+)$', SKILL.read_text(), re.M)
+    """The journey's step names, in order: install's Explain section, then its first-fleet branch's steps."""
+    explain, _, branch = SKILL.read_text().partition('## 5. First fleet\n')
+    names = re.findall(r'^## 4\. (Explain)$', explain, re.M)
+    names.extend(re.findall(r'^### [0-9]+\. (.+)$', branch.partition('\n## ')[0], re.M))
     return [name.split()[-1].lower() for name in names]
 
 
@@ -227,7 +230,7 @@ class Journey:
         self.save_world()
 
     def approve(self, spec=None, tickets=None, comment=90001):
-        """plan-graph's approval record, with the fingerprint revision.sh gives the plan now."""
+        """to-tickets's approval record, with the fingerprint revision.sh gives the plan now."""
         spec, tickets = spec or self.spec, tickets or self.tickets
         out = subprocess.run(['sh', str(REVISION), str(spec)], env=self.env(), capture_output=True, check=True)
         fingerprint = hashlib.sha256(out.stdout).hexdigest()
@@ -374,8 +377,11 @@ class RecordedJourney(unittest.TestCase):
         start = [t['number'] for t in plan['tickets'] if not t['blockers']]
         self.assertGreaterEqual(len(start), 2, 'several start at once')
         # No prewritten plan ships with the skill: none of this plan's titles,
-        # and no ticket table, appear anywhere in the packaged skill folder.
-        packaged = ''.join(p.read_text() for p in (ROOT / 'skills/onboard').rglob('*') if p.is_file())
+        # and no ticket table, appear anywhere in the skill's runtime material.
+        folder = SKILL.parent
+        packaged = ''.join(p.read_text() for p in folder.rglob('*')
+                           if p.is_file() and p.suffix in {'.md', '.py', '.yaml'}
+                           and p.relative_to(folder).parts[0] not in {'tests', 'evidence'})
         for ticket in plan['tickets']:
             self.assertNotIn(ticket['title'].split(': ', 1)[1], packaged)
         self.assertNotIn('| Ticket |', packaged)

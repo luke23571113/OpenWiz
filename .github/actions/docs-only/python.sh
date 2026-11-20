@@ -1,7 +1,6 @@
 #!/bin/sh
-# The existing pinned fallback, shared by the plan and its lanes.
+# The pinned CPython, first on PATH for the rest of a CI job (ci.yml).
 set -eu
-if command -v python3 >/dev/null; then python3 --version; exit 0; fi
 case "$(uname -m)" in
   x86_64) sum=df15fe60d3ff55bf9dcf25824b5572756bb8816ff93865a273d3301d7066a8b7 ;;
   aarch64) sum=578d9da1983463ffb0c8c98ab0da2f18177f44069328eb0af847860c1eb05c3e ;;

@@ -1,0 +1,119 @@
+$ python3 -I adapters/cloudroom/test_driver.py   # against the naive draft driver (red)
+test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... FAIL
+test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... 
+  test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [no project] ... FAIL
+  test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [no room-cli] ... FAIL
+  test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [refused] ... FAIL
+  test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [not JSON] ... FAIL
+  test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [no id] ... FAIL
+  test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [unsafe id] ... FAIL
+  test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [other project] ... FAIL
+test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... FAIL
+
+======================================================================
+FAIL: test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 67, in test_kit_passes_all_five
+    self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
+AssertionError: Tuples differ: (1, ['pass version: openwiz:records v1, an[243 chars]er']) != (0, ['pass version: openwiz:records v1, an[245 chars]er'])
+
+First differing element 0:
+1
+0
+
+- (1,
++ (0,
+   ['pass version: openwiz:records v1, and the schema is driver v1',
+    'pass start: the run posted builder status note 1',
+-   'fail wake: builder status note 1 did not change after the wake',
+-   'fail stop: the driver failed: TypeError',
++   'pass wake: the run edited builder status note 1',
++   'pass stop: the run ended, and a wake after it is refused',
+    'pass token: no login or token passed through the driver']) : 
+
+======================================================================
+FAIL: test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [no project]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 109, in test_start_refuses_a_run_cloudroom_did_not_make
+    self.assertEqual(self.call('start', START, **env)[0], 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [no room-cli]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 110, in test_start_refuses_a_run_cloudroom_did_not_make
+    self.assertFalse(os.listdir(self.env['OPENWIZ_CLOUDROOM_STATE'])
+AssertionError: ['run-74b04a153d0c.json'] is not false
+
+======================================================================
+FAIL: test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [refused]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 109, in test_start_refuses_a_run_cloudroom_did_not_make
+    self.assertEqual(self.call('start', START, **env)[0], 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [not JSON]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 109, in test_start_refuses_a_run_cloudroom_did_not_make
+    self.assertEqual(self.call('start', START, **env)[0], 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [no id]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 109, in test_start_refuses_a_run_cloudroom_did_not_make
+    self.assertEqual(self.call('start', START, **env)[0], 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [unsafe id]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 109, in test_start_refuses_a_run_cloudroom_did_not_make
+    self.assertEqual(self.call('start', START, **env)[0], 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) [other project]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 109, in test_start_refuses_a_run_cloudroom_did_not_make
+    self.assertEqual(self.call('start', START, **env)[0], 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 80, in test_wake_is_the_fleet_routes_queued_delivery
+    self.assertEqual(spawn[:5] + spawn[5:9], ['thread', 'spawn', '--parent-self', '--project', PROJECT,
+AssertionError: Lists differ: ['thr[49 chars]_syn_0001', '--provider', 'claude', '--model', 'Opus 5.5'] != ['thr[49 chars]_syn_0001', '--provider', 'claude-code', '--model', 'Opus 5.5']
+
+First differing element 6:
+'claude'
+'claude-code'
+
+  ['thread',
+   'spawn',
+   '--parent-self',
+   '--project',
+   'prj_syn_0001',
+   '--provider',
+-  'claude',
++  'claude-code',
+?         +++++
+
+   '--model',
+   'Opus 5.5']
+
+----------------------------------------------------------------------
+Ran 3 tests in 8.740s
+
+FAILED (failures=9)

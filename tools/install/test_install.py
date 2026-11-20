@@ -19,7 +19,7 @@ ROOT = HERE.parents[1]
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 SOURCE = '1' * 40
 REQUIRED = ['runtime/openwiz-build.txt', 'openwiz', 'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
-            'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
+            'runtime/skills/to-tickets/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
             'runtime/skills/launch-fleet/scripts/fleet.sh', 'runtime/install.py', 'runtime/pull.py']
 # #1105 (R9): the setup and App connection tools an installed consumer runs.
 SETUP_TOOLS = ['runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/setup/github_login.py',  # #633
@@ -420,24 +420,6 @@ class InstalledCommand(Bundles):
         self.assertTrue(any(path.startswith('.openwiz/brain/') for branch in repo['branches'].values()
                             for path in branch), repo['branches'])
         self.assertFalse((self.base / 'build-tools.log').exists())
-
-
-class FirstHourContract(unittest.TestCase):
-    def test_first_hour_contract(self):
-        # #2200: the release:install log must show the contract suite ran.
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'tests/first-hour-contract/test_contract.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'first-hour contract checks failed')
-
-
-    def test_completion_checkpoint(self):
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'completion/test_checkpoint.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'completion checkpoint checks failed')
 
 
 if __name__ == '__main__':

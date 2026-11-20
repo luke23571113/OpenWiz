@@ -135,7 +135,6 @@ The gate counts every other open `huntr` issue (49 allow the 50th), refuses path
     "contracts/",
     ".github/workflows/",
     ".github/actions/",
-    "ci/runner/",
     ".githooks/",
     "skills/",
     ".claude/",

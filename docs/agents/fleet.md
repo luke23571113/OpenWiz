@@ -10,7 +10,7 @@ One per ticket, on its own branch. It never reviews or merges. Tickets without a
 | --- | --- | --- |
 | Harness | Claude Code | `--provider claude-code` |
 | Model | Opus 5.5 | `--model claude-opus-5-5` |
-| Effort | High | `--reasoning-level high` |
+| Effort | Medium | `--reasoning-level medium` |
 
 ## Builder for small tickets
 
@@ -18,9 +18,9 @@ Tickets with an exact `polish`, `huntr` or `proposal` label use this table.
 
 | Setting | Value | `room-cli thread spawn` flag |
 | --- | --- | --- |
-| Harness | Codex | `--provider codex` |
-| Model | Sol 6.1 | `--model gpt-6.1-sol` |
-| Effort | High | `--reasoning-level high` |
+| Harness | Claude Code | `--provider claude-code` |
+| Model | Opus 5.5 | `--model claude-opus-5-5` |
+| Effort | Medium | `--reasoning-level medium` |
 
 Codex runs at the default service tier: no fast mode, no `--service-tier` override. Source: Jake, 2026-11-05 and 2026-11-07 ([private record](https://github.com/jparker2006/ClosedWiz/issues/1275#issuecomment-6704671951); [private record](https://github.com/jparker2006/ClosedWiz/issues/1988#issuecomment-6712108296)).
 
@@ -31,8 +31,8 @@ One per pull request, from the other model family than the builder (ADR 0008). I
 | Setting | Value | `room-cli thread spawn` flag |
 | --- | --- | --- |
 | Harness | Codex | `--provider codex` |
-| Model | Sol 6.1 | `--model gpt-6.1-sol` |
-| Effort | High | `--reasoning-level high` |
+| Model | Sol 6.2 | `--model gpt-6.2-sol` |
+| Effort | Medium | `--reasoning-level medium` |
 
 ## Reviewer for GPT-built
 
@@ -42,9 +42,9 @@ The builder's family comes from the ticket's branch-matching `launch-fleet: star
 | --- | --- | --- |
 | Harness | Claude Code | `--provider claude-code` |
 | Model | Opus 5.5 | `--model claude-opus-5-5` |
-| Effort | High | `--reasoning-level high` |
+| Effort | Medium | `--reasoning-level medium` |
 
-Source: Jake, 2026-10-30, 2026-11-01 and 2026-11-06 ([private record](https://github.com/jparker2006/ClosedWiz/issues/1275#issuecomment-6704671951)). An agent already started keeps its model.
+Source: Jake, 2026-11-19 (J255: builders Opus 5.5 Medium, reviewers Codex Sol 6.2 Medium; [private record](https://github.com/jparker2006/ClosedWiz/issues/3065#issuecomment-7031528626)), 2026-10-30, 2026-11-01 and 2026-11-06 ([private record](https://github.com/jparker2006/ClosedWiz/issues/1275#issuecomment-6704671951)). An agent already started keeps its model.
 
 ## Fixer
 
@@ -52,8 +52,8 @@ The fresh builder for the review-loops contract's one fresh round, of the origin
 
 | Builder family | Harness | Model | Effort | `room-cli thread spawn` flags |
 | --- | --- | --- | --- | --- |
-| Claude | Claude Code | Opus 5.5 | High | `--provider claude-code --model claude-opus-5-5 --reasoning-level high` |
-| GPT | Codex | Sol 6.1 | XHigh | `--provider codex --model gpt-6.1-sol --reasoning-level xhigh` |
+| Claude | Claude Code | Opus 5.5 | Medium | `--provider claude-code --model claude-opus-5-5 --reasoning-level medium` |
+| GPT | Codex | Sol 6.2 | Medium | `--provider codex --model gpt-6.2-sol --reasoning-level medium` |
 
 Source: Jake, 2026-11-15 (J119; [private record](https://github.com/jparker2006/ClosedWiz/issues/325#issuecomment-6906276883)).
 
@@ -68,7 +68,7 @@ How `launch-fleet` is woken; the loop and webhook identities stay in private orc
 
 Every ticket may make these edits beside its owned paths without asking:
 
-1. **Its own rows in shared registries:** `tools/open-import/paths.json`, the CLI test catalogue in `tests/cli-agent/main.rs`, and CI step lists such as `tools/collector/steps.tsv`.
+1. **Its own rows in shared registries:** `tools/open-import/paths.json` and the CLI test catalogue in `tests/cli-agent/main.rs`.
 2. **Its changelog line** as `changes/<ticket>.md`, whatever its owned paths name.
 3. **Its own evidence folder** under `docs/evidence/`.
 4. **Synthetic answers to test fakes its change breaks,** with no assertion change.
@@ -96,7 +96,6 @@ Rust 1.99.1 with `rustfmt` and `clippy`; there is no `rust-toolchain.toml`.
 
 | # | Folder | Command | CI check |
 | --- | --- | --- | --- |
-| 1 | root | `sh .github/actions/docs-only/test.sh` | `ci` |
 | 2 | root | `cargo fmt --check` | `ci` |
 | 3 | root | `cargo clippy --workspace --all-targets -- -D warnings` | `ci` |
 | 4 | root | `cargo build --workspace` | `ci` |

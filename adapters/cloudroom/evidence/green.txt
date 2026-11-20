@@ -1,0 +1,100 @@
+Scoped local checks at 976b59d90b37263b1916daf05700691a22223a69 (main merged)
+
+$ python3 -I adapters/cloudroom/test_driver.py
+test_a_start_it_could_not_finish_stays_starting (__main__.Driver.test_a_start_it_could_not_finish_stays_starting) ... ok
+test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover (__main__.Driver.test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover) ... ok
+test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable (__main__.Driver.test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable) ... ok
+test_a_stop_waits_for_a_wake_in_progress (__main__.Driver.test_a_stop_waits_for_a_wake_in_progress) ... ok
+test_a_wake_refuses_a_run_whose_lock_file_was_lost (__main__.Driver.test_a_wake_refuses_a_run_whose_lock_file_was_lost) ... ok
+test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... ok
+test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... ok
+test_start_that_cannot_save_its_run_never_says_retry (__main__.Driver.test_start_that_cannot_save_its_run_never_says_retry) ... ok
+test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.Driver.test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake) ... ok
+test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 6.045s
+
+OK
+exit 0
+
+$ python3 -I adapters/cloudroom/test_driver.py
+test_a_start_it_could_not_finish_stays_starting (__main__.Driver.test_a_start_it_could_not_finish_stays_starting) ... ok
+test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover (__main__.Driver.test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover) ... ok
+test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable (__main__.Driver.test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable) ... ok
+test_a_stop_waits_for_a_wake_in_progress (__main__.Driver.test_a_stop_waits_for_a_wake_in_progress) ... ok
+test_a_wake_refuses_a_run_whose_lock_file_was_lost (__main__.Driver.test_a_wake_refuses_a_run_whose_lock_file_was_lost) ... ok
+test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... ok
+test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... ok
+test_start_that_cannot_save_its_run_never_says_retry (__main__.Driver.test_start_that_cannot_save_its_run_never_says_retry) ... ok
+test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.Driver.test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake) ... ok
+test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 6.303s
+
+OK
+exit 0
+
+$ python3 -I kernel/driver-kit/test_kit.py
+test_a_refusal_holding_a_credential_never_reaches_the_output (__main__.Kit.test_a_refusal_holding_a_credential_never_reaches_the_output) ... ok
+test_each_planted_driver_fails_its_check (__main__.Kit.test_each_planted_driver_fails_its_check) ... ok
+test_each_status_contract_credential_format_is_caught (__main__.Kit.test_each_status_contract_credential_format_is_caught) ... ok
+test_template_and_schema_refuse_the_same_starts (__main__.Kit.test_template_and_schema_refuse_the_same_starts) ... ok
+test_template_passes_all_five (__main__.Kit.test_template_passes_all_five) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 29.989s
+
+OK
+exit 0
+
+$ python3 -I tools/owned-paths/check.py --ticket 1369
+granted: .github/workflows/ci.yml
+owned: adapters/cloudroom/README.md
+owned: adapters/cloudroom/driver
+owned: adapters/cloudroom/evidence/green.txt
+owned: adapters/cloudroom/evidence/live-smoke.txt
+owned: adapters/cloudroom/evidence/red-1705-recheck.txt
+owned: adapters/cloudroom/evidence/red-1705.txt
+owned: adapters/cloudroom/evidence/red-lost-lock.txt
+owned: adapters/cloudroom/evidence/red-r3-r5-lock.txt
+owned: adapters/cloudroom/evidence/red-save-failure.txt
+owned: adapters/cloudroom/evidence/red-session-worker.txt
+owned: adapters/cloudroom/evidence/red-thread-in-error.txt
+owned: adapters/cloudroom/evidence/red.txt
+owned: adapters/cloudroom/fixtures/room-cli
+owned: adapters/cloudroom/schema.json
+owned: adapters/cloudroom/test_driver.py
+standing: changes/1369.md
+standing: tools/open-import/paths.json
+owned-paths: ok: 18 file(s) inside the owned paths and grants of ticket #1369
+exit 0
+
+$ python3 -I tools/collector/ci3.py check-steps   # fails the same way on unmodified origin/main (f0eb318d): main's new 'Prepare' step has no steps.tsv row; this branch adds no step
+ci3: step 'Prepare' (job <repo>/.github/workflows/ci.yml) matches no row of <repo>/tools/collector/steps.tsv
+exit 1
+
+$ python3 -I <wizskills>/skills/build-ticket/scripts/ticket.py scope openwizdev/OpenWiz 1369 --supporting tools/open-import/paths.json --supporting changes/1369.md --supporting .github/workflows/ci.yml
+supporting: .github/workflows/ci.yml
+owned: adapters/cloudroom/README.md
+owned: adapters/cloudroom/driver
+owned: adapters/cloudroom/evidence/green.txt
+owned: adapters/cloudroom/evidence/live-smoke.txt
+owned: adapters/cloudroom/evidence/red-1705-recheck.txt
+owned: adapters/cloudroom/evidence/red-1705.txt
+owned: adapters/cloudroom/evidence/red-lost-lock.txt
+owned: adapters/cloudroom/evidence/red-r3-r5-lock.txt
+owned: adapters/cloudroom/evidence/red-save-failure.txt
+owned: adapters/cloudroom/evidence/red-session-worker.txt
+owned: adapters/cloudroom/evidence/red-thread-in-error.txt
+owned: adapters/cloudroom/evidence/red.txt
+owned: adapters/cloudroom/fixtures/room-cli
+owned: adapters/cloudroom/schema.json
+owned: adapters/cloudroom/test_driver.py
+supporting: changes/1369.md
+supporting: tools/open-import/paths.json
+scope: ok
+exit 0
+
+# tools/open-import/guard.py and tools/test-value/budget.py were removed on main (#1778), so they no longer run.

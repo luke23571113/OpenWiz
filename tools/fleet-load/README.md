@@ -4,7 +4,6 @@ A fake 100-ticket fleet that runs launch-fleet's real `skills/launch-fleet/scrip
 
 ```sh
 sh tools/fleet-load/ci.sh                         # the full suite, CI's release:fleet-load (900 s workload, 60 s a command)
-python3 -I tools/fleet-load/test_carried.py       # copies carried from WizSkills: missing, unlisted or drifted
 python3 -I tools/fleet-load/test_seams.py         # review regressions alone
 python3 -I tools/fleet-load/test.py --report /tmp/fa3.json [--scale-report /tmp/scale.json]
 python3 -I tools/fleet-load/test.py --verify-report /tmp/fa3.json LoadProof   # replay a saved trace with the current checker
