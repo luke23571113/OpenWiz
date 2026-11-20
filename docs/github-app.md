@@ -258,6 +258,44 @@ installation id, state directory) stay in the private record, never on GitHub.
 7. **After (PC hands).** One hour after the switch, repeat step 3 and record both
    numbers on the ticket.
 
+## The token service (GA2)
+
+The token service mints agents' one-hour `openwiz[bot]` installation tokens on the
+owner's machine, so the App's key never leaves it ([`token-service.v1`](../contracts/token-service.v1.md)).
+It listens on no port. An agent runs it per token: through the owner's machine pairing
+from a cloud thread, or locally from a local thread. The request goes on standard input
+and the answer comes back as one JSON line on standard output.
+
+Run these commands **as the owner, on the machine that holds the App's state**. Pass the
+same `--state-dir` as setup (by default `~/.local/state/openwiz`):
+
+```sh
+# Start: agents may now mint. A fresh install is stopped.
+python3 -I tools/github-app/token-service.py start --state-dir "$HOME/.local/state/openwiz"
+# Stop: every mint fails like an unreachable service, and agents fall back to your login.
+python3 -I tools/github-app/token-service.py stop --state-dir "$HOME/.local/state/openwiz"
+```
+
+- **What it mints.** A token for exactly the requested repositories (one owner, each
+  in the App's selected installation) and permissions (at most the App's profile),
+  with more than five minutes and at most 65 minutes left. GitHub's grant is checked
+  against the request. A wider or different grant, or a request outside the
+  installation or profile, gets the contract's refusal and never a token.
+- **The key.** It stays at `<state>/service/app/private-key.pem`, owner-only. Only
+  the service reads it, and only to sign the App's JWT. A key file that others can
+  read, or that another user owns, makes every mint `unavailable` before GitHub is
+  called. An agent never asks for, reads or holds it.
+- **The mint log.** `<state>/service/token-service/mint-log.jsonl` (0600, in a 0700
+  folder) has one line per request: when, the requester label, the repositories, the
+  permissions granted, the outcome and the expiry. It never holds a token. A log
+  that others can read, or a symlink in its place, makes every mint `unavailable`.
+  The line is written before the token is handed over.
+- **Never exposed.** No token or key reaches the command line, standard error or any
+  file but the key's own. Standard error stays empty except for the stopped
+  service's one sentence.
+- **Tests.** `python3 -I tools/github-app/test_token_service.py` runs every
+  `contracts/fixtures/token-service/requests.json` case and the guards above against
+  a fake GitHub with a throwaway key.
 
 ## Revoke
 

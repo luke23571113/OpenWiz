@@ -143,7 +143,7 @@ class ServiceFixture(unittest.TestCase):
                    if p.is_file() and p != self.key]
         for place, content in places:
             for needle in needles:
-                self.assertNotIn(needle, content, f"a secret reached {place}")
+                self.assertFalse(needle in content, f"a secret reached {place}")
 
 
 class RequestFixtureTests(ServiceFixture):
@@ -180,6 +180,18 @@ class RequestFixtureTests(ServiceFixture):
                 if message.get("refusal") in ("usage", "one-owner"):
                     self.assertEqual(calls, [], "no GitHub call for a request refused on its face")
 
+    def test_every_message_the_schema_refuses_is_a_usage_refusal_with_no_github_call(self):
+        # catches: a reader looser than the schema (an unknown level, a repeated repository,
+        # a requester with spaces, another version, an answer posing as a request).
+        invalid = json.loads((FIXTURES / "invalid.json").read_text())["cases"]
+        # The code's one stricter reading: a repository repeated in another case is the same one.
+        twice = dict(SMALL, repositories=["synthetic-owner/work", "Synthetic-Owner/Work"])
+        for name, message in [(c["name"], c["message"]) for c in invalid] + [("repeated in another case", twice)]:
+            with self.subTest(name), fake_github(self.pem, REQUESTS["installed"]) as (url, calls, _fake):
+                done = self.mint(url, message)
+                self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (2, "usage"))
+                self.assertEqual(calls, [])
+
     def test_a_grant_wider_or_other_than_the_request_is_refused(self):
         # catches: trusting GitHub's grant instead of checking it is exactly the request.
         for grant in ({"permissions": {"metadata": "read", "workflows": "write"}},
@@ -189,7 +201,7 @@ class RequestFixtureTests(ServiceFixture):
             with self.subTest(grant), fake_github(self.pem, REQUESTS["installed"]) as (url, _calls, fake):
                 fake["grant"] = grant
                 done = self.mint(url, SMALL)
-                self.assertEqual((done.returncode, json.loads(done.stdout)["refusal"]), (5, "github"))
+                self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "github"))
                 self.assertEqual(self.logged()[-1]["outcome"], "github")
                 self.assert_nothing_exposed("synthetic-token", done.stdout, done.stderr)
 
@@ -198,7 +210,7 @@ class RequestFixtureTests(ServiceFixture):
         with fake_github(self.pem, REQUESTS["installed"]) as (url, _calls, fake):
             fake["expires_at"] = NOW + 3901
             done = self.mint(url, SMALL)
-            self.assertEqual((done.returncode, json.loads(done.stdout)["refusal"]), (5, "expiry"))
+            self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "expiry"))
             fake["expires_at"] = NOW + 3900
             self.assertEqual(self.mint(url, SMALL).returncode, 0)
 
@@ -231,7 +243,7 @@ class NeverExposedTests(ServiceFixture):
                 self.log.chmod(0o600)
                 spoil()
                 done = self.mint(url, WRITE)
-                self.assertEqual((done.returncode, json.loads(done.stdout)["refusal"], done.stderr),
+                self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal"), done.stderr),
                                  (1, "unavailable", ""))
                 self.assertEqual([c for c in calls if c[0] == "POST"], [])
                 self.assert_nothing_exposed("synthetic-token", done.stdout)
