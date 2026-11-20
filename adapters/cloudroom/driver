@@ -135,12 +135,20 @@ def saved(run, state=None):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
 
 
-def lock(run):
-    """Hold the run's lock until this command ends, so its wakes and stops take turns."""
+def lock(run, cmd):
+    """Hold the run's lock until this command ends, so its wakes and stops take turns. Only a stop may make a lost
+    lock file again: the file carries the stop's marks, so a wake never runs without it."""
     if not os.path.exists(os.path.join(STATE, run + '.json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     try:
-        fcntl.flock(os.open(os.path.join(STATE, run + '.lock'), os.O_RDONLY | os.O_CREAT, 0o600), fcntl.LOCK_EX)
+        fd = os.open(os.path.join(STATE, run + '.lock'), os.O_RDONLY | (os.O_CREAT if cmd == 'stop' else 0), 0o600)
+    except FileNotFoundError:
+        raise Refused('run %s has lost its lock file, so whether it was stopped is unknown' % run,
+                      'stop it, then start a new run')
+    except OSError:
+        raise Refused('the driver cannot lock run %s in its state folder' % run, WRITABLE)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
     except OSError:
         raise Refused('the driver cannot lock run %s in its state folder' % run, WRITABLE)
 
@@ -263,7 +271,7 @@ def answer(cmd):
         return start(read(START), 'run-' + secrets.token_hex(6))
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
-        lock(run)
+        lock(run, cmd)
         state = saved(run)
         if cmd == 'stop':
             return stop(run, state)
