@@ -26,10 +26,12 @@ sys.path.insert(0, HERE)
 import pick  # noqa: E402
 import trace  # noqa: E402
 
-# (path, old, new, catchers): `old` is in the file exactly once; `catchers`
-# names the lanes whose picked tests must catch the edit (at least one), as
-# run 42330800061 recorded (private/evidence/infra-ci-scale/k15/README.md).
+# (path, old, new, catchers[, as]): `old` is in the file exactly once;
+# `catchers` names the lanes whose picked tests must catch the edit (at least
+# one), as run 42330800061 recorded (private/evidence/infra-ci-scale/k15/README.md).
 # A named lane that catches nothing fails: an edit no test sees proves no skip.
+# `as` is the path a diff shows for the edit, when that is another file: the
+# installed skills change only through their pin (wizskills.lock).
 CASES = [
     ('tests/fixtures/envelopes/ls-long-complete.json', '"schema": "openwiz.inventory.v1",',
      '"schema": "openwiz.inventory.v9",', ('rust',)),
@@ -38,6 +40,11 @@ CASES = [
      ('rust',)),
     ('contracts/attachment.v1.schema.json', '"minLength": 1,\n      "maxLength": 64,', '"minLength": 1,\n      "maxLength": 65,',
      ('rust',)),
+    # #1335: the docs and skills rule (pick.py, rule 9) still selects a doc
+    # and a skill that Rust tests read.
+    ('docs/agents/fleet.md', '\n## Builder for small tickets\n', '\n## Builder for little tickets\n', ('rust',)),
+    ('skills/setup/templates/fleet.md', '\n## Reviewer for GPT-built\n', '\n## Reviewer for other models\n',
+     ('rust',), 'wizskills.lock'),
 ]
 
 
@@ -78,11 +85,13 @@ def main(argv):
     todo = trace.commands(args.lane, root, 8)
     every = sorted(set(todo) | set(mp['units']))
     failed = False
-    for path, old, new, catchers in CASES:
+    for path, old, new, catchers, *seen_as in CASES:
         if not catchers or not set(catchers) <= {'rust'}:
             raise SystemExit(f'planted: {path}: no lanes named to catch it')
-        sel = pick.select([('M', path)], mp, every, lambda p: None, lambda ps: set())
+        sel = pick.select([('M', (seen_as or [path])[0])], mp, every, lambda p: None, lambda ps: set())
         picked = set(sel['tests'])
+        if not os.path.isfile(os.path.join(root, path)):
+            raise SystemExit(f'planted: {path} is not in this {args.lane} checkout')  # never a silent pass
         original = apply(root, path, old, new)
         try:
             logs = os.path.join(root, 'target/planted-logs')
@@ -97,7 +106,7 @@ def main(argv):
             with open(os.path.join(root, path), 'wb') as f:
                 f.write(original)
         v = verdict(picked & set(todo), results)
-        row = {'lane': args.lane, 'path': path, 'edit': [old, new], 'selection': sel['mode'],
+        row = {'lane': args.lane, 'path': path, 'as': (seen_as or [path])[0], 'edit': [old, new], 'selection': sel['mode'],
                'picked': sorted(picked & set(todo)), 'skipped': sorted(set(todo) - picked), **v,
                'catchers': list(catchers),
                'verdict': 'FAIL: a skipped test failed' if v['hidden'] else

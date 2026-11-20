@@ -206,6 +206,101 @@ class Repo(unittest.TestCase):
         self.assertIsNotNone(r.resolve(self.at('target/debug/openwiz-widget'), set())[2])
         self.assertIsNotNone(r.resolve(self.at('target/debug/deps/proof-0123456789abcdef'), set())[2])
 
+    def write(self, rel, text=''):
+        os.makedirs(os.path.dirname(os.path.join(self.root, rel)), exist_ok=True)
+        with open(os.path.join(self.root, rel), 'w') as f:
+            f.write(text)
+
+    def test_cargo_s_library_artifacts_resolve_through_their_dep_info(self):
+        # catches: a Rust test left out of every map because Cargo names a
+        # library `lib<crate>-<hash>.rlib` and its dep-info `<crate>-<hash>.d`.
+        self.write('target/debug/deps/libopenwiz_core-1111111111111111.rlib')
+        self.write('target/debug/deps/itoa-4444444444444444.d', '/x/libitoa.rlib: /registry/itoa/src/lib.rs\n')
+        self.write('target/debug/deps/libitoa-4444444444444444.rmeta')
+        self.write('target/debug/deps/vend-5555555555555555.d', '/x/libvend.rlib: vendor/vend/src/lib.rs\n')
+        self.write('target/debug/deps/libvend-5555555555555555.rlib')
+        for rel, want in (('target/debug/deps/libopenwiz_core-1111111111111111.rlib',
+                           ['crates/core/Cargo.toml', 'crates/core/src/lib.rs']),
+                          # A registry crate's sources are outside the repository: only the lockfile pins them.
+                          ('target/debug/deps/libitoa-4444444444444444.rmeta', ['Cargo.lock']),
+                          # Not a workspace crate, yet built from a repository file: no one owner, left out.
+                          ('target/debug/deps/libvend-5555555555555555.rlib', None)):
+            with self.subTest(rel):
+                files, _, why = self.r.resolve(self.at(rel), set())
+                self.assertEqual(files if why is None else None, want, why)
+
+    def test_a_test_target_name_two_packages_share_is_told_apart_by_its_sources(self):
+        # catches: every test of a crate left out of the map because another
+        # package has a test target of the same name (`loops`).
+        self.write('crates/core/tests/loops/main.rs')
+        self.write('tests/loops/main.rs', 'use openwiz_gadget::z;')
+        self.write('target/debug/deps/loops-aaaaaaaaaaaaaaaa', '')
+        self.write('target/debug/deps/loops-aaaaaaaaaaaaaaaa.d', '/x/loops: crates/core/tests/loops/main.rs\n')
+        self.write('target/debug/deps/loops-bbbbbbbbbbbbbbbb', '')
+        self.write('target/debug/deps/loops-bbbbbbbbbbbbbbbb.d', '/x/loops: tests/loops/main.rs\n')
+        meta = self.metadata()
+        for p in meta['packages']:
+            if p['name'] in ('openwiz-core', 'openwiz-tests'):
+                p['targets'].append({'name': 'loops', 'kind': ['test']})
+        self.r._meta = resolve.index(meta, os.path.realpath(self.root))
+        core, _, why = self.r.resolve(self.at('target/debug/deps/loops-aaaaaaaaaaaaaaaa'), set())
+        self.assertIsNone(why)
+        self.assertIn('crates/core/tests/loops/main.rs', core)
+        self.assertNotIn('tests/loops/main.rs', core)
+        tests, _, why = self.r.resolve(self.at('target/debug/deps/loops-bbbbbbbbbbbbbbbb'), set())
+        self.assertIsNone(why)
+        self.assertTrue({'tests/loops/main.rs', 'crates/gadget/src/lib.rs', 'tests/Cargo.toml'} <= set(tests))
+        # A unit of that name whose sources neither package holds: no one owner, left out.
+        self.write('target/debug/deps/loops-cccccccccccccccc', '')
+        self.write('target/debug/deps/loops-cccccccccccccccc.d', '/x/loops: elsewhere/loops.rs\n')
+        self.r._depinfo = None
+        self.assertIsNotNone(self.r.resolve(self.at('target/debug/deps/loops-cccccccccccccccc'), set())[2])
+
+    def test_an_uplifted_program_without_dep_info_is_the_unit_it_is_linked_to(self):
+        # catches: a browser or CLI proof left out of the map because `cargo
+        # test` uplifts the program it runs without writing its dep-info.
+        self.write('tests/fake-room-cli/main.rs')
+        self.write('target/debug/deps/fake_room_cli-6666666666666666', 'program')
+        self.write('target/debug/deps/fake_room_cli-6666666666666666.d', '/x/fake: tests/fake-room-cli/main.rs\n')
+        os.link(os.path.join(self.root, 'target/debug/deps/fake_room_cli-6666666666666666'),
+                os.path.join(self.root, 'target/debug/fake-room-cli'))
+        files, _, why = self.r.resolve(self.at('target/debug/fake-room-cli'), set())
+        self.assertIsNone(why)
+        self.assertIn('tests/fake-room-cli/main.rs', files)
+        # An example's own unit beside it (examples/<crate>-<hash>), as a release build leaves it.
+        self.write('target/release/examples/openwiz_widget-8888888888888888', 'program')
+        self.write('target/release/examples/openwiz_widget-8888888888888888.d',
+                   '/x/openwiz_widget: tests/fixture-entrypoints/widget.rs\n')
+        files, _, why = self.r.resolve(self.at('target/release/examples/openwiz_widget-8888888888888888'), set())
+        self.assertIsNone(why)
+        self.assertTrue({'tests/fixture-entrypoints/widget.rs', 'tests/Cargo.toml'} <= set(files), files)
+
+    def test_a_read_through_a_repository_link_or_into_installed_skills_keeps_the_link_and_the_pin(self):
+        # catches: a wizskills.lock pin move, or a changed skill link, that
+        # skips the tests reading the installed skills it replaces.
+        self.write('.wizskills/skills/setup/templates/fleet.md')
+        self.write('.wizskills/skills/grill/SKILL.md')
+        os.symlink('.wizskills/skills', os.path.join(self.root, 'skills'))
+        os.makedirs(os.path.join(self.root, '.claude/skills'))
+        os.symlink('../../skills/grill', os.path.join(self.root, '.claude/skills/grill'))
+        self.write('target/debug/deps/fleet-7777777777777777', '')
+        self.write('target/debug/deps/fleet-7777777777777777.d', '/x/fleet: tests/fleet/main.rs skills/setup/templates/fleet.md\n')
+        self.write('tests/fleet/main.rs')
+        meta = self.metadata()
+        meta['packages'][-1]['targets'].append({'name': 'fleet', 'kind': ['test']})
+        self.r._meta = resolve.index(meta, os.path.realpath(self.root))
+        for touched, listed, want in (
+                (['.claude/skills/grill/SKILL.md'], [], {'.claude/skills/grill', 'skills', 'wizskills.lock'}),
+                (['.wizskills/skills/grill/SKILL.md'], [], {'wizskills.lock'}),
+                (['target/debug/deps/fleet-7777777777777777'], [], {'skills', 'wizskills.lock'}),
+                ([], ['skills/setup'], {'skills', 'wizskills.lock'})):
+            with self.subTest(touched or listed):
+                files, _, why = self.r.resolve(self.at(*touched), self.at(*listed))
+                self.assertIsNone(why)
+                self.assertTrue(want <= set(files), files)
+        files, _, _ = self.r.resolve(self.at('crates/core/src/lib.rs'), set())
+        self.assertEqual(files, ['crates/core/src/lib.rs'])
+
     def test_cargo_s_bookkeeping_and_scratch_are_not_inputs(self):
         files, _, why = self.r.resolve(self.at('target/tmp/scratch.txt', 'target/debug/deps/proof-0123456789abcdef.d',
                                                'target/debug/.fingerprint/x', 'target/debug/build/x/out/y'), set())

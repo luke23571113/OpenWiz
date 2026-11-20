@@ -7,16 +7,25 @@ target/). What a test touched becomes:
 - a file in the repository: itself, whether or not it was there (a test
   that looked for a missing file is that file's reader, should it appear);
 - a Rust build product under target/ (a test binary, a program it ran, a
-  library a compiler read): the sources in its dep-info. A test binary of a
+  library a compiler read): the sources in its dep-info (a library's
+  `lib<crate>-<hash>.rlib` has `<crate>-<hash>.d`; an uplifted program
+  without one is the unit it is hard-linked to). A test binary of a
   workspace crate adds every crate that crate depends on, with their
   Cargo.toml; an openwiz-tests binary adds the workspace crates its sources
-  name (`openwiz_core`, ...) and theirs. Cargo's bookkeeping (fingerprints,
-  build-script folders, scratch) is not an input. Any other build product
-  that exists is one the selector can't account for: the test is left out
-  of the map (the selector always runs it);
+  name (`openwiz_core`, ...) and theirs. When two packages have a target of
+  one name, the one whose folder holds the unit's own sources owns it. A
+  registry crate (no workspace owner, no repository source) is Cargo.lock,
+  which pins it. Cargo's bookkeeping (fingerprints, build-script folders,
+  scratch) is not an input. Any other build product that exists is one the
+  selector can't account for: the test is left out of the map (the
+  selector always runs it);
 - a node_modules folder: its package's package.json and package-lock.json;
 - git's own index or objects: the test can see every file through git, so
-  it is left out of the map.
+  it is left out of the map;
+- a path reached through a repository link (a tracked symlink, such as
+  `skills` or `.claude/skills/<name>`) also needs each link on its way, and
+  one inside the installed skills (`.wizskills/`, never tracked) needs
+  wizskills.lock, which pins them: only those two can change it in a diff.
 
 Listed folders are kept the same way (a listing inside a build product
 counts for nothing: what it holds comes from sources already kept).
@@ -36,6 +45,7 @@ NODE = re.compile(r'((?:.+/)?)node_modules(/.*)?$')
 
 
 TESTS_PACKAGE = 'openwiz-tests'
+INSTALLED, PIN = '.wizskills', 'wizskills.lock'
 LIB_KINDS = {'lib', 'rlib', 'dylib', 'cdylib', 'staticlib', 'proc-macro'}
 
 
@@ -64,7 +74,7 @@ def index(metadata, real_root):
             if kinds & {'test', 'bench'}:
                 places += [('deps', crate)]
             if kinds & {'example'}:
-                places += [('example', t['name'])]
+                places += [('example', t['name']), ('example', crate)]
             for key in places:
                 owners.setdefault(key, set()).add(p['name'])
     return pkgs, owners
@@ -128,11 +138,12 @@ class Resolver:
         wanted = self.closure(names)
         files = self.manifests(names)
         for stem, srcs in self.depinfo().items():
-            owners = self.meta()[1].get(('deps', self.crate_name(stem)), set())
-            if owners & wanted:
-                if len(owners) != 1:
+            if self.meta()[1].get(('deps', self.crate_name(stem)), set()) & wanted:
+                pkg = self.unit_owner(stem)
+                if pkg is None:
                     raise Ambiguous(stem)
-                files |= srcs
+                if pkg in wanted:
+                    files |= srcs
         return files
 
     @staticmethod
@@ -140,8 +151,39 @@ class Resolver:
         crate = stem.rsplit('-', 1)[0] if re.search(r'-[0-9a-f]{16}$', stem) else stem
         return re.sub(r'^lib', '', crate).replace('-', '_')
 
-    def crate_of(self, stem):
-        return self.owner('deps', self.crate_name(stem))
+    def unit_owner(self, stem):
+        """The one workspace package this unit was built from, or None: by its
+        crate name, and when two packages share that name (a `loops` test in
+        each), by which one's folder holds the unit's own sources."""
+        found = self.meta()[1].get(('deps', self.crate_name(stem)), set())
+        if len(found) < 2:
+            return next(iter(found), None)
+        pkgs = self.meta()[0]
+
+        def home(src):
+            here = [n for n in found if pkgs[n]['dir'] == '.' or src.startswith(pkgs[n]['dir'] + '/')]
+            return max(here, key=lambda n: len(pkgs[n]['dir']), default=None)
+        homes = {home(s) for s in self.depinfo()[stem] if s.endswith('.rs')}
+        return homes.pop() if len(homes) == 1 and None not in homes else None
+
+    def unit(self, name):
+        """The dep-info stem of a file in deps/, or None: a library
+        `lib<crate>-<hash>.rlib` (or .rmeta, ...) has `<crate>-<hash>.d`."""
+        stem = re.sub(r'\.(rlib|rmeta|so|dylib|a)$', '', name)
+        if stem not in self.depinfo() and stem.startswith('lib'):
+            stem = stem[3:]
+        return stem if stem in self.depinfo() else None
+
+    def twin(self, full):
+        """The deps/ unit an uplifted program is a hard link of, or None."""
+        try:
+            st = os.stat(full)
+            deps = os.path.join(os.path.dirname(full), 'deps')
+            found = {self.unit(n) for n in os.listdir(deps) if not n.endswith('.d')
+                     and os.path.samestat(st, os.stat(os.path.join(deps, n)))}
+        except OSError:
+            return None
+        return found.pop() if len(found) == 1 and None not in found else None
 
     def depinfo(self):
         """{dep-info file's stem: the repository sources it lists}."""
@@ -175,48 +217,58 @@ class Resolver:
         stem = os.path.basename(rel)
         folder = os.path.dirname(rel)
         if folder.endswith('/deps'):
-            stem = re.sub(r'\.(rlib|rmeta|so|dylib|a)$', '', stem)
-            if stem not in self.depinfo():
-                return None
-            files = set(self.depinfo()[stem])
-            pkg = self.crate_of(stem)
-            if pkg is None:
-                return None
-            try:
-                if pkg == TESTS_PACKAGE:
-                    used = set()
-                    for src in files:
-                        if src.endswith('.rs'):
-                            try:
-                                with open(os.path.join(self.root, src), errors='replace') as f:
-                                    names = set(CRATE.findall(f.read()))
-                            except FileNotFoundError:
-                                continue
-                            for c in names:
-                                found = self.meta()[1].get(('lib', c), set())
-                                if len(found) > 1:
-                                    return None  # a library name two packages share: no one owner
-                                used |= found
-                    used.discard(TESTS_PACKAGE)
-                    own = self.meta()[0][TESTS_PACKAGE]['dir']
-                    mine = {os.path.join(own, 'Cargo.toml')}
-                    if os.path.isfile(os.path.join(self.root, own, 'build.rs')):
-                        mine.add(os.path.join(own, 'build.rs'))
-                    return files | self.package_files(used) | mine
-                return files | self.package_files([pkg])
-            except Ambiguous:
-                return None
+            return self.unit_files(self.unit(stem))
         # An uplifted program (target/<profile>/<bin> or examples/<example>):
         # its dep-info lists every source, and its package (#1579 R6) adds
-        # its own and its dependencies' manifests and build scripts.
+        # its own and its dependencies' manifests and build scripts. One
+        # `cargo test` uplifted without dep-info is its deps/ unit.
         uplifted = full + '.d'
         if not os.path.isfile(uplifted):
-            return None
+            return self.unit_files(self.twin(full))
         place = 'example' if folder.endswith('/examples') else 'bin'
+        if place == 'example' and re.search(r'-[0-9a-f]{16}$', stem):
+            stem = self.crate_name(stem)  # the example's own unit, beside its uplifted copy
         pkg = self.owner(place, stem)
         if pkg is None:
             return None
         return self.read_depinfo(uplifted) | self.manifests([pkg])
+
+    def unit_files(self, stem):
+        """The sources of one deps/ unit (a dep-info stem), or None."""
+        if stem is None:
+            return None
+        files = set(self.depinfo()[stem])
+        pkg = self.unit_owner(stem)
+        if pkg is None:
+            # A registry crate: no workspace target of its name, and no
+            # repository source. Its sources are pinned by the lockfile.
+            if not files and not self.meta()[1].get(('deps', self.crate_name(stem))):
+                return {'Cargo.lock'}
+            return None
+        try:
+            if pkg == TESTS_PACKAGE:
+                used = set()
+                for src in files:
+                    if src.endswith('.rs'):
+                        try:
+                            with open(os.path.join(self.root, src), errors='replace') as f:
+                                names = set(CRATE.findall(f.read()))
+                        except FileNotFoundError:
+                            continue
+                        for c in names:
+                            found = self.meta()[1].get(('lib', c), set())
+                            if len(found) > 1:
+                                return None  # a library name two packages share: no one owner
+                            used |= found
+                used.discard(TESTS_PACKAGE)
+                own = self.meta()[0][TESTS_PACKAGE]['dir']
+                mine = {os.path.join(own, 'Cargo.toml')}
+                if os.path.isfile(os.path.join(self.root, own, 'build.rs')):
+                    mine.add(os.path.join(own, 'build.rs'))
+                return files | self.package_files(used) | mine
+            return files | self.package_files([pkg])
+        except Ambiguous:
+            return None
 
     # The two answers.
     def resolve(self, touched, listed):
@@ -238,7 +290,25 @@ class Resolver:
                 continue
             else:
                 dirs.add(r)
+        for p in sorted(files) + sorted(dirs):
+            files |= self.via(p)
         return sorted(files), sorted(dirs), None
+
+    def via(self, r, depth=0):
+        """What else a repository path depends on: each repository link on
+        its way, and wizskills.lock for one inside the installed skills."""
+        out = {PIN} if r == INSTALLED or r.startswith(INSTALLED + '/') else set()
+        parts = r.split('/')
+        for i in range(1, len(parts) + 1):
+            link = os.path.join(self.root, *parts[:i])
+            if os.path.islink(link):
+                out.add('/'.join(parts[:i]))
+                target = os.path.normpath(os.path.join(os.path.dirname(link), os.readlink(link), *parts[i:]))
+                nxt = self.rel(target)
+                if nxt and nxt != '.' and depth < 40:
+                    out |= self.via(nxt, depth + 1)
+                break
+        return out
 
     def _one(self, r, files, full):
         if r == '.git' or r.startswith('.git/'):

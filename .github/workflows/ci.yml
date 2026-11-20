@@ -785,6 +785,12 @@ jobs:
   ci:
     needs: [changes, always, rust, release, skills, launch-fleet]
     if: ${{ always() && (github.event_name != 'push' || needs.changes.result != 'success' || needs.changes.outputs.trace == 'true') }}
+    # The workflow's grants, and actions: read for the job times (#1335).
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+      actions: read
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 5
     steps:
@@ -846,6 +852,43 @@ jobs:
         run: |
           python3 -I .github/actions/docs-only/run.py check-shards "$RUNNER_TEMP/ci-plan" skill:launch-fleet "$RUNNER_TEMP"/shard-ran/launch-fleet-*.json
           python3 -I .github/actions/docs-only/run.py stamp "$RUNNER_TEMP/ci-plan" skill:launch-fleet "$RUNNER_TEMP/receipts"
+      # #1335 (F3): every job's time at this head, slowest first, on the run's
+      # page; every lane has finished (ci needs them all). This job and those
+      # after it (select-map, the web-test bridge) show as not finished. A
+      # record only: it never fails ci, and stays out of the C7 shadow block.
+      - name: Record each job's time
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          python3 -I - <<'PY_TIMES'
+          from datetime import datetime
+          import os
+          import subprocess
+
+          run, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
+          jobs = f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run}/attempts/{attempt}/jobs?per_page=100"
+          raw = subprocess.check_output(['sh', 'ci/retry.sh', '3', '--', 'gh', 'api', '--paginate', jobs, '--jq',
+              '.jobs[] | [.name, .status, (.conclusion // ""), (.started_at // ""), (.completed_at // "")] | @tsv'],
+              text=True)
+          done, open_ = [], []
+          for line in raw.splitlines():
+              name, status, conclusion, started, completed = line.split('\t')
+              if status == 'completed' and started and completed:
+                  took = datetime.fromisoformat(completed) - datetime.fromisoformat(started)
+                  done.append((took.total_seconds(), name, conclusion))
+              else:
+                  open_.append((name, status))
+          lines = [f"Job times at {os.environ['HEAD_SHA']} (run {run}, attempt {attempt}), slowest first:"]
+          lines += [f'{seconds / 60:6.1f} min  {name}  {conclusion}' for seconds, name, conclusion in sorted(done, reverse=True)]
+          lines += [f'  not finished  {name}  {status}' for name, status in open_]
+          text = '\n'.join(lines) + '\n'
+          print(text)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('### Job times (#1335)\n\n```text\n' + text + '```\n')
+          PY_TIMES
       - name: Every planned lane passed
         env:
           NEEDS: ${{ toJSON(needs) }}

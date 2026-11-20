@@ -438,5 +438,27 @@ class Planted(unittest.TestCase):
     def test_an_edit_its_lane_catches_passes(self):
         self.assertEqual(self.run_planted(('rust',), {'rust:test:x': 1, 'rust:test:y': 0}), 0)
 
+    def test_a_case_whose_file_is_missing_fails_with_its_name(self):
+        # catches: a planted case that dies on a bare FileNotFoundError, or passes
+        # silently, when its file is not in the lane's checkout (#1335, CI at bc6cf49).
+        import planted
+        import tempfile as tf
+        with tf.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'map.json'), 'w') as f:
+                json.dump({'schema': pick.MAP_SCHEMA, 'commit': COMMIT,
+                           'units': {'rust:test:x': {'files': ['f.txt'], 'dirs': []}}}, f)
+            saved = (planted.CASES, planted.HERE, planted.trace.commands, os.getcwd())
+            planted.CASES = [('docs/gone.md', 'old', 'new', ('rust',))]
+            planted.HERE = tmp
+            planted.trace.commands = lambda lane, root, threads: {'rust:test:x': (['x'], root)}
+            try:
+                os.chdir(tmp)
+                with self.assertRaises(SystemExit) as e:
+                    planted.main(['rust', os.path.join(tmp, 'out.jsonl')])
+            finally:
+                planted.CASES, planted.HERE, planted.trace.commands, cwd = saved
+                os.chdir(cwd)
+            self.assertIn('docs/gone.md', str(e.exception))
+
 if __name__ == '__main__':
     unittest.main()
