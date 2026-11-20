@@ -107,7 +107,8 @@ endpoint proof of completion or non-execution and still-current authority; no
 such lookup is established here. Preserve live builder/branch/reviewer and
 intentional pauses/revocations. Current stubs return `reconcile` and end even
 for purported historical completed/non-executed records: they cannot authenticate
-those endpoint claims.
+those endpoint claims. #2244 owns the unstarted Local discovery; it is not
+performed or replaced by fixture assumptions.
 
 ## Atomic record/claim admission
 
@@ -193,8 +194,7 @@ The offline callable seam is defined in `protocol.py` beside the examples:
 `reason`, `next: end`, `effects: []`. States/reasons are exact schema enums;
 there is no executable pending callback. Every finite pass records its result
 or unresolved operation and ends. Later events/scheduled passes resume it;
-no watcher, poll loop or waiting sleep, and no reset of the review rounds counted
-under the [1 + 1 rule](review-loops.v2.md).
+no watcher, poll loop or waiting sleep and no reset of 2 + 1 correction counts.
 
 `snapshot` is **private derived execution data**, never a public attestation or
 record to post. Its schema fixes repository/spec/ticket/current approval/head,
@@ -217,7 +217,8 @@ owners and complete mixed diffs. Supporting entries must serve the approved
 criterion/owned behavior and be explicitly covered by this approval/standing
 rule. Never retrofit an old graph. `protected` always includes contracts,
 interfaces, dependencies, workflows, live, spending and self_authorization;
-a supporting filename supplies none of those permissions.
+a supporting filename supplies none of those permissions. #2243 owns the plain
+instruction slice; #2188 owns the contract-shaped integration.
 
 `grant` adds `grant_id`, `envelope_id`, exact `paths`, `material`, `status`,
 technical `reason`, nullable `supersedes`. Status: granted, refused, uncertain,
@@ -283,13 +284,24 @@ cursor. Daily retrospective audit is not synchronous grant approval; invalid
 grants are revoked and affected work held through existing authority, never
 by inventing an enabled effect in these stubs.
 
-## Compatibility
+## Consumer ownership and compatibility
 
-The skills' launch-fleet scripts are the consumers: record/refusal seams only,
-never endpoint adapters. The [mechanical tick v1](fleet-tick.v1.md) stays its
-own private envelope; this schema changes none of its wire fields. A mechanical
-due item is a candidate; an agent applies authorized judgment and records a
-refusal when evidence or authority is missing. Approval currentness, review
-selection (including the assignment's exact-head review), CI, re-test, verified
-merge, the [1 + 1 rule](review-loops.v2.md), privacy and every
-live/machine/activation/spending/release/publication gate stay.
+| Consumer | Interface; implementation remains in its approved owned paths |
+| --- | --- |
+| #2188 | envelope/grant/material/audit and inbox rules; grants.py and skill integration |
+| #2189 | generation/operation admission, resume/result refusals; effects.py. Client-owned paths cannot claim an external fence. |
+| #1456 | snapshot/finite result/private routing contracts; records.py/loop.sh and bounded skill/settings sections |
+| #1480 | intent/claim/transport/result; ops-starts.py keeps starts disabled |
+| #1481 | pending intent, order, transport/ACK/completion and review span; approved inbox files, not the existing collector implementation |
+| #2112 | on1/material/full cutoff/hold evidence and disabled release; approved on1.py and hold predicates; #2218 keeps its regression |
+| #2190 | schema evidence/result and honest disabled/Unverified outcomes; kit/result consumers, with #2219 controls and #2244 discovery separate |
+
+Paths were checked against revision 3; these are record/refusal seams only,
+not endpoint adapters or unavailable behavior implemented in another owner's
+files. Current [mechanical tick v1](fleet-tick.v1.md) remains its existing
+private envelope/API. This schema is separate and does not change its wire
+fields or implement Rust parity. A mechanical due item is a candidate; an agent
+applies authorized judgment and records a refusal when evidence/authority is
+missing. Approval currentness, other applicable review selection (including
+the assignment's exact-head review), CI, M1/re-test, verified merge, 2 + 1,
+privacy and every live/machine/activation/spending/release/publication gate stay.
