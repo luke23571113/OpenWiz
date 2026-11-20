@@ -530,6 +530,77 @@ class Collection(unittest.TestCase):
             self.collect('2030-03-01T12:05:10Z')
         self.assertFalse((self.history / 'samples').exists())
 
+    def test_unreadable_stage_inputs_grey_only_the_two_stage_cards(self):
+        # catches (#648): a deleted stage sidecar or an unreadable limits file aborting the whole
+        # gather, so main CI and the queue already read are lost and no sample is saved.
+        import gather
+        for name, start, limits, named in (
+                ('missing sidecar', '2030-03-01T12:05:10Z', gather.LIMITS, 'stage-waits.json'),
+                ('missing limits', '2030-03-01T12:10:10Z', self.tmp / 'no-limits.conf', 'limits.conf')):
+            with self.subTest(name):
+                if name == 'missing sidecar':
+                    (self.stage / 'stage-waits.json').unlink()
+                else:
+                    shutil.copy(TL2 / 'stage-waits.json', self.stage / 'stage-waits.json')
+                with patch.object(gather, 'LIMITS', limits):
+                    record, created = self.collect(start)
+                self.assertTrue(created)
+                h = {p['slot']: p for p in record['health']}
+                self.assertEqual(h['main_ci']['observations'][0]['result'], 'success')
+                self.assertEqual(by_id(h['ci_queue'])['queued:ubuntu-24.04']['value'], 1)
+                waits = next(p for p in record['providers'] if p['slot'] == 'stage_waits')
+                for provider in (h['stage_health'], waits):
+                    self.assertEqual(provider['state'], 'unavailable')
+                    self.assertIn(named, ' '.join(provider['prerequisites']))
+
+    def test_a_cli_retry_in_a_saved_boundary_reuses_it_without_gathering(self):
+        # catches (#647): `collect --gather` gathering before it reads the branch, so a retry in a
+        # saved boundary reads every source again and a new gather error fails it; or a gather
+        # ending past its boundary saved under the time it started instead of its end.
+        import contextlib
+        import io
+        import itertools
+        import gather
+        import publish
+        real, calls = gather.gather, []
+
+        def cli(check, end, fail=False):
+            def gathered(out, **kw):
+                calls.append(check)
+                if fail:
+                    raise gather.Fail('synthetic gather failure')
+                return real(out, **dict(kw, clock=Clock(check), pools=POOLS))
+            times, said = itertools.chain([check], itertools.repeat(end)), io.StringIO()
+            with patch.dict(os.environ, self.env), patch.object(gather, 'gather', gathered), \
+                    patch.object(gather, 'now', lambda: next(times)), contextlib.redirect_stdout(said):
+                code = publish.cli(['collect', '--remote', str(self.origin), '--gather', REPO, EVIDENCE])
+            return code, said.getvalue()
+
+        def saved():
+            listed = subprocess.run(['git', '-C', str(self.origin), 'ls-tree', '-r', 'refs/heads/war-room'],
+                                    check=True, capture_output=True, text=True).stdout
+            return sorted(line.split()[2:] for line in listed.splitlines())
+
+        code, said = cli('2030-03-01T12:05:10Z', '2030-03-01T12:06:30Z')
+        self.assertEqual(code, 0)
+        self.assertTrue(said.startswith('collected into war-room at '))
+        first = saved()
+        self.assertEqual([name for _, name in first], ['samples/2030-03-01T12-05-00Z.json'])
+        # A retry in that boundary reads nothing, so a gather that would now fail never runs.
+        self.assertEqual(cli('2030-03-01T12:08:59Z', '2030-03-01T12:09:30Z', fail=True),
+                         (0, 'boundary already collected\n'))
+        self.assertEqual(calls, ['2030-03-01T12:05:10Z'])
+        self.assertEqual(saved(), first)
+        # Started in the unsaved 12:10 boundary, ended in 12:15: the new sample is the gather's end.
+        self.assertEqual(cli('2030-03-01T12:14:30Z', '2030-03-01T12:15:30Z')[0], 0)
+        crossed = saved()
+        self.assertEqual([name for _, name in crossed], ['samples/2030-03-01T12-05-00Z.json',
+                                                          'samples/2030-03-01T12-15-00Z.json'])
+        # Ended in a boundary saved meanwhile: the final duplicate check keeps the saved bytes.
+        self.assertEqual(cli('2030-03-01T12:14:40Z', '2030-03-01T12:15:50Z'), (0, 'boundary already collected\n'))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(saved(), crossed)
+
     def test_collection_only_saves_a_sample_without_drawing(self):
         import publish
         out, at = self.gather('2030-03-01T12:05:10Z')
