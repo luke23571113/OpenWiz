@@ -14,7 +14,6 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 CONTRACT = HERE.parent.parent / 'ask-a-wiz.v1.md'
 FAKE_KEY = 'fake-openrouter-key'
-RAW = ('<', '>', '&', ' ', ' ')
 TERMINAL = ('done', 'not_covered', 'refused')
 STORE_KEY = re.compile(r'^(cap|salt:[0-9a-f]{64}|visitor:[0-9a-f]{32}:([01][0-9]|2[0-3]))$')
 DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
@@ -122,12 +121,14 @@ def problems(pin, case, name):
             out.append('the probe answer is wrong')
         if headers.get('cache-control') != pin['response']['cache_control']:
             out.append('the probe is cacheable')
+        if headers.get('content-type') != 'application/json':
+            out.append('the probe is not JSON')
         return out
     if headers.get('content-type') != pin['response']['content_type']:
         out.append('wrong content type')
     if headers.get('cache-control') != pin['response']['cache_control']:
         out.append('the response is cacheable')
-    if any(ch in body for ch in RAW):
+    if any(ch in body for ch in pin['response']['escaped']):
         out.append('the body holds an unescaped character')
     events = events_of(body)
     if isinstance(events, str):

@@ -48,7 +48,7 @@ the contract is wrong and must be fixed.
   "response": {
     "content_type": "application/x-ndjson; charset=utf-8",
     "cache_control": "no-store",
-    "escaped": {"<": "\\u003c", ">": "\\u003e", "&": "\\u0026", " ": "\\u2028", " ": "\\u2029"}
+    "escaped": {"<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029"}
   },
   "events": {
     "text": ["type", "text"],
@@ -69,7 +69,7 @@ the contract is wrong and must be fixed.
   },
   "refusals": {
     "bad_request": {"status": 400, "message": "That question couldn't be read. Try again."},
-    "too_long": {"status": 413, "message": "That question is too long. Keep it under 300 characters."},
+    "too_long": {"status": 413, "message": "That question is too long. Keep it to 300 characters or fewer."},
     "rate_limited": {"status": 429, "message": "That's a lot of questions at once. Try again in a few minutes."},
     "daily_cap": {"status": 429, "message": "Ask a Wiz has answered all it can for today. Try again tomorrow."},
     "upstream_error": {"status": 502, "message": "Ask a Wiz couldn't answer just now. Try again."},
@@ -180,8 +180,8 @@ finished answer.
 
 **Plain text, escaped.** Every string in every event is plain text, never
 HTML or Markdown to be rendered. The function writes `<`, `>`, `&`, U+2028
-and U+2029 inside JSON strings as `<`, `>`, `&`, ` ` and
-` `, so no response body ever holds one of those characters raw. The row
+and U+2029 inside JSON strings as `\u003c`, `\u003e`, `\u0026`, `\u2028` and
+`\u2029`, so no response body ever holds one of those characters raw. The row
 sets text only as text (never through `innerHTML`), and renders links only
 from the not-covered event, whose hrefs must equal the pin's.
 
@@ -213,7 +213,7 @@ It is given in two cases:
 | Reason | Status | Message | When |
 | --- | --- | --- | --- |
 | `bad_request` | 400 | That question couldn't be read. Try again. | The request breaks "The request" |
-| `too_long` | 413 | That question is too long. Keep it under 300 characters. | 301 or more code points |
+| `too_long` | 413 | That question is too long. Keep it to 300 characters or fewer. | 301 or more code points |
 | `rate_limited` | 429 | That's a lot of questions at once. Try again in a few minutes. | The visitor's hour is used up |
 | `daily_cap` | 429 | Ask a Wiz has answered all it can for today. Try again tomorrow. | The day's model calls are used up, or the cap is unset or invalid |
 | `upstream_error` | 502, or 200 mid-answer | Ask a Wiz couldn't answer just now. Try again. | OpenRouter refused, failed, timed out or sent something unreadable |
@@ -246,8 +246,12 @@ The function checks in this order, and stops at the first that fails:
   all visitors. An unset, non-integer or out-of-range value counts as `0`, so
   every question that reaches step 6 is `daily_cap`: it fails closed. A call
   counts when it is made, before its answer, so the cap is never passed, even
-  by questions asked at the same moment (the store's update is atomic: one
-  `UPDATE ... RETURNING` per count).
+  by questions asked at the same moment.
+- **Counting is atomic.** Each count is one conditional statement that adds
+  one only below its limit:
+  `UPDATE ask_counters SET count = count + 1 WHERE day = ? AND key = ? AND count < ? RETURNING count`
+  (after inserting the row at `0` if it is missing). No row back means the
+  limit is reached: the question is refused, and nothing is added.
 - **What a day can spend:** every call sends at most 6 passages of at most
   1200 characters and asks for at most 500 output tokens, so a day spends at
   most the cap times one such call's price. FA5 records the cap value Jake
