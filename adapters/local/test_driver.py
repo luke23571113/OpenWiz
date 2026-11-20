@@ -70,7 +70,9 @@ class Local(unittest.TestCase):
         for repo, row in (('site', '| Harness permission mode | `acceptEdits` |'), ('blog', '| Harness | x |'),
                           ('refuser', '| Harness permission mode | `refuse` |'),
                           ('expired', '| Harness permission mode | `expired` |'),
-                          ('broken', '| Harness permission mode | `fail` |'), ('quick', '| Harness permission mode | `quick` |')):
+                          ('broken', '| Harness permission mode | `fail` |'), ('quick', '| Harness permission mode | `quick` |'),
+                          ('raiser', '| Harness permission mode | `bypassPermissions` |'),
+                          ('unapproved', '| Harness permission mode | `acceptEdits` |')):
             os.makedirs(os.path.join(repos, 'example', repo, 'docs', 'agents'))
             with open(os.path.join(repos, 'example', repo, 'docs', 'agents', 'fleet.md'), 'w') as f:
                 f.write('# Fleet\n\n| Setting | Value |\n| --- | --- |\n%s\n' % row)
@@ -83,6 +85,18 @@ class Local(unittest.TestCase):
                         FAKE_REPOS=repos, OPENWIZ_LOCAL_SETTLE='2',
                         OPENWIZ_LOCAL_STATE=os.path.join(self.folder, 'state'),
                         PATH=self.bin + os.pathsep + os.environ.get('PATH', ''))
+        self.approve(self.env['OPENWIZ_LOCAL_STATE'])
+
+    def approve(self, state):
+        """The host owner's approvals on this machine, as setup saves them: one mode per repository and harness.
+        The repository `raiser` asks for more than its approval; `unapproved` has none."""
+        os.makedirs(state, mode=0o700, exist_ok=True)
+        modes = {'site': 'acceptEdits', 'blog': 'acceptEdits', 'refuser': 'refuse', 'expired': 'expired',
+                 'broken': 'fail', 'quick': 'quick', 'raiser': 'acceptEdits'}
+        path = os.path.join(state, 'approvals.json')
+        with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
+            json.dump({'example/' + repo: {'claude': mode, 'codex': mode} for repo, mode in modes.items()}, f)
+        return path
 
     def tearDown(self):
         for root, dirs, _ in os.walk(self.folder):
@@ -202,6 +216,7 @@ class Local(unittest.TestCase):
                 if mode == 'readonly' and os.geteuid() == 0:
                     self.skipTest('root ignores a read-only folder')
                 state = os.path.join(self.folder, 'state-' + mode)
+                self.approve(state)
                 env = dict(self.env, BREAK=mode, OPENWIZ_LOCAL_STATE=state)
                 code, err = self.start(env=env, program=self.wrapper())
                 self.assertEqual(code, 1, err)
@@ -302,6 +317,28 @@ class Local(unittest.TestCase):
         self.assertIn('Harness permission mode', err['next'])
         self.no_new_turn(count)
 
+    def test_permission_mode_needs_this_machines_approval(self):
+        # catches: a mode read only from the repository reaching the harness, so whoever controls the target's
+        # default branch can raise the builder's permissions on the owner's computer without the owner (R6):
+        # a repository asking for more than this machine approved, one this machine never approved, and an
+        # approvals file others can change all refuse before anything runs; a matching pair starts.
+        approvals = os.path.join(self.env['OPENWIZ_LOCAL_STATE'], 'approvals.json')
+        for repo, says in (('raiser', 'does not match'), ('unapproved', 'no permission mode is approved')):
+            with self.subTest(repo):
+                code, err = self.start(repository='example/' + repo)
+                self.assertEqual(code, 1, err)
+                self.assertIsNone(kit.invalid(err, kit.load_schema()['error']), err)
+                self.assertIn(says, err['error'])
+                self.assertIn(approvals, err['next'])
+        os.chmod(approvals, 0o666)
+        code, err = self.start()
+        self.assertEqual(code, 1, err)
+        self.assertIn('others can change', err['error'])
+        self.no_new_turn(0)
+        os.chmod(approvals, 0o600)
+        self.assertEqual(self.start()[0], 0)
+        self.until(lambda: [t[4] for t in self.logged()] == ['acceptEdits'])
+
     def test_a_first_turn_that_ends_at_once_fails_start_with_its_reason(self):
         # catches: a harness that refuses, or whose sign-in expired, or that fails, ending its first turn at
         # once while start answers a run id and the kit waits 15 minutes in silence (L1); a first turn that
@@ -342,7 +379,7 @@ class Local(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertIsNone(kit.invalid(out, schema), out)
                 self.assertIn(says, out['next'])
-        self.assertFalse(os.path.exists(self.env['OPENWIZ_LOCAL_STATE']) and os.listdir(self.env['OPENWIZ_LOCAL_STATE']))
+        self.assertEqual([f for f in os.listdir(self.env['OPENWIZ_LOCAL_STATE']) if f.startswith('run-')], [])
 
 
 if __name__ == '__main__':
