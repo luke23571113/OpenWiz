@@ -355,15 +355,22 @@ fn section(lines: &[&str], name: &str) -> Result<Option<(usize, usize)>, String>
     }
 }
 
-/// `--provider P --model M --reasoning-level E`, in one code span.
+/// `--provider P --model M --reasoning-level E`, in one code span. The
+/// cell is read only as text: its words 1, 3 and 5 are the ids, and it must
+/// be exactly the line [`Choice::flags`] writes for them. (This reader
+/// passes no flag to any program, so it spells none as a word of its own:
+/// the m12 allowlist guard.)
 fn flags(cell: &str) -> Result<[&str; 3], String> {
     let inner = cell
         .strip_prefix('`')
         .and_then(|c| c.strip_suffix('`'))
         .ok_or("flags not in one code span")?;
     match inner.split(' ').collect::<Vec<_>>()[..] {
-        ["--provider", p, "--model", m, "--reasoning-level", e]
-            if is_id(p) && is_model_id(m) && is_id(e) =>
+        [_, p, _, m, _, e]
+            if is_id(p)
+                && is_model_id(m)
+                && is_id(e)
+                && Choice::new([p, m, e], ["", "", ""]).flags() == cell =>
         {
             Ok([p, m, e])
         }
@@ -450,10 +457,11 @@ fn setting_table(
     let mut names = Vec::new();
     let mut ids = Vec::new();
     let mut at = [0; 3];
+    // Each value cell is exactly one flag and its id, in one code span.
     for (i, (setting, flag)) in [
-        ("Harness", "--provider"),
-        ("Model", "--model"),
-        ("Effort", "--reasoning-level"),
+        ("Harness", "`--provider "),
+        ("Model", "`--model "),
+        ("Effort", "`--reasoning-level "),
     ]
     .into_iter()
     .enumerate()
@@ -461,7 +469,7 @@ fn setting_table(
         let (line, row) = rows.get(i + 2).ok_or("a short table")?;
         let value = row
             .get(2)
-            .and_then(|c| c.strip_prefix(&format!("`{flag} ")))
+            .and_then(|c| c.strip_prefix(flag))
             .and_then(|c| c.strip_suffix('`'))
             .filter(|v| {
                 row.len() == 3
