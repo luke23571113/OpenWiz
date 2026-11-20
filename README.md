@@ -43,8 +43,12 @@ OpenWiz never touches a login. Your agents use their own signed-in tools, and th
 | `crates/` | The `openwiz` command (Rust) |
 | `docs/` | Guides and public decisions |
 
+## Versions
+
+What each version adds is in the [changelog](CHANGELOG.md). A version has at most five outcomes, each one something a user can see or check, and claims nothing its evidence doesn't show; tests alone never prove live behaviour.
+
 ## Links
 
 - [openwiz.dev](https://openwiz.dev) · [the app](https://openwiz.dev/app/) · [Changelog](CHANGELOG.md)
-- Agents start at [AGENTS.md](AGENTS.md). For anything beyond a small fix, open an issue first. Everything here is public: use synthetic examples only, never personal data, secrets or private links.
+- Agents start at [AGENTS.md](AGENTS.md). For anything beyond a small fix, open an issue first. Everything here is public: use synthetic examples only, never personal data, secrets or private links. A new dependency needs the maintainer's approval.
 - [Apache License 2.0](LICENSE). A contribution is licensed under the same terms; there is no separate contributor agreement.
