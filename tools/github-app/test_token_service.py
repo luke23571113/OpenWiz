@@ -35,9 +35,10 @@ CASE = {case["name"]: case["request"] for case in REQUESTS["cases"]}
 WRITE = CASE["a good write request gets the App's profile for one repository"]
 SMALL = CASE["repository names match the installation in any case"]
 INSTALLATION = 2002
-# Runs the real CLI with time.time() fixed: the fixtures' controlled clock, never a wall-clock race.
+# Runs the real CLI with time.time() read from a clock file the test (and the fake GitHub) sets:
+# the fixtures' controlled clock, never a wall-clock race.
 CLOCK = ("import runpy, sys, time\n"
-         "now = float(sys.argv[1]); time.time = lambda: now\n"
+         "clock = sys.argv[1]; time.time = lambda: float(open(clock).read())\n"
          "sys.argv = sys.argv[2:]\n"
          "runpy.run_path(sys.argv[0], run_name='__main__')\n")
 
@@ -46,7 +47,8 @@ CLOCK = ("import runpy, sys, time\n"
 def fake_github(pem, installed):
     """GitHub's App endpoints the service uses. Every refusal body carries the key, so an echo shows."""
     calls = []
-    behavior = {"token": "synthetic-token", "expires_at": NOW + 3600, "status": 201, "grant": {}}
+    behavior = {"token": "synthetic-token", "expires_at": NOW + 3600, "status": 201, "grant": {},
+                "app_owner": "synthetic-owner", "account": "synthetic-owner", "clock": None, "elapse": 0}
     owners = {name.lower() for name in installed}
 
     class Handler(BaseHTTPRequestHandler):
@@ -62,9 +64,9 @@ def fake_github(pem, installed):
             calls.append(("GET", self.path, None))
             found = re.fullmatch(r"/repos/([^/]+)/([^/]+)/installation", self.path)
             if self.path == "/app":
-                self.reply(200, {"id": 1001, "owner": {"login": "synthetic-owner"}})
+                self.reply(200, {"id": 1001, "owner": {"login": behavior["app_owner"]}})
             elif found and f"{found[1]}/{found[2]}".lower() in owners:
-                self.reply(200, {"id": INSTALLATION, "app_id": 1001, "account": {"login": "synthetic-owner"},
+                self.reply(200, {"id": INSTALLATION, "app_id": 1001, "account": {"login": behavior["account"]},
                                  "repository_selection": "selected"})
             else:
                 self.reply(404, {"message": pem.decode()})
@@ -74,10 +76,12 @@ def fake_github(pem, installed):
             calls.append(("POST", self.path, body))
             if self.path != f"/app/installations/{INSTALLATION}/access_tokens" or behavior["status"] != 201:
                 return self.reply(behavior["status"] if behavior["status"] != 201 else 404, {"message": pem.decode()})
+            if behavior["clock"]:  # the exchange takes this long on the service's clock
+                behavior["clock"].write_text(str(NOW + behavior["elapse"]))
             at = datetime.fromtimestamp(behavior["expires_at"], timezone.utc).isoformat().replace("+00:00", "Z")
             result = {"token": behavior["token"], "expires_at": at, "permissions": body["permissions"],
                       "repository_selection": "selected",
-                      "repositories": [{"full_name": "synthetic-owner/" + n.lower()} for n in body["repositories"]]}
+                      "repositories": [{"full_name": behavior["account"] + "/" + n.lower()} for n in body["repositories"]]}
             result.update(behavior["grant"])
             self.reply(201, result)
 
@@ -116,17 +120,22 @@ class ServiceFixture(unittest.TestCase):
         (self.app / "app.json").write_text('{"app_id":1001}')
         (self.app / "app.json").chmod(0o600)
         self.log = self.state / "service/token-service/mint-log.jsonl"
+        self.clock = Path(self.tmp.name) / "clock"
         self.assertEqual(self.control("start").returncode, 0)
 
-    def control(self, command):
+    def control(self, command, env=None):
         return subprocess.run(["python3", "-I", str(SERVICE), command, "--state-dir", str(self.state)],
-                              capture_output=True, text=True, timeout=60)
+                              capture_output=True, text=True, timeout=60, env=dict(os.environ, **(env or {})))
 
-    def mint(self, endpoint, request):
+    def mint(self, endpoint, request, env=None):
         text = request if isinstance(request, str) else json.dumps(request)
-        return subprocess.run(["python3", "-I", "-c", CLOCK, str(NOW), str(SERVICE), "mint",
+        self.clock.write_text(str(NOW))
+        # The mint's environment holds no App setting unless a test gives one: a paired call's doesn't.
+        environment = {k: v for k, v in os.environ.items() if k != "OPENWIZ_GITHUB_APP_MODE"}
+        return subprocess.run(["python3", "-I", "-c", CLOCK, str(self.clock), str(SERVICE), "mint",
                                "--state-dir", str(self.state), "--api-base", endpoint],
-                              input=text, capture_output=True, text=True, timeout=60)
+                              input=text, capture_output=True, text=True, timeout=60,
+                              env=dict(environment, **(env or {})))
 
     def logged(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
@@ -213,6 +222,37 @@ class RequestFixtureTests(ServiceFixture):
             self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "expiry"))
             fake["expires_at"] = NOW + 3900
             self.assertEqual(self.mint(url, SMALL).returncode, 0)
+
+
+    def test_a_token_is_checked_for_time_left_at_handover_not_at_request(self):
+        # catches: an expiry guard on the clock read before the exchange, so a slow exchange
+        # hands over a token already inside the helper's refresh window (R1 on #1915).
+        with fake_github(self.pem, REQUESTS["installed"]) as (url, _calls, fake):
+            fake.update(clock=self.clock, elapse=15)
+            fake["expires_at"] = NOW + 310  # 310 s left when asked, 295 s at handover
+            done = self.mint(url, SMALL)
+            self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "expiry"))
+            self.assertEqual(self.logged()[-1]["outcome"], "expiry")
+            fake["expires_at"] = NOW + 15 + 311  # more than 300 s and the handover margin left
+            self.assertEqual(self.mint(url, SMALL).returncode, 0)
+
+
+class FactoryTests(ServiceFixture):
+    def test_the_factory_setting_given_at_start_holds_for_every_mint(self):
+        # catches: a factory App's mint falling back to the user setting because the paired
+        # call's environment has no OPENWIZ_GITHUB_APP_MODE (R2 on #1915).
+        text = (HERE.parents[1] / "contracts/github-identity.v1.md").read_text()
+        pin = json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
+        account, repository = pin["installations"][-1]["account"], pin["installations"][-1]["repositories"][0]
+        request = dict(SMALL, repositories=[repository])
+        with fake_github(self.pem, request["repositories"]) as (url, _calls, fake):
+            fake.update(app_owner="synthetic-elsewhere", account=account)  # the owners differ
+            self.assertEqual(self.control("start", {"OPENWIZ_GITHUB_APP_MODE": "factory"}).returncode, 0)
+            self.assertEqual(self.mint(url, request).returncode, 0, "factory set at start, none at mint")
+            self.assertEqual(self.control("start", {"OPENWIZ_GITHUB_APP_MODE": "user"}).returncode, 0)
+            done = self.mint(url, request, {"OPENWIZ_GITHUB_APP_MODE": "factory"})
+            self.assertEqual(json.loads(done.stdout).get("refusal"), "not-installed", "start's setting wins")
+            self.assertEqual(self.control("start", {"OPENWIZ_GITHUB_APP_MODE": "public"}).returncode, 1)
 
 
 class NeverExposedTests(ServiceFixture):

@@ -1,0 +1,7 @@
+# Review round on #1915 at 307345fd: R1 and R2 proofs, run red against that head's service. Synthetic only.
+FAIL: test_the_factory_setting_given_at_start_holds_for_every_mint (__main__.FactoryTests.test_the_factory_setting_given_at_start_holds_for_every_mint)
+AssertionError: 3 != 0 : factory set at start, none at mint
+FAIL: test_a_token_is_checked_for_time_left_at_handover_not_at_request (__main__.RequestFixtureTests.test_a_token_is_checked_for_time_left_at_handover_not_at_request)
+AssertionError: Tuples differ: (0, None) != (5, 'expiry')
+Ran 10 tests in 23.363s
+FAILED (failures=2)
