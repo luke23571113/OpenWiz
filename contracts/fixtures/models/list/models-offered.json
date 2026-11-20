@@ -42,6 +42,13 @@
             "high",
             "xhigh"
           ]
+        },
+        {
+          "model": "syn-vendor/demo-model",
+          "efforts": [
+            "medium",
+            "high"
+          ]
         }
       ]
     }

@@ -511,10 +511,12 @@ fn older_rows(show: &Value) -> Vec<(&'static str, Value)> {
 
 // catches: a set fixture whose written file reads as something other than
 // the report says, leaves the older tables out of step with the Models
-// table, changes another role, or a refusal that names an offered choice.
+// table, changes another role, a not-offered refusal that names an offered
+// choice, or a choice set that the Models table can't hold (R1: an offered
+// namespaced model is listed, but refused as not writable).
 #[test]
 fn every_set_fixture_writes_what_its_report_says() {
-    for case in ["set-older", "set-same-family", "unoffered"] {
+    for case in ["set-older", "set-same-family", "unoffered", "unwritable"] {
         let spec = load(&format!("{case}/case.json"));
         let report = load(&format!("{case}/set.json"));
         let before = read(&text(spec["fleet"].as_str().unwrap())).unwrap();
@@ -529,14 +531,23 @@ fn every_set_fixture_writes_what_its_report_says() {
                         && m["efforts"].as_array().unwrap().contains(&asked["effort"])
                 })
         });
+        let writable = ["provider", "model", "effort"]
+            .iter()
+            .all(|k| id(asked[k].as_str().unwrap()).is_ok());
         let fleet = spec["writes"]["docs/agents/fleet.md"].as_str();
         if report["outcome"] == "refused" {
-            assert!(!is_offered && fleet.is_none(), "{case}");
+            let why = if is_offered {
+                "not_writable"
+            } else {
+                "not_offered"
+            };
+            assert_eq!(report["refusal"]["reason"], why, "{case}");
+            assert!(fleet.is_none() && (!is_offered || !writable), "{case}");
             assert_eq!(report["offered"], offered["harnesses"], "{case}");
             assert_eq!(spec["exit"], 5, "{case}");
             continue;
         }
-        assert!(is_offered, "{case}");
+        assert!(is_offered && writable, "{case}");
         let after = read(&text(fleet.unwrap())).unwrap();
         assert_eq!(after["read"], "models_table", "{case}");
         assert_eq!(report["after"], after["roles"][role], "{case}");
