@@ -133,14 +133,15 @@ class Package(unittest.TestCase):
         # #1699: KN6's caller runs `$OPENWIZ_ADAPTERS/<host>/driver`; the archive must carry each
         # tracked launch driver's entry point and schema, and the kernel files the driver kit's
         # checks read, at their tracked paths under runtime/, and nothing else from those folders.
-        carried = {'adapters/boat/driver': b'#!/usr/bin/env python3\nprint("synthetic boat driver")\n',
-                   'adapters/boat/schema.json': b'{"synthetic": "boat schema"}\n',
+        # The boat driver is the repository's template driver, and the kit is the real kit, so the
+        # installed kit's `version` check runs for real against the installed driver.
+        kit = ('kernel/driver-kit/kit.py', 'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py',
+               'kernel/records.v1.md')
+        carried = {'adapters/boat/driver': (ROOT / 'adapters/template/driver').read_bytes(),
+                   'adapters/boat/schema.json': (ROOT / 'adapters/template/schema.json').read_bytes(),
                    'adapters/local/driver': b'#!/usr/bin/env python3\nprint("synthetic local driver")\n',
                    'adapters/local/schema.json': b'{"synthetic": "local schema"}\n',
-                   'kernel/driver-kit/kit.py': b'# synthetic driver kit\n',
-                   'kernel/driver-kit/schema.json': b'{"synthetic": "kit schema"}\n',
-                   'kernel/records-kit/check.py': b'# synthetic records checker\n',
-                   'kernel/records.v1.md': b'# Synthetic records contract\n'}
+                   **{path: (ROOT / path).read_bytes() for path in kit}}
         left = ('adapters/boat/README.md', 'adapters/boat/test_driver.py', 'adapters/boat/fixtures/bin/boat',
                 'adapters/boat/evidence/red.txt', 'adapters/template/driver', 'adapters/template/schema.json',
                 'adapters/unlisted/driver', 'adapters/unlisted/schema.json', 'kernel/driver.v1.md',
@@ -163,6 +164,7 @@ class Package(unittest.TestCase):
             (root / 'adapters/cloudroom/schema.json').write_bytes(b'{}\n')
             target = TARGETS[0]
             (root / 'job').mkdir()
+            (root / 'tracker.json').write_text(json.dumps({'record_authors': ['synthetic-author'], 'comments': []}))
             receipts = build(binaries, source, target, root / 'job')
             output = root / 'products'
             result = subprocess.run(collector(root, binaries, output, source, target, receipts),
@@ -181,6 +183,18 @@ class Package(unittest.TestCase):
             adapters = root / 'installed/current/runtime/adapters'
             for path, data in carried.items():
                 self.assertEqual((adapters.parent / path).read_bytes(), data, path)
+                # #1699: KN6's caller runs only an executable driver; every other file stays data.
+                executable = path.endswith('/driver')
+                self.assertEqual(assets['runtime/' + path]['mode'], '0700' if executable else '0600', path)
+                self.assertEqual(os.access(adapters.parent / path, os.X_OK), executable, path)
+            # The installed kit's first check, `version`, passes against the installed driver.
+            checked = subprocess.run([sys.executable, '-I', 'kernel/driver-kit/kit.py', '--driver', 'adapters/boat/driver',
+                                      '--repo', 'synthetic/throwaway', '--ticket', '1', '--harness', 'absent-harness',
+                                      '--model', 'synthetic', '--tracker', str(root / 'tracker.json'), '--wait', '1'],
+                                     cwd=adapters.parent, capture_output=True, text=True, timeout=120,
+                                     env={'PATH': os.environ['PATH']})
+            self.assertEqual(checked.stdout.splitlines()[:1],
+                             ['pass version: openwiz:records v1, and the schema is driver v1'], checked.stderr)
 
     def bound_and_installed(self, root, target, identity_file, bundle, products=None, home=None):
         """#1148: the collected, packaged target's candidate artifact rows bind
