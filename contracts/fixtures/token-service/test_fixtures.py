@@ -43,6 +43,25 @@ def strict(text):
     return value if isinstance(value, dict) else None
 
 
+def leaks(case, token):
+    """Every place in one fixture case that holds TOKEN outside its private places:
+    the answer's token field, the private token file, and exactly GH_TOKEN."""
+    found = []
+    for key, value in case.items():
+        if key in ("out", "before"):
+            for slot, held in value.items():
+                if slot in ("message", "token_file"):
+                    continue
+                if slot == "env":
+                    found += [f"{key}.env.{k}" for k, v in held.items()
+                              if v == token and k != "GH_TOKEN"]
+                elif token in json.dumps(held):
+                    found.append(f"{key}.{slot}")
+        elif key != "token" and token in json.dumps(value):
+            found.append(key)
+    return found
+
+
 def resolve(schema, root):
     while "$ref" in schema:
         schema = root["$defs"][schema["$ref"].split("/")[-1]]
@@ -209,6 +228,20 @@ class Requests(Base):
         self.assertIn("a request with a repeated key", names)
         self.assertIn("repository names match the installation in any case", names)
 
+    def test_the_mint_log_keeps_no_untrusted_request_text(self):
+        # catches: a refused request's raw permission names persisted in the owner's log (R2).
+        app = set(self.pin["app_permissions"])
+        for case in self.fixtures["requests.json"]["cases"]:
+            log = case["out"]["log"]
+            if log["outcome"] == "minted":
+                self.assertLessEqual(set(log["permissions"]), app, case["name"])
+            else:
+                self.assertNotIn("permissions", log, case["name"])
+        bad = {c["name"]: c["message"] for c in self.fixtures["invalid.json"]["cases"]}
+        sentinel = bad.get("a mint log with an out-of-profile permission", {})
+        self.assertEqual(sentinel.get("outcome"), "minted")
+        self.assertNotEqual(self.valid(sentinel), [])
+
     def test_the_fixtures_cover_a_good_request_and_every_refusal(self):
         # catches: a refusal the contract names but no fixture shows.
         cases = self.fixtures["requests.json"]["cases"]
@@ -231,23 +264,55 @@ class RefreshAndFallback(Base):
         # catches: a silent fallback, a repeated note, or a note when no service is set.
         note = self.pin["fallback"]["note"]
         reasons = set(self.pin["fallback"]["reasons"])
-        self.assertEqual(reasons, {"unreachable", "bad-answer", *self.pin["refusals"]})
+        self.assertEqual(reasons, {"unreachable", "bad-answer", "pairing-off", *self.pin["refusals"]})
         seen = set()
         for case in self.fixtures["fallback.json"]["cases"]:
             name, out = case["name"], case["out"]
             if case["service"] == "not-configured":
-                self.assertEqual((out["stderr"], out["identity"]), ("", "owner"), name)
+                self.assertEqual((out["stderr"], out["gh"], out["git"]), ("", "owner", "owner"), name)
             elif case["service"] == "answer":
-                self.assertEqual((out["stderr"], out["identity"]), ("", "openwiz[bot]"), name)
+                self.assertEqual((out["stderr"], out["gh"], out["git"]),
+                                 ("", "openwiz[bot]", "openwiz[bot]"), name)
+                self.assertEqual(out["token_file"], out["env"]["GH_TOKEN"], name)
             else:
                 seen.add(case["reason"])
                 self.assertEqual(out["stderr"], note.replace("<reason>", case["reason"]) + "\n",
                                  name)
-                self.assertEqual(out["identity"], "owner", name)
-                self.assertNotIn("GH_TOKEN", out["env"], name)
-        self.assertIn("unreachable", seen)
-        self.assertIn("bad-answer", seen)
+        self.assertLessEqual({"unreachable", "bad-answer", "pairing-off"}, seen)
         self.assertTrue(seen & set(self.pin["refusals"]))
+
+    def test_a_fallback_leaves_no_service_credential_for_gh_or_git(self):
+        # catches: a failed refresh that falls back for gh while git keeps the old App token (R3).
+        self.assertEqual(self.pin["fallback"].get("clears"), ["GH_TOKEN", "private token file"])
+        refreshed = 0
+        for case in self.fixtures["fallback.json"]["cases"]:
+            if case["service"] in ("answer", "not-configured"):
+                continue
+            out = case["out"]
+            self.assertEqual((out["gh"], out["git"], out["token_file"]), ("owner", "owner", None),
+                             case["name"])
+            self.assertNotIn("GH_TOKEN", out["env"], case["name"])
+            before = case.get("before", {})
+            refreshed += bool(before.get("token_file") and before.get("env", {}).get("GH_TOKEN"))
+        self.assertGreaterEqual(refreshed, 1, "no fallback starts from a held service token")
+
+    def test_the_pairing_route_is_off_until_the_read_back_passes(self):
+        # catches: a cloud call made before GA5 proved the pairing keeps no token (R1).
+        gate = self.pin["reach"].get("pairing_gate", {})
+        self.assertEqual(gate, {"variable": "OPENWIZ_TOKEN_SERVICE_READBACK",
+                                "on_only_when": "passed", "otherwise": "pairing-off"})
+        states = set()
+        for case in self.fixtures["fallback.json"]["cases"]:
+            env = case["out"]["env"]
+            if env.get("OPENWIZ_TOKEN_SERVICE_ROUTE") != "pairing":
+                continue
+            state = env.get(gate["variable"])
+            states.add(state)
+            if state == "passed":
+                self.assertNotEqual(case.get("reason"), "pairing-off", case["name"])
+            else:
+                self.assertEqual((case["call"], case["reason"]), (None, "pairing-off"), case["name"])
+        self.assertLessEqual({None, "inconclusive", "failed", "passed"}, states)
 
 
 class Invalid(Base):
@@ -270,19 +335,27 @@ class NeverExposed(Base):
             self.assertIsNotNone(CREDENTIAL.search(planted), planted)
 
     def test_a_token_appears_only_in_its_private_places(self):
-        # catches: a token that reaches stderr, a log, an argument list or the environment's text.
+        # catches: a token that reaches stderr, a log, an argument list or any other variable.
+        checked = 0
         for name in ("requests.json", "fallback.json"):
             for case in self.fixtures[name]["cases"]:
-                token = case["out"].get("message", {}).get("token") or case.get("token")
-                if not token:
-                    continue
-                self.assertTrue(token.startswith("synthetic-"), case["name"])
-                exposed = {k: v for k, v in case["out"].items() if k not in ("message", "env")}
-                exposed["argv"] = case.get("argv", [])
-                self.assertNotIn(token, json.dumps(exposed), case["name"])
-                env = case["out"].get("env", {})
-                self.assertEqual([k for k, v in env.items() if v == token],
-                                 ["GH_TOKEN"] if "GH_TOKEN" in env else [], case["name"])
+                out, before = case["out"], case.get("before", {})
+                tokens = {out.get("message", {}).get("token"), case.get("token"),
+                          out.get("token_file"), before.get("token_file")} - {None}
+                for token in tokens:
+                    self.assertTrue(token.startswith("synthetic-"), case["name"])
+                    self.assertEqual(leaks(case, token), [], case["name"])
+                    checked += 1
+        self.assertGreaterEqual(checked, 3)
+
+    def test_the_leak_check_catches_a_wrapped_token(self):
+        # catches: a leak check that compares whole values and misses a token inside one (R4).
+        token = "synthetic-write-token"
+        case = {"out": {"env": {"GH_TOKEN": token, "DEBUG": "auth=" + token + ";"}, "stderr": ""}}
+        self.assertEqual(leaks(case, token), ["out.env.DEBUG"])
+        case["out"]["env"] = {"GH_TOKEN": "token " + token}
+        self.assertEqual(leaks(case, token), ["out.env.GH_TOKEN"])
+        self.assertEqual(leaks({"argv": ["x=" + token], "out": {}}, token), ["argv"])
 
 
 if __name__ == "__main__":
