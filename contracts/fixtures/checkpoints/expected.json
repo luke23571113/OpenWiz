@@ -40,7 +40,8 @@
     "record/invalid-no-pointer.md": {"result": "invalid", "code": "pointer-missing"},
     "record/invalid-public-pointer.md": {"result": "invalid", "code": "pointer-not-private"},
     "record/invalid-opening.md": {"result": "invalid", "code": "record-opening"},
-    "record/invalid-outcome.md": {"result": "invalid", "code": "record-opening"}
+    "record/invalid-outcome.md": {"result": "invalid", "code": "record-opening"},
+    "record/invalid-extra-line.md": {"result": "invalid", "code": "record-line"}
   },
   "release": {
     "release/released.json": {"merge": "released"},
