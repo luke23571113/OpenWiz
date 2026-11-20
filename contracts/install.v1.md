@@ -28,7 +28,7 @@ update's version check), a complete pre-AP11 layout, with the `openwiz-service`
 and `openwiz-server` programs, web/ and its stamp, is also read.
 Every asset is hash-checked before activation, including repeated
 installs. The manifest lists every file (not directory globs). Runtime includes
-setup, grill, plan-graph and launch-fleet skills and their script resources.
+setup, grill, to-tickets and launch-fleet skills and their script resources.
 
 The root and state directory must be absolute, owned, private directories with
 no symlink ancestors. New directories use 0700; data 0600; programs and shell

@@ -66,7 +66,7 @@ rl4 = load('release_candidate_rl4_fixture', HERE / 'test_product_identity.py')
 # The tracked runtime the collector packages: RL4's files plus the skills the
 # install contract requires.
 RUNTIME = dict(rl4.RUNTIME, **{f'skills/{name}': f'Synthetic {name}.\n'.encode() for name in (
-    'setup/SKILL.md', 'grill/SKILL.md', 'plan-graph/SKILL.md', 'launch-fleet/SKILL.md')},
+    'setup/SKILL.md', 'grill/SKILL.md', 'to-tickets/SKILL.md', 'launch-fleet/SKILL.md')},
     **{'skills/launch-fleet/scripts/fleet.sh': b'#!/bin/sh\necho synthetic\n'})
 # #2201: setup's CloudRoom tool, which the installer requires, and its packaged path.
 RUNTIME['tools/install/cloudroom/cloudroom.py'] = b'# Synthetic CloudRoom setup tool.\n'
