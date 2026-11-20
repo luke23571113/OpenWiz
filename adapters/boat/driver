@@ -25,8 +25,8 @@ ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
 UP = ('running', 'ready', 'idle')  # the sandbox states a wake may prompt in; any other refuses it
 QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 120
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
-FIRST_TURN_SETTLE_SECONDS = float(os.environ.get('OPENWIZ_BOAT_SETTLE') or 20)
-PLAIN_LIMIT_TYPE = re.compile(r'[a-z0-9_]{1,40}')
+DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
+SHOWN_LIMIT_TYPES = {'auth_expiry': 'auth_expiry', 'rate_limit': 'rate_limit'}
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
 
@@ -321,8 +321,21 @@ def prompt(state, run):
         time.sleep(0.1)
 
 
-def refuse_a_dead_first_turn(run, turn):
-    log, deadline = path(run, '0.log'), time.monotonic() + FIRST_TURN_SETTLE_SECONDS
+def settle_seconds():
+    raw = os.environ.get('OPENWIZ_BOAT_SETTLE') or str(DEFAULT_SETTLE_SECONDS)
+    try:
+        seconds = float(raw)
+    except ValueError:
+        seconds = float('nan')
+    if not 0 < seconds <= MAX_SETTLE_SECONDS:
+        raise Refused('OPENWIZ_BOAT_SETTLE is not a number of seconds above 0 and at most %d; nothing was started'
+                      % MAX_SETTLE_SECONDS, 'unset it, or set it to a number of seconds up to %d, then start again'
+                      % MAX_SETTLE_SECONDS)
+    return seconds
+
+
+def refuse_a_dead_first_turn(run, turn, settle):
+    log, deadline = path(run, '0.log'), time.monotonic() + settle
     while True:
         ended_before_this_read = not running(turn)
         try:
@@ -334,7 +347,7 @@ def refuse_a_dead_first_turn(run, turn):
                   for x in lines if x.get('event') == 'usage_limit']
         if limits:
             kind = limits[0].get('limitType')
-            why = 'hit a usage limit (%s)' % (kind if isinstance(kind, str) and PLAIN_LIMIT_TYPE.fullmatch(kind) else 'unknown')
+            why = 'hit a usage limit (%s)' % (SHOWN_LIMIT_TYPES.get(kind, 'unknown') if isinstance(kind, str) else 'unknown')
             break
         if ended_before_this_read:
             if any(isinstance(x.get('data'), dict) and x['data'].get('tools') for x in lines):
@@ -531,6 +544,7 @@ def start(req):
     if req['harness'] not in HARNESSES:
         raise Refused('boat has no harness %s' % req['harness'], 'use one of: ' + ', '.join(HARNESSES))
     boat_program()
+    settle = settle_seconds()
     lock = pinned_skills()
     run = 'run-' + secrets.token_hex(6)
     state = {'request': req, 'sandbox': None, 'conversation': None, 'turns': [],
@@ -558,7 +572,7 @@ def start(req):
         install_skills(state['sandbox'], lock)
         turn, talk = prompt(state, run)
         state['conversation'] = talk
-        refuse_a_dead_first_turn(run, turn)
+        refuse_a_dead_first_turn(run, turn, settle)
         try:
             saved(run, dict(state, turns=[turn], conversation=talk, starting=False))
         except OSError:  # the turn began but its run is not saved: end it, and never say do it again
