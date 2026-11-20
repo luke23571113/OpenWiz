@@ -18,6 +18,7 @@ KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Claw0Value' * 2 + '00'
 REAL = ('claude', 'codex', 'acpx', 'openclaw', 'gh', 'npx', 'node', 'bash', 'sh')
 DIAGNOSTIC = 'synthetic acpx diagnostic'
+CLAUDE = ['npx', '-y', '--package=@agentclientprotocol/claude-agent-acp@^0.95.0', '--', 'claude-agent-acp']
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'claude-opus-5-5'}
 BREAKS_AFTER_SPAWN = '''import importlib.machinery, importlib.util, os, sys
@@ -73,7 +74,9 @@ class OpenClaw(unittest.TestCase):
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
         self.calls, self.state = os.path.join(self.folder, 'calls'), os.path.join(self.folder, 'state')
-        self.env = dict(HOME=self.folder, LANG='C.UTF-8', KIT_TRACKER=self.tracker, GH_TOKEN=TOKEN,
+        self.home = os.path.join(self.folder, "a user's home")
+        os.mkdir(self.home)
+        self.env = dict(HOME=self.home, LANG='C.UTF-8', KIT_TRACKER=self.tracker, GH_TOKEN=TOKEN,
                         FAKE_TURNS=self.turns, FAKE_HOLD=self.hold, FAKE_ACPX_CALLS=self.calls,
                         FAKE_ACPX_STATE=os.path.join(self.folder, 'acpx.json'), OPENWIZ_OPENCLAW_STATE=self.state,
                         PATH=os.path.join(HERE, 'fixtures', 'bin') + os.pathsep + self.bare())
@@ -109,12 +112,19 @@ class OpenClaw(unittest.TestCase):
         except FileNotFoundError:
             return []
 
-    def acpx(self):
+    def seen(self):
         try:
             with open(self.calls) as f:
-                return [json.loads(line) for line in f]
+                calls = [json.loads(line) for line in f]
         except FileNotFoundError:
             return []
+        return calls
+
+    def adapter(self):
+        return ['env', 'HOME=' + self.home] + CLAUDE
+
+    def acpx(self):
+        return [c['args'] for c in self.seen()]
 
     def kept(self, text):
         found = []
@@ -156,25 +166,26 @@ class OpenClaw(unittest.TestCase):
         self.assertTrue(self.until(lambda: len(self.logged()) == 2))
         self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
         calls, run = self.acpx(), out['run']
-        verbs = [c[c.index('claude') + 1:] for c in calls]
-        self.assertEqual([v[:3] for v in verbs], [['sessions', 'new', '--name'], ['-s', run, '--no-wait'],
-                                                  ['-s', run, '--no-wait'], ['cancel', '-s', run],
-                                                  ['sessions', 'close', run]])
-        self.assertEqual(verbs[0][3], run)
-        for c in calls:
-            g = dict(zip(c[:c.index('claude')][::2], c[:c.index('claude')][1::2]))
+        split = [(dict(zip(c[:n][::2], c[:n][1::2])), c[n:])
+                 for c in calls for n in [next(i for i in range(0, len(c), 2) if not c[i].startswith('--'))]]
+        self.assertEqual([v[:4] for _, v in split], [['sessions', 'new', '--name', run],
+                                                     ['prompt', '-s', run, '--no-wait'],
+                                                     ['prompt', '-s', run, '--no-wait'], ['cancel', '-s', run],
+                                                     ['sessions', 'close', run]])
+        self.assertEqual([c['ran'] for c in self.seen()], [self.adapter()] * 5)
+        for c, (g, _) in zip(calls, split):
             self.assertNotIn('--approve-all', c)
             self.assertFalse(any('gateway' in a for a in c), c)
-            self.assertEqual(g['--cwd'], dict(zip(calls[0][::2], calls[0][1::2]))['--cwd'])
+            self.assertEqual(g['--cwd'], split[0][0]['--cwd'])
             if c in calls[:3]:
                 self.assertEqual((g['--auth-policy'], g['--non-interactive-permissions']), ('fail', 'deny'))
                 policy = json.loads(g['--permission-policy'])
                 self.assertEqual(policy['defaultAction'], 'deny')
                 self.assertNotIn('*', policy['autoApprove'])
                 self.assertIn('delete', policy['autoDeny'])
-        self.assertEqual(calls[0][calls[0].index('--model') + 1], 'claude-opus-5-5')
-        for c in calls[1:3]:
-            self.assertTrue(0 < int(c[c.index('--ttl') + 1]) <= 300, c)
+        self.assertEqual(split[0][0]['--model'], 'claude-opus-5-5')
+        for g, _ in split[1:3]:
+            self.assertTrue(0 < int(g['--ttl']) <= 300, g)
 
     def test_a_harness_acpx_would_run_as_a_command_is_refused_without_echoing_it(self):
         for harness in ('sh', 'zz-unknown-agent', 'openclaw'):
@@ -234,32 +245,41 @@ class OpenClaw(unittest.TestCase):
         self.assertIn('signed in', err['next'])
         self.assertEqual(self.kept(DIAGNOSTIC), [])
 
-    def test_an_acpx_config_that_remaps_the_harness_is_refused(self):
-        os.mkdir(os.path.join(self.folder, '.acpx'))
-        config = os.path.join(self.folder, '.acpx', 'config.json')
-        for harness, name in (('claude', 'Claude'), ('droid', 'factory-droid')):
-            with self.subTest(harness=harness):
-                with open(config, 'w') as f:
-                    json.dump({'agents': {name: {'argv': ['synthetic-gateway-bridge']}}}, f)
-                code, out = self.driver('start', dict(REQUEST, harness=harness))
-                self.assertEqual(code, 1, out)
-                self.assertIn('config', out['error'])
-        self.assertEqual(self.acpx(), [])
-        with open(config, 'w') as f:
-            json.dump({'agents': {'gemini': {'argv': ['synthetic-agent']}}}, f)
-        open(self.hold, 'w').close()
+    def test_stop_runs_the_built_in_adapter_even_when_a_config_appears_while_it_runs(self):
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: len(self.logged()) == 1))
-        work = os.path.join(self.state, 'work', out['run'])
-        with open(os.path.join(work, '.acpxrc.json'), 'w') as f:
-            json.dump({'agents': {'claude': {'argv': ['synthetic-gateway-bridge']}}}, f)
-        calls = len(self.acpx())
-        code, err = self.driver('wake', out)
-        self.assertEqual(code, 1, err)
-        self.assertEqual(len(self.acpx()), calls, 'acpx ran with a remapped harness')
-        self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+        self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
+        self.assertEqual(self.driver('stop', out, FAKE_REMAP_ON_CANCEL='1'), (0, dict(out, stopped=True)))
+        self.assertTrue(os.path.exists(os.path.join(self.state, 'work', out['run'], '.acpxrc.json')))
+        ran = [c['ran'] for c in self.seen()]
+        self.assertNotIn(['synthetic-gateway-bridge'], ran, 'an acpx call ran a configured command')
+        self.assertEqual(ran, [self.adapter()] * 5)
         self.assertEqual(owned(), [])
+
+    def test_the_driver_never_reads_your_acpx_config_and_acpx_never_loads_it(self):
+        os.mkdir(os.path.join(self.home, '.acpx'))
+        config = os.path.join(self.home, '.acpx', 'config.json')
+        with open(config, 'w') as f:
+            json.dump({'agents': {'gemini': {'argv': ['synthetic-agent']}},
+                       'auth': {'synthetic-method': 'synthetic-not-a-login'}}, f)
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
+        self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+        self.assertEqual([c['auth'] for c in self.seen()], [[]] * 5, 'acpx loaded the auth in your acpx config')
+        os.remove(config)
+        os.mkdir(config)
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, 'the driver opened ~/.acpx/config.json: %s' % out)
+        self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+        seen = self.seen()
+        self.assertEqual(len(seen), 9)
+        for c in seen:
+            self.assertEqual((c['ran'], c['auth']), (self.adapter(), []))
+            self.assertTrue(c['home'].startswith(self.state + os.sep), c['home'])
+            self.assertFalse(os.path.exists(os.path.join(c['home'], '.acpx', 'config.json')))
 
     def test_a_start_whose_session_fails_leaves_nothing(self):
         code, out = self.driver('start', REQUEST, FAKE_ACPX_FAIL='new')

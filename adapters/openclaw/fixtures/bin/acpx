@@ -2,7 +2,7 @@
 import fcntl, json, os, subprocess, sys, time
 
 ARGS, STATE = sys.argv[1:], os.environ.get('FAKE_ACPX_STATE', '')
-GLOBAL = {'--cwd', '--model', '--auth-policy', '--permission-policy', '--non-interactive-permissions', '--ttl',
+GLOBAL = {'--agent', '--cwd', '--model', '--auth-policy', '--permission-policy', '--non-interactive-permissions', '--ttl',
           '--format'}
 DIAGNOSTIC = 'synthetic acpx diagnostic'
 MARKS = ('KIT_TEST', 'OPENWIZ_RUN', 'OPENWIZ_KIT_RUN')
@@ -27,6 +27,51 @@ def update(change):
             json.dump(state, f)
         os.replace(STATE + '.new', STATE)
         return out
+
+
+def config(path):
+    try:
+        with open(path) as f:
+            loaded = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def split(line):
+    parts, part, quote, escaping, has = [], '', None, False, False
+    for ch in line:
+        if escaping:
+            part, escaping, has = part + ch, False, True
+        elif ch == '\\' and quote != "'":
+            escaping = True
+        elif quote:
+            quote = None if ch == quote else quote
+            part, has = part + ('' if quote is None else ch), True
+        elif ch in '\'"':
+            quote, has = ch, True
+        elif ch.isspace():
+            parts, part, has = (parts + [part], '', False) if has else (parts, part, has)
+        else:
+            part, has = part + ch, True
+    return parts + [part] if has else parts
+
+
+def resolve(opts, name):
+    # Like acpx 0.22.0's loadResolvedConfig and resolveInvocationCommand: ~/.acpx/config.json, then the
+    # folder's .acpxrc.json; --agent wins, then a configured agent, then the built-in registry.
+    cwd = os.path.abspath(opts.get('--cwd', '.'))
+    found = [config(os.path.join(os.path.expanduser('~'), '.acpx', 'config.json')),
+             config(os.path.join(cwd, '.acpxrc.json'))]
+    agents = dict(kv for c in found if isinstance(c.get('agents'), dict) for kv in c['agents'].items())
+    auth = sorted(k for c in found if isinstance(c.get('auth'), dict) for k in c['auth'])
+    if '--agent' in opts:
+        ran = split(opts['--agent'])
+    elif name in agents:
+        ran = agents[name].get('argv') or split(agents[name].get('command', ''))
+    else:
+        ran = ['built-in', name]
+    return ran, auth
 
 
 def alive(pid):
@@ -88,9 +133,6 @@ def owner(key, ttl):
 def main():
     if ARGS[:1] == ['--owner']:
         return owner(ARGS[1], float(ARGS[2]))
-    if os.environ.get('FAKE_ACPX_CALLS'):
-        with open(os.environ['FAKE_ACPX_CALLS'], 'a') as f:
-            f.write(json.dumps(ARGS) + '\n')
     if ARGS == ['--version']:
         say('0.22.0')
     opts, rest = {}, list(ARGS)
@@ -100,9 +142,19 @@ def main():
             opts[flag] = rest.pop(0)
         else:
             say('unknown option ' + flag, 2)
-    if not rest:
+    if '--agent' in opts:
+        agent = opts['--agent']
+    elif rest:
+        agent, rest = rest[0], rest[1:]
+    else:
         say('no agent', 2)
-    agent, rest = rest[0], rest[1:]
+    ran, auth = resolve(opts, agent)
+    if os.environ.get('FAKE_ACPX_CALLS'):
+        with open(os.environ['FAKE_ACPX_CALLS'], 'a') as f:
+            f.write(json.dumps({'args': ARGS, 'home': os.path.expanduser('~'), 'ran': ran, 'auth': auth}) + '\n')
+    rest = rest[1:] if rest[:1] == ['prompt'] else rest
+    if not rest:
+        say('no command', 2)
     key = '%s %s' % (agent, os.path.abspath(opts.get('--cwd', '.')))
     what = rest[1] if rest[:1] == ['sessions'] and len(rest) > 1 else rest[0] if rest[:1] == ['cancel'] else 'prompt'
     if what in os.environ.get('FAKE_ACPX_FAIL', '').split(','):
@@ -119,6 +171,10 @@ def main():
         update(close)
         say('closed')
     if rest[:2] == ['cancel', '-s'] and len(rest) == 3:
+        if os.environ.get('FAKE_REMAP_ON_CANCEL'):
+            with open(os.path.join(os.path.abspath(opts.get('--cwd', '.')), '.acpxrc.json'), 'w') as f:
+                json.dump({'agents': {'claude': {'argv': ['synthetic-gateway-bridge']}}}, f)
+
         def cancel(s):
             if key + ' ' + rest[2] in s:
                 s[key + ' ' + rest[2]]['cancels'] += 1
