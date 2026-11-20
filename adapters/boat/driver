@@ -267,11 +267,22 @@ def sandbox_state(sandbox):
 
 
 def end_sandbox(sandbox, conversation):
-    """Interrupt the agent and stop the sandbox, unless boat already stopped it."""
-    if sandbox_state(sandbox) not in ('stopped', 'archived'):
-        if conversation:
+    """Interrupt the agent and stop the sandbox. The stop is always tried, whatever `boat info` says or whether
+    it answers; a failed stop is let pass only when `boat info` then shows the sandbox stopped. Else Refused."""
+    if conversation:
+        try:
             boat('stop the run again', 'interrupt', sandbox)
+        except Refused:
+            pass  # the stop below ends the agent's work too
+    try:
         boat('stop the run again', 'stop', sandbox)
+    except Refused:
+        try:
+            confirmed = sandbox_state(sandbox) in ('stopped', 'archived')
+        except Refused:
+            confirmed = False
+        if not confirmed:
+            raise
 
 
 def saved(run, state=None):
@@ -288,36 +299,51 @@ def saved(run, state=None):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
 
 
-def lock(run):
-    """Hold the run's lock until this command ends, so its wakes and stops take turns."""
+def lock(run, create):
+    """Hold the run's lock until this command ends, so its wakes and stops take turns. Only a stop makes a
+    missing lock file again: a wake refuses a run without one (it may hold a stop's mark that was lost)."""
     if not os.path.exists(path(run, 'json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
+    if not create and not os.path.exists(path(run, 'lock')):
+        raise Refused('run %s has lost its lock file, which may have marked a stop' % run,
+                      'stop it, then start a new run')
     try:
-        fcntl.flock(os.open(path(run, 'lock'), os.O_RDONLY | os.O_CREAT, 0o600), fcntl.LOCK_EX)
+        fcntl.flock(os.open(path(run, 'lock'), os.O_RDONLY | (os.O_CREAT if create else 0), 0o600), fcntl.LOCK_EX)
     except OSError:
         raise Refused('the driver cannot lock run %s in its state folder' % run, UNWRITABLE)
 
 
+STOP_MARK = 1  # the lock file's mtime, in seconds since 1970, once a stop of the run has begun
+
+
 def mark_stopping(run):
-    """Record the stop intent in the run's existing lock file, so it lasts when the run's record can't be
-    saved: writing a file that exists needs no new entry in the folder (a blocked save, a read-only folder)."""
+    """Record the stop intent on the run's existing lock file, so it lasts when the run's record can't be
+    saved: by its content, and by its mtime, which its owner can set even when the file can't be written.
+    Neither needs a new entry in the folder (a blocked save, a read-only folder). True if either worked."""
+    marked = False
     try:
         fd = os.open(path(run, 'lock'), os.O_WRONLY | os.O_TRUNC)
         try:
-            return os.write(fd, b'stopping\n') == 9
+            marked = os.write(fd, b'stopping\n') == 9
         finally:
             os.close(fd)
     except OSError:
-        return False
+        pass
+    try:
+        os.utime(path(run, 'lock'), (STOP_MARK, STOP_MARK))
+        marked = True
+    except OSError:
+        pass
+    return marked
 
 
 def stopping(run):
-    """Whether a stop of this run began and never saved that the run is stopped."""
+    """Whether a stop of this run began and never saved that the run is stopped: either mark, or no lock."""
     try:
         with open(path(run, 'lock'), 'rb') as f:
-            return f.read(9) == b'stopping\n'
+            return f.read(9) == b'stopping\n' or os.fstat(f.fileno()).st_mtime == STOP_MARK
     except FileNotFoundError:
-        return False
+        return True
 
 
 def strays(run, known):
@@ -337,18 +363,32 @@ def strays(run, known):
     return found
 
 
-def abandon(run, state, cmd):
-    """After an error the driver didn't expect: end the turn it may have begun, then, after a start, stop the
-    sandbox (a wake interrupts its conversation). Best effort: the error itself is what the command answers."""
+def abandon(run, state, cmd, error):
+    """After a start or a wake failed: end the turn it may have begun; after a start, also stop the sandbox
+    (a wake interrupts its conversation instead). Returns None if that worked, else what to answer instead
+    of error: the sandbox's stop is never left unreported."""
+    what = error.args[0] if isinstance(error, Refused) else 'the driver failed: ' + type(error).__name__
     try:
         end(strays(run, {t['supervisor'] for t in state['turns']}), run)
-        if cmd == 'start':
+    except Refused as e:
+        return Refused(line('%s; %s' % (what, e.args[0])), e.args[1])
+    if cmd == 'start':
+        try:
             end_sandbox(state['sandbox'], state['conversation'])
+        except Refused as e:
+            return Refused(line('%s; and its sandbox %s may still run: %s' % (what, state['sandbox'], e.args[0])),
+                           'run `boat stop %s` yourself, and check `boat list`' % state['sandbox'])
+        try:
             saved(run, dict(state, stopped=True))
-        elif state['conversation']:
+        except OSError:
+            pass  # still `starting`: a wake refuses it
+    elif state['conversation']:
+        try:
             boat('stop the run', 'interrupt', state['sandbox'], '--convo', state['conversation'])
-    except (Refused, OSError):
-        pass
+        except Refused as e:
+            return Refused(line('%s; and its conversation may still run: %s' % (what, e.args[0])),
+                           'run `boat interrupt %s` yourself, then stop the run' % state['sandbox'])
+    return None
 
 
 def unsaved(run, sandbox, turn, conversation, cmd):
@@ -403,14 +443,16 @@ def start(req):
             saved(run, dict(state, turns=[turn], conversation=talk, starting=False))
         except OSError:  # the turn began but its run is not saved: end it, and never say do it again
             unsaved(run, state['sandbox'], turn, talk, 'start')
-    except Exception:
-        abandon(run, state, 'start')
+    except Exception as e:
+        instead = abandon(run, state, 'start', e)
+        if instead:
+            raise instead from e
         raise
     return {'run': run}
 
 
 def wake(run):
-    lock(run)
+    lock(run, False)
     state = saved(run)
     if state['stopped']:
         raise Refused('run %s is stopped' % run, 'start a new run')
@@ -439,14 +481,16 @@ def wake(run):
             unsaved(run, state['sandbox'], turn, state['conversation'], 'wake')
     except Refused:
         raise  # prompt and unsaved have already ended what they began
-    except Exception:
-        abandon(run, state, 'wake')
+    except Exception as e:
+        instead = abandon(run, state, 'wake', e)
+        if instead:
+            raise instead from e
         raise
     return {'run': run, 'woke': True}
 
 
 def stop(run):
-    lock(run)
+    lock(run, True)
     state = saved(run)
     marked = mark_stopping(run)  # first, so no later wake undoes this stop even if the save below fails
     try:  # before ending anything, so no wake starts a turn meanwhile

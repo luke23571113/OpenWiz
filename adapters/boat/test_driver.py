@@ -296,6 +296,8 @@ class Boat(unittest.TestCase):
                 self.assertIn('could not save that it is stopped', err['error'])
                 os.rmdir(staged) if block == 'staged-save' else os.chmod(state, 0o700)
                 os.chmod(lock, 0o600)
+                if block != 'both-writes':
+                    os.utime(lock)  # a copy or a restore resets the mtime: the content mark must hold alone
                 turns, sandbox = len(self.logged()), self.sandboxes()
                 code, err = self.driver('wake', out)
                 self.assertEqual((code, len(self.logged()), self.sandboxes()), (1, turns, sandbox), 'a wake undid the stop')
@@ -306,7 +308,9 @@ class Boat(unittest.TestCase):
         self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
         os.remove(os.path.join(self.folder, 'state', out['run'] + '.lock'))
         turns = len(self.logged())
-        self.assertEqual((self.driver('wake', out)[0], len(self.logged())), (1, turns), 'a wake ran without its lock')
+        code, err = self.driver('wake', out)
+        self.assertEqual((code, len(self.logged())), (1, turns), 'a wake ran without its lock')
+        self.assertIn('lost its lock file', err['error'])
 
     def test_an_unexpected_error_leaves_nothing_running(self):
         # catches: an error that isn't Refused (a KeyError on the live run) skipping the cleanup once the sandbox
@@ -319,6 +323,11 @@ class Boat(unittest.TestCase):
                 self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
                 self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
                 self.assertEqual(set(self.sandboxes().values()), {'stopped'}, 'its sandbox still runs')
+        # catches: a sandbox the driver could not stop going unreported (L2, the outcome).
+        code, err = self.driver('start', REQUEST, program=program, RAISE='after', FAKE_BOAT_FAIL='info,stop')
+        self.assertEqual(code, 1, err)
+        self.assertIn('may still run', err['error'])
+        self.assertRegex(err['next'], r'`boat stop bx_fake\d+`')
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
