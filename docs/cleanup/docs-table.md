@@ -341,7 +341,7 @@ PY
 
 ## Reproduce the after (DS8)
 
-Run from the OpenWiz checkout at the after pin, with `$tok` and `<WizSkills>` as above; every check prints nothing wrong and exits 0, except the links check, which lists the 8 known links in [Links](#links) and exits 1.
+Run from an OpenWiz checkout of DS8's merged or reviewed head, which holds the completed table and its removals, with `$tok` and `<WizSkills>` as above. The token manifest and the line count read the measurement pin `d5cf339f` by commit, so they give the after numbers from any checkout. The where-it-went and link checks read this checkout's table and files, so at the measurement pin itself they fail: that tree predates the completed table and DS8's removals. Every check prints nothing wrong and exits 0, except the links check, which lists the 8 known links in [Links](#links) and exits 1.
 
 ```sh
 # the after score: the after manifest below saved as after.json; the same harness and tokenizer as the before
