@@ -9,8 +9,16 @@ definitions describe the retired service, and no code writes them.
 
 ## The config
 
-`service/config.json` in the state directory, `openwiz.service-config.v1`,
-written by the owner's setup and never by OpenWiz. Example (synthetic):
+`service/config.json` in the state directory, `openwiz.service-config.v1`.
+OpenWiz never writes it, and on a fresh install nothing else does either: the
+installer creates only `service/`. The owner writes the file by hand (owner-only,
+0600) before using `openwiz loop on|off`; until then both refuse.
+
+The schema fixture below is the shape the tests read, kept byte for byte. It has
+no `operator`, so as written both switches refuse with "service operator must be
+explicitly configured". Before using it, set `repository` and `project` to your
+own and add a top-level `operator`, a nonblank, NUL-free name, for example
+`"operator": "synthetic-operator"` (synthetic):
 
 ```json
 {"schema": "openwiz.service-config.v1", "repository": {"owner": "synthetic-owner", "name": "synthetic-repo"}, "project": "prj_syn_0001", "orchestrator_thread": "thr_syn_0001", "service_issue": 901, "github_app": {"app_id": 1001, "installation_id": 2002}, "tick": {"every_s": 300}, "health": {"every_s": 60}, "server": {"port": 7370, "allowed_host": "openwiz.example.com", "probe_timeout_s": 10}}
