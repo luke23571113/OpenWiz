@@ -526,8 +526,7 @@ fn only_a_first_pull_request_run_to_main_moves_the_15_second_proof() {
 /// one-command path, run for real with a fake `cargo` and `nproc` first on
 /// `PATH` and a fake cgroup (`RUST_TESTS_ROOT`), builds the fixture release
 /// `openwiz` first, then passes exactly these skips after the 8 test
-/// threads. The fake `cargo` logs each call and runs nothing. The runner's
-/// other rules are `.github/actions/docs-only/test_rust_runner.sh`'s.
+/// threads. The fake `cargo` logs each call and runs nothing.
 #[test]
 fn a_pull_request_to_main_keeps_the_main_only_skips_with_eight_threads() {
     use std::os::unix::fs::PermissionsExt;

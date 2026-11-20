@@ -96,7 +96,6 @@ Rust 1.99.1 with `rustfmt` and `clippy`; there is no `rust-toolchain.toml`.
 
 | # | Folder | Command | CI check |
 | --- | --- | --- | --- |
-| 1 | root | `sh .github/actions/docs-only/test.sh` | `ci` |
 | 2 | root | `cargo fmt --check` | `ci` |
 | 3 | root | `cargo clippy --workspace --all-targets -- -D warnings` | `ci` |
 | 4 | root | `cargo build --workspace` | `ci` |
