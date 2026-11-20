@@ -144,7 +144,10 @@ def scan_hash(s, triple=True):
         elif c == "'":
             end = s.find("'", i + 1)
             nl = s.find('\n', i + 1)
-            i = n if end < 0 else (nl if 0 <= nl < end else end + 1)
+            if end < 0 or 0 <= nl < end:
+                i = n if nl < 0 else nl
+            else:
+                i = end + 1
         else:
             i += 1
     return out
@@ -212,17 +215,19 @@ YAML_ITEM_BLOCK = re.compile(r'^(\s*)-\s+[|>][0-9+-]*\s*$')
 
 
 def yaml_line_comment(line):
-    quote = None
-    for j, c in enumerate(line):
+    quote, j = None, 0
+    while j < len(line):
+        c = line[j]
         if quote:
             if c == '\\' and quote == '"':
-                continue
-            if c == quote:
+                j += 1
+            elif c == quote:
                 quote = None
         elif c in '"\'' and (j == 0 or line[j - 1] in ' \t[{,'):
             quote = c
         elif c == '#' and (j == 0 or line[j - 1] in ' \t'):
             return j
+        j += 1
     return -1
 
 
@@ -504,22 +509,26 @@ MESSAGES = {
     'escape-tag-reason': 'the escape tag needs a reason after "comment-ok:"',
     'external-link': 'an "External:" constraint needs a link to the outside source',
     'directive-reason': 'a lint or formatter switch needs its reason after " -- "',
+    'unreadable': 'a file in a listed language that is not UTF-8 text, so its comments cannot be read',
 }
 
 
-def git(*args, binary=False):
+def git(*args):
     run = subprocess.run(['git', *args], capture_output=True)
     if run.returncode:
         print(f'comment-check: git {" ".join(args)}: {run.stderr.decode(errors="replace").strip()}', file=sys.stderr)
         sys.exit(2)
-    return run.stdout if binary else run.stdout.decode()
+    return run.stdout.decode('utf-8', 'surrogateescape')
 
 
 def read_blobs(rev, paths):
     if not paths:
         return {}
-    run = subprocess.run(['git', 'cat-file', '--batch'], input=''.join(f'{rev}:{p}\n' for p in paths).encode(),
-                         capture_output=True)
+    run = subprocess.run(['git', 'cat-file', '--batch'], capture_output=True,
+                         input=''.join(f'{rev}:{p}\n' for p in paths).encode('utf-8', 'surrogateescape'))
+    if run.returncode:
+        print(f'comment-check: git cat-file: {run.stderr.decode(errors="replace").strip()}', file=sys.stderr)
+        sys.exit(2)
     data, out, i = run.stdout, {}, 0
     for path in paths:
         end = data.index(b'\n', i)
@@ -529,12 +538,10 @@ def read_blobs(rev, paths):
             continue
         size = int(header[2])
         blob, i = data[i:i + size], i + size + 1
-        if b'\0' in blob:
-            continue
         try:
-            out[path] = blob.decode('utf-8')
+            out[path] = None if b'\0' in blob else blob.decode('utf-8')
         except UnicodeDecodeError:
-            continue
+            out[path] = None
     return out
 
 
@@ -557,7 +564,7 @@ def files_at(rev, pathspecs, extra):
         mode, kind = meta.split()[:2]
         if kind == 'blob' and mode in ('100644', '100755'):
             paths.append(path)
-    texts = read_blobs(rev, paths)
+    texts = {p: t for p, t in read_blobs(rev, paths).items() if t is not None}
     marked = attributes(rev, list(texts))
     for path, text in texts.items():
         lang = language(path, text)
@@ -588,13 +595,21 @@ def tally(rev, pathspecs, docs, extra, by_file):
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
 
 
+def unquote(path):
+    if not (path.startswith('"') and path.endswith('"')):
+        return path
+    raw = path[1:-1].encode('utf-8', 'surrogateescape').decode('unicode_escape')
+    return raw.encode('latin-1').decode('utf-8', 'surrogateescape')
+
+
 def added_lines(base, head):
-    diff = git('-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-U0', '-M', '--diff-filter=d',
+    diff = git('-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--text', '-U0', '-M', '--diff-filter=d',
                f'{base}...{head}')
     added, path = {}, None
     for line in diff.split('\n'):
         if line.startswith('+++ '):
-            path = line[6:].rstrip('\t') if line.startswith('+++ b/') else None
+            path = unquote(line[4:].rstrip('\t'))
+            path = path[2:] if path.startswith('b/') else None
         elif path and line.startswith('@@'):
             m = HUNK.match(line)
             start, count = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
@@ -609,8 +624,11 @@ def diff_mode(args):
     marked = attributes(head, list(texts))
     found = []
     for path, text in sorted(texts.items()):
-        lang = language(path, text)
-        if not lang or excluded(path, text, marked, args.exclude):
+        lang = language(path, text or '')
+        if not lang or excluded(path, text or '', marked, args.exclude):
+            continue
+        if text is None:
+            found.append((path, min(added[path]), 'unreadable'))
             continue
         judged = Judged(text, lang, matches(path, args.docs))
         for lines, reason in judged.failures:

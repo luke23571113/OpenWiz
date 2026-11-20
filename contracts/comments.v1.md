@@ -102,7 +102,7 @@ It reads every file the pull request adds or changes at `--head` (default `HEAD`
 src/lib.rs:18: comment: a comment outside the allowed kinds: delete it, or turn what it meant into a name, a test or a check
 ```
 
-The reasons are `comment`, `escape-tag-reason`, `external-link` and `directive-reason`. It exits 0 when nothing fails, 1 with one line per failure on stdout, and 2 when Git can't read the revisions. Old comments never fail a pull request: a block fails only when the pull request adds or changes one of its lines.
+The reasons are `comment`, `escape-tag-reason`, `external-link`, `directive-reason`, and `unreadable` for a changed file in a listed language that isn't UTF-8 text (it fails rather than going unread). It exits 0 when nothing fails, 1 with one line per failure on stdout, and 2 when Git can't read the revisions. Old comments never fail a pull request: a block fails only when the pull request adds or changes one of its lines.
 
 ## Count mode and its report
 
@@ -110,7 +110,7 @@ The reasons are `comment`, `escape-tag-reason`, `external-link` and `directive-r
 python3 -I tools/comment-check/check.py count [--before <rev>] [--at <rev>] [--by-file] [--docs <path>]... [--exclude <glob>]... [<path>...]
 ```
 
-It counts the files Git tracks at `--at` (default `HEAD`), limited to the paths given (all when none), and, with `--before`, the same paths at that revision in the same way. It reads only Git's objects, so BEFORE and AFTER come from one checkout and an untracked file never counts. It prints one JSON report ([schema](comments.v1.schema.json)):
+It counts the UTF-8 text files Git tracks at `--at` (default `HEAD`), limited to the paths given (all when none), and, with `--before`, the same paths at that revision in the same way. It reads only Git's objects, so BEFORE and AFTER come from one checkout and an untracked file never counts. It prints one JSON report ([schema](comments.v1.schema.json)):
 
 | Field | What |
 | --- | --- |
@@ -135,7 +135,7 @@ Every repository carries `contracts/comments.v1.md` and `tools/comment-check/che
 
 - The checker reads forms, not meaning: a false `External:` or a stale warning passes it. CC7's review pass reads the meaning.
 - Comments inside string literals (a script held in a Rust raw string or a JavaScript template literal) are not seen. YAML block scalars other than `run:` are treated as text.
-- JavaScript's `/` is read as a regular expression after an operator, an opening bracket, `}` or a keyword such as `return`, and as division otherwise; rare code can fool it.
+- JavaScript's `/` is read as a regular expression after an operator, an opening bracket, `}` or a keyword such as `return`, and as division otherwise; rare code can fool it. JSX text is read as code, so a `//` in it reads as a comment.
 - `.gitattributes` marks are read with `git check-attr --source`, Git 2.40 or later; an older Git reads none.
 
 ## Credit
