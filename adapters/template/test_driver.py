@@ -286,17 +286,17 @@ class Template(unittest.TestCase):
         code, err = self.call('wake', out)
         time.sleep(0.5)  # time for a turn to log itself, if one was started
         self.assertEqual((code, len(self.logged())), (1, 1), 'a wake launched with nowhere to save its turn')
+        self.assertIn('nothing was started', err['error'])  # not ended after a launch: never launched at all
         self.assertNotIn('retry', json.dumps(err))
         os.rmdir(blocked)
         open(self.hold, 'w').close()
+        before = set(self.marked())  # the first turn's worker still runs
         code, err = self.call('wake', out, driver=self.wrapper('breaks-after-spawn', BREAKS_AFTER_SPAWN),
                               BREAK='write')
         self.assertEqual(code, 1, err)
         self.assertIn('unknown', err['error'])
         self.assertNotIn('retry', json.dumps(err))
-        [_, (woken, child, kind)] = self.logged(2)
-        self.assertEqual(kind, 'woken')
-        self.assertTrue(self.until(lambda: not alive(woken) and not alive(child)), 'the unsaved turn still runs')
+        self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the unsaved turn still runs')
 
 
 if __name__ == '__main__':
