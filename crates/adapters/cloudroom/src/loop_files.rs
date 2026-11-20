@@ -3694,4 +3694,92 @@ mod plan_tests {
             assert_eq!(too_frequent(cron), refused, "{cron}");
         }
     }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("openwiz-lc2-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn codes(text: &str) -> Vec<(&'static str, String)> {
+        read_loop(text.as_bytes(), &mut |_| CheckText::NotFound)
+            .refusals
+            .into_iter()
+            .map(|r| (r.code, r.field))
+            .collect()
+    }
+
+    const WEBHOOK: &str =
+        "---\nid: \"a\"\nname: \"A\"\ntrigger: {\"webhook\": true}\nthread: \"new\"\n";
+
+    // catches #992: a catalog file with secrets "all" and another field
+    // refused reporting only that field, never catalog-all-secrets.
+    #[test]
+    fn a_catalog_refuses_all_secrets_beside_other_refusals() {
+        let root = scratch("catalog");
+        let file = format!("{WEBHOOK}secrets: \"all\"\npriority: 9\n---\nGo.\n");
+        std::fs::write(root.join("a.md"), file).unwrap();
+        let folder = read_loop_folder(&root, true).unwrap();
+        let codes: Vec<_> = folder.files[0].1.refusals.iter().map(|r| r.code).collect();
+        assert_eq!(codes, ["bad-priority"]);
+        let refused: Vec<_> = folder
+            .refusals
+            .iter()
+            .map(|(n, r)| (n.as_str(), r.code))
+            .collect();
+        assert_eq!(refused, [("a.md", "catalog-all-secrets")]);
+        assert!(read_loop_folder(&root, false).unwrap().refusals.is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    // catches #993: an unrelated non-UTF-8 name (here `\xff.txt`) failing
+    // the whole folder read, though only `*.md` names are selected.
+    #[test]
+    fn a_folder_ignores_unrelated_non_utf8_names() {
+        use std::os::unix::ffi::OsStrExt;
+        let root = scratch("names");
+        std::fs::write(root.join("a.md"), format!("{WEBHOOK}---\nGo.\n")).unwrap();
+        let other = std::ffi::OsStr::from_bytes(b"\xff.txt");
+        std::fs::write(root.join(other), "x").unwrap();
+        let folder = read_loop_folder(&root, false).unwrap();
+        assert_eq!(folder.files.len(), 1);
+        assert_eq!(folder.files[0].0, "a.md");
+        assert!(folder.files[0].1.refusals.is_empty());
+        std::fs::write(root.join(std::ffi::OsStr::from_bytes(b"\xff.md")), "x").unwrap();
+        assert!(read_loop_folder(&root, false).is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    // catches #997: a file of exactly `---` refused as frontmatter-start,
+    // though its first line is the opening delimiter.
+    #[test]
+    fn a_lone_opening_line_lacks_only_its_closing_line() {
+        assert_eq!(codes("---"), [("frontmatter-end", "file".to_owned())]);
+        assert_eq!(codes("--"), [("frontmatter-start", "file".to_owned())]);
+        assert_eq!(codes("----"), [("frontmatter-start", "file".to_owned())]);
+    }
+
+    // catches #995: `{{{repo}}}` hiding the placeholder `{{repo}}` one byte
+    // after a failed probe, in the check and in the body.
+    #[test]
+    fn overlapping_placeholders_are_each_checked() {
+        let text = format!("{WEBHOOK}check: {{\"run\": \"check\", \"timeout\": 5}}\n---\nGo.\n");
+        let read = read_loop(text.as_bytes(), &mut |_| {
+            CheckText::Text("echo '{{{repo}}}'\n".into())
+        });
+        let found: Vec<_> = read
+            .refusals
+            .iter()
+            .map(|r| (r.code, r.field.as_str()))
+            .collect();
+        assert_eq!(found, [("param-in-check", "check")]);
+        assert_eq!(
+            codes(&format!("{WEBHOOK}---\nGo {{{{{{repo}}}}}}.\n")),
+            [
+                ("bad-placeholder", "body".to_owned()),
+                ("undeclared-param", "body".to_owned())
+            ]
+        );
+    }
 }
