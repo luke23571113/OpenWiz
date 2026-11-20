@@ -22,6 +22,9 @@ serde_json = "1"
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
+[workspace.lints.clippy]
+allow_attributes_without_reason = "deny"
+
 # K7 (#427): the in-house SHA-256 and the staging loops, optimised in dev
 # and test builds; debug assertions and overflow checks stay on.
 [profile.dev.package.openwiz-core]
