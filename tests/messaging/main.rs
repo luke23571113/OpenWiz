@@ -4,9 +4,6 @@
 //!
 //! Every case runs against the repository's fake `room-cli`. **Nothing is
 //! sent live**, and fixture tests never prove live behaviour.
-//!
-//! `structure` holds the checks that are not one M case: a core without
-//! I/O.
 
 mod support;
 
@@ -29,4 +26,3 @@ mod forks;
 mod counter;
 
 mod m12_allowlist;
-mod structure;

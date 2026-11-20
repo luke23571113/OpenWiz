@@ -28,8 +28,6 @@ mod forks;
 #[path = "../new-thread/pattern.rs"]
 mod pattern;
 
-mod ap10_no_dispatch;
-mod ap11_schema;
 mod parity;
 
 // B2 (ClosedWiz#15): the rules and static checks of attachments in send

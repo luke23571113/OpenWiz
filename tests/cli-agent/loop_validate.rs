@@ -2,7 +2,7 @@
 //! WizLoops fixtures (`contracts/fixtures/wizloops/`), with a `room-cli` that
 //! records any call. Expected results come from the fixtures' own
 //! `expected.json`, never from the reader. These read `contracts/`, so they
-//! live here rather than in the CLI crate (see `loop_contract.rs`).
+//! live here rather than in the CLI crate.
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
