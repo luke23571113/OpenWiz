@@ -134,7 +134,7 @@ Source: Jake, 2026-11-13 ([private record](https://github.com/jparker2006/Closed
 | Pull request | Review | Merged by, and when |
 | --- | --- | --- |
 | A ticket in an approved plan graph (skill changes included) | The reviewer above, on its exact head | The loop, as soon as the reviewer's APPROVE names that exact commit and every required CI check is green on it, it has no conflict with `main`, and the base is checked by OpenWiz's merge queue. Without a queue, M1 applies: `main` has moved since that CI run only by merges that were themselves green; CI on `main` catches a bad combination, fixed forward. Then the merge is read back. The APPROVE is the merge decision; the loop performs it |
-| Docs-only or evidence-only, outside any ticket (`STATUS.md`, the handoff file, evidence) | None | The orchestrator, once CI is green |
+| Docs-only or evidence-only, outside any ticket (the handoff file, evidence) | None | The orchestrator, once CI is green |
 | A grill, with the glossary terms and ADRs it settled | None | The orchestrator, once Jake confirms the grill's summary, or parks the grill, and CI is green |
 | Anything to `release-*`, and every release | Ordinary development review/CI remain; no separate export review for the successor path | After verified O17 cut-over, agents execute the checked public-source release on Jake's actual ship instruction and exact changelog approval under ADR 0020; no third human release action. Before cut-over, no successor-path publication |
 
