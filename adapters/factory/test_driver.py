@@ -230,6 +230,7 @@ class Factory(unittest.TestCase):
             lines = f.read().splitlines()
         self.assertEqual((lines[0][:2], lines[1:3]), ('# ', ['', 'Login: held by Factory']))
         self.assertIn('`FACTORY_API_KEY`', '\n'.join(lines))
+        self.assertIn('**Platforms:** Linux only, Python 3.9 or later', '\n'.join(lines))
 
 
 if __name__ == '__main__':
