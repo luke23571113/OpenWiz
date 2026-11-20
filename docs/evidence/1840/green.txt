@@ -16,6 +16,6 @@ test_the_template_asks_only_for_public_words (__main__.PlantedBreaks.test_the_te
 test_triage_posts_no_comment_on_the_report (__main__.PlantedBreaks.test_triage_posts_no_comment_on_the_report) ... ok
 
 ----------------------------------------------------------------------
-Ran 16 tests in 0.065s
+Ran 16 tests in 0.066s
 
 OK

@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""Proof P1 of #1840: the feedback-loop fixtures and template hold under the contract.
-
-Run: python3 -I contracts/fixtures/feedback-loop/test_check.py
-"""
 import json
 from pathlib import Path
 import shutil
@@ -14,19 +10,15 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE))
-import check  # noqa: E402
+import check  # noqa: E402 -- imported after its folder joins sys.path
 
 
 class Fixtures(unittest.TestCase):
     def test_the_fixtures_and_template_hold_and_cover_the_loop(self):
-        # catches: a missing case (a report, either triage outcome, a landed
-        # comment, a second merge that posts nothing) or a template that drifts
-        # from the contract.
         self.assertEqual(check.check(ROOT), [])
 
 
 def planted(edit):
-    """Run the check on a copy of the contract, fixtures and template after `edit(root)`."""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         for rel in (check.CONTRACT, check.FIXTURES, '.github/ISSUE_TEMPLATE/feedback.yml'):
@@ -56,47 +48,39 @@ def template(old, new):
 
 
 class PlantedBreaks(unittest.TestCase):
-    """Each guard refuses the break it exists for, and names only it."""
 
     def refused(self, edit, *expected):
         self.assertEqual(planted(edit), list(expected))
 
     def test_a_failed_criterion_never_goes_to_a_fleet(self):
-        # catches: a report failing a small-and-clear code still sent to a fleet.
         self.refused(case('triage-to-a-fleet', lambda d: d['input']['criteria'].update(no_instructions=False)),
                      'triage-to-a-fleet.json: outcome must be held', 'fixtures: no to a fleet case')
 
     def test_an_instruction_carrying_report_is_held(self):
-        # catches: a report addressed to agents sent to a fleet.
         def send(d):
             d['input']['criteria']['no_instructions'] = True
             d['expect']['outcome'] = 'held'
         self.refused(case('triage-held-instruction', send), 'triage-held-instruction.json: outcome must be fleet')
 
     def test_the_brief_copies_no_link_or_code_from_the_report(self):
-        # catches: a report's link or command carried into a builder's brief.
         def copy(d):
             d['input']['report']['body'] = 'See https://synthetic.example/x\n\n' + d['input']['report']['body']
             d['expect']['brief']['body'] = 'https://synthetic.example/x\n' + d['expect']['brief']['body']
         self.refused(case('triage-to-a-fleet', copy), 'triage-to-a-fleet.json: the brief copies a link or code from the report')
 
     def test_triage_posts_no_comment_on_the_report(self):
-        # catches: triage replying on a report without the owner's yes.
         self.refused(case('triage-held-too-big', lambda d: d['expect']['report_comments'].append('Thanks!')),
                      'triage-held-too-big.json: triage posts no comment on the report')
 
     def test_a_held_report_keeps_needs_triage(self):
-        # catches: a held report labelled as if it were sent on.
         self.refused(case('triage-held-too-big', lambda d: d['expect'].update(report_labels=['feedback'])),
                      "triage-held-too-big.json: the report must be labelled exactly ['feedback', 'needs-triage']")
 
     def test_a_second_merge_posts_nothing(self):
-        # catches: a second landed comment on the same report.
         self.refused(case('landed-second-merge', lambda d: d['expect']['posts'].append([9101, 'x'])),
                      'landed-second-merge.json: posts must be []')
 
     def test_only_a_record_authors_landed_comment_counts(self):
-        # catches: anyone silencing the landed comment by posting its form first.
         def forge(d):
             d['input']['issues']['9101']['comments'][0]['author'] = 'synthetic-user'
         self.refused(case('landed-second-merge', forge),
@@ -105,20 +89,16 @@ class PlantedBreaks(unittest.TestCase):
                      'fixtures: no second merge case')
 
     def test_no_landed_comment_without_a_version_or_a_merge(self):
-        # catches: a landed comment naming no release, or posted for a closed, unmerged pull request.
         self.refused(case('landed', lambda d: d['input']['issues']['9101'].update(milestone='next')),
                      'landed.json: posts must be []', 'fixtures: no landed case')
         self.refused(case('landed', lambda d: d['input']['pull_request'].update(merged=False)),
                      'landed.json: posts must be []', 'fixtures: no landed case')
 
     def test_the_landed_comment_follows_the_brief_link(self):
-        # catches: a landed comment posted on a report the merge closed directly,
-        # without a record author's brief linking to it.
         self.refused(case('landed', lambda d: d['input']['pull_request'].update(closes=['Closes openwizdev/OpenWiz#9101'])),
                      'landed.json: posts must be []', 'fixtures: no landed case')
 
     def test_a_report_link_counts_only_from_a_record_author_and_last(self):
-        # catches: anyone's issue, or a link line not last, steering the landed comment.
         self.refused(case('report-link-forged', lambda d: d['input']['issue'].update(author='synthetic-maintainer')),
                      'report-link-forged.json: report is 9101, the case expects None', 'fixtures: no forged link case')
         moved = 'Report: #9101\n\nKeep the approve button above the footer.'
@@ -126,24 +106,18 @@ class PlantedBreaks(unittest.TestCase):
                      'report-link.json: report is None, the case expects 9101', 'fixtures: no report link case')
 
     def test_the_landed_comment_names_the_pull_request_in_full(self):
-        # catches: a bare #<n> that points at the wrong repository, or a landed
-        # comment for a pull request outside openwizdev.
         self.refused(case('landed', lambda d: d['input']['pull_request'].update(repository='synthetic-org/WizSkills')),
                      'landed.json: posts must be []', 'fixtures: no landed case')
 
     def test_only_a_full_closing_line_reaches_the_destination(self):
-        # catches: a bare `Closes #<n>` in a WizSkills or WizSite pull request
-        # read as closing an OpenWiz brief.
         self.refused(case('landed', lambda d: d['input']['pull_request'].update(closes=['Closes #9106', 'Closes #9101'])),
                      'landed.json: posts must be []', 'fixtures: no landed case')
 
     def test_a_marker_counts_only_as_the_last_line(self):
-        # catches: an issue quoting a marker mid-body treated as a report.
         self.refused(case('not-a-report', lambda d: d['expect'].update(is_report=True)),
                      'not-a-report.json: is_report is False, the case expects True')
 
     def test_a_case_with_an_unknown_or_repeated_key_is_refused(self):
-        # catches: a reader that silently accepts an extra or repeated key.
         self.refused(case('landed', lambda d: d['expect'].update(note='x')),
                      "landed.json: unreadable: a landed expectation must have exactly the keys ['posts']",
                      'fixtures: no landed case')
@@ -157,7 +131,6 @@ class PlantedBreaks(unittest.TestCase):
                      'fixtures: no landed case')
 
     def test_the_template_asks_only_for_public_words(self):
-        # catches: a template that asks for logs or files, drops the public notice or the label.
         log = '  - type: textarea\n    id: logs\n    attributes:\n      label: Logs\n      render: shell\n'
         fields = "{'type': 'textarea', 'id': 'logs', 'required': False}"
         found = planted(template('  - type: checkboxes', log + '  - type: checkboxes'))

@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""Check the feedback-loop fixtures and issue template against their contract.
-
-Contract: contracts/feedback-loop.v1.md; its `feedback-loop-v1` block is the one
-source of every value checked here. Usage: check.py [ROOT]. Exit 0 when every
-case and the template hold, 1 naming each problem, 2 when the contract can't be
-read. Reads only; writes nothing.
-"""
 import json
 from pathlib import Path
 import re
@@ -69,7 +62,6 @@ def is_report(obj, c):
 
 
 def report_link(obj, c, authors):
-    """The report number a record author's brief links to, or None."""
     lines = obj['body'].split('\n')
     links = [x for x in lines if re.fullmatch(c['report_link'], x)]
     if obj['pull_request'] or obj['author'] not in authors or len(lines) < 3 or lines[-2] != '' \
@@ -79,7 +71,6 @@ def report_link(obj, c, authors):
 
 
 def closed(pr, c):
-    """The destination issues a pull request's closing lines name in full; others close nothing here."""
     found = [re.fullmatch(c['closing'], x) for x in pr['closes']]
     return [int(m.group(1)) for m in found if m]
 
@@ -91,7 +82,6 @@ def landed_re(c):
 
 
 def landed_posts(inp, c):
-    """The landed comments a verified merge posts: [(issue number, body)]."""
     pr, issues, authors = inp['pull_request'], inp['issues'], inp['record_authors']
     posts = []
     full = f"{pr['repository']}#{pr['number']}"
@@ -209,7 +199,6 @@ def scalar(s):
 
 
 def yaml_block(lines, i, ind):
-    """The block YAML subset the template uses; anything else is refused."""
     if lines[i][1].startswith('- '):
         out = []
         while i < len(lines) and lines[i][0] == ind and lines[i][1].startswith('- '):
@@ -271,7 +260,6 @@ def check_template(root, c):
 
 
 def check(root):
-    """Every problem, as 'place: message', and the coverage tags found."""
     root = Path(root)
     c = contract(root)
     problems, covered = [], set()
