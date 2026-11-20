@@ -40,6 +40,10 @@ account, issue number and text below and in the fixtures is synthetic.
 The agent route never sets a label: the feedback contract allows only `title`
 and `body`, and GitHub drops labels from anyone without push access anyway.
 
+A link-route report has no marker and no operation, so it is not a feedback
+issue under the feedback contract; this contract adds it as a report, and every
+receiving rule there applies to it alike.
+
 ## The issue template
 
 `.github/ISSUE_TEMPLATE/feedback.yml` is a GitHub issue form named "Report a
@@ -47,7 +51,7 @@ problem" that applies the `feedback` label and asks only for public words:
 
 | Field id | Type | Required | Asks for |
 | --- | --- | --- | --- |
-| (none) | `markdown` | | Says everything written is public, and not to paste prompts, code, paths, tokens, logs or screenshots of private work |
+| (none) | `markdown` | | Opens with the notice "Everything you write here is public: anyone can read it.", then says not to paste prompts, code, paths, tokens, logs or screenshots of private work |
 | `what-happened` | `textarea` | yes | What went wrong |
 | `expected` | `textarea` | yes | What the user expected instead |
 | `steps` | `textarea` | no | How someone can see it happen |
@@ -67,7 +71,8 @@ report's words. A report never becomes a ticket body.
 
 ## Triage: two outcomes
 
-Triage reads each report not yet triaged and gives it exactly one outcome. It
+Triage reads each report not yet triaged (one with neither a milestone nor
+`needs-triage`) and gives it exactly one outcome. It
 posts **no comment on the report**: the landed comment is the only automatic
 reply, and any other reply keeps the feedback contract's rule (the owner's
 explicit yes to the exact text, issue and account).
@@ -132,6 +137,7 @@ These prove the rules on fixtures only, never a live report.
     "path": ".github/ISSUE_TEMPLATE/feedback.yml",
     "name": "Report a problem",
     "labels": ["feedback"],
+    "notice": "Everything you write here is public: anyone can read it.",
     "fields": [
       {"type": "markdown", "id": null, "required": false},
       {"type": "textarea", "id": "what-happened", "required": true},

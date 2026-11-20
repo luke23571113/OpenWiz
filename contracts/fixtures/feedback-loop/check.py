@@ -92,6 +92,7 @@ def landed_posts(inp, c):
 
 def check_report(case, c):
     obj = issue(case['input'])
+    shape(case['expect'], {'is_report'}, 'a report expectation')
     found = is_report(obj, c)
     if found != case['expect']['is_report']:
         return [f'is_report is {found}, the case expects {case["expect"]["is_report"]}'], [('report' if found else 'not a report')]
@@ -143,6 +144,9 @@ def check_landed(case, c):
     shape(inp, {'pull_request', 'issues', 'record_authors'}, 'a landed input')
     shape(inp['pull_request'], {'number', 'merged', 'closes'}, 'a pull request')
     shape(exp, {'posts'}, 'a landed expectation')
+    pr = inp['pull_request']
+    if not isinstance(pr['merged'], bool) or not isinstance(pr['closes'], list):
+        raise ValueError('merged is true or false and closes is a list')
     posts = landed_posts(inp, c)
     problems = [] if exp['posts'] == posts else [f'posts must be {posts}']
     tags = []
@@ -227,8 +231,8 @@ def check_template(root, c):
         else:
             req = f.get('validations', {}).get('required') is True
         fields.append({'type': f.get('type'), 'id': f.get('id'), 'required': req})
-        if f.get('type') == 'markdown' and 'public' not in attrs.get('value', ''):
-            problems.append('the template must say everything written is public')
+        if f.get('type') == 'markdown' and not str(attrs.get('value', '')).startswith(t['notice']):
+            problems.append('the template must open with the public notice')
     if fields != t['fields']:
         problems.append(f'the template fields must be exactly {t["fields"]}, found {fields}')
     return problems
