@@ -4,7 +4,7 @@
 
 ## In one paragraph
 
-- **0.1.0 AP11 (#1264):** OpenWiz is now the command, the adapters and the engine. The old web view, the act-from-the-UI pieces (`send`, `new`, `models`, `attachment`), OpenWiz's copy of the site, the server, the service and the store are deleted, and the store's engine half moved into the command (`crates/cli/src/state/`). The app lives at [openwiz.dev/app](https://openwiz.dev/app). Releases and installs carry only the CLI and its runtime. Fixture-tested only; no live check.
+- **0.1.0 AP11 (#1264):** OpenWiz is now the command, the adapters and the engine. The old web view, the act-from-the-UI pieces (`send`, `new`, `attachment`; read-only `openwiz models` stays, kept by J233 for setup and onboarding), OpenWiz's copy of the site, the server, the service and the store are deleted, and the store's engine half moved into the command (`crates/cli/src/state/`). The app lives at [openwiz.dev/app](https://openwiz.dev/app). Releases and installs carry only the CLI and its runtime. Fixture-tested only; no live check.
 
 - **Fleet check cost (#598, formerly #2788, 2026-11-15):** OpenWiz main is merged while retaining snapshot reuse and person-completion blocker handling. All 53 scoped shell cases and 14 load proofs pass, with the unchanged 600-second Workload guard. The nine paired synthetic ticks keep GraphQL commands, modeled requests and points at or below main's, including zero on both immediate recovery ticks, with identical due output. All 786 shell cases are retained for CI. See #598 for the historical merge and R1 proofs. Live HTTP costs and latency remain unverified.
 
