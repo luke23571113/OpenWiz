@@ -1,1 +1,0 @@
-ci3: step 'Check the signed main map age' (job <repo>/.github/workflows/ci.yml) matches no row of <repo>/tools/collector/steps.tsv

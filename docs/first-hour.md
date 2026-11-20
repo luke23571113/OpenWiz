@@ -32,7 +32,7 @@ six steps, and each step shows only what OpenWiz has actually read:
 5. **Watch the fleet build.** Builders start only after you approve the exact
    plan and say yes to the start: one fleet thread with its own loop starts
    them. Counts are shown as reported, and a partial read shows as unknown, not
-   zero. See [How fleets work](fleets.md).
+   zero. See [How OpenWiz works](how-openwiz-works.md).
 6. **First verified merge.** A merge shows as verified only when GitHub reports
    the pull request merged and the merge commit has been read back on its
    base. A closed pull request or a progress count is never a verified merge.

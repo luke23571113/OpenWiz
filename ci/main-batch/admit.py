@@ -40,7 +40,7 @@ WORKFLOW = '.github/workflows/ci.yml'
 # here needs Jake's recorded decision on #2319; code cannot infer it (AC5).
 SUPPORTED_MECHANISMS = ()
 
-# The reviewed C11b chain (#2318, docs/evidence/ci2-batch-proof.md, APPROVE on
+# The reviewed C11b chain (#2318, private-record evidence, APPROVE on
 # #2482 at e735765f): the private archive's manifest digest, the batch and the
 # retained nightly, and every coverage implementation file at candidate C.
 PIN = dict(
