@@ -58,8 +58,6 @@ def split(line):
 
 
 def resolve(opts, name):
-    # Like acpx 0.22.0's loadResolvedConfig and resolveInvocationCommand: ~/.acpx/config.json, then the
-    # folder's .acpxrc.json; --agent wins, then a configured agent, then the built-in registry.
     cwd = os.path.abspath(opts.get('--cwd', '.'))
     found = [config(os.path.join(os.path.expanduser('~'), '.acpx', 'config.json')),
              config(os.path.join(cwd, '.acpxrc.json'))]

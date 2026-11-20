@@ -188,7 +188,7 @@ class OpenClaw(unittest.TestCase):
             self.assertTrue(0 < int(g['--ttl']) <= 300, g)
 
     def test_a_harness_acpx_would_run_as_a_command_is_refused_without_echoing_it(self):
-        for harness in ('sh', 'zz-unknown-agent', 'openclaw'):
+        for harness in ('sh', 'zz-unknown-agent', 'openclaw', 'gemini'):
             with self.subTest(harness=harness):
                 code, out = self.driver('start', dict(REQUEST, harness=harness))
                 self.assertEqual(code, 1, out)
