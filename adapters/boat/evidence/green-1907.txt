@@ -1,4 +1,4 @@
-# Green run (#1907): python3 -I adapters/boat/test_driver.py -v at 47fc2993, on a PATH of fixtures/bin and named tools only (no real claude, codex, gh or git): the first-turn tests (red in red-1907.txt) and every earlier driver test, the kit's five checks included.
+# Green run (#1907): python3 -I adapters/boat/test_driver.py -v at 4b78ee4c, in an environment built from scratch (no BASH_ENV) on a PATH of fixtures/bin and named tools only (no real claude, codex, gh or git): the first-turn tests (red in red-1907.txt) and every earlier driver test, the kit's five checks included.
 test_a_failed_stop_is_never_undone_by_a_wake (__main__.Boat.test_a_failed_stop_is_never_undone_by_a_wake) ... ok
 test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start (__main__.Boat.test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start) ... ok
 test_a_start_not_fully_saved_is_never_woken (__main__.Boat.test_a_start_not_fully_saved_is_never_woken) ... ok
@@ -15,6 +15,6 @@ test_stop_ends_the_run_when_it_cannot_save (__main__.Boat.test_stop_ends_the_run
 test_wake_checks_its_save_before_and_after_spawn (__main__.Boat.test_wake_checks_its_save_before_and_after_spawn) ... ok
 
 ----------------------------------------------------------------------
-Ran 14 tests in 30.318s
+Ran 14 tests in 30.442s
 
 OK
