@@ -50,6 +50,13 @@ Where they disagree, the contract is wrong and must be fixed.
     "request": "stdin",
     "answer": "stdout, one JSON line, read from a pipe",
     "timeout_s": 60,
+    "token_crossing": {
+      "never": ["command line", "terminal", "log", "record"],
+      "only": "piped stdout of one room-cli mac run --stdin call",
+      "into": "the caller's private place",
+      "live_gate": "GA5 reads back no pairing log or mac run result record keeps it",
+      "if_kept": "cloud route stays off; cloud threads fall back with the note"
+    },
     "routes": {
       "pairing": ["room-cli", "mac", "run", "--stdin", "python3 -I '<service>' mint"],
       "local": ["python3", "-I", "<service>", "mint"]
@@ -122,6 +129,18 @@ the helper as `unreachable`, never run. The request goes on standard input, neve
 the command line. The answer comes back as **one JSON line on standard
 output, read from a pipe**: the caller never lets it reach a terminal, a
 transcript or a log. A call has 60 seconds.
+
+**How a token crosses the pairing** (the planner's answer on #1839, option 1;
+2026-11-20):
+
+- A token never appears on any command line, in a terminal, or in any log or
+  record.
+- It crosses the owner's machine pairing only as the piped standard output of
+  one `room-cli mac run --stdin` call, read straight into the caller's private
+  place.
+- GA5's live check reads back that no pairing log or `mac run` result record
+  keeps it. If one does, the cloud route stays off and cloud threads fall back
+  to the owner's account, with the standard-error note, until that's fixed.
 
 How the owner starts and stops the service is GA2's runbook. A stopped
 service answers like an unreachable one.
