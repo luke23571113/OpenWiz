@@ -396,3 +396,35 @@ pub fn read_snapshot(root: &Path) -> Result<Snapshot, String> {
         enabled: switches.enabled,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Reader;
+    use std::fs::{DirBuilder, OpenOptions};
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+
+    #[test]
+    fn an_indexed_run_without_its_record_is_refused_never_an_empty_history() {
+        let dir = std::env::temp_dir().join(format!("openwiz-loop-index-{}", std::process::id()));
+        DirBuilder::new()
+            .mode(0o700)
+            .recursive(true)
+            .create(dir.join("runs"))
+            .unwrap();
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(dir.join("index.json"))
+            .unwrap()
+            .write_all(br#"["syn-run-1"]"#)
+            .unwrap();
+        let runs = Reader { dir: dir.clone() }.runs();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(
+            runs,
+            Err("loop run history is incomplete or has unindexed records".to_owned())
+        );
+    }
+}
