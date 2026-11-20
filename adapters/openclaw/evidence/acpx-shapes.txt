@@ -1,0 +1,24 @@
+# The driver's acpx calls against the real acpx 0.22.0 parser (npm, MIT), with its claude agent replaced by a
+# command that exits 1 in a throwaway HOME's ~/.acpx/config.json, so no agent, login or host is reached.
+# Each shape parses (exit 1 at `sessions new`: the stand-in agent failed; 4: no session yet; 0: nothing to cancel; 1 at `close`: no session to close);
+# acpx itself refuses a bad policy and an unknown option as usage errors (exit 2).
+$ acpx --cwd <work> --model m1 --auth-policy fail --permission-policy {"autoApprove":["read","search","edit","move","execute","think","fetch"],"autoDeny":["delete","switch_mode"],"defaultAction":"deny"} --non-interactive-permissions deny claude sessions new --name run-0123456789ab
+ACP agent exited before initialize completed (exit=1, signal=null)
+exit 1
+$ acpx --cwd <work> --auth-policy fail --permission-policy {"autoApprove":["read","search","edit","move","execute","think","fetch"],"autoDeny":["delete","switch_mode"],"defaultAction":"deny"} --non-interactive-permissions deny --ttl 60 claude -s run-0123456789ab --no-wait Build the ticket: example/site#7, with the build-ticket skill.
+⚠ No acpx session found (searched up to <work>).
+Create one: acpx claude sessions new --name run-0123456789ab
+exit 4
+$ acpx --cwd <work> claude cancel -s run-0123456789ab
+nothing to cancel
+exit 0
+$ acpx --cwd <work> claude sessions close run-0123456789ab
+No named session "run-0123456789ab" for cwd <work> and agent claude
+exit 1
+$ acpx --cwd <work> --permission-policy {"defaultAction":"bogus"} claude sessions new --name run-0123456789ab
+Invalid permission policy: --permission-policy: permission policy defaultAction must be one of approve, deny, escalate
+exit 2
+$ acpx --cwd <work> --bogus claude sessions new --name run-0123456789ab
+error: unknown option '--bogus'
+
+exit 2

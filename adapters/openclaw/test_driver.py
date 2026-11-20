@@ -164,7 +164,7 @@ class OpenClaw(unittest.TestCase):
     def test_a_harness_acpx_would_run_as_a_command_is_refused(self):
         # catches: passing `harness` straight to acpx, which runs an unknown agent name as a raw command, and
         # `openclaw`, whose ACP bridge goes through the gateway.
-        for harness in ('./evil', 'sh', 'openclaw'):
+        for harness in ('sh', 'evil.sh', 'openclaw'):
             with self.subTest(harness=harness):
                 code, out = self.driver('start', dict(REQUEST, harness=harness))
                 self.assertEqual(code, 1, out)

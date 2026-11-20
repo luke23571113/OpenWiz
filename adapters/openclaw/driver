@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
+"""The OpenClaw driver (kernel/driver.v1.md), built on adapters/template/: it drives agents through `acpx`, OpenClaw's
+own headless ACP client, on this machine, never through the OpenClaw gateway.
 
-Each turn of a run is a local process under its own supervisor, which keeps every process the turn starts:
-`start` runs the first turn, `wake` another once the last one has ended, `stop` ends everything the turns
-started. A run is saved before its first turn starts, and a wake or a stop holds the run's lock throughout.
-Adapt `command` to your harness, and `launch`, `running` and `end` to your host. Linux; standard library only.
+A run is one named acpx session in its own empty folder. `start` opens it (`sessions new`) and sends the first
+prompt, `wake` sends a follow-up once the last prompt has ended, `stop` cancels the prompt, closes the session and
+ends every process the run's acpx calls started. Each call runs under its own supervisor, which keeps every
+process the call starts, acpx's queue owner included. Tools are approved by a permission policy, never all.
+Linux; standard library only.
 """
-import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
+import ctypes, fcntl, json, os, re, secrets, select, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get('OPENWIZ_OPENCLAW_STATE') or os.path.expanduser('~/.local/state/openwiz-openclaw')
@@ -16,6 +18,14 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
 GRACE = 10  # seconds a stopped process has to exit before it is killed
+# acpx's built-in agents a builder can be. acpx runs any other agent name as a raw command, and its `openclaw`
+# agent bridges to the gateway, so neither is passed on.
+HARNESSES = ('claude', 'codex', 'copilot', 'cursor', 'droid', 'gemini', 'opencode')
+# Approve the tool kinds a builder needs; deny deletes, mode switches and anything unlisted; never ask.
+POLICY = json.dumps({'autoApprove': ['read', 'search', 'edit', 'move', 'execute', 'think', 'fetch'],
+                     'autoDeny': ['delete', 'switch_mode'], 'defaultAction': 'deny'}, separators=(',', ':'))
+TTL = 60  # seconds acpx's queue owner stays after its last prompt; 0 would keep it forever
+STEP = 120  # seconds a session, cancel or close call may take
 
 
 class Refused(Exception):
@@ -43,11 +53,22 @@ def read(fields):
     return req
 
 
-def command(req, woken):
-    """Adapt: your harness's own signed-in command. Never add a login or a token."""
+def acpx(run, *args, harness=None):
+    """One acpx call on the run's session folder. It adds no login or token: the harness's own sign-in is used,
+    and a missing one fails rather than prompts."""
+    return ['acpx', '--cwd', os.path.join(STATE, 'work', run)] + list(args) + [harness]
+
+
+def opening(req, run):
+    return acpx(run, '--model', req['model'], '--auth-policy', 'fail', '--permission-policy', POLICY,
+                '--non-interactive-permissions', 'deny', harness=req['harness']) + ['sessions', 'new', '--name', run]
+
+
+def command(req, woken, run):
     what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
-    return [req['harness'], '--model', req['model'], '-p', prompt]
+    return acpx(run, '--auth-policy', 'fail', '--permission-policy', POLICY, '--non-interactive-permissions', 'deny',
+                '--ttl', str(TTL), harness=req['harness']) + ['-s', run, '--no-wait', prompt]
 
 
 def since(pid):
@@ -87,41 +108,81 @@ def supervise(cmd):
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
+        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=2, stderr=2)
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
     signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
-    os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
     while True:
         try:
-            os.wait()
+            pid, status = os.wait()
         except ChildProcessError:
             return
+        if pid == harness.pid:  # say how the call ended, to a driver still listening
+            try:
+                print(json.dumps({'exit': os.waitstatus_to_exitcode(status)}), flush=True)
+            except OSError:
+                pass
+            os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
 
 
-def launch(req, run, woken):
-    """Start one turn under its supervisor; return what `running` and `end` need."""
-    if not shutil.which(req['harness']):
-        raise Refused('harness %s is not installed here' % req['harness'],
-                      'install %s and sign in to it yourself, then start again' % req['harness'])
+def installed():
+    if not shutil.which('acpx'):
+        raise Refused('acpx is not installed here', 'install it with `npm install -g acpx`, sign in to your harness '
+                      'yourself, then start again')
+
+
+def log(run):
+    return os.path.join(STATE, run + '.log')
+
+
+def supervised(cmd, run):
+    """Start one acpx call under its supervisor, its output going only to the run's owner-only log."""
+    installed()
     try:
-        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + command(req, woken),
-                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
-                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        with sup.stdout:
-            line = sup.stdout.readline()
+        with open(os.open(log(run), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), 'ab') as out:
+            sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
+                                   env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=out, bufsize=0)
+        line = sup.stdout.readline()
     except OSError as e:
-        raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror), 'check that it runs by hand')
+        raise Refused('acpx did not start: %s' % e.strerror, 'check that `acpx --version` runs by hand')
     try:
         turn = json.loads(line)
     except ValueError:
         turn = {'error': 'its supervisor did not answer'}
     if 'pid' not in turn:
-        raise Refused('harness %s did not start: %s' % (req['harness'], turn['error']), 'check that it runs by hand')
-    return {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid)}
+        sup.stdout.close()
+        raise Refused('acpx did not start: %s' % turn['error'], 'check that `acpx --version` runs by hand')
+    turn = {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid)}
+    return sup, turn
+
+
+def launch(req, run, woken):
+    """Send one prompt under its supervisor; return what `running` and `end` need."""
+    sup, turn = supervised(command(req, woken, run), run)
+    sup.stdout.close()
+    return turn
+
+
+def step(cmd, run):
+    """Run one acpx call to its end, with every process it started: its exit code, or None when it did not end
+    within STEP seconds, and then it is ended."""
+    sup, turn = supervised(cmd, run)
+    deadline, code = time.monotonic() + STEP, None
+    with sup.stdout:
+        if select.select([sup.stdout], [], [], STEP)[0]:
+            try:
+                code = json.loads(sup.stdout.readline())['exit']
+            except (ValueError, KeyError, TypeError):
+                pass
+    try:
+        sup.wait(max(0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        end([turn], run)
+        return None
+    return code
 
 
 def running(turn, run):
@@ -207,14 +268,25 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
+        if req['harness'] not in HARNESSES:
+            raise Refused('harness %s is not one this driver runs through acpx' % req['harness'],
+                          'use one of: ' + ', '.join(HARNESSES))
+        installed()
         state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}  # never woken while starting
         try:  # save the run before its turn starts: nowhere to keep it, nothing starts
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
+            os.makedirs(os.path.join(STATE, 'work', run), mode=0o700)
         except OSError:
             raise Refused('the driver cannot save runs in its state folder; nothing was started',
                           'make OPENWIZ_OPENCLAW_STATE (or ~/.local/state/openwiz-openclaw) a folder you can write')
         try:
+            code = step(opening(req, run), run)
+            if code != 0:
+                raise Refused('acpx could not open a %s session for run %s (exit %s); nothing was started'
+                              % (req['harness'], run, 'none: it took too long' if code is None else code),
+                              'check that you are signed in to %s yourself and that acpx runs it by hand; acpx\'s '
+                              'output is in %s' % (req['harness'], log(run)))
             turn = launch(req, run, False)
         except Refused:
             try:
@@ -237,7 +309,12 @@ def answer(cmd):
                 kept = True
             except OSError:
                 kept = False
-            end(state['turns'], run)  # whether or not that save worked
+            try:  # a polite end first: cancel the prompt and close the session
+                if state['turns'] and shutil.which('acpx'):
+                    for call in (['cancel', '-s', run], ['sessions', 'close', run]):
+                        step(acpx(run, harness=state['request']['harness']) + call, run)
+            finally:
+                end(state['turns'], run)  # whether or not that save, or those calls, worked
             if not kept:
                 raise Refused('run %s has ended, but the driver could not save that it is stopped' % run,
                               'make OPENWIZ_OPENCLAW_STATE (or ~/.local/state/openwiz-openclaw) a folder you can '
