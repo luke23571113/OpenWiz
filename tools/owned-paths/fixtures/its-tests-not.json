@@ -1,0 +1,90 @@
+{
+ "pr": {
+  "body": "Closes #7",
+  "baseRefOid": "0000000000000000000000000000000000000000",
+  "closingIssuesReferences": {
+   "nodes": [
+    {
+     "number": 7,
+     "repository": {
+      "nameWithOwner": "example/project"
+     }
+    }
+   ]
+  },
+  "files": [
+   {
+    "pageInfo": {
+     "hasNextPage": false,
+     "endCursor": null
+    },
+    "nodes": [
+     {
+      "path": "crates/core/src/gadget_tests.rs"
+     },
+     {
+      "path": "crates/core/src/widget/mod.rs"
+     },
+     {
+      "path": "tools/install/harness_helpers.py"
+     },
+     {
+      "path": "tools/install/other/test_harness.py"
+     },
+     {
+      "path": "tools/install/pull.py"
+     },
+     {
+      "path": "tools/install/test_pull.py"
+     },
+     {
+      "path": "tools/install/tests/fake_gh.py"
+     },
+     {
+      "path": "tools/plain/test_run.py"
+     },
+     {
+      "path": "tools/plain/tests/test_run.py"
+     }
+    ]
+   }
+  ],
+  "comments": {
+   "pageInfo": {
+    "hasNextPage": false,
+    "endCursor": null
+   },
+   "nodes": []
+  }
+ },
+ "issues": {
+  "7": {
+   "__typename": "Issue",
+   "body": "## What to build\n\nSynthetic ticket.\n\n## Owned paths\n\n- `tools/install/harness.py` and its tests (shared: the staging only)\n- `tools/install/setup/init.py`, plus its tests\n- `crates/core/src/widget.rs and its tests` (the wording inside the backticks)\n- `tools/plain/run.py` (no tests named)\n\n**Relies on:** nothing\n",
+   "comments": {
+    "pageInfo": {
+     "hasNextPage": false,
+     "endCursor": null
+    },
+    "nodes": []
+   }
+  }
+ },
+ "exit": 1,
+ "out": [
+  "OUT: crates/core/src/gadget_tests.rs (ticket #7)",
+  "OUT: crates/core/src/widget/mod.rs (ticket #7)",
+  "OUT: tools/install/harness_helpers.py (ticket #7)",
+  "OUT: tools/install/other/test_harness.py (ticket #7)",
+  "OUT: tools/install/pull.py (ticket #7)",
+  "OUT: tools/install/test_pull.py (ticket #7)",
+  "OUT: tools/install/tests/fake_gh.py (ticket #7)",
+  "OUT: tools/plain/test_run.py (ticket #7)",
+  "OUT: tools/plain/tests/test_run.py (ticket #7)",
+  "owned-paths: 9 file(s) outside"
+ ],
+ "absent": [
+  "owned:",
+  "tests of"
+ ]
+}
