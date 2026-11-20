@@ -78,6 +78,12 @@ def report_link(obj, c, authors):
     return int(re.fullmatch(c['report_link'], lines[-1]).group(1))
 
 
+def closed(pr, c):
+    """The destination issues a pull request's closing lines name in full; others close nothing here."""
+    found = [re.fullmatch(c['closing'], x) for x in pr['closes']]
+    return [int(m.group(1)) for m in found if m]
+
+
 def landed_re(c):
     form = re.escape(c['landed'])
     form = form.replace(re.escape('{pull_request}'), c['pull_request'][1:-1])
@@ -91,7 +97,7 @@ def landed_posts(inp, c):
     full = f"{pr['repository']}#{pr['number']}"
     if not pr['merged'] or not re.fullmatch(c['pull_request'], full):
         return posts
-    linked = [report_link(issue(issues[str(n)]), c, authors) for n in pr['closes']]
+    linked = [report_link(issue(issues[str(n)]), c, authors) for n in closed(pr, c)]
     for n in dict.fromkeys(x for x in linked if x is not None):
         obj = issue(issues[str(n)])
         if not is_report(obj, c) or obj['milestone'] is None:
@@ -169,14 +175,15 @@ def check_landed(case, c):
     shape(inp['pull_request'], {'repository', 'number', 'merged', 'closes'}, 'a pull request')
     shape(exp, {'posts'}, 'a landed expectation')
     pr = inp['pull_request']
-    if not isinstance(pr['merged'], bool) or not isinstance(pr['closes'], list):
-        raise ValueError('merged is true or false and closes is a list')
+    if not isinstance(pr['merged'], bool) or not isinstance(pr['closes'], list) \
+            or not all(isinstance(x, str) for x in pr['closes']):
+        raise ValueError('merged is true or false and closes is a list of closing lines')
     posts = landed_posts(inp, c)
     problems = [] if exp['posts'] == posts else [f'posts must be {posts}']
     tags = []
     if len(posts) == 1:
         tags.append('landed')
-    links = [report_link(issue(inp['issues'][str(n)]), c, inp['record_authors']) for n in pr['closes']]
+    links = [report_link(issue(inp['issues'][str(n)]), c, inp['record_authors']) for n in closed(pr, c)]
     reached = [issue(inp['issues'][str(n)]) for n in links if n is not None]
     if pr['merged'] and not posts:
         if any(is_report(o, c) and o['comments'] for o in reached):

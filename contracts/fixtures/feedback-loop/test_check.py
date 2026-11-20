@@ -153,7 +153,7 @@ class PlantedBreaks(unittest.TestCase):
             path.write_text('{"kind": "landed", ' + path.read_text(encoding='utf-8')[1:], encoding='utf-8')
         self.refused(repeat, 'landed.json: unreadable: a repeated key', 'fixtures: no landed case')
         self.refused(case('landed', lambda d: d['input']['pull_request'].update(merged='false')),
-                     'landed.json: unreadable: merged is true or false and closes is a list',
+                     'landed.json: unreadable: merged is true or false and closes is a list of closing lines',
                      'fixtures: no landed case')
 
     def test_the_template_asks_only_for_public_words(self):

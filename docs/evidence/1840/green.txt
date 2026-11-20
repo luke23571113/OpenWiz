@@ -7,6 +7,7 @@ test_a_report_link_counts_only_from_a_record_author_and_last (__main__.PlantedBr
 test_a_second_merge_posts_nothing (__main__.PlantedBreaks.test_a_second_merge_posts_nothing) ... ok
 test_an_instruction_carrying_report_is_held (__main__.PlantedBreaks.test_an_instruction_carrying_report_is_held) ... ok
 test_no_landed_comment_without_a_version_or_a_merge (__main__.PlantedBreaks.test_no_landed_comment_without_a_version_or_a_merge) ... ok
+test_only_a_full_closing_line_reaches_the_destination (__main__.PlantedBreaks.test_only_a_full_closing_line_reaches_the_destination) ... ok
 test_only_a_record_authors_landed_comment_counts (__main__.PlantedBreaks.test_only_a_record_authors_landed_comment_counts) ... ok
 test_the_brief_copies_no_link_or_code_from_the_report (__main__.PlantedBreaks.test_the_brief_copies_no_link_or_code_from_the_report) ... ok
 test_the_landed_comment_follows_the_brief_link (__main__.PlantedBreaks.test_the_landed_comment_follows_the_brief_link) ... ok
@@ -15,6 +16,6 @@ test_the_template_asks_only_for_public_words (__main__.PlantedBreaks.test_the_te
 test_triage_posts_no_comment_on_the_report (__main__.PlantedBreaks.test_triage_posts_no_comment_on_the_report) ... ok
 
 ----------------------------------------------------------------------
-Ran 15 tests in 0.084s
+Ran 16 tests in 0.065s
 
 OK
