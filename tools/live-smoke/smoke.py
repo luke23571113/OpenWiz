@@ -220,13 +220,6 @@ def load_kit(path):
             or any(k not in CLAIMS or not integer(v, 0, 1000)
                    for k, v in kit['release']['scope']['writes'].items())):
         raise Refusal('invalid_kit')
-    # #1727: a risk step in no coverage row has no expected coverage; refuse it here, before any step (0.0.17).
-    release = kit.get('release', {})
-    risk, rows = release.get('risk', {}), release.get('coverage', [])
-    if (type(risk) is not dict or type(rows) is not list or any(type(ids) is not list for ids in risk.values())
-            or any(type(r) is not dict or type(r.get('steps')) is not list for r in rows)
-            or not {s for ids in risk.values() for s in ids} <= {s for r in rows for s in r['steps']}):
-        raise Refusal('coverage_mismatch')
     if type(kit['env']) is not dict or any(
         not re.fullmatch('[A-Z][A-Z0-9_]*', k) or not isinstance(v, str) or '\0' in v
         for k, v in kit['env'].items()
@@ -257,11 +250,16 @@ def load_kit(path):
             exact(step, keys | ({'again_from'} if 'again_from' in step else set())
                   | ({'until'} if 'until' in step else set())
                   | ({'token_env'} if 'token_env' in step else set())
-                  | ({'timeout_seconds'} if 'timeout_seconds' in step else set()))
+                  | ({'timeout_seconds'} if 'timeout_seconds' in step else set())
+                  | ({'teardown'} if 'teardown' in step else set()))
             if 'token_env' in step and step['token_env'] != 'OPENWIZ_SMOKE_APP_TOKEN':
                 raise Refusal('invalid_kit')
-            # #1727: only a write may wait longer than the kit's cap (the driver's start: room-cli's 100 seconds).
-            if 'timeout_seconds' in step and (step['kind'] != 'write' or not integer(step['timeout_seconds'], 1, 130)):
+            # #1727: only a write may wait longer than the kit's cap (the driver's start: room-cli's 100 seconds),
+            # and (#1732 R2) a teardown: a read the run ends with, run after any ending once a write was tried.
+            if 'teardown' in step and (step['teardown'] is not True or step['kind'] != 'read'):
+                raise Refusal('invalid_kit')
+            if 'timeout_seconds' in step and (not (step['kind'] == 'write' or step.get('teardown'))
+                                              or not integer(step['timeout_seconds'], 1, 130)):
                 raise Refusal('invalid_kit')
             if step['kind'] not in ('read', 'write', 'await'):
                 raise Refusal('invalid_kit')
@@ -312,12 +310,36 @@ def load_kit(path):
             if (any(s['claim'] != 'fleet' or 'again_from' in s or s['kind'] == 'write' for s in block)
                     or not any(s['kind'] == 'event' for s in block)):
                 raise Refusal('invalid_kit')
+    marks = [bool(s.get('teardown')) for s in kit['steps']]
+    if any(marks) and (marks != sorted(marks) or any(s['kind'] == 'event' for s in kit['steps'])):
+        raise Refusal('invalid_kit')
     if claims != set(kit_claims(kit)):
         raise Refusal('missing_claim')
     for claim in {'send', 'new'} & claims:
         if not any(s['claim'] == claim and s['kind'] == 'write' for s in kit['steps']):
             raise Refusal('missing_write')
+    if 'release' in kit:
+        # #1732 R3: the receipt contract's own check of risk, coverage and scope against these
+        # steps, then #1727's: every risk step in a coverage row. Both before any step (0.0.17).
+        section = release_section(kit)
+        if not {s for ids in section['risk'].values() for s in ids} <= {s for r in section['coverage'] for s in r['steps']}:
+            raise Refusal('coverage_mismatch')
     return kit
+
+
+def release_section(kit):
+    """receipt.py's `release_section`, its refusal reasons unchanged."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('live_smoke_receipt', Path(__file__).resolve().with_name('receipt.py'))
+    receipt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(receipt)
+    try:
+        return receipt.release_section(kit)
+    except receipt.Refusal as error:
+        # Its last check, writes against scope, the runner enforces before each dispatch (`write_limit`).
+        if str(error) == 'scope_exceeded':
+            return kit['release']
+        raise Refusal(str(error)) from error
 
 
 def validate_pointer(path):
@@ -570,7 +592,9 @@ def replay(kit, events):
         if index is None:
             raise Refusal('evidence_mismatch')
         step, item = kit['steps'][index], state['steps'][index]
-        before = all(i['state'] == 'pass' for i in state['steps'][:index])
+        closing = any(s.get('teardown') and i['state'] != 'not_run' for s, i in zip(kit['steps'], state['steps']))
+        before = (bool(step.get('teardown')) and any(state['writes'].values())
+                  or all(i['state'] == 'pass' for i in state['steps'][:index]) and not closing)
         pending = state['fleet']['pending']
         if kind == 'attempt':
             if (set(event) != {'kind', 'id', 'claim', 'at'}
@@ -797,108 +821,156 @@ def run(kit, path, candidate=None):
                 'kind': 'start', 'kit': digest(kit), 'candidate': bound, 'mode': kit['mode'],
                 'runner': file_hash(Path(__file__).resolve()),
                 'source': kit['source']['head'] if 'source' in kit else None})
-        if any(s['state'] == 'fail' for s in state['steps']):
-            return report(kit, state, 'fail', 'comparison'), 1
-        if any(s['state'] == 'attempting' for s in state['steps']):
-            return report(kit, state, 'incomplete', 'uncertain_write'), 3
-        # The real inventory path runs bundle discovery; help/version do not.
-        try:
-            code, doc = command(kit, [kit['openwiz'], 'ls', '--json'])
-            good = (code == 0 and type(doc) is dict and doc.get('schema') == 'openwiz.inventory.v1'
-                    and pointer(doc, '/coverage/state') == 'complete' and doc.get('gaps') == [])
-        except Refusal as error:
-            if str(error) in ('process_containment_unavailable', 'process_containment_failed'):
-                return report(kit, state, 'incomplete', str(error)), 3
-            good = False
-        except subprocess.TimeoutExpired:
-            good = False
-        if not good:
-            return report(kit, state, 'incomplete', 'bundle_preflight'), 3
-        ids = {s['id']: i for i, s in enumerate(kit['steps'])}
-        if (state['fleet']['started']
-                and any('again_from' in s and item['state'] != 'pass'
-                        for s, item in zip(kit['steps'], state['steps']))
-                and not 0 <= int(time.time()) - state['fleet']['started'] < FLEET_SECONDS):
-            return report(kit, state, 'incomplete', 'fleet_limit'), 3
-        # A pending readback is checked first on the next event: once
-        # launch-fleet's work shows, the block is done; otherwise its reads run
-        # again, within AC6's cap. The block holds no write to repeat.
-        if state['fleet']['pending']:
-            index = next(i for i, s in enumerate(kit['steps'])
-                         if 'again_from' in s and state['steps'][i]['state'] == 'incomplete')
-            step = kit['steps'][index]
-            seen = {}
-            try:
-                code, doc = command(kit, step['argv'], step.get('token_env'), seen)
-                if code != step['exit']:
-                    raise Refusal('command_failed')
-                assess(doc, step, state, ids)
-            except Refusal as error:
-                if str(error) == 'comparison':
-                    record(path, kit, state, dict(seen, kind='step', id=step['id'], state='fail',
-                                                  facts={}, reason='comparison', pending=False))
-                    return report(kit, state, 'fail', 'comparison'), 1
-                if str(error) != 'pending':
-                    return report(kit, state, 'incomplete', str(error)), 3
-                if state['fleet']['sittings'] >= SITTINGS:
-                    return report(kit, state, 'incomplete', 'fleet_limit'), 3
-                record(path, kit, state, dict(seen, kind='repeat', id=step['id'], again_from=step['again_from']))
-            else:
-                record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts={},
-                                              reason='none', pending=False,
-                                              observed=observe(doc, step['checks'] + step.get('until', []))))
-        for index, step in enumerate(kit['steps']):
-            item = state['steps'][index]
-            if item['state'] == 'pass':
-                continue
-            if step['kind'] == 'event':
-                if in_block(kit, index) and state['fleet']['sittings'] >= SITTINGS:
-                    return report(kit, state, 'incomplete', 'fleet_limit'), 3
-                record(path, kit, state, {'kind': 'step', 'id': step['id'], 'state': 'pass', 'facts': {},
-                                          'reason': state['reason'], 'pending': False})
-                return report(kit, state, 'incomplete', 'next_event'), 3
-            if item['state'] == 'incomplete' and step['kind'] == 'write':
-                return report(kit, state, 'incomplete', 'uncertain_write'), 3
-            verify_artifacts(kit)
-            seen = {}
-            if step['kind'] == 'write':
-                # The approved scope bounds consumed attempts.
-                if ('release' in kit and state['writes'].get(step['claim'], 0)
-                        >= kit['release']['scope']['writes'].get(step['claim'], 0)):
-                    return report(kit, state, 'incomplete', 'write_limit'), 3
-                # Durable BEFORE any effect; this attempt is never replayed.
-                record(path, kit, state, {'kind': 'attempt', 'id': step['id'], 'claim': step['claim']})
-            try:
-                code, doc = command(dict(kit, timeout_seconds=step.get('timeout_seconds', kit['timeout_seconds'])),
-                                    step['argv'], step.get('token_env'), seen)
-                if code != step['exit']:
-                    raise Refusal('command_failed')
-                assess(doc, step, state, ids)
-                # Retain only hashes of facts later comparisons require.
-                facts = {}
-                for later in kit['steps'][index + 1:]:
-                    for check in later.get('checks', []) + later.get('until', []):
-                        ref = check.get('same_as')
-                        if ref and ref['step'] == step['id']:
-                            facts[digest(ref['path'])] = digest(pointer(doc, ref['path']))
-                record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts=facts,
-                                              reason='none', pending=False,
-                                              observed=observe(doc, step['checks'] + step.get('until', []))))
-            except (Refusal, subprocess.TimeoutExpired) as error:
-                # A write that failed or timed out has still consumed its
-                # attempt: it is never launched again.
-                reason = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else str(error)
-                if step['kind'] == 'write' and reason != 'comparison':
-                    reason = 'uncertain_write'
-                failed = reason == 'comparison'
-                record(path, kit, state, dict(seen, kind='step', id=step['id'],
-                                              state='fail' if failed else 'incomplete', facts={}, reason=reason,
-                                              pending=reason == 'pending' and 'again_from' in step))
-                return report(kit, state, 'fail' if failed else 'incomplete', reason), 1 if failed else 3
+        doc, code = steps(path, kit, state)
+        # #1732 R2: once a write was tried, any ending runs the teardown steps still
+        # unpassed, each recorded before the run closes; after one ran, nothing else does.
+        if code and any(state['writes'].values()):
+            for index, step in enumerate(kit['steps']):
+                if (doc['reason'] != 'teardown' and step.get('teardown')
+                        and state['steps'][index]['state'] in ('not_run', 'incomplete')):
+                    if not dispatch(path, kit, state, index):
+                        break
+            ends = [i['state'] for s, i in zip(kit['steps'], state['steps']) if s.get('teardown')]
+            if 'fail' in ends:
+                return report(kit, state, 'fail', 'teardown'), 1
+            if any(e != 'pass' for e in ends):
+                return report(kit, state, 'incomplete', 'teardown'), 3
+        return doc, code
+
+
+def dispatch(path, kit, state, index):
+    """Run one step and record its outcome: True when it passed."""
+    step, seen = kit['steps'][index], {}
+    ids = {s['id']: i for i, s in enumerate(kit['steps'])}
+    try:
         verify_artifacts(kit)
-        if not state['times']['finished']:
-            record(path, kit, state, {'kind': 'finish'})
-        return report(kit, state, 'pass', 'none'), 0
+        code, doc = command(dict(kit, timeout_seconds=step.get('timeout_seconds', kit['timeout_seconds'])),
+                            step['argv'], step.get('token_env'), seen)
+        if code != step['exit']:
+            raise Refusal('command_failed')
+        assess(doc, step, state, ids)
+    except (Refusal, subprocess.TimeoutExpired) as error:
+        reason = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else str(error)
+        record(path, kit, state, dict(seen, kind='step', id=step['id'], facts={}, pending=False,
+                                      state='fail' if reason == 'comparison' else 'incomplete', reason=reason))
+        return False
+    record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts={}, reason='none',
+                                  pending=False, observed=observe(doc, step['checks'])))
+    return True
+
+
+def steps(path, kit, state):
+    """The run's normal steps, to their end or the first that does not pass."""
+    if any(s.get('teardown') and i['state'] != 'not_run' for s, i in zip(kit['steps'], state['steps'])):
+        return report(kit, state, 'incomplete', 'torn_down'), 3
+    if any(s['state'] == 'fail' for s in state['steps']):
+        return report(kit, state, 'fail', 'comparison'), 1
+    if any(s['state'] == 'attempting' for s in state['steps']):
+        return report(kit, state, 'incomplete', 'uncertain_write'), 3
+    # The real inventory path runs bundle discovery; help/version do not.
+    try:
+        code, doc = command(kit, [kit['openwiz'], 'ls', '--json'])
+        good = (code == 0 and type(doc) is dict and doc.get('schema') == 'openwiz.inventory.v1'
+                and pointer(doc, '/coverage/state') == 'complete' and doc.get('gaps') == [])
+    except Refusal as error:
+        if str(error) in ('process_containment_unavailable', 'process_containment_failed'):
+            return report(kit, state, 'incomplete', str(error)), 3
+        good = False
+    except subprocess.TimeoutExpired:
+        good = False
+    if not good:
+        return report(kit, state, 'incomplete', 'bundle_preflight'), 3
+    ids = {s['id']: i for i, s in enumerate(kit['steps'])}
+    if (state['fleet']['started']
+            and any('again_from' in s and item['state'] != 'pass'
+                    for s, item in zip(kit['steps'], state['steps']))
+            and not 0 <= int(time.time()) - state['fleet']['started'] < FLEET_SECONDS):
+        return report(kit, state, 'incomplete', 'fleet_limit'), 3
+    # A pending readback is checked first on the next event: once
+    # launch-fleet's work shows, the block is done; otherwise its reads run
+    # again, within AC6's cap. The block holds no write to repeat.
+    if state['fleet']['pending']:
+        index = next(i for i, s in enumerate(kit['steps'])
+                     if 'again_from' in s and state['steps'][i]['state'] == 'incomplete')
+        step = kit['steps'][index]
+        seen = {}
+        try:
+            code, doc = command(kit, step['argv'], step.get('token_env'), seen)
+            if code != step['exit']:
+                raise Refusal('command_failed')
+            assess(doc, step, state, ids)
+        except Refusal as error:
+            if str(error) == 'comparison':
+                record(path, kit, state, dict(seen, kind='step', id=step['id'], state='fail',
+                                              facts={}, reason='comparison', pending=False))
+                return report(kit, state, 'fail', 'comparison'), 1
+            if str(error) != 'pending':
+                return report(kit, state, 'incomplete', str(error)), 3
+            if state['fleet']['sittings'] >= SITTINGS:
+                return report(kit, state, 'incomplete', 'fleet_limit'), 3
+            record(path, kit, state, dict(seen, kind='repeat', id=step['id'], again_from=step['again_from']))
+        else:
+            record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts={},
+                                          reason='none', pending=False,
+                                          observed=observe(doc, step['checks'] + step.get('until', []))))
+    for index, step in enumerate(kit['steps']):
+        item = state['steps'][index]
+        if item['state'] == 'pass':
+            continue
+        if step.get('teardown'):
+            # The normal steps passed: the teardown is the run's last part.
+            if not dispatch(path, kit, state, index):
+                failed = state['steps'][index]['state'] == 'fail'
+                return report(kit, state, 'fail' if failed else 'incomplete', 'teardown'), 1 if failed else 3
+            continue
+        if step['kind'] == 'event':
+            if in_block(kit, index) and state['fleet']['sittings'] >= SITTINGS:
+                return report(kit, state, 'incomplete', 'fleet_limit'), 3
+            record(path, kit, state, {'kind': 'step', 'id': step['id'], 'state': 'pass', 'facts': {},
+                                      'reason': state['reason'], 'pending': False})
+            return report(kit, state, 'incomplete', 'next_event'), 3
+        if item['state'] == 'incomplete' and step['kind'] == 'write':
+            return report(kit, state, 'incomplete', 'uncertain_write'), 3
+        verify_artifacts(kit)
+        seen = {}
+        if step['kind'] == 'write':
+            # The approved scope bounds consumed attempts.
+            if ('release' in kit and state['writes'].get(step['claim'], 0)
+                    >= kit['release']['scope']['writes'].get(step['claim'], 0)):
+                return report(kit, state, 'incomplete', 'write_limit'), 3
+            # Durable BEFORE any effect; this attempt is never replayed.
+            record(path, kit, state, {'kind': 'attempt', 'id': step['id'], 'claim': step['claim']})
+        try:
+            code, doc = command(dict(kit, timeout_seconds=step.get('timeout_seconds', kit['timeout_seconds'])),
+                                step['argv'], step.get('token_env'), seen)
+            if code != step['exit']:
+                raise Refusal('command_failed')
+            assess(doc, step, state, ids)
+            # Retain only hashes of facts later comparisons require.
+            facts = {}
+            for later in kit['steps'][index + 1:]:
+                for check in later.get('checks', []) + later.get('until', []):
+                    ref = check.get('same_as')
+                    if ref and ref['step'] == step['id']:
+                        facts[digest(ref['path'])] = digest(pointer(doc, ref['path']))
+            record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts=facts,
+                                          reason='none', pending=False,
+                                          observed=observe(doc, step['checks'] + step.get('until', []))))
+        except (Refusal, subprocess.TimeoutExpired) as error:
+            # A write that failed or timed out has still consumed its
+            # attempt: it is never launched again.
+            reason = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else str(error)
+            if step['kind'] == 'write' and reason != 'comparison':
+                reason = 'uncertain_write'
+            failed = reason == 'comparison'
+            record(path, kit, state, dict(seen, kind='step', id=step['id'],
+                                          state='fail' if failed else 'incomplete', facts={}, reason=reason,
+                                          pending=reason == 'pending' and 'again_from' in step))
+            return report(kit, state, 'fail' if failed else 'incomplete', reason), 1 if failed else 3
+    verify_artifacts(kit)
+    if not state['times']['finished']:
+        record(path, kit, state, {'kind': 'finish'})
+    return report(kit, state, 'pass', 'none'), 0
 
 
 def main():

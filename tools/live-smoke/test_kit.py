@@ -181,6 +181,14 @@ class Inputs(unittest.TestCase):
         for name in names:
             if name == 'release_targets':
                 records[name] = SCOPE['targets']
+            elif name == 'release_products':  # #1732 R3: load checks the receipt contract
+                records[name] = [{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}]
+            elif name == 'release_gaps':
+                records[name] = ['synthetic gap']
+            elif name == 'release_version':
+                records[name] = '0.1.0'
+            elif name.startswith('promise_'):
+                records[name] = 'synthetic_' + name
             elif name.endswith('_checks'):
                 records[name] = [{'path': '/count', 'equals': 1}]
             elif name.endswith('_argv'):

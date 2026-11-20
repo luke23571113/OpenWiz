@@ -478,7 +478,7 @@ cmd = sys.argv[1]
 body = sys.stdin.read()
 with (root / 'driver-calls').open('a') as log:
     log.write(json.dumps([cmd, json.loads(body) if body else None, os.environ.get('ROOM_PROJECT_ID'),
-                          shutil.which('room-cli')]) + '\\\\n')
+                          shutil.which('room-cli')]) + '\\n')
 if cmd == 'version':
     out = {'driver': 'cloudroom', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
 elif cmd == 'start':
@@ -492,7 +492,7 @@ elif cmd == 'start':
 elif cmd == 'wake':
     if not (root / 'no-delivery').exists():
         with (root / 'room-log').open('a') as log:
-            log.write('You were woken for example/throwaway#7: read the ticket again\\\\n')
+            log.write('You were woken for example/throwaway#7: read the ticket again\\n')
     out = {'run': json.loads(body)['run'], 'woke': True}
 elif cmd == 'stop':
     (root / 'room-state').write_text(json.dumps({'projectId': 'proj_synthetic', 'archived': True}))
@@ -506,7 +506,7 @@ import json, pathlib, sys
 root = pathlib.Path(__file__).parent
 assert sys.argv[1:3] in (['thread', 'show'], ['thread', 'log']) and sys.argv[3] == 'synthetic-child-thread', sys.argv
 with (root / 'room-calls').open('a') as log:
-    log.write(json.dumps(sys.argv[1:3]) + '\\\\n')
+    log.write(json.dumps(sys.argv[1:3]) + '\\n')
 if sys.argv[2] == 'log':
     print((root / 'room-log').read_text() if (root / 'room-log').exists() else '')
 else:
@@ -578,7 +578,8 @@ class Sheet(unittest.TestCase):
         result = subprocess.run([sys.executable, '-I', str(RUNNER), '--kit', str(path),
                                  '--state', str(self.root / 'checkpoint'), '--fixture'],
                                 capture_output=True, text=True, timeout=60,
-                                env=dict(os.environ, OPENWIZ_SMOKE_APP_TOKEN='synthetic-installation-token'))
+                                env=dict({k: v for k, v in os.environ.items() if k != 'ROOM_PROJECT_ID'},
+                                         OPENWIZ_SMOKE_APP_TOKEN='synthetic-installation-token'))
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
         self.assertNotIn('synthetic-child-thread', result.stdout + result.stderr)
         return json.loads(result.stdout)
@@ -634,8 +635,8 @@ class Sheet(unittest.TestCase):
         for run in (self.root / 'state').iterdir():
             run.unlink()
         self.env['ROOM_PROJECT_ID'] = 'proj_synthetic_stale'
-        self.run_sheet(code=3)
-        self.assertEqual([c[0] for c in self.driver_calls()], ['version'])
+        self.assertEqual(self.run_sheet(code=3)['reason'], 'command_failed')
+        self.assertEqual(self.driver_calls(), [])
 
     def test_a_wake_the_thread_never_shows_fails_send_and_still_tears_down(self):
         """catches (#1732 R4): a send claim passed on the queue's acceptance alone,
@@ -702,7 +703,8 @@ class Teardown(FixtureCase):
     def setUp(self):
         super().setUp()
         claims = ['json', 'new', 'loops', 'service']
-        self.kit['steps'] = [s for s in self.kit['steps'] if s['claim'] in claims]
+        self.kit['steps'] = sorted((s for s in self.kit['steps'] if s['claim'] in claims),
+                                   key=lambda s: claims.index(s['claim']))
         self.kit['steps'][-1].update(teardown=True, timeout_seconds=5)
         self.kit['claims'] = claims
 
@@ -727,7 +729,7 @@ class Teardown(FixtureCase):
     def test_a_teardown_must_be_a_read_at_the_end_within_130_seconds(self):
         """catches: a teardown that writes (it could repeat a live effect), one
         placed before normal steps, or one with an unbounded wait."""
-        rows = {'a write': lambda s: s[1].update(teardown=True), 'not at the end': lambda s: s[2].update(teardown=True),
+        rows = {'a write': lambda s: s[1].update(teardown=True), 'not at the end': lambda s: s[0].update(teardown=True),
                 'above 130': lambda s: s[3].update(timeout_seconds=131),
                 'not true': lambda s: s[3].update(teardown='yes')}
         for name, change in rows.items():
