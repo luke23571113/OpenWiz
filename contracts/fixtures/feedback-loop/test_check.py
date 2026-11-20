@@ -77,7 +77,7 @@ class PlantedBreaks(unittest.TestCase):
         # catches: a report's link or command carried into a builder's brief.
         def copy(d):
             d['input']['report']['body'] = 'See https://synthetic.example/x\n\n' + d['input']['report']['body']
-            d['expect']['brief']['body'] += '\nhttps://synthetic.example/x'
+            d['expect']['brief']['body'] = 'https://synthetic.example/x\n' + d['expect']['brief']['body']
         self.refused(case('triage-to-a-fleet', copy), 'triage-to-a-fleet.json: the brief copies a link or code from the report')
 
     def test_triage_posts_no_comment_on_the_report(self):

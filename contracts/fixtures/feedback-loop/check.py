@@ -14,8 +14,9 @@ import sys
 sys.dont_write_bytecode = True
 CONTRACT = 'contracts/feedback-loop.v1.md'
 FIXTURES = 'contracts/fixtures/feedback-loop'
-ISSUE_KEYS = {'number', 'pull_request', 'title', 'body', 'labels', 'milestone', 'comments'}
-COVERAGE = ('report', 'not a report', 'to a fleet', 'held', 'landed', 'second merge', 'closes no report')
+ISSUE_KEYS = {'number', 'author', 'pull_request', 'title', 'body', 'labels', 'milestone', 'comments'}
+COVERAGE = ('report', 'not a report', 'report link', 'forged link', 'to a fleet', 'held', 'landed', 'second merge',
+            'closes no report')
 
 
 def strict(text):
@@ -45,8 +46,9 @@ def issue(obj):
     shape(obj, ISSUE_KEYS, 'an issue')
     if not isinstance(obj['number'], int) or isinstance(obj['number'], bool) or obj['number'] < 1:
         raise ValueError('an issue number must be a positive integer')
-    if not isinstance(obj['pull_request'], bool) or not isinstance(obj['body'], str):
-        raise ValueError('an issue needs a boolean pull_request and a string body')
+    if not isinstance(obj['pull_request'], bool) or not isinstance(obj['body'], str) \
+            or not isinstance(obj['author'], str):
+        raise ValueError('an issue needs a boolean pull_request, a string body and an author')
     if not isinstance(obj['labels'], list) or not all(isinstance(x, str) for x in obj['labels']):
         raise ValueError('labels must be a list of strings')
     if obj['milestone'] is not None and not isinstance(obj['milestone'], str):
@@ -66,6 +68,16 @@ def is_report(obj, c):
     return len(lines) >= 3 and lines[-2] == '' and markers == [lines[-1]]
 
 
+def report_link(obj, c, authors):
+    """The report number a record author's brief links to, or None."""
+    lines = obj['body'].split('\n')
+    links = [x for x in lines if re.fullmatch(c['report_link'], x)]
+    if obj['pull_request'] or obj['author'] not in authors or len(lines) < 3 or lines[-2] != '' \
+            or links != [lines[-1]]:
+        return None
+    return int(re.fullmatch(c['report_link'], lines[-1]).group(1))
+
+
 def landed_re(c):
     form = re.escape(c['landed'])
     form = form.replace(re.escape('{pr}'), '[1-9][0-9]*')
@@ -78,7 +90,8 @@ def landed_posts(inp, c):
     posts = []
     if not pr['merged']:
         return posts
-    for n in pr['closes']:
+    linked = [report_link(issue(issues[str(n)]), c, authors) for n in pr['closes']]
+    for n in dict.fromkeys(x for x in linked if x is not None):
         obj = issue(issues[str(n)])
         if not is_report(obj, c) or obj['milestone'] is None:
             continue
@@ -97,6 +110,16 @@ def check_report(case, c):
     if found != case['expect']['is_report']:
         return [f'is_report is {found}, the case expects {case["expect"]["is_report"]}'], [('report' if found else 'not a report')]
     return [], ['report' if found else 'not a report']
+
+
+def check_link(case, c):
+    inp = shape(case['input'], {'issue', 'record_authors'}, 'a link input')
+    shape(case['expect'], {'report'}, 'a link expectation')
+    found = report_link(issue(inp['issue']), c, inp['record_authors'])
+    tag = ['report link' if found is not None else 'forged link']
+    if found != case['expect']['report']:
+        return [f'report is {found}, the case expects {case["expect"]["report"]}'], tag
+    return [], tag
 
 
 def check_triage(case, c):
@@ -130,9 +153,9 @@ def check_triage(case, c):
         problems.append('the brief needs a version milestone')
     elif exp['report_milestone'] != brief['milestone']:
         problems.append("the report takes the brief's milestone")
-    line = c['brief_line'].format(report=report['number'])
-    if brief['body'].split('\n').count(line) != 1:
-        problems.append(f'the brief must hold the line {line!r} once')
+    brief_issue = dict(brief, number=1, author='triage', pull_request=False, comments=[])
+    if report_link(brief_issue, c, ['triage']) != report['number']:
+        problems.append(f'the brief must end with the report link to #{report["number"]}')
     copied = re.findall(r'https?://\S+|`[^`]+`', report['body'])
     if any(x in brief['body'] for x in copied):
         problems.append('the brief copies a link or code from the report')
@@ -152,16 +175,17 @@ def check_landed(case, c):
     tags = []
     if len(posts) == 1:
         tags.append('landed')
-    closed = [issue(inp['issues'][str(n)]) for n in inp['pull_request']['closes']]
-    if inp['pull_request']['merged'] and not posts:
-        if any(is_report(o, c) and o['comments'] for o in closed):
+    links = [report_link(issue(inp['issues'][str(n)]), c, inp['record_authors']) for n in pr['closes']]
+    reached = [issue(inp['issues'][str(n)]) for n in links if n is not None]
+    if pr['merged'] and not posts:
+        if any(is_report(o, c) and o['comments'] for o in reached):
             tags.append('second merge')
-        elif not any(is_report(o, c) for o in closed):
+        elif not any(is_report(o, c) for o in reached):
             tags.append('closes no report')
     return problems, tags
 
 
-KINDS = {'report': check_report, 'triage': check_triage, 'landed': check_landed}
+KINDS = {'report': check_report, 'link': check_link, 'triage': check_triage, 'landed': check_landed}
 
 
 def scalar(s):
