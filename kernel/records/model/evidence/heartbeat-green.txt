@@ -1,0 +1,30 @@
+$ python3 -I kernel/records/model/test_model.py
+test_each_variant_breaks_the_rule_it_drops (__main__.BrokenVariants.test_each_variant_breaks_the_rule_it_drops) ... ok
+test_every_rule_holds_over_every_reachable_state (__main__.CurrentRules.test_every_rule_holds_over_every_reachable_state) ... ok
+test_a_release_lost_under_a_failed_readback_breaks_p3 (__main__.FixedWrites.test_a_release_lost_under_a_failed_readback_breaks_p3) ... ok
+test_the_fixed_order_without_its_edit_readback_breaks_again (__main__.FixedWrites.test_the_fixed_order_without_its_edit_readback_breaks_again) ... ok
+test_the_fixed_write_order_holds_every_rule (__main__.FixedWrites.test_the_fixed_write_order_holds_every_rule) ... ok
+test_a_heartbeat_over_a_release_it_never_read_is_put_back (__main__.Heartbeat.test_a_heartbeat_over_a_release_it_never_read_is_put_back) ... ok
+test_a_heartbeat_that_rewrites_working_reopens_a_done_note (__main__.Heartbeat.test_a_heartbeat_that_rewrites_working_reopens_a_done_note) ... ok
+test_a_model_where_time_never_passes_misses_the_lapse_witness (__main__.NotVacuous.test_a_model_where_time_never_passes_misses_the_lapse_witness) ... ok
+test_the_current_rules_meet_every_witness (__main__.NotVacuous.test_the_current_rules_meet_every_witness) ... ok
+test_the_lost_release_needs_two_overlapping_wakes (__main__.SplitWrites.test_the_lost_release_needs_two_overlapping_wakes) ... ok
+test_the_pinned_writers_read_then_write_order_loses_the_fence (__main__.SplitWrites.test_the_pinned_writers_read_then_write_order_loses_the_fence) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 80.946s
+
+OK
+exit 0
+
+$ python3 -I kernel/records/model/model.py --writes fixed
+ok: fixed writes, current rules: P1 to P5 hold over 1403942 states
+exit 0
+
+$ python3 -I kernel/records/model/model.py --variant heartbeat-reopens
+broken P5: a heartbeat reopened a final note: a done or stopped note went live
+  1. builder 1 wake 1: post a working note, reads back: kept
+  2. builder 1 wake 1: edit note 0 to done
+  3. builder 1 wake 1: heartbeat note 0
+exit 1
+

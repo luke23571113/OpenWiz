@@ -97,7 +97,8 @@ class FixedWrites(unittest.TestCase):
                     return notes, None
                 return super().readback_edit(notes, pending)
         _, found, _ = model.check(NoRestoreOnFailure(None, 'fixed'))
-        self.assertEqual(set(found), {'P3'})
+        # A heartbeat is such an edit too (#1447), so the lost release is also a reopened one.
+        self.assertEqual(set(found), {'P3', 'P5'})
 
     def test_the_fixed_order_without_its_edit_readback_breaks_again(self):
         # catches: a fixed mode that passes for a reason other than the edit's read-back.
