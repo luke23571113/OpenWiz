@@ -18,7 +18,9 @@ ROOT = HERE.parents[2]
 CONTRACT = ROOT / 'contracts' / 'write-driver.v1.md'
 DRIVER = ROOT / 'kernel' / 'driver.v1.md'
 KIT = ROOT / 'kernel' / 'driver-kit' / 'README.md'
-CREDENTIAL = re.compile(r'(?i)\b(?:tokens?|keys?|passwords?|passphrases?|secrets?|credentials?|cookies?)\b')
+# A credential word, even joined to others by `_`, `-` or digits (`EXAMPLE_API_TOKEN`).
+CREDENTIAL = re.compile(r'(?i)(?<![a-z])(?:logins?|tokens?|keys?|apikeys?|passwords?|passphrases?|secrets?|credentials?'
+                        r'|cookies?|pats?|oauth|bearer)(?![a-z])')
 SIGN_IN = re.compile(r'(?i)\bsign(?:ed)? ?in\b|\blog ?in\b')
 
 
@@ -46,6 +48,20 @@ def pattern(form, fields):
     return re.compile(''.join(out))
 
 
+class Repeated(ValueError):
+    pass
+
+
+def strict(text):
+    """JSON with each key once: a repeated key is refused, never replaced."""
+    def pairs(items):
+        keys = [k for k, _ in items]
+        if len(set(keys)) != len(keys):
+            raise Repeated
+        return dict(items)
+    return json.loads(text, object_pairs_hook=pairs)
+
+
 def text_of(path):
     """A fixture's text without its one final newline."""
     text = path.read_text(encoding='utf-8')
@@ -66,8 +82,13 @@ def read_fleet(text, b, f):
 
 
 def read_ticket(text, b, f):
-    t = json.loads(text)
-    if not isinstance(t, dict) or set(t) != {'title', 'body', 'labels'}:
+    try:
+        t = strict(text)
+    except Repeated:
+        t = None
+    if (not isinstance(t, dict) or set(t) != {'title', 'body', 'labels'} or not isinstance(t['title'], str)
+            or not isinstance(t['body'], str) or not isinstance(t['labels'], list)
+            or not all(isinstance(x, str) for x in t['labels'])):
         return {'result': 'invalid', 'code': 'ticket-fields'}
     title = pattern(b['ticket_title'], f).fullmatch(t['title'])
     body = pattern(b['ticket_body'], f).fullmatch(t['body'])
@@ -111,12 +132,21 @@ def skeleton(text):
 
 
 def read_lesson(text, b, f):
-    r = json.loads(text)
+    try:
+        r = strict(text)
+    except Repeated:
+        r = None
     name = r.get('lesson') if isinstance(r, dict) else None
-    fields = {'live-shape': {'lesson', 'live', 'fixture'},
-              'wake-after-turn': {'lesson', 'turn_ended', 'wake', 'note_edited', 'second_note'},
-              'expired-login': {'lesson', 'exit', 'answer', 'left_running'}}
-    if name not in b['lessons'] or set(r) != fields.get(name):
+    text_or_json = lambda v: isinstance(v, (str, dict, list))
+    flag = lambda v: isinstance(v, bool)
+    fields = {'live-shape': {'lesson': str, 'live': text_or_json, 'fixture': text_or_json},
+              'wake-after-turn': {'lesson': str, 'turn_ended': flag, 'wake': lambda v: v in ('answered', 'error'),
+                                  'note_edited': flag, 'second_note': flag},
+              'expired-login': {'lesson': str, 'exit': lambda v: type(v) is int, 'left_running': flag,
+                                'answer': lambda v: isinstance(v, dict) and all(isinstance(x, str) for x in v.values())}}
+    want = fields.get(name) if name in b['lessons'] else None
+    if not want or set(r) != set(want) or not all(
+            (isinstance(r[k], t) if isinstance(t, type) else t(r[k])) for k, t in want.items()):
         return {'result': 'invalid', 'code': 'lesson-fields'}
     if name == 'live-shape':
         if isinstance(r['live'], str) != isinstance(r['fixture'], str):
@@ -125,20 +155,19 @@ def read_lesson(text, b, f):
               else shape(r['live']) == shape(r['fixture']))
         return {'result': 'pass'} if ok else {'result': 'fail', 'code': 'shape-differs'}
     if name == 'wake-after-turn':
-        if r['turn_ended'] is not True:
+        if not r['turn_ended']:
             return {'result': 'fail', 'code': 'turn-still-running'}
-        if r['wake'] != 'answered' or r['note_edited'] is not True:
+        if r['wake'] != 'answered' or not r['note_edited']:
             return {'result': 'fail', 'code': 'not-woken'}
-        if r['second_note'] is not False:
+        if r['second_note']:
             return {'result': 'fail', 'code': 'second-note'}
         return {'result': 'pass'}
     answer = r['answer']
     if r['exit'] == 0:
         return {'result': 'fail', 'code': 'silent-start'}
-    if (r['exit'] != 1 or not isinstance(answer, dict) or set(answer) != {'error', 'next'}
-            or not SIGN_IN.search(str(answer['next']))):
+    if r['exit'] != 1 or set(answer) != {'error', 'next'} or not SIGN_IN.search(answer['next']):
         return {'result': 'fail', 'code': 'no-sign-in-next'}
-    if r['left_running'] is not False:
+    if r['left_running']:
         return {'result': 'fail', 'code': 'left-running'}
     return {'result': 'pass'}
 
@@ -198,11 +227,14 @@ def reuse(b):
     """The problems with the block's words and checks against the driver contract and the kit."""
     problems = []
     driver = DRIVER.read_text(encoding='utf-8')
-    commands = re.findall(r'^\| `([a-z]+)` \|', driver, re.M)
+    commands_at = re.search(r'^## 1\. Commands\n(.*?)^## 2\. ', driver, re.M | re.S)
+    checks_at = re.search(r"^## 3\. The kit's five checks\n(.*?)(?=^## |\Z)", driver, re.M | re.S)
+    if not commands_at or not checks_at:
+        return ['the driver contract has no Commands or five-checks section to read']
+    commands = re.findall(r'^\| `([a-z]+)` \|', commands_at.group(1), re.M)
     if not b.get('words') or not set(b['words']) <= set(commands) or len(b['words']) != 4:
         problems.append('words: not four of the driver contract\'s commands')
-    table = driver.split('## 3. The kit\'s five checks', 1)[-1]
-    kit_rows = re.findall(r'^\| ([a-z]+) \|', table, re.M)
+    kit_rows = re.findall(r'^\| ([a-z]+) \|', checks_at.group(1), re.M)
     order = re.search(r'in the order ([a-z, ]+)[.:]', KIT.read_text(encoding='utf-8'))
     kit_order = order.group(1).split(', ') if order else None
     if b.get('checks') != kit_order or sorted(kit_rows) != sorted(kit_order or []):

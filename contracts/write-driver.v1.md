@@ -104,7 +104,7 @@ The skill closes the ticket when the run ends, whatever the result, and keeps th
 
 ## 3. The live lessons
 
-Three cases broke real drivers while their tests and the kit passed. The skill checks each one on the real host and keeps one record per lesson, as JSON with exactly the fields shown; each reads `pass` or `fail` with the code below. A lesson the user skipped (a `no` to its safety ask) reads `not run`. A record of another lesson or with other fields is `invalid` with `lesson-fields`.
+Three cases broke real drivers while their tests and the kit passed. The skill checks each one on the real host and keeps one record per lesson, as a JSON object with exactly the fields shown, each once and of its type (flags are `true` or `false`, `exit` an integer, `answer` an object of strings, `live` and `fixture` text or JSON); each reads `pass` or `fail` with the code below. A lesson the user skipped (a `no` to its safety ask) reads `not run`. A record of another lesson, with other or repeated fields, or a field of another type is `invalid` with `lesson-fields`.
 
 | Lesson | What the skill does | Record | Reads `pass` when, else `fail` with |
 | --- | --- | --- | --- |
@@ -117,7 +117,7 @@ Three cases broke real drivers while their tests and the kit passed. The skill c
 
 ## 4. Safety
 
-- **W1. Never a login or key.** The skill never asks for, reads, prints, stores or passes a login, token, key, password, secret or cookie, for the host, the harness or GitHub. It uses only the person's own signed-in tools, as the driver does (driver v1, N1 to N3). A safety ask whose step names one is refused before it is shown (`credential`).
+- **W1. Never a login or key.** The skill never asks for, reads, prints, stores or passes a login, token, key, password, secret or cookie, for the host, the harness or GitHub. It uses only the person's own signed-in tools, as the driver does (driver v1, N1 to N3). A safety ask whose step names one is refused before it is shown (`credential`): any of those words, `passphrase`, `credential`, `apikey`, `pat`, `oauth` or `bearer`, in any case and even joined to other words by `_`, `-` or digits (`EXAMPLEHOST_API_TOKEN`).
 - **W2. Sign-in is the user's.** When the user's real first turn ends on an expired sign-in, the skill says `sign_in` with the harness and the host, waits for `done`, and never helps by handling the sign-in itself.
 - **W3. Ask before every costly or machine-starting step.** Before each step that could cost money or start a machine (a host command that creates a machine, a sandbox or a paid run, each kit run against such a host, each lesson that starts one), the skill says `ask`, with `<step>` naming that one step in plain words and `<effect>` saying which: `cost money`, `start a machine` or both. One ask covers one step. Only an explicit `yes` in the user's next message goes ahead; anything else skips the step, and every check it would have proven reads `not run`. A step that can do neither still runs without asking.
 - **W4. Stop everything it started.** The skill keeps a list as it goes of each driver run, machine, sandbox and process it started. At the end of every run, passing or not, it runs `stop` on each driver run and the host's own stop on each thing left, and closes the throwaway ticket.

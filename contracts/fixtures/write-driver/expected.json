@@ -51,7 +51,8 @@
       "asks/invalid-asks-for-key.txt": {"result": "invalid", "code": "credential"},
       "asks/invalid-tells-not-asks.txt": {"result": "invalid", "code": "ask-form"},
       "asks/invalid-env-token.txt": {"result": "invalid", "code": "credential"},
-      "asks/invalid-pat.txt": {"result": "invalid", "code": "credential"}
+      "asks/invalid-pat.txt": {"result": "invalid", "code": "credential"},
+      "asks/invalid-login.txt": {"result": "invalid", "code": "credential"}
     },
     "report": {
       "report/passed.txt": {"result": "passed", "host": "examplehost", "minutes": 23, "stopped": true, "share_offer": true},
