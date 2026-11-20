@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
+"""The OpenWiz driver for Hermes (kernel/driver.v1.md), through Hermes' own signed-in `hermes` CLI.
 
-Each turn of a run is a local process under its own supervisor, which keeps every process the turn starts:
-`start` runs the first turn, `wake` another once the last one has ended, `stop` ends everything the turns
-started. A run is saved before its first turn starts, and a wake or a stop holds the run's lock throughout.
-Adapt `command` to your harness, and `launch`, `running` and `end` to your host. Linux; standard library only.
+Each turn of a run is one `hermes chat --oneshot --format stream-json` under its own supervisor, which keeps every
+process the turn starts: `start` runs the first turn and keeps the Hermes session id it reports, `wake` runs
+another with `--resume <session>` once the last one has ended, and `stop` interrupts the turn (SIGINT, Hermes'
+Ctrl-C) and then ends everything the turns started. A run is saved before its first turn starts, and a wake or a
+stop holds the run's lock throughout. Hermes reads its own configuration: the driver never reads, sends or prints
+a key. Built from adapters/template/. Linux; standard library only.
 """
 import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
 
@@ -16,6 +18,11 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
 GRACE = 10  # seconds a stopped process has to exit before it is killed
+SETTLE = 10  # seconds an interrupted Hermes turn has to settle cancelled before it is ended
+SESSION_WAIT = 60  # seconds a new turn has to report its Hermes session
+# harness -> the bundled Hermes skill that runs it (None: Hermes is the harness itself)
+HARNESSES = {'claude': 'claude-code', 'codex': 'codex', 'hermes': None}
+SESSION = r'[A-Za-z0-9][A-Za-z0-9._:-]{0,199}'
 
 
 class Refused(Exception):
@@ -43,11 +50,21 @@ def read(fields):
     return req
 
 
-def command(req, woken):
-    """Adapt: your harness's own signed-in command. Never add a login or a token."""
-    what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
+def command(req, session):
+    """Hermes' own signed-in CLI, one turn: a new session, or `--resume` the run's session. Never a login or a key.
+    For `hermes`, `model` is Hermes' model; for `claude` or `codex`, Hermes keeps its own model and runs that CLI
+    through its bundled skill, told in the prompt to use `model`."""
+    what = 'You were woken: read the ticket again and carry on' if session else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
-    return [req['harness'], '--model', req['model'], '-p', prompt]
+    cmd = ['hermes', 'chat', '--oneshot', '--format', 'stream-json', '--source', 'tool']
+    tool = HARNESSES[req['harness']]
+    if tool:
+        cmd += ['-s', tool]
+        prompt += (' Do the work through your %s skill: run the %s CLI with the model %s, and have it run the '
+                   '%s skill there.' % (tool, req['harness'], req['model'], req['skill']))
+    else:
+        cmd += ['-m', req['model']]
+    return cmd + (['--resume', session] if session else []) + ['-q', prompt]
 
 
 def since(pid):
@@ -80,15 +97,15 @@ def descendants(pid):
     return found
 
 
-def supervise(cmd):
-    """One turn, as `driver --turn <command>`: run the harness, and keep every process it starts as this turn's
+def supervise(out, cmd):
+    """One turn, as `driver --turn <log> <command>`: run the harness, and keep every process it starts as this turn's
     (an orphan comes back here, whatever its session or environment) until none is left; then exit."""
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
+        with open(out, 'ab') as log:
+            harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.DEVNULL)
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
@@ -102,26 +119,65 @@ def supervise(cmd):
             return
 
 
-def launch(req, run, woken):
-    """Start one turn under its supervisor; return what `running` and `end` need."""
-    if not shutil.which(req['harness']):
-        raise Refused('harness %s is not installed here' % req['harness'],
-                      'install %s and sign in to it yourself, then start again' % req['harness'])
+def turn_log(run, n):
+    return os.path.join(STATE, '%s.%d.log' % (run, n))
+
+
+def reported_session(path):
+    """The session id the turn's `system` `init` line reports, or None so far."""
     try:
-        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + command(req, woken),
+        with open(path) as f:
+            for line in f:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get('type') == 'system' and event.get('subtype') == 'init':
+                    sid = event.get('session_id')
+                    return sid if isinstance(sid, str) and re.fullmatch(SESSION, sid) else ''
+    except OSError:
+        pass
+    return None
+
+
+def launch(req, run, session, n):
+    """Start turn n under its supervisor, its output in the run's owner-only log; return what `running` and `end`
+    need, and for a first turn the Hermes session it reports."""
+    if not shutil.which('hermes'):
+        raise Refused('hermes is not installed here',
+                      'install Hermes and set up its model yourself (hermes setup), then start again')
+    out = turn_log(run, n)
+    os.close(os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+    try:
+        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn', out]
+                               + command(req, session),
                                env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         with sup.stdout:
             line = sup.stdout.readline()
     except OSError as e:
-        raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror), 'check that it runs by hand')
+        raise Refused('hermes did not start: %s' % e.strerror, 'check that `hermes chat` runs by hand')
     try:
         turn = json.loads(line)
     except ValueError:
         turn = {'error': 'its supervisor did not answer'}
     if 'pid' not in turn:
-        raise Refused('harness %s did not start: %s' % (req['harness'], turn['error']), 'check that it runs by hand')
-    return {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid)}
+        raise Refused('hermes did not start: %s' % turn['error'], 'check that `hermes chat` runs by hand')
+    turn = {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid),
+            'log': out, 'session': session}
+    if session:
+        return turn
+    deadline = time.monotonic() + SESSION_WAIT
+    while time.monotonic() < deadline:  # a run needs its session before it can be woken
+        turn['session'] = reported_session(out)
+        if turn['session'] is not None or not running(turn, run):
+            break
+        time.sleep(0.1)
+    if not turn['session']:
+        end([turn], run)
+        raise Refused('hermes did not report a session for run %s, so the driver ended its turn' % run,
+                      'run `hermes chat --oneshot -q hello` by hand to see why, then start again')
+    return turn
 
 
 def running(turn, run):
@@ -130,10 +186,11 @@ def running(turn, run):
 
 
 def end(turns, run):
-    """Stop the run: every process its turns' supervisors still keep, whatever its session or environment.
-    A supervisor exits only once none of its processes is left, so answer once every supervisor has exited."""
+    """Stop the run: interrupt its Hermes turn as Ctrl-C would, so it settles cancelled, then end every process its
+    turns' supervisors still keep, whatever its session or environment. A supervisor exits only once none of its
+    processes is left, so answer once every supervisor has exited."""
     kept = [(t['supervisor'], t['supervisor_since']) for t in turns if t and t['supervisor_since'] is not None]
-    for sig, wait in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
+    for sig, wait in ((signal.SIGINT, SETTLE), (signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
         sent, deadline = set(), time.monotonic() + wait
         while time.monotonic() < deadline:
             kept = [(p, t) for p, t in kept if since(p) == t]
@@ -207,7 +264,9 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
-        state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}  # never woken while starting
+        if req['harness'] not in HARNESSES:
+            raise Refused('Hermes cannot run harness ' + req['harness'], 'use one of: ' + ', '.join(HARNESSES))
+        state = {'request': req, 'session': None, 'turns': [], 'stopped': False, 'starting': True}
         try:  # save the run before its turn starts: nowhere to keep it, nothing starts
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
@@ -215,7 +274,7 @@ def answer(cmd):
             raise Refused('the driver cannot save runs in its state folder; nothing was started',
                           'make OPENWIZ_HERMES_STATE (or ~/.local/state/openwiz-hermes) a folder you can write')
         try:
-            turn = launch(req, run, False)
+            turn = launch(req, run, None, 1)
         except Refused:
             try:
                 saved(run, dict(state, stopped=True))
@@ -223,7 +282,7 @@ def answer(cmd):
                 pass
             raise
         try:
-            saved(run, dict(state, turns=[turn], starting=False))
+            saved(run, dict(state, session=turn['session'], turns=[turn], starting=False))
         except OSError:  # the turn began but its run is not saved: end it, and never say retry
             unsaved(run, turn, 'start')
         return {'run': run}
@@ -238,6 +297,11 @@ def answer(cmd):
             except OSError:
                 kept = False
             end(state['turns'], run)  # whether or not that save worked
+            for t in state['turns']:  # the turns' output, the agent's words, goes with the run
+                try:
+                    os.remove(t['log'])
+                except OSError:
+                    pass
             if not kept:
                 raise Refused('run %s has ended, but the driver could not save that it is stopped' % run,
                               'make OPENWIZ_HERMES_STATE (or ~/.local/state/openwiz-hermes) a folder you can '
@@ -255,7 +319,7 @@ def answer(cmd):
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was started' % run,
                           'make OPENWIZ_HERMES_STATE (or ~/.local/state/openwiz-hermes) a folder you can write')
-        turn = launch(state['request'], run, True)
+        turn = launch(state['request'], run, state['session'], len(state['turns']) + 1)
         try:
             saved(run, dict(state, turns=state['turns'] + [turn]))
         except OSError:
@@ -265,8 +329,8 @@ def answer(cmd):
 
 
 def main():
-    if len(sys.argv) > 2 and sys.argv[1] == '--turn':
-        return supervise(sys.argv[2:])
+    if len(sys.argv) > 3 and sys.argv[1] == '--turn':
+        return supervise(sys.argv[2], sys.argv[3:])
     try:
         out, code = answer(sys.argv[1] if len(sys.argv) == 2 else ''), 0
     except Refused as e:
