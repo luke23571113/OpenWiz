@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, threading, time
+import ctypes, fcntl, json, os, re, secrets, shutil, signal, stat, subprocess, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.abspath(os.environ.get('OPENWIZ_FACTORY_STATE') or os.path.expanduser('~/.local/state/openwiz-factory'))
@@ -52,9 +52,8 @@ def session_file(run, n):
 def session_of(run, turns):
     for n in reversed(range(len(turns))):
         try:
-            with open(session_file(run, n)) as f:
-                found = f.read()
-        except OSError:
+            found = trusted(os.path.basename(session_file(run, n))).decode()
+        except (OSError, Refused, UnicodeDecodeError):
             continue
         if re.fullmatch(SESSION, found):
             return found
@@ -71,6 +70,44 @@ def session_in(line):
 
 def owner_only(path, flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC):
     return os.open(path, flags | os.O_NOFOLLOW, 0o600)
+
+
+def mine(st):
+    return st.st_uid == os.getuid() and not st.st_mode & 0o077
+
+
+UNTRUSTED = ('the state folder %s or a file in it is not yours alone, so the driver will not trust the runs saved '
+             'there; nothing was ended or started' % STATE, 'end the run\'s processes by hand if it still runs, '
+             'run chmod 700 on the folder and chmod 600 on its files if they are your own, then try again')
+
+
+def trusted(name):
+    """The bytes of the state file `name` (or only the folder's check, for None), read only when the folder and
+    the file are the caller's alone and neither is a link; a missing one raises FileNotFoundError."""
+    try:
+        folder = os.open(STATE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        raise
+    except OSError:
+        raise Refused(*UNTRUSTED)
+    try:
+        if not mine(os.fstat(folder)):
+            raise Refused(*UNTRUSTED)
+        if name is None:
+            return None
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+        except FileNotFoundError:
+            raise
+        except OSError:
+            raise Refused(*UNTRUSTED)
+        with os.fdopen(fd, 'rb') as f:
+            st = os.fstat(f.fileno())
+            if not (stat.S_ISREG(st.st_mode) and mine(st)):
+                raise Refused(*UNTRUSTED)
+            return f.read()
+    finally:
+        os.close(folder)
 
 
 def private_state():
@@ -217,6 +254,10 @@ def end(turns, run):
 
 
 def lock(run):
+    try:
+        trusted(None)
+    except FileNotFoundError:
+        raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     if not os.path.exists(os.path.join(STATE, run + '.json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     try:
@@ -235,8 +276,7 @@ def saved(run, state=None):
         os.replace(path + '.new', path)
         return state
     try:
-        with open(path) as f:
-            return json.load(f)
+        return json.loads(trusted(run + '.json'))
     except FileNotFoundError:
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
 

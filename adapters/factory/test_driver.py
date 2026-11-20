@@ -215,6 +215,7 @@ class Factory(unittest.TestCase):
                     code, out = self.call(cmd, {'run': 'run-00000000000a'})
                     self.assertEqual(code, 1, '%s accepted a run it cannot trust: %s' % (cmd, out))
                     self.assertNotIn('still has processes', out['error'], '%s went after the planted processes' % cmd)
+                    self.assertIn('not yours alone', out['error'])
                     self.assertTrue(alive(child), '%s ended a process the driver never started' % cmd)
                 self.assertEqual(self.logged(), [], 'a wake ran a turn from a run it cannot trust')
 
