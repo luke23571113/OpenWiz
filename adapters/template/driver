@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
 
-Each turn of a run is a local process: `start` runs the first turn, `wake` another, `stop` ends them.
-Adapt `command` to your harness, and `launch` and `end` to your host. Linux; standard library only.
+Each turn of a run is a local process: `start` runs the first turn, `wake` another once the last one has
+ended, `stop` ends everything the run started. A run is saved before its first turn starts.
+Adapt `command` to your harness, and `launch`, `running` and `end` to your host. Linux; standard library only.
 """
-import json, os, re, secrets, shutil, signal, subprocess, sys
+import json, os, re, secrets, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get('OPENWIZ_TEMPLATE_STATE') or os.path.expanduser('~/.local/state/openwiz-template')
@@ -13,6 +14,7 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
+GRACE = 10  # seconds a stopped process has to exit before it is killed
 
 
 class Refused(Exception):
@@ -59,14 +61,51 @@ def launch(req, run, woken):
         raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror), 'check that it runs by hand')
 
 
+def marked(run):
+    """Every live process carrying this run's mark: its turns and anything they started."""
+    mark, found = ('OPENWIZ_RUN=' + run).encode(), []
+    for pid in filter(str.isdigit, os.listdir('/proc')):
+        try:
+            with open('/proc/%s/environ' % pid, 'rb') as f:
+                if mark in f.read().split(b'\0'):
+                    found.append(int(pid))
+        except OSError:
+            pass
+    return found
+
+
+def running(pid, run):
+    """Whether the turn `launch` returned is still running."""
+    return pid in marked(run)
+
+
 def end(pid, run):
-    """Stop one turn: signal its process group only while it is still this run's."""
-    try:
-        with open('/proc/%d/environ' % pid, 'rb') as f:
-            if ('OPENWIZ_RUN=' + run).encode() in f.read().split(b'\0'):
-                os.killpg(pid, signal.SIGTERM)
-    except (FileNotFoundError, ProcessLookupError):
-        pass
+    """Stop the run: every process with its mark, even after the turn `pid` has exited; answer once none is left."""
+    for sig, wait in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
+        sent, deadline = set(), time.monotonic() + wait
+        while time.monotonic() < deadline:
+            left = marked(run)
+            if not left:
+                time.sleep(0.1)  # a process in the middle of exec shows no environment for a moment
+                left = marked(run)
+                if not left:
+                    return
+            for p in set(left) - sent:  # each once, as it appears: a turn's child started meanwhile too
+                sent.add(p)
+                try:  # pin the pid, then check its mark again, so a pid the system reused is never signalled
+                    fd = os.pidfd_open(p)
+                except OSError:
+                    continue
+                try:
+                    if p in marked(run):
+                        signal.pidfd_send_signal(fd, sig)
+                except OSError:
+                    pass
+                finally:
+                    os.close(fd)
+            time.sleep(0.1)
+    raise Refused('run %s still has processes after stop' % run,
+                  'stop it again, or end the processes that carry OPENWIZ_RUN=%s by hand' % run)
 
 
 def saved(run, state=None):
@@ -92,20 +131,45 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
-        saved(run, {'request': req, 'turns': [launch(req, run, False)], 'stopped': False})
+        state = {'request': req, 'turns': [], 'stopped': False}
+        try:  # save the run before its turn starts: nowhere to keep it, nothing starts
+            saved(run, state)
+        except OSError:
+            raise Refused('the driver cannot save runs in its state folder; nothing was started',
+                          'make OPENWIZ_TEMPLATE_STATE (or ~/.local/state/openwiz-template) a folder you can write')
+        try:
+            pid = launch(req, run, False)
+        except Refused:
+            saved(run, dict(state, stopped=True))
+            raise
+        try:
+            saved(run, dict(state, turns=[pid]))
+        except OSError:  # the turn began but its run is not saved: end it, and never say retry
+            try:
+                end(pid, run)
+            except Refused:
+                pass
+            try:  # and forget the run, so no wake starts it again
+                os.remove(os.path.join(STATE, run + '.json'))
+            except OSError:
+                pass
+            raise Refused('run %s began but could not be saved, so the driver ended it; its outcome is unknown' % run,
+                          'read the ticket for what its agent did, and end any process carrying OPENWIZ_RUN=%s, '
+                          'before you start again' % run)
         return {'run': run}
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
         state = saved(run)
         if cmd == 'stop':
-            for pid in state['turns']:
-                end(pid, run)
-            saved(run, dict(state, stopped=True))
+            saved(run, dict(state, stopped=True))  # first, so no wake starts a turn meanwhile
+            end(state['turns'][-1] if state['turns'] else 0, run)
             return {'run': run, 'stopped': True}
         if state['stopped']:
             raise Refused('run %s is stopped' % run, 'start a new run')
-        state['turns'].append(launch(state['request'], run, True))
-        saved(run, state)
+        # One agent per run: while its last turn runs, that agent is awake and reads the ticket itself.
+        if not (state['turns'] and running(state['turns'][-1], run)):
+            state['turns'].append(launch(state['request'], run, True))
+            saved(run, state)
         return {'run': run, 'woke': True}
     raise Refused('unknown command', 'run one of: version, schema, start, wake, stop')
 
