@@ -1,7 +1,0 @@
-# Run on ClosedWiz before the cut-over (#629 was ClosedWiz #2937); commit ids are ClosedWiz's; local paths shortened.
-# WRD1 red: collection-only must not render the page (publish.publish draw_page=False still runs main.tick).
-$ python3 -I tools/war-room/test_health.py Collection.test_collection_only_saves_a_sample_without_drawing
-FAIL: test_collection_only_saves_a_sample_without_drawing (__main__.Collection.test_collection_only_saves_a_sample_without_drawing)
-AssertionError: collection rendered the page
-Ran 1 test in 0.824s
-FAILED (failures=1)

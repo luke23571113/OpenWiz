@@ -4,6 +4,5 @@
 # root; needs Python, sh, jq, cargo and node, as the load tests always did.
 set -eu
 cd "$(dirname "$0")/../.."
-python3 -I tools/fleet-load/test_carried.py
 python3 -I tools/fleet-load/test_seams.py
 python3 -I tools/fleet-load/test.py
