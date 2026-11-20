@@ -49,7 +49,6 @@ repository, spec #1257) is a fresh clone or that setting, never an edit:
 | The CloudRoom loops that name the repository (the merge sweep, the orchestrator watch, the polish waves, the standby check) | Their prompts, and the scripts they run from a clone | Name the new repository in each prompt, and run each script from a clone of it. Their prompts and scripts are private, so the cut-over runbook (#1284) lists each one with its read-back |
 
 Not switched here, and listed in the cut-over runbook instead: the CI
-specs' tools (`tools/pc-capacity/`, `tools/ci-overflow/` and the runner kit
-in `ci/runner/`). `python3 tools/github-app/test.py` checks that no file in
+specs' tools (`tools/pc-capacity/` and `tools/ci-overflow/`). `python3 tools/github-app/test.py` checks that no file in
 this folder, the stall alarm, the GitHub App or the roadmap names a fixed
 repository (#1279).
