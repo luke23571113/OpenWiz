@@ -167,7 +167,9 @@ def read_note(body):
 
 def read_lines(body):
     """The body's lines, each without trailing spaces and tabs, and whether it is outside every fenced
-    code block and HTML comment, as the pinned plan-links contract's "Reading a section" reads them."""
+    code block and HTML comment, as the pinned plan-links contract's "Reading a section" reads them.
+    Comment syntax inside a fence and fence syntax inside a comment change nothing, and a line's
+    comment delimiters are read in order, so an opener after a closer opens a comment."""
     out, fence, comment = [], None, False
     for line in body.replace('\r\n', '\n').split('\n'):
         line = line.rstrip(' \t')
@@ -176,12 +178,18 @@ def read_lines(body):
         if fence is not None:
             if re.match(r'^%s{%d,}\s*$' % (re.escape(fence[0]), len(fence)), trim):
                 fence = None
-        else:
+            continue
+        if not comment:
             fence = (re.match(r'^(`{3,}|~{3,})', trim) or [None])[0]
-        if '<!--' in line:
-            comment = True
-        if '-->' in line:
-            comment = False
+            if fence is not None:
+                continue
+        at = 0
+        while True:
+            at = line.find('-->' if comment else '<!--', at)
+            if at < 0:
+                break
+            at += 3 if comment else 4
+            comment = not comment
     return out
 
 
