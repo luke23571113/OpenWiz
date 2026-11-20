@@ -256,9 +256,11 @@ class Boat(unittest.TestCase):
         self.assertNotIn('retry', json.dumps(out))
         self.assertTrue(self.until(lambda: not self.marked()), 'the turn it could not save still runs')
         self.assertEqual(list(self.sandboxes().values()), ['stopped'])
-        os.rmdir(os.path.join(self.folder, 'state', re.search(r'run-[0-9a-f]{12}', out['error']).group() + '.json.new'))
-        code, _ = self.driver('wake', {'run': re.search(r'run-[0-9a-f]{12}', out['error']).group()})
+        run = re.search(r'run-[0-9a-f]{12}', out['error']).group()
+        os.rmdir(os.path.join(self.folder, 'state', run + '.json.new'))
+        code, err = self.driver('wake', {'run': run})
         self.assertEqual((code, [t[2] for t in self.logged()]), (1, ['c1']), 'a wake reopened the failed run')
+        self.assertIn('never finished starting', err['error'])
 
 
 if __name__ == '__main__':

@@ -1,14 +1,16 @@
 # boat.dev driver
 
-A [driver v1](../../kernel/driver.v1.md) that runs each builder in its own [boat.dev](https://boat.dev) cloud sandbox, through your own signed-in `boat` CLI. One Python file, standard library only, Linux or macOS. Runs are saved in `$OPENWIZ_BOAT_STATE` (default `~/.local/state/openwiz-boat`), owner-only.
+A [driver v1](../../kernel/driver.v1.md) that runs each builder in its own [boat.dev](https://boat.dev) cloud sandbox, through your own signed-in `boat` CLI. One Python file, standard library only, Linux (it keeps each turn's processes with `/proc` and a subreaper). Runs are saved in `$OPENWIZ_BOAT_STATE` (default `~/.local/state/openwiz-boat`), owner-only.
 
 | Command | What it does on boat.dev |
 | --- | --- |
 | `start` | `boat new --name openwiz-<run>`, then `boat prompt <sandbox> --new --provider <harness> --model <model>` with the ticket and skill. It answers once boat has queued the agent's turn. If the prompt fails, it stops the new sandbox before refusing. |
-| `wake` | If boat stopped the sandbox (it auto-stops after an hour without a running prompt), `boat resume` it. Then `boat prompt <sandbox> --resume <conversation>`: the same agent, with its memory, edits its own status note. |
-| `stop` | Ends the local `boat prompt` turns, `boat interrupt`s the agent and `boat stop`s the sandbox. The disk stays for at least 14 days at no compute cost; `boat delete <sandbox>` removes it for good. |
+| `wake` | While the last turn's `boat prompt` still runs, nothing: that agent is awake and reads the ticket itself. Otherwise, if boat stopped the sandbox (it auto-stops after an hour without a running prompt), `boat resume` it, then `boat prompt <sandbox> --resume <conversation>`: the same agent, with its memory, edits its own status note. |
+| `stop` | Ends every local process the turns started, `boat interrupt`s the agent and `boat stop`s the sandbox. The disk stays for at least 14 days at no compute cost; `boat delete <sandbox>` removes it for good. |
 
-Each turn runs as a local `boat prompt` process in its own process group, so the driver can answer at once. Its output goes to an owner-only log beside the run's state, deleted on `stop`.
+Each turn is a local `boat prompt` under its own supervisor (a subreaper), so the driver can answer at once, and `stop` reaches every process the turn started, whatever its session or environment. The turn's output goes to an owner-only log beside the run's state, deleted on `stop`.
+
+**Never two agents, never one left running.** A wake and a stop hold the run's lock throughout, so they take turns. The driver saves a run before it starts anything for it. A run stays `starting` until its first turn is saved: a wake refuses it, and a stop still reaches its sandbox. If a save fails after a turn began, the driver ends that turn (and, for a start, stops the sandbox) and says the outcome is unknown, never to do it again. A stop that can't save still ends everything, then says so.
 
 `version` adds `many-at-once` and `own-sandbox` to `can`: every run gets its own sandbox, and a boat plan runs many at once.
 

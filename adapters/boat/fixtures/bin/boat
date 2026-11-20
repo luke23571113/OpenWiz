@@ -125,7 +125,8 @@ def main():
     elif cmd == 'info' and len(rest) == 2 and rest[1] == '--json':
         box = update(lambda s: sandbox(s, rest[0]))
         say(id=rest[0], state=box['state'])
-    elif cmd in ('resume', 'stop', 'interrupt') and len(rest) == 2 and rest[1] == '--json':
+    elif cmd in ('resume', 'stop', 'interrupt') and rest[-1] == '--json' and (
+            len(rest) == 2 or cmd == 'interrupt' and len(rest) == 4 and rest[1] == '--convo'):
         def act(state):
             box = sandbox(state, rest[0])
             if cmd == 'interrupt':
