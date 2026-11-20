@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""The Factory driver passes the kit's five checks on a synthetic `droid` CLI (fixtures/bin/droid) and a local
-tracker, and never starts a second Droid session for one run.
-
-Run: python3 -I adapters/factory/test_driver.py   (Linux: the kit watches /proc)
-PATH is only fixtures/bin, /usr/bin and /bin, so no real `droid` is ever reached.
-"""
 import json
 import os
 import secrets
@@ -19,7 +13,6 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
-# Synthetic values in a GitHub token's shape and in Factory's API key's place, built here so no file holds one.
 TOKEN = 'gh' + 'p_' + 'Synthetic0Factory0Value' * 2
 API_KEY = 'fk' + '-synthetic0factory0value'
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'droid',
@@ -56,7 +49,6 @@ class Factory(unittest.TestCase):
                 pass
 
     def marked(self):
-        """Every live process this test started that still carries its mark."""
         found = []
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
@@ -73,7 +65,6 @@ class Factory(unittest.TestCase):
         return p.returncode, json.loads(p.stdout)
 
     def logged(self):
-        """The turns the fake droid ran: [(turn pid, worker pid, session, first|woken)]."""
         try:
             with open(self.turns) as f:
                 return [tuple(line.split()) for line in f]
@@ -81,8 +72,6 @@ class Factory(unittest.TestCase):
             return []
 
     def test_kit_passes_all_five(self):
-        # catches: a start that never runs `droid exec`, a wake that opens a new Droid session (a second note),
-        # a stop that leaves the turn's worker running, and a key or token passed into a process it starts.
         p = subprocess.run([sys.executable, '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
                             '--ticket', '7', '--harness', 'droid', '--model', 'synthetic-model-1',
                             '--tracker', self.tracker, '--wait', '8'],
@@ -95,17 +84,13 @@ class Factory(unittest.TestCase):
             'pass token: no login or token passed through the driver']), p.stderr)
 
     def test_other_harness_is_refused_before_anything_runs(self):
-        # catches: a start that passes another harness's name to Droid, or runs `droid` for it, though on
-        # Factory the agent is always Droid and only the model is chosen.
         code, out = self.call('start', dict(REQUEST, harness='claude'))
         self.assertEqual(code, 1, out)
         self.assertIn('droid', out['next'])
-        time.sleep(0.5)  # time for a turn to log itself, if one was started
+        time.sleep(0.5)
         self.assertEqual((self.logged(), self.marked()), ([], []))
 
     def test_wake_without_a_session_starts_nothing(self):
-        # catches: a wake that, when the first turn left no Droid session (it failed before one began), runs
-        # `droid exec` without `-s` and so starts a second, unrelated agent on the ticket.
         code, out = self.call('start', REQUEST, FAKE_SIGNED_OUT='1')
         self.assertEqual(code, 0, out)
         deadline = time.monotonic() + 10
@@ -114,7 +99,7 @@ class Factory(unittest.TestCase):
         code, err = self.call('wake', out, FAKE_SIGNED_OUT='')
         self.assertEqual(code, 1, err)
         self.assertIn('no Droid session', err['error'])
-        time.sleep(0.5)  # time for a turn to log itself, if one was started
+        time.sleep(0.5)
         self.assertEqual((self.logged(), self.marked()), ([], []))
 
 

@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""A synthetic Factory `droid` CLI for the driver's own tests. It never reaches Factory.
-
-`droid exec --cwd <abs> -m <model> --auto medium -o json [-s <session>] <prompt>` runs one turn, as Factory's
-droid exec docs describe: without `-s` it opens a new session, with `-s` it continues that one (an unknown
-session is an error, exit 1; with FAKE_SIGNED_OUT set, every turn fails before a session begins). The turn
-hands its work to a worker in its own session, prints one JSON result line with the `session_id`, and ends. Once the turn has ended, the worker posts (new session) or edits (same
-session) one builder status note in the local tracker named by KIT_TRACKER, as a record author, then waits to
-be stopped. Sessions live in FAKE_FACTORY_HOME. Each turn appends `<turn pid> <worker pid> <session>
-first|woken` to FAKE_TURNS when it is set.
-"""
 import json, os, re, subprocess, sys, time, uuid
 
 args = sys.argv[1:]
@@ -24,7 +14,7 @@ def option(name):
 
 
 home = os.environ['FAKE_FACTORY_HOME']
-if os.environ.get('FAKE_WORKER'):  # the worker: wait for its turn to end, then write the note
+if os.environ.get('FAKE_WORKER'):
     while os.getppid() == int(os.environ['FAKE_WORKER']):
         time.sleep(0.01)
     session, prompt = os.environ['FAKE_SESSION'], args[-1]
@@ -57,7 +47,7 @@ if args[:1] != ['exec']:
     refuse('this fake only runs `droid exec`')
 if '--skip-permissions-unsafe' in args or option('--auto') != 'medium' or option('-o') != 'json':
     refuse('this fake expects --auto medium and -o json')
-if os.environ.get('FAKE_SIGNED_OUT'):  # as Droid does with no login: it fails before any session begins
+if os.environ.get('FAKE_SIGNED_OUT'):
     refuse('not signed in to Factory')
 cwd, model = option('--cwd'), option('-m')
 if not cwd or not os.path.isabs(cwd) or not os.path.isdir(cwd) or not model:

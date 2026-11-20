@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""The Factory driver (kernel/driver.v1.md), built from adapters/template/: each turn is one local `droid exec`.
-
-`start` runs the first turn in a new Droid session, with JSON output; `wake` runs another on that same session
-(`-s <session_id>` from the first turn's JSON) once the last turn has ended; `stop` ends everything the turns
-started. Each turn runs under its own supervisor, which keeps every process the turn starts. A run is saved
-before its first turn starts, and a wake or a stop holds the run's lock throughout. The driver never reads,
-passes or prints a login: `droid` uses the person's own Factory sign-in. Linux; standard library only.
-"""
 import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -16,9 +8,10 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
-HARNESS = 'droid'  # on Factory the agent is always Droid; `model` picks its model
-SESSION = r'[A-Za-z0-9][A-Za-z0-9-]{0,99}'  # a Droid session id, as `droid exec -o json` prints it
-GRACE = 10  # seconds a stopped process has to exit before it is killed
+HARNESS = 'droid'
+SESSION = r'[A-Za-z0-9][A-Za-z0-9-]{0,99}'
+GRACE_SECONDS = 10
+PR_SET_CHILD_SUBREAPER = 36
 
 
 class Refused(Exception):
@@ -32,7 +25,6 @@ def unique(pairs):
 
 
 def read(fields):
-    """The request on stdin, with exactly these fields, each valid, or Refused."""
     try:
         req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
     except ValueError:
@@ -47,7 +39,6 @@ def read(fields):
 
 
 def command(req, session, work):
-    """One `droid exec` turn, with Droid's own sign-in: a new session, or the run's session when woken."""
     what = 'You were woken: read the ticket again and carry on' if session else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
     return (['droid', 'exec', '--cwd', work, '-m', req['model'], '--auto', 'medium', '-o', 'json']
@@ -55,7 +46,6 @@ def command(req, session, work):
 
 
 def session_of(run, turns):
-    """The Droid session the run's turns ran in, from the newest turn whose JSON result names one, or None."""
     for n in reversed(range(len(turns))):
         try:
             with open(os.path.join(STATE, '%s.%d.out' % (run, n))) as f:
@@ -73,7 +63,6 @@ def session_of(run, turns):
 
 
 def since(pid):
-    """When process pid started, or None once it has exited: with its pid, this names one process."""
     try:
         with open('/proc/%d/stat' % pid) as f:
             fields = f.read().rpartition(')')[2].split()
@@ -83,7 +72,6 @@ def since(pid):
 
 
 def descendants(pid):
-    """Every live process under pid."""
     children = {}
     for p in filter(str.isdigit, os.listdir('/proc')):
         try:
@@ -103,10 +91,7 @@ def descendants(pid):
 
 
 def supervise(out, cmd):
-    """One turn, as `driver --turn <output file> <command>`: run droid with its output in that owner-only file,
-    and keep every process it starts as this turn's (an orphan comes back here, whatever its session or
-    environment) until none is left; then exit."""
-    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+    if ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
@@ -116,7 +101,7 @@ def supervise(out, cmd):
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
     while True:
@@ -127,7 +112,6 @@ def supervise(out, cmd):
 
 
 def launch(req, run, n, session):
-    """Start turn n under its supervisor, in the run's own workspace; return what `running` and `end` need."""
     if not shutil.which(HARNESS):
         raise Refused('Factory\'s droid CLI is not installed here',
                       'install droid and sign in to Factory yourself, then start again')
@@ -157,15 +141,12 @@ def launch(req, run, n, session):
 
 
 def running(turn, run):
-    """Whether the turn `launch` returned still runs its harness."""
     return bool(turn) and turn['since'] is not None and since(turn['pid']) == turn['since']
 
 
 def end(turns, run):
-    """Stop the run: every process its turns' supervisors still keep, whatever its session or environment.
-    A supervisor exits only once none of its processes is left, so answer once every supervisor has exited."""
     kept = [(t['supervisor'], t['supervisor_since']) for t in turns if t and t['supervisor_since'] is not None]
-    for sig, wait in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
+    for sig, wait in ((signal.SIGTERM, GRACE_SECONDS), (signal.SIGKILL, 2)):
         sent, deadline = set(), time.monotonic() + wait
         while time.monotonic() < deadline:
             kept = [(p, t) for p, t in kept if since(p) == t]
@@ -173,7 +154,7 @@ def end(turns, run):
                 return
             pinned = {}
             for p in set().union(*(descendants(s) for s, _ in kept)) - sent:
-                try:  # pin each pid first, then check it is still under a supervisor, so no reused pid is hit
+                try:
                     pinned[p] = os.pidfd_open(p)
                 except OSError:
                     pass
@@ -194,7 +175,6 @@ def end(turns, run):
 
 
 def lock(run):
-    """Hold the run's lock until this command ends, so its wakes and stops take turns."""
     if not os.path.exists(os.path.join(STATE, run + '.json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     try:
@@ -220,7 +200,6 @@ def saved(run, state=None):
 
 
 def unsaved(run, turn, cmd):
-    """A turn began but could not be saved: end it, and say the outcome is unknown, never retry."""
     try:
         end([turn], run)
     except Refused:
@@ -242,8 +221,8 @@ def answer(cmd):
         if req['harness'] != HARNESS:
             raise Refused('Factory runs only its own agent, not %s' % req['harness'],
                           'start again with harness droid, and pick its model with model')
-        state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}  # never woken while starting
-        try:  # save the run before its turn starts: nowhere to keep it, nothing starts
+        state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}
+        try:
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
         except OSError:
@@ -259,7 +238,7 @@ def answer(cmd):
             raise
         try:
             saved(run, dict(state, turns=[turn], starting=False))
-        except OSError:  # the turn began but its run is not saved: end it, and never say retry
+        except OSError:
             unsaved(run, turn, 'start')
         return {'run': run}
     if cmd in ('wake', 'stop'):
@@ -267,12 +246,12 @@ def answer(cmd):
         lock(run)
         state = saved(run)
         if cmd == 'stop':
-            try:  # first, so no wake starts a turn meanwhile
+            try:
                 saved(run, dict(state, stopped=True))
                 kept = True
             except OSError:
                 kept = False
-            end(state['turns'], run)  # whether or not that save worked
+            end(state['turns'], run)
             if not kept:
                 raise Refused('run %s has ended, but the driver could not save that it is stopped' % run,
                               'make OPENWIZ_FACTORY_STATE (or ~/.local/state/openwiz-factory) a folder you can '
@@ -282,16 +261,15 @@ def answer(cmd):
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
-        # One agent per run: while its last turn runs, that agent is awake and reads the ticket itself.
         if state['turns'] and running(state['turns'][-1], run):
             return {'run': run, 'woke': True}
         session = state.get('session') or session_of(run, state['turns'])
-        if not session:  # a wake without `-s` would start a second, unrelated agent
+        if not session:
             raise Refused('run %s has no Droid session to continue: its first turn ended before one began' % run,
                           'read its output in OPENWIZ_FACTORY_STATE, sign in to Factory, then stop it and start '
                           'a new run')
         state = dict(state, session=session)
-        try:  # a turn it could not save would be beyond a later wake's check: save first, or start nothing
+        try:
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was started' % run,
