@@ -401,7 +401,7 @@ class Fallback(Helper):
 
 
 class Review(Helper):
-    """The review's findings R1, R2, R3, R4, R6 and R7 on #1916, each red first."""
+    """The review's findings R1, R2, R3, R4, R6, R7 and R8 on #1916, each red first."""
     REQ = REQ
 
     def shell(self, script, *extra, **env):
@@ -475,6 +475,50 @@ class Review(Helper):
         refused = self.start(OPENWIZ_AGENT_TOKEN_DIR=str(shared / "private"))
         self.assertEqual((refused.returncode, self.calls()), (2, []))
         self.assertFalse((shared / "private").exists())
+
+    def test_r2_an_ancestor_its_group_can_change_is_refused(self):
+        # catches: a non-sticky folder writable by the caller's own group, whose other members
+        # could move the private directory into a Git tree.
+        self.answers(answer())
+        shared = self.root / "group"
+        shared.mkdir()
+        shared.chmod(0o770)
+        os.chown(shared, -1, os.getgid())
+        refused = self.start(OPENWIZ_AGENT_TOKEN_DIR=str(shared / "private"))
+        self.assertEqual((refused.returncode, self.calls()), (2, []))
+        self.assertFalse((shared / "private").exists())
+
+    def test_r7_a_replaced_helper_list_or_header_never_authenticates_git(self):
+        # catches: higher-priority git config replacing the helper list, so the App helper is never
+        # asked and git signs in with the owner's helper or an owner's Authorization header.
+        self.answers(answer())
+        self.start()
+        owner = "!f() { echo username=synthetic-owner; echo password=synthetic-owner-login; }; f"
+        header = "Authorization: Basic " + base64.b64encode(b"synthetic-owner:synthetic-owner-login").decode()
+        for config in (("credential.helper=", f"credential.helper={owner}"),
+                       ("credential.https://github.com.helper=", f"credential.https://github.com.helper={owner}"),
+                       (f"http.extraHeader={header}",)):
+            with self.subTest(config=config[-1][:40]):
+                github = self.github()
+                options = [arg for item in config for arg in ("-c", item)]
+                ran = self.helper("run", *self.REQ, "--", "git", *options, *github.git()[1:])
+                self.assertEqual(github.seen, [], "git signs in as no one: not the owner, not the App")
+                self.assertNotEqual(ran.returncode, 0)
+                self.assertEqual(ran.stderr.count(WITHHELD), 1, "one note")
+
+    def test_r8_git_http_tracing_never_shows_the_token(self):
+        # catches: inherited GIT_TRACE_CURL, GIT_CURL_VERBOSE or GIT_TRACE_REDACT=0 logging the App
+        # credential's Authorization header to the terminal or a trace file.
+        self.answers(answer())
+        self.start()
+        github = self.github()
+        trace = self.root / "curl-trace.txt"
+        ran = self.helper("run", *self.REQ, "--", *github.git(), GIT_TRACE_CURL=str(trace),
+                          GIT_CURL_VERBOSE="1", GIT_TRACE_REDACT="0")
+        self.assertEqual(ran.returncode, 0, ran.stderr)
+        self.assertEqual(set(github.seen), {sha(f"x-access-token:{TOKEN}")})
+        encoded = base64.b64encode(f"x-access-token:{TOKEN}".encode()).decode()
+        self.assert_never_exposed(ran, tokens=(TOKEN, encoded))
 
     def test_r7_a_later_owner_helper_never_authenticates_git(self):
         # catches: the helper declining for a later helper, so git silently signs in as the owner.
