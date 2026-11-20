@@ -183,6 +183,41 @@ class Factory(unittest.TestCase):
         time.sleep(0.5)
         self.assertEqual((self.logged(), self.marked(), os.listdir(shared)), ([], [], []))
 
+    def test_stop_and_wake_refuse_a_run_they_cannot_trust(self):
+        state = self.env['OPENWIZ_FACTORY_STATE']
+        other = subprocess.Popen([sys.executable, '-c', 'import subprocess, sys, time; print(subprocess.Popen(['
+                                  'sys.executable, "-c", "import time; time.sleep(60)"]).pid, flush=True); '
+                                  'time.sleep(60)'], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(other.wait)
+        self.addCleanup(other.kill)
+        child = int(other.stdout.readline())
+        other.stdout.close()
+        with open('/proc/%d/stat' % other.pid) as f:
+            since = int(f.read().rpartition(')')[2].split()[19])
+        planted = {'request': REQUEST, 'stopped': False, 'session': 'synthetic-session-1',
+                   'turns': [{'n': 0, 'pid': other.pid, 'since': since, 'supervisor': other.pid,
+                              'supervisor_since': since}]}
+        elsewhere = os.path.join(self.folder, 'elsewhere.json')
+        for case, folder_mode, file_mode, linked in (('others can write the folder', 0o777, 0o600, False),
+                                                     ('others can write the manifest', 0o700, 0o666, False),
+                                                     ('the manifest is a link', 0o700, 0o600, True)):
+            with self.subTest(case):
+                shutil.rmtree(state, True)
+                os.mkdir(state)
+                manifest = os.path.join(state, 'run-00000000000a.json')
+                with open(elsewhere if linked else manifest, 'w') as f:
+                    json.dump(planted, f)
+                if linked:
+                    os.symlink(elsewhere, manifest)
+                os.chmod(elsewhere if linked else manifest, file_mode)
+                os.chmod(state, folder_mode)
+                for cmd in ('stop', 'wake'):
+                    code, out = self.call(cmd, {'run': 'run-00000000000a'})
+                    self.assertEqual(code, 1, '%s accepted a run it cannot trust: %s' % (cmd, out))
+                    self.assertNotIn('still has processes', out['error'], '%s went after the planted processes' % cmd)
+                    self.assertTrue(alive(child), '%s ended a process the driver never started' % cmd)
+                self.assertEqual(self.logged(), [], 'a wake ran a turn from a run it cannot trust')
+
     def test_relative_state_still_runs_the_turn(self):
         code, out = self.call('start', REQUEST, cwd=self.folder, OPENWIZ_FACTORY_STATE='relative-state')
         self.assertEqual(code, 0, out)
