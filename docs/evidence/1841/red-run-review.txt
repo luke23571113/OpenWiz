@@ -5,3 +5,8 @@ FAIL: test_a_token_is_checked_for_time_left_at_handover_not_at_request (__main__
 AssertionError: Tuples differ: (0, None) != (5, 'expiry')
 Ran 10 tests in 23.363s
 FAILED (failures=2)
+# Fresh round on #1915 at fb0e944b: R3 proof, run red against that head's runbook. Synthetic only.
+FAIL: test_every_link_into_the_legacy_secret_route_lands_on_the_ga2_warning (__main__.RunbookTests.test_every_link_into_the_legacy_secret_route_lands_on_the_ga2_warning)
+AssertionError: '(#the-token-service-ga2)' not found in "Fleets, builders, reviewers, the war room collector and the map's readers read and ..." : Agent tokens (G2)
+Ran 1 test in 0.001s
+FAILED (failures=1)

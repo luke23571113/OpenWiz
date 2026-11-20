@@ -310,5 +310,25 @@ class StartStopTests(ServiceFixture):
         self.assertEqual((done.returncode, done.stdout), (1, ""))
 
 
+class RunbookTests(unittest.TestCase):
+    def test_every_link_into_the_legacy_secret_route_lands_on_the_ga2_warning(self):
+        # catches: a direct link (#agent-tokens-g2) that skips the GA2 section and lands on the
+        # legacy steps that move the App's key into a cloud secret, with no warning in view.
+        doc = (HERE.parents[1] / "docs/github-app.md").read_text()
+        self.assertIn("## The token service (GA2)\n", doc)
+        linked = set(re.findall(r"\]\(#([a-z0-9-]+)\)", doc))
+        sections = re.split(r"(?m)^## ", doc)[1:]
+        legacy = [s for s in sections if "--from-secret" in s or "OPENWIZ_GITHUB_APP_KEY" in s]
+        self.assertTrue(legacy)
+        for section in legacy:
+            heading, _, body = section.partition("\n")
+            anchor = re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
+            if anchor == "the-token-service-ga2" or anchor not in linked:
+                continue
+            first = body.strip().split("\n\n")[0]
+            self.assertIn("(#the-token-service-ga2)", first, heading)
+            self.assertIn("legacy", first.lower(), heading)
+
+
 if __name__ == "__main__":
     unittest.main()
