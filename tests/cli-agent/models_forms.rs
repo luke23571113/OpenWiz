@@ -742,3 +742,51 @@ fn a_staged_copy_is_never_more_readable_than_its_target() {
         assert_eq!(mode & 0o777, 0o600, "{name}");
     }
 }
+
+// catches (planner J87, ruling 16 overturned): a writer that refuses off
+// Linux or names its files through `/proc`, so `set` and `list --save` do
+// nothing on macOS; and on every Unix, a `docs/agents` that is a link, or is
+// swapped for one while `set` reads CloudRoom, moving a write outside.
+#[test]
+fn a_raced_docs_agents_is_refused_the_same_on_every_unix() {
+    let source = fs::read_to_string(Path::new(ROOT).join("crates/cli/src/models.rs")).unwrap();
+    for route in ["target_os", "/proc/"] {
+        assert!(!source.contains(route), "the writer depends on {route}");
+    }
+    let fake = project("one-table/fleet.md", catalogue());
+    let agents = fake.0.0.join("docs/agents");
+    let aside = fake.0.0.join("docs/agents-aside");
+    let outside = fake.0.0.join("outside");
+    fs::create_dir(&outside).unwrap();
+    let fleet = fixture("one-table/fleet.md");
+    fs::write(outside.join("fleet.md"), &fleet).unwrap();
+    let (code, _, err) = run_during(
+        &fake,
+        &["set", "reviewer", "codex", "gpt-6.2-sol", "high"],
+        || {
+            fs::rename(&agents, &aside).unwrap();
+            std::os::unix::fs::symlink(&outside, &agents).unwrap();
+        },
+    );
+    assert_eq!(code, 0, "{err}");
+    assert_ne!(fs::read_to_string(aside.join("fleet.md")).unwrap(), fleet);
+    assert!(aside.join("models-offered.json").exists());
+    for args in [
+        &["set", "fixer", "follows-builder"][..],
+        &["list", "--save"],
+    ] {
+        let (code, _, err) = run(&fake, args);
+        assert_eq!(code, 1, "{args:?}");
+        assert!(
+            err.contains("docs/agents is not a directory of this checkout"),
+            "{err}"
+        );
+    }
+    let mut left: Vec<_> = fs::read_dir(&outside)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    left.sort();
+    assert_eq!(left, ["fleet.md"], "a write landed outside the checkout");
+    assert_eq!(fs::read_to_string(outside.join("fleet.md")).unwrap(), fleet);
+}
