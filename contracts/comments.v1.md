@@ -135,6 +135,7 @@ Every repository carries `contracts/comments.v1.md` and `tools/comment-check/che
 
 - The checker reads forms, not meaning: a false `External:` or a stale warning passes it. CC7's review pass reads the meaning.
 - Comments inside string literals (a script held in a Rust raw string or a JavaScript template literal) are not seen. YAML block scalars other than `run:` are treated as text.
+- Shell's reader fails safe: a double-quoted command substitution it can't be sure of (one holding a backtick, `case`, a here-document or an unquoted inner `$(`) holds no comment, nor does the rest of the line its quote closes on, and a file that ends inside a quote or a quoted substitution has no comment from its first quoted substitution on. A real comment there goes unchecked and uncounted, because failing valid shell costs more than missing a comment the reviewer still reads.
 - JavaScript's `/` is read as a regular expression after an operator, an opening bracket, `}` or a keyword such as `return`, and as division otherwise; rare code can fool it. JSX text is read as code, so a `//` in it reads as a comment.
 - `.gitattributes` marks are read with `git check-attr --source`, Git 2.40 or later; an older Git reads none.
 

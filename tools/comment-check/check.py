@@ -193,7 +193,7 @@ def scan_python(s):
 HEREDOC = re.compile(r'<<(-?)[ \t]*(["\']?)([A-Za-z0-9_.-]+)\2')
 SHELL_BREAK = ' \t\n;&|()<>'
 SHELL_WORD = re.compile(r'[A-Za-z_]+(?=[ \t\n;&|()<>]|$)')
-SHELL_LEADS = {'then', 'do', 'else', 'elif', 'time', '!', '{'}
+SHELL_LEADS = {'then', 'do', 'else', 'elif', 'if', 'while', 'until', 'time', '!', '{'}
 
 
 def skip_parens(s, i):
@@ -211,22 +211,32 @@ def skip_parens(s, i):
     return n
 
 
-def shell_quoted(s, i, lines, out):
-    j, n = i + 1, len(s)
+class ShellRead:
+    def __init__(self, s):
+        self.s, self.lines, self.out, self.first, self.lost = s, Lines(s), [], None, False
+
+
+def shell_quoted(r, i):
+    s, n, j, sure = r.s, len(r.s), i + 1, True
     while j < n:
         if s[j] == '\\':
             j += 2
         elif s[j] == '"':
-            return j + 1
+            return j + 1, sure
         elif s.startswith('$((', j):
             j = skip_parens(s, j + 1)
         elif s.startswith('$(', j):
-            j = shell_words(s, j + 2, lines, out, nested=True)
+            r.first = j if r.first is None else r.first
+            kept, r.out = r.out, []
+            j, inner = shell_words(r, j + 2, nested=True)
+            r.out = kept + r.out if inner else kept
+            sure = sure and inner
         elif s[j] == '`':
             j = skip_quoted(s, j, '`', newline_ends=False)
         else:
             j += 1
-    return n
+    r.lost = True
+    return n, False
 
 
 def command_start(s, i, start):
@@ -242,13 +252,17 @@ def command_start(s, i, start):
 
 
 def scan_shell(s):
-    lines, out = Lines(s), []
-    shell_words(s, 0, lines, out)
-    return out
+    r = ShellRead(s)
+    shell_words(r, 0)
+    if r.lost and r.first is not None:
+        cut = r.lines.at(r.first)[0]
+        return [sp for sp in r.out if sp.l1 < cut]
+    return r.out
 
 
-def shell_words(s, i, lines, out, nested=False):
-    n, pending, boundary, depth, cases, start = len(s), [], True, 0, [], i
+def shell_words(r, i, nested=False):
+    s, lines = r.s, r.lines
+    n, pending, boundary, depth, cases, start, sure, quiet = len(s), [], True, 0, [], i, True, 0
     while i < n:
         c = s[i]
         if c == '\n' and pending:
@@ -265,7 +279,7 @@ def shell_words(s, i, lines, out, nested=False):
         elif s.startswith('$((', i) or (boundary and s.startswith('((', i)):
             i, boundary = skip_parens(s, i + 1 if c == '$' else i), False
         elif nested and s.startswith('$(', i):
-            i, boundary = shell_words(s, i + 2, lines, out, nested=True), False
+            i, sure, boundary = shell_words(r, i + 2, nested=True)[0], False, False
         elif s.startswith('$[', i):
             end = s.find(']', i)
             i, boundary = (n if end < 0 else end + 1), False
@@ -275,7 +289,7 @@ def shell_words(s, i, lines, out, nested=False):
             m = HEREDOC.match(s, i)
             if m:
                 pending.append((m.group(1) == '-', m.group(3)))
-                i = m.end()
+                i, sure = m.end(), sure and not nested
             else:
                 i += 2
             boundary = m is None
@@ -285,32 +299,44 @@ def shell_words(s, i, lines, out, nested=False):
             elif nested and c == ')' and cases[-1:] != [depth]:
                 depth -= 1
                 if depth < 0:
-                    return i + 1
+                    return i + 1, sure
             i, boundary = i + 1, True
         elif c == '#' and boundary:
-            i = line_comment(s, i, lines, out, '#')
+            if lines.at(i)[0] == quiet:
+                end = s.find('\n', i)
+                i = n if end < 0 else end
+            else:
+                i = line_comment(s, i, lines, r.out, '#')
         elif c == "'":
             end = s.find("'", i + 1)
             i, boundary = (n if end < 0 else end + 1), False
         elif c == '$' and s.startswith("$'", i):
             i, boundary = skip_quoted(s, i + 1, "'", newline_ends=False), False
         elif c == '"':
-            i, boundary = shell_quoted(s, i, lines, out), False
+            i, inner = shell_quoted(r, i)
+            sure, boundary = sure and inner, False
+            quiet = quiet if inner else lines.at(i - 1)[0]
         elif c == '`':
             i, boundary = skip_quoted(s, i, c, newline_ends=False), False
+            sure = sure and not nested
         elif c == '\\':
             i, boundary = i + 2, False
         elif nested and boundary and SHELL_WORD.match(s, i):
             word = SHELL_WORD.match(s, i).group()
-            if word in ('case', 'esac') and command_start(s, i, start):
-                if word == 'case':
-                    cases.append(depth)
-                elif cases:
-                    cases.pop()
+            if word in ('case', 'esac'):
+                sure = False
+                if command_start(s, i, start):
+                    if word == 'case':
+                        cases.append(depth)
+                    elif cases:
+                        cases.pop()
             i, boundary = i + len(word), False
         else:
             i, boundary = i + 1, False
-    return n
+    if nested:
+        r.lost = True
+        return n, False
+    return n, sure
 
 
 YAML_BLOCK = re.compile(r'^(\s*(?:-\s+)?)([^\s#][^#]*?):\s*[|>][0-9+-]*\s*$')
