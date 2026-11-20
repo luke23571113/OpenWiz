@@ -1,8 +1,0 @@
-# MT8 (#827), ruling (a): a budget breach fails in CI after the move.
-# Commit e31e38b raises ci.yml's 'changes' job timeout-minutes 5 -> 6 (budgets.tsv says 5); War room proof run 43878558192, job 133337985692.
-# Lines from its log, step 'The War room publish and gather tests':
-2026-11-16T13:43:55.8197779Z python3 -I tools/war-room/budgets.py check
-2026-11-16T13:43:55.8198058Z python3 -I tools/war-room/test_budgets.py
-2026-11-16T13:45:53.9686074Z budgets: ci.yml job changes: timeout-minutes 6, its budget is 5
-2026-11-16T13:45:53.9759644Z ##[error]Process completed with exit code 1.
-# Run conclusion: failure. The revert at f3345da removes the breach.

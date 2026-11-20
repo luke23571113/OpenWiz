@@ -1,6 +1,0 @@
-# search.sh at f1df7e63ebd5cfe9effdb3b1af9a28f5bf9c8fa6
-tools/install/pc_activation/test_activation.py:315:        core = load('pc_schema_checker', HERE.parents[2] / 'tools/live-check/core.py')
-exit 1
-
-# search.sh at c23a1caac0a2aee87dfe0917c38335ae17c6b2dc (after merging origin/main with ER8 #874, fe405cf)
-exit 0

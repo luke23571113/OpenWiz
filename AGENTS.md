@@ -30,7 +30,6 @@ OpenWiz runs coding agents in fleets: the user approves a plan, and agents build
 | `tools/`, `ci/` | Release, install, privacy-check and CI tools; each folder's README says how to run it |
 | `changes/` | One changelog line per product ticket ([`changes/README.md`](changes/README.md)) |
 | `docs/adr/` | Hard-to-reverse decisions |
-| `release/openwiz/` | The frozen 0.0.0 documents: never change them, and they are not current |
 
 ## Commands
 
