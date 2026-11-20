@@ -3,13 +3,12 @@
 a fake `gh` (fixtures/gh). Run from anywhere:  python3 -I ci/escapes/test.py
 
 P: the plan reader on the CI selection record's own fixtures
-(ci/selection/, #1405): every valid plan is accepted, every invalid one is
-refused for the reason its case in ci/selection/invalid/cases.json gives it,
-and the contract's
-read cases get the answers they expect. L: reading a failed job's log for
-the tests that failed. F: the finder end to end, on a synthetic GitHub: its
-exact reads, the one issue it opens for an escape, and what it says when it
-can't tell. Every expected value is written here by hand from the contract
+(ci/selection/, #1405): every valid plan is accepted, every invalid one (a
+case of ci/selection/invalid/cases.json) is refused for the reason its case
+gives, and the contract's read cases get the answers they expect. L: reading
+a failed job's log for the tests that failed. F: the finder end to end, on a
+synthetic GitHub: its exact reads, the one issue it opens for an escape, and
+what it says when it can't tell. Every expected value is written here by hand from the contract
 and the ticket, never computed the way escapes.py computes it.
 """
 import importlib.util

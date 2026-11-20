@@ -1,10 +1,10 @@
 # CI selection record fixtures
 
-Synthetic plans for the CI selection record, [`openwiz.ci-selection.v1`](../../contracts/ci-selection.v1.md) (#1405). `tests/checks/ci_selection.rs` checks that every file in `valid/` matches [the schema](../../contracts/ci-selection.v1.schema.json) and keeps the contract's rules beyond it, and that every case in [`invalid/cases.json`](invalid/cases.json) is refused, for its reason. Every run id, commit, pull request number and path is synthetic; the lists of tests are short samples (a real plan names every test). They prove the record's shape, never a live run.
+Synthetic plans for the CI selection record, [`openwiz.ci-selection.v1`](../../contracts/ci-selection.v1.md) (#1405). `ci/escapes/test.py` checks that every file in `valid/` matches [the schema](../../contracts/ci-selection.v1.schema.json) and keeps the contract's rules beyond it, and that every case in [`invalid/cases.json`](invalid/cases.json) is refused, for its reason. Every run id, commit, pull request number and path is synthetic; the lists of tests are short samples (a real plan names every test). They prove the record's shape, never a live run.
 
 Later tickets read them: X5 (#1262) writes plans of these shapes, X6 (#1264) runs the escape finder's tests on them, and X8 (#1266) balances the Rust lane's `rust:test:` and `rust:lib:` ids.
 
-Run: `cargo test -p openwiz-tests --test checks ci_selection`.
+Run: `python3 -I ci/escapes/test.py Plans`.
 
 ## Valid
 
