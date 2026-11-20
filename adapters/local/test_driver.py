@@ -167,12 +167,12 @@ class Local(unittest.TestCase):
         self.assertIn('nothing was started', err['error'])
         self.assertNotIn('retry', json.dumps(err))
         os.rmdir(blocked)
+        before = set(self.marked('OPENWIZ_RUN=' + out['run']))  # the first turn's worker still runs
         code, err = self.driver('wake', out, dict(self.env, BREAK='write'), self.wrapper())
         self.assertEqual(code, 1, err)
         self.assertIn('unknown', err['error'])
         self.assertNotIn('retry', json.dumps(err))
-        self.until(lambda: not alive(self.logged()[-1][1]))
-        self.assertEqual([alive(t) or alive(c) for t, c, _ in self.logged()[1:]], [False], 'the unsaved turn runs')
+        self.assertLessEqual(set(self.marked('OPENWIZ_RUN=' + out['run'])), before, 'the unsaved turn still runs')
 
     def test_start_with_nowhere_to_save_starts_nothing(self):
         # catches: a start that launches before it saves the run, so a failed save leaves an agent running
