@@ -1886,8 +1886,9 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
         log = self.openssl_log.read_bytes()
         self.assertIn(b"/dev/fd/", log)
         self.assertFalse(b"synthetic-runner-value" in log, "the runner's environment reached the tool")
-        leak = "synthetic-context synthetic-leaked-token " + self.pem.decode()
-        for check in (lambda: self.assert_no_key(leak), lambda: self.assert_hidden("synthetic-leaked-token", leak)):
+        # One output holding the key, one holding only the token: each check fails on its own needle.
+        for check in (lambda: self.assert_no_key("synthetic-context " + self.pem.decode()),
+                      lambda: self.assert_hidden("synthetic-leaked-token", "synthetic-context synthetic-leaked-token")):
             with self.assertRaises(AssertionError) as caught:
                 check()
             self.assertFalse("synthetic-context" in str(caught.exception), "a failure printed the output")

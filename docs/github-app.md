@@ -195,8 +195,9 @@ GH_TOKEN="$(python3 -I tools/github-app/refresh-token.py --write \
   The key reaches OpenSSL only by descriptor; the secret's key and any token the
   caller exports for `gh` (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`,
   `GITHUB_ENTERPRISE_TOKEN`) are dropped from the helper's environment before any
-  child starts, and on the secret route OpenSSL gets only `PATH`. `tools/github-app/test.py` (`AgentTokenTests`) checks each of these with a
-  logging OpenSSL stand-in.
+  child starts, and on the secret route OpenSSL gets only `PATH`.
+  `tools/github-app/test.py` (`AgentTokenTests`) checks each of these with a logging
+  OpenSSL stand-in.
 - **Cloud threads: the Cloudroom secret.** A cloud thread adds `--from-secret`: the
   helper signs with `OPENWIZ_GITHUB_APP_KEY` (base64 of the PEM, one line) and
   `OPENWIZ_GITHUB_APP_ID`, two Cloud environment keys, and caches under the
@@ -204,11 +205,11 @@ GH_TOKEN="$(python3 -I tools/github-app/refresh-token.py --write \
   keys to every cloud thread and every loop run, unless a loop's `--secrets` names
   the only keys it gets, and every process in those sandboxes inherits them: the
   helper drops the key from its own environment, but cannot hide it from the rest of
-  the sandbox. This route was chosen over handing a
-  PC-minted token to the thread because a handed-over token has to pass through a
-  transcript or a command's output to get there, and it expires within the hour with
-  no way to refresh while the PC sleeps; the secret refreshes on its own and is
-  revocable separately (give it its own key, below).
+  the sandbox. This route was chosen over handing a PC-minted token to the thread
+  because a handed-over token has to pass through a transcript or a command's output
+  to get there, and it expires within the hour with no way to refresh while the PC
+  sleeps; the secret refreshes on its own and is revocable separately (give it its own
+  key, below).
 - **One minting path per profile.** `refresh-token.py` runs `mint-token.py`'s checks
   through the same `app.py` guards. `mint-token.py` itself stays the read-only tool,
   byte-identical to the copy `launch-fleet` carries (`tools/fleet-load/test_carried.py`).
