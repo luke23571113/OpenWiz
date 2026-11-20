@@ -9,10 +9,9 @@
 //! and `list --save` and `set` write that project file and the offered-models
 //! snapshot beside it, for the agent to commit.
 
-use std::io::Write;
-use std::os::fd::AsRawFd;
-use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs};
@@ -25,6 +24,7 @@ use openwiz_core::models::{
 use openwiz_core::new_thread::operation::NewThreadClient;
 use openwiz_core::new_thread::options::{CloudOptions, OptionsState, cloud_options};
 use openwiz_core::ops::Clock;
+use rustix::fs::{AtFlags, CWD, FileType, Mode, OFlags};
 use serde_json::{Value, json};
 
 use crate::{EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, clean, help, utc};
@@ -617,43 +617,36 @@ fn document(value: &impl serde::Serialize) -> String {
 
 /// The checkout's `docs/agents`, held open: `docs`, then `agents` inside
 /// it, each opened as a directory and never through a link, so nothing is
-/// read for a write or written otherwise (R1). Every later step names its
-/// file through this handle (`/proc/self/fd/<fd>/<name>`), so a folder
-/// swapped for a link after the check can't move a read, staging write,
-/// rename or cleanup anywhere else. The standard library has no `openat`
-/// and this workspace allows no unsafe code or `libc`, so only Linux has
-/// that route; elsewhere `set` and `list --save` write nothing.
-struct Agents(std::fs::File);
+/// read for a write or written otherwise (R1). Every later step is a call
+/// relative to this handle (`openat`, `fstatat`, `renameat`, `unlinkat`,
+/// through `rustix`), so a folder swapped for a link after the check can't
+/// move a read, staging write, rename or cleanup anywhere else, on Linux and
+/// macOS alike.
+struct Agents(File);
 
 impl Agents {
     fn open(root: &Path) -> Result<Self, String> {
-        if !cfg!(target_os = "linux") {
-            return Err(
-                "this system can't write docs/agents through the folder it checked, so nothing was written".into(),
-            );
-        }
-        let folder = |path: &Path, dir: &str| {
-            std::fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(NO_FOLLOW | DIRECTORY)
-                .open(path)
-                .map(Agents)
-                .map_err(|_| {
-                    format!("{dir} is not a directory of this checkout (missing or a link); nothing was written")
-                })
+        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let refused = |dir: &str| {
+            format!(
+                "{dir} is not a directory of this checkout (missing or a link); nothing was written"
+            )
         };
-        let docs = folder(&root.join("docs"), "docs")?;
-        folder(&docs.entry("agents"), "docs/agents")
-    }
-
-    /// `name` (or a `docs/agents/<name>` path's last part) in this folder.
-    fn entry(&self, rel: &str) -> PathBuf {
-        let name = rel.rsplit('/').next().unwrap_or(rel);
-        PathBuf::from(format!("/proc/self/fd/{}/{name}", self.0.as_raw_fd()))
+        let docs = rustix::fs::openat(CWD, root.join("docs"), flags, Mode::empty())
+            .map_err(|_| refused("docs"))?;
+        rustix::fs::openat(&docs, "agents", flags, Mode::empty())
+            .map(|fd| Agents(File::from(fd)))
+            .map_err(|_| refused("docs/agents"))
     }
 
     fn read(&self, rel: &str) -> Result<String, String> {
-        std::fs::read_to_string(self.entry(rel)).map_err(|e| format!("cannot read {rel}: {e}"))
+        let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let mut text = String::new();
+        rustix::fs::openat(&self.0, name(rel), flags, Mode::empty())
+            .map_err(std::io::Error::from)
+            .and_then(|fd| File::from(fd).read_to_string(&mut text))
+            .map_err(|e| format!("cannot read {rel}: {e}"))?;
+        Ok(text)
     }
 
     /// Locks this folder for one `set`, so setters run one at a time;
@@ -665,18 +658,10 @@ impl Agents {
     }
 }
 
-/// `O_NOFOLLOW | O_NONBLOCK` and `O_DIRECTORY`: Linux UAPI asm-generic, or
-/// arch/arm{,64} for ARM (other systems never open [`Agents`]).
-const NO_FOLLOW: i32 = if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
-    0o100000 | 0o4000
-} else {
-    0o400000 | 0o4000
-};
-const DIRECTORY: i32 = if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
-    0o40000
-} else {
-    0o200000
-};
+/// A `docs/agents/<name>` path's last part.
+fn name(rel: &str) -> &str {
+    rel.rsplit('/').next().unwrap_or(rel)
+}
 
 /// Writes a project file whole, through `docs/agents` held open (R1): the
 /// bytes go to a fresh file created exclusively beside it (never one
@@ -687,29 +672,34 @@ const DIRECTORY: i32 = if cfg!(any(target_arch = "arm", target_arch = "aarch64")
 fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let fail = |e: std::io::Error| format!("cannot write {rel}: {e}");
-    let path = agents.entry(rel);
-    let existing = std::fs::symlink_metadata(&path).ok();
-    if existing.as_ref().is_some_and(|meta| !meta.is_file()) {
+    let dir = &agents.0;
+    let target = name(rel);
+    let existing = rustix::fs::statat(dir, target, AtFlags::SYMLINK_NOFOLLOW).ok();
+    if existing.is_some_and(|st| FileType::from_raw_mode(st.st_mode) != FileType::RegularFile) {
         return Err(format!("cannot write {rel}: it is not a regular file"));
     }
-    let name = rel.rsplit('/').next().unwrap_or(rel);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let temporary = agents.entry(&format!(".{name}.openwiz-{}-{n}", std::process::id()));
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(if existing.is_some() { 0o600 } else { 0o666 })
-        .open(&temporary)
-        .map_err(fail)?;
+    let temporary = format!(".{target}.openwiz-{}-{n}", std::process::id());
+    let create =
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let mode = match existing {
+        Some(_) => Mode::RUSR | Mode::WUSR,
+        None => Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::WGRP | Mode::ROTH | Mode::WOTH,
+    };
+    let fd = rustix::fs::openat(dir, &temporary, create, mode).map_err(|e| fail(e.into()))?;
     let written = match existing {
-        Some(meta) => file.set_permissions(meta.permissions()),
+        Some(st) => rustix::fs::fchmod(&fd, Mode::from_raw_mode(st.st_mode)),
         None => Ok(()),
     }
-    .and_then(|()| file.write_all(text.as_bytes()))
-    .and_then(|()| file.sync_all())
-    .and_then(|()| std::fs::rename(&temporary, &path));
+    .map_err(std::io::Error::from)
+    .and_then(|()| {
+        let mut file = File::from(fd);
+        file.write_all(text.as_bytes())?;
+        file.sync_all()
+    })
+    .and_then(|()| Ok(rustix::fs::renameat(dir, &temporary, dir, target)?));
     written.map_err(|e| {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = rustix::fs::unlinkat(dir, &temporary, AtFlags::empty());
         fail(e)
     })
 }
