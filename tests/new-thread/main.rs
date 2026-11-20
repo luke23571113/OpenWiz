@@ -7,9 +7,8 @@
 //! store and a fake client that answers through the adapter's own parsers.
 //! Nothing is created live, and fixture tests never prove live behaviour.
 //!
-//! `structure` holds the checks that are not one N case; `schema_parity`
-//! answers Sol's phase 1 round 1 (`pattern` is its schema checker), and
-//! `contract_tables` its round 2. The project names moved to
+//! `contract_tables` checks the contracts' good and bad JSON (`pattern` is
+//! its schema checker). The project names moved to
 //! `crates/core/tests/` (#808).
 
 mod support;
@@ -45,5 +44,3 @@ mod n17_drift;
 mod n18_report;
 mod n19_status_read_only;
 mod pattern;
-mod schema_parity;
-mod structure;

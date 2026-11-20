@@ -16,7 +16,6 @@ mod fixture_scan;
 mod pending;
 mod plan_decisions_schema_conformance;
 mod plan_links;
-mod public_tree;
 mod schema_conformance;
 mod skills;
 mod strict_json;
