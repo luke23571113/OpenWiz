@@ -253,6 +253,7 @@ class Boat(unittest.TestCase):
                  ('usage_limit_flat:rate_limit', False, 'hit a usage limit (rate_limit)'),
                  ('usage_limit:auth_expiry', True, 'hit a usage limit (auth_expiry)'),
                  ('usage_limit:<b>raw text</b>', False, 'hit a usage limit (unknown)'),
+                 ('usage_limit:private_diagnostic', False, 'hit a usage limit (unknown)'),
                  ('no_tools', False, 'finished with no tool call'))
         for turn, held, why in cases:
             with self.subTest(turn=turn, held=held):
@@ -262,7 +263,7 @@ class Boat(unittest.TestCase):
                 self.assertIn(why, err['error'])
                 run = re.search(r'run-[0-9a-f]{12}', err['error']).group()
                 self.assertIn(os.path.join(self.folder, 'state', run + '.0.log'), err['next'])
-                for raw in ('Synthetic', 'OAuth', 'raw text', TOKEN):
+                for raw in ('Synthetic', 'OAuth', 'raw text', 'private_diagnostic', TOKEN):
                     self.assertNotIn(raw, json.dumps(err))
                 self.assertTrue(self.until(lambda: not any(alive(p) or alive(w) for p, w, _, _ in self.logged())),
                                 'its turn still runs')
@@ -276,6 +277,17 @@ class Boat(unittest.TestCase):
         self.assertEqual((code, list(self.sandboxes().values())), (0, ['running']), out)
         self.assertTrue(alive(self.logged()[0][0]), 'the first turn was ended')
         self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+
+    def test_a_bad_settle_setting_refuses_start_and_never_blocks_stop(self):
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        for bad in ('two', 'nan', 'inf', '-1', '0', '61'):
+            with self.subTest(settle=bad):
+                code, err = self.driver('start', REQUEST, OPENWIZ_BOAT_SETTLE=bad)
+                self.assertEqual((code, len(self.sandboxes())), (1, 1), err)
+                self.assertIn('OPENWIZ_BOAT_SETTLE', err['error'])
+        self.assertEqual(self.driver('stop', out, OPENWIZ_BOAT_SETTLE='two'), (0, dict(out, stopped=True)))
+        self.assertEqual(list(self.sandboxes().values()), ['stopped'])
 
     def test_stop_ends_a_worker_the_prompt_left_in_a_clean_environment(self):
         # catches: a stop that signals only the `boat prompt` process group, or finds processes only by the
