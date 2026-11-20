@@ -3,6 +3,7 @@
   "about": "A merge that closes only an ordinary ticket posts nothing.",
   "input": {
     "pull_request": {
+      "repository": "openwizdev/OpenWiz",
       "number": 9203,
       "merged": true,
       "closes": [

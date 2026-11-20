@@ -101,7 +101,7 @@ class PlantedBreaks(unittest.TestCase):
             d['input']['issues']['9101']['comments'][0]['author'] = 'synthetic-user'
         self.refused(case('landed-second-merge', forge),
                      'landed-second-merge.json: posts must be [[9101, '
-                     "'Landed: the fix for this report merged in #9202 and will ship in OpenWiz 9.4.2.']]",
+                     "'Landed: the fix for this report merged in openwizdev/OpenWiz#9202 and will ship in OpenWiz 9.4.2.']]",
                      'fixtures: no second merge case')
 
     def test_no_landed_comment_without_a_version_or_a_merge(self):
@@ -124,6 +124,12 @@ class PlantedBreaks(unittest.TestCase):
         moved = 'Report: #9101\n\nKeep the approve button above the footer.'
         self.refused(case('report-link', lambda d: d['input']['issue'].update(body=moved)),
                      'report-link.json: report is None, the case expects 9101', 'fixtures: no report link case')
+
+    def test_the_landed_comment_names_the_pull_request_in_full(self):
+        # catches: a bare #<n> that points at the wrong repository, or a landed
+        # comment for a pull request outside openwizdev.
+        self.refused(case('landed', lambda d: d['input']['pull_request'].update(repository='synthetic-org/WizSkills')),
+                     'landed.json: posts must be []', 'fixtures: no landed case')
 
     def test_a_marker_counts_only_as_the_last_line(self):
         # catches: an issue quoting a marker mid-body treated as a report.

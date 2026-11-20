@@ -3,6 +3,7 @@
   "about": "A second fix for the same report merges through its own brief: the report already has its landed comment, so nothing is posted.",
   "input": {
     "pull_request": {
+      "repository": "openwizdev/OpenWiz",
       "number": 9202,
       "merged": true,
       "closes": [
@@ -35,7 +36,7 @@
         "comments": [
           {
             "author": "synthetic-maintainer",
-            "body": "Landed: the fix for this report merged in #9201 and will ship in OpenWiz 9.4.2."
+            "body": "Landed: the fix for this report merged in openwizdev/WizSkills#9201 and will ship in OpenWiz 9.4.2."
           }
         ]
       }

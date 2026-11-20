@@ -1,8 +1,9 @@
 {
   "kind": "landed",
-  "about": "The fix merges: one landed comment on the report, naming the pull request and the version.",
+  "about": "The fix merges in another openwizdev repository: one landed comment on the report, naming the pull request in full and the version.",
   "input": {
     "pull_request": {
+      "repository": "openwizdev/WizSkills",
       "number": 9201,
       "merged": true,
       "closes": [
@@ -44,7 +45,7 @@
     "posts": [
       [
         9101,
-        "Landed: the fix for this report merged in #9201 and will ship in OpenWiz 9.4.2."
+        "Landed: the fix for this report merged in openwizdev/WizSkills#9201 and will ship in OpenWiz 9.4.2."
       ]
     ]
   }
