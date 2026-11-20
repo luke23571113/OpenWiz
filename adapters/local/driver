@@ -17,11 +17,16 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
-# Each harness's own non-interactive command. It adds no login, token or permission flag: the
-# person's own sign-in and settings for that harness decide what its agent may do.
-HARNESSES = {'claude': lambda model, prompt: ['-p', prompt, '--model', model],
-             'codex': lambda model, prompt: ['exec', '--model', model, prompt]}
+# Each harness's own non-interactive command, with the permission mode the owner saved for the repository
+# (docs/agents/fleet.md, `| Harness permission mode | `<mode>` |`), passed unchanged as that harness's own
+# option. The driver adds no login or token, and never chooses or widens a permission itself.
+HARNESSES = {'claude': lambda model, mode, prompt: ['-p', prompt, '--model', model, '--permission-mode', mode],
+             'codex': lambda model, mode, prompt: ['exec', '--model', model, '--sandbox', mode, prompt]}
+MODE_ROW = '| Harness permission mode |'
 GRACE = 10  # seconds a stopped process has to exit before it is killed
+SETTLE = float(os.environ.get('OPENWIZ_LOCAL_SETTLE') or 30)  # seconds start watches the first turn
+SECRET = re.compile(r'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|xox[abposr]-|sk-[A-Za-z0-9_-]{20,}'
+                    r'|Bearer\s|(?i:token|secret|password|api[-_]?key)\s*[=:]')
 
 
 class Refused(Exception):
@@ -58,6 +63,47 @@ def program(harness):
         raise Refused('harness %s is not installed here' % harness,
                       'install %s on this machine and sign in to it yourself, then start again' % harness)
     return path
+
+
+def one_line(text, limit=200):
+    """The last non-empty line of text, short enough for an error, or '' when it could hold a credential."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    line = lines[-1] if lines else ''
+    return '' if SECRET.search(line) else line[:limit]
+
+
+def workspace(run, repository):
+    """A fresh clone of the repository for this run alone, by the person's own signed-in `gh`."""
+    gh = shutil.which('gh')
+    if not gh:
+        raise Refused('gh is not installed here, so the driver cannot clone %s' % repository,
+                      'install the GitHub CLI (gh) on this machine and sign in to it yourself, then start again')
+    folder = os.path.join(STATE, 'work', run)
+    os.makedirs(os.path.dirname(folder), mode=0o700, exist_ok=True)
+    try:
+        p = subprocess.run([gh, 'repo', 'clone', repository, folder], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        p = subprocess.CompletedProcess([], 1, stderr=str(e))
+    if p.returncode != 0 or not os.path.isdir(folder):
+        raise Refused(('could not clone %s: %s' % (repository, one_line(p.stderr) or 'gh failed')).strip(),
+                      'check that `gh repo clone %s` works on this machine, then start again' % repository)
+    return folder
+
+
+def permission_mode(folder, repository, harness):
+    """The one permission mode the owner saved in the repository's docs/agents/fleet.md, or Refused."""
+    try:
+        with open(os.path.join(folder, 'docs', 'agents', 'fleet.md')) as f:
+            rows = [line for line in f.read().splitlines() if line.startswith(MODE_ROW)]
+    except OSError:
+        rows = []
+    values = re.findall(r'`([^`]*)`', rows[0]) if len(rows) == 1 else []
+    if len(values) != 1 or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,39}', values[0]):
+        raise Refused('%s has no single harness permission mode saved in docs/agents/fleet.md; nothing was started'
+                      % repository, 'choose the mode %s may run in and save it there as the row '
+                      '`| Harness permission mode | `<mode>` |`, then start again' % harness)
+    return values[0]
 
 
 def prompt(req, woken):
@@ -124,14 +170,14 @@ def launch(state, run, woken):
     """Start one turn under its supervisor, with the person's environment and this run's mark; return what
     `running` and `end` need."""
     req = state['request']
-    cmd = [state['program']] + HARNESSES[req['harness']](req['model'], prompt(req, woken))
+    cmd = [state['program']] + HARNESSES[req['harness']](req['model'], state['mode'], prompt(req, woken))
     try:
         log = os.open(os.path.join(STATE, run + '.log'), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     except OSError:
         log = subprocess.DEVNULL  # the run is saved; a log it can't open never stops its turn
     try:
         sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
-                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
+                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True, cwd=state['workspace'],
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log)
         with sup.stdout:
             line = sup.stdout.readline()
@@ -213,6 +259,32 @@ def saved(run, state=None):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
 
 
+def ended_at_once(run, turn):
+    """Watch a first turn for SETTLE seconds. One that has already ended has refused or failed, as a harness
+    whose permissions refuse every tool does: end what is left and say why, from the turn's last log line."""
+    deadline = time.monotonic() + SETTLE
+    while running(turn) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    if running(turn):
+        return
+    end([turn], run)
+    try:
+        with open(os.path.join(STATE, run + '.log'), errors='replace') as f:
+            last = one_line(f.read())
+    except OSError:
+        last = ''
+    raise Refused('run %s: the first turn ended at once: %s' % (run, last or 'it printed nothing the driver kept'),
+                  'read %s, fix what the harness refused, then start again' % os.path.join(STATE, run + '.log'))
+
+
+def stopped(run, state):
+    """Save the run as stopped, if the state folder still lets it: it never runs again."""
+    try:
+        saved(run, dict(state, stopped=True))
+    except OSError:
+        pass
+
+
 def unsaved(run, turn, cmd):
     """A turn began but could not be saved: end it, and say the outcome is unknown, never retry."""
     try:
@@ -234,23 +306,38 @@ def answer(cmd):
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
         state = {'request': req, 'program': program(req['harness']), 'turns': [], 'stopped': False,
-                 'starting': True}  # never woken while starting
+                 'starting': True, 'workspace': None, 'mode': None}  # never woken while starting
         try:  # save the run before its turn starts: nowhere to keep it, nothing starts
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
         except OSError:
             raise Refused('the driver cannot save runs in its state folder; nothing was started', WRITABLE)
+        try:  # its own clone, and the owner's saved permission mode, before anything runs
+            state['workspace'] = workspace(run, req['repository'])
+            state['mode'] = permission_mode(state['workspace'], req['repository'], req['harness'])
+            saved(run, state)
+        except OSError:
+            raise Refused('the driver cannot save run %s in its state folder; nothing was started' % run, WRITABLE)
+        except Refused:
+            stopped(run, state)
+            raise
         try:
             turn = launch(state, run, False)
         except Refused:
-            try:
-                saved(run, dict(state, stopped=True))
-            except OSError:
-                pass
+            stopped(run, state)
+            raise
+        try:
+            saved(run, dict(state, turns=[turn]))  # still starting: stop reaches the turn, wake refuses it
+        except OSError:  # the turn began but its run is not saved: end it, and never say retry
+            unsaved(run, turn, 'start')
+        try:
+            ended_at_once(run, turn)
+        except Refused:
+            stopped(run, dict(state, turns=[turn]))
             raise
         try:
             saved(run, dict(state, turns=[turn], starting=False))
-        except OSError:  # the turn began but its run is not saved: end it, and never say retry
+        except OSError:
             unsaved(run, turn, 'start')
         return {'run': run}
     if cmd in ('wake', 'stop'):
