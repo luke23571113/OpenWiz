@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """The roadmap generator (ClosedWiz#277, spec #276, R1).
 
-Reads GitHub's milestones over REST and rewrites only the marked, generated
-parts of docs/ROADMAP.md (the Now and Next table and its picture); with
---public FILE, writes only the short public roadmap to FILE instead. See README.md beside this file.
+Reads GitHub's milestones over REST and writes the short public roadmap to
+the --public FILE. See README.md beside this file.
 
-    python3 tools/roadmap/roadmap.py [--root DIR] [--public FILE] [--public-repo OWNER/NAME]
+    python3 tools/roadmap/roadmap.py --public FILE [--root DIR] [--public-repo OWNER/NAME]
 """
 import argparse
 import json
@@ -26,7 +25,6 @@ NOW = ("building", "built", "live-checked")
 NEXT = ("being grilled",)
 ISSUE_STATES = ("open", "closed")
 GITHUB_URL = re.compile(r"https://github\.com/[A-Za-z0-9._/-]+")
-GRILL = re.compile(r"docs/grills/([A-Za-z0-9][A-Za-z0-9._-]*\.md)")
 TICKET = re.compile(r"#([1-9][0-9]*)(?![0-9A-Za-z])")
 
 MILESTONES_JQ = ".[] | {number, title, description, html_url}"
@@ -40,8 +38,6 @@ TICKET_JQ = "{number, state, state_reason, pull: (.pull_request != null), html_u
 # --public: a guard that can't tell a name from a word refuses both.
 PUBLIC_CHARS = re.compile(r"[A-Za-z0-9 .,;:!?'\"()\-’“”—–…]")
 PUBLIC_WORDS = ("You", "OpenWiz", "CloudRoom", "GitHub", "Mac", "PC")
-
-ROADMAP_REGIONS = ("now-next", "picture")
 
 
 class Fail(Exception):
@@ -177,7 +173,7 @@ def live_check(root, title, n, problems):
 
 
 def version(m, issues, heads, tags, read_ticket, problems):
-    """One version: its lines, links and state, as GitHub says."""
+    """One version: its state and "You can …" lines, as GitHub says."""
     title = m["title"]
     desc = (m["description"] or "").replace("\r\n", "\n").replace("\r", "\n")
     lines = [line.strip() for line in desc.split("\n")]
@@ -188,7 +184,6 @@ def version(m, issues, heads, tags, read_ticket, problems):
             problems.append(f'{title}: no "{words}" line in its milestone')
         elif len(found) > 1:
             problems.append(f'{title}: {len(found)} "{words}" lines in its milestone')
-    grills = list(dict.fromkeys(GRILL.findall(desc)))
     specs = sorted((i for i in issues if i["sub_issues"] > 0), key=lambda i: i["number"])
 
     live = None
@@ -207,55 +202,7 @@ def version(m, issues, heads, tags, read_ticket, problems):
         state = "building"
     else:
         state = "being grilled"
-    return {"title": title, "url": m["html_url"], "state": state, "outcome": outcome, "done": done,
-            "specs": specs, "live": live, "grills": grills}
-
-
-def cell(found):
-    """A line for a table cell; never a guess when there isn't exactly one."""
-    if len(found) == 1:
-        return found[0].replace("|", "\\|")
-    return "_missing_" if not found else f"_missing ({len(found)} lines)_"
-
-
-def links(v, grill_dir):
-    parts = [f"[milestone]({v['url']})"]
-    parts += [f"spec [#{s['number']}]({s['html_url']})" for s in v["specs"]]
-    if v["live"]:
-        parts.append(f"live check [#{v['live']['number']}]({v['live']['html_url']})")
-    parts += [f"[grill]({grill_dir}{g})" for g in v["grills"]]
-    return " · ".join(parts)
-
-
-def now_next_table(versions):
-    rows = ["| Horizon | Version | State | You can … | Done when … | Links |",
-            "| --- | --- | --- | --- | --- | --- |"]
-    for horizon, states in (("Now", NOW), ("Next", NEXT)):
-        for v in versions:
-            if v["state"] in states:
-                rows.append(f"| {horizon} | {v['title']} | {v['state']} | {cell(v['outcome'])} | "
-                            f"{cell(v['done'])} | {links(v, 'grills/')} |")
-    return "\n".join(rows)
-
-
-def node(v):
-    return "v" + v["title"].replace(".", "_")
-
-
-def picture(versions):
-    lines = ["```mermaid", "flowchart LR"]
-    chain = []
-    for key, name, states in (("now", "Now", NOW), ("next", "Next", NEXT)):
-        group = [v for v in versions if v["state"] in states]
-        if group:
-            lines.append(f'  subgraph {key} ["{name}"]')
-            lines += [f'    {node(v)}["{v["title"]}: {v["state"]}"]' for v in group]
-            lines.append("  end")
-            chain += group
-    if len(chain) > 1:
-        lines.append("  " + " --> ".join(node(v) for v in chain))
-    lines.append("```")
-    return "\n".join(lines)
+    return {"title": title, "state": state, "outcome": outcome}
 
 
 def public_holds(line):
@@ -297,34 +244,6 @@ def read_page(path):
             return f.read()
     except (OSError, UnicodeDecodeError) as e:
         raise Fail(f"could not read {path}: {e}") from None
-
-
-def spans(text, names, label):
-    """Where each named region's body lies, as line indexes (begin, end)."""
-    lines = text.split("\n")
-    found = {}
-    for name in names:
-        at = []
-        for marker in (f"<!-- roadmap:{name}:begin -->", f"<!-- roadmap:{name}:end -->"):
-            hits = [i for i, line in enumerate(lines) if line == marker]
-            if len(hits) != 1:
-                raise Fail(f"{label}: {len(hits)} lines are exactly {marker} (one is needed)")
-            at.append(hits[0])
-        if at[0] > at[1]:
-            raise Fail(f"{label}: the {name} region ends before it begins")
-        for other, (begin, end) in found.items():
-            if not (end < at[0] or at[1] < begin):
-                raise Fail(f"{label}: the {other} and {name} regions overlap")
-        found[name] = tuple(at)
-    return lines, found
-
-
-def fill(text, bodies, label):
-    """TEXT with each region's body replaced; every other line kept exactly."""
-    lines, found = spans(text, list(bodies), label)
-    for name, (begin, end) in sorted(found.items(), key=lambda kv: -kv[1][0]):
-        lines[begin + 1:end] = bodies[name].split("\n")
-    return "\n".join(lines)
 
 
 def stage(path, text):
@@ -388,29 +307,15 @@ def main(argv):
     parser = argparse.ArgumentParser(prog="roadmap.py", description=__doc__.split("\n\n")[1])
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[2]),
                         help="the repository's root (default: the one holding this script)")
-    parser.add_argument("--public", metavar="FILE",
-                        help="write only the short public roadmap, to FILE; the pages stay as they are")
+    parser.add_argument("--public", metavar="FILE", required=True,
+                        help="write the short public roadmap to FILE")
     parser.add_argument("--public-repo", metavar="OWNER/NAME", type=repo_arg, default=PUBLIC_REPO,
                         help=f"the public repository whose v<version> tags mark published versions (default {PUBLIC_REPO})")
     args = parser.parse_args(argv)
     root = Path(args.root)
-    pages = {"docs/ROADMAP.md": ROADMAP_REGIONS}
     try:
-        if args.public:
-            versions, problems = read_github(root, args.public_repo)
-            new = {args.public: public_page(versions)}
-            targets = {args.public: Path(args.public)}
-        else:
-            old = {name: read_page(root / name) for name in pages}
-            for name, regions in pages.items():
-                spans(old[name], regions, name)
-            versions, problems = read_github(root, args.public_repo)
-            new = {
-                "docs/ROADMAP.md": fill(old["docs/ROADMAP.md"], {"now-next": now_next_table(versions),
-                                                               "picture": picture(versions)}, "docs/ROADMAP.md"),
-            }
-            targets = {name: root / name for name in pages}
-        report = write_pages(targets, new)
+        versions, problems = read_github(root, args.public_repo)
+        report = write_pages({args.public: Path(args.public)}, {args.public: public_page(versions)})
     except HalfWritten as e:
         print(f"roadmap: {e}", file=sys.stderr)
         return 1
