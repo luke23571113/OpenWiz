@@ -466,6 +466,10 @@ fn every_show_fixture_is_its_fleet_files_reading() {
         ("overridden/fleet.md", "overridden/show.json"),
         ("same-family/fleet.md", "same-family/show.json"),
         ("set-namespaced/after.md", "set-namespaced/show.json"),
+        (
+            "set-older-namespaced/after.md",
+            "set-older-namespaced/show.json",
+        ),
     ] {
         let got = read(&text(file));
         assert!(got.is_ok(), "{file} refused: {got:?}");
@@ -535,6 +539,7 @@ fn every_set_fixture_writes_what_its_report_says() {
         "set-older",
         "set-same-family",
         "set-namespaced",
+        "set-older-namespaced",
         "unoffered",
         "unwritable",
     ] {
