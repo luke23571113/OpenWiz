@@ -25,6 +25,8 @@ ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
 UP = ('running', 'ready', 'idle')  # the sandbox states a wake may prompt in; any other refuses it
 QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 120
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
+SETTLE = float(os.environ.get('OPENWIZ_BOAT_SETTLE') or 20)  # seconds start watches the first turn
+LIMIT = re.compile(r'[a-z0-9_]{1,40}')  # a limit type boat names (auth_expiry, rate_limit), shown only if plain
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
 
@@ -319,6 +321,38 @@ def prompt(state, run):
         time.sleep(0.1)
 
 
+def watch_first_turn(run, turn):
+    """Watch a queued first turn for SETTLE seconds, or until it ends (#1907). A `usage_limit` event (an expired
+    login, a rate limit) or a turn that ended with no tool call fails the start: end the turn and say why, with
+    only the limit type and the log's path. Boat's own text stays in the owner-only log."""
+    log, deadline = path(run, '0.log'), time.monotonic() + SETTLE
+    while True:
+        ended = not running(turn)  # before the read, so the whole log of an ended turn is seen
+        try:
+            with open(log, errors='replace') as f:
+                lines = parse(f.read())
+        except OSError:
+            lines = []
+        limits = [x.get('data') if isinstance(x.get('data'), dict) else x
+                  for x in lines if x.get('event') == 'usage_limit']
+        if limits:
+            kind = limits[0].get('limitType')
+            why = 'hit a usage limit (%s)' % (kind if isinstance(kind, str) and LIMIT.fullmatch(kind) else 'unknown')
+            break
+        if ended:
+            if any(isinstance(x.get('data'), dict) and x['data'].get('tools') for x in lines):
+                return
+            why = 'finished with no tool call'
+            break
+        if time.monotonic() > deadline:
+            return
+        time.sleep(0.1)
+    end([turn], run)
+    raise Refused('run %s: the first turn %s, so the run did not start' % (run, why),
+                  line('read %s for why; for an expired login, sign that harness in again in boat\'s dashboard (Agents '
+                       '& Proxying) yourself; for a rate limit, wait for it to reset; then start again' % log))
+
+
 def text_id(value):
     """value, if it is a string id; else None."""
     return value if isinstance(value, str) and ID.fullmatch(value) else None
@@ -526,6 +560,8 @@ def start(req):
                           UNWRITABLE + ', then start again')  # the cleanup below stops it, or reports why not
         install_skills(state['sandbox'], lock)
         turn, talk = prompt(state, run)
+        state['conversation'] = talk  # so a failed watch below interrupts it before the sandbox stops
+        watch_first_turn(run, turn)
         try:
             saved(run, dict(state, turns=[turn], conversation=talk, starting=False))
         except OSError:  # the turn began but its run is not saved: end it, and never say do it again
