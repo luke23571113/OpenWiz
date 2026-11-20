@@ -354,10 +354,11 @@ RECEIPT_UNPROVEN = sorted(['not_live', 'clock_unknown', 'not_fresh:machine', 'no
 S, O = 'agent_for_owner', 'owner'
 # first-hour.json's own turns, and at its Connect step the installed tools' yeses (skills/install/SKILL.md:
 # every effect waits for the owner's yes), each written by hand.
-BEFORE_CONNECT = [('typed_choice', 'project', O), ('confirmation', 'prepare_project', S)]
+# WizSkills 0.3.0's onboarding road: where agents run (and what Cloudroom spends) comes first, the grill's
+# yes is the spec confirmation, and to-tickets' checks record the plan approval, so no owner turn approves it.
+BEFORE_CONNECT = [('spending_approval', 'run', O), ('typed_choice', 'start', O), ('confirmation', 'prepare_project', S)]
 AFTER_CONNECT = [('confirmation', 'init', S), ('tap', 'brain_merge', S), ('typed_choice', 'connect', O),
-                 ('typed_choice', 'grill', O), ('confirmation', 'grill', O), ('typed_choice', 'agents', O),
-                 ('confirmation', 'spec_confirmation', O), ('approval', 'plan_approval', O),
+                 ('typed_choice', 'grill', O), ('confirmation', 'spec_confirmation', O),
                  ('spending_approval', 'launch', O)]
 APP_ACTIONS = BEFORE_CONNECT + [
     ('app_manifest', 'create_app', S), ('app_manifest', 'install_app', S),
@@ -409,7 +410,7 @@ class Recording(unittest.TestCase):
         # an App or key step left out, and a recording receipt read as live or as a pass.
         receipt = self.app.first_merge()
         self.assertEqual([(x['kind'], x['stage'], x['actor']) for x in receipt['actions']['log']], APP_ACTIONS)
-        self.assertEqual(receipt['actions']['count'], {'known': 19})
+        self.assertEqual(receipt['actions']['count'], {'known': 17})
         self.assertEqual((receipt['identity'], receipt['app_registration'], receipt['secret_route']),
                          ('app', 'created', 'protected_paste'))
         got = journey.receipt_checks.check(receipt)

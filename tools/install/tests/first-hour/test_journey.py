@@ -76,11 +76,12 @@ class InstalledFirstHour(unittest.TestCase):
         self.assertEqual({k: doc['reviewer'][k] for k in ('harness', 'usable')}, {'harness': 'claude_code', 'usable': 'verified'})
         self.assertEqual([t['harness'] for t in a.reviewer_threads], ['claude-code'], 'the other family reviewed')
         self.assertEqual(doc['reviewer']['extra_prerequisites'] != [], True)
-        said = ' '.join(t.get('agent', '') for t in journey.CONVERSATION['turns'] if t['step'] == 'agents')
+        said = ' '.join(t.get('agent', '') for t in journey.CONVERSATION['turns'] if t['step'] == 'run')
         self.assertIn('Claude Code sign-in for its reviewer', said, 'the extra account is explained before the plan')
         # Two separate saved decisions: the spec confirmation comes before the plan and its approval.
         comments = a.j.world['issues'][0]['comments']
-        self.assertEqual([c['body'].split(' by ')[0] for c in comments], ['**Spec confirmed', '**Plan graph approved'])
+        self.assertEqual([c['body'].split(' by ')[0].split(',')[0] for c in comments],
+                         ['**Spec confirmed', '**Machine plan approval', 'launch-fleet: fleet active'])
         self.assertLess(comments[0]['id'], comments[1]['id'])
         turns = journey.CONVERSATION['turns']
         self.assertEqual([t['step'] for t in turns if 'plan' in t or t.get('approve')], ['plan', 'plan'])
@@ -111,7 +112,8 @@ class InstalledFirstHour(unittest.TestCase):
                 self.assertEqual(journey.codes(doc), clean(), json.dumps(doc, indent=1))
         self.assertEqual(a.notes['repeat_launch'][0], 0)
         self.assertIn('already started once', a.notes['repeat_launch'][1])
-        self.assertEqual(len(a.j.spawns()), 1, 'the repeat started no second fleet thread')
+        self.assertEqual(a.j.spawns(), [], 'the onboarding helper starts no thread itself')
+        self.assertEqual(len(a.cloudroom.matching('Fleet #')), 1, 'the repeat started no second fleet thread')
         self.assertEqual(len(a.reviewer_threads), 1, 'one reviewer after the restart')
         self.assertEqual(a.notes['revoked'][0], 'refused: the App can no longer write to this repository')
         self.assertEqual(a.notes['revoked'][1], 'app_revoked', 'setup tells the owner the App was removed')

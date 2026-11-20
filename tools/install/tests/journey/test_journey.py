@@ -453,7 +453,7 @@ class InstallJourney(unittest.TestCase):
                          'Next: the grill (the explanation is done)'):
                 self.assertIn(line, carried)
             self.assertEqual(j.spawns(), [], "the start is launch-fleet's own path, never a one-off thread")
-            self.assertIn("Spec #900 has its fleet record: launch-fleet's loop runs the spec.", results[-2][1].stdout)
+            self.assertIn("Spec #%d has its fleet record: launch-fleet's loop runs the spec." % j.spec, results[-2][1].stdout)
             self.assertEqual([call['form'] for call in j.logged()], ['fleet'], 'the installed openwiz only reads progress')
             self.assertIn('5 tickets: 3 building, 2 blocked', results[-1][1].stdout)
             self.assertNotEqual(Path(self.onboard.HELPER).resolve().parents[3], ROOT.resolve())

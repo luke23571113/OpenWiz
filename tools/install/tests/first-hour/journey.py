@@ -386,7 +386,12 @@ class Attempt:
 
     # 2. The fleet: the fleet thread's starts land on CloudRoom and GitHub.
     def _fleet(self):
-        self.case.assertEqual(len(self.j.spawns()), 1, 'the fleet thread started once')
+        # WizSkills 0.3.0: the onboarding helper starts nothing; the orchestrator starts the fleet
+        # thread through launch-fleet's own path, and its record is already on the spec.
+        self.case.assertEqual(self.j.spawns(), [], 'the onboarding helper started no thread itself')
+        self.fleet_op = intent('start_agent', f'{REPO}#{self.j.spec}:fleet')
+        self.cloudroom.start(self.fleet_op, 'Fleet #%d: %s' % (self.j.spec, self.j.world['issues'][0]['title']),
+                             None, self.j.settings['harness'])
         if self.mutate.get('tick_start'):
             # A known way to fail (J87 Q1): a stale instruction also starts work through the engine's tick.
             self.c.run([str(self.build / 'openwiz'), 'fleet', 'tick', '--spec', str(self.j.spec)])
@@ -416,7 +421,7 @@ class Attempt:
         op = self.builder_ops[n]
         threads = self.cloudroom.matching('#%d: ' % n)
         return {'operation_id': op, 'kind': 'start_agent', 'phase_before': before, 'phase_after': after,
-                'effect_count': len(threads), 'attempts': len(self.j.spawns()),
+                'effect_count': len(threads), 'attempts': self.cloudroom.calls.get(op, 0),
                 'reconciliation': 'provider_read_back'}
 
     def _repeat_approval(self):
@@ -428,7 +433,7 @@ class Attempt:
         again = self.j.helper(['launch', '--spec', str(self.j.spec), '--yes', '--confirm', digest])
         self.notes['repeat_launch'] = (again.returncode, again.stdout)
         if self.mutate.get('second_tick'):
-            self.j.spawns = (lambda spawns: lambda: spawns() + spawns()[:1])(self.j.spawns)
+            self.cloudroom.start(self.fleet_op, 'Fleet #%d: again' % self.j.spec, None, self.j.settings['harness'])
         after = [self._onboarding_state()] + self._start_work(ops)
         operations = [self.builder_observation(n, 'applied', 'applied') for n in sorted(self.builder_ops)]
         self.cases.append(recovery('repeat_approval', before, after, operations, {
@@ -667,7 +672,7 @@ class Attempt:
         operations = self._setup_operations(setup)
         operations += [{'operation_id': self.builder_ops[n], 'kind': 'start_agent', 'phase': 'applied',
                         'effect_count': len(self.cloudroom.matching('#%d: ' % n)),
-                        'attempts': len(self.j.spawns()), 'reconciliation': 'provider_read_back'}
+                        'attempts': self.cloudroom.calls.get(self.builder_ops[n], 0), 'reconciliation': 'provider_read_back'}
                        for n in sorted(self.builder_ops)]
         if self.review_op in self.cloudroom.calls:
             operations.append({'operation_id': self.review_op, 'kind': 'start_agent', 'phase': 'applied',
@@ -789,7 +794,7 @@ class Attempt:
                 elif following.get('approve'):
                     kind, stage = 'approval', 'plan_approval'
                 elif 'permits' in turn:
-                    kind, stage = 'spending_approval', 'launch'
+                    kind, stage = 'spending_approval', turn['step']
                 elif turn['user'] in ('Confirm.', 'Confirmed.', 'Yes.'):
                     kind, stage = 'confirmation', turn['step']
                 else:
@@ -810,11 +815,9 @@ class Attempt:
 
     def fleet_start(self):
         """How the first fleet started, read back: CloudRoom's spawns, the spec's fleet record and the engine's log."""
-        # The recording fleet thread's first wake (its builders started in _fleet) also leaves launch-fleet's
-        # fleet record on the spec; written only for the receipt, so the first-hour attempt reads as before.
-        self.j.fleet_record()
-        spawns = [a for a in self.j.spawns() if a[:2] == ['thread', 'spawn']]
-        titles = [a[a.index('--title') + 1] for a in spawns if '--title' in a]
+        # The fleet thread's record is on the spec from the conversation's launch step (WizSkills 0.3.0);
+        # the fleet thread itself is the orchestrator's start, read back from the recording CloudRoom.
+        titles = [t['title'] for t in self.cloudroom.matching('Fleet #')]
         comments = next(i for i in self.j.world['issues'] if i['number'] == self.j.spec)['comments']
         loops = [int(n) for c in comments for n in re.findall(r'^launch-fleet: fleet active, loop fleet-([0-9]+)$',
                                                                c['body'], re.M)]
@@ -848,7 +851,7 @@ class Attempt:
         merged = self.merged is not None and self.merged['state'] == 'MERGED' and self.merged['head'] == self.head
         when = calendar.timegm(time.strptime(pull['mergedAt'], '%Y-%m-%dT%H:%M:%SZ')) * 1000 if pull['mergedAt'] else 0
         brain_only = all(f['filename'].startswith('.openwiz/') for f in pull['files'])
-        idea = next(t['user'] for t in self.conversation['turns'] if t['step'] == 'project' and 'user' in t)
+        idea = next(t['user'] for t in self.conversation['turns'] if t['step'] == 'start' and 'user' in t)
         route = 'not_used' if skip else self.capability_doc['route']
         self.receipt = {
             'schema': 'openwiz.setup-onboard.v1', 'kind': 'first_merge_receipt', 'proof_class': 'recording',
