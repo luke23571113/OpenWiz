@@ -86,6 +86,29 @@ class Kit(unittest.TestCase):
                     code, out, err = run(path)
                     self.assertEqual((code, out), (1, want), err)
 
+    def test_fences_and_comments_hide_only_what_github_hides(self):
+        # catches: comment syntax inside a fence or fence syntax inside a comment changing what is hidden,
+        # or a line's delimiters read out of order (an opener after a closer hides nothing)
+        what, proof = 'A synthetic change.\n', '\n## Proof\n\nA fixture test.\n'
+        planted = {
+            'comment opener in a fence': (what, what + '\n```html\n<!--\n```\n', []),
+            'fence in a comment': (proof, '\n<!--\n```\n-->\n' + proof, []),
+            'opener after a closer': (proof, '\n<!-- a note --> <!--' + proof + '-->\n',
+                                      ['#2 T1: ticket lacks ## Proof']),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, (old, new, want) in planted.items():
+                with self.subTest(name):
+                    d = valid()
+                    body = d['issues'][1]['body']
+                    self.assertEqual(body.count(old), 1)
+                    d['issues'][1]['body'] = body.replace(old, new)
+                    path = os.path.join(tmp, 'hidden.json')
+                    with open(path, 'w') as f:
+                        json.dump(d, f)
+                    code, out, err = run(path)
+                    self.assertEqual((code, out), (1 if want else 0, want), err)
+
     def test_reader_refuses_any_other_shape(self):
         # catches: a reader that guesses at a malformed tracker and reports it clean (exit 0)
         def drop(d, k):
