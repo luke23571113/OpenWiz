@@ -251,4 +251,4 @@ history { schema, kind: "history", sample: "baseline" | "run", at, day, repo,
 | `stderr.txt` | The checker's expected standard error: empty on a pass |
 | `board.json` | The expected board measures |
 
-`history/` holds a history (`history.jsonl`) and its expected daily rows (`daily.jsonl`).
+`history/` holds a history (`history.jsonl`) and its expected daily rows (`daily.jsonl`). `tests/checks/plan_links.rs` validates every fixture against the schema, checks that each report agrees with its graph read, and recomputes the board numbers by the definitions above.

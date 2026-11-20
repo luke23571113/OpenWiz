@@ -20,19 +20,3 @@ Exit 0 is checked, 1 refused or unreadable, 2 bad arguments; the result is JSON.
 ## The carriage list
 
 `paths.json` decides what is carried. `source` patterns select public files; `keep` names destination files that survive and wins over `source`; `private/`, grills (but their README) and retiring kits are never carried. An unknown source path refuses the import.
-
-`guard.py` keeps the list current: CI's `changes` job runs it on every pull request and merge group, and it fails (exit 1) on any added path that no `source`, `keep` or private class covers. Fix it in the same pull request: add the path, or its folder as `<folder>/**`, to `source`, or put a private file under a private class.
-
-```sh
-python3 -I tools/open-import/guard.py --base=BASE_SHA --head=HEAD
-python3 -I tools/open-import/test_guard.py
-```
-
-## Frozen old code
-
-After the cut-over, `frozen.py` refuses any ClosedWiz pull request that touches a carried path (exit 1), so product work goes to OpenWiz. `.github/workflows/frozen.yml` runs it from the base branch's own copy, so a change can't supply its own checker. It acts only once the repository variable `CLOSEDWIZ_FROZEN_SINCE` holds the switch date; before that it lists what it would refuse and passes. The one exception is #1287's pull request, which may only delete frozen paths.
-
-```sh
-FROZEN_SINCE=YYYY-MM-DD python3 -I tools/open-import/frozen.py --repo=. --base=BASE_SHA --head=HEAD_SHA
-python3 -I tools/open-import/test_frozen.py
-```

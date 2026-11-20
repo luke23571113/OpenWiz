@@ -28,11 +28,20 @@ update's version check), a complete pre-AP11 layout, with the `openwiz-service`
 and `openwiz-server` programs, web/ and its stamp, is also read.
 Every asset is hash-checked before activation, including repeated
 installs. The manifest lists every file (not directory globs). Runtime includes
-setup, grill, plan-graph and launch-fleet skills and their script resources.
+setup, grill, to-tickets and launch-fleet skills and their script resources.
+When the source commit tracks them, runtime also carries each launch host
+driver (`boat`, `cloudroom`, `local`) as `runtime/adapters/<host>/driver` and
+`runtime/adapters/<host>/schema.json`, and the driver kit as
+`runtime/kernel/driver-kit/kit.py`, `runtime/kernel/driver-kit/schema.json`,
+`runtime/kernel/records-kit/check.py` and `runtime/kernel/records.v1.md`; never
+a driver's tests, fixtures or evidence, the template, or another host (#1699).
+launch-fleet's host caller finds a driver with `OPENWIZ_ADAPTERS` set to the
+installed build's `runtime/adapters`, for example
+`<ROOT>/current/runtime/adapters`.
 
 The root and state directory must be absolute, owned, private directories with
-no symlink ancestors. New directories use 0700; data 0600; programs and shell
-runtime scripts 0700. Existing settings and credentials are never replaced.
+no symlink ancestors. New directories use 0700; data 0600; programs, shell
+runtime scripts and host drivers (`runtime/adapters/<host>/driver`) 0700. Existing settings and credentials are never replaced.
 An existing update channel is never silently migrated. A packaged install
 explicitly records `openwiz.update-channel.v1`, channel `packaged`, in
 `<root>/channel.json`; absent metadata keeps existing source installs unchanged.

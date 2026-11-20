@@ -196,7 +196,8 @@ def identity(raw):
 
 
 def mode(name):
-    return '0700' if name in PROGRAMS.values() or name.endswith('.sh') else '0600'
+    return '0700' if name in PROGRAMS.values() or name.endswith('.sh') \
+        or re.fullmatch(r'runtime/adapters/[a-z0-9-]+/driver', name) else '0600'  # #1699: a host driver
 
 
 def payload(rows):

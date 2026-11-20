@@ -1,5 +1,5 @@
 {
-  "about": "A recorded onboarding conversation and its tool calls, synthetic throughout (#1108, joined to install in #636). Steps name skills/onboard/SKILL.md's numbered sections. Tool steps run the packaged helper against recording fakes; plan steps build the synthetic GitHub the fake gh answers from; the setup step stands for install's verified setup and openwiz init, whose state the helper carries forward. Nothing here is a prewritten plan: the spec and tickets come from this conversation's grill answers.",
+  "about": "A recorded onboarding conversation and its tool calls, synthetic throughout (#1108, joined to install in #636). Steps name the install first-fleet branch and explanation. Tool steps run the packaged helper against recording fakes; plan steps build the synthetic GitHub the fake gh answers from; the setup step stands for install's verified setup and openwiz init, whose state the helper carries forward. Nothing here is a prewritten plan: the spec and tickets come from this conversation's grill answers.",
   "repo": "synthetic-owner/synthetic-sheep",
   "options": {
     "schema": "openwiz.cloud-options.v1",

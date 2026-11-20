@@ -1,0 +1,64 @@
+test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) ... FAIL
+test_each_run_works_in_its_own_clone_of_its_repository (__main__.Local.test_each_run_works_in_its_own_clone_of_its_repository) ... FAIL
+test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) ... ok
+test_missing_or_unknown_harness_is_an_error_with_next (__main__.Local.test_missing_or_unknown_harness_is_an_error_with_next) ... ok
+test_permission_mode_is_the_repositorys_own_or_start_refuses (__main__.Local.test_permission_mode_is_the_repositorys_own_or_start_refuses) ... 
+  test_permission_mode_is_the_repositorys_own_or_start_refuses (__main__.Local.test_permission_mode_is_the_repositorys_own_or_start_refuses) [claude] ... FAIL
+  test_permission_mode_is_the_repositorys_own_or_start_refuses (__main__.Local.test_permission_mode_is_the_repositorys_own_or_start_refuses) [codex] ... FAIL
+test_permission_mode_is_the_repositorys_own_or_start_refuses (__main__.Local.test_permission_mode_is_the_repositorys_own_or_start_refuses) ... FAIL
+test_several_runs_at_once_stop_only_their_own (__main__.Local.test_several_runs_at_once_stop_only_their_own) ... ok
+test_start_record_is_not_wakeable_before_it_is_confirmed (__main__.Local.test_start_record_is_not_wakeable_before_it_is_confirmed) ... ok
+test_start_with_nowhere_to_save_starts_nothing (__main__.Local.test_start_with_nowhere_to_save_starts_nothing) ... ok
+test_stop_ends_a_worker_with_a_clean_environment (__main__.Local.test_stop_ends_a_worker_with_a_clean_environment) ... ok
+test_stop_ends_the_run_when_it_cannot_save (__main__.Local.test_stop_ends_the_run_when_it_cannot_save) ... ok
+test_wake_checks_its_save_before_and_after_spawn (__main__.Local.test_wake_checks_its_save_before_and_after_spawn) ... ok
+test_wake_while_a_turn_runs_starts_no_second_turn (__main__.Local.test_wake_while_a_turn_runs_starts_no_second_turn) ... ok
+
+======================================================================
+FAIL: test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 306, in test_a_first_turn_that_ends_at_once_fails_start_with_its_reason
+    self.assertEqual(code, 1, err)
+AssertionError: 0 != 1 : {'run': 'run-96081888704d'}
+
+======================================================================
+FAIL: test_each_run_works_in_its_own_clone_of_its_repository (__main__.Local.test_each_run_works_in_its_own_clone_of_its_repository)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 277, in test_each_run_works_in_its_own_clone_of_its_repository
+    self.assertNotEqual(folders[0], folders[1])
+AssertionError: '<checkout>' == '<checkout>'
+
+======================================================================
+FAIL: test_permission_mode_is_the_repositorys_own_or_start_refuses (__main__.Local.test_permission_mode_is_the_repositorys_own_or_start_refuses) [claude]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 294, in test_permission_mode_is_the_repositorys_own_or_start_refuses
+    self.until(lambda: len(self.logged()) and self.logged()[-1][4] == 'acceptEdits')
+  File "adapters/local/test_driver.py", line 255, in until
+    self.assertTrue(ready())
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_permission_mode_is_the_repositorys_own_or_start_refuses (__main__.Local.test_permission_mode_is_the_repositorys_own_or_start_refuses) [codex]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 294, in test_permission_mode_is_the_repositorys_own_or_start_refuses
+    self.until(lambda: len(self.logged()) and self.logged()[-1][4] == 'acceptEdits')
+  File "adapters/local/test_driver.py", line 255, in until
+    self.assertTrue(ready())
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_permission_mode_is_the_repositorys_own_or_start_refuses (__main__.Local.test_permission_mode_is_the_repositorys_own_or_start_refuses)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 297, in test_permission_mode_is_the_repositorys_own_or_start_refuses
+    self.assertEqual(code, 1, err)
+AssertionError: 0 != 1 : {'run': 'run-f80766c8fa70'}
+
+----------------------------------------------------------------------
+Ran 12 tests in 36.235s
+
+FAILED (failures=5)

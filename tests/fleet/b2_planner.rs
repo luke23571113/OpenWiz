@@ -190,10 +190,10 @@ fn b2_1196_all_conditional_tables_are_strict_and_other_family() {
     let rules = Rules::parse(include_str!("../../docs/agents/fleet.md")).unwrap();
     assert_eq!(rules.builder().harness, "claude-code");
     assert_eq!(rules.builder().model, "claude-opus-5-5");
-    assert_eq!(rules.builder().effort, "high");
-    assert_eq!(rules.small_builder().harness, "codex");
-    assert_eq!(rules.small_builder().model, "gpt-6.1-sol");
-    assert_eq!(rules.small_builder().effort, "high");
+    assert_eq!(rules.builder().effort, "medium");
+    assert_eq!(rules.small_builder().harness, "claude-code");
+    assert_eq!(rules.small_builder().model, "claude-opus-5-5");
+    assert_eq!(rules.small_builder().effort, "medium");
     assert_eq!(
         rules
             .reviewer_for(openwiz_core::fleet::tick::BuilderFamily::Claude)
