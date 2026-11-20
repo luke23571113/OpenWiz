@@ -390,7 +390,7 @@ def parse_report(text):
             bad_marks.append((int(start[1]) if start[1] else None, raw.strip()))
     nexts = [x.strip() for x in lines if x.strip().startswith('Next:')]
     return {'verdict': verdict[1] if verdict else None, 'findings': findings,
-            'next': nexts[-1] if nexts else None, 'marks': marks, 'bad_marks': bad_marks,
+            'next': nexts[-1] if nexts else None, 'nexts': nexts, 'marks': marks, 'bad_marks': bad_marks,
             'no_rulings': any(x.strip() == NO_RULINGS for x in lines)}
 
 
@@ -464,7 +464,7 @@ def check_report(text, description=None):
     next_line = r['next'] or ''
     v2 = bool(r['marks'] or r['bad_marks'] or r['no_rulings'] or listed is not None or
               any(f['logged'] for f in r['findings']) or
-              any(re.fullmatch(NEXT_V2[s], next_line) for s in ('fresh', 'park')))
+              any(re.fullmatch(NEXT_V2[s], x) for s in ('fresh', 'park') for x in r['nexts']))
     if v2:  # a description with no ## Rulings section lists no ruling
         problems += _check_v2(r, [] if description is not None and listed is None else listed, listed_problems)
     if r['verdict'] is None:
@@ -475,7 +475,7 @@ def check_report(text, description=None):
         problems.append('the verdict is CHANGES only while a blocking finding is open')
     if r['next'] is None:
         problems.append('no Next: line')
-    elif v2 and any(re.fullmatch(NEXT[s], next_line) for s in ('orchestrator', 'final')):
+    elif v2 and any(re.fullmatch(NEXT[s], x) for s in ('orchestrator', 'final') for x in r['nexts']):
         problems.append('a v2 report never uses the v1 orchestrator or final Next: line')
     else:
         ok = False
@@ -533,8 +533,12 @@ def _check_v2(r, listed, listed_problems):
     problems += listed_problems
     marked = set(numbers)
     if listed is None:
-        problems += [f'Ruling {n}: unmarked; marks run from 1 with no gap'
-                     for n in range(1, max(marked, default=0)) if n not in marked]
+        ends = sorted(marked)  # one line per gap, never one per missing number (#912)
+        for low, high in zip([0] + ends, ends):
+            if high - low == 2:
+                problems.append(f'Ruling {low + 1}: unmarked; marks run from 1 with no gap')
+            elif high - low > 2:
+                problems.append(f'Rulings {low + 1} to {high - 1}: unmarked; marks run from 1 with no gap')
     else:
         problems += [f'Ruling {n}: the description lists it, but the report leaves it unmarked'
                      for n in listed if n not in marked]
