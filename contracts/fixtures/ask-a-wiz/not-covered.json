@@ -35,7 +35,7 @@
     }
   ],
   "upstream": null,
-  "passages": false,
+  "retrieved": [],
   "response": {
     "status": 200,
     "headers": {

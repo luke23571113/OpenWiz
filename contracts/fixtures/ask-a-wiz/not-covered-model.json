@@ -35,6 +35,22 @@
     }
   ],
   "upstream": {
+    "request": {
+      "model": "synthetic/cheap-model",
+      "stream": true,
+      "max_tokens": 500,
+      "temperature": 0,
+      "messages": [
+        {
+          "role": "system",
+          "content": "You answer questions about OpenWiz for visitors to openwiz.dev. Answer only from the passages in the user's message, in plain text, in at most three short paragraphs. If the passages do not answer the question, reply with exactly NOT_COVERED and nothing else."
+        },
+        {
+          "role": "user",
+          "content": "Passage 1 from https://openwiz.dev/faq/:\nSynthetic passage: OpenWiz runs a fleet of coding agents from one approved plan.\n\nPassage 2 from https://github.com/openwizdev/openwiz#readme:\nSynthetic passage: one line, pasted into your agent, sets OpenWiz up.\n\nQuestion: Synthetic question the passages do not answer?"
+        }
+      ]
+    },
     "chunks": [
       "NOT_",
       "COVERED"
@@ -47,5 +63,21 @@
       "Cache-Control": "no-store"
     },
     "body": "{\"type\":\"not_covered\",\"text\":\"The OpenWiz docs don't cover that yet, so I won't guess. Book a call or open a GitHub issue, and we'll answer it.\",\"links\":[{\"label\":\"Book a call\",\"href\":\"https://openwiz.dev/team/#book\"},{\"label\":\"GitHub issues\",\"href\":\"https://github.com/openwizdev/openwiz/issues\"}]}\n"
-  }
+  },
+  "retrieved": [
+    {
+      "source": {
+        "title": "Questions",
+        "url": "https://openwiz.dev/faq/"
+      },
+      "text": "Synthetic passage: OpenWiz runs a fleet of coding agents from one approved plan."
+    },
+    {
+      "source": {
+        "title": "OpenWiz README",
+        "url": "https://github.com/openwizdev/openwiz#readme"
+      },
+      "text": "Synthetic passage: one line, pasted into your agent, sets OpenWiz up."
+    }
+  ]
 }
