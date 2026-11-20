@@ -62,7 +62,35 @@ trap 'rm -f "$table"' EXIT
 # reads may name a test. With `--tests`, classify.sh prints each path's
 # column, one per line in order: `?` for a path no row knows (every test).
 cat > "$table" <<'TABLE'
-# #1486 red run: the stub path table, before its rows are filled.
+-               -       STATUS\.md|AGENTS\.md
+-               -       private/.+
+rust            -       \.claude/skills/(export-review|live-quick-check)/SKILL\.md
+-               -       \.claude/skills/[^/]+/SKILL\.md
+-               -       ci/runner/(README\.md|Dockerfile|compose\.yaml|entrypoint\.sh|test\.sh)
+# X5 reuses the escape reader validator in every lane. Keep X6's other paths below.
+web-build,rust,web-test * ci/escapes/escapes\.py
+-               -       ci/escapes/.+|\.github/workflows/ci-escapes\.yml
+web-build,rust  *       ci/rust-tests\.sh
+# tests/fleet/b2_planner.rs reads the installed skills' fleet template through the link.
+rust            rust:test:fleet skills
+rust            -       \.claude/skills/[^/]+|\.agents/skills/[^/]+
+# tests/fleet/b2_planner.rs parses it (include_str!).
+rust            rust:test:fleet docs/agents/fleet\.md
+rust            -       docs/.+|GLOSSARY\.md
+web-build,rust  -       tests/checks/.+
+web-build,rust  *       tests/(attachments|messaging|new-thread|proof|support)/.+|tests/pending-ticket-2\.txt
+rust,web-test   *       tools/install/.+
+rust,web-test,site *    tools/release/.+
+rust            *       tools/github-app/.+
+rust,web-test   *       Cargo\.toml|Cargo\.lock
+web-build,rust,web-test,site * tests/fixtures/release/.+
+web-build,rust,web-test * ci/runner/cache\.sh|crates/.+|contracts/.+|tests/Cargo\.toml|tests/fake-room-cli/.+|tests/fixtures/.+
+web-build,rust,web-test * changes/.+|tests/.+|tools/.+
+# Read by every job, as a path no row knows; only their Rust tests are named.
+web-build,rust,web-test,site * \.githooks/.+|\.gitignore|LICENSE|adapters/.+|deploy/.+|kernel/.+|loops/.+|release/.+
+# The pin moves the installed skills, so it reaches the template's reader.
+web-build,rust,web-test,site rust:test:fleet wizskills\.lock
+web-build,rust,web-test,site - [^/]+\.md|\.claude/skills/.+|\.agents/skills/.+
 TABLE
 # Identify each file explicitly: an empty reads list has no first record.
 awk -v skips="$skips" -v step="$step" -v tests="$tests" '
