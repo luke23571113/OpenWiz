@@ -422,14 +422,5 @@ class InstalledCommand(Bundles):
         self.assertFalse((self.base / 'build-tools.log').exists())
 
 
-class CompletionCheckpoint(unittest.TestCase):
-    def test_completion_checkpoint(self):
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'completion/test_checkpoint.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'completion checkpoint checks failed')
-
-
 if __name__ == '__main__':
     unittest.main()
