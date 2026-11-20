@@ -1,4 +1,3 @@
-//! Output-only typed actions. Kind is derived from the rule by the planner.
 use super::super::model::{Check, Commit, NonEmpty, Number, Verdict};
 use super::{AgentRule, Approval, Fingerprint, MergeFact, Rules};
 use serde::Serialize;

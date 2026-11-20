@@ -1,38 +1,3 @@
-//! The `new_thread` operation: one new Cloud thread in one existing
-//! project, one provider call per op id, and an honest report.
-//!
-//! In order:
-//! 1. **validate** the prompt (text rules; any attachment is refused), the
-//!    project reference and the three settings; nothing is defaulted;
-//! 2. **claim** the op id durably and atomically. The same op id with the
-//!    same binding returns the recorded outcome, or "in progress"; with a
-//!    different binding it is refused as conflicting reuse. Neither calls
-//!    the provider;
-//! 3. read and report the provider's **version** (never a gate, #37);
-//! 4. **resolve the project** from the project list, in the same operation;
-//! 5. **read the options** in the same operation. A harness, model or
-//!    effort they don't offer is refused, with what is offered; nothing is
-//!    substituted;
-//! 6. work out the **effects**, and derive the **request id** from the op
-//!    id;
-//! 7. mark the record **dispatching**, durably;
-//! 8. make **one call**. No retry;
-//! 9. map the reply to an **outcome** and record it. The prompt text is kept
-//!    until the outcome is Created.
-//!
-//! [`preview_new_thread`] runs steps 1 and 3 to 6 with the same reads and
-//! rules, and claims nothing and calls nothing: the effects shown before
-//! anything is created.
-//!
-//! **Attachments (B2, ClosedWiz#15).** Before the op id is claimed, the one
-//! [`gate`] (shared with `send`) reads every attachment's copy again and
-//! refuses unless every one can go; the op id, and so the request id
-//! derived from it, binds them too, so one request id never carries two
-//! payloads (CloudRoom's own dedup compares the text only, F17). Once the
-//! op id is owned, the attachments are claimed for it, all or none, before
-//! any read; the one call carries every one; and once the outcome is
-//! recorded, a created thread's copies are deleted (B-6).
-
 use std::time::Instant;
 
 use serde::Serialize;
@@ -60,54 +25,39 @@ use super::{
     Settings, request_id,
 };
 
-/// Exactly what the one call passes: every setting explicit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpawnRequest {
     pub project_id: String,
-    /// The `spawn --provider` id.
     pub provider: String,
     pub model: String,
     pub effort: String,
     pub request_id: String,
-    /// The prompt, every attachment through the gate and claimed.
     pub prompt: ReadyPrompt,
 }
 
-/// One thread seen in the project after an uncertain create: an observation,
-/// never proof.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ObservedThread {
     pub id: String,
     pub created_at: Fact<Timestamp>,
 }
 
-/// The adapter side of `new_thread`: the reads and the one write.
 pub trait NewThreadClient: Send + Sync {
-    /// The provider's name, such as `room-cli`.
     fn name(&self) -> &str;
 
-    /// The version the adapter was tested against.
     fn tested_version(&self) -> &str;
 
-    /// The effort levels the provider's CLI verifies.
     fn cli_levels(&self) -> &[&str];
 
-    /// The version the provider reports now.
     fn version(&self, deadline: Instant) -> Result<String, SourceError>;
 
-    /// The default project list (hidden projects are not in it).
     fn projects(&self, deadline: Instant) -> Result<Vec<ProjectCandidate>, SourceError>;
 
-    /// One catalogue read, with only the catalogue keys.
     fn catalogue(&self, deadline: Instant) -> Result<Catalogue, SourceError>;
 
-    /// The one write: exactly one provider call. Never retried.
     fn spawn(&self, spawn: &SpawnRequest, deadline: Instant) -> SpawnReply;
 
-    /// One read of a created thread, for its start stage.
     fn show_thread(&self, thread_id: &str, deadline: Instant) -> Result<ShownThread, SourceError>;
 
-    /// The threads in `project_id` created at or after `since`. Reads only.
     fn threads_since(
         &self,
         project_id: &str,
@@ -116,39 +66,31 @@ pub trait NewThreadClient: Send + Sync {
     ) -> Result<Vec<ObservedThread>, SourceError>;
 }
 
-/// What this call of `new_thread` came to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum NewThreadResult {
-    /// `replayed` when it comes from the record of an earlier call with the
-    /// same op id (no call was made); `recovered` when recovery set it.
     Outcome {
         outcome: Outcome,
         replayed: bool,
         recovered: bool,
     },
-    /// Another process owns this op id. No call was made.
-    InProgress { state: Option<RecordState> },
-    /// This op id is bound to something else. No call was made.
-    ConflictingReuse { differs: Vec<BindingField> },
+    InProgress {
+        state: Option<RecordState>,
+    },
+    ConflictingReuse {
+        differs: Vec<BindingField>,
+    },
 }
 
-/// The result of `new_thread`. See `contracts/new-thread.v1.schema.json`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct NewThreadReport {
-    /// Always [`NEW_THREAD_SCHEMA_ID`].
     pub schema: String,
     pub op_id: OpId,
-    /// The request id derived from the op id.
     pub request_id: String,
-    /// The project as the owner named it.
     pub project_ref: ProjectRef,
-    /// The project as resolved, once read.
     pub project: Option<ProjectView>,
     pub source: Option<SourceInfo>,
-    /// The requested configuration. Never what CloudRoom reports.
     pub requested: Settings,
-    /// The `spawn` provider, once the options were checked.
     pub provider: Option<String>,
     pub status: Status,
     pub summary: String,
@@ -156,8 +98,6 @@ pub struct NewThreadReport {
     pub effects: Option<Effects>,
     pub text_sha256: String,
     pub attachments_digest: String,
-    /// The attachments, in the owner's order (B2). **Absent when there are
-    /// none**, so a text-only report keeps its A1 shape.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<PromptAttachment>,
     pub text_bytes: u64,
@@ -165,32 +105,21 @@ pub struct NewThreadReport {
     pub claimed_at: Option<Timestamp>,
     pub dispatching_at: Option<Timestamp>,
     pub finished_at: Option<Timestamp>,
-    /// The start of a created thread, once followed (sheet A-9).
-    /// `new_thread` itself never reads it: always `None` from here.
     pub start: Option<StartView>,
 }
 
-/// `new_thread` could not produce a report. Nothing was created.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NewThreadError {
-    /// The request is invalid. Nothing was claimed, read or sent.
     Invalid(InvalidRequest),
-    /// The record could not be used. Nothing was sent.
     Store(StoreError),
 }
 
-/// What the reads before a create found: the project, the provider and the
-/// effects, or the outcome that stops the create.
 struct Look {
     project: Option<ProjectView>,
-    /// The effects and the `spawn` provider, or the outcome that stops the
-    /// create.
     outcome: Result<(Effects, String), Outcome>,
     gaps: Vec<Gap>,
 }
 
-/// Steps 4 to 6: the project, the options and the effects. The same reads
-/// and rules for a preview and a create.
 fn look(
     client: &dyn NewThreadClient,
     clock: &dyn Clock,
@@ -239,9 +168,6 @@ fn look(
     look
 }
 
-/// Creates one Cloud thread, with no attachment store: any attachment is
-/// refused before anything is claimed ([`NoAttachments`]). See the module
-/// documentation, and [`new_thread_with`].
 pub fn new_thread(
     client: &dyn NewThreadClient,
     store: &dyn NewThreadStore,
@@ -251,8 +177,6 @@ pub fn new_thread(
     new_thread_with(client, store, &NoAttachments, clock, request)
 }
 
-/// Creates one Cloud thread whose first prompt carries its text and its
-/// attachments. See the module documentation.
 pub fn new_thread_with(
     client: &dyn NewThreadClient,
     store: &dyn NewThreadStore,
@@ -267,15 +191,6 @@ pub fn new_thread_with(
         op_id: request.op_id.clone(),
     };
 
-    // The binding: the attachments' content, in the owner's order, so one
-    // request id never carries two payloads. For an op id already
-    // recorded, each attachment as its record holds it when it has that id
-    // (a created thread's copies are gone, B-6), else its copy now. For a
-    // new op id, every attachment passes the gate first, so a refusal
-    // claims nothing.
-    // A lock taken just to inspect could be copied by another thread's
-    // fork and outlive that inspection. Read without a lock here; claim
-    // below alone decides whether an existing owner stopped (#244).
     let known = store.load(&request.op_id).map_err(NewThreadError::Store)?;
     let (binding, bound, mut ready) = match &known {
         Some(record) => {
@@ -284,10 +199,6 @@ pub fn new_thread_with(
                 .map_err(|e| gate_error(GateError::Store(e)))?
             {
                 Some(list) => (Binding::new(request, attachments_digest(&list)), list, None),
-                // An attachment that is neither the record's nor a ready
-                // copy can't be the recorded payload: conflicting reuse,
-                // with no call, so one request id never carries two
-                // payloads.
                 None => {
                     let binding = Binding::new(request, record.binding.attachments_digest.clone());
                     let mut differs = record.binding.differences(&binding);
@@ -331,12 +242,8 @@ pub fn new_thread_with(
         Claim::Pending => return Ok(in_progress(request, &binding, &bound, None)),
     }
 
-    // This process owns the op id. Its attachments are claimed for it, all
-    // or none, before anything is read; if they can't be, the claim of the
-    // op id is withdrawn and nothing is read or sent.
     let ready = match ready.take() {
         Some(ready) => ready,
-        // The record seen first is gone: the gate runs now.
         None => match pass_gate(attachments, request, &op, clock) {
             Ok(ready) => ready,
             Err(e) => {
@@ -375,8 +282,6 @@ pub fn new_thread_with(
     created
 }
 
-/// The gate, for this create: a refusal is an invalid request, naming
-/// every attachment that can't go.
 fn pass_gate(
     attachments: &dyn StagedAttachments,
     request: &NewThreadRequest,
@@ -386,8 +291,6 @@ fn pass_gate(
     gate(attachments, &request.prompt, op, clock.now()).map_err(gate_error)
 }
 
-/// The gate's refusal as an invalid request, naming every attachment that
-/// can't go; its store error as the create's.
 fn gate_error(e: GateError) -> NewThreadError {
     match e {
         GateError::Refused(refusal) => NewThreadError::Invalid(InvalidRequest(refusal.words())),
@@ -404,7 +307,6 @@ struct Dispatch<'a> {
     clock: &'a dyn Clock,
     request: &'a NewThreadRequest,
     op: &'a OpRef,
-    /// The prompt, every attachment claimed for this create.
     ready: &'a ReadyPrompt,
     deadline: Instant,
 }
@@ -428,8 +330,6 @@ impl Dispatch<'_> {
             return self.finish(record, Outcome::failed(FailReason::BudgetExhausted));
         }
 
-        // The dispatching mark is synced before the one call: a process that
-        // stops after this point recovers as uncertain, never as failed.
         let record = record.dispatching(self.clock.now());
         if let Err(e) = self.store.update(&record) {
             return Err(NewThreadError::Store(StoreError(format!(
@@ -451,11 +351,6 @@ impl Dispatch<'_> {
         self.finish(record, outcome)
     }
 
-    /// Records the outcome and reports it. If the record can't be written,
-    /// the report says so, and the record recovers as failed (before the
-    /// dispatching mark) or uncertain (after it). Only once the outcome is
-    /// recorded are the attachments settled: a created thread's copies are
-    /// deleted then, never before (B-6).
     fn finish(
         &self,
         record: NewThreadRecord,
@@ -491,7 +386,6 @@ impl Dispatch<'_> {
     }
 }
 
-/// The provider and its version, reported and never a gate (#37).
 fn read_source(client: &dyn NewThreadClient, deadline: Instant) -> (SourceInfo, Option<Gap>) {
     let name = client.name();
     let tested = client.tested_version();
@@ -515,21 +409,15 @@ fn read_source(client: &dyn NewThreadClient, deadline: Instant) -> (SourceInfo, 
     )
 }
 
-/// The verdict of a preview.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PreviewVerdict {
-    /// A create would go ahead, with these effects.
     Ready { provider: String },
-    /// A create would end with this outcome, and create nothing.
     Stopped { outcome: Outcome },
 }
 
-/// What a create would do: shown before anything is created. Claims nothing
-/// and calls nothing.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct NewThreadPreview {
-    /// Always [`PREVIEW_SCHEMA_ID`].
     pub schema: String,
     pub op_id: OpId,
     pub request_id: String,
@@ -541,20 +429,14 @@ pub struct NewThreadPreview {
     pub effects: Option<Effects>,
     pub text_sha256: String,
     pub attachments_digest: String,
-    /// The attachments, in the owner's order, each through the gate (B2).
-    /// **Absent when there are none.**
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<PromptAttachment>,
     pub text_bytes: u64,
     pub gaps: Vec<Gap>,
 }
 
-/// The schema id of a preview.
 pub const PREVIEW_SCHEMA_ID: &str = "openwiz.new-thread-preview.v1";
 
-/// What [`new_thread`] would do with `request`, from the same reads and
-/// rules: no claim, no record and no call. With no attachment store: any
-/// attachment is refused ([`preview_new_thread_with`]).
 pub fn preview_new_thread(
     client: &dyn NewThreadClient,
     clock: &dyn Clock,
@@ -566,9 +448,6 @@ pub fn preview_new_thread(
     })
 }
 
-/// [`preview_new_thread`] with the attachment store: every attachment goes
-/// through the same gate a create passes (its copy read again whole), and
-/// nothing is claimed, recorded or called.
 pub fn preview_new_thread_with(
     client: &dyn NewThreadClient,
     attachments: &dyn StagedAttachments,
@@ -609,14 +488,12 @@ pub fn preview_new_thread_with(
     })
 }
 
-/// The report of a finished record.
 pub(crate) fn from_record(
     record: &NewThreadRecord,
     replayed: bool,
     extra_gaps: Vec<Gap>,
 ) -> NewThreadReport {
     let outcome = record.outcome.clone().unwrap_or_else(|| {
-        // A record is only reported once finished; recovery finishes it.
         Outcome::uncertain(crate::messaging::send::UncertainReason::InterruptedAfterDispatchMark)
     });
     let mut gaps = record.gaps.clone();
@@ -650,7 +527,6 @@ pub(crate) fn from_record(
     }
 }
 
-/// The report of a record still in flight: no outcome yet.
 pub(crate) fn in_flight_report(record: &NewThreadRecord) -> NewThreadReport {
     let state = match record.state {
         RecordState::Claimed => "claimed",
@@ -675,7 +551,6 @@ pub(crate) fn in_flight_report(record: &NewThreadRecord) -> NewThreadReport {
     }
 }
 
-/// `<harness> · <model> · <effort> requested · <outcome>`.
 fn summary(requested: &Settings, words: &str) -> String {
     format!(
         "{} · {} · {} requested · {words}",

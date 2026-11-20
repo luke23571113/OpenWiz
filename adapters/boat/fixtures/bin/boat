@@ -2,8 +2,9 @@
 """A synthetic `boat` CLI for the boat driver's tests. Synthetic assumptions, not observed on a live
 account, except where marked: the JSON Lines shapes below follow docs.boat.dev's CLI reference
 (2026-11-19). Observed on the owner's live kit run (boat CLI 1.0.103): `boat prompt --json`'s queued
-line nests its ids under `data`, its turn ends with an `{"event": "chat", "final": true}` line, and
-`boat info --json` carries a top-level `state`.
+line nests its ids under `data`, and its turn ends with an `{"event": "chat", "final": true}` line. Observed
+live twice (#1874): `boat info --json` nests the sandbox's fields under a top-level `sandbox` key; with
+FAKE_BOAT_INFO=flat this fake prints the older flat shape, a top-level `state`, instead.
 
 It keeps its sandboxes in the JSON file FAKE_BOAT_STATE. `boat prompt` plays the agent: a new
 conversation posts one builder status note in the local tracker KIT_TRACKER, and each later prompt
@@ -106,7 +107,7 @@ def prompt(args):
 
     def queue(state):
         box = sandbox(state, sid)
-        if box['state'] != 'running':
+        if box['state'] not in ('running', 'idle', 'ready'):  # a live sandbox whose agent's turn has ended
             fail('sandbox_not_ready', 'the sandbox is %s; resume it first' % box['state'])
         if resume is None:
             cid = 'c%d' % (len(box['conversations']) + 1)
@@ -159,7 +160,10 @@ def main():
         say(event='ready', id=sid)
     elif cmd == 'info' and len(rest) == 2 and rest[1] == '--json':
         box = update(lambda s: sandbox(s, rest[0]))
-        say(id=rest[0], state=box['state'])
+        if os.environ.get('FAKE_BOAT_INFO') == 'flat':
+            say(id=rest[0], state=box['state'])
+        else:
+            say(sandbox={'id': rest[0], 'name': box['name'], 'state': box['state']})
     elif cmd in ('resume', 'stop', 'interrupt') and rest[-1] == '--json' and (
             len(rest) == 2 or cmd == 'interrupt' and len(rest) == 4 and rest[1] == '--convo'):
         def act(state):

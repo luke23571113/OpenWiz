@@ -1,7 +1,0 @@
-# #792 scoped local checks at 366b592c83edb757e4b15a082859bd78799fc620 (C5's real export-then-plan round trip added)
-# every cargo command ran alone, with CARGO_BUILD_JOBS=2 and -- --test-threads=2
-cargo test -p openwiz-tests --test cli-agent export_then_plan: test result: ok. 1 passed; 0 failed
-cargo test -p openwiz-tests --test cli-agent: test result: ok. 85 passed; 0 failed (loop_: 12 plan, 7 export, 6 validate, 2 contract)
-cargo fmt --check: ok
-cargo clippy -p openwiz-tests --all-targets -- -D warnings: ok
-# 366b592 changes only tests/cli-agent/loop_plan.rs and its red log; the other scoped checks in green-merge.txt (at 796c24f) cover unchanged code.
