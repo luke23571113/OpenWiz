@@ -90,9 +90,16 @@ class Coverage(FixtureCase):
                    'risk': {'send': ['send'], 'new': ['new'], 'app_permissions': [], 'spending': []},
                    'gaps': ['synthetic gap']}
         self.kit.update(claims=list(SHIP3), steps=steps, release=release)
-        doc = self.report(self.invoke(), 2)
-        self.assertEqual(doc['reason'], 'coverage_mismatch')
-        self.assertEqual(self.call_list(), [])
+        bad = {'send outside every row': {},
+               'risk not a dict': {'risk': ['send']},
+               'coverage not a list': {'coverage': {'steps': ['send']}}}
+        for name, change in bad.items():
+            with self.subTest(name):
+                self.kit['release'] = dict(release, **change)
+                self.state = self.root / name.replace(' ', '-')
+                self.assertEqual(self.report(self.invoke(), 2)['reason'], 'coverage_mismatch')
+                self.assertEqual(self.call_list(), [])
+        self.kit['release'] = release
         release['coverage'][0]['steps'].append('send')
         self.state = self.root / 'covered'
         self.assertEqual(self.report(self.invoke(), 0)['claims'], {c: 'pass' for c in SHIP3})

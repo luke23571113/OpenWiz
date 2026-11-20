@@ -221,10 +221,11 @@ def load_kit(path):
                    for k, v in kit['release']['scope']['writes'].items())):
         raise Refusal('invalid_kit')
     # #1727: a risk step in no coverage row has no expected coverage; refuse it here, before any step (0.0.17).
-    named = lambda groups: {s for ids in groups if type(ids) is list for s in ids if type(s) is str}
     release = kit.get('release', {})
-    if (type(release.get('risk')) is dict and type(release.get('coverage')) is list and not named(release['risk'].values())
-            <= named(r.get('steps') for r in release['coverage'] if type(r) is dict)):
+    risk, rows = release.get('risk', {}), release.get('coverage', [])
+    if (type(risk) is not dict or type(rows) is not list or any(type(ids) is not list for ids in risk.values())
+            or any(type(r) is not dict or type(r.get('steps')) is not list for r in rows)
+            or not {s for ids in risk.values() for s in ids} <= {s for r in rows for s in r['steps']}):
         raise Refusal('coverage_mismatch')
     if type(kit['env']) is not dict or any(
         not re.fullmatch('[A-Z][A-Z0-9_]*', k) or not isinstance(v, str) or '\0' in v
