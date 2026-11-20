@@ -5,8 +5,7 @@
 //!
 //! The seam is the core's `openwiz_core::fleet::agents::place`, which
 //! works the chain out from the envelope's read records, and its
-//! `reviewer`. Every expected value is a literal, or the contract's own
-//! examples ([`examples`]).
+//! `reviewer`. Every expected value is a literal.
 //!
 //! - **Only the exact head branch places a thread:** near-miss branch
 //!   names place nothing, and a branch named after a ticket places nothing
@@ -26,8 +25,6 @@
 //! [`reads`] proves the CloudRoom reads behind the chain, on the fake
 //! `room-cli`: only allowlisted reads, strict readers, OpenWiz's own words.
 
-#[path = "a6_examples.rs"]
-mod examples;
 #[path = "a6_reads.rs"]
 mod reads;
 

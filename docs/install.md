@@ -6,6 +6,8 @@ Paste this one line into the coding agent you already use (Claude Code, Codex or
 
 The agent follows the [install skill](../skills/install/SKILL.md). This page says what it does, what it may change, and how to recover or remove it.
 
+Using Grok Bot? See [Grok Bot + OpenWiz](grok-bot.md).
+
 **Status:** the install journey is tested on synthetic fixtures only. A real install on a fresh machine, and the time it takes, are not yet verified.
 
 ## What happens, in order
@@ -14,7 +16,7 @@ The agent follows the [install skill](../skills/install/SKILL.md). This page say
 2. **Verified install.** It downloads the latest OpenWiz release from GitHub and checks every file's SHA-256 hash against the release's manifest before using it. No Rust, Node or source build is needed. A hash proves the files are the release's files; it is not a publisher signature. A failed check changes nothing, and an earlier install keeps working.
 3. **Setup and connections.** It opens the setup page on your own computer (`http://127.0.0.1:7370/setup`) and checks each connection on its own. Existing CloudRoom sign-ins and harnesses are reused. A connection is ready only when a check proves it, never because a setting was saved. There is no engine to choose.
 4. **Explain.** A few sentences on ideas, grills, specs, tickets, builders, independent review and merges.
-5. **First fleet.** The same agent continues through [install’s first-fleet branch](../skills/install/SKILL.md#5-first-fleet) when you want to try it:
+5. **First fleet.** The same agent continues through [install's first-fleet branch](../skills/install/SKILL.md#5-first-fleet) when you want to try it:
    - It offers a few quick ideas and a new private demo repository, or one of yours. That one repository is used from here on.
    - It connects GitHub for that repository: your existing login is reused, or GitHub's own browser sign-in opens (no token is pasted). Then you choose your own OpenWiz App (Create, then Install on that repository only) or skip it. If you skip it, your personal GitHub login acts for the factory and setup says so; the App is never shown as verified.
    - It saves the project with your harness, model and effort, asked once, and makes its private brain (`openwiz init`): in your repository if it is private, or in a new private companion repository if it is public. It tells you where in one line and opens a pull request you merge.

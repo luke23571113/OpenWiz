@@ -206,7 +206,7 @@ GH_TOKEN="$(python3 -I tools/github-app/refresh-token.py --write \
   revocable separately (give it its own key, below).
 - **One minting path per profile.** `refresh-token.py` runs `mint-token.py`'s checks
   through the same `app.py` guards. `mint-token.py` itself stays the read-only tool,
-  byte-identical to the copy `launch-fleet` carries (`tools/fleet-load/test_carried.py`).
+  byte-identical to the copy `launch-fleet` carries.
 - **Commits stay the person's.** Commits keep their author and committer (the
   person's GitHub noreply address); only the push and the GitHub records are the App's.
 

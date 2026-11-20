@@ -1,7 +1,8 @@
 //! The kept `openwiz models` (J233, #1440): its read-only output contract,
 //! run as a process against the fake `room-cli`. Restored from the cases
 //! #1264 removed (N18's `models` cases, N15's no-write row and CP2's
-//! `models` half) with their assertions unchanged. All inputs are synthetic.
+//! `models` half) with their assertions unchanged; #1517 then tightened the
+//! one-read and failed-read cases. All inputs are synthetic.
 use super::{ROOT, Sandbox, fixture_cli, schema};
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use openwiz_core::model::Timestamp;
@@ -114,9 +115,10 @@ impl Models {
             String::from_utf8(err).unwrap(),
         )
     }
-    /// `models --json`: its exit code and its one JSON document, checked
-    /// against `contracts/new-thread.v1.schema.json#/$defs/options`.
-    fn json(&self) -> (i32, Value) {
+    /// `models --json`: its exit code, its one JSON document, checked
+    /// against `contracts/new-thread.v1.schema.json#/$defs/options`, and its
+    /// stderr.
+    fn json(&self) -> (i32, Value, String) {
         let (code, out, err) = self.run(&["models", "--json"]);
         assert!(out.ends_with('\n'), "{out}{err}");
         let doc: Value = serde_json::from_str(&out).expect("one complete JSON document");
@@ -132,7 +134,7 @@ impl Models {
             Vec::<String>::new(),
             "{doc}"
         );
-        (code, doc)
+        (code, doc, err)
     }
     fn invocations(&self) -> Vec<Vec<String>> {
         fs::read_to_string(self.0.0.join("bin/invocations.log"))
@@ -182,7 +184,7 @@ fn models_with_nothing_offered_exits_13_with_its_reason() {
         ("cloud-status-drift-array.json", "unexpected_shape"),
     ] {
         let fake = Models::file(name);
-        let (code, json) = fake.json();
+        let (code, json, _) = fake.json();
         assert_eq!(code, 13, "{name}: {json}");
         assert_eq!(json["state"]["reason"], reason, "{name}");
         let (code, out, _) = fake.run(&["models"]);
@@ -196,7 +198,7 @@ fn models_with_nothing_offered_exits_13_with_its_reason() {
 #[test]
 fn models_json_offers_options_under_its_contract_with_exit_0() {
     let fake = Models::file("cloud-status.json");
-    let (code, doc) = fake.json();
+    let (code, doc, _) = fake.json();
     assert_eq!(code, 0, "{doc}");
     let offered: Vec<&Value> = doc["harnesses"]
         .as_array()
@@ -210,7 +212,7 @@ fn models_json_offers_options_under_its_contract_with_exit_0() {
 // catches: an unavailable harness dropped from JSON or losing its reason.
 #[test]
 fn models_json_keeps_unavailable_harness_with_its_reason_and_explanation() {
-    let (code, report) = Models::file("cloud-status.json").json();
+    let (code, report, _) = Models::file("cloud-status.json").json();
     assert_eq!(code, 0, "{report}");
     let cursor: Vec<&Value> = report["unavailable"]
         .as_array()
@@ -227,15 +229,21 @@ fn models_json_keeps_unavailable_harness_with_its_reason_and_explanation() {
 }
 
 // catches: `models` reaching a write: a spawn, a tell or any call beyond its
-// one `cloud status` read, in text or JSON.
+// one `cloud status` read, in text or JSON. A fresh fake for each process, so
+// two text reads cannot hide a JSON run that reads nothing (#1517).
 #[test]
 fn models_makes_one_status_read_and_never_spawns_or_tells() {
-    let fake = Models::file("cloud-status.json");
-    fake.run(&["models"]);
-    fake.run(&["models", "--json"]);
-    assert_eq!(fake.invocations(), [STATUS_READ, STATUS_READ]);
-    for count in ["spawn-calls.count", "tell-calls.count"] {
-        assert!(!fake.0.0.join("bin").join(count).exists(), "{count}");
+    for args in [&["models"][..], &["models", "--json"][..]] {
+        let fake = Models::file("cloud-status.json");
+        let (code, out, err) = fake.run(args);
+        assert_eq!(code, 0, "{args:?}: {out}{err}");
+        assert_eq!(fake.invocations(), [STATUS_READ], "{args:?}: one read");
+        for count in ["spawn-calls.count", "tell-calls.count"] {
+            assert!(
+                !fake.0.0.join("bin").join(count).exists(),
+                "{args:?}: {count}"
+            );
+        }
     }
 }
 
@@ -282,11 +290,11 @@ fn models_exit_codes_and_usage_are_documented() {
 #[test]
 fn models_read_failure_exits_13_and_never_prints_the_source_stderr() {
     let fake = Models::new(json!({"exit": 1, "stderr": "SYNTHETIC_SECRET_DO_NOT_PRINT"}));
-    let (code, doc) = fake.json();
+    let (code, doc, err) = fake.json();
     assert_eq!(code, 13, "{doc}");
     assert!(
-        !doc.to_string().contains("SYNTHETIC_SECRET_DO_NOT_PRINT"),
-        "{doc}"
+        !format!("{doc}{err}").contains("SYNTHETIC_SECRET_DO_NOT_PRINT"),
+        "{doc}{err}"
     );
     let (code, out, err) = fake.run(&["models"]);
     assert_eq!(code, 13, "{out}{err}");

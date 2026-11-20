@@ -4,6 +4,7 @@
 Run: python3 -I tools/test-value/test_measure.py
 """
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -67,6 +68,22 @@ class TestCounts(unittest.TestCase):
         for out in (failed, "error: could not compile `openwiz-tests`\n"):
             with self.subTest(out=out), self.assertRaises(measure.MeasureError):
                 measure.parse_counts(out)
+
+    def test_process_status_overrides_a_successful_summary(self):
+        # catches #917: a failed Cargo process saved as a successful measurement.
+        with tempfile.TemporaryDirectory() as tmp:
+            cargo = Path(tmp) / "cargo"
+            env = dict(os.environ, PATH=tmp)
+            for status in (0, 101):
+                cargo.write_text("#!/bin/sh\nprintf 'test result: ok. 1 passed; 0 failed; 0 ignored;\\n'\n"
+                                 f"exit {status}\n")
+                cargo.chmod(0o700)
+                with self.subTest(status=status):
+                    if status:
+                        with self.assertRaisesRegex(measure.MeasureError, "exited 101"):
+                            measure.test_run(Path(tmp), env, ["-p", "synthetic", "--test", "sample"])
+                    else:
+                        self.assertEqual(measure.test_run(Path(tmp), env, []), {"passed": 1, "ignored": 0})
 
 
 def result(toolchain, coverage, tests=10):

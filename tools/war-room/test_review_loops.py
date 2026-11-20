@@ -369,6 +369,19 @@ class ContractExamples(unittest.TestCase):
             self.assertRegex(block.splitlines()[0], rf'^{first} #[1-9][0-9]* at [0-9a-f]{{40}}$')
 
 
+FRESH_NEXT = 'Next: a fresh, stronger builder fixes R1 once, then one final check.'
+ORCH_NEXT = 'Next: the orchestrator decides R1: fix once more, or log and merge.'
+MIXED = f"""VERDICT: CHANGES at 4b1f0c9e2d7a5b3c8f6e1d0a9b2c4e7f5a3d1c08
+
+- **R1 [blocking]** still open after 1 round: the token is still exposed.
+  Risk: security: a reader can reuse the live token.
+
+{FRESH_NEXT}
+
+{ORCH_NEXT}
+"""
+
+
 class ReportsV2(unittest.TestCase):
     """BR1 (#886): check-report enforces review-loops v2 and keeps v1.
 
@@ -461,6 +474,15 @@ class ReportsV2(unittest.TestCase):
                        'Next: the orchestrator logs R2 and merges, or asks Jake for a security, privacy, '
                        'live, spending or publishing call.'), None,
              ['a v2 report never uses the v1 orchestrator or final Next: line']),
+            ('a fresh line, then a v1 orchestrator line', MIXED, None,
+             ['a v2 report never uses the v1 orchestrator or final Next: line']),
+            ('a v1 orchestrator line, then a fresh line', MIXED.replace(
+                FRESH_NEXT + '\n\n' + ORCH_NEXT, ORCH_NEXT + '\n\n' + FRESH_NEXT), None,
+             ['a v2 report never uses the v1 orchestrator or final Next: line']),
+            ('a gap of two marks', b.replace('Ruling 2**', 'Ruling 4**'), None,
+             ['Rulings 2 to 3: unmarked; marks run from 1 with no gap']),
+            ('a huge ruling number', b.replace('Ruling 2**', 'Ruling 1000000000**'), None,
+             ['Rulings 2 to 999999999: unmarked; marks run from 1 with no gap']),
             ('logged blocker with no follow-up issue number', m.replace(log1, ' Logged as follow-up.'), None,
              ['R1: a logged blocker names its follow-up issue: Logged as follow-up #<n>']),
             ('logged blocker without its line', m.replace(user1, ''), None,
@@ -472,6 +494,10 @@ class ReportsV2(unittest.TestCase):
             with self.subTest(name):
                 self.assertTrue(text not in (b, f, p, m) or description not in (None, d), 'a real change')
                 self.assertEqual(expected, self.problems(text, description))
+
+    def test_a_fresh_only_report_passes(self):
+        """#911's control: the mixed report without its v1 line is a valid v2 report."""
+        self.assertEqual([], R.check_report(MIXED.replace('\n' + ORCH_NEXT + '\n', '')))
 
     def test_v1_log_statuses_never_close_a_v2_blocker(self):
         """Review R1 at 223c90e: v1's log forms skipped v2's logging rules."""
@@ -523,6 +549,17 @@ class ReportsV2(unittest.TestCase):
         self.assertEqual([], self.problems(self.text('builder'), quoted))
         unfenced = quoted.replace('```md\n', '').replace('none\n```\n', 'none\n')
         self.assertIn('description: more than one ## Rulings section', self.problems(self.text('builder'), unfenced))
+
+    def test_a_fence_closes_only_on_its_own_delimiter(self):
+        """Polish #910: a quoted fence of the other kind, or a shorter one, must not hide the real section."""
+        unmarked = self.text('builder').replace(
+            '- **Ruling 2** overturned as R4: the CLI contract gives every refusal status 3.\n', '')
+        for quote in ('~~~md\n```python\n~~~\n', '````md\n```\n````\n', '```md\n~~~\n```\n',
+                      '~~~~\n~~~\n~~~~\n', '```md\n```python\n```\n'):
+            with self.subTest(quote=quote):
+                description = self.DESCRIPTION.replace('## Rulings', quote + '\n## Rulings', 1)
+                self.assertEqual(['Ruling 2: the description lists it, but the report leaves it unmarked'],
+                                 self.problems(unmarked, description))
 
     def test_v1_reports_pass_unchanged(self):
         self.assertEqual([], self.problems((FIX / 'report-ok.md').read_text()))

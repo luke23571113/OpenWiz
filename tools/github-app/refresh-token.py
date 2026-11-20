@@ -175,7 +175,8 @@ def save(directory, name, token, expiry):
 def main():
     # No child process inherits the key: it is read once, then dropped from the environment.
     secret = os.environ.pop(SECRET_KEY, "")
-    for name in ("GH_TOKEN", "GITHUB_TOKEN"):  # nor a caller's token (R2, #1456)
+    # Nor a caller's token, in any variable gh reads one from (R2, #1456).
+    for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
         os.environ.pop(name, None)
     args = parser().parse_args()
     if not args.repository:

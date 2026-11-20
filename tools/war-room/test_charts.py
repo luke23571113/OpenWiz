@@ -795,8 +795,11 @@ class PrsPerHour(unittest.TestCase):
                     'factory': {'prs_per_hour': snapshot()['factory']['prs_per_hour']}, 'ci': {}}
         # Substitute only the read process. All gather, snapshot validation, chart and page
         # code stays real; no network or live service is reached, including on the slow path.
-        script = ('import json, select, sys\n'
-                  + ('select.select([], [], [], 65)\n' if outcome == 'slow' else '')
+        # The slow read's child inherits its stdout and outlives the deadline, as a gh child can:
+        # only killing the whole process group lets the read return at the deadline (#1104).
+        script = ('import json, select, subprocess, sys\n'
+                  + ('subprocess.Popen([sys.executable, "-I", "-c", "import time; time.sleep(150)"])\n'
+                     'select.select([], [], [], 65)\n' if outcome == 'slow' else '')
                   + ('sys.exit(1)\n' if outcome == 'failure' else 'print(%r)\n' % json.dumps(envelope)))
         real = subprocess.Popen
 
@@ -809,6 +812,8 @@ class PrsPerHour(unittest.TestCase):
         with mock.patch.object(subprocess, 'Popen', side_effect=fake_read), contextlib.redirect_stderr(log):
             case.gather()
         self.assertRegex(log.getvalue(), r'^war-room PRs-per-hour read: [0-9]+\.[0-9]{3} seconds\n$')
+        if outcome == 'slow':  # at the 60-second deadline, never when the stdout-holding child exits
+            self.assertLess(float(log.getvalue().split(': ')[1].split()[0]), 90)
         return case.tmp / 'out'
 
     def test_a_slow_snapshot_read_times_out_and_the_page_carries_on_unknown(self):

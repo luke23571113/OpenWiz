@@ -1,6 +1,0 @@
-pause load: stopped this runner for 2.2s after first durable send record
-
-running 1 test
-test ad_send_attachments::ad07_every_row_of_the_outcome_table ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 162 filtered out; finished in 2.25s
