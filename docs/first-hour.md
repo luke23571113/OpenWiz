@@ -24,7 +24,7 @@ six steps, and each step shows only what OpenWiz has actually read:
    choose. The private brain is made by your installing agent (`openwiz init`)
    and checked as part of the project.
 3. **Give your first idea.** Your installing agent continues through
-   [install’s first-fleet branch](../skills/install/SKILL.md#5-first-fleet) with the same repository, or
+   [install's first-fleet branch](../skills/install/SKILL.md#5-first-fleet) with the same repository, or
    give it one small idea in a thread on your project. It grills you briefly.
 4. **Confirm the spec and approve the plan.** Both happen in **Decisions**, as
    two separate answers. A sent answer counts only once Decisions shows it as
@@ -32,7 +32,7 @@ six steps, and each step shows only what OpenWiz has actually read:
 5. **Watch the fleet build.** Builders start only after you approve the exact
    plan and say yes to the start: one fleet thread with its own loop starts
    them. Counts are shown as reported, and a partial read shows as unknown, not
-   zero. See [How fleets work](fleets.md).
+   zero. See [How OpenWiz works](how-openwiz-works.md).
 6. **First verified merge.** A merge shows as verified only when GitHub reports
    the pull request merged and the merge commit has been read back on its
    base. A closed pull request or a progress count is never a verified merge.

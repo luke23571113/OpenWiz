@@ -26,6 +26,7 @@ BREAKS = {
     'older-only-fence': {'P2', 'P4'},
     'edit-stopped': {'P3'},
     'asking-not-claiming': {'P1', 'P2', 'P4'},
+    'heartbeat-reopens': {'P5'},
 }
 
 
@@ -38,7 +39,7 @@ class CurrentRules(unittest.TestCase):
         code, out, err = run()
         self.assertEqual((code, err), (0, ''), out)
         self.assertEqual(len(out), 1, out)
-        self.assertRegex(out[0], r'^ok: atomic writes, current rules: P1 to P4 hold over \d+ states$')
+        self.assertRegex(out[0], r'^ok: atomic writes, current rules: P1 to P5 hold over \d+ states$')
 
 
 class BrokenVariants(unittest.TestCase):
@@ -62,7 +63,7 @@ class SplitWrites(unittest.TestCase):
         # note can claim between them and the lapsed one still takes the ticket back.
         code, out, err = run('--writes', 'split')
         self.assertEqual((code, err), (1, ''), out)
-        self.assertEqual(broken(out), {'P1', 'P2', 'P3', 'P4'}, out)
+        self.assertEqual(broken(out), {'P1', 'P2', 'P3', 'P4', 'P5'}, out)
 
     def test_the_lost_release_needs_two_overlapping_wakes(self):
         saved = model.RUNS['split']
@@ -73,7 +74,7 @@ class SplitWrites(unittest.TestCase):
             model.RUNS['split'] = saved
         _, overlapping, _ = model.check(model.Model(None, 'split'))
         self.assertEqual(set(single), {'P1', 'P2', 'P4'})
-        self.assertEqual(set(overlapping), {'P1', 'P2', 'P3', 'P4'})
+        self.assertEqual(set(overlapping), {'P1', 'P2', 'P3', 'P4', 'P5'})
 
 
 class FixedWrites(unittest.TestCase):
@@ -85,7 +86,7 @@ class FixedWrites(unittest.TestCase):
         code, out, err = run('--writes', 'fixed')
         self.assertEqual((code, err), (0, ''), out)
         self.assertEqual(len(out), 1, out)
-        self.assertRegex(out[0], r'^ok: fixed writes, current rules: P1 to P4 hold over \d+ states$')
+        self.assertRegex(out[0], r'^ok: fixed writes, current rules: P1 to P5 hold over \d+ states$')
 
     def test_a_release_lost_under_a_failed_readback_breaks_p3(self):
         # catches: #1463 R1, a read-back that fails because a later edit changed the note and
@@ -96,7 +97,8 @@ class FixedWrites(unittest.TestCase):
                     return notes, None
                 return super().readback_edit(notes, pending)
         _, found, _ = model.check(NoRestoreOnFailure(None, 'fixed'))
-        self.assertEqual(set(found), {'P3'})
+        # A heartbeat is such an edit too (#1447), so the lost release is also a reopened one.
+        self.assertEqual(set(found), {'P3', 'P5'})
 
     def test_the_fixed_order_without_its_edit_readback_breaks_again(self):
         # catches: a fixed mode that passes for a reason other than the edit's read-back.
@@ -104,7 +106,29 @@ class FixedWrites(unittest.TestCase):
             def readback_edit(self, notes, pending):
                 return notes, 'kept'
         _, found, _ = model.check(NoReadback(None, 'fixed'))
-        self.assertEqual(set(found), {'P1', 'P2', 'P3', 'P4'})
+        self.assertEqual(set(found), {'P1', 'P2', 'P3', 'P4', 'P5'})
+
+
+class Heartbeat(unittest.TestCase):
+    # #1447: status.py run's heartbeat is an edit that keeps the state its own read shows, and
+    # writes nothing when that read shows a release. P5: it never turns done or stopped live.
+    def test_a_heartbeat_that_rewrites_working_reopens_a_done_note(self):
+        # catches: a heartbeat that writes working on every beat, as a plain write --state
+        # working would, reopening a note its agent marked done, which P3 alone allows (a resume).
+        code, out, err = run('--variant', 'heartbeat-reopens')
+        self.assertEqual((code, err), (1, ''), out)
+        self.assertEqual(broken(out), {'P5'}, out)
+        self.assertIn('heartbeat', '\n'.join(out))
+
+    def test_a_heartbeat_over_a_release_it_never_read_is_put_back(self):
+        # catches: a heartbeat that read working, lost a race with a sibling wake's done, and
+        # left its own working on top: the fixed writer's edit read-back must cover the beat.
+        class NoReadback(model.Model):
+            def readback_edit(self, notes, pending):
+                return notes, 'kept'
+        _, found, _ = model.check(NoReadback(None, 'fixed'))
+        self.assertIn('P5', found)
+        self.assertTrue(any('heartbeat' in step for step in found['P5']), found['P5'])
 
 
 class NotVacuous(unittest.TestCase):

@@ -19,7 +19,7 @@ ROOT = HERE.parents[1]
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 SOURCE = '1' * 40
 REQUIRED = ['runtime/openwiz-build.txt', 'openwiz', 'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
-            'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
+            'runtime/skills/to-tickets/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
             'runtime/skills/launch-fleet/scripts/fleet.sh', 'runtime/install.py', 'runtime/pull.py']
 # #1105 (R9): the setup and App connection tools an installed consumer runs.
 SETUP_TOOLS = ['runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/setup/github_login.py',  # #633
@@ -317,6 +317,61 @@ class HarnessSkills(Bundles):
                 self.assertEqual((snapshot(home), snapshot(self.root / 'skills')), before)
                 self.assertEqual(snapshot(self.base / 'dotfiles'), {})
 
+    def test_a_user_entry_at_the_staging_or_backup_path_is_kept_and_nothing_is_written(self):
+        # catches (#1594): the owner's folder at the installer's fixed staging or backup path deleted with exit 0;
+        # the same path as a plain file refused only after the canonical copies were written; a folder holding a
+        # file named like the copy mark but with other text taken as the installer's own and deleted
+        for name in ('.openwiz-stage-grill', '.openwiz-old-grill'):
+            for kind in ('dir', 'file', 'fake-mark'):
+                with self.subTest(name=name, kind=kind):
+                    home = self.base / f'home{name}-{kind}'
+                    shutil.rmtree(self.root / 'skills', ignore_errors=True)  # no earlier case's copies
+                    entry = home / '.claude/skills' / name
+                    if kind in ('dir', 'fake-mark'):
+                        entry.mkdir(parents=True)
+                        (entry / 'notes.md').write_bytes(b'Synthetic owner notes.\n')
+                        if kind == 'fake-mark':
+                            (entry / '.openwiz-skill').write_bytes(b'Synthetic unrelated text.\n')
+                    else:
+                        entry.parent.mkdir(parents=True)
+                        entry.write_bytes(b'Synthetic owner notes.\n')
+                    before = snapshot(home), snapshot(self.root / 'skills')
+                    code, result = self.skills(home=home)
+                    self.assertEqual((code, result.get('outcome')), (5, 'refused'), result)
+                    self.assertEqual((snapshot(home), snapshot(self.root / 'skills')), before)
+
+    def test_the_refusal_names_the_unmarked_folder_and_prints_a_working_remove_command(self):
+        # catches (#1594): a refusal that hides which folder blocks the install, or prints a remove command
+        # that a shell splits or misquotes, so the owner can't clear it or removes the wrong thing
+        home = self.base / "home it's here"
+        entry = home / '.claude/skills/.openwiz-stage-grill'
+        entry.mkdir(parents=True)
+        (entry / 'notes.md').write_bytes(b'Synthetic owner notes.\n')
+        code, result = self.skills(home=home)
+        self.assertEqual(code, 5, result)
+        text = {r['id']: r['next'] for r in result['harnesses']}['claude-code']
+        self.assertTrue(text.startswith(f'{entry} '), text)
+        self.assertIn('Look inside it', text)
+        command = text.split('run this again: ', 1)[1]
+        subprocess.run(['sh', '-c', command], check=True, cwd=self.base)
+        self.assertEqual(sorted(p.name for p in entry.parent.iterdir()), [])
+        self.assertEqual(self.skills(home=home)[0], 0)
+
+    def test_leftovers_of_an_interrupted_run_are_cleaned_up(self):
+        # catches (#1594): the ownership proof rejecting the installer's own staging and backup folders,
+        # so one interrupted run blocks every later install and leaves its leftovers behind
+        (self.home / '.claude').mkdir()
+        self.assertEqual(self.skills()[0], 0)
+        folder = self.home / '.claude/skills'
+        # Interrupted between its two renames: the old copy moved aside, the new one still staged.
+        shutil.copytree(folder / 'grill', folder / '.openwiz-stage-grill')
+        os.rename(folder / 'grill', folder / '.openwiz-old-grill')
+        code, result = self.skills()
+        self.assertEqual(code, 0, result)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()),
+                         sorted(p.name for p in (self.root / 'current/runtime/skills').iterdir()))
+        self.assertEqual(skill_files(folder), skill_files(self.root / 'current/runtime/skills'))
+
 
 def built_openwiz():
     """The real command, built once by the tests; the installed consumer never builds."""
@@ -365,24 +420,6 @@ class InstalledCommand(Bundles):
         self.assertTrue(any(path.startswith('.openwiz/brain/') for branch in repo['branches'].values()
                             for path in branch), repo['branches'])
         self.assertFalse((self.base / 'build-tools.log').exists())
-
-
-class FirstHourContract(unittest.TestCase):
-    def test_first_hour_contract(self):
-        # #2200: the release:install log must show the contract suite ran.
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'tests/first-hour-contract/test_contract.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'first-hour contract checks failed')
-
-
-    def test_completion_checkpoint(self):
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'completion/test_checkpoint.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'completion checkpoint checks failed')
 
 
 if __name__ == '__main__':

@@ -67,6 +67,9 @@ REVOKED = re.compile(r'Release decision revoked: ([1-9][0-9]*)')
 # the App-permission live check is waived for 0.0.12 only. A recorded waiver
 # names one risk and one exact version; nothing else is waivable.
 WAIVABLE = {('app_permissions', '0.0.12')}
+# J264: a release's public name counts announced ships, not semver, so it is a
+# recorded table, never computed. A version not in it is named `OpenWiz <version>`.
+PUBLIC_NAMES = {'0.1.0': 'OpenWiz 0.01'}
 WAIVER = re.compile(r'Release waiver: ([a-z_]+) v(0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))')
 WAIVER_REVOKED = re.compile(r'Release waiver revoked: ([1-9][0-9]*)')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
@@ -1390,6 +1393,11 @@ def tagger(work, commit):
     return name, email
 
 
+def public_name(version):
+    """The GitHub release name for `version`: its recorded public name, else `OpenWiz <version>`."""
+    return PUBLIC_NAMES.get(version, 'OpenWiz ' + version)
+
+
 def release_readback(record, scratch, tag_object):
     """The remote release, tag and every downloaded asset against the candidate and the intended tag object."""
     body = record['candidate']
@@ -1398,7 +1406,7 @@ def release_readback(record, scratch, tag_object):
     data = gh_json(f'repos/{PUBLIC}/releases/tags/{tag}')
     notes_text = body['changelog']['utf8']
     problems = []
-    if not isinstance(data, dict) or data.get('tag_name') != tag or data.get('name') != 'OpenWiz ' + body['release_version']:
+    if not isinstance(data, dict) or data.get('tag_name') != tag or data.get('name') != public_name(body['release_version']):
         problems.append('release_identity')
         data = data if isinstance(data, dict) else {}
     remote_body = data.get('body')
@@ -1550,7 +1558,7 @@ def publish(args):
                 attempt['steps']['release'] = 'started'
                 state.write('attempt.json', attempt)
                 gh('release', 'create', tag, '--repo', PUBLIC, '--verify-tag', '--prerelease',
-                   '--title', 'OpenWiz ' + body['release_version'], '--notes-file', str(notes_file), *files,
+                   '--title', public_name(body['release_version']), '--notes-file', str(notes_file), *files,
                    cwd=scratch)
                 attempt['steps']['release'] = 'done'
                 state.write('attempt.json', attempt)

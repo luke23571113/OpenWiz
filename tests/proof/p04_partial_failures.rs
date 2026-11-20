@@ -467,6 +467,15 @@ fn first_pull_request_run_to_main(var: impl Fn(&str) -> Option<String>) -> bool 
     .all(|(key, value)| var(key).as_deref() == Some(*value))
 }
 
+/// New in ticket 2. Issue #3: each read has a 15-second timeout, and there
+/// are no retries; a timeout becomes a gap. With the default 30-second
+/// budget, a read that never answers is stopped after 15 seconds, once.
+///
+/// Moved off a first pull request run to `main` (#1260, Q2): it waits on the
+/// adapter's fixed `READ_TIMEOUT`, which no test can shorten, so it alone
+/// would hold this binary over its 10-second budget. It runs, unchanged,
+/// everywhere else (`first_pull_request_run_to_main`), and its moved-case
+/// ledger records that move in X3's evidence.
 #[test]
 fn a_read_that_never_answers_is_stopped_after_15_seconds_and_not_retried() {
     if first_pull_request_run_to_main(|key| std::env::var(key).ok()) {

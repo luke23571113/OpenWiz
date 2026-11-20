@@ -89,7 +89,11 @@ unverified caller-supplied job receipt establishes compiled provenance.
 
 The runtime's files/modes are compared to the selected public Git tree's complete
 tracked skill/runtime selection (`tracked-tree`); the receipt identifies that
-selection and any reviewed deterministic build transformations. Hash the
+selection and any reviewed deterministic build transformations. The selection
+pairs each runtime path with its tracked path; the host drivers and driver kit
+keep theirs, so `runtime/adapters/<host>/<file>` is `adapters/<host>/<file>` and
+`runtime/kernel/<file>` is `kernel/<file>` at the source commit
+([install contract](install.v1.md), #1699). Hash the
 runtime payload as canonical JSON of its complete path-sorted inventory of
 `{path, mode, bytes, sha256}` rows, using install-relative paths. Native payload
 hashes are the program file hashes. Build receipts bind these hashes, source,
@@ -163,10 +167,9 @@ gate's own input binding. Fixture and dry-run receipts are useful diagnostics
 but never satisfy a live gate. Known device, Mac and real-radio gaps stay explicit;
 a gap that leaves a required promise unproved blocks that gate.
 
-Reuse [fleet tick's reviewed-plan restriction](fleet-tick.v1.md#reviewed-plan-execution-revision-1892):
-compare the complete ordered dry-run document before effects with `--expect-plan`;
-refuse pending-start recovery before it can run. A post-effect scope check is
-insufficient. The kit never widens App grants, room-cli allowlist calls,
+The kit runs no `openwiz fleet tick` step: the executing tick and its
+`--expect-plan` restriction were retired (#800), and the live-smoke runner refuses
+any `fleet tick` or `engine` step (`retired_command`). The kit never widens App grants, room-cli allowlist calls,
 throwaway targets, counts, spending or approved host scope. No unsafe automatic
 retry. Read-only discovery remains bounded by its separate recorded authority.
 
@@ -204,6 +207,9 @@ human approval. Never bypass protected-main/merge procedures, force-push, move
 a published tag or rewrite published notes. Historical backfill is separately
 gated, outside this next-release contract. Partial/uncertain publication is
 incomplete even if some downloads already exist.
+The release name created and read back is the version's entry in the tool's
+recorded public-name table (`PUBLIC_NAMES`), else `OpenWiz <version>`; any
+other name is incomplete.
 
 `install` records an agent's normal install/update route on an already approved
 test machine: version/source/target plus matching manifest/archive hashes, time

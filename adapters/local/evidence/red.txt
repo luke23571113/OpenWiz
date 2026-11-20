@@ -1,0 +1,73 @@
+test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) ... 
+  test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) [claude] ... FAIL
+  test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) [codex] ... FAIL
+test_missing_or_unknown_harness_is_an_error_with_next (__main__.Local.test_missing_or_unknown_harness_is_an_error_with_next) ... 
+  test_missing_or_unknown_harness_is_an_error_with_next (__main__.Local.test_missing_or_unknown_harness_is_an_error_with_next) [fake-harness] ... FAIL
+test_several_runs_at_once_stop_only_their_own (__main__.Local.test_several_runs_at_once_stop_only_their_own) ... FAIL
+
+======================================================================
+FAIL: test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) [claude]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 89, in test_kit_passes_all_five_with_each_harness
+    self.assertEqual((p.returncode, p.stdout.splitlines()), (0, PASS), p.stderr)
+AssertionError: Tuples differ: (1, ['pass version: openwiz:records v1, an[219 chars]er']) != (0, ['pass version: openwiz:records v1, an[245 chars]er'])
+
+First differing element 0:
+1
+0
+
+- (1,
++ (0,
+   ['pass version: openwiz:records v1, and the schema is driver v1',
+-   'fail start: no builder status note appeared within 15 seconds',
+-   'fail wake: not run: start failed',
+-   'fail stop: not run: start failed',
++   'pass start: the run posted builder status note 1',
++   'pass wake: the run edited builder status note 1',
++   'pass stop: the run ended, and a wake after it is refused',
+    'pass token: no login or token passed through the driver']) : 
+
+======================================================================
+FAIL: test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) [codex]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 89, in test_kit_passes_all_five_with_each_harness
+    self.assertEqual((p.returncode, p.stdout.splitlines()), (0, PASS), p.stderr)
+AssertionError: Tuples differ: (1, ['pass version: openwiz:records v1, an[219 chars]er']) != (0, ['pass version: openwiz:records v1, an[245 chars]er'])
+
+First differing element 0:
+1
+0
+
+- (1,
++ (0,
+   ['pass version: openwiz:records v1, and the schema is driver v1',
+-   'fail start: no builder status note appeared within 15 seconds',
+-   'fail wake: not run: start failed',
+-   'fail stop: not run: start failed',
++   'pass start: the run posted builder status note 1',
++   'pass wake: the run edited builder status note 1',
++   'pass stop: the run ended, and a wake after it is refused',
+    'pass token: no login or token passed through the driver']) : 
+
+======================================================================
+FAIL: test_missing_or_unknown_harness_is_an_error_with_next (__main__.Local.test_missing_or_unknown_harness_is_an_error_with_next) [fake-harness]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 123, in test_missing_or_unknown_harness_is_an_error_with_next
+    self.assertIn(says, out['next'])
+AssertionError: 'claude, codex' not found in 'install fake-harness and sign in to it yourself, then start again'
+
+======================================================================
+FAIL: test_several_runs_at_once_stop_only_their_own (__main__.Local.test_several_runs_at_once_stop_only_their_own)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 108, in test_several_runs_at_once_stop_only_their_own
+    self.assertTrue(all(self.marked('OPENWIZ_RUN=' + r) for r in runs[1:]))
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 3 tests in 30.427s
+
+FAILED (failures=4)

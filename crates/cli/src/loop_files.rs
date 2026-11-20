@@ -252,19 +252,28 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         }
         Ok(Parsed::Run(args)) => loop_apply::run(&args, stdout, stderr),
         Err(why) => {
-            let _ = writeln!(
+            // `openwiz loop --help` is `loop off|on`'s and omits these four.
+            let help = match name {
+                "unknown" => "openwiz --help".to_owned(),
+                _ => format!("openwiz {} --help", name.replace('.', " ")),
+            };
+            let text = writeln!(
                 stderr,
-                "openwiz: usage: {}; nothing was read (see openwiz loop --help)",
+                "openwiz: usage: {}; nothing was read (see {help})",
                 escape_untrusted(&why)
             );
-            if json_selected(args) {
+            // The required output is the JSON document with --json, otherwise
+            // the line; its failure is exit 1 (the contract's exit table).
+            let written = if json_selected(args) {
                 let doc = serde_json::json!({
                     "schema": "openwiz.cli-error.v1", "command": name, "exit_code": 2,
                     "error": {"kind": "usage", "message": format!("Invalid loop arguments: {why}.")}
                 });
-                let _ = writeln!(stdout, "{doc}");
-            }
-            2
+                writeln!(stdout, "{doc}")
+            } else {
+                text
+            };
+            if written.is_err() { 1 } else { 2 }
         }
     }
 }
@@ -510,7 +519,7 @@ mod tests {
         assert_eq!((code, out.as_str()), (2, ""));
         assert_eq!(
             err,
-            "openwiz: usage: loop export has no option --x?]52;c;eA==?; nothing was read (see openwiz loop --help)\n"
+            "openwiz: usage: loop export has no option --x?]52;c;eA==?; nothing was read (see openwiz loop export --help)\n"
         );
         let (code, out, err) = run_args(&["export", "--json", "--project", "prj_syn_0001", bad]);
         assert_eq!(code, 2);
@@ -520,6 +529,37 @@ mod tests {
             doc["error"]["message"],
             format!("Invalid loop arguments: loop export has no option {bad}.")
         );
+    }
+
+    // catches: a usage error that sends the caller to `openwiz loop --help`,
+    // which is `loop off|on`'s and omits these commands, or that exits 2
+    // when its required output (the line, or the JSON document) failed.
+    #[test]
+    fn a_usage_error_names_its_help_and_exits_1_when_output_fails() {
+        struct Broken;
+        impl Write for Broken {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("synthetic write failure"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        for word in ["validate", "export", "plan", "apply"] {
+            let (code, _, err) = run_args(&[word, "--x"]);
+            assert_eq!(code, 2, "{word}");
+            assert!(
+                err.ends_with(&format!("(see openwiz loop {word} --help)\n")),
+                "{err}"
+            );
+            let (help, _, _) = run_args(&[word, "--help"]);
+            assert_eq!(help, 0, "{word}");
+            let args = [OsString::from(word), OsString::from("--x")];
+            assert_eq!(run(&args, &mut Vec::new(), &mut Broken), 1, "{word}");
+            let json = [word, "--x", "--json"].map(OsString::from);
+            assert_eq!(run(&json, &mut Broken, &mut Vec::new()), 1, "{word}");
+            assert_eq!(run(&json, &mut Vec::new(), &mut Broken), 2, "{word}");
+        }
     }
 
     // catches: help that reads, fails, or loses its JSON wrapper.

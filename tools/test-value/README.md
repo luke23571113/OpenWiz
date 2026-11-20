@@ -15,60 +15,6 @@ behaviour**, a **contract another repository relies on**, or a **safety
 gate** for privacy, security, data loss, money or release. Name the
 reason and the specific behaviour, contract or gate in the ledger.
 
-Measure test lines before and after each pass:
-
-```sh
-python3 -I tools/test-value/count.py BASE_COMMIT
-python3 -I tools/test-value/count.py HEAD_COMMIT
-```
-
-The counter uses the budget guard's file classifier. It reports test
-lines per area, their sum, and their percentage of all tracked text lines
-at the requested commit (default `HEAD`). Git counts blank lines and a
-final line without a newline, and excludes binary content. Use a Git
-version that supports `--attr-source` so the requested commit supplies
-the file attributes. Inline Rust test modules in otherwise unclassified
-source files contribute only to the whole-tree total. A fixture contributes
-to the test count when its path matches the same classifier.
-
-Compare the rows your pass owns. The [CW1 baseline](evidence/cw1/baseline.json)
-records the starting commit and totals for CW19's wave comparison.
-
-## The pull request test-code budget (#1139)
-
-Every pull request may add **400 net test lines** without an allowance:
-added lines minus deleted lines, from the PR's common ancestor with its base
-to its head. Product changes and evidence outside test paths do not count.
-The counted paths are `tests/**`, `crates/*/tests/**`, `**/test_*.py`,
-`**/*_test.py`, `**/*.test.mjs`, `**/*.test.ts`, `**/*.test.tsx` and
-`**/__tests__/**` (including root-level matching files/folders); fixtures
-and evidence count only where they sit under those paths.
-
-Offset growth with deletions, or put one standalone line in the PR description:
-
-```text
-Test budget allowance: <N> lines. Why: <reason>
-```
-
-`N` is a nonnegative integer covering at least the overage above 400, not
-necessarily the total growth: 500 net lines needs at least 100. The reason
-must be nonempty; the ordinary reviewer judges whether it is justified.
-An insufficient, malformed or duplicate allowance fails. Keep this line
-separate from the PR's numbered Rulings section.
-
-The single PR-only step in `ci.yml` runs the synthetic proofs and
-`budget.py`; merge groups, pushes and schedules skip it. It reads Git and
-the PR event's description, never product data or external services. Missing
-or unreadable revisions, history, diffs or descriptions fail closed with a
-message; binary test diffs refuse because their line growth is uncountable.
-A GitHub null body is a readable empty description. Renames count both sides
-by their paths; dirty working-tree files cannot affect the result.
-
-```sh
-python3 -I tools/test-value/test_budget.py
-python3 -I tools/test-value/budget.py --base=BASE_SHA --head=HEAD_SHA --event=PR_EVENT_JSON
-```
-
 ## The ledger
 
 One row for **every test the group touches or reviews**, in the group's
@@ -187,7 +133,7 @@ in the after run.
 
 ## The baseline
 
-[`evidence/baseline/`](evidence/baseline/README.md) holds one result for
+[`evidence/baseline/`](evidence/baseline/) holds one result for
 every test target in `tests/`, measured before any group changed anything:
 the campaign's starting numbers. Each group still measures its own before
 at its pull request's base, since earlier groups move the numbers.

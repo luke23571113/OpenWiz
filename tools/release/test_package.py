@@ -75,28 +75,8 @@ class Package(unittest.TestCase):
             root = Path(temporary)
             binaries = root / 'bin'
             binaries.mkdir()
-            for name in REQUIRED:
-                if name.startswith('runtime/skills/'):
-                    path = root / name.removeprefix('runtime/')
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text('Synthetic required skill resource.')
-            scripts = root / 'tools/install'
-            scripts.mkdir(parents=True)
-            for name in ('install.py', 'pull.py'):
-                (scripts / name).write_text('Synthetic runtime resource.')
-            (scripts / 'access').mkdir()
-            (scripts / 'access/access.py').write_bytes(b'Synthetic access verifier.\n')
-            (scripts / 'cloudroom').mkdir()  # #2201
-            (scripts / 'cloudroom/cloudroom.py').write_bytes(b'Synthetic CloudRoom setup tool.\n')
-            self.assertEqual(sorted(SETUP_SOURCES), sorted(SETUP_TOOLS))
-            for name, source in SETUP_SOURCES.items():
-                (root / source).parent.mkdir(parents=True, exist_ok=True)
-                (root / source).write_bytes(f'Synthetic setup tool {name}.\n'.encode())
-            for args in (['init', '-q'], ['add', 'skills', 'tools'],
-                         ['-c', 'user.name=Synthetic Builder', '-c', 'user.email=builder@example.invalid',
-                          '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'Synthetic runtime fixture']):
-                subprocess.run(['git', '-C', str(root), *args], check=True, capture_output=True)
-            source = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+            scripts = runtime_root(self, root)
+            source = commit(root, 'skills', 'tools')
             for target in TARGETS:
                 (root / 'job').mkdir(exist_ok=True)
                 receipts = build(binaries, source, target, root / 'job')
@@ -149,7 +129,74 @@ class Package(unittest.TestCase):
                 self.assertFalse(Path(str(output) + '-bad').exists())
                 (binaries/'openwiz').write_bytes(header)
 
-    def bound_and_installed(self, root, target, identity_file, bundle):
+    def test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them(self):
+        # #1699: KN6's caller runs `$OPENWIZ_ADAPTERS/<host>/driver`; the archive must carry each
+        # tracked launch driver's entry point and schema, and the kernel files the driver kit's
+        # checks read, at their tracked paths under runtime/, and nothing else from those folders.
+        # The boat driver is the repository's template driver, and the kit is the real kit, so the
+        # installed kit's `version` check runs for real against the installed driver.
+        kit = ('kernel/driver-kit/kit.py', 'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py',
+               'kernel/records.v1.md')
+        carried = {'adapters/boat/driver': (ROOT / 'adapters/template/driver').read_bytes(),
+                   'adapters/boat/schema.json': (ROOT / 'adapters/template/schema.json').read_bytes(),
+                   'adapters/local/driver': b'#!/usr/bin/env python3\nprint("synthetic local driver")\n',
+                   'adapters/local/schema.json': b'{"synthetic": "local schema"}\n',
+                   **{path: (ROOT / path).read_bytes() for path in kit}}
+        left = ('adapters/boat/README.md', 'adapters/boat/test_driver.py', 'adapters/boat/fixtures/bin/boat',
+                'adapters/boat/evidence/red.txt', 'adapters/template/driver', 'adapters/template/schema.json',
+                'adapters/unlisted/driver', 'adapters/unlisted/schema.json', 'kernel/driver.v1.md',
+                'kernel/driver-kit/README.md', 'kernel/driver-kit/test_kit.py',
+                'kernel/driver-kit/fixtures/fake-harness', 'kernel/records-kit/test_check.py',
+                'kernel/records/backfill.md')
+        with tempfile.TemporaryDirectory(prefix='openwiz-driver-products-') as temporary:
+            root = Path(temporary)
+            binaries = root / 'bin'
+            binaries.mkdir()
+            runtime_root(self, root)
+            for path, data in [*carried.items(), *((path, b'synthetic, never carried\n') for path in left)]:
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_bytes(data)
+            # A driver on disk that the source commit doesn't track is never carried.
+            source = commit(root, 'skills', 'tools', 'kernel', *(p for p in [*carried, *left]
+                                                                 if p.startswith('adapters/') and '/cloudroom/' not in p))
+            (root / 'adapters/cloudroom').mkdir()
+            (root / 'adapters/cloudroom/driver').write_bytes(b'untracked synthetic driver\n')
+            (root / 'adapters/cloudroom/schema.json').write_bytes(b'{}\n')
+            target = TARGETS[0]
+            (root / 'job').mkdir()
+            (root / 'tracker.json').write_text(json.dumps({'record_authors': ['synthetic-author'], 'comments': []}))
+            receipts = build(binaries, source, target, root / 'job')
+            output = root / 'products'
+            result = subprocess.run(collector(root, binaries, output, source, target, receipts),
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            assets = {row['path']: row for row in json.loads(Path(str(output) + '.json').read_bytes())['assets']}
+            self.assertEqual(sorted(p for p in assets if p.startswith(('runtime/adapters/', 'runtime/kernel/'))),
+                             sorted('runtime/' + path for path in carried))
+            bundle = root / 'bundle'
+            result = subprocess.run([sys.executable, str(ROOT / 'tools/release/package.py'), '--products', str(output),
+                                     '--identity', str(output) + '.json', '--output', str(bundle)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.bound_and_installed(root, target, Path(str(output) + '.json'), bundle,
+                                     products=output, home=root / 'installed')
+            adapters = root / 'installed/current/runtime/adapters'
+            for path, data in carried.items():
+                self.assertEqual((adapters.parent / path).read_bytes(), data, path)
+                # #1699: KN6's caller runs only an executable driver; every other file stays data.
+                executable = path.endswith('/driver')
+                self.assertEqual(assets['runtime/' + path]['mode'], '0700' if executable else '0600', path)
+                self.assertEqual(os.access(adapters.parent / path, os.X_OK), executable, path)
+            # The installed kit's first check, `version`, passes against the installed driver.
+            checked = subprocess.run([sys.executable, '-I', 'kernel/driver-kit/kit.py', '--driver', 'adapters/boat/driver',
+                                      '--repo', 'synthetic/throwaway', '--ticket', '1', '--harness', 'absent-harness',
+                                      '--model', 'synthetic', '--tracker', str(root / 'tracker.json'), '--wait', '1'],
+                                     cwd=adapters.parent, capture_output=True, text=True, timeout=120,
+                                     env={'PATH': os.environ['PATH']})
+            self.assertEqual(checked.stdout.splitlines()[:1],
+                             ['pass version: openwiz:records v1, and the schema is driver v1'], checked.stderr)
+
+    def bound_and_installed(self, root, target, identity_file, bundle, products=None, home=None):
         """#1148: the collected, packaged target's candidate artifact rows bind
         each package file's digest, and the bundle installs."""
         rows = root / (target + '-artifacts.json')
@@ -163,13 +210,13 @@ class Package(unittest.TestCase):
              'sha256': hashlib.sha256((bundle / name).read_bytes()).hexdigest()} for name, role in sorted(roles.items())]})
         manifest = bundle / f'openwiz-0.0.99-{target}.manifest.json'
         installed = subprocess.run([sys.executable, str(ROOT / 'tools/install/install.py'),
-            '--root', str(root / (target + '-installed')), '--manifest', str(manifest),
+            '--root', str(home or root / (target + '-installed')), '--manifest', str(manifest),
             '--archive', str(bundle / f'openwiz-0.0.99-{target}.tar.gz'),
             '--manifest-sha256', hashlib.sha256(manifest.read_bytes()).hexdigest(), '--target', target],
             capture_output=True, text=True)
         self.assertEqual(installed.returncode, 0, installed.stderr)
-        self.assertEqual((root / (target + '-installed/current/runtime/openwiz-build.txt')).read_bytes(),
-                         (bundle.parent / (target + '-products/runtime/openwiz-build.txt')).read_bytes())
+        self.assertEqual(((home or root / (target + '-installed')) / 'current/runtime/openwiz-build.txt').read_bytes(),
+                         ((products or bundle.parent / (target + '-products')) / 'runtime/openwiz-build.txt').read_bytes())
         alias = bundle / f'openwiz-{target}.manifest.json'
         for name, data in ((alias.name, alias.read_bytes() + b' '), ('SHA256SUMS', b'')):
             with self.subTest(target=target, changed=name):
@@ -224,6 +271,37 @@ class Package(unittest.TestCase):
                 result = subprocess.run(cmd[:-1] + [str(out) + '-bad'], capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(Path(str(out) + '-bad').exists())
+
+
+def runtime_root(case, root):
+    """A synthetic source with every required runtime file; returns its tools/install folder."""
+    for name in REQUIRED:
+        if name.startswith('runtime/skills/'):
+            path = root / name.removeprefix('runtime/')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('Synthetic required skill resource.')
+    scripts = root / 'tools/install'
+    scripts.mkdir(parents=True)
+    for name in ('install.py', 'pull.py'):
+        (scripts / name).write_text('Synthetic runtime resource.')
+    (scripts / 'access').mkdir()
+    (scripts / 'access/access.py').write_bytes(b'Synthetic access verifier.\n')
+    (scripts / 'cloudroom').mkdir()  # #2201
+    (scripts / 'cloudroom/cloudroom.py').write_bytes(b'Synthetic CloudRoom setup tool.\n')
+    case.assertEqual(sorted(SETUP_SOURCES), sorted(SETUP_TOOLS))
+    for name, source in SETUP_SOURCES.items():
+        (root / source).parent.mkdir(parents=True, exist_ok=True)
+        (root / source).write_bytes(f'Synthetic setup tool {name}.\n'.encode())
+    return scripts
+
+
+def commit(root, *paths):
+    """Commits `paths` in the synthetic source; returns the commit."""
+    for args in (['init', '-q'], ['add', *paths],
+                 ['-c', 'user.name=Synthetic Builder', '-c', 'user.email=builder@example.invalid',
+                  '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'Synthetic runtime fixture']):
+        subprocess.run(['git', '-C', str(root), *args], check=True, capture_output=True)
+    return subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
 
 
 def query_with_spy(program, work):

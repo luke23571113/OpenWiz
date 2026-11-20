@@ -1,7 +1,7 @@
 //! OpenWiz integration with the pinned WizSkills install (#555, #814).
 //! Keep harness links, local release/installation contracts and wrappers
 //! without a green CI replacement. Portable checks belong to WizSkills;
-//! see tools/test-value/evidence/tv12/ledger.md for each disposition.
+//! each test's disposition is in #814's TV12 ledger, in the private records (#1303).
 
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -9,9 +9,10 @@ use std::path::{Path, PathBuf};
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
-const SKILLS: [&str; 21] = [
+const SKILLS: [&str; 18] = [
     "grill",
-    "plan-graph",
+    "to-spec",
+    "to-tickets",
     "launch-fleet",
     "build-ticket",
     "review-ticket",
@@ -22,14 +23,10 @@ const SKILLS: [&str; 21] = [
     "where-are-we",
     "image",
     "research",
-    "overnight",
     "huntr",
     "hill-climb",
     "diagnose",
     "ask-wiz",
-    "onboard",
-    "feedback-triage",
-    "feedback",
     "install",
 ];
 
@@ -37,7 +34,7 @@ const SKILLS: [&str; 21] = [
 /// the source line its `SKILL.md` carries, exactly and on a line of its own,
 /// stub or written, in place of his notice, which it must never carry.
 /// Every other skill adapts his.
-const NOT_MATTS: [(&str, &str); 9] = [
+const NOT_MATTS: [(&str, &str); 5] = [
     (
         "hill-climb",
         "**Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.",
@@ -52,22 +49,6 @@ const NOT_MATTS: [(&str, &str); 9] = [
     ),
     (
         "image",
-        "**Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.",
-    ),
-    (
-        "overnight",
-        "**Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.",
-    ),
-    (
-        "onboard",
-        "**Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.",
-    ),
-    (
-        "feedback-triage",
-        "**Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.",
-    ),
-    (
-        "feedback",
         "**Source:** new, original to OpenWiz. Not adapted from Matt Pocock's skills.",
     ),
     (

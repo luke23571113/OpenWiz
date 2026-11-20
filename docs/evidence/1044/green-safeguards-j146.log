@@ -1,8 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
-     Running ../../tests/service/t6_update.rs (target/debug/deps/t6_update-71c12b0e39959912)
-
-running 1 test
-test staging_refuses_a_planted_target_a_symlinked_program_or_another_identity ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 1.73s
-

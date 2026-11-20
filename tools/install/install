@@ -193,7 +193,7 @@ def selected(root, state_root=None):
     installer.private(manifest, False)
     raw = manifest.read_bytes()
     target = json.loads(raw, object_pairs_hook=installer.unique).get('target')
-    value, assets, raw = installer.manifest_at(manifest, installer.sha(raw), target)
+    value, assets, raw = installer.manifest_at(manifest, installer.sha(raw), target, selected=True)
     installer.require(value['source'] == build.name, 'the selected build is not its own source')
     installer.verify_installed(build, assets, raw)
     channel = root / 'channel.json'

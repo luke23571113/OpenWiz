@@ -1,7 +1,7 @@
 //! `openwiz models`: the Cloud harnesses, models and efforts CloudRoom offers
 //! right now, from one `cloud status` read. Read-only: no state, no write.
-//! Kept from the removed `new` command's module by J233 (#1264): setup's
-//! harness check and the onboarding skill read its output.
+//! Kept from the removed `new` command's module by J233 (#1264):
+//! setup's harness check and the onboarding skill read its output.
 
 use std::io::Write;
 
