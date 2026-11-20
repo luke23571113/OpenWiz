@@ -14,6 +14,8 @@ SESSION_WAIT_SECONDS = 60
 HERMES_SKILL_FOR_HARNESS = {'claude': 'claude-code', 'codex': 'codex', 'hermes': None}
 SESSION = r'[A-Za-z0-9][A-Za-z0-9._:-]{0,199}'
 CHILD_ENV = ('HOME', 'USER', 'LOGNAME', 'SHELL', 'PATH', 'LANG', 'LANGUAGE', 'TZ', 'TERM', 'TMPDIR', 'HERMES_HOME',
+             'LC_ALL', 'LC_CTYPE', 'LC_COLLATE', 'LC_MESSAGES', 'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME',
+             'LC_ADDRESS', 'LC_IDENTIFICATION', 'LC_MEASUREMENT', 'LC_NAME', 'LC_PAPER', 'LC_TELEPHONE',
              'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
              'SSH_AUTH_SOCK', 'OPENWIZ_KIT_RUN')
 
@@ -86,7 +88,7 @@ def descendants(pid):
 
 # SECURITY: Hermes gets only these names from the caller's environment; a credential stays behind.
 def child_env(run):
-    kept = {k: v for k, v in os.environ.items() if k in CHILD_ENV or k.startswith('LC_')}
+    kept = {name: os.environ[name] for name in CHILD_ENV if name in os.environ}
     return dict(kept, OPENWIZ_RUN=run)
 
 

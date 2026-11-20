@@ -2,7 +2,7 @@
 
 Login: stays on your machine
 
-A [driver v1](../../kernel/driver.v1.md) that runs each builder in [Hermes](https://hermes-agent.nousresearch.com) (Nous Research's `hermes-agent`) on this machine, through your own `hermes` CLI. One Python file, standard library only, Linux (it keeps each turn's processes with `/proc` and a subreaper). Built from [`adapters/template/`](../template/README.md). Runs are saved in `$OPENWIZ_HERMES_STATE` (default `~/.local/state/openwiz-hermes`), owner-only.
+A [driver v1](../../kernel/driver.v1.md) that runs each builder in [Hermes](https://hermes-agent.nousresearch.com) (Nous Research's `hermes-agent`) on this machine, through your own `hermes` CLI. One Python file, standard library only. **Platforms:** Linux only, Python 3.9 or later (it keeps each turn's processes with `/proc` and a subreaper; it does not run on macOS yet). Built from [`adapters/template/`](../template/README.md). Runs are saved in `$OPENWIZ_HERMES_STATE` (default `~/.local/state/openwiz-hermes`), owner-only.
 
 | Command | What it does in Hermes |
 | --- | --- |
@@ -30,7 +30,7 @@ Any other `harness` is refused. What this can't control:
 
 ## Before the first run (yours to do)
 
-The driver never touches a login (driver v1, N1 to N3). It never reads `~/.hermes`, and passes no key, token or password anywhere. Hermes gets only these names from your environment: `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`, `LANG`, `LANGUAGE`, `LC_*`, `TZ`, `TERM`, `TMPDIR`, `HERMES_HOME`, the `XDG_*` folders, `SSH_AUTH_SOCK` (the path of your SSH agent's socket, so `git push` over SSH works; no key is in it) and the kit's `OPENWIZ_KIT_RUN` mark, plus the driver's `OPENWIZ_RUN`. Anything else you have exported, such as a token, stays behind: Hermes, `gh`, `git`, `claude` and `codex` use their own signed-in configuration.
+The driver never touches a login (driver v1, N1 to N3). It never reads `~/.hermes`, and passes no key, token or password anywhere. Hermes gets only these names from your environment: `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`, `LANG`, `LANGUAGE`, the locale settings by their exact names (`LC_ALL`, `LC_CTYPE`, `LC_COLLATE`, `LC_MESSAGES`, `LC_MONETARY`, `LC_NUMERIC`, `LC_TIME`, `LC_ADDRESS`, `LC_IDENTIFICATION`, `LC_MEASUREMENT`, `LC_NAME`, `LC_PAPER`, `LC_TELEPHONE`; any other `LC_` name stays behind), `TZ`, `TERM`, `TMPDIR`, `HERMES_HOME`, the `XDG_*` folders, `SSH_AUTH_SOCK` (the path of your SSH agent's socket, so `git push` over SSH works; no key is in it) and the kit's `OPENWIZ_KIT_RUN` mark, plus the driver's `OPENWIZ_RUN`. Anything else you have exported, such as a token, stays behind: Hermes, `gh`, `git`, `claude` and `codex` use their own signed-in configuration.
 
 1. Install Hermes and set up its model and provider yourself (`hermes setup`).
 2. For `claude` or `codex`, install and sign in to that CLI yourself, and enable Hermes' bundled `claude-code` or `codex` skill.

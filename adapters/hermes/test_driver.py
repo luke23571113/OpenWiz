@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import ctypes
 import io
 import json
 import os
@@ -22,23 +23,32 @@ CALLER_ONLY = 'synthetic-caller-only-value'
 LOCALE_LOOKALIKE = 'synthetic-lc-named-app-value'
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'synthetic-model-1'}
+PR_SET_CHILD_SUBREAPER = 36
 CHILD_ENV_ALLOWED = {'HOME', 'PATH', 'LANG', 'LC_ALL', 'OPENWIZ_RUN', 'OPENWIZ_KIT_RUN'}
 
 
-def alive(pid):
+def setUpModule():
+    if ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), 'the tests cannot keep the processes they start as their own')
+
+
+def children(pid):
+    found = set()
+    try:
+        for task in os.listdir('/proc/%d/task' % pid):
+            with open('/proc/%d/task/%s/children' % (pid, task)) as f:
+                found.update(int(c) for c in f.read().split())
+    except OSError:
+        pass
+    return found
+
+
+def running(pid):
     try:
         with open('/proc/%d/stat' % pid) as f:
             return f.read().rpartition(')')[2].split()[0] != 'Z'
     except OSError:
         return False
-
-
-def cmdline(pid):
-    try:
-        with open('/proc/%d/cmdline' % pid, 'rb') as f:
-            return f.read().decode(errors='replace').split('\0')
-    except OSError:
-        return []
 
 
 class Hermes(unittest.TestCase):
@@ -57,6 +67,8 @@ class Hermes(unittest.TestCase):
         reachable = {name: shutil.which(name, path=self.env['PATH']) for name in ('claude', 'codex', 'hermes')}
         self.assertEqual(reachable, {'claude': None, 'codex': None, 'hermes': FAKE},
                          'a real agent CLI is reachable on the test PATH: refusing to run')
+        self.assertTrue(os.path.exists('/proc/%d/task/%d/children' % (os.getpid(), os.getpid())),
+                        'this kernel lists no child processes, so the tests cannot find their own')
 
     def tearDown(self):
         for pid in self.ours():
@@ -72,12 +84,23 @@ class Hermes(unittest.TestCase):
                             'turns': self.turns, 'hold': self.hold, 'envs': self.envs}, **settings), f)
 
     def ours(self):
-        pids = {p for t in self.logged() for p in t[:2]}
-        for pid in filter(str.isdigit, os.listdir('/proc')):
-            if any(self.folder in arg for arg in cmdline(int(pid))):
-                pids.add(int(pid))
-        return sorted(p for p in pids if alive(p) and cmdline(p)[:1] in (['sleep'], [sys.executable])
-                      or alive(p) and any(self.folder in arg for arg in cmdline(p)))
+        """Every live process the test started. Each one stays a descendant (the test is a child subreaper),
+        and only processes already known to be descendants are read."""
+        while True:
+            try:
+                if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                    break
+            except ChildProcessError:
+                break
+        found, todo = set(), [os.getpid()]
+        while todo:
+            for c in children(todo.pop()) - found:
+                found.add(c)
+                todo.append(c)
+        return sorted(p for p in found if running(p))
+
+    def alive(self, pid):
+        return pid in self.ours()
 
     def until(self, ready):
         deadline = time.monotonic() + 10
@@ -119,7 +142,7 @@ class Hermes(unittest.TestCase):
             with self.subTest(harness=harness):
                 code, out = self.driver('start', dict(REQUEST, harness=harness))
                 self.assertEqual(code, 0, out)
-                self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])), 'the first turn never ended')
+                self.assertTrue(self.until(lambda: not self.alive(self.logged()[-1][0])), 'the first turn never ended')
                 self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
                 self.assertTrue(self.until(lambda: len(self.logged()) % 2 == 0), 'the wake started no turn')
                 first, woken = self.logged()[-2:]
@@ -151,7 +174,7 @@ class Hermes(unittest.TestCase):
         first, woken = self.logged()
         self.assertEqual((woken[3], woken[4][woken[4].index('--resume') + 1]), ('woken', first[2]))
         self.assertEqual(self.notes(), [(1, 'woke and read the ticket again')])
-        self.assertTrue(self.until(lambda: not alive(woken[0])), 'the woken turn never ended')
+        self.assertTrue(self.until(lambda: not self.alive(woken[0])), 'the woken turn never ended')
         self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
         self.assertTrue(self.until(lambda: len(self.logged()) == 3), 'a wake after both turns started none')
 
@@ -210,7 +233,7 @@ class Hermes(unittest.TestCase):
         self.configure(loud=2000)
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
-        self.assertTrue(self.until(lambda: self.logged() and not alive(self.logged()[0][0])),
+        self.assertTrue(self.until(lambda: self.logged() and not self.alive(self.logged()[0][0])),
                         'a turn with a lot of output never ended')
         for root, _, files in os.walk(self.state):
             for name in files:
