@@ -17,7 +17,7 @@ QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 12
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
 DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
 SHOWN_LIMIT_TYPES = {'auth_expiry': 'auth_expiry', 'rate_limit': 'rate_limit'}
-LOOK_AGAIN = 0.2  # seconds between a macOS supervisor's looks at its turn's processes
+MACOS_SECONDS_BETWEEN_LOOKS = 0.2
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
 
@@ -193,9 +193,8 @@ def ps(*args):
     return out.splitlines(), p.pid
 
 
+# PRIVACY: reads only ps's process table (pid, parent, group, state, start time), never any environment.
 def members(roots, recorded):
-    """The live processes in the roots' process groups, the recorded ones (pid: start time) still running,
-    and every process under any of them, as {pid: start time}: from ps's process table alone."""
     rows, me = ps('-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'lstart=')
     started, children, found = {}, {}, set()
     for row in rows:
@@ -281,7 +280,7 @@ def supervise(log, cmd):
                 return
     kept = {}
     while True:
-        children_left = reap_exited_children()
+        children_left = any_child_running_after_reaping()
         now = members({os.getpid()}, kept)
         if now != kept:
             kept = now
@@ -291,11 +290,10 @@ def supervise(log, cmd):
                 pass
         if not children_left and not kept:
             return
-        time.sleep(LOOK_AGAIN)
+        time.sleep(MACOS_SECONDS_BETWEEN_LOOKS)
 
 
-def reap_exited_children():
-    """Whether any child is still running, once every exited one is reaped."""
+def any_child_running_after_reaping():
     while True:
         try:
             if os.waitpid(-1, os.WNOHANG)[0] == 0:
@@ -550,7 +548,6 @@ def supervisor_records(run):
 # PRIVACY: finds a run's unsaved turns only by the records their supervisors wrote in its state folder, never
 # by reading another process's environment.
 def recorded_by(run, supervisors):
-    """The processes these supervisors recorded as their turns' (pid: start time), for a host with no subreaper."""
     recorded = {}
     for name in supervisor_records(run):
         try:
