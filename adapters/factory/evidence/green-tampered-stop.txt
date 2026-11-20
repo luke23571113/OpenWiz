@@ -16,3 +16,4 @@ test_wake_without_a_session_starts_nothing (__main__.Factory.test_wake_without_a
 Ran 11 tests in 3.312s
 
 OK
+$ python3 -I tools/comment-check/check.py diff --base origin/main
