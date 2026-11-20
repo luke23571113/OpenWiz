@@ -6,6 +6,6 @@ test_stop_interrupts_the_turn_then_ends_everything (__main__.Hermes.test_stop_in
 test_wake_resumes_the_session_its_start_reported (__main__.Hermes.test_wake_resumes_the_session_its_start_reported) ... ok
 
 ----------------------------------------------------------------------
-Ran 5 tests in 1.813s
+Ran 5 tests in 1.849s
 
 OK

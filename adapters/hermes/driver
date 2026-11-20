@@ -8,10 +8,10 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
-GRACE = 10
-SETTLE = 10
-SESSION_WAIT = 60
-HARNESSES = {'claude': 'claude-code', 'codex': 'codex', 'hermes': None}
+TERMINATE_GRACE_SECONDS = 10
+INTERRUPT_SETTLE_SECONDS = 10
+SESSION_WAIT_SECONDS = 60
+HERMES_SKILL_FOR_HARNESS = {'claude': 'claude-code', 'codex': 'codex', 'hermes': None}
 SESSION = r'[A-Za-z0-9][A-Za-z0-9._:-]{0,199}'
 
 
@@ -43,7 +43,7 @@ def command(req, session):
     what = 'You were woken: read the ticket again and carry on' if session else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
     cmd = ['hermes', 'chat', '--oneshot', '--format', 'stream-json', '--source', 'tool']
-    tool = HARNESSES[req['harness']]
+    tool = HERMES_SKILL_FOR_HARNESS[req['harness']]
     if tool:
         cmd += ['-s', tool]
         prompt += (' Do the work through your %s skill: run the %s CLI with the model %s, and have it run the '
@@ -132,6 +132,8 @@ def launch(req, run, session, n):
         raise Refused('the driver cannot write run %s\'s log in its state folder; nothing was started' % run,
                       'make OPENWIZ_HERMES_STATE (or ~/.local/state/openwiz-hermes) a folder you can write')
     try:
+        # SECURITY: the turn gets the caller's environment unchanged plus OPENWIZ_RUN;
+        # the driver never reads or adds a key.
         sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn', out]
                                + command(req, session),
                                env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
@@ -150,7 +152,7 @@ def launch(req, run, session, n):
             'log': out, 'session': session}
     if session:
         return turn
-    deadline = time.monotonic() + SESSION_WAIT
+    deadline = time.monotonic() + SESSION_WAIT_SECONDS
     while time.monotonic() < deadline:
         turn['session'] = reported_session(out)
         if turn['session'] is not None or not running(turn, run):
@@ -169,7 +171,8 @@ def running(turn, run):
 
 def end(turns, run):
     kept = [(t['supervisor'], t['supervisor_since']) for t in turns if t and t['supervisor_since'] is not None]
-    for sig, wait in ((signal.SIGINT, SETTLE), (signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
+    steps = ((signal.SIGINT, INTERRUPT_SETTLE_SECONDS), (signal.SIGTERM, TERMINATE_GRACE_SECONDS), (signal.SIGKILL, 2))
+    for sig, wait in steps:
         sent, deadline = set(), time.monotonic() + wait
         while time.monotonic() < deadline:
             kept = [(p, t) for p, t in kept if since(p) == t]
@@ -241,8 +244,9 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
-        if req['harness'] not in HARNESSES:
-            raise Refused('Hermes cannot run harness ' + req['harness'], 'use one of: ' + ', '.join(HARNESSES))
+        if req['harness'] not in HERMES_SKILL_FOR_HARNESS:
+            raise Refused('Hermes cannot run harness ' + req['harness'],
+                          'use one of: ' + ', '.join(HERMES_SKILL_FOR_HARNESS))
         state = {'request': req, 'session': None, 'turns': [], 'stopped': False, 'starting': True}
         try:
             saved(run, state)
