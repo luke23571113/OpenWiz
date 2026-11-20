@@ -191,6 +191,26 @@ class Driver(unittest.TestCase):
         self.assertEqual([wake.wait(30), stop.wait(30)], [0, 0])
         self.assertEqual([c[1] for c in self.calls()], ['spawn', 'tell', 'told', 'archive'])
 
+    def test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover(self):
+        # catches: a stop whose save and archive both fail leaving the old live record, so once the state folder
+        # is writable again the next GitHub event wakes the builder the operator stopped (#1705).
+        if os.geteuid() == 0:
+            self.skipTest('root ignores a read-only folder')
+        state = self.env['OPENWIZ_CLOUDROOM_STATE']
+        code, out = self.call('start', START)
+        self.assertEqual(code, 0, out)
+        os.chmod(state, 0o500)
+        try:
+            code, err = self.call('stop', out, FAKE_ROOM_REFUSE='archive')
+        finally:
+            os.chmod(state, 0o700)
+        self.assertEqual(code, 1, err)
+        code, err = self.call('wake', out)
+        self.assertEqual(code, 1, 'a wake reached a builder whose stop never finished')
+        self.assertNotIn('tell', [c[1] for c in self.calls()])
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+        self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
