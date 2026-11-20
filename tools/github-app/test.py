@@ -1706,6 +1706,11 @@ class AgentSetupTests(KeyFixture):
                 self.assertFalse((self.state / "setup").exists())
 
 
+# Every variable gh reads a token from, as a caller (a switched loop's runner) may export it.
+CALLER_TOKENS = {name: f"synthetic-caller-{name.lower()}" for name in (
+    "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")}
+
+
 class AgentTokenTests(KeyFixture):
     """G2 (#1402): agents' GH_TOKEN from App installation tokens: the write
     profile, the secret key route and the refresh helper. Synthetic only."""
@@ -1771,9 +1776,9 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
                     behavior.clear()
                     behavior.update(original, permissions=granted)
                     shutil.rmtree(self.state / "tokens", ignore_errors=True)  # mint every time
-                    result = self.run_tool("refresh-token.py", endpoint, "--write",
-                                           env={"GH_TOKEN": "synthetic-caller-token"})
-                    self.assert_hidden("synthetic-caller-token")  # never inherited by OpenSSL
+                    result = self.run_tool("refresh-token.py", endpoint, "--write", env=CALLER_TOKENS)
+                    for caller in CALLER_TOKENS.values():
+                        self.assert_hidden(caller)  # never inherited by OpenSSL (R2, #1456)
                     if ok:
                         self.assertEqual((result.returncode, result.stdout, result.stderr),
                                          (0, b"synthetic-installation-token\n", b""))
