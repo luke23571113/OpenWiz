@@ -1,34 +1,3 @@
-//! The `send` operation: one text message to one existing session, one
-//! provider call per op id, and an honest report.
-//!
-//! In order:
-//! 1. **validate** the text, the op id and the target id (nothing is
-//!    claimed, read or sent for an invalid request);
-//! 2. for a new op id, refuse a **possible duplicate**: an earlier send of
-//!    the same text to the same target whose outcome is uncertain, unless
-//!    the owner acknowledges it;
-//! 3. **claim** the op id durably and atomically. The same op id with the
-//!    same binding returns the recorded outcome, or "in progress"; with a
-//!    different binding it is refused as conflicting reuse. Neither calls
-//!    the provider;
-//! 4. read and report the provider's **version** (never a gate, #37: an
-//!    unknown one is a gap), then **read the target**: not found fails, and
-//!    archived or hidden targets are refused;
-//! 5. work out the **effects** from that read. A queue that appears paused
-//!    is not resumed without the owner's acknowledgement;
-//! 6. mark the record **dispatching**, durably;
-//! 7. make **one call** in the requested mode. No retry, no other mode;
-//! 8. map the reply to a **reported delivery** and record it.
-//!
-//! **Attachments (B2, ClosedWiz#15).** The payload is a [`PromptPayload`]:
-//! the text and its attachments. Steer with attachments is refused before
-//! anything (a Cloud steer drops them, F16). Before the op id is claimed,
-//! the one [`gate`] reads every attachment's copy again and refuses unless
-//! every one can go; the op id then binds them too. Once the op id is
-//! owned, the attachments are claimed for it, all or none, before the
-//! dispatching mark; the one call carries every one of them; and once the
-//! outcome is recorded, an accepted send's copies are deleted (B-6).
-
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -49,41 +18,21 @@ use super::reconcile::{ATTRIBUTION_0_43_1, Reconciliation};
 use super::record::{Claim, RecordState, SendRecord, SendStore, StoreError};
 use super::{Binding, BindingField, InvalidRequest, MESSAGING_SCHEMA_ID, Mode, OpId, SEND_BUDGET};
 
-/// Why Steer with attachments is refused, before anything is claimed, read
-/// or sent (B-11, decided in planning): a Cloud steer drops them in source
-/// (#15's F16), and Local is unverified. Steer is never turned into Queue.
 pub const STEER_WITH_ATTACHMENTS: &str = "Steer can't carry attachments. Use Queue, or remove them";
 
-/// The adapter side of `send`: the version, the target read and the one
-/// write.
 pub trait Messenger: Send + Sync {
-    /// The provider's name, such as `room-cli`.
     fn name(&self) -> &str;
 
-    /// The version the adapter was tested against.
     fn tested_version(&self) -> &str;
 
-    /// Whether `id` can be passed to the provider safely, as one argument.
     fn check_target_id(&self, id: &SessionId) -> Result<(), InvalidRequest>;
 
-    /// The version the provider reports now.
     fn version(&self, deadline: Instant) -> Result<String, SourceError>;
 
-    /// One read of the target, for its existence, visibility and effects.
     fn read_target(&self, id: &SessionId, deadline: Instant) -> Result<TargetRecord, SourceError>;
 
-    /// The one write: exactly one provider call, in `mode`, with `text` as
-    /// it is. Never retried.
     fn tell(&self, id: &SessionId, mode: Mode, text: &str, deadline: Instant) -> TellReply;
 
-    /// The one write with a whole prompt: exactly one provider call, in
-    /// `mode`, with the text as it is and every attachment, in
-    /// [`ReadyPrompt::dispatch_order`]. Never retried, and never with only
-    /// some of the attachments.
-    ///
-    /// The default carries text only: a prompt with any attachment is not
-    /// started at all ([`TellReply::NotStarted`]: nothing is sent), so a
-    /// messenger that can't carry attachments never drops them.
     fn tell_prompt(
         &self,
         id: &SessionId,
@@ -99,11 +48,9 @@ pub trait Messenger: Send + Sync {
     }
 }
 
-/// Why a queued message waits, as the provider reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WaitingOn {
-    /// The provider reported no waiting reason.
     NotReported,
     Time,
     ThreadBusy,
@@ -129,7 +76,6 @@ impl WaitingOn {
     }
 }
 
-/// A documented rejection before acceptance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Rejection {
@@ -138,67 +84,44 @@ pub enum Rejection {
     UnsupportedMode,
 }
 
-/// What the adapter made of the provider's reply to the one call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TellReply {
-    /// `delivery: "sent"`.
     Sent,
-    /// `delivery: "queued"`, with the queued message's reason and id.
     Queued {
         waiting_on: WaitingOn,
         queued_message_id: String,
     },
-    /// A documented rejection.
     Rejected(Rejection),
-    /// The command could not be started at all: nothing was sent.
     NotStarted,
-    /// A timeout, a crash, output that is not JSON, an unexpected receipt
-    /// shape or an undocumented error: the message may or may not have been
-    /// accepted.
     Unclear {
         reason: UncertainReason,
         gaps: Vec<SendGap>,
     },
 }
 
-/// Why a send failed. Nothing was delivered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailReason {
-    /// The provider said the target does not exist (from the read, or the
-    /// call).
     NotFound,
-    /// The provider rejected the input.
     InvalidInput,
-    /// The provider does not support the requested mode for this target.
-    /// No other mode was tried.
     UnsupportedMode,
-    /// The process stopped after the claim and before the dispatching mark.
     InterruptedBeforeDispatch,
     /// Not produced since #37: Jake approved reporting versions without
     /// gating sends, 2026-10-28 ([private record](https://github.com/jparker2006/ClosedWiz/issues/1277#issuecomment-6704800036)).
     /// Kept so that a record written before can still be read; its
     /// replay is a failed send.
     UntestedVersion,
-    /// The target could not be read, so nothing was sent.
     TargetNotRead,
     TargetArchived,
     TargetHidden,
-    /// Whether the target is archived or hidden could not be read.
     TargetVisibilityUnknown,
-    /// The queue appears paused (or that cannot be ruled out), and the owner
-    /// did not acknowledge resuming it.
     PausedQueueNotAcknowledged,
-    /// The dispatching mark could not be written, so nothing was sent.
     RecordNotWritten,
-    /// The send's budget ran out before the call, so nothing was sent.
     BudgetExhausted,
-    /// The provider's command could not be started, so nothing was sent.
     CallNotStarted,
 }
 
 impl FailReason {
-    /// The reason in the core's words.
     pub fn words(self) -> &'static str {
         match self {
             Self::NotFound => "the target was not found",
@@ -233,29 +156,19 @@ impl FailReason {
     }
 }
 
-/// Why a send is uncertain: the message may or may not have been accepted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UncertainReason {
-    /// The call did not answer in time.
     TimedOut,
-    /// The call ended without an exit code (a crash or a kill).
     EndedWithoutExitCode,
-    /// The call exited 0 with output that is not JSON.
     NotJson,
-    /// The receipt is not the documented shape.
     UnexpectedReceipt,
-    /// The call failed with an error that is not a documented rejection.
     UndocumentedError,
-    /// The call could not be confirmed to have started or ended cleanly.
     CallNotConfirmed,
-    /// The process stopped after the dispatching mark and before the outcome
-    /// was recorded.
     InterruptedAfterDispatchMark,
 }
 
 impl UncertainReason {
-    /// The reason in the core's words.
     pub fn words(self) -> &'static str {
         match self {
             Self::TimedOut => "the provider did not answer in time",
@@ -274,23 +187,16 @@ impl UncertainReason {
     }
 }
 
-/// Why whether a steer joined the running turn is unknown.
 pub const JOINED_NOT_REPORTED: &str = "not reported by the provider";
 
-/// The reported delivery: what the provider said, in the core's words.
-/// Separate from the requested [`Mode`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Delivery {
-    /// The provider queued the message.
     Queued {
         waiting_on: WaitingOn,
         queued_message_id: String,
         text: String,
     },
-    /// `delivery: "sent"`: the provider accepted the message. Never that the
-    /// work completed. Whether a steer joined the running turn is not
-    /// reported.
     Accepted {
         joined_running_turn: Fact<bool>,
         text: String,
@@ -299,7 +205,6 @@ pub enum Delivery {
         reason: FailReason,
         text: String,
     },
-    /// The message may or may not have been accepted. The text is kept.
     Uncertain {
         reason: UncertainReason,
         text: String,
@@ -309,12 +214,10 @@ pub enum Delivery {
 }
 
 impl Delivery {
-    /// Failed for `reason`, in the core's words.
     pub fn failed(reason: FailReason) -> Self {
         Self::failed_because(reason, reason.words())
     }
 
-    /// Failed for `reason`, with OpenWiz's own wording of the details.
     pub fn failed_because(reason: FailReason, words: &str) -> Self {
         Self::Failed {
             reason,
@@ -322,8 +225,6 @@ impl Delivery {
         }
     }
 
-    /// Uncertain for `reason`. No reconciliation read is allowed, so
-    /// nothing was observed, and no attribution path exists.
     pub fn uncertain(reason: UncertainReason) -> Self {
         Self::Uncertain {
             reason,
@@ -337,7 +238,6 @@ impl Delivery {
         }
     }
 
-    /// The provider queued the message.
     pub fn queued(waiting_on: WaitingOn, queued_message_id: String) -> Self {
         Self::Queued {
             waiting_on,
@@ -346,10 +246,6 @@ impl Delivery {
         }
     }
 
-    /// The same delivery, saying that `count` attachments went with it when
-    /// it was queued or accepted, and that their delivery to the agent's
-    /// machine is not reported (#15's outcome table). Unchanged for no attachment, or for a
-    /// failed or uncertain delivery.
     pub fn with_attachments(self, count: usize) -> Self {
         if count == 0 {
             return self;
@@ -375,7 +271,6 @@ impl Delivery {
         }
     }
 
-    /// The provider accepted the message (`sent`), in `mode`.
     pub fn accepted(mode: Mode) -> Self {
         let text = match mode {
             Mode::Queue => "sent: the provider accepted the message, not that the work completed",
@@ -390,7 +285,6 @@ impl Delivery {
         }
     }
 
-    /// The reported delivery in the core's words.
     pub fn text(&self) -> &str {
         match self {
             Self::Queued { text, .. }
@@ -410,37 +304,24 @@ impl Delivery {
     }
 }
 
-/// Something missing or wrong in a send, in OpenWiz's own words. Never the
-/// provider's raw output.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SendGap {
-    /// What it concerns, such as `thread show` or `receipt`.
     pub subject: String,
     pub detail: String,
 }
 
-/// One send.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SendRequest {
-    /// Exactly one target.
     pub target: SessionId,
     pub mode: Mode,
-    /// The text and the attachments (B2: `send` moved from plain text onto
-    /// the payload `new_thread` shares).
     pub prompt: PromptPayload,
     pub op_id: OpId,
-    /// The owner acknowledges that this send resumes a queue that appears
-    /// paused.
     pub resume_paused_queue: bool,
-    /// The owner acknowledges that this send may duplicate an earlier one
-    /// whose outcome is uncertain.
     pub accept_possible_duplicate: bool,
     pub budget: Duration,
 }
 
 impl SendRequest {
-    /// A text-only, queue-mode request with no acknowledgements and the
-    /// default budget.
     pub fn new(target: SessionId, text: impl Into<String>, op_id: OpId) -> Self {
         Self {
             target,
@@ -454,7 +335,6 @@ impl SendRequest {
     }
 }
 
-/// The overall status of a send report.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
@@ -467,76 +347,55 @@ pub enum Status {
     PossibleDuplicateRefused,
 }
 
-/// An earlier send whose outcome is uncertain, shown before a possible
-/// duplicate is refused.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EarlierSend {
     pub op_id: OpId,
     pub mode: Mode,
     pub claimed_at: Timestamp,
-    /// True while the earlier send is still claimed or dispatching (same
-    /// target, mode and text); false when its outcome is uncertain.
     pub in_flight: bool,
     pub reconciliation: Reconciliation,
 }
 
-/// What this call of `send` came to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SendResult {
-    /// A reported delivery. `replayed` when it comes from the record of an
-    /// earlier call with the same op id (no provider call was made);
-    /// `recovered` when recovery set it.
     Outcome {
         delivery: Delivery,
         replayed: bool,
         recovered: bool,
     },
-    /// Another process owns this op id. No call was made.
-    InProgress { state: Option<RecordState> },
-    /// This op id is bound to a different target, mode or text. No call was
-    /// made.
-    ConflictingReuse { differs: Vec<BindingField> },
-    /// An earlier send of this text to this target is uncertain, and the
-    /// owner did not acknowledge a possible duplicate. Nothing was claimed
-    /// or sent.
-    PossibleDuplicateRefused { earlier: Vec<EarlierSend> },
+    InProgress {
+        state: Option<RecordState>,
+    },
+    ConflictingReuse {
+        differs: Vec<BindingField>,
+    },
+    PossibleDuplicateRefused {
+        earlier: Vec<EarlierSend>,
+    },
 }
 
-/// The target as shown in a report.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetView {
     pub id: SessionId,
     pub title: Fact<String>,
 }
 
-/// The result of `send`, shown by the CLI as text or as
-/// `openwiz.messaging.v1` JSON.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SendReport {
-    /// Always [`MESSAGING_SCHEMA_ID`](super::MESSAGING_SCHEMA_ID).
     pub schema: String,
     pub op_id: OpId,
     pub target: TargetView,
-    /// The provider and the version this send read (#37), as the reads
-    /// report it; `None` when no version was read for this op id (a refusal
-    /// before the read, or a record written before #37).
     pub source: Option<SourceInfo>,
     pub requested_mode: Mode,
     pub status: Status,
-    /// `<Mode> requested · <reported delivery>`, in the core's words.
     pub summary: String,
     pub result: SendResult,
-    /// The effects shown before sending, when the target was read.
     pub effects: Option<Effects>,
     pub text_sha256: String,
     pub text_bytes: u64,
-    /// The attachments' digest, as the op id binds it (B2). **Absent when
-    /// there are none**, so a text-only report keeps its 0.0.3 shape.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attachments_digest: Option<String>,
-    /// The attachments, in the owner's order (B2). **Absent when there are
-    /// none.**
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<PromptAttachment>,
     pub gaps: Vec<SendGap>,
@@ -545,18 +404,12 @@ pub struct SendReport {
     pub finished_at: Option<Timestamp>,
 }
 
-/// `send` could not produce a report. Nothing was sent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SendError {
-    /// The request is invalid. Nothing was claimed, read or sent.
     Invalid(InvalidRequest),
-    /// The send record could not be used. Nothing was sent.
     Store(StoreError),
 }
 
-/// Sends one text message to one session, with no attachment store: any
-/// attachment is refused before anything is claimed ([`NoAttachments`]).
-/// See the module documentation, and [`send_with`].
 pub fn send(
     messenger: &dyn Messenger,
     store: &dyn SendStore,
@@ -566,8 +419,6 @@ pub fn send(
     send_with(messenger, store, &NoAttachments, clock, request)
 }
 
-/// Sends one prompt, its text and its attachments, to one session. See the
-/// module documentation.
 pub fn send_with(
     messenger: &dyn Messenger,
     store: &dyn SendStore,
@@ -591,12 +442,6 @@ pub fn send_with(
     };
     let text = &request.prompt.text;
 
-    // The binding: the attachments' content, in the owner's order (other
-    // copies of the same bytes, kinds and names are the same payload). For
-    // an op id already recorded, each attachment as its record holds it
-    // when it has that id (an accepted send's copies are gone, B-6), else
-    // its copy now. For a new op id, every attachment passes the gate
-    // first, so a refusal claims nothing.
     let known = store.load(&request.op_id).map_err(SendError::Store)?;
     let (binding, bound, mut ready) = match &known {
         Some(record) => {
@@ -614,9 +459,6 @@ pub fn send_with(
                     list,
                     None,
                 ),
-                // An attachment that is neither the record's nor a ready
-                // copy can't be the recorded payload: conflicting reuse,
-                // with no call.
                 None => {
                     let binding = Binding::with_attachments(
                         request.target.clone(),
@@ -645,7 +487,6 @@ pub fn send_with(
         }
     };
 
-    // A possible duplicate is refused before a new op id is claimed.
     if known.is_none() && !request.accept_possible_duplicate {
         let earlier = possible_duplicates(store, clock, request, &binding)?;
         if !earlier.is_empty() {
@@ -661,10 +502,6 @@ pub fn send_with(
     {
         Claim::Owned if request.accept_possible_duplicate => {}
         Claim::Owned => {
-            // Again after the claim: a sender that claimed the same send
-            // after the first check is caught here. Of two that race, at
-            // least one sees the other, since each wrote its claim before
-            // looking. The claim is withdrawn, so the op id stays unused.
             let earlier = possible_duplicates(store, clock, request, &binding);
             match earlier {
                 Ok(earlier) if earlier.is_empty() => {}
@@ -676,8 +513,6 @@ pub fn send_with(
                     return Ok(report);
                 }
                 Err(e) => {
-                    // Nothing was read or sent: the record recovers as
-                    // failed (interrupted before dispatch).
                     store.release(&request.op_id);
                     return Err(e);
                 }
@@ -703,12 +538,8 @@ pub fn send_with(
         Claim::Pending => return Ok(in_progress(request, &binding, &bound, None)),
     }
 
-    // This process owns the op id. Its attachments are claimed for it, all
-    // or none, before anything is read; if they can't be, the claim of the
-    // op id is withdrawn and nothing is read or sent.
     let ready = match ready.take() {
         Some(ready) => ready,
-        // The record seen first is gone (withdrawn): the gate runs now.
         None => match pass_gate(attachments, request, &op, clock) {
             Ok(ready) => ready,
             Err(e) => {
@@ -747,8 +578,6 @@ pub fn send_with(
     sent
 }
 
-/// The gate, for this send: a refusal is an invalid request, naming every
-/// attachment that can't go.
 fn pass_gate(
     attachments: &dyn StagedAttachments,
     request: &SendRequest,
@@ -758,8 +587,6 @@ fn pass_gate(
     gate(attachments, &request.prompt, op, clock.now()).map_err(gate_error)
 }
 
-/// The gate's refusal as an invalid request, naming every attachment that
-/// can't go; its store error as the send's.
 fn gate_error(e: GateError) -> SendError {
     match e {
         GateError::Refused(refusal) => SendError::Invalid(InvalidRequest(refusal.words())),
@@ -769,9 +596,6 @@ fn gate_error(e: GateError) -> SendError {
     }
 }
 
-/// Earlier sends this one may duplicate: the same send still in flight
-/// (same target, mode, text and attachments), or one of the same text to
-/// the same target whose outcome is uncertain (any mode, any attachments).
 fn possible_duplicates(
     store: &dyn SendStore,
     clock: &dyn Clock,
@@ -801,7 +625,6 @@ fn withdraw_gap(error: &StoreError) -> SendGap {
     }
 }
 
-/// One owned send, from the claim to the recorded outcome.
 struct Dispatch<'a> {
     messenger: &'a dyn Messenger,
     store: &'a dyn SendStore,
@@ -809,7 +632,6 @@ struct Dispatch<'a> {
     clock: &'a dyn Clock,
     request: &'a SendRequest,
     op: &'a OpRef,
-    /// The prompt, every attachment claimed for this send.
     ready: &'a ReadyPrompt,
     deadline: Instant,
 }
@@ -837,7 +659,6 @@ impl Dispatch<'_> {
             version_tested,
         });
 
-        // The same read and rules as a preview, so the two can't drift.
         let look = look(
             self.messenger,
             self.clock,
@@ -866,8 +687,6 @@ impl Dispatch<'_> {
             return self.finish(record, Delivery::failed(reason));
         }
 
-        // The dispatching mark is synced before the one call: a sender that
-        // stops after this point recovers as uncertain, never as failed.
         let record = record.dispatching(self.clock.now());
         if let Err(e) = self.store.update(&record) {
             return Err(SendError::Store(StoreError(format!(
@@ -909,11 +728,6 @@ impl Dispatch<'_> {
         self.finish(record, delivery)
     }
 
-    /// Records the outcome and reports it. If the record cannot be written,
-    /// the report says so: the record stays as it was, and recovers as
-    /// failed (before the dispatching mark) or uncertain (after it). Only
-    /// once the outcome is recorded are the attachments settled: an
-    /// accepted send's copies are deleted then, never before (B-6).
     fn finish(&self, record: SendRecord, delivery: Delivery) -> Result<SendReport, SendError> {
         let finished = record.finished(delivery, self.clock.now());
         let mut gaps = vec![];
@@ -950,7 +764,6 @@ impl Dispatch<'_> {
     }
 }
 
-/// A failed read in OpenWiz's own words: never the provider's text.
 pub(crate) fn read_failure(read: &str, error: &SourceError) -> String {
     match error {
         SourceError::NotFound { .. } => format!("{read} reported it not found"),
@@ -970,18 +783,16 @@ pub(crate) fn read_failure(read: &str, error: &SourceError) -> String {
     }
 }
 
-/// The report of a finished record. `tested` is this build's own tested
-/// version for sending ([`Messenger::tested_version`]).
 pub(crate) fn from_record(
     record: &SendRecord,
     replayed: bool,
     extra_gaps: Vec<SendGap>,
     tested: &str,
 ) -> SendReport {
-    let delivery = record.delivery.clone().unwrap_or_else(|| {
-        // A record is only reported once finished; recovery finishes it.
-        Delivery::uncertain(UncertainReason::InterruptedAfterDispatchMark)
-    });
+    let delivery = record
+        .delivery
+        .clone()
+        .unwrap_or_else(|| Delivery::uncertain(UncertainReason::InterruptedAfterDispatchMark));
     let mut gaps = record.gaps.clone();
     gaps.extend(extra_gaps);
     SendReport {
@@ -1015,11 +826,6 @@ pub(crate) fn from_record(
     }
 }
 
-/// A record's source as this build reports it (#200): the version the
-/// record read, judged against this build's own tested version for sending,
-/// `tested`, never against the claim stored with it. A record written
-/// before #250 says its v127 was tested, though no send was ever
-/// live-tested.
 fn source_now(record: &SendRecord, tested: &str) -> Option<SourceInfo> {
     record.source.as_ref().map(|source| SourceInfo {
         tested_version: tested.to_owned(),
@@ -1029,13 +835,10 @@ fn source_now(record: &SendRecord, tested: &str) -> Option<SourceInfo> {
     })
 }
 
-/// The attachments digest a report shows: only when there are attachments.
 fn digest_of(attachments: &[PromptAttachment], binding: &Binding) -> Option<String> {
     (!attachments.is_empty()).then(|| binding.attachments_digest.clone())
 }
 
-/// A report for a request that made no call and has no outcome of its own.
-/// `bound` is the request's attachments, as its binding holds them.
 fn refusal(
     request: &SendRequest,
     binding: &Binding,

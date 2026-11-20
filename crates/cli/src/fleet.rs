@@ -1,17 +1,3 @@
-//! `openwiz fleet <spec> [--json]` (OpenWiz 0.0.6, spec 1, A5,
-//! ClosedWiz#113): one fleet's tickets, worked out fresh from GitHub
-//! through `gh`: each ticket's state, blockers (in any version), owned
-//! paths and relies-on, its pull request, CI and the reviewer's verdict,
-//! and "needs you". A ticket is merged only once its merge is read back.
-//!
-//! `--json` prints the `openwiz.fleet.v1` envelope
-//! (`contracts/fleet.v1.md`); the text shows the same facts. Read-only:
-//! only allowlisted `gh` and `room-cli` reads run. A ticket's builder is
-//! placed through A6's verified thread, branch and pull request chain.
-//!
-//! Its usage line, its `--help` section and its exit codes are here too,
-//! so A5 changes only this file.
-
 #[path = "fleet_tick.rs"]
 pub mod tick;
 
@@ -38,10 +24,8 @@ use openwiz_core::ops::Clock;
 
 use crate::{EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, SystemClock};
 
-/// Its line in `openwiz --help`'s usage.
 pub const USAGE: &str = "  openwiz fleet <spec> [--json]\n";
 
-/// Its section of `openwiz --help`.
 pub const HELP: &str = "fleet <spec>
   One fleet: the spec issue <spec> and its tickets (its sub-issues), read from GitHub
   through gh, in the repository of the working directory. Each ticket's state, its
@@ -55,20 +39,16 @@ pub const HELP: &str = "fleet <spec>
   --json prints openwiz.fleet.v1.
 ";
 
-/// Its lines in `openwiz --help`'s exit codes.
 pub const EXIT_CODES: &str = "  0  fleet: the fleet was printed, complete or partial
   1  fleet: the spec or its ticket list couldn't be read; nothing was printed
 ";
 
-/// `fleet`'s arguments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FleetArgs {
     pub spec: Number,
     pub json: bool,
 }
 
-/// `<spec> [--json]`, in either order: a spec number of 1 or more, written
-/// plainly.
 pub fn parse(args: &[OsString]) -> Result<FleetArgs, String> {
     let mut spec = None;
     let mut json = false;
@@ -103,7 +83,6 @@ fn spec_number(text: &str) -> Option<Number> {
     plain.then(|| text.parse().ok()).flatten()
 }
 
-/// The `openwiz` program's `fleet`, given the arguments after it.
 pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     if args.first().is_some_and(|a| a == "tick" || a == "due") {
         return tick::run(args, stdout, stderr);
@@ -119,7 +98,6 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     )
 }
 
-/// Connects A6's adapter reads and pure placement to the fleet operation.
 struct FleetAgents(CloudRoomSource);
 
 impl Agents for FleetAgents {
@@ -127,8 +105,6 @@ impl Agents for FleetAgents {
         let repository =
             repository.and_then(|r| cloudroom::Repository::parse(r.name_with_owner.as_str()));
         let Some(repository) = repository else {
-            // The version is independent; selecting projects requires this
-            // repository's verified identity. Never guess from its name alone.
             let version = cloudroom::version(&self.0, deadline);
             let projects = ListOutcome::Failed(Failed {
                 gap: GapKind::BudgetExhausted,
@@ -161,7 +137,6 @@ impl Agents for FleetAgents {
     }
 }
 
-/// [`run`] with its GitHub source, agents, clock and budget given.
 pub fn run_with(
     github: &dyn GitHub,
     agents: &dyn Agents,
@@ -213,7 +188,6 @@ pub fn run_with(
     EXIT_OK
 }
 
-/// The contract's name of a gap.
 fn gap_name(gap: GapKind) -> String {
     serde_json::to_value(gap)
         .ok()
@@ -223,7 +197,6 @@ fn gap_name(gap: GapKind) -> String {
 
 const NOT_READ: &str = "not read";
 
-/// The text of `openwiz fleet <spec>`: the same facts as `--json`.
 pub fn render(envelope: &Envelope) -> String {
     let View::Fleet(view) = &envelope.data else {
         return String::new();
@@ -277,8 +250,6 @@ pub fn render(envelope: &Envelope) -> String {
                 let _ = writeln!(out, "  relies on: {NOT_READ}");
             }
         }
-        // A builder is shown only when the chain could be worked out; the
-        // agents line below says when it couldn't.
         match &ticket.builder {
             WorkedOut::Known(Some(thread)) => {
                 let _ = writeln!(out, "  builder: {}", crate::clean(thread.as_str()));
@@ -473,8 +444,6 @@ fn ci_word(checks: &[Check]) -> &'static str {
     }
 }
 
-/// A blocker: whether it merged, and its version when it isn't this
-/// fleet's.
 fn blocker(view: &FleetView, reads: &Records<'_>, b: Number) -> String {
     let Some(entry) = view.blockers.iter().find(|x| x.number == b) else {
         return format!("#{b}");
@@ -494,7 +463,6 @@ fn blocker(view: &FleetView, reads: &Records<'_>, b: Number) -> String {
     format!("#{b} {merged} ({place})")
 }
 
-/// Why a read is incomplete: its gap and reason; `None` when complete.
 fn incomplete(read: &Read) -> Option<String> {
     let failed = |why: &Failed| {
         Some(format!(

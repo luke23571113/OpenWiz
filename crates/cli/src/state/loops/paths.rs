@@ -1,18 +1,13 @@
-//! Private-state checks. macOS uses an ephemeral owner probe; never reads a key.
 use std::fs::{self, File, Metadata, OpenOptions};
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path};
 use std::time::{Duration, Instant};
 
-/// Inspect settings without changing them. macOS creates/removes an empty
-/// private owner probe before checking ownership (Jake, #1102).
 pub fn inspect(root: &Path) -> Result<(), String> {
     bounded(|| inspect_once(root).map(|_| ()))
 }
 
-// Retry only a regular unlinked observation or a checked/opened mismatch.
-// Each attempt starts at the root; no safety verdict crosses an attempt.
 const ATTEMPTS: usize = 8;
 const RETRY_TIME: Duration = Duration::from_millis(100);
 
@@ -35,8 +30,6 @@ impl From<String> for Failure {
 fn bounded<T>(inspect: impl FnMut() -> Result<T, Failure>) -> Result<T, String> {
     retried(RETRY_TIME, inspect).map_err(Failure::reason)
 }
-// The budget is wall time, so a descheduled reader can spend it on one pause
-// (#753, #764): production always passes RETRY_TIME.
 fn retried<T>(
     budget: Duration,
     mut inspect: impl FnMut() -> Result<T, Failure>,
@@ -52,11 +45,6 @@ fn retried<T>(
             Err(Failure::Refused(reason)) => return Err(Failure::Refused(reason)),
             Err(Failure::Changed(changed)) => {
                 reason = changed;
-                // Let the replacing writer leave rename before validating
-                // again. A slow rename can keep the zero-link inode in view
-                // for milliseconds (hosted CI: 33 refusals in 75 renames), so
-                // the pause grows (50 us x 3^n): the eight attempts span
-                // about 55 ms of the budget instead of about 1 ms.
                 if attempt + 1 < ATTEMPTS {
                     let remaining = budget.saturating_sub(started.elapsed());
                     let pause = Duration::from_micros(50) * 3_u32.pow(attempt as u32);
@@ -68,8 +56,6 @@ fn retried<T>(
     Err(Failure::Changed(reason))
 }
 
-/// Read optional service state through the descriptor bound to its checked
-/// metadata. A rename after fstat cannot redirect this read to a new inode.
 pub fn read_service_state(root: &Path) -> Result<Option<String>, String> {
     let file = bounded(|| {
         let Some(meta) = inspect_once(root)? else {
@@ -87,8 +73,6 @@ pub fn read_service_state(root: &Path) -> Result<Option<String>, String> {
 }
 
 fn open_checked(path: &Path, checked: &Metadata) -> Result<File, Failure> {
-    // Same platform values as the existing notification checked reader and
-    // attachment opener; attachments.rs rejects unsupported build targets.
     let flags = if cfg!(target_vendor = "apple") {
         0x0100 | 0x0004
     } else if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
@@ -179,8 +163,6 @@ fn inspect_once(root: &Path) -> Result<Option<Metadata>, Failure> {
         if suffix == "service/state.json" {
             state = meta;
         }
-        // The updater's clone is deliberately a repository. Config/App state
-        // must never be in a nested worktree or repository of its own.
         if matches!(suffix, "service" | "service/app") {
             match fs::symlink_metadata(path.join(".git")) {
                 Ok(_) => {
@@ -272,9 +254,6 @@ mod tests {
         }
     }
 
-    // Observable contract: bytes belong to the fully checked inode. The old
-    // inspect-then-pathname-read allowed a replacement to redirect the read.
-    // Stationary service safety tables do not exercise that gap.
     #[test]
     fn checked_descriptor_rejects_replacement_and_retains_its_own_bytes() {
         let fixture = Fixture::new();
@@ -284,8 +263,6 @@ mod tests {
             Ok(file) => file,
             Err(_) => panic!("stable checked inode must open"),
         };
-        // Kernel-observed descriptor flags preserve the FIFO race's
-        // nonblocking guarantee without starting a fixture process.
         let info = fs::read_to_string(format!("/proc/self/fdinfo/{}", file.as_raw_fd())).unwrap();
         let flags = info
             .lines()
@@ -357,8 +334,6 @@ mod tests {
         assert!(read_service_state(&fixture.0).is_err());
     }
 
-    // Regression: delaying the fixture rename's return by 150 ms used to
-    // exhaust the retry budget before this proof could recheck the boundary.
     #[test]
     fn retry_rechecks_the_complete_private_boundary() {
         let fixture = Fixture::new();
@@ -368,9 +343,6 @@ mod tests {
             .unwrap();
         let config = fixture.file("service/config.json", b"{}");
         fixture.file("service/state.json", b"{}");
-        // Prepare the checked/replaced inode before starting the retry clock.
-        // Fixture writes (especially under syscall tracing) are not part of
-        // the contract that a changed read must recheck the whole boundary.
         let checked = inspect_once(&fixture.0).unwrap_or_else(|_| panic!("safe fixture"));
         fs::set_permissions(&config, fs::Permissions::from_mode(0o644)).unwrap();
         let state = fixture.0.join("service/state.json");
@@ -379,7 +351,6 @@ mod tests {
         let result = bounded(|| {
             attempts += 1;
             if attempts == 1 {
-                // A real descriptor mismatch forces the next full inspection.
                 open_checked(&state, checked.as_ref().unwrap())
             } else {
                 inspect_once(&fixture.0)?;
@@ -406,8 +377,6 @@ mod tests {
         let result = bounded(|| {
             attempts += 1;
             let inspected = inspect_once(&fixture.0)?;
-            // A completed successful check remains successful if its thread
-            // is paused before returning. Only another attempt has a deadline.
             std::thread::sleep(Duration::from_millis(200));
             Ok(inspected)
         });
@@ -418,10 +387,6 @@ mod tests {
         assert_eq!(attempts, 1);
     }
 
-    // Regression (hosted x86_64 runner): a safe save's rename can keep the
-    // replaced state.json inode in view with zero links for milliseconds.
-    // Eight attempts 100 us apart gave up after about 1 ms, far inside the
-    // 100 ms budget, and refused the safe save.
     #[test]
     fn a_zero_link_window_inside_the_retry_budget_is_not_refused() {
         let window = Duration::from_millis(30);
@@ -451,9 +416,6 @@ mod tests {
         let path = fixture.file("state", b"original");
         let meta = fs::symlink_metadata(&path).unwrap();
         fs::rename(fixture.file("replacement", b"replacement"), &path).unwrap();
-        // #764: a loaded machine could spend the real 100 ms budget before
-        // the eighth attempt (7 attempts under paused-process load). No pause
-        // can spend this budget, so only the attempt limit ends the retry.
         let mut attempts = 0;
         assert!(
             retried(Duration::MAX, || {
@@ -463,7 +425,6 @@ mod tests {
             .is_err()
         );
         assert_eq!(attempts, 8);
-        // The real budget, spent by one attempt longer than it, whatever the load.
         let mut attempts = 0;
         assert!(
             bounded::<File>(|| {
@@ -479,14 +440,6 @@ mod tests {
         );
     }
 
-    // A safe atomic save (a private temporary file renamed over state.json)
-    // must never be refused while the retry still has budget: a reader that
-    // treats the rename's zero-link or replaced-inode view as unsafe, or gives
-    // up on it too soon, refuses the service's own save. #764: with the real
-    // 100 ms wall-clock budget, a descheduled reader spent it on one pause
-    // (66 to 131 refusals under paused-process load). That outcome is the
-    // documented `Changed` (#753), and the deadline has its own proof above;
-    // no pause can spend this budget.
     #[test]
     fn inspect_never_refuses_private_state_during_atomic_replacement() {
         use std::io::Write;
@@ -537,8 +490,6 @@ mod tests {
             "100000 inspections in {:?}, {replacements} atomic replacements; refusals: {failures:?}",
             began.elapsed()
         );
-        // Distinguish a transient refusal under churn from a persistently
-        // unsafe final state. Neither kind is excused by the assertion below.
         assert_eq!(
             read_service_state(&fixture.0).unwrap().as_deref(),
             Some("{}")

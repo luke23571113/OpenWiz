@@ -1,11 +1,3 @@
-//! `openwiz fleets` (OpenWiz 0.0.6, spec 1, A4, ClosedWiz#112): every fleet
-//! in the repository with its progress, read from GitHub through the `gh`
-//! on `PATH` ([`GitHubFleets`]) and worked out by the core
-//! ([`openwiz_core::fleet::fleets`]). Read-only, and no CloudRoom read.
-//!
-//! Its usage line, its `--help` section and its exit codes are here too,
-//! so `main.rs` and `lib.rs` hold only their places.
-
 use std::ffi::OsString;
 use std::io::Write;
 use std::time::Duration;
@@ -22,10 +14,8 @@ use openwiz_core::ops::Clock;
 
 use crate::{EXIT_OK, EXIT_USAGE, SystemClock, clean, utc};
 
-/// Its line in `openwiz --help`'s usage.
 pub const USAGE: &str = "  openwiz fleets [--json]\n";
 
-/// Its section of `openwiz --help`.
 pub const HELP: &str = "fleets
   Every fleet in this repository: each open issue with sub-issues (a spec), its tickets
   and their blockers, read from GitHub through the gh on PATH, in the repository gh finds
@@ -40,12 +30,9 @@ pub const HELP: &str = "fleets
   --json      print the openwiz.fleet.v1 envelope (its fleets view) instead of text
 ";
 
-/// Its lines in `openwiz --help`'s exit codes.
 pub const EXIT_CODES: &str =
     "  0  fleets: every fleet was printed, complete or partial (its gaps say what is missing)\n";
 
-/// The `openwiz` program's `fleets`, given the arguments after it: the
-/// `gh` on `PATH`, the system clock and the run budget.
 pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     run_with(
         args,
@@ -57,7 +44,6 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     )
 }
 
-/// [`run`] with its source, clock and budget given, for the tests.
 pub fn run_with(
     args: &[OsString],
     source: &dyn FleetsSource,
@@ -104,7 +90,6 @@ enum Parsed {
     Run { json: bool },
 }
 
-/// `[--json]`, or `--help` / `-h` anywhere.
 fn parse(args: &[OsString]) -> Result<Parsed, String> {
     let mut json = false;
     let mut parsed = None;
@@ -132,8 +117,6 @@ fn parse(args: &[OsString]) -> Result<Parsed, String> {
     }
 }
 
-/// The text: a header line, "needs you", one block per fleet, and the
-/// gaps.
 pub fn render(envelope: &Envelope) -> String {
     let View::Fleets(view) = &envelope.data else {
         unreachable!("fleets prints the fleets view")
@@ -184,8 +167,6 @@ pub fn render(envelope: &Envelope) -> String {
     out
 }
 
-/// `openwiz fleets · <repository> · gh <version> (<tested>) · snapshot
-/// <time> · <coverage>`.
 fn header(envelope: &Envelope, view: &FleetsView, reads: &Reads) -> String {
     let repository = match reads.kind(view.repository) {
         Some(ReadKind::Repository {
@@ -223,9 +204,6 @@ fn header(envelope: &Envelope, view: &FleetsView, reads: &Reads) -> String {
     )
 }
 
-/// `#<spec> <title> (<milestone>): <n> of <m> merged, <k> moving, <b>
-/// blocked`, the counts by state, and each ticket whose state is unknown
-/// or unread.
 fn push_fleet(out: &mut String, fleet: &Fleet, view: &FleetsView, reads: &Reads) {
     let title = match reads.issue(fleet.issue) {
         Some(issue) => {
@@ -291,7 +269,6 @@ fn push_fleet(out: &mut String, fleet: &Fleet, view: &FleetsView, reads: &Reads)
     }
 }
 
-/// The reads, by id.
 struct Reads<'a>(&'a [Read]);
 
 impl Reads<'_> {
@@ -310,7 +287,6 @@ impl Reads<'_> {
     }
 }
 
-/// An incomplete read's state, gap and reason; `None` when complete.
 fn gap(kind: &ReadKind) -> Option<(&'static str, String, &str)> {
     fn one<T>(o: &Outcome<T>) -> Option<(&'static str, String, &str)> {
         match o {
@@ -343,7 +319,6 @@ fn gap(kind: &ReadKind) -> Option<(&'static str, String, &str)> {
     }
 }
 
-/// A gap kind's contract word, such as `command_failed`.
 fn gap_kind(kind: GapKind) -> String {
     serde_json::to_value(kind)
         .ok()
@@ -351,7 +326,6 @@ fn gap_kind(kind: GapKind) -> String {
         .unwrap_or_default()
 }
 
-/// What a read read, in the contract's words: `checks #961`.
 fn subject(kind: &ReadKind) -> String {
     match kind {
         ReadKind::Version { source, .. } => match source {

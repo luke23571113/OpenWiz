@@ -1,13 +1,3 @@
-//! `new_thread_status`: one op id's record and, once created, its start
-//! stage. **Read-only:** it never creates, starts, claims or writes
-//! anything, and it never calls `spawn`.
-//!
-//! For an **Uncertain** record it may also list the threads created in that
-//! project since the attempt. These are **observations only**: no
-//! documented field ties a listed thread to this request, so they never
-//! settle the outcome. It stays Uncertain, and the owner resolves it in
-//! CloudRoom (sheet A-3: no retry in 0.0.4).
-
 use std::time::Duration;
 
 use serde::Serialize;
@@ -26,50 +16,38 @@ use super::outcome::{Gap, Outcome};
 use super::record::{NewThreadStore, RecordState};
 use super::start::{StartView, start_view};
 
-/// Why observations never settle an uncertain create.
 pub const OBSERVATIONS_ONLY: &str = "observations only: no documented field ties a listed thread \
      to this request, so the outcome stays uncertain";
 
-/// Threads seen in the project after an uncertain create.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Observations {
     pub read_at: Timestamp,
-    /// Created at or after the attempt's claim.
     pub threads: Vec<ObservedThread>,
-    /// Always [`OBSERVATIONS_ONLY`].
     pub text: String,
     pub gaps: Vec<Gap>,
 }
 
-/// What a status read found.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StatusResult {
-    /// No record has this op id.
     NoRecord,
     Recorded(Box<Recorded>),
 }
 
-/// One op id's record, as a status read found it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Recorded {
     pub report: NewThreadReport,
-    /// Only for a created thread.
     pub start: Option<StartView>,
-    /// Only for an uncertain create.
     pub observations: Option<Observations>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct NewThreadStatus {
-    /// Always [`STATUS_SCHEMA_ID`].
     pub schema: String,
     pub op_id: OpId,
     pub result: StatusResult,
 }
 
-/// The status of `op_id`, read within `budget`. See the module
-/// documentation.
 pub fn new_thread_status(
     client: &dyn NewThreadClient,
     store: &dyn NewThreadStore,

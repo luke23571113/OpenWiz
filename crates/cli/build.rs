@@ -1,19 +1,13 @@
-// Build identity without starting a process. Exported sources must supply it.
-// #1148: self-contained, because tests build a copied CLI crate on its own.
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
 
-// #1010: Cargo reruns the script on every build while a watched path is
-// missing, so only paths that exist are watched.
 fn watched(path: &Path) -> Option<String> {
     let text = fs::read_to_string(path).ok()?;
     println!("cargo:rerun-if-changed={}", path.display());
     Some(text)
 }
-// A loose ref, or else the nearest directory under `refs/` that holds where
-// it would appear, so a ref written after this build still reruns it.
 fn watched_ref(common: &Path, reference: &str) -> Option<String> {
     let path = common.join(reference);
     if let Some(text) = watched(&path) {
@@ -70,15 +64,10 @@ fn main() {
         Ok(_) => panic!("OPENWIZ_SERVICE_BUILD must be a full lowercase commit"),
         Err(_) => git_commit(&root),
     };
-    // A detached source export can still compile help/status. Starting it
-    // requires the builder to have supplied the real commit; never guess one.
     println!(
         "cargo:rustc-env=OPENWIZ_SERVICE_BUILD={}",
         commit.as_deref().unwrap_or("unavailable")
     );
-    // #1148: the canonical product identity (contracts/release-candidate.v1.md),
-    // always set here so a caller's environment never supplies it; empty
-    // when the source is unknown, which the identity query refuses.
     let product = match env::var("CARGO_PKG_NAME").unwrap().as_str() {
         "openwiz-cli" => "cli",
         other => panic!("no product identity for {other}"),
