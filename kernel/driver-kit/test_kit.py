@@ -48,7 +48,11 @@ CONTRACT_FORMATS = ['token=', 'key=', 'secret=', 'password=', 'sig=', 'password:
 
 def planted(name):
     """A planted driver's module, without running it."""
-    path = os.path.join(FIXTURES, 'planted', name)
+    return module(os.path.join(FIXTURES, 'planted', name))
+
+
+def module(path):
+    name = os.path.basename(path)
     spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(name, path))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -111,6 +115,12 @@ class Kit(unittest.TestCase):
         code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'token-in-env'), os.path.join(NO_PROC, 'python3'),
                                   **spaced)
         self.assertEqual((code, out), (1, PLANTED['token-in-env']), err)
+
+    def test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes(self):
+        p = subprocess.run([os.path.join(NO_PROC, 'python3')] + module(os.path.join(HERE, 'kit.py')).PROBE,
+                           input='', env=dict(self.env, NO_PROC_PYTHON=sys.executable), capture_output=True,
+                           text=True, timeout=60)
+        self.assertEqual((p.returncode, p.stdout, p.stderr), (0, '.', ''))
 
     def test_without_proc_or_any_visible_environment_stop_and_token_fail_unverified(self):
         blind = "ps shows no process's environment here, so the kit cannot tell which processes the driver started"

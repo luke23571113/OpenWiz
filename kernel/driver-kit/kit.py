@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import select
 import subprocess
 import sys
 import time
@@ -32,6 +33,7 @@ KEYWORDS = {'$schema', 'type', 'required', 'additionalProperties', 'properties',
             'maxLength', 'minimum', 'items', 'minItems', 'uniqueItems', 'enum', 'const', 'allOf', 'contains'}
 TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool}
 PROC = os.path.isdir('/proc/self')
+PROBE = ['-I', '-c', "import sys; sys.stdout.write('.'); sys.stdout.flush(); sys.stdin.read()"]
 
 
 class Unusable(Exception):
@@ -277,16 +279,18 @@ class Kit:
 
     def unseen(self):
         probe = 'OPENWIZ_KIT_PROBE=' + self.mark.partition('=')[2]
-        p = subprocess.Popen([sys.executable, '-I', '-c', 'import time; time.sleep(60)'], stdin=subprocess.DEVNULL,
+        p = subprocess.Popen([sys.executable] + PROBE, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              env=dict(os.environ, OPENWIZ_KIT_PROBE=probe.partition('=')[2]))
         try:
-            for _ in range(50):
-                if re.search(r'(?:^|\s)%s(?:\s|$)' % re.escape(probe), self.ps('-o', 'command=', '-E').get(p.pid, '')):
-                    return None
-                time.sleep(0.1)
+            ready = select.select([p.stdout], [], [], 30)[0] and os.read(p.stdout.fileno(), 1) == b'.'
+            if ready and re.search(r'(?:^|\s)%s(?:\s|$)' % re.escape(probe),
+                                   self.ps('-o', 'command=', '-E').get(p.pid, '')):
+                return None
         finally:
+            p.stdin.close()
             p.kill()
             p.wait()
+            p.stdout.close()
         return "ps shows no process's environment here, so the kit cannot tell which processes the driver started"
 
     def listed(self):
