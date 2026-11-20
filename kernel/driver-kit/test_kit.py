@@ -102,14 +102,20 @@ class Kit(unittest.TestCase):
 
     def test_a_refusal_holding_a_credential_never_reaches_the_output(self):
         # #1524: the kit used to print a refusal's error text as its diagnostic, credential and all.
+        # Escaped: the JSON text holds only \\u escapes, and decoding restores the credential.
         sample = planted('refuses-with-credential').SAMPLE
-        self.assertFalse(any(sample in v for v in self.env.values()))
-        code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'refuses-with-credential'))
-        self.assertNotIn(sample, '\n'.join(out) + err)
-        self.assertEqual((code, out), (1, PASS[:3] + [
-            'fail stop: its stop output held a credential, which the kit does not show',
-            'fail token: the driver printed a credential; its answer to a token field: its start output held a '
-            'credential, which the kit does not show']))
+        for escape in ('', '1'):
+            with self.subTest(escape=escape):
+                self.tearDown()
+                self.setUp()
+                self.env['KIT_ESCAPE'] = escape
+                self.assertFalse(any(sample in v for v in self.env.values()))
+                code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'refuses-with-credential'))
+                self.assertNotIn(sample, '\n'.join(out) + err)
+                self.assertEqual((code, out), (1, PASS[:3] + [
+                    'fail stop: its stop output held a credential, which the kit does not show',
+                    'fail token: the driver printed a credential; its answer to a token field: its start output '
+                    'held a credential, which the kit does not show']))
 
     def test_each_status_contract_credential_format_is_caught(self):
         # #1568: the kit's shapes missed formats the status contract lists, when no secret of its environment held them.
