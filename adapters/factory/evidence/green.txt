@@ -7,3 +7,11 @@ test_wake_without_a_session_starts_nothing (__main__.Factory.test_wake_without_a
 Ran 3 tests in N.NNNs
 
 OK
+
+# The kit itself, on the same fixtures: python3 -I kernel/driver-kit/kit.py --driver adapters/factory/driver --repo example/site --ticket 7 --harness droid --model synthetic-model-1 --tracker <a temporary tracker> --wait 8
+pass version: openwiz:records v1, and the schema is driver v1
+pass start: the run posted builder status note 1
+pass wake: the run edited builder status note 1
+pass stop: the run ended, and a wake after it is refused
+pass token: no login or token passed through the driver
+exit: 0
