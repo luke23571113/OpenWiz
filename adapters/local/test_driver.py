@@ -67,7 +67,9 @@ class Local(unittest.TestCase):
             os.symlink(os.path.join(HERE, 'fixtures', fake), os.path.join(self.bin, name))
         repos = os.path.join(self.folder, 'repos')  # what the fake gh clones: a mode row, none, a refusing mode
         for repo, row in (('site', '| Harness permission mode | `acceptEdits` |'), ('blog', '| Harness | x |'),
-                          ('refuser', '| Harness permission mode | `refuse` |')):
+                          ('refuser', '| Harness permission mode | `refuse` |'),
+                          ('expired', '| Harness permission mode | `expired` |'),
+                          ('broken', '| Harness permission mode | `fail` |'), ('quick', '| Harness permission mode | `quick` |')):
             os.makedirs(os.path.join(repos, 'example', repo, 'docs', 'agents'))
             with open(os.path.join(repos, 'example', repo, 'docs', 'agents', 'fleet.md'), 'w') as f:
                 f.write('# Fleet\n\n| Setting | Value |\n| --- | --- |\n%s\n' % row)
@@ -300,15 +302,22 @@ class Local(unittest.TestCase):
         self.no_new_turn(count)
 
     def test_a_first_turn_that_ends_at_once_fails_start_with_its_reason(self):
-        # catches: a harness that refuses and ends its first turn at once, posting nothing, while start
-        # answers a run id and the kit waits 15 minutes in silence (L1).
-        code, err = self.start(repository='example/refuser')
-        self.assertEqual(code, 1, err)
-        self.assertIsNone(kit.invalid(err, kit.load_schema()['error']), err)
-        self.assertIn('permission to use Bash was denied', err['error'])
-        run = re.search(r'run-[0-9a-f]{12}', err['error']).group()
-        self.assertEqual(self.marked('OPENWIZ_RUN=' + run), [])
-        self.assertEqual(self.driver('wake', {'run': run})[0], 1)
+        # catches: a harness that refuses, or whose sign-in expired, or that fails, ending its first turn at
+        # once while start answers a run id and the kit waits 15 minutes in silence (L1); and a first turn that
+        # simply finished cleanly being reported as a failure.
+        for repo, says in (('refuser', 'permission to use Bash was denied'), ('expired', 'OAuth session expired'),
+                           ('broken', 'exit 3')):
+            with self.subTest(repo):
+                code, err = self.start(repository='example/' + repo)
+                self.assertEqual(code, 1, err)
+                self.assertIsNone(kit.invalid(err, kit.load_schema()['error']), err)
+                self.assertIn(says, err['error'])
+                run = re.search(r'run-[0-9a-f]{12}', err['error']).group()
+                self.assertEqual(self.marked('OPENWIZ_RUN=' + run), [])
+                self.assertEqual(self.driver('wake', {'run': run})[0], 1)
+        code, out = self.start(repository='example/quick')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
 
     def test_missing_or_unknown_harness_is_an_error_with_next(self):
         # catches: a missing harness crashing, answering a run id that never runs, or an error an agent

@@ -5,7 +5,8 @@ It takes only the shape that harness's real CLI takes, permission mode included
 (`claude -p <prompt> --model <m> --permission-mode <mode>`, `codex exec --model <m> --sandbox <mode> <prompt>`),
 or the same without a permission mode (logged as `-`, so a driver that drops it is seen), and exits 2 on
 any other. With the mode `refuse` it does what a harness whose permissions refuse every tool
-does: it prints why and ends its turn at once, posting nothing.
+does: it prints why and ends its turn at once, exit 0, posting nothing. Mode `expired` prints a sign-in line
+and exits 0; `fail` exits 3; `quick` prints a plain line and exits 0, a turn that simply finished.
 
 Otherwise it leaves a detached child in its own session that `stop` must also end (with FAKE_CLEAN set, the
 child gets only PATH, so it carries no mark it inherited), and appends `<turn pid> <child pid> first|woken
@@ -30,9 +31,12 @@ skill = re.search(r'with the ([a-z0-9-]+) skill', prompt).group(1)
 woken = prompt.startswith('You were woken')
 
 if not worker:
-    if mode == 'refuse':
-        print('Fake harness: permission to use Bash was denied, so it could not read the ticket.')
-        sys.exit(0)
+    quick = {'refuse': ('Fake harness: permission to use Bash was denied, so it could not read the ticket.', 0),
+             'expired': ('Fake harness: OAuth session expired. Please run /login.', 0),
+             'fail': ('Fake harness: it stopped with an error.', 3), 'quick': ('Fake harness: nothing to do.', 0)}
+    if mode in quick:
+        print(quick[mode][0])
+        sys.exit(quick[mode][1])
     child = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL,
                              env={'PATH': os.environ['PATH']} if os.environ.get('FAKE_CLEAN') else None)
     with open(os.environ['FAKE_TURNS'], 'a') as f:
