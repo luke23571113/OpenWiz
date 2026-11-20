@@ -27,11 +27,15 @@ _spec = importlib.util.spec_from_loader('records_kit', importlib.machinery.Sourc
 records_kit = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(records_kit)
 
-# Known credential shapes (the status contract's list), and any value of the kit's own environment
-# whose name says it is a secret.
-SHAPES = re.compile(r'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}'
-                    r'|xox[abposr]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|Bearer\s+[A-Za-z0-9._~+/-]{20,}'
-                    r'|(?i:token|secret|password|api[-_]?key)=[^\s&]{8,}')
+# Known credential shapes: the pinned status contract's credential rules, as its writer
+# (skills/launch-fleet/scripts/status.py at that commit) recognises them, then the kit's earlier shapes; and any
+# value of the kit's own environment whose name says it is a secret.
+SHAPES = re.compile(r'\b(?:[a-z_]*token|[a-z_]*key|secret|password|passwd|pwd|sig|signature|auth|credentials?)\s*='
+                    r'|\b(?:password|passwd|secret|token)\s*:\s*\S|\bbearer\s+\S'
+                    r'|\bgh[pousr]_[A-Za-z0-9]{8,}|\bgithub_pat_|\bAKIA[0-9A-Z]{16}\b'
+                    r'|\bxox[abprs]-|\bsk-[A-Za-z0-9_-]{16,}'
+                    r'|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}'
+                    r'|xox[abposr]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}', re.I)
 SECRETS = [v for k, v in os.environ.items()
            if re.search(r'TOKEN|SECRET|PASSWORD|CREDENTIAL|_KEY$|^KEY', k.upper()) and len(v) >= 8]
 KEYWORDS = {'$schema', 'type', 'required', 'additionalProperties', 'properties', 'pattern', 'minLength',
@@ -219,6 +223,9 @@ class Kit:
             return 'bad', '%s did not finish: %s' % (cmd, e)
         if holds_credential(p.stdout + p.stderr):
             self.leak('the driver printed a credential')
+        if holds_credential(p.stdout):
+            # Nothing of it is parsed or shown: any part could carry the credential into the kit's output.
+            return 'bad', 'its %s output held a credential, which the kit does not show' % cmd
         try:
             out = parse(p.stdout)
         except ValueError:

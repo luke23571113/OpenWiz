@@ -103,7 +103,7 @@ class Kit(unittest.TestCase):
     def test_a_refusal_holding_a_credential_never_reaches_the_output(self):
         # #1524: the kit used to print a refusal's error text as its diagnostic, credential and all.
         sample = planted('refuses-with-credential').SAMPLE
-        self.assertNotIn(sample, self.env.values())
+        self.assertFalse(any(sample in v for v in self.env.values()))
         code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'refuses-with-credential'))
         self.assertNotIn(sample, '\n'.join(out) + err)
         self.assertEqual((code, out), (1, PASS[:3] + [
@@ -120,7 +120,7 @@ class Kit(unittest.TestCase):
                 self.tearDown()
                 self.setUp()
                 self.env['KIT_LEAK'] = name
-                self.assertNotIn(sample, self.env.values())
+                self.assertFalse(any(sample in v for v in self.env.values()))
                 code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'leaks-format'))
                 self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the driver printed a credential']))
                 self.assertNotIn(sample, '\n'.join(out) + err)
