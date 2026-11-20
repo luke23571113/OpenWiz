@@ -2,6 +2,7 @@
 # (local tracker, fake-harness, --wait 8), once on main (9be224a: old template, old fake harness)
 # and once on this branch (fixed template, the granted fake-harness change).
 # diff main.txt branch.txt: no output, so every result is identical.
+# Re-run at e82b02ac (after the review's R1-R5 fixes): identical again.
 
 ## main and this branch, identical:
 template: exit 0
