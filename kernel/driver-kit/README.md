@@ -18,7 +18,7 @@ Make a throwaway repository with a `docs/agents/fleet.md` whose `Record authors`
 
 ## What it doesn't see
 
-It knows a credential by the status contract's credential rules or as the value of a secret in its own environment. It never parses or shows a driver answer that holds one: that answer fails with a fixed diagnostic.
+It knows a credential by the status contract's credential rules or as the value of a secret in its own environment. It never shows a driver answer that holds one, in its text or once decoded: that answer fails with a fixed diagnostic.
 
 It sees the processes a driver starts on this machine (each carries the kit's `OPENWIZ_KIT_RUN` mark in its environment), not what a remote host runs. A driver that clears its children's environment hides them from the token and stop checks: its review must check that by reading its code.
 
@@ -26,4 +26,4 @@ It sees the processes a driver starts on this machine (each carries the kit's `O
 
 - `fixtures/fake-harness`: a synthetic harness. It posts one builder note into the tracker named by `KIT_TRACKER`, edits it when woken, then waits to be stopped.
 - `fixtures/planted/<name>`: the template with one planted break each. `test_kit.py` names the exact lines each must print.
-- `evidence/`: the red run and the green run; `red-1586.txt` and `green-1586.txt` are those of the credential fixes.
+- `evidence/`: the red run and the green run; `red-1586.txt`, `red-1586-r1.txt` and `green-1586.txt` are those of the credential fixes.

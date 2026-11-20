@@ -135,6 +135,20 @@ def records_version():
     return m.group(1)
 
 
+def texts(value):
+    """Every string and object key inside a decoded JSON value."""
+    stack = [value]
+    while stack:
+        v = stack.pop()
+        if isinstance(v, str):
+            yield v
+        elif isinstance(v, dict):
+            yield from v
+            stack += v.values()
+        elif isinstance(v, list):
+            stack += v
+
+
 def holds_credential(text):
     return bool(SHAPES.search(text)) or any(v in text for v in SECRETS)
 
@@ -223,13 +237,18 @@ class Kit:
             return 'bad', '%s did not finish: %s' % (cmd, e)
         if holds_credential(p.stdout + p.stderr):
             self.leak('the driver printed a credential')
+        held = 'bad', 'its %s output held a credential, which the kit does not show' % cmd
         if holds_credential(p.stdout):
             # Nothing of it is parsed or shown: any part could carry the credential into the kit's output.
-            return 'bad', 'its %s output held a credential, which the kit does not show' % cmd
+            return held
         try:
             out = parse(p.stdout)
         except ValueError:
             return 'bad', '%s printed no single JSON value' % cmd
+        if any(holds_credential(text) for text in texts(out)):
+            # Decoding can restore what the JSON text escaped (a \u escape): check every decoded string and key too.
+            self.leak('the driver printed a credential')
+            return held
         if p.returncode not in (0, 1):
             return 'bad', '%s exited %d' % (cmd, p.returncode)
         kind, s = ('ok', self.schema['commands'][cmd]['output']) if p.returncode == 0 else ('refused', self.schema['error'])
