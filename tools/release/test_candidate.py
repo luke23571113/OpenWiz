@@ -1257,6 +1257,60 @@ class Candidate(World):
                          ('incomplete', False, False))
         self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
 
+    # ------------------------------------------------------------ #1836: J264's public name for 0.1.0
+    def ready_public(self, version='0.1.0'):
+        """A ready candidate for `version`, published history 0.0.98."""
+        shutil.rmtree(self.repo)
+        shutil.rmtree(self.remote)
+        self.history(notes=NOTES.replace(VERSION, version))
+        self.smoke_kit(version=version, coverage=[
+            {'version': version, 'promise': 'synthetic_fleet', 'steps': receipts_fixture.FLEET_ROW},
+            {'version': version, 'promise': 'synthetic_send', 'steps': ['send_once', 'new_once']}])
+        self.artifacts(version=version)
+        self.made = self.body(version=version)
+        prepared = self.prepare()
+        self.assertEqual(prepared[0], 0, prepared)
+        self.decisions()
+        self.gates()
+        self.assertEqual(self.smoke()[0], 0)
+
+    def test_1836_publishing_0_1_0_creates_and_reads_back_openwiz_0_01(self):
+        self.ready_public()
+        code, out = self.publish()
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        created = next(c['args'] for c in self.calls() if c['action'] == 'release')
+        self.assertEqual(created[created.index('--title') + 1], 'OpenWiz 0.01')
+        self.assertEqual(json.loads((self.releases / 'v0.1.0' / 'meta.json').read_text())['title'], 'OpenWiz 0.01')
+        self.assertEqual(self.record()['publication']['status'], 'complete')
+        # The tag and its annotation stay semver.
+        self.assertEqual(self.git(self.remote, 'tag', '-l', '--format=%(contents:subject)', 'v0.1.0'), 'OpenWiz 0.1.0')
+
+    def test_1836_a_0_1_0_release_read_back_under_another_name_is_incomplete(self):
+        self.ready_public()
+        # The remote release reads back under the name in RENAME, whatever --title the tool sent.
+        fake = self.bin / 'gh'
+        fake.write_text(fake.read_text().replace('"title": args[args.index("--title") + 1]',
+                                                 '"title": os.environ["RENAME"]'))
+        meta = self.releases / 'v0.1.0' / 'meta.json'
+        self.assertEqual(self.publish(RENAME='OpenWiz 0.1.0'),
+                         (1, {'status': 'incomplete', 'reasons': ['readback_release_identity']}))
+        # A resume re-reads only: each other name stays incomplete.
+        for name in ('OpenWiz 0.01 ', 'openwiz 0.01', 'OpenWiz 0.1', 'OpenWiz 0.01.0'):
+            with self.subTest(name=name):
+                meta.write_text(json.dumps(dict(json.loads(meta.read_text()), title=name)))
+                self.assertEqual(self.publish(), (1, {'status': 'incomplete', 'reasons': ['readback_release_identity']}))
+                self.assertEqual(self.record()['publication']['status'], 'incomplete')
+        meta.write_text(json.dumps(dict(json.loads(meta.read_text()), title='OpenWiz 0.01')))
+        self.assertEqual(self.publish()[1]['status'], 'published')
+        self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
+
+    def test_1836_a_version_outside_the_table_keeps_its_semver_name(self):
+        self.ready_public('0.0.99')
+        self.assertEqual(self.publish()[0], 0)
+        self.assertEqual(json.loads((self.releases / 'v0.0.99' / 'meta.json').read_text())['title'], 'OpenWiz 0.0.99')
+        self.assertEqual(self.git(self.remote, 'tag', '-l', '--format=%(contents:subject)', 'v0.0.99'),
+                         'OpenWiz 0.0.99')
+
     def swap_tag(self):
         """Python lines replacing the remote tag with another annotated tag on the same commit."""
         return ('    subprocess.run([REAL, "-C", os.environ["PUBLIC_FAKE"], "-c", "user.name=Synthetic",\n'

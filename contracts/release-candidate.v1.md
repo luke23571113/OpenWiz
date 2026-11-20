@@ -203,6 +203,9 @@ human approval. Never bypass protected-main/merge procedures, force-push, move
 a published tag or rewrite published notes. Historical backfill is separately
 gated, outside this next-release contract. Partial/uncertain publication is
 incomplete even if some downloads already exist.
+The release name created and read back is the version's entry in the tool's
+recorded public-name table (`PUBLIC_NAMES`), else `OpenWiz <version>`; any
+other name is incomplete.
 
 `install` records an agent's normal install/update route on an already approved
 test machine: version/source/target plus matching manifest/archive hashes, time
