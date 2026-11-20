@@ -1,6 +1,6 @@
-Login: held by Factory
-
 # Factory driver
+
+Login: held by Factory
 
 A [driver v1](../../kernel/driver.v1.md) that runs each builder as [Factory](https://factory.ai)'s Droid, through your own signed-in `droid` CLI in headless mode (`droid exec`). Built from [`adapters/template/`](../template/README.md): one Python file, standard library only, Linux (it keeps each turn's processes with `/proc` and a subreaper). Runs are saved in `$OPENWIZ_FACTORY_STATE` (default `~/.local/state/openwiz-factory`; a relative path is taken from where the driver runs). Every file and folder there is owner-only, and `start` and `wake` refuse a state folder that isn't yours alone (`chmod 700` it, or pick a new one).
 
@@ -19,7 +19,7 @@ Each turn runs under its own supervisor (`driver --turn`), so `stop` reaches eve
 
 ## Before the first run (yours to do)
 
-1. Install Factory's `droid` CLI and sign in to Factory yourself, as its docs say.
+1. Install Factory's `droid` CLI and sign in to Factory yourself, as its docs say. For headless `droid exec`, Factory's docs have you set your Factory API key as `FACTORY_API_KEY` in your own environment. Each turn inherits it unchanged; the driver never reads, copies or prints it.
 2. Sign in to `gh` so the agent can read and comment on the ticket and push its branch.
 3. Make the skills your fleet runs available to Droid.
 
