@@ -202,9 +202,7 @@ def prebuild(root, env):
 
 
 def test_run(root, env, select):
-    proc = run(["cargo", "test", "--locked", *select], root, env, check=False)
-    if proc.returncode:
-        sys.stderr.write(proc.stdout[-4000:])
+    proc = run(["cargo", "test", "--locked", *select], root, env)
     return parse_counts(proc.stdout)
 
 

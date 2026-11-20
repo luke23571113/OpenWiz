@@ -549,6 +549,40 @@ class Failures(unittest.TestCase):
 
 
 class Validate(unittest.TestCase):
+    def test_flow_gaps_end_by_observed_progress_except_closed_tickets(self):
+        # catches #1289: an ongoing open gap, or a gap beyond merge, accepted as completed.
+        C = load('collect_factory', SCRIPT)
+        for point, state in (('2030-01-02T02:45:00Z', 'open'), ('2030-01-02T04:00:00Z', 'merged')):
+            fact = envelope(cli('../flow/world.json', *FlowFacts.args[:-1], point)[0])['factory']['flow']
+            row = fact['value']['tickets'][0]
+            self.assertEqual(row['state'], state)
+            C.validate(fact)
+            row['progress']['gaps'] = [{'from': '2030-01-02T01:58:00Z', 'until': point}]
+            if row['stall_count'] is not None:
+                row['stall_count'] = len(row['progress']['gaps'])
+            with self.subTest(state=state), self.assertRaisesRegex(ValueError, 'observed progress'):
+                C.validate(fact)
+
+        # A verified unmerged closure may end the final gap after the last progress event.
+        def closed(world):
+            key = next(key for key in world if 'issue(number:$number){number url createdAt closedAt body' in key)
+            response = json.loads(world[key]['stdout'])
+            response['data']['repository']['issue']['closedAt'] = '2030-01-02T03:12:00Z'
+            world[key]['stdout'] = json.dumps(response)
+            key = next(key for key in world if 'pullRequest(number:$number)' in key and 'body author{login}' in key)
+            response = json.loads(world[key]['stdout'])
+            nodes = response['data']['repository']['pullRequest']['comments']['nodes']
+            nodes[:] = [c for c in nodes if not c['body'].startswith('launch-fleet: merge queued')]
+            world[key]['stdout'] = json.dumps(response)
+
+        fact = envelope(cli('../flow/world.json', *FlowFacts.args[:-1], '2030-01-02T03:13:00Z',
+                            edit=closed)[0])['factory']['flow']
+        row = fact['value']['tickets'][0]
+        self.assertEqual(row['state'], 'closed')
+        self.assertEqual(row['progress']['gaps'][-1],
+                         {'from': '2030-01-02T02:30:00Z', 'until': '2030-01-02T03:12:00Z'})
+        C.validate(fact)
+
     # catches: validate accepting a fact that breaks the contract (others rely on it), or
     # refusing the contract's own worked fixtures.
     def test_validate_contract_rules(self):

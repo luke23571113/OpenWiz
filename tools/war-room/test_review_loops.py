@@ -524,6 +524,17 @@ class ReportsV2(unittest.TestCase):
         unfenced = quoted.replace('```md\n', '').replace('none\n```\n', 'none\n')
         self.assertIn('description: more than one ## Rulings section', self.problems(self.text('builder'), unfenced))
 
+    def test_a_fence_closes_only_on_its_own_delimiter(self):
+        """Polish #910: a quoted fence of the other kind, or a shorter one, must not hide the real section."""
+        unmarked = self.text('builder').replace(
+            '- **Ruling 2** overturned as R4: the CLI contract gives every refusal status 3.\n', '')
+        for quote in ('~~~md\n```python\n~~~\n', '````md\n```\n````\n', '```md\n~~~\n```\n',
+                      '~~~~\n~~~\n~~~~\n', '```md\n```python\n```\n'):
+            with self.subTest(quote=quote):
+                description = self.DESCRIPTION.replace('## Rulings', quote + '\n## Rulings', 1)
+                self.assertEqual(['Ruling 2: the description lists it, but the report leaves it unmarked'],
+                                 self.problems(unmarked, description))
+
     def test_v1_reports_pass_unchanged(self):
         self.assertEqual([], self.problems((FIX / 'report-ok.md').read_text()))
         recheck = ('VERDICT: CHANGES at 9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d\n\n'

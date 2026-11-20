@@ -24,7 +24,7 @@ six steps, and each step shows only what OpenWiz has actually read:
    choose. The private brain is made by your installing agent (`openwiz init`)
    and checked as part of the project.
 3. **Give your first idea.** Your installing agent continues through
-   [install’s first-fleet branch](../skills/install/SKILL.md#5-first-fleet) with the same repository, or
+   [install's first-fleet branch](../skills/install/SKILL.md#5-first-fleet) with the same repository, or
    give it one small idea in a thread on your project. It grills you briefly.
 4. **Confirm the spec and approve the plan.** Both happen in **Decisions**, as
    two separate answers. A sent answer counts only once Decisions shows it as

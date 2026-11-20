@@ -170,13 +170,13 @@ class OnlyPublic(Case):
         self.assert_root_untouched()
 
     def test_no_page_in_the_repository_is_read_or_written(self):
-        (self.root / "docs").mkdir()
-        (self.root / "docs" / "ROADMAP.md").write_text("<!-- roadmap:now-next:begin -->\nold\n"
-                                                      "<!-- roadmap:now-next:end -->\n", encoding="utf-8")
-        before = (self.root / "docs" / "ROADMAP.md").read_bytes()
+        # #1724: the legacy path holds a directory, which no user (root
+        # included) can open as a page, so any read of it fails the run.
+        (self.root / "docs" / "ROADMAP.md").mkdir(parents=True)
         r = self.run_roadmap()
         self.assertEqual((r.code, r.err), (0, ""))
-        self.assertEqual((self.root / "docs" / "ROADMAP.md").read_bytes(), before)
+        self.assertEqual(self.read(self.public), PUBLIC)
+        self.assertTrue((self.root / "docs" / "ROADMAP.md").is_dir())
         self.assertEqual(sorted(p.name for p in self.root.rglob("*")), ["ROADMAP.md", "docs"])
 
 
