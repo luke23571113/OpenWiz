@@ -1,6 +1,6 @@
-Login: stays on your machine
-
 # OpenClaw driver
+
+Login: stays on your machine
 
 A [driver v1](../../kernel/driver.v1.md) that runs builders on this machine through [`acpx`](https://github.com/openclaw/acpx), OpenClaw's own headless command-line client for the Agent Client Protocol (MIT). It never uses the OpenClaw gateway: the gateway refuses remote agent starts by default, and this driver never asks you to loosen that. One Python file, standard library only, Linux, built on [`adapters/template/`](../template/README.md). Runs are saved in `$OPENWIZ_OPENCLAW_STATE` (default `~/.local/state/openwiz-openclaw`), owner-only.
 
