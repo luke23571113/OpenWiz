@@ -15,6 +15,7 @@
     "ASK_A_WIZ_MODEL": "synthetic/cheap-model",
     "ASK_A_WIZ_DAILY_CAP": "200",
     "ASK_A_WIZ_COUNTERS": "bound",
+    "ASK_A_WIZ_DAILY_CAP_USD": "1.00",
     "ASK_A_WIZ_MAX_PROMPT_PRICE": "0.10",
     "ASK_A_WIZ_MAX_COMPLETION_PRICE": "0.40"
   },
@@ -35,6 +36,11 @@
         "day": "2026-01-15",
         "key": "visitor:da147cbef259f07d5627eb7e94b57d5a:14",
         "count": 2
+      },
+      {
+        "day": "2026-01-15",
+        "key": "spend",
+        "count": 61000
       }
     ]
   },
@@ -56,6 +62,11 @@
         "day": "2026-01-15",
         "key": "visitor:da147cbef259f07d5627eb7e94b57d5a:14",
         "count": 2
+      },
+      {
+        "day": "2026-01-15",
+        "key": "spend",
+        "count": 61000
       }
     ]
   },

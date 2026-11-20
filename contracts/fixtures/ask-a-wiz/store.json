@@ -14,6 +14,11 @@
     },
     {
       "day": "2026-01-15",
+      "key": "spend",
+      "count": 61000
+    },
+    {
+      "day": "2026-01-15",
       "key": "visitor:da147cbef259f07d5627eb7e94b57d5a:14",
       "count": 2
     },
