@@ -164,6 +164,15 @@ fn id(word: &str) -> Result<String, String> {
     }
 }
 
+/// A model id: one or more id segments joined by `/` (no empty segment, no
+/// leading or trailing `/`), so `vendor/demo` is one.
+fn model_id(word: &str) -> Result<String, String> {
+    for segment in word.split('/') {
+        id(segment).map_err(|_| format!("bad model id {word:?}"))?;
+    }
+    Ok(word.to_owned())
+}
+
 fn family(provider: &str) -> Value {
     match provider {
         "claude-code" => json!("claude"),
@@ -189,7 +198,9 @@ fn flags(cell: &str) -> Result<[String; 3], String> {
         .and_then(|c| c.strip_suffix('`'))
         .ok_or("flags not in one code span")?;
     match inner.split(' ').collect::<Vec<_>>()[..] {
-        ["--provider", p, "--model", m, "--reasoning-level", e] => Ok([id(p)?, id(m)?, id(e)?]),
+        ["--provider", p, "--model", m, "--reasoning-level", e] => {
+            Ok([id(p)?, model_id(m)?, id(e)?])
+        }
         _ => Err(format!("bad flags {inner:?}")),
     }
 }
@@ -288,7 +299,7 @@ fn setting_table(lines: &[&str]) -> Result<Value, String> {
             .filter(|_| row.len() == 3 && row[0] == *setting)
             .ok_or_else(|| format!("bad {setting} row"))?;
         names.push(row[1].clone());
-        ids.push(id(value)?);
+        ids.push(if i == 1 { model_id(value)? } else { id(value)? });
     }
     choice([&names[0], &names[1], &names[2]], ids.try_into().unwrap())
 }
@@ -541,9 +552,9 @@ fn every_set_fixture_writes_what_its_report_says() {
                         && m["efforts"].as_array().unwrap().contains(&asked["effort"])
                 })
         });
-        let writable = ["provider", "model", "effort"]
-            .iter()
-            .all(|k| id(asked[k].as_str().unwrap()).is_ok());
+        let writable = id(asked["provider"].as_str().unwrap()).is_ok()
+            && model_id(asked["model"].as_str().unwrap()).is_ok()
+            && id(asked["effort"].as_str().unwrap()).is_ok();
         let fleet = spec["writes"]["docs/agents/fleet.md"].as_str();
         if report["outcome"] == "refused" {
             let why = if is_offered {

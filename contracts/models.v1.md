@@ -58,9 +58,16 @@ table; the section's first table is the Models table and must be exactly:
   row, no repeat, no other order.
 - **A choice row:** Harness, Model and Effort are non-empty names, and the
   flags cell is one code span, exactly
-  `--provider <id> --model <id> --reasoning-level <id>` with single spaces,
-  each id of letters, digits, `.`, `_` or `-`. The flags are what spawns;
+  `--provider <id> --model <model id> --reasoning-level <id>` with single
+  spaces. The flags are what spawns;
   the names are what people read. Readers take both as written.
+- **Ids, one rule** (the schema's `id` and `model_id`, `set`, and every
+  table reader alike): a provider or effort id is letters, digits, `.`, `_`
+  or `-`; a **model id** is one or more such segments joined by `/`, with no
+  empty segment and no leading or trailing `/` (so `vendor/demo` is one, and
+  `vendor//demo` and `vendor/` are not). No spaces, no shell metacharacters.
+  Planner's ruling, 2026-11-20: the user picks from what their harnesses
+  offer (MC5), so namespaced models are settable.
 - **A following row:** the Harness cell is exactly `follows Builder` and the
   other three cells are empty. Only Small builder and Fixer may follow.
 - **Refused, never guessed:** a reader refuses a `fleet.md` whose Models
@@ -134,7 +141,7 @@ today: `## Builder`, `## Builder for small tickets`,
 `## Reviewer for Claude-built` and `## Reviewer for GPT-built`, each a
 `| Setting | Value | \`room-cli thread spawn\` flag |` table of exactly the
 Harness, Model and Effort rows, with the flag cells `` `--provider <id>` ``,
-`` `--model <id>` `` and `` `--reasoning-level <id>` ``; and `## Fixer`, a
+`` `--model <model id>` `` and `` `--reasoning-level <id>` ``; and `## Fixer`, a
 `| Builder family | Harness | Model | Effort | \`room-cli thread spawn\` flags |`
 table with a `Claude` and a `GPT` row. All five must be present and whole,
 and the Builder's family known, or the reader refuses.
@@ -167,7 +174,9 @@ Models table now resolves to:
 
 An older row whose resolution waits can't be written: `set` leaves it as it
 was and reports it `kept`, beside the same-family warning; until the older
-tables go, their readers start that row's old choice. A `set` on a file with
+tables go, their readers start that row's old choice. An older row whose new
+model id holds a `/` is also left as it was and reported `kept`: today's
+older-table readers take no `/` and would refuse the whole file. A `set` on a file with
 only the older tables first inserts a `## Models` section, immediately
 before the first older table's heading and followed by one blank line, with
 all five rows written as choices from the older reading (Small builder and
@@ -189,12 +198,12 @@ choices without access to the harnesses.
   lists it, every provider, model and effort included, with no other
   pattern on the ids.
 - **Settable choices.** A choice can be written to the Models table only
-  when its provider, model and effort are each of the table's id form
-  (letters, digits, `.`, `_` or `-`). An offered choice outside that form
-  (a namespaced model such as `vendor/demo`) stays in the snapshot and in
-  `list`, but `set` refuses it as `not_writable` and the app shows it
-  without a Change line. Fixture: `list/` lists one; `unwritable/` refuses
-  it.
+  when its ids follow the ids rule above; a namespaced model such as
+  `vendor/demo` does, and round-trips through `set` and `show` (fixture
+  `set-namespaced/`). An offered choice outside the rule (such as
+  `syn-vendor/demo:latest`) stays in the snapshot and in `list`, but `set`
+  refuses it as `not_writable` and the app shows it without a Change line.
+  Fixture: `list/` lists both; `unwritable/` refuses the second.
 - `recommended` has the Orchestrator, Builder and Reviewer, each with its
   `choice`, its `source` and `offered`: whether this read offers that exact
   provider, model and effort. A choice is shown as recommended only when
@@ -266,7 +275,7 @@ Fix round for a GPT builder: waits
 
 Exits: 0 shown; 1 `fleet.md` missing, unreadable or refused (no model
 settings, a broken Models table, broken older tables) or an output failure;
-2 usage. Fixtures: every `*/show.json` beside its `fleet.md`.
+2 usage. Fixtures: every `*/show.json` beside its `fleet.md` (`set-namespaced/show.json` reads its `after.md`).
 
 ### `openwiz models list [--save] [--json]`
 
@@ -294,8 +303,8 @@ recommendation. Fixture: `list/`.
 
 `<role>` is `orchestrator`, `builder`, `reviewer`, `small-builder` or
 `fixer`. A choice is checked against one `cloud status` read: the provider,
-model and effort must be offered together, and each of the table's id
-form (the snapshot's settable choices). Then `set` rewrites that role's
+model and effort must be offered together, and follow the ids rule (the
+snapshot's settable choices). Then `set` rewrites that role's
 row (inserting the Models table first when only the older tables exist),
 keeps the older tables in step, writes the snapshot, and prints what
 changed, so the agent can commit it. `follows-builder` makes no read and
@@ -314,7 +323,7 @@ empty when there are none), `files` (the paths written), `warnings`,
   refusal text is exactly
   `not offered: <provider> <model> <effort>; nothing was changed`.
 - **Refused, not writable** (`refused`, exit 5): the choice is offered but
-  the Models table can't hold its ids; nothing is written; the refusal
+  its ids break the ids rule; nothing is written; the refusal
   reason is `not_writable` and its text exactly
   `cannot be written to the Models table: <provider> <model> <effort>; nothing was changed`.
 - **Nothing offered** (`no_options`, exit 13): nothing is written; the
@@ -328,7 +337,8 @@ Exits: 0 changed or unchanged; 1 `fleet.md` missing, unreadable or refused,
 a failed write, or an output failure; 2 usage (an unknown role, a wrong
 number of operands, `follows-builder` for a role that can't follow, any
 option but `--json`); 5 not offered or not writable; 13 nothing offered. Fixtures:
-`set-older/`, `set-same-family/`, `unoffered/`, `unwritable/` (each `case.json` names the
+`set-older/`, `set-same-family/`, `set-namespaced/`, `unoffered/`,
+`unwritable/` (each `case.json` names the
 starting `fleet.md`, the arguments, the exit and the expected written
 files).
 

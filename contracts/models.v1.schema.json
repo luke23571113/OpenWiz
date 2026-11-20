@@ -74,7 +74,7 @@
           "$ref": "#/$defs/id"
         },
         "model": {
-          "$ref": "#/$defs/id"
+          "$ref": "#/$defs/model_id"
         },
         "effort": {
           "$ref": "#/$defs/id"
@@ -984,12 +984,29 @@
           "$ref": "#/$defs/id"
         },
         "model": {
-          "$ref": "#/$defs/id"
+          "$ref": "#/$defs/model_id"
         },
         "effort": {
           "$ref": "#/$defs/id"
         }
       }
+    },
+    "model_id": {
+      "description": "A model id: one or more segments of letters, digits, '.', '_' and '-', joined by '/', with no empty segment and no leading or trailing '/' (so vendor/demo is one). Exactly one branch matches a good id: the third also matches any id holding '//', so such an id matches two branches and is refused.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]$"
+        },
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*[A-Za-z0-9._-]$"
+        },
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*//[A-Za-z0-9._/-]*[A-Za-z0-9._-]$"
+        }
+      ]
     }
   }
 }
