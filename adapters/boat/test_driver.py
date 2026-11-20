@@ -3,6 +3,7 @@
 
 Run: python3 -I adapters/boat/test_driver.py   (Linux: the kit watches /proc)
 """
+import ctypes
 import json
 import os
 import re
@@ -101,6 +102,10 @@ def watch(event, args):
 
 
 sys.addaudithook(watch)
+# Every process these tests start that outlives its parent comes back to this process (a subreaper), so the
+# tests find their own processes by ancestry alone.
+if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+    raise SystemExit('these tests need Linux, to keep the processes they start under them')
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'claude-opus-5-5'}
 
@@ -137,27 +142,41 @@ class Boat(unittest.TestCase):
     def only_these_tools(self):
         tools = os.path.join(self.folder, 'tools')
         os.mkdir(tools)
-        for name in ('python3', 'sh', 'sleep', 'mktemp', 'rm', 'readlink', 'ln', 'mkdir'):
+        for name in ('python3', 'sh', 'sleep', 'mktemp', 'rm', 'readlink', 'ln', 'mkdir', 'dirname'):
             os.symlink(shutil.which(name), os.path.join(tools, name))
         return tools
 
     def tearDown(self):
-        for pid in self.marked() + [w for _, w, _, _ in self.logged() if alive(w)]:
+        for pid in self.marked():
             try:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
+        self.until(lambda: not self.marked())
+        while True:  # reap what came back here
+            try:
+                if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                    break
+            except ChildProcessError:
+                break
 
     def marked(self):
-        """Every live process this test started that still carries its mark."""
-        found = []
+        """Every live process under this test process: only processes these tests started, found by their
+        parent links, never by reading another process's environment."""
+        children = {}
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
-                with open('/proc/%s/environ' % pid, 'rb') as f:
-                    if ('KIT_TEST=' + self.mark).encode() in f.read().split(b'\0') and alive(int(pid)):
-                        found.append(int(pid))
+                with open('/proc/%s/stat' % pid) as f:
+                    fields = f.read().rpartition(')')[2].split()
             except OSError:
-                pass
+                continue
+            if fields[0] != 'Z':
+                children.setdefault(int(fields[1]), []).append(int(pid))
+        found, todo = [], [os.getpid()]
+        while todo:
+            for c in children.get(todo.pop(), []):
+                found.append(c)
+                todo.append(c)
         return found
 
     def logged(self):
@@ -481,11 +500,13 @@ class Boat(unittest.TestCase):
         program = self.wrapper('audited', RAISES)
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1 and not alive(self.logged()[0][0])))
+        before = set(self.marked())  # the first turn's worker still runs
         code, err = self.driver('start', REQUEST, program=program, RAISE='after', AUDIT=seen)
         self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
         self.assertFalse(os.path.exists(seen), 'a failed start opened another process\'s environment')
         self.assertEqual(list(self.sandboxes().values())[-1], 'stopped')
-        self.assertTrue(self.until(lambda: len(self.marked()) == 1), 'the failed start\'s turn still runs')
+        self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the failed start\'s turn still runs')
         self.assertEqual(self.driver('stop', out, program=program, AUDIT=seen), (0, dict(out, stopped=True)))
         self.assertFalse(os.path.exists(seen), 'a stop opened another process\'s environment')
         self.assertTrue(self.until(lambda: not self.marked()), 'a turn still runs')
