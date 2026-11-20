@@ -61,6 +61,11 @@ if session is None:
 elif not os.path.exists(os.path.join(home, session)):
     refuse('session %s not found' % session)
 kind = 'woken' if '-s' in args else 'first'
+if os.environ.get('FAKE_ENV_LOG'):
+    with open(os.environ['FAKE_ENV_LOG'], 'w') as f:
+        json.dump(dict(os.environ), f)
+print('Synthetic droid progress: FAKE-STDOUT-MARKER', flush=True)
+print('Synthetic droid diagnostic: FAKE-STDERR-MARKER', file=sys.stderr, flush=True)
 worker = subprocess.Popen([sys.executable] + sys.argv, start_new_session=True, stdin=subprocess.DEVNULL,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                           env=dict(os.environ, FAKE_WORKER=str(os.getpid()), FAKE_SESSION=session, FAKE_KIND=kind))

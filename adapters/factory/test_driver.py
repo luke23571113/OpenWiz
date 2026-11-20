@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
-import secrets
+import ctypes
 import shutil
 import signal
 import subprocess
@@ -22,6 +22,11 @@ REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', '
            'model': 'synthetic-model-1'}
 
 
+def setUpModule():
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+        raise unittest.SkipTest('this host cannot make the test a subreaper')
+
+
 def alive(pid):
     try:
         with open('/proc/%d/stat' % pid) as f:
@@ -33,12 +38,11 @@ def alive(pid):
 class Factory(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.mkdtemp()
-        self.mark = secrets.token_hex(8)
         self.tracker = os.path.join(self.folder, 'tracker.json')
         with open(self.tracker, 'w') as f:
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
         self.turns = os.path.join(self.folder, 'turns')
-        self.env = {'HOME': self.folder, 'LANG': 'C.UTF-8', 'KIT_TRACKER': self.tracker, 'KIT_TEST': self.mark,
+        self.env = {'HOME': self.folder, 'LANG': 'C.UTF-8', 'KIT_TRACKER': self.tracker,
                     'GH_TOKEN': TOKEN, 'FACTORY_API_KEY': API_KEY, 'FAKE_TURNS': self.turns,
                     'FAKE_FACTORY_HOME': os.path.join(self.folder, 'factory'),
                     'OPENWIZ_FACTORY_STATE': os.path.join(self.folder, 'state'),
@@ -63,19 +67,30 @@ class Factory(unittest.TestCase):
                 pass
 
     def marked(self):
-        found = []
+        try:
+            while os.waitpid(-1, os.WNOHANG)[0]:
+                pass
+        except ChildProcessError:
+            pass
+        parents = {}
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
-                with open('/proc/%s/environ' % pid, 'rb') as f:
-                    if ('KIT_TEST=' + self.mark).encode() in f.read().split(b'\0') and alive(int(pid)):
-                        found.append(int(pid))
+                with open('/proc/%s/stat' % pid) as f:
+                    fields = f.read().rpartition(')')[2].split()
             except OSError:
-                pass
+                continue
+            if fields[0] != 'Z':
+                parents.setdefault(int(fields[1]), []).append(int(pid))
+        found, todo = [], [os.getpid()]
+        while todo:
+            for child in parents.get(todo.pop(), []):
+                found.append(child)
+                todo.append(child)
         return found
 
-    def call(self, cmd, request, **env):
-        p = subprocess.run([DRIVER, cmd], input=json.dumps(request), env=dict(self.env, **env),
-                           capture_output=True, text=True, timeout=60)
+    def call(self, cmd, request, cwd=None, **env):
+        p = subprocess.run([DRIVER, cmd], input=json.dumps(request), env=dict(self.env, **env), cwd=cwd,
+                           capture_output=True, text=True, timeout=60, preexec_fn=lambda: os.umask(0o022))
         return p.returncode, json.loads(p.stdout)
 
     def logged(self):
@@ -115,6 +130,64 @@ class Factory(unittest.TestCase):
         self.assertIn('no Droid session', err['error'])
         time.sleep(0.5)
         self.assertEqual((self.logged(), self.marked()), ([], []))
+
+    def until(self, ready):
+        deadline = time.monotonic() + 10
+        while not ready() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return ready()
+
+    def test_turn_inherits_the_callers_environment_unchanged(self):
+        seen = os.path.join(self.folder, 'turn-env.json')
+        code, out = self.call('start', REQUEST, FAKE_ENV_LOG=seen)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: os.path.exists(seen) and os.path.getsize(seen)), 'no turn ran')
+        with open(seen) as f:
+            self.assertEqual(json.load(f), dict(self.env, FAKE_ENV_LOG=seen))
+
+    def test_state_keeps_only_the_session_id(self):
+        code, out = self.call('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1), 'no turn ran')
+        session = self.logged()[0][2]
+        self.assertEqual(self.call('wake', out), (0, dict(out, woke=True)))
+        self.assertTrue(self.until(lambda: len(self.logged()) == 2), 'the wake ran no turn')
+        self.assertEqual(self.logged()[1][2:], (session, 'woken'))
+        kept = b''
+        for root, _, files in os.walk(self.env['OPENWIZ_FACTORY_STATE']):
+            for name in files:
+                with open(os.path.join(root, name), 'rb') as f:
+                    kept += f.read()
+        self.assertNotIn(b'FAKE-STDOUT-MARKER', kept)
+        self.assertNotIn(b'FAKE-STDERR-MARKER', kept)
+        self.assertNotIn(b'Synthetic turn.', kept)
+
+    def test_state_is_owner_only(self):
+        code, out = self.call('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+        modes = {}
+        for root, dirs, files in os.walk(self.env['OPENWIZ_FACTORY_STATE']):
+            for name in dirs + files:
+                modes[os.path.join(root, name)] = os.stat(os.path.join(root, name)).st_mode & 0o077
+        self.assertTrue(modes)
+        self.assertEqual({p: m for p, m in modes.items() if m}, {})
+
+    def test_state_others_can_read_is_refused_before_anything_runs(self):
+        shared = os.path.join(self.folder, 'shared')
+        os.mkdir(shared, 0o755)
+        os.chmod(shared, 0o755)
+        code, out = self.call('start', REQUEST, OPENWIZ_FACTORY_STATE=shared)
+        self.assertEqual(code, 1, out)
+        self.assertIn('chmod 700', out['next'])
+        time.sleep(0.5)
+        self.assertEqual((self.logged(), self.marked(), os.listdir(shared)), ([], [], []))
+
+    def test_relative_state_still_runs_the_turn(self):
+        code, out = self.call('start', REQUEST, cwd=self.folder, OPENWIZ_FACTORY_STATE='relative-state')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1), 'droid never ran its turn')
+        self.assertTrue(os.path.isdir(os.path.join(self.folder, 'relative-state', 'work', out['run'])))
 
 
 if __name__ == '__main__':
