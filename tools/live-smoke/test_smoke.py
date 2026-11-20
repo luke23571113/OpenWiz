@@ -455,7 +455,7 @@ state = pathlib.Path(os.environ['OPENWIZ_CLOUDROOM_STATE'])
 cmd = sys.argv[1]
 body = sys.stdin.read()
 with (root / 'driver-calls').open('a') as log:
-    log.write(json.dumps([cmd, json.loads(body) if body else None]) + '\\\\n')
+    log.write(json.dumps([cmd, json.loads(body) if body else None]) + '\\n')
 if cmd == 'version':
     out = {'driver': 'cloudroom', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
 elif cmd == 'start':
@@ -560,7 +560,8 @@ class Sheet(unittest.TestCase):
         path.write_text(json.dumps(kit))
         result = subprocess.run([sys.executable, '-I', str(RUNNER), '--kit', str(path),
                                  '--state', str(self.root / 'checkpoint'), '--fixture'],
-                                capture_output=True, text=True, timeout=30)
+                                capture_output=True, text=True, timeout=30,
+                                env=dict(os.environ, OPENWIZ_SMOKE_APP_TOKEN='synthetic-installation-token'))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn('thr_synthetic_private', result.stdout + result.stderr)
         self.assertEqual(json.loads(result.stdout)['claims'], {c: 'pass' for c in kit['claims']})
