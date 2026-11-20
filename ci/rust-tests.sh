@@ -198,7 +198,7 @@ if [ -n "$why" ]; then
   # threads instead of one per CPU (#1260, Q3): their cases mostly wait on
   # child processes, polls and fsyncs, so on constrained runners 8 at once
   # finish about twice as fast; the at-once path below already gives each
-  # target 8. The mode line above keeps its words (ci/escapes reads them).
+  # target 8.
   # shellcheck disable=SC2086 # the skip arguments, split
   cargo test $scope --locked -- --test-threads=8 $skip || rc=$?
   frame "rust-tests: cargo test $scope exited $rc after $(($(date +%s) - began)) s"
