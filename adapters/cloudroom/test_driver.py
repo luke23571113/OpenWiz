@@ -211,6 +211,28 @@ class Driver(unittest.TestCase):
         self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
         self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
 
+    def test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable(self):
+        # catches: a stop whose state folder AND lock file both refuse writes, with the archive refused, leaving
+        # the lock saying live, so once writes recover the next wake tells the builder (#1705, re-check).
+        if os.geteuid() == 0:
+            self.skipTest('root ignores read-only files')
+        state = self.env['OPENWIZ_CLOUDROOM_STATE']
+        code, out = self.call('start', START)
+        lockfile = os.path.join(state, out['run'] + '.lock')
+        os.chmod(lockfile, 0o400)
+        os.chmod(state, 0o500)
+        try:
+            code, err = self.call('stop', out, FAKE_ROOM_REFUSE='archive')
+        finally:
+            os.chmod(state, 0o700)
+            os.chmod(lockfile, 0o600)
+        self.assertEqual(code, 1, err)
+        self.assertNotIn('retry', json.dumps(err))
+        self.assertEqual(self.call('wake', out)[0], 1, 'a wake reached a builder whose stop never finished')
+        self.assertNotIn('tell', [c[1] for c in self.calls()])
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+        self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
