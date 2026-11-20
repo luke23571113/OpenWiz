@@ -8,7 +8,8 @@ line nests its ids under `data`, its turn ends with an `{"event": "chat", "final
 It keeps its sandboxes in the JSON file FAKE_BOAT_STATE. `boat prompt` plays the agent: a new
 conversation posts one builder status note in the local tracker KIT_TRACKER, and each later prompt
 in that conversation edits the same note; then the turn ends (see `prompt` for FAKE_HOLD).
-FAKE_BOAT_PROVIDERS (comma-separated) lists the connected providers."""
+FAKE_BOAT_PROVIDERS (comma-separated) lists the connected providers; FAKE_BOAT_FAIL (comma-separated) names
+commands that fail."""
 import fcntl, json, os, re, subprocess, sys, time
 
 STATE, ARGS = os.environ['FAKE_BOAT_STATE'], sys.argv[1:]
@@ -115,6 +116,8 @@ def prompt(args):
 
 def main():
     cmd, rest = (ARGS[0], ARGS[1:]) if ARGS else ('', [])
+    if cmd in os.environ.get('FAKE_BOAT_FAIL', '').split(','):  # a planted failure of this command
+        fail('internal_error', 'boat %s failed' % cmd)
     if cmd != 'prompt':  # every call the driver makes passes --json once, anywhere
         rest = [a for a in rest if a != '--json'] + ['--json'] * (rest.count('--json') == 1)
     if cmd == 'new' and len(rest) == 3 and rest[0] == '--name' and rest[2] == '--json':

@@ -279,32 +279,43 @@ class Boat(unittest.TestCase):
 
     def test_a_failed_stop_is_never_undone_by_a_wake(self):
         # catches: a stop whose save failed leaving the run wakeable, so once storage recovers an ordinary wake
-        # resumes the stopped sandbox and runs the builder again before anyone stops it again (#1707).
-        for block in ('staged-save', 'read-only-folder'):
+        # resumes the stopped sandbox and runs the builder again before anyone stops it again (#1707); also when
+        # both of the stop's writes fail (its record and the lock file's content), and when the lock file is gone.
+        for block in ('staged-save', 'read-only-folder', 'both-writes'):
             with self.subTest(block=block):
                 code, out = self.driver('start', REQUEST)
                 self.assertEqual(code, 0, out)
                 self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
                 state, staged = os.path.join(self.folder, 'state'), os.path.join(self.folder, 'state', out['run'] + '.json.new')
+                lock = os.path.join(state, out['run'] + '.lock')
                 os.mkdir(staged) if block == 'staged-save' else os.chmod(state, 0o500)
+                if block == 'both-writes':
+                    os.chmod(lock, 0o400)
                 code, err = self.driver('stop', out)
                 self.assertEqual(code, 1, err)
                 self.assertIn('could not save that it is stopped', err['error'])
                 os.rmdir(staged) if block == 'staged-save' else os.chmod(state, 0o700)
+                os.chmod(lock, 0o600)
                 turns, sandbox = len(self.logged()), self.sandboxes()
                 code, err = self.driver('wake', out)
                 self.assertEqual((code, len(self.logged()), self.sandboxes()), (1, turns, sandbox), 'a wake undid the stop')
                 self.assertIn('stop it again', err['next'])
                 self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
                 self.assertEqual(self.driver('wake', out)[0], 1)
+        code, out = self.driver('start', REQUEST)
+        self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
+        os.remove(os.path.join(self.folder, 'state', out['run'] + '.lock'))
+        turns = len(self.logged())
+        self.assertEqual((self.driver('wake', out)[0], len(self.logged())), (1, turns), 'a wake ran without its lock')
 
     def test_an_unexpected_error_leaves_nothing_running(self):
         # catches: an error that isn't Refused (a KeyError on the live run) skipping the cleanup once the sandbox
-        # exists, leaving the sandbox running with its agent working and the local turn alive (L2).
+        # exists, leaving the sandbox running with its agent working and the local turn alive (L2), also when
+        # `boat info` fails too.
         program = self.wrapper('raises', RAISES)
-        for when in ('before', 'after'):
-            with self.subTest(command='start', when=when):
-                code, err = self.driver('start', REQUEST, program=program, RAISE=when)
+        for when, fails in (('before', ''), ('after', ''), ('after', 'info')):
+            with self.subTest(command='start', when=when, fails=fails):
+                code, err = self.driver('start', REQUEST, program=program, RAISE=when, FAKE_BOAT_FAIL=fails)
                 self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
                 self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
                 self.assertEqual(set(self.sandboxes().values()), {'stopped'}, 'its sandbox still runs')
