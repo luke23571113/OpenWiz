@@ -52,7 +52,6 @@ def planted(name):
 
 
 def module(path):
-    """The module at path, without running it as a program."""
     name = os.path.basename(path)
     spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(name, path))
     module = importlib.util.module_from_spec(spec)
