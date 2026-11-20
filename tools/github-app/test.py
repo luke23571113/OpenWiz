@@ -21,6 +21,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 PERMISSIONS = {name: "read" for name in (
@@ -1872,6 +1873,21 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
                     result = self.run_tool("refresh-token.py", endpoint, "--write", now=start + 60)
                     self.assertEqual((result.returncode, result.stdout, result.stderr), (1, b"", self.REFUSED))
             self.assertEqual(len(mints(calls)), 1)
+
+    def test_a_failing_check_names_the_output_never_its_content(self):
+        """catches: a failure printing the runner's environment (an agent's API keys) into a log (R5, #1480)."""
+        with mock.patch.dict(os.environ, {"SYNTHETIC_RUNNER_KEY": "synthetic-runner-value"}), \
+                fake_github(self.pem) as (endpoint, calls, behavior):
+            behavior["permissions"] = SERVICE
+            self.assertEqual(self.run_tool("refresh-token.py", endpoint, "--write").returncode, 0)
+        log = self.openssl_log.read_bytes()
+        self.assertIn(b"/dev/fd/", log)
+        self.assertFalse(b"synthetic-runner-value" in log, "the runner's environment reached the tool")
+        leak = "synthetic-context synthetic-leaked-token " + self.pem.decode()
+        for check in (lambda: self.assert_no_key(leak), lambda: self.assert_hidden("synthetic-leaked-token", leak)):
+            with self.assertRaises(AssertionError) as caught:
+                check()
+            self.assertFalse("synthetic-context" in str(caught.exception), "a failure printed the output")
 
 
 sys.path.insert(0, str(HERE))  # GI3 (#2545): the identity contract's fixture test runs with release:github-app
