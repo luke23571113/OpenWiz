@@ -145,6 +145,28 @@ def lock(run):
         raise Refused('the driver cannot lock run %s in its state folder' % run, WRITABLE)
 
 
+def marked(run, mark=None):
+    """The run's lock file holds `live` until a stop begins, then `stop` for good. The file already exists, so a
+    stop can mark it even when its folder takes no new file, and the same length takes no new space (#1705)."""
+    path = os.path.join(STATE, run + '.lock')
+    if mark is None:
+        try:
+            with open(path) as f:
+                return f.read().strip()
+        except OSError:
+            return 'stop'  # unreadable: fail closed
+    try:
+        fd = os.open(path, os.O_WRONLY)
+        try:
+            os.write(fd, mark.encode())
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        return mark
+    except OSError:
+        return None
+
+
 def threads(state):
     """The run's live threads: its saved thread, or, if its id was never saved, those titled with its run id."""
     if state['thread']:
@@ -165,7 +187,11 @@ def start(req, run):
     state = {'request': req, 'title': title, 'thread': None, 'starting': True, 'stopped': False, 'archived': False}
     try:  # save the run before its thread is made: nowhere to keep it, nothing starts
         saved(run, state)
-        os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
+        fd = os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, b'live')
+        finally:
+            os.close(fd)
     except OSError:
         raise Refused('the driver cannot keep runs in its state folder; nothing was started', WRITABLE)
     try:
@@ -193,7 +219,8 @@ def start(req, run):
 def stop(run, state):
     if state.get('archived'):
         return {'run': run, 'stopped': True}
-    try:  # first, so no wake reaches the run meanwhile
+    marked(run, 'stop')  # first, and for good: no wake ever reaches this run again, even if no save below works
+    try:
         saved(run, dict(state, stopped=True))
         kept = True
     except OSError:
@@ -226,7 +253,7 @@ def answer(cmd):
         state = saved(run)
         if cmd == 'stop':
             return stop(run, state)
-        if state['stopped']:
+        if state['stopped'] or marked(run) == 'stop':
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
