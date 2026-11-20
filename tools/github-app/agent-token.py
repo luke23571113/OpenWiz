@@ -15,7 +15,9 @@ App's key, and never prints, logs or passes a token as an argument.
 Each request has its own cache file, so agents on one account never share or
 replace each other's tokens. Each run copies its token into a snapshot file
 that lives only while COMMAND runs; gh gets it as GH_TOKEN and git through
-`credential --snapshot`, which answers only git's own credential exchange.
+`credential --snapshot`, which answers only git's own HTTPS transport. Whenever
+it cannot answer inside a run, it prints one note and tells git to quit, so git
+never signs in as another account after the App was chosen.
 
 With OPENWIZ_TOKEN_SERVICE unset or empty, each command changes nothing and
 prints nothing: run runs COMMAND exactly as today.
@@ -41,6 +43,7 @@ REFUSALS = {"usage": 2, "one-owner": 2, "not-installed": 3, "permission": 5,
             "github": 5, "expiry": 5, "unavailable": 1}
 REFRESH_AT_S, MAX_LIFETIME_S, TIMEOUT_S = 300, 3900, 60
 NOTE = "openwiz: no openwiz[bot] token ({}); using the owner's GitHub account\n"
+WITHHELD = "openwiz: openwiz[bot] token withheld from git ({}); git stops rather than use another account\n"
 REQUESTER = re.compile(r"[a-z][a-z0-9-]{0,63}")
 REPOSITORY = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+")
 TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
@@ -139,11 +142,22 @@ def mint(argv, wanted, env):
     return ("bad-answer", None, None) if got is None else (None, *got)
 
 
+def _outside_git(fd):
+    try:
+        os.stat(".git", dir_fd=fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    raise Refused("the private token directory must be outside every Git working tree")
+
+
 class Private:
     """The 0700 directory, outside every Git working tree, that holds token files.
 
-    Its path may not pass through a symlink, and every file operation goes
-    through one descriptor opened on it, so no path swap can redirect a write.
+    It is reached one component at a time from `/`, each opened with O_NOFOLLOW
+    relative to the last, and every check and file operation uses those held
+    descriptors, so no swap of a path component can redirect a write. Every
+    directory on the way is owned by root or the caller, and one that others can
+    write to must be sticky, so no other user can move what it holds.
     """
 
     def __init__(self, env, create):
@@ -155,25 +169,47 @@ class Private:
         if not os.path.isabs(raw):
             raise Refused("the private token directory must be an absolute path")
         self.path = os.path.normpath(raw)
-        parent = os.path.dirname(self.path)
-        if os.path.realpath(parent) != parent or os.path.islink(self.path):
-            raise Refused("the private token directory must not pass through a symlink")
-        for above in (self.path, *Path(self.path).parents):
-            if os.path.lexists(os.path.join(above, ".git")):
-                raise Refused("the private token directory must be outside every Git working tree")
-        if create:
-            os.makedirs(parent, mode=0o700, exist_ok=True)
-            try:
-                os.mkdir(self.path, 0o700)
-            except FileExistsError:
-                pass
+        fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
         try:
-            self.fd = os.open(self.path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            for part in [p for p in self.path.split("/") if p]:
+                child = self._step(fd, part, create)
+                os.close(fd)
+                fd = child
+            _outside_git(fd)
+            info = os.fstat(fd)
+            if info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise Refused("the private token directory must be a 0700 directory you own")
+        except BaseException:
+            os.close(fd)
+            raise
+        self.fd = fd
+
+    @staticmethod
+    def _step(fd, part, create):
+        """The descriptor of `part` inside `fd`, created 0700 when missing."""
+        _outside_git(fd)
+        above, me = os.fstat(fd), os.getuid()
+        others = above.st_mode & 0o002 or (above.st_mode & 0o020 and above.st_gid != os.getgid())
+        if above.st_uid not in (0, me) or (others and not above.st_mode & stat.S_ISVTX):
+            raise Refused("the private token directory must sit in folders only you or root can change")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        try:
+            try:
+                child = os.open(part, flags, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(part, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                child = os.open(part, flags, dir_fd=fd)
         except OSError:
-            raise Refused("the private token directory must be a 0700 directory you own")
-        info = os.fstat(self.fd)
-        if info.st_uid != os.getuid() or info.st_mode & 0o077:
-            raise Refused("the private token directory must be a 0700 directory you own")
+            raise Refused("the private token directory must be a real directory, through no symlink")
+        if os.fstat(child).st_uid not in (0, me):
+            os.close(child)
+            raise Refused("the private token directory must sit in folders only you or root can change")
+        return child
 
     def read(self, name):
         try:
@@ -350,45 +386,68 @@ def execute(command, env, wait=False):
             continue  # the terminal's interrupt reached the command too
 
 
-def only_git_asks(snapshot, env):
-    """True only inside git's own exchange, with this run's helper the last one git uses."""
+def only_git_transport(snapshot, env):
+    """None inside git's own HTTPS transport with this run's helper last, else the reason."""
     try:
         parent = subprocess.run(["ps", "-o", "comm=", "-p", str(os.getppid())],
                                 capture_output=True, text=True, timeout=10).stdout.strip()
         listed = subprocess.run(["git", "config", "--list", "-z"], capture_output=True,
                                 env=env, timeout=10)
     except (OSError, subprocess.SubprocessError):
-        return False
-    if not os.path.basename(parent).startswith("git") or listed.returncode != 0:
-        return False
+        return "cannot check the caller"
+    # git-remote-https (truncated to 15 characters by ps on Linux) sends the answer
+    # to github.com only; `git credential fill` would print it to its caller.
+    if not os.path.basename(parent).startswith("git-remote-http") or listed.returncode != 0:
+        return "not git's HTTPS transport"
     helpers = []
     for item in listed.stdout.split(b"\0"):
         key, _, value = item.decode("utf-8", "replace").partition("\n")
         if key.lower().startswith("credential.") and key.lower().endswith(".helper"):
             helpers.append((key, value))
-    return helpers[-2:] == [(GIT_HELPER_KEY, ""), (GIT_HELPER_KEY, git_helper(snapshot))]
+    if helpers[-2:] != [(GIT_HELPER_KEY, ""), (GIT_HELPER_KEY, git_helper(snapshot))]:
+        return "another credential helper follows"
+    return None
 
 
-def credential(args, env):
-    """git's credential helper: answer `get` for https://github.com from this run's snapshot."""
-    if len(args) != 3 or args[0] != "--snapshot" or args[2] != "get" or not configured(env):
-        return 0
-    snapshot = args[1]
-    private = Private(env, create=False)
+def snapshot_token(snapshot, env):
+    """(None, token) for git's own transport in this run, else (reason, None)."""
+    try:
+        private = Private(env, create=False)
+    except Refused:
+        return "no private directory", None
     name = os.path.basename(snapshot)
     if (snapshot != env.get(RUN_MARK) or os.path.dirname(snapshot) != private.path
             or not re.fullmatch(r"run-[0-9a-f]{32}\.json", name)):
-        return 0
-    fields = dict(line.split("=", 1) for line in sys.stdin.read().splitlines() if "=" in line)
-    if fields.get("protocol") != "https" or fields.get("host") != "github.com":
-        return 0
-    if not only_git_asks(snapshot, env):
-        return 0
+        return "not this run's helper", None
+    reason = only_git_transport(snapshot, env)
+    if reason:
+        return reason, None
     held = private.read(name)
     if (isinstance(held, dict) and isinstance(held.get("token"), str)
             and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
             and held["expires_at"] > time.time()):
-        sys.stdout.write(f"username=x-access-token\npassword={held['token']}\n")
+        return None, held["token"]
+    return "no current token", None
+
+
+def credential(args, env):
+    """git's credential helper: answer `get` for https://github.com from this run's snapshot.
+
+    Inside a run git signs in as the App or not at all: when this helper cannot
+    answer, it prints one note and answers `quit=1`, so git stops before any later
+    helper can sign it in as someone else.
+    """
+    if len(args) != 3 or args[0] != "--snapshot" or args[2] != "get" or not configured(env):
+        return 0
+    fields = dict(line.split("=", 1) for line in sys.stdin.read().splitlines() if "=" in line)
+    if fields.get("protocol") != "https" or fields.get("host") != "github.com":
+        return 0
+    reason, token = snapshot_token(args[1], env)
+    if reason:
+        sys.stderr.write(WITHHELD.format(reason))
+        sys.stdout.write("quit=1\n")
+    else:
+        sys.stdout.write(f"username=x-access-token\npassword={token}\n")
     return 0
 
 

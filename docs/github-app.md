@@ -242,15 +242,19 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   account never share or replace each other's tokens, in a 0700 directory you own,
   outside every Git working tree and reached through no symlink: `OPENWIZ_AGENT_TOKEN_DIR`,
   else `$XDG_RUNTIME_DIR/openwiz-agent-token`, else `~/.cache/openwiz-agent-token`.
-  Anything else is refused before any call. Files are written through one descriptor
-  on that directory.
+  The helper reaches it one folder at a time from `/`, through held descriptors and never
+  through a symlink. Every folder on the way must be owned by root or you, and one others
+  can write to must be sticky, like `/tmp`. Anything else is refused before any call.
 - **Handing it over.** `run` copies the token into a snapshot file that exists only while
   the command runs. It puts `GH_TOKEN` in the command's own environment and, through
   `GIT_CONFIG_*` variables, resets git's credential helpers for `https://github.com` to
   one that reads that snapshot, so gh and git use the same token. That helper answers
-  only when git itself asks and it is the last credential helper git would use, so a
-  `store` helper anywhere, a `-c credential.helper=...` included, never receives the
-  token; run by hand, it prints nothing. Nothing is exported to the agent's shell.
+  only git's own HTTPS transport (`git-remote-https`), and only when it is the last
+  credential helper git would use. In every other case inside a run, such as `git credential
+  fill`, a hand-run call or a `-c credential.helper=...` after it, it writes one line to
+  standard error, `openwiz: openwiz[bot] token withheld from git (<reason>); git stops
+  rather than use another account`, and tells git to quit. git then fails, rather than
+  print the token or sign in as the owner. Nothing is exported to the agent's shell.
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
   fresh request. An answer is used only when it names exactly the requested
   repositories and permissions and has more than 300 and at most 3900 seconds left.
