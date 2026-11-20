@@ -179,6 +179,11 @@ class MintedToken(Helper):
         git = self.helper("run", "--", "git", "credential", "fill", stdin="protocol=https\nhost=github.com\n\n")
         self.assertEqual(git.returncode, 0, git.stderr)
         self.assertIn(f"password={TOKEN}\n", git.stdout)  # git's own pipe back to its caller
+        # The owner's store helper never gets the token: run resets git's helper list.
+        (self.home / ".gitconfig").write_text("[credential]\n\thelper = store\n")
+        stored = self.helper("run", "--", "git", "credential", "approve", stdin=git.stdout + "\n")
+        self.assertEqual(stored.returncode, 0, stored.stderr)
+        self.assertFalse((self.home / ".git-credentials").exists())
         self.assertEqual(len(self.service_calls()), 1, "a fresh token is reused, not minted again")
         self.assert_never_exposed(started, ran)
 
@@ -216,7 +221,7 @@ class MintedToken(Helper):
         self.assert_never_exposed(started)
         for readback in (None, "", "inconclusive", "failed", "Passed"):
             with self.subTest(readback=readback):
-                self.log.unlink()
+                self.log.unlink(missing_ok=True)
                 off = self.start(OPENWIZ_TOKEN_SERVICE_READBACK=readback)
                 self.assertEqual(self.calls(), [], "no pairing call while the read-back has not passed")
                 self.assert_fallback(off, "pairing-off")
@@ -238,6 +243,10 @@ class MintedToken(Helper):
         self.assertEqual(refused.returncode, 2)
         self.assertEqual(self.calls(), [])
         self.assertFalse((tree / "private" / "token.json").exists())
+        self.private.mkdir(mode=0o755)
+        self.private.chmod(0o755)
+        loose = self.start()
+        self.assertEqual((loose.returncode, self.calls()), (2, []), "a directory others can read is refused")
 
 
 class Fallback(Helper):
@@ -265,6 +274,7 @@ class Fallback(Helper):
         ran = self.helper("run", "--", "gh", "pr", "list", GH_TOKEN=OLD)
         self.assert_fallback(ran, "unreachable")
         self.assertIsNone(self.calls("gh")[-1]["gh_token"], "the held App token is not handed on")
+        self.assertIsNone(self.service_calls()[-1]["gh_token"], "nor passed to the service call")
         git = self.helper("run", "--", "git", "credential", "fill",
                           stdin="protocol=https\nhost=github.com\n\n")
         self.assertNotIn(OLD, git.stdout)
@@ -283,9 +293,10 @@ class Fallback(Helper):
         twice = {"exit": 0, "stdout": answer()["stdout"].replace('"kind"', '"token": "x", "kind"')}
         bad_exit = dict(refusal("permission"), exit=0)
         injected = answer(token="synthetic\nusername=x")
+        failed_answer = dict(answer(), exit=5)
         for reason, item in [*cases.items(), ("bad-answer", wider), ("bad-answer", short),
                              ("bad-answer", long), ("bad-answer", twice), ("bad-answer", bad_exit),
-                             ("bad-answer", injected)]:
+                             ("bad-answer", injected), ("bad-answer", failed_answer)]:
             with self.subTest(reason=reason, item=item["stdout"][:60]):
                 self.log.unlink(missing_ok=True)
                 self.answers(item)

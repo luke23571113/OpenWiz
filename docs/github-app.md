@@ -259,6 +259,51 @@ installation id, state directory) stay in the private record, never on GitHub.
    numbers on the ticket.
 
 
+## The agent helper (GA3)
+
+An agent gets its `openwiz[bot]` token from the owner's token service through
+`tools/github-app/agent-token.py`, under [the token-service
+contract](../contracts/token-service.v1.md). The App's key stays on the owner's
+machine: the helper never asks for, reads or holds it.
+
+```sh
+# Once, at the agent's start: record the request and get the first token.
+python3 -I tools/github-app/agent-token.py start --requester builder-123 \
+  --repository OWNER/NAME [--repository OWNER/OTHER] [--read]
+# Each GitHub command: gh gets GH_TOKEN, git a credential helper, in this child only.
+python3 -I tools/github-app/agent-token.py run -- gh issue comment 123 --body-file note.md
+python3 -I tools/github-app/agent-token.py run -- git push origin HEAD
+```
+
+- **Configuration.** `OPENWIZ_TOKEN_SERVICE` (the service's absolute path on the
+  owner's machine) and `OPENWIZ_TOKEN_SERVICE_ROUTE` (`pairing` for a cloud thread,
+  `local` on the owner's machine). The pairing route is **off** until
+  `OPENWIZ_TOKEN_SERVICE_READBACK` is exactly `passed`, which the owner sets only after
+  GA5's live read-back finds no pairing log or `mac run` result record keeping a
+  token. With `OPENWIZ_TOKEN_SERVICE` unset, `start` and `run` change nothing and
+  print nothing.
+- **How the token crosses.** The request goes on standard input; the token comes
+  back only as the piped standard output of one `room-cli mac run --stdin` call (or
+  the local call), read straight into the private file. The call's standard error is
+  discarded. No token is ever on a command line, in a terminal or in a log.
+- **The private file.** `token.json` (0600) in a 0700 directory you own, outside every
+  Git working tree: `OPENWIZ_AGENT_TOKEN_DIR`, else `$XDG_RUNTIME_DIR/openwiz-agent-token`,
+  else `~/.cache/openwiz-agent-token`. Anything else is refused before any call.
+- **Handing it over.** `run` puts `GH_TOKEN` in the command's own environment and,
+  through `GIT_CONFIG_*` variables, resets git's credential helpers for
+  `https://github.com` to one that reads the private file, so no other helper (such
+  as `store`) receives the token. Nothing is exported to the agent's shell.
+- **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
+  fresh request. An answer is used only when it names exactly the requested
+  repositories and permissions and has more than 300 and at most 3900 seconds left.
+- **Fallback.** When no token can be had, the helper deletes the private file, hands
+  no App token to the command, and writes exactly one line to standard error:
+  `openwiz: no openwiz[bot] token (<reason>); using the owner's GitHub account`. The
+  reasons are `unreachable`, `bad-answer`, `pairing-off` and the service's refusal
+  codes. gh and git then both use the owner's existing login, as today.
+- **Proof.** `python3 -I tools/github-app/test_agent_token.py` runs the helper against
+  a fake service, a fake `room-cli` and a fake `gh`, with synthetic tokens only.
+
 ## Revoke
 
 In **Settings → Applications → Installed GitHub Apps → Configure**, choose
