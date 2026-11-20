@@ -319,16 +319,19 @@ class HarnessSkills(Bundles):
 
     def test_a_user_entry_at_the_staging_or_backup_path_is_kept_and_nothing_is_written(self):
         # catches (#1594): the owner's folder at the installer's fixed staging or backup path deleted with exit 0;
-        # the same path as a plain file refused only after the canonical copies were written
+        # the same path as a plain file refused only after the canonical copies were written; a folder holding a
+        # file named like the copy mark but with other text taken as the installer's own and deleted
         for name in ('.openwiz-stage-grill', '.openwiz-old-grill'):
-            for kind in ('dir', 'file'):
+            for kind in ('dir', 'file', 'fake-mark'):
                 with self.subTest(name=name, kind=kind):
                     home = self.base / f'home{name}-{kind}'
                     shutil.rmtree(self.root / 'skills', ignore_errors=True)  # no earlier case's copies
                     entry = home / '.claude/skills' / name
-                    if kind == 'dir':
+                    if kind in ('dir', 'fake-mark'):
                         entry.mkdir(parents=True)
                         (entry / 'notes.md').write_bytes(b'Synthetic owner notes.\n')
+                        if kind == 'fake-mark':
+                            (entry / '.openwiz-skill').write_bytes(b'Synthetic unrelated text.\n')
                     else:
                         entry.parent.mkdir(parents=True)
                         entry.write_bytes(b'Synthetic owner notes.\n')
