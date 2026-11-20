@@ -20,6 +20,8 @@ CI runs them through `tests/checks/skills.rs` (`install_journey_and_live_kit_pas
 | `kit.py`, `first_merge_kit.py` | Dry run, eligibility check and result or receipt validator for [first-hour-live-kit.md](../../first-hour-live-kit.md) and its 0.0.16 extension |
 | `providers/` | The recording and fault providers |
 
+## Evidence and validation
+
 Documents are strict `openwiz.first-hour.v1` JSON, checked by the [schema](../first-hour-contract/first-hour.schema.json) and [cross-field checks](../first-hour-contract/check.py); see the [synthetic examples](../../../../tests/fixtures/first-hour/README.md). The clock runs from opening the install instruction to GitHub's read-back of the first merge, at most 3,600,000 ms. Its three gates are `cloudroom_setup`, `paid_offer` (the offer is free-only, settled by #2293) and `feedback` (settled by #2292).
 
 ## Fault cases

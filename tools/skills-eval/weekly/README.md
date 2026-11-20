@@ -10,7 +10,7 @@ python3 -I tools/skills-eval/weekly/run.py loop-definition --prompt-file FILE   
 
 `collect.py` reads every page of the week's issue and pull request comments, inline review comments and reviews; any failed or partial read refuses the whole week. `run.tick` saves a prepared week, then commits cases, provenance and checkpoints in one atomic replacement, so a crash resumes without reading again. Evidence is `fake` (fixtures, zero cost) or `measured` (real E1 scores and costs, labelled `measured run`).
 
-## Weekly runbook
+## Weekly runbook (#1363)
 
 1. **Collect** the UTC week that ended at this Monday 00:00: `run.py sources --repo OWNER/NAME --week W` prints its records to the terminal only. Write a drafts file mapping **every** printed URL to `null` or `{incident, case}`: a synthetic E1 case, with no quotes or links.
 2. **Tick:** `run.py tick --repo R --week W --state DIR --drafts FILE --report DIR`, adding `--experiments`, `--baseline`, `--evidence`, `--cuts` and `--tokens` files when their owners have them. An undecided URL, a bad draft or a read gap leaves the last checkpoint as it was and reports the gap.
