@@ -25,11 +25,10 @@ HARNESSES = {'claude': lambda model, mode, prompt: ['-p', prompt, '--model', mod
 MODE_ROW = '| Harness permission mode |'
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 SETTLE = float(os.environ.get('OPENWIZ_LOCAL_SETTLE') or 30)  # seconds start watches the first turn
-SECRET = re.compile(r'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|xox[abposr]-|sk-[A-Za-z0-9_-]{20,}'
-                    r'|Bearer\s|(?i:token|secret|password|api[-_]?key)\s*[=:]')
-# A first-turn log line that says the harness was refused, or isn't signed in.
-REFUSED = re.compile(r'(?i)denied|refused|not allowed|permission|oauth|log ?in\b|sign ?in\b|authenticat|unauthori[sz]ed'
-                     r'|expired|credential')
+# First-turn log lines that say the harness isn't signed in, or was refused a tool. The driver only classifies
+# them: raw harness and tool output stays in the run's owner-only log, never in its JSON (N2).
+SIGNED_OUT = re.compile(r'(?i)oauth|log ?in\b|sign ?in\b|authenticat|unauthori[sz]ed|expired|credential')
+REFUSAL = re.compile(r'(?i)denied|refused|not allowed|permission')
 
 
 class Refused(Exception):
@@ -68,11 +67,13 @@ def program(harness):
     return path
 
 
-def one_line(text, limit=200):
-    """The last non-empty line of text, short enough for an error, or '' when it could hold a credential."""
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    line = lines[-1] if lines else ''
-    return '' if SECRET.search(line) else line[:limit]
+def log_path(run):
+    """The run's owner-only log: the clone's and every turn's raw output."""
+    return os.path.join(STATE, run + '.log')
+
+
+def open_log(run):
+    return os.open(log_path(run), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
 
 
 def workspace(run, repository):
@@ -83,14 +84,19 @@ def workspace(run, repository):
                       'install the GitHub CLI (gh) on this machine and sign in to it yourself, then start again')
     folder = os.path.join(STATE, 'work', run)
     os.makedirs(os.path.dirname(folder), mode=0o700, exist_ok=True)
+    log = open_log(run)
     try:
-        p = subprocess.run([gh, 'repo', 'clone', repository, folder], stdin=subprocess.DEVNULL,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=600)
+        code = subprocess.run([gh, 'repo', 'clone', repository, folder], stdin=subprocess.DEVNULL, stdout=log,
+                              stderr=log, timeout=600).returncode
     except (OSError, subprocess.TimeoutExpired) as e:
-        p = subprocess.CompletedProcess([], 1, stderr=str(e))
-    if p.returncode != 0 or not os.path.isdir(folder):
-        raise Refused(('could not clone %s: %s' % (repository, one_line(p.stderr) or 'gh failed')).strip(),
-                      'check that `gh repo clone %s` works on this machine, then start again' % repository)
+        os.write(log, ('driver: gh repo clone did not finish: %s\n' % type(e).__name__).encode())
+        code = None
+    finally:
+        os.close(log)
+    if code != 0 or not os.path.isdir(folder):
+        raise Refused('run %s could not clone %s (gh exit %s); nothing was started' % (run, repository, 'unknown'
+                      if code is None else code), 'read %s, check that `gh repo clone %s` works on this machine, then start again'
+                      % (log_path(run), repository))
     return folder
 
 
@@ -198,7 +204,7 @@ def launch(state, run, woken):
     req = state['request']
     cmd = [state['program']] + HARNESSES[req['harness']](req['model'], state['mode'], prompt(req, woken))
     try:
-        log = os.open(os.path.join(STATE, run + '.log'), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        log = open_log(run)
     except OSError:
         log = subprocess.DEVNULL  # the run is saved; a log it can't open never stops its turn
     try:
@@ -296,18 +302,17 @@ def ended_at_once(run, turn):
         return
     code = exited(run, turn)
     try:
-        with open(os.path.join(STATE, run + '.log'), errors='replace') as f:
+        with open(log_path(run), errors='replace') as f:
             log = f.read()
     except OSError:
         log = ''
-    said = [line for line in log.splitlines() if REFUSED.search(line)]
-    if code == 0 and not said:
+    why = ('the harness is not signed in' if SIGNED_OUT.search(log) else
+           'the harness refused a tool' if REFUSAL.search(log) else None if code == 0 else 'the harness failed')
+    if why is None:
         return
     end([turn], run)
-    why = 'exit %s' % ('unknown' if code is None else code)
-    last = one_line('\n'.join(said) or log)
-    raise Refused('run %s: the first turn ended at once (%s): %s' % (run, why, last or 'it printed nothing the driver kept'),
-                  'read %s, fix what the harness refused, then start again' % os.path.join(STATE, run + '.log'))
+    raise Refused('run %s: the first turn ended at once: %s (exit %s)' % (run, why, 'unknown' if code is None else code),
+                  'read %s, fix what it says there, then start again' % log_path(run))
 
 
 def stopped(run, state):
