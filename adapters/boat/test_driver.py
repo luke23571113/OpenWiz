@@ -274,6 +274,7 @@ class Boat(unittest.TestCase):
                 os.mkdir(staged) if block == 'staged-save' else os.chmod(state, 0o500)
                 code, err = self.driver('stop', out)
                 self.assertEqual(code, 1, err)
+                self.assertIn('could not save that it is stopped', err['error'])
                 os.rmdir(staged) if block == 'staged-save' else os.chmod(state, 0o700)
                 turns, sandbox = len(self.logged()), self.sandboxes()
                 code, err = self.driver('wake', out)

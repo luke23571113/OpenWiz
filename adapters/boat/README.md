@@ -10,7 +10,7 @@ A [driver v1](../../kernel/driver.v1.md) that runs each builder in its own [boat
 
 Each turn is a local `boat prompt` under its own supervisor (a subreaper), so the driver can answer at once, and `stop` reaches every process the turn started, whatever its session or environment. The turn's output goes to an owner-only log beside the run's state, deleted on `stop`.
 
-**Never two agents, never one left running.** A wake and a stop hold the run's lock throughout, so they take turns. The driver saves a run before it starts anything for it. A run stays `starting` until its first turn is saved: a wake refuses it, and a stop still reaches its sandbox. If a save fails after a turn began, the driver ends that turn (and, for a start, stops the sandbox) and says the outcome is unknown, never to do it again. A stop that can't save still ends everything, then says so.
+**Never two agents, never one left running.** A wake and a stop hold the run's lock throughout, so they take turns. The driver saves a run before it starts anything for it. A run stays `starting` until its first turn is saved: a wake refuses it, and a stop still reaches its sandbox. If a save fails after a turn began, the driver ends that turn (and, for a start, stops the sandbox) and says the outcome is unknown, never to do it again. A stop that can't save still ends everything, then says so. It first marks the run as stopping in the run's existing lock file, which needs no new file in the folder. Until a stop succeeds, a wake refuses that run, even once the folder can be written again.
 
 `version` adds `many-at-once` and `own-sandbox` to `can`: every run gets its own sandbox, and a boat plan runs many at once.
 
