@@ -64,6 +64,9 @@ elif where and args[:4] == ['commit', '-q', '--allow-empty', '-m'] and len(args)
 elif where and args[:3] == ['push', '-q', '--dry-run'] and len(args) == 5:
     with open(os.path.join(os.environ['HOME'], '.fake-github-pushes'), 'a') as f:
         f.write('dry-run %s %s\n' % (args[3], args[4]))
+    if args[4].rpartition(':')[2][len('refs/heads/'):] in os.environ.get('FAKE_GITHUB_BRANCHES', '').split(','):
+        sys.stderr.write(' ! [rejected]        %s (fetch first)\n' % args[4])
+        sys.exit(1)
     if os.environ.get('FAKE_BOAT_PUSH') == 'denied':
         sys.stderr.write('remote: Permission to %s denied to synthetic-app[bot].\n'
                          "fatal: unable to access '%s': The requested URL returned error: 403\n"

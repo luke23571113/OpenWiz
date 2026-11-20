@@ -570,6 +570,11 @@ class Boat(unittest.TestCase):
                              ['dry-run https://github.com/example/site.git HEAD:refs/heads/openwiz-push-check'])
         self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
 
+    def test_a_writable_repository_that_has_an_old_probe_branch_starts(self):
+        code, out = self.driver('start', REQUEST, FAKE_GITHUB_BRANCHES='openwiz-push-check')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+
     def test_the_kits_start_check_names_the_push_fix(self):
         p = subprocess.run([sys.executable, '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
                             '--ticket', '7', '--harness', 'claude', '--model', 'claude-opus-5-5',
