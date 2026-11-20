@@ -227,9 +227,11 @@ def build(root, run, live):
     if errors:
         raise ValueError('refused generated plan: ' + '; '.join(errors))
     dispatch = {k: requirements[k] == 'true' for k in FLAGS}
-    # Nothing traces or plants since #1486; ci.yml's other jobs still read both.
+    # Nothing traces or plants since #1486. ci.yml's always, rust and ci jobs
+    # still read `trace` as a main push's or the nightly run's full mode.
     dispatch.update(skills=selected_skills,
-        rust=record['lanes']['rust']['decision'] == 'run', release=release, trace=False, planted=False)
+        rust=record['lanes']['rust']['decision'] == 'run', release=release,
+        trace=run['event'] in ('push', 'schedule') and run['base_branch'] == 'main', planted=False)
     return record, dispatch
 
 

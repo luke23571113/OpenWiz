@@ -54,7 +54,7 @@ class MainRunAge(unittest.TestCase):
         gh.chmod(0o755)
 
     def at(self, minutes):
-        return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(self.NOW - minutes * 60))
+        return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(round(self.NOW - minutes * 60)))
 
     def gate(self, runs, fail=False):
         """runs: (id, event, updated minutes ago, ci job's completion minutes ago or None)."""
@@ -88,8 +88,7 @@ class MainRunAge(unittest.TestCase):
 
     def test_exactly_120_minutes_is_not_older_but_one_second_more_is(self):
         self.assertEqual(self.gate([(5, 'push', 100, 120)]), 'trace=false\n')
-        self.NOW += 1
-        self.assertEqual(self.gate([(5, 'push', 100, 120)]), 'trace=true\n')
+        self.assertEqual(self.gate([(5, 'push', 100, 120 + 1 / 60)]), 'trace=true\n')
 
     def test_a_light_push_a_pull_request_or_this_run_is_not_a_full_run(self):
         runs = [(77, 'push', 1, 1), (6, 'push', 5, None), (7, 'pull_request', 5, 5), (8, 'merge_group', 5, 5)]

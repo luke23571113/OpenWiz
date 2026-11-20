@@ -6,7 +6,9 @@ on:
   pull_request:
     branches: [main, 'release-*']
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-  # #1055, #1486: main pushes run main-light only; the nightly run stays full.
+  # #1055: main pushes keep main-light; only one whose last full main run is
+  # over 120 minutes old runs the full plan too (#1486: no map since).
+  # Nightly stays full.
   push:
     branches: [main]
   # Full safety run on main, regardless of changed paths.
@@ -43,6 +45,12 @@ env:
 jobs:
 
   changes:
+    # The workflow's grants, and actions: read for the last full main run (#1486).
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+      actions: read
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
     timeout-minutes: 5
     outputs:
@@ -282,16 +290,59 @@ jobs:
               sys.exit(1)
           sys.exit(guard(Path('.'), 'HEAD', os.environ))
           PY
-      # #1486: a push to main writes no plan (main-light only); merge groups
-      # and the nightly run test main in full.
+      # #1055, #1486: a main push runs the full plan only when main's last
+      # full run (a push or the nightly run whose ci job passed) finished over
+      # 120 minutes ago, as the signed map's age did. GitHub's own run list is
+      # the evidence; an unreadable answer fails this job, never a decision.
+      - name: Check the last full main run
+        id: main_age
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I - <<'PY_MAIN_AGE'
+          from datetime import datetime
+          import json
+          import os
+          import subprocess
+          import sys
+          import time
+
+          def get(path):
+              return json.loads(subprocess.check_output(['sh', 'ci/retry.sh', '3', '--', 'gh', 'api', path], text=True))
+
+          def stamp(value):
+              if not isinstance(value, str) or not value.endswith('Z'):
+                  raise ValueError('not a UTC time')
+              return datetime.fromisoformat(value[:-1] + '+00:00').timestamp()
+
+          try:
+              repo, now, cutoff = os.environ['GITHUB_REPOSITORY'], time.time(), time.time() - 120 * 60
+              runs = get(f'repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=50')
+              last = None
+              for run in runs['workflow_runs']:
+                  if stamp(run['updated_at']) < cutoff:
+                      break
+                  if run['event'] not in ('push', 'schedule') or str(run['id']) == os.environ['GITHUB_RUN_ID']:
+                      continue
+                  for job in get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100")['jobs']:
+                      if job['name'] == 'ci' and job['conclusion'] == 'success':
+                          last = max(last or 0, stamp(job['completed_at']))
+          except Exception as error:
+              sys.exit(f'Last full main run: unknown ({type(error).__name__}); refusing a decision')
+          trace = last is None or now - last > 120 * 60
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'trace={str(trace).lower()}\n')
+          print('Last full main run: ' + (f'{now - last:.0f}s ago' if last else 'none in 120 minutes') + f'; trace={str(trace).lower()}')
+          PY_MAIN_AGE
       - name: Write the CI plan
         id: plan
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || steps.main_age.outputs.trace == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 -I .github/actions/docs-only/plan.py "$RUNNER_TEMP/ci-plan"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || steps.main_age.outputs.trace == 'true'
         with:
           name: ci-selection-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-plan/*.json
