@@ -213,6 +213,27 @@ with `--json`, or text lines without it. A handled error with `--json` is
 the CLI's existing `openwiz.cli-error.v1` document. Exit numbers keep the
 [CLI contract](cli.v1.md#fixed-exits-and-existing-results)'s meanings.
 
+**The CLI rows.** These are the CLI contract's forms `models.show`,
+`models.list` and `models.set`, with results `models.v1.schema.json#/$defs/show_report`,
+`list_report` and `set_report`; they are **not shipped** until MD2 (#1804)
+merges, and until then they are absent from `help --agent`'s catalogue and
+human help. Plain `openwiz models [--json]` is unchanged. `cli.v1.md` is a
+contract WizSkills carries byte for byte, so these rows live here until a
+WizSkills release carries them; `cli.v1.schema.json` already lists their
+effect.
+
+| Form | Effects | Sources |
+| --- | --- | --- |
+| `models.show` | `source_read` (`docs/agents/fleet.md` only) | none |
+| `models.list` | `source_read`; with `--save`, `project_write` (`docs/agents/models-offered.json`) | `room-cli` |
+| `models.set` | `source_read`, `project_write` (`docs/agents/fleet.md`, `docs/agents/models-offered.json`) | `room-cli`, except `follows-builder` |
+
+`project_write` is a write to a file of the project checkout under the
+current directory, never to OpenWiz state, CloudRoom or GitHub; the agent
+commits it. Each form reads one `cloud status` at most, takes options once
+with separate values, refuses unknown, repeated or non-UTF-8 arguments, and
+reads no stdin. `--help`/`-h` prints the form's help and exits 0.
+
 ### `openwiz models show [--json]`
 
 Reads `fleet.md` only: no `cloud status` read, no write. The report
