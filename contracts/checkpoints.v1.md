@@ -29,7 +29,7 @@ A spec body carries one section, written by plan-graph's to-spec when the spec i
 - User-visible: <yes|yes, a release|no>
 ```
 
-- **Lines.** A reader first turns every CRLF and lone CR into LF. A **fenced block** runs from a fence line (up to three spaces, then three or more backticks or tildes) to the next fence line of the same character at least as long, with nothing after it but spaces or tabs, or to the end of the body. No line inside a fenced block, its fences included, is ever a heading, so a spec may quote the template as an example.
+- **Lines.** A reader first turns every CRLF and lone CR into LF. A **fenced block** runs from a fence line (up to three spaces, then three or more backticks or tildes; after backticks, no backtick on the rest of the line, so an inline code span such as ```` ```synthetic status``` ```` opens no block) to the next fence line of the same character at least as long, with nothing after it but spaces or tabs, or to the end of the body. No line inside a fenced block, its fences included, is ever a heading, so a spec may quote the template as an example.
 - **The heading** is a line exactly `## Checkpoints`, outside fenced blocks, once in the body. The section runs from it to the next level-one or level-two heading outside fenced blocks (up to three spaces, then `#` or `##`, then a space, a tab or the line's end), or to the end of the body.
 - **A near-miss is invalid, never absent.** Any other line outside fenced blocks that renders as, or nearly as, a heading naming checkpoints makes the body `invalid` with `section-heading`: up to three spaces, one or more `#`, optional spaces or tabs, then `checkpoint` in any case (` ## Checkpoints` with a leading space, `## Checkpoint answers`, `### checkpoints`, `##Checkpoints`), or a setext heading (a line of up to three spaces then `checkpoint` in any case, followed by a line of only `=` or only `-`).
 - Its non-blank lines are exactly these two, in this order, each value exactly as shown. The reason for an answer goes in the spec's other sections, never on these lines.
@@ -118,7 +118,7 @@ The line forms, as regular expressions and host lists. Readers (RC2's approval c
   "setext_text": "(?i) {0,3}checkpoint.*",
   "setext_underline": " {0,3}(=+|-+)[ \\t]*",
   "section_end": " {0,3}#{1,2}([ \\t].*)?",
-  "fence": " {0,3}(`{3,}|~{3,}).*",
+  "fence": " {0,3}(`{3,}(?=[^`]*$)|~{3,}).*",
   "one_way_door": "- One-way door: (yes|no)",
   "user_visible": "- User-visible: (yes|yes, a release|no)",
   "ask_opening": "launch-fleet: late look asked #([1-9][0-9]*) at ([0-9a-f]{40})",
