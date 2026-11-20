@@ -10,10 +10,11 @@ test_no_landed_comment_without_a_version_or_a_merge (__main__.PlantedBreaks.test
 test_only_a_record_authors_landed_comment_counts (__main__.PlantedBreaks.test_only_a_record_authors_landed_comment_counts) ... ok
 test_the_brief_copies_no_link_or_code_from_the_report (__main__.PlantedBreaks.test_the_brief_copies_no_link_or_code_from_the_report) ... ok
 test_the_landed_comment_follows_the_brief_link (__main__.PlantedBreaks.test_the_landed_comment_follows_the_brief_link) ... ok
+test_the_landed_comment_names_the_pull_request_in_full (__main__.PlantedBreaks.test_the_landed_comment_names_the_pull_request_in_full) ... ok
 test_the_template_asks_only_for_public_words (__main__.PlantedBreaks.test_the_template_asks_only_for_public_words) ... ok
 test_triage_posts_no_comment_on_the_report (__main__.PlantedBreaks.test_triage_posts_no_comment_on_the_report) ... ok
 
 ----------------------------------------------------------------------
-Ran 14 tests in 0.063s
+Ran 15 tests in 0.084s
 
 OK

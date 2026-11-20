@@ -80,7 +80,7 @@ def report_link(obj, c, authors):
 
 def landed_re(c):
     form = re.escape(c['landed'])
-    form = form.replace(re.escape('{pr}'), '[1-9][0-9]*')
+    form = form.replace(re.escape('{pull_request}'), c['pull_request'][1:-1])
     return form.replace(re.escape('{version}'), c['version'][1:-1])
 
 
@@ -88,7 +88,8 @@ def landed_posts(inp, c):
     """The landed comments a verified merge posts: [(issue number, body)]."""
     pr, issues, authors = inp['pull_request'], inp['issues'], inp['record_authors']
     posts = []
-    if not pr['merged']:
+    full = f"{pr['repository']}#{pr['number']}"
+    if not pr['merged'] or not re.fullmatch(c['pull_request'], full):
         return posts
     linked = [report_link(issue(issues[str(n)]), c, authors) for n in pr['closes']]
     for n in dict.fromkeys(x for x in linked if x is not None):
@@ -99,7 +100,7 @@ def landed_posts(inp, c):
             continue
         if any(x['author'] in authors and re.fullmatch(landed_re(c), x['body']) for x in obj['comments']):
             continue
-        posts.append([n, c['landed'].format(pr=pr['number'], version=obj['milestone'])])
+        posts.append([n, c['landed'].format(pull_request=full, version=obj['milestone'])])
     return posts
 
 
@@ -165,7 +166,7 @@ def check_triage(case, c):
 def check_landed(case, c):
     inp, exp = case['input'], case['expect']
     shape(inp, {'pull_request', 'issues', 'record_authors'}, 'a landed input')
-    shape(inp['pull_request'], {'number', 'merged', 'closes'}, 'a pull request')
+    shape(inp['pull_request'], {'repository', 'number', 'merged', 'closes'}, 'a pull request')
     shape(exp, {'posts'}, 'a landed expectation')
     pr = inp['pull_request']
     if not isinstance(pr['merged'], bool) or not isinstance(pr['closes'], list):
