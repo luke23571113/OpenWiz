@@ -192,6 +192,8 @@ def scan_python(s):
 
 HEREDOC = re.compile(r'<<(-?)[ \t]*(["\']?)([A-Za-z0-9_.-]+)\2')
 SHELL_BREAK = ' \t\n;&|()<>'
+SHELL_WORD = re.compile(r'[A-Za-z_]+(?=[ \t\n;&|()<>]|$)')
+SHELL_LEADS = {'then', 'do', 'else', 'elif', 'time', '!', '{'}
 
 
 def skip_parens(s, i):
@@ -220,9 +222,23 @@ def shell_quoted(s, i, lines, out):
             j = skip_parens(s, j + 1)
         elif s.startswith('$(', j):
             j = shell_words(s, j + 2, lines, out, nested=True)
+        elif s[j] == '`':
+            j = skip_quoted(s, j, '`', newline_ends=False)
         else:
             j += 1
     return n
+
+
+def command_start(s, i, start):
+    j = i
+    while j > start and s[j - 1] in ' \t':
+        j -= 1
+    if j == start or s[j - 1] in ';&|()\n':
+        return True
+    k = j
+    while k > start and s[k - 1] not in SHELL_BREAK:
+        k -= 1
+    return s[k:j] in SHELL_LEADS and (k == start or s[k - 1] in SHELL_BREAK)
 
 
 def scan_shell(s):
@@ -232,7 +248,7 @@ def scan_shell(s):
 
 
 def shell_words(s, i, lines, out, nested=False):
-    n, pending, boundary, depth = len(s), [], True, 0
+    n, pending, boundary, depth, cases, start = len(s), [], True, 0, [], i
     while i < n:
         c = s[i]
         if c == '\n' and pending:
@@ -248,6 +264,8 @@ def shell_words(s, i, lines, out, nested=False):
             pending, boundary = [], True
         elif s.startswith('$((', i) or (boundary and s.startswith('((', i)):
             i, boundary = skip_parens(s, i + 1 if c == '$' else i), False
+        elif nested and s.startswith('$(', i):
+            i, boundary = shell_words(s, i + 2, lines, out, nested=True), False
         elif s.startswith('$[', i):
             end = s.find(']', i)
             i, boundary = (n if end < 0 else end + 1), False
@@ -262,8 +280,10 @@ def shell_words(s, i, lines, out, nested=False):
                 i += 2
             boundary = m is None
         elif c in SHELL_BREAK:
-            if nested and c in '()':
-                depth += 1 if c == '(' else -1
+            if nested and c == '(':
+                depth += 1
+            elif nested and c == ')' and cases[-1:] != [depth]:
+                depth -= 1
                 if depth < 0:
                     return i + 1
             i, boundary = i + 1, True
@@ -280,6 +300,14 @@ def shell_words(s, i, lines, out, nested=False):
             i, boundary = skip_quoted(s, i, c, newline_ends=False), False
         elif c == '\\':
             i, boundary = i + 2, False
+        elif nested and boundary and SHELL_WORD.match(s, i):
+            word = SHELL_WORD.match(s, i).group()
+            if word in ('case', 'esac') and command_start(s, i, start):
+                if word == 'case':
+                    cases.append(depth)
+                elif cases:
+                    cases.pop()
+            i, boundary = i + len(word), False
         else:
             i, boundary = i + 1, False
     return n
