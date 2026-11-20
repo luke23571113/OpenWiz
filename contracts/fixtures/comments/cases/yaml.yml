@@ -19,3 +19,5 @@ jobs:
         run: echo "$TEXT"
       # SECURITY: this job never reads a secret.
       - run: echo safe
+      - name: "Say \" # still inside the quotes"
+        run: echo quoted # the step
