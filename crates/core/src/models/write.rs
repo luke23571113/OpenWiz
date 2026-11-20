@@ -6,8 +6,8 @@
 use serde::Serialize;
 
 use super::{
-    Choice, MODELS_HEADER, OLDER, OLDER_ROWS, Older, Role, RoleRead, Show, Warning, parse, resolve,
-    section,
+    Choice, MODELS_HEADER, OLDER, OLDER_ROWS, Older, Role, RoleRead, Show, SpawnFlags, Warning,
+    parse, resolve, section,
 };
 
 /// What `set` was asked: a choice (already checked against the offered
@@ -45,8 +45,8 @@ pub struct Set {
 /// Sets `role` in the `fleet.md` text `text`. Refuses what [`super::read`]
 /// refuses, and older tables that are present but broken (they can't be
 /// kept in step).
-pub fn set(text: &str, role: Role, asked: &Asked) -> Result<Set, String> {
-    let p = parse(text)?;
+pub fn set(text: &str, role: Role, asked: &Asked, f: &SpawnFlags) -> Result<Set, String> {
+    let p = parse(text, f)?;
     if p.older_present && p.older.is_none() {
         return Err(
             "the older model tables are present but broken, so set can't keep them in step".into(),
@@ -85,7 +85,7 @@ pub fn set(text: &str, role: Role, asked: &Asked) -> Result<Set, String> {
                 let kept = table.rows.iter().find(|row| row.0 == r && r != role);
                 block.push(match kept {
                     Some((_, at, _)) => ended(&lines[*at]),
-                    None => row_line(r, if r == role { asked } else { None }),
+                    None => row_line(r, if r == role { asked } else { None }, f),
                 });
             }
             lines.splice(table.rows[0].1..table.end, block);
@@ -109,7 +109,7 @@ pub fn set(text: &str, role: Role, asked: &Asked) -> Result<Set, String> {
                 } else {
                     Some(&show.roles.get(r).choice)
                 };
-                block.push(row_line(r, c));
+                block.push(row_line(r, c, f));
             }
             block.push("\n".to_owned());
             lines.splice(first..first, block);
@@ -118,7 +118,7 @@ pub fn set(text: &str, role: Role, asked: &Asked) -> Result<Set, String> {
     let mut text = lines.concat();
     // The older rows, rewritten to what the Models table now resolves to,
     // except one that waits or whose model id holds a `/` (ruling 14).
-    let p2 = parse(&text)?;
+    let p2 = parse(&text, f)?;
     if let Some(older) = &p2.older {
         let want = resolve(&p2).older_rows();
         let have = older.rows();
@@ -131,27 +131,18 @@ pub fn set(text: &str, role: Role, asked: &Asked) -> Result<Set, String> {
             };
             if i < 4 {
                 let at = older.tables[i].1;
-                put(
-                    &mut lines,
-                    at[0],
-                    &format!(
-                        "| Harness | {} | `--provider {}` |",
-                        c.names.harness, c.provider
-                    ),
-                );
-                put(
-                    &mut lines,
-                    at[1],
-                    &format!("| Model | {} | `--model {}` |", c.names.model, c.model),
-                );
-                put(
-                    &mut lines,
-                    at[2],
-                    &format!(
-                        "| Effort | {} | `--reasoning-level {}` |",
-                        c.names.effort, c.effort
-                    ),
-                );
+                let cells = [
+                    ("Harness", &c.names.harness, &f.provider, &c.provider),
+                    ("Model", &c.names.model, &f.model, &c.model),
+                    ("Effort", &c.names.effort, &f.effort, &c.effort),
+                ];
+                for (k, (setting, name, flag, id)) in cells.into_iter().enumerate() {
+                    put(
+                        &mut lines,
+                        at[k],
+                        &format!("| {setting} | {name} | `{flag} {id}` |"),
+                    );
+                }
             } else {
                 let family = ["Claude", "GPT"][i - 4];
                 let row = format!(
@@ -159,14 +150,14 @@ pub fn set(text: &str, role: Role, asked: &Asked) -> Result<Set, String> {
                     c.names.harness,
                     c.names.model,
                     c.names.effort,
-                    c.flags()
+                    c.flags(f)
                 );
                 put(&mut lines, older.fixers[i - 4].1, &row);
             }
         }
         text = lines.concat();
     }
-    let p3 = parse(&text)?;
+    let p3 = parse(&text, f)?;
     let show = resolve(&p3);
     let older_tables = match (&p3.older, show.older_tables_present) {
         (Some(older), true) => {
@@ -203,7 +194,7 @@ fn outcomes(show: &Show, was: &[Choice; 6], in_file: &[Choice; 6]) -> Vec<OlderR
         .collect()
 }
 
-fn row_line(role: Role, c: Option<&Choice>) -> String {
+fn row_line(role: Role, c: Option<&Choice>, f: &SpawnFlags) -> String {
     match c {
         Some(c) => format!(
             "| {} | {} | {} | {} | {} |\n",
@@ -211,7 +202,7 @@ fn row_line(role: Role, c: Option<&Choice>) -> String {
             c.names.harness,
             c.names.model,
             c.names.effort,
-            c.flags()
+            c.flags(f)
         ),
         None => format!("| {} | follows Builder | | | |\n", role.row()),
     }

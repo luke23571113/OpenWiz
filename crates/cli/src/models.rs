@@ -12,10 +12,12 @@
 use std::io::Write;
 use std::path::Path;
 
+use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs};
 use openwiz_core::limits::READ_TIMEOUT;
 use openwiz_core::models::write::{Asked, RowOutcome, set};
 use openwiz_core::models::{
-    Choice, FLEET_FILE, Family, Form, From, Pick, Role, RoleRead, SNAPSHOT_FILE, Show, read,
+    Choice, FLEET_FILE, Family, Form, From, Pick, Role, RoleRead, SNAPSHOT_FILE, Show, SpawnFlags,
+    read,
 };
 use openwiz_core::new_thread::operation::NewThreadClient;
 use openwiz_core::new_thread::options::{CloudOptions, OptionsState, cloud_options};
@@ -229,7 +231,7 @@ fn run_form(
             );
             return emit(stdout, stderr, (EXIT_OK, text));
         }
-        Parsed::Show => fleet.and_then(|text| read(&text)).map(|show| {
+        Parsed::Show => fleet.and_then(|text| read_fleet(&text)).map(|show| {
             let out = if json {
                 document(&show)
             } else {
@@ -239,7 +241,7 @@ fn run_form(
         }),
         Parsed::List { save } => {
             let options = read_options();
-            let current = fleet.ok().and_then(|text| read(&text).ok());
+            let current = fleet.ok().and_then(|text| read_fleet(&text).ok());
             let snapshot = snapshot(&options, current.as_ref());
             let offered = matches!(options.state, OptionsState::Offered);
             let saved = save && offered;
@@ -279,6 +281,33 @@ fn run_form(
     }
 }
 
+/// The provider, model and effort flag words of a Models table's flags
+/// cell, as the `room-cli` allowlist's one spawn builder spells them: a
+/// synthetic spawn invocation is built (never run) and the words beside its
+/// provider, model and effort values are read back.
+fn spawn_flags() -> Result<SpawnFlags, String> {
+    let (provider, model, effort) = ("claude-code", "syn-models-flags", "medium");
+    let request = format!("ow1-{}", "0".repeat(40));
+    let args = SpawnArgs::new("syn-models", provider, model, effort, &request, "syn")
+        .map_err(|_| "the allowlist refused the synthetic flags invocation".to_owned())?;
+    let argv = Invocation::ThreadSpawn(args).argv();
+    let word = |value: &str| {
+        let at = argv.iter().position(|w| w == value).filter(|&at| at > 0);
+        at.map(|at| argv[at - 1].clone())
+            .ok_or_else(|| "the allowlist's spawn flags were not found".to_owned())
+    };
+    Ok(SpawnFlags {
+        provider: word(provider)?,
+        model: word(model)?,
+        effort: word(effort)?,
+    })
+}
+
+/// [`read`], with the allowlist's spawn flags.
+fn read_fleet(text: &str) -> Result<Show, String> {
+    read(text, &spawn_flags()?)
+}
+
 fn run_set(
     text: &str,
     role: Role,
@@ -287,7 +316,7 @@ fn run_set(
     json: bool,
     read_options: &dyn Fn() -> CloudOptions,
 ) -> Result<(i32, String), String> {
-    let before = read(text)?.roles.get(role).clone();
+    let before = read_fleet(text)?.roles.get(role).clone();
     let (asked_doc, asked) = match &asked {
         None => (json!({"follows": "builder"}), None),
         Some([p, m, e]) => (
@@ -340,11 +369,11 @@ fn run_set(
             (Asked::Choice(choice), Some(options))
         }
     };
-    let result = set(text, role, &chosen)?;
+    let result = set(text, role, &chosen, &spawn_flags()?)?;
     let mut files = Vec::new();
     // The snapshot first: if fleet.md then fails, only the offered list moved.
     if let Some(options) = &options {
-        let current = read(result.text.as_deref().unwrap_or(text)).ok();
+        let current = read_fleet(result.text.as_deref().unwrap_or(text)).ok();
         put(
             root,
             SNAPSHOT_FILE,

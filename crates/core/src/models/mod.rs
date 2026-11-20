@@ -160,12 +160,24 @@ impl Choice {
         )
     }
 
-    fn flags(&self) -> String {
+    /// The flags cell for this choice, in the spelling `flags` carries.
+    fn flags(&self, flags: &SpawnFlags) -> String {
         format!(
-            "`--provider {} --model {} --reasoning-level {}`",
-            self.provider, self.model, self.effort
+            "`{} {} {} {} {} {}`",
+            flags.provider, self.provider, flags.model, self.model, flags.effort, self.effort
         )
     }
+}
+
+/// The three `thread spawn` flags a choice is written with: the provider,
+/// model and effort flag words. The core spells none of them; the caller
+/// takes them from the `room-cli` allowlist's spawn builder, the one place
+/// they are spelled (the m12 allowlist guard).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpawnFlags {
+    pub provider: String,
+    pub model: String,
+    pub effort: String,
 }
 
 /// A provider or effort id: letters, digits, `.`, `_` or `-`.
@@ -355,22 +367,19 @@ fn section(lines: &[&str], name: &str) -> Result<Option<(usize, usize)>, String>
     }
 }
 
-/// `--provider P --model M --reasoning-level E`, in one code span. The
-/// cell is read only as text: its words 1, 3 and 5 are the ids, and it must
-/// be exactly the line [`Choice::flags`] writes for them. (This reader
-/// passes no flag to any program, so it spells none as a word of its own:
-/// the m12 allowlist guard.)
-fn flags(cell: &str) -> Result<[&str; 3], String> {
+/// A flags cell: one code span of the provider flag and its id, the model
+/// flag and its id, then the effort flag and its id, single-spaced.
+fn flags<'a>(cell: &'a str, f: &SpawnFlags) -> Result<[&'a str; 3], String> {
     let inner = cell
         .strip_prefix('`')
         .and_then(|c| c.strip_suffix('`'))
         .ok_or("flags not in one code span")?;
     match inner.split(' ').collect::<Vec<_>>()[..] {
-        [_, p, _, m, _, e]
-            if is_id(p)
+        [a, p, b, m, c, e]
+            if [a, b, c] == [&f.provider, &f.model, &f.effort]
+                && is_id(p)
                 && is_model_id(m)
-                && is_id(e)
-                && Choice::new([p, m, e], ["", "", ""]).flags() == cell =>
+                && is_id(e) =>
         {
             Ok([p, m, e])
         }
@@ -393,7 +402,11 @@ struct ModelsTable {
     end: usize,
 }
 
-fn models_table(lines: &[&str], (from, to): (usize, usize)) -> Result<ModelsTable, String> {
+fn models_table(
+    lines: &[&str],
+    (from, to): (usize, usize),
+    f: &SpawnFlags,
+) -> Result<ModelsTable, String> {
     let start = (from + 1..to)
         .find(|&i| lines[i].starts_with('|'))
         .ok_or("no Models table")?;
@@ -428,7 +441,7 @@ fn models_table(lines: &[&str], (from, to): (usize, usize)) -> Result<ModelsTabl
             }
             None
         } else {
-            Some(choice([&row[1], &row[2], &row[3]], flags(&row[4])?)?)
+            Some(choice([&row[1], &row[2], &row[3]], flags(&row[4], f)?)?)
         };
         out.push((role, start + i, choice));
         next = at + 1;
@@ -449,6 +462,7 @@ struct Older {
 fn setting_table(
     lines: &[&str],
     (from, to): (usize, usize),
+    f: &SpawnFlags,
 ) -> Result<(Choice, [usize; 3]), String> {
     let rows: Vec<(usize, Vec<String>)> = (from + 1..to)
         .filter(|&i| lines[i].starts_with('|'))
@@ -459,9 +473,9 @@ fn setting_table(
     let mut at = [0; 3];
     // Each value cell is exactly one flag and its id, in one code span.
     for (i, (setting, flag)) in [
-        ("Harness", "`--provider "),
-        ("Model", "`--model "),
-        ("Effort", "`--reasoning-level "),
+        ("Harness", &f.provider),
+        ("Model", &f.model),
+        ("Effort", &f.effort),
     ]
     .into_iter()
     .enumerate()
@@ -469,7 +483,9 @@ fn setting_table(
         let (line, row) = rows.get(i + 2).ok_or("a short table")?;
         let value = row
             .get(2)
-            .and_then(|c| c.strip_prefix(flag))
+            .and_then(|c| c.strip_prefix('`'))
+            .and_then(|c| c.strip_prefix(flag.as_str()))
+            .and_then(|c| c.strip_prefix(' '))
             .and_then(|c| c.strip_suffix('`'))
             .filter(|v| {
                 row.len() == 3
@@ -487,11 +503,11 @@ fn setting_table(
     ))
 }
 
-fn older_tables(lines: &[&str]) -> Result<Older, String> {
+fn older_tables(lines: &[&str], f: &SpawnFlags) -> Result<Older, String> {
     let mut tables = Vec::new();
     for name in &OLDER[..4] {
         let range = section(lines, name)?.ok_or_else(|| format!("no ## {name}"))?;
-        tables.push(setting_table(lines, range)?);
+        tables.push(setting_table(lines, range, f)?);
     }
     let (from, to) = section(lines, "Fixer")?.ok_or("no ## Fixer")?;
     let mut fixers = Vec::new();
@@ -500,7 +516,7 @@ fn older_tables(lines: &[&str]) -> Result<Older, String> {
             .filter_map(|i| cells(lines[i]).map(|c| (i, c)))
             .find(|(_, r)| r.len() == 5 && r[0] == family.shown())
             .ok_or_else(|| format!("no Fixer row {}", family.shown()))?;
-        fixers.push((choice([&row[1], &row[2], &row[3]], flags(&row[4])?)?, at));
+        fixers.push((choice([&row[1], &row[2], &row[3]], flags(&row[4], f)?)?, at));
     }
     if tables[0].0.family.is_none() {
         return Err("older Builder of no known family".into());
@@ -533,17 +549,17 @@ struct Parsed<'a> {
     older_present: bool,
 }
 
-fn parse(text: &str) -> Result<Parsed<'_>, String> {
+fn parse<'a>(text: &'a str, f: &SpawnFlags) -> Result<Parsed<'a>, String> {
     let lines: Vec<&str> = text.lines().collect();
     let older_present = OLDER
         .iter()
         .any(|name| lines.iter().any(|l| l.strip_prefix("## ") == Some(name)));
     let (models, older) = match section(&lines, "Models")? {
         Some(range) => (
-            Some(models_table(&lines, range)?),
-            older_tables(&lines).ok().filter(|_| older_present),
+            Some(models_table(&lines, range, f)?),
+            older_tables(&lines, f).ok().filter(|_| older_present),
         ),
-        None if older_present => (None, Some(older_tables(&lines)?)),
+        None if older_present => (None, Some(older_tables(&lines, f)?)),
         None => return Err("no model settings".into()),
     };
     Ok(Parsed {
@@ -557,8 +573,8 @@ fn parse(text: &str) -> Result<Parsed<'_>, String> {
 /// Reads a `fleet.md`: the Models table, or the older five tables when it is
 /// absent, then the follow, fixer and cross-family rules. A refusal says
 /// why; nothing is guessed.
-pub fn read(text: &str) -> Result<Show, String> {
-    Ok(resolve(&parse(text)?))
+pub fn read(text: &str, flags: &SpawnFlags) -> Result<Show, String> {
+    Ok(resolve(&parse(text, flags)?))
 }
 
 fn resolve(p: &Parsed) -> Show {
