@@ -1,9 +1,10 @@
 # OpenWiz decisions contract, version 1 (`openwiz.decisions.v1`)
 
 Structured decision requests posted by the orchestrator, plus the read-only
-`GET /api/v1/decisions` response (0.0.11, #648, U1 #651). The schema is
-[decisions.v1.schema.json](decisions.v1.schema.json). **Contract only:** U4 builds
-posting, U5 reading and U6 cards/sends. Inline synthetic tests in
+decisions response (0.0.11, #648, U1 #651). The schema is
+[decisions.v1.schema.json](decisions.v1.schema.json). The GitHub adapter
+(`crates/adapters/github/src/decisions.rs`) reads the requests; no OpenWiz
+route serves the response since #1264. Inline synthetic tests in
 `tests/checks/plan_decisions_schema_conformance.rs` prove parsed shapes only.
 
 Authority: E1–E3 and the later ruling approving all three contract choices
@@ -180,7 +181,7 @@ second explicit confirmation; they remain messages asking the orchestrator, not
 a new live/release/publish capability in OpenWiz.
 
 `orchestrator.target` uses #129's configured and bounded verified target, with its
-own coverage and freshness, as in `cockpit.v1`: known string only after confirming
+own coverage and freshness: known string only after confirming
 that exact configured thread exists; known null only when a successful source
 read establishes no target; otherwise unknown and a gap. The thread id is 1–128
 ASCII letters/digits/underscore/hyphen, not starting with `-`. Never select a
@@ -221,7 +222,7 @@ question, with the same types and constraints; `subject.repository` is the
 verified repository. JSON uses decimal integers, ordinary JSON string escaping
 and no escaped `/`. No other keys, duplicate keys or alternative framing are
 accepted. This adds message text only: no request-schema field, new identity,
-fingerprint algorithm or answer HTTP route/field. For example (synthetic):
+fingerprint algorithm or answer field. For example (synthetic):
 
 ```text
 openwiz decision answer v1
@@ -265,10 +266,10 @@ invalidates it. Risky records confirm twice. Repeats, held keys, reload and retr
 reuse the existing operation id and one-send guarantees. These are U6's runtime
 proofs. A sent/uncertain answer remains unresolved until the orchestrator saves it.
 
-## Coverage, freshness, route and proof limits
+## Coverage, freshness and proof limits
 
 Coverage/gap/freshness forms and the 70,000 ms oldest-required-source threshold
-are as in [plan.v1](plan.v1.md#coverage-and-freshness) and `cockpit.v1`. Source
+are as in [plan.v1](plan.v1.md#coverage-and-freshness). Source
 snapshot time is the comment/source read snapshot, never the comment's creation
 or update time. Assembly never refreshes retained data. Record discovery,
 pagination, malformed records and current-wording checks all contribute to
@@ -276,19 +277,14 @@ coverage/freshness; target availability has its separate part. Only complete fre
 empty record coverage permits “no decisions waiting”; no target does not hide the
 records or itself turn their discovery into a confident empty list.
 
-Exact `GET /api/v1/decisions`, no query (even `?`) or body. Existing API Host,
-framing, method, security headers, `no-store`, route-only sanitized logs,
-transport errors, shared two read slots, five-second slot wait and forty-second
-request deadline apply as for the plan route. Other methods: `405`, `Allow: GET`;
-HEAD has no body/Content-Length. Valid complete/partial/stale/empty envelopes are
-`200`; slot exhaustion `503` with Retry-After; deadline `504`, unfinished read
-retaining its slot. In-flight identical reads share only that run; later reads
-read anew. The route never sends, saves an answer, edits a comment or starts work.
+No OpenWiz route serves the response since #1264, so no HTTP status, method or
+slot rule applies. Reading never sends, saves an answer, edits a comment or
+starts work.
 
 Schema conformance does not prove fencing, authorization/provenance, canonical
 hashing, question-id grammar/uniqueness, lifecycle consistency, table/graph equality,
-source time math, currentness, target verification or a send. U4/U5/U6 must prove
-their rules at the spec's fixture/source/page seams. All inline fixture values,
+source time math, currentness, target verification or a send. A producer or
+consumer must prove those rules at its own seams. All inline fixture values,
 URLs, fingerprints, wording and times are synthetic (`synthetic_assumptions`);
 none is a live observation or acceptance of a day's real decisions.
 
@@ -309,7 +305,7 @@ One row per declared property; inline fact fields retain the enclosing field’s
 | `freshness.snapshot_at.known` | Nonnegative oldest required source time, never rewritten as assembly time |
 | `freshness.state` | Oldest required source snapshot and assembly clock, using the existing 70,000 ms threshold |
 | `gap.detail` | Sanitized explanation of the required failed/incomplete read or derivation |
-| `gap.kind` | Existing inventory/fleet/cockpit failure classification |
+| `gap.kind` | Existing inventory/fleet failure classification |
 | `grill_confirmation.fingerprint` | Existing plan revision-v2 SHA-256 for plan_approval; specified canonical exact-proposal SHA-256 for other variants |
 | `grill_confirmation.grill_file` | The current saved grill file on its PR head |
 | `grill_confirmation.id` | Orchestrator-allocated repository-unique request identifier, read back from the posted block |
@@ -336,10 +332,10 @@ One row per declared property; inline fact fields retain the enclosing field’s
 | `item.request.status` | Open-read filter; only status open is returned |
 | `item.subject` | GitHub issue/PR containing the comment |
 | `item.updated_at` | GitHub comment updatedAt, converted to nonnegative milliseconds |
-| `orchestrator.coverage` | Completeness of this server configuration/target verification read |
+| `orchestrator.coverage` | Completeness of this configuration/target verification read |
 | `orchestrator.freshness` | Oldest required configuration/target verification snapshot |
-| `orchestrator.target` | Existing #129 server-configured target verified to exist; null only after successful absence |
-| `orchestrator.target.known` | Positive known result of: Existing #129 server-configured target verified to exist; null only after successful absence |
+| `orchestrator.target` | Existing #129 configured target verified to exist; null only after successful absence |
+| `orchestrator.target.known` | Positive known result of: Existing #129 configured target verified to exist; null only after successful absence |
 | `plan_approval.fingerprint` | Existing plan revision-v2 SHA-256 for plan_approval; specified canonical exact-proposal SHA-256 for other variants |
 | `plan_approval.graph` | Exact blocker-to-ticket edges of that table; empty before planning |
 | `plan_approval.headline` | Exact spec changelog headline, including none for infra when applicable |
@@ -361,7 +357,7 @@ One row per declared property; inline fact fields retain the enclosing field’s
 | `response.kind` | Contract response discriminator, never a request kind |
 | `response.orchestrator` | Existing configured target and bounded verification read, with separate coverage/freshness |
 | `response.schema` | Contract constant openwiz.decisions.v1 |
-| `response.snapshot_at` | Server clock at assembly after reads |
+| `response.snapshot_at` | Producer's clock at assembly after reads |
 | `spec_confirmation.fingerprint` | Existing plan revision-v2 SHA-256 for plan_approval; specified canonical exact-proposal SHA-256 for other variants |
 | `spec_confirmation.graph` | Exact blocker-to-ticket edges of that table; empty before planning |
 | `spec_confirmation.headline` | Exact spec changelog headline, including none for infra when applicable |
@@ -381,10 +377,10 @@ One row per declared property; inline fact fields retain the enclosing field’s
 
 ## Repository roles
 
-The optional `decision_repositories` setting in private service settings names
-`public` and `private`, each an exact `{owner, name}` object. The roles must be
-valid and distinct under case folding. Both the standalone server and embedded
-service read `service/config.json` in the existing private state directory.
+The optional `decision_repositories` setting in the private `service/config.json`
+names `public` and `private`, each an exact `{owner, name}` object. The roles must
+be valid and distinct under case folding. The adapter reads it only from the
+settings path its caller names.
 An absent setting/file preserves today's single cwd repository. A malformed or
 unreadable setting never falls back. In pair mode, GitHub metadata must confirm
 the configured canonical identities and their public/private visibility before
@@ -393,14 +389,7 @@ read. Public spec/plan requests and private grill requests stay on their own
 role. Each subject, current-source lookup, duplicate check and answer binding
 includes its canonical repository; equal local IDs across repositories are
 separate identities. Coverage is complete only if every configured feed and its
-required source reads are complete. Private request text remains loopback only.
+required source reads are complete. Private request text is never posted on the public repository.
 
-Repository role names must be ordinary path components; `.` and `..` are refused. Settings are read at server startup; restart the server after an approved setting change.
+Repository role names must be ordinary path components; `.` and `..` are refused. The setting is read when the adapter is built; a changed setting needs a new reader.
 
-On upgrade, an earlier web answer may be stored under a slot key without a
-repository. A matching legacy receipt or composer record blocks answers to
-either qualified slot until that earlier record is resolved. Its stored bytes
-and operation identity are retained; it is never automatically rebound to a
-repository or silently discarded. An unread legacy namespace also blocks the
-answer through the existing unavailable presentation. No new send or recovery
-route is added.
