@@ -49,7 +49,7 @@ class Kit(unittest.TestCase):
         # catches: a rule that flags a valid record (a lapsed note counted live, a heading in a code
         # block, a record author's name in another case, another version's note, a project's own label)
         code, out, err = run(os.path.join(FIXTURES, 'valid.json'))
-        self.assertEqual((code, out), (1, []), err)  # planted failure (#1777), reverted before hand-back
+        self.assertEqual((code, out), (0, []), err)
 
     def test_each_planted_break_is_reported(self):
         # catches: a rule that misses its break, or reports the wrong issue, rule or count

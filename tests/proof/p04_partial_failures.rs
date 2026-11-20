@@ -577,7 +577,7 @@ fn a_pull_request_to_main_keeps_the_main_only_skips_with_eight_threads() {
         calls,
         [
             "build --release --locked -p openwiz-tests --example openwiz",
-            "test --workspace --locked -- --test-threads=9 --exact \
+            "test --workspace --locked -- --test-threads=8 --exact \
              --skip a_candidate_that_exits_without_readiness_rolls_back_to_the_running_old_build \
              --skip a_failing_merge_is_kept_and_recorded_once_without_retrying_the_gate \
              --skip a_passing_main_merge_is_staged_but_not_reported_as_running \
