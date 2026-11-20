@@ -5,7 +5,10 @@ GitHub's WizSkills tag v<version> points at the pin of OpenWiz's wizskills.lock;
 elsewhere, and FAKE_WIZ_COMMIT=moved points it elsewhere from the second fetch on (a tag that moves between
 fetches); FAKE_WIZ_SAME_TREE makes that other commit a later one, with the pin in its history and the pin's tree. A URL rewritten by `url.<local>.insteadOf` (GIT_CONFIG_KEY_0) reads that local repository instead.
 A repository is a folder whose `fake.json` holds its tag's commit and tree. Supported: `init -q --bare`,
-`fetch` and `clone` of the tag, `rev-parse` of a tag, commit or HEAD and its tree, and `show <sha>:install.sh`."""
+`fetch` and `clone` of the tag, `rev-parse` of a tag, commit or HEAD and its tree, and `show <sha>:install.sh`.
+`init -q <dir>`, `commit -q --allow-empty -m <message>` and `push -q --dry-run <url> <refspec>` make a push check:
+each push is logged to $HOME/.fake-github-pushes, and with FAKE_BOAT_PUSH=denied GitHub refuses it as a read-only
+GitHub App's push is refused (a 403 naming a synthetic account)."""
 import json, os, shutil, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -55,6 +58,20 @@ if args[:3] == ['init', '-q', '--bare']:
     os.makedirs(args[3])
     with open(os.path.join(args[3], 'fake.json'), 'w') as f:
         json.dump({}, f)
+elif args[:2] == ['init', '-q'] and len(args) == 3:
+    os.makedirs(args[2])
+    with open(os.path.join(args[2], 'fake.json'), 'w') as f:
+        json.dump({}, f)
+elif where and args[:4] == ['commit', '-q', '--allow-empty', '-m'] and len(args) == 5:
+    pass
+elif where and args[:3] == ['push', '-q', '--dry-run'] and len(args) == 5:
+    with open(os.path.join(os.environ['HOME'], '.fake-github-pushes'), 'a') as f:
+        f.write('dry-run %s %s\n' % (args[3], args[4]))
+    if os.environ.get('FAKE_BOAT_PUSH') == 'denied':
+        sys.stderr.write('remote: Permission to %s denied to synthetic-app[bot].\n'
+                         "fatal: unable to access '%s': The requested URL returned error: 403\n"
+                         % (args[3][len('https://github.com/'):], args[3]))
+        sys.exit(128)
 elif where and args[:1] == ['fetch'] and args[-1] == 'refs/tags/v%s:refs/tags/v%s' % ((LOCK['version'],) * 2):
     with open(os.path.join(where, 'fake.json'), 'w') as f:
         json.dump(source(args[-2]), f)
