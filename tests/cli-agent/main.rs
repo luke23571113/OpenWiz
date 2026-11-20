@@ -20,6 +20,7 @@ mod schema;
 #[path = "../support/place.rs"]
 mod place;
 
+mod fake_loops;
 mod github_token;
 mod init;
 mod loop_apply;
