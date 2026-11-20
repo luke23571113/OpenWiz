@@ -58,9 +58,10 @@ trap 'rm -f "$table"' EXIT
 # in a pull request's plan (plan.py): `*` every one, `-` none but the always
 # lane's (rust:test:checks, which runs in every plan), or the test ids that
 # read it. A doc or skill names its readers here, found by reading the Rust
-# sources: a doc no Rust test reads selects nothing. Only a row the rust job
-# reads may name a test. With `--tests`, classify.sh prints each path's
-# column, one per line in order: `?` for a path no row knows (every test).
+# sources: a doc no Rust test reads selects nothing. A named reader needs
+# `rust` in the row's jobs, or the prune deletes its file. With `--tests`,
+# classify.sh prints each path's column, one per line in order: `?` for a
+# path no row knows (every test).
 cat > "$table" <<'TABLE'
 -               -       STATUS\.md|AGENTS\.md
 -               -       private/.+
@@ -96,7 +97,6 @@ TABLE
 awk -v skips="$skips" -v step="$step" -v tests="$tests" '
   FILENAME == ARGV[1] {
     if ($1 ~ /^#/) next
-    if ($2 != "-" && index("," $1 ",", ",rust,") == 0) { print "classify: a row names tests the rust job never reads: " $3 > "/dev/stderr"; exit 1 }
     who[++rows] = $1; ids[rows] = $2; pat[rows] = "^(" $3 ")$"; next
   }
   FILENAME == ARGV[2] { listed[$0] = 1; next }
