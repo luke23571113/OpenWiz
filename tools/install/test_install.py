@@ -317,6 +317,41 @@ class HarnessSkills(Bundles):
                 self.assertEqual((snapshot(home), snapshot(self.root / 'skills')), before)
                 self.assertEqual(snapshot(self.base / 'dotfiles'), {})
 
+    def test_a_user_entry_at_the_staging_or_backup_path_is_kept_and_nothing_is_written(self):
+        # catches (#1594): the owner's folder at the installer's fixed staging or backup path deleted with exit 0;
+        # the same path as a plain file refused only after the canonical copies were written
+        for name in ('.openwiz-stage-grill', '.openwiz-old-grill'):
+            for kind in ('dir', 'file'):
+                with self.subTest(name=name, kind=kind):
+                    home = self.base / f'home{name}-{kind}'
+                    shutil.rmtree(self.root / 'skills', ignore_errors=True)  # no earlier case's copies
+                    entry = home / '.claude/skills' / name
+                    if kind == 'dir':
+                        entry.mkdir(parents=True)
+                        (entry / 'notes.md').write_bytes(b'Synthetic owner notes.\n')
+                    else:
+                        entry.parent.mkdir(parents=True)
+                        entry.write_bytes(b'Synthetic owner notes.\n')
+                    before = snapshot(home), snapshot(self.root / 'skills')
+                    code, result = self.skills(home=home)
+                    self.assertEqual((code, result.get('outcome')), (5, 'refused'), result)
+                    self.assertEqual((snapshot(home), snapshot(self.root / 'skills')), before)
+
+    def test_leftovers_of_an_interrupted_run_are_cleaned_up(self):
+        # catches (#1594): the ownership proof rejecting the installer's own staging and backup folders,
+        # so one interrupted run blocks every later install and leaves its leftovers behind
+        (self.home / '.claude').mkdir()
+        self.assertEqual(self.skills()[0], 0)
+        folder = self.home / '.claude/skills'
+        # Interrupted between its two renames: the old copy moved aside, the new one still staged.
+        shutil.copytree(folder / 'grill', folder / '.openwiz-stage-grill')
+        os.rename(folder / 'grill', folder / '.openwiz-old-grill')
+        code, result = self.skills()
+        self.assertEqual(code, 0, result)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()),
+                         sorted(p.name for p in (self.root / 'current/runtime/skills').iterdir()))
+        self.assertEqual(skill_files(folder), skill_files(self.root / 'current/runtime/skills'))
+
 
 def built_openwiz():
     """The real command, built once by the tests; the installed consumer never builds."""
