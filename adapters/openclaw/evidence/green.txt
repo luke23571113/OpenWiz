@@ -1,4 +1,4 @@
-# Green run at b66c3b6b: python3 -I adapters/openclaw/test_driver.py. PATH holds only the fake acpx, python3 and sleep.
+# Green run at cefbc305: python3 -I adapters/openclaw/test_driver.py. Each test's environment is built from scratch; PATH holds only the fake acpx, python3 and sleep, and setup refuses a real claude, codex, acpx, openclaw, gh, npx, node, bash or sh on it.
 test_a_harness_acpx_would_run_as_a_command_is_refused (__main__.OpenClaw.test_a_harness_acpx_would_run_as_a_command_is_refused) ... ok
 test_a_missing_acpx_is_refused_with_how_to_install_it (__main__.OpenClaw.test_a_missing_acpx_is_refused_with_how_to_install_it) ... ok
 test_a_start_whose_session_fails_leaves_nothing_and_repeats_no_output (__main__.OpenClaw.test_a_start_whose_session_fails_leaves_nothing_and_repeats_no_output) ... ok
@@ -9,6 +9,6 @@ test_stop_ends_a_queue_owner_with_a_clean_environment (__main__.OpenClaw.test_st
 test_wake_while_a_prompt_runs_sends_no_second_one (__main__.OpenClaw.test_wake_while_a_prompt_runs_sends_no_second_one) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 2.899s
+Ran 8 tests in 2.860s
 
 OK
