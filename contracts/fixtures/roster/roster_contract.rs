@@ -154,7 +154,18 @@ fn login_ok(s: &str) -> bool {
 /// refusal line of the first broken rule.
 fn read(fleet: &str) -> Result<Option<Vec<Entry>>, String> {
     let lines: Vec<&str> = fleet.lines().map(str::trim_end).collect();
-    if let Some(odd) = lines.iter().find(|l| **l != "## Roster" && names_roster(l)) {
+    // A setext heading: `Roster` over a line of only `=` or only `-`.
+    let underlined = |i: usize| {
+        lines[i].trim().eq_ignore_ascii_case("roster")
+            && lines.get(i + 1).is_some_and(|u| {
+                let u = u.trim();
+                !u.is_empty() && (u.chars().all(|c| c == '=') || u.chars().all(|c| c == '-'))
+            })
+    };
+    if let Some(odd) = (0..lines.len())
+        .find(|&i| (lines[i] != "## Roster" && names_roster(lines[i])) || underlined(i))
+        .map(|i| lines[i])
+    {
         return Err(format!(
             "Roster refused: the Roster heading must be exactly ## Roster: {odd}"
         ));
@@ -330,6 +341,19 @@ fn driver_takes(harness: &str, model: &str) -> bool {
     harness_ok && model_ok
 }
 
+/// The status note's `model` field through driver v1: the Model name and
+/// `default effort`, at most 60 characters. A name over 45 characters keeps
+/// its first 42, trailing spaces dropped, then `...`.
+fn note_model(name: &str) -> String {
+    let shown = if name.chars().count() > 45 {
+        let cut: String = name.chars().take(42).collect();
+        format!("{}...", cut.trim_end())
+    } else {
+        name.to_owned()
+    };
+    format!("{shown} default effort")
+}
+
 /// The contract's pick for one start: role R, choice C (null when models.v1
 /// waits), on `repository#ticket`.
 fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &Value) -> Value {
@@ -367,7 +391,7 @@ fn pick(entries: &[Entry], repository: &str, ticket: u64, role: &str, choice: &V
         "start": {"harness": driver_harness(provider), "model": choice["model"]},
         "note": {
             "harness": e.label(),
-            "model": format!("{} default effort", choice["model_name"].as_str().unwrap()),
+            "model": note_model(choice["model_name"].as_str().unwrap()),
         },
         "writes_as": format!("{}'s App", e.person),
         "token": {

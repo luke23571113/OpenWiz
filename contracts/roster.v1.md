@@ -44,9 +44,11 @@ consistent, never that any of it is live. Every example is synthetic.
 
 One `## Roster` section in `docs/agents/fleet.md`, its heading exactly the
 line `## Roster`. Any other Markdown heading whose text is `Roster` in any
-case (such as `## Roster ##`, `# Roster`, `### roster` or an indented
-`## Roster`) is refused, never read as no Roster, so a Roster that renders
-is never skipped. Prose may come before its table; the section's first table
+case is refused, never read as no Roster, so a Roster that renders is never
+skipped: a `#` heading of any level or with closing hashes (such as
+`## Roster ##`, `# Roster`, `### roster` or an indented `## Roster`), and an
+underlined one (a `Roster` line followed by a line of only `=` or only
+`-`). Prose may come before its table; the section's first table
 is the Roster table, and must be:
 
 ```md
@@ -111,7 +113,7 @@ entries, from 1; `<name>` and `<cell>` are the trimmed cells as written.
 In `role` and `repeated-role`, `<role>` is the offending role as written; in
 `person`, `<first>` is row 1's person; in `writes-as`, `<person>'s App` is
 written as it stands; in `heading-form`, `<line>` is the first such heading
-line, trimmed of trailing spaces.
+line (an underlined heading's `Roster` line), trimmed of trailing spaces.
 
 **The starting Roster** (KN22) is one row: the person's own harness, every
 role, on the driver setup chose, such as
@@ -203,8 +205,10 @@ One rule, the same for every entry, of every kind:
    configured: through driver v1, which applies none, it is
    `<C's model name> default effort` (such as `Opus 5.5 default effort` for
    a Builder row set to High), the model name as the Models table's Model
-   cell writes it. A later driver version that applies the effort lets the
-   note name it.
+   cell writes it. The field holds at most 60 characters (agent status v1),
+   so a model name over 45 characters is shown as its first 42 characters,
+   trailing spaces dropped, then `...`. A later driver version that applies
+   the effort lets the note name it.
 5. **The person's own login** keeps approvals, repository settings and
    changes to `.github/workflows/` (github-identity.v1's roles).
 
@@ -248,11 +252,13 @@ person, and the request's `requester` and `repositories`), or `waits`:
 | `role-not-allowed/` | An entry never picked for a role it may not take; a role nobody may take waits; a models wait |
 | `other-user/` | A user project that isn't ours: its own person, App, repositories and token service, with a bot |
 | `namespaced/` | A namespaced model id driver v1 can't take waits; a Builder set to High whose note says `default effort` |
+| `long-model/` | Model names of 45 characters (shown whole: a 60-character note) and 46 (cut to `...`) |
 | `starting/` | KN22's starting Roster |
 | `no-roster/` | No Roster: starts as today |
 
-`invalid/` holds one Markdown file per refusal code, and `refusals.json`
-each file's exact refusal line.
+`invalid/` holds one Markdown file per refusal code (and
+`heading-form-underlined.md` beside `heading-form.md`), and
+`refusals.json` each file's exact refusal line.
 
 [`fixtures/roster/roster_contract.rs`](fixtures/roster/roster_contract.rs)
 is the contract's reference reader, registered in `tests/cli-agent/main.rs`:
