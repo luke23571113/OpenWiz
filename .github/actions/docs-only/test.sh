@@ -48,13 +48,9 @@ jobs "$ALL" ci/runner/new.sh
 jobs "$ALL" ci/runner/README.md.bak
 # #1251: web-build's test.sh runs ci/rust-tests.sh on fakes, so it keeps it.
 jobs "web-build rust" ci/rust-tests.sh
-# #1264: the escape finder and its workflow, which runs its own tests; no
-# CI job reads them. A neighbour no row knows still runs every job.
-jobs none ci/escapes/fixtures/gh .github/workflows/ci-escapes.yml
-# X5: all lanes now read X6's validator.
+# X5: all lanes read X6's validator. A neighbour no row knows still runs every job.
 jobs "$ALL" ci/escapes/escapes.py
 jobs "$ALL" ci/escapes.py
-jobs "$ALL" .github/workflows/ci-escapes.yml.bak
 
 # Skills and docs (#177): the rust job's skills check and the triage test
 # read them. web-build runs with rust, for the out/ that rust reads.
@@ -161,14 +157,14 @@ site skips changes/1251.md
 site skips changes/README.md
 site skips tests/loops/main.rs tests/fleet/b2_cases.rs tests/cli-agent/main.rs
 site skips tests/newdir/x.rs
-site skips tools/war-room/test_gather.py tools/collector/steps.tsv
+site skips tools/newtool/test_x.py tools/newtool/steps.tsv
 site skips changes/1102.md tests/loops/fixture.rs
 site runs changes/1251.md tools/release/test.py
 site runs tests/fixtures/release/clean/README.md tests/loops/main.rs
-site runs tools/release/README.md tools/collector/steps.tsv
+site runs tools/release/README.md tools/newtool/steps.tsv
 jobs "$ALL" changes/1251.md
 jobs "$ALL" tests/loops/main.rs
-jobs "$ALL" tools/war-room/test_gather.py
+jobs "$ALL" tools/newtool/test_x.py
 # The step mode leaves the jobs' own answers alone.
 jobs "$ALL" crates/core/src/lib.rs
 if printf 'tools/release/test.py\n' | CLASSIFY_STEP=web sh "$HERE/classify.sh" > /dev/null 2>&1; then bad "CLASSIFY_STEP accepts an unknown step"; else ok "CLASSIFY_STEP refuses an unknown step"; fi
@@ -328,7 +324,6 @@ ci/runner/Dockerfile
 ci/runner/cache.sh
 ci/rust-tests.sh
 ci/escapes/escapes.py
-.github/workflows/ci-escapes.yml
 skills
 .claude/skills/grill
 .agents/skills/grill
@@ -893,8 +888,6 @@ fi
 for proof in test_gate.py test_plan.py test_lanes.py test_execution.py test_release_prune.py test_workflow.py; do
   if python3 -I "$HERE/$proof"; then ok "X5: $proof"; else bad "X5: $proof"; fi
 done
-# WM1 (#1056): the war room's split checker, on its synthetic trees (fast, offline).
-if python3 -I "$ROOT/ci/wizroom/test_split.py"; then ok "WM1: split checker"; else bad "WM1: split checker"; fi
 if python3 -I "$ROOT/tools/collector/test_runtime.py"; then ok "WM2: shared runtime equivalence"; else bad "WM2: shared runtime equivalence"; fi
 if node --test "$ROOT/.github/workflows/ci.test.mjs" "$ROOT/.github/workflows/ci-safety-watch.test.mjs"; then
   ok "CI nightly admission and push/PR coalescing"

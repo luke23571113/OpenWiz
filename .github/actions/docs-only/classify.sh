@@ -68,9 +68,8 @@ cat > "$table" <<'TABLE'
 rust            -       \.claude/skills/(export-review|live-quick-check)/SKILL\.md
 -               -       \.claude/skills/[^/]+/SKILL\.md
 -               -       ci/runner/(README\.md|Dockerfile|compose\.yaml|entrypoint\.sh|test\.sh)
-# X5 reuses the escape reader validator in every lane. Keep X6's other paths below.
+# X5 reuses the escape reader validator in every lane.
 web-build,rust,web-test * ci/escapes/escapes\.py
--               -       ci/escapes/.+|\.github/workflows/ci-escapes\.yml
 web-build,rust  *       ci/rust-tests\.sh
 # tests/fleet/b2_planner.rs reads the installed skills' fleet template through the link.
 rust            rust:test:fleet skills
