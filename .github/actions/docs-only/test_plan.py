@@ -241,8 +241,12 @@ class Plans(unittest.TestCase):
                  ({'action': 'ready_for_review'}, 'ready_for_review')]
         for context, code in cases:
             with self.subTest(code=code):
-                record, _ = self.run_plan(**context)
+                record, dispatch = self.run_plan(**context)
                 self.assert_full(record, code)
+                # catches (#1486): a main push or the nightly run losing the always, rust and
+                # ci jobs' full-main mode (their `trace` gate), or a PR gaining it.
+                self.assertEqual(dispatch['trace'], code in ('push_main', 'nightly'))
+                self.assertFalse(dispatch['planted'])
 
     def test_checks_source_requests_lint_without_another_rust_test_lane(self):
         self.change('tests/checks/main.rs')

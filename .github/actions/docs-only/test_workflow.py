@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """X5 workflow contracts, plus execution of the final job's actual script."""
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
+import time
 sys.dont_write_bytecode = True
 import unittest
+from unittest import mock
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
@@ -18,6 +23,84 @@ import test_lanes
 def jobs():
     source=(ROOT/'.github/workflows/ci.yml').read_text().split('jobs:\n',1)[1]
     return dict((m[1],m[2]) for m in re.finditer(r'^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)',source,re.M|re.S))
+
+
+class MainRunAge(unittest.TestCase):
+    """#1055, #1486: a main push runs the full plan only when main's last full
+    run (a push or nightly whose ci job passed) finished over 120 minutes ago.
+
+    catches: a push running everything after a recent full run, rounding away
+    the strict 120-minute boundary, a light push counting as a full run, or an
+    unreadable answer deciding instead of failing. Only GitHub's answers and
+    the clock are fixture inputs.
+    """
+    NOW = 1_700_010_000
+
+    def setUp(self):
+        blocks = jobs()['changes']
+        self.assertIn('      - name: Check the last full main run\n', blocks)
+        step = blocks.split('      - name: Check the last full main run\n', 1)[1].split('      - ', 1)[0]
+        body = step.split('        run: |\n', 1)[1]
+        lines = [line[10:] for line in body.splitlines() if line.startswith('          ')]
+        self.script = '\n'.join(lines[1:-1])
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        (self.tmp / 'bin').mkdir()
+        gh = self.tmp / 'bin/gh'
+        gh.write_text('#!' + sys.executable + ' -I\nimport json, os, sys\n'
+                      'if os.environ.get("GH_FAIL"): sys.exit(1)\n'
+                      'print(json.load(open(os.environ["GH_ANSWERS"]))[sys.argv[2].split("?")[0]])\n')
+        gh.chmod(0o755)
+
+    def at(self, minutes):
+        return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(self.NOW - minutes * 60))
+
+    def gate(self, runs, fail=False):
+        """runs: (id, event, updated minutes ago, ci job's completion minutes ago or None)."""
+        answers = {'repos/synthetic/repo/actions/workflows/ci.yml/runs': json.dumps({'workflow_runs': [
+            {'id': i, 'event': e, 'updated_at': self.at(u)} for i, e, u, _ in runs]})}
+        for i, _, _, ci in runs:
+            answers[f'repos/synthetic/repo/actions/runs/{i}/jobs'] = json.dumps({'jobs': [
+                {'name': 'changes', 'conclusion': 'success', 'completed_at': self.at(1)}]
+                + ([{'name': 'ci', 'conclusion': 'success', 'completed_at': self.at(ci)}] if ci is not None else [])})
+        (self.tmp / 'answers.json').write_text(json.dumps(answers))
+        output = self.tmp / 'output'
+        output.unlink(missing_ok=True)
+        env = dict(GH_ANSWERS=str(self.tmp / 'answers.json'), GITHUB_OUTPUT=str(output), GITHUB_RUN_ID='77',
+                   GITHUB_REPOSITORY='synthetic/repo', RETRY_WAIT='0', GH_FAIL='1' if fail else '',
+                   PATH=str(self.tmp / 'bin') + os.pathsep + os.environ['PATH'])
+        original = Path.cwd()
+        try:
+            os.chdir(ROOT)
+            with mock.patch.dict(os.environ, env), mock.patch('time.time', return_value=self.NOW), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                exec(compile(self.script, 'ci.yml:main_age', 'exec'), {'__name__': '__main__'})
+        finally:
+            os.chdir(original)
+        return output.read_text()
+
+    def test_a_full_run_119_minutes_ago_keeps_the_push_light_and_121_runs_everything(self):
+        for event in ('push', 'schedule'):
+            with self.subTest(event=event):
+                self.assertEqual(self.gate([(5, event, 100, 119)]), 'trace=false\n')
+                self.assertEqual(self.gate([(5, event, 100, 121)]), 'trace=true\n')
+
+    def test_exactly_120_minutes_is_not_older_but_one_second_more_is(self):
+        self.assertEqual(self.gate([(5, 'push', 100, 120)]), 'trace=false\n')
+        self.NOW += 1
+        self.assertEqual(self.gate([(5, 'push', 100, 120)]), 'trace=true\n')
+
+    def test_a_light_push_a_pull_request_or_this_run_is_not_a_full_run(self):
+        runs = [(77, 'push', 1, 1), (6, 'push', 5, None), (7, 'pull_request', 5, 5), (8, 'merge_group', 5, 5)]
+        self.assertEqual(self.gate(runs), 'trace=true\n')
+        self.assertEqual(self.gate([]), 'trace=true\n')
+        self.assertEqual(self.gate(runs + [(9, 'schedule', 30, 30)]), 'trace=false\n')
+
+    def test_an_unreadable_answer_decides_nothing(self):
+        with self.assertRaisesRegex(SystemExit, 'Last full main run: unknown'):
+            self.gate([(5, 'push', 100, 119)], fail=True)
+        self.assertFalse((self.tmp / 'output').exists(), 'an unreadable age must not emit a decision')
 
 
 class Workflow(unittest.TestCase):
@@ -104,17 +187,26 @@ class Workflow(unittest.TestCase):
         self.assertIn('run.py check-shards "$RUNNER_TEMP/ci-plan" release ', blocks['ci'])
         self.assertIn('run.py stamp "$RUNNER_TEMP/ci-plan" release', blocks['ci'])
 
-    def test_a_main_push_writes_no_plan_and_every_other_event_does(self):
-        # catches (#1486): a main push writing a full plan (every heavy lane) with no map
-        # age to gate it, or a PR, nightly or merge group losing its plan.
+    def test_main_push_plan_requires_an_old_full_run_but_other_events_do_not(self):
+        # catches: a main push writing a full plan after a recent full run, or a PR/nightly/
+        # merge group made dependent on the main-push age read (#1055, #1486).
         block = jobs()['changes']
-        steps = {'plan': block.split('      - name: Write the CI plan\n', 1)[1].split('      - ', 1)[0],
-                 'artifact': block.split('      - uses: actions/upload-artifact@', 1)[1]}
+        self.assertIn('      - name: Check the last full main run\n', block)
+        steps = {name: block.split('      - name: ' + name + '\n', 1)[1].split('      - ', 1)[0]
+                 for name in ('Check the last full main run', 'Write the CI plan')}
+        upload = block.split('      - uses: actions/upload-artifact@', 1)[1]
         for event in ('push', 'pull_request', 'schedule', 'merge_group'):
-            for name, step in steps.items():
-                code = re.search(r'^        if: (.+)$', step, re.M)[1].replace('github.event_name', repr(event))
-                with self.subTest(event=event, step=name):
-                    self.assertEqual(eval(code, {'__builtins__': {}}, {}), event != 'push')
+            for old in (False, True):
+                values = {'github.event_name': repr(event), 'steps.main_age.outputs.trace': repr(str(old).lower())}
+                for name, step in {**steps, 'selection artifact': upload}.items():
+                    expression = re.search(r'^        if: (.+)$', step, re.M)
+                    code = expression[1] if expression else 'True'
+                    for key, value in values.items():
+                        code = code.replace(key, value)
+                    code = code.replace('&&', ' and ').replace('||', ' or ')
+                    expected = event == 'push' if name == 'Check the last full main run' else event != 'push' or old
+                    with self.subTest(event=event, old=old, step=name):
+                        self.assertEqual(eval(code, {'__builtins__': {}}, {}), expected)
 
     def test_one_writer_keeps_attempt_specific_plan_and_summary(self):
         workflow=(ROOT/'.github/workflows/ci.yml').read_text()
@@ -128,7 +220,7 @@ class Workflow(unittest.TestCase):
         self.assertNotIn('uses: ./.github/actions/docs-only\n',workflow)
 
     # Which events run ci (always on pull requests, merge groups and nightly,
-    # never on a main push) is ci.test.mjs's job-graph simulation (#1055, #1486).
+    # on a main push after an old full run) is ci.test.mjs's job-graph simulation (#1055, #1486).
     def test_final_ci_waits_for_all_jobs_and_always_runs(self):
         block=jobs()['ci']
         deps=re.search(r'^    needs: \[(.*)\]$',block,re.M)[1].split(', ')
