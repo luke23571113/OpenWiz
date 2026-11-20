@@ -262,6 +262,26 @@ class Boat(unittest.TestCase):
         self.assertEqual((code, [t[2] for t in self.logged()]), (1, ['c1']), 'a wake reopened the failed run')
         self.assertIn('never finished starting', err['error'])
 
+    def test_a_failed_stop_is_never_undone_by_a_wake(self):
+        # catches: a stop whose save failed leaving the run wakeable, so once storage recovers an ordinary wake
+        # resumes the stopped sandbox and runs the builder again before anyone stops it again (#1707).
+        for block in ('staged-save', 'read-only-folder'):
+            with self.subTest(block=block):
+                code, out = self.driver('start', REQUEST)
+                self.assertEqual(code, 0, out)
+                self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
+                state, staged = os.path.join(self.folder, 'state'), os.path.join(self.folder, 'state', out['run'] + '.json.new')
+                os.mkdir(staged) if block == 'staged-save' else os.chmod(state, 0o500)
+                code, err = self.driver('stop', out)
+                self.assertEqual(code, 1, err)
+                os.rmdir(staged) if block == 'staged-save' else os.chmod(state, 0o700)
+                turns, sandbox = len(self.logged()), self.sandboxes()
+                code, err = self.driver('wake', out)
+                self.assertEqual((code, len(self.logged()), self.sandboxes()), (1, turns, sandbox), 'a wake undid the stop')
+                self.assertIn('stop it again', err['next'])
+                self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+                self.assertEqual(self.driver('wake', out)[0], 1)
+
 
 if __name__ == '__main__':
     unittest.main()
