@@ -4,7 +4,10 @@
 #[path = "../support/schema.rs"]
 mod schema;
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/dirs.rs"]
 mod dirs;
 
@@ -17,7 +20,10 @@ mod schema_conformance;
 mod skills;
 mod strict_json;
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/place.rs"]
 mod place;
 

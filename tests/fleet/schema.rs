@@ -14,7 +14,10 @@
 //! [`Coverage`] records which branches a value took: every `oneOf`
 //! alternative, `enum` value, `type` of a list, and property.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "included by more than one test target, and each uses only part of it"
+)]
 
 use std::collections::BTreeSet;
 
