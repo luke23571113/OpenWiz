@@ -33,8 +33,10 @@ LINK = re.compile(r'\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|part of)\b:?\s+'
                   r'(?:https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/issues/(\d+)\b'
                   r'|([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)?#(\d+)\b)', re.I)
 FLEET = 'docs/agents/fleet.md'
-ITS_TESTS = re.compile(r',?\s+(?:and|plus)\s+its\s+tests\b', re.I)
-TEST_NAME = re.compile(r'test_.+\.py|.+_test\.py|.+\.test\.(?:ts|tsx|mjs)|.+_tests?\.rs')
+# "and its tests" ends the bullet, or is followed only by its repository and annotation.
+ITS_TESTS = re.compile(r',?\s+(?:and|plus)\s+its\s+tests'
+                       r'(?:\s+in\s+`[A-Za-z0-9-]+/[A-Za-z0-9_.-]+`)?\s*(?:\(.*)?$', re.I)
+TEST_NAME = re.compile(r'test_(.+)\.py|(.+)_test\.py|(.+)\.test\.(?:ts|tsx|mjs)|(.+)_tests?\.rs')
 
 PR_QUERY = '''query($owner: String!, $name: String!, $number: Int!, $files: String, $comments: String) {
   repository(owner: $owner, name: $name) { pullRequest(number: $number) {
@@ -116,7 +118,7 @@ def owned_paths(body, repo):
         found = []
         for m in tokens:
             token, tail = m.group(1), ITS_TESTS.match(text, m.end())
-            inner = re.search(ITS_TESTS.pattern + '$', token, re.I)
+            inner = re.search(ITS_TESTS.pattern, token, re.I)
             if inner:
                 token, tail = token[:inner.start()], inner
             if token.lower() not in repos and is_path(token):
@@ -147,17 +149,16 @@ def tests_of(rule, path):
 
     X's folder D, X's stem S (its name before the first dot) and D's own name F. Covered:
     a test file directly in D (test_*.py, *_test.py, *.test.ts, *.test.tsx, *.test.mjs,
-    *_test.rs, *_tests.rs) whose name has S or F as a word; any file under D/tests/ or D/test/
-    whose path below that folder has S or F as a word; and D/S/tests.rs, a Rust module's tests.
-    A word is a part of the name split at `_`, `.`, `-` and `/`. A glob names no one stem:
-    it covers no tests.
+    *_test.rs, *_tests.rs) whose name, without that test marker, has S or F as a word; any
+    file under D/tests/ or D/test/ whose path below that folder, without a file's test marker,
+    has S as a word; and D/S/tests.rs, a Rust module's tests. A word is a part split at `_`,
+    `.`, `-` and `/`, never `test` or `tests` itself. A glob names no one stem: no tests.
     """
     rule = rule[2:] if rule.startswith('./') else rule
     if any(c in rule for c in '*?['):
         return False
     folder, _, name = rule.rstrip('/').rpartition('/')
     stem, prefix = name.split('.')[0], folder + '/' if folder else ''
-    words = {stem, folder.rpartition('/')[2]} - {''}
     if not path.startswith(prefix):
         return False
     rest = path[len(prefix):]
@@ -165,8 +166,21 @@ def tests_of(rule, path):
         return True
     top, _, below = rest.partition('/')
     if top in ('tests', 'test') and below:
-        return bool(words & set(re.split(r'[_.\-/]', below)))
-    return not below and TEST_NAME.fullmatch(rest) is not None and bool(words & set(re.split(r'[_.\-]', rest)))
+        return stem in naming(below)
+    return not below and bool({stem, folder.rpartition('/')[2]} & naming(rest, marked=True))
+
+
+def naming(path, marked=False):
+    """The words a path names X by: its file's test marker and extension dropped, never `test(s)`.
+
+    marked: the file must carry a test marker (a file directly beside X).
+    """
+    folders, _, name = path.rpartition('/')
+    m = TEST_NAME.fullmatch(name)
+    if marked and not m:
+        return set()
+    name = next(g for g in m.groups() if g) if m else name.rpartition('.')[0] or name
+    return set(re.split(r'[_.\-/]', f'{folders}/{name}')) - {'', 'test', 'tests'}
 
 
 # --- records: who may grant, what the standing rule allows, what each grant names ---
