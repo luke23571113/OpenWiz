@@ -126,7 +126,12 @@ class Plans(unittest.TestCase):
         # catches: the docs and skills skip dropping a named reader, or widening to the whole lane.
         for edit in ('docs/agents/fleet.md', 'wizskills.lock', 'skills'):
             with self.subTest(edit):
-                self.assertEqual(self.rust(self.plan_for(edit)), ['rust:test:fleet'])
+                record = self.plan_for(edit)
+                self.assertEqual(self.rust(record), ['rust:test:fleet'])
+                # catches (#1612 R1): a WizSkills pin move or a changed skills link skipping the
+                # skill suites, which run from the pinned release.
+                suites = {lane['skill']: lane['decision'] for lane in record['lanes']['skills']}
+                self.assertEqual(suites, dict.fromkeys(suites, 'skip' if edit.startswith('docs/') else 'run'))
 
     def test_a_code_path_runs_every_rust_test_but_the_always_lane_s(self):
         # catches: a source, test or fixture change, new or modified, skipping a Rust test.

@@ -194,18 +194,23 @@ class Workflow(unittest.TestCase):
         steps = {name: block.split('      - name: ' + name + '\n', 1)[1].split('      - ', 1)[0]
                  for name in ('Check the last full main run', 'Write the CI plan')}
         upload = block.split('      - uses: actions/upload-artifact@', 1)[1]
+        # catches (#1612 R2): a main push's rerun skipping the full suite because another
+        # full run finished within 120 minutes; every rerun runs everything.
         for event in ('push', 'pull_request', 'schedule', 'merge_group'):
             for old in (False, True):
-                values = {'github.event_name': repr(event), 'steps.main_age.outputs.trace': repr(str(old).lower())}
-                for name, step in {**steps, 'selection artifact': upload}.items():
-                    expression = re.search(r'^        if: (.+)$', step, re.M)
-                    code = expression[1] if expression else 'True'
-                    for key, value in values.items():
-                        code = code.replace(key, value)
-                    code = code.replace('&&', ' and ').replace('||', ' or ')
-                    expected = event == 'push' if name == 'Check the last full main run' else event != 'push' or old
-                    with self.subTest(event=event, old=old, step=name):
-                        self.assertEqual(eval(code, {'__builtins__': {}}, {}), expected)
+                for attempt in (1, 2):
+                    values = {'github.event_name': repr(event), 'github.run_attempt': repr(str(attempt)),
+                              'steps.main_age.outputs.trace': repr(str(old).lower())}
+                    for name, step in {**steps, 'selection artifact': upload}.items():
+                        expression = re.search(r'^        if: (.+)$', step, re.M)
+                        code = expression[1] if expression else 'True'
+                        for key, value in values.items():
+                            code = code.replace(key, value)
+                        code = code.replace('&&', ' and ').replace('||', ' or ')
+                        gate = event == 'push' and attempt == 1
+                        expected = gate if name == 'Check the last full main run' else not gate or old
+                        with self.subTest(event=event, old=old, attempt=attempt, step=name):
+                            self.assertEqual(eval(code, {'__builtins__': {}}, {}), expected)
 
     def test_one_writer_keeps_attempt_specific_plan_and_summary(self):
         workflow=(ROOT/'.github/workflows/ci.yml').read_text()
