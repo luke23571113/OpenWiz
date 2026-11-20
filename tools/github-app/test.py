@@ -1758,9 +1758,9 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
         return subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15, env=base)
 
     def assert_hidden(self, token, *outputs):
-        """Neither the key (PEM, its lines or its base64), the JWT nor the token
-        reached a child's arguments or environment, or any other output. Output 1
-        is OpenSSL's log; a failure names the output, never its content."""
+        """Neither the key (PEM, its lines or its base64) nor TOKEN reached
+        OpenSSL's arguments or environment (its log, output 1) or any of OUTPUTS;
+        a failure names the output, never its content."""
         log = self.openssl_log.read_bytes() if self.openssl_log.exists() else b""
         self.assert_no_key(log, *outputs)
         for needle in (self.secret.encode(), self.secret[:40].encode(), token.encode()):

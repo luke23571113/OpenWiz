@@ -192,24 +192,18 @@ GH_TOKEN="$(python3 -I tools/github-app/refresh-token.py --write \
   reads it through a credential helper that reads the environment, never in a remote
   URL: `git -c credential.helper= -c 'credential.helper=!f() { [ "$1" = get ] &&
   printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push ...`.
-  The key reaches OpenSSL only by descriptor; the secret's key and any token the
-  caller exports for `gh` (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`,
-  `GITHUB_ENTERPRISE_TOKEN`) are dropped from the helper's environment before any
-  child starts, and on the secret route OpenSSL gets only `PATH`.
-  `tools/github-app/test.py` (`AgentTokenTests`) checks each of these with a logging
-  OpenSSL stand-in.
+  The key reaches OpenSSL only by descriptor; the secret's key is dropped from the
+  helper's environment before any child starts, and on that route OpenSSL gets only
+  `PATH`. `tools/github-app/test.py` (`AgentTokenTests`) checks each of these with a
+  logging OpenSSL stand-in.
 - **Cloud threads: the Cloudroom secret.** A cloud thread adds `--from-secret`: the
   helper signs with `OPENWIZ_GITHUB_APP_KEY` (base64 of the PEM, one line) and
-  `OPENWIZ_GITHUB_APP_ID`, two Cloud environment keys, and caches under the
-  sandbox's own state. No key file is written. Cloudroom gives Cloud environment
-  keys to every cloud thread and every loop run, unless a loop's `--secrets` names
-  the only keys it gets, and every process in those sandboxes inherits them: the
-  helper drops the key from its own environment, but cannot hide it from the rest of
-  the sandbox. This route was chosen over handing a PC-minted token to the thread
-  because a handed-over token has to pass through a transcript or a command's output
-  to get there, and it expires within the hour with no way to refresh while the PC
-  sleeps; the secret refreshes on its own and is revocable separately (give it its own
-  key, below).
+  `OPENWIZ_GITHUB_APP_ID`, given only to threads that mint, and caches under the
+  sandbox's own state. No key file is written. This route was chosen over handing a
+  PC-minted token to the thread because a handed-over token has to pass through a
+  transcript or a command's output to get there, and it expires within the hour with
+  no way to refresh while the PC sleeps; the secret refreshes on its own and is
+  revocable separately (give it its own key, below).
 - **One minting path per profile.** `refresh-token.py` runs `mint-token.py`'s checks
   through the same `app.py` guards. `mint-token.py` itself stays the read-only tool,
   byte-identical to the copy `launch-fleet` carries (`tools/fleet-load/test_carried.py`).
@@ -238,17 +232,11 @@ installation id, state directory) stay in the private record, never on GitHub.
    planner's private notes.
 2. **The key (owner, once, for cloud threads only).** PC-run agents need nothing: the
    key stays in the PC state. For cloud threads, in the App's settings click
-   **Generate a private key**. In Cloudroom's **Settings → Cloud environment**, add
-   `OPENWIZ_GITHUB_APP_KEY` with the file's one-line base64 as its value
-   (`base64 < FILE.pem | tr -d '\n'`, which works with both the macOS and GNU
-   `base64`; on macOS, add `| pbcopy` to copy it without printing it) and
-   `OPENWIZ_GITHUB_APP_ID` with the App id, then delete the download. This is the
-   only place the key leaves the PC. Every cloud thread and every loop run then has
-   both keys in its environment, so every process in those sandboxes can read the
-   key: a loop that never mints gets `--secrets` without them (its own keys, or
-   `none`). `room-cli secret request` is not this route: it writes a dotenv file in
-   one sandbox only, which no other thread or loop sees. Revoke the key alone by
-   deleting it in the App's settings, then remove both Cloud environment keys.
+   **Generate a private key**, run `room-cli secret request OPENWIZ_GITHUB_APP_KEY`
+   and paste the file's one-line base64 (`base64 -w0 FILE.pem`) into Cloudroom's prompt
+   only, set `OPENWIZ_GITHUB_APP_ID` the same way, then delete the download. This is
+   the only place the key leaves the PC. Revoke it alone by deleting that key in the
+   App's settings.
 3. **Before (PC hands, the person's login).** One hour before the switch, read the
    person's REST use with `gh api rate_limit --jq '.resources.core | {used, reset}'`
    (this endpoint is not counted) just after a reset and again just before the next,
@@ -262,15 +250,11 @@ installation id, state directory) stay in the private record, never on GitHub.
    commands, set `GH_TOKEN` from the helper as above (`--write` for loops that comment,
    label or merge; read-only for the collector and the map) and use the Git credential
    helper above for pushes. Keep the person's login for the rows above. A loop's
-   environment gets `GH_TOKEN` from its runner, never from a file in a repository. A
-   cloud loop that mints adds `--from-secret` and runs with `--secrets
-   OPENWIZ_GITHUB_APP_KEY,OPENWIZ_GITHUB_APP_ID` plus only the other keys its prompt
-   and script need; every other cloud loop's `--secrets` leaves both out.
+   environment gets `GH_TOKEN` from its runner, never from a file in a repository.
 6. **Switch each agent brief (planner).** Builders and reviewers on the PC run each
    GitHub command as `GH_TOKEN="$(python3 -I .../refresh-token.py --write ...)" gh ...`;
-   cloud threads add `--from-secret`, and read both keys from the environment
-   Cloudroom already gave them (step 2): nothing to load or pass. A brief names the
-   repositories, never a token or a key.
+   cloud threads add `--from-secret` and get the two secrets. A brief names the
+   repositories, never a token.
 7. **After (PC hands).** One hour after the switch, repeat step 3 and record both
    numbers on the ticket.
 
