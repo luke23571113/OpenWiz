@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""The OpenWiz driver for Hermes (kernel/driver.v1.md), through Hermes' own signed-in `hermes` CLI.
-
-Each turn of a run is one `hermes chat --oneshot --format stream-json` under its own supervisor, which keeps every
-process the turn starts: `start` runs the first turn and keeps the Hermes session id it reports, `wake` runs
-another with `--resume <session>` once the last one has ended, and `stop` interrupts the turn (SIGINT, Hermes'
-Ctrl-C) and then ends everything the turns started. A run is saved before its first turn starts, and a wake or a
-stop holds the run's lock throughout. Hermes reads its own configuration: the driver never reads, sends or prints
-a key. Built from adapters/template/. Linux; standard library only.
-"""
 import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,10 +8,9 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
-GRACE = 10  # seconds a stopped process has to exit before it is killed
-SETTLE = 10  # seconds an interrupted Hermes turn has to settle cancelled before it is ended
-SESSION_WAIT = 60  # seconds a new turn has to report its Hermes session
-# harness -> the bundled Hermes skill that runs it (None: Hermes is the harness itself)
+GRACE = 10
+SETTLE = 10
+SESSION_WAIT = 60
 HARNESSES = {'claude': 'claude-code', 'codex': 'codex', 'hermes': None}
 SESSION = r'[A-Za-z0-9][A-Za-z0-9._:-]{0,199}'
 
@@ -36,7 +26,6 @@ def unique(pairs):
 
 
 def read(fields):
-    """The request on stdin, with exactly these fields, each valid, or Refused."""
     try:
         req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
     except ValueError:
@@ -51,9 +40,6 @@ def read(fields):
 
 
 def command(req, session):
-    """Hermes' own signed-in CLI, one turn: a new session, or `--resume` the run's session. Never a login or a key.
-    For `hermes`, `model` is Hermes' model; for `claude` or `codex`, Hermes keeps its own model and runs that CLI
-    through its bundled skill, told in the prompt to use `model`."""
     what = 'You were woken: read the ticket again and carry on' if session else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
     cmd = ['hermes', 'chat', '--oneshot', '--format', 'stream-json', '--source', 'tool']
@@ -68,7 +54,6 @@ def command(req, session):
 
 
 def since(pid):
-    """When process pid started, or None once it has exited: with its pid, this names one process."""
     try:
         with open('/proc/%d/stat' % pid) as f:
             fields = f.read().rpartition(')')[2].split()
@@ -78,7 +63,6 @@ def since(pid):
 
 
 def descendants(pid):
-    """Every live process under pid."""
     children = {}
     for p in filter(str.isdigit, os.listdir('/proc')):
         try:
@@ -98,9 +82,7 @@ def descendants(pid):
 
 
 def supervise(out, cmd):
-    """One turn, as `driver --turn <log> <command>`: run the harness, and keep every process it starts as this turn's
-    (an orphan comes back here, whatever its session or environment) until none is left; then exit."""
-    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
@@ -109,7 +91,7 @@ def supervise(out, cmd):
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
     while True:
@@ -124,7 +106,6 @@ def turn_log(run, n):
 
 
 def reported_session(path):
-    """The session id the turn's `system` `init` line reports, or None so far."""
     try:
         with open(path) as f:
             for line in f:
@@ -141,8 +122,6 @@ def reported_session(path):
 
 
 def launch(req, run, session, n):
-    """Start turn n under its supervisor, its output in the run's owner-only log; return what `running` and `end`
-    need, and for a first turn the Hermes session it reports."""
     if not shutil.which('hermes'):
         raise Refused('hermes is not installed here',
                       'install Hermes and set up its model yourself (hermes setup), then start again')
@@ -172,7 +151,7 @@ def launch(req, run, session, n):
     if session:
         return turn
     deadline = time.monotonic() + SESSION_WAIT
-    while time.monotonic() < deadline:  # a run needs its session before it can be woken
+    while time.monotonic() < deadline:
         turn['session'] = reported_session(out)
         if turn['session'] is not None or not running(turn, run):
             break
@@ -185,14 +164,10 @@ def launch(req, run, session, n):
 
 
 def running(turn, run):
-    """Whether the turn `launch` returned still runs its harness."""
     return bool(turn) and turn['since'] is not None and since(turn['pid']) == turn['since']
 
 
 def end(turns, run):
-    """Stop the run: interrupt its Hermes turn as Ctrl-C would, so it settles cancelled, then end every process its
-    turns' supervisors still keep, whatever its session or environment. A supervisor exits only once none of its
-    processes is left, so answer once every supervisor has exited."""
     kept = [(t['supervisor'], t['supervisor_since']) for t in turns if t and t['supervisor_since'] is not None]
     for sig, wait in ((signal.SIGINT, SETTLE), (signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
         sent, deadline = set(), time.monotonic() + wait
@@ -202,7 +177,7 @@ def end(turns, run):
                 return
             pinned = {}
             for p in set().union(*(descendants(s) for s, _ in kept)) - sent:
-                try:  # pin each pid first, then check it is still under a supervisor, so no reused pid is hit
+                try:
                     pinned[p] = os.pidfd_open(p)
                 except OSError:
                     pass
@@ -223,7 +198,6 @@ def end(turns, run):
 
 
 def lock(run):
-    """Hold the run's lock until this command ends, so its wakes and stops take turns."""
     if not os.path.exists(os.path.join(STATE, run + '.json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     try:
@@ -249,7 +223,6 @@ def saved(run, state=None):
 
 
 def unsaved(run, turn, cmd):
-    """A turn began but could not be saved: end it, and say the outcome is unknown, never retry."""
     try:
         end([turn], run)
     except Refused:
@@ -271,7 +244,7 @@ def answer(cmd):
         if req['harness'] not in HARNESSES:
             raise Refused('Hermes cannot run harness ' + req['harness'], 'use one of: ' + ', '.join(HARNESSES))
         state = {'request': req, 'session': None, 'turns': [], 'stopped': False, 'starting': True}
-        try:  # save the run before its turn starts: nowhere to keep it, nothing starts
+        try:
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
         except OSError:
@@ -287,7 +260,7 @@ def answer(cmd):
             raise
         try:
             saved(run, dict(state, session=turn['session'], turns=[turn], starting=False))
-        except OSError:  # the turn began but its run is not saved: end it, and never say retry
+        except OSError:
             unsaved(run, turn, 'start')
         return {'run': run}
     if cmd in ('wake', 'stop'):
@@ -295,13 +268,13 @@ def answer(cmd):
         lock(run)
         state = saved(run)
         if cmd == 'stop':
-            try:  # first, so no wake starts a turn meanwhile
+            try:
                 saved(run, dict(state, stopped=True))
                 kept = True
             except OSError:
                 kept = False
-            end(state['turns'], run)  # whether or not that save worked
-            for t in state['turns']:  # the turns' output, the agent's words, goes with the run
+            end(state['turns'], run)
+            for t in state['turns']:
                 try:
                     os.remove(t['log'])
                 except OSError:
@@ -315,10 +288,9 @@ def answer(cmd):
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
-        # One agent per run: while its last turn runs, that agent is awake and reads the ticket itself.
         if state['turns'] and running(state['turns'][-1], run):
             return {'run': run, 'woke': True}
-        try:  # a turn it could not save would be beyond a later wake's check: save first, or start nothing
+        try:
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was started' % run,

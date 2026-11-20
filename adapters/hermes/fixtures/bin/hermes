@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""A synthetic `hermes` CLI for the Hermes driver's tests. Synthetic assumptions, not observed on a live install:
-the arguments and the stream-json lines follow Hermes' CLI reference (hermes-agent docs, CLI Commands, read
-2026-11-20): `hermes chat --oneshot --format stream-json` prints one JSON object per line, first a `system`
-`init` line carrying `session_id`, last a `result` line whose `exit_code` the process exits with; `--resume
-<session>` continues that session; Ctrl-C (SIGINT) interrupts the turn, which ends `exit_code: 130`.
-
-It keeps its sessions in FAKE_HERMES_HOME. A turn plays the agent: a new session posts one builder status note in
-the local tracker KIT_TRACKER, and each resumed turn edits that session's note. The turn leaves a detached worker
-(`sleep 120`) in its own session behind, and logs `<turn pid> <worker pid> <session> first|woken|interrupted
-<argv as JSON>` lines to FAKE_TURNS. It runs while the file FAKE_HOLD exists. With FAKE_NO_INIT it never prints
-its init line. It never reads an API key: it needs none."""
 import fcntl, json, os, re, signal, subprocess, sys, time
 
 HOME, ARGS = os.environ['FAKE_HERMES_HOME'], sys.argv[1:]
@@ -26,7 +15,6 @@ def log(*fields):
 
 
 def sessions(change):
-    """Run change(sessions) under a lock and save what it leaves."""
     os.makedirs(HOME, exist_ok=True)
     path = os.path.join(HOME, 'sessions.json')
     with open(path + '.lock', 'w') as lock:
@@ -44,7 +32,6 @@ def sessions(change):
 
 
 def note(session, woken, model, skill):
-    """Post or edit this session's builder note, as the agent would."""
     path, now = os.environ['KIT_TRACKER'], time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     body = '\n'.join(['<!-- openwiz:status v1 -->', 'agent: builder', 'state: working', 'harness: Fake',
                       'model: ' + model, 'skills: %s@0.1.2' % skill,
@@ -64,7 +51,6 @@ def note(session, woken, model, skill):
 
 
 def chat(args):
-    # hermes chat --oneshot --format stream-json --source tool [-s <skill>] [-m <model>] [--resume <session>] -q <text>
     m = re.fullmatch(r'--oneshot\x00--format\x00stream-json\x00--source\x00tool(?:\x00-s\x00([a-z-]+))?'
                      r'(?:\x00-m\x00([^\x00]+))?(?:\x00--resume\x00(\S+))?\x00-q\x00([^\x00]+)', '\x00'.join(args))
     if not m:

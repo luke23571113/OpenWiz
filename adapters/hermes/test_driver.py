@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""The Hermes driver passes the kit's five checks on a synthetic `hermes` CLI (fixtures/bin/hermes) and a local
-tracker.
-
-Run: python3 -I adapters/hermes/test_driver.py   (Linux: the kit watches /proc)
-PATH is only fixtures/bin, /usr/bin and /bin, so no real `hermes`, `claude` or `codex` is ever reached.
-"""
 import json
 import os
 import secrets
@@ -19,7 +13,6 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
-# Synthetic values in a GitHub token's shape and in Hermes' API key's place, built here so no file holds one.
 TOKEN = 'gh' + 'p_' + 'Synthetic0Hermes0Value' * 2
 API_KEY = 'synthetic-' + 'hermes-api-server-value'
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
@@ -56,7 +49,6 @@ class Hermes(unittest.TestCase):
                 pass
 
     def marked(self):
-        """Every live process this test started that still carries its mark."""
         found = []
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
@@ -74,9 +66,6 @@ class Hermes(unittest.TestCase):
         return ready()
 
     def test_kit_passes_all_five(self):
-        # catches: a start that answers before Hermes has a session, a wake that opens a new session (a second
-        # note), a stop that leaves the turn's processes running, and a key or token passed into a process the
-        # driver starts.
         p = subprocess.run([sys.executable, '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
                             '--ticket', '7', '--harness', 'claude', '--model', 'synthetic-model-1',
                             '--tracker', self.tracker, '--wait', '8'],
@@ -94,7 +83,6 @@ class Hermes(unittest.TestCase):
         return p.returncode, json.loads(p.stdout)
 
     def logged(self):
-        """The fake hermes's turn lines: [(turn pid, worker pid, session, first|woken|interrupted, argv)]."""
         try:
             with open(self.turns) as f:
                 return [(int(a), int(b), c, d, json.loads(e)) for a, b, c, d, e in
@@ -107,9 +95,6 @@ class Hermes(unittest.TestCase):
             return [(c['id'], c['body'].split('step: ')[1].split('\n')[0]) for c in json.load(f)['comments']]
 
     def test_wake_resumes_the_session_its_start_reported(self):
-        # catches: a wake that starts a fresh Hermes session (a second agent and a second note) instead of
-        # `--resume` the session the first turn reported, and a harness mapped to the wrong bundled skill, or
-        # `model` sent to Hermes as its own model when Claude Code or Codex is the harness.
         for harness, skill in (('claude', 'claude-code'), ('codex', 'codex')):
             with self.subTest(harness=harness):
                 code, out = self.driver('start', dict(REQUEST, harness=harness))
@@ -126,16 +111,12 @@ class Hermes(unittest.TestCase):
                     self.assertIn('the model synthetic-model-1', argv[-1])
                 self.assertEqual(self.notes()[-1][1], 'woke and read the ticket again')
         self.assertEqual(len(self.notes()), 2, 'a wake posted a second note')
-        # Hermes as the harness: `model` is Hermes' own model, and no other CLI's skill is preloaded.
         code, out = self.driver('start', dict(REQUEST, harness='hermes'))
         self.assertEqual(code, 0, out)
         argv = self.until(lambda: len(self.logged()) == 5) and self.logged()[-1][4]
         self.assertEqual((argv[argv.index('-m') + 1], '-s' in argv), ('synthetic-model-1', False))
 
     def test_stop_interrupts_the_turn_then_ends_everything(self):
-        # catches: a stop that only kills the turn's processes, so Hermes never gets its Ctrl-C and its session
-        # never settles cancelled; one that leaves the worker the turn started in its own session; and the turn's
-        # output log left behind with the agent's words.
         open(self.hold, 'w').close()
         code, out = self.driver('start', REQUEST)
         self.assertEqual(code, 0, out)
@@ -147,8 +128,6 @@ class Hermes(unittest.TestCase):
         self.assertEqual(self.driver('wake', out)[0], 1, 'a wake after stop was not refused')
 
     def test_a_start_without_a_session_starts_nothing_wakeable(self):
-        # catches: a start that answers a run id before Hermes reported a session, so its wake has no session to
-        # resume and opens a second agent on the ticket.
         code, out = self.driver('start', REQUEST, FAKE_NO_INIT='1')
         self.assertEqual(code, 1, out)
         self.assertIn('did not report a session', out['error'])
@@ -158,8 +137,6 @@ class Hermes(unittest.TestCase):
         self.assertEqual(len(self.logged()), 1, 'a wake started the failed run')
 
     def test_a_start_it_cannot_run_starts_nothing(self):
-        # catches: a harness Hermes has no skill for passed through as if it were one, and a missing `hermes`
-        # failing without saying what to install.
         code, out = self.driver('start', dict(REQUEST, harness='pi'))
         self.assertEqual((code, out['next']), (1, 'use one of: claude, codex, hermes'))
         code, out = self.driver('start', REQUEST, PATH='/usr/bin:/bin')
