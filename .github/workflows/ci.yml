@@ -34,7 +34,9 @@ env:
 
 jobs:
 
-  # Format, lint and the workspace and release builds.
+  # Format, lint, the workspace and release builds, and every crate's own
+  # tests (all but openwiz-tests'): apart from the rust job's targets, so the
+  # two never compete for one runner's CPUs (#1777).
   lint:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-24.04
@@ -53,6 +55,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo build --workspace --locked
       - run: cargo build --release --locked
+      - run: cargo test --workspace --exclude openwiz-tests --locked -- --test-threads=8
       - name: Save the Cargo cache
         if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -62,8 +65,8 @@ jobs:
             target
           key: cargo-lint-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
 
-  # Every Rust test: `cargo test --workspace`, its targets at once where the
-  # runner has room (ci/rust-tests.sh).
+  # The openwiz-tests targets (the proofs, checks and CLI tests), at once
+  # where the runner has room (ci/rust-tests.sh); lint runs the crates' own.
   rust:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-24.04
@@ -80,7 +83,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       # Tests run the workspace's debug binaries (tests/loops' target/debug/openwiz).
       - run: cargo build --workspace --bins --locked
-      - run: sh ci/rust-tests.sh
+      - run: sh ci/rust-tests.sh --targets-only
       - name: Save the Cargo cache
         if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

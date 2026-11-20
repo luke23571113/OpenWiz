@@ -26,10 +26,19 @@
 # and exits with its status.
 #
 # Run from the repository's root, as ci.yml's rust job does:
-#   sh ci/rust-tests.sh
+#   sh ci/rust-tests.sh [--targets-only]
+# With --targets-only, only the openwiz-tests targets run (`cargo test -p
+# openwiz-tests`): ci.yml's lint job runs the other crates' tests, so they
+# never compete with the targets for the CPUs (#1777: a 3-second read in the
+# cloudroom adapter's tests timed out with every test at once on 4 CPUs).
 # By hand, `cargo test --workspace` runs the same tests (AGENTS.md).
 set -eu
-[ "$#" = 0 ] || { echo "usage: sh ci/rust-tests.sh" >&2; exit 2; }
+scope=--workspace
+case "$#:${1:-}" in
+  0:) ;;
+  1:--targets-only) scope="-p openwiz-tests" ;;
+  *) echo "usage: sh ci/rust-tests.sh [--targets-only]" >&2; exit 2 ;;
+esac
 # Tests only: a fake /sys/fs/cgroup and /proc/self/cgroup under this folder.
 root="${RUST_TESTS_ROOT:-}"
 cg="$root/sys/fs/cgroup"
@@ -182,7 +191,7 @@ why="$(room)" || why="the container's limits couldn't be read"
 cpus="$(nproc 2> /dev/null || true)"
 if [ -n "$why" ]; then
   frame "rust-tests: one command, cargo test --workspace: $why"
-  frame "== rust-tests: cargo test --workspace"
+  frame "== rust-tests: cargo test $scope"
   rc=0
   began="$(date +%s)"
   # The test binaries still run one after another, but each with 8 test
@@ -191,15 +200,16 @@ if [ -n "$why" ]; then
   # finish about twice as fast; the at-once path below already gives each
   # target 8. The mode line above keeps its words (ci/escapes reads them).
   # shellcheck disable=SC2086 # the skip arguments, split
-  cargo test --workspace --locked -- --test-threads=8 $skip || rc=$?
-  frame "rust-tests: cargo test --workspace exited $rc after $(($(date +%s) - began)) s"
+  cargo test $scope --locked -- --test-threads=8 $skip || rc=$?
+  frame "rust-tests: cargo test $scope exited $rc after $(($(date +%s) - began)) s"
   finish "$rc"
 fi
 frame "rust-tests: every target at once: $cpus CPUs by nproc, and the container allows 4 CPUs and 6 GiB or more"
 threads=8
 # From here on a failure goes through finish (R1 on #1291).
 prep() { echo "rust-tests: $*" >&2; finish 1; }
-cargo test --workspace --no-run --locked || prep "building the tests failed"
+# shellcheck disable=SC2086 # the scope, split
+cargo test $scope --no-run --locked || prep "building the tests failed"
 cargo metadata --no-deps --format-version 1 --locked > "$out/metadata.json" || prep "cargo metadata failed"
 # openwiz-tests holds only integration tests; any other target of it that
 # tests would run is one this script doesn't know (fail closed).
@@ -223,9 +233,12 @@ run() {
   pids="$pids $!"
 }
 began="$(date +%s)"
-# shellcheck disable=SC2086 # the skip arguments, split
-run crates cargo test --workspace --exclude openwiz-tests --locked -- --test-threads="$threads" $skip
-calls_run=crates
+calls_run=
+if [ "$scope" = --workspace ]; then
+  # shellcheck disable=SC2086 # the skip arguments, split
+  run crates cargo test --workspace --exclude openwiz-tests --locked -- --test-threads="$threads" $skip
+  calls_run=crates
+fi
 for t in $targets; do
   # shellcheck disable=SC2086 # the skip arguments, split (#1410)
   run "$t" cargo test -p openwiz-tests --locked --test "$t" -- --test-threads="$threads" $skip
