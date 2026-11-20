@@ -1,0 +1,19 @@
+# Live kit run on boat.dev at b1423db: the owner's account, boat CLI 1.0.103, run by the owner on their
+# machine against a throwaway repository and ticket (public summary; private evidence stays in ClosedWiz).
+# python3 -I kernel/driver-kit/kit.py --driver adapters/boat/driver --repo <owner>/<throwaway> --ticket 1 \
+#   --harness claude --model <model>
+pass version: openwiz:records v1, and the schema is driver v1
+fail start: the driver failed: KeyError
+fail wake: not run: start failed
+fail stop: not run: start failed
+pass token: no login or token passed through the driver
+
+Result: 2 of 5 pass (version, token).
+- L1 (blocking): live `boat prompt --json` nests the ids under `data`: the queued line is
+  {"data":{"conversationId":"<uuid>","promptId":"<uuid>","status":"queued",...},"event":"queued"}, and later
+  lines are {"data":{...},"event":"chat","final":true}. The driver read a top-level conversationId (absent),
+  so start raised KeyError after the agent's turn was queued.
+- L2 (blocking): that KeyError was not Refused, so start skipped its cleanup: the sandbox stayed running with
+  the agent working, and the run stayed saved as starting. The owner stopped the sandbox by hand.
+- As expected: `boat list` / `boat info --json` carry a top-level `state` ("running"), as the fixture assumed;
+  an account without a paid plan gets `billing_required` from boat, which the driver passed through cleanly.

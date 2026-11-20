@@ -1,0 +1,45 @@
+# Red run: python3 -I adapters/boat/test_driver.py, against adapters/boat/driver as a copy of adapters/template/driver (only its name changed), before the boat code. PATH without a real harness.
+FFF
+======================================================================
+FAIL: test_a_start_that_fails_leaves_no_sandbox_running (__main__.Boat.test_a_start_that_fails_leaves_no_sandbox_running)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 98, in test_a_start_that_fails_leaves_no_sandbox_running
+    self.assertIn('claude, codex', error['next'])
+AssertionError: 'claude, codex' not found in 'install fake-harness and sign in to it yourself, then start again'
+
+======================================================================
+FAIL: test_kit_passes_all_five (__main__.Boat.test_kit_passes_all_five)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 70, in test_kit_passes_all_five
+    self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
+AssertionError: Tuples differ: (1, ['pass version: openwiz:records v1, an[206 chars]er']) != (0, ['pass version: openwiz:records v1, an[245 chars]er'])
+
+First differing element 0:
+1
+0
+
+- (1,
++ (0,
+   ['pass version: openwiz:records v1, and the schema is driver v1',
+-   'fail start: harness claude is not installed here',
+-   'fail wake: not run: start failed',
+-   'fail stop: not run: start failed',
++   'pass start: the run posted builder status note 1',
++   'pass wake: the run edited builder status note 1',
++   'pass stop: the run ended, and a wake after it is refused',
+    'pass token: no login or token passed through the driver']) : 
+
+======================================================================
+FAIL: test_wake_resumes_after_auto_stop_and_stop_ends_the_sandbox (__main__.Boat.test_wake_resumes_after_auto_stop_and_stop_ends_the_sandbox)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 81, in test_wake_resumes_after_auto_stop_and_stop_ends_the_sandbox
+    self.assertEqual(code, 0, started)
+AssertionError: 1 != 0 : {'error': 'harness claude is not installed here', 'next': 'install claude and sign in to it yourself, then start again'}
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.194s
+
+FAILED (failures=3)

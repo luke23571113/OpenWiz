@@ -1,0 +1,42 @@
+# Red run (re-check of 4d1df91): python3 -I adapters/boat/test_driver.py; a tag that moves after the first fetch (L4: the installed release must be the lock's commit), and a denied listing of /proc (L2), against 4d1df91. PATH without a real harness.
+....F./usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=5>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=6>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.F...
+======================================================================
+FAIL: test_an_unexpected_error_leaves_nothing_running (__main__.Boat.test_an_unexpected_error_leaves_nothing_running)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 353, in test_an_unexpected_error_leaves_nothing_running
+    self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
+AssertionError: Tuples differ: (1, 'running') != (1, 'stopped')
+
+First differing element 1:
+'running'
+'stopped'
+
+- (1, 'running')
++ (1, 'stopped') : {'error': 'the driver failed: PermissionError', 'next': 'read its code and fix it; check `boat list` for what is running'}
+
+======================================================================
+FAIL: test_start_installs_the_pinned_skills_or_refuses (__main__.Boat.test_start_installs_the_pinned_skills_or_refuses)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 396, in test_start_installs_the_pinned_skills_or_refuses
+    self.assertEqual((code, json.load(g)['commit']), (0, json.load(f)['commit']), out)
+AssertionError: Tuples differ: (0, '1111111111111111111111111111111111111111') != (0, 'c112b993d0ec582d2aae370cf8011810fde9aea2')
+
+First differing element 1:
+'1111111111111111111111111111111111111111'
+'c112b993d0ec582d2aae370cf8011810fde9aea2'
+
+- (0, '1111111111111111111111111111111111111111')
++ (0, 'c112b993d0ec582d2aae370cf8011810fde9aea2') : {'run': 'run-41ce8276abfd'}
+
+----------------------------------------------------------------------
+Ran 11 tests in 17.153s
+
+FAILED (failures=2)
