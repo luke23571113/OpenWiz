@@ -321,9 +321,8 @@ jobs:
               runs = get(f'repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=50')
               last = None
               for run in runs['workflow_runs']:
-                  if stamp(run['updated_at']) < cutoff:
-                      break
-                  if run['event'] not in ('push', 'schedule') or str(run['id']) == os.environ['GITHUB_RUN_ID']:
+                  if (stamp(run['updated_at']) < cutoff or run['event'] not in ('push', 'schedule')
+                          or str(run['id']) == os.environ['GITHUB_RUN_ID']):
                       continue
                   for job in get(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100")['jobs']:
                       if job['name'] == 'ci' and job['conclusion'] == 'success':
