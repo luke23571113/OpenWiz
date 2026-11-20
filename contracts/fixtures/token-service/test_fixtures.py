@@ -54,7 +54,7 @@ def leaks(case, token):
                     continue
                 if slot == "env":
                     found += [f"{key}.env.{k}" for k, v in held.items()
-                              if v == token and k != "GH_TOKEN"]
+                              if token in v and not (k == "GH_TOKEN" and v == token)]
                 elif token in json.dumps(held):
                     found.append(f"{key}.{slot}")
         elif key != "token" and token in json.dumps(value):

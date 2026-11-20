@@ -378,14 +378,6 @@
             "synthetic-owner/work",
             "other-owner/work"
           ],
-          "permissions": {
-            "metadata": "read",
-            "contents": "read",
-            "issues": "read",
-            "pull_requests": "read",
-            "checks": "read",
-            "actions": "read"
-          },
           "outcome": "one-owner"
         }
       }
@@ -432,14 +424,6 @@
           "repositories": [
             "synthetic-owner/elsewhere"
           ],
-          "permissions": {
-            "metadata": "read",
-            "contents": "read",
-            "issues": "read",
-            "pull_requests": "read",
-            "checks": "read",
-            "actions": "read"
-          },
           "outcome": "not-installed"
         }
       }
@@ -481,9 +465,6 @@
           "repositories": [
             "synthetic-owner/work"
           ],
-          "permissions": {
-            "workflows": "write"
-          },
           "outcome": "permission"
         }
       }
@@ -530,14 +511,6 @@
           "repositories": [
             "synthetic-owner/work"
           ],
-          "permissions": {
-            "metadata": "read",
-            "contents": "read",
-            "issues": "read",
-            "pull_requests": "read",
-            "checks": "write",
-            "actions": "read"
-          },
           "outcome": "permission"
         }
       }
@@ -585,14 +558,6 @@
           "repositories": [
             "synthetic-owner/work"
           ],
-          "permissions": {
-            "metadata": "read",
-            "contents": "read",
-            "issues": "read",
-            "pull_requests": "read",
-            "checks": "read",
-            "actions": "read"
-          },
           "outcome": "github"
         }
       }
@@ -640,14 +605,6 @@
           "repositories": [
             "synthetic-owner/work"
           ],
-          "permissions": {
-            "metadata": "read",
-            "contents": "read",
-            "issues": "read",
-            "pull_requests": "read",
-            "checks": "read",
-            "actions": "read"
-          },
           "outcome": "expiry"
         }
       }
@@ -695,14 +652,6 @@
           "repositories": [
             "synthetic-owner/work"
           ],
-          "permissions": {
-            "metadata": "read",
-            "contents": "read",
-            "issues": "read",
-            "pull_requests": "read",
-            "checks": "read",
-            "actions": "read"
-          },
           "outcome": "unavailable"
         }
       }

@@ -26,6 +26,23 @@
       }
     },
     {
+      "name": "a mint log with an out-of-profile permission",
+      "message": {
+        "schema": "openwiz.token-service.v1",
+        "kind": "mint-log",
+        "at": 1000,
+        "requester": "builder-1839",
+        "repositories": [
+          "synthetic-owner/work"
+        ],
+        "permissions": {
+          "synthetic_sentinel": "read"
+        },
+        "outcome": "minted",
+        "expires_at": 4600
+      }
+    },
+    {
       "name": "a refusal carrying a token",
       "message": {
         "schema": "openwiz.token-service.v1",

@@ -57,13 +57,15 @@ Where they disagree, the contract is wrong and must be fixed.
       "live_gate": "GA5 reads back no pairing log or mac run result record keeps it",
       "if_kept": "cloud route stays off; cloud threads fall back with the note"
     },
+    "pairing_gate": {"variable": "OPENWIZ_TOKEN_SERVICE_READBACK", "on_only_when": "passed", "otherwise": "pairing-off"},
     "routes": {
       "pairing": ["room-cli", "mac", "run", "--stdin", "python3 -I '<service>' mint"],
       "local": ["python3", "-I", "<service>", "mint"]
     },
     "configuration": {
       "OPENWIZ_TOKEN_SERVICE": "the service's absolute path on the owner's machine",
-      "OPENWIZ_TOKEN_SERVICE_ROUTE": ["pairing", "local"]
+      "OPENWIZ_TOKEN_SERVICE_ROUTE": ["pairing", "local"],
+      "OPENWIZ_TOKEN_SERVICE_READBACK": "passed only after GA5's live read-back succeeded"
     }
   },
   "request": {"repeated_key": "usage", "repository_case": "insensitive"},
@@ -85,7 +87,8 @@ Where they disagree, the contract is wrong and must be fixed.
     "identity": "the owner's existing GitHub login",
     "note": "openwiz: no openwiz[bot] token (<reason>); using the owner's GitHub account",
     "notes_per_run": 1,
-    "reasons": ["unreachable", "bad-answer", "usage", "one-owner", "not-installed",
+    "clears": ["GH_TOKEN", "private token file"],
+    "reasons": ["unreachable", "bad-answer", "pairing-off", "usage", "one-owner", "not-installed",
                 "permission", "github", "expiry", "unavailable"],
     "not_configured": "exactly as today: no note"
   },
@@ -94,7 +97,8 @@ Where they disagree, the contract is wrong and must be fixed.
     "git": "a credential helper that reads the private token file",
     "private_file": {"mode": "0600", "directory_mode": "0700", "outside_git_trees": true}
   },
-  "mint_log": {"mode": "0600", "holds": ["at", "requester", "repositories", "permissions", "outcome", "expires_at"]}
+  "mint_log": {"mode": "0600", "holds": ["at", "requester", "repositories", "permissions", "outcome", "expires_at"],
+               "permissions": "minted only, App profile names only"}
 }
 ```
 
@@ -141,6 +145,14 @@ transcript or a log. A call has 60 seconds.
 - GA5's live check reads back that no pairing log or `mac run` result record
   keeps it. If one does, the cloud route stays off and cloud threads fall back
   to the owner's account, with the standard-error note, until that's fixed.
+
+**The pairing route is off by default.** The helper makes a pairing call only
+when `OPENWIZ_TOKEN_SERVICE_READBACK` is exactly `passed`, which the owner
+sets only after GA5's live read-back has succeeded. Unset, `inconclusive`,
+`failed` or any other value means the route is off: the helper makes no call,
+and the agent falls back with the one note, reason `pairing-off`. The local
+route needs no read-back, since its call never crosses the pairing. No fixture
+or test enables the live route: they use synthetic values only.
 
 How the owner starts and stops the service is GA2's runbook. A stopped
 service answers like an unreachable one.
@@ -207,7 +219,7 @@ falls back as below.
 - **`gh`** gets it as `GH_TOKEN` in its own environment.
 - **git** gets it through a credential helper that reads the **private token
   file**: mode 0600, in a 0700 directory outside every Git working tree,
-  replaced at each refresh. Never in a remote URL, a `-c` option or a header
+  replaced at each refresh and deleted at a fallback. Never in a remote URL, a `-c` option or a header
   argument.
 
 ## The fallback
@@ -222,8 +234,15 @@ openwiz: no openwiz[bot] token (<reason>); using the owner's GitHub account
 
 `<reason>` is `unreachable` (the call failed, timed out, or the service is
 stopped), `bad-answer` (the answer is not one valid answer or refusal, or its
-scope or expiry differ from the request and this contract) or the refusal's
-code. The helper sets no `GH_TOKEN` then. With **no service configured**, it
+scope or expiry differ from the request and this contract), `pairing-off`
+(the pairing route is configured but its read-back has not passed) or the
+refusal's code.
+
+**A fallback leaves no service credential behind**, a failed refresh
+included. Before the agent goes on as the owner, the helper deletes the
+private token file and hands no `GH_TOKEN` to any child. With no file, the git
+credential helper answers nothing, so git uses the owner's credentials too:
+`gh` and git never split between the App and the owner. With **no service configured**, it
 does nothing and prints nothing: starts are exactly as today.
 
 ## Never exposed
@@ -236,7 +255,10 @@ does nothing and prints nothing: starts are exactly as today.
   request with `at`, `requester`, `repositories`, `permissions`, `outcome`
   (`minted` or the refusal code) and, when minted, `expires_at`
   (`#/$defs/mint_log`). A `usage` refusal logs `requester` as `-` and no
-  repositories or permissions: nothing from an unreadable request is trusted. It has no token, key or JWT field, and the schema
+  repositories or permissions: nothing from an unreadable request is trusted.
+  Every other refusal logs its checked repositories but no permissions, so a
+  rejected permission name never reaches the log. A minted line logs only the
+  App profile's permission names, and the schema refuses any other. It has no token, key or JWT field, and the schema
   refuses one.
 - Approvals, repository settings and pushes that change `.github/workflows/`
   stay on the owner's own login (github-identity.v1's roles).
@@ -251,11 +273,14 @@ clock.
   the answer or refusal, exit, standard error and mint-log line (GA2's seam).
 - `refresh.json`: tokens with time to spare, at the boundary and expiring, and
   whether the helper refreshes (GA3's seam).
-- `fallback.json`: an unreachable service, a stopped one, a bad answer,
-  refusals, a good answer and no service configured, with the agent's identity,
-  environment and standard error (GA3's and GA4's seam).
+- `fallback.json`: a pairing whose read-back has not run, was inconclusive,
+  failed or is unknown; an unreachable service, a stopped one, a bad answer,
+  refusals, a failed refresh from a held token, good answers over the pairing
+  and locally, and no service configured, with the identity `gh` and git each
+  use, the private token file, the environment and standard error (GA3's and
+  GA4's seam).
 - `invalid.json`: messages the schema must refuse, including a mint log with a
-  token in it.
+  token in it and one with a permission name outside the App's profile.
 - `red-run.txt`: the test's failing-first run.
 
 Run `python3 -I contracts/fixtures/token-service/test_fixtures.py`. It is
