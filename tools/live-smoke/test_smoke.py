@@ -402,6 +402,27 @@ class Smoke(FixtureCase):
         with self.assertRaises(SMOKE.Refusal):
             SMOKE.replay(json.loads(self.kit_path.read_text()), events + events[3:7])
 
+    def test_only_a_write_step_may_wait_longer_up_to_130_seconds(self):
+        """catches: a slow driver start (room-cli may take 100 seconds) killed at
+        the kit-wide cap and left an uncertain write, or a per-step timeout that
+        lifts the cap for reads or beyond 130 seconds."""
+        text = self.fake.read_text().replace("case = sys.argv[1]", "case = sys.argv[1]\nif case == 'new':\n    import time\n    time.sleep(3)")
+        self.fake.write_text(text)
+        self.kit['artifacts'][str(self.fake)] = self.sha(self.fake)
+        new = next(s for s in self.kit['steps'] if s['id'] == 'new')
+        for name, (step, value) in {'above 130': (new, 131), 'on a read': (self.kit['steps'][3], 5),
+                                    'not an integer': (new, '5')}.items():
+            with self.subTest(name):
+                step['timeout_seconds'] = value
+                self.state = self.root / name.replace(' ', '-')
+                self.assertEqual(self.report(self.invoke(), 2)['reason'], 'invalid_kit')
+                self.assertEqual(self.call_list(), [])
+                del step['timeout_seconds']
+        new['timeout_seconds'] = 5
+        self.state = self.root / 'slow-write'
+        self.assertEqual(self.report(self.invoke(), 0)['claims']['new'], 'pass')
+        self.assertEqual(self.call_list().count(['new']), 1)
+
     def test_app_step_selects_installation_token_without_owner_fallback(self):
         text = self.fake.read_text().replace("print(reply['out'])", "if case == 'app':\n    import os\n    reply['out'] = json.dumps({'selected': os.environ.get('GH_TOKEN'), 'fallback': 'GITHUB_TOKEN' in os.environ})\nprint(reply['out'])")
         self.fake.write_text(text)
