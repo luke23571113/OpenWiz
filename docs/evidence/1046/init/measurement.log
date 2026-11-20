@@ -1,7 +1,0 @@
-test_lost_replies_stay_uncertain_until_read_back_then_complete_once (__main__.Measured.test_lost_replies_stay_uncertain_until_read_back_then_complete_once) ... {"sync_count": 648, "total_sync_s": 1.7162030840027, "max_sync_s": 0.20188090600004216}
-ok
-
-----------------------------------------------------------------------
-Ran 1 test in 12.083s
-
-OK

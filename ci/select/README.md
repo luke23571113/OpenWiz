@@ -131,7 +131,7 @@ A one-line behaviour change was caught by a test selected through the map.
   records the same evidence.
 - **The offline case:** the `tools/install/setup/setup.py` row of `CASES` in
   `planted.py` planted exactly that edit and required the web lane to catch
-  it; it went with the web lane in #1264. [Local red/green evidence](../../docs/evidence/783/planted-red-green.md)
+  it; it went with the web lane in #1264. Local red/green evidence, now in the private records,
   records the catcher failing with the edit and passing after restoration.
 
 Option (b), manual dispatch signing, remains dropped and unmerged under

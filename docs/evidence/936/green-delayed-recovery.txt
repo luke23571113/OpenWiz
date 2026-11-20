@@ -1,7 +1,0 @@
-running 1 test
-test e11_plan_bounds::e11_plan_deadline_retains_its_slot_until_the_source_really_finishes ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 29.72s
-
-probe: fourth plan launch descheduled for 2.2 seconds
-probe outcome matched: green

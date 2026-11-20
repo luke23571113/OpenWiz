@@ -1,9 +1,0 @@
-pause load: runner stopped 150ms per 170ms; pauses: 35
-
-running 4 tests
-test aw05_gate::the_send_bodys_attachments_must_be_a_list_of_strings ... ok
-test aw05_gate::an_attachment_in_use_by_another_send_is_refused_with_zero_calls ... ok
-test aw05_gate::a_forged_create_with_an_attachment_that_is_not_ready_is_refused_with_zero_calls ... ok
-test aw05_gate::a_forged_send_with_an_attachment_that_is_not_ready_is_refused_with_zero_calls ... ok
-
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 320 filtered out; finished in 5.96s
