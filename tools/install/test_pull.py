@@ -82,8 +82,11 @@ class Pull(unittest.TestCase):
         build = f.root / 'state/service/builds' / legacy
         for folder in (f.root, f.root / 'state', f.root / 'state/service', build.parent, build):
             folder.mkdir(mode=0o700)
+            folder.chmod(0o700)
         for path, data in {**files, 'install-manifest.json': raw}.items():
-            (build / path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            for folder in reversed((build / path).relative_to(build).parents[:-1]):
+                (build / folder).mkdir(mode=0o700, exist_ok=True)
+                (build / folder).chmod(0o700)
             (build / path).write_bytes(data)
             (build / path).chmod(int(mode(path), 8))
         (f.root / 'channel.json').write_bytes(b'{"schema":"openwiz.update-channel.v1","channel":"packaged"}\n')
