@@ -1,29 +1,59 @@
 #!/usr/bin/env python3
 """A synthetic harness for the local driver's tests, run through a link named `claude` or `codex`.
 
-It takes only the shape that harness's real CLI takes (`claude -p <prompt> --model <m>`,
-`codex exec --model <m> <prompt>`) and exits 2 on any other. Then, like the kit's fake harness,
-it posts (or, when woken, edits) one builder status note in the tracker named by KIT_TRACKER, and
-leaves a detached child in its own session that `stop` must also end (with FAKE_CLEAN set, the child gets
-only PATH, so it carries no mark it inherited). With FAKE_TURNS set, it appends `<turn pid> <child pid>
-first|woken` to that file. Its turn then ends, or, while the file named by FAKE_HOLD exists, keeps running.
+It takes only the shape that harness's real CLI takes, permission mode included
+(`claude -p <prompt> --model <m> --permission-mode <mode>`, `codex exec --model <m> --sandbox <mode> <prompt>`),
+or the same without a permission mode (logged as `-`, so a driver that drops it is seen), and exits 2 on
+any other. With the mode `refuse` it does what a harness whose permissions refuse every tool
+does: it prints why and ends its turn at once, posting nothing.
+
+Otherwise it leaves a detached child in its own session that `stop` must also end (with FAKE_CLEAN set, the
+child gets only PATH, so it carries no mark it inherited), and appends `<turn pid> <child pid> first|woken
+<working folder> <mode>` to the file named by FAKE_TURNS. Its turn lasts until the driver has saved the run
+as started (OPENWIZ_LOCAL_STATE/<OPENWIZ_RUN>.json), and while the file named by FAKE_HOLD exists; then it
+hands the note to a worker and ends. Once the turn has ended, the worker posts (or, when woken, edits) one
+builder status note in the tracker named by KIT_TRACKER, as the kit's fake harness does.
 """
 import json, os, re, subprocess, sys, time
 
-name, args = os.path.basename(sys.argv[0]), sys.argv[1:]
-if name == 'claude' and len(args) == 4 and args[0] == '-p' and args[2] == '--model':
-    prompt, model = args[1], args[3]
-elif name == 'codex' and len(args) == 4 and args[:2] == ['exec', '--model']:
-    model, prompt = args[2], args[3]
+worker = sys.argv[1:2] == ['--worker']
+name, args = os.path.basename(sys.argv[0]), sys.argv[2 if worker else 1:]
+if len(args) == 4:  # a command without a permission mode: the mode is logged as `-`
+    args = args + ['--permission-mode', '-'] if name == 'claude' else args[:3] + ['--sandbox', '-', args[3]]
+if name == 'claude' and len(args) == 6 and args[0] == '-p' and args[2:5:2] == ['--model', '--permission-mode']:
+    prompt, model, mode = args[1], args[3], args[5]
+elif name == 'codex' and len(args) == 6 and args[:2] == ['exec', '--model'] and args[3] == '--sandbox':
+    model, mode, prompt = args[2], args[4], args[5]
 else:
     sys.exit(2)
 skill = re.search(r'with the ([a-z0-9-]+) skill', prompt).group(1)
 woken = prompt.startswith('You were woken')
-child = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL,
-                         env={'PATH': os.environ['PATH']} if os.environ.get('FAKE_CLEAN') else None)
-if os.environ.get('FAKE_TURNS'):
+
+if not worker:
+    if mode == 'refuse':
+        print('Fake harness: permission to use Bash was denied, so it could not read the ticket.')
+        sys.exit(0)
+    child = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL,
+                             env={'PATH': os.environ['PATH']} if os.environ.get('FAKE_CLEAN') else None)
     with open(os.environ['FAKE_TURNS'], 'a') as f:
-        f.write('%d %d %s\n' % (os.getpid(), child.pid, 'woken' if woken else 'first'))
+        f.write('%d %d %s %s %s\n' % (os.getpid(), child.pid, 'woken' if woken else 'first', os.getcwd(), mode))
+    state = os.path.join(os.environ['OPENWIZ_LOCAL_STATE'], os.environ['OPENWIZ_RUN'] + '.json')
+    while True:
+        try:
+            with open(state) as f:
+                if json.load(f).get('starting') is False:
+                    break
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.05)
+    while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
+        time.sleep(0.05)
+    subprocess.Popen([sys.executable, sys.argv[0], '--worker'] + args, start_new_session=True,
+                     env=dict(os.environ, FAKE_TURN=str(os.getpid())), stdin=subprocess.DEVNULL)
+    sys.exit(0)
+
+while os.getppid() == int(os.environ['FAKE_TURN']):  # the worker posts once the turn has ended
+    time.sleep(0.01)
 now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 body = '\n'.join(['<!-- openwiz:status v1 -->', 'agent: builder', 'state: working', 'harness: Fake',
                   'model: ' + model, 'skills: %s@0.1.2' % skill,
@@ -41,5 +71,3 @@ else:
 with open(path + '.%d' % os.getpid(), 'w') as f:
     json.dump(tracker, f)
 os.replace(path + '.%d' % os.getpid(), path)
-while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
-    time.sleep(0.05)
