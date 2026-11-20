@@ -57,7 +57,7 @@ ROUTES = {('personal_login', 'skipped', 'not_used'), ('app', 'created', 'agent_s
 FLEET_KEYS = ('schema', 'proof_class', 'private_record', 'route', 'fleet_threads', 'loop', 'engine_activations',
               'tick_starts', 'builders', 'reviewers')
 # The owner steps each route needs, one action entry each (kind, stage); never one entry for several.
-DECISION_STEPS = (('confirmation', 'spec_confirmation'), ('approval', 'plan_approval'), ('spending_approval', 'launch'))
+DECISION_STEPS = (('confirmation', 'spec_confirmation'), ('spending_approval', 'launch'))
 APP_STEPS = (('app_manifest', 'create_app'), ('app_manifest', 'install_app'))
 PASTE_STEPS = (('key_step', 'open_app_settings'), ('key_step', 'generate_key'), ('key_step', 'encode_key'),
                ('protected_paste', 'paste_protected_prompt'), ('key_step', 'delete_download'))
