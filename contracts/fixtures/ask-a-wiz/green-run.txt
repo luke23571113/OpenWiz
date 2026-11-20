@@ -1,4 +1,4 @@
-P1 green run (#1899), with the fixtures, the bounded call included.
+P1 green run (#1899), with the fixtures, after review R1 to R5.
 Command: python3 -I contracts/fixtures/ask-a-wiz/test_fixtures.py (exit 0)
 
 test_every_case_holds_to_the_pin (__main__.Fixtures.test_every_case_holds_to_the_pin) ... ok
