@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""A synthetic `acpx` (OpenClaw's ACP client) for the OpenClaw driver's tests. The command shapes follow
+`acpx --help` and `acpx <agent> --help` of acpx 0.22.0; everything else is synthetic, not observed on a host.
+
+Shapes it takes: `acpx --version`; `acpx [global options] <agent> sessions new --name <n>`;
+`acpx [global options] <agent> -s <n> [--no-wait] <prompt>`; `acpx [global options] <agent> cancel -s <n>`;
+`acpx [global options] <agent> sessions close <n>`. Global options: `--cwd`, `--model`, `--auth-policy`,
+`--permission-policy`, `--non-interactive-permissions`, `--ttl`, `--format`, `--approve-all`.
+
+Each call appends its arguments, one JSON list per line, to FAKE_ACPX_CALLS. Sessions live in the JSON file
+FAKE_ACPX_STATE. A prompt plays the agent: the session's first prompt posts one builder status note in the
+local tracker KIT_TRACKER, each later one edits it. Like acpx, a prompt leaves a queue owner behind (here a
+detached `sleep 120` in its own session; with FAKE_CLEAN, in a clean environment that carries no mark), and
+logs `<prompt pid> <queue owner pid> first|woken` to FAKE_TURNS. The prompt ends at once, or runs while the
+file FAKE_HOLD exists and nobody cancels it. FAKE_ACPX_FAIL (comma-separated: new, prompt, cancel, close) names
+calls that fail, as a missing sign-in would make them.
+"""
+import fcntl, json, os, subprocess, sys, time
+
+ARGS, STATE = sys.argv[1:], os.environ.get('FAKE_ACPX_STATE', '')
+GLOBAL = {'--cwd', '--model', '--auth-policy', '--permission-policy', '--non-interactive-permissions', '--ttl',
+          '--format'}
+
+
+def fail(code, message):
+    print('[error] ' + message, file=sys.stderr)
+    sys.exit(code)
+
+
+def update(change):
+    with open(STATE + '.lock', 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            with open(STATE) as f:
+                state = json.load(f)
+        except FileNotFoundError:
+            state = {}
+        out = change(state)
+        with open(STATE + '.new', 'w') as f:
+            json.dump(state, f)
+        os.replace(STATE + '.new', STATE)
+        return out
+
+
+def note(session, woken, skill):
+    """Post or edit this session's builder note, as the agent would."""
+    path, now = os.environ['KIT_TRACKER'], time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    body = '\n'.join(['<!-- openwiz:status v1 -->', 'agent: builder', 'state: working', 'harness: Fake',
+                      'model: ' + session['model'], 'skills: %s@0.1.2' % skill,
+                      'step: ' + ('woke and read the ticket again' if woken else 'started the throwaway ticket'),
+                      'time: ' + now]) + '\n'
+    with open(path) as f:
+        tracker = json.load(f)
+    if session['note'] is None:
+        session['note'] = 1 + max([c['id'] for c in tracker['comments']], default=0)
+        tracker['comments'].append({'id': session['note'], 'author': 'example-bot[bot]', 'updated_at': now,
+                                    'body': body})
+    else:
+        [c for c in tracker['comments'] if c['id'] == session['note']][0].update(body=body, updated_at=now)
+    with open(path + '.%d' % os.getpid(), 'w') as f:
+        json.dump(tracker, f)
+    os.replace(path + '.%d' % os.getpid(), path)
+
+
+def main():
+    if os.environ.get('FAKE_ACPX_CALLS'):
+        with open(os.environ['FAKE_ACPX_CALLS'], 'a') as f:
+            f.write(json.dumps(ARGS) + '\n')
+    if ARGS == ['--version']:
+        print('0.22.0')
+        return
+    opts, rest = {}, list(ARGS)
+    while rest and rest[0].startswith('--'):
+        flag = rest.pop(0)
+        if flag == '--approve-all':
+            opts[flag] = True
+        elif flag in GLOBAL and rest:
+            opts[flag] = rest.pop(0)
+        else:
+            fail(2, 'unknown option ' + flag)
+    if not rest:
+        fail(2, 'no agent')
+    agent, rest = rest[0], rest[1:]
+    key = lambda name: '%s %s %s' % (agent, os.path.abspath(opts.get('--cwd', '.')), name)
+    what = rest[0] if rest and rest[0] in ('sessions', 'cancel') else 'prompt'
+    if what == 'sessions':
+        what = rest[1] if len(rest) > 1 else ''
+    if what in os.environ.get('FAKE_ACPX_FAIL', '').split(','):
+        fail(1, 'authentication required')
+    if rest[:3] == ['sessions', 'new', '--name'] and len(rest) == 4:
+        update(lambda s: s.update({key(rest[3]): {'open': True, 'note': None, 'model': opts.get('--model', '-'),
+                                                  'cancels': 0}}))
+        print('session ' + rest[3])
+        return
+    if rest[:2] == ['sessions', 'close'] and len(rest) == 3:
+        def close(s):
+            if key(rest[2]) not in s:
+                fail(4, 'no session ' + rest[2])
+            s[key(rest[2])]['open'] = False
+        update(close)
+        return
+    if rest[:2] == ['cancel', '-s'] and len(rest) == 3:
+        def cancel(s):
+            if key(rest[2]) not in s:
+                fail(4, 'no session ' + rest[2])
+            s[key(rest[2])]['cancels'] += 1
+        update(cancel)
+        return
+    if len(rest) not in (3, 4) or rest[0] != '-s' or (len(rest) == 4 and rest[2] != '--no-wait'):
+        fail(2, 'unexpected arguments')
+    name, text = rest[1], rest[-1]
+    skill = text.split(' skill')[0].split()[-1]
+
+    def prompt(s):
+        session = s.get(key(name))
+        if not session or not session['open']:
+            fail(4, 'NO_SESSION: run sessions new first')
+        woken = session['note'] is not None
+        note(session, woken, skill)
+        return woken, session['cancels']
+
+    woken, cancels = update(prompt)
+    owner = subprocess.Popen(['sleep', '120'], start_new_session=True,
+                             env={'PATH': os.environ['PATH']} if os.environ.get('FAKE_CLEAN') else None,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.environ.get('FAKE_TURNS'):
+        with open(os.environ['FAKE_TURNS'], 'a') as f:
+            f.write('%d %d %s\n' % (os.getpid(), owner.pid, 'woken' if woken else 'first'))
+    while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
+        if update(lambda s: s[key(name)]['cancels']) != cancels:
+            print('[done] cancelled')
+            return
+        time.sleep(0.05)
+    print('[done] end_turn')
+
+
+if __name__ == '__main__':
+    main()
