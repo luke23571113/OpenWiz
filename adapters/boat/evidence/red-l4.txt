@@ -1,0 +1,58 @@
+# Red run (L4): python3 -I adapters/boat/test_driver.py; the fake agent posts its note only with its skill installed in the sandbox, and the new install test, against 1434316 merged with main (e725517). PATH without a real harness.
+...F.F/usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=5>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=6>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.F...
+======================================================================
+FAIL: test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it (__main__.Boat.test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 187, in test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it
+    self.assertEqual((code, self.sandboxes(), self.notes()), (1, {sid: 'stopped'}, [(1, 'started the throwaway ticket')]))
+AssertionError: Tuples differ: (1, {'bx_fake0001': 'stopped'}, []) != (1, {'bx_fake0001': 'stopped'}, [(1, 'started the throwaway ticket')])
+
+First differing element 2:
+[]
+[(1, 'started the throwaway ticket')]
+
+- (1, {'bx_fake0001': 'stopped'}, [])
++ (1, {'bx_fake0001': 'stopped'}, [(1, 'started the throwaway ticket')])
+
+======================================================================
+FAIL: test_kit_passes_all_five (__main__.Boat.test_kit_passes_all_five)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 170, in test_kit_passes_all_five
+    self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
+AssertionError: Tuples differ: (1, ['pass version: openwiz:records v1, an[218 chars]er']) != (0, ['pass version: openwiz:records v1, an[245 chars]er'])
+
+First differing element 0:
+1
+0
+
+- (1,
++ (0,
+   ['pass version: openwiz:records v1, and the schema is driver v1',
+-   'fail start: no builder status note appeared within 8 seconds',
+-   'fail wake: not run: start failed',
+-   'fail stop: not run: start failed',
++   'pass start: the run posted builder status note 1',
++   'pass wake: the run edited builder status note 1',
++   'pass stop: the run ended, and a wake after it is refused',
+    'pass token: no login or token passed through the driver']) : 
+
+======================================================================
+FAIL: test_start_installs_the_pinned_skills_or_refuses (__main__.Boat.test_start_installs_the_pinned_skills_or_refuses)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 378, in test_start_installs_the_pinned_skills_or_refuses
+    self.assertTrue(os.path.islink(os.path.join(home, root, 'skills', 'build-ticket')), 'no skill in the sandbox')
+AssertionError: False is not true : no skill in the sandbox
+
+----------------------------------------------------------------------
+Ran 11 tests in 22.788s
+
+FAILED (failures=3)

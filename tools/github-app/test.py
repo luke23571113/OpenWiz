@@ -1894,8 +1894,5 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
             self.assertFalse("synthetic-context" in str(caught.exception), "a failure printed the output")
 
 
-sys.path.insert(0, str(HERE))  # GI3 (#2545): the identity contract's fixture test runs with release:github-app
-from test_identity_contract import *  # noqa: E402,F401,F403
-
 if __name__ == "__main__":
     unittest.main(verbosity=2)

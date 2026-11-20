@@ -123,8 +123,7 @@ existing owners and gates.
 
 ## Executable recording proof
 
-Run `python3 -I tools/install/completion/test_checkpoint.py`. Required cases live
-beside the implementation and use synthetic values. Run one saved synthetic
+Run one saved synthetic
 recording with `python3 -I tools/install/completion/checkpoint.py --recording FILE`.
 The file contains `pin`, a sequence of `reads` and proposed `effects`. The
 recording reader advances one observation per read, then repeats its last

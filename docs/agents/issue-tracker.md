@@ -16,7 +16,7 @@ A ticket is ready when it has the `ready-for-agent` label and every ticket block
 
 ## Repositories
 
-- **Development tracker now:** `jparker2006/ClosedWiz`, until the separately approved cut-over. Preparation here grants no move, publishing or live authority.
+- **Development tracker:** `openwizdev/OpenWiz`: versions, specs, tickets and their pull requests. Private records stay in the private repository.
 - **Public development after cut-over:** `openwizdev/OpenWiz`. Change routing only as the approved runbook directs.
 - **Private records:** `jparker2006/ClosedWiz`, permanently private.
 

@@ -6,6 +6,8 @@ Paste this one line into the coding agent you already use (Claude Code, Codex or
 
 The agent follows the [install skill](../skills/install/SKILL.md). This page says what it does, what it may change, and how to recover or remove it.
 
+Using Grok Bot? See [Grok Bot + OpenWiz](grok-bot.md).
+
 **Status:** the install journey is tested on synthetic fixtures only. A real install on a fresh machine, and the time it takes, are not yet verified.
 
 ## What happens, in order
