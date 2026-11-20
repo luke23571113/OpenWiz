@@ -61,7 +61,8 @@ fetch, so the site is published before the adapter is switched.
 | `GET` or `HEAD` one of the six routes (any query) | `200`, the bytes of its file in `DIR/current` |
 | `GET` or `HEAD` a route before any good fetch | `503` |
 | any other path, including `/war-room.html`, `/war-room-speed.html`, `/speed/`, `//health`, `/identity.json`, `/samples/...` | `404` |
-| any other method | `405` |
+| `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `TRACE` or `CONNECT` | `405`, `Allow: GET, HEAD` |
+| any other method, such as `PROPFIND` | `501`, the HTTP framework's own answer, without `Allow` |
 
 The `200` carries `Content-Type: text/html; charset=utf-8`, `Cache-Control: no-store`,
 `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
