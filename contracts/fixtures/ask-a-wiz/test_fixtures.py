@@ -74,8 +74,7 @@ def sent_passages(pin, case):
 
 def expected_request(pin, case):
     sent, user = sent_passages(pin, case)
-    prices = {'prompt': price(pin, case['settings'], 'max_prompt_price'),
-              'completion': price(pin, case['settings'], 'max_completion_price')}
+    prices = {k: price(pin, case['settings'], f'max_{k}_price') for k in ('prompt', 'completion', 'request')}
     return {'model': case['settings'][pin['names']['model']], 'stream': True,
             'provider': {'max_price': prices, **pin['upstream']['provider']}, 'usage': pin['upstream']['usage'],
             'max_tokens': pin['limits']['max_output_tokens'], 'temperature': pin['upstream']['temperature'],
@@ -109,7 +108,8 @@ def micro(usd):
 def call_max(pin, settings):
     lim = pin['limits']
     return micro((lim['max_prompt_tokens'] * price(pin, settings, 'max_prompt_price')
-                  + lim['max_output_tokens'] * price(pin, settings, 'max_completion_price')) / 1000000)
+                  + lim['max_output_tokens'] * price(pin, settings, 'max_completion_price')) / 1000000
+                 + price(pin, settings, 'max_request_price'))
 
 
 def cap_usd(pin, settings):
@@ -133,7 +133,7 @@ def run(pin, case):
     if request['method'] == 'GET':
         return 'probe', store, now
     if not all(settings.get(names[k]) for k in ('secret', 'model', 'store')) \
-            or price(pin, settings, 'max_prompt_price') is None or price(pin, settings, 'max_completion_price') is None:
+            or None in [price(pin, settings, f'max_{k}_price') for k in ('prompt', 'completion', 'request')]:
         return 'unavailable', store, now
     headers = {k.lower(): v for k, v in request['headers'].items()}
     question = question_of(case)
@@ -192,6 +192,8 @@ def run(pin, case):
     cost = upstream.get('cost')  # settle: the reported cost replaces the reservation; none keeps it
     if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
         row(sent.strftime('%Y-%m-%d'), 'spend')['count'] += micro(cost) - call_max(pin, settings)
+    if upstream.get('status') == pin['upstream']['no_route_status']:  # no route keeps the rules: nothing comes back
+        return 'no_private_route', store, sent
     if upstream.get('fails') and not upstream.get('after_chunks') or not fitting(pin, upstream.get('chunks', [])):
         return 'upstream_error', store, sent
     return 'stream', store, sent
@@ -282,7 +284,7 @@ def problems(pin, case, name):
                           (clock.hour * 3600 + clock.minute * 60 + clock.second))
             if headers.get('retry-after') != str(left):
                 out.append('Retry-After is not the seconds left in the window')
-        if (case['upstream'] is not None) != (expected == 'upstream_error'):
+        if (case['upstream'] is not None) != (expected in ('upstream_error', 'no_private_route')):
             out.append('only an upstream error may follow a model call')
         return out
     if expected == 'not_covered' or types == ['not_covered']:
@@ -363,6 +365,12 @@ class Pin(unittest.TestCase):
         self.assertEqual((pin['names']['switch'], pin['names']['switch_on']), ('ASK_A_WIZ', 'on'))
         self.assertEqual(load('off')['settings'].get('ASK_A_WIZ'), None, 'off is the unset switch')
 
+    def test_every_call_requires_a_zero_retention_route(self):
+        pin = load_pin()
+        self.assertEqual(pin['upstream']['provider'], {'require_parameters': True, 'data_collection': 'deny', 'zdr': True})
+        self.assertEqual(pin['refusals']['no_private_route']['status'], 503)
+        self.assertEqual(outcome(pin, load('no-private-route')), 'no_private_route', 'no route fails closed')
+
     def test_one_call_is_bounded_so_the_cap_bounds_spend(self):
         pin = load_pin()
         lim, prompt = pin['limits'], pin['prompt']
@@ -374,10 +382,15 @@ class Pin(unittest.TestCase):
         self.assertEqual(lim['max_prompt_tokens'], lim['max_prompt_bytes'] + lim['framing_tokens'],
                          'one token per byte at most, plus the framing margin')
         self.assertEqual(pin['spend']['call_max'], 'ceil(round(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE'
-                         ' + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE, 3))')
+                         ' + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE + 1000000 * ASK_A_WIZ_MAX_REQUEST_PRICE, 3))')
         self.assertEqual(pin['spend']['per_day'],
                          'min(ASK_A_WIZ_DAILY_CAP_USD + call_max, ASK_A_WIZ_DAILY_CAP * call_max)')
-        self.assertEqual(call_max(pin, load('answer')['settings']), 1610, 'the contract\'s worked example')
+        self.assertEqual(call_max(pin, load('answer')['settings']), 2610, 'the contract\'s worked example')
+        fee = load('spend-flat-fee')  # the dearest route the ceiling allows, flat fee included, fits one reservation
+        p, c, r = (price(pin, fee['settings'], f'max_{k}_price') for k in ('prompt', 'completion', 'request'))
+        self.assertLessEqual(micro((lim['max_prompt_tokens'] * p + lim['max_output_tokens'] * c) / 1e6 + r),
+                             call_max(pin, fee['settings']))
+        self.assertLessEqual(micro(fee['upstream']['cost']), call_max(pin, fee['settings']))
         self.assertEqual(pin['upstream']['retries'], 0, 'every attempt is one counted call')
 
     def test_every_refusal_has_a_case(self):
@@ -438,6 +451,18 @@ class TheCheckCatches(unittest.TestCase):
             'an IP in the store': ('rate-limited', lambda c: c['store_after']['counters'].append(
                 {'day': c['store']['counters'][0]['day'], 'key': 'visitor:192.0.2.1:00', 'count': 1})),
             'no max price on the call': ('answer', lambda c: c['upstream']['request'].pop('provider')),
+            'no flat-fee ceiling on the call': ('spend-flat-fee', lambda c: c['upstream']['request']['provider'][
+                'max_price'].pop('request')),
+            'the flat fee left out of the reservation': ('no-private-route', lambda c: [
+                r.update(count=r['count'] - micro(float(c['settings']['ASK_A_WIZ_MAX_REQUEST_PRICE'])))
+                for r in c['store_after']['counters'] if r['key'] == 'spend']),
+            'no request price, still answered': ('unavailable-request-price', lambda c: c['settings'].update(
+                ASK_A_WIZ_MAX_REQUEST_PRICE='0.001')),
+            'a call that allows data collection': ('answer', lambda c: c['upstream']['request']['provider'].update(
+                data_collection='allow')),
+            'a call without zero retention': ('answer', lambda c: c['upstream']['request']['provider'].pop('zdr')),
+            'no private route shown as an upstream error': ('no-private-route', lambda c: c['response'].update(
+                status=502, body=c['response']['body'].replace('no_private_route', 'upstream_error'))),
             'a call sent while off': ('off-not-exact', lambda c: c.update(
                 upstream={'request': expected_request(load_pin(), c), 'chunks': ['x']})),
             'a call sent on a probe': ('probe-on', lambda c: c.update(upstream={'chunks': []})),

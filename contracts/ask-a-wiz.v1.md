@@ -38,6 +38,7 @@ the contract is wrong and must be fixed.
     "daily_cap_usd": "ASK_A_WIZ_DAILY_CAP_USD",
     "max_prompt_price": "ASK_A_WIZ_MAX_PROMPT_PRICE",
     "max_completion_price": "ASK_A_WIZ_MAX_COMPLETION_PRICE",
+    "max_request_price": "ASK_A_WIZ_MAX_REQUEST_PRICE",
     "index_path": "/ask-index.json"
   },
   "request": {
@@ -77,7 +78,8 @@ the contract is wrong and must be fixed.
     "daily_cap": {"status": 429, "message": "Ask a Wiz has answered all it can for today. Try again tomorrow."},
     "upstream_error": {"status": 502, "message": "Ask a Wiz couldn't answer just now. Try again."},
     "unavailable": {"status": 503, "message": "Ask a Wiz isn't available right now."},
-    "store_error": {"status": 503, "message": "Ask a Wiz couldn't keep count just now. Try again."}
+    "store_error": {"status": 503, "message": "Ask a Wiz couldn't keep count just now. Try again."},
+    "no_private_route": {"status": 503, "message": "Ask a Wiz can't answer privately just now. Try again later."}
   },
   "rate_limit": {"per_visitor": 10, "window": "utc_hour"},
   "daily_cap": {"counts": "model_calls", "day": "utc", "min": 1, "max": 100000, "unset_or_invalid": 0},
@@ -85,11 +87,12 @@ the contract is wrong and must be fixed.
     "url": "https://openrouter.ai/api/v1/chat/completions",
     "stream": true,
     "temperature": 0,
-    "provider": {"require_parameters": true},
+    "provider": {"require_parameters": true, "data_collection": "deny", "zdr": true},
+    "no_route_status": 404,
     "usage": {"include": true},
     "retries": 0
   },
-  "prices": {"unit": "USD per million tokens", "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6})?$", "min_exclusive": 0, "max": 1000},
+  "prices": {"unit": "USD per million tokens; the request price in USD per request", "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6})?$", "min_exclusive": 0, "max": 1000},
   "limits": {
     "max_output_tokens": 500,
     "max_passages": 6,
@@ -108,7 +111,7 @@ the contract is wrong and must be fixed.
     "key": "spend",
     "unit": "micro-USD",
     "to_micro": "ceil(round(usd * 1000000, 3))",
-    "call_max": "ceil(round(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE, 3))",
+    "call_max": "ceil(round(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE + 1000000 * ASK_A_WIZ_MAX_REQUEST_PRICE, 3))",
     "cap_usd": {"pattern": "^[0-9]{1,4}(\\.[0-9]{1,6})?$", "min_exclusive": 0, "max": 1000, "unset_or_invalid": 0},
     "per_day": "min(ASK_A_WIZ_DAILY_CAP_USD + call_max, ASK_A_WIZ_DAILY_CAP * call_max)"
   },
@@ -123,7 +126,8 @@ the contract is wrong and must be fixed.
     "daily-cap", "upstream-error", "upstream-error-midstream", "bad-request", "unavailable",
     "off", "probe-on", "probe-off", "answer-trimmed-count", "answer-trimmed-bytes", "answer-overflow",
     "off-not-exact", "unavailable-price", "store-error", "midnight-cap", "midnight-answer", "first-write-race",
-    "spend-cap", "spend-near-cap", "spend-missing-cost"
+    "spend-cap", "spend-near-cap", "spend-missing-cost",
+    "spend-flat-fee", "unavailable-request-price", "no-private-route"
   ]
 }
 ```
@@ -131,7 +135,8 @@ the contract is wrong and must be fixed.
 ## The names Jake uses
 
 All of them belong to the openwiz.dev Cloudflare Pages project. FA5 (#1903)
-sets the secret, the store, the model, the two maximum prices and the two caps;
+sets the secret, the store, the model, the three maximum prices and the two caps,
+and the OpenRouter privacy settings in "The privacy promise";
 Jake turns the switch on after FA6's go.
 
 | Name | Kind | Holds |
@@ -143,6 +148,7 @@ Jake turns the switch on after FA6's go.
 | `ASK_A_WIZ_DAILY_CAP` | Pages variable | A second guard: the most model calls a UTC day may make, an integer from 1 to 100000 |
 | `ASK_A_WIZ_MAX_PROMPT_PRICE` | Pages variable | The most any route may charge for input, in US dollars per million tokens: a decimal such as `0.10`, above 0 and at most 1000 |
 | `ASK_A_WIZ_MAX_COMPLETION_PRICE` | Pages variable | The same for output, reasoning included |
+| `ASK_A_WIZ_MAX_REQUEST_PRICE` | Pages variable | The most any route may charge as a flat fee per request, in US dollars: a decimal such as `0.001`, above 0 and at most 1000 |
 | `ASK_A_WIZ` | Pages variable | The off switch: exactly `on` turns Ask a Wiz on; anything else, or unset, is off |
 
 The key is read only as `env.OPENROUTER_API_KEY` inside the function, and is
@@ -252,6 +258,7 @@ It is given in two cases:
 | `upstream_error` | 502, or 200 mid-answer | Ask a Wiz couldn't answer just now. Try again. | OpenRouter refused, failed, timed out or sent something unreadable |
 | `unavailable` | 503 | Ask a Wiz isn't available right now. | The switch is on but the secret, the model, the store binding, a maximum price or the index is missing or invalid |
 | `store_error` | 503 | Ask a Wiz couldn't keep count just now. Try again. | A store operation before the call failed (an error or a timeout from D1) |
+| `no_private_route` | 503 | Ask a Wiz can't answer privately just now. Try again later. | OpenRouter answered `404` before any content: no route for the model meets the request's privacy and price rules |
 
 A `429` carries a `Retry-After` header: the whole seconds until the visitor's
 UTC hour ends (`rate_limited`) or the UTC day ends (`daily_cap`). No refusal
@@ -264,7 +271,7 @@ The function checks in this order, and stops at the first that fails:
 
 1. The switch (off: `404`, no body).
 2. The configuration (`unavailable`): the secret, the model, the store
-   binding, and both maximum prices, each valid.
+   binding, and the three maximum prices, each valid.
 3. The request (`bad_request`), then its length (`too_long`).
 4. The visitor's rate limit (`rate_limited`). A question that passes counts,
    whatever its outcome. This is the first store write.
@@ -272,7 +279,8 @@ The function checks in this order, and stops at the first that fails:
 6. The daily caps (`daily_cap`): the call count, then the dollar
    reservation, on the day the call is sent (see "The rate limit and the
    daily caps").
-7. The model call (`upstream_error`, the model's `NOT_COVERED`, or the answer).
+7. The model call (`no_private_route`, `upstream_error`, the model's
+   `NOT_COVERED`, or the answer).
 8. Settling the call's reported cost (after the stream ends; it changes no
    response).
 
@@ -296,8 +304,9 @@ answer is unchanged.
   most 1000). The day's spend is the `spend` counter, in whole micro-dollars.
   Every dollar amount becomes micro-dollars as `ceil(round(usd * 1000000, 3))`.
   - **Reserve before the call.** `call_max`, one call's most possible cost, is
-    `ceil(round(14096 * P + 500 * C, 3))` micro-dollars, with `P` and `C` the
-    two maximum prices. Before the call, the function adds `call_max` to
+    `ceil(round(14096 * P + 500 * C + 1000000 * R, 3))` micro-dollars, with
+    `P` and `C` the two maximum token prices and `R` the maximum flat fee per
+    request. Before the call, the function adds `call_max` to
     `spend` only if `spend` is still below the cap:
     `UPDATE ask_counters SET count = count + ? WHERE day = ? AND key = 'spend' AND count < ? RETURNING count`.
     No row back is `daily_cap`.
@@ -339,18 +348,50 @@ answer is unchanged.
 `POST https://openrouter.ai/api/v1/chat/completions` with
 `Authorization: Bearer <OPENROUTER_API_KEY>` and exactly this JSON body:
 `model` from `ASK_A_WIZ_MODEL`; `stream: true`; `max_tokens: 500`;
-`temperature: 0`; `provider: {"max_price": {"prompt": P, "completion": C},
-"require_parameters": true}`, with `P` and `C` the two maximum price settings
-as numbers; `usage: {"include": true}`, so the stream reports the call's
+`temperature: 0`; `provider: {"max_price": {"prompt": P, "completion": C,
+"request": R}, "require_parameters": true, "data_collection": "deny", "zdr":
+true}`, with `P`, `C` and `R` the three maximum price settings as numbers; `usage: {"include": true}`, so the stream reports the call's
 cost; and `messages`: one `system` message whose content is the pin's
 `prompt.system`, then one `user` message. No `models` list and no fallback
 model. `max_price` is the request's price ceiling: OpenRouter routes it to no
-provider dearer than `P` and `C`, so no call can cost more than `call_max`, and `require_parameters` routes only to
-providers that honour `max_tokens`. Tests use a fake OpenRouter only; no test
-or fixture calls the real one.
+provider dearer than `P` and `C` per million tokens or charging a flat fee
+above `R` per request, so no call can cost more than `call_max`. The request
+sends only text, so no image or audio price applies. `require_parameters`
+routes only to providers that honour `max_tokens`. `data_collection: "deny"`
+and `zdr: true` are the privacy promise (below). If no route meets all of
+these, OpenRouter answers `404` before any content; the function sends
+`no_private_route`, never retries without a rule, and the call stays counted
+at `call_max`. Tests use a fake OpenRouter only; no test or fixture calls the
+real one.
+
+**The privacy promise.** A visitor's question goes only to a route that
+keeps no data: `data_collection: "deny"` excludes providers that store or
+train on inputs, and `zdr: true` restricts routing to OpenRouter's Zero Data
+Retention endpoints. Both are in every request body, so no call can leave
+without them. The request alone is not enough, because OpenRouter lets a
+`zdr: true` request use "Safety Retention" endpoints (which may keep prompts
+to detect abuse) unless the account or the key's guardrail says **ZDR only**.
+So the promise holds only with these, which each later ticket must keep:
+
+- **FA3 (#1901)** sends exactly the body above on every call, with no
+  `provider` field added, dropped or loosened, no fallback and no retry
+  without it, and maps OpenRouter's `404` before any content to
+  `no_private_route`, replayed from `no-private-route`.
+- **FA5 (#1903)** uses an OpenRouter key made only for Ask a Wiz and sets, in
+  OpenRouter's privacy settings or on that key's guardrail: ZDR enforced for
+  the chosen model's group, with Safety Retention excluded (**ZDR only**);
+  providers that may train on inputs disabled; and OpenRouter's own
+  input and output logging off. It picks a model with at least one ZDR
+  endpoint within `P`, `C` and `R` (OpenRouter lists them at
+  `/api/v1/endpoints/zdr`), and records these settings, without the key, in
+  its setup notes for Jake. Until they are set, the switch stays off.
+
+OpenRouter documents one exception it applies to all traffic, ZDR included:
+content flagged in screening for child sexual abuse material may be kept as
+the law requires. Nothing in this contract can change that.
 
 Every limit is a constant of this contract, not a setting, so the dollar
-figure for a cap depends only on the cap and the two maximum prices:
+figure for a cap depends only on the cap and the three maximum prices:
 
 | Constant | Value | What it bounds |
 | --- | --- | --- |
@@ -385,13 +426,15 @@ the cap plus one bounded call, and never more than the call-count guard
 allows:
 
 ```text
-call_max = ceil(round(14096 * P + 500 * C, 3)) micro-dollars
+call_max = ceil(round(14096 * P + 500 * C + 1000000 * R, 3)) micro-dollars
 one day <= min(ASK_A_WIZ_DAILY_CAP_USD + call_max, ASK_A_WIZ_DAILY_CAP * call_max)
 ```
 
-For example, with `P` = `0.10` and `C` = `0.40` (synthetic prices),
-`call_max` is 1610 micro-dollars ($0.00161); a dollar cap of `1.00` and a
-call cap of 200 give at most min($1.00161, $0.322) = $0.322 a day. FA5 shows
+For example, with `P` = `0.10`, `C` = `0.40` and `R` = `0.001` (synthetic
+prices), `call_max` is 2610 micro-dollars ($0.00261); a dollar cap of `1.00`
+and a call cap of 200 give at most min($1.00261, $0.522) = $0.522 a day. A
+route with a flat fee above `R` is never used, so it can't push a call past
+`call_max`. FA5 shows
 Jake this figure for the caps and prices he sets, with the prices at or above
 the chosen model's listed prices so a route exists. `call_max` holds only for
 a model billed for no output beyond `max_tokens`: FA5 picks a model without
@@ -468,7 +511,7 @@ some synthetic questions). Each case is a JSON object:
 | `rival_salt` | Optional: a salt a concurrent first request stored before this one's insert |
 | `dispatch_at` | Optional: the clock just before the model call, when it differs from `now` |
 | `store_fails` | Optional, `true`: every store operation fails |
-| `upstream` | The fake OpenRouter: `null` (never called), or `{"request", "chunks"}`: `request` is the exact JSON body the function must send, `chunks` the content pieces it streams back, and `cost` the `usage.cost` in US dollars its last chunk reports (left out when it reports none); with `"fails": true` it errors after `after_chunks` pieces |
+| `upstream` | The fake OpenRouter: `null` (never called), or `{"request", "chunks"}`, with `"status": 404` when it finds no route: `request` is the exact JSON body the function must send, `chunks` the content pieces it streams back, and `cost` the `usage.cost` in US dollars its last chunk reports (left out when it reports none); with `"fails": true` it errors after `after_chunks` pieces |
 | `response` | `{"status", "headers", "body"}`; `body` is the exact response body string (the NDJSON lines), or `null` |
 
 `test_fixtures.py` checks every case: the shape of each event and stream,
