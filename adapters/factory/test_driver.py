@@ -189,6 +189,12 @@ class Factory(unittest.TestCase):
         self.assertTrue(self.until(lambda: len(self.logged()) == 1), 'droid never ran its turn')
         self.assertTrue(os.path.isdir(os.path.join(self.folder, 'relative-state', 'work', out['run'])))
 
+    def test_readme_opens_with_the_login_line_under_its_title(self):
+        with open(os.path.join(HERE, 'README.md')) as f:
+            lines = f.read().splitlines()
+        self.assertEqual((lines[0][:2], lines[1:3]), ('# ', ['', 'Login: held by Factory']))
+        self.assertIn('`FACTORY_API_KEY`', '\n'.join(lines))
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
