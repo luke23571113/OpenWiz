@@ -28,7 +28,8 @@ REPO = "synthetic-owner/work"
 WRITE = {"metadata": "read", "contents": "write", "issues": "write",
          "pull_requests": "write", "checks": "read", "actions": "read"}
 READ = {name: "read" for name in WRITE}
-TOKEN, TOKEN2, OLD = "synthetic-agent-token-1", "synthetic-agent-token-2", "synthetic-old-token"
+TOKEN, TOKEN2 = "synthetic-agent-token-1", "synthetic-agent-token-2"
+REQ = ("--requester", "builder-1", "--repository", REPO)
 NOTE = PIN["fallback"]["note"]
 
 # One fake for room-cli, python3 and gh. It logs its name, argv, standard input,
@@ -135,7 +136,10 @@ class Helper(unittest.TestCase):
         return json.loads(self.token_file().read_text())
 
     def token_file(self):
-        return self.private / "token.json"
+        """The one request's cache file (the helper names it per requester and scope)."""
+        files = sorted(self.private.glob("token-*.json")) if self.private.is_dir() else []
+        self.assertLessEqual(len(files), 1, "one request, one cache file")
+        return files[0] if files else self.private / "token-none.json"
 
     def assert_never_exposed(self, *results, tokens=(TOKEN, TOKEN2)):
         """No token in any output, argument list or file outside the private token file."""
@@ -146,13 +150,15 @@ class Helper(unittest.TestCase):
             for token in tokens:
                 self.assertNotIn(token, " ".join(call["args"]) + call["stdin"])
         for path in self.root.rglob("*"):
-            if path.is_file() and path != self.token_file() and path.name != "answers.json":
+            private = path.parent == self.private and path.name.startswith("token-")
+            if path.is_file() and not private and path.name != "answers.json":
                 for token in tokens:
                     self.assertNotIn(token.encode(), path.read_bytes(), path)
 
     def assert_fallback(self, result, reason):
         self.assertEqual(result.stderr, NOTE.replace("<reason>", reason) + "\n")
         self.assertFalse(self.token_file().exists())
+        self.assertEqual(list(self.private.glob("run-*")) if self.private.is_dir() else [], [])
 
 
 class Refresh(unittest.TestCase):
@@ -173,18 +179,19 @@ class MintedToken(Helper):
         self.assertEqual(self.held()["token"], TOKEN)
         self.assertEqual(self.token_file().stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.private.stat().st_mode & 0o777, 0o700)
-        ran = self.helper("run", "--", "gh", "issue", "view", "1")
+        ran = self.helper("run", *REQ, "--", "gh", "issue", "view", "1")
         self.assertEqual((ran.returncode, ran.stderr), (0, ""))
         self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN))
-        git = self.helper("run", "--", "git", "credential", "fill", stdin="protocol=https\nhost=github.com\n\n")
+        git = self.helper("run", *REQ, "--", "git", "credential", "fill", stdin="protocol=https\nhost=github.com\n\n")
         self.assertEqual(git.returncode, 0, git.stderr)
         self.assertIn(f"password={TOKEN}\n", git.stdout)  # git's own pipe back to its caller
         # The owner's store helper never gets the token: run resets git's helper list.
         (self.home / ".gitconfig").write_text("[credential]\n\thelper = store\n")
-        stored = self.helper("run", "--", "git", "credential", "approve", stdin=git.stdout + "\n")
+        stored = self.helper("run", *REQ, "--", "git", "credential", "approve", stdin=git.stdout + "\n")
         self.assertEqual(stored.returncode, 0, stored.stderr)
         self.assertFalse((self.home / ".git-credentials").exists())
         self.assertEqual(len(self.service_calls()), 1, "a fresh token is reused, not minted again")
+        self.assertEqual(list(self.private.glob("run-*")), [], "each run removes its snapshot")
         self.assert_never_exposed(started, ran)
 
     def test_the_request_names_repositories_and_permissions_only(self):
@@ -202,7 +209,7 @@ class MintedToken(Helper):
         held = self.held()
         held["expires_at"] = int(time.time()) + 200
         self.token_file().write_text(json.dumps(held))
-        ran = self.helper("run", "--", "gh", "pr", "list")
+        ran = self.helper("run", *REQ, "--", "gh", "pr", "list")
         self.assertEqual((ran.returncode, ran.stderr), (0, ""))
         self.assertEqual(len(self.service_calls()), 2)
         self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN2))
@@ -256,7 +263,7 @@ class Fallback(Helper):
         started = self.start()
         self.assertEqual(started.returncode, 0)
         self.assert_fallback(started, "unreachable")
-        ran = self.helper("run", "--", "gh", "issue", "view", "1", GH_TOKEN="synthetic-owner-login")
+        ran = self.helper("run", *REQ, "--", "gh", "issue", "view", "1", GH_TOKEN="synthetic-owner-login")
         self.assertEqual(ran.returncode, 0)
         self.assert_fallback(ran, "unreachable")
         self.assertEqual(self.calls("gh")[-1]["gh_token"], sha("synthetic-owner-login"))
@@ -264,21 +271,20 @@ class Fallback(Helper):
 
     def test_a_failed_refresh_leaves_no_service_credential(self):
         # catches: gh and git split between the App and the owner after a failed refresh.
-        self.private.mkdir(mode=0o700)
-        self.token_file().write_text(json.dumps({"token": OLD, "expires_at": int(time.time()) + 100,
-                                                 "repositories": [REPO], "permissions": WRITE}))
-        self.token_file().chmod(0o600)
-        (self.private / "request.json").write_text(json.dumps(
-            {"requester": "builder-1", "repositories": [REPO], "permissions": WRITE}))
-        (self.private / "request.json").chmod(0o600)  # as the helper writes it, whatever the umask
-        self.answers({"exit": 1, "stdout": ""})
-        ran = self.helper("run", "--", "gh", "pr", "list", GH_TOKEN=OLD)
+        self.answers(answer(), {"exit": 1, "stdout": ""})
+        self.start()
+        held = self.held()
+        held["expires_at"] = int(time.time()) + 100
+        self.token_file().write_text(json.dumps(held))
+        outer = str(self.private / ("run-" + "0" * 32 + ".json"))  # as an outer run marks its child
+        ran = self.helper("run", *REQ, "--", "gh", "pr", "list", GH_TOKEN=TOKEN,
+                          OPENWIZ_AGENT_TOKEN_RUN=outer)
         self.assert_fallback(ran, "unreachable")
         self.assertIsNone(self.calls("gh")[-1]["gh_token"], "the held App token is not handed on")
         self.assertIsNone(self.service_calls()[-1]["gh_token"], "nor passed to the service call")
-        git = self.helper("run", "--", "git", "credential", "fill",
+        git = self.helper("run", *REQ, "--", "git", "credential", "fill",
                           stdin="protocol=https\nhost=github.com\n\n")
-        self.assertNotIn(OLD, git.stdout)
+        self.assertNotIn(TOKEN, git.stdout)
 
     def test_each_fixture_fallback_reason(self):
         # catches: a refusal, a bad or wider answer, or an expiring answer used as a token.
@@ -331,7 +337,7 @@ class Fallback(Helper):
         # catches: a note, a call or a changed environment when no service is set.
         result = self.start(OPENWIZ_TOKEN_SERVICE=None)
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
-        ran = self.helper("run", "--", "gh", "api", "user", OPENWIZ_TOKEN_SERVICE=None,
+        ran = self.helper("run", *REQ, "--", "gh", "api", "user", OPENWIZ_TOKEN_SERVICE=None,
                           GH_TOKEN="synthetic-owner-login")
         self.assertEqual((ran.returncode, ran.stderr), (0, ""))
         self.assertEqual(self.service_calls(), [])
@@ -341,7 +347,7 @@ class Fallback(Helper):
 
 class Review(Helper):
     """The review's findings R1 to R4 and R6 on #1916, each red first."""
-    REQ = ("--requester", "builder-1", "--repository", REPO)
+    REQ = REQ
 
     def shell(self, script, *extra, **env):
         env = dict({"PY": sys.executable, "H": str(HELPER)}, **env)

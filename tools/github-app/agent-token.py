@@ -8,21 +8,28 @@ file, refreshes it with 300 seconds or less left, and falls back to the owner's
 GitHub login with one standard-error note. It never asks for, reads or holds the
 App's key, and never prints, logs or passes a token as an argument.
 
-    agent-token.py start --requester LABEL --repository OWNER/NAME... [--read]
-    agent-token.py run -- COMMAND [ARG...]
-    agent-token.py credential get        (git's credential helper; run sets it)
+    agent-token.py start REQUEST
+    agent-token.py run REQUEST -- COMMAND [ARG...]
+    REQUEST: --requester LABEL --repository OWNER/NAME... [--read]
+
+Each request has its own cache file, so agents on one account never share or
+replace each other's tokens. Each run copies its token into a snapshot file
+that lives only while COMMAND runs; gh gets it as GH_TOKEN and git through
+`credential --snapshot`, which answers only git's own credential exchange.
 
 With OPENWIZ_TOKEN_SERVICE unset or empty, each command changes nothing and
 prints nothing: run runs COMMAND exactly as today.
 """
+import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
+import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -39,6 +46,9 @@ REPOSITORY = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+")
 TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
 REFUSAL_MESSAGE = re.compile(r"Token refused: [^\n]+\.")
 GIT_HELPER_KEY = "credential.https://github.com.helper"
+RUN_MARK, GIT_MARK = "OPENWIZ_AGENT_TOKEN_RUN", "OPENWIZ_AGENT_TOKEN_GIT_AT"
+USAGE = ("agent-token.py start REQUEST | run REQUEST -- COMMAND [ARG...]; "
+         "REQUEST is --requester LABEL --repository OWNER/NAME... [--read]")
 
 
 class Refused(Exception):
@@ -129,88 +139,114 @@ def mint(argv, wanted, env):
     return ("bad-answer", None, None) if got is None else (None, *got)
 
 
-def private_dir(env, create):
-    """The 0700 directory outside every Git working tree that holds the token file."""
-    raw = env.get("OPENWIZ_AGENT_TOKEN_DIR") or ""
-    if not raw:
-        runtime = env.get("XDG_RUNTIME_DIR", "")
-        raw = (os.path.join(runtime, "openwiz-agent-token") if runtime.startswith("/")
-               else os.path.join(str(Path.home()), ".cache", "openwiz-agent-token"))
-    path = Path(raw)
-    if not path.is_absolute():
-        raise Refused("the private token directory must be an absolute path")
-    for parent in (path, *path.parents):
-        if (parent / ".git").exists():
-            raise Refused("the private token directory must be outside every Git working tree")
-    if create and not path.exists():
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        path.mkdir(mode=0o700)
-    if path.exists():
-        info = os.lstat(path)
-        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
-                or info.st_mode & 0o077):
+class Private:
+    """The 0700 directory, outside every Git working tree, that holds token files.
+
+    Its path may not pass through a symlink, and every file operation goes
+    through one descriptor opened on it, so no path swap can redirect a write.
+    """
+
+    def __init__(self, env, create):
+        raw = env.get("OPENWIZ_AGENT_TOKEN_DIR") or ""
+        if not raw:
+            runtime = env.get("XDG_RUNTIME_DIR", "")
+            raw = (os.path.join(runtime, "openwiz-agent-token") if runtime.startswith("/")
+                   else os.path.join(str(Path.home()), ".cache", "openwiz-agent-token"))
+        if not os.path.isabs(raw):
+            raise Refused("the private token directory must be an absolute path")
+        self.path = os.path.normpath(raw)
+        parent = os.path.dirname(self.path)
+        if os.path.realpath(parent) != parent or os.path.islink(self.path):
+            raise Refused("the private token directory must not pass through a symlink")
+        for above in (self.path, *Path(self.path).parents):
+            if os.path.lexists(os.path.join(above, ".git")):
+                raise Refused("the private token directory must be outside every Git working tree")
+        if create:
+            os.makedirs(parent, mode=0o700, exist_ok=True)
+            try:
+                os.mkdir(self.path, 0o700)
+            except FileExistsError:
+                pass
+        try:
+            self.fd = os.open(self.path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError:
             raise Refused("the private token directory must be a 0700 directory you own")
-    return path
+        info = os.fstat(self.fd)
+        if info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise Refused("the private token directory must be a 0700 directory you own")
 
-
-def _read(path):
-    try:
-        info = os.lstat(path)
-        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.getuid():
+    def read(self, name):
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self.fd)
+        except OSError:
             return None
-        return _parse(path.read_bytes())
-    except OSError:
-        return None
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.getuid():
+                return None
+            return _parse(handle.read())
+
+    def write(self, name, value):
+        temporary = f".tmp-{secrets.token_hex(8)}"
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600,
+                     dir_fd=self.fd)
+        try:
+            with os.fdopen(fd, "w") as handle:
+                json.dump(value, handle)
+            os.replace(temporary, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)
+        except BaseException:
+            self.unlink(temporary)
+            raise
+
+    def unlink(self, name):
+        try:
+            os.unlink(name, dir_fd=self.fd)
+        except FileNotFoundError:
+            pass
 
 
-def _write(path, value):
-    fd, name = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")  # 0600 from mkstemp
-    try:
-        with os.fdopen(fd, "w") as handle:
-            json.dump(value, handle)
-        os.replace(name, path)
-    except BaseException:
-        os.unlink(name)
-        raise
+def usable(held, now):
+    """A token file's token, unless it is malformed or due for refresh."""
+    if (isinstance(held, dict) and isinstance(held.get("token"), str)
+            and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
+            and not needs_refresh(now, held["expires_at"])):
+        return held["token"]
+    return None
 
 
-def held_token(directory, wanted, now):
-    """The private file's token, while it covers exactly this request and is not due."""
-    held = _read(directory / "token.json")
-    if (not isinstance(held, dict) or not isinstance(held.get("token"), str)
-            or not TOKEN.fullmatch(held["token"])):
-        return None
-    if (type(held.get("expires_at")) is not int or needs_refresh(now, held["expires_at"])
-            or held.get("repositories") != wanted["repositories"]
-            or held.get("permissions") != wanted["permissions"]):
-        return None
-    return held["token"]
+def cache_name(wanted):
+    """One cache file per requester and scope, so agents never share or replace each other's."""
+    digest = hashlib.sha256(json.dumps(wanted, sort_keys=True).encode()).hexdigest()
+    return f"token-{digest[:32]}.json"
 
 
-def token_for_run(directory, wanted, env):
-    """The token to hand over, or None after the run's one fallback note."""
+def token_for(private, wanted, env):
+    """(token, expires_at) to hand over, or (None, None) after the run's one fallback note."""
+    name = cache_name(wanted)
     reason, argv = route(env)
     if not reason:
-        token = held_token(directory, wanted, int(time.time()))
-        if token:
-            return token
+        held = private.read(name)
+        if (usable(held, int(time.time())) and held.get("repositories") == wanted["repositories"]
+                and held.get("permissions") == wanted["permissions"]):
+            return held["token"], held["expires_at"]
         reason, token, expires_at = mint(argv, wanted, env)
     if reason:
-        (directory / "token.json").unlink(missing_ok=True)
+        private.unlink(name)
         sys.stderr.write(NOTE.format(reason))
-        return None
-    _write(directory / "token.json", {"token": token, "expires_at": expires_at, **wanted})
-    return token
+        return None, None
+    private.write(name, {"token": token, "expires_at": expires_at, **wanted})
+    return token, expires_at
 
 
 def configured(env):
     return bool(env.get("OPENWIZ_TOKEN_SERVICE"))
 
 
-def start(args, env):
-    """Record the request and get the first token (or fall back)."""
+def parse_request(args):
+    """The request from --requester, --repository... and --read; the rest after `--`."""
     wanted = {"requester": None, "repositories": [], "permissions": WRITE}
-    while args:
+    args = list(args)
+    while args and args[0] != "--":
         flag = args.pop(0)
         if flag == "--read":
             wanted["permissions"] = READ
@@ -221,7 +257,7 @@ def start(args, env):
             else:
                 wanted["repositories"].append(value)
         else:
-            raise Refused("usage: start --requester LABEL --repository OWNER/NAME... [--read]")
+            raise Refused(f"usage: {USAGE}")
     if not (wanted["requester"] and REQUESTER.fullmatch(wanted["requester"])):
         raise Refused("--requester is a short lowercase label, such as builder-1844")
     repositories = wanted["repositories"]
@@ -229,55 +265,126 @@ def start(args, env):
             or not all(REPOSITORY.fullmatch(r) for r in repositories)
             or len({r.split("/")[0].lower() for r in repositories}) != 1):
         raise Refused("--repository is OWNER/NAME, at least one, each once, all of one owner")
-    if not configured(env):
-        return 0
-    directory = private_dir(env, create=True)
-    _write(directory / "request.json", wanted)
-    token_for_run(directory, wanted, env)
+    return wanted, args[1:] if args else None
+
+
+def start(args, env):
+    """Get the request's first token (or fall back), so the agent's first use is quick."""
+    wanted, rest = parse_request(args)
+    if rest is not None:
+        raise Refused(f"usage: {USAGE}")
+    if configured(env):
+        token_for(Private(env, create=True), wanted, env)
     return 0
 
 
-def run(args, env):
-    """Run COMMAND with the token in its own environment, or as the owner after the note."""
-    if args[:1] == ["--"]:
-        args = args[1:]
-    if not args:
-        raise Refused("usage: run -- COMMAND [ARG...]")
+def without_inherited(env):
+    """The environment with any App credential an outer run handed down removed."""
     child = dict(env)
-    if configured(env):
-        directory = private_dir(env, create=False)
-        wanted = _read(directory / "request.json")
-        if not isinstance(wanted, dict) or set(wanted) != {"requester", "repositories", "permissions"}:
-            raise Refused("no request recorded: run start first")
-        old = _read(directory / "token.json")
-        token = token_for_run(directory, wanted, env)
-        if token:
-            child["GH_TOKEN"] = token
-            helper = f"!{shlex.quote(sys.executable)} -I {shlex.quote(os.path.abspath(__file__))} credential"
-            count = child.get("GIT_CONFIG_COUNT", "0") or "0"
-            if not count.isdigit():
-                raise Refused("GIT_CONFIG_COUNT must be a number")
-            count = int(count)
-            for offset, value in enumerate(("", helper)):  # "" resets git's helper list first
-                child[f"GIT_CONFIG_KEY_{count + offset}"] = GIT_HELPER_KEY
-                child[f"GIT_CONFIG_VALUE_{count + offset}"] = value
-            child["GIT_CONFIG_COUNT"] = str(count + 2)
-        elif isinstance(old, dict) and child.get("GH_TOKEN") == old.get("token"):
-            del child["GH_TOKEN"]  # never hand on the App token a failed refresh replaced
+    if RUN_MARK not in child:
+        return child
+    child.pop(RUN_MARK)
+    child.pop("GH_TOKEN", None)
+    first = child.pop(GIT_MARK, "")
+    count = child.get("GIT_CONFIG_COUNT", "0")
+    if first.isdigit() and count.isdigit():
+        pairs = [(child.pop(f"GIT_CONFIG_KEY_{i}", ""), child.pop(f"GIT_CONFIG_VALUE_{i}", ""))
+                 for i in range(int(count))]
+        del pairs[int(first):int(first) + 2]
+        for i, (key, value) in enumerate(pairs):
+            child[f"GIT_CONFIG_KEY_{i}"], child[f"GIT_CONFIG_VALUE_{i}"] = key, value
+        child["GIT_CONFIG_COUNT"] = str(len(pairs))
+    return child
+
+
+def git_helper(snapshot):
+    """The one credential helper `run` gives git: it reads this run's snapshot only."""
+    return (f"!exec {shlex.quote(sys.executable)} -I {shlex.quote(os.path.abspath(__file__))}"
+            f" credential --snapshot {shlex.quote(snapshot)}")
+
+
+def run(args, env):
+    """Run COMMAND with this run's token in its own environment, or as the owner after the note."""
+    wanted, command = parse_request(args)
+    if not command:
+        raise Refused(f"usage: {USAGE}")
+    if not configured(env):
+        return execute(command, env)
+    private = Private(env, create=True)
+    token, expires_at = token_for(private, wanted, env)
+    child = without_inherited(env)
+    if not token:
+        return execute(command, child)
+    name = f"run-{secrets.token_hex(16)}.json"
+    snapshot = os.path.join(private.path, name)
+    private.write(name, {"token": token, "expires_at": expires_at})
     try:
-        os.execvpe(args[0], args, child)
+        count = child.get("GIT_CONFIG_COUNT", "0") or "0"
+        if not count.isdigit():
+            raise Refused("GIT_CONFIG_COUNT must be a number")
+        count = int(count)
+        for offset, value in enumerate(("", git_helper(snapshot))):  # "" resets the list
+            child[f"GIT_CONFIG_KEY_{count + offset}"] = GIT_HELPER_KEY
+            child[f"GIT_CONFIG_VALUE_{count + offset}"] = value
+        child.update({"GIT_CONFIG_COUNT": str(count + 2), "GH_TOKEN": token,
+                      RUN_MARK: snapshot, GIT_MARK: str(count)})
+        return execute(command, child, wait=True)
+    finally:
+        private.unlink(name)
+
+
+def execute(command, env, wait=False):
+    """Run COMMAND; with wait, stay to remove this run's snapshot after it ends."""
+    try:
+        if not wait:
+            os.execvpe(command[0], command, env)
+        child = subprocess.Popen(command, env=env)
     except OSError:
         raise Refused("cannot run the command")
+    signal.signal(signal.SIGTERM, lambda number, frame: child.send_signal(number))
+    while True:
+        try:
+            code = child.wait()
+            return 128 - code if code < 0 else code
+        except KeyboardInterrupt:
+            continue  # the terminal's interrupt reached the command too
+
+
+def only_git_asks(snapshot, env):
+    """True only inside git's own exchange, with this run's helper the last one git uses."""
+    try:
+        parent = subprocess.run(["ps", "-o", "comm=", "-p", str(os.getppid())],
+                                capture_output=True, text=True, timeout=10).stdout.strip()
+        listed = subprocess.run(["git", "config", "--list", "-z"], capture_output=True,
+                                env=env, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if not os.path.basename(parent).startswith("git") or listed.returncode != 0:
+        return False
+    helpers = []
+    for item in listed.stdout.split(b"\0"):
+        key, _, value = item.decode("utf-8", "replace").partition("\n")
+        if key.lower().startswith("credential.") and key.lower().endswith(".helper"):
+            helpers.append((key, value))
+    return helpers[-2:] == [(GIT_HELPER_KEY, ""), (GIT_HELPER_KEY, git_helper(snapshot))]
 
 
 def credential(args, env):
-    """git's credential helper: answer `get` for https://github.com from the private file."""
-    if args != ["get"] or not configured(env):
+    """git's credential helper: answer `get` for https://github.com from this run's snapshot."""
+    if len(args) != 3 or args[0] != "--snapshot" or args[2] != "get" or not configured(env):
+        return 0
+    snapshot = args[1]
+    private = Private(env, create=False)
+    name = os.path.basename(snapshot)
+    if (snapshot != env.get(RUN_MARK) or os.path.dirname(snapshot) != private.path
+            or not re.fullmatch(r"run-[0-9a-f]{32}\.json", name)):
         return 0
     fields = dict(line.split("=", 1) for line in sys.stdin.read().splitlines() if "=" in line)
     if fields.get("protocol") != "https" or fields.get("host") != "github.com":
         return 0
-    held = _read(private_dir(env, create=False) / "token.json")
+    if not only_git_asks(snapshot, env):
+        return 0
+    held = private.read(name)
     if (isinstance(held, dict) and isinstance(held.get("token"), str)
             and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
             and held["expires_at"] > time.time()):
@@ -289,7 +396,7 @@ def main(argv):
     commands = {"start": start, "run": run, "credential": credential}
     try:
         if not argv or argv[0] not in commands:
-            raise Refused("usage: agent-token.py start|run|credential ...")
+            raise Refused(f"usage: {USAGE}")
         return commands[argv[0]](list(argv[1:]), dict(os.environ))
     except Refused as error:
         sys.stderr.write(f"openwiz: agent-token: {error}\n")
