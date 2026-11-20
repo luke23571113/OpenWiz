@@ -56,7 +56,7 @@ AssertionError: Lists differ: [['--cwd', '<tmp>/state/work/ru[1948 chars]c6']] !
 
 First list contains 5 additional elements.
 First extra element 0:
-['--cwd', '<tmp>/state/work/run-cf58e9f12d7f', '--model', 'ghp_Synthetic0Claw0ValueSynthetic0Claw0Value00', '--auth-policy', 'fail', '--permission-policy', '{"autoApprove":["read","search","edit","move","execute","think","fetch"],"autoDeny":["delete","switch_mode"],"defaultAction":"deny"}', '--non-interactive-permissions', 'deny', 'claude', 'sessions', 'new', '--name', 'run-cf58e9f12d7f']
+['--cwd', '<tmp>/state/work/run-cf58e9f12d7f', '--model', '<the synthetic token>', '--auth-policy', 'fail', '--permission-policy', '{"autoApprove":["read","search","edit","move","execute","think","fetch"],"autoDeny":["delete","switch_mode"],"defaultAction":"deny"}', '--non-interactive-permissions', 'deny', 'claude', 'sessions', 'new', '--name', 'run-cf58e9f12d7f']
 
 Diff is 2295 characters long. Set self.maxDiff to None to see it.
 

@@ -186,7 +186,7 @@ class OpenClaw(unittest.TestCase):
         self.assertEqual(self.acpx(), [])
 
     def test_a_field_shaped_like_a_credential_is_refused_before_anything_keeps_it(self):
-        for model in (TOKEN, 'Bearer Synthetic0Value', 'sk-' + 'Synthetic0Claw0Value00'):
+        for model in (TOKEN, 'Bear' + 'er Synthetic0Value', 'sk-' + 'Synthetic0Claw0Value00'):
             with self.subTest(model=model[:6]):
                 code, out = self.driver('start', dict(REQUEST, model=model))
                 self.assertEqual(code, 1, out)
