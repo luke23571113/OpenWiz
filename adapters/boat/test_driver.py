@@ -557,6 +557,23 @@ class Boat(unittest.TestCase):
             self.assertEqual((code, json.load(g)['commit']), (0, json.load(f)['commit']), out)
 
 
+    def test_on_macos_the_driver_never_asks_ps_for_any_process_environment(self):
+        calls = os.path.join(self.folder, 'ps-calls')
+        logging_ps = os.path.join(self.folder, 'logging-ps')
+        os.mkdir(logging_ps)
+        with open(os.path.join(logging_ps, 'ps'), 'w') as f:
+            f.write('#!/bin/sh\nprintf \'%%s\\n\' "$*" >> %s\nexec %s "$@"\n' % (calls, os.path.join(NO_PROC, 'ps')))
+        os.chmod(os.path.join(logging_ps, 'ps'), 0o700)
+        macos = {'PATH': logging_ps + os.pathsep + NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.driver('start', REQUEST, **macos)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.driver('stop', out, **macos), (0, dict(out, stopped=True)))
+        with open(calls) as f:
+            asked = f.read().splitlines()
+        self.assertTrue(any(' -A ' in ' %s ' % c for c in asked), 'the driver never listed processes through ps')
+        self.assertEqual([c for c in asked if '-E' in c.split() or 'e' in c.split()], [],
+                         'the driver asked ps for process environments')
+
     def test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
         for worker in ({}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
