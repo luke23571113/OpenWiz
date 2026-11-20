@@ -48,7 +48,6 @@ CLASSIFIED_2405 = (
     ('tools/live-smoke/restriction.py', 'public', 'live smoke expected-plan restriction code'),
     ('tools/live-smoke/test_restriction.py', 'public', 'its synthetic test'),
     ('tools/notifications/discovery-kit.md', 'public', 'notification discovery kit, schema and tests'),
-    ('tools/war-room/suite.py', 'public', 'war room contract, adapters, tests and fixtures'),
 )
 CARRIED = REVIEWED_CARRIAGE + tuple(row[0] for row in CLASSIFIED_2405)
 
@@ -203,8 +202,7 @@ class Import(unittest.TestCase):
                      'ci/main-batch/unclassified.py', 'docs/evidence/unclassified.bin',
                      'docs/security/unclassified.md', 'docs/spikes/unclassified.md',
                      'tools/ci-overload/unclassified.py',
-                     'tools/notifications/unclassified.py',
-                     'tools/war-room/unclassified.py'):
+                     'tools/notifications/unclassified.py'):
             with self.subTest(path=name):
                 base = self.head
                 path = self.source / name

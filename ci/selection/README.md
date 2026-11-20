@@ -1,10 +1,8 @@
 # CI selection record fixtures
 
-Synthetic plans for the CI selection record, [`openwiz.ci-selection.v1`](../../contracts/ci-selection.v1.md) (#1405). `ci/escapes/test.py` checks that every file in `valid/` matches [the schema](../../contracts/ci-selection.v1.schema.json) and keeps the contract's rules beyond it, and that every case in [`invalid/cases.json`](invalid/cases.json) is refused, for its reason. Every run id, commit, pull request number and path is synthetic; the lists of tests are short samples (a real plan names every test). They prove the record's shape, never a live run.
+Synthetic plans for the CI selection record, [`openwiz.ci-selection.v1`](../../contracts/ci-selection.v1.md) (#1405). Every run id, commit, pull request number and path is synthetic; the lists of tests are short samples (a real plan names every test). They prove the record's shape, never a live run.
 
-Later tickets read them: X5 (#1262) writes plans of these shapes, X6 (#1264) runs the escape finder's tests on them, and X8 (#1266) balances the Rust lane's `rust:test:` and `rust:lib:` ids.
-
-Run: `python3 -I ci/escapes/test.py Plans`.
+Later tickets read them: X5 (#1262) writes plans of these shapes, and X8 (#1266) balances the Rust lane's `rust:test:` and `rust:lib:` ids.
 
 ## Valid
 
@@ -34,7 +32,7 @@ Each full-run file is named for the reason that selects everything; together the
 
 [`invalid/cases.json`](invalid/cases.json) holds the invalid plans as one table of cases (#1485), each named for the file it once was. Each case is a valid plan with one planted break: its `base` (a file in `valid/`), its edit, and `why`, the reason it is refused. "Schema" means the schema refuses it; "Rule n" means the schema accepts it and the contract's rule n refuses it.
 
-An edit is JSON pointers: `drop` removes each one's member, then `set` writes each one's value (a last `-` appends to a list). [`invalid/expand.py`](invalid/expand.py)'s `plan(name)` gives a case's plan as the text a run would keep, two-space indented, as `valid/` is. A `raw` case can't be a parsed plan plus one edit, so it stays a file beside the table: `invalid/duplicate-key.json` (Rule 1: a lane's `decision` written twice). `ci/escapes/test.py` refuses any other file there.
+An edit is JSON pointers: `drop` removes each one's member, then `set` writes each one's value (a last `-` appends to a list). [`invalid/expand.py`](invalid/expand.py)'s `plan(name)` gives a case's plan as the text a run would keep, two-space indented, as `valid/` is. A `raw` case can't be a parsed plan plus one edit, so it stays a file beside the table: `invalid/duplicate-key.json` (Rule 1: a lane's `decision` written twice).
 
 ## Reads
 
