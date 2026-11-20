@@ -171,7 +171,7 @@ class Driver(unittest.TestCase):
         # woke for a run that has ended (the per-run lock).
         code, out = self.call('start', START)
         hold = os.path.join(self.folder, 'hold')
-        wake = subprocess.Popen([sys.executable, DRIVER, 'wake'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        wake = subprocess.Popen([sys.executable, DRIVER, 'wake'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                 env=dict(self.env, FAKE_ROOM_HOLD=hold))
         wake.stdin.write(json.dumps(out).encode())
         wake.stdin.close()
@@ -179,7 +179,7 @@ class Driver(unittest.TestCase):
             if os.path.exists(hold + '.held'):
                 break
             time.sleep(0.01)
-        stop = subprocess.Popen([sys.executable, DRIVER, 'stop'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stop = subprocess.Popen([sys.executable, DRIVER, 'stop'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                 env=self.env)
         stop.stdin.write(json.dumps(out).encode())
         stop.stdin.close()
