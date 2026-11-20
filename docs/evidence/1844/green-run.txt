@@ -1,0 +1,19 @@
+$ python3 -I tools/github-app/test_agent_token.py -v
+test_a_failed_refresh_leaves_no_service_credential (__main__.Fallback.test_a_failed_refresh_leaves_no_service_credential) ... ok
+test_a_path_that_cannot_be_quoted_is_never_run (__main__.Fallback.test_a_path_that_cannot_be_quoted_is_never_run) ... ok
+test_a_service_that_does_not_answer_in_time (__main__.Fallback.test_a_service_that_does_not_answer_in_time) ... ok
+test_each_fixture_fallback_reason (__main__.Fallback.test_each_fixture_fallback_reason) ... ok
+test_no_service_configured_is_exactly_as_today (__main__.Fallback.test_no_service_configured_is_exactly_as_today) ... ok
+test_unreachable_service_falls_back_with_one_note (__main__.Fallback.test_unreachable_service_falls_back_with_one_note) ... ok
+test_a_local_thread_runs_the_service_itself (__main__.MintedToken.test_a_local_thread_runs_the_service_itself) ... ok
+test_a_private_place_inside_a_git_tree_is_refused (__main__.MintedToken.test_a_private_place_inside_a_git_tree_is_refused) ... ok
+test_gh_and_git_use_the_minted_token (__main__.MintedToken.test_gh_and_git_use_the_minted_token) ... ok
+test_refreshes_with_five_minutes_left_before_the_next_use (__main__.MintedToken.test_refreshes_with_five_minutes_left_before_the_next_use) ... ok
+test_the_request_names_repositories_and_permissions_only (__main__.MintedToken.test_the_request_names_repositories_and_permissions_only) ... ok
+test_token_crosses_the_pairing_only_as_piped_stdout_of_one_call (__main__.MintedToken.test_token_crosses_the_pairing_only_as_piped_stdout_of_one_call) ... ok
+test_the_contract_refresh_boundary (__main__.Refresh.test_the_contract_refresh_boundary) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests
+
+OK
