@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -14,6 +15,7 @@ CONTRACTS = HERE.parent.parent / 'contracts'
 FIXTURES = CONTRACTS / 'fixtures' / 'comments'
 SCHEMA = json.loads((CONTRACTS / 'comments.v1.schema.json').read_text())
 EXPECTED = json.loads((FIXTURES / 'expected.json').read_text())
+PIN = '0123456789abcdef0123456789abcdef01234567'
 LANGUAGES = {'rust.rs', 'python.py', 'shell.sh', 'yaml.yml', 'toml.toml', 'javascript.js', 'css.css', 'html.html'}
 
 
@@ -202,6 +204,68 @@ class Count(unittest.TestCase):
         self.assertEqual(got, [(before, 7), (after, 6)])
         self.assertEqual(self.count(repo, '--at', before, 'src/main.rs')['after']['comment_lines'], 3)
 
+
+
+REVIEW_CASES = {
+    'R1 a Unicode Rust identifier': ({}, {'src/u.rs': 'fn caf\u00e9() {}\n// New narration.\n'}, [], {('src/u.rs', 2, 'comment')}),
+    'R2 an added line that starts with "++ "': (
+        {'a.rs': 'fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n'},
+        {'a.rs': '/* Example output:\n++ out */\nfn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n// New narration.\n'},
+        [], {('a.rs', 1, 'comment'), ('a.rs', 7, 'comment')}),
+    'R3 a newline in a path': ({}, {'odd\nname.py': '# New narration.\n'}, [], {('"odd\\nname.py"', 1, 'comment')}),
+    'R3 a non-UTF-8 path byte': ({}, {b'\xffbad.py': '# New narration.\n'}, [], {('"\\377bad.py"', 1, 'comment')}),
+    'R4 a deletion-only edit to a non-UTF-8 file': (
+        {'latin.rs': b'fn a() {}\n// caf\xe9\nfn b() {}\n'}, {'latin.rs': b'fn a() {}\n// caf\xe9\n'}, [], set()),
+    'R5 a here-string, a bitshift and an escaped space': (
+        {}, {'s.sh': 'cat <<< word\n# New narration.\necho $((1 << 2))\n# More narration.\necho word\\ #fragment\n'},
+        [], {('s.sh', 2, 'comment'), ('s.sh', 4, 'comment')}),
+    'R6 YAML quotes across lines and inside plain values': (
+        {}, {'c.yml': 'title: "First line\n  # still the title\n  end"\nname: The \'title # New narration\n'},
+        [], {('c.yml', 4, 'comment')}),
+    'R7 a TOML closing run of four quotes': (
+        {}, {'c.toml': "message = \'\'\'The word is \'quoted\'\'\'\' # New narration\n"}, [], {('c.toml', 1, 'comment')}),
+    'R8 HTML attributes and script attributes': (
+        {}, {'p.html': '<div title="<!-- example -->">OK</div>\n<script data-type="application/json">\n// New narration.\n</script>\n'},
+        [], {('p.html', 3, 'comment')}),
+    'R9 doc markers by language': (
+        {}, {'docs/site.css': '/** Narration */\nbody {}\n', 'docs/a.js': '/*! Narration */\nlet a;\n', 'docs/b.rs': '/*! Crate docs */\nfn b() {}\n'},
+        ['--docs', 'docs/'], {('docs/site.css', 1, 'comment'), ('docs/a.js', 1, 'comment')}),
+    'R10 quoted pins, only on a workflow uses field': (
+        {}, {'.github/workflows/w.yml': 'jobs:\n  a:\n    steps:\n      - uses: "owner/tool@PIN" # v2.1.0\n      - uses: \'owner/x@PIN\' # v3\n',
+             'config.yml': 'note: uses: owner/tool@PIN # v1\n'},
+        [], {('config.yml', 1, 'comment')}),
+    'R11 directive reasons and directive-like strings': (
+        {}, {'d.py': 'x = 1  # noqa: F841 #no-reason\n"""noqa -- formatter details."""\ny = 2  # noqa: F841 # the synthetic rule misfires\n'},
+        [], {('d.py', 1, 'directive-reason'), ('d.py', 2, 'comment')}),
+}
+
+
+class Review(unittest.TestCase):
+    def repo_with(self, before, after):
+        repo = Repo(self)
+        for files in (before, after):
+            for name, body in files.items():
+                path = repo.root / os.fsdecode(name)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                body = body.replace('PIN', PIN) if isinstance(body, str) else body
+                path.write_bytes(body.encode() if isinstance(body, str) else body)
+            if files is before:
+                base = repo.commit() if before else repo.git('rev-parse', 'HEAD')
+        repo.commit()
+        return repo, base
+
+    def test_each_reviewed_break_is_read_right_by_both_modes(self):
+        for name, (before, after, args, want) in REVIEW_CASES.items():
+            with self.subTest(name):
+                repo, base = self.repo_with(before, after)
+                code, out, err = repo.check('diff', '--base', base, *args)
+                self.assertEqual((code, failures(out)), (1 if want else 0, want), err)
+                code, out, err = repo.check('count', '--before', base, *args)
+                self.assertEqual(code, 0, err)
+                report = json.loads(out)
+                self.assertEqual(validate(report, SCHEMA), [])
+                self.assertEqual(report['after']['disallowed_lines'] - report['before']['disallowed_lines'],
+                                 sum(1 for path, line, kind in want), err)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
