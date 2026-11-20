@@ -15,7 +15,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 CONTRACT = HERE.parent.parent / 'ask-a-wiz.v1.md'
 FAKE_KEY = 'fake-openrouter-key'
 TERMINAL = ('done', 'not_covered', 'refused')
-STORE_KEY = re.compile(r'^(cap|salt:[0-9a-f]{64}|visitor:[0-9a-f]{32}:([01][0-9]|2[0-3]))$')
+STORE_KEY = re.compile(r'^(cap|visitor:[0-9a-f]{32}:([01][0-9]|2[0-3]))$')
+SALT = re.compile(r'^[0-9a-f]{64}$')
 DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
@@ -72,7 +73,10 @@ def sent_passages(pin, case):
 
 def expected_request(pin, case):
     sent, user = sent_passages(pin, case)
+    prices = {'prompt': price(pin, case['settings'], 'max_prompt_price'),
+              'completion': price(pin, case['settings'], 'max_completion_price')}
     return {'model': case['settings'][pin['names']['model']], 'stream': True,
+            'provider': {'max_price': prices, **pin['upstream']['provider']},
             'max_tokens': pin['limits']['max_output_tokens'], 'temperature': pin['upstream']['temperature'],
             'messages': [{'role': 'system', 'content': pin['prompt']['system']}, {'role': 'user', 'content': user}]}
 
@@ -88,51 +92,104 @@ def fitting(pin, chunks):
     return out
 
 
-def outcome(pin, case):
-    """What the contract's order of checks gives for this case: a reason, 'off', 'probe' or 'stream'."""
+def price(pin, settings, name):
+    """A max price setting as a number, or None when unset or invalid (which fails closed)."""
+    value = settings.get(pin['names'][name])
+    if not isinstance(value, str) or not re.fullmatch(pin['prices']['pattern'], value):
+        return None
+    number = float(value)
+    return number if pin['prices']['min_exclusive'] < number <= pin['prices']['max'] else None
+
+
+def utc(text):
+    return datetime.datetime.fromisoformat(text)
+
+
+def run(pin, case):
+    """The contract's order of checks on a fake store: (outcome, store after, the clock a 429 counts from)."""
     names, request, settings = pin['names'], case['request'], case['settings']
-    if settings.get(names['switch']) != pin['names']['switch_on']:
-        return 'off'
+    store = copy.deepcopy(case['store'])
+    now = utc(case['now'])
+    if settings.get(names['switch']) != names['switch_on']:
+        return 'off', store, now
     if request['method'] == 'GET':
-        return 'probe'
-    if not all(settings.get(names[k]) for k in ('secret', 'model')) or not settings.get(names['store']):
-        return 'unavailable'
+        return 'probe', store, now
+    if not all(settings.get(names[k]) for k in ('secret', 'model', 'store')) \
+            or price(pin, settings, 'max_prompt_price') is None or price(pin, settings, 'max_completion_price') is None:
+        return 'unavailable', store, now
     headers = {k.lower(): v for k, v in request['headers'].items()}
     question = question_of(case)
     if (request['method'] != 'POST' or headers.get('content-type') != pin['request']['content_type']
             or headers.get('origin') != 'https://openwiz.dev' or question is None
             or len(request['body'].encode()) > pin['request']['max_body_bytes'] or not question):
-        return 'bad_request'
+        return 'bad_request', store, now
     if len(question) > pin['request']['max_question_chars']:
-        return 'too_long'
-    now = datetime.datetime.fromisoformat(case['now'])
+        return 'too_long', store, now
+    if case.get('store_fails'):
+        return 'unavailable', store, now  # every store operation fails: nothing changes, nothing is sent
+
+    def first_write(day):  # every write first deletes earlier days' rows
+        for table in ('salts', 'counters'):
+            store[table] = [r for r in store[table] if r['day'] >= day]
+
+    def count(day, key, limit):  # the conditional update: add one only below the limit
+        first_write(day)
+        row = next((r for r in store['counters'] if r['day'] == day and r['key'] == key), None)
+        if row is None:
+            row = {'day': day, 'key': key, 'count': 0}
+            store['counters'].append(row)
+        if row['count'] >= limit:
+            return False
+        row['count'] += 1
+        return True
+
     day, hour = now.strftime('%Y-%m-%d'), now.strftime('%H')
-    rows = {r['key']: r['count'] for r in case['store'] if r['day'] == day}
-    salts = [k[len('salt:'):] for k in rows if k.startswith('salt:')]
-    if salts and rows.get(visitor_key(salts[0], headers.get('cf-connecting-ip', ''), hour), 0) \
-            >= pin['rate_limit']['per_visitor']:
-        return 'rate_limited'
+    first_write(day)
+    if not any(r['day'] == day for r in store['salts']):  # INSERT ... ON CONFLICT (day) DO NOTHING
+        store['salts'].append({'day': day, 'salt': case.get('rival_salt') or case['new_salt']})
+    salt = next(r['salt'] for r in store['salts'] if r['day'] == day)  # then every writer reads the one salt
+    if not count(day, visitor_key(salt, headers.get('cf-connecting-ip', ''), hour), pin['rate_limit']['per_visitor']):
+        return 'rate_limited', store, now
     if case['upstream'] is None and case.get('retrieved') == []:
-        return 'not_covered'
+        return 'not_covered', store, now
     try:
         cap = int(settings.get(names['daily_cap'], ''))
     except ValueError:
         cap = 0
     if not pin['daily_cap']['min'] <= cap <= pin['daily_cap']['max']:
         cap = 0
-    if rows.get('cap', 0) >= cap:
-        return 'daily_cap'
+    if not count(day, 'cap', cap):
+        return 'daily_cap', store, now
+    sent = utc(case.get('dispatch_at', case['now']))  # the day changed before dispatch: reserve on the new day
+    if sent.strftime('%Y-%m-%d') != day and not count(sent.strftime('%Y-%m-%d'), 'cap', cap):
+        return 'daily_cap', store, sent
     upstream = case['upstream'] or {}
     if upstream.get('fails') and not upstream.get('after_chunks') or not fitting(pin, upstream.get('chunks', [])):
-        return 'upstream_error'
-    return 'stream'
+        return 'upstream_error', store, sent
+    return 'stream', store, sent
+
+
+def outcome(pin, case):
+    return run(pin, case)[0]
+
+
+def store_problems(store):
+    if not isinstance(store, dict) or sorted(store) != ['counters', 'salts']:
+        return ['the store is not just its counters and salts']
+    out = [f'counter row not allowed: {r}' for r in store['counters'] if sorted(r) != ['count', 'day', 'key']
+           or not DAY.match(r['day']) or not STORE_KEY.match(r['key']) or not isinstance(r['count'], int)]
+    days = [r.get('day') for r in store['salts']]
+    out += [f'salt row not allowed: {r}' for r in store['salts'] if sorted(r) != ['day', 'salt']
+            or not DAY.match(r['day']) or not SALT.match(r['salt'])]
+    return out + (['two salts for one day'] if len(set(days)) != len(days) else [])
 
 
 def problems(pin, case, name):
     out = []
     if case.get('case') != name:
         out.append('case name does not match its file')
-    if set(case) - {'case', 'now', 'request', 'settings', 'store', 'upstream', 'retrieved', 'response'}:
+    if set(case) - {'case', 'now', 'request', 'settings', 'store', 'store_after', 'upstream', 'retrieved', 'response',
+                    'new_salt', 'rival_salt', 'dispatch_at', 'store_fails'}:
         out.append('unknown case keys')
     response = case['response']
     headers = {k.lower(): v for k, v in response['headers'].items()}
@@ -140,10 +197,14 @@ def problems(pin, case, name):
     seen = json.dumps(case['response'])
     if FAKE_KEY in seen or 'Bearer' in seen:
         out.append('the key reaches the response')
-    for row in case['store']:
-        if not DAY.match(row['day']) or not STORE_KEY.match(row['key']) or set(row) != {'day', 'key', 'count'}:
-            out.append(f'store row not allowed: {row}')
-    expected = outcome(pin, case)
+    shape = store_problems(case['store']) + store_problems(case.get('store_after'))
+    if shape:
+        return out + shape
+    expected, after, clock = run(pin, case)
+    if case['store_after'] != after:
+        out.append('the store after is not what the order of checks writes')
+    if expected in ('off', 'probe') and case['upstream'] is not None:
+        out.append('a call went upstream while off or on a probe')
     if case['upstream'] is not None and case['upstream'].get('request') != expected_request(pin, case):
         out.append('the model call is not the bounded request the contract builds')
     if expected == 'off':
@@ -185,9 +246,8 @@ def problems(pin, case, name):
             out.append('wrong refusal reason or message')
         if response['status'] == 429:
             end = 3600 if expected == 'rate_limited' else 86400
-            now = datetime.datetime.fromisoformat(case['now'])
-            left = end - ((now.minute * 60 + now.second) if end == 3600 else
-                          (now.hour * 3600 + now.minute * 60 + now.second))
+            left = end - ((clock.minute * 60 + clock.second) if end == 3600 else
+                          (clock.hour * 3600 + clock.minute * 60 + clock.second))
             if headers.get('retry-after') != str(left):
                 out.append('Retry-After is not the seconds left in the window')
         if (case['upstream'] is not None) != (expected == 'upstream_error'):
@@ -279,9 +339,11 @@ class Pin(unittest.TestCase):
         passage = prompt['passage'].format(n=1, url='u' * 200, text='\U0001F600' * lim['max_passage_chars'])
         self.assertLessEqual(len((prompt['system'] + passage + question).encode()), lim['max_prompt_bytes'],
                              'the best passage must always fit')
-        self.assertGreaterEqual(lim['max_prompt_tokens'], lim['max_prompt_bytes'], 'one token per byte at most')
-        self.assertEqual(pin['spend']['per_call'],
-                         'max_prompt_tokens * prompt_price + max_output_tokens * completion_price')
+        self.assertEqual(lim['max_prompt_tokens'], lim['max_prompt_bytes'] + lim['framing_tokens'],
+                         'one token per byte at most, plus the framing margin')
+        self.assertEqual(pin['spend']['per_call'], '(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE'
+                         ' + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE) / 1000000')
+        self.assertEqual(pin['upstream']['retries'], 0, 'every attempt is one counted call')
         self.assertEqual(pin['spend']['per_day'], 'ASK_A_WIZ_DAILY_CAP * per_call')
 
     def test_every_refusal_has_a_case(self):
@@ -302,13 +364,9 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(index_problems(load_pin(), load('index')), [])
 
     def test_the_store_holds_only_counters(self):
-        store = load('store')
-        self.assertTrue(store['rows'])
-        for row in store['rows']:
-            self.assertEqual(sorted(row), ['count', 'day', 'key'])
-            self.assertRegex(row['key'], STORE_KEY)
-            self.assertRegex(row['day'], DAY)
-            self.assertEqual(row['count'] == 0, row['key'].startswith('salt:'), row)
+        store = {k: v for k, v in load('store').items() if k != 'note'}
+        self.assertTrue(store['salts'] and store['counters'])
+        self.assertEqual(store_problems(store), [])
 
     def test_nothing_holds_a_real_key_or_private_value(self):
         for path in sorted(HERE.glob('*.json')) + [CONTRACT]:
@@ -343,8 +401,15 @@ class TheCheckCatches(unittest.TestCase):
             'a wrong Retry-After': ('rate-limited', lambda c: c['response']['headers'].update(
                 {'Retry-After': '60'})),
             'cap reached but the model called': ('daily-cap', lambda c: c.update(upstream={'chunks': ['x']})),
-            'an IP in the store': ('rate-limited', lambda c: c['store'].append(
-                {'day': c['store'][0]['day'], 'key': 'visitor:192.0.2.1:00', 'count': 1})),
+            'an IP in the store': ('rate-limited', lambda c: c['store_after']['counters'].append(
+                {'day': c['store']['counters'][0]['day'], 'key': 'visitor:192.0.2.1:00', 'count': 1})),
+            'no max price on the call': ('answer', lambda c: c['upstream']['request'].pop('provider')),
+            'a call sent while off': ('off-not-exact', lambda c: c.update(
+                upstream={'request': expected_request(load_pin(), c), 'chunks': ['x']})),
+            'a call sent on a probe': ('probe-on', lambda c: c.update(upstream={'chunks': []})),
+            'the old day pays after midnight': ('midnight-cap', lambda c: c.pop('dispatch_at')),
+            'its own salt, not the stored one': ('first-write-race', lambda c: c.pop('rival_salt')),
+            'a failed store still answered': ('store-error', lambda c: c.pop('store_fails')),
             'max_tokens raised': ('answer', lambda c: c['upstream']['request'].update(max_tokens=4000)),
             'a seventh passage sent': ('answer-trimmed-count', lambda c: c['upstream']['request']['messages'][1].update(
                 content='Passage 7 from x:\nx\n\n' + c['upstream']['request']['messages'][1]['content'])),

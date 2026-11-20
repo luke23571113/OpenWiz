@@ -35,6 +35,8 @@ the contract is wrong and must be fixed.
     "switch_on": "on",
     "model": "ASK_A_WIZ_MODEL",
     "daily_cap": "ASK_A_WIZ_DAILY_CAP",
+    "max_prompt_price": "ASK_A_WIZ_MAX_PROMPT_PRICE",
+    "max_completion_price": "ASK_A_WIZ_MAX_COMPLETION_PRICE",
     "index_path": "/ask-index.json"
   },
   "request": {
@@ -80,14 +82,18 @@ the contract is wrong and must be fixed.
   "upstream": {
     "url": "https://openrouter.ai/api/v1/chat/completions",
     "stream": true,
-    "temperature": 0
+    "temperature": 0,
+    "provider": {"require_parameters": true},
+    "retries": 0
   },
+  "prices": {"unit": "USD per million tokens", "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6})?$", "min_exclusive": 0, "max": 1000},
   "limits": {
     "max_output_tokens": 500,
     "max_passages": 6,
     "max_passage_chars": 1200,
     "max_prompt_bytes": 10000,
-    "max_prompt_tokens": 10240,
+    "framing_tokens": 4096,
+    "max_prompt_tokens": 14096,
     "max_answer_bytes": 4000
   },
   "prompt": {
@@ -96,19 +102,20 @@ the contract is wrong and must be fixed.
     "question": "Question: {question}"
   },
   "spend": {
-    "per_call": "max_prompt_tokens * prompt_price + max_output_tokens * completion_price",
+    "per_call": "(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE) / 1000000",
     "per_day": "ASK_A_WIZ_DAILY_CAP * per_call"
   },
   "index": {"schema": "openwiz.ask-a-wiz.index.v1", "keys": ["schema", "sources", "passages"], "max_bytes": 2000000},
   "stored": {
-    "tables": {"ask_counters": ["day", "key", "count"]},
-    "keys": ["cap", "salt:<64 hex>", "visitor:<32 hex>:<hour>"],
+    "tables": {"ask_counters": ["day", "key", "count"], "ask_salts": ["day", "salt"]},
+    "keys": ["cap", "visitor:<32 hex>:<hour>"],
     "nothing_else": true
   },
   "fixtures": [
     "answer", "answer-escaped", "not-covered", "not-covered-model", "too-long", "rate-limited",
     "daily-cap", "upstream-error", "upstream-error-midstream", "bad-request", "unavailable",
-    "off", "probe-on", "probe-off", "answer-trimmed-count", "answer-trimmed-bytes", "answer-overflow"
+    "off", "probe-on", "probe-off", "answer-trimmed-count", "answer-trimmed-bytes", "answer-overflow",
+    "off-not-exact", "unavailable-price", "store-error", "midnight-cap", "midnight-answer", "first-write-race"
   ]
 }
 ```
@@ -116,7 +123,8 @@ the contract is wrong and must be fixed.
 ## The names Jake uses
 
 All of them belong to the openwiz.dev Cloudflare Pages project. FA5 (#1903)
-sets the first two and the cap; Jake turns the switch on after FA6's go.
+sets the secret, the store, the model, the two maximum prices and the cap;
+Jake turns the switch on after FA6's go.
 
 | Name | Kind | Holds |
 | --- | --- | --- |
@@ -124,6 +132,8 @@ sets the first two and the cap; Jake turns the switch on after FA6's go.
 | `ASK_A_WIZ_COUNTERS` | D1 database binding | The counter store (see "What is stored") |
 | `ASK_A_WIZ_MODEL` | Pages variable | The OpenRouter model id, such as a cheap chat model's id |
 | `ASK_A_WIZ_DAILY_CAP` | Pages variable | The most model calls a UTC day may make, an integer from 1 to 100000 |
+| `ASK_A_WIZ_MAX_PROMPT_PRICE` | Pages variable | The most any route may charge for input, in US dollars per million tokens: a decimal such as `0.10`, above 0 and at most 1000 |
+| `ASK_A_WIZ_MAX_COMPLETION_PRICE` | Pages variable | The same for output, reasoning included |
 | `ASK_A_WIZ` | Pages variable | The off switch: exactly `on` turns Ask a Wiz on; anything else, or unset, is off |
 
 The key is read only as `env.OPENROUTER_API_KEY` inside the function, and is
@@ -231,7 +241,7 @@ It is given in two cases:
 | `rate_limited` | 429 | That's a lot of questions at once. Try again in a few minutes. | The visitor's hour is used up |
 | `daily_cap` | 429 | Ask a Wiz has answered all it can for today. Try again tomorrow. | The day's model calls are used up, or the cap is unset or invalid |
 | `upstream_error` | 502, or 200 mid-answer | Ask a Wiz couldn't answer just now. Try again. | OpenRouter refused, failed, timed out or sent something unreadable |
-| `unavailable` | 503 | Ask a Wiz isn't available right now. | The switch is on but the secret, the model, the store or the index is missing |
+| `unavailable` | 503 | Ask a Wiz isn't available right now. | The switch is on but the secret, the model, the store, a maximum price or the index is missing or invalid, or a store operation failed |
 
 A `429` carries a `Retry-After` header: the whole seconds until the visitor's
 UTC hour ends (`rate_limited`) or the UTC day ends (`daily_cap`). No refusal
@@ -243,13 +253,23 @@ key.
 The function checks in this order, and stops at the first that fails:
 
 1. The switch (off: `404`, no body).
-2. The configuration (`unavailable`).
+2. The configuration (`unavailable`): the secret, the model, the store
+   binding, and both maximum prices, each valid.
 3. The request (`bad_request`), then its length (`too_long`).
 4. The visitor's rate limit (`rate_limited`). A question that passes counts,
-   whatever its outcome.
+   whatever its outcome. This is the first store write.
 5. The passages (none: `not_covered`, no model call).
-6. The daily cap (`daily_cap`). A question that passes counts one model call.
+6. The daily cap (`daily_cap`). A question that passes counts one model call
+   on the day it is dispatched (see "The rate limit and the daily cap").
 7. The model call (`upstream_error`, the model's `NOT_COVERED`, or the answer).
+
+**A failing store fails closed.** Every store operation in steps 4 and 6
+(creating the tables, deleting earlier days, the salt, each count) either
+completes or fails. A completed conditional update that returns no row means
+the limit is reached. A failed operation (an error or a timeout from D1)
+ends the question at once with `503 unavailable`, one `refused` event, and
+no model call. All store work happens before the model call, so no store
+operation can fail after a call is sent.
 
 ## The rate limit and the daily cap
 
@@ -261,6 +281,18 @@ The function checks in this order, and stops at the first that fails:
   every question that reaches step 6 is `daily_cap`: it fails closed. A call
   counts when it is made, before its answer, so the cap is never passed, even
   by questions asked at the same moment.
+- **Counted on the day it is sent.** A call counts against the UTC day on
+  which it is dispatched. The function reserves on the current day at step 6;
+  just before the call, it reads the clock again, and if the UTC day has
+  changed it reserves again on the new day (the same conditional update). If
+  that fails, the question is `daily_cap` with `Retry-After` to the new day's
+  end, and nothing is sent. The earlier day's reservation is never given
+  back. So every day's calls are at most that day's reservations, at most the
+  cap.
+- **Every attempt counts, and there are no retries.** The function makes at
+  most one upstream attempt per question, and that attempt has already been
+  counted. A call that fails, times out or has an unknown outcome stays
+  counted.
 - **Counting is atomic.** Each count is one conditional statement that adds
   one only below its limit:
   `UPDATE ask_counters SET count = count + 1 WHERE day = ? AND key = ? AND count < ? RETURNING count`
@@ -274,13 +306,18 @@ The function checks in this order, and stops at the first that fails:
 
 `POST https://openrouter.ai/api/v1/chat/completions` with
 `Authorization: Bearer <OPENROUTER_API_KEY>` and exactly this JSON body:
-`model` from `ASK_A_WIZ_MODEL`, `stream: true`, `max_tokens: 500`,
-`temperature: 0`, and `messages`: one `system` message whose content is the
-pin's `prompt.system`, then one `user` message. Tests use a fake OpenRouter
-only; no test or fixture calls the real one.
+`model` from `ASK_A_WIZ_MODEL`; `stream: true`; `max_tokens: 500`;
+`temperature: 0`; `provider: {"max_price": {"prompt": P, "completion": C},
+"require_parameters": true}`, with `P` and `C` the two maximum price settings
+as numbers; and `messages`: one `system` message whose content is the pin's
+`prompt.system`, then one `user` message. No `models` list and no fallback
+model. `max_price` keeps OpenRouter from routing to any provider dearer than
+the prices the formula uses, and `require_parameters` routes only to
+providers that honour `max_tokens`. Tests use a fake OpenRouter only; no test
+or fixture calls the real one.
 
 Every limit is a constant of this contract, not a setting, so the dollar
-figure for a cap depends only on the cap and the model's prices:
+figure for a cap depends only on the cap and the two maximum prices:
 
 | Constant | Value | What it bounds |
 | --- | --- | --- |
@@ -288,7 +325,8 @@ figure for a cap depends only on the cap and the model's prices:
 | `max_passages` | 6 | Passages sent in one call |
 | `max_passage_chars` | 1200 | Code points of one passage's text (the index never holds a longer one) |
 | `max_prompt_bytes` | 10000 | UTF-8 bytes of the system and user message contents together |
-| `max_prompt_tokens` | 10240 | Input tokens of one call: `max_prompt_bytes`, at one token per byte at most, plus 240 for the chat framing |
+| `framing_tokens` | 4096 | A margin for the chat format's own tokens around the message contents |
+| `max_prompt_tokens` | 14096 | Input tokens of one call: `max_prompt_bytes`, at one token per byte at most, plus `framing_tokens` |
 | `max_answer_bytes` | 4000 | UTF-8 bytes of answer text the function passes on |
 
 **The user message** is built from the question and the passages the index's
@@ -307,20 +345,20 @@ that ignores `max_tokens`), the function passes on only the pieces that fit
 whole, cancels the upstream call and ends with `upstream_error`: status `200`
 after some text, or `502` if not even the first piece fits.
 
-**The worst-case spend.** With the model's OpenRouter prices per token,
-`prompt_price` and `completion_price`:
+**The worst-case spend.** With `P` and `C` the two maximum price settings,
+in US dollars per million tokens:
 
 ```text
-one call = 10240 * prompt_price + 500 * completion_price
+one call = (14096 * P + 500 * C) / 1000000
 one day  = ASK_A_WIZ_DAILY_CAP * one call
 ```
 
-For example, at synthetic prices of $0.10 per million input tokens and $0.40
-per million output tokens, one call costs at most $0.001224, and a cap of 200
-spends at most $0.2448 a day. FA5 shows Jake this figure for the cap he sets,
-at the chosen model's listed prices. The bound holds only for a model billed
-for no output beyond `max_tokens`: FA5 picks a model without separately
-billed reasoning tokens.
+For example, with `P` = `0.10` and `C` = `0.40` (synthetic prices), one call
+costs at most $0.0016096, and a cap of 200 spends at most $0.32192 a day.
+FA5 shows Jake this figure for the cap and prices he sets, with the prices
+at or above the chosen model's listed prices so a route exists. The bound
+holds only for a model billed for no output beyond `max_tokens`: FA5 picks a
+model without separately billed reasoning tokens.
 
 ## The docs index
 
@@ -347,20 +385,26 @@ once, in the order first used.
 
 ## What is stored
 
-Only the daily counters, in the `ASK_A_WIZ_COUNTERS` D1 database, in one
-table: `ask_counters (day TEXT, key TEXT, count INTEGER, PRIMARY KEY (day, key))`.
-The function creates it if it is missing. `day` is the UTC date, `YYYY-MM-DD`.
-`key` is one of:
+Only the daily counters and the day's salt, in the `ASK_A_WIZ_COUNTERS` D1
+database, in two tables the function creates if they are missing. `day` is
+the UTC date, `YYYY-MM-DD`.
 
-| Key | Count |
-| --- | --- |
-| `cap` | The day's model calls |
-| `salt:<64 hex digits>` | Always `0`: the row only holds the day's salt, 32 random bytes as 64 lower-case hex digits, made on the day's first question |
-| `visitor:<hash>:<hour>` | One visitor's questions in that UTC hour (`00` to `23`) |
+- `ask_counters (day TEXT, key TEXT, count INTEGER, PRIMARY KEY (day, key))`,
+  where `key` is `cap` (the day's model calls) or `visitor:<hash>:<hour>` (one
+  visitor's questions in that UTC hour, `00` to `23`).
+- `ask_salts (day TEXT PRIMARY KEY, salt TEXT NOT NULL)`: one salt per day,
+  32 random bytes as 64 lower-case hex digits.
+
+**One salt per day, shared by every writer.** On a question, the function
+makes a fresh salt and runs
+`INSERT INTO ask_salts (day, salt) VALUES (?, ?) ON CONFLICT (day) DO NOTHING`,
+then `SELECT salt FROM ask_salts WHERE day = ?`, and uses the salt it reads,
+never the one it made. Two first questions at the same moment therefore
+share the salt that was stored first.
 
 `<hash>` is the first 32 lower-case hex digits of SHA-256 of `<salt>:<ip>`.
-On the day's first write, every row of an earlier day is deleted, its salt
-included, so yesterday's hashes can no longer be linked to anyone.
+Every write first deletes the rows of earlier days from both tables, so
+yesterday's salt is gone and its hashes can no longer be linked to anyone.
 
 Nothing else is stored or logged: no question, answer, IP address, user
 agent, cookie, header or timestamp beyond the day and hour. The function sets
@@ -379,13 +423,19 @@ some synthetic questions). Each case is a JSON object:
 | `request` | `{"method", "headers", "body"}`, sent to `https://openwiz.dev/api/ask`; `body` is the exact request body string, or `null` |
 | `settings` | The Pages settings and bindings the case runs with: the secret as the synthetic value `fake-openrouter-key`, a bound store as `"bound"`, an unset one left out |
 | `retrieved` | Optional: the passages the index's scoring ranked for the question, best first, each `{"source": {"title", "url"}, "text"}`; `[]` when none scores above zero |
-| `store` | The counter rows before the request, as `{"day", "key", "count"}` objects |
+| `store` | The fake store before the request: `{"salts": [{"day", "salt"}], "counters": [{"day", "key", "count"}]}` |
+| `store_after` | The fake store after the request, the same shape: what the order of checks must leave |
+| `new_salt` | Optional: the salt this request makes if it is the day's first |
+| `rival_salt` | Optional: a salt a concurrent first request stored before this one's insert |
+| `dispatch_at` | Optional: the clock just before the model call, when it differs from `now` |
+| `store_fails` | Optional, `true`: every store operation fails |
 | `upstream` | The fake OpenRouter: `null` (never called), or `{"request", "chunks"}`: `request` is the exact JSON body the function must send, `chunks` the content pieces it streams back; with `"fails": true` it errors after `after_chunks` pieces |
 | `response` | `{"status", "headers", "body"}`; `body` is the exact response body string (the NDJSON lines), or `null` |
 
 `test_fixtures.py` checks every case: the shape of each event and stream,
 the statuses and messages, the escaping, the not-covered text and links, the
-store's keys, that the synthetic key never appears in a response, and that
+store before and after, that no call goes upstream while off, on a probe or
+after a refusal, that the synthetic key never appears in a response, and that
 the index fixture is valid. FA3 replays the cases against the function with a
 fake OpenRouter and a fake counter store; FA4 replays their bodies as fake
 streams.
