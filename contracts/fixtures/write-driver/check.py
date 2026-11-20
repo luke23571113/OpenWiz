@@ -29,7 +29,6 @@ REPO = 'example-user/examplehost-driver-kit'
 # A credential word, even joined to others by `_`, `-` or digits (`EXAMPLE_API_TOKEN`).
 CREDENTIAL = re.compile(r'(?i)(?<![a-z])(?:logins?|tokens?|keys?|apikeys?|passwords?|passphrases?|secrets?|credentials?'
                         r'|cookies?|pats?|oauth|bearer)(?![a-z])')
-SIGN_IN = re.compile(r'(?i)\bsign(?:ed)? ?in\b|\blog ?in\b')
 
 
 def block():
@@ -116,22 +115,29 @@ def read_ask(text, b, f):
     for kind in ('ask', 'sign_in'):
         m = pattern(b[kind], f).fullmatch(text)
         if m:
-            words = m['step'] if kind == 'ask' else m['harness'] + ' ' + m['host']
-            if CREDENTIAL.search(words):
+            # The host and harness are validated identifiers (`key-host` is a host); only free words are read.
+            if kind == 'ask' and CREDENTIAL.search(m['step']):
                 return {'result': 'invalid', 'code': 'credential'}
             got = {'result': 'valid', 'kind': 'cost-or-machine' if kind == 'ask' else 'sign-in'}
             return {**got, 'effect': m['effect']} if kind == 'ask' else got
     return {'result': 'invalid', 'code': 'ask-form'}
 
 
-def shape(value, at=''):
-    """A JSON reply's shape: each leaf's key path and type, never its value."""
+def shape(value, at=()):
+    """A JSON reply's shape: each leaf's path (each step a key or an array item, kept apart) and type, never its value.
+
+    An empty object or array is a leaf of its own kind, so `{}`, `[]` and a missing member all differ.
+    """
     if isinstance(value, dict):
-        return sorted(p for k, v in value.items() for p in shape(v, f'{at}.{k}' if at else k))
+        if not value:
+            return [json.dumps([list(at), 'empty object'])]
+        return sorted(p for k, v in value.items() for p in shape(v, at + (('key', k),)))
     if isinstance(value, list):
-        return sorted({p for v in value for p in shape(v, at + '[]')}) or [f'{at}[]: empty']
+        if not value:
+            return [json.dumps([list(at), 'empty array'])]
+        return sorted({p for v in value for p in shape(v, at + (('item',),))})
     kind = {bool: 'bool', int: 'number', float: 'number', str: 'string', type(None): 'null'}[type(value)]
-    return [f'{at}: {kind}']
+    return [json.dumps([list(at), kind])]
 
 
 def skeleton(text):
@@ -173,7 +179,8 @@ def read_lesson(text, b, f):
     answer = r['answer']
     if r['exit'] == 0:
         return {'result': 'fail', 'code': 'silent-start'}
-    if r['exit'] != 1 or set(answer) != {'error', 'next'} or not SIGN_IN.search(answer['next']):
+    if (r['exit'] != 1 or set(answer) != {'error', 'next'} or not re.fullmatch(f['error'], answer['error'])
+            or not pattern(b['sign_in_next'], f).fullmatch(answer['next'])):
         return {'result': 'fail', 'code': 'no-sign-in-next'}
     if r['left_running']:
         return {'result': 'fail', 'code': 'left-running'}

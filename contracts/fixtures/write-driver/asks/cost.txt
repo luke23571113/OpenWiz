@@ -1,1 +1,1 @@
-Before I run the kit against examplehost, which bills each sandbox minute: this may cost money. Say yes to go ahead, or no to skip it.
+Before I run the kit, which bills each sandbox minute, on examplehost: this may cost money. Say yes to go ahead, or no to skip it.
