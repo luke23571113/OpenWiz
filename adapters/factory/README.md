@@ -2,7 +2,7 @@
 
 Login: held by Factory
 
-A [driver v1](../../kernel/driver.v1.md) that runs each builder as [Factory](https://factory.ai)'s Droid, through your own signed-in `droid` CLI in headless mode (`droid exec`). Built from [`adapters/template/`](../template/README.md): one Python file, standard library only, Linux (it keeps each turn's processes with `/proc` and a subreaper). Runs are saved in `$OPENWIZ_FACTORY_STATE` (default `~/.local/state/openwiz-factory`; a relative path is taken from where the driver runs). Every file and folder there is owner-only, and `start` and `wake` refuse a state folder that isn't yours alone (`chmod 700` it, or pick a new one).
+A [driver v1](../../kernel/driver.v1.md) that runs each builder as [Factory](https://factory.ai)'s Droid, through your own signed-in `droid` CLI in headless mode (`droid exec`). Built from [`adapters/template/`](../template/README.md): one Python file, standard library only. **Platforms:** Linux only, Python 3.9 or later (it keeps each turn's processes with `/proc` and a subreaper; it does not run on macOS). Runs are saved in `$OPENWIZ_FACTORY_STATE` (default `~/.local/state/openwiz-factory`; a relative path is taken from where the driver runs). Every file and folder there is owner-only, and `start` and `wake` refuse a state folder that isn't yours alone (`chmod 700` it, or pick a new one). `wake` and `stop` also refuse a run whose saved file is a link or isn't yours alone, so nobody else can point them at processes the driver never started; end such a run's processes by hand.
 
 | Command | What it does |
 | --- | --- |

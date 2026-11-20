@@ -82,8 +82,6 @@ UNTRUSTED = ('the state folder %s or a file in it is not yours alone, so the dri
 
 
 def trusted(name):
-    """The bytes of the state file `name` (or only the folder's check, for None), read only when the folder and
-    the file are the caller's alone and neither is a link; a missing one raises FileNotFoundError."""
     try:
         folder = os.open(STATE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except FileNotFoundError:
