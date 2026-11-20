@@ -73,6 +73,29 @@ class Claims(FixtureCase):
                 self.assertEqual(self.report(self.invoke(), 2)['reason'], reason)
                 self.assertEqual(self.call_list(), [])
 
+class Coverage(FixtureCase):
+    """The 0.0.17 lesson (#1727): a risk step in no coverage row refuses at kit load."""
+
+    def test_a_risk_step_missing_from_coverage_refuses_before_any_step(self):
+        """catches: a kit whose `release.risk` names a step no `release.coverage`
+        row holds, so its risk receipt's expected coverage is empty and the gate
+        refuses `coverage_mismatch` only after the live writes were spent."""
+        steps = [{'id': c, 'claim': c, 'kind': 'write' if c in ('send', 'new') else 'read',
+                  'argv': [str(self.fake), c], 'exit': 0, 'checks': [{'path': '/count', 'equals': 1}]}
+                 for c in SHIP3]
+        self.replies.update({c: {'exit': 0, 'out': json.dumps({'count': 1})} for c in SHIP3})
+        release = {'scope': SCOPE, 'products': [{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}],
+                   'coverage': [{'version': '0.1.0', 'promise': 'synthetic', 'steps': ['install', 'json', 'new']}],
+                   'risk': {'send': ['send'], 'new': ['new'], 'app_permissions': [], 'spending': []},
+                   'gaps': ['synthetic gap']}
+        self.kit.update(claims=list(SHIP3), steps=steps, release=release)
+        doc = self.report(self.invoke(), 2)
+        self.assertEqual(doc['reason'], 'coverage_mismatch')
+        self.assertEqual(self.call_list(), [])
+        release['coverage'][0]['steps'].append('send')
+        self.state = self.root / 'covered'
+        self.assertEqual(self.report(self.invoke(), 0)['claims'], {c: 'pass' for c in SHIP3})
+
 
 class Port(FixtureCase):
     """catches: a kit that reaches 7370 (the owner's my.openwiz.dev server on
