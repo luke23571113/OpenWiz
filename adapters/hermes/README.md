@@ -1,6 +1,6 @@
-Login: stays on your machine
-
 # Hermes driver
+
+Login: stays on your machine
 
 A [driver v1](../../kernel/driver.v1.md) that runs each builder in [Hermes](https://hermes-agent.nousresearch.com) (Nous Research's `hermes-agent`) on this machine, through your own `hermes` CLI. One Python file, standard library only, Linux (it keeps each turn's processes with `/proc` and a subreaper). Built from [`adapters/template/`](../template/README.md). Runs are saved in `$OPENWIZ_HERMES_STATE` (default `~/.local/state/openwiz-hermes`), owner-only.
 
