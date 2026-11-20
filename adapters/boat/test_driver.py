@@ -176,6 +176,34 @@ class Boat(unittest.TestCase):
             'pass stop: the run ended, and a wake after it is refused',
             'pass token: no login or token passed through the driver']), p.stderr)
 
+    def test_a_wake_after_the_turn_ended_prompts_the_saved_conversation(self):
+        # catches: a driver that reads `state` only at the top of `boat info`'s answer, so with the live nested
+        # shape (#1874) it finds the sandbox `unknown` and refuses every wake once a turn has ended; one that
+        # wakes only `running`; and one that no longer reads the older flat shape.
+        for shape, now in (('nested', 'running'), ('nested', 'idle'), ('nested', 'ready'), ('flat', 'idle')):
+            with self.subTest(shape=shape, state=now):
+                code, out = self.driver('start', REQUEST)
+                self.assertEqual(code, 0, out)
+                self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])), 'the first turn never ended')
+                self.set_state(now)
+                self.assertEqual(self.driver('wake', out, FAKE_BOAT_INFO=shape), (0, dict(out, woke=True)))
+                self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])), 'the woken turn never ended')
+                self.assertEqual([t[2:] for t in self.logged()[-2:]], [('c1', 'first'), ('c1', 'woken')])
+                self.assertEqual(self.notes()[-1][1], 'woke and read the ticket again')
+        # A state boat names that no wake may prompt in still refuses, and says which.
+        self.set_state('archived')
+        code, err = self.driver('wake', out)
+        self.assertEqual((code, len(self.logged())), (1, 8), err)
+        self.assertIn('is archived, not running', err['error'])
+
+    def set_state(self, now):
+        """Set the newest synthetic sandbox's state, as boat would once the agent's turn has ended."""
+        with open(self.env['FAKE_BOAT_STATE']) as f:
+            boat = json.load(f)
+        boat['sandboxes'][max(boat['sandboxes'])]['state'] = now
+        with open(self.env['FAKE_BOAT_STATE'], 'w') as f:
+            json.dump(boat, f)
+
     def test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it(self):
         # catches: a wake that resumes a stopped sandbox (after boat's auto-stop, or a stop whose every local
         # write failed) and runs the builder again, and a stop that leaves the sandbox running on boat.dev.
@@ -187,6 +215,7 @@ class Boat(unittest.TestCase):
         subprocess.run(['boat', 'stop', sid, '--json'], env=self.env, capture_output=True, check=True)
         code, err = self.driver('wake', started)
         self.assertEqual((code, self.sandboxes(), self.notes()), (1, {sid: 'stopped'}, [(1, 'started the throwaway ticket')]))
+        self.assertIn('is stopped, not running', err['error'])  # its reason: boat's state, read where boat puts it
         self.assertIn('start a new run', err['next'])
         for _ in range(2):  # stopping a stopped run answers again
             self.assertEqual(self.driver('stop', started), (0, dict(started, stopped=True)))

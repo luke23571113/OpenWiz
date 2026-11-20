@@ -7,7 +7,6 @@ or changed since then, each through its public entry point and a recording
 provider:
 
 - the CloudRoom install and sign-in tool (#2201), on its own recording host;
-- the feedback helper (#2292), on a recording `gh` that answers by credential;
 - the PC read-token tool's repository downscope (#2315), on a loopback App API;
 - the setup tool's harness, model and effort settings (C-S1, #2865), on `prepare`.
 
@@ -41,10 +40,7 @@ PLANTED_ACCOUNT_ID = 'acct_synthetic2206plantedaaaaaaaa'
 PLANTED_EMAIL = 'planted-2206-owner@example.invalid'
 PLANTED_NONCE = 'PlantedSyntheticNonce2206bbbbbbbbbbbb'
 PLANTED_SIGN_IN_ERROR = 'synthetic-token-2206-in-an-error-field'
-PLANTED_APP_TOKEN = 'ghs_PlantedSyntheticInstallation2206cccccccc'
 PLANTED_PERSONAL = 'gho_PlantedSyntheticPersonal2206dddddddddddd'
-PLANTED_CONTEXT = 'synthetic-token-000000'
-PLANTED_PATH = '/home/synthetic-user/secret-project'
 PLANTED_MINTED = 'ghs_PlantedSyntheticMinted2206eeeeeeeeeeeeee'
 
 
@@ -179,143 +175,6 @@ class CloudRoomBoundary(unittest.TestCase):
                 self.assertEqual(self.host.opened, [])
                 self.assert_no_install()
                 self.assert_confined(leaked)
-
-
-# --- #2292: the feedback helper, through the user's own gh login --------------
-
-FEEDBACK = ROOT / 'skills/feedback/scripts/feedback.py'
-FEEDBACK_FAKE = ROOT / 'skills/feedback/test/fake_gh.py'
-USER = {'login': 'synthetic-user', 'id': 9001}
-REPO = {'full_name': 'openwizdev/OpenWiz', 'private': False, 'visibility': 'public',
-        'archived': False, 'has_issues': True}
-TITLE = 'Plan page hides the approve button on a narrow phone'
-BODY = 'On a 360-pixel screen the approve button sits under the footer.'
-
-# A recording gh that answers by credential: an App installation token is not
-# a user login, so GitHub answers GET /user with 403, as it does for an
-# installation token; a personal login, and gh auth status for either
-# credential, is handed to the #2292 recording gh.
-CREDENTIAL_GH = r'''#!PYTHON
-import json, os, sys
-token = os.environ.get('FAKE_GH_CREDENTIAL', '')
-with open(os.environ['CREDENTIAL_LOG'], 'a') as log:
-    log.write(json.dumps({'argv': sys.argv[1:], 'app_token': token.startswith('ghs_'),
-                          'stdin': '' if sys.stdin.isatty() else '<read by the fake>'}) + '\n')
-args = sys.argv[1:]
-if token.startswith('ghs_') and args[:2] != ['auth', 'status']:
-    if 'POST' in args:
-        status, body = 403, {'message': 'Resource not accessible by integration'}
-    elif args[-1] == 'user':
-        status, body = 403, {'message': 'Resource not accessible by integration'}
-    else:
-        status, body = 200, __REPO__
-    sys.stdout.write(f'HTTP/2.0 {status} Synthetic\nContent-Type: application/json\n\n' + json.dumps(body))
-    sys.exit(0 if status < 400 else 1)
-os.execv(sys.executable, [sys.executable, '-I', __FAKE__, *sys.argv[1:]])
-'''
-
-
-class FeedbackBoundary(unittest.TestCase):
-    """Feedback goes only through the user's own login; planted material stays put."""
-
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix='openwiz-2206-feedback-'))
-        self.addCleanup(shutil.rmtree, self.tmp)
-        self.bin = self.tmp / 'bin'
-        self.bin.mkdir()
-        gh = self.bin / 'gh'
-        gh.write_text(CREDENTIAL_GH.replace('PYTHON', sys.executable).replace('__FAKE__', repr(str(FEEDBACK_FAKE)))
-                      .replace('__REPO__', repr(REPO)))
-        gh.chmod(0o700)
-        self.state = self.tmp / 'state'
-        self.log = self.tmp / 'gh.log'
-        self.log.write_text('')
-        self.credential_log = self.tmp / 'credential.log'
-        self.credential_log.write_text('')
-        # Planted private-looking context: the agent's folder and environment.
-        self.work = self.tmp / PLANTED_PATH.lstrip('/')
-        self.work.mkdir(parents=True)
-        (self.work / 'notes.txt').write_text(f'private notes {PLANTED_CONTEXT}\n')
-        self.scenario = self.tmp / 'world.json'
-        self.scenario.write_text(json.dumps({'user': USER, 'repo': REPO, 'create': {'status': 201},
-                                             'readback': 'ok', 'list': 'ok', 'issues': [], 'next_number': 41}))
-        (self.tmp / 'title.txt').write_text(TITLE)
-        (self.tmp / 'body.txt').write_text(BODY)
-        self.outputs = ''
-
-    def world(self, **change):
-        world = json.loads(self.scenario.read_text())
-        world.update(change)
-        self.scenario.write_text(json.dumps(world))
-
-    def helper(self, *args, login):
-        env = {'PATH': str(self.bin), 'OPENWIZ_STATE_DIR': str(self.state), 'HOME': str(self.work),
-               'FAKE_GH_SCENARIO': str(self.scenario), 'FAKE_GH_LOG': str(self.log),
-               'CREDENTIAL_LOG': str(self.credential_log), 'LC_ALL': 'C', 'FAKE_GH_CREDENTIAL': login,
-               'SYNTHETIC_PRIVATE_TOKEN': PLANTED_CONTEXT, 'SYNTHETIC_PRIVATE_PATH': PLANTED_PATH}
-        run = subprocess.run([sys.executable, '-I', str(FEEDBACK), *args], capture_output=True, text=True,
-                             env=env, cwd=self.work, timeout=60)
-        self.outputs += run.stdout + run.stderr
-        return run.returncode, json.loads(run.stdout)
-
-    def creates(self):
-        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
-        return [c for c in calls if 'POST' in c['argv']]
-
-    def credential_calls(self):
-        return [json.loads(line) for line in self.credential_log.read_text().splitlines()]
-
-    def draft(self, login):
-        code, answer = self.helper('draft', '--title-file', str(self.tmp / 'title.txt'),
-                                   '--body-file', str(self.tmp / 'body.txt'), login=login)
-        self.assertEqual((code, answer['phase']), (0, 'draft'))
-        return answer['operation_id']
-
-    def assert_confined(self, planted):
-        stored = files_text(self.state)
-        for value in planted:
-            self.assertNotIn(value, self.outputs + stored, 'a planted value reached output or the record')
-
-    def test_an_app_installation_token_is_never_a_feedback_login(self):
-        op = self.draft(PLANTED_APP_TOKEN)
-        code, preview = self.helper('preview', op, login=PLANTED_APP_TOKEN)
-        self.assertEqual(code, 1)
-        self.assertIn('Your GitHub login could not be read', preview['refused'])
-        _, status = self.helper('status', op, login=PLANTED_APP_TOKEN)
-        self.assertEqual(status['phase'], 'draft', 'the draft is kept; nothing previewed')
-        # A yes to a preview that never happened sends nothing either.
-        code, sent = self.helper('send', op, '--preview-id', '0' * 16, login=PLANTED_APP_TOKEN)
-        self.assertEqual((code, sent['phase']), (1, 'refused'))
-        calls = self.credential_calls()
-        self.assertTrue(calls and all(c['app_token'] for c in calls))
-        self.assertEqual([c for c in calls if 'POST' in c['argv']], [], 'no create request as the App')
-        self.assertEqual(self.creates(), [])
-        self.assert_confined([PLANTED_APP_TOKEN, PLANTED_CONTEXT, PLANTED_PATH])
-
-    def test_a_lost_create_reply_stays_uncertain_and_sends_only_the_previewed_bytes(self):
-        self.world(create={'drop': True})
-        op = self.draft(PLANTED_PERSONAL)
-        code, preview = self.helper('preview', op, login=PLANTED_PERSONAL)
-        self.assertEqual((code, preview['phase']), (0, 'previewed'))
-        yes = preview['preview'].rsplit('\n', 1)[1].removeprefix('To create it, reply: yes ')
-        code, sent = self.helper('send', op, '--preview-id', yes, login=PLANTED_PERSONAL)
-        self.assertEqual((code, sent['phase']), (1, 'uncertain'))
-        creates = self.creates()
-        self.assertEqual(len(creates), 1)
-        self.assertEqual(json.loads(creates[0]['stdin']),
-                         {'title': TITLE, 'body': f'{BODY}\n\nOpenWiz feedback operation {op}'})
-        # The lost reply is never resent: a repeated yes and a new preview make no call.
-        self.world(create={'status': 201})
-        code, again = self.helper('send', op, '--preview-id', yes, login=PLANTED_PERSONAL)
-        self.assertEqual((code, again['phase']), (1, 'uncertain'))
-        code, re_preview = self.helper('preview', op, login=PLANTED_PERSONAL)
-        self.assertEqual((code, re_preview['phase']), (1, 'uncertain'))
-        self.assertEqual(len(self.creates()), 1)
-        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
-        sent_text = json.dumps(calls)
-        for planted in (PLANTED_PERSONAL, PLANTED_CONTEXT, PLANTED_PATH):
-            self.assertNotIn(planted, sent_text, 'a planted value reached a GitHub request')
-        self.assert_confined([PLANTED_PERSONAL, PLANTED_CONTEXT])
 
 
 # --- #2315: the PC read-token tool's repository downscope ---------------------

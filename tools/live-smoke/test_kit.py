@@ -13,7 +13,7 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 FixtureCase = runpy.run_path(str(HERE / 'test_smoke.py'))['FixtureCase']
-SHIP3 = ['install', 'json', 'send', 'new']
+SHIP3 = ['install', 'json', 'send', 'new', 'app']  # 0.1.0 adds the App read (#1727)
 # A sentinel no output may ever print: it stands for a private input value.
 PRIVATE = 'thr_synthetic_private_input'
 SCOPE = {'targets': ['synthetic-target'], 'writes': {'send': 1, 'new': 1},
@@ -72,6 +72,41 @@ class Claims(FixtureCase):
                 self.state = self.root / ('state-' + name.replace(' ', '-').replace(',', ''))
                 self.assertEqual(self.report(self.invoke(), 2)['reason'], reason)
                 self.assertEqual(self.call_list(), [])
+
+
+class Coverage(FixtureCase):
+    """The 0.0.17 lesson (#1727): a risk step in no coverage row refuses at kit load."""
+
+    def test_a_risk_step_missing_from_coverage_refuses_before_any_step(self):
+        """catches: a kit whose `release.risk` names a step no `release.coverage`
+        row holds, so its risk receipt's expected coverage is empty and the gate
+        refuses `coverage_mismatch` only after the live writes were spent."""
+        steps = [{'id': c, 'claim': c, 'kind': 'write' if c in ('send', 'new') else 'read',
+                  'argv': [str(self.fake), c], 'exit': 0, 'checks': [{'path': '/count', 'equals': 1}]}
+                 for c in SHIP3]
+        self.replies.update({c: {'exit': 0, 'out': json.dumps({'count': 1})} for c in SHIP3})
+        release = {'scope': SCOPE, 'products': [{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}],
+                   'coverage': [{'version': '0.1.0', 'promise': 'synthetic', 'steps': ['install', 'json', 'new']}],
+                   'risk': {'send': ['send'], 'new': ['new'], 'app_permissions': [], 'spending': []},
+                   'gaps': ['synthetic gap']}
+        self.kit.update(claims=list(SHIP3), steps=steps, release=release)
+        # #1732 R3: the receipt contract's own refusals, at load, not after the run.
+        bad = {'send outside every row': ({}, 'coverage_mismatch'),
+               'risk not a dict': ({'risk': ['send']}, 'invalid_release'),
+               'coverage not a list': ({'coverage': {'steps': ['send']}}, 'invalid_release'),
+               'a row with no version or promise, on a missing step': (
+                   {'coverage': [{'steps': ['ghost', 'new']}], 'risk': dict(release['risk'], send=['ghost'])},
+                   'invalid_release')}
+        for name, (change, reason) in bad.items():
+            with self.subTest(name):
+                self.kit['release'] = dict(release, **change)
+                self.state = self.root / name.replace(' ', '-').replace(',', '')
+                self.assertEqual(self.report(self.invoke(), 2)['reason'], reason)
+                self.assertEqual(self.call_list(), [])
+        self.kit['release'] = release
+        release['coverage'][0]['steps'].append('send')
+        self.state = self.root / 'covered'
+        self.assertEqual(self.report(self.invoke(), 0)['claims'], {c: 'pass' for c in SHIP3})
 
 
 class Port(FixtureCase):
@@ -144,8 +179,16 @@ class Inputs(unittest.TestCase):
         collect(json.loads((HERE / 'combined.template.json').read_text()))
         records = {}
         for name in names:
-            if name == 'release':
-                records[name] = {'scope': SCOPE, 'products': [], 'coverage': [], 'risk': {}, 'gaps': []}
+            if name == 'release_targets':
+                records[name] = SCOPE['targets']
+            elif name == 'release_products':  # #1732 R3: load checks the receipt contract
+                records[name] = [{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}]
+            elif name == 'release_gaps':
+                records[name] = ['synthetic gap']
+            elif name == 'release_version':
+                records[name] = '0.1.0'
+            elif name.startswith('promise_'):
+                records[name] = 'synthetic_' + name
             elif name.endswith('_checks'):
                 records[name] = [{'path': '/count', 'equals': 1}]
             elif name.endswith('_argv'):
