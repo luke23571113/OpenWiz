@@ -88,7 +88,7 @@
       }
     },
     "asked": {
-      "description": "A harness, model and effort as ids only.",
+      "description": "The harness, model and effort set was asked for, as typed; set refuses one it can't write.",
       "type": "object",
       "required": [
         "provider",
@@ -98,13 +98,16 @@
       "additionalProperties": false,
       "properties": {
         "provider": {
-          "$ref": "#/$defs/id"
+          "type": "string",
+          "minLength": 1
         },
         "model": {
-          "$ref": "#/$defs/id"
+          "type": "string",
+          "minLength": 1
         },
         "effort": {
-          "$ref": "#/$defs/id"
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -372,16 +375,19 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "$ref": "#/$defs/id"
+          "type": "string",
+          "minLength": 1
         },
         "efforts": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/id"
+            "type": "string",
+            "minLength": 1
           },
           "minItems": 1
         }
-      }
+      },
+      "description": "One offered model and its efforts, exactly as openwiz models --json lists them; ids outside the Models table's id form are listed but can't be set."
     },
     "harness_option": {
       "type": "object",
@@ -397,7 +403,8 @@
           "minLength": 1
         },
         "provider": {
-          "$ref": "#/$defs/id"
+          "type": "string",
+          "minLength": 1
         },
         "models": {
           "type": "array",
@@ -594,7 +601,7 @@
       }
     },
     "set_report": {
-      "description": "openwiz models set ... --json: changed or unchanged, refused (not offered), or nothing offered.",
+      "description": "openwiz models set ... --json: changed or unchanged, refused (not offered, or not writable to the Models table), or nothing offered.",
       "oneOf": [
         {
           "type": "object",
@@ -795,7 +802,10 @@
               "additionalProperties": false,
               "properties": {
                 "reason": {
-                  "const": "not_offered"
+                  "enum": [
+                    "not_offered",
+                    "not_writable"
+                  ]
                 },
                 "text": {
                   "type": "string",
@@ -947,7 +957,7 @@
                     "type": "null"
                   },
                   {
-                    "$ref": "#/$defs/asked"
+                    "$ref": "#/$defs/settable"
                   }
                 ]
               },
@@ -957,6 +967,27 @@
               }
             }
           }
+        }
+      }
+    },
+    "settable": {
+      "description": "A harness, model and effort the Models table can hold: each id of its id form.",
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "effort"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/id"
+        },
+        "model": {
+          "$ref": "#/$defs/id"
+        },
+        "effort": {
+          "$ref": "#/$defs/id"
         }
       }
     }

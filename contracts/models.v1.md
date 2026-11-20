@@ -185,7 +185,16 @@ choices without access to the harnesses.
 - `read_at` (milliseconds since the epoch), `label`, `state`, `harnesses`
   and `unavailable` mean what `openwiz models --json`
   ([`new-thread.v1`'s `options`](new-thread.v1.schema.json)) says, without
-  its attachment and steer facts.
+  its attachment and steer facts. The offered list is copied as that read
+  lists it, every provider, model and effort included, with no other
+  pattern on the ids.
+- **Settable choices.** A choice can be written to the Models table only
+  when its provider, model and effort are each of the table's id form
+  (letters, digits, `.`, `_` or `-`). An offered choice outside that form
+  (a namespaced model such as `vendor/demo`) stays in the snapshot and in
+  `list`, but `set` refuses it as `not_writable` and the app shows it
+  without a Change line. Fixture: `list/` lists one; `unwritable/` refuses
+  it.
 - `recommended` has the Orchestrator, Builder and Reviewer, each with its
   `choice`, its `source` and `offered`: whether this read offers that exact
   provider, model and effort. A choice is shown as recommended only when
@@ -285,7 +294,8 @@ recommendation. Fixture: `list/`.
 
 `<role>` is `orchestrator`, `builder`, `reviewer`, `small-builder` or
 `fixer`. A choice is checked against one `cloud status` read: the provider,
-model and effort must be offered together. Then `set` rewrites that role's
+model and effort must be offered together, and each of the table's id
+form (the snapshot's settable choices). Then `set` rewrites that role's
 row (inserting the Models table first when only the older tables exist),
 keeps the older tables in step, writes the snapshot, and prints what
 changed, so the agent can commit it. `follows-builder` makes no read and
@@ -303,6 +313,10 @@ empty when there are none), `files` (the paths written), `warnings`,
 - **Refused, not offered** (`refused`, exit 5): nothing is written; the
   refusal text is exactly
   `not offered: <provider> <model> <effort>; nothing was changed`.
+- **Refused, not writable** (`refused`, exit 5): the choice is offered but
+  the Models table can't hold its ids; nothing is written; the refusal
+  reason is `not_writable` and its text exactly
+  `cannot be written to the Models table: <provider> <model> <effort>; nothing was changed`.
 - **Nothing offered** (`no_options`, exit 13): nothing is written; the
   refusal text is the read's own no-options text.
 - **Same family:** the change is made, exit 0, with the warning.
@@ -313,8 +327,8 @@ then `wrote <path>` per file; or the refusal text and the offered list.
 Exits: 0 changed or unchanged; 1 `fleet.md` missing, unreadable or refused,
 a failed write, or an output failure; 2 usage (an unknown role, a wrong
 number of operands, `follows-builder` for a role that can't follow, any
-option but `--json`); 5 not offered; 13 nothing offered. Fixtures:
-`set-older/`, `set-same-family/`, `unoffered/` (each `case.json` names the
+option but `--json`); 5 not offered or not writable; 13 nothing offered. Fixtures:
+`set-older/`, `set-same-family/`, `unoffered/`, `unwritable/` (each `case.json` names the
 starting `fleet.md`, the arguments, the exit and the expected written
 files).
 
@@ -336,7 +350,7 @@ following:
 Set the fixer to follow the builder: run `openwiz models set fixer follows-builder` and commit the change.
 ```
 
-The app offers only the snapshot's choices. Fixture: `handoff.json`.
+The app offers only the snapshot's settable choices. Fixture: `handoff.json`.
 
 ## Taking effect
 
