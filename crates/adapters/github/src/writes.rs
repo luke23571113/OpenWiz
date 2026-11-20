@@ -820,3 +820,59 @@ fn read_merge(stdout: &[u8]) -> Result<PrMerge, SourceError> {
         head: commit(head, "headRefOid")?,
     })
 }
+
+#[cfg(test)]
+mod before_write_tests {
+    use super::*;
+
+    fn number(n: u64) -> Number {
+        Number::new(n).unwrap()
+    }
+
+    fn url(url: &str) -> Vec<u8> {
+        format!(r#"{{"url": "{url}"}}"#).into_bytes()
+    }
+
+    #[test]
+    fn a_close_runs_only_on_that_issues_own_url() {
+        let close = Write::CloseIssue { issue: number(7) };
+        let issue = url("https://github.invalid/synthetic/repo/issues/7");
+        assert!(allowed_after(&close, &issue).is_ok());
+        for other in [
+            "https://github.invalid/synthetic/repo/pull/7",
+            "https://github.invalid/synthetic/repo/issues/17",
+            "https://github.invalid/synthetic/repo/issues/7/",
+            "http://github.invalid/synthetic/repo/issues/7",
+        ] {
+            assert!(
+                matches!(
+                    allowed_after(&close, &url(other)),
+                    Err(WriteError::NotAnIssue)
+                ),
+                "{other}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_merge_runs_only_on_a_base_without_a_merge_queue() {
+        let merge = Write::Merge {
+            pr: number(8),
+            head: Commit::parse(&"a".repeat(40)).unwrap(),
+            body: Body::parse("synthetic merge").unwrap(),
+        };
+        let queue = |enabled: &str| {
+            format!(r#"{{"data": {{"repository": {{"pullRequest": {{"isMergeQueueEnabled": {enabled}}}}}}}}}"#)
+                .into_bytes()
+        };
+        assert!(allowed_after(&merge, &queue("false")).is_ok());
+        assert!(matches!(
+            allowed_after(&merge, &queue("true")),
+            Err(WriteError::MergeQueue)
+        ));
+        assert!(matches!(
+            allowed_after(&merge, &queue("null")),
+            Err(WriteError::CheckFailed(_))
+        ));
+    }
+}

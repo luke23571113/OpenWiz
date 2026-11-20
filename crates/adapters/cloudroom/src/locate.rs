@@ -1381,3 +1381,14 @@ mod mid_update_tests {
         assert_eq!(f.resolve(), Ok(f.cli(NEW)));
     }
 }
+
+#[cfg(test)]
+mod shown_tests {
+    use super::*;
+
+    #[test]
+    fn a_mount_name_cannot_forge_or_style_a_diagnostic_line() {
+        let path = Path::new("/tmp/.mount_a\nopenwiz: note: forged\x1b[31m");
+        assert_eq!(shown(path), "/tmp/.mount_a?openwiz: note: forged?[31m");
+    }
+}

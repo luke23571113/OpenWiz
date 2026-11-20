@@ -389,3 +389,25 @@ fn stop(child: &mut Child) {
 #[cfg(test)]
 #[path = "../../../../tests/support/cloudroom_process_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod scrub_tests {
+    use super::*;
+
+    #[test]
+    fn the_scrub_removes_thread_context_and_keeps_the_server_address() {
+        for name in ["ROOM_THREAD_ID", "ROOM_PROJECT_ID", "BB_THREAD_ID", "BB_"] {
+            assert!(is_scrubbed(name), "{name}");
+        }
+        for name in [
+            "ROOM_SERVER_URL",
+            "PATH",
+            "HOME",
+            "ROOM_THREAD",
+            "XBB_THREAD_ID",
+        ] {
+            assert!(!is_scrubbed(name), "{name}");
+        }
+        assert!(is_scrubbed_bytes(b"BB_\xff"));
+    }
+}
