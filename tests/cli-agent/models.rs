@@ -276,3 +276,22 @@ fn models_exit_codes_and_usage_are_documented() {
     assert_eq!(out, help);
     assert!(fake.invocations().is_empty(), "help reads nothing");
 }
+
+// catches: a failed `cloud status` read printing its stderr (which may hold a
+// secret) into the report, or being offered instead of exiting 13.
+#[test]
+fn models_read_failure_exits_13_and_never_prints_the_source_stderr() {
+    let fake = Models::new(json!({"exit": 1, "stderr": "SYNTHETIC_SECRET_DO_NOT_PRINT"}));
+    let (code, doc) = fake.json();
+    assert_eq!(code, 13, "{doc}");
+    assert!(
+        !doc.to_string().contains("SYNTHETIC_SECRET_DO_NOT_PRINT"),
+        "{doc}"
+    );
+    let (code, out, err) = fake.run(&["models"]);
+    assert_eq!(code, 13, "{out}{err}");
+    assert!(
+        !format!("{out}{err}").contains("SYNTHETIC_SECRET_DO_NOT_PRINT"),
+        "{out}{err}"
+    );
+}
