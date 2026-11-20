@@ -130,7 +130,9 @@ class Check(unittest.TestCase):
         self.verdict('its-tests')
 
     # catches (#1639): the widening leaking to a non-test file beside X, a test file of another
-    # module or folder, or a path whose bullet does not say "and its tests"
+    # module or folder, or a path whose bullet does not say "and its tests"; review R1-R3: a test
+    # marker read as X's stem, X's folder name deep in a tests tree, and "and its tests are
+    # excluded" read as owning them
     def test_and_its_tests_admits_nothing_else(self):
         self.verdict('its-tests-not')
 

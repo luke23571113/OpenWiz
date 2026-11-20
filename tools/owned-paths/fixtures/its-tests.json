@@ -51,6 +51,9 @@
      },
      {
       "path": "tools/install/tests/test_harness_skills.py"
+     },
+     {
+      "path": "tools/release/test_release.py"
      }
     ]
    }
@@ -66,7 +69,7 @@
  "issues": {
   "7": {
    "__typename": "Issue",
-   "body": "## What to build\n\nSynthetic ticket.\n\n## Owned paths\n\n- `tools/install/harness.py` and its tests (shared: the staging only)\n- `tools/install/setup/init.py`, plus its tests\n- `crates/core/src/widget.rs and its tests` (the wording inside the backticks)\n- `tools/plain/run.py` (no tests named)\n\n**Relies on:** nothing\n",
+   "body": "## What to build\n\nSynthetic ticket.\n\n## Owned paths\n\n- `tools/install/harness.py` and its tests (shared: the staging only)\n- `tools/install/setup/init.py`, plus its tests\n- `crates/core/src/widget.rs and its tests` (the wording inside the backticks)\n- `tools/plain/run.py` (no tests named)\n- `tools/release/test.py` and its tests in `example/project` (shared: the runner)\n- `tools/excluded/run.py` and its tests are excluded from this change\n\n**Relies on:** nothing\n",
    "comments": {
     "pageInfo": {
      "hasNextPage": false,
@@ -89,6 +92,7 @@
   "owned: tools/install/test/harness/fake.json (tests of `tools/install/harness.py`)",
   "owned: tools/install/test_install.py (tests of `tools/install/harness.py`)",
   "owned: tools/install/tests/test_harness_skills.py (tests of `tools/install/harness.py`)",
+  "owned: tools/release/test_release.py (tests of `tools/release/test.py`)",
   "owned-paths: ok"
  ],
  "absent": [
