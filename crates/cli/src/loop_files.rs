@@ -252,19 +252,28 @@ pub fn run(args: &[OsString], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         }
         Ok(Parsed::Run(args)) => loop_apply::run(&args, stdout, stderr),
         Err(why) => {
-            let _ = writeln!(
+            // `openwiz loop --help` is `loop off|on`'s and omits these four.
+            let help = match name {
+                "unknown" => "openwiz --help".to_owned(),
+                _ => format!("openwiz {} --help", name.replace('.', " ")),
+            };
+            let text = writeln!(
                 stderr,
-                "openwiz: usage: {}; nothing was read (see openwiz loop --help)",
+                "openwiz: usage: {}; nothing was read (see {help})",
                 escape_untrusted(&why)
             );
-            if json_selected(args) {
+            // The required output is the JSON document with --json, otherwise
+            // the line; its failure is exit 1 (the contract's exit table).
+            let written = if json_selected(args) {
                 let doc = serde_json::json!({
                     "schema": "openwiz.cli-error.v1", "command": name, "exit_code": 2,
                     "error": {"kind": "usage", "message": format!("Invalid loop arguments: {why}.")}
                 });
-                let _ = writeln!(stdout, "{doc}");
-            }
-            2
+                writeln!(stdout, "{doc}")
+            } else {
+                text
+            };
+            if written.is_err() { 1 } else { 2 }
         }
     }
 }
