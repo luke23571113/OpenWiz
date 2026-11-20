@@ -55,6 +55,7 @@
     "kernel/driver.v1.md",
     "kernel/driver-kit/**",
     "kernel/records/model/**",
+    "kernel/records/backfill-b1.md",
     "loops/**",
     "release/**",
     "tests/**",
