@@ -5,17 +5,22 @@ Synthetic values only. Run: python3 -I tools/github-app/test_agent_token.py.
 No real room-cli, service, GitHub or token is touched: room-cli, python3 and gh
 are fakes on PATH that record what they were given, never a token itself.
 """
+import base64
 import hashlib
 import importlib.util
 import json
 import os
 import shutil
+import socketserver
+import ssl
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -31,6 +36,8 @@ READ = {name: "read" for name in WRITE}
 TOKEN, TOKEN2 = "synthetic-agent-token-1", "synthetic-agent-token-2"
 REQ = ("--requester", "builder-1", "--repository", REPO)
 NOTE = PIN["fallback"]["note"]
+WITHHELD = "openwiz: openwiz[bot] token withheld from git"
+URL = f"https://github.com/{REPO}"
 
 # One fake for room-cli, python3 and gh. It logs its name, argv, standard input,
 # whether its standard output is a pipe, and a hash of GH_TOKEN: never a token.
@@ -55,6 +62,49 @@ sys.stdout.write(answer.get("stdout", ""))
 sys.stderr.write(answer.get("stderr", ""))
 sys.exit(answer["exit"])
 '''
+
+
+class FakeGitHub(socketserver.ThreadingTCPServer):
+    """github.com behind a local HTTPS proxy, for git's real transport. It asks for Basic
+    auth and keeps a hash of each credential it is sent. Its certificate is a throwaway."""
+    daemon_threads = allow_reuse_address = True
+
+    def __init__(self, folder):
+        cert, key = folder / "cert.pem", folder / "key.pem"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                        "-subj", "/CN=github.com", "-keyout", str(key), "-out", str(cert)],
+                       check=True, capture_output=True)
+        self.tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self.tls.load_cert_chain(cert, key)
+        self.seen = []
+        super().__init__(("127.0.0.1", 0), Tunnel)
+        threading.Thread(target=self.serve_forever, daemon=True).start()
+
+    def git(self):
+        return ["git", "-c", f"http.proxy=http://127.0.0.1:{self.server_address[1]}",
+                "-c", "http.sslVerify=false", "ls-remote", URL]
+
+
+class Tunnel(socketserver.StreamRequestHandler):
+    def handle(self):
+        if not self.rfile.readline().startswith(b"CONNECT github.com:443 "):
+            return
+        while self.rfile.readline() not in (b"\r\n", b""):
+            pass
+        self.wfile.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
+        stream = self.server.tls.wrap_socket(self.request, server_side=True).makefile("rwb")
+        while stream.readline():
+            auth = ""
+            while (line := stream.readline()) not in (b"\r\n", b""):
+                key, _, value = line.decode().partition(":")
+                auth = value.strip() if key.lower() == "authorization" else auth
+            if auth.startswith("Basic "):
+                self.server.seen.append(sha(base64.b64decode(auth[6:]).decode()))
+                stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n")
+            else:
+                stream.write(b'HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="x"\r\n'
+                             b"Content-Length: 0\r\n\r\n")
+            stream.flush()
 
 
 def sha(value):
@@ -155,6 +205,12 @@ class Helper(unittest.TestCase):
                 for token in tokens:
                     self.assertNotIn(token.encode(), path.read_bytes(), path)
 
+    def github(self):
+        server = FakeGitHub(self.root)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server
+
     def assert_fallback(self, result, reason):
         self.assertEqual(result.stderr, NOTE.replace("<reason>", reason) + "\n")
         self.assertFalse(self.token_file().exists())
@@ -182,17 +238,16 @@ class MintedToken(Helper):
         ran = self.helper("run", *REQ, "--", "gh", "issue", "view", "1")
         self.assertEqual((ran.returncode, ran.stderr), (0, ""))
         self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN))
-        git = self.helper("run", *REQ, "--", "git", "credential", "fill", stdin="protocol=https\nhost=github.com\n\n")
-        self.assertEqual(git.returncode, 0, git.stderr)
-        self.assertIn(f"password={TOKEN}\n", git.stdout)  # git's own pipe back to its caller
-        # The owner's store helper never gets the token: run resets git's helper list.
+        # git's own HTTPS transport gets it; the owner's store helper never does (run resets the list).
         (self.home / ".gitconfig").write_text("[credential]\n\thelper = store\n")
-        stored = self.helper("run", *REQ, "--", "git", "credential", "approve", stdin=git.stdout + "\n")
-        self.assertEqual(stored.returncode, 0, stored.stderr)
+        github = self.github()
+        git = self.helper("run", *REQ, "--", *github.git())
+        self.assertEqual(git.returncode, 0, git.stderr)
+        self.assertEqual(set(github.seen), {sha(f"x-access-token:{TOKEN}")})
         self.assertFalse((self.home / ".git-credentials").exists())
         self.assertEqual(len(self.service_calls()), 1, "a fresh token is reused, not minted again")
         self.assertEqual(list(self.private.glob("run-*")), [], "each run removes its snapshot")
-        self.assert_never_exposed(started, ran)
+        self.assert_never_exposed(started, ran, git)
 
     def test_the_request_names_repositories_and_permissions_only(self):
         # catches: a request that is not the contract's, names the key, or asks for more than the App's.
@@ -346,7 +401,7 @@ class Fallback(Helper):
 
 
 class Review(Helper):
-    """The review's findings R1 to R4 and R6 on #1916, each red first."""
+    """The review's findings R1, R2, R3, R4, R6 and R7 on #1916, each red first."""
     REQ = REQ
 
     def shell(self, script, *extra, **env):
@@ -373,6 +428,65 @@ class Review(Helper):
         refused = self.start(OPENWIZ_AGENT_TOKEN_DIR=str(self.root / "link" / "private"))
         self.assertEqual((refused.returncode, self.calls()), (2, []))
         self.assertFalse((tree / "sub" / "private").exists())
+
+    def test_r1_a_git_credential_command_never_prints_the_token(self):
+        # catches: `git credential fill` inside a run printing the App token to its caller's stdout.
+        self.answers(answer())
+        self.start()
+        fill = self.helper("run", *self.REQ, "--", "git", "credential", "fill",
+                           stdin="protocol=https\nhost=github.com\n\n")
+        piped = self.shell('printf "protocol=https\nhost=github.com\n\n" | git credential fill | cat')
+        self.assert_never_exposed(fill, piped)
+        self.assertNotEqual(fill.returncode, 0)
+        self.assertEqual(fill.stderr.count(WITHHELD), 1, "one note")
+
+    def test_r2_an_ancestor_swapped_before_the_open_never_redirects_the_token(self):
+        # catches: the directory checked by path, then reopened by path after an ancestor became a
+        # symlink into a Git tree, so the token is written inside the tree.
+        helper = load_helper()
+        tree = self.root / "work"
+        (tree / ".git").mkdir(parents=True)
+        (tree / "private").mkdir(mode=0o700)
+        safe = self.root / "safe"
+        (safe / "private").mkdir(parents=True, mode=0o700)
+        real_open = os.open
+
+        def swap_then_open(path, *args, **kwargs):
+            if os.path.basename(path) == "private" and not safe.is_symlink():
+                safe.rename(self.root / "moved")
+                safe.symlink_to(tree)
+            return real_open(path, *args, **kwargs)
+
+        with mock.patch.object(helper.os, "open", swap_then_open):
+            try:
+                private = helper.Private(dict(self.env, OPENWIZ_AGENT_TOKEN_DIR=str(safe / "private")), True)
+                private.write("token-x.json", {"token": TOKEN})
+            except helper.Refused:
+                pass
+        self.assertTrue(safe.is_symlink(), "the swap happened")
+        self.assertEqual(list((tree / "private").iterdir()), [])
+
+    def test_r2_an_ancestor_others_can_change_is_refused(self):
+        # catches: a private directory under a folder anyone can write, who could swap it later.
+        self.answers(answer())
+        shared = self.root / "shared"
+        shared.mkdir()
+        shared.chmod(0o777)
+        refused = self.start(OPENWIZ_AGENT_TOKEN_DIR=str(shared / "private"))
+        self.assertEqual((refused.returncode, self.calls()), (2, []))
+        self.assertFalse((shared / "private").exists())
+
+    def test_r7_a_later_owner_helper_never_authenticates_git(self):
+        # catches: the helper declining for a later helper, so git silently signs in as the owner.
+        self.answers(answer())
+        self.start()
+        github = self.github()
+        owner = "!f() { echo username=synthetic-owner; echo password=synthetic-owner-login; }; f"
+        ran = self.helper("run", *self.REQ, "--", "git", "-c", f"credential.helper={owner}", *github.git()[1:])
+        self.assertEqual(github.seen, [], "git signs in as no one: not the owner, not the App")
+        self.assertNotEqual(ran.returncode, 0)
+        self.assertEqual(ran.stderr.count(WITHHELD), 1, "one note")
+        self.assert_never_exposed(ran)
 
     def test_r3_two_agents_on_one_account_keep_their_own_scopes(self):
         # catches: a second agent's start replacing the first's request, so one gets the other's token.
