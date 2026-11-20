@@ -2,7 +2,6 @@
 """D1, D2 for the boat.dev driver, on a synthetic `boat` CLI (fixtures/bin/boat) and a local tracker.
 
 Run: python3 -I adapters/boat/test_driver.py   (Linux: the kit watches /proc)
-These are fixture tests; the live run on boat.dev is recorded on the pull request.
 """
 import json
 import os
