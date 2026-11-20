@@ -1,6 +1,6 @@
 //! The `openwiz` command: parses `ls`, `ls -l`, `show` and `--json`, calls
-//! the core operations, and prints the results. `send`, `new` and `models`
-//! have their own modules.
+//! the core operations, and prints the results. `models`, `fleets`, `fleet`
+//! and `loop` have their own modules.
 //!
 //! Text and `--json` print the same envelope. The text follows the
 //! provisional text contract at the end of `tests/proof/support.rs`. Errors go
@@ -9,13 +9,14 @@
 //! may leave some output on stdout. The exit codes are the `EXIT_*` constants,
 //! documented in [`help`].
 //!
-//! `send`, OpenWiz's first write, is in [`send`]; `new` (its second) and
-//! `models` are in [`new_thread`]; `attachment add`, `ls` and `rm`, which
-//! stage files on this machine only, are in [`attachment`]. `fleets` and
+//! `models`, in [`models`], prints the Cloud options from one `cloud status`
+//! read; J233 kept it because setup and onboarding read it. `fleets` and
 //! `fleet <spec>` (OpenWiz 0.0.6) are in [`fleets`] and [`fleet`].
 //! `fleets` reads GitHub through `gh`, with no CloudRoom read;
 //! `fleet <spec>` makes only its allowlisted `gh` and `room-cli` reads.
-//! Both are read-only.
+//! Those three are read-only. `loop off` and `loop on`, in [`loops`], write
+//! only OpenWiz's local loop switches; the other `loop` forms are in
+//! [`loop_files`].
 
 pub mod agent_help;
 pub mod fleet;
