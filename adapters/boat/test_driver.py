@@ -35,19 +35,31 @@ def broken(state, run, *rest):
 t.prompt = broken
 t.main()
 '''
-# A driver whose `prompt` raises an error the driver doesn't expect (not Refused), before it runs `boat prompt`
-# or once the turn has begun, as an unexpected boat answer did on the live run (L2).
+# A driver with planted failures: with RAISE, its `prompt` raises an error the driver doesn't expect (not
+# Refused), before it runs `boat prompt` or once the turn has begun, as an unexpected boat answer did on the live
+# run (L2); with DENY_SIGNALS, every signal fails; with READ_ONLY, every mark and save fails.
 RAISES = '''import importlib.machinery, importlib.util, os, sys
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_loader('boat', importlib.machinery.SourceFileLoader('boat', %r))
 t = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(t)
-prompt = t.prompt
+prompt, save = t.prompt, t.saved
 def broken(*args):
-    if os.environ['RAISE'] == 'after':
+    if os.environ.get('RAISE') == 'after':
         prompt(*args)
     raise KeyError('planted')
-t.prompt = broken
+if os.environ.get('RAISE'):
+    t.prompt = broken
+if os.environ.get('DENY_SIGNALS'):  # Linux refuses every signal the driver sends
+    def denied(*args):
+        raise PermissionError(1, 'Operation not permitted')
+    t.signal.pidfd_send_signal, t.GRACE = denied, 0.2
+if os.environ.get('READ_ONLY'):  # a read-only filesystem: no mark and no save can be written
+    def unsaved(run, state=None):
+        if state is not None:
+            raise OSError(30, 'Read-only file system')
+        return save(run)
+    t.saved, t.mark_stopping = unsaved, lambda run: False
 t.main()
 '''
 # A driver whose wake pauses once it reads the sandbox's state, until the file named by RELEASE exists.
@@ -162,18 +174,18 @@ class Boat(unittest.TestCase):
             'pass stop: the run ended, and a wake after it is refused',
             'pass token: no login or token passed through the driver']), p.stderr)
 
-    def test_wake_resumes_after_auto_stop_and_stop_ends_the_sandbox(self):
-        # catches: a wake that fails once boat's one-hour auto-stop has stopped the sandbox, and a stop
-        # that ends only the local process and leaves the sandbox running (and billing) on boat.dev.
+    def test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it(self):
+        # catches: a wake that resumes a stopped sandbox (after boat's auto-stop, or a stop whose every local
+        # write failed) and runs the builder again, and a stop that leaves the sandbox running on boat.dev.
         code, started = self.driver('start', REQUEST)
         self.assertEqual(code, 0, started)
         boxes = self.sandboxes()
         self.assertEqual(list(boxes.values()), ['running'])
         sid = next(iter(boxes))
         subprocess.run(['boat', 'stop', sid, '--json'], env=self.env, capture_output=True, check=True)
-        self.assertEqual(self.driver('wake', started), (0, dict(started, woke=True)))
-        self.assertEqual(self.sandboxes(), {sid: 'running'})
-        self.assertEqual(self.notes(), [(1, 'woke and read the ticket again')])
+        code, err = self.driver('wake', started)
+        self.assertEqual((code, self.sandboxes(), self.notes()), (1, {sid: 'stopped'}, [(1, 'started the throwaway ticket')]))
+        self.assertIn('start a new run', err['next'])
         for _ in range(2):  # stopping a stopped run answers again
             self.assertEqual(self.driver('stop', started), (0, dict(started, stopped=True)))
             self.assertEqual(self.sandboxes(), {sid: 'stopped'})
@@ -281,6 +293,7 @@ class Boat(unittest.TestCase):
         # catches: a stop whose save failed leaving the run wakeable, so once storage recovers an ordinary wake
         # resumes the stopped sandbox and runs the builder again before anyone stops it again (#1707); also when
         # both of the stop's writes fail (its record and the lock file's content), and when the lock file is gone.
+        # Here `boat stop` fails too, so the sandbox still runs and only the local marks can refuse the wake.
         for block in ('staged-save', 'read-only-folder', 'both-writes'):
             with self.subTest(block=block):
                 code, out = self.driver('start', REQUEST)
@@ -291,9 +304,8 @@ class Boat(unittest.TestCase):
                 os.mkdir(staged) if block == 'staged-save' else os.chmod(state, 0o500)
                 if block == 'both-writes':
                     os.chmod(lock, 0o400)
-                code, err = self.driver('stop', out)
+                code, err = self.driver('stop', out, FAKE_BOAT_FAIL='stop')
                 self.assertEqual(code, 1, err)
-                self.assertIn('could not save that it is stopped', err['error'])
                 os.rmdir(staged) if block == 'staged-save' else os.chmod(state, 0o700)
                 os.chmod(lock, 0o600)
                 if block != 'both-writes':
@@ -304,6 +316,14 @@ class Boat(unittest.TestCase):
                 self.assertIn('stop it again', err['next'])
                 self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
                 self.assertEqual(self.driver('wake', out)[0], 1)
+        # A read-only filesystem: no mark, no save; the stop still stops the sandbox, so boat refuses the wake.
+        code, out = self.driver('start', REQUEST)
+        self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
+        code, err = self.driver('stop', out, program=self.wrapper('fails', RAISES), READ_ONLY='1')
+        self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
+        self.assertIn('do not wake it', err['error'])
+        turns = len(self.logged())
+        self.assertEqual((self.driver('wake', out)[0], len(self.logged())), (1, turns), 'a wake undid the stop')
         code, out = self.driver('start', REQUEST)
         self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])))
         os.remove(os.path.join(self.folder, 'state', out['run'] + '.lock'))
@@ -323,6 +343,16 @@ class Boat(unittest.TestCase):
                 self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
                 self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
                 self.assertEqual(set(self.sandboxes().values()), {'stopped'}, 'its sandbox still runs')
+        # catches: cleanup that gives up on `boat stop` when Linux denies the driver's signals (L2), in a failed
+        # start and in a stop; each failure is reported.
+        code, err = self.driver('start', REQUEST, program=program, RAISE='after', DENY_SIGNALS='1')
+        self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
+        self.assertIn('local processes', err['error'])
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        code, err = self.driver('stop', out, program=program, DENY_SIGNALS='1')
+        self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
+        self.assertIn('local processes', err['error'])
         # catches: a sandbox the driver could not stop going unreported (L2, the outcome).
         code, err = self.driver('start', REQUEST, program=program, RAISE='after', FAKE_BOAT_FAIL='info,stop')
         self.assertEqual(code, 1, err)
