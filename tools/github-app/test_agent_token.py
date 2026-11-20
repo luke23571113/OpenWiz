@@ -402,7 +402,7 @@ class Fallback(Helper):
 
 
 class Review(Helper):
-    """The review's findings R1, R2, R3, R4, R6, R7 and R8 on #1916, each red first."""
+    """The review's findings R1 to R4 and R6 to R9 on #1916, each red first."""
     REQ = REQ
 
     def shell(self, script, *extra, **env):
@@ -521,6 +521,48 @@ class Review(Helper):
         self.assertEqual(set(github.seen), {sha(f"x-access-token:{TOKEN}")})
         encoded = base64.b64encode(f"x-access-token:{TOKEN}".encode()).decode()
         self.assert_never_exposed(ran, tokens=(TOKEN, encoded))
+
+    def test_r7_an_unguarded_git_never_signs_in_as_the_owner(self):
+        # catches: git run without the transport guard (its exec-path lookup fails, or the agent
+        # overrides it), so a replaced helper list signs git in as the owner.
+        self.answers(answer())
+        self.start()
+        owner = "!f() { echo username=synthetic-owner; echo password=synthetic-owner-login; }; f"
+        replaced = ["-c", "credential.helper=", "-c", f"credential.helper={owner}"]
+        real = subprocess.run(["git", "--exec-path"], capture_output=True, text=True,
+                              env=self.env).stdout.strip()
+        broken = self.root / "broken"
+        broken.mkdir()
+        (broken / "git").write_text('#!/bin/sh\n[ "$1" = --exec-path ] && exit 1\nexec /usr/bin/git "$@"\n')
+        (broken / "git").chmod(0o755)
+        github = self.github()
+        cases = {
+            "lookup fails": dict(args=["git", *replaced, *github.git()[1:]], PATH=f"{broken}:{self.env['PATH']}"),
+            "--exec-path": dict(args=["git", f"--exec-path={real}", *replaced, *github.git()[1:]]),
+            "GIT_EXEC_PATH": dict(args=["env", f"GIT_EXEC_PATH={real}", "git", *replaced, *github.git()[1:]]),
+            "unset": dict(args=["env", "-u", "GIT_EXEC_PATH", "git", *replaced, *github.git()[1:]]),
+        }
+        for name, case in cases.items():
+            with self.subTest(name):
+                args = case.pop("args")
+                ran = self.helper("run", *self.REQ, "--", *args, **case)
+                self.assertEqual(github.seen, [], "git signs in as no one: not the owner, not the App")
+                self.assertNotEqual(ran.returncode, 0)
+                self.assertEqual(ran.stderr.count("openwiz:"), 1, "one note")
+                self.assert_never_exposed(ran)
+
+    def test_r9_git_process_tracing_never_shows_the_token(self):
+        # catches: GH_TOKEN in git's environment, where trace2.envVars logs it at git's startup.
+        self.answers(answer())
+        self.start()
+        github = self.github()
+        trace = self.root / "trace2.json"
+        ran = self.helper("run", *self.REQ, "--", "git", "-c", "trace2.envVars=GH_TOKEN",
+                          *github.git()[1:], GIT_TRACE2_EVENT=str(trace), GIT_TRACE2_ENV_VARS="GH_TOKEN")
+        self.assertEqual(ran.returncode, 0, ran.stderr)
+        self.assertTrue(trace.is_file(), "git traced")
+        self.assertEqual(set(github.seen), {sha(f"x-access-token:{TOKEN}")})
+        self.assert_never_exposed(ran)
 
     def test_r7_a_later_owner_helper_never_authenticates_git(self):
         # catches: the helper declining for a later helper, so git silently signs in as the owner.
