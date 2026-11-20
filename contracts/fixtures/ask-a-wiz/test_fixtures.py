@@ -5,6 +5,7 @@ Standard library only. Every value in the fixtures is synthetic.
 """
 import copy
 import datetime
+import hashlib
 import json
 import pathlib
 import re
@@ -29,6 +30,10 @@ def load(name):
     if not (HERE / f'{name}.json').is_file():
         raise AssertionError(f'missing fixture: {name}.json')
     return json.loads((HERE / f'{name}.json').read_text(encoding='utf-8'))
+
+
+def visitor_key(salt, ip, hour):
+    return f"visitor:{hashlib.sha256(f'{salt}:{ip}'.encode()).hexdigest()[:32]}:{hour}"
 
 
 def events_of(body):
@@ -71,8 +76,9 @@ def outcome(pin, case):
     now = datetime.datetime.fromisoformat(case['now'])
     day, hour = now.strftime('%Y-%m-%d'), now.strftime('%H')
     rows = {r['key']: r['count'] for r in case['store'] if r['day'] == day}
-    if any(k.startswith('visitor:') and k.endswith(':' + hour) and c >= pin['rate_limit']['per_visitor']
-           for k, c in rows.items()):
+    salts = [k[len('salt:'):] for k in rows if k.startswith('salt:')]
+    if salts and rows.get(visitor_key(salts[0], headers.get('cf-connecting-ip', ''), hour), 0) \
+            >= pin['rate_limit']['per_visitor']:
         return 'rate_limited'
     if case['upstream'] is None and not case.get('passages', True):
         return 'not_covered'
