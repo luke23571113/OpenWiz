@@ -1,27 +1,54 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/openwiz-lockup-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/brand/openwiz-lockup-light.svg">
-    <img alt="OpenWiz" src="docs/brand/openwiz-lockup-light.svg" width="380">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/openwizdev/.github/main/profile/art/lockup-dark.png">
+    <img alt="OpenWiz" src="https://raw.githubusercontent.com/openwizdev/.github/main/profile/art/lockup-light.png" width="320">
   </picture>
 </h1>
 
-OpenWiz runs coding agents in fleets: you approve a plan, and OpenWiz's agents build, review and merge its tickets. The app lives at [openwiz.dev/app](https://openwiz.dev/app); this repository is the `openwiz` command, its adapters and the engine. The [org map](https://github.com/openwizdev) shows how it fits with the other repositories.
+**OpenWiz is the open kernel for agent factories. Bring your own everything. Owned by no one.** This repo is the kernel itself; the [other repos](https://github.com/openwizdev) add skills, loops and the app on top.
 
-## Install
+You make the decisions: answer a few questions. The agents run the factory: they write the spec and the tickets, build, review and merge. You watch it ship.
 
-Paste this line into your coding agent:
+**Status:** before 0.1.0. 0.1.0 is coming soon. OpenWiz builds itself, in public, in this repo.
+
+## Quick start
+
+**0.1.0: coming soon.** It will start your factory on your computer or a VPS, on Cloudroom, or on boat.dev.
+
+To try today's pre-release (0.0.12, Cloudroom only), paste this line into your coding agent:
 
 > Install OpenWiz from github.com/openwizdev/OpenWiz
 
-Agents: read [`skills/install/SKILL.md`](https://github.com/openwizdev/WizSkills/blob/v0.1.2/skills/install/SKILL.md) and follow it. It checks the machine and CloudRoom, installs the verified prebuilt release (no Rust or Node), opens setup, then hands the first fleet to the [`onboard`](https://github.com/openwizdev/WizSkills/blob/v0.1.2/skills/onboard/SKILL.md) skill. Nothing starts until the user approves a plan. People: see the [install guide](docs/install.md), including recovery and removal. OpenWiz is free now. Paid plans come later. CloudRoom and model charges are separate and not included.
+Your agent follows the [install skill](https://github.com/openwizdev/WizSkills/blob/v0.1.2/skills/install/SKILL.md). Nothing starts until you approve a plan. People: see the [install guide](docs/install.md). OpenWiz is free. Your model and host charges are your own.
+
+## How it works
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/openwizdev/.github/main/profile/art/map-dark.png">
+  <img alt="How the repos fit: WizSkills and WizLoops feed OpenWiz, the kernel. OpenWiz drives your agents and machines and writes records to GitHub. WizSite's app reads GitHub." src="https://raw.githubusercontent.com/openwizdev/.github/main/profile/art/map-light.png" width="560">
+</picture>
+
+The kernel is small. Three parts:
+
+- **Records on GitHub.** Specs, tickets and one status note per agent live in your repo's issues. Anything that follows [the rules](kernel/records.v1.md) can read and write your factory. The [records kit](kernel/records-kit/README.md) checks them.
+- **Drivers.** A driver is a tiny program, in any language, that answers four commands: `version`, `start`, `wake`, `stop` ([driver v1](kernel/driver.v1.md)). Copy [the template](adapters/template/README.md) to plug in your own host. Drivers for your computer or a VPS, Cloudroom and boat.dev are coming in 0.1.0.
+- **A test kit.** The [driver kit](kernel/driver-kit/README.md) checks a driver on its real host. A driver that passes can merge.
+
+OpenWiz never touches a login. Your agents use their own signed-in tools, and there is no server of ours.
+
+| Path | What it is |
+| --- | --- |
+| `kernel/` | The records and driver rules, and their test kits |
+| `adapters/` | The drivers, one folder per host |
+| `crates/` | The `openwiz` command (Rust) |
+| `docs/` | Guides and public decisions |
 
 ## Versions
 
-What each version adds is in [CHANGELOG.md](CHANGELOG.md). A version has at most five outcomes, each one something a user can see or check, and claims nothing its evidence doesn't show; tests alone never prove live behaviour. A version number says when something changed, not what works with what.
+What each version adds is in the [changelog](CHANGELOG.md). A version has at most five outcomes, each one something a user can see or check, and claims nothing its evidence doesn't show; tests alone never prove live behaviour.
 
-## Contributing
+## Links
 
-Agents start at [AGENTS.md](AGENTS.md); the build runs with `cargo test --workspace` on Rust 1.99.1. For anything beyond a small fix, open an issue first. Everything you post is public: use synthetic examples only (`example.com`, "User A"), and no personal data, secrets, transcripts or private links. A new dependency needs the maintainer's approval.
-
-OpenWiz is licensed under the [Apache License 2.0](LICENSE). Unless you state otherwise, a contribution you submit is licensed under the same terms (section 5 of the license); there is no separate contributor agreement.
+- [openwiz.dev](https://openwiz.dev) · [the app](https://openwiz.dev/app/) · [Changelog](CHANGELOG.md)
+- Agents start at [AGENTS.md](AGENTS.md). For anything beyond a small fix, open an issue first. Everything here is public: use synthetic examples only, never personal data, secrets or private links. A new dependency needs the maintainer's approval.
+- [Apache License 2.0](LICENSE). A contribution is licensed under the same terms; there is no separate contributor agreement.

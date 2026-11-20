@@ -164,6 +164,36 @@ class Init(unittest.TestCase):
         after = self.read()
         self.assertEqual((after['repos'], self.writes()), (before['repos'], [c for c in before['log'] if c[0] != 'GET']))
 
+    # Catches (#1595): a label POST refused with 422 that created nothing, taken as "made
+    # concurrently", so init reports applied and opens the proposal with the label missing.
+    def test_a_refused_label_fails_the_effect_and_opens_no_proposal(self):
+        for existing, refused in (([], 'openwiz'), (['openwiz'], 'spec')):
+            with self.subTest(label=refused):
+                shutil.rmtree(self.state, ignore_errors=True)
+                self.world({CODE.lower(): repository(CODE, 'private', labels=list(existing))},
+                           faults=[{'method': 'POST', 'path': f'repos/{CODE}/labels', 'mode': 422, 'times': 1}])
+                failed = self.apply(self.init(), expect=5)
+                self.assertEqual((failed['outcome'], failed['reason_code']), ('refused', 'effect_denied'))
+                code = self.read()['repos'][CODE.lower()]
+                self.assertNotIn(refused, code['labels'])
+                self.assertEqual(code['pulls'], [])
+                self.assertNotIn('openwiz/brain', code['branches'])
+
+    # Catches (#1595): a label someone else made between init's read and its POST (a 422 that
+    # is really there) counted as failed, changed to init's colours, or written again next run.
+    def test_a_label_made_concurrently_counts_as_applied_and_stays_theirs(self):
+        theirs = {'color': '000000', 'description': 'Made by someone else'}
+        self.world(faults=[{'method': 'POST', 'path': f'repos/{CODE}/labels', 'mode': 'taken', 'times': 1,
+                            'body': theirs}])
+        self.assertEqual(self.apply(self.init())['outcome'], 'applied')
+        code = self.read()['repos'][CODE.lower()]
+        self.assertEqual(code['labels'], FACTORY_LABELS)
+        self.assertEqual(code['label_details']['openwiz'], theirs)
+        before = self.read()
+        self.assertEqual(self.apply(self.init())['outcome'], 'applied')
+        self.assertEqual(self.read()['repos'], before['repos'])
+        self.assertEqual(self.writes(), [c for c in before['log'] if c[0] != 'GET'])
+
     # Catches: private records written into public code, or a companion that is
     # public or unlinked.
     def test_public_code_gets_a_linked_private_companion_and_no_private_content(self):

@@ -592,8 +592,13 @@ def write(plan, row, entry, save):
                              {'name': name, 'color': color, 'description': description})[0]
             if status is None or status >= 500:
                 return None
-            if status == 422:
-                continue  # made by someone else since that read: theirs, kept as it is
+            if status == 422:  # made by someone else since that read only if it is there now
+                status, _ = gh.call('GET', f'repos/{code}/labels/{quote(name)}')
+                if status == 200:
+                    continue  # theirs, kept as it is
+                if status != 404:
+                    return None
+                return 422
             if status not in range(200, 300):
                 return status
         return 201
