@@ -564,12 +564,16 @@ class Collection(unittest.TestCase):
         import publish
         real, calls = gather.gather, []
 
-        def cli(check, end, fail=False):
+        def cli(check, end, fail=False, during=None):
             def gathered(out, **kw):
                 calls.append(check)
                 if fail:
                     raise gather.Fail('synthetic gather failure')
-                return real(out, **dict(kw, clock=Clock(check), pools=POOLS))
+                selection = real(out, **dict(kw, clock=Clock(check), pools=POOLS))
+                if during:  # another writer pushes a sample to war-room while this gather reads
+                    publish.publish(str(self.origin), during, publish.selection_reader(out / 'root', out / 'selection.json'),
+                                    draw_page=False)
+                return selection
             times, said = itertools.chain([check], itertools.repeat(end)), io.StringIO()
             with patch.dict(os.environ, self.env), patch.object(gather, 'gather', gathered), \
                     patch.object(gather, 'now', lambda: next(times)), contextlib.redirect_stdout(said):
@@ -600,6 +604,18 @@ class Collection(unittest.TestCase):
         self.assertEqual(cli('2030-03-01T12:14:40Z', '2030-03-01T12:15:50Z'), (0, 'boundary already collected\n'))
         self.assertEqual(len(calls), 3)
         self.assertEqual(saved(), crossed)
+        # R1: another writer saves 12:20 during a gather that ends at 12:25: both samples are kept,
+        # the push lands on the moved branch, and the other writer's bytes stay as written.
+        self.assertEqual(cli('2030-03-01T12:20:05Z', '2030-03-01T12:25:30Z', during='2030-03-01T12:24:50Z')[0], 0)
+        moved = saved()
+        self.assertEqual([name for name, _ in moved], ['samples/2030-03-01T12-%s-00Z.json' % m for m in ('05', '15', '20', '25')])
+        self.assertEqual(moved[:2], crossed)
+        # Another writer saves the very boundary this gather ends in: reused, never a failure.
+        self.assertEqual(cli('2030-03-01T12:30:05Z', '2030-03-01T12:34:30Z', during='2030-03-01T12:34:00Z'),
+                         (0, 'boundary already collected\n'))
+        self.assertEqual([name for name, _ in saved()][-1], 'samples/2030-03-01T12-30-00Z.json')
+        self.assertEqual(saved()[:4], moved)
+        self.assertEqual(len(calls), 5)
 
     def test_collection_only_saves_a_sample_without_drawing(self):
         import publish
