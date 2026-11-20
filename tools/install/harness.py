@@ -8,6 +8,8 @@ the user doesn't have. Python 3.9+, standard library only.
 """
 import os
 from pathlib import Path
+import re
+import shlex
 import shutil
 import stat
 
@@ -18,6 +20,7 @@ HARNESSES = (('claude-code', '.claude', 'Claude Code'), ('codex', '.codex', 'Cod
              ('cursor', '.cursor', 'Cursor'), ('opencode', '.config/opencode', 'OpenCode'),
              ('grok', '.grok', 'Grok'))
 MARK = '.openwiz-skill'
+MARKED = re.compile(rb'openwiz\.skill-copy\.v1\n[0-9a-f]{40}\n')  # mark()'s bytes for a verified source
 
 
 def mark(source):
@@ -38,28 +41,59 @@ def owned_dir(path):
 
 def check(folder, names):
     """A skills folder may take these skills: no link on the way, and every
-    same-named skill already there is an OpenWiz copy."""
+    same-named skill, staging or backup folder already there is an OpenWiz copy."""
     installer.path_guard(folder)
     if not owned_dir(folder):
         return
     for name in names:
         target = folder / name
-        if owned_dir(target):
-            marked = target / MARK
-            installer.require(marked.is_file() and not marked.is_symlink(),
-                              f'{target} is your own skill; nothing was changed')
+        installer.require(ours(target), f'{target} is not an OpenWiz copy; nothing was changed')
+        for path in leftovers(folder, name):
+            try:
+                clear = ours(path)
+            except installer.Refused:
+                clear = False
+            installer.require(clear, f'{path} is in the way and OpenWiz did not make it; nothing was changed. '
+                                     'Look inside it, and if it holds nothing you want, remove it and run this '
+                                     f'again: rm -rf -- {shlex.quote(str(path))}')
+
+
+def leftovers(folder, name):
+    """The fixed staging and backup paths an interrupted run may leave behind."""
+    return folder / f'.openwiz-stage-{name}', folder / f'.openwiz-old-{name}'
+
+
+def ours(path):
+    """True when nothing is there or it is an OpenWiz copy: a real folder of
+    this user's holding the copy mark exactly as mark() writes it, which every
+    staging folder gets first. A same-named file with other text proves nothing."""
+    if not owned_dir(path):
+        return True
+    try:  # never through a link, and never waiting on a pipe
+        fd = os.open(path / MARK, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return False
+    try:
+        text = os.read(fd, 64) if stat.S_ISREG(os.fstat(fd).st_mode) else b''  # one byte past the 63-byte mark
+    finally:
+        os.close(fd)
+    return MARKED.fullmatch(text) is not None
 
 
 def place(folder, skills, names, source):
     """Copy each skill through a staging folder, then swap it in."""
     folder.mkdir(mode=0o700, exist_ok=True)
     for name in names:
-        stage, old, target = folder / f'.openwiz-stage-{name}', folder / f'.openwiz-old-{name}', folder / name
+        (stage, old), target = leftovers(folder, name), folder / name
         for leftover in (stage, old):
             if owned_dir(leftover):
                 shutil.rmtree(leftover)
+        stage.mkdir(mode=0o700)
+        fd = os.open(stage / MARK, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(mark(source))
         for path in sorted((skills / name).rglob('*')):
-            if path.is_dir():
+            if path.is_dir() or path == skills / name / MARK:
                 continue
             copy = stage / path.relative_to(skills / name)
             copy.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -67,7 +101,6 @@ def place(folder, skills, names, source):
                          stat.S_IMODE(path.lstat().st_mode))
             with os.fdopen(fd, 'wb') as handle:
                 handle.write(path.read_bytes())
-        (stage / MARK).write_bytes(mark(source))
         if owned_dir(target):
             os.rename(target, old)
         os.rename(stage, target)
