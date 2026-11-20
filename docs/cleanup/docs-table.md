@@ -138,7 +138,13 @@ Two more cases at the after pin, for the gap (not in the before):
 
 **Markdown.** Files went from 612 to 495 (117 fewer, 19%) and lines from 42,739 to 27,982 (14,757 fewer, 35%), counted at the after pin before this pull request. The 37 Markdown files added since the DS1 pin have no table rows. They are in `kernel/`, `adapters/template/`, `tools/owned-paths/`, `changes/`, this folder and the install fixtures, plus new evidence in `docs/evidence/1335/`, `docs/evidence/1595/` and `tools/test-value/evidence/cw*/`. Lines by folder are in the table above.
 
-**Beside the code cleanup.** Other tracked text files under the same `splitlines()` rule, with binary blobs skipped, went from 2,000 files and 488,646 lines to 1,443 files and 293,657 lines (40% fewer) between the same two pins. Markdown's share of text lines went from 8.0% to 8.7%: the code shrank a little faster than the docs.
+**Beside the code cleanup**, at the same two pins and under the same `splitlines()` rule (other text means every other tracked file except symlinks and binary blobs):
+
+| Lines | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Markdown | 42,739 (612 files) | 27,982 (495 files) | -35% |
+| Other text | 488,646 (2,000 files) | 293,657 (1,443 files) | -40% |
+| Markdown's share | 8.0% | 8.7% | the code shrank a little faster |
 
 Still unknown: what a host injects, and the tokens actually delivered in a live run, as in the before. The pinned `build-ticket` SKILL.md is unchanged at 9,389 tokens.
 
