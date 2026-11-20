@@ -1,0 +1,25 @@
+$ python3 -I adapters/cloudroom/test_driver.py   # #1479 save-failure test, before the fix (red)
+test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... ok
+test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... ok
+test_start_that_cannot_save_its_run_never_says_retry (__main__.Driver.test_start_that_cannot_save_its_run_never_says_retry) ... FAIL
+test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
+
+======================================================================
+FAIL: test_start_that_cannot_save_its_run_never_says_retry (__main__.Driver.test_start_that_cannot_save_its_run_never_says_retry)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 122, in test_start_that_cannot_save_its_run_never_says_retry
+    self.assertEqual((code, os.path.exists(self.log)), (1, False), 'it spawned with nowhere to keep the run')
+AssertionError: Tuples differ: (1, True) != (1, False)
+
+First differing element 1:
+True
+False
+
+- (1, True)
++ (1, False) : it spawned with nowhere to keep the run
+
+----------------------------------------------------------------------
+Ran 4 tests in 1.071s
+
+FAILED (failures=1)

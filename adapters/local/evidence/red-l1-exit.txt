@@ -1,0 +1,24 @@
+test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) ... 
+  test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [broken] ... FAIL
+test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) ... FAIL
+
+======================================================================
+FAIL: test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [broken]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 314, in test_a_first_turn_that_ends_at_once_fails_start_with_its_reason
+    self.assertIn(says, err['error'])
+AssertionError: 'exit 3' not found in 'run run-62421788cbc3: the first turn ended at once: Fake harness: it stopped with an error.'
+
+======================================================================
+FAIL: test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 319, in test_a_first_turn_that_ends_at_once_fails_start_with_its_reason
+    self.assertEqual(code, 0, out)
+AssertionError: 1 != 0 : {'error': 'run run-3a67da46ab89: the first turn ended at once: Fake harness: nothing to do.', 'next': 'read /tmp/<test>/state/run-3a67da46ab89.log, fix what the harness refused, then start again'}
+
+----------------------------------------------------------------------
+Ran 1 test in 0.739s
+
+FAILED (failures=2)

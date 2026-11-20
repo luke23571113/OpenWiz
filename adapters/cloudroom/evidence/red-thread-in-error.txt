@@ -1,0 +1,17 @@
+$ python3 -I adapters/cloudroom/test_driver.py   # at the redaction test, before the fix (red)
+test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... ok
+test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... ok
+test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... FAIL
+
+======================================================================
+FAIL: test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/adapters/cloudroom/test_driver.py", line 91, in test_wake_is_the_fleet_routes_queued_delivery
+    self.assertNotIn(thread, json.dumps(out), "Cloudroom's refusal showed the run's thread")
+AssertionError: 'thr_syn_0001' unexpectedly found in '{"error": "Cloudroom did not take the wake: Synthetic refusal of thread tell thr_syn_0001.", "next": "leave the run as it is; the next GitHub event or safety-net check wakes it again"}' : Cloudroom's refusal showed the run's thread
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.814s
+
+FAILED (failures=1)

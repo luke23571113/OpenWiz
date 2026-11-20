@@ -1,0 +1,17 @@
+test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) ... ok
+test_missing_or_unknown_harness_is_an_error_with_next (__main__.Local.test_missing_or_unknown_harness_is_an_error_with_next) ... ok
+test_several_runs_at_once_stop_only_their_own (__main__.Local.test_several_runs_at_once_stop_only_their_own) ... ok
+test_wake_while_a_turn_runs_starts_no_second_turn (__main__.Local.test_wake_while_a_turn_runs_starts_no_second_turn) ... FAIL
+
+======================================================================
+FAIL: test_wake_while_a_turn_runs_starts_no_second_turn (__main__.Local.test_wake_while_a_turn_runs_starts_no_second_turn)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 139, in test_wake_while_a_turn_runs_starts_no_second_turn
+    self.assertEqual(len(self.turns(run)), 1)
+AssertionError: 2 != 1
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.970s
+
+FAILED (failures=1)

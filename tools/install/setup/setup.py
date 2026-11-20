@@ -42,7 +42,7 @@ HERE = Path(__file__).resolve().parent
 PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write',
            'pull_requests': 'write', 'checks': 'read', 'actions': 'read'}
 WRITES = ('contents', 'issues', 'pull_requests')
-SKILLS = ('setup', 'grill', 'plan-graph', 'launch-fleet')
+SKILLS = ('setup', 'grill', 'to-tickets', 'launch-fleet')
 API = 'https://api.github.com'
 TIMEOUT = 30
 
