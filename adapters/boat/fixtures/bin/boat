@@ -65,7 +65,8 @@ def run_in_sandbox(args):
     os.makedirs(home(args[0]), exist_ok=True)
     bin = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sandbox-bin')
     p = subprocess.run(['sh', '-c', args[6]], capture_output=True, text=True, cwd=home(args[0]),
-                       env={'HOME': home(args[0]), 'PATH': bin + os.pathsep + os.environ['PATH']})
+                       env={'HOME': home(args[0]), 'PATH': bin + os.pathsep + os.environ['PATH'],
+                            'FAKE_WIZ_COMMIT': os.environ.get('FAKE_WIZ_COMMIT', '')})
     print(json.dumps({'exitCode': p.returncode, 'stdout': p.stdout, 'stderr': p.stderr}))
     sys.exit(p.returncode)
 
