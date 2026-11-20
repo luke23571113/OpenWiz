@@ -13,7 +13,7 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 FixtureCase = runpy.run_path(str(HERE / 'test_smoke.py'))['FixtureCase']
-SHIP3 = ['install', 'json', 'send', 'new']
+SHIP3 = ['install', 'json', 'send', 'new', 'app']  # 0.1.0 adds the App read (#1727)
 # A sentinel no output may ever print: it stands for a private input value.
 PRIVATE = 'thr_synthetic_private_input'
 SCOPE = {'targets': ['synthetic-target'], 'writes': {'send': 1, 'new': 1},
@@ -72,6 +72,7 @@ class Claims(FixtureCase):
                 self.state = self.root / ('state-' + name.replace(' ', '-').replace(',', ''))
                 self.assertEqual(self.report(self.invoke(), 2)['reason'], reason)
                 self.assertEqual(self.call_list(), [])
+
 
 class Coverage(FixtureCase):
     """The 0.0.17 lesson (#1727): a risk step in no coverage row refuses at kit load."""
@@ -167,8 +168,8 @@ class Inputs(unittest.TestCase):
         collect(json.loads((HERE / 'combined.template.json').read_text()))
         records = {}
         for name in names:
-            if name == 'release':
-                records[name] = {'scope': SCOPE, 'products': [], 'coverage': [], 'risk': {}, 'gaps': []}
+            if name == 'release_targets':
+                records[name] = SCOPE['targets']
             elif name.endswith('_checks'):
                 records[name] = [{'path': '/count', 'equals': 1}]
             elif name.endswith('_argv'):

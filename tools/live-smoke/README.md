@@ -11,14 +11,15 @@ python3 -I tools/live-smoke/test_fixture.py --cli target/debug/examples/openwiz 
 
 ## The standard sheet
 
-`combined.template.json` declares `"claims": ["install", "json", "send", "new"]` and these ten steps only:
+`combined.template.json` declares `"claims": ["install", "json", "new", "send", "app"]` and these eleven steps only:
 
 | Claim | Steps | Checks |
 | --- | --- | --- |
 | `install` | `install_status` | The normal install route's build: `installed`, `packaged`, and the candidate's version, source, target and build |
 | `json` | `catalogue`, `inventory`, `show` | `openwiz help --agent` is the accepted catalogue; `openwiz ls --json` is complete; `openwiz show <throwaway> --json` reads it |
-| `send` | `send_preview`, `send_once`, `send_lookup` | One message to one throwaway thread, previewed, sent once, read back by op id |
-| `new` | `new_preview`, `new_once`, `new_status` | One new Cloud thread in one throwaway project, previewed, created once, read back by op id |
+| `new` | `new_preview`, `new_once`, `new_status`, `driver_stop`, `stop_status` | The pinned Cloudroom driver (KN4) answers `version`, then `start` runs once on the throwaway repository, ticket and project; `room-cli thread show` reads its thread back in that project, then `stop` archives it and a second read shows it archived. On any failure after `new_once`, PC hands runs the driver's `stop` on that run by hand and records it: the runner has no cleanup phase |
+| `send` | `send_once` | The driver's `wake` once, to the run `new_once` started |
+| `app` | `app_repositories` | `gh api /installation/repositories` with the App token: exactly one repository, the approved one |
 
 Nothing else a version claims is live-tested by it; the kit's `release.gaps` must list the rest. A kit with no `claims` runs the runner's general features: fleet read-back blocks (reads and an `await` until the fleet's own work shows) and the reviewed `cleanup.py` probe.
 
