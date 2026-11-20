@@ -59,6 +59,7 @@ Where they disagree, the contract is wrong and must be fixed.
       "OPENWIZ_TOKEN_SERVICE_ROUTE": ["pairing", "local"]
     }
   },
+  "request": {"repeated_key": "usage", "repository_case": "insensitive"},
   "answer": {
     "max_lifetime_s": 3900,
     "scope": "exactly the requested repositories and permissions"
@@ -115,7 +116,9 @@ way it already reaches the owner's machine:
 
 `<service>` is the service's absolute path on the owner's machine, from
 `OPENWIZ_TOKEN_SERVICE`; `OPENWIZ_TOKEN_SERVICE_ROUTE` says `pairing` or
-`local`. Neither is a secret. The request goes on standard input, never on
+`local`. Neither is a secret. The path sits inside single quotes on the
+pairing route, so a path holding a single quote or a line break is refused by
+the helper as `unreachable`, never run. The request goes on standard input, never on
 the command line. The answer comes back as **one JSON line on standard
 output, read from a pipe**: the caller never lets it reach a terminal, a
 transcript or a log. A call has 60 seconds.
@@ -125,7 +128,8 @@ service answers like an unreachable one.
 
 ## The request
 
-One JSON object (`#/$defs/request` in the schema):
+One JSON object (`#/$defs/request` in the schema), each key once: a repeated
+key, at any depth, is a `usage` refusal, never the last value silently kept.
 
 ```json
 {"schema": "openwiz.token-service.v1", "kind": "request", "requester": "builder-1839",
@@ -134,6 +138,8 @@ One JSON object (`#/$defs/request` in the schema):
 
 - **`repositories`:** one or more `owner/name`, all of one owner (one
   installation mints one token). Each must be in the App's installation.
+  Owners and names compare without regard to case, as GitHub's do; the answer
+  echoes them as requested.
 - **`permissions`:** at most the App's: each name in the App's profile above,
   each level no higher than the App's (`read` is below `write`). A read-only
   use asks for read levels only (github-identity.v1's read profile).
@@ -210,7 +216,8 @@ does nothing and prints nothing: starts are exactly as today.
 - **The mint log** is owner-only (0600) on the owner's machine: one line per
   request with `at`, `requester`, `repositories`, `permissions`, `outcome`
   (`minted` or the refusal code) and, when minted, `expires_at`
-  (`#/$defs/mint_log`). It has no token, key or JWT field, and the schema
+  (`#/$defs/mint_log`). A `usage` refusal logs `requester` as `-` and no
+  repositories or permissions: nothing from an unreadable request is trusted. It has no token, key or JWT field, and the schema
   refuses one.
 - Approvals, repository settings and pushes that change `.github/workflows/`
   stay on the owner's own login (github-identity.v1's roles).
