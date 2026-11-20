@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -441,6 +442,168 @@ class ShippedCommands(unittest.TestCase):
             words = [a for a in argv[1:] if not a.startswith(('-', '@'))]
             self.assertTrue(any(words[:len(c)] == c for c in shipped),
                             f"{step['id']}: openwiz {' '.join(argv[1:])} is not a shipped command")
+
+
+# The 0.1.0 sheet's synthetic programs (#1727). The driver is a stand-in for
+# KN4's Cloudroom driver at its contract (kernel/driver.v1.md): JSON in on stdin,
+# one JSON answer out, its runs kept in OPENWIZ_CLOUDROOM_STATE, and a thread
+# that only room-cli can read back.
+FAKE_DRIVER = """#!/usr/bin/env python3
+import json, os, pathlib, sys
+root = pathlib.Path(__file__).parent
+state = pathlib.Path(os.environ['OPENWIZ_CLOUDROOM_STATE'])
+cmd = sys.argv[1]
+body = sys.stdin.read()
+with (root / 'driver-calls').open('a') as log:
+    log.write(json.dumps([cmd, json.loads(body) if body else None]) + '\\\\n')
+if cmd == 'version':
+    out = {'driver': 'cloudroom', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
+elif cmd == 'start':
+    req = json.loads(body)
+    assert type(req['ticket']) is int and os.environ['ROOM_PROJECT_ID'] == 'proj_synthetic'
+    state.mkdir(exist_ok=True)
+    (state / 'run-0123456789ab.json').write_text(json.dumps({'thread': 'thr_synthetic_private', 'request': req}))
+    (root / 'room-state').write_text(json.dumps({'projectId': 'proj_synthetic', 'archived': False}))
+    out = {'run': 'run-0123456789ab'}
+elif cmd == 'wake':
+    out = {'run': json.loads(body)['run'], 'woke': True}
+elif cmd == 'stop':
+    (root / 'room-state').write_text(json.dumps({'projectId': 'proj_synthetic', 'archived': True}))
+    out = {'run': json.loads(body)['run'], 'stopped': True}
+print(json.dumps(out))
+"""
+FAKE_ROOM = """#!/usr/bin/env python3
+import json, pathlib, sys
+root = pathlib.Path(__file__).parent
+assert sys.argv[1:] == ['thread', 'show', 'thr_synthetic_private'], sys.argv
+print(json.dumps(dict(json.loads((root / 'room-state').read_text()), id='thr_synthetic_private', parent='thr_synthetic_private')))
+"""
+FAKE_CLI = """#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+if args[:1] == ['status']:
+    out = {'schema': 'openwiz.install-status.v1', 'outcome': 'installed', 'channel': 'packaged', 'version': '0.1.0',
+           'source': 'synthetic-source', 'target': 'synthetic-target', 'build': 'synthetic-build'}
+elif args == ['help', '--agent']:
+    out = {'schema': 'openwiz.cli.v1', 'kind': 'catalogue', 'commands': ['synthetic']}
+elif args == ['ls', '--json']:
+    out = {'schema': 'openwiz.inventory.v1', 'coverage': {'state': 'complete'}, 'gaps': [], 'data': {'sessions': []}}
+elif args[:1] == ['show']:
+    out = {'schema': 'openwiz.inventory.v1', 'data': {'session': {'id': args[1]}}}
+elif args == ['api', '/installation/repositories']:
+    out = {'total_count': 1, 'repositories': [{'full_name': 'example/throwaway'}]}
+print(json.dumps(out))
+"""
+DRIVER_STEPS = {'new_once': 'start', 'send_once': 'wake', 'driver_stop': 'stop'}
+
+
+def template():
+    return json.loads(RUNNER.with_name('combined.template.json').read_text())
+
+
+class Sheet(unittest.TestCase):
+    """#1727: the 0.1.0 kit sheet, its driver steps and its release section."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def program(self, name, text):
+        path = self.root / name
+        path.write_text(text)
+        path.chmod(0o700)
+        return str(path)
+
+    def bound(self):
+        """The template bound to synthetic inputs, as prepare.py would."""
+        cli = self.program('openwiz', FAKE_CLI)
+        programs = {'openwiz': cli, 'gh': cli, 'install_entry': cli,
+                    'driver': self.program('driver', FAKE_DRIVER), 'room_cli': self.program('room-cli', FAKE_ROOM)}
+        (self.root / 'state').mkdir()
+        inputs = dict(programs, mode='fixture', cwd=str(self.root), python=sys.executable,
+                      artifacts={p: FixtureCase.sha(Path(p)) for p in set(programs.values()) | {sys.executable}},
+                      source={'checkout': str(self.root), 'head': '0' * 40},
+                      env={'OPENWIZ_CLOUDROOM_STATE': str(self.root / 'state'), 'ROOM_PROJECT_ID': 'proj_synthetic'},
+                      install_root='/synthetic/root', install_state='/synthetic/state', install_build='synthetic-build',
+                      release_version='0.1.0', release_source='synthetic-source', release_target='synthetic-target',
+                      release_targets=['x86_64-unknown-linux-gnu'],
+                      release_products=[{'product': 'cli', 'target': 'x86_64-unknown-linux-gnu'}],
+                      release_gaps=['synthetic gap'], promise_install='synthetic_install',
+                      promise_drivers='synthetic_drivers', promise_app='synthetic_app',
+                      expected_catalogue_commands=['synthetic'], send_thread='thr_synthetic_show',
+                      project='proj_synthetic', driver_repository='example/throwaway', driver_ticket='7',
+                      driver_skill='synthetic-skill', harness='claude', model='synthetic-model',
+                      app_repository='example/throwaway')
+        prepare = runpy_path('prepare.py')
+        return prepare['bind'](template(), inputs)
+
+    def test_bound_sheet_loads_and_its_release_section_is_accepted(self):
+        """catches: a 0.1.0 sheet the runner or the receipt refuses only when the
+        PC prepares it on the candidate's hashes (Saturday), not here."""
+        kit = self.bound()
+        path = self.root / 'kit.json'
+        path.write_text(json.dumps(kit))
+        SMOKE.load_kit(path)
+        receipt = runpy_path('receipt.py')
+        section = receipt['release_section'](kit)
+        self.assertEqual(section['scope']['writes'], {'send': 1, 'new': 1})
+        self.assertEqual(section['scope']['spending_cents'], 0)
+
+    def test_driver_steps_start_wake_and_stop_one_run_through_the_runner(self):
+        """catches: a driver step the runner can't feed (the driver reads its
+        request on stdin; the runner gives none), a wake or stop that doesn't
+        reach the run start made, a second start, or a sheet that leaves the
+        run's thread unarchived."""
+        kit = self.bound()
+        path = self.root / 'kit.json'
+        path.write_text(json.dumps(kit))
+        result = subprocess.run([sys.executable, '-I', str(RUNNER), '--kit', str(path),
+                                 '--state', str(self.root / 'checkpoint'), '--fixture'],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('thr_synthetic_private', result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)['claims'], {c: 'pass' for c in kit['claims']})
+        calls = [json.loads(line) for line in (self.root / 'driver-calls').read_text().splitlines()]
+        self.assertEqual([c for c, _ in calls], ['version', 'start', 'wake', 'stop'])
+        self.assertEqual(calls[1][1], {'repository': 'example/throwaway', 'ticket': 7, 'skill': 'synthetic-skill',
+                                       'harness': 'claude', 'model': 'synthetic-model'})
+        self.assertEqual(calls[2][1], {'run': 'run-0123456789ab'})
+        self.assertEqual(calls[3][1], {'run': 'run-0123456789ab'})
+        self.assertTrue(json.loads((self.root / 'room-state').read_text())['archived'])
+
+    def test_driver_steps_call_only_driver_v1_commands_on_the_pinned_driver(self):
+        """catches: a driver step naming a command the driver contract doesn't
+        have, a driver write run outside the pinned `@driver`, or a stop missing
+        so the throwaway's agent is left running."""
+        contract = (RUNNER.resolve().parents[2] / 'kernel/driver.v1.md').read_text()
+        commands = set(re.findall(r'^\| `([a-z]+)` \|', contract, re.M))
+        self.assertTrue({'start', 'wake', 'stop'} <= commands, commands)
+        steps = {s['id']: s for s in template()['steps']}
+        for step in steps.values():
+            if '@driver' in step['argv']:
+                at = step['argv'].index('@driver')
+                self.assertEqual(step['argv'][:at], ['@python', '-I', '-c', step['argv'][3]], step['id'])
+                self.assertIn(step['argv'][at + 1], commands, step['id'])
+        self.assertEqual({i: steps[i]['argv'][5] for i in DRIVER_STEPS}, DRIVER_STEPS)
+        writes = sorted(s['id'] for s in steps.values() if s['kind'] == 'write')
+        self.assertEqual(writes, ['new_once', 'send_once'])
+
+    def test_every_risk_step_has_a_coverage_row(self):
+        """catches: 0.0.17's blocker, a risk step in no `release.coverage` row,
+        so the risk receipt's expected coverage is empty and the gate refuses
+        `coverage_mismatch` only after the live run."""
+        release = template()['release']
+        covered = {step for row in release['coverage'] for step in row['steps']}
+        for category in ('send', 'new', 'app_permissions'):
+            self.assertTrue(release['risk'][category], category)
+            self.assertLessEqual(set(release['risk'][category]), covered, category)
+        self.assertEqual(release['risk']['spending'], [])
+
+
+def runpy_path(name):
+    import runpy
+    return runpy.run_path(str(RUNNER.with_name(name)))
 
 
 if __name__ == '__main__':
