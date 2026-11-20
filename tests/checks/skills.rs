@@ -1,6 +1,3 @@
-//! OpenWiz's install, onboarding and setup journeys, run through Python
-//! from the checks target so CI's Rust lane covers them.
-
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
 #[test]
