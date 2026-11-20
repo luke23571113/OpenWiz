@@ -202,7 +202,7 @@ def members(roots, recorded):
         if len(f) < 5 or f[3].startswith('Z'):
             continue
         pid, ppid, group = int(f[0]), int(f[1]), int(f[2])
-        started[pid] = ' '.join(f[4].split())
+        started[pid] = f[4].strip()
         children.setdefault(ppid, []).append(pid)
         if group in roots or recorded.get(pid) == started[pid]:
             found.add(pid)
@@ -219,7 +219,7 @@ def since(pid):
     """When process pid started, or None once it has exited: with its pid, this names one process."""
     if not LINUX:
         row = ps('-o', 'stat=', '-o', 'lstart=', '-p', str(pid))[0]
-        return ' '.join(row[0].split()[1:]) if row and not row[0].lstrip().startswith('Z') else None
+        return row[0].split(None, 1)[1].strip() if row and not row[0].lstrip().startswith('Z') else None
     try:
         with open('/proc/%d/stat' % pid) as f:
             fields = f.read().rpartition(')')[2].split()
@@ -545,8 +545,6 @@ def supervisor_records(run):
     return sorted(os.path.join(STATE, n) for n in names if n.startswith(run + '.') and n.endswith('.sup'))
 
 
-# PRIVACY: finds a run's unsaved turns only by the records their supervisors wrote in its state folder, never
-# by reading another process's environment.
 def recorded_by(run, supervisors):
     recorded = {}
     for name in supervisor_records(run):
@@ -560,6 +558,8 @@ def recorded_by(run, supervisors):
     return recorded
 
 
+# PRIVACY: finds a run's unsaved turns only by the records their supervisors wrote in its state folder, never
+# by reading another process's environment.
 def strays(run, known):
     found = []
     for name in supervisor_records(run):
