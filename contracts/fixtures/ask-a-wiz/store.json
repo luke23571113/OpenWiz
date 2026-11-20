@@ -1,11 +1,12 @@
 {
-  "note": "Synthetic: the whole store after a day of synthetic questions. Only these key forms exist.",
-  "rows": [
+  "note": "Synthetic: the whole store after a day of synthetic questions. Only these forms exist.",
+  "salts": [
     {
       "day": "2026-01-15",
-      "key": "salt:df78e3e5ba90348fbe926b2adb0915d6dbac592d0be7f50c56d5dfd5266d4dd6",
-      "count": 0
-    },
+      "salt": "df78e3e5ba90348fbe926b2adb0915d6dbac592d0be7f50c56d5dfd5266d4dd6"
+    }
+  ],
+  "counters": [
     {
       "day": "2026-01-15",
       "key": "cap",

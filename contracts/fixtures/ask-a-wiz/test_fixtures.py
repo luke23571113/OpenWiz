@@ -173,6 +173,10 @@ def outcome(pin, case):
     return run(pin, case)[0]
 
 
+def canon(store):
+    return {k: sorted(json.dumps(r, sort_keys=True) for r in v) for k, v in store.items()}
+
+
 def store_problems(store):
     if not isinstance(store, dict) or sorted(store) != ['counters', 'salts']:
         return ['the store is not just its counters and salts']
@@ -201,7 +205,7 @@ def problems(pin, case, name):
     if shape:
         return out + shape
     expected, after, clock = run(pin, case)
-    if case['store_after'] != after:
+    if canon(case['store_after']) != canon(after):
         out.append('the store after is not what the order of checks writes')
     if expected in ('off', 'probe') and case['upstream'] is not None:
         out.append('a call went upstream while off or on a probe')
