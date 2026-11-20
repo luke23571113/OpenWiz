@@ -1,4 +1,4 @@
-# Green run (#2019): python3 -I adapters/boat/test_driver.py -v (#2024's approved head f5d6bac2, main merged in, plus the driver v1 D3 length guard): the push-access tests (red in red-2019.txt) and every earlier driver test, the kit's five checks on Linux and on the no-/proc (macOS-style) fixture included.
+# Green run (#2019, after review R1 and R2): python3 -I adapters/boat/test_driver.py -v at 5fb17c89: the push-access tests (red in red-2019.txt and red-2019-review.txt) and every earlier driver test, the kit's five checks on Linux and on the no-/proc (macOS-style) fixture included.
 test_a_bad_settle_setting_refuses_start_and_never_blocks_stop (__main__.Boat.test_a_bad_settle_setting_refuses_start_and_never_blocks_stop) ... ok
 test_a_failed_stop_is_never_undone_by_a_wake (__main__.Boat.test_a_failed_stop_is_never_undone_by_a_wake) ... ok
 test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start (__main__.Boat.test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start) ... ok
@@ -9,6 +9,7 @@ test_a_start_that_fails_leaves_no_sandbox_running (__main__.Boat.test_a_start_th
 test_a_wake_after_the_turn_ended_prompts_the_saved_conversation (__main__.Boat.test_a_wake_after_the_turn_ended_prompts_the_saved_conversation) ... ok
 test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it (__main__.Boat.test_a_wake_never_resumes_a_stopped_sandbox_and_stop_ends_it) ... ok
 test_a_working_first_turn_answers_within_the_settle_time (__main__.Boat.test_a_working_first_turn_answers_within_the_settle_time) ... ok
+test_a_writable_repository_that_has_an_old_probe_branch_starts (__main__.Boat.test_a_writable_repository_that_has_an_old_probe_branch_starts) ... ok
 test_an_unexpected_error_leaves_nothing_running (__main__.Boat.test_an_unexpected_error_leaves_nothing_running) ... ok
 test_kit_passes_all_five (__main__.Boat.test_kit_passes_all_five) ... ok
 test_on_macos_the_driver_never_asks_ps_for_any_process_environment (__main__.Boat.test_on_macos_the_driver_never_asks_ps_for_any_process_environment) ... ok
@@ -30,6 +31,6 @@ test_wake_checks_its_save_before_and_after_spawn (__main__.Boat.test_wake_checks
 test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild (__main__.Boat.test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild) ... ok
 
 ----------------------------------------------------------------------
-Ran 23 tests
+Ran 24 tests
 
 OK
