@@ -247,6 +247,7 @@ class MintedToken(Helper):
         self.assertFalse((self.home / ".git-credentials").exists())
         self.assertEqual(len(self.service_calls()), 1, "a fresh token is reused, not minted again")
         self.assertEqual(list(self.private.glob("run-*")), [], "each run removes its snapshot")
+        self.assertEqual(list(self.private.glob("exec-*")), [], "and its git exec folder")
         self.assert_never_exposed(started, ran, git)
 
     def test_the_request_names_repositories_and_permissions_only(self):
@@ -449,6 +450,7 @@ class Review(Helper):
         (tree / "private").mkdir(mode=0o700)
         safe = self.root / "safe"
         (safe / "private").mkdir(parents=True, mode=0o700)
+        safe.chmod(0o700)  # under any umask, so only the swap can redirect it
         real_open = os.open
 
         def swap_then_open(path, *args, **kwargs):

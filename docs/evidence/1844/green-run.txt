@@ -1,4 +1,4 @@
-$ python3 -I tools/github-app/test_agent_token.py -v   (umask 022; also passes under 077 and 002)
+$ python3 -I tools/github-app/test_agent_token.py -v   (umask 022; also passes under 077 and 002, and with git 2.39 and 2.56)
 test_a_failed_refresh_leaves_no_service_credential (__main__.Fallback.test_a_failed_refresh_leaves_no_service_credential) ... ok
 test_a_path_that_cannot_be_quoted_is_never_run (__main__.Fallback.test_a_path_that_cannot_be_quoted_is_never_run) ... ok
 test_a_service_that_does_not_answer_in_time (__main__.Fallback.test_a_service_that_does_not_answer_in_time) ... ok
@@ -7,7 +7,7 @@ test_no_service_configured_is_exactly_as_today (__main__.Fallback.test_no_servic
 test_unreachable_service_falls_back_with_one_note (__main__.Fallback.test_unreachable_service_falls_back_with_one_note) ... ok
 test_a_local_thread_runs_the_service_itself (__main__.MintedToken.test_a_local_thread_runs_the_service_itself) ... ok
 test_a_private_place_inside_a_git_tree_is_refused (__main__.MintedToken.test_a_private_place_inside_a_git_tree_is_refused) ... ok
-test_gh_and_git_use_the_minted_token (__main__.MintedToken.test_gh_and_git_use_the_minted_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 43805), raddr=('127.0.0.1', 33014)>
+test_gh_and_git_use_the_minted_token (__main__.MintedToken.test_gh_and_git_use_the_minted_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 44509), raddr=('127.0.0.1', 50638)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
@@ -18,17 +18,20 @@ test_the_contract_refresh_boundary (__main__.Refresh.test_the_contract_refresh_b
 test_r1_a_git_credential_command_never_prints_the_token (__main__.Review.test_r1_a_git_credential_command_never_prints_the_token) ... ok
 test_r1_credential_answers_only_inside_git_exchange (__main__.Review.test_r1_credential_answers_only_inside_git_exchange) ... ok
 test_r2_a_symlinked_ancestor_into_a_git_tree_is_refused (__main__.Review.test_r2_a_symlinked_ancestor_into_a_git_tree_is_refused) ... ok
+test_r2_an_ancestor_its_group_can_change_is_refused (__main__.Review.test_r2_an_ancestor_its_group_can_change_is_refused) ... ok
 test_r2_an_ancestor_others_can_change_is_refused (__main__.Review.test_r2_an_ancestor_others_can_change_is_refused) ... ok
 test_r2_an_ancestor_swapped_before_the_open_never_redirects_the_token (__main__.Review.test_r2_an_ancestor_swapped_before_the_open_never_redirects_the_token) ... ok
 test_r3_two_agents_on_one_account_keep_their_own_scopes (__main__.Review.test_r3_two_agents_on_one_account_keep_their_own_scopes) ... ok
 test_r4_a_command_scope_helper_never_gets_the_token (__main__.Review.test_r4_a_command_scope_helper_never_gets_the_token) ... ok
 test_r6_a_failed_start_inside_a_run_hands_no_app_token_on (__main__.Review.test_r6_a_failed_start_inside_a_run_hands_no_app_token_on) ... ok
-test_r7_a_later_owner_helper_never_authenticates_git (__main__.Review.test_r7_a_later_owner_helper_never_authenticates_git) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 46159), raddr=('127.0.0.1', 49980)>
+test_r7_a_later_owner_helper_never_authenticates_git (__main__.Review.test_r7_a_later_owner_helper_never_authenticates_git) ... ok
+test_r7_a_replaced_helper_list_or_header_never_authenticates_git (__main__.Review.test_r7_a_replaced_helper_list_or_header_never_authenticates_git) ... ok
+test_r8_git_http_tracing_never_shows_the_token (__main__.Review.test_r8_git_http_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 40317), raddr=('127.0.0.1', 42972)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
 
 ----------------------------------------------------------------------
-Ran 22 tests
+Ran 25 tests
 
 OK

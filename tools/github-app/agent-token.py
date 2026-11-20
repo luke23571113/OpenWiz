@@ -17,7 +17,11 @@ replace each other's tokens. Each run copies its token into a snapshot file
 that lives only while COMMAND runs; gh gets it as GH_TOKEN and git through
 `credential --snapshot`, which answers only git's own HTTPS transport. Whenever
 it cannot answer inside a run, it prints one note and tells git to quit, so git
-never signs in as another account after the App was chosen.
+never signs in as another account after the App was chosen. The run also gives
+git its own exec folder, whose `git-remote-http(s)` is `transport`: before git's
+real transport starts, it drops curl tracing, and for
+github.com refuses unless the App's helper is the last credential helper and no
+extra header or URL credential could sign git in as someone else.
 
 With OPENWIZ_TOKEN_SERVICE unset or empty, each command changes nothing and
 prints nothing: run runs COMMAND exactly as today.
@@ -33,6 +37,7 @@ import stat
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 SCHEMA = "openwiz.token-service.v1"
@@ -50,6 +55,9 @@ TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
 REFUSAL_MESSAGE = re.compile(r"Token refused: [^\n]+\.")
 GIT_HELPER_KEY = "credential.https://github.com.helper"
 RUN_MARK, GIT_MARK = "OPENWIZ_AGENT_TOKEN_RUN", "OPENWIZ_AGENT_TOKEN_GIT_AT"
+EXEC_MARK = "OPENWIZ_AGENT_TOKEN_EXEC_WAS"  # "0" unset, else "1" and the owner's GIT_EXEC_PATH
+TRANSPORTS = ("git-remote-http", "git-remote-https")
+CURL_TRACES = ("GIT_TRACE_CURL", "GIT_TRACE_CURL_NO_DATA", "GIT_CURL_VERBOSE")
 USAGE = ("agent-token.py start REQUEST | run REQUEST -- COMMAND [ARG...]; "
          "REQUEST is --requester LABEL --repository OWNER/NAME... [--read]")
 
@@ -189,7 +197,7 @@ class Private:
         """The descriptor of `part` inside `fd`, created 0700 when missing."""
         _outside_git(fd)
         above, me = os.fstat(fd), os.getuid()
-        others = above.st_mode & 0o002 or (above.st_mode & 0o020 and above.st_gid != os.getgid())
+        others = above.st_mode & 0o022  # a group, even the caller's own, can have other members
         if above.st_uid not in (0, me) or (others and not above.st_mode & stat.S_ISVTX):
             raise Refused("the private token directory must sit in folders only you or root can change")
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -233,6 +241,18 @@ class Private:
         except BaseException:
             self.unlink(temporary)
             raise
+
+    def remove_folder(self, name):
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.fd)
+        except FileNotFoundError:
+            return
+        try:
+            for entry in os.listdir(fd):
+                os.unlink(entry, dir_fd=fd)
+        finally:
+            os.close(fd)
+        os.rmdir(name, dir_fd=self.fd)
 
     def unlink(self, name):
         try:
@@ -321,6 +341,11 @@ def without_inherited(env):
         return child
     child.pop(RUN_MARK)
     child.pop("GH_TOKEN", None)
+    was = child.pop(EXEC_MARK, "")
+    if was.startswith("1"):
+        child["GIT_EXEC_PATH"] = was[1:]
+    elif was == "0":
+        child.pop("GIT_EXEC_PATH", None)
     first = child.pop(GIT_MARK, "")
     count = child.get("GIT_CONFIG_COUNT", "0")
     if first.isdigit() and count.isdigit():
@@ -354,7 +379,12 @@ def run(args, env):
     name = f"run-{secrets.token_hex(16)}.json"
     snapshot = os.path.join(private.path, name)
     private.write(name, {"token": token, "expires_at": expires_at})
+    farm = None
     try:
+        farm, real = exec_folder(private, child)
+        if farm:
+            child[EXEC_MARK] = "1" + child["GIT_EXEC_PATH"] if "GIT_EXEC_PATH" in child else "0"
+            child["GIT_EXEC_PATH"] = os.path.join(private.path, farm)
         count = child.get("GIT_CONFIG_COUNT", "0") or "0"
         if not count.isdigit():
             raise Refused("GIT_CONFIG_COUNT must be a number")
@@ -367,6 +397,42 @@ def run(args, env):
         return execute(command, child, wait=True)
     finally:
         private.unlink(name)
+        if farm:
+            private.remove_folder(farm)
+
+
+def exec_folder(private, child):
+    """(name, real) of this run's git exec folder in the private directory, or (None, None)
+    when git is not installed. It links every program of git's real exec folder, except
+    git-remote-http(s), which run `transport` first."""
+    try:
+        real = subprocess.run(["git", "--exec-path"], env=child, capture_output=True, text=True,
+                              timeout=10).stdout.strip()
+        names = os.listdir(real) if real.startswith("/") else []
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    if not names:
+        return None, None
+    name = f"exec-{secrets.token_hex(16)}"
+    os.mkdir(name, 0o700, dir_fd=private.fd)
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=private.fd)
+    try:
+        for entry in names:
+            target = os.path.join(real, entry)
+            if entry not in TRANSPORTS:
+                os.symlink(target, entry, dir_fd=fd)
+                continue
+            script = os.open(entry, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o700, dir_fd=fd)
+            with os.fdopen(script, "w") as handle:
+                handle.write(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} -I "
+                             f"{shlex.quote(os.path.abspath(__file__))} transport "
+                             f"{shlex.quote(target)} \"$@\"\n")
+    except BaseException:
+        os.close(fd)
+        private.remove_folder(name)
+        raise
+    os.close(fd)
+    return name, real
 
 
 def execute(command, env, wait=False):
@@ -386,27 +452,62 @@ def execute(command, env, wait=False):
             continue  # the terminal's interrupt reached the command too
 
 
+def config_problem(snapshot, env):
+    """None when git, as configured right now, can sign in to github.com only through this
+    run's helper: it is the last credential helper and no extra header is set. Else the reason."""
+    try:
+        listed = subprocess.run(["git", "config", "--list", "-z"], capture_output=True,
+                                env=env, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return "cannot read git's configuration"
+    if listed.returncode != 0:
+        return "cannot read git's configuration"
+    helpers = []
+    for item in listed.stdout.split(b"\0"):
+        key, _, value = item.decode("utf-8", "replace").partition("\n")
+        key = key.lower()
+        if key.startswith("http.") and key.endswith(".extraheader") and value:
+            return "an extra HTTP header is set"
+        if key.startswith("credential.") and key.endswith(".helper"):
+            helpers.append((key, value))
+    if helpers[-2:] != [(GIT_HELPER_KEY.lower(), ""), (GIT_HELPER_KEY.lower(), git_helper(snapshot))]:
+        return "another credential helper follows or replaces it"
+    return None
+
+
 def only_git_transport(snapshot, env):
     """None inside git's own HTTPS transport with this run's helper last, else the reason."""
     try:
         parent = subprocess.run(["ps", "-o", "comm=", "-p", str(os.getppid())],
                                 capture_output=True, text=True, timeout=10).stdout.strip()
-        listed = subprocess.run(["git", "config", "--list", "-z"], capture_output=True,
-                                env=env, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return "cannot check the caller"
     # git-remote-https (truncated to 15 characters by ps on Linux) sends the answer
     # to github.com only; `git credential fill` would print it to its caller.
-    if not os.path.basename(parent).startswith("git-remote-http") or listed.returncode != 0:
+    if not os.path.basename(parent).startswith("git-remote-http"):
         return "not git's HTTPS transport"
-    helpers = []
-    for item in listed.stdout.split(b"\0"):
-        key, _, value = item.decode("utf-8", "replace").partition("\n")
-        if key.lower().startswith("credential.") and key.lower().endswith(".helper"):
-            helpers.append((key, value))
-    if helpers[-2:] != [(GIT_HELPER_KEY, ""), (GIT_HELPER_KEY, git_helper(snapshot))]:
-        return "another credential helper follows"
-    return None
+    return config_problem(snapshot, env)
+
+
+def transport(args, env):
+    """git-remote-http(s) inside a run: no curl tracing, and for github.com no identity
+    but the App's, checked before git's real transport can sign in."""
+    if not args or not os.path.isabs(args[0]) or os.path.basename(args[0]) not in TRANSPORTS:
+        raise Refused(f"usage: {USAGE}")
+    real, rest = args[0], args[1:]
+    for key in CURL_TRACES:  # git's only curl traces, which can show the Authorization header
+        env.pop(key, None)
+    url = urllib.parse.urlsplit(rest[-1] if len(rest) > 1 else "https://github.com")
+    if RUN_MARK in env and (url.hostname or "").lower() == "github.com":
+        reason = ("the URL holds a credential" if url.username or url.password
+                  else config_problem(env[RUN_MARK], env))
+        if reason:
+            sys.stderr.write(WITHHELD.format(reason))
+            return 128
+    try:
+        os.execve(real, [real, *rest], env)
+    except OSError:
+        raise Refused("cannot run git's transport")
 
 
 def snapshot_token(snapshot, env):
@@ -452,7 +553,7 @@ def credential(args, env):
 
 
 def main(argv):
-    commands = {"start": start, "run": run, "credential": credential}
+    commands = {"start": start, "run": run, "credential": credential, "transport": transport}
     try:
         if not argv or argv[0] not in commands:
             raise Refused(f"usage: {USAGE}")

@@ -243,8 +243,8 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   outside every Git working tree and reached through no symlink: `OPENWIZ_AGENT_TOKEN_DIR`,
   else `$XDG_RUNTIME_DIR/openwiz-agent-token`, else `~/.cache/openwiz-agent-token`.
   The helper reaches it one folder at a time from `/`, through held descriptors and never
-  through a symlink. Every folder on the way must be owned by root or you, and one others
-  can write to must be sticky, like `/tmp`. Anything else is refused before any call.
+  through a symlink. Every folder on the way must be owned by root or you, and one that anyone
+  else can write to, your own group included, must be sticky, like `/tmp`. Anything else is refused before any call.
 - **Handing it over.** `run` copies the token into a snapshot file that exists only while
   the command runs. It puts `GH_TOKEN` in the command's own environment and, through
   `GIT_CONFIG_*` variables, resets git's credential helpers for `https://github.com` to
@@ -254,7 +254,13 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   fill`, a hand-run call or a `-c credential.helper=...` after it, it writes one line to
   standard error, `openwiz: openwiz[bot] token withheld from git (<reason>); git stops
   rather than use another account`, and tells git to quit. git then fails, rather than
-  print the token or sign in as the owner. Nothing is exported to the agent's shell.
+  print the token or sign in as the owner. The run also gives git its own exec folder
+  (`GIT_EXEC_PATH`, removed when the command ends) whose `git-remote-http(s)` checks
+  first. It drops `GIT_TRACE_CURL`, `GIT_TRACE_CURL_NO_DATA` and `GIT_CURL_VERBOSE`, so
+  no trace shows the Authorization header. For github.com it refuses with the same
+  note unless this run's helper is the last credential helper, no `http.*.extraHeader`
+  is set and the URL holds no credential, so a `-c` that replaces the helper list
+  can't sign git in as the owner. Nothing is exported to the agent's shell.
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
   fresh request. An answer is used only when it names exactly the requested
   repositories and permissions and has more than 300 and at most 3900 seconds left.
