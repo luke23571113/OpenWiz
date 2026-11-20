@@ -198,15 +198,14 @@ class Package(unittest.TestCase):
                              ['pass version: openwiz:records v1, and the schema is driver v1'], checked.stderr)
 
     # catches: an installed build whose skills crash reading a WizSkills root file (#2014:
-    # launch-fleet's host.py loads the ops-dispatch schema from contracts/, status.py the
-    # plugin manifest), because the package carried only the release's skills/.
+    # launch-fleet's host.py loads the ops-dispatch schema from contracts/), because the
+    # package carried only the release's skills/.
     def test_installed_build_carries_the_wizskills_root_files_its_skills_read(self):
         release = ROOT / '.wizskills'
         self.assertTrue((release / '.git').is_dir(), 'Install the pinned WizSkills first: tools/wizskills/install.py')
         show = lambda *a: subprocess.check_output(['git', '-C', str(release), *a])
-        # The root files the shipped skills read at run time: code reads and the contracts they link.
+        # The root files the shipped skills read at run time: the contracts their code loads and their links name.
         roots = [p for p in show('ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', 'contracts').decode().split('\0') if p]
-        roots.append('.claude-plugin/plugin.json')
         with tempfile.TemporaryDirectory(prefix='openwiz-wizskills-products-') as temporary:
             root = Path(temporary)
             binaries = root / 'bin'
@@ -243,8 +242,7 @@ class Package(unittest.TestCase):
             for path in roots:
                 self.assertEqual((runtime / path).read_bytes(), show('show', 'HEAD:' + path), path)
             assets = json.loads(Path(str(output) + '.json').read_bytes())['assets']
-            self.assertEqual(sorted(a['path'] for a in assets if a['path'].startswith(('runtime/contracts/',
-                                                                                     'runtime/.claude-plugin/'))),
+            self.assertEqual(sorted(a['path'] for a in assets if a['path'].startswith('runtime/contracts/')),
                              sorted('runtime/' + path for path in roots))
 
     def bound_and_installed(self, root, target, identity_file, bundle, products=None, home=None):
