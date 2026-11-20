@@ -59,3 +59,29 @@ First differing element 0:
 Ran 1 test in 7.051s
 
 FAILED (failures=1)
+
+R1 red at c4c1fcc13ca0e304bad5e101a819584b65725f1c plus this test change:
+$ python3 -I kernel/driver-kit/test_kit.py Kit.test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes
+test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes (__main__.Kit.test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes) ... FAIL
+
+======================================================================
+FAIL: test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes (__main__.Kit.test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<repo>/kernel/driver-kit/test_kit.py", line 123, in test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes
+    self.assertEqual((p.returncode, p.stdout, p.stderr), (0, '.', ''))
+AssertionError: Tuples differ: (0, '', '') != (0, '.', '')
+
+First differing element 1:
+''
+'.'
+
+- (0, '', '')
++ (0, '.', '')
+?      +
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.028s
+
+FAILED (failures=1)

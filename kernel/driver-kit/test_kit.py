@@ -116,11 +116,11 @@ class Kit(unittest.TestCase):
                                   **spaced)
         self.assertEqual((code, out), (1, PLANTED['token-in-env']), err)
 
-    def test_the_kits_visibility_probe_runs_through_the_macos_shim_until_the_kit_closes_its_stdin(self):
+    def test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes(self):
         p = subprocess.run([os.path.join(NO_PROC, 'python3')] + module(os.path.join(HERE, 'kit.py')).PROBE,
                            input='', env=dict(self.env, NO_PROC_PYTHON=sys.executable), capture_output=True,
                            text=True, timeout=60)
-        self.assertEqual((p.returncode, p.stderr), (0, ''))
+        self.assertEqual((p.returncode, p.stdout, p.stderr), (0, '.', ''))
 
     def test_without_proc_or_any_visible_environment_stop_and_token_fail_unverified(self):
         blind = "ps shows no process's environment here, so the kit cannot tell which processes the driver started"
