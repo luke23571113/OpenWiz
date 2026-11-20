@@ -42,15 +42,15 @@ PROBES = (str(Path(__file__).resolve().with_name('cleanup.py')),)
 
 
 # my.openwiz.dev's server owns 7370 on the PC (#772): no step may reach it.
-# The terminal app (removed, #776) defaulted to it, so its launch forms still refuse.
+# The no-argument TUI always connects there, so it can never be a kit step.
 RESERVED_PORT = 7370
 
 
 def refuse_reserved_port(kit, argv):
     """Refuse 7370 wherever a step's argv reaches a loopback port: `--port N`,
-    and the HTTP probe's port. The removed terminal app's launch forms, which
-    once used that default (bare `openwiz`, `openwiz ui`, bare
-    `openwiz-terminal`), are refused as if they named 7370."""
+    and the HTTP probe's port. A launch that would fall back to
+    the default port (bare `openwiz`, `openwiz ui`, bare `openwiz-terminal`)
+    is refused as if it named 7370."""
     ports = []
     for index, arg in enumerate(argv):
         following = argv[index + 1] if index + 1 < len(argv) else None

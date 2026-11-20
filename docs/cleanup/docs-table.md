@@ -253,7 +253,7 @@ The DS8 rows above, and a search of every kept file outside `release/openwiz/`, 
 
 | Where | Outcome |
 | --- | --- |
-| `tools/live-smoke/smoke.py:44-45` and the `refuse_reserved_port` docstring | rewritten here: the terminal app is described as removed (#776), and why its launch forms still refuse stays |
+| `tools/live-smoke/smoke.py:44-45` and the `refuse_reserved_port` docstring | left to RL5 (#1727, PR #1732), which is rewriting this file now; the fleet withdrew it from DS8 to avoid a conflict. Still present-tense about the removed terminal app (#776) until RL5 or a follow-up fixes it |
 | `tests/checks/skills.rs:4` | already fixed by DS5 (PR #1492): it points to the private records |
 | `ci/main-batch/admit.py:2-10` | keep: the docstring says what the offline script does when run. No workflow runs it, only its own test, and its default answer is today's per-push behaviour. No decision rejects it; whether `ci/main-batch/` stays is code cleanup |
 | `contracts/fleet-tick.v1.md` "2 + 1" | fixed by DS6 (PR #1494) |
@@ -423,9 +423,6 @@ for p in sorted(f for f in files if f.endswith('.md')):
 print(f'links checked: {n}; broken: {bad}')
 sys.exit(1 if bad else 0)
 PY
-
-# the sweep's own lines: no present-tense terminal app left in the live-smoke comments
-! git grep -nE 'TUI always connects|would fall back to' -- tools/live-smoke/smoke.py
 ```
 
 ```json
