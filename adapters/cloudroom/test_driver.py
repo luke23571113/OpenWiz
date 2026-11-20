@@ -91,7 +91,7 @@ class Driver(unittest.TestCase):
             code, out = self.call(cmd, {'run': run}, FAKE_ROOM_REFUSE=refuse)
             self.assertEqual(code, 1)
             self.assertNotIn(thread, json.dumps(out), "Cloudroom's refusal showed the run's thread")
-        self.assertEqual(self.call('wake', {'run': run})[0], 0, 'a failed stop must leave the run live')
+        self.assertEqual(self.call('wake', {'run': run})[0], 1, 'a run being stopped took a wake')
         self.assertEqual(self.call('stop', {'run': run}), (0, {'run': run, 'stopped': True}))
         self.assertEqual(self.calls()[-1], ['thread', 'archive', thread])
         before = len(self.calls())
@@ -145,10 +145,14 @@ class Driver(unittest.TestCase):
         self.assertNotIn('retry', json.dumps(out))
         self.assertRegex(json.dumps(out), r'run-[0-9a-f]{12}', 'the error names no run for stop to reach')
         run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(out)).group()}
-        self.assertEqual(self.call('wake', run)[0], 1)
+        code, err = self.call('wake', run)
+        self.assertEqual(code, 1)
+        self.assertIn('never finished starting', err['error'])
         self.assertNotIn('tell', [c[1] for c in self.calls()], 'a wake reached the thread of a run never started')
+        before = len(self.calls())
         self.assertEqual(self.call('stop', run), (0, dict(run, stopped=True)))
-        self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'], 'stop did not reach the thread')
+        self.assertEqual(self.calls()[before:], [['thread', 'list'], ['thread', 'archive', 'thr_syn_0001']],
+                         'stop did not find and end the thread by its title')
 
     def test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake(self):
         # catches: a stop whose save fails answering "retry" and leaving a live record that a later wake uses to
