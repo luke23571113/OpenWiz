@@ -1,0 +1,92 @@
+Red run: python3 -I tools/comment-check/test_check.py, against a stub check.py that reports no failures and zero counts.
+
+test_before_and_after_are_counted_the_same_way (__main__.Count.test_before_and_after_are_counted_the_same_way) ... FAIL
+test_cases_count_their_comment_lines (__main__.Count.test_cases_count_their_comment_lines) ... FAIL
+test_count_matches_the_known_tree (__main__.Count.test_count_matches_the_known_tree) ... FAIL
+test_doc_comments_pass_only_under_a_published_docs_path (__main__.Diff.test_doc_comments_pass_only_under_a_published_docs_path) ... FAIL
+test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line (__main__.Diff.test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line) ... FAIL
+test_excluded_files_never_fail (__main__.Diff.test_excluded_files_never_fail) ... ok
+test_only_added_lines_fail (__main__.Diff.test_only_added_lines_fail) ... FAIL
+test_the_escape_tag_passes_only_with_a_reason (__main__.Diff.test_the_escape_tag_passes_only_with_a_reason) ... FAIL
+
+======================================================================
+FAIL: test_before_and_after_are_counted_the_same_way (__main__.Count.test_before_and_after_are_counted_the_same_way)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 191, in test_before_and_after_are_counted_the_same_way
+    self.assertEqual(report['paths'], ['src/'])
+AssertionError: Lists differ: [] != ['src/']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'src/'
+
+- []
++ ['src/']
+
+======================================================================
+FAIL: test_cases_count_their_comment_lines (__main__.Count.test_cases_count_their_comment_lines)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 184, in test_cases_count_their_comment_lines
+    self.assertEqual(by_file, {f'cases/{n}': c['comment_lines'] for n, c in EXPECTED['cases'].items()})
+AssertionError: None != {'cases/rust.rs': 14, 'cases/python.py': [129 chars]': 6}
+
+======================================================================
+FAIL: test_count_matches_the_known_tree (__main__.Count.test_count_matches_the_known_tree)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 177, in test_count_matches_the_known_tree
+    self.assertEqual({k: after[k] for k in want}, want)
+AssertionError: {'files': 0, 'comment_lines': 0, 'disallowed_lines'[16 chars]: {}} != {'files': 3, 'comment_lines': 7, 'disallowed_lines'[143 chars] 2}}}
+- {'comment_lines': 0, 'disallowed_lines': 0, 'files': 0, 'languages': {}}
++ {'comment_lines': 7,
++  'disallowed_lines': 7,
++  'files': 3,
++  'languages': {'python': {'comment_lines': 2, 'files': 1},
++                'rust': {'comment_lines': 3, 'files': 1},
++                'shell': {'comment_lines': 2, 'files': 1}}}
+
+======================================================================
+FAIL: test_doc_comments_pass_only_under_a_published_docs_path (__main__.Diff.test_doc_comments_pass_only_under_a_published_docs_path)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 116, in test_doc_comments_pass_only_under_a_published_docs_path
+    self.assertEqual(code, 1, err)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line (__main__.Diff.test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 104, in test_each_allowed_kind_passes_and_each_disallowed_kind_fails_at_its_line
+    self.assertEqual(code, 1, err)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_only_added_lines_fail (__main__.Diff.test_only_added_lines_fail)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 146, in test_only_added_lines_fail
+    self.assertEqual((code, failures(out)), (1, {('src/old.rs', 4, 'comment')}))
+AssertionError: Tuples differ: (0, set()) != (1, {('src/old.rs', 4, 'comment')})
+
+First differing element 0:
+0
+1
+
+- (0, set())
++ (1, {('src/old.rs', 4, 'comment')})
+
+======================================================================
+FAIL: test_the_escape_tag_passes_only_with_a_reason (__main__.Diff.test_the_escape_tag_passes_only_with_a_reason)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/comment-check/test_check.py", line 130, in test_the_escape_tag_passes_only_with_a_reason
+    self.assertEqual(code, 1)
+AssertionError: 0 != 1
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.460s
+
+FAILED (failures=7)

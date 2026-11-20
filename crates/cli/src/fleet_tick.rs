@@ -1,5 +1,3 @@
-//! The read-only `fleet tick --dry-run` and GitHub-only `fleet due` (B5, #121).
-//! The executing tick and `--expect-plan` were retired (#800, spec #786).
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
 use openwiz_adapter_github::tick::TickReads;
 use openwiz_core::fleet::model::Number;
@@ -115,10 +113,6 @@ fn run_observed(
             .iter()
             .map(|a| (a.spec, a.ticket))
             .collect::<BTreeSet<_>>();
-        // Approval reports are candidates here, never merge authority: only
-        // the agent it wakes can verify the reviewer's own CloudRoom output. Only the latest
-        // report counts, as the planner decides (largest comment id), so a
-        // superseded APPROVE never wakes the loop (#852).
         if let Observed::Complete(fleets) = &world.snapshot.fleets {
             for f in fleets {
                 if let Observed::Complete(facts) = &f.facts {

@@ -1,32 +1,3 @@
-//! New threads: OpenWiz 0.0.4's start of one new Cloud thread in one
-//! existing project, with the harness, model and effort the owner chose.
-//!
-//! **Creation** and **start** are reported apart: a created thread is one
-//! CloudRoom recorded, never one that started. The **requested
-//! configuration** and what CloudRoom **reports** afterwards are kept apart
-//! too: the reported one is never shown as the serving model.
-//!
-//! Like the rest of the core, this module does no I/O. Reads and the one
-//! write go through a [`operation::NewThreadClient`] (the adapter), the
-//! durable record through a [`record::NewThreadStore`], and time through a
-//! [`Clock`](crate::ops::Clock). Op ids are generated outside the core.
-//!
-//! The fleet engine reaches it through [`crate::fleet::starts`], with
-//! `thread spawn` and `cloud status` on the allowlist.
-//!
-//! - [`options`]: the Cloud catalogue as the adapter reads it, and the
-//!   options offered from it;
-//! - [`operation`]: `new_thread` and its preview: validation, the op-id
-//!   claim, the project and options checks, the effects, the one call and
-//!   the outcome;
-//! - [`outcome`]: what the provider's reply means;
-//! - [`effects`]: what a create does, worked out before creating;
-//! - [`start`]: the start stage and the reported configuration, after
-//!   creation;
-//! - [`status`]: one op id's record and start stage, read-only;
-//! - [`record`]: the record, the store interface and the recovery rule;
-//! - [`read`]: the record read back from storage, strictly.
-
 pub mod effects;
 pub mod operation;
 pub mod options;
@@ -43,46 +14,27 @@ use serde::Serialize;
 use crate::messaging::{InvalidRequest, OpId, sha256_hex};
 use crate::prompt::PromptPayload;
 
-/// The schema id of a new-thread report. See
-/// `contracts/new-thread.v1.schema.json`.
 pub const NEW_THREAD_SCHEMA_ID: &str = "openwiz.new-thread.v1";
 
-/// The schema id of a new-thread record.
 pub const RECORD_SCHEMA_ID: &str = "openwiz.new-thread-record.v1";
 
-/// The schema id of a status read.
 pub const STATUS_SCHEMA_ID: &str = "openwiz.new-thread-status.v1";
 
-/// The schema id of the Cloud options.
 pub const OPTIONS_SCHEMA_ID: &str = "openwiz.cloud-options.v1";
 
-/// One create, from the claim to the recorded outcome, finishes within this
-/// budget (sheet A-14's 40 s deadline is the route's, around it). The
-/// adapter also stops each single call after
-/// [`READ_TIMEOUT`](crate::limits::READ_TIMEOUT).
 pub const NEW_THREAD_BUDGET: Duration = Duration::from_secs(30);
 
-/// The longest harness, model or effort accepted.
 pub const SETTING_MAX_LEN: usize = 128;
 
-/// The prefix of every request id OpenWiz derives.
 pub const REQUEST_ID_PREFIX: &str = "ow1-";
 
-/// What the request id hashes before the op id.
 pub const REQUEST_ID_DOMAIN: &str = "openwiz.new-thread.request-id.v1:";
 
-/// The request id passed to the provider for `op_id`: [`REQUEST_ID_PREFIX`]
-/// and the first 40 hex digits of the SHA-256 of [`REQUEST_ID_DOMAIN`] and
-/// the op id. The same op id always gives the same request id, and it always
-/// matches `^[a-zA-Z0-9_-]{1,64}$`.
 pub fn request_id(op_id: &OpId) -> String {
     let digest = sha256_hex(format!("{REQUEST_ID_DOMAIN}{op_id}").as_bytes());
     format!("{REQUEST_ID_PREFIX}{}", &digest[..40])
 }
 
-/// How the owner names the project: its id, or the inventory's display
-/// name (`name`, or `name~<last 6 characters of the id>` when names are
-/// shared).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum ProjectRef {
@@ -98,20 +50,15 @@ impl ProjectRef {
     }
 }
 
-/// The harness, model and effort the owner chose. All three are always
-/// given, and passed as they are: none is defaulted or substituted.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Settings {
-    /// The catalogue's harness id, such as `codex`.
     pub harness: String,
     pub model: String,
     pub effort: String,
 }
 
-/// One create.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NewThreadRequest {
-    /// Exactly one existing project.
     pub project: ProjectRef,
     pub settings: Settings,
     pub prompt: PromptPayload,
@@ -135,9 +82,6 @@ impl NewThreadRequest {
         }
     }
 
-    /// Everything that can be checked without a read: the prompt (text
-    /// rules, no attachment twice), the project reference and the three
-    /// settings.
     pub fn validate(&self) -> Result<(), InvalidRequest> {
         self.prompt.validate()?;
         if self.project.as_str().trim().is_empty() {
@@ -159,8 +103,6 @@ impl NewThreadRequest {
     }
 }
 
-/// A setting is 1 to [`SETTING_MAX_LEN`] printable ASCII characters, with no
-/// space and not starting with `-`. None is ever defaulted.
 fn check_setting(name: &str, value: &str) -> Result<(), InvalidRequest> {
     if value.is_empty() {
         return Err(InvalidRequest(format!(
@@ -180,11 +122,8 @@ fn check_setting(name: &str, value: &str) -> Result<(), InvalidRequest> {
     }
 }
 
-/// What an op id is bound to: the project, the three settings, the text's
-/// SHA-256 and the attachments digest. The text itself is not part of it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Binding {
-    /// The project as the owner named it, before any read.
     pub project: ProjectRef,
     pub harness: String,
     pub model: String,
@@ -193,7 +132,6 @@ pub struct Binding {
     pub attachments_digest: String,
 }
 
-/// A part of a binding, named when a reused op id differs in it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BindingField {
@@ -219,8 +157,6 @@ impl BindingField {
 }
 
 impl Binding {
-    /// The binding of `request`, whose attachments have this digest (B2:
-    /// from the gate, or from the op id's record).
     pub fn new(request: &NewThreadRequest, attachments_digest: String) -> Self {
         Self {
             project: request.project.clone(),
@@ -232,7 +168,6 @@ impl Binding {
         }
     }
 
-    /// The fields in which `other` differs from this binding.
     pub fn differences(&self, other: &Binding) -> Vec<BindingField> {
         [
             (BindingField::Project, self.project == other.project),
@@ -252,7 +187,6 @@ impl Binding {
     }
 }
 
-/// The project as the owner sees it in a report.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ProjectView {
     pub id: String,

@@ -1,33 +1,3 @@
-//! The CloudRoom reads behind `openwiz fleet <spec>` (OpenWiz 0.0.6, A6,
-//! ClosedWiz#114; `contracts/fleet.v1.md`, "Reads"): `room-cli`'s version,
-//! the projects whose git remote is this repository, their threads, and
-//! each Cloud thread's branch. Each returns its read's outcome in the
-//! contract's model types; the read ids, the envelope and the chain itself
-//! (`openwiz_core::fleet::agents::place`) are the core's and the caller's.
-//!
-//! Every call is one [`Invocation`] (`--version`, `project list --json
-//! --include-personal`, `thread list --json --include-hidden`, `cloud
-//! thread-workspace <id> --json`), run once by the adapter's one runner,
-//! with no retry. A read
-//! the run's deadline leaves no time for is not made: it is failed with
-//! `budget_exhausted`, never left out.
-//!
-//! **Strict readers** (the contract, "Reading it"; B1's pattern): a
-//! document that gives any key twice, at any depth, is refused whole, since
-//! a plain `serde_json::Value` would silently keep the last. Each field read
-//! is read with its observed type (A1's spike, `room-cli` v132, and v127's
-//! capture), or the read fails: never a guess.
-//! - `cloud thread-workspace`: a JSON object with **exactly** `branch`,
-//!   `head` and `path`, each a string, the branch not empty (A1: "exactly
-//!   these keys, strict types, and anything else is unknown").
-//! - `project list` and `thread list`: an array of objects. Their many other
-//!   keys are not read, as for `new`'s reads of the same lists; each key
-//!   that is read must be there, of its type. A row that might be this
-//!   repository's but can't be told fails the whole read.
-//!
-//! **The reason** of a failed read is OpenWiz's own words: never
-//! `room-cli`'s output, not even its sanitized first line.
-
 use std::collections::HashSet;
 use std::time::Instant;
 
@@ -44,17 +14,11 @@ use crate::allowlist::{Invocation, ThreadId};
 use crate::source::CloudRoomSource;
 use crate::{TESTED_VERSION, process};
 
-/// This repository, as `gh repo view --json nameWithOwner` prints it
-/// (`owner/name`): what a project's git remote must name. Only the
-/// repository's name is ever printed (the contract's `repository` read), so
-/// the owner stays here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Repository {
     owner_and_name: String,
 }
 
-/// The git remotes that name a GitHub repository: the same three as `new`'s
-/// project check.
 const REMOTE_PREFIXES: &[&str] = &[
     "https://github.com/",
     "ssh://git@github.com/",
@@ -62,8 +26,6 @@ const REMOTE_PREFIXES: &[&str] = &[
 ];
 
 impl Repository {
-    /// `owner/name`: exactly two parts, each 1 to 100 ASCII letters, digits,
-    /// `-`, `_` or `.`, and neither `.` nor `..`. Anything else is `None`.
     pub fn parse(name_with_owner: &str) -> Option<Self> {
         let part = |p: &str| {
             !p.is_empty()
@@ -79,10 +41,6 @@ impl Repository {
         })
     }
 
-    /// Whether `remote`, a project's `gitRemoteUrl`, is this repository: one
-    /// of [`REMOTE_PREFIXES`], then exactly `owner/name`, with or without
-    /// `.git`. GitHub's names are case-insensitive, so the comparison is too
-    /// (A1's spike matched them lower-cased); nothing else is forgiven.
     pub fn is_remote(&self, remote: &str) -> bool {
         REMOTE_PREFIXES.iter().any(|prefix| {
             remote.strip_prefix(prefix).is_some_and(|path| {
@@ -93,18 +51,13 @@ impl Repository {
     }
 }
 
-/// What each read is called in a reason.
 const VERSION_READ: &str = "room-cli --version";
 const PROJECTS_READ: &str = "room-cli project list";
 const THREADS_READ: &str = "room-cli thread list";
 const WORKSPACE_READ: &str = "room-cli cloud thread-workspace";
 
-/// The reason on a thread list not read because the project list wasn't.
 pub const NOT_READ_NO_PROJECTS: &str = "not read: the projects couldn't be read";
 
-/// `room-cli --version`: the `version` read whose subject is `cloudroom`.
-/// A version that isn't `N.N.N` or `v<N>` fails, its text withheld, as the
-/// inventory's does.
 pub fn version(source: &CloudRoomSource, deadline: Instant) -> Outcome<NonEmpty> {
     if Instant::now() >= deadline {
         return Outcome::Failed(failed(GapKind::BudgetExhausted, NOT_READ_BUDGET));
@@ -121,8 +74,6 @@ pub fn version(source: &CloudRoomSource, deadline: Instant) -> Outcome<NonEmpty>
     }
 }
 
-/// `room-cli project list --json --include-personal`: the `projects` read,
-/// the projects whose git remote is `repository`, in the list's order.
 pub fn projects(
     source: &CloudRoomSource,
     repository: &Repository,
@@ -137,14 +88,6 @@ pub fn projects(
     }
 }
 
-/// `room-cli thread list --json --include-hidden`: the `threads` read, the
-/// threads of `projects` that aren't archived, in the list's order. Hidden
-/// ones are read too: the contract leaves out only archived ones, and a
-/// thread left out could neither be placed nor make a shared branch
-/// doubtful (orchestrator, #114, 2026-11-01: "(a)"). When `projects`
-/// isn't complete, its threads can't be told, so the list isn't read
-/// ([`NOT_READ_NO_PROJECTS`]); when it is complete and empty, they are
-/// none, and nothing is run.
 pub fn threads(
     source: &CloudRoomSource,
     projects: &ListOutcome<Project>,
@@ -168,9 +111,6 @@ pub fn threads(
     }
 }
 
-/// `room-cli cloud thread-workspace <thread> --json`: the `workspace` read,
-/// one Cloud thread's branch. A thread id that isn't safe to pass as one
-/// argument is never passed.
 pub fn workspace(
     source: &CloudRoomSource,
     thread: &NonEmpty,
@@ -189,20 +129,14 @@ pub fn workspace(
     }
 }
 
-/// Every CloudRoom read of one `fleet` run, in the order they are made.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reads {
     pub version: Outcome<NonEmpty>,
     pub projects: ListOutcome<Project>,
     pub threads: ListOutcome<Thread>,
-    /// One per Cloud thread of `threads`, in its order.
     pub workspaces: Vec<(NonEmpty, Outcome<NonEmpty>)>,
 }
 
-/// Makes every CloudRoom read `fleet` needs, one at a time: the version,
-/// the projects, their threads, then each listed Cloud thread's branch.
-/// Each read that the deadline leaves no time for is still returned,
-/// failed with `budget_exhausted`.
 pub fn read(source: &CloudRoomSource, repository: &Repository, deadline: Instant) -> Reads {
     let version = version(source, deadline);
     let projects = projects(source, repository, deadline);
@@ -227,10 +161,6 @@ pub fn read(source: &CloudRoomSource, repository: &Repository, deadline: Instant
     }
 }
 
-/// The projects of `project list --json --include-personal`'s stdout whose
-/// `gitRemoteUrl` is `repository`. Every row must have `gitRemoteUrl` (a
-/// string or null); a kept one, `id` (a non-empty string) and `name` (a
-/// string). String ids must be unique across all rows, before filtering.
 pub fn parse_projects(stdout: &[u8], repository: &Repository) -> Result<Vec<Project>, Failed> {
     let read = PROJECTS_READ;
     let mut kept: Vec<Project> = Vec::new();
@@ -267,18 +197,6 @@ pub fn parse_projects(stdout: &[u8], repository: &Repository) -> Result<Vec<Proj
     Ok(kept)
 }
 
-/// The threads of `thread list --json --include-hidden`'s stdout in
-/// `projects`, not
-/// archived. Every row must have `projectId` (a string). A row of
-/// `projects` must also have:
-/// - `id`: a string that is safe to pass to `room-cli`, listed once,
-///   including archived rows;
-/// - `archivedAt`: null, or an integer (archived: left out);
-/// - `executionTarget` `cloud` (a Cloud thread), or no `executionTarget`
-///   and a string `environmentHostId` (a local thread);
-/// - for a local thread, `environmentBranchName`: a non-empty string, or
-///   null (no branch). An empty one is no form OpenWiz knows, as for
-///   `cloud thread-workspace`'s `branch`.
 pub fn parse_threads(stdout: &[u8], projects: &[Project]) -> Result<Vec<Thread>, Failed> {
     let read = THREADS_READ;
     let mut kept: Vec<Thread> = Vec::new();
@@ -351,9 +269,6 @@ pub fn parse_threads(stdout: &[u8], projects: &[Project]) -> Result<Vec<Thread>,
     Ok(kept)
 }
 
-/// The branch in `cloud thread-workspace <id> --json`'s stdout: a JSON
-/// object with exactly `branch`, `head` and `path`, each a string once, the
-/// branch not empty.
 pub fn parse_workspace(stdout: &[u8]) -> Result<NonEmpty, Failed> {
     let read = WORKSPACE_READ;
     let document = json(stdout, read)?;
@@ -372,7 +287,6 @@ pub fn parse_workspace(stdout: &[u8]) -> Result<NonEmpty, Failed> {
     non_empty(fields, read, "workspace", "branch")
 }
 
-/// Runs one read, if the deadline leaves time to start it.
 fn run(
     source: &CloudRoomSource,
     invocation: &Invocation,
@@ -435,7 +349,6 @@ fn wrong(read: &str, row: &str, key: &str) -> Failed {
     )
 }
 
-/// `stdout` as JSON with no key given twice, at any depth.
 fn json(stdout: &[u8], read: &str) -> Result<Value, Failed> {
     serde_json::from_slice::<Strict>(stdout)
         .map(|Strict(value)| value)
@@ -448,7 +361,6 @@ fn json(stdout: &[u8], read: &str) -> Result<Value, Failed> {
         })
 }
 
-/// A JSON array's items.
 fn rows(stdout: &[u8], read: &str) -> Result<Vec<Value>, Failed> {
     match json(stdout, read)? {
         Value::Array(rows) => Ok(rows),
@@ -459,7 +371,6 @@ fn rows(stdout: &[u8], read: &str) -> Result<Vec<Value>, Failed> {
     }
 }
 
-/// A JSON object: never an array in its place.
 fn object<'a>(value: &'a Value, read: &str, row: &str) -> Result<&'a Map<String, Value>, Failed> {
     value.as_object().ok_or_else(|| {
         failed(
@@ -496,7 +407,6 @@ fn non_empty(
     })
 }
 
-/// A JSON document read with no key given twice at any depth.
 struct Strict(Value);
 
 impl<'de> Deserialize<'de> for Strict {

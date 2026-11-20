@@ -2,8 +2,7 @@
 //!
 //! **Readers:** no new-thread or prompt type has a serde reader, so
 //! `serde_json::from_str` and `from_value` can't be called on them at all:
-//! the core's compile-time guard (`new_thread::no_readers`) and
-//! `structure::no_new_thread_or_prompt_type_has_a_reader` prove it. Every
+//! the core's compile-time guard (`new_thread::no_readers`) proves it. Every
 //! bad form below is therefore refused by both serde entry points, by
 //! construction, and the schema must refuse it too. The good forms are what
 //! the core writes.

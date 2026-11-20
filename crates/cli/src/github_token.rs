@@ -1,13 +1,3 @@
-//! `openwiz github token --repository <owner/name> [--read]` (GI5, #2547;
-//! [contracts/github-identity.v1.md], "The token command"): one short-lived
-//! installation token for the installation covering that repository, minted
-//! from the App key in the `OPENWIZ_GITHUB_APP_KEY` Cloudroom secret, printed
-//! alone on stdout for `GH_TOKEN` and git's credential helper. `--read` asks
-//! for exactly the read profile. Nothing stores the token.
-//!
-//! The key and the token never reach an argument, a URL, a log, an error or
-//! any output but that one stdout line. Every failure is one fixed sentence.
-
 use std::ffi::OsString;
 use std::io::Write;
 use std::sync::Arc;
@@ -17,16 +7,10 @@ use openwiz_adapter_github::app::{self, CurlExchange, Exchange, Mode, Refusal, S
 
 use crate::{EXIT_NOT_FOUND, EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, UsageError};
 
-/// The Cloudroom secret holding the App's key: the PEM file, base64, one line.
 pub const SECRET: &str = "OPENWIZ_GITHUB_APP_KEY";
-/// The App's public id, written by setup beside the secret.
 pub const APP_ID: &str = "OPENWIZ_GITHUB_APP_ID";
-/// The explicit App setting (J48, #606): unset or `user` for a user's own App,
-/// bound to its owner's account; exactly `factory` for the factory's public App.
 pub const MODE: &str = "OPENWIZ_GITHUB_APP_MODE";
-/// GitHub refused, or the token failed the contract or the expiry guards.
 pub const EXIT_REFUSED: i32 = 5;
-/// The whole command's budget: the installation lookup and the mint.
 const BUDGET: Duration = Duration::from_secs(30);
 
 pub const USAGE: &str = "  openwiz github token --repository OWNER/NAME [--read]\n";
@@ -41,24 +25,18 @@ pub const HELP: &str = "github token --repository OWNER/NAME [--read]
   or GitHub unavailable, 2 usage, 3 repository not installed, 5 refused.
 ";
 
-/// `openwiz github token`'s options.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TokenArgs {
-    /// `owner/name`, as GitHub names them.
     pub repository: String,
-    /// `--read`: exactly the read profile.
     pub read: bool,
 }
 
-/// What the command line asks for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Parsed {
     Help,
     Token(TokenArgs),
 }
 
-/// Parses the arguments after `github`. Errors name no value, so a pasted
-/// secret never reaches stderr.
 pub fn parse(args: &[String]) -> Result<Parsed, UsageError> {
     let usage = |why: &str| Err(UsageError(format!("github token: {why}")));
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -98,21 +76,15 @@ pub fn parse(args: &[String]) -> Result<Parsed, UsageError> {
     }))
 }
 
-/// Where the command gets its key, App id, GitHub and time.
 pub struct Context {
-    /// The `OPENWIZ_GITHUB_APP_KEY` value, if set.
     pub secret: Option<OsString>,
-    /// The `OPENWIZ_GITHUB_APP_ID` value, if set.
     pub app_id: Option<OsString>,
-    /// The `OPENWIZ_GITHUB_APP_MODE` value, if set.
     pub mode: Option<OsString>,
     pub exchange: Arc<dyn Exchange>,
     pub clock: Arc<dyn app::Clock>,
 }
 
 impl Context {
-    /// This process's environment, HTTPS through the fixed `/usr/bin/curl`,
-    /// and the system clock.
     pub fn system() -> Self {
         Self {
             secret: std::env::var_os(SECRET),
@@ -124,7 +96,6 @@ impl Context {
     }
 }
 
-/// Runs `openwiz github ...` and returns the exit code.
 pub fn run(
     args: &[String],
     context: Context,
@@ -199,8 +170,6 @@ pub fn run(
     EXIT_OK
 }
 
-/// The key from the secret and the App id, each strictly: the id is a
-/// positive decimal with no sign or leading zero. Neither is ever echoed.
 fn secret_app(context: Context) -> Option<SecretApp> {
     let app_id = context.app_id?.into_string().ok()?;
     if app_id.starts_with('0') || !app_id.bytes().all(|b| b.is_ascii_digit()) {

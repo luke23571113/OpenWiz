@@ -1,4 +1,3 @@
-//! Approval fingerprints and append-only fleet records read by B5. No I/O.
 use openwiz_adapter_github::tick::{Comment, Event, Result};
 use openwiz_core::fleet::fleets::IssueRow;
 use openwiz_core::fleet::model::{NonEmpty, Number};
@@ -42,13 +41,6 @@ fn blocker_set(s: &str) -> Result<BTreeSet<Number>> {
     }
     Ok(blockers)
 }
-/// #718: the factory's record authors, from the rules file's `## GitHub
-/// identity` table, read as launch-fleet reads it (`grants.py`'s
-/// `record_authors`, `fleet.sh`'s `settings`): exactly one `Record authors`
-/// row, nothing after its value cell, and that whole cell backticked logins
-/// separated by commas. No row, an empty one, a malformed or extra entry, or
-/// two rows refuse the whole setting; it never keeps only the logins that
-/// did parse. Logins are lowercase, compared case-insensitively.
 pub fn record_authors(rules: &str) -> Result<BTreeSet<String>> {
     const REFUSED: &str = "docs/agents/fleet.md names no record authors";
     let mut section = "";
@@ -96,15 +88,11 @@ pub fn record_authors(rules: &str) -> Result<BTreeSet<String>> {
         })
         .collect()
 }
-/// True only for a comment a record author wrote; one with no author is
-/// nobody's (#718).
 pub fn authored(c: &Comment, authors: &BTreeSet<String>) -> bool {
     c.author
         .as_deref()
         .is_some_and(|a| authors.contains(&a.to_ascii_lowercase()))
 }
-/// The factory's own comments: every other one is dropped before any record
-/// reader or the verdict parser sees it (#718).
 pub fn factory(mut comments: Vec<Comment>, authors: &BTreeSet<String>) -> Vec<Comment> {
     comments.retain(|c| authored(c, authors));
     comments
@@ -190,10 +178,6 @@ fn approval_header(c: &Comment) -> &str {
         .unwrap_or("")
         .trim()
 }
-// #558/R9: the heading after `:** ` is the user's exact words in double
-// quotes, optionally followed by one bracketed source: `"<words>" (<source>)`.
-// The words may contain interior quotes; the source may too. Nothing may
-// follow the source's closing bracket.
 fn approval_words_ok(words: &str) -> bool {
     let (quoted, source) = split_words_and_source(words);
     quoted.len() >= 3
@@ -201,8 +185,6 @@ fn approval_words_ok(words: &str) -> bool {
         && quoted.ends_with('"')
         && (source.is_empty() || balanced_source(source))
 }
-// Splits `"<words>" (<source>)` at the closing quote of the words: the
-// rightmost `"` whose suffix is whitespace and one balanced `(...)` group.
 fn split_words_and_source(words: &str) -> (&str, &str) {
     for (at, _) in words.char_indices().filter(|(_, c)| *c == '"').rev() {
         let rest = &words[at + 1..];
@@ -213,8 +195,6 @@ fn split_words_and_source(words: &str) -> (&str, &str) {
     }
     (words, "")
 }
-// A bracketed source is one balanced `(...)` group covering the whole suffix,
-// with any parentheses inside a quoted region ignored.
 fn balanced_source(source: &str) -> bool {
     if !source.starts_with('(') || !source.ends_with(')') {
         return false;
@@ -236,8 +216,6 @@ fn balanced_source(source: &str) -> bool {
     }
     depth == 0 && !in_quote
 }
-// Match plan-graph's Markdown table boundary, retaining original indexes so
-// rows separated by prose or fenced examples cannot become one approval table.
 fn approval_table(body: &str) -> Vec<(usize, &str)> {
     let mut fence: Option<(u8, usize)> = None;
     let mut table = vec![];
@@ -356,10 +334,6 @@ pub fn approval(comments: &[Comment], legacy: bool) -> Result<Option<PlanApprova
         .split_once(", revision ")
         .ok_or("approval has no revision")?;
     let (rev, words) = rest.split_once(":** ").ok_or("invalid approval heading")?;
-    // #558/R9: plan-graph's template quotes the user's words exactly
-    // (`"<words>"`, nothing after). The reader also accepts a bracketed
-    // source appended after the closing quote (`"<words>" (<source>)`),
-    // so an approval that names its thread still reads.
     if !public_approval_ok(c, words) && !(legacy && approval_words_ok(words)) {
         return Err("approval has no valid decision and private pointer");
     }
@@ -396,8 +370,6 @@ pub fn approval(comments: &[Comment], legacy: bool) -> Result<Option<PlanApprova
         return Err("approval table is not one contiguous block");
     }
     for (index, (_, l)) in table.iter().enumerate() {
-        // Match check-approval.sh: only an even backslash run leaves a pipe
-        // unescaped, including the required closing delimiter.
         let mut escaped = false;
         let cells = l
             .trim_end()
@@ -444,7 +416,6 @@ pub fn approval(comments: &[Comment], legacy: bool) -> Result<Option<PlanApprova
             .lines()
             .filter(|l| l.starts_with(&prefix))
             .collect::<Vec<_>>();
-        // The table escapes pipes; the issue title in the revision is raw.
         let title = cells[1].replace("\\|", "|");
         if revrow.len() != 1 || !revrow[0].ends_with(&format!(" title {title}")) {
             return Err("table disagrees with revision");
@@ -488,7 +459,6 @@ pub fn relies(body: &str) -> Result<Vec<NonEmpty>> {
     if line.eq_ignore_ascii_case("nothing") || line.eq_ignore_ascii_case("none") {
         return Ok(vec![]);
     }
-    // Only explicitly backticked paths are contracts, never inferred from prose.
     let mut out = vec![];
     let mut tail = line;
     while let Some((_, after)) = tail.split_once('`') {
@@ -609,8 +579,6 @@ pub fn holds(
             ),
         });
     }
-    // Timeline order, rather than second-resolution timestamps, proves the
-    // latest held application preceded this exact tick's hold record.
     let latest = events
         .iter()
         .rposition(|e| e.event == "labeled" && e.label.as_deref() == Some("held"));
@@ -635,7 +603,6 @@ pub fn holds(
     Ok((holds, own))
 }
 
-/// A unique checked builder; conflicts and malformed records never pick a family.
 pub fn checked_builder(comments: &[Comment]) -> Option<(Option<NonEmpty>, NonEmpty)> {
     let mut branches = BTreeSet::new();
     let mut threads = BTreeSet::new();
@@ -669,7 +636,6 @@ pub fn checked_builder(comments: &[Comment]) -> Option<(Option<NonEmpty>, NonEmp
     }
 }
 
-/// T1 of open-development.v1: a thread token is private even in free text.
 pub fn contains_thread_id(text: &str) -> bool {
     text.match_indices("thr_").any(|(at, _)| {
         text.as_bytes()
@@ -679,11 +645,9 @@ pub fn contains_thread_id(text: &str) -> bool {
 }
 
 pub fn fallback_due(comments: &[Comment]) -> bool {
-    // Even a malformed claim cannot establish that no fallback was consumed.
     lines(comments).any(|l| l.starts_with("launch-fleet: builder fallback due,"))
 }
 
-/// A completed manual restart supplements the due record, without erasing it.
 pub fn fallback_replacement(
     comments: &[Comment],
 ) -> Result<Option<(NonEmpty, NonEmpty, NonEmpty)>> {
@@ -730,9 +694,6 @@ pub fn fallback_replacement(
     }
 }
 
-/// Activity is ordered by creation, not edit time: an edited give-up still
-/// closes its original reviewer span. Legacy failed starts without a thread
-/// are not reviewer give-ups.
 pub struct ReviewRecord {
     pub comment: Number,
     pub kind: &'static str,
