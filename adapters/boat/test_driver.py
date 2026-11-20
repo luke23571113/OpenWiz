@@ -58,6 +58,14 @@ if os.environ.get('DENY_SIGNALS'):  # Linux refuses every signal the driver send
     def denied(*args):
         raise PermissionError(1, 'Operation not permitted')
     t.signal.pidfd_send_signal, t.GRACE = denied, 0.2
+if os.environ.get('AUDIT'):  # write down every open of a process's environment, and refuse it
+    import re
+    def audit(event, args, seen=os.environ['AUDIT']):
+        if event == 'open' and isinstance(args[0], (str, bytes)) and re.search(r'^/proc/[0-9]+/environ$', os.fsdecode(args[0])):
+            with open(seen, 'a') as f:
+                f.write(os.fsdecode(args[0]) + '\\n')
+            raise PermissionError(13, 'denied by the test')
+    sys.addaudithook(audit)
 if os.environ.get('READ_ONLY'):  # a read-only filesystem: no mark and no save can be written
     def unsaved(run, state=None):
         if state is not None:
@@ -82,6 +90,17 @@ def paused(*args):
 t.sandbox_state = paused
 t.main()
 '''
+# Every open of a process's environment by this test process, while WATCHING is set.
+ENVIRON_OPENS, WATCHING = [], []
+
+
+def watch(event, args):
+    if WATCHING and event == 'open' and isinstance(args[0], (str, bytes)) \
+            and re.search(r'^/proc/[0-9]+/environ$', os.fsdecode(args[0])):
+        ENVIRON_OPENS.append(os.fsdecode(args[0]))
+
+
+sys.addaudithook(watch)
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'claude-opus-5-5'}
 
@@ -454,6 +473,38 @@ class Boat(unittest.TestCase):
         code, err = self.driver('wake', out, program=program, RAISE='after')
         self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
         self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the woken turn still runs')
+
+    def test_stop_and_failure_cleanup_never_open_another_process_environment(self):
+        # catches: a stop or a failed start's cleanup that finds the run's unsaved turns by opening the
+        # environment of every process it can see, so it reads other programs' secrets (review R3).
+        seen = os.path.join(self.folder, 'environ-opens')
+        program = self.wrapper('audited', RAISES)
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        code, err = self.driver('start', REQUEST, program=program, RAISE='after', AUDIT=seen)
+        self.assertEqual((code, err['error']), (1, 'the driver failed: KeyError'), err)
+        self.assertFalse(os.path.exists(seen), 'a failed start opened another process\'s environment')
+        self.assertEqual(list(self.sandboxes().values())[-1], 'stopped')
+        self.assertTrue(self.until(lambda: len(self.marked()) == 1), 'the failed start\'s turn still runs')
+        self.assertEqual(self.driver('stop', out, program=program, AUDIT=seen), (0, dict(out, stopped=True)))
+        self.assertFalse(os.path.exists(seen), 'a stop opened another process\'s environment')
+        self.assertTrue(self.until(lambda: not self.marked()), 'a turn still runs')
+
+    def test_the_tests_track_only_their_own_processes(self):
+        # catches: test cleanup that finds its processes by opening every visible process's environment,
+        # reading other programs' secrets on the machine that runs the tests (review R3).
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        del ENVIRON_OPENS[:]
+        WATCHING.append(1)
+        try:
+            self.assertTrue(self.marked(), 'the run\'s turn was not found')
+            self.tearDown()
+            self.assertTrue(self.until(lambda: not self.marked()), 'teardown left a process running')
+        finally:
+            WATCHING.pop()
+        self.assertEqual(ENVIRON_OPENS, [], 'the tests opened another process\'s environment')
 
     def test_start_installs_the_pinned_skills_or_refuses(self):
         # catches: a sandbox without the pinned WizSkills skills, so its agent can't follow the skill or post
