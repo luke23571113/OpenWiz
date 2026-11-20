@@ -234,9 +234,6 @@ class Boat(unittest.TestCase):
         self.assertIn('dashboard', error['next'])
 
     def test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start(self):
-        # catches: a start that answers a run id while its first turn ends on an expired login or a rate limit
-        # (boat logs `usage_limit`), or finishes with no tool call, leaving the ticket untouched and the sandbox
-        # billing (#1907); and an answer that shows the turn log's raw text or a token.
         cases = (('usage_limit:auth_expiry', False, 'hit a usage limit (auth_expiry)'),
                  ('usage_limit_flat:rate_limit', False, 'hit a usage limit (rate_limit)'),
                  ('usage_limit:auth_expiry', True, 'hit a usage limit (auth_expiry)'),
@@ -258,10 +255,8 @@ class Boat(unittest.TestCase):
         self.assertEqual(self.notes(), [])
 
     def test_a_working_first_turn_answers_within_the_settle_time(self):
-        # catches: a watch that waits past its settle time for a turn that keeps working, or fails a turn
-        # that made a tool call and is still running.
         open(self.hold, 'w').close()
-        code, out = self.driver('start', REQUEST)  # the turn runs until the hold file goes: start answers first
+        code, out = self.driver('start', REQUEST)
         self.assertEqual((code, list(self.sandboxes().values())), (0, ['running']), out)
         self.assertTrue(alive(self.logged()[0][0]), 'the first turn was ended')
         self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))

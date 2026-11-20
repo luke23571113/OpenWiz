@@ -10,10 +10,7 @@ It keeps its sandboxes in the JSON file FAKE_BOAT_STATE. `boat prompt` plays the
 conversation posts one builder status note in the local tracker KIT_TRACKER, and each later prompt
 in that conversation edits the same note; then the turn ends (see `prompt` for FAKE_HOLD).
 FAKE_BOAT_PROVIDERS (comma-separated) lists the connected providers; FAKE_BOAT_FAIL (comma-separated) names
-commands that fail. FAKE_TURN plays a turn that hits a usage limit (`usage_limit:<limit type>`, its fields under
-`data`, or `usage_limit_flat:<limit type>`, at the top) or ends with no tool call (`no_tools`): the agent posts no
-note. Otherwise the turn logs one tool call, as a `response` event with `data.tools` (docs.boat.dev, list sandbox
-events). The usage-limit line follows the shape seen on a live turn log (2026-11-20). `boat exec` runs its script for real, in the sandbox's own home folder, with the
+commands that fail. `boat exec` runs its script for real, in the sandbox's own home folder, with the
 synthetic `git` of fixtures/sandbox-bin; the agent posts its note only if its skill is installed there."""
 import fcntl, json, os, re, subprocess, sys, time
 
@@ -138,7 +135,7 @@ def prompt(args):
     if os.environ.get('FAKE_TURNS'):
         with open(os.environ['FAKE_TURNS'], 'a') as f:
             f.write('%d %d %s %s\n' % (os.getpid(), worker.pid, cid, 'woken' if resume else 'first'))
-    if TURN.startswith('usage_limit'):  # synthetic: the summary carries the environment's token, never to be shown
+    if TURN.startswith('usage_limit'):
         limit = {'limitType': TURN.split(':')[1], 'provider': provider,
                  'summary': 'Synthetic OAuth token expired ' + os.environ.get('GH_TOKEN', '')}
         say(event='usage_limit', **(limit if TURN.startswith('usage_limit_flat') else {'data': limit}))
