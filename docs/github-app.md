@@ -221,6 +221,11 @@ python3 -I tools/github-app/token-service.py stop --state-dir "$HOME/.local/stat
 
 ## Agent tokens (G2)
 
+**Legacy: use [the token service (GA2)](#the-token-service-ga2) instead.** This
+section is only the record of the old flow. Don't follow its `--from-secret` route
+or rollout step 2: put the App's key in no Cloudroom secret, secret store, sandbox
+or prompt.
+
 Fleets, builders, reviewers, the war room collector and the map's readers read and
 write GitHub as the App (`<app slug>[bot]`), not as the person's login, so their
 API use comes out of the App's own allowance and their comments, reviews and pull
