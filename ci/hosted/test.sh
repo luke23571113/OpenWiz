@@ -159,7 +159,11 @@ if [ "$sources" != /etc/apt/sources.list ]; then
 fi
 [ "$parts" = - ] || selected="$selected third-party"
 case "$action" in
-  update | install) printf '%s\n' "${content:-}" > "$FAKE_LOG/$action.sources" ;;
+  # Snapshot each call's selected file byte for byte: $content, a command
+  # substitution that drops trailing newlines, is only for parsing (#1310).
+  update | install)
+    if [ "$sources" = /etc/apt/sources.list ]; then : > "$FAKE_LOG/$action.sources"
+    else cat "$sources" > "$FAKE_LOG/$action.sources" 2> /dev/null; fi ;;
 esac
 echo "$action $selected" >> "$FAKE_LOG/apt-effects"
 case "$action" in

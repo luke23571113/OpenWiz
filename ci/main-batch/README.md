@@ -60,18 +60,27 @@ or live success is established by these fixtures. A separate current required
 workflow is included in the observed job clocks. Nightly is separate evidence,
 never a member of a push batch or inferred from a batch green.
 
-Run `python3 -I ci/main-batch/test_shadow.py`. This is the command registered as
-`release:ci2-batch-shadow` in the existing planner/executor. Red logs precede
-implementation in Git. `fixtures/shadow/github.json` and the reused C6 fixtures
-are synthetic, unobserved API assumptions with a deliberately small inventory;
-they do not describe any real account or enumerate today's production tests.
-`ci-before.sha256` pins the unchanged workflow outside C7's appended steps.
-Their `synthetic_assumptions` are ordinary two-parent merges, GitHub Actions
-application identity, representative required checks, complete current REST
-responses, toolkit steps and two Rust shares; all clocks/runners/IDs are made up.
 The attempt-specific jobs endpoint supplies the attempt binding even on API
 versions whose job objects omit `run_attempt`; an exposed conflicting attempt
 is refused. Unknown job-created times remain missing timing evidence.
+
+Three suites run in CI, each registered in the existing planner/executor:
+
+- `python3 -I ci/main-batch/test_shadow.py` (`release:ci2-batch-shadow`):
+  the two appended shadow steps follow `run.py finish`, run only for a main
+  push or a main merge group, and can never replace `ci`'s required result.
+- `python3 -I ci/main-batch/test_contract.py` (`release:ci2-batch-contract`):
+  `coverage_refusals` refuses a future schema, a claimed switch authority or
+  active mode, and unreadable JSON.
+- `python3 -I ci/main-batch/test_admit.py` (`release:ci2-main-batch-admit`):
+  a complete synthetic chain verifies, yet with no supported admission
+  mechanism the decision stays per-push full work.
+
+`shadow.py`'s capture and reconcile, and `admit.py`'s other refusals, have no
+running test: they are non-authoritative or unreachable, so #1152 removed their
+tests with the fixtures only those read. The `fixtures/contract/` record and
+context are synthetic, unobserved assumptions; all clocks, runners and IDs are
+made up, and they do not describe any real account or today's production tests.
 
 The retired C11 kit (#463) named the finite
 later invocation, its proposed read/resource ceilings, authorization, separate

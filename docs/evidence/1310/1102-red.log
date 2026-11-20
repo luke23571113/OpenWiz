@@ -1,0 +1,78 @@
+test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) ... 
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='ambiguous closing brace') ... FAIL
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='unterminated regex') ... FAIL
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='character class') ... FAIL
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='regex flags') ... FAIL
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='await keyword') ... FAIL
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='yield keyword') ... FAIL
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='of keyword') ... FAIL
+  test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='extends keyword') ... FAIL
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='ambiguous closing brace')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: ambiguous JavaScript slash (regex or division)\nsplit: refused 1 reference(s); no stay or move set\n'
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='unterminated regex')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: unterminated JavaScript regex literal\nsplit: refused 1 reference(s); no stay or move set\n'
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='character class')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: ambiguous JavaScript regex character class\nsplit: refused 1 reference(s); no stay or move set\n'
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='regex flags')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: unsupported JavaScript regex flags\nsplit: refused 1 reference(s); no stay or move set\n'
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='await keyword')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: ambiguous JavaScript slash (regex or division)\nsplit: refused 1 reference(s); no stay or move set\n'
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='yield keyword')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: ambiguous JavaScript slash (regex or division)\nsplit: refused 1 reference(s); no stay or move set\n'
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='of keyword')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: ambiguous JavaScript slash (regex or division)\nsplit: refused 1 reference(s); no stay or move set\n'
+
+======================================================================
+FAIL: test_javascript_regex_uncertainty_refuses_without_sets (__main__.SplitChecker.test_javascript_regex_uncertainty_refuses_without_sets) (case='extends keyword')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/wizroom/test_split.py", line 355, in test_javascript_regex_uncertainty_refuses_without_sets
+    self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
+AssertionError: 'refused tools/client/read.cjs:1 unreadable JavaScript:' not found in 'refused tools/client/read.cjs:1 native load: ambiguous JavaScript slash (regex or division)\nsplit: refused 1 reference(s); no stay or move set\n'
+
+----------------------------------------------------------------------
+Ran 1 test in 0.468s
+
+FAILED (failures=8)
