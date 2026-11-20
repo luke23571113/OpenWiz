@@ -2002,8 +2002,6 @@ class Notes(World):
         # that is not the approved 0.0.6-0.0.12 release notes.
         raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
         self.assertEqual(sha(raw), 'e690a1652787865d67cb557fc1a2a59588b87a21a067b2e547b90a709f5e6e3d')
-        # A later release adds only newer sections: the 0.0.12 preamble and
-        # every published entry stay byte for byte.
         current, cut = (ROOT / 'CHANGELOG.md').read_bytes(), raw.index('\n## 0.0.12 '.encode()) + 1
         self.assertTrue(current.startswith(raw[:cut]) and current.endswith(raw[cut:]))
         self.untagged(raw.decode())
