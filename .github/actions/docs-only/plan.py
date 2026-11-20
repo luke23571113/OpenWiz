@@ -120,6 +120,8 @@ def rust_tests(root, paths, inventory):
 def steps(paths, root):
     """K16's step requirements: Rust lint, the release proofs' step, skill suites."""
     suites = sorted({p.split('/')[1] for p in paths if p.startswith('skills/') and p.count('/') > 1} & set(skills.SUITES))
+    if any(p in ('wizskills.lock', 'skills') for p in paths):
+        suites = sorted(skills.SUITES)  # the pin or the link moves every installed suite (#1612 R1)
     lint = any(p.endswith('.rs') or p.startswith('crates/') or p in ('Cargo.toml', 'Cargo.lock', 'tests/Cargo.toml')
                for p in paths)
     site = classify(root, paths, step='site').strip()
