@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""The OpenClaw driver (kernel/driver.v1.md), built on adapters/template/: it drives agents through `acpx`, OpenClaw's
-own headless ACP client, on this machine, never through the OpenClaw gateway.
-
-A run is one named acpx session in its own empty folder. `start` opens it (`sessions new`) and sends the first
-prompt, `wake` sends a follow-up once the last prompt has ended, `stop` cancels the prompt, closes the session and
-ends every process the run's acpx calls started. Each call runs under its own supervisor, which keeps every
-process the call starts, acpx's queue owner included. Tools are approved by a permission policy, never all.
-Linux; standard library only.
-"""
 import ctypes, fcntl, json, os, re, secrets, select, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,15 +8,12 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
-GRACE = 10  # seconds a stopped process has to exit before it is killed
-# acpx's built-in agents a builder can be. acpx runs any other agent name as a raw command, and its `openclaw`
-# agent bridges to the gateway, so neither is passed on.
+GRACE = 10
 HARNESSES = ('claude', 'codex', 'copilot', 'cursor', 'droid', 'gemini', 'opencode')
-# Approve the tool kinds a builder needs; deny deletes, mode switches and anything unlisted; never ask.
 POLICY = json.dumps({'autoApprove': ['read', 'search', 'edit', 'move', 'execute', 'think', 'fetch'],
                      'autoDeny': ['delete', 'switch_mode'], 'defaultAction': 'deny'}, separators=(',', ':'))
-TTL = 60  # seconds acpx's queue owner stays after its last prompt; 0 would keep it forever
-STEP = 120  # seconds a session, cancel or close call may take
+TTL = 60
+STEP = 120
 
 
 class Refused(Exception):
@@ -39,7 +27,6 @@ def unique(pairs):
 
 
 def read(fields):
-    """The request on stdin, with exactly these fields, each valid, or Refused."""
     try:
         req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
     except ValueError:
@@ -54,8 +41,6 @@ def read(fields):
 
 
 def acpx(run, *args, harness=None):
-    """One acpx call on the run's session folder. It adds no login or token: the harness's own sign-in is used,
-    and a missing one fails rather than prompts."""
     return ['acpx', '--cwd', os.path.join(STATE, 'work', run)] + list(args) + [harness]
 
 
@@ -72,7 +57,6 @@ def command(req, woken, run):
 
 
 def since(pid):
-    """When process pid started, or None once it has exited: with its pid, this names one process."""
     try:
         with open('/proc/%d/stat' % pid) as f:
             fields = f.read().rpartition(')')[2].split()
@@ -82,7 +66,6 @@ def since(pid):
 
 
 def descendants(pid):
-    """Every live process under pid."""
     children = {}
     for p in filter(str.isdigit, os.listdir('/proc')):
         try:
@@ -102,9 +85,7 @@ def descendants(pid):
 
 
 def supervise(cmd):
-    """One turn, as `driver --turn <command>`: run the harness, and keep every process it starts as this turn's
-    (an orphan comes back here, whatever its session or environment) until none is left; then exit."""
-    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
@@ -112,14 +93,14 @@ def supervise(cmd):
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     while True:
         try:
             pid, status = os.wait()
         except ChildProcessError:
             return
-        if pid == harness.pid:  # say how the call ended, to a driver still listening
+        if pid == harness.pid:
             try:
                 print(json.dumps({'exit': os.waitstatus_to_exitcode(status)}), flush=True)
             except OSError:
@@ -138,7 +119,6 @@ def log(run):
 
 
 def supervised(cmd, run):
-    """Start one acpx call under its supervisor, its output going only to the run's owner-only log."""
     installed()
     try:
         with open(os.open(log(run), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), 'ab') as out:
@@ -160,15 +140,12 @@ def supervised(cmd, run):
 
 
 def launch(req, run, woken):
-    """Send one prompt under its supervisor; return what `running` and `end` need."""
     sup, turn = supervised(command(req, woken, run), run)
     sup.stdout.close()
     return turn
 
 
 def step(cmd, run):
-    """Run one acpx call to its end, with every process it started: its exit code, or None when it did not end
-    within STEP seconds, and then it is ended."""
     sup, turn = supervised(cmd, run)
     deadline, code = time.monotonic() + STEP, None
     with sup.stdout:
@@ -186,13 +163,10 @@ def step(cmd, run):
 
 
 def running(turn, run):
-    """Whether the turn `launch` returned still runs its harness."""
     return bool(turn) and turn['since'] is not None and since(turn['pid']) == turn['since']
 
 
 def end(turns, run):
-    """Stop the run: every process its turns' supervisors still keep, whatever its session or environment.
-    A supervisor exits only once none of its processes is left, so answer once every supervisor has exited."""
     kept = [(t['supervisor'], t['supervisor_since']) for t in turns if t and t['supervisor_since'] is not None]
     for sig, wait in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
         sent, deadline = set(), time.monotonic() + wait
@@ -202,7 +176,7 @@ def end(turns, run):
                 return
             pinned = {}
             for p in set().union(*(descendants(s) for s, _ in kept)) - sent:
-                try:  # pin each pid first, then check it is still under a supervisor, so no reused pid is hit
+                try:
                     pinned[p] = os.pidfd_open(p)
                 except OSError:
                     pass
@@ -223,7 +197,6 @@ def end(turns, run):
 
 
 def lock(run):
-    """Hold the run's lock until this command ends, so its wakes and stops take turns."""
     if not os.path.exists(os.path.join(STATE, run + '.json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     try:
@@ -249,7 +222,6 @@ def saved(run, state=None):
 
 
 def unsaved(run, turn, cmd):
-    """A turn began but could not be saved: end it, and say the outcome is unknown, never retry."""
     try:
         end([turn], run)
     except Refused:
@@ -272,8 +244,8 @@ def answer(cmd):
             raise Refused('harness %s is not one this driver runs through acpx' % req['harness'],
                           'use one of: ' + ', '.join(HARNESSES))
         installed()
-        state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}  # never woken while starting
-        try:  # save the run before its turn starts: nowhere to keep it, nothing starts
+        state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}
+        try:
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
             os.makedirs(os.path.join(STATE, 'work', run), mode=0o700)
@@ -296,7 +268,7 @@ def answer(cmd):
             raise
         try:
             saved(run, dict(state, turns=[turn], starting=False))
-        except OSError:  # the turn began but its run is not saved: end it, and never say retry
+        except OSError:
             unsaved(run, turn, 'start')
         return {'run': run}
     if cmd in ('wake', 'stop'):
@@ -304,17 +276,17 @@ def answer(cmd):
         lock(run)
         state = saved(run)
         if cmd == 'stop':
-            try:  # first, so no wake starts a turn meanwhile
+            try:
                 saved(run, dict(state, stopped=True))
                 kept = True
             except OSError:
                 kept = False
-            try:  # a polite end first: cancel the prompt and close the session
+            try:
                 if state['turns'] and shutil.which('acpx'):
                     for call in (['cancel', '-s', run], ['sessions', 'close', run]):
                         step(acpx(run, harness=state['request']['harness']) + call, run)
             finally:
-                end(state['turns'], run)  # whether or not that save, or those calls, worked
+                end(state['turns'], run)
             if not kept:
                 raise Refused('run %s has ended, but the driver could not save that it is stopped' % run,
                               'make OPENWIZ_OPENCLAW_STATE (or ~/.local/state/openwiz-openclaw) a folder you can '
@@ -324,10 +296,9 @@ def answer(cmd):
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
-        # One agent per run: while its last turn runs, that agent is awake and reads the ticket itself.
         if state['turns'] and running(state['turns'][-1], run):
             return {'run': run, 'woke': True}
-        try:  # a turn it could not save would be beyond a later wake's check: save first, or start nothing
+        try:
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was started' % run,

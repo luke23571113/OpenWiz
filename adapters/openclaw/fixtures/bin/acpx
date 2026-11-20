@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""A synthetic `acpx` (OpenClaw's ACP client) for the OpenClaw driver's tests. The command shapes follow
-`acpx --help` and `acpx <agent> --help` of acpx 0.22.0; everything else is synthetic, not observed on a host.
-
-Shapes it takes: `acpx --version`; `acpx [global options] <agent> sessions new --name <n>`;
-`acpx [global options] <agent> -s <n> [--no-wait] <prompt>`; `acpx [global options] <agent> cancel -s <n>`;
-`acpx [global options] <agent> sessions close <n>`. Global options: `--cwd`, `--model`, `--auth-policy`,
-`--permission-policy`, `--non-interactive-permissions`, `--ttl`, `--format`, `--approve-all`.
-
-Each call appends its arguments, one JSON list per line, to FAKE_ACPX_CALLS. Sessions live in the JSON file
-FAKE_ACPX_STATE. A prompt plays the agent: the session's first prompt posts one builder status note in the
-local tracker KIT_TRACKER, each later one edits it. Like acpx, a prompt leaves a queue owner behind (here a
-detached `sleep 120` in its own session; with FAKE_CLEAN, in a clean environment that carries no mark), and
-logs `<prompt pid> <queue owner pid> first|woken` to FAKE_TURNS. The prompt ends at once, or runs while the
-file FAKE_HOLD exists and nobody cancels it. FAKE_ACPX_FAIL (comma-separated: new, prompt, cancel, close) names
-calls that fail, as a missing sign-in would make them.
-"""
 import fcntl, json, os, subprocess, sys, time
 
 ARGS, STATE = sys.argv[1:], os.environ.get('FAKE_ACPX_STATE', '')
@@ -43,7 +27,6 @@ def update(change):
 
 
 def note(session, woken, skill):
-    """Post or edit this session's builder note, as the agent would."""
     path, now = os.environ['KIT_TRACKER'], time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     body = '\n'.join(['<!-- openwiz:status v1 -->', 'agent: builder', 'state: working', 'harness: Fake',
                       'model: ' + session['model'], 'skills: %s@0.1.2' % skill,
