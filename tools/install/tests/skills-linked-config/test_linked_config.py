@@ -40,6 +40,28 @@ class LinkedConfig(base.HarnessSkills):
                          base.skill_files(self.root / 'current/runtime/skills'))
         self.assertEqual(base.snapshot(dotfiles), {'other': 'dir'})
 
+    @unittest.skipIf(os.getuid() == 0, 'root ignores search permission')
+    def test_a_linked_config_without_search_permission_is_refused_on_its_own_row(self):
+        # catches (#1956 R1): a lookup that can't tell whether OpenCode is there (PermissionError) escaping the
+        # row, so every row is lost and nothing names the folder to fix; or a write despite the unknown
+        dotfiles = self.linked_config(opencode=True)
+        dotfiles.chmod(0o600)
+        self.addCleanup(dotfiles.chmod, 0o700)
+        before = base.snapshot(self.home)
+        code, result = self.skills()
+        self.assertEqual((code, result.get('schema'), result.get('outcome')),
+                         (5, 'openwiz.skills-install.v1', 'refused'), result)
+        self.assertEqual(base.snapshot(self.home), before)
+        rows = {r['id']: r for r in result['harnesses']}
+        self.assertEqual({h: r['state'] for h, r in rows.items()},
+                         {'claude-code': 'installed', 'codex': 'absent', 'cursor': 'absent',
+                          'opencode': 'refused', 'grok': 'absent'})
+        self.assertIn(str(self.home / '.config'), rows['opencode']['next'])
+        self.assertIn('chmod u+rx', rows['opencode']['next'])
+        self.assertIn('run this again', rows['opencode']['next'])
+        dotfiles.chmod(0o700)
+        self.assertEqual(base.snapshot(dotfiles), {'opencode': 'dir'})
+
     def test_a_config_file_in_place_of_the_folder_means_opencode_is_absent(self):
         # catches: a plain file at ~/.config crashing the step (lstat's NotADirectoryError) or refusing it,
         # when it only means OpenCode is not set up

@@ -72,3 +72,29 @@ First differing element 0:
 Ran 3 tests in 0.517s
 
 FAILED (failures=3)
+
+$ python3 -I tools/install/tests/skills-linked-config/test_linked_config.py   # #1956 R1 red, at cd7dc7da, before its fix
+.F..
+======================================================================
+FAIL: test_a_linked_config_without_search_permission_is_refused_on_its_own_row (__main__.LinkedConfig.test_a_linked_config_without_search_permission_is_refused_on_its_own_row)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/skills-linked-config/test_linked_config.py", line 52, in test_a_linked_config_without_search_permission_is_refused_on_its_own_row
+    self.assertEqual((code, result.get('schema'), result.get('outcome')),
+AssertionError: Tuples differ: (5, 'openwiz.install-error.v1', 'refused') != (5, 'openwiz.skills-install.v1', 'refused')
+
+First differing element 1:
+'openwiz.install-error.v1'
+'openwiz.skills-install.v1'
+
+- (5, 'openwiz.install-error.v1', 'refused')
+?                     ------
+
++ (5, 'openwiz.skills-install.v1', 'refused')
+?              +++++++
+ : {'schema': 'openwiz.install-error.v1', 'outcome': 'refused', 'command': 'skills', 'reason': 'the step could not be completed safely; the last good build and owner settings are retained'}
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.682s
+
+FAILED (failures=1)
