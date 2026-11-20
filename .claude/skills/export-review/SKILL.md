@@ -19,7 +19,7 @@ verified O17 after O16 with their existing authorization, prerequisites and hold
 intact. This skill authorizes neither step, no live run or publication now.
 Development targets stay as configured until cut-over. Private-to-public release
 copying remains stopped except specifically assigned O16 work. Never copy a
-private commit/history into the public source. `release/openwiz/` stays frozen.
+private commit/history into the public source.
 
 1. **Prepare one checked candidate.** Use the public repository's own history,
    a clean selected commit/build and complete matching products for all supported

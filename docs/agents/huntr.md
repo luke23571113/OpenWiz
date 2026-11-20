@@ -19,7 +19,7 @@ The `huntr` skill and its scripts read this file. The JSON block is parsed by `a
 
 ## Never-list
 
-The room-cli allowlist, approved limits, `release/openwiz/`, contracts and schemas, dependencies and toolchain, CI workflows, actions and runner kit, skills and their registrations, `docs/agents/`, ADRs, grills, `AGENTS.md`, specs' issues, and paths owned by tickets being built or carrying an unresolved builder-start claim. Standalone issues only. Features, side specs, live work, releases, publishing and spending are proposals. Inside these limits be safe but liberal.
+The room-cli allowlist, approved limits, contracts and schemas, dependencies and toolchain, CI workflows, actions and runner kit, skills and their registrations, `docs/agents/`, ADRs, grills, `AGENTS.md`, specs' issues, and paths owned by tickets being built or carrying an unresolved builder-start claim. Standalone issues only. Features, side specs, live work, releases, publishing and spending are proposals. Inside these limits be safe but liberal.
 
 ## Pace and priority
 
@@ -132,7 +132,6 @@ The gate counts every other open `huntr` issue (49 allow the 50th), refuses path
     "crates/adapters/github/src/process.rs",
     "crates/adapters/github/src/fleets.rs",
     "crates/adapters/github/src/writes.rs",
-    "release/openwiz/",
     "contracts/",
     ".github/workflows/",
     ".github/actions/",
