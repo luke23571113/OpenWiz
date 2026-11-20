@@ -1,0 +1,29 @@
+$ python3 -I tools/install/tests/skills-linked-config/test_linked_config.py   # at main, before the fix
+FF
+======================================================================
+FAIL: test_a_present_harness_behind_a_linked_config_is_refused_on_its_own_row (__main__.LinkedConfig.test_a_present_harness_behind_a_linked_config_is_refused_on_its_own_row)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/skills-linked-config/test_linked_config.py", line 55, in test_a_present_harness_behind_a_linked_config_is_refused_on_its_own_row
+    self.assertIn(str(self.home / '.config'), rows['opencode']['next'])
+AssertionError: '<tmp>' not found in 'symlink or non-directory ancestor'
+
+======================================================================
+FAIL: test_an_absent_harness_under_a_linked_config_blocks_nothing (__main__.LinkedConfig.test_an_absent_harness_under_a_linked_config_blocks_nothing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/skills-linked-config/test_linked_config.py", line 35, in test_an_absent_harness_under_a_linked_config_blocks_nothing
+    self.assertEqual((code, result.get('outcome')), (0, 'installed'), result)
+AssertionError: Tuples differ: (5, 'refused') != (0, 'installed')
+
+First differing element 0:
+5
+0
+
+- (5, 'refused')
++ (0, 'installed') : {'schema': 'openwiz.skills-install.v1', 'version': '0.0.99', 'source': '1111111111111111111111111111111111111111', 'canonical': '<tmp>', 'skills': ['grill', 'launch-fleet', 'setup', 'to-tickets'], 'harnesses': [{'id': 'claude-code', 'path': '<tmp>', 'state': 'installed', 'next': 'Claude Code finds these skills next time it starts.'}, {'id': 'codex', 'path': '<tmp>', 'state': 'absent', 'next': 'Codex is not set up here (<tmp> is missing); install it, then run this again.'}, {'id': 'cursor', 'path': '<tmp>', 'state': 'absent', 'next': 'Cursor is not set up here (<tmp> is missing); install it, then run this again.'}, {'id': 'opencode', 'path': '<tmp>', 'state': 'refused', 'next': 'symlink or non-directory ancestor'}, {'id': 'grok', 'path': '<tmp>', 'state': 'absent', 'next': 'Grok is not set up here (<tmp> is missing); install it, then run this again.'}], 'outcome': 'refused', 'reason': 'A destination is not safe to write; nothing was changed.'}
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.352s
+
+FAILED (failures=2)
