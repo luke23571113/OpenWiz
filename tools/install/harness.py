@@ -120,6 +120,14 @@ def guard_parent(base, plain):
                                 f'if you don\'t use {plain}, then run this again.') from None
 
 
+def unreadable(path, plain, error):
+    """The refusal for a folder OpenWiz could not look into: the outermost one it may not search."""
+    culprit = next((p for p in reversed((path, *path.parents)) if not os.access(p, os.X_OK)), path.parent)
+    return (f'OpenWiz could not look inside {culprit} ({error.strerror}), so it cannot tell what is in {plain}\'s '
+            f'folder; nothing was changed. Give yourself access with chmod u+rx -- {shlex.quote(str(culprit))}, '
+            'then run this again.')
+
+
 def install_skills(build, value, root, home, codex_home=None):
     """The step's result and exit code (0 done, 5 refused with nothing changed)."""
     skills = build / 'runtime/skills'
@@ -146,6 +154,8 @@ def install_skills(build, value, root, home, codex_home=None):
                        f'{plain} is not set up here ({base} is missing); install it, then run this again.')
         except installer.Refused as refusal:
             row.update(state='refused', next=str(refusal))
+        except OSError as error:  # #1956 R1: a lookup that can't tell what is there refuses this row only
+            row.update(state='refused', next=unreadable(Path(error.filename or base), plain, error))
         rows.append(row)
     result = {'schema': 'openwiz.skills-install.v1', 'version': value['version'], 'source': value['source'],
               'canonical': str(canonical), 'skills': names, 'harnesses': rows}
