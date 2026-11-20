@@ -3,8 +3,7 @@
 Structured decision requests posted by the orchestrator, plus the read-only
 `GET /api/v1/decisions` response (0.0.11, #648, U1 #651). The schema is
 [decisions.v1.schema.json](decisions.v1.schema.json). **Contract only:** U4 builds
-posting, U5 reading and U6 cards/sends. Inline synthetic tests in
-`tests/checks/plan_decisions_schema_conformance.rs` prove parsed shapes only.
+posting, U5 reading and U6 cards/sends.
 
 Authority: E1–E3 and the later ruling approving all three contract choices
 ([private record](https://github.com/jparker2006/ClosedWiz/issues/651#issuecomment-6575677837)).
