@@ -101,7 +101,7 @@ class Boat(unittest.TestCase):
         with open(self.tracker, 'w') as f:
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
-        self.env = dict(os.environ, KIT_TRACKER=self.tracker, KIT_TEST=self.mark, GH_TOKEN=TOKEN,
+        self.env = dict(HOME=self.folder, KIT_TRACKER=self.tracker, KIT_TEST=self.mark, GH_TOKEN=TOKEN,
                         FAKE_TURNS=self.turns, FAKE_HOLD=self.hold,
                         FAKE_BOAT_STATE=os.path.join(self.folder, 'boat.json'),
                         OPENWIZ_BOAT_STATE=os.path.join(self.folder, 'state'), OPENWIZ_BOAT_SETTLE='2',
@@ -109,6 +109,10 @@ class Boat(unittest.TestCase):
         for real in ('claude', 'codex', 'gh', 'git'):
             self.assertIsNone(shutil.which(real, path=self.env['PATH']), 'a real %s is on the tests\' PATH' % real)
         self.assertEqual(shutil.which('boat', path=self.env['PATH']), os.path.join(HERE, 'fixtures', 'bin', 'boat'))
+        self.assertNotIn('BASH_ENV', self.env)
+        found = subprocess.run(['sh', '-c', 'command -v claude codex gh git; echo "$PATH"'], env=self.env,
+                               capture_output=True, text=True).stdout.splitlines()
+        self.assertEqual(found, [self.env['PATH']], 'the tests\' shell reaches a real binary')
 
     def only_these_tools(self):
         tools = os.path.join(self.folder, 'tools')
