@@ -270,6 +270,7 @@ class Fallback(Helper):
         self.token_file().chmod(0o600)
         (self.private / "request.json").write_text(json.dumps(
             {"requester": "builder-1", "repositories": [REPO], "permissions": WRITE}))
+        (self.private / "request.json").chmod(0o600)  # as the helper writes it, whatever the umask
         self.answers({"exit": 1, "stdout": ""})
         ran = self.helper("run", "--", "gh", "pr", "list", GH_TOKEN=OLD)
         self.assert_fallback(ran, "unreachable")
