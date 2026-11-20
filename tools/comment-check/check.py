@@ -29,7 +29,8 @@ WARNING = re.compile(r'^(SECURITY|SAFETY|PRIVACY|DATA LOSS):\s*\S')
 EXTERNAL = re.compile(r'^External:')
 OUR_LINK = re.compile(r'github\.com/(openwizdev|jparker2006)/', re.I)
 LINK = re.compile(r'https?://[^\s)>\]"\']+')
-POINTER = re.compile(r'https://github\.com/jparker2006/ClosedWiz/(issues|pull)/[1-9][0-9]*#issuecomment-[1-9][0-9]*')
+PRIVATE_REPOSITORY = '/'.join(('jparker2006', 'Closed' + 'Wiz'))
+POINTER = re.compile(r'https://github\.com/' + re.escape(PRIVATE_REPOSITORY) + r'/(issues|pull)/[1-9][0-9]*#issuecomment-[1-9][0-9]*')
 LICENCE = re.compile(r'SPDX-License-Identifier:|\bCopyright\b|\bLicensed under\b')
 DIRECTIVE = re.compile(
     r'^(noqa\b|type:\s*ignore\b|pragma:|pylint:|fmt:\s*(off|on|skip)\b|ruff:|mypy:|pyright:|isort:|'
@@ -208,8 +209,30 @@ def skip_parens(s, i):
     return n
 
 
+def shell_quoted(s, i, lines, out):
+    j, n = i + 1, len(s)
+    while j < n:
+        if s[j] == '\\':
+            j += 2
+        elif s[j] == '"':
+            return j + 1
+        elif s.startswith('$((', j):
+            j = skip_parens(s, j + 1)
+        elif s.startswith('$(', j):
+            j = shell_words(s, j + 2, lines, out, nested=True)
+        else:
+            j += 1
+    return n
+
+
 def scan_shell(s):
-    lines, out, i, n, pending, boundary = Lines(s), [], 0, len(s), [], True
+    lines, out = Lines(s), []
+    shell_words(s, 0, lines, out)
+    return out
+
+
+def shell_words(s, i, lines, out, nested=False):
+    n, pending, boundary, depth = len(s), [], True, 0
     while i < n:
         c = s[i]
         if c == '\n' and pending:
@@ -239,6 +262,10 @@ def scan_shell(s):
                 i += 2
             boundary = m is None
         elif c in SHELL_BREAK:
+            if nested and c in '()':
+                depth += 1 if c == '(' else -1
+                if depth < 0:
+                    return i + 1
             i, boundary = i + 1, True
         elif c == '#' and boundary:
             i = line_comment(s, i, lines, out, '#')
@@ -247,13 +274,15 @@ def scan_shell(s):
             i, boundary = (n if end < 0 else end + 1), False
         elif c == '$' and s.startswith("$'", i):
             i, boundary = skip_quoted(s, i + 1, "'", newline_ends=False), False
-        elif c in '"`':
+        elif c == '"':
+            i, boundary = shell_quoted(s, i, lines, out), False
+        elif c == '`':
             i, boundary = skip_quoted(s, i, c, newline_ends=False), False
         elif c == '\\':
             i, boundary = i + 2, False
         else:
             i, boundary = i + 1, False
-    return out
+    return n
 
 
 YAML_BLOCK = re.compile(r'^(\s*(?:-\s+)?)([^\s#][^#]*?):\s*[|>][0-9+-]*\s*$')

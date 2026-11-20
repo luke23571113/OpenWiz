@@ -4,7 +4,7 @@ Which comments stay in our code, how CI keeps new ones out, and how a repository
 
 **Contract and checker first** (#1816, CC1 of spec #1815). Each repository's own ticket (CC2, CC6, CC8, CC9, CC11, CC12) carries a byte-identical copy of this file and the checker and wires the diff mode into its CI; all but CC2 also cut that repository's comments, and CC3 to CC5 cut OpenWiz's by area; CC7 gives review-ticket its comment pass; CC10 draws the count report in the war room.
 
-Authority: spec #1815, from Jake's comment-cut decisions (J238, C1 to C3), 2026-11-19 and 2026-11-20 ([private record](https://github.com/jparker2006/ClosedWiz/issues/3065#issuecomment-7034782715)).
+Authority: spec #1815, from Jake's comment-cut decisions (J238, C1 to C3), 2026-11-19 and 2026-11-20 (private record: the [pointer](open-development.v1.md#the-pointer) to issue 3065, comment 7034782715).
 
 ## Words
 
@@ -28,7 +28,7 @@ Only these kinds. The checker reads each one from its form, so the form is the r
 | A constraint from outside our code | The block starts `External:` and holds a link to something that isn't ours (not `github.com/openwizdev/` or `github.com/jparker2006/`) | `# External: the vendor API rounds timeouts down, https://example.com/vendor/issues/7` |
 | Public API docs a published documentation build renders | A doc comment of its own language (Rust `///`, `//!`, `/** */`, `/*! */`; JavaScript and TypeScript `/** */` only; Python's standalone strings, docstrings included; CSS has none) in a path the repository names with `--docs`. A repository with no published documentation build names none | `/// Returns the answer.` under `--docs crates/sdk/` |
 | A security or data-loss warning | The block starts `SECURITY:`, `SAFETY:`, `PRIVACY:` or `DATA LOSS:` and says something after it | `// SAFETY: the buffer outlives every reader.` |
-| A private-record pointer | The block holds a pointer in the [open development contract's form](open-development.v1.md#the-pointer) | `# Private record: https://github.com/jparker2006/ClosedWiz/issues/9001#issuecomment-9000000001` |
+| A private-record pointer | The block holds a pointer in the [open development contract's form](open-development.v1.md#the-pointer) | `# Private record: https://github.com/jparker2006/<private repository>/issues/9001#issuecomment-9000000001`, with the private repository's name in place of `<private repository>` |
 
 The form proves only the shape. Whether the outside constraint is real, the warning true and the docs really published is the reviewer's to judge (CC7's comment pass); a block that wears a form it hasn't earned is a review finding.
 
