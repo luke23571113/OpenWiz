@@ -1,0 +1,1 @@
+Before I start a paid examplehost sandbox for the wake-after-turn lesson: this may cost money and start a machine. Say yes to go ahead, or no to skip it.
