@@ -80,10 +80,24 @@ the contract is wrong and must be fixed.
   "upstream": {
     "url": "https://openrouter.ai/api/v1/chat/completions",
     "stream": true,
-    "max_tokens": 500,
-    "temperature": 0,
+    "temperature": 0
+  },
+  "limits": {
+    "max_output_tokens": 500,
     "max_passages": 6,
-    "max_passage_chars": 1200
+    "max_passage_chars": 1200,
+    "max_prompt_bytes": 10000,
+    "max_prompt_tokens": 10240,
+    "max_answer_bytes": 4000
+  },
+  "prompt": {
+    "system": "You answer questions about OpenWiz for visitors to openwiz.dev. Answer only from the passages in the user's message, in plain text, in at most three short paragraphs. If the passages do not answer the question, reply with exactly NOT_COVERED and nothing else.",
+    "passage": "Passage {n} from {url}:\n{text}\n\n",
+    "question": "Question: {question}"
+  },
+  "spend": {
+    "per_call": "max_prompt_tokens * prompt_price + max_output_tokens * completion_price",
+    "per_day": "ASK_A_WIZ_DAILY_CAP * per_call"
   },
   "index": {"schema": "openwiz.ask-a-wiz.index.v1", "keys": ["schema", "sources", "passages"], "max_bytes": 2000000},
   "stored": {
@@ -94,7 +108,7 @@ the contract is wrong and must be fixed.
   "fixtures": [
     "answer", "answer-escaped", "not-covered", "not-covered-model", "too-long", "rate-limited",
     "daily-cap", "upstream-error", "upstream-error-midstream", "bad-request", "unavailable",
-    "off", "probe-on", "probe-off"
+    "off", "probe-on", "probe-off", "answer-trimmed-count", "answer-trimmed-bytes", "answer-overflow"
   ]
 }
 ```
@@ -252,19 +266,61 @@ The function checks in this order, and stops at the first that fails:
   `UPDATE ask_counters SET count = count + 1 WHERE day = ? AND key = ? AND count < ? RETURNING count`
   (after inserting the row at `0` if it is missing). No row back means the
   limit is reached: the question is refused, and nothing is added.
-- **What a day can spend:** every call sends at most 6 passages of at most
-  1200 characters and asks for at most 500 output tokens, so a day spends at
-  most the cap times one such call's price. FA5 records the cap value Jake
-  sets.
+- **What a day can spend:** the cap counts calls, and every call is bounded
+  (next section), so a day can never spend more than the cap times one call's
+  maximum cost.
 
-## The model call
+## The model call, bounded
 
 `POST https://openrouter.ai/api/v1/chat/completions` with
-`Authorization: Bearer <OPENROUTER_API_KEY>`, `model` from `ASK_A_WIZ_MODEL`,
-`stream: true`, `max_tokens: 500` and `temperature: 0`. The messages hold the
-system instruction (answer only from the passages; otherwise reply exactly
-`NOT_COVERED`), the chosen passages and the question. Tests use a fake
-OpenRouter only; no test or fixture calls the real one.
+`Authorization: Bearer <OPENROUTER_API_KEY>` and exactly this JSON body:
+`model` from `ASK_A_WIZ_MODEL`, `stream: true`, `max_tokens: 500`,
+`temperature: 0`, and `messages`: one `system` message whose content is the
+pin's `prompt.system`, then one `user` message. Tests use a fake OpenRouter
+only; no test or fixture calls the real one.
+
+Every limit is a constant of this contract, not a setting, so the dollar
+figure for a cap depends only on the cap and the model's prices:
+
+| Constant | Value | What it bounds |
+| --- | --- | --- |
+| `max_output_tokens` | 500 | The `max_tokens` of every call: the most output a call is billed for |
+| `max_passages` | 6 | Passages sent in one call |
+| `max_passage_chars` | 1200 | Code points of one passage's text (the index never holds a longer one) |
+| `max_prompt_bytes` | 10000 | UTF-8 bytes of the system and user message contents together |
+| `max_prompt_tokens` | 10240 | Input tokens of one call: `max_prompt_bytes`, at one token per byte at most, plus 240 for the chat framing |
+| `max_answer_bytes` | 4000 | UTF-8 bytes of answer text the function passes on |
+
+**The user message** is built from the question and the passages the index's
+scoring ranked, best first. Each passage is the pin's `prompt.passage` with
+`{n}` its number from 1, `{url}` its source's URL and `{text}` its text; then
+comes the pin's `prompt.question` with `{question}` the trimmed question. The
+function adds passages in rank order and **stops at the first** that would
+be a seventh passage or take the system and user contents past
+`max_prompt_bytes`; it drops that passage and every lower one. The system
+text is under 1000 bytes and a question at most 1200, so the best passage
+always fits. Only the passages sent count as used.
+
+**The answer is bounded too.** `max_tokens` stops the model at 500 tokens.
+If the stream still carries more than `max_answer_bytes` of text (a provider
+that ignores `max_tokens`), the function passes on only the pieces that fit
+whole, cancels the upstream call and ends with `upstream_error`: status `200`
+after some text, or `502` if not even the first piece fits.
+
+**The worst-case spend.** With the model's OpenRouter prices per token,
+`prompt_price` and `completion_price`:
+
+```text
+one call = 10240 * prompt_price + 500 * completion_price
+one day  = ASK_A_WIZ_DAILY_CAP * one call
+```
+
+For example, at synthetic prices of $0.10 per million input tokens and $0.40
+per million output tokens, one call costs at most $0.001224, and a cap of 200
+spends at most $0.2448 a day. FA5 shows Jake this figure for the cap he sets,
+at the chosen model's listed prices. The bound holds only for a model billed
+for no output beyond `max_tokens`: FA5 picks a model without separately
+billed reasoning tokens.
 
 ## The docs index
 
@@ -281,7 +337,7 @@ assets. Its form:
 ```
 
 - `sources`: one or more `{"title", "url"}`, each URL once, under the two
-  prefixes above. `title` is 1 to 200 characters.
+  prefixes above. `title` and `url` are each 1 to 200 characters.
 - `passages`: one or more `{"source", "text"}`. `source` is an index into
   `sources`; `text` is 1 to 1200 characters of plain text.
 - The whole file is at most 2,000,000 bytes, with no other keys.
@@ -322,9 +378,9 @@ some synthetic questions). Each case is a JSON object:
 | `now` | The synthetic UTC time the case runs at, ISO 8601 |
 | `request` | `{"method", "headers", "body"}`, sent to `https://openwiz.dev/api/ask`; `body` is the exact request body string, or `null` |
 | `settings` | The Pages settings and bindings the case runs with: the secret as the synthetic value `fake-openrouter-key`, a bound store as `"bound"`, an unset one left out |
-| `passages` | Optional, `false` when no index passage scores above zero for the question |
+| `retrieved` | Optional: the passages the index's scoring ranked for the question, best first, each `{"source": {"title", "url"}, "text"}`; `[]` when none scores above zero |
 | `store` | The counter rows before the request, as `{"day", "key", "count"}` objects |
-| `upstream` | What the fake OpenRouter does: `null` (never called), `{"chunks": [...]}` (it streams these content pieces), or `{"fails": true}` (it errors, before or after `after_chunks` pieces) |
+| `upstream` | The fake OpenRouter: `null` (never called), or `{"request", "chunks"}`: `request` is the exact JSON body the function must send, `chunks` the content pieces it streams back; with `"fails": true` it errors after `after_chunks` pieces |
 | `response` | `{"status", "headers", "body"}`; `body` is the exact response body string (the NDJSON lines), or `null` |
 
 `test_fixtures.py` checks every case: the shape of each event and stream,

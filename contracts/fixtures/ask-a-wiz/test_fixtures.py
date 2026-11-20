@@ -55,6 +55,39 @@ def question_of(case):
     return body['question'].strip()
 
 
+def sent_passages(pin, case):
+    """The ranked passages that fit the call, in order: stop at the first that makes too many or too big."""
+    lim, prompt = pin['limits'], pin['prompt']
+    tail = prompt['question'].format(question=question_of(case))
+    sent, blocks = [], ''
+    for p in case.get('retrieved') or []:
+        block = prompt['passage'].format(n=len(sent) + 1, url=p['source']['url'], text=p['text'])
+        size = len((prompt['system'] + blocks + block + tail).encode())
+        if len(sent) == lim['max_passages'] or size > lim['max_prompt_bytes']:
+            break
+        sent.append(p)
+        blocks += block
+    return sent, blocks + tail
+
+
+def expected_request(pin, case):
+    sent, user = sent_passages(pin, case)
+    return {'model': case['settings'][pin['names']['model']], 'stream': True,
+            'max_tokens': pin['limits']['max_output_tokens'], 'temperature': pin['upstream']['temperature'],
+            'messages': [{'role': 'system', 'content': pin['prompt']['system']}, {'role': 'user', 'content': user}]}
+
+
+def fitting(pin, chunks):
+    """The answer pieces passed on: whole pieces while the text stays within max_answer_bytes."""
+    out, total = [], 0
+    for chunk in chunks:
+        total += len(chunk.encode())
+        if total > pin['limits']['max_answer_bytes']:
+            break
+        out.append(chunk)
+    return out
+
+
 def outcome(pin, case):
     """What the contract's order of checks gives for this case: a reason, 'off', 'probe' or 'stream'."""
     names, request, settings = pin['names'], case['request'], case['settings']
@@ -79,7 +112,7 @@ def outcome(pin, case):
     if salts and rows.get(visitor_key(salts[0], headers.get('cf-connecting-ip', ''), hour), 0) \
             >= pin['rate_limit']['per_visitor']:
         return 'rate_limited'
-    if case['upstream'] is None and not case.get('passages', True):
+    if case['upstream'] is None and case.get('retrieved') == []:
         return 'not_covered'
     try:
         cap = int(settings.get(names['daily_cap'], ''))
@@ -90,7 +123,7 @@ def outcome(pin, case):
     if rows.get('cap', 0) >= cap:
         return 'daily_cap'
     upstream = case['upstream'] or {}
-    if upstream.get('fails') and not upstream.get('after_chunks'):
+    if upstream.get('fails') and not upstream.get('after_chunks') or not fitting(pin, upstream.get('chunks', [])):
         return 'upstream_error'
     return 'stream'
 
@@ -99,7 +132,7 @@ def problems(pin, case, name):
     out = []
     if case.get('case') != name:
         out.append('case name does not match its file')
-    if set(case) - {'case', 'now', 'request', 'settings', 'store', 'upstream', 'passages', 'response'}:
+    if set(case) - {'case', 'now', 'request', 'settings', 'store', 'upstream', 'retrieved', 'response'}:
         out.append('unknown case keys')
     response = case['response']
     headers = {k.lower(): v for k, v in response['headers'].items()}
@@ -111,6 +144,8 @@ def problems(pin, case, name):
         if not DAY.match(row['day']) or not STORE_KEY.match(row['key']) or set(row) != {'day', 'key', 'count'}:
             out.append(f'store row not allowed: {row}')
     expected = outcome(pin, case)
+    if case['upstream'] is not None and case['upstream'].get('request') != expected_request(pin, case):
+        out.append('the model call is not the bounded request the contract builds')
     if expected == 'off':
         if response['status'] != 404 or body is not None:
             out.append('the switch is off but the answer is not an empty 404')
@@ -177,20 +212,23 @@ def problems(pin, case, name):
         out.append('text pieces must come first')
     if pin['not_covered']['sentinel'] in ''.join(pieces):
         out.append('the sentinel reached the visitor')
-    if upstream.get('fails'):
+    chunks = upstream.get('chunks', [])
+    allowed = chunks[:upstream.get('after_chunks', 0)] if upstream.get('fails') else fitting(pin, chunks)
+    if pieces != allowed:
+        out.append('the pieces are not the ones the fake upstream sent that fit')
+    if upstream.get('fails') or allowed != chunks:
         if types[len(pieces):] != ['refused'] or last['reason'] != 'upstream_error' \
                 or last['message'] != pin['refusals']['upstream_error']['message']:
-            out.append('a failure mid-answer must end on one upstream_error')
-        if pieces != upstream.get('chunks', [])[:upstream.get('after_chunks', 0)]:
-            out.append('the pieces are not what the fake upstream sent before failing')
+            out.append('a failure or an overflow mid-answer must end on one upstream_error')
         return out
     if types[len(pieces):] != ['sources', 'done']:
         out.append('an answer ends with sources, then done')
         return out
-    if ''.join(pieces) != ''.join(upstream.get('chunks', [])):
-        out.append('the answer is not what the fake upstream streamed')
     sources = events[-2]['sources']
     urls = [s.get('url') for s in sources]
+    used = [p['source'] for p in sent_passages(pin, case)[0]]
+    if sources != [x for i, x in enumerate(used) if x not in used[:i]]:
+        out.append('sources are not the sent passages\' sources, each once, in order')
     if not 1 <= len(sources) <= pin['max_sources'] or len(set(urls)) != len(urls) \
             or any(sorted(s) != ['title', 'url'] for s in sources) \
             or not all(isinstance(u, str) and u.startswith(tuple(pin['source_url_prefixes'])) for u in urls):
@@ -210,7 +248,7 @@ def index_problems(pin, index):
     if not sources or len(set(urls)) != len(urls):
         out.append('index sources must be one or more, each URL once')
     for s in sources:
-        if sorted(s) != ['title', 'url'] or not 1 <= len(s['title']) <= 200 \
+        if sorted(s) != ['title', 'url'] or not 1 <= len(s['title']) <= 200 or not 1 <= len(s['url']) <= 200 \
                 or not s['url'].startswith(tuple(pin['source_url_prefixes'])):
             out.append(f'bad index source: {s}')
     if not passages:
@@ -218,7 +256,7 @@ def index_problems(pin, index):
     for p in passages:
         if sorted(p) != ['source', 'text'] or not isinstance(p['source'], int) \
                 or not 0 <= p['source'] < len(sources) \
-                or not 1 <= len(p['text']) <= pin['upstream']['max_passage_chars']:
+                or not 1 <= len(p['text']) <= pin['limits']['max_passage_chars']:
             out.append(f'bad index passage: {str(p)[:60]}')
     return out
 
@@ -232,6 +270,19 @@ class Pin(unittest.TestCase):
         self.assertEqual(pin['names']['store'], 'ASK_A_WIZ_COUNTERS')
         self.assertEqual((pin['names']['switch'], pin['names']['switch_on']), ('ASK_A_WIZ', 'on'))
         self.assertEqual(load('off')['settings'].get('ASK_A_WIZ'), None, 'off is the unset switch')
+
+    def test_one_call_is_bounded_so_the_cap_bounds_spend(self):
+        pin = load_pin()
+        lim, prompt = pin['limits'], pin['prompt']
+        # The largest call: the longest question (4 bytes a code point), one longest passage with a 200-character URL.
+        question = prompt['question'].format(question='\U0001F600' * pin['request']['max_question_chars'])
+        passage = prompt['passage'].format(n=1, url='u' * 200, text='\U0001F600' * lim['max_passage_chars'])
+        self.assertLessEqual(len((prompt['system'] + passage + question).encode()), lim['max_prompt_bytes'],
+                             'the best passage must always fit')
+        self.assertGreaterEqual(lim['max_prompt_tokens'], lim['max_prompt_bytes'], 'one token per byte at most')
+        self.assertEqual(pin['spend']['per_call'],
+                         'max_prompt_tokens * prompt_price + max_output_tokens * completion_price')
+        self.assertEqual(pin['spend']['per_day'], 'ASK_A_WIZ_DAILY_CAP * per_call')
 
     def test_every_refusal_has_a_case(self):
         pin = load_pin()
@@ -294,6 +345,14 @@ class TheCheckCatches(unittest.TestCase):
             'cap reached but the model called': ('daily-cap', lambda c: c.update(upstream={'chunks': ['x']})),
             'an IP in the store': ('rate-limited', lambda c: c['store'].append(
                 {'day': c['store'][0]['day'], 'key': 'visitor:192.0.2.1:00', 'count': 1})),
+            'max_tokens raised': ('answer', lambda c: c['upstream']['request'].update(max_tokens=4000)),
+            'a seventh passage sent': ('answer-trimmed-count', lambda c: c['upstream']['request']['messages'][1].update(
+                content='Passage 7 from x:\nx\n\n' + c['upstream']['request']['messages'][1]['content'])),
+            'skipping a too-big passage for a smaller one': ('answer-trimmed-bytes', lambda c: c['retrieved'].pop(
+                len(sent_passages(load_pin(), c)[0]))),
+            'an overflowing answer passed on': ('answer-overflow', lambda c: c['response'].update(body=''.join(
+                json.dumps({'type': 'text', 'text': x}, separators=(',', ':')) + '\n'
+                for x in c['upstream']['chunks']) + '{"type":"done"}\n')),
             'switch off but answered': ('off', lambda c: c['response'].update(body='{"type":"done"}\n')),
         }
         for what, (name, change) in plants.items():
