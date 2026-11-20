@@ -2,7 +2,9 @@
 """The token service (GA2, #1841): mint one-hour openwiz[bot] installation tokens
 on the owner's machine, under contracts/token-service.v1.md.
 
-  token-service.py start   let agents mint (a fresh install is stopped)
+  token-service.py start   let agents mint (a fresh install is stopped); the App
+                           setting (OPENWIZ_GITHUB_APP_MODE) given here holds
+                           for every mint until the next start
   token-service.py stop    refuse every mint, like an unreachable service
   token-service.py mint    read one request on stdin, write one answer or
                            refusal as one JSON line on stdout
@@ -43,8 +45,10 @@ LEVEL = {"read": 0, "write": 1}
 REQUESTER = re.compile(r"[a-z][a-z0-9-]{0,63}")
 PERMISSION = re.compile(r"[a-z][a-z_]*")
 TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
-# A handed-over token has more than REFRESH and at most LONGEST seconds left (the pin).
-REFRESH, LONGEST = 300, 3900
+# A handed-over token has more than REFRESH and at most LONGEST seconds left (the pin),
+# checked on a fresh clock after the exchange with HANDOVER seconds kept for the log
+# write and the pipe, so the helper never receives a token already due for refresh.
+REFRESH, LONGEST, HANDOVER = 300, 3900, 10
 REQUEST_LIMIT = 64 * 1024
 FOLDER, STARTED, LOG = "token-service", "started", "mint-log.jsonl"
 STOPPED = "Token service stopped: the owner has not started it."
@@ -105,26 +109,22 @@ def folder(state, create=False):
 
 
 def started(directory):
+    """The App setting recorded by `start` ("user" or "factory"), or None when stopped.
+    A marker that is not owner-only or not exactly start's is stopped."""
     try:
-        fd = os.open(STARTED, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
-    except OSError:
-        return False
-    try:
-        app.checked(fd)
-        return True
-    except ValueError:
-        return False
-    finally:
-        os.close(fd)
+        value = app.parse_json(app.read_file(directory, STARTED, 64))
+    except (OSError, ValueError):
+        return None
+    mode = value.get("mode")
+    return mode if set(value) == {"mode"} and mode in ("user", "factory") else None
 
 
-def mint(api, request, now):
+def mint(api, request, setting):
     """(token, expires_at) for exactly REQUEST, or a refusal, checked in the contract's order."""
     repositories, permissions = request["repositories"], request["permissions"]
     owners = {name.split("/")[0].lower() for name in repositories}
     check(len(owners) == 1, "one-owner")
     try:
-        setting = app.mode()
         directory = app.app_directory(app.state_path(api["state"]))
         try:
             config = app.parse_json(app.read_file(directory, "app.json", 1024))
@@ -173,18 +173,19 @@ def mint(api, request, now):
         expires_at = int(datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00")).timestamp())
     except Exception:
         raise Refused("github") from None
-    check(REFRESH < expires_at - now <= LONGEST, "expiry")
+    left = expires_at - time.time()  # now, after the exchange: what the caller will get
+    check(REFRESH + HANDOVER < left <= LONGEST, "expiry")
     return token, expires_at
 
 
-def serve(api, log, data):
+def serve(api, log, data, setting):
     """(message, exit) for one request; the log line is written before any token is handed over."""
     now = time.time()
     line = {"schema": SCHEMA, "kind": "mint-log", "at": int(now), "requester": "-"}
     try:
         request = request_of(data)
         line.update(requester=request["requester"], repositories=request["repositories"])
-        token, expires_at = mint(api, request, now)
+        token, expires_at = mint(api, request, setting)
         line.update(permissions=request["permissions"], outcome="minted", expires_at=expires_at)
         message = {"schema": SCHEMA, "kind": "answer", "token": token, "expires_at": expires_at,
                    "repositories": request["repositories"], "permissions": request["permissions"]}
@@ -213,11 +214,20 @@ def main():
         directory = folder(app.state_path(args.state_dir), create=True)
         try:
             if args.command == "start":
-                fd = os.open(STARTED, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600, dir_fd=directory)
                 try:
-                    app.checked(fd)
-                finally:
-                    os.close(fd)
+                    setting = app.mode()
+                except ValueError:
+                    print("Token service not started: OPENWIZ_GITHUB_APP_MODE must be unset, user or factory.",
+                          file=sys.stderr)
+                    return 1
+                # Replaced whole, never edited in place: a mint reads the old or the new setting.
+                temporary = f".{STARTED}.{os.getpid()}"
+                try:
+                    os.unlink(temporary, dir_fd=directory)
+                except FileNotFoundError:
+                    pass
+                app.save_file(directory, temporary, json.dumps({"mode": setting}).encode())
+                os.replace(temporary, STARTED, src_dir_fd=directory, dst_dir_fd=directory)
             else:
                 try:
                     os.unlink(STARTED, dir_fd=directory)
@@ -225,7 +235,8 @@ def main():
                     pass
         finally:
             os.close(directory)
-        print("Token service started." if args.command == "start" else "Token service stopped.")
+        print(f"Token service started ({setting} App setting)." if args.command == "start"
+              else "Token service stopped.")
         return 0
     try:
         directory = folder(app.state_path(args.state_dir))
@@ -234,7 +245,8 @@ def main():
     except Exception:
         return answer(refusal("unavailable"), 1)
     try:
-        if directory is None or not started(directory):
+        setting = None if directory is None else started(directory)
+        if setting is None:
             print(STOPPED, file=sys.stderr)
             return 1
         try:
@@ -244,7 +256,7 @@ def main():
         try:
             app.checked(log)
             api = {"state": args.state_dir, "base": app.api_base(args.api_base)}
-            return answer(*serve(api, log, sys.stdin.buffer.read(REQUEST_LIMIT + 1)))
+            return answer(*serve(api, log, sys.stdin.buffer.read(REQUEST_LIMIT + 1), setting))
         finally:
             os.close(log)
     finally:
