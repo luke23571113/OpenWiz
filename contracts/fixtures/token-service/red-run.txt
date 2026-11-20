@@ -144,3 +144,33 @@ AssertionError: None != 'usage'
 Ran 13 tests in 0.010s
 
 FAILED (failures=1)
+
+Planner-answer red run (#1839, option 1 of the token-route question): the pin did not yet state how a token crosses the pairing.
+Command: python3 -I contracts/fixtures/token-service/test_fixtures.py (exit 1)
+
+test_every_invalid_message_fails_the_schema (__main__.Invalid.test_every_invalid_message_fails_the_schema) ... ok
+test_a_token_appears_only_in_its_private_places (__main__.NeverExposed.test_a_token_appears_only_in_its_private_places) ... ok
+test_no_credential_or_real_id_in_the_contract_schema_or_fixtures (__main__.NeverExposed.test_no_credential_or_real_id_in_the_contract_schema_or_fixtures) ... ok
+test_the_scan_catches_what_it_claims (__main__.NeverExposed.test_the_scan_catches_what_it_claims) ... ok
+test_a_token_is_refreshed_at_or_under_five_minutes_left (__main__.RefreshAndFallback.test_a_token_is_refreshed_at_or_under_five_minutes_left) ... ok
+test_the_fallback_says_so_once_and_not_configured_is_silent (__main__.RefreshAndFallback.test_the_fallback_says_so_once_and_not_configured_is_silent) ... ok
+test_each_case_is_valid_and_its_outcome_follows_the_pin (__main__.Requests.test_each_case_is_valid_and_its_outcome_follows_the_pin) ... ok
+test_the_fixtures_cover_a_good_request_and_every_refusal (__main__.Requests.test_the_fixtures_cover_a_good_request_and_every_refusal) ... ok
+test_the_pin_reads_requests_strictly (__main__.Requests.test_the_pin_reads_requests_strictly) ... ok
+test_every_refusal_has_one_exit_and_one_fixed_sentence (__main__.ThePin.test_every_refusal_has_one_exit_and_one_fixed_sentence) ... ok
+test_the_app_profile_and_token_guards_are_the_identity_contracts (__main__.ThePin.test_the_app_profile_and_token_guards_are_the_identity_contracts) ... ok
+test_the_key_stays_on_the_owners_machine (__main__.ThePin.test_the_key_stays_on_the_owners_machine) ... ok
+test_the_service_has_no_port_and_takes_the_request_on_stdin (__main__.ThePin.test_the_service_has_no_port_and_takes_the_request_on_stdin) ... FAIL
+
+======================================================================
+FAIL: test_the_service_has_no_port_and_takes_the_request_on_stdin (__main__.ThePin.test_the_service_has_no_port_and_takes_the_request_on_stdin)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "contracts/fixtures/token-service/test_fixtures.py", line 143, in test_the_service_has_no_port_and_takes_the_request_on_stdin
+    self.assertEqual(crossing.get("never"), ["command line", "terminal", "log", "record"])
+AssertionError: None != ['command line', 'terminal', 'log', 'record']
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.009s
+
+FAILED (failures=1)

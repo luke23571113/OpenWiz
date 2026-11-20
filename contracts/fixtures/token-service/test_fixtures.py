@@ -138,6 +138,13 @@ class ThePin(Base):
         for argv in reach["routes"].values():
             self.assertNotIn("token", " ".join(argv).lower())
         self.assertEqual(reach["routes"]["pairing"][:4], ["room-cli", "mac", "run", "--stdin"])
+        # catches: a pairing route that lets the token rest in a pairing log or result record.
+        crossing = reach.get("token_crossing", {})
+        self.assertEqual(crossing.get("never"), ["command line", "terminal", "log", "record"])
+        self.assertEqual(crossing.get("only"), "piped stdout of one room-cli mac run --stdin call")
+        self.assertEqual(crossing.get("into"), "the caller's private place")
+        self.assertEqual(crossing.get("live_gate"), "GA5 reads back no pairing log or mac run result record keeps it")
+        self.assertEqual(crossing.get("if_kept"), "cloud route stays off; cloud threads fall back with the note")
 
     def test_every_refusal_has_one_exit_and_one_fixed_sentence(self):
         # catches: a refusal code without a fixed exit or message the helper can rely on.
