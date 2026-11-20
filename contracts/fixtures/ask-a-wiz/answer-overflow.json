@@ -18,7 +18,8 @@
     "ASK_A_WIZ_COUNTERS": "bound",
     "ASK_A_WIZ_DAILY_CAP_USD": "1.00",
     "ASK_A_WIZ_MAX_PROMPT_PRICE": "0.10",
-    "ASK_A_WIZ_MAX_COMPLETION_PRICE": "0.40"
+    "ASK_A_WIZ_MAX_COMPLETION_PRICE": "0.40",
+    "ASK_A_WIZ_MAX_REQUEST_PRICE": "0.001"
   },
   "store": {
     "salts": [
@@ -52,9 +53,12 @@
       "provider": {
         "max_price": {
           "prompt": 0.1,
-          "completion": 0.4
+          "completion": 0.4,
+          "request": 0.001
         },
-        "require_parameters": true
+        "require_parameters": true,
+        "data_collection": "deny",
+        "zdr": true
       },
       "usage": {
         "include": true
@@ -101,7 +105,7 @@
       {
         "day": "2026-01-15",
         "key": "spend",
-        "count": 62610
+        "count": 63610
       }
     ]
   },

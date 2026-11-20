@@ -18,7 +18,8 @@
     "ASK_A_WIZ_COUNTERS": "bound",
     "ASK_A_WIZ_DAILY_CAP_USD": "1.00",
     "ASK_A_WIZ_MAX_PROMPT_PRICE": "0.10",
-    "ASK_A_WIZ_MAX_COMPLETION_PRICE": "0.40"
+    "ASK_A_WIZ_MAX_COMPLETION_PRICE": "0.40",
+    "ASK_A_WIZ_MAX_REQUEST_PRICE": "0.001"
   },
   "store": {
     "salts": [
