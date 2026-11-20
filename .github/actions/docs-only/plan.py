@@ -36,7 +36,6 @@ RELEASE = ['release:test', 'release:package', 'release:install', 'release:pull',
            'release:test-value-unread-fixtures',
            'release:setup-onboard-init',
            'release:setup-onboard-login',
-           'release:setup-onboard-journey',
            'release:fleet-load']
 # O16-P-RETIRED (#2429): the retiring CI overflow switch's check is registered
 # only in a tree that carries its command target (ClosedWiz). The public tree
