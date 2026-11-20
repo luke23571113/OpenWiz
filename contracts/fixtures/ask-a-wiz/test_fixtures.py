@@ -1,8 +1,3 @@
-"""P1 of spec #1898: the Ask-a-Wiz contract's fixtures hold to its pin.
-
-Run: python3 -I contracts/fixtures/ask-a-wiz/test_fixtures.py
-Standard library only. Every value in the fixtures is synthetic.
-"""
 import copy
 import datetime
 import hashlib
@@ -38,7 +33,6 @@ def visitor_key(salt, ip, hour):
 
 
 def events_of(body):
-    """The events of an NDJSON body, or a problem string."""
     if not body.endswith('\n'):
         return 'the body does not end its last line'
     try:
@@ -58,7 +52,6 @@ def question_of(case):
 
 
 def sent_passages(pin, case):
-    """The ranked passages that fit the call, in order: stop at the first that makes too many or too big."""
     lim, prompt = pin['limits'], pin['prompt']
     tail = prompt['question'].format(question=question_of(case))
     sent, blocks = [], ''
@@ -82,7 +75,6 @@ def expected_request(pin, case):
 
 
 def fitting(pin, chunks):
-    """The answer pieces passed on: whole pieces while the text stays within max_answer_bytes."""
     out, total = [], 0
     for chunk in chunks:
         total += len(chunk.encode())
@@ -93,7 +85,6 @@ def fitting(pin, chunks):
 
 
 def price(pin, settings, name):
-    """A max price setting as a number, or None when unset or invalid (which fails closed)."""
     value = settings.get(pin['names'][name])
     if not isinstance(value, str) or not re.fullmatch(pin['prices']['pattern'], value):
         return None
@@ -124,7 +115,6 @@ def utc(text):
 
 
 def run(pin, case):
-    """The contract's order of checks on a fake store: (outcome, store after, the clock a 429 counts from)."""
     names, request, settings = pin['names'], case['request'], case['settings']
     store = copy.deepcopy(case['store'])
     now = utc(case['now'])
@@ -144,9 +134,9 @@ def run(pin, case):
     if len(question) > pin['request']['max_question_chars']:
         return 'too_long', store, now
     if case.get('store_fails'):
-        return 'store_error', store, now  # every store operation fails: nothing changes, nothing is sent
+        return 'store_error', store, now
 
-    def first_write(day):  # every write first deletes earlier days' rows
+    def first_write(day):
         for table in ('salts', 'counters'):
             store[table] = [r for r in store[table] if r['day'] >= day]
 
@@ -157,7 +147,7 @@ def run(pin, case):
             store['counters'].append(found)
         return found
 
-    def count(day, key, limit, add=1):  # the conditional update: add only below the limit
+    def count(day, key, limit, add=1):
         first_write(day)
         counter = row(day, key)
         if counter['count'] >= limit:
@@ -165,14 +155,14 @@ def run(pin, case):
         counter['count'] += add
         return True
 
-    def reserve(day):  # the call count, then the dollars
+    def reserve(day):
         return count(day, 'cap', cap) and count(day, 'spend', cap_usd(pin, settings), call_max(pin, settings))
 
     day, hour = now.strftime('%Y-%m-%d'), now.strftime('%H')
     first_write(day)
-    if not any(r['day'] == day for r in store['salts']):  # INSERT ... ON CONFLICT (day) DO NOTHING
+    if not any(r['day'] == day for r in store['salts']):
         store['salts'].append({'day': day, 'salt': case.get('rival_salt') or case['new_salt']})
-    salt = next(r['salt'] for r in store['salts'] if r['day'] == day)  # then every writer reads the one salt
+    salt = next(r['salt'] for r in store['salts'] if r['day'] == day)
     if not count(day, visitor_key(salt, headers.get('cf-connecting-ip', ''), hour), pin['rate_limit']['per_visitor']):
         return 'rate_limited', store, now
     if case['upstream'] is None and case.get('retrieved') == []:
@@ -185,14 +175,14 @@ def run(pin, case):
         cap = 0
     if not reserve(day):
         return 'daily_cap', store, now
-    sent = utc(case.get('dispatch_at', case['now']))  # the day changed before dispatch: reserve on the new day
+    sent = utc(case.get('dispatch_at', case['now']))
     if sent.strftime('%Y-%m-%d') != day and not reserve(sent.strftime('%Y-%m-%d')):
         return 'daily_cap', store, sent
     upstream = case['upstream'] or {}
-    cost = upstream.get('cost')  # settle: the reported cost replaces the reservation; none keeps it
+    cost = upstream.get('cost')
     if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
         row(sent.strftime('%Y-%m-%d'), 'spend')['count'] += micro(cost) - call_max(pin, settings)
-    if upstream.get('status') == pin['upstream']['no_route_status']:  # no route keeps the rules: nothing comes back
+    if upstream.get('status') == pin['upstream']['no_route_status']:
         return 'no_private_route', store, sent
     if upstream.get('fails') and not upstream.get('after_chunks') or not fitting(pin, upstream.get('chunks', [])):
         return 'upstream_error', store, sent
@@ -297,7 +287,6 @@ def problems(pin, case, name):
         elif last['text'] != nc['text'] or last['links'] != nc['links']:
             out.append('the not-covered text or links differ from the pin')
         return out
-    # A model answer: text pieces, then sources and done, or an upstream error mid-answer.
     upstream = case['upstream'] or {}
     pieces = [e['text'] for e in events if e['type'] == 'text']
     if response['status'] != 200 or not pieces or not all(isinstance(p, str) and p for p in pieces):
@@ -374,10 +363,9 @@ class Pin(unittest.TestCase):
     def test_one_call_is_bounded_so_the_cap_bounds_spend(self):
         pin = load_pin()
         lim, prompt = pin['limits'], pin['prompt']
-        # The largest call: the longest question (4 bytes a code point), one longest passage with a 200-character URL.
-        question = prompt['question'].format(question='\U0001F600' * pin['request']['max_question_chars'])
-        passage = prompt['passage'].format(n=1, url='u' * 200, text='\U0001F600' * lim['max_passage_chars'])
-        self.assertLessEqual(len((prompt['system'] + passage + question).encode()), lim['max_prompt_bytes'],
+        longest_question = prompt['question'].format(question='\U0001F600' * pin['request']['max_question_chars'])
+        longest_passage = prompt['passage'].format(n=1, url='u' * 200, text='\U0001F600' * lim['max_passage_chars'])
+        self.assertLessEqual(len((prompt['system'] + longest_passage + longest_question).encode()), lim['max_prompt_bytes'],
                              'the best passage must always fit')
         self.assertEqual(lim['max_prompt_tokens'], lim['max_prompt_bytes'] + lim['framing_tokens'],
                          'one token per byte at most, plus the framing margin')
@@ -386,11 +374,11 @@ class Pin(unittest.TestCase):
         self.assertEqual(pin['spend']['per_day'],
                          'min(ASK_A_WIZ_DAILY_CAP_USD + call_max, ASK_A_WIZ_DAILY_CAP * call_max)')
         self.assertEqual(call_max(pin, load('answer')['settings']), 2610, 'the contract\'s worked example')
-        fee = load('spend-flat-fee')  # the dearest route the ceiling allows, flat fee included, fits one reservation
-        p, c, r = (price(pin, fee['settings'], f'max_{k}_price') for k in ('prompt', 'completion', 'request'))
+        flat_fee_route = load('spend-flat-fee')
+        p, c, r = (price(pin, flat_fee_route['settings'], f'max_{k}_price') for k in ('prompt', 'completion', 'request'))
         self.assertLessEqual(micro((lim['max_prompt_tokens'] * p + lim['max_output_tokens'] * c) / 1e6 + r),
-                             call_max(pin, fee['settings']))
-        self.assertLessEqual(micro(fee['upstream']['cost']), call_max(pin, fee['settings']))
+                             call_max(pin, flat_fee_route['settings']))
+        self.assertLessEqual(micro(flat_fee_route['upstream']['cost']), call_max(pin, flat_fee_route['settings']))
         self.assertEqual(pin['upstream']['retries'], 0, 'every attempt is one counted call')
 
     def test_every_refusal_has_a_case(self):
@@ -423,7 +411,6 @@ class Fixtures(unittest.TestCase):
 
 
 class TheCheckCatches(unittest.TestCase):
-    """Each planted break must be found, so a passing case means something."""
 
     def broken(self, name, change):
         pin = load_pin()
