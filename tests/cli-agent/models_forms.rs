@@ -79,7 +79,11 @@ fn report(out: &str, definition: &str) -> Value {
     .unwrap();
     contract["$ref"] = json!(format!("#/$defs/{definition}"));
     contract.as_object_mut().unwrap().remove("oneOf");
-    assert_eq!(schema::validate(&contract, &got), Vec::<String>::new(), "{got}");
+    assert_eq!(
+        schema::validate(&contract, &got),
+        Vec::<String>::new(),
+        "{got}"
+    );
     got
 }
 
@@ -102,13 +106,19 @@ fn show_prints_every_contract_fixtures_reading_and_reads_nothing_else() {
         ("overridden/fleet.md", "overridden/show.json"),
         ("same-family/fleet.md", "same-family/show.json"),
         ("set-namespaced/after.md", "set-namespaced/show.json"),
-        ("set-older-namespaced/after.md", "set-older-namespaced/show.json"),
+        (
+            "set-older-namespaced/after.md",
+            "set-older-namespaced/show.json",
+        ),
     ] {
         let fake = project(fleet, catalogue());
         let (code, out, err) = run(&fake, &["show", "--json"]);
         assert_eq!((code, err.as_str()), (0, ""), "{fleet}");
         assert_eq!(report(&out, "show_report"), doc(want), "{fleet}");
-        assert!(fake.invocations().is_empty(), "{fleet}: show reads no cloud status");
+        assert!(
+            fake.invocations().is_empty(),
+            "{fleet}: show reads no cloud status"
+        );
     }
 }
 
@@ -127,10 +137,14 @@ fn list_offers_the_read_with_recommendations_and_saves_only_when_asked() {
     let (code, out, _) = run(&fake, &["list", "--save", "--json"]);
     want["saved"] = json!(SNAPSHOT);
     assert_eq!((code, report(&out, "list_report")), (0, want));
-    let saved: Value = serde_json::from_str(&fs::read_to_string(fake.0.0.join(SNAPSHOT)).unwrap()).unwrap();
+    let saved: Value =
+        serde_json::from_str(&fs::read_to_string(fake.0.0.join(SNAPSHOT)).unwrap()).unwrap();
     assert_eq!(saved, as_read(doc("list/models-offered.json")));
     assert_eq!(fake.invocations(), [READ, READ], "one read per run");
-    assert_eq!(fs::read_to_string(fake.0.0.join(FLEET)).unwrap(), fixture("one-table/fleet.md"));
+    assert_eq!(
+        fs::read_to_string(fake.0.0.join(FLEET)).unwrap(),
+        fixture("one-table/fleet.md")
+    );
 }
 
 // catches: `set` writing a choice that wasn't offered or can't be written,
@@ -149,20 +163,40 @@ fn set_does_what_every_contract_case_says_and_writes_only_its_files() {
         let spec = doc(&format!("{case}/case.json"));
         let start = spec["fleet"].as_str().unwrap();
         let fake = project(start, catalogue());
-        let argv: Vec<&str> = spec["argv"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
+        let argv: Vec<&str> = spec["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a.as_str().unwrap())
+            .collect();
         assert_eq!(argv[0], "models");
         let (code, out, _) = run(&fake, &argv[1..]);
         assert_eq!(code, spec["exit"], "{case}: {out}");
-        assert_eq!(report(&out, "set_report"), doc(&format!("{case}/set.json")), "{case}");
+        assert_eq!(
+            report(&out, "set_report"),
+            doc(&format!("{case}/set.json")),
+            "{case}"
+        );
         let writes = &spec["writes"];
         let fleet = writes[FLEET].as_str().unwrap_or(start);
-        assert_eq!(fs::read_to_string(fake.0.0.join(FLEET)).unwrap(), fixture(fleet), "{case}");
+        assert_eq!(
+            fs::read_to_string(fake.0.0.join(FLEET)).unwrap(),
+            fixture(fleet),
+            "{case}"
+        );
         match writes[SNAPSHOT].as_str() {
             Some(want) => {
                 let saved = fs::read_to_string(fake.0.0.join(SNAPSHOT)).unwrap();
-                assert_eq!(serde_json::from_str::<Value>(&saved).unwrap(), as_read(doc(want)), "{case}");
+                assert_eq!(
+                    serde_json::from_str::<Value>(&saved).unwrap(),
+                    as_read(doc(want)),
+                    "{case}"
+                );
             }
-            None => assert!(!fake.0.0.join(SNAPSHOT).exists(), "{case}: wrote a snapshot"),
+            None => assert!(
+                !fake.0.0.join(SNAPSHOT).exists(),
+                "{case}: wrote a snapshot"
+            ),
         }
         assert_eq!(fake.invocations(), [READ], "{case}: one read");
     }
@@ -185,14 +219,31 @@ fn the_text_forms_print_the_contracts_lines() {
     ] {
         assert!(out.lines().any(|l| l == line), "{line:?} not in:\n{out}");
     }
-    let (code, out, _) = run(&fake, &["set", "builder", "claude-code", "syn-model-not-offered", "medium"]);
+    let (code, out, _) = run(
+        &fake,
+        &[
+            "set",
+            "builder",
+            "claude-code",
+            "syn-model-not-offered",
+            "medium",
+        ],
+    );
     assert_eq!(code, 5, "{out}");
-    assert!(out.starts_with("not offered: claude-code syn-model-not-offered medium; nothing was changed\n"), "{out}");
+    assert!(
+        out.starts_with(
+            "not offered: claude-code syn-model-not-offered medium; nothing was changed\n"
+        ),
+        "{out}"
+    );
     assert!(out.contains("  vendor/demo: medium, high\n"), "{out}");
-    let (code, out, _) = run(&fake, &["set", "reviewer", "codex", "gpt-6.2-sol", "medium"]);
+    let (code, out, _) = run(
+        &fake,
+        &["set", "reviewer", "codex", "gpt-6.2-sol", "medium"],
+    );
     assert_eq!(code, 0, "{out}");
     for line in [
-        "Reviewer: Opus 5.5 Medium on Claude Code (claude-code claude-opus-5-5 medium) -> Sol 6.2 Medium on Codex (codex gpt-6.2-sol medium)",
+        "Reviewer: Opus 5.5 High on Claude Code (claude-code claude-opus-5-5 high) -> Sol 6.2 Medium on Codex (codex gpt-6.2-sol medium)",
         "wrote docs/agents/fleet.md",
         "wrote docs/agents/models-offered.json",
     ] {
@@ -200,7 +251,10 @@ fn the_text_forms_print_the_contracts_lines() {
     }
     let (code, out, _) = run(&fake, &["list"]);
     assert_eq!(code, 0, "{out}");
-    assert!(out.starts_with("openwiz models · read 2023-11-14T22:23:20Z · "), "{out}");
+    assert!(
+        out.starts_with("openwiz models · read 2023-11-14T22:23:20Z · "),
+        "{out}"
+    );
     assert!(out.ends_with(
         "recommended Builder: Opus 5.5 Medium on Claude Code (claude-code claude-opus-5-5 medium), OpenWiz's current choice (J255)\n\
          recommended Reviewer: Sol 6.2 Medium on Codex (codex gpt-6.2-sol medium), OpenWiz's current choice (J255)\n"
@@ -215,12 +269,21 @@ fn set_follows_builder_reads_nothing_and_an_unchanged_set_leaves_the_file() {
     let fake = project("overridden/fleet.md", catalogue());
     let (code, out, _) = run(&fake, &["set", "fixer", "follows-builder", "--json"]);
     let got = report(&out, "set_report");
-    assert_eq!((code, &got["outcome"], &got["files"]), (0, &json!("changed"), &json!([FLEET])));
+    assert_eq!(
+        (code, &got["outcome"], &got["files"]),
+        (0, &json!("changed"), &json!([FLEET]))
+    );
     let written = fs::read_to_string(fake.0.0.join(FLEET)).unwrap();
-    assert!(written.contains("\n| Fixer | follows Builder | | | |\n"), "{written}");
+    assert!(
+        written.contains("\n| Fixer | follows Builder | | | |\n"),
+        "{written}"
+    );
     assert!(fake.invocations().is_empty() && !fake.0.0.join(SNAPSHOT).exists());
     let (code, out, _) = run(&fake, &["set", "fixer", "follows-builder", "--json"]);
-    assert_eq!((code, &report(&out, "set_report")["outcome"]), (0, &json!("unchanged")));
+    assert_eq!(
+        (code, &report(&out, "set_report")["outcome"]),
+        (0, &json!("unchanged"))
+    );
     assert_eq!(fs::read_to_string(fake.0.0.join(FLEET)).unwrap(), written);
 }
 
@@ -241,19 +304,88 @@ fn usage_errors_nothing_offered_and_no_fleet_md_change_nothing() {
     ] {
         let (code, out, err) = run(&fake, args);
         assert_eq!((code, out.as_str()), (2, ""), "{args:?}");
-        assert!(err.starts_with("openwiz: ") && err.lines().count() == 1, "{err}");
+        assert!(
+            err.starts_with("openwiz: ") && err.lines().count() == 1,
+            "{err}"
+        );
     }
     assert!(fake.invocations().is_empty(), "a usage error reads nothing");
-    let none = project("one-table/fleet.md", json!({"ready": false, "harnesses": null}));
-    let (code, out, _) = run(&none, &["set", "reviewer", "codex", "gpt-6.2-sol", "high", "--json"]);
+    let none = project(
+        "one-table/fleet.md",
+        json!({"ready": false, "harnesses": null}),
+    );
+    let (code, out, _) = run(
+        &none,
+        &["set", "reviewer", "codex", "gpt-6.2-sol", "high", "--json"],
+    );
     let got = report(&out, "set_report");
-    assert_eq!((code, &got["outcome"], &got["files"]), (13, &json!("no_options"), &json!([])));
+    assert_eq!(
+        (code, &got["outcome"], &got["files"]),
+        (13, &json!("no_options"), &json!([]))
+    );
     let (code, out, _) = run(&none, &["list", "--save", "--json"]);
-    assert_eq!((code, &report(&out, "list_report")["saved"]), (13, &Value::Null));
+    assert_eq!(
+        (code, &report(&out, "list_report")["saved"]),
+        (13, &Value::Null)
+    );
     assert!(!none.0.0.join(SNAPSHOT).exists());
-    assert_eq!(fs::read_to_string(none.0.0.join(FLEET)).unwrap(), fixture("one-table/fleet.md"));
+    assert_eq!(
+        fs::read_to_string(none.0.0.join(FLEET)).unwrap(),
+        fixture("one-table/fleet.md")
+    );
     let empty = project("", catalogue());
     let (code, out, _) = empty.run(&["models", "show", "--json"]);
     let got: Value = serde_json::from_str(&out).unwrap();
-    assert_eq!((code, &got["schema"], &got["command"]), (1, &json!("openwiz.cli-error.v1"), &json!("models")));
+    assert_eq!(
+        (code, &got["schema"], &got["command"]),
+        (1, &json!("openwiz.cli-error.v1"), &json!("models"))
+    );
+}
+
+// catches: a broken Models table (a misnamed or misplaced row, a following
+// Builder, broken flags, a wrong header, two `## Models`) that `show` or
+// `set` still reads, or that `set` rewrites; and `show` writing anything.
+#[test]
+fn a_broken_models_table_is_refused_by_show_and_set_and_never_written() {
+    let good = fixture("one-table/fleet.md");
+    let builder = "| Builder | Claude Code | Opus 5.5 | Medium | `--provider claude-code --model claude-opus-5-5 --reasoning-level medium` |";
+    for (from, to) in [
+        ("| Reviewer | Codex", "| Reviewers | Codex"),
+        (builder, "| Builder | follows Builder | | | |"),
+        (
+            "--reasoning-level medium` |\n| Reviewer",
+            "--effort medium` |\n| Reviewer",
+        ),
+        (
+            "| Small builder | follows Builder | | | |\n| Fixer",
+            "| Fixer | follows Builder | | | |\n| Small builder",
+        ),
+        ("`room-cli thread spawn` flags |", "flags |"),
+        ("## Loop", "## Models\n\n## Loop"),
+    ] {
+        assert!(good.contains(from), "{from}");
+        let broken = good.replacen(from, to, 1);
+        let fake = project("one-table/fleet.md", catalogue());
+        fs::write(fake.0.0.join(FLEET), &broken).unwrap();
+        for args in [
+            &["show", "--json"][..],
+            &["set", "fixer", "follows-builder"],
+        ] {
+            let (code, out, err) = run(&fake, args);
+            assert_eq!((code, out.as_str()), (1, ""), "{to}: {args:?}");
+            assert!(err.starts_with("openwiz: models "), "{err}");
+        }
+        assert_eq!(
+            fs::read_to_string(fake.0.0.join(FLEET)).unwrap(),
+            broken,
+            "{to}"
+        );
+        let mut left: Vec<_> = fs::read_dir(fake.0.0.join("docs/agents"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["fleet.md"], "{to}: wrote another file");
+        assert!(fake.invocations().is_empty(), "{to}");
+    }
 }
