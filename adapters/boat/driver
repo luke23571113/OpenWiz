@@ -2,7 +2,7 @@
 """The boat.dev driver (kernel/driver.v1.md): each run is one boat.dev sandbox and one agent conversation in it.
 
 `start` creates a sandbox (`boat new`) and prompts its integrated agent in a new conversation; `wake`
-resumes the sandbox if boat stopped it and prompts that conversation again, once the last turn has ended;
+prompts that conversation again once the last turn has ended, only while boat shows the sandbox running;
 `stop` ends every local process the turns started, interrupts the agent and stops the sandbox (`boat stop`
 keeps its disk). Each turn is a local `boat prompt` under its own supervisor, which keeps every process the
 turn starts. A run is saved before anything is started for it, stays `starting` until its first turn is
@@ -22,6 +22,7 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
 ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
+UP = ('running', 'ready', 'idle')  # the sandbox states a wake may prompt in; any other refuses it
 QUEUED_WAIT = 60  # seconds for boat to queue a turn; the kit gives a command 120
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
@@ -363,48 +364,56 @@ def strays(run, known):
     return found
 
 
+def shutdown(run, turns, sandbox, conversation, stop_sandbox):
+    """End the run's local turns, then always stop its sandbox (or only interrupt the conversation), whatever
+    the first step did: a failure of one never skips the other. Returns each failure, as Refused."""
+    failures = []
+    try:
+        end(turns + strays(run, {t['supervisor'] for t in turns}), run)
+    except Refused as e:
+        failures.append(e)
+    if sandbox and stop_sandbox:
+        try:
+            end_sandbox(sandbox, conversation)
+        except Refused as e:
+            failures.append(Refused(line('its sandbox %s may still run: %s' % (sandbox, e.args[0])),
+                                    'run `boat stop %s` yourself, and check `boat list`' % sandbox))
+    elif sandbox and conversation:
+        try:
+            boat('stop the run', 'interrupt', sandbox, '--convo', conversation)
+        except Refused as e:
+            failures.append(Refused(line('its conversation may still run: %s' % e.args[0]),
+                                    'run `boat interrupt %s` yourself, then stop the run' % sandbox))
+    return failures
+
+
+def reported(what, failures, then):
+    """Refused: what happened, then each failure and what to do about it."""
+    return Refused(line('; '.join([what] + [f.args[0] for f in failures])),
+                   line('; '.join([f.args[1] for f in failures] + ([then] if then else []))))
+
+
 def abandon(run, state, cmd, error):
     """After a start or a wake failed: end the turn it may have begun; after a start, also stop the sandbox
     (a wake interrupts its conversation instead). Returns None if that worked, else what to answer instead
-    of error: the sandbox's stop is never left unreported."""
+    of error: no failure here goes unreported."""
     what = error.args[0] if isinstance(error, Refused) else 'the driver failed: ' + type(error).__name__
-    try:
-        end(strays(run, {t['supervisor'] for t in state['turns']}), run)
-    except Refused as e:
-        return Refused(line('%s; %s' % (what, e.args[0])), e.args[1])
+    failures = shutdown(run, [], state['sandbox'], state['conversation'], cmd == 'start')
     if cmd == 'start':
-        try:
-            end_sandbox(state['sandbox'], state['conversation'])
-        except Refused as e:
-            return Refused(line('%s; and its sandbox %s may still run: %s' % (what, state['sandbox'], e.args[0])),
-                           'run `boat stop %s` yourself, and check `boat list`' % state['sandbox'])
         try:
             saved(run, dict(state, stopped=True))
         except OSError:
-            pass  # still `starting`: a wake refuses it
-    elif state['conversation']:
-        try:
-            boat('stop the run', 'interrupt', state['sandbox'], '--convo', state['conversation'])
-        except Refused as e:
-            return Refused(line('%s; and its conversation may still run: %s' % (what, e.args[0])),
-                           'run `boat interrupt %s` yourself, then stop the run' % state['sandbox'])
-    return None
+            pass  # still `starting`: a wake refuses it, and its sandbox is stopped
+    return reported(what, failures, '') if failures else None
 
 
 def unsaved(run, sandbox, turn, conversation, cmd):
     """A turn began but could not be saved: end it here and in the sandbox, and say the outcome is unknown,
     never to do it again. After a start, the sandbox is stopped too: the run never finished starting."""
-    try:
-        end([turn], run)
-        if cmd == 'start':
-            end_sandbox(sandbox, conversation)
-        else:
-            boat('stop the run', 'interrupt', sandbox, '--convo', conversation)
-    except Refused:
-        raise Refused(line('run %s began a turn it could not save, and could not confirm the turn ended; its '
-                           'outcome is unknown' % run),
-                      line('run `boat stop %s` and end process %d and everything under it by hand, and read the '
-                           'ticket for what its agent did, before you start a new run' % (sandbox, turn['supervisor'])))
+    failures = shutdown(run, [turn], sandbox, conversation, cmd == 'start')
+    if failures:
+        raise reported('run %s began a turn it could not save, and could not confirm everything ended; its '
+                       'outcome is unknown' % run, failures, 'read the ticket for what its agent did')
     raise Refused('run %s began a turn it could not save, so the driver ended it; its outcome is unknown' % run,
                   'read the ticket for what its agent did before you %s' % (
                       'start a new run' if cmd == 'start' else 'wake it again'))
@@ -435,9 +444,8 @@ def start(req):
         try:
             saved(run, state)
         except OSError:
-            end_sandbox(state['sandbox'], None)
-            raise Refused('the driver cannot save run %s, so it stopped its new sandbox; nothing runs' % run,
-                          UNWRITABLE + ', then start again')
+            raise Refused('the driver cannot save run %s; its new sandbox is stopped' % run,
+                          UNWRITABLE + ', then start again')  # the cleanup below stops it, or reports why not
         turn, talk = prompt(state, run)
         try:
             saved(run, dict(state, turns=[turn], conversation=talk, starting=False))
@@ -468,11 +476,11 @@ def wake(run):
         saved(run, state)
     except OSError:
         raise Refused('the driver cannot save run %s; nothing was started' % run, UNWRITABLE + ', then wake it')
+    # Ask boat, not only this machine's state: a stop that could write nothing here still stopped the sandbox.
     now = sandbox_state(state['sandbox'])
-    if now in ('stopped', 'archived'):
-        boat('wake it again', 'resume', state['sandbox'])
-    elif now in ('stopping', 'archiving'):
-        raise Refused('the sandbox of run %s is still stopping' % run, 'wake it again in a minute')
+    if now not in UP:
+        raise Refused('the sandbox of run %s is %s, not running, so the run is not woken' % (run, now),
+                      'a stopped run stays stopped: start a new run')
     try:
         turn, _ = prompt(state, run)
         try:
@@ -498,9 +506,7 @@ def stop(run):
         kept = True
     except OSError:
         kept = False
-    end(state['turns'], run)  # whether or not that save worked
-    if state['sandbox']:
-        end_sandbox(state['sandbox'], state['conversation'])
+    failures = shutdown(run, state['turns'], state['sandbox'], state['conversation'], True)  # whatever the save did
     for name in os.listdir(STATE):
         if name.startswith(run + '.') and name.endswith('.log'):
             try:
@@ -508,9 +514,11 @@ def stop(run):
             except OSError:
                 pass
     if not kept:
-        raise Refused('run %s has ended, but the driver could not save that it is stopped%s' % (
-                          run, '' if marked else ', nor mark it stopping: do not wake it'),
-                      UNWRITABLE + ', then stop it again')
+        failures.append(Refused('the driver could not save that it is stopped%s' % (
+                                    '' if marked else ', nor mark it stopping: do not wake it'),
+                                UNWRITABLE + ', then stop it again'))
+    if failures:
+        raise reported('run %s did not stop cleanly' % run, failures, '')
     return {'run': run, 'stopped': True}
 
 
