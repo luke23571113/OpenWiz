@@ -22,7 +22,7 @@ TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-
 PROGRAMS = {'openwiz'}
 REQUIRED = PROGRAMS | {'runtime/openwiz-build.txt', 'runtime/install.py', 'runtime/pull.py',
     'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
-    'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
+    'runtime/skills/to-tickets/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
     'runtime/skills/launch-fleet/scripts/fleet.sh',
     'runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/setup/github_login.py',  # #633
     'runtime/github-app/setup.py',
@@ -33,6 +33,13 @@ REQUIRED = PROGRAMS | {'runtime/openwiz-build.txt', 'runtime/install.py', 'runti
 # only when verifying the build already selected, never for a new package.
 LEGACY_PROGRAMS = PROGRAMS | {'openwiz-service', 'openwiz-server'}
 LEGACY_REQUIRED = REQUIRED | LEGACY_PROGRAMS | {'web/openwiz-build.txt', 'web/index.html', 'web/setup.html'}
+# #1187: the pre-0.2.0 skill layout (plan-graph where WizSkills 0.2.0 has to-tickets),
+# likewise accepted only when verifying the build already selected.
+PREVIOUS_SKILLS = {'runtime/skills/to-tickets/SKILL.md': 'runtime/skills/plan-graph/SKILL.md'}
+
+
+def previous(required):
+    return {PREVIOUS_SKILLS.get(path, path) for path in required}
 
 
 class Refused(Exception):
@@ -99,9 +106,13 @@ def manifest_at(path, checksum, target, selected=False):
         require(path not in assets and not any(path.startswith(p + '/') or p.startswith(path + '/') for p in assets),
                 'duplicate or overlapping asset')
         require(digest(item['sha256']) and type(item['bytes']) is int and item['bytes'] >= 0, 'invalid asset identity')
-        require(item['mode'] == ('0700' if path in programs or path.endswith('.sh') else '0600'), 'invalid asset mode')
+        require(item['mode'] == ('0700' if path in programs or path.endswith('.sh')  # #1699: and a host driver
+                                 or re.fullmatch(r'runtime/adapters/[a-z0-9-]+/driver', path) else '0600'),
+                'invalid asset mode')
         assets[path] = item
-    require((LEGACY_REQUIRED if legacy else REQUIRED) <= assets.keys(), 'incomplete program or skill runtime')
+    required = LEGACY_REQUIRED if legacy else REQUIRED
+    layouts = (required, previous(required)) if selected else (required,)
+    require(any(layout <= assets.keys() for layout in layouts), 'incomplete program or skill runtime')
     identity = f"openwiz.package.v1\n{value['version']}\n{value['source']}\n{target}\n".encode()
     for stamp in ('runtime/openwiz-build.txt', 'web/openwiz-build.txt') if legacy else ('runtime/openwiz-build.txt',):
         require(assets[stamp]['sha256'] == sha(identity) and assets[stamp]['bytes'] == len(identity),

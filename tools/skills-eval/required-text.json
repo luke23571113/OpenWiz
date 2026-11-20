@@ -49,30 +49,6 @@
       },
       "not_loaded": {}
     },
-    "feedback": {
-      "required": [
-        "skills/feedback/SKILL.md"
-      ],
-      "conditional": {},
-      "not_loaded": {
-        "contracts/feedback.v1.md": "names the rules the helper implements; SKILL.md carries every step and adds none",
-        "skills/feedback/scripts/feedback.py": "the helper executed for every feedback step, not source text it reads (SKILL.md: The helper does every step)"
-      }
-    },
-    "feedback-triage": {
-      "required": [
-        "skills/feedback-triage/SKILL.md"
-      ],
-      "conditional": {
-        "contracts/open-development.v1.md": "only when saving Jake's exact words before a reply is sent (SKILL.md: 3. Record the yes, then send)",
-        "docs/agents/issue-tracker.md": "only when saving Jake's exact words before a reply is sent (SKILL.md: 3. Record the yes, then send)",
-        "skills/triage/SKILL.md": "only for feedback reviewed as actionable (SKILL.md: 5. Hand actionable feedback to triage)"
-      },
-      "not_loaded": {
-        "contracts/feedback.v1.md": "names the receiver side of the contract the helper implements; SKILL.md carries every step",
-        "skills/feedback-triage/scripts/triage.py": "a script it runs, not text it reads"
-      }
-    },
     "grill": {
       "required": [
         "skills/grill/SKILL.md",
@@ -193,71 +169,6 @@
         "skills/launch-fleet/scripts/carried/read.py": "the installation read helper fleet.sh runs, not text it reads",
         "contracts/github-identity.v1.md": "names the GitHub identity contract as the source of the inlined identity instructions; does not instruct reading it",
         ".github/workflows/": "names the push diff path whose changes use the existing account; no workflow text is read"
-      }
-    },
-    "onboard": {
-      "required": [
-        "skills/onboard/SKILL.md",
-        "skills/grill/SKILL.md",
-        "skills/setup/SKILL.md",
-        "skills/plan-graph/SKILL.md"
-      ],
-      "conditional": {
-        "contracts/cli.v1.md": "only to read an openwiz command's JSON or exit code as the contract defines them",
-        "contracts/open-development.v1.md": "only when saving the user's exact words under the private-record rules",
-        "docs/agents/fleet.md": "only after step 4's setup re-run, to check both builder tables match the recorded choices"
-      },
-      "not_loaded": {
-        "skills/launch-fleet/SKILL.md": "named as a reused skill; onboard.py runs its fleet.sh frontier, the skill is not followed",
-        "skills/onboard/scripts/onboard.py": "a script it runs, not text it reads",
-        "skills/launch-fleet/scripts/fleet.sh": "the frontier helper onboard.py executes during launch preview, not source text it reads (SKILL.md: 6. Launch)"
-      }
-    },
-    "overnight": {
-      "required": [
-        "skills/overnight/SKILL.md",
-        "AGENTS.md",
-        "GLOSSARY.md",
-        "docs/agents/issue-tracker.md",
-        "docs/agents/fleet.md",
-        "docs/agents/helpers.md",
-        "docs/agents/triage-labels.md",
-        "docs/agents/huntr.md",
-        "skills/huntr/SKILL.md",
-        "docs/adr/"
-      ],
-      "conditional": {
-        "skills/overnight/references/first-run.md": "historical context only"
-      },
-      "not_loaded": {
-        "skills/": "named only to say a plugin may not install a local skills/ folder"
-      }
-    },
-    "plan-graph": {
-      "required": [
-        "skills/plan-graph/SKILL.md",
-        "docs/agents/issue-tracker.md",
-        "docs/agents/fleet.md",
-        "docs/agents/triage-labels.md",
-        "docs/agents/domain.md",
-        "GLOSSARY.md",
-        "docs/adr/",
-        "contracts/open-development.v1.md"
-      ],
-      "conditional": {
-        "contracts/decisions.v1.md": "only when posting a confirmation or approval record",
-        "contracts/decisions.v1.schema.json": "only when posting a confirmation or approval record, with decisions.v1.md",
-        "contracts/plan-links.v1.md": "only when writing tickets' `## Links` lines or checking link reasons (writing the graph, approvals)",
-        "contracts/ops-dispatch.v1.md": "only when the approval explicitly adopts ops-dispatch v1 and its envelope is recorded or checked"
-      },
-      "not_loaded": {
-        "skills/plan-graph/check-relies.sh": "a script it runs, not text it reads",
-        "skills/plan-graph/revision.sh": "a script it runs, not text it reads",
-        "skills/review-ticket/SKILL.md": "named only inside an example ticket body",
-        "skills/plan-graph/check-links.sh": "a script it runs, not text it reads",
-        "STATUS.md": "named only as an example of a small shared file",
-        "docs/agents/": "names the settings folder; the files it reads there are required one by one",
-        "private/orchestration/grant-audit.md": "names the private daily grant-audit procedure for its operator; plan-graph does not run that audit"
       }
     },
     "research": {

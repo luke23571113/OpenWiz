@@ -89,7 +89,11 @@ unverified caller-supplied job receipt establishes compiled provenance.
 
 The runtime's files/modes are compared to the selected public Git tree's complete
 tracked skill/runtime selection (`tracked-tree`); the receipt identifies that
-selection and any reviewed deterministic build transformations. Hash the
+selection and any reviewed deterministic build transformations. The selection
+pairs each runtime path with its tracked path; the host drivers and driver kit
+keep theirs, so `runtime/adapters/<host>/<file>` is `adapters/<host>/<file>` and
+`runtime/kernel/<file>` is `kernel/<file>` at the source commit
+([install contract](install.v1.md), #1699). Hash the
 runtime payload as canonical JSON of its complete path-sorted inventory of
 `{path, mode, bytes, sha256}` rows, using install-relative paths. Native payload
 hashes are the program file hashes. Build receipts bind these hashes, source,
@@ -203,6 +207,9 @@ human approval. Never bypass protected-main/merge procedures, force-push, move
 a published tag or rewrite published notes. Historical backfill is separately
 gated, outside this next-release contract. Partial/uncertain publication is
 incomplete even if some downloads already exist.
+The release name created and read back is the version's entry in the tool's
+recorded public-name table (`PUBLIC_NAMES`), else `OpenWiz <version>`; any
+other name is incomplete.
 
 `install` records an agent's normal install/update route on an already approved
 test machine: version/source/target plus matching manifest/archive hashes, time

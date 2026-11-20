@@ -24,7 +24,6 @@ mod fake_loops;
 mod github_token;
 mod init;
 mod loop_apply;
-mod loop_contract;
 mod loop_export;
 mod loop_plan;
 mod loop_validate;

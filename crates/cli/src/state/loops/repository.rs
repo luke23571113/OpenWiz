@@ -1,4 +1,3 @@
-//! Read immutable blobs from the checkout's verified default-branch ref.
 use super::document;
 use openwiz_core::{
     loops as model,
@@ -19,7 +18,6 @@ pub struct Definition {
     pub value: Value,
     pub revision: String,
 }
-/// Constructible only from the exact local loop and health-observation reads.
 struct GitRead(Vec<String>);
 impl GitRead {
     fn parse(args: &[&str]) -> Result<Self, String> {
@@ -62,7 +60,7 @@ fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
 }
 fn run_git(root: &Path, read: &GitRead) -> Result<Vec<u8>, String> {
     let out = Command::new("git")
-        // A local read must not run hooks, fetch missing objects, or inherit
+        // SECURITY: a local read must not run hooks, fetch missing objects, or inherit
         // service credentials and Git repository/configuration overrides.
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
@@ -83,8 +81,6 @@ fn run_git(root: &Path, read: &GitRead) -> Result<Vec<u8>, String> {
     }
     Ok(out.stdout)
 }
-// Git's setup read lists only the shared local config, without expanding
-// includes. Refuse unsupported sources and every key we have not assessed.
 fn validate_config(bytes: &[u8]) -> Result<(), String> {
     let refused = || "loop checkout configuration is not allowlisted".to_owned();
     let config = std::str::from_utf8(bytes).map_err(|_| refused())?;
@@ -155,9 +151,6 @@ fn revision(s: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 impl Repository {
-    /// Bind this checkout to the explicitly configured GitHub repository.
-    /// Only the existing local-config read is used; no network discovery,
-    /// includes, URL rewrites or ambiguous origin URLs supply identity.
     pub fn matches_repository(&self, repository: &str) -> Result<bool, String> {
         let config = text(git(
             &self.0,
@@ -185,8 +178,6 @@ impl Repository {
         }))
     }
 
-    /// The immutable blob's exact bytes, including insignificant JSON
-    /// whitespace. Approval digests must never hash a reserialization.
     pub fn blob_bytes(&self, id: &str) -> Result<Vec<u8>, String> {
         if !revision(id) {
             return Err("invalid immutable definition revision".to_owned());
@@ -194,15 +185,9 @@ impl Repository {
         git(&self.0, &["cat-file", "blob", id])
     }
 
-    /// The deployment owns refreshing origin/HEAD. No checkout, fetch, or
-    /// repository write is performed by a loop pass. Ref/HEAD mismatch refuses
-    /// checks rather than executing scripts from an unmerged branch.
     pub fn current(&self) -> Result<Vec<Definition>, String> {
         self.definitions(&self.verified_default()?)
     }
-    /// Read-only health observation. Only a positively absent loops entry on
-    /// the verified clean default branch means no current definitions. The
-    /// scheduler's current() read still refuses a missing subtree.
     pub fn current_for_observation(&self) -> Result<Vec<Definition>, String> {
         let default = self.verified_default()?;
         let entry = git(&self.0, &["ls-tree", "-z", default.trim(), "--", "loops"])?;
@@ -274,7 +259,6 @@ impl Repository {
     }
     pub fn blob(&self, id: &str) -> Result<Definition, String> {
         let value = document::read("definition", &text(self.blob_bytes(id)?)?)?;
-        // Enforce the actual request validator as well as the schema.
         let definition = Definition {
             value,
             revision: id.to_owned(),
@@ -370,8 +354,6 @@ mod tests {
     fn unapproved_git_command_does_not_execute() {
         let root = std::env::temp_dir().join(format!("ow-l3-git-{}", std::process::id()));
         fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
-        // A real `git init` in our disposable directory would create .git.
-        // It must be refused at the read boundary, before Git is started.
         let result = git(&root, &["init"]);
         let wrote = root.join(".git").exists();
         fs::remove_dir_all(&root).unwrap();

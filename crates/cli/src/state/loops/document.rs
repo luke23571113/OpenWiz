@@ -1,4 +1,3 @@
-//! Strict loop documents; validation reads the compiled loops.v1 schema.
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
 use std::{fmt, sync::OnceLock};
@@ -87,8 +86,6 @@ impl<'de, const MATHEMATICAL: bool> Deserialize<'de> for Strict<MATHEMATICAL> {
     }
 }
 
-/// The same compiled install-config shape consumed by the service. Its
-/// integer syntax remains strict; loops.v1 retains mathematical integers.
 pub fn service_config(text: &str) -> Result<Value, String> {
     static SCHEMA: OnceLock<Value> = OnceLock::new();
     let schema = SCHEMA.get_or_init(|| {
@@ -303,7 +300,6 @@ fn pattern_matches(pattern: &str, text: &str) -> bool {
     }
 }
 
-// Exact positive L10 pattern forms only. Unknown patterns still return false.
 fn approval_repository_name(text: &str, dots_only: bool) -> bool {
     if dots_only {
         text.len() >= 3 && text.bytes().all(|b| b == b'.')

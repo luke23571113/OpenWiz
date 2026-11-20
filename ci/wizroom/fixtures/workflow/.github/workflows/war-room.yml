@@ -1,7 +1,0 @@
-name: War room
-on: workflow_dispatch
-jobs:
-  publish:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: python3 -I tools/war-room/publish.py preview

@@ -1,6 +1,3 @@
-//! Health loop inventory, verified resume, and recorded-fleet pause (T5/TK1).
-//! The JSON shape is synthetic until T11 checks it on the owner's endpoint.
-//! Only names satisfying the service contract's repository rule may be changed.
 use crate::{
     allowlist::{Invocation, ThreadId},
     process,
@@ -20,8 +17,6 @@ fn malformed() -> SourceError {
         detail: "loop list is not a complete, unambiguous loop inventory".to_owned(),
     }
 }
-/// The exact legacy ownership first line, bound to the expected old thread.
-/// No optional loop, pattern, suffix, second loop or multiline value is read.
 pub fn recorded_fleet_loop(record: &str, thread: &Id) -> Result<Id, SourceError> {
     record
         .strip_prefix("launch-fleet: fleet thread ")
@@ -33,8 +28,6 @@ pub fn recorded_fleet_loop(record: &str, thread: &Id) -> Result<Id, SourceError>
         })
 }
 impl CloudRoomSource {
-    /// TK1: pause the exact loop named by the verified fleet ownership record.
-    /// Replacement requires confirmation from a fresh full loop inventory.
     pub fn pause_fleet_loop(
         &self,
         record: &str,
@@ -71,10 +64,8 @@ impl CloudRoomSource {
         })
     }
 
-    /// One complete list or an error; no partial ownership decision.
     pub fn health_loops(&self, deadline: Instant) -> Result<Vec<SeenLoop>, SourceError> {
         let out = process::run(self.program(), &Invocation::LoopList, deadline)?;
-        // Reuse the strict duplicate-key parser; no derived JSON reader.
         serde_json::from_slice::<openwiz_core::new_thread::read::StrictJson>(&out)
             .map_err(|_| malformed())?;
         let doc: Value = serde_json::from_slice(&out).map_err(|_| malformed())?;
@@ -105,9 +96,6 @@ impl CloudRoomSource {
             })
             .collect()
     }
-    /// Read ownership immediately before the write, never trust an old plan.
-    /// An already-running owned loop is done without a write. The write's
-    /// exit alone never proves success: only the fresh list does.
     pub fn resume_loop(
         &self,
         id: &Id,
@@ -144,8 +132,6 @@ impl CloudRoomSource {
 }
 
 impl CloudRoomSource {
-    /// Health ownership read: the exact thread id and configured project must
-    /// both be present before any service fix or notification can use it.
     pub fn health_thread_owned(
         &self,
         id: &Id,
@@ -186,9 +172,6 @@ impl CloudRoomSource {
     }
 }
 
-/// The existing text-send interface pinned to a service's configured project.
-/// Both target observation and the final write recheck ownership. Attachments
-/// are not supported by this service-only wrapper.
 pub struct ProjectMessenger<'a> {
     room: &'a CloudRoomSource,
     project: Id,
@@ -200,8 +183,6 @@ impl CloudRoomSource {
             project,
         }
     }
-    /// The existing archive effect with an explicit configured-project gate.
-    /// No write is made for an unowned or ambiguous target.
     pub fn archive_owned(
         &self,
         id: &Id,

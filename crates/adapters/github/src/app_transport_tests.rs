@@ -1,5 +1,3 @@
-//! Check the production curl config with a local HTTP fixture. Only this test
-//! substitutes the URL and TLS protocol; production exposes neither override.
 use super::*;
 use std::{
     io::{ErrorKind, Read, Write},

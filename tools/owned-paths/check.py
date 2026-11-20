@@ -10,6 +10,7 @@ or by an `F4 supporting edit granted` comment from a record author (docs/agents/
 `## GitHub identity` table) on the ticket or the pull request that names it in backticks.
 Owned paths are parsed as build-ticket's `ticket.py` parses them. A path ending in `/`, or
 naming a folder, covers what is under it; `*` matches within one folder and `**` across.
+An owned path followed by "and its tests" or ", plus its tests" also covers its tests (#1639).
 
 Tickets are linked by GitHub's closing references and by `Closes`/`Fixes`/`Resolves`/
 `Part of` followed by `#N`, `owner/name#N` or the issue's URL; only this repository's
@@ -32,6 +33,10 @@ LINK = re.compile(r'\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|part of)\b:?\s+'
                   r'(?:https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/issues/(\d+)\b'
                   r'|([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)?#(\d+)\b)', re.I)
 FLEET = 'docs/agents/fleet.md'
+# "and its tests" ends the bullet, or is followed only by its repository and annotation.
+ITS_TESTS = re.compile(r',?\s+(?:and|plus)\s+its\s+tests'
+                       r'(?:\s+in\s+`[A-Za-z0-9-]+/[A-Za-z0-9_.-]+`)?\s*(?:\(.*)?$', re.I)
+TEST_NAME = re.compile(r'test_(.+)\.py|(.+)_test\.py|(.+)\.test\.(?:ts|tsx|mjs)|(.+)_tests?\.rs')
 
 PR_QUERY = '''query($owner: String!, $name: String!, $number: Int!, $files: String, $comments: String) {
   repository(owner: $owner, name: $name) { pullRequest(number: $number) {
@@ -97,7 +102,11 @@ def is_path(token):
 
 
 def owned_paths(body, repo):
-    """(paths, unparsed bullets) of `## Owned paths` bound to repo, as ticket.py's owned_bullets."""
+    """(paths, unparsed bullets) of `## Owned paths` bound to repo, as ticket.py's owned_bullets.
+
+    Each path is (path, with its tests): its backticks are followed by "and its tests" or
+    ", plus its tests", or that wording ends the backticked text itself.
+    """
     paths, unparsed = [], []
     for line in section(body, 'owned paths'):
         if not line.startswith('- '):
@@ -106,7 +115,14 @@ def owned_paths(body, repo):
         tokens = list(re.finditer(r'`([^`]*)`', text))
         repos = {m.group(1).lower() for m in tokens
                  if REPO_NAME.fullmatch(m.group(1)) and text[:m.start()].endswith('in ')}
-        found = [m.group(1) for m in tokens if m.group(1).lower() not in repos and is_path(m.group(1))]
+        found = []
+        for m in tokens:
+            token, tail = m.group(1), ITS_TESTS.match(text, m.end())
+            inner = re.search(ITS_TESTS.pattern, token, re.I)
+            if inner:
+                token, tail = token[:inner.start()], inner
+            if token.lower() not in repos and is_path(token):
+                found.append((token, bool(tail)))
         if len(repos) > 1:
             found = []
         if (next(iter(repos)) if repos else repo) != repo:
@@ -126,6 +142,45 @@ def covers(rule, path):
         return re.fullmatch(pattern + r'(?:/.*)?', path) is not None
     rule = rule.rstrip('/')
     return path == rule or path.startswith(rule + '/')
+
+
+def tests_of(rule, path):
+    """Is path one of the tests beside owned path `rule`, for "`rule` and its tests" (#1639)?
+
+    X's folder D, X's stem S (its name before the first dot) and D's own name F. Covered:
+    a test file directly in D (test_*.py, *_test.py, *.test.ts, *.test.tsx, *.test.mjs,
+    *_test.rs, *_tests.rs) whose name, without that test marker, has S or F as a word; any
+    file under D/tests/ or D/test/ whose path below that folder, without a file's test marker,
+    has S as a word; and D/S/tests.rs, a Rust module's tests. A word is a part split at `_`,
+    `.`, `-` and `/`, never `test` or `tests` itself. A glob names no one stem: no tests.
+    """
+    rule = rule[2:] if rule.startswith('./') else rule
+    if any(c in rule for c in '*?['):
+        return False
+    folder, _, name = rule.rstrip('/').rpartition('/')
+    stem, prefix = name.split('.')[0], folder + '/' if folder else ''
+    if not path.startswith(prefix):
+        return False
+    rest = path[len(prefix):]
+    if rest == f'{stem}/tests.rs':
+        return True
+    top, _, below = rest.partition('/')
+    if top in ('tests', 'test') and below:
+        return stem in naming(below)
+    return not below and bool({stem, folder.rpartition('/')[2]} & naming(rest, marked=True))
+
+
+def naming(path, marked=False):
+    """The words a path names X by: its file's test marker and extension dropped, never `test(s)`.
+
+    marked: the file must carry a test marker (a file directly beside X).
+    """
+    folders, _, name = path.rpartition('/')
+    m = TEST_NAME.fullmatch(name)
+    if marked and not m:
+        return set()
+    name = next(g for g in m.groups() if g) if m else name.rpartition('.')[0] or name
+    return set(re.split(r'[_.\-/]', f'{folders}/{name}')) - {'', 'test', 'tests'}
 
 
 # --- records: who may grant, what the standing rule allows, what each grant names ---
@@ -221,12 +276,13 @@ def judge(repo, files, tickets, other_refs, fleet, pr_comments, pr_label, shown)
     names = ', '.join(f'#{n}' for n in tickets)
     outside = 0
     for path in files:
-        if any(covers(r, path) for r in owned):
-            print(f'owned: {path}')
-        elif any(covers(r, path) for r in rule):
-            print(f'standing: {path}')
-        elif any(covers(r, path) for r in granted):
-            print(f'granted: {path}')
+        by = (next((f'by `{r}`' for r, _ in owned if covers(r, path)), None)
+              or next((f'tests of `{r}`' for r, t in owned if t and tests_of(r, path)), None))
+        kind, by = ('owned', by) if by else next(
+            ((k, f'by `{r}`') for k, rules in (('standing', rule), ('granted', granted))
+             for r in rules if covers(r, path)), (None, None))
+        if kind:
+            print(f'{kind}: {path} ({by})')
         else:
             print(f'OUT: {path} (ticket {names})')
             outside += 1

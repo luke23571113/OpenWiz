@@ -1,0 +1,42 @@
+test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) ... 
+  test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [refuser] ... FAIL
+  test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [expired] ... FAIL
+  test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [broken] ... FAIL
+  test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [missing] ... FAIL
+
+======================================================================
+FAIL: test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [refuser]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 316, in test_a_first_turn_that_ends_at_once_fails_start_with_its_reason
+    self.assertIn(says, err['error'])
+AssertionError: 'refused' not found in 'run run-9466889d8de9: the first turn ended at once (exit 0): Fake harness: permission to use Bash was denied (opaque-fixture-value-7Kq2Zr9w).'
+
+======================================================================
+FAIL: test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [expired]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 316, in test_a_first_turn_that_ends_at_once_fails_start_with_its_reason
+    self.assertIn(says, err['error'])
+AssertionError: 'not signed in' not found in 'run run-1cb2a9081cff: the first turn ended at once (exit 0): Fake harness: OAuth session expired (opaque-fixture-value-7Kq2Zr9w). Please run /login.'
+
+======================================================================
+FAIL: test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [broken]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 317, in test_a_first_turn_that_ends_at_once_fails_start_with_its_reason
+    self.assertNotIn(OPAQUE, json.dumps(err))
+AssertionError: 'opaque-fixture-value-7Kq2Zr9w' unexpectedly found in '{"error": "run run-bdb4fea3344f: the first turn ended at once (exit 3): Fake harness: it stopped with an error (opaque-fixture-value-7Kq2Zr9w).", "next": "read /tmp/<test>/state/run-bdb4fea3344f.log, fix what the harness refused, then start again"}'
+
+======================================================================
+FAIL: test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) [missing]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/local/test_driver.py", line 317, in test_a_first_turn_that_ends_at_once_fails_start_with_its_reason
+    self.assertNotIn(OPAQUE, json.dumps(err))
+AssertionError: 'opaque-fixture-value-7Kq2Zr9w' unexpectedly found in '{"error": "could not clone example/missing: GraphQL: Could not resolve to a Repository with the name \'example/missing\' (opaque-fixture-value-7Kq2Zr9w).", "next": "check that `gh repo clone example/missing` works on this machine, then start again"}'
+
+----------------------------------------------------------------------
+Ran 1 test in 0.783s
+
+FAILED (failures=4)
