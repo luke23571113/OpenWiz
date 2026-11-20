@@ -103,7 +103,7 @@ class Boat(unittest.TestCase):
         self.env = dict(os.environ, KIT_TRACKER=self.tracker, KIT_TEST=self.mark, GH_TOKEN=TOKEN,
                         FAKE_TURNS=self.turns, FAKE_HOLD=self.hold,
                         FAKE_BOAT_STATE=os.path.join(self.folder, 'boat.json'),
-                        OPENWIZ_BOAT_STATE=os.path.join(self.folder, 'state'),
+                        OPENWIZ_BOAT_STATE=os.path.join(self.folder, 'state'), OPENWIZ_BOAT_SETTLE='2',
                         PATH=os.path.join(HERE, 'fixtures', 'bin') + os.pathsep + os.environ.get('PATH', ''))
 
     def tearDown(self):
@@ -232,6 +232,41 @@ class Boat(unittest.TestCase):
         self.assertEqual((code, list(self.sandboxes().values())), (1, ['stopped']), error)
         self.assertIn('provider_not_configured', error['error'])
         self.assertIn('dashboard', error['next'])
+
+    def test_a_first_turn_that_hits_a_usage_limit_or_does_nothing_fails_start(self):
+        # catches: a start that answers a run id while its first turn ends on an expired login or a rate limit
+        # (boat logs `usage_limit`), or finishes with no tool call, leaving the ticket untouched and the sandbox
+        # billing (#1907); and an answer that shows the turn log's raw text or a token.
+        cases = (('usage_limit:auth_expiry', False, 'hit a usage limit (auth_expiry)'),
+                 ('usage_limit_flat:rate_limit', False, 'hit a usage limit (rate_limit)'),
+                 ('usage_limit:auth_expiry', True, 'hit a usage limit (auth_expiry)'),
+                 ('usage_limit:<b>raw text</b>', False, 'hit a usage limit (unknown)'),
+                 ('no_tools', False, 'finished with no tool call'))
+        for turn, held, why in cases:
+            with self.subTest(turn=turn, held=held):
+                open(self.hold, 'w').close() if held else None
+                code, err = self.driver('start', REQUEST, FAKE_TURN=turn)
+                self.assertEqual((code, list(self.sandboxes().values())[-1]), (1, 'stopped'), err)
+                self.assertIn(why, err['error'])
+                run = re.search(r'run-[0-9a-f]{12}', err['error']).group()
+                self.assertIn(os.path.join(self.folder, 'state', run + '.0.log'), err['next'])
+                for raw in ('Synthetic', 'OAuth', 'raw text', TOKEN):
+                    self.assertNotIn(raw, json.dumps(err))
+                self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
+                self.assertEqual(self.driver('wake', {'run': run})[0], 1, 'a wake reopened the failed run')
+                os.remove(self.hold) if held else None
+        self.assertEqual(self.notes(), [])
+
+    def test_a_working_first_turn_answers_within_the_settle_time(self):
+        # catches: a watch that waits past its settle time for a turn that keeps working, or fails a turn
+        # that made a tool call and is still running.
+        open(self.hold, 'w').close()
+        began = time.monotonic()
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual((code, list(self.sandboxes().values())), (0, ['running']), out)
+        self.assertLess(time.monotonic() - began, 2 + 8)
+        self.assertTrue(alive(self.logged()[0][0]), 'the first turn was ended')
+        self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
 
     def test_stop_ends_a_worker_the_prompt_left_in_a_clean_environment(self):
         # catches: a stop that signals only the `boat prompt` process group, or finds processes only by the
