@@ -2,6 +2,7 @@
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -15,6 +16,8 @@ DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Factory0Value' * 2
 API_KEY = 'fk' + '-synthetic0factory0value'
+REAL_PROGRAMS = ('droid', 'claude', 'codex', 'gh', 'hermes', 'boat', 'cursor-agent', 'devin', 'room-cli', 'git',
+                 'sh', 'sleep')
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'droid',
            'model': 'synthetic-model-1'}
 
@@ -39,9 +42,20 @@ class Factory(unittest.TestCase):
                     'GH_TOKEN': TOKEN, 'FACTORY_API_KEY': API_KEY, 'FAKE_TURNS': self.turns,
                     'FAKE_FACTORY_HOME': os.path.join(self.folder, 'factory'),
                     'OPENWIZ_FACTORY_STATE': os.path.join(self.folder, 'state'),
-                    'PATH': os.pathsep.join([os.path.join(HERE, 'fixtures', 'bin'), '/usr/bin', '/bin'])}
+                    'PATH': os.pathsep.join([os.path.join(HERE, 'fixtures', 'bin'), self.python()])}
+        for real in REAL_PROGRAMS:
+            found = shutil.which(real, path=self.env['PATH'])
+            self.assertTrue(found is None or os.path.dirname(found) == os.path.join(HERE, 'fixtures', 'bin'),
+                            'a real %s is reachable on the test PATH: %s' % (real, found))
+
+    def python(self):
+        only = os.path.join(self.folder, 'python-only')
+        os.mkdir(only)
+        os.symlink(sys.executable, os.path.join(only, 'python3'))
+        return only
 
     def tearDown(self):
+        self.addCleanup(shutil.rmtree, self.folder, True)
         for pid in self.marked():
             try:
                 os.kill(pid, signal.SIGKILL)

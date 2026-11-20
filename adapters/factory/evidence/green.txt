@@ -1,4 +1,4 @@
-# Green run: python3 -I adapters/factory/test_driver.py, against the Factory driver. PATH is fixtures/bin, /usr/bin and /bin only: the synthetic droid, never Factory.
+# Green run: python3 -I adapters/factory/test_driver.py, against the Factory driver. Its PATH is fixtures/bin plus a folder holding only python3, and setUp fails if a real droid, claude, codex, gh or other host program is reachable on it: the synthetic droid, never Factory.
 test_kit_passes_all_five (__main__.Factory.test_kit_passes_all_five) ... ok
 test_other_harness_is_refused_before_anything_runs (__main__.Factory.test_other_harness_is_refused_before_anything_runs) ... ok
 test_wake_without_a_session_starts_nothing (__main__.Factory.test_wake_without_a_session_starts_nothing) ... ok
@@ -8,7 +8,7 @@ Ran 3 tests in N.NNNs
 
 OK
 
-# The kit itself, on the same fixtures: python3 -I kernel/driver-kit/kit.py --driver adapters/factory/driver --repo example/site --ticket 7 --harness droid --model synthetic-model-1 --tracker <a temporary tracker> --wait 8
+# The kit itself, on the same fixtures and the same PATH: python3 -I kernel/driver-kit/kit.py --driver adapters/factory/driver --repo example/site --ticket 7 --harness droid --model synthetic-model-1 --tracker <a temporary tracker> --wait 8
 pass version: openwiz:records v1, and the schema is driver v1
 pass start: the run posted builder status note 1
 pass wake: the run edited builder status note 1
