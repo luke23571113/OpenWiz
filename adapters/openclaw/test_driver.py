@@ -16,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Claw0Value' * 2 + '00'
+REAL = ('claude', 'codex', 'acpx', 'openclaw', 'gh', 'npx', 'node', 'bash', 'sh')
 REQUEST = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
            'model': 'claude-opus-5-5'}
 BREAKS_AFTER_SPAWN = '''import importlib.machinery, importlib.util, os, sys
@@ -50,11 +51,14 @@ class OpenClaw(unittest.TestCase):
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
         self.calls = os.path.join(self.folder, 'calls')
-        self.env = dict(os.environ, KIT_TRACKER=self.tracker, KIT_TEST=self.mark, GH_TOKEN=TOKEN,
+        self.env = dict(HOME=self.folder, LANG='C.UTF-8', KIT_TRACKER=self.tracker, KIT_TEST=self.mark, GH_TOKEN=TOKEN,
                         FAKE_TURNS=self.turns, FAKE_HOLD=self.hold, FAKE_ACPX_CALLS=self.calls,
                         FAKE_ACPX_STATE=os.path.join(self.folder, 'acpx.json'),
                         OPENWIZ_OPENCLAW_STATE=os.path.join(self.folder, 'state'),
                         PATH=os.path.join(HERE, 'fixtures', 'bin') + os.pathsep + self.bare())
+        real = [shutil.which(t, path=self.env['PATH']) for t in REAL]
+        self.assertEqual([r for r in real if r and not r.startswith(os.path.join(HERE, 'fixtures'))], [],
+                         'a real harness or host tool is on the test PATH')
 
     def bare(self):
         bare = os.path.join(self.folder, 'bare')
