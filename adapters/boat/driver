@@ -237,9 +237,9 @@ def prompt(state, run):
         with open(log) as f:
             text = f.read()
         lines = parse(text)
-        queued = [x for x in lines if x.get('event') == 'queued' and ID.fullmatch(str(x.get('conversationId')))]
+        queued = [conversation(x) for x in lines if x.get('event') == 'queued' and conversation(x)]
         if queued:
-            return turn, queued[0]['conversationId']
+            return turn, queued[0]
         if ended:  # boat refused the prompt: nothing was queued
             end([turn], run)
             raise boat_error('prompt', lines, text.strip()[-200:], then)
@@ -248,6 +248,17 @@ def prompt(state, run):
             raise Refused('boat did not queue the turn within %d seconds; its outcome is unknown' % QUEUED_WAIT,
                           'check `boat conversations %s` for it, then stop the run' % state['sandbox'])
         time.sleep(0.1)
+
+
+def text_id(value):
+    """value, if it is a string id; else None."""
+    return value if isinstance(value, str) and ID.fullmatch(value) else None
+
+
+def conversation(item):
+    """The conversation id of a `boat prompt --json` line: under `data`, as boat CLI 1.0.103 prints it."""
+    data = item.get('data')
+    return text_id(data.get('conversationId')) if isinstance(data, dict) else None
 
 
 def sandbox_state(sandbox):
@@ -309,6 +320,37 @@ def stopping(run):
         return False
 
 
+def strays(run, known):
+    """This run's turn supervisors on this machine that its record doesn't name: a turn begun by a command
+    that then failed before it could save it. Found by the run's mark and the `--turn` argument."""
+    found = []
+    for p in filter(str.isdigit, os.listdir('/proc')):
+        try:
+            with open('/proc/%s/environ' % p, 'rb') as f:
+                mine = ('OPENWIZ_RUN=' + run).encode() in f.read().split(b'\0')
+            with open('/proc/%s/cmdline' % p, 'rb') as f:
+                turn = f.read().split(b'\0')[3:4] == [b'--turn']
+        except OSError:
+            continue
+        if mine and turn and int(p) not in known and since(int(p)) is not None:
+            found.append({'supervisor': int(p), 'supervisor_since': since(int(p))})
+    return found
+
+
+def abandon(run, state, cmd):
+    """After an error the driver didn't expect: end the turn it may have begun, then, after a start, stop the
+    sandbox (a wake interrupts its conversation). Best effort: the error itself is what the command answers."""
+    try:
+        end(strays(run, {t['supervisor'] for t in state['turns']}), run)
+        if cmd == 'start':
+            end_sandbox(state['sandbox'], state['conversation'])
+            saved(run, dict(state, stopped=True))
+        elif state['conversation']:
+            boat('stop the run', 'interrupt', state['sandbox'], '--convo', state['conversation'])
+    except (Refused, OSError):
+        pass
+
+
 def unsaved(run, sandbox, turn, conversation, cmd):
     """A turn began but could not be saved: end it here and in the sandbox, and say the outcome is unknown,
     never to do it again. After a start, the sandbox is stopped too: the run never finished starting."""
@@ -345,29 +387,25 @@ def start(req):
     except Refused as e:
         raise Refused(e.args[0], line(e.args[1] + '; if `boat list` shows a sandbox named openwiz-%s, stop it '
                                                   'first' % run))
-    if not ready or not ID.fullmatch(str(ready[-1].get('id'))):
+    if not ready or not text_id(ready[-1].get('id')):
         raise Refused('boat new gave no sandbox id', 'stop the sandbox named openwiz-%s in `boat list` yourself, '
                                                      'then start again' % run)
     state['sandbox'] = ready[-1]['id']
-    try:
-        saved(run, state)
-    except OSError:
-        end_sandbox(state['sandbox'], None)
-        raise Refused('the driver cannot save run %s, so it stopped its new sandbox; nothing runs' % run,
-                      UNWRITABLE + ', then start again')
-    try:
-        turn, conversation = prompt(state, run)
-    except Refused:
+    try:  # from here on the sandbox exists: any failure ends its turn and stops it
         try:
+            saved(run, state)
+        except OSError:
             end_sandbox(state['sandbox'], None)
-            saved(run, dict(state, stopped=True))
-        except (Refused, OSError):
-            pass
+            raise Refused('the driver cannot save run %s, so it stopped its new sandbox; nothing runs' % run,
+                          UNWRITABLE + ', then start again')
+        turn, talk = prompt(state, run)
+        try:
+            saved(run, dict(state, turns=[turn], conversation=talk, starting=False))
+        except OSError:  # the turn began but its run is not saved: end it, and never say do it again
+            unsaved(run, state['sandbox'], turn, talk, 'start')
+    except Exception:
+        abandon(run, state, 'start')
         raise
-    try:
-        saved(run, dict(state, turns=[turn], conversation=conversation, starting=False))
-    except OSError:  # the turn began but its run is not saved: end it, and never say do it again
-        unsaved(run, state['sandbox'], turn, conversation, 'start')
     return {'run': run}
 
 
@@ -393,11 +431,17 @@ def wake(run):
         boat('wake it again', 'resume', state['sandbox'])
     elif now in ('stopping', 'archiving'):
         raise Refused('the sandbox of run %s is still stopping' % run, 'wake it again in a minute')
-    turn, _ = prompt(state, run)
     try:
-        saved(run, dict(state, turns=state['turns'] + [turn]))
-    except OSError:
-        unsaved(run, state['sandbox'], turn, state['conversation'], 'wake')
+        turn, _ = prompt(state, run)
+        try:
+            saved(run, dict(state, turns=state['turns'] + [turn]))
+        except OSError:
+            unsaved(run, state['sandbox'], turn, state['conversation'], 'wake')
+    except Refused:
+        raise  # prompt and unsaved have already ended what they began
+    except Exception:
+        abandon(run, state, 'wake')
+        raise
     return {'run': run, 'woke': True}
 
 
