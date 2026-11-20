@@ -1,9 +1,3 @@
-//! Complete read facts for B5 to assemble. These are not JSON readers.
-//! B5 must use strict external readers and preserve failed/partial reads as
-//! `Unread`, never fill missing reads with empty lists, false or None.
-//! `Complete(None)` means the read proved absence. Records are scoped to their
-//! ticket/PR/spec; commit-keyed records never suppress a different head.
-
 use super::super::model::{
     Check, Commit, Issue, IssueState, MergedPr, NonEmpty, Number, PrFields, Review,
 };
@@ -13,7 +7,6 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Observed<T> {
     Complete(T),
-    /// OpenWiz reason codes only, never raw tool text.
     Unread(Vec<Problem>),
 }
 
@@ -80,7 +73,6 @@ pub enum Ready {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlanApproval {
     pub approval: Approval,
-    /// Every row of the latest approved plan; no duplicate rows.
     pub rows: BTreeMap<Number, Ready>,
     pub approved_at: u64,
 }
@@ -88,7 +80,6 @@ pub struct PlanApproval {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
     pub default_branch: Observed<NonEmpty>,
-    /// Every spec, across every version. No milestone filter.
     pub fleets: Observed<Vec<FleetInput>>,
 }
 
@@ -104,8 +95,6 @@ pub struct FleetFacts {
     pub approval: Option<PlanApproval>,
     pub fingerprint_now: Fingerprint,
     pub tickets: Vec<TicketInput>,
-    /// All merged PRs since the earliest relevant approval, read back on
-    /// the default branch. Added files are excluded by the planner.
     pub changes: Vec<ContractChange>,
     pub follow_ups: Vec<Number>,
     pub records: SpecRecords,
@@ -114,7 +103,6 @@ pub struct FleetFacts {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SpecRecords {
     pub summary_written: bool,
-    /// Fingerprints whose re-approval notification completed.
     pub approval_notified: Vec<Fingerprint>,
     pub looked: Vec<String>,
 }
@@ -131,17 +119,11 @@ pub struct TicketFacts {
     pub blockers: Vec<BlockerInput>,
     pub pr: Option<PrInput>,
     pub builder: Option<Agent>,
-    /// From the unique branch-checked record and that exact thread's provider.
-    /// Missing, conflicting or unread observations never establish a family.
     pub builder_source: Option<BuilderSource>,
-    /// All reviewers of this ticket, in start order, retained after merge.
     pub reviewers: Vec<Reviewer>,
     pub starts: Vec<Start>,
-    /// Parsed paths from the one Relies on line; an absent line means [].
-    /// An ambiguous line is Unread(Contracts), never [].
     pub relies_on: Vec<NonEmpty>,
     pub holds: Vec<Hold>,
-    /// Latest application of held, to avoid releasing somebody else's hold.
     pub held_label_comment: Option<Number>,
     pub question: Option<Number>,
     pub records: TicketRecords,
@@ -149,7 +131,6 @@ pub struct TicketFacts {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TicketRecords {
-    /// The final archive record, written after every recorded agent is archived.
     pub archived: bool,
     pub builder_fallback_due: bool,
     pub question_passed: Option<Number>,
@@ -182,11 +163,8 @@ pub enum PrInput {
 pub struct OpenPr {
     pub fields: PrFields,
     pub subject: String,
-    /// None: no CI run exists. Every check is its latest run on this head.
     pub ci: Option<CheckRun>,
     pub base_now: Option<Commit>,
-    /// All comments whose first line starts VERDICT: (including malformed
-    /// ones). The planner selects the largest comment id, not list order.
     pub reports: Vec<ReportComment>,
     pub starts: Vec<Start>,
     pub records: PrRecords,
@@ -219,11 +197,9 @@ pub struct ReportComment {
 pub struct Reviewer {
     pub pr: Number,
     pub agent: Agent,
-    /// Head at the most recent start/re-check/told-again record.
     pub head: Commit,
     pub last_activity_at: u64,
     pub given_up: bool,
-    /// Verdict parsed from this reviewer's own output; None means no line.
     pub output: Option<Review>,
 }
 
@@ -241,18 +217,11 @@ pub struct Start {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StartState {
-    /// Claimed/saved but not settled: never eligible for another start.
     Pending,
     Uncertain,
-    Started {
-        thread: NonEmpty,
-    },
-    Refused {
-        reason: StartReason,
-    },
-    Failed {
-        reason: StartReason,
-    },
+    Started { thread: NonEmpty },
+    Refused { reason: StartReason },
+    Failed { reason: StartReason },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -306,6 +275,5 @@ pub struct BuilderSource {
     pub thread: NonEmpty,
     pub branch: NonEmpty,
     pub family: BuilderFamily,
-    /// Positive observation of a Claude plan-limit stop in its own output.
     pub plan_limit: bool,
 }

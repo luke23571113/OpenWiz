@@ -1,23 +1,3 @@
-//! The Cloud options: which harnesses, models and efforts CloudRoom reports
-//! right now, and nothing else.
-//!
-//! The adapter reads `cloud status --json` once and hands the core a
-//! [`Catalogue`]: only the catalogue keys, with the account and every other
-//! field discarded at its boundary (sheet A-2). [`cloud_options`] then
-//! offers:
-//! - a harness only if the adapter's verified id table maps it to a `spawn`
-//!   provider, and the catalogue lists its models;
-//! - for each model, only the efforts in both its catalogue list and the
-//!   CLI's verified levels;
-//! - **no default**: nothing is marked default or preselected.
-//!
-//! Identical repeated rows collapse; conflicting facts make only that
-//! harness unavailable, before any effort filtering.
-//!
-//! When `ready` is false, `harnesses` is null, the read fails or its shape
-//! is unexpected, there are **no options**, with the reason. Nothing is
-//! guessed.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
@@ -28,78 +8,55 @@ use crate::source::SourceError;
 
 use super::{OPTIONS_SCHEMA_ID, Settings};
 
-/// Shown with every options read: CloudRoom may answer from a saved copy of
-/// unknown age.
 pub const SAVED_COPY_LABEL: &str = "as reported by CloudRoom; it may answer from a saved copy";
 
-/// What a harness's catalogue row says about attachments, as reported.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct AttachmentSupport {
     pub files: bool,
     pub images: bool,
 }
 
-/// One model of a harness, as the catalogue lists it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogueModel {
     pub model: String,
     pub reasoning_levels: Vec<String>,
 }
 
-/// One harness, as the catalogue lists it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogueHarness {
-    /// The catalogue's id, such as `codex`.
     pub id: String,
-    /// The `spawn --provider` id, only when the adapter's verified table
-    /// maps this harness. `None` means the mapping is unverified.
     pub provider: Option<String>,
-    /// `None` when the catalogue reports no models (`null`, or absent).
     pub models: Option<Vec<CatalogueModel>>,
     pub attachments: Option<AttachmentSupport>,
     pub steer: Option<bool>,
 }
 
-/// The catalogue keys of one `cloud status` read, and nothing else.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Catalogue {
     pub ready: bool,
-    /// `None` when `harnesses` is null: unknown.
     pub harnesses: Option<Vec<CatalogueHarness>>,
 }
 
-/// One effort level offered for a model.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ModelOption {
     pub model: String,
-    /// In the catalogue's order. Never empty.
     pub efforts: Vec<String>,
 }
 
-/// One harness that can be chosen.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HarnessOption {
-    /// The catalogue's id: what the owner chooses.
     pub harness: String,
-    /// What OpenWiz passes as `spawn --provider`.
     pub provider: String,
-    /// In the catalogue's order. Never empty.
     pub models: Vec<ModelOption>,
-    /// As reported; `None` when the row doesn't say.
     pub attachments: Option<AttachmentSupport>,
     pub steer: Option<bool>,
 }
 
-/// Why a listed harness can't be chosen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
-    /// No usable model catalogue is reported (missing or conflicting rows).
     CatalogueNotReported,
-    /// Its `spawn` provider id isn't in the verified table.
     IdMappingNotVerified,
-    /// None of its models has an effort both the catalogue and the CLI
-    /// offer.
     NoOfferedEffort,
 }
 
@@ -122,71 +79,52 @@ pub struct UnavailableHarness {
     pub text: String,
 }
 
-/// Why there are no options at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NoOptionsReason {
-    /// `ready` is false.
     NotReady,
-    /// `harnesses` is null.
     HarnessesNotReported,
-    /// The read failed.
     ReadFailed,
-    /// The read's shape isn't the one observed.
     UnexpectedShape,
 }
 
-/// Whether anything is offered.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OptionsState {
-    /// At least one harness can be chosen.
     Offered,
-    /// Nothing can be chosen, and why, in OpenWiz's words.
     NoOptions {
         reason: NoOptionsReason,
         text: String,
     },
 }
 
-/// The Cloud options, from one catalogue read.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CloudOptions {
-    /// Always [`OPTIONS_SCHEMA_ID`].
     pub schema: String,
     pub read_at: Timestamp,
-    /// Always [`SAVED_COPY_LABEL`].
     pub label: String,
     pub state: OptionsState,
     pub harnesses: Vec<HarnessOption>,
     pub unavailable: Vec<UnavailableHarness>,
 }
 
-/// Which part of a choice isn't offered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotOfferedField {
-    /// Nothing is offered at all.
     Options,
     Harness,
     Model,
     Effort,
 }
 
-/// A choice outside the options: what isn't offered, and what is instead.
-/// Nothing is substituted.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct NotOffered {
     pub field: NotOfferedField,
-    /// What is offered in its place: harnesses, the harness's models or the
-    /// model's efforts. Empty when nothing is offered.
     pub offered: Vec<String>,
     pub text: String,
 }
 
 impl CloudOptions {
-    /// The `spawn` provider id for `settings`, if CloudRoom offers exactly
-    /// that harness, model and effort. Otherwise what isn't offered.
     pub fn offered(&self, settings: &Settings) -> Result<String, NotOffered> {
         if let OptionsState::NoOptions { text, .. } = &self.state {
             return Err(NotOffered {
@@ -246,8 +184,6 @@ fn not_offered(field: NotOfferedField, chosen: &str, offered: Vec<String>) -> No
     }
 }
 
-/// The options from one catalogue read, `read`, made at `read_at`.
-/// `cli_levels` are the effort levels the CLI's help verifies.
 pub fn cloud_options(
     read: Result<Catalogue, SourceError>,
     cli_levels: &[&str],
@@ -297,7 +233,7 @@ pub fn cloud_options(
     }
     for row in &rows {
         let Some((_, conflicting_harness)) = by_id.remove(row.id.as_str()) else {
-            continue; // This harness identity has already been handled.
+            continue;
         };
         let refuse = |reason: UnavailableReason| UnavailableHarness {
             harness: row.id.clone(),
@@ -314,8 +250,6 @@ pub fn cloud_options(
         });
         if conflicting_harness || conflicting_models {
             unavailable.push(UnavailableHarness {
-                // Keep the existing wire reason; text explains why no usable
-                // catalogue is available, without widening the JSON contract.
                 text: "unavailable (conflicting catalogue rows)".to_owned(),
                 ..refuse(UnavailableReason::CatalogueNotReported)
             });

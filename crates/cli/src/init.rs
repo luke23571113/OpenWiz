@@ -1,7 +1,3 @@
-//! Thin installed `openwiz init` (#635, cli.v1 "Init"). The packaged
-//! `runtime/setup/init.py` reads GitHub, owns the durable setup store and
-//! makes every disclosed effect; this wrapper only checks arguments, starts
-//! that one sibling and renders its declared outcome.
 use std::{ffi::OsString, io::Write, process::Command};
 
 pub const USAGE: &str = "  openwiz init [--repository OWNER/NAME] [--state-dir DIR] [--json]\n  openwiz init --yes --operation ID [--repository OWNER/NAME] [--state-dir DIR] [--json]\n";
@@ -88,8 +84,6 @@ pub fn run(args: &[OsString], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     code
 }
 
-/// Each option once with a separate value, each flag once, UTF-8 only, and
-/// `--yes` exactly with `--operation`. The runtime checks the values.
 fn usable(args: &[OsString]) -> bool {
     let mut seen = Vec::new();
     let mut items = args.iter();
@@ -181,9 +175,6 @@ fn failure(
     code
 }
 
-/// The child's one declared document, with the exit code its contract gives:
-/// an `init_result` (0 proposed or applied, 5 refused, 6 uncertain, 8 a stale
-/// operation) or a cli.v1 error (1, 2, 10). Anything else is unrecognized.
 fn outcome(bytes: &[u8], code: i32) -> Option<serde_json::Value> {
     let mut input = serde_json::Deserializer::from_slice(bytes);
     let report = serde::Deserialize::deserialize(&mut input).ok()?;
@@ -247,7 +238,7 @@ fn outcome(bytes: &[u8], code: i32) -> Option<serde_json::Value> {
 fn init_process(args: &[OsString]) -> Option<std::process::Output> {
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
     let tool = exe.parent()?.join("runtime/setup/init.py");
-    // Only this installed sibling, never PATH or a source checkout fallback.
+    // SECURITY: only this installed sibling, never PATH or a source checkout fallback.
     let meta = std::fs::symlink_metadata(&tool).ok()?;
     if !meta.is_file() || meta.file_type().is_symlink() {
         return None;
@@ -260,9 +251,7 @@ fn init_process(args: &[OsString]) -> Option<std::process::Output> {
         return None;
     }
     let mut command = Command::new("/usr/bin/python3");
-    // The runtime always answers in JSON; this wrapper renders text.
     command.arg("-I").arg(tool).args(args).env_clear();
-    // PATH and GH_CONFIG_DIR only locate the existing verified gh login.
     for name in [
         "HOME",
         "XDG_STATE_HOME",

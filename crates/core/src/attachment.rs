@@ -1,31 +1,3 @@
-//! Attachments: OpenWiz 0.0.4's file model (B1 phase 1, ClosedWiz#14).
-//!
-//! One attachment is one file the owner chose, copied unchanged to the
-//! controller. This module holds the rules, with no I/O: the store (phase
-//! 2) reads, copies and hashes, and asks the model what the bytes are and
-//! what may happen next.
-//!
-//! - **Kind from the bytes** ([`classify`]): PNG, JPEG, GIF and WebP are
-//!   images, by their signature. HEIC and HEIF are refused, as is an ISO
-//!   media file whose brands don't settle it. Everything else is a file,
-//!   sent unchanged and never interpreted (a ZIP is never unpacked, B-4). A
-//!   declared MIME type has no way in.
-//! - **Name and content agree** (B-5): CloudRoom types a file by its
-//!   extension (#15's F4), so an image under another image's name, or a
-//!   non-image under an image's name, is refused. Nothing is renamed.
-//! - **Safe names** ([`SafeName`]): the staged name, which CloudRoom's own
-//!   sanitizing leaves unchanged (F5). CloudRoom then stores it as
-//!   `<stem>-<time>-<random><ext>`, and that stored name is what the agent
-//!   sees; the staged limit leaves room for the suffix.
-//! - **Provider limits only** ([`limit`]): 10 MiB per image and 25 MiB per
-//!   file (F7), and the image limit for a file CloudRoom types as an image
-//!   (F26, [`IMAGE_TYPED_EXTENSIONS`]). No count cap, no total.
-//! - **Readiness, retention and the free-disk floor** ([`Readiness`],
-//!   [`retention`], [`staging_room`]): B-2, B-3 and B-6.
-//!
-//! CloudRoom's limits and typing are source-read, not observed; the live
-//! check rechecks them (AL2). Nothing here dispatches anything.
-
 use std::fmt;
 use std::time::Duration;
 
@@ -33,52 +5,26 @@ use serde::de::{self, MapAccess, Unexpected, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// The schema id of the attachment contract. See
-/// `contracts/attachment.v1.schema.json`.
 pub const ATTACHMENT_SCHEMA_ID: &str = "openwiz.attachment.v1";
 
-/// CloudRoom's limit per image (F7). Source-read; rechecked live (AL2).
 pub const IMAGE_MAX_BYTES: u64 = 10 * 1024 * 1024;
 
-/// CloudRoom's limit per file (F7). Source-read; rechecked live (AL2).
 pub const FILE_MAX_BYTES: u64 = 25 * 1024 * 1024;
 
-/// The Cloud core's longest attachment name, in bytes (F5).
 pub const CLOUDROOM_NAME_MAX_BYTES: usize = 200;
 
-/// The longest suffix CloudRoom adds before the extension when it stores an
-/// upload: `-`, `Date.now()` (13 digits until 2286), `-`, and up to six
-/// base-36 characters (`buildStoredFilename`). Source-read at upstream
-/// `eb20d1c`, not observed (Sol round 1, finding 1).
 pub const CLOUDROOM_SUFFIX_MAX_BYTES: usize = 21;
 
-/// The longest staged name: CloudRoom's stored name, the staged name plus
-/// its suffix, then still fits [`CLOUDROOM_NAME_MAX_BYTES`].
 pub const SAFE_NAME_MAX_BYTES: usize = CLOUDROOM_NAME_MAX_BYTES - CLOUDROOM_SUFFIX_MAX_BYTES;
 
-/// The longest attachment id.
 pub const ATTACHMENT_ID_MAX_LEN: usize = 64;
 
-/// How many leading bytes [`classify`] looks at: the file's first
-/// `SNIFF_BYTES`, or the whole file if it is shorter. Every signature fits,
-/// and an ISO media `ftyp` box of up to 1,000 brands; a longer one is
-/// refused as unclear.
 pub const SNIFF_BYTES: usize = 4096;
 
-/// How long a ready attachment no operation has claimed is kept (B-2).
 pub const UNSENT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// Staging never leaves less than this free on the state volume (B-3). A
-/// safe-resource floor, not a product cap; rechecked at the live check.
 pub const FREE_DISK_FLOOR_BYTES: u64 = 1024 * 1024 * 1024;
 
-/// The extensions CloudRoom types as `image/*`, so a file with one gets the
-/// image limit even when sent as a file (F26). CloudRoom looks the type up
-/// with `mime-types`; its version isn't known, so this is the union of what
-/// 2.1.35 (`mime-db` 1.52.0) and 3.0.2 (`mime-db` 1.54.0) look up as
-/// `image/*`, recorded in `contracts/attachment-mime-types.v1.md`. The union
-/// refuses before any upload rather than part way through one (F15).
-/// Sorted, lowercase, for [`slice::binary_search`].
 pub const IMAGE_TYPED_EXTENSIONS: &[&str] = &[
     "3ds", "apng", "avci", "avcs", "avif", "azv", "b16", "bmp", "btf", "btif", "cgm", "cmx", "dds",
     "dib", "djv", "djvu", "dng", "dpx", "drle", "dwg", "dxf", "emf", "exr", "fbs", "fh", "fh4",
@@ -91,60 +37,29 @@ pub const IMAGE_TYPED_EXTENSIONS: &[&str] = &[
     "wmf", "xbm", "xif", "xpm", "xwd",
 ];
 
-/// What CloudRoom is asked to attach: an image or a file. Decided from the
-/// bytes, never from a MIME type or the extension alone. In JSON, one
-/// string from [`Kind::labels`], nothing else.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
-    /// PNG, JPEG, GIF or WebP: the image types every harness takes (F11).
     Image,
-    /// Anything else, sent unchanged and never interpreted.
     File,
 }
 
-/// Why an attachment can't become ready. A fixed list (#14). In JSON, one
-/// string from [`FailReason::labels`], nothing else.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FailReason {
-    /// HEIC or HEIF bytes. CloudRoom refuses them (F6); OpenWiz never
-    /// converts.
     UnsupportedHeif,
-    /// An ISO media file whose `ftyp` box can't be read in full, or names
-    /// both HEVC and AV1 brands: it might be HEIC, so it is refused.
     TypeUnclear,
-    /// The name's extension and the bytes disagree (B-5).
     ExtensionMismatch,
-    /// An image over [`IMAGE_MAX_BYTES`].
     ImageTooLarge,
-    /// A file over [`FILE_MAX_BYTES`].
     FileTooLarge,
-    /// A file over [`IMAGE_MAX_BYTES`] whose extension CloudRoom types as
-    /// an image (F26).
     ImageTypedFileTooLarge,
-    /// A folder, or a link to one.
     Folder,
-    /// Staging would go below [`FREE_DISK_FLOOR_BYTES`].
     LowDisk,
-    /// The copy's size or hash isn't what was declared or recorded.
     SizeMismatch,
-    /// The bytes stopped arriving.
     ConnectionLost,
-    /// The owner's sign-in ended during the upload.
     SignedOut,
-    /// The source couldn't be read.
     Unreadable,
 }
 
-/// The JSON reading and writing of the core's attachment types.
-///
-/// **Allowlists, not serde's derived readers** (Sol rounds 1 and 2,
-/// findings 3 and 4): the derived ones also take sequences and externally
-/// tagged forms the schema forbids. Here a kind, a reason or a state is
-/// read only from a string in its fixed list, and a readiness or an
-/// attachment only from a map with exactly its keys, each at most once.
-/// Everything else is refused.
 trait Labels: Copy + PartialEq + 'static {
-    /// Every value and its one JSON string.
     fn labels() -> &'static [(&'static str, Self)];
 
     fn label(self) -> &'static str {
@@ -156,8 +71,6 @@ trait Labels: Copy + PartialEq + 'static {
     }
 }
 
-/// Reads a string from `T`'s list: [`Visitor::visit_str`] is the only
-/// entry, so any other JSON value is refused.
 struct LabelVisitor<T>(std::marker::PhantomData<T>);
 
 impl<T: Labels> Visitor<'_> for LabelVisitor<T> {
@@ -188,7 +101,6 @@ impl Labels for Kind {
 }
 
 impl Kind {
-    /// Every kind and its JSON string.
     pub fn labels() -> &'static [(&'static str, Self)] {
         <Self as Labels>::labels()
     }
@@ -238,12 +150,10 @@ impl<'de> Deserialize<'de> for FailReason {
 }
 
 impl FailReason {
-    /// Every reason and its JSON string.
     pub fn labels() -> &'static [(&'static str, Self)] {
         <Self as Labels>::labels()
     }
 
-    /// The reason, in the core's words.
     pub fn message(self) -> &'static str {
         match self {
             Self::UnsupportedHeif => "HEIC/HEIF images aren't supported. Nothing was converted",
@@ -276,7 +186,6 @@ impl fmt::Display for FailReason {
     }
 }
 
-/// A value that isn't a valid attachment id, hash or safe name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InvalidAttachment(pub String);
 
@@ -288,29 +197,11 @@ impl fmt::Display for InvalidAttachment {
 
 impl std::error::Error for InvalidAttachment {}
 
-/// The **staged name**, handed to CloudRoom: the original's basename
-/// reduced to `[A-Za-z0-9._-]`, 1 to [`SAFE_NAME_MAX_BYTES`] bytes, never
-/// starting with `.` or `-` (so never `.`, `..` or an option). CloudRoom's
-/// own sanitizing (F5) leaves it unchanged.
-///
-/// It is **not** the name the agent sees. CloudRoom stores the upload as
-/// `<stem>-<Date.now()>-<random><ext>` and names the attachment after that
-/// stored copy (source-read, not observed). The stem and the extension are
-/// the staged name's, so CloudRoom types the copy as it types this name.
-///
-/// Deserializing goes through [`SafeName::parse`], so a record on disk
-/// can't carry an invalid one.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct SafeName(String);
 
 impl SafeName {
-    /// The safe name for an original file name, which may be anything.
-    ///
-    /// Only the basename is kept (after the last `/` or `\`). A basename
-    /// that is empty, `.` or `..` becomes `attachment`. Every other
-    /// character becomes `_`, as does each `.` or `-` at the start. Over
-    /// [`SAFE_NAME_MAX_BYTES`], the stem is cut and the extension kept.
     pub fn from_original(original: &str) -> Self {
         let base = original.rsplit(['/', '\\']).next().unwrap_or_default();
         if matches!(base, "" | "." | "..") {
@@ -325,7 +216,6 @@ impl SafeName {
             })
             .collect();
         if name.len() > SAFE_NAME_MAX_BYTES {
-            // ASCII only from here, so every byte index is a boundary.
             name = match name.rfind('.').filter(|&dot| dot > 0) {
                 Some(dot) if name.len() - dot < SAFE_NAME_MAX_BYTES => {
                     let extension = &name[dot..];
@@ -338,7 +228,6 @@ impl SafeName {
         Self(name)
     }
 
-    /// Accepts a name only if it is already safe.
     pub fn parse(name: &str) -> Result<Self, InvalidAttachment> {
         let valid = !name.is_empty()
             && name.len() <= SAFE_NAME_MAX_BYTES
@@ -358,8 +247,6 @@ impl SafeName {
         &self.0
     }
 
-    /// The text after the last `.`, in lowercase, if there is any. This is
-    /// what CloudRoom types the file by (F4).
     pub fn extension(&self) -> Option<String> {
         let (_, extension) = self.0.rsplit_once('.')?;
         (!extension.is_empty()).then(|| extension.to_ascii_lowercase())
@@ -384,9 +271,6 @@ impl From<SafeName> for String {
     }
 }
 
-/// The controller's id for one staged attachment: opaque, and safe as one
-/// path segment. 1 to [`ATTACHMENT_ID_MAX_LEN`] ASCII letters, digits, `_`
-/// and `-`, starting with a letter or digit. Chosen outside the core.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct AttachmentId(String);
@@ -428,7 +312,6 @@ impl From<AttachmentId> for String {
     }
 }
 
-/// A lowercase hex SHA-256: 64 characters of `0-9a-f`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct Sha256(String);
@@ -464,24 +347,16 @@ impl From<Sha256> for String {
     }
 }
 
-/// The verified record of one ready attachment. A send or a new thread
-/// carries only [`AttachmentId`]s; the core resolves each to this (B2).
-///
-/// Read only from a map with exactly these six keys, each once.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AttachmentRef {
     pub id: AttachmentId,
     pub sha256: Sha256,
     pub size_bytes: u64,
     pub kind: Kind,
-    /// The staged name. CloudRoom stores the copy under this stem and
-    /// extension, with its own suffix; the agent sees that stored name.
     pub name: SafeName,
-    /// The owner's original file name: untrusted text, for display only.
     pub display_name: String,
 }
 
-/// Takes one key's value, refusing a key given twice.
 fn once<'de, A: MapAccess<'de>, T: Deserialize<'de>>(
     map: &mut A,
     slot: &mut Option<T>,
@@ -494,7 +369,6 @@ fn once<'de, A: MapAccess<'de>, T: Deserialize<'de>>(
     Ok(())
 }
 
-/// A checked string: read as a string, then through its own `parse`.
 fn checked<E: de::Error, T>(
     text: Option<String>,
     key: &'static str,
@@ -547,7 +421,6 @@ impl<'de> Deserialize<'de> for AttachmentRef {
     }
 }
 
-/// The format the first bytes show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Format {
     Png,
@@ -555,7 +428,6 @@ enum Format {
     Gif,
     Webp,
     Heif,
-    /// An ISO media file that might be HEIF: refused, never a file.
     Unclear,
     Other,
 }
@@ -578,8 +450,6 @@ impl Format {
         }
     }
 
-    /// The extensions CloudRoom types as this format: the only names an
-    /// image of it may have.
     fn extensions(self) -> &'static [&'static str] {
         match self {
             Self::Png => &["png"],
@@ -592,17 +462,6 @@ impl Format {
     }
 }
 
-/// An ISO base media file (an `ftyp` box first): HEIF, or another format,
-/// or unclear. The box header is read in both forms, a 32-bit size and the
-/// 64-bit one (size 1), and every brand counts, major and compatible
-/// (Sol round 1, finding 2).
-///
-/// - A HEVC brand (`heic`, `heix`, `hevc`, …) is HEIC, unless an AV1 brand
-///   (`avif`, `avis`) is there too: then it is unclear.
-/// - An AV1 brand is AVIF: a file.
-/// - Otherwise the generic HEIF brands (`mif1`, `msf1`, `mif2`) are HEIF.
-/// - A box that doesn't fit in what was read, is too small for its
-///   brands, or ends part way through a brand, is unclear.
 fn iso_media(head: &[u8]) -> Format {
     let be = |bytes: &[u8]| bytes.iter().fold(0u64, |n, &b| (n << 8) | u64::from(b));
     let (header, size) = match be(&head[..4]) {
@@ -610,7 +469,6 @@ fn iso_media(head: &[u8]) -> Format {
             Some(large) => (16, be(large)),
             None => return Format::Unclear,
         },
-        // To the end of the file, which must be all of it.
         0 if head.len() < SNIFF_BYTES => (8, head.len() as u64),
         0 => return Format::Unclear,
         size => (8, size),
@@ -620,8 +478,6 @@ fn iso_media(head: &[u8]) -> Format {
         _ => return Format::Unclear,
     };
     let major = &head[header..header + 4];
-    // Whole 4-byte brands only: any byte left over is a cut-off brand,
-    // which might be HEVC's (Sol round 2, finding 2).
     let (compatible, partial) = head[header + 8..end].as_chunks::<4>();
     if !partial.is_empty() {
         return Format::Unclear;
@@ -643,10 +499,6 @@ fn iso_media(head: &[u8]) -> Format {
     }
 }
 
-/// The kind of a file named `name` whose first bytes are `head`, or why it
-/// can't be attached. `head` is the file's first [`SNIFF_BYTES`] bytes, or
-/// the whole file if it is shorter: a shorter `head` is taken as the whole
-/// file. Passing more is fine; only the first [`SNIFF_BYTES`] count.
 pub fn classify(name: &SafeName, head: &[u8]) -> Result<Kind, FailReason> {
     let format = Format::sniff(head);
     match format {
@@ -672,8 +524,6 @@ pub fn classify(name: &SafeName, head: &[u8]) -> Result<Kind, FailReason> {
     }
 }
 
-/// The largest size CloudRoom accepts for an attachment, and the reason
-/// given one byte over.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limit {
     pub max_bytes: u64,
@@ -690,9 +540,6 @@ impl Limit {
     }
 }
 
-/// CloudRoom's limit for an attachment of `kind` named `name`: the image
-/// limit for an image, or for a file whose extension CloudRoom types as an
-/// image (F26); otherwise the file limit.
 pub fn limit(kind: Kind, name: &SafeName) -> Limit {
     let image_typed = name
         .extension()
@@ -713,17 +560,12 @@ pub fn limit(kind: Kind, name: &SafeName) -> Limit {
     }
 }
 
-/// The whole check for one attachment: its kind, then its size against
-/// that kind's limit. Each attachment stands alone: nothing counts or
-/// totals them.
 pub fn check(name: &SafeName, head: &[u8], size_bytes: u64) -> Result<Kind, FailReason> {
     let kind = classify(name, head)?;
     limit(kind, name).admits(size_bytes)?;
     Ok(kind)
 }
 
-/// Whether `incoming_bytes` more may be staged with `free_bytes` free on
-/// the state volume: never below [`FREE_DISK_FLOOR_BYTES`] (B-3).
 pub fn staging_room(free_bytes: u64, incoming_bytes: u64) -> Result<(), FailReason> {
     match free_bytes.checked_sub(incoming_bytes) {
         Some(left) if left >= FREE_DISK_FLOOR_BYTES => Ok(()),
@@ -731,30 +573,16 @@ pub fn staging_room(free_bytes: u64, incoming_bytes: u64) -> Result<(), FailReas
     }
 }
 
-/// One attachment's readiness (#14). `selected` and `uploading` exist only
-/// in clients and in an upload in flight; the store holds `ready`.
-///
-/// In JSON, `{"state": <state>}`, or `{"state": "failed", "reason":
-/// <reason>}`: read only from a map with exactly those keys, each once,
-/// and string values from their lists (Sol rounds 1 and 2, finding 4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Readiness {
-    /// Chosen in a client only. Claims no upload.
     Selected,
-    /// Bytes are arriving at the controller. Claims nothing complete.
     Uploading,
-    /// The whole copy is on the controller, with its size, SHA-256, kind
-    /// and safe name verified. Claims nothing about CloudRoom.
     Ready,
-    /// It can't become ready, for this reason.
     Failed { reason: FailReason },
-    /// The owner removed it; its bytes are deleted.
     Removed,
-    /// Unclaimed past [`UNSENT_TTL`]; its bytes are deleted.
     Expired,
 }
 
-/// A readiness object's `state`.
 #[derive(Clone, Copy, PartialEq)]
 enum State {
     Selected,
@@ -842,9 +670,6 @@ impl<'de> Deserialize<'de> for Readiness {
 }
 
 impl Readiness {
-    /// Whether this state may follow `self`. Nothing becomes ready except
-    /// from an upload, a failure is left only by a new upload or removal,
-    /// and `removed` and `expired` are final.
     pub fn can_become(self, next: Readiness) -> bool {
         use Readiness::*;
         matches!(
@@ -857,37 +682,26 @@ impl Readiness {
         )
     }
 
-    /// Only `ready` claims a verified copy on the controller.
     pub fn is_ready(self) -> bool {
         self == Readiness::Ready
     }
 }
 
-/// Where the operation that claimed a ready attachment stands (B-6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Claim {
-    /// No send or new thread uses it yet.
     Unclaimed,
-    /// Its operation is being dispatched.
     Dispatching,
-    /// Its operation's accepted outcome is recorded.
     Accepted,
-    /// Its operation failed.
     Failed,
-    /// Its operation's outcome is uncertain, until resolved.
     Uncertain,
 }
 
-/// What the store holds for one attachment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stored {
-    /// An unfinished copy, left by a crash during staging.
     Partial,
-    /// A ready copy, `age` after it became ready.
     Ready { claim: Claim, age: Duration },
 }
 
-/// Keep a stored attachment, or delete it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Retention {
     Keep,
@@ -896,18 +710,11 @@ pub enum Retention {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeleteReason {
-    /// An unfinished copy.
     Partial,
-    /// Unclaimed, or its operation failed, past [`UNSENT_TTL`].
     Expired,
-    /// Its operation's accepted outcome is recorded; CloudRoom reads its
-    /// own copy (F3, F8).
     Accepted,
 }
 
-/// The retention rule (B-2, B-6): a partial copy goes; a ready one goes
-/// once its operation is accepted, or at [`UNSENT_TTL`] if unclaimed or
-/// failed; it is kept while dispatching or uncertain.
 pub fn retention(stored: Stored) -> Retention {
     match stored {
         Stored::Partial => Retention::Delete(DeleteReason::Partial),
@@ -922,12 +729,9 @@ pub fn retention(stored: Stored) -> Retention {
     }
 }
 
-/// The owner can't remove an attachment its operation may still use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RemoveRefused(pub Claim);
 
-/// Whether the owner may remove an attachment in this claim: not while its
-/// operation is dispatching or uncertain.
 pub fn can_remove(claim: Claim) -> Result<(), RemoveRefused> {
     match claim {
         Claim::Dispatching | Claim::Uncertain => Err(RemoveRefused(claim)),
@@ -935,26 +739,12 @@ pub fn can_remove(claim: Claim) -> Result<(), RemoveRefused> {
     }
 }
 
-/// The directory of the state directory that holds the staged copies (the
-/// store's `attachments/`). A [`StagedPath`] always ends in
-/// `<STAGING_DIR>/<id>/<safe name>`.
 pub const STAGING_DIR: &str = "attachments";
 
-/// The absolute path of one staged copy, the only path `--file` and
-/// `--image` may carry (sheet B-7): `<area>/<id>/<safe name>`, where `area`
-/// is the store's [`STAGING_DIR`], absolute, with no `.` or `..` component,
-/// in UTF-8 and with no control character. The id and the safe name are
-/// checked types, so neither can add a component or start an option.
-///
-/// It can be built only by [`StagedPath::new`], from those parts: no text,
-/// relative token, `file:` URL or path from a message can become one. It is
-/// never written to a report or a record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StagedPath(String);
 
 impl StagedPath {
-    /// The staged copy of `id`, named `name`, in `area` (the store's
-    /// `attachments/` directory).
     pub fn new(
         area: &std::path::Path,
         id: &AttachmentId,
@@ -970,9 +760,6 @@ impl StagedPath {
         let Some(text) = area.to_str() else {
             return refuse();
         };
-        // The text itself, segment by segment: `Path::components` would
-        // drop a `.` in the middle and an empty segment, and the path is
-        // passed as this text.
         let plain = text.strip_prefix('/').is_some_and(|rest| {
             rest.split('/')
                 .all(|segment| !matches!(segment, "" | "." | ".."))
@@ -991,12 +778,6 @@ impl StagedPath {
     }
 }
 
-/// One attachment of a prompt, as the op id binds it and a record keeps it:
-/// its id, SHA-256, size, kind and staged name. Never its bytes, and never
-/// the owner's original file name.
-///
-/// Read only from a map with exactly these five keys, each once (B1's
-/// rule, not serde's derived reader).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct PromptAttachment {
     pub id: AttachmentId,
@@ -1018,7 +799,6 @@ impl From<&AttachmentRef> for PromptAttachment {
     }
 }
 
-/// The keys of a [`PromptAttachment`], in the order it is written.
 pub const PROMPT_ATTACHMENT_KEYS: &[&str] = &["id", "sha256", "size_bytes", "kind", "name"];
 
 struct PromptAttachmentVisitor;
@@ -1059,8 +839,6 @@ impl<'de> Deserialize<'de> for PromptAttachment {
     }
 }
 
-/// One ready attachment and the path of its staged copy: what the adapter
-/// passes with `--file` or `--image` (B-7).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StagedAttachment {
     pub attachment: PromptAttachment,

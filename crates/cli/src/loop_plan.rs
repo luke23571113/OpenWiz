@@ -1,10 +1,3 @@
-//! `openwiz loop plan <path>... --project <project> [--adopt <id>=<loop>]...
-//! [--json]` (LC4, #792): a dry run. It reads the files and one `room-cli
-//! loop list`, prints each file's exact `room-cli loop create` or `update`
-//! and its differences against the managed loop, and changes nothing.
-//! The rules are the adapter's (`openwiz_adapter_cloudroom::loop_files`);
-//! the result and exits are `contracts/loop-cli.v1.md`'s.
-
 use std::io::Write;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -14,7 +7,6 @@ use serde_json::{Value, json};
 
 use super::{Args, escape_untrusted as esc};
 
-/// Runs a parsed `loop plan`.
 pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     let fail =
         |stdout: &mut dyn Write, stderr: &mut dyn Write, code: i32, kind: &str, message: String| {
@@ -40,7 +32,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
             );
         }
     };
-    // A binding must name a file being planned; checked before any read.
     if let Some((id, _)) = args
         .adopt
         .iter()
@@ -92,7 +83,6 @@ pub fn run(args: &Args, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     code
 }
 
-/// The `openwiz.loop-plan.v1` document.
 fn report(plan: &Plan, project: &str, code: i32) -> Value {
     let items: Vec<Value> = plan.items.iter().map(item_json).collect();
     json!({
@@ -114,10 +104,6 @@ fn item_json(item: &PlanItem) -> Value {
     })
 }
 
-/// A word for `sh` that reads back byte for byte, with nothing a terminal
-/// acts on: safe text single-quoted (line breaks included, so a prompt stays
-/// readable), and each other character as `"$(printf '\ooo')"`, the octal of
-/// its UTF-8 bytes. The value itself is never changed.
 pub(super) fn quoted(word: &str) -> String {
     let mut out = String::from("'");
     for c in word.chars() {
@@ -133,13 +119,10 @@ pub(super) fn quoted(word: &str) -> String {
     out
 }
 
-/// A block of untrusted text, escaped line by line so its breaks stay.
 pub(super) fn block(text: &str) -> String {
     text.split('\n').map(esc).collect::<Vec<_>>().join("\n")
 }
 
-/// The text for people: one block per file, then the loops left alone.
-/// Every untrusted string goes through [`esc`]; JSON keeps the originals.
 fn text(plan: &Plan) -> String {
     let mut out = String::new();
     for item in &plan.items {
