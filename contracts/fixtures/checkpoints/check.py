@@ -6,6 +6,7 @@ readings below follow its prose. Exit 0 when every fixture reads as
 expected.json says, 1 naming each one that doesn't. Run from anywhere:
 python3 -I contracts/fixtures/checkpoints/check.py
 """
+import datetime
 import json
 from pathlib import Path
 import re
@@ -33,9 +34,11 @@ def forms():
 def read_spec(text, f):
     lines = text.split('\n')
     starts = [i for i, line in enumerate(lines) if f['section'].fullmatch(line)]
+    bad = {'result': 'invalid', 'early': True, 'late': True}
+    if any(f['section_like'].fullmatch(line) and not f['section'].fullmatch(line) for line in lines):
+        return {**bad, 'code': 'section-heading'}
     if not starts:
         return {'result': 'absent', 'early': True, 'late': False}
-    bad = {'result': 'invalid', 'early': True, 'late': True}
     if len(starts) > 1:
         return {**bad, 'code': 'section-repeated'}
     body = []
@@ -75,10 +78,18 @@ def read_ask(text, f):
             'evidence': evidence, 'look_for': look.group(1)}
 
 
+def real_date(text):
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
 def read_record(text, f):
     lines = [line for line in text.split('\n') if line.strip()]
     first = f['record_opening'].fullmatch(lines[0]) if lines else None
-    if not first:
+    if not first or not real_date(first.group(2)):
         return {'result': 'invalid', 'code': 'record-opening'}
     if any(q in first.group(6) for q in QUOTES):
         return {'result': 'invalid', 'code': 'quoted-words'}
@@ -98,7 +109,7 @@ def read_release(scenario, f):
     spec = read_spec((HERE / scenario['spec']).read_text(encoding='utf-8'), f)
     if not scenario['final'] or not spec['late']:
         return {'merge': 'flows'}
-    head, authors = scenario['head'], set(scenario['record_authors'])
+    head, authors, deciders = scenario['head'], set(scenario['record_authors']), set(scenario['deciders'])
     asked, newest = False, None
     for comment in scenario['comments']:
         if comment['author'] not in authors:
@@ -109,7 +120,7 @@ def read_release(scenario, f):
                 continue
             if 'evidence' in reading:
                 asked = True
-            elif asked:
+            elif asked and reading['decider'] in deciders:
                 newest = reading['outcome']
     if not asked:
         return {'merge': 'held', 'why': 'ask-due'}
