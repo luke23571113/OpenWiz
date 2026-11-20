@@ -12,3 +12,4 @@ Synthetic runs only; the checkout path is replaced by `<checkout>`.
   before the fix: each of the four lexer refusals reads `native load`.
 - `1118-red.log`: `python3 -I ci/wizroom/test_split.py SplitChecker.test_caller_supplied_sites_add_no_dependency_and_unlisted_loads_refuse`
   before the fix: a listed line's `os.environ.get` or `os.getenv` default moves (`{}` stay).
+- `green.log`: the scoped checks at the fix commit it names.
