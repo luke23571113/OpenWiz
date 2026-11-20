@@ -86,6 +86,9 @@ pub struct FileRead {
     pub refusals: Vec<Refusal>,
     /// The parsed file, only when it has no refusal.
     pub file: Option<LoopFile>,
+    /// Whether its `secrets` line is exactly `"all"`, whatever its other
+    /// fields' refusals: a catalog refuses that on its own.
+    pub all_secrets: bool,
 }
 
 /// A folder's result.
@@ -114,6 +117,7 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
         id: None,
         refusals: vec![refusal],
         file: None,
+        all_secrets: false,
     };
     // Step 1: encoding.
     let text = match std::str::from_utf8(bytes) {
@@ -127,7 +131,9 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
         }
     };
     // Steps 2 and 3: the frontmatter's two `---` lines.
-    let Some(rest) = text.strip_prefix("---\n") else {
+    // A file of exactly `---` has its opening line; only its closing line
+    // is missing.
+    let Some(rest) = text.strip_prefix("---\n").or((text == "---").then_some("")) else {
         return stop(Refusal::new(
             "frontmatter-start",
             "file",
@@ -188,6 +194,7 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
             id: None,
             refusals,
             file: None,
+            all_secrets: false,
         };
     }
     Fields::new(fields, body, check).read()
@@ -207,6 +214,11 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let name = entry.file_name();
+        // Selected by its bytes first: only a selected name must be UTF-8.
+        let bytes = name.as_encoded_bytes();
+        if !bytes.ends_with(b".md") || bytes == b"README.md" {
+            continue;
+        }
         let Some(name) = name.to_str() else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -215,10 +227,7 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
         };
         // A selected name whose metadata cannot be read fails the read,
         // never drops the file; a folder named `*.md` is not a loop file.
-        if name.ends_with(".md")
-            && name != "README.md"
-            && std::fs::metadata(entry.path())?.is_file()
-        {
+        if std::fs::metadata(entry.path())?.is_file() {
             names.push(name.to_owned());
         }
     }
@@ -243,21 +252,15 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
         }
     }
     if catalog {
-        for (name, read) in &files {
-            let all = read
-                .file
-                .as_ref()
-                .is_some_and(|f| f.frontmatter.get("secrets") == Some(&Value::from("all")));
-            if all {
-                refusals.push((
-                    name.clone(),
-                    Refusal::new(
-                        "catalog-all-secrets",
-                        "secrets",
-                        "must name each secret in a catalog file, never \"all\"",
-                    ),
-                ));
-            }
+        for (name, _) in files.iter().filter(|(_, read)| read.all_secrets) {
+            refusals.push((
+                name.clone(),
+                Refusal::new(
+                    "catalog-all-secrets",
+                    "secrets",
+                    "must name each secret in a catalog file, never \"all\"",
+                ),
+            ));
         }
     }
     Ok(FolderRead { files, refusals })
@@ -485,6 +488,9 @@ impl Parser<'_> {
 
     fn hex4(&mut self) -> Option<u32> {
         let hex = self.s.get(self.i..self.i + 4)?;
+        if !hex.iter().all(u8::is_ascii_hexdigit) {
+            return None;
+        }
         self.i += 4;
         u32::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()
     }
@@ -643,6 +649,7 @@ impl<'a, 'c> Fields<'a, 'c> {
             }
         });
         FileRead {
+            all_secrets: self.get("secrets") == Some(&Json::String("all".into())),
             id: self.id,
             refusals: self.refusals,
             file,
@@ -804,7 +811,8 @@ impl<'a, 'c> Fields<'a, 'c> {
                         "body",
                         "{{ must start a placeholder {{name}}",
                     ));
-                    at = start + 2;
+                    // One byte on: `{{{name}}}` holds `{{name}}` after it.
+                    at = start + 1;
                 }
             }
         }
@@ -886,7 +894,7 @@ fn check_uses(text: &str) -> Vec<CheckUse> {
             out.push((start, CheckUse::Placeholder(name.to_owned())));
             at = start + name.len() + 4;
         } else {
-            at = start + 2;
+            at = start + 1;
         }
     }
     for (start, _) in text.match_indices(PREFIX) {
@@ -1039,75 +1047,16 @@ fn is_cron(cron: &str) -> bool {
             };
             *field == "*"
                 || field.split(',').all(|item| match item.split_once('/') {
-                    Some((b, step)) => {
-                        (b == "*" || base(b))
-                            && is_number(step)
-                            && step.parse::<u32>().is_ok_and(|n| n >= 1)
-                    }
+                    Some((b, step)) => (b == "*" || base(b)) && is_number(step) && step != "0",
                     None => base(item),
                 })
         })
 }
 
-/// `YYYY-MM-DDTHH:MM:SS[.f]` then `Z` or `±HH:MM`, a real date and time.
+/// An RFC 3339 time with seconds and an offset, using the same calendar,
+/// casing and leap-second rules as the adapter's instant comparison.
 fn is_rfc3339(at: &str) -> bool {
-    let b = at.as_bytes();
-    let num = |range: std::ops::Range<usize>| -> Option<u32> {
-        let s = at.get(range)?;
-        s.bytes()
-            .all(|c| c.is_ascii_digit())
-            .then(|| s.parse().ok())
-            .flatten()
-    };
-    let shape = b.len() >= 20
-        && b[4] == b'-'
-        && b[7] == b'-'
-        && b[10] == b'T'
-        && b[13] == b':'
-        && b[16] == b':';
-    if !shape {
-        return false;
-    }
-    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
-        num(0..4),
-        num(5..7),
-        num(8..10),
-        num(11..13),
-        num(14..16),
-        num(17..19),
-    ) else {
-        return false;
-    };
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => return false,
-    };
-    if !(1..=days).contains(&day) || hour > 23 || minute > 59 || second > 59 {
-        return false;
-    }
-    let mut rest = &at[19..];
-    if let Some(fraction) = rest.strip_prefix('.') {
-        let n = fraction.bytes().take_while(u8::is_ascii_digit).count();
-        if n == 0 {
-            return false;
-        }
-        rest = &fraction[n..];
-    }
-    if rest == "Z" {
-        return true;
-    }
-    let ob = rest.as_bytes();
-    ob.len() == 6
-        && (ob[0] == b'+' || ob[0] == b'-')
-        && ob[3] == b':'
-        && rest[1..3].bytes().all(|c| c.is_ascii_digit())
-        && rest[4..6].bytes().all(|c| c.is_ascii_digit())
-        && rest[1..3].parse::<u32>().is_ok_and(|h| h <= 23)
-        && rest[4..6].parse::<u32>().is_ok_and(|m| m <= 59)
+    instant(at).is_some()
 }
 
 fn agent(value: &Json, out: &mut Vec<Refusal>) {
@@ -1489,7 +1438,15 @@ fn cron_field(field: &str, min: u32, max: u32) -> Option<BTreeSet<u32>> {
     let mut values = BTreeSet::new();
     for item in field.split(',') {
         let (base, step) = match item.split_once('/') {
-            Some((base, step)) => (base, Some(cron_number(step, 1, u32::MAX)?)),
+            Some((base, step)) => {
+                if !is_number(step) || step == "0" {
+                    return None;
+                }
+                // A step larger than this field can only select the start.
+                // Clamp only for expansion, never for format validation.
+                let step = step.parse::<u32>().unwrap_or(max + 1).min(max + 1);
+                (base, Some(step))
+            }
             None => (item, None),
         };
         let (from, to) = if base == "*" {
@@ -2471,7 +2428,8 @@ pub struct ExportRefusal {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Param {
     Text(String),
-    Integer(i64),
+    /// A canonical decimal integer token, kept without a magnitude bound.
+    Integer(String),
 }
 
 impl Param {
@@ -2687,10 +2645,10 @@ pub fn read_script(script: &str) -> Option<(String, BTreeMap<String, Param>)> {
             let integer = digits == "0"
                 || (digits.starts_with(|c: char| ('1'..='9').contains(&c))
                     && digits.bytes().all(|b| b.is_ascii_digit()));
-            if !integer {
+            if !integer || value == "-0" {
                 return None;
             }
-            Param::Integer(value.parse().ok()?)
+            Param::Integer(value.to_owned())
         };
         params.insert(lower, value);
     }
@@ -2725,51 +2683,6 @@ fn valid_name(name: &str) -> bool {
     (1..=100).contains(&name.chars().count())
         && !name.chars().any(control)
         && name.chars().any(|c| !c.is_whitespace())
-}
-
-/// The format's `at`: an RFC 3339 time with seconds and an explicit offset.
-fn valid_at(at: &str) -> bool {
-    let b = at.as_bytes();
-    let digits = |r: std::ops::Range<usize>| {
-        b.get(r.clone())
-            .is_some_and(|s| s.iter().all(u8::is_ascii_digit))
-    };
-    let num = |r: std::ops::Range<usize>| at[r].parse::<u32>().unwrap_or(99);
-    if b.len() < 20
-        || !(digits(0..4)
-            && b[4] == b'-'
-            && digits(5..7)
-            && b[7] == b'-'
-            && digits(8..10)
-            && b[10] == b'T')
-        || !(digits(11..13) && b[13] == b':' && digits(14..16) && b[16] == b':' && digits(17..19))
-    {
-        return false;
-    }
-    if !((1..=12).contains(&num(5..7))
-        && (1..=31).contains(&num(8..10))
-        && num(11..13) <= 23
-        && num(14..16) <= 59
-        && num(17..19) <= 60)
-    {
-        return false;
-    }
-    let mut rest = &at[19..];
-    if let Some(fraction) = rest.strip_prefix('.') {
-        let len = fraction.bytes().take_while(u8::is_ascii_digit).count();
-        if len == 0 {
-            return false;
-        }
-        rest = &fraction[len..];
-    }
-    rest == "Z"
-        || (rest.len() == 6
-            && matches!(rest.as_bytes()[0], b'+' | b'-')
-            && rest.as_bytes()[3] == b':'
-            && rest[1..3].bytes().all(|b| b.is_ascii_digit())
-            && rest[4..6].bytes().all(|b| b.is_ascii_digit())
-            && rest[1..3].parse::<u32>().is_ok_and(|h| h <= 23)
-            && rest[4..6].parse::<u32>().is_ok_and(|m| m <= 59))
 }
 
 fn valid_secret(s: &str) -> bool {
@@ -2966,7 +2879,7 @@ fn export_one(
             ]))
         }
         (_, _, Some(at)) => {
-            if !valid_at(at) {
+            if !is_rfc3339(at) {
                 r.invalid("trigger.at", "bad-at");
             }
             Some(json_object(&[("at", string(at))]))
@@ -3352,6 +3265,248 @@ pub fn read_back(
 }
 
 #[cfg(test)]
+mod polish_tests {
+    use super::*;
+
+    fn item(id: &str) -> Map<String, Value> {
+        json!({
+            "id": id, "project_id": "synthetic-project",
+            "name": format!("Calendar [wizloop:{id}]"),
+            "cron": null, "timezone": null, "run_at": "2030-01-02T03:04:05Z",
+            "webhook": false, "new_thread": true, "script": null,
+            "agent": null, "secrets": [], "priority": 3, "prompt": "Go.\n"
+        })
+        .as_object()
+        .unwrap()
+        .clone()
+    }
+
+    // catches #988: export writing impossible month ends while exporting
+    // valid Gregorian leap days and unrelated valid loops in the same batch.
+    #[test]
+    fn export_checks_calendar_dates_per_loop() {
+        let cases = [
+            ("2030-01-02T03:04:05Z", true),
+            ("2032-02-29T03:04:05Z", true),
+            ("2000-02-29T03:04:05Z", true),
+            ("2030-02-31T03:04:05Z", false),
+            ("2030-02-29T03:04:05Z", false),
+            ("1900-02-29T03:04:05Z", false),
+            ("2030-04-31T03:04:05Z", false),
+            ("2030-06-31T03:04:05Z", false),
+            ("2030-09-31T03:04:05Z", false),
+            ("2030-11-31T03:04:05Z", false),
+        ];
+        let items: Vec<_> = cases
+            .iter()
+            .enumerate()
+            .map(|(n, (at, _))| {
+                let mut loop_ = item(&format!("calendar-{n}"));
+                loop_.insert("run_at".into(), json!(at));
+                loop_
+            })
+            .collect();
+        let exported = export_project(&items, "synthetic-project").unwrap();
+        assert_eq!(exported.len(), cases.len());
+        for (loop_, (at, valid)) in exported.iter().zip(cases) {
+            if valid {
+                assert!(loop_.refusals.is_empty(), "{at}: {:?}", loop_.refusals);
+                assert_eq!(loop_.files.len(), 1, "{at}");
+                assert!(loop_.files[0].1.contains(at));
+            } else {
+                assert!(loop_.files.is_empty(), "{at}");
+                assert_eq!(
+                    loop_.refusals,
+                    [ExportRefusal {
+                        file: format!("Calendar [wizloop:{}]", loop_.loop_id),
+                        code: "cf-export-invalid".into(),
+                        field: "trigger.at".into(),
+                        message: "would be refused by the format as bad-at".into(),
+                    }],
+                    "{at}"
+                );
+            }
+        }
+    }
+
+    // catches #989: refusing canonical integer preambles above i64::MAX,
+    // changing their numeric JSON type or changing the check's bytes.
+    #[test]
+    fn export_keeps_integer_params_beyond_i64() {
+        let check = "#!/bin/sh\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n";
+        for digits in [
+            "9223372036854775807",
+            "9223372036854775808",
+            "18446744073709551615",
+            "-9223372036854775808",
+        ] {
+            let script = format!(
+                "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_COUNT={digits}\n# wizloop: the check\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n"
+            );
+            let mut loop_ = item("a");
+            loop_.insert("script".into(), json!(script));
+            let exported = export_project(&[loop_], "synthetic-project")
+                .unwrap()
+                .remove(0);
+            assert!(
+                exported.refusals.is_empty(),
+                "{digits}: {:?}",
+                exported.refusals
+            );
+            assert_eq!(exported.files.len(), 2);
+            assert!(
+                exported.files[0]
+                    .1
+                    .contains(&format!("params: {{\"count\": {digits}}}\n"))
+            );
+            assert_eq!(exported.files[1].1, check);
+            let read = read_loop(exported.files[0].1.as_bytes(), &mut |_| {
+                CheckText::Text(check.into())
+            });
+            assert!(read.refusals.is_empty(), "{:?}", read.refusals);
+            let parsed = read.file.unwrap();
+            let count = &parsed.frontmatter["params"]["count"];
+            assert!(count.is_number());
+            assert_eq!(count.to_string(), digits);
+            let (restored, params) = read_script(&script).unwrap();
+            assert_eq!(restored, check);
+            assert_eq!(render_script(&restored, &params).unwrap(), script);
+        }
+        for digits in ["+1", "01", "-0", "1.0"] {
+            let script = format!(
+                "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_COUNT={digits}\n# wizloop: the check\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n"
+            );
+            assert!(read_script(&script).is_none(), "{digits}");
+        }
+    }
+
+    // catches #990: from_str_radix treating a sign as a Unicode hex digit,
+    // including in the low surrogate; legal escapes still decode normally.
+    #[test]
+    fn unicode_escapes_require_four_hex_digits() {
+        for (name, valid) in [
+            (r#""\u+041""#, false),
+            (r#""\u-041""#, false),
+            (r#""\ud800\u+041""#, false),
+            (r#""\u0041""#, true),
+            (r#""\u00e9""#, true),
+            (r#""\uD83D\uDE00""#, true),
+        ] {
+            let text = format!(
+                "---\nid: \"a\"\nname: {name}\ntrigger: {{\"webhook\": true}}\nthread: \"new\"\n---\nGo.\n"
+            );
+            let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+            let expected = if valid {
+                vec![]
+            } else {
+                vec![Refusal::new("json", "name", "value is not one JSON value")]
+            };
+            assert_eq!(read.refusals, expected, "{name}");
+        }
+    }
+
+    // catches #994: lowercase RFC 3339 separators and leap seconds refused
+    // by validate or export, or date/time/offset validation being weakened.
+    #[test]
+    fn timestamps_follow_rfc3339_in_both_directions() {
+        for (at, valid) in [
+            ("2030-01-02t03:04:05z", true),
+            ("2030-01-02t03:04:05.125+05:30", true),
+            ("2016-12-31T23:59:60Z", true),
+            ("2016-12-31t23:59:60.5z", true),
+            ("1990-12-31T15:59:60-08:00", true),
+            ("1991-01-01T00:59:60+01:00", true),
+            ("2030-02-29t03:04:05z", false),
+            ("2030-01-02t24:04:05z", false),
+            ("2030-01-02t03:60:05z", false),
+            ("2030-01-02t03:04:61z", false),
+            ("2030-01-02t03:04:05+24:00", false),
+            ("2030-01-02t03:04:05+01:60", false),
+            ("2030-01-02t03:04:05.z", false),
+            ("2030-01-02t03:04:05", false),
+        ] {
+            let text = format!(
+                "---\nid: \"a\"\nname: \"Calendar\"\ntrigger: {{\"at\": \"{at}\"}}\nthread: \"new\"\n---\nGo.\n"
+            );
+            let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+            let expected = if valid {
+                vec![]
+            } else {
+                vec![Refusal::new(
+                    "bad-at",
+                    "trigger.at",
+                    "must be an RFC 3339 time with seconds and an offset",
+                )]
+            };
+            assert_eq!(read.refusals, expected, "{at}");
+            let mut loop_ = item("a");
+            loop_.insert("run_at".into(), json!(at));
+            let exported = export_project(&[loop_], "synthetic-project")
+                .unwrap()
+                .remove(0);
+            assert_eq!(exported.refusals.len(), usize::from(!valid), "{at}");
+            assert_eq!(exported.files.len(), usize::from(valid), "{at}");
+        }
+    }
+
+    // catches #996: a bounded numeric parser rejecting a positive cron
+    // step or disabling the plan's frequency guard for an overflowing step.
+    #[test]
+    fn cron_steps_have_no_numeric_ceiling() {
+        for (step, valid) in [
+            ("4294967295", true),
+            ("4294967296", true),
+            ("999999999999999999999999999999999999999999", true),
+            ("0", false),
+            ("01", false),
+            ("+1", false),
+            ("-1", false),
+        ] {
+            for base in ["*", "1-59", "1"] {
+                let text = format!(
+                    "---\nid: \"a\"\nname: \"Cron\"\ntrigger: {{\"cron\": \"{base}/{step} * * * *\", \"timezone\": \"UTC\"}}\nthread: \"new\"\n---\nGo.\n"
+                );
+                let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+                let expected = if valid {
+                    vec![]
+                } else {
+                    vec![Refusal::new(
+                        "bad-cron",
+                        "trigger.cron",
+                        "must be five cron fields: minute hour day-of-month month day-of-week",
+                    )]
+                };
+                assert_eq!(read.refusals, expected, "{base}/{step}");
+            }
+        }
+        for (cron, refused) in [
+            ("*/4294967296 * * * *", false),
+            ("*/4294967296,5 * * * *", true),
+            ("0,5 */999999999999999999999999 * * *", true),
+        ] {
+            let text = format!(
+                "---\nid: \"a\"\nname: \"Cron\"\ntrigger: {{\"cron\": \"{cron}\", \"timezone\": \"UTC\"}}\nthread: \"new\"\n---\nGo.\n"
+            );
+            let read = read_loop(text.as_bytes(), &mut |_| CheckText::NotFound);
+            let report = plan(&[("a.md".into(), read)], &[], "synthetic-project", &[], 0);
+            assert_eq!(
+                report.items[0]
+                    .refusals
+                    .iter()
+                    .map(|r| r.code)
+                    .collect::<Vec<_>>(),
+                if refused {
+                    vec!["cf-too-frequent"]
+                } else {
+                    vec![]
+                },
+                "{cron}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -3543,5 +3698,93 @@ mod plan_tests {
         ] {
             assert_eq!(too_frequent(cron), refused, "{cron}");
         }
+    }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("openwiz-lc2-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn codes(text: &str) -> Vec<(&'static str, String)> {
+        read_loop(text.as_bytes(), &mut |_| CheckText::NotFound)
+            .refusals
+            .into_iter()
+            .map(|r| (r.code, r.field))
+            .collect()
+    }
+
+    const WEBHOOK: &str =
+        "---\nid: \"a\"\nname: \"A\"\ntrigger: {\"webhook\": true}\nthread: \"new\"\n";
+
+    // catches #992: a catalog file with secrets "all" and another field
+    // refused reporting only that field, never catalog-all-secrets.
+    #[test]
+    fn a_catalog_refuses_all_secrets_beside_other_refusals() {
+        let root = scratch("catalog");
+        let file = format!("{WEBHOOK}secrets: \"all\"\npriority: 9\n---\nGo.\n");
+        std::fs::write(root.join("a.md"), file).unwrap();
+        let folder = read_loop_folder(&root, true).unwrap();
+        let codes: Vec<_> = folder.files[0].1.refusals.iter().map(|r| r.code).collect();
+        assert_eq!(codes, ["bad-priority"]);
+        let refused: Vec<_> = folder
+            .refusals
+            .iter()
+            .map(|(n, r)| (n.as_str(), r.code))
+            .collect();
+        assert_eq!(refused, [("a.md", "catalog-all-secrets")]);
+        assert!(read_loop_folder(&root, false).unwrap().refusals.is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    // catches #993: an unrelated non-UTF-8 name (here `\xff.txt`) failing
+    // the whole folder read, though only `*.md` names are selected.
+    #[test]
+    fn a_folder_ignores_unrelated_non_utf8_names() {
+        use std::os::unix::ffi::OsStrExt;
+        let root = scratch("names");
+        std::fs::write(root.join("a.md"), format!("{WEBHOOK}---\nGo.\n")).unwrap();
+        let other = std::ffi::OsStr::from_bytes(b"\xff.txt");
+        std::fs::write(root.join(other), "x").unwrap();
+        let folder = read_loop_folder(&root, false).unwrap();
+        assert_eq!(folder.files.len(), 1);
+        assert_eq!(folder.files[0].0, "a.md");
+        assert!(folder.files[0].1.refusals.is_empty());
+        std::fs::write(root.join(std::ffi::OsStr::from_bytes(b"\xff.md")), "x").unwrap();
+        assert!(read_loop_folder(&root, false).is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    // catches #997: a file of exactly `---` refused as frontmatter-start,
+    // though its first line is the opening delimiter.
+    #[test]
+    fn a_lone_opening_line_lacks_only_its_closing_line() {
+        assert_eq!(codes("---"), [("frontmatter-end", "file".to_owned())]);
+        assert_eq!(codes("--"), [("frontmatter-start", "file".to_owned())]);
+        assert_eq!(codes("----"), [("frontmatter-start", "file".to_owned())]);
+    }
+
+    // catches #995: `{{{repo}}}` hiding the placeholder `{{repo}}` one byte
+    // after a failed probe, in the check and in the body.
+    #[test]
+    fn overlapping_placeholders_are_each_checked() {
+        let text = format!("{WEBHOOK}check: {{\"run\": \"check\", \"timeout\": 5}}\n---\nGo.\n");
+        let read = read_loop(text.as_bytes(), &mut |_| {
+            CheckText::Text("echo '{{{repo}}}'\n".into())
+        });
+        let found: Vec<_> = read
+            .refusals
+            .iter()
+            .map(|r| (r.code, r.field.as_str()))
+            .collect();
+        assert_eq!(found, [("param-in-check", "check")]);
+        assert_eq!(
+            codes(&format!("{WEBHOOK}---\nGo {{{{{{repo}}}}}}.\n")),
+            [
+                ("bad-placeholder", "body".to_owned()),
+                ("undeclared-param", "body".to_owned())
+            ]
+        );
     }
 }

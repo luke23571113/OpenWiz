@@ -1,0 +1,78 @@
+ok   guard: a pull request from this repository, on the PC
+ok   guard: a pull request from this repository, on GitHub's runner
+ok   guard: a fork's pull request on a self-hosted runner (closedwiz-pc) fails
+ok   guard: a fork's pull request on GitHub's runner
+ok   guard: a pull request whose head is unknown (a deleted fork), self-hosted, fails
+ok   guard: a fork's pull request where the runner's kind is unknown fails
+ok   guard: pull_request_target from a fork, self-hosted, fails
+ok   guard: an event that names no head (issue_comment), self-hosted, fails
+ok   guard: a push to main on GitHub's runner saves
+ok   guard: the nightly run on main on GitHub's runner saves
+ok   guard: a push to main on the PC: its own store, not GitHub's
+ok   guard: a push to another branch never saves
+ok   guard: a push of a tag named main never saves
+ok   guard: a manual run on main never saves
+ok   guard: a merge group never saves
+ok   guard: a merge group on the PC
+ok   guard: a pull request from this repository, on Jog: GitHub's cache, restore only
+ok   guard: a fork's pull request on Jog still fails
+ok   guard: a push to main on Jog saves
+ok   guard: the nightly run on main on Jog saves
+ok   guard: a merge group on Jog never saves
+ok   guard: a push to another branch on Jog never saves
+ok   guard: a manual run on main on Jog never saves
+ok   guard: a Jog-named runner without Jog's scope is not Jog
+ok   guard: Jog's scope on another runner's name (the PC) is not Jog
+ok   guard: a name that only starts like Jog's is not Jog
+ok   guard: Jog's variables on a runner of unknown kind are not Jog
+ok   guard: a Jog name with a line before it is not Jog
+ok   guard: a Jog name with a line after it is not Jog
+ok   guard: a Jog name with a newline inside it is not Jog
+ok   guard: a Jog name with a trailing newline is not Jog
+ok   guard: a Jog name with a trailing carriage return is not Jog
+ok   guard: no repository: refused
+ok   guard: no GITHUB_OUTPUT: refused
+ok   setup: Python, Chromium and zsh on GitHub's image
+ok   setup: a later step's python3 is the pinned one
+ok   setup: a later step's chromium is the pinned Chrome for Testing
+ok   setup: zsh is installed
+ok   setup: refresh and install retain the existing source, mirror and signing-key bytes
+ok   setup: downloads exactly the pinned builds
+ok   setup: what it adds to the PATH is in the job's temp folder
+ok   setup: zsh required update failure
+ok   setup: required update failure is retained
+ok   setup: zsh required transient failure
+ok   setup: required transient failure is retained
+ok   setup: zsh required signature failure
+ok   setup: required signature failure is retained
+ok   setup: zsh required install failure
+ok   setup: required install failure is retained
+ok   setup: zsh required install-signature failure
+ok   setup: required install-signature failure is retained
+ok   setup: zsh required presence failure
+ok   setup: required presence failure is retained
+ok   setup: the image's Chrome at another version
+ok   setup: the image's Chrome at another version: the pinned Chrome for Testing
+ok   setup: a Python whose SHA-256 is not the pin fails
+ok   setup: a bad Python adds nothing to the PATH
+ok   setup: a Chrome whose SHA-256 is not the pin fails
+ok   setup: a bad Chrome adds nothing to the PATH
+ok   setup: a Python that is not the pinned version fails
+ok   setup: on the PC (self-hosted): refused
+ok   setup: on the PC nothing is downloaded, installed or added
+ok   setup: where the runner's kind is unknown: refused
+ok   setup: Python, Chromium and zsh on Jog
+ok   setup: on Jog a later step's chromium is the pinned Chrome for Testing
+ok   setup: on Jog a later step's python3 is the pinned one
+ok   setup: a Jog-named runner without Jog's scope: refused
+ok   setup: on a Jog lookalike nothing is downloaded or added
+ok   setup: a multiline Jog name is refused, nothing downloaded
+ok   cache.sh: on GitHub's runner a restore leaves the PC's store alone
+ok   cache.sh: on GitHub's runner a save leaves nothing for a store
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.019s
+
+OK
+ok   CI: every lane preserves fork routing, guard ordering and cache trust
+all ok

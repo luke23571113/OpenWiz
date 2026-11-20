@@ -63,6 +63,17 @@ Nothing else is stored. A tool reads the rest from GitHub itself:
 | A ticket's spec | Its parent issue |
 | Done | Closed as completed |
 
+## 6. The host setting
+
+A project says where its agents run in one file on its default branch, `docs/agents/host.md`. It holds one setting line, `Host: <name>`, where `<name>` is a driver's folder in OpenWiz's `adapters/` (such as `local`, `cloudroom` or `boat`): lowercase letters, digits and single hyphens, at most 40 characters, as a [driver v1](driver.v1.md) names itself. The rest of the file is prose for people.
+
+- **H1.** Onboarding asks once and writes the file. The person changes it by asking their agent, which edits that one line; nothing else changes.
+- **H2.** A tool that starts, wakes or stops agents reads the setting and calls that host's driver. A run is woken and stopped through the driver that started it, even after the setting changes; only later starts use the new host.
+- **H3.** A file without exactly one valid setting line starts nothing: the tool says what is wrong. A project with no file has chosen no host, and its tools keep their own default.
+- **H4.** The setting names a host and nothing more: never a login, token, key, machine or account.
+
+The kit doesn't check the setting: it reads the tracker, not the repository's files.
+
 ## The kit's checks
 
 | Rule | The kit reports |

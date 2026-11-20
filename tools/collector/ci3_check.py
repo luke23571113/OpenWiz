@@ -108,7 +108,9 @@ def read_before(path):
 # backticked logins (letters and digits, single inner `-`, maybe a final `[bot]`) separated by commas.
 AUTHORS_ROW = re.compile(r"\| *Record authors *\|")
 LOGIN = r"`[A-Za-z0-9](?:-?[A-Za-z0-9])*(?:\[bot\])?`"
-AUTHORS_CELL = re.compile(rf"\s*{LOGIN}(?:\s*,\s*{LOGIN})*\s*")
+# Rust's trim uses Unicode White_Space; Python's \s also admits U+001C..U+001F.
+WHITESPACE = r"[^\S\x1c-\x1f]"
+AUTHORS_CELL = re.compile(rf"{WHITESPACE}*{LOGIN}(?:{WHITESPACE}*,{WHITESPACE}*{LOGIN})*{WHITESPACE}*")
 
 
 def record_authors():
@@ -131,7 +133,8 @@ def record_authors():
         elif section == "## GitHub identity" and AUTHORS_ROW.match(line):
             rows.append(line)
     cells = rows[0].split("|") if len(rows) == 1 else []
-    if len(cells) != 4 or cells[3].strip() or not AUTHORS_CELL.fullmatch(cells[2]):
+    if (len(cells) != 4 or not re.fullmatch(rf"{WHITESPACE}*", cells[3])
+            or not AUTHORS_CELL.fullmatch(cells[2])):
         raise Fail("docs/agents/fleet.md names no record authors")
     return frozenset(x.lower() for x in re.findall(r"`([^`]*)`", cells[2]))
 

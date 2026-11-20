@@ -6,7 +6,7 @@
 //! `tests/fake-room-cli/`, so they live here rather than in the CLI crate.
 //!
 //! No test can reach a real `room-cli`: `PATH` holds only the sandbox's
-//! `bin/`, whose `room-cli` is a two-line recorder in front of the fake,
+//! `bin/`, whose `room-cli` is a recorder in front of the fake,
 //! and every test checks the exact calls the fake recorded. The recorder
 //! only switches the fake to a second synthetic scenario once a write has
 //! been recorded, so a read-back can see what the write changed.
@@ -19,6 +19,8 @@ use super::{ROOT, Sandbox, dirs, fixture_cli, place, schema};
 
 const PROJECT: &str = "prj_syn_0001";
 const LIST: [&str; 3] = ["loop", "list", "--json"];
+const WEBHOOK_CREATE: &str = "loop|create|--name|Wake on a delivery [wizloop:webhook-new]|--prompt-file|@prompt|--webhook|--new-thread|--priority|4|--secrets|none";
+const WEBHOOK_PROMPT: &str = "Read the requests that arrived and route each one to its owner.\n";
 
 /// A sandbox whose `room-cli` is the fake, behind a recorder that answers
 /// from `before` until a loop write is recorded and from `after` once one is.
@@ -50,10 +52,29 @@ impl Room {
         fs::remove_file(bin.join("room-cli")).unwrap();
         let b = bin.display();
         let after = root.join("after.json");
+        let stat = if cfg!(target_os = "macos") {
+            "/usr/bin/stat -f '%Lp'"
+        } else {
+            "/usr/bin/stat -c '%a'"
+        };
         place::place_script(
             &bin.join("room-cli"),
             &format!(
-                "#!/bin/sh\nif [ -e '{b}/loop-writes.log' ]; then printf '%s' '{}' > '{b}/fake-room-cli.scenario'; fi\nexec '{b}/fake-room-cli' \"$@\"\n",
+                r#"#!/bin/sh
+set -e
+previous=
+for arg do
+  case "$previous" in --prompt-file|--script-file)
+    printf '%s\n' "$previous" >> '{b}/file-modes.log'
+    {stat} "${{arg%/*}}" "$arg" >> '{b}/file-modes.log';;
+  esac
+  previous=$arg
+done
+if [ -e '{b}/loop-writes.log' ]; then
+  printf '%s' '{}' > '{b}/fake-room-cli.scenario'
+fi
+exec '{b}/fake-room-cli' "$@"
+"#,
                 after.display()
             ),
         );
@@ -79,7 +100,10 @@ impl Room {
     }
 
     fn run_env(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
-        Command::new(fixture_cli())
+        // Set only the child's umask: parallel tests keep their own process state.
+        Command::new("/bin/sh")
+            .args(["-c", "umask 000; exec \"$@\"", "openwiz-test"])
+            .arg(fixture_cli())
             .args(args)
             .env_clear()
             .env("PATH", self.0.join("bin"))
@@ -135,6 +159,38 @@ impl Room {
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
             .collect()
+    }
+
+    /// One literal command and its bytes; only temporary operands come from
+    /// the recording. Accepted writes read back once; refused writes do not.
+    fn assert_write(&self, command: &str, files: Value, read_back: bool) {
+        let writes = self.writes();
+        assert_eq!(writes.len(), 1, "one write, never retried: {writes:#?}");
+        let expected: Vec<&str> = command
+            .split('|')
+            .enumerate()
+            .map(|(i, word)| {
+                if matches!(word, "@prompt" | "@script") {
+                    let path = writes[0]["argv"][i].as_str().unwrap();
+                    assert!(
+                        Path::new(path).starts_with(self.dir().join("tmp")),
+                        "{path}"
+                    );
+                    assert!(!Path::new(path).exists(), "{path} was left behind");
+                    path
+                } else {
+                    word
+                }
+            })
+            .collect();
+        let expected = json!(expected);
+        assert_eq!(writes, vec![json!({"argv": expected, "files": files})]);
+        let mut calls = vec![json!(LIST), expected];
+        if read_back {
+            calls.push(json!(LIST));
+        }
+        assert_eq!(self.calls(), calls);
+        self.assert_no_temporary_files();
     }
 
     /// Nothing is left in apply's temporary folder.
@@ -321,34 +377,22 @@ fn apply_creates_with_the_plans_files_and_removes_them() {
             "outcome": "created", "read_back": {"differences": []}, "refusals": [],
         })
     );
-    let writes = room.writes();
-    assert_eq!(writes.len(), 1, "{writes:#?}");
-    let ran: Vec<&str> = writes[0]["argv"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|a| a.as_str().unwrap())
-        .collect();
-    // The same command, with each `@` operand a file apply wrote.
-    let (prompt_path, script_path) = (ran[5], ran[12]);
-    let mut expected: Vec<&str> = create.split('|').collect();
-    expected[5] = prompt_path;
-    expected[12] = script_path;
-    assert_eq!(ran, expected);
-    let tmp = room.dir().join("tmp");
-    for path in [prompt_path, script_path] {
-        assert!(Path::new(path).starts_with(&tmp), "{path}");
-        assert!(!Path::new(path).exists(), "{path} was left behind");
+    room.assert_write(
+        create,
+        json!({"--prompt-file": prompt, "--script-file": script}),
+        true,
+    );
+    // Observed by the recorder while both files still exist, under umask 000.
+    let modes = fs::read_to_string(room.dir().join("bin/file-modes.log")).unwrap();
+    let modes: Vec<_> = modes.lines().collect();
+    assert_eq!(modes.len(), 6, "{modes:?}");
+    assert_eq!(modes[0], "--prompt-file");
+    assert_eq!(modes[3], "--script-file");
+    for (i, owner_bits) in [(1, 0o700), (2, 0o600), (4, 0o700), (5, 0o600)] {
+        let mode = u32::from_str_radix(modes[i], 8).unwrap();
+        assert_eq!(mode & 0o077, 0, "group/other access: {modes:?}");
+        assert_eq!(mode & 0o700, owner_bits, "owner access: {modes:?}");
     }
-    assert_eq!(
-        writes[0]["files"],
-        json!({"--prompt-file": prompt, "--script-file": script})
-    );
-    assert_eq!(
-        room.calls(),
-        vec![json!(LIST), writes[0]["argv"].clone(), json!(LIST)]
-    );
-    room.assert_no_temporary_files();
 }
 
 // catches: a webhook address that is lost, or written anywhere but the one
@@ -386,12 +430,23 @@ fn a_created_webhooks_address_reaches_only_the_caller_once() {
             }
         }
     }
+    room.assert_write(
+        WEBHOOK_CREATE,
+        json!({"--prompt-file": WEBHOOK_PROMPT}),
+        true,
+    );
     walk(room.dir(), address);
     // The text run prints it once, escaped like every other value.
     let room = Room::new(answers, vec![list(&with(created))]);
     let output = room.apply(&["webhook-new", "--from", &file]);
+    assert_eq!(output.status.code(), Some(0));
     let text = String::from_utf8(output.stdout).unwrap();
     assert_eq!(text.matches(address).count(), 1, "{text}");
+    room.assert_write(
+        WEBHOOK_CREATE,
+        json!({"--prompt-file": WEBHOOK_PROMPT}),
+        true,
+    );
 }
 
 // catches (C4, an unclear outcome): a read-back that differs reported as
@@ -408,9 +463,7 @@ fn a_differing_read_back_is_reported_and_never_retried() {
         doc["read_back"],
         json!({"differences": [{"field": "priority", "file": 3, "live": 2}]})
     );
-    let update = argv("loop|update|loop_syn_1|--priority|3");
-    assert_eq!(room.calls(), vec![json!(LIST), update, json!(LIST)]);
-    assert_eq!(room.writes().len(), 1);
+    room.assert_write("loop|update|loop_syn_1|--priority|3", json!({}), true);
 }
 
 // catches (C4, an unclear outcome): a write that times out, ends without an
@@ -478,7 +531,11 @@ fn an_unclear_outcome_is_unknown_and_never_retried() {
             "{case}"
         );
         assert_eq!(room.calls(), calls, "{case}");
-        assert_eq!(room.writes().len(), 1, "{case}: one write, never retried");
+        assert_eq!(
+            room.writes(),
+            vec![json!({"argv": update, "files": {}})],
+            "{case}"
+        );
         room.assert_no_temporary_files();
         // A hung write was stopped and reaped.
         if let Ok(pid) = fs::read_to_string(room.dir().join("bin/hang.pid")) {
@@ -514,10 +571,7 @@ fn a_command_cloudroom_refuses_is_failed_with_its_message_unchanged() {
         doc["refusals"],
         json!([{"file": file, "code": "room-cli", "field": "file", "message": message}])
     );
-    assert_eq!(
-        room.calls(),
-        vec![json!(LIST), argv("loop|update|loop_syn_1|--priority|3")]
-    );
+    room.assert_write("loop|update|loop_syn_1|--priority|3", json!({}), false);
 }
 
 // catches: apply writing (or reading) for a file it should refuse: one
@@ -655,7 +709,8 @@ fn apply_adopts_an_unmarked_loop_by_its_binding() {
             &json!({"differences": []})
         )
     );
-    assert_eq!(room.calls(), vec![json!(LIST), rename, json!(LIST)]);
+    assert_eq!(room.calls(), vec![json!(LIST), rename.clone(), json!(LIST)]);
+    assert_eq!(room.writes(), vec![json!({"argv": rename, "files": {}})]);
 }
 
 // catches (revision 3, red first with the round-trip fixture): apply
@@ -768,6 +823,7 @@ fn text_output_previews_the_command_and_never_prints_a_terminal_control() {
         text.contains(&format!("{file}: failed loop_syn_1\n")),
         "{text}"
     );
+    room.assert_write("loop|update|loop_syn_1|--priority|3", json!({}), false);
 }
 
 // catches: inside a thread a loop started, Cloudroom's refusal of the
@@ -807,10 +863,11 @@ fn a_create_cloudroom_refuses_in_a_loop_started_thread_is_not_created() {
         json!([{"file": file, "code": "room-cli", "field": "file", "message": message}])
     );
     assert!(doc.get("webhook_address").is_none(), "{doc:#}");
-    let writes = room.writes();
-    assert_eq!(writes.len(), 1, "one create, never retried");
-    assert_eq!(room.calls(), vec![json!(LIST), writes[0]["argv"].clone()]);
-    room.assert_no_temporary_files();
+    room.assert_write(
+        WEBHOOK_CREATE,
+        json!({"--prompt-file": WEBHOOK_PROMPT}),
+        false,
+    );
 }
 
 // catches (review R3): an `in` file's created loop read back against its
@@ -839,7 +896,11 @@ fn an_in_files_run_time_is_checked_against_its_delay() {
         doc["read_back"],
         json!({"differences": [{"field": "trigger", "file": {"in": "30m"}, "live": {"at": "2099-01-01T00:00:00Z"}}]})
     );
-    assert_eq!(room.writes().len(), 1);
+    room.assert_write(
+        "loop|create|--name|Look again in half an hour [wizloop:in-same]|--prompt-file|@prompt|--in|30m|--same-thread|--priority|1|--secrets|none",
+        json!({"--prompt-file": "Check what changed in the last 6 hours and say it in one line.\n"}),
+        true,
+    );
     // A run time that is not one: it cannot be checked, so unknown.
     let room = Room::new(
         vec![list(&account()), create()],
@@ -848,5 +909,9 @@ fn an_in_files_run_time_is_checked_against_its_delay() {
     let (code, doc) = room.json(&["in-same", "--from", &file]);
     assert_eq!(code, 6, "{doc:#}");
     assert_eq!(doc["outcome"], "unknown");
-    assert_eq!(room.writes().len(), 1);
+    room.assert_write(
+        "loop|create|--name|Look again in half an hour [wizloop:in-same]|--prompt-file|@prompt|--in|30m|--same-thread|--priority|1|--secrets|none",
+        json!({"--prompt-file": "Check what changed in the last 6 hours and say it in one line.\n"}),
+        true,
+    );
 }

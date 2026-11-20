@@ -7,7 +7,7 @@ description: Run a read-only discovery spike on the PC or Mac (structure only) b
 
 **This is PDD done fully:** find out what is really there before writing the tests and procedures that depend on it. 0.0.1 lost days to wrong assumptions: tool locations, `--limit` returning the oldest events, the version format changing.
 
-**Where it runs** ([ADR 0015](../../../docs/adr/0015-live-tests-on-the-pc.md)).
+**Where it runs.**
 
 Jake, 2026-11-01: full live tests use the PC, with a quick Mac check per release ([private record](https://github.com/jparker2006/ClosedWiz/issues/555#issuecomment-6565395635)).
 

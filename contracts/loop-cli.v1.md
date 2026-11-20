@@ -169,9 +169,11 @@ loop of the project with no marker and no binding) and `orphans`
   message is in `refusals` with code `room-cli`, field `file`, unchanged);
   and `unknown` when an outcome is unclear (no exit code, a timeout, a
   `list` that fails after a write). An unknown outcome is never retried.
-- `read_back` is null when nothing was written, otherwise
-  `{"differences": [...]}` from one `loop list` after the last command,
-  compared as plan compares.
+- `read_back` is `{"differences": [...]}` from one `loop list` after the
+  last command, compared as plan compares. It is null when nothing was
+  written or no usable `list` result exists after the commands (the outcome
+  is then `unknown` if anything may have been written). Null never shows
+  that nothing was written, and an `unknown` outcome is still never retried.
 - `webhook_address` appears only for a created webhook loop: `create`'s
   address, passed to the caller this once. Apply writes it to no file, plan
   or log.

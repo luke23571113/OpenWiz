@@ -55,21 +55,26 @@ def report(fixture):
 class SplitChecker(unittest.TestCase):
     # catches: a listed caller-supplied harness preventing the split, or its
     # declaration accidentally exempting another line/file's dynamic load.
+    # A listed site's repository default still counts (#1118).
     def test_caller_supplied_sites_add_no_dependency_and_unlisted_loads_refuse(self):
-        source = ('import importlib.util\nimport os\n'
-                  'importlib.util.spec_from_file_location("plugin", os.environ["PLUGIN"])\n')
-        for declaration, extra, succeeds in (
-                ('tools/client/harness.py:3', '', True),
-                (None, '', False),
-                ('tools/client/harness.py:2', '', False),
-                ('tools/client/other.py:3', '', False),
-                ('tools/client/harness.py:3', source.splitlines()[-1] + '\n', False)):
-            with self.subTest(declaration=declaration, extra=bool(extra)), tempfile.TemporaryDirectory() as tmp:
+        head = 'import importlib.util\nimport os\nimportlib.util.spec_from_file_location("plugin", '
+        source = head + 'os.environ["PLUGIN"])\n'
+        kept = {'tools/war-room/collector.py': 'tools/client/harness.py:3 native load'}
+        for declaration, extra, succeeds, load in (
+                ('tools/client/harness.py:3', '', True, 'os.environ["PLUGIN"]'),
+                (None, '', False, 'os.environ["PLUGIN"]'),
+                ('tools/client/harness.py:2', '', False, 'os.environ["PLUGIN"]'),
+                ('tools/client/other.py:3', '', False, 'os.environ["PLUGIN"]'),
+                ('tools/client/harness.py:3', source.splitlines()[-1] + '\n', False, 'os.environ["PLUGIN"]'),
+                ('tools/client/harness.py:3', '', kept, 'os.environ.get("PLUGIN", "tools/war-room/collector.py")'),
+                ('tools/client/harness.py:3', '', kept, 'os.getenv("PLUGIN", default="tools/war-room/collector.py")'),
+                (None, '', False, 'os.environ.get("PLUGIN", "tools/war-room/collector.py")')):
+            with self.subTest(declaration=declaration, extra=bool(extra), load=load), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / 'tools/client').mkdir(parents=True)
                 (root / 'tools/war-room').mkdir()
                 (root / 'contracts').mkdir()
-                (root / 'tools/client/harness.py').write_text(source + extra)
+                (root / 'tools/client/harness.py').write_text(head + load + ')\n' + extra)
                 (root / 'tools/war-room/collector.py').write_text('VALUE = "synthetic"\n')
                 if declaration:
                     (root / 'contracts/wizroom.v1.md').write_text(
@@ -78,8 +83,8 @@ class SplitChecker(unittest.TestCase):
                         f'| `{declaration}` | caller-supplied |\n')
                 if succeeds:
                     stay, move = report(root)
-                    self.assertEqual(stay, {})
-                    self.assertEqual(move, ['tools/war-room/collector.py'])
+                    self.assertEqual(stay, {} if succeeds is True else succeeds)
+                    self.assertEqual(move, [] if stay else ['tools/war-room/collector.py'])
                 else:
                     result = run(root)
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -329,17 +334,21 @@ class SplitChecker(unittest.TestCase):
 
     # catches: unresolved loads after a regex, or ambiguous/unterminated regex
     # syntax, yielding a successful unsafe move instead of a located refusal.
+    # Syntax the lexer cannot read is not a load to resolve (#1102).
     def test_javascript_regex_uncertainty_refuses_without_sets(self):
+        unreadable = 'unreadable JavaScript'
         cases = (
-            ('computed load', 'const regex = /`/;\nrequire(process.env.SYNTHETIC_MODULE);', 2),
-            ('ambiguous closing brace', 'if (true) {} /`/.test("x");\nrequire("../war-room/collector.cjs");', 1),
-            ('unterminated regex', 'const regex = /`\nrequire("../war-room/collector.cjs");', 1),
-            ('await keyword', 'async function load() { await /`/; }\nrequire("../war-room/collector.cjs");', 1),
-            ('yield keyword', 'function* load() { yield /`/; }\nrequire("../war-room/collector.cjs");', 1),
-            ('of keyword', 'function load() { for (const x of /`/) {} }\nrequire("../war-room/collector.cjs");', 1),
-            ('extends keyword', 'function load() { return class extends /`/ {}; }\nrequire("../war-room/collector.cjs");', 1),
+            ('computed load', 'const regex = /`/;\nrequire(process.env.SYNTHETIC_MODULE);', 2, 'native load'),
+            ('ambiguous closing brace', 'if (true) {} /`/.test("x");\nrequire("../war-room/collector.cjs");', 1, unreadable),
+            ('unterminated regex', 'const regex = /`\nrequire("../war-room/collector.cjs");', 1, unreadable),
+            ('character class', 'const regex = /[[`]/;\nrequire("../war-room/collector.cjs");', 1, unreadable),
+            ('regex flags', 'const regex = /`/x;\nrequire("../war-room/collector.cjs");', 1, unreadable),
+            ('await keyword', 'async function load() { await /`/; }\nrequire("../war-room/collector.cjs");', 1, unreadable),
+            ('yield keyword', 'function* load() { yield /`/; }\nrequire("../war-room/collector.cjs");', 1, unreadable),
+            ('of keyword', 'function load() { for (const x of /`/) {} }\nrequire("../war-room/collector.cjs");', 1, unreadable),
+            ('extends keyword', 'function load() { return class extends /`/ {}; }\nrequire("../war-room/collector.cjs");', 1, unreadable),
         )
-        for name, source, line in cases:
+        for name, source, line, kind in cases:
             with self.subTest(case=name), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / 'tools/client').mkdir(parents=True)
@@ -348,7 +357,7 @@ class SplitChecker(unittest.TestCase):
                 (root / 'tools/war-room/collector.cjs').write_text('')
                 result = run(root)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                self.assertIn(f'refused tools/client/read.cjs:{line} native load:', result.stderr)
+                self.assertIn(f'refused tools/client/read.cjs:{line} {kind}:', result.stderr)
                 self.assertNotRegex(result.stdout, r'(?m)^(stay|move) ')
 
     # catches: prose or an unrelated tool counted as a reference, keeping war-room
