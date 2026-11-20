@@ -67,7 +67,7 @@ default. Examples parse but are not promises that synthetic targets exist.
 forms are aliases of human help.
 
 Effects are `none`, `source_read`, `state_read`, `state_write`, `send`, `create`,
-`stage`, `delete`, `loop_switch`. `none` appears alone. `send` and `create` are
+`stage`, `delete`, `loop_switch`, `project_write`. `none` appears alone. `send` and `create` are
 the existing guarded CloudRoom writes. The executing tick's `fleet_action`
 effect was retired with it (#800). The tick's dry-run form reads and plans
 only; due reads GitHub candidates only. Neither is new terminal authority.
@@ -171,6 +171,7 @@ Accepted/sent never means work completed; created never means started.
 | `loop export` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/export_report` (LC3, #791) |
 | `loop plan` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/plan_report` (LC4, #792) |
 | `loop apply` | [loop-cli.v1](loop-cli.v1.md): `loop-cli.v1.schema.json#/$defs/apply_report` (LC5, #793) |
+| `models.show`, `models.list`, `models.set` | [models.v1](models.v1.md): `models.v1.schema.json#/$defs/show_report`, `list_report`, `set_report` (MD1, #1803; not shipped until MD2, #1804) |
 
 Tick (`--dry-run`) exits 0 after reporting its plan, 1 for a required global
 read, setup, planning or output failure, and 2 for invalid options, including
@@ -267,6 +268,33 @@ openwiz init --help [--json]
   held for reconciliation against the exact provider resource before any other
   call; 8 a stale or conflicting operation id; 10 unusable private state.
   Existing CLI error schemas and numeric meanings remain unchanged.
+
+## Models (`models show`, `list`, `set`, MD1 #1803)
+
+Pinned by [models.v1](models.v1.md#the-reports) for MD2 (#1804); **not
+shipped**. Until MD2 merges these forms are absent from `help --agent`'s
+catalogue and from human help, and this section grants no command, effect or
+authority. Plain `openwiz models [--json]` (the `models` form above) is
+unchanged.
+
+```text
+openwiz models show [--json]
+openwiz models list [--save] [--json]
+openwiz models set <orchestrator|builder|reviewer|small-builder|fixer> <provider> <model> <effort> [--json]
+openwiz models set <small-builder|fixer> follows-builder [--json]
+```
+
+| Form | Effects | Sources | Exits |
+| --- | --- | --- | --- |
+| `models.show` | `source_read` (`docs/agents/fleet.md` only) | none | 0 shown; 1 `fleet.md` missing, unreadable or refused, or output failure; 2 usage |
+| `models.list` | `source_read`; with `--save`, `project_write` (`docs/agents/models-offered.json`) | `room-cli` | 0 offered; 1 snapshot write or output failure; 2 usage; 13 nothing offered |
+| `models.set` | `source_read`, `project_write` (`docs/agents/fleet.md`, `docs/agents/models-offered.json`) | `room-cli`, except `follows-builder` | 0 changed or unchanged; 1 `fleet.md` missing, unreadable or refused, write or output failure; 2 usage; 5 not offered; 13 nothing offered |
+
+`project_write` is a write to a file of the project checkout under the
+current directory, never to OpenWiz state, CloudRoom or GitHub; the agent
+commits it. Each form reads one `cloud status` at most, takes options once
+with separate values, refuses unknown, repeated or non-UTF-8 arguments, and
+reads no stdin. `--help`/`-h` prints the form's help and exits 0.
 
 ## No terminal app (#776)
 
