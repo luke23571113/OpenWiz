@@ -264,7 +264,8 @@ class Boat(unittest.TestCase):
                 self.assertIn(os.path.join(self.folder, 'state', run + '.0.log'), err['next'])
                 for raw in ('Synthetic', 'OAuth', 'raw text', TOKEN):
                     self.assertNotIn(raw, json.dumps(err))
-                self.assertTrue(self.until(lambda: not self.marked()), 'its turn still runs')
+                self.assertTrue(self.until(lambda: not any(alive(p) or alive(w) for p, w, _, _ in self.logged())),
+                                'its turn still runs')
                 self.assertEqual(self.driver('wake', {'run': run})[0], 1, 'a wake reopened the failed run')
                 os.remove(self.hold) if held else None
         self.assertEqual(self.notes(), [])
