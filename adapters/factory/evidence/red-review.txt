@@ -50,11 +50,11 @@ Traceback (most recent call last):
   File "adapters/factory/test_driver.py", line 146, in test_turn_inherits_the_callers_environment_unchanged
     self.assertEqual(json.load(f), dict(self.env, FAKE_ENV_LOG=seen))
 AssertionError: {'HOM[451 chars]<tmp>/turn-env.json', 'OPENWIZ_RUN': 'run-0123456789ab'} != {'HOM[451 chars]<tmp>/turn-env.json'}
-  {'FACTORY_API_KEY': 'fk-synthetic0factory0value',
+  {'FACTORY_API_KEY': '<synthetic Factory-key-shaped value>',
    'FAKE_ENV_LOG': '<tmp>/turn-env.json',
    'FAKE_FACTORY_HOME': '<tmp>/factory',
    'FAKE_TURNS': '<tmp>/turns',
-   'GH_TOKEN': 'ghp_Synthetic0Factory0ValueSynthetic0Factory0Value',
+   'GH_TOKEN': '<synthetic GitHub-token-shaped value>',
    'HOME': '<tmp>',
    'KIT_TRACKER': '<tmp>/tracker.json',
    'LANG': 'C.UTF-8',
