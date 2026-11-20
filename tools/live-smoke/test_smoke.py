@@ -467,37 +467,50 @@ class ShippedCommands(unittest.TestCase):
 
 # The 0.1.0 sheet's synthetic programs (#1727). The driver is a stand-in for
 # KN4's Cloudroom driver at its contract (kernel/driver.v1.md): JSON in on stdin,
-# one JSON answer out, its runs kept in OPENWIZ_CLOUDROOM_STATE, and a thread
-# that only room-cli can read back.
+# one JSON answer out, its runs kept in OPENWIZ_CLOUDROOM_STATE (saved before the
+# thread is made), `room-cli` taken from PATH, and a thread only room-cli reads.
+# Flag files in its folder make it lose a start's answer or never deliver a wake.
 FAKE_DRIVER = """#!/usr/bin/env python3
-import json, os, pathlib, sys
+import json, os, pathlib, shutil, sys
 root = pathlib.Path(__file__).parent
 state = pathlib.Path(os.environ['OPENWIZ_CLOUDROOM_STATE'])
 cmd = sys.argv[1]
 body = sys.stdin.read()
 with (root / 'driver-calls').open('a') as log:
-    log.write(json.dumps([cmd, json.loads(body) if body else None]) + '\\n')
+    log.write(json.dumps([cmd, json.loads(body) if body else None, os.environ.get('ROOM_PROJECT_ID'),
+                          shutil.which('room-cli')]) + '\\\\n')
 if cmd == 'version':
     out = {'driver': 'cloudroom', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop']}
 elif cmd == 'start':
     req = json.loads(body)
-    assert type(req['ticket']) is int and os.environ['ROOM_PROJECT_ID'] == 'proj_synthetic'
-    state.mkdir(exist_ok=True)
+    assert type(req['ticket']) is int
     (state / 'run-0123456789ab.json').write_text(json.dumps({'thread': 'synthetic-child-thread', 'request': req}))
-    (root / 'room-state').write_text(json.dumps({'projectId': 'proj_synthetic', 'archived': False}))
+    (root / 'room-state').write_text(json.dumps({'projectId': os.environ['ROOM_PROJECT_ID'], 'archived': False}))
+    if (root / 'lose-start').exists():
+        sys.exit(1)
     out = {'run': 'run-0123456789ab'}
 elif cmd == 'wake':
+    if not (root / 'no-delivery').exists():
+        with (root / 'room-log').open('a') as log:
+            log.write('You were woken for example/throwaway#7: read the ticket again\\\\n')
     out = {'run': json.loads(body)['run'], 'woke': True}
 elif cmd == 'stop':
     (root / 'room-state').write_text(json.dumps({'projectId': 'proj_synthetic', 'archived': True}))
+    record = state / (json.loads(body)['run'] + '.json')
+    record.write_text(json.dumps(dict(json.loads(record.read_text()), archived=True)))
     out = {'run': json.loads(body)['run'], 'stopped': True}
 print(json.dumps(out))
 """
 FAKE_ROOM = """#!/usr/bin/env python3
 import json, pathlib, sys
 root = pathlib.Path(__file__).parent
-assert sys.argv[1:] == ['thread', 'show', 'synthetic-child-thread'], sys.argv
-print(json.dumps(dict(json.loads((root / 'room-state').read_text()), id='synthetic-child-thread', parent='synthetic-child-thread')))
+assert sys.argv[1:3] in (['thread', 'show'], ['thread', 'log']) and sys.argv[3] == 'synthetic-child-thread', sys.argv
+with (root / 'room-calls').open('a') as log:
+    log.write(json.dumps(sys.argv[1:3]) + '\\\\n')
+if sys.argv[2] == 'log':
+    print((root / 'room-log').read_text() if (root / 'room-log').exists() else '')
+else:
+    print(json.dumps(dict(json.loads((root / 'room-state').read_text()), id='synthetic-child-thread')))
 """
 FAKE_CLI = """#!/usr/bin/env python3
 import json, sys
@@ -515,7 +528,8 @@ elif args == ['api', '/installation/repositories']:
     out = {'total_count': 1, 'repositories': [{'full_name': 'example/throwaway'}]}
 print(json.dumps(out))
 """
-DRIVER_STEPS = {'new_once': 'start', 'send_once': 'wake', 'driver_stop': 'stop'}
+DRIVER_STEPS = {'new_preview': 'version', 'new_once': 'start', 'send_once': 'wake', 'driver_stop': 'stop'}
+TEARDOWN = ['driver_stop', 'stop_status']
 
 
 def template():
@@ -529,9 +543,10 @@ class Sheet(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
+        self.env = {'OPENWIZ_CLOUDROOM_STATE': str(self.root / 'state')}
 
-    def program(self, name, text):
-        path = self.root / name
+    def program(self, name, text, folder=None):
+        path = (folder or self.root) / name
         path.write_text(text)
         path.chmod(0o700)
         return str(path)
@@ -541,11 +556,10 @@ class Sheet(unittest.TestCase):
         cli = self.program('openwiz', FAKE_CLI)
         programs = {'openwiz': cli, 'gh': cli, 'install_entry': cli,
                     'driver': self.program('driver', FAKE_DRIVER), 'room_cli': self.program('room-cli', FAKE_ROOM)}
-        (self.root / 'state').mkdir()
+        (self.root / 'state').mkdir(exist_ok=True)
         inputs = dict(programs, mode='fixture', cwd=str(self.root), python=sys.executable,
                       artifacts={p: FixtureCase.sha(Path(p)) for p in set(programs.values()) | {sys.executable}},
-                      source={'checkout': str(self.root), 'head': '0' * 40},
-                      env={'OPENWIZ_CLOUDROOM_STATE': str(self.root / 'state'), 'ROOM_PROJECT_ID': 'proj_synthetic'},
+                      source={'checkout': str(self.root), 'head': '0' * 40}, env=self.env,
                       install_root='/synthetic/root', install_state='/synthetic/state', install_build='synthetic-build',
                       release_version='0.1.0', release_source='synthetic-source', release_target='synthetic-target',
                       release_targets=['x86_64-unknown-linux-gnu'],
@@ -556,8 +570,25 @@ class Sheet(unittest.TestCase):
                       project='proj_synthetic', driver_repository='example/throwaway', driver_ticket='7',
                       driver_skill='synthetic-skill', harness='claude', model='synthetic-model',
                       app_repository='example/throwaway')
-        prepare = runpy_path('prepare.py')
-        return prepare['bind'](template(), inputs)
+        return runpy_path('prepare.py')['bind'](template(), inputs)
+
+    def run_sheet(self, kit=None, code=0):
+        path = self.root / 'kit.json'
+        path.write_text(json.dumps(kit or self.bound()))
+        result = subprocess.run([sys.executable, '-I', str(RUNNER), '--kit', str(path),
+                                 '--state', str(self.root / 'checkpoint'), '--fixture'],
+                                capture_output=True, text=True, timeout=60,
+                                env=dict(os.environ, OPENWIZ_SMOKE_APP_TOKEN='synthetic-installation-token'))
+        self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        self.assertNotIn('synthetic-child-thread', result.stdout + result.stderr)
+        return json.loads(result.stdout)
+
+    def driver_calls(self):
+        log = self.root / 'driver-calls'
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    def archived(self):
+        return json.loads((self.root / 'room-state').read_text())['archived']
 
     def test_bound_sheet_loads_and_its_release_section_is_accepted(self):
         """catches: a 0.1.0 sheet the runner or the receipt refuses only when the
@@ -566,53 +597,92 @@ class Sheet(unittest.TestCase):
         path = self.root / 'kit.json'
         path.write_text(json.dumps(kit))
         SMOKE.load_kit(path)
-        receipt = runpy_path('receipt.py')
-        section = receipt['release_section'](kit)
+        section = runpy_path('receipt.py')['release_section'](kit)
         self.assertEqual(section['scope']['writes'], {'send': 1, 'new': 1})
         self.assertEqual(section['scope']['spending_cents'], 0)
 
     def test_driver_steps_start_wake_and_stop_one_run_through_the_runner(self):
         """catches: a driver step the runner can't feed (the driver reads its
         request on stdin; the runner gives none), a wake or stop that doesn't
-        reach the run start made, a second start, or a sheet that leaves the
-        run's thread unarchived."""
-        kit = self.bound()
-        path = self.root / 'kit.json'
-        path.write_text(json.dumps(kit))
-        result = subprocess.run([sys.executable, '-I', str(RUNNER), '--kit', str(path),
-                                 '--state', str(self.root / 'checkpoint'), '--fixture'],
-                                capture_output=True, text=True, timeout=30,
-                                env=dict(os.environ, OPENWIZ_SMOKE_APP_TOKEN='synthetic-installation-token'))
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertNotIn('synthetic-child-thread', result.stdout + result.stderr)
-        self.assertEqual(json.loads(result.stdout)['claims'], {c: 'pass' for c in kit['claims']})
-        calls = [json.loads(line) for line in (self.root / 'driver-calls').read_text().splitlines()]
-        self.assertEqual([c for c, _ in calls], ['version', 'start', 'wake', 'stop'])
+        reach the run start made, a second start, a wake never read back from the
+        thread, or a sheet that leaves the run's thread unarchived."""
+        doc = self.run_sheet()
+        self.assertEqual(doc['claims'], {c: 'pass' for c in template()['claims']})
+        calls = self.driver_calls()
+        self.assertEqual([c[0] for c in calls], ['version', 'start', 'wake', 'stop'])
         self.assertEqual(calls[1][1], {'repository': 'example/throwaway', 'ticket': 7, 'skill': 'synthetic-skill',
                                        'harness': 'claude', 'model': 'synthetic-model'})
-        self.assertEqual(calls[2][1], {'run': 'run-0123456789ab'})
-        self.assertEqual(calls[3][1], {'run': 'run-0123456789ab'})
-        self.assertTrue(json.loads((self.root / 'room-state').read_text())['archived'])
+        self.assertEqual([c[1] for c in calls[2:]], [{'run': 'run-0123456789ab'}] * 2)
+        self.assertEqual(json.loads((self.root / 'room-calls').read_text().splitlines()[1]), ['thread', 'log'])
+        self.assertTrue(self.archived())
+
+    def test_the_driver_starts_only_in_the_approved_project_with_the_pinned_room_cli(self):
+        """catches (#1732 R1, R5): an agent started in a stale ROOM_PROJECT_ID, or
+        the driver's spawn, tell and archive going to an older room-cli earlier on
+        PATH while the read-backs use the pinned one."""
+        decoy = self.root / 'decoy'
+        decoy.mkdir()
+        self.program('room-cli', FAKE_ROOM, decoy)
+        self.env['PATH'] = str(decoy) + os.pathsep + os.environ.get('PATH', '')
+        self.run_sheet()
+        pinned = str(self.root / 'room-cli')
+        self.assertEqual({(c[2], c[3]) for c in self.driver_calls()}, {('proj_synthetic', pinned)})
+        # A stale project in the environment refuses before any start.
+        (self.root / 'checkpoint').rename(self.root / 'first-checkpoint')
+        (self.root / 'driver-calls').unlink()
+        (self.root / 'driver-run.json').unlink()
+        for run in (self.root / 'state').iterdir():
+            run.unlink()
+        self.env['ROOM_PROJECT_ID'] = 'proj_synthetic_stale'
+        self.run_sheet(code=3)
+        self.assertEqual([c[0] for c in self.driver_calls()], ['version'])
+
+    def test_a_wake_the_thread_never_shows_fails_send_and_still_tears_down(self):
+        """catches (#1732 R4): a send claim passed on the queue's acceptance alone,
+        though the agent never got the wake, and its thread archived unread."""
+        (self.root / 'no-delivery').write_text('')
+        kit = self.bound()
+        ack = next(s for s in kit['steps'] if s['id'] == 'send_ack')
+        ack['argv'][-1] = '1'
+        doc = self.run_sheet(kit, code=1)
+        self.assertEqual(doc['claims']['send'], 'fail')
+        self.assertEqual([c[0] for c in self.driver_calls()], ['version', 'start', 'wake', 'stop'])
+        self.assertTrue(self.archived())
+
+    def test_teardown_stops_a_start_whose_answer_was_lost_and_runs_once(self):
+        """catches (#1732 R2): a start Cloudroom made but whose answer the runner
+        lost (no run pointer), or a failure after start, leaving the agent running;
+        and a resume that runs any step again after teardown."""
+        (self.root / 'lose-start').write_text('')
+        doc = self.run_sheet(code=3)
+        self.assertEqual(doc['reason'], 'uncertain_write')
+        self.assertFalse((self.root / 'driver-run.json').exists())
+        self.assertEqual([c[0] for c in self.driver_calls()], ['version', 'start', 'stop'])
+        self.assertEqual(self.driver_calls()[2][1], {'run': 'run-0123456789ab'})
+        self.assertTrue(self.archived())
+        self.run_sheet(code=3)
+        self.assertEqual(len(self.driver_calls()), 3)
 
     def test_driver_steps_call_only_driver_v1_commands_on_the_pinned_driver(self):
         """catches: a driver step naming a command the driver contract doesn't
-        have, a driver write run outside the pinned `@driver`, or a stop missing
-        so the throwaway's agent is left running, or a start the runner kills
-        before the driver's own 100 seconds for room-cli."""
+        have, a driver write run outside the pinned `@driver`, a stop that isn't
+        an always-run teardown, or a start the runner kills before the driver's
+        own 100 seconds for room-cli."""
         contract = (RUNNER.resolve().parents[2] / 'kernel/driver.v1.md').read_text()
         commands = set(re.findall(r'^\| `([a-z]+)` \|', contract, re.M))
-        self.assertTrue({'start', 'wake', 'stop'} <= commands, commands)
+        self.assertTrue({'version', 'start', 'wake', 'stop'} <= commands, commands)
         steps = {s['id']: s for s in template()['steps']}
         for step in steps.values():
             if '@driver' in step['argv']:
-                at = step['argv'].index('@driver')
-                self.assertEqual(step['argv'][:at], ['@python', '-I', '-c', step['argv'][3]], step['id'])
-                self.assertIn(step['argv'][at + 1], commands, step['id'])
-        self.assertEqual({i: steps[i]['argv'][5] for i in DRIVER_STEPS}, DRIVER_STEPS)
-        writes = sorted(s['id'] for s in steps.values() if s['kind'] == 'write')
-        self.assertEqual(writes, ['new_once', 'send_once'])
-        # The driver gives room-cli 100 seconds to start; the runner must not kill it first.
+                self.assertEqual(step['argv'][:4], ['@python', '-I', '-c', step['argv'][3]], step['id'])
+                self.assertIn(step['argv'][4], commands, step['id'])
+        self.assertEqual({i: steps[i]['argv'][4] for i in DRIVER_STEPS}, DRIVER_STEPS)
+        self.assertEqual(sorted(s['id'] for s in steps.values() if s['kind'] == 'write'), ['new_once', 'send_once'])
+        self.assertEqual([s['id'] for s in template()['steps'] if s.get('teardown')], TEARDOWN)
+        self.assertEqual([s['id'] for s in template()['steps']][-2:], TEARDOWN)
+        # The driver gives room-cli 100 seconds per call; the runner must not kill it first.
         self.assertGreater(steps['new_once']['timeout_seconds'], 100)
+        self.assertGreater(steps['driver_stop']['timeout_seconds'], 100)
 
     def test_every_risk_step_has_a_coverage_row(self):
         """catches: 0.0.17's blocker, a risk step in no `release.coverage` row,
@@ -624,6 +694,49 @@ class Sheet(unittest.TestCase):
             self.assertTrue(release['risk'][category], category)
             self.assertLessEqual(set(release['risk'][category]), covered, category)
         self.assertEqual(release['risk']['spending'], [])
+
+
+class Teardown(FixtureCase):
+    """#1732 R2: teardown steps run after any ending once a write was tried."""
+
+    def setUp(self):
+        super().setUp()
+        claims = ['json', 'new', 'loops', 'service']
+        self.kit['steps'] = [s for s in self.kit['steps'] if s['claim'] in claims]
+        self.kit['steps'][-1].update(teardown=True, timeout_seconds=5)
+        self.kit['claims'] = claims
+
+    def test_teardown_runs_after_a_failure_and_closes_the_run(self):
+        """catches: a failure after a live write that skips the stop, a teardown
+        before any write (nothing to undo), or a resume that carries on with
+        normal steps once teardown ran."""
+        self.replies['loops'] = {'exit': 9, 'out': '{}'}
+        self.assertEqual(self.report(self.invoke(), 3)['reason'], 'command_failed')
+        self.assertEqual(self.call_list(), [['ls', '--json'], ['json'], ['new'], ['loops'], ['service']])
+        self.replies['loops'] = {'exit': 0, 'out': json.dumps({'count': 1, 'known': True})}
+        doc = self.report(self.invoke(), 3)
+        self.assertEqual((doc['claims']['service'], doc['claims']['loops']), ('pass', 'incomplete'))
+        self.assertEqual(self.call_list().count(['loops']), 1)
+        self.assertEqual(self.call_list().count(['service']), 1)
+        # Before any write, a failure has nothing to tear down.
+        self.state = self.root / 'no-write'
+        self.replies['json'] = {'exit': 9, 'out': '{}'}
+        self.report(self.invoke(), 3)
+        self.assertEqual(self.call_list().count(['service']), 1)
+
+    def test_a_teardown_must_be_a_read_at_the_end_within_130_seconds(self):
+        """catches: a teardown that writes (it could repeat a live effect), one
+        placed before normal steps, or one with an unbounded wait."""
+        rows = {'a write': lambda s: s[1].update(teardown=True), 'not at the end': lambda s: s[2].update(teardown=True),
+                'above 130': lambda s: s[3].update(timeout_seconds=131),
+                'not true': lambda s: s[3].update(teardown='yes')}
+        for name, change in rows.items():
+            with self.subTest(name):
+                self.kit = json.loads(json.dumps(self.base_kit))
+                self.setUp()
+                change(self.kit['steps'])
+                self.assertEqual(self.report(self.invoke(), 2)['reason'], 'invalid_kit')
+                self.assertEqual(self.call_list(), [])
 
 
 def runpy_path(name):

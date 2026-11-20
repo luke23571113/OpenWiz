@@ -90,14 +90,18 @@ class Coverage(FixtureCase):
                    'risk': {'send': ['send'], 'new': ['new'], 'app_permissions': [], 'spending': []},
                    'gaps': ['synthetic gap']}
         self.kit.update(claims=list(SHIP3), steps=steps, release=release)
-        bad = {'send outside every row': {},
-               'risk not a dict': {'risk': ['send']},
-               'coverage not a list': {'coverage': {'steps': ['send']}}}
-        for name, change in bad.items():
+        # #1732 R3: the receipt contract's own refusals, at load, not after the run.
+        bad = {'send outside every row': ({}, 'coverage_mismatch'),
+               'risk not a dict': ({'risk': ['send']}, 'invalid_release'),
+               'coverage not a list': ({'coverage': {'steps': ['send']}}, 'invalid_release'),
+               'a row with no version or promise, on a missing step': (
+                   {'coverage': [{'steps': ['ghost', 'new']}], 'risk': dict(release['risk'], send=['ghost'])},
+                   'invalid_release')}
+        for name, (change, reason) in bad.items():
             with self.subTest(name):
                 self.kit['release'] = dict(release, **change)
-                self.state = self.root / name.replace(' ', '-')
-                self.assertEqual(self.report(self.invoke(), 2)['reason'], 'coverage_mismatch')
+                self.state = self.root / name.replace(' ', '-').replace(',', '')
+                self.assertEqual(self.report(self.invoke(), 2)['reason'], reason)
                 self.assertEqual(self.call_list(), [])
         self.kit['release'] = release
         release['coverage'][0]['steps'].append('send')
