@@ -256,8 +256,12 @@ def load_kit(path):
             keys = {'id', 'claim', 'kind', 'argv', 'exit', 'checks'}
             exact(step, keys | ({'again_from'} if 'again_from' in step else set())
                   | ({'until'} if 'until' in step else set())
-                  | ({'token_env'} if 'token_env' in step else set()))
+                  | ({'token_env'} if 'token_env' in step else set())
+                  | ({'timeout_seconds'} if 'timeout_seconds' in step else set()))
             if 'token_env' in step and step['token_env'] != 'OPENWIZ_SMOKE_APP_TOKEN':
+                raise Refusal('invalid_kit')
+            # #1727: only a write may wait longer than the kit's cap (the driver's start: room-cli's 100 seconds).
+            if 'timeout_seconds' in step and (step['kind'] != 'write' or not integer(step['timeout_seconds'], 1, 130)):
                 raise Refusal('invalid_kit')
             if step['kind'] not in ('read', 'write', 'await'):
                 raise Refusal('invalid_kit')
@@ -865,7 +869,8 @@ def run(kit, path, candidate=None):
                 # Durable BEFORE any effect; this attempt is never replayed.
                 record(path, kit, state, {'kind': 'attempt', 'id': step['id'], 'claim': step['claim']})
             try:
-                code, doc = command(kit, step['argv'], step.get('token_env'), seen)
+                code, doc = command(dict(kit, timeout_seconds=step.get('timeout_seconds', kit['timeout_seconds'])),
+                                    step['argv'], step.get('token_env'), seen)
                 if code != step['exit']:
                     raise Refusal('command_failed')
                 assess(doc, step, state, ids)

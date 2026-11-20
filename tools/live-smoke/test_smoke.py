@@ -597,7 +597,8 @@ class Sheet(unittest.TestCase):
     def test_driver_steps_call_only_driver_v1_commands_on_the_pinned_driver(self):
         """catches: a driver step naming a command the driver contract doesn't
         have, a driver write run outside the pinned `@driver`, or a stop missing
-        so the throwaway's agent is left running."""
+        so the throwaway's agent is left running, or a start the runner kills
+        before the driver's own 100 seconds for room-cli."""
         contract = (RUNNER.resolve().parents[2] / 'kernel/driver.v1.md').read_text()
         commands = set(re.findall(r'^\| `([a-z]+)` \|', contract, re.M))
         self.assertTrue({'start', 'wake', 'stop'} <= commands, commands)
@@ -610,6 +611,8 @@ class Sheet(unittest.TestCase):
         self.assertEqual({i: steps[i]['argv'][5] for i in DRIVER_STEPS}, DRIVER_STEPS)
         writes = sorted(s['id'] for s in steps.values() if s['kind'] == 'write')
         self.assertEqual(writes, ['new_once', 'send_once'])
+        # The driver gives room-cli 100 seconds to start; the runner must not kill it first.
+        self.assertGreater(steps['new_once']['timeout_seconds'], 100)
 
     def test_every_risk_step_has_a_coverage_row(self):
         """catches: 0.0.17's blocker, a risk step in no `release.coverage` row,
