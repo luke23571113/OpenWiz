@@ -25,7 +25,7 @@ ROOT = HERE.parent.parent
 SHARD = HERE / 'shard.py'
 FULL = ROOT / 'ci' / 'selection' / 'valid' / 'full-push-main.json'
 SKIPPED = ROOT / 'ci' / 'selection' / 'valid' / 'selected-skill-only.json'
-INVALID = ROOT / 'ci' / 'selection' / 'invalid'
+INVALID = ROOT / 'ci' / 'selection' / 'invalid' / 'expand.py'  # the invalid plans' table
 PC = 'closedwiz-pc'
 NAMESPACE = 'namespace-profile-closedwiz-rust'
 GITHUB = 'ubuntu-24.04'
@@ -51,6 +51,12 @@ class Case(unittest.TestCase):
         p = self.dir / name
         p.write_text(text)
         return p
+
+    def invalid(self, name):
+        """One of the contract's invalid plans (ci/selection/invalid/cases.json), as a file."""
+        sys.path.insert(0, str(INVALID.parent))
+        import expand
+        return self.file(name, expand.plan(name))
 
     def plan(self, tests):
         """full-push-main.json, its Rust lane running exactly these ids."""
@@ -100,7 +106,7 @@ class Refuse(Case):
         for name, words in [('test-twice.json', 'rule 6'), ('duplicate-key.json', 'rule 1'),
                             ('rust-test-unknown-kind.json', 'rule 7')]:
             with self.subTest(name=name):
-                self.refused(self.run_shard('plan', INVALID / name, '--shards', 2,
+                self.refused(self.run_shard('plan', self.invalid(name), '--shards', 2,
                                             '--times', times), words)
 
     def test_a_plan_that_is_not_there(self):
@@ -163,7 +169,7 @@ class Check(Case):
         self.assertIn('none.txt', r.stderr)
 
     def test_a_refused_plan_fails(self):
-        r = self.run_shard('check', INVALID / 'test-twice.json', *self.ran([rid('a')]))
+        r = self.run_shard('check', self.invalid('test-twice.json'), *self.ran([rid('a')]))
         self.assertEqual(r.returncode, 1)
         self.assertIn('rule 6', r.stderr)
 
@@ -177,7 +183,7 @@ class Share(Case):
                               '--times', self.times(times or {rid(x): t for x, t in FIVE.items()}))
 
     def test_a_refused_plan_shares_nothing(self):
-        r = self.run_shard('share', INVALID / 'test-twice.json', '--shards', 1, '--shard', 1,
+        r = self.run_shard('share', self.invalid('test-twice.json'), '--shards', 1, '--shard', 1,
                            '--times', self.times({rid('a'): 1}))
         self.assertEqual((r.returncode, r.stdout), (1, ''))
 
