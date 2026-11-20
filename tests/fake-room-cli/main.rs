@@ -93,7 +93,9 @@
 //! (there is no `room-cli loop show`). Before answering, it appends each
 //! accepted `create` or `update` to `loop-writes.log` as one JSON line: the
 //! arguments, and the text of each `--prompt-file` and `--script-file` (null
-//! when it can't be read, which then fails the call with exit 1). A test
+//! when it can't be read, which then fails the call with exit 1; a log that
+//! can't be written fails it too, before any answer). Each value is taken
+//! with its flag, so a value spelled like a flag is never read as one. A test
 //! that expects no write checks that the log does not exist. A response with
 //! `"any_loop_write": "create"` or `"update"` matches every accepted call of
 //! that kind; with `"webhook": true` also, only a `--webhook` create.
@@ -159,9 +161,20 @@ fn main() -> ExitCode {
     if is_archive(&argv) {
         count(&dir, ARCHIVE_COUNT_FILE);
     }
-    if loop_write(&argv).is_some() && !record_loop_write(&dir, &argv) {
-        eprintln!("fake room-cli: a loop file could not be read");
-        return ExitCode::from(1);
+    if let Some(write) = loop_write(&argv) {
+        match record_loop_write(&dir, &argv, &write) {
+            Ok(true) => {}
+            Ok(false) => {
+                eprintln!("fake room-cli: a loop file could not be read");
+                return ExitCode::from(1);
+            }
+            Err(e) => {
+                eprintln!(
+                    "fake room-cli: the loop write could not be recorded in {LOOP_WRITES_LOG}: {e}"
+                );
+                return ExitCode::from(1);
+            }
+        }
     }
 
     let scenario_path = match fs::read_to_string(dir.join(SCENARIO_FILE)) {
@@ -287,8 +300,7 @@ fn allowlisted(argv: &[String]) -> bool {
         // 0.0.17 (#789): the loop-file reads and writes, in the exact forms
         // of contracts/loop-cli.v1.md. No `show`: room-cli has none.
         ["loop", "list", "--json"] => true,
-        ["loop", "create", rest @ ..] => loop_create_ok(rest),
-        ["loop", "update", id, rest @ ..] => !id.starts_with('-') && loop_update_ok(rest),
+        ["loop", "create" | "update", ..] => loop_write(argv).is_some(),
         [
             "thread",
             "spawn",
@@ -568,11 +580,22 @@ fn is_detail_read(argv: &[String]) -> bool {
     matches!(argv.get(1).map(String::as_str), Some("show" | "output"))
 }
 
-/// `create` or `update` for an accepted loop write, else `None`.
-fn loop_write(argv: &[String]) -> Option<&'static str> {
-    match argv.get(..2)? {
-        [a, b] if a == "loop" && b == "create" => Some("create"),
-        [a, b] if a == "loop" && b == "update" => Some("update"),
+/// One accepted loop write, parsed in the contract's order (#908): its kind,
+/// the file operands it names and whether it creates a webhook loop. A value
+/// is consumed with its flag, so a prompt or model spelled like a flag is
+/// never read as one.
+struct LoopWrite<'a> {
+    verb: &'static str,
+    files: Vec<(&'static str, &'a str)>,
+    webhook: bool,
+}
+
+/// The accepted loop write `argv` makes, else `None`.
+fn loop_write(argv: &[String]) -> Option<LoopWrite<'_>> {
+    let a: Vec<&str> = argv.iter().map(String::as_str).collect();
+    match a.as_slice() {
+        ["loop", "create", rest @ ..] => loop_create(rest),
+        ["loop", "update", id, rest @ ..] if !id.starts_with('-') => loop_update(rest),
         _ => None,
     }
 }
@@ -610,80 +633,96 @@ fn take_agent(rest: &mut &[&str]) -> Option<()> {
     take(rest, "--reasoning").map(|_| ())
 }
 
+#[derive(PartialEq)]
+enum Trigger {
+    Absent,
+    Scheduled,
+    Webhook,
+}
+
 /// A trigger at the front of `rest`: `--cron E --timezone Z` or `--at T`,
 /// and with `create` also `--in D` or `--webhook`. `None` for a cron with no
-/// timezone; `Some(false)` for no trigger.
-fn take_trigger(rest: &mut &[&str], create: bool) -> Option<bool> {
+/// timezone.
+fn take_trigger(rest: &mut &[&str], create: bool) -> Option<Trigger> {
     if take(rest, "--cron").is_some() {
-        return take(rest, "--timezone").map(|_| true);
+        return take(rest, "--timezone").map(|_| Trigger::Scheduled);
     }
     Some(
-        take(rest, "--at").is_some()
-            || (create && (take(rest, "--in").is_some() || take_switch(rest, "--webhook"))),
+        if take(rest, "--at").is_some() || (create && take(rest, "--in").is_some()) {
+            Trigger::Scheduled
+        } else if create && take_switch(rest, "--webhook") {
+            Trigger::Webhook
+        } else {
+            Trigger::Absent
+        },
     )
 }
 
 /// `loop create`, in the contract's exact order: name, prompt file, trigger,
 /// thread, optional script file, optional agent, priority, secrets.
-fn loop_create_ok(mut rest: &[&str]) -> bool {
+fn loop_create<'a>(mut rest: &[&'a str]) -> Option<LoopWrite<'a>> {
     let r = &mut rest;
-    take(r, "--name").is_some()
-        && take(r, "--prompt-file").is_some()
-        && take_trigger(r, true) == Some(true)
-        && (take_switch(r, "--new-thread") || take_switch(r, "--same-thread"))
-        && {
-            take(r, "--script-file");
-            take_agent(r).is_some()
-        }
-        && take(r, "--priority").is_some_and(|p| matches!(p, "1" | "2" | "3" | "4"))
-        && take(r, "--secrets").is_some()
-        && r.is_empty()
+    take(r, "--name")?;
+    let mut files = vec![("--prompt-file", take(r, "--prompt-file")?)];
+    let trigger = take_trigger(r, true).filter(|t| *t != Trigger::Absent)?;
+    if !(take_switch(r, "--new-thread") || take_switch(r, "--same-thread")) {
+        return None;
+    }
+    files.extend(take(r, "--script-file").map(|f| ("--script-file", f)));
+    take_agent(r)?;
+    take(r, "--priority").filter(|p| matches!(*p, "1" | "2" | "3" | "4"))?;
+    take(r, "--secrets")?;
+    r.is_empty().then_some(LoopWrite {
+        verb: "create",
+        files,
+        webhook: trigger == Trigger::Webhook,
+    })
 }
 
 /// `loop update <id>`: at least one flag, each at most once, in the
 /// contract's order: name, priority, prompt, trigger, script file, agent,
-/// secrets.
-fn loop_update_ok(mut rest: &[&str]) -> bool {
+/// secrets. Its prompt is text, not a file.
+fn loop_update<'a>(mut rest: &[&'a str]) -> Option<LoopWrite<'a>> {
     let given = !rest.is_empty();
     let r = &mut rest;
     take(r, "--name");
     if take(r, "--priority").is_some_and(|p| !matches!(p, "1" | "2" | "3" | "4")) {
-        return false;
+        return None;
     }
     take(r, "--prompt");
-    if take_trigger(r, false).is_none() {
-        return false;
-    }
-    take(r, "--script-file");
-    if take_agent(r).is_none() {
-        return false;
-    }
+    take_trigger(r, false)?;
+    let files = take(r, "--script-file")
+        .map(|f| ("--script-file", f))
+        .into_iter()
+        .collect();
+    take_agent(r)?;
     take(r, "--secrets");
-    given && r.is_empty()
+    (given && r.is_empty()).then_some(LoopWrite {
+        verb: "update",
+        files,
+        webhook: false,
+    })
 }
 
 /// Appends one accepted loop write to `loop-writes.log`: its arguments and
-/// the text of each file it names. False when a named file can't be read.
-fn record_loop_write(dir: &Path, argv: &[String]) -> bool {
+/// the text of each file it names. `Ok(false)` when a named file can't be
+/// read; an error when the record can't be written (#909).
+fn record_loop_write(dir: &Path, argv: &[String], write: &LoopWrite) -> std::io::Result<bool> {
     let mut files = serde_json::Map::new();
     let mut readable = true;
-    for pair in argv.windows(2) {
-        if pair[0] == "--prompt-file" || pair[0] == "--script-file" {
-            let text = fs::read_to_string(&pair[1]).ok();
-            readable &= text.is_some();
-            files.insert(pair[0].clone(), text.map_or(Value::Null, Value::String));
-        }
+    for &(flag, path) in &write.files {
+        let text = fs::read_to_string(path).ok();
+        readable &= text.is_some();
+        files.insert(flag.to_owned(), text.map_or(Value::Null, Value::String));
     }
     let line = serde_json::json!({"argv": argv, "files": files});
-    if let Ok(mut f) = fs::OpenOptions::new()
+    // One write per line, so concurrent calls never interleave lines.
+    fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(dir.join(LOOP_WRITES_LOG))
-    {
-        // One write per line, so concurrent calls never interleave lines.
-        let _ = f.write_all(format!("{line}\n").as_bytes());
-    }
-    readable
+        .open(dir.join(LOOP_WRITES_LOG))?
+        .write_all(format!("{line}\n").as_bytes())?;
+    Ok(readable)
 }
 
 /// Finds the response for `argv`, and the directory its files are relative to.
@@ -717,10 +756,9 @@ fn find_response(scenario_path: &Path, argv: &[String]) -> Option<(Value, PathBu
             &got[..]
         };
         let any_spawn = response["any_spawn"].as_bool() == Some(true) && is_spawn(argv);
-        let any_loop_write = loop_write(argv).is_some_and(|verb| {
-            response["any_loop_write"].as_str() == Some(verb)
-                && (response["webhook"].as_bool() != Some(true)
-                    || argv.iter().any(|a| a == "--webhook"))
+        let any_loop_write = loop_write(argv).is_some_and(|write| {
+            response["any_loop_write"].as_str() == Some(write.verb)
+                && (response["webhook"].as_bool() != Some(true) || write.webhook)
         });
         if any_spawn || any_loop_write || wanted == got {
             return Some((response.clone(), base));

@@ -20,6 +20,11 @@ One ticket, two builders and one fleet agent. Each agent posts a note, edits it 
 - **Holder:** the oldest live note of a kind. Kinds never compete.
 - **Fence:** an edit stops when the agent's own note is `stopped`, or another live note of its kind holds the claim, older or newer.
 - **Post:** a new `working` or `asking` note stops when a live note of its kind holds the claim. After posting, it reads back, and it steps down to `stopped` when an older live note of its kind appeared meanwhile.
+- **Heartbeat** (`status.py run`, #1447): an edit of the agent's own note to the state its own read shows. A read that shows `done` or `stopped` writes nothing. The fence, and in `fixed` the read-back, are the edit's.
+
+### The heartbeat's time rule (#1447)
+
+Liveness counts only GitHub's `updated_at`: any edit by a record author, a heartbeat included, makes a `working` or `asking` note live for 30 minutes. The note's `time` field never counts. It's the writer's own value, and `--time` can set any. A heartbeat rewrites the note as its read showed it, with only `time` set to the beat's own now, so each beat is a real change of the body. It keeps `working` or `asking` as it read it. It never writes when its read shows `done` or `stopped`. A release that lands between its read and its edit is put back by the edit read-back (#1441). The model checks this as P5. Each heartbeat resets a note's age, as any edit does.
 
 ## The rules it checks
 
@@ -29,6 +34,7 @@ One ticket, two builders and one fleet agent. Each agent posts a note, edits it 
 | P2 | A lapsed holder never takes the ticket back from a newer one: no write turns a lapsed note live while a newer note of its kind is live |
 | P3 | A release is never lost: a `stopped` note never goes live again, and no write decided before a release (`done` or `stopped`) revives it |
 | P4 | Every claim is held, released or lapsed: between writes, at most one note of each kind is live |
+| P5 | A heartbeat never reopens a final note: no heartbeat turns a `done` or `stopped` note live (#1447) |
 
 These situations must all be reached, or the pass is vacuous: a lapsed note beside a newer holder, a builder and the fleet holding at once, an agent's second note holding, an `asking` note holding, and a `done` note beside a holder.
 
@@ -48,5 +54,6 @@ Each variant drops one rule from the writer, and the check must fail on the rule
 | `older-only-fence` | The fence against a newer holder: only an older one stops an edit | P2 |
 | `edit-stopped` | The fence on a `stopped` note | P3 |
 | `asking-not-claiming` | `asking` as a claim: only `working` notes count | P4 |
+| `heartbeat-reopens` | The heartbeat's own read: every beat writes `working` | P5 |
 
-[`evidence/`](evidence/) holds the red run, which is the model with no fence at all, and the green run of the tests and every mode.
+[`evidence/`](evidence/) holds the heartbeat's red and green runs (`heartbeat-*.txt`, #1447), and the red run, which is the model with no fence at all, and the green run of the tests and every mode.

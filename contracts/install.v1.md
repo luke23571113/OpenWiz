@@ -23,7 +23,10 @@ Every member is a unique regular file, with an exact manifest path, size, mode
 and content hash. No extraction API, symlink, hard link, device, directory entry,
 PAX extension, absolute path, empty/dot/dot-dot segment or unlisted file is
 accepted. Only the named program `openwiz` and files under runtime/ are
-allowed. Every asset is hash-checked before activation, including repeated
+allowed. Only to verify the build already selected (status, skills and the
+update's version check), a complete pre-AP11 layout, with the `openwiz-service`
+and `openwiz-server` programs, web/ and its stamp, is also read.
+Every asset is hash-checked before activation, including repeated
 installs. The manifest lists every file (not directory globs). Runtime includes
 setup, grill, to-tickets and launch-fleet skills and their script resources.
 

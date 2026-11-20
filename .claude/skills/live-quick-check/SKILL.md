@@ -9,7 +9,7 @@ description: Collect candidate-bound combined smoke and risk receipts within an 
 public-source shipping path after verified O17 cut-over. Preparation may precede
 it; no edit here runs O16/O17, clears their holds, activates policy or authorizes
 live work/publication. Read the [candidate contract](../../../contracts/release-candidate.v1.md)
-and [ADR 0016](../../../docs/adr/0016-agents-run-live-tests.md). The confirmed
+and ADR 0016 (now in the private records). The confirmed
 private record and existing approved kit remain the sources of actual authority.
 
 **Release gate:** CI, privacy/claims, verified products and an agent-run live smoke

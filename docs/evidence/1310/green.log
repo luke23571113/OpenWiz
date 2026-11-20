@@ -1,0 +1,9 @@
+Scoped checks at 4a02cc79189e85f3b10c14841c654b8663fca277
+python3 -I ci/wizroom/test_split.py: OK
+sh ci/hosted/test.sh: all ok
+python3 -I ci/main-batch/test_shadow.py: OK
+python3 -I ci/main-batch/test_contract.py: OK
+python3 -I ci/main-batch/test_admit.py: OK
+sh -n ci/rust-tests.sh: ok
+python3 -I tools/open-import/guard.py --base=origin/main --head=HEAD: carriage guard: all 5 added paths are classified
+python3 -I ci/wizroom/split.py --root .: total: 0 stay, 196 move (unchanged from main)

@@ -20,8 +20,9 @@ tools/install/tests/first-hour-contract/ read the one fenced JSON map below:
   merge. The setup and paid-offer gates stay unresolved, so it stays unproven.
 - The variant `offer-settled-by-free-only-producer` (#2293) also settles that
   example's `paid_offer` gate by its one approved producer, #2293, for the
-  [free-only release](../../../docs/decisions/public-offer.md). It models the
-  mapping a record uses after #2293's verified merge. It is not a paid offer, a
+  free-only release (OpenWiz is $0 on the user's own machines; no paid plan,
+  trial or payment). It models the mapping a record uses after #2293's verified
+  merge. It is not a paid offer, a
   trial or a payment receipt, and needs none. The setup gate stays unresolved,
   so it stays unproven. The other `offer-` variants keep the gate: settled
   without its producer, renamed, or given its producer as its decision ticket,

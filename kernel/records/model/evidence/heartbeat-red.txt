@@ -1,0 +1,100 @@
+$ python3 -I kernel/records/model/test_model.py
+test_each_variant_breaks_the_rule_it_drops (__main__.BrokenVariants.test_each_variant_breaks_the_rule_it_drops) ... FAIL
+test_every_rule_holds_over_every_reachable_state (__main__.CurrentRules.test_every_rule_holds_over_every_reachable_state) ... FAIL
+test_a_release_lost_under_a_failed_readback_breaks_p3 (__main__.FixedWrites.test_a_release_lost_under_a_failed_readback_breaks_p3) ... ok
+test_the_fixed_order_without_its_edit_readback_breaks_again (__main__.FixedWrites.test_the_fixed_order_without_its_edit_readback_breaks_again) ... FAIL
+test_the_fixed_write_order_holds_every_rule (__main__.FixedWrites.test_the_fixed_write_order_holds_every_rule) ... FAIL
+test_a_heartbeat_over_a_release_it_never_read_is_put_back (__main__.Heartbeat.test_a_heartbeat_over_a_release_it_never_read_is_put_back) ... FAIL
+test_a_heartbeat_that_rewrites_working_reopens_a_done_note (__main__.Heartbeat.test_a_heartbeat_that_rewrites_working_reopens_a_done_note) ... FAIL
+test_a_model_where_time_never_passes_misses_the_lapse_witness (__main__.NotVacuous.test_a_model_where_time_never_passes_misses_the_lapse_witness) ... ok
+test_the_current_rules_meet_every_witness (__main__.NotVacuous.test_the_current_rules_meet_every_witness) ... ok
+test_the_lost_release_needs_two_overlapping_wakes (__main__.SplitWrites.test_the_lost_release_needs_two_overlapping_wakes) ... FAIL
+test_the_pinned_writers_read_then_write_order_loses_the_fence (__main__.SplitWrites.test_the_pinned_writers_read_then_write_order_loses_the_fence) ... FAIL
+
+======================================================================
+FAIL: test_each_variant_breaks_the_rule_it_drops (__main__.BrokenVariants.test_each_variant_breaks_the_rule_it_drops)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 48, in test_each_variant_breaks_the_rule_it_drops
+    self.assertEqual(set(BREAKS), set(model.VARIANTS))
+AssertionError: Items in the first set but not the second:
+'heartbeat-reopens'
+
+======================================================================
+FAIL: test_every_rule_holds_over_every_reachable_state (__main__.CurrentRules.test_every_rule_holds_over_every_reachable_state)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 42, in test_every_rule_holds_over_every_reachable_state
+    self.assertRegex(out[0], r'^ok: atomic writes, current rules: P1 to P5 hold over \d+ states$')
+AssertionError: Regex didn't match: '^ok: atomic writes, current rules: P1 to P5 hold over \\d+ states$' not found in 'ok: atomic writes, current rules: P1 to P4 hold over 20097 states'
+
+======================================================================
+FAIL: test_the_fixed_order_without_its_edit_readback_breaks_again (__main__.FixedWrites.test_the_fixed_order_without_its_edit_readback_breaks_again)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 108, in test_the_fixed_order_without_its_edit_readback_breaks_again
+    self.assertEqual(set(found), {'P1', 'P2', 'P3', 'P4', 'P5'})
+AssertionError: Items in the second set but not the first:
+'P5'
+
+======================================================================
+FAIL: test_the_fixed_write_order_holds_every_rule (__main__.FixedWrites.test_the_fixed_write_order_holds_every_rule)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 89, in test_the_fixed_write_order_holds_every_rule
+    self.assertRegex(out[0], r'^ok: fixed writes, current rules: P1 to P5 hold over \d+ states$')
+AssertionError: Regex didn't match: '^ok: fixed writes, current rules: P1 to P5 hold over \\d+ states$' not found in 'ok: fixed writes, current rules: P1 to P4 hold over 888952 states'
+
+======================================================================
+FAIL: test_a_heartbeat_over_a_release_it_never_read_is_put_back (__main__.Heartbeat.test_a_heartbeat_over_a_release_it_never_read_is_put_back)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 129, in test_a_heartbeat_over_a_release_it_never_read_is_put_back
+    self.assertIn('P5', found)
+AssertionError: 'P5' not found in {'P3': ['builder 1 wake 1 reads the ticket', 'builder 1 wake 1: post a working note', 'builder 1 wake 1 reads back note 0: kept', 'builder 1 wake 1 reads the ticket', 'builder 1 wake 2 reads the ticket', 'builder 1 wake 1: edit note 0 to done', 'builder 1 wake 2: edit note 0 to working', 'builder 1 wake 2 reads back note 0: kept'], 'P2': ['builder 1 wake 1 reads the ticket', 'builder 1 wake 1: post a working note', 'builder 1 wake 1 reads back note 0: kept', 'time passes', 'time passes', 'builder 1 wake 1 reads the ticket', 'builder 2 wake 1 reads the ticket', 'builder 1 wake 1: edit note 0 to working', 'builder 2 wake 1: post a working note', 'builder 1 wake 1 reads back note 0: kept'], 'P4': ['builder 1 wake 1 reads the ticket', 'builder 1 wake 1: post a working note', 'builder 1 wake 1 reads back note 0: kept', 'time passes', 'time passes', 'builder 1 wake 1 reads the ticket', 'builder 2 wake 1 reads the ticket', 'builder 2 wake 1: post a working note', 'builder 2 wake 1 reads back note 1: kept', 'builder 1 wake 1: edit note 0 to working', 'builder 1 wake 1 reads back note 0: kept'], 'P1': ['builder 1 wake 1 reads the ticket', 'builder 1 wake 1: post a working note', 'builder 1 wake 2 reads the ticket', 'builder 1 wake 2: edit note 0 to done', 'builder 1 wake 2 reads the ticket', 'builder 2 wake 1 reads the ticket', 'builder 2 wake 1: post a working note', 'builder 2 wake 1 reads back note 1: kept', 'builder 2 wake 1 reads the ticket', 'builder 1 wake 2: edit note 0 to working', 'builder 2 wake 1: edit note 1 to working', 'builder 2 wake 1 reads back note 1: kept']}
+
+======================================================================
+FAIL: test_a_heartbeat_that_rewrites_working_reopens_a_done_note (__main__.Heartbeat.test_a_heartbeat_that_rewrites_working_reopens_a_done_note)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 118, in test_a_heartbeat_that_rewrites_working_reopens_a_done_note
+    self.assertEqual((code, err), (1, ''), out)
+AssertionError: Tuples differ: (2, "usage: model.py [-h]\n               [289 chars])\n") != (1, '')
+
+First differing element 0:
+2
+1
+
++ (1, '')
+- (2,
+-  'usage: model.py [-h]\n'
+-  '                [--variant '
+-  '{asking-not-claiming,edit-stopped,no-post-fence,older-only-fence}]\n'
+-  '                [--writes {atomic,fixed,split}]\n'
+-  "model.py: error: argument --variant: invalid choice: 'heartbeat-reopens' "
+-  "(choose from 'asking-not-claiming', 'edit-stopped', 'no-post-fence', "
+-  "'older-only-fence')\n") : []
+
+======================================================================
+FAIL: test_the_lost_release_needs_two_overlapping_wakes (__main__.SplitWrites.test_the_lost_release_needs_two_overlapping_wakes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 77, in test_the_lost_release_needs_two_overlapping_wakes
+    self.assertEqual(set(overlapping), {'P1', 'P2', 'P3', 'P4', 'P5'})
+AssertionError: Items in the second set but not the first:
+'P5'
+
+======================================================================
+FAIL: test_the_pinned_writers_read_then_write_order_loses_the_fence (__main__.SplitWrites.test_the_pinned_writers_read_then_write_order_loses_the_fence)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "kernel/records/model/test_model.py", line 66, in test_the_pinned_writers_read_then_write_order_loses_the_fence
+    self.assertEqual(broken(out), {'P1', 'P2', 'P3', 'P4', 'P5'}, out)
+AssertionError: Items in the second set but not the first:
+'P5' : ['broken P1: never two live holders: a claim write succeeded but its note does not hold the claim', '  1. builder 1 wake 1 reads the ticket', '  2. builder 1 wake 1: post a working note', '  3. builder 1 wake 2 reads the ticket', '  4. builder 1 wake 2: edit note 0 to done', '  5. builder 1 wake 2 reads the ticket', '  6. builder 2 wake 1 reads the ticket', '  7. builder 2 wake 1: post a working note', '  8. builder 2 wake 1 reads back note 1: kept', '  9. builder 2 wake 1 reads the ticket', '  10. builder 1 wake 2: edit note 0 to working', '  11. builder 2 wake 1: edit note 1 to working', 'broken P2: a lapsed holder took the ticket back from a newer one', '  1. builder 1 wake 1 reads the ticket', '  2. builder 1 wake 1: post a working note', '  3. builder 1 wake 1 reads back note 0: kept', '  4. time passes', '  5. time passes', '  6. builder 1 wake 1 reads the ticket', '  7. builder 2 wake 1 reads the ticket', '  8. builder 2 wake 1: post a working note', '  9. builder 1 wake 1: edit note 0 to working', 'broken P3: a release was lost', '  1. builder 1 wake 1 reads the ticket', '  2. builder 1 wake 1: post a working note', '  3. builder 1 wake 1 reads back note 0: kept', '  4. builder 1 wake 1 reads the ticket', '  5. builder 1 wake 2 reads the ticket', '  6. builder 1 wake 1: edit note 0 to done', '  7. builder 1 wake 2: edit note 0 to working', 'broken P4: a claim is neither held, released nor lapsed: two live notes of one kind', '  1. builder 1 wake 1 reads the ticket', '  2. builder 1 wake 1: post a working note', '  3. builder 1 wake 1 reads back note 0: kept', '  4. time passes', '  5. time passes', '  6. builder 1 wake 1 reads the ticket', '  7. builder 2 wake 1 reads the ticket', '  8. builder 2 wake 1: post a working note', '  9. builder 2 wake 1 reads back note 1: kept', '  10. builder 1 wake 1: edit note 0 to working']
+
+----------------------------------------------------------------------
+Ran 11 tests in 44.165s
+
+FAILED (failures=8)
+exit 1

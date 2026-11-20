@@ -85,6 +85,10 @@ REASONS = {
                       'could not be read, so unfinished approved work cannot be enumerated and no partial stage cohort '
                       'is shown; prerequisite: a valid board-wide graph.json of this repository on the board branch '
                       '(source kind board) and complete PR pages.',
+    'stage_files': 'Stage evidence unreadable: the supplied stage directory\'s journeys.json or stage-waits.json '
+                   'could not be read; prerequisite: both TL2 files, readable, in the --stage directory.',
+    'stage_settings': 'Stage limits unreadable: tools/collector/limits.conf, TL1\'s one settings source, could not be '
+                      'read, so no wait can be judged against its limit; prerequisite: a readable limits.conf.',
 }
 LIMITS = sources.ROOT / 'tools/collector/limits.conf'  # TL1's one settings source
 
@@ -381,7 +385,10 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
         main = health.main_ci(repo, B.gh, clock)
         stage_gap = None
         if stage is not None:
-            stage_wires = tuple(Path(stage, name).read_bytes() for name in ('journeys.json', 'stage-waits.json'))
+            try:
+                stage_wires = tuple(Path(stage, name).read_bytes() for name in ('journeys.json', 'stage-waits.json'))
+            except OSError:  # a missing or unreadable supplied file greys only the two stage cards (#648)
+                stage_wires, stage_gap = None, REASONS['stage_files']
         else:
             # Both enumerations must succeed: a cohort missing the unfinished work is never collected.
             approved = open_approved(board[0]['graph.json']() if board and 'graph.json' in board[0] else None, repo)
@@ -392,7 +399,12 @@ def gather(out, *, remote, repo, run_url, clock=now, pools=POOLS, journeys=None,
                 if chosen is not None:
                     tickets |= {t for n in chosen['merged_prs'] if n in prs for t in prs[n]['tickets']}
                 stage_wires = stage_evidence(repo, tickets, clock)
-        settings_raw, settings_read_at = LIMITS.read_bytes(), clock()
+        try:
+            settings_raw, settings_read_at = LIMITS.read_bytes(), clock()
+        except OSError:  # without its limits no stage provider can be judged; other sources go on (#648)
+            settings_raw = None
+            if stage_wires is not None:
+                stage_wires, stage_gap = None, REASONS['stage_settings']
         ended = clock()
         if utc(ended) <= utc(started):
             time.sleep(1)  # WR8 needs a nonempty read interval: [started, ended)

@@ -32,8 +32,8 @@
 # have finished, then a line saying whether it passed. Either failing fails
 # the step.
 #
-# With `--only IDS` (#432, K15), it runs only the tests the selector picked
-# (ci/select/), by the CI selection record's ids, space-separated:
+# With `--only IDS` (#432, K15), it runs only the tests the plan picked
+# (#1486: by path), by the CI selection record's ids, space-separated:
 # `rust:lib:<package>` runs `cargo test -p <package>` (every test of that
 # crate) and `rust:test:<target>` one openwiz-tests target. Every target at
 # once: one crates call for just the selected packages (none if none), and
@@ -266,8 +266,9 @@ peak_line() {
 # (private/evidence/ci-hotspot-t6-update/). Only a pull request to main skips
 # them, by exact name; every push to main, the nightly run, a merge group, a
 # pull request to release-*, any other event and a run by hand run every
-# test. Every cargo test call gets the same skips, both ways (#1410:
-# ci/test_rust_tests.py). A renamed one just runs on pull requests again.
+# test. Every cargo test call gets the same skips, both ways (#1410); no
+# running test checks this list or its skips (#1152). A renamed one just runs
+# on pull requests again.
 main_only="a_candidate_that_exits_without_readiness_rolls_back_to_the_running_old_build
 a_failing_merge_is_kept_and_recorded_once_without_retrying_the_gate
 a_passing_main_merge_is_staged_but_not_reported_as_running

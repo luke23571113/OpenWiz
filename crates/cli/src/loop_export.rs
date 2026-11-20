@@ -487,4 +487,36 @@ mod tests {
         ));
         fs::remove_dir_all(&root).unwrap();
     }
+
+    // catches #987: a huge existing file read whole to compare it (out of
+    // memory under a small address-space limit), so the run failed instead
+    // of refusing that loop, and later loops were never exported.
+    #[test]
+    fn a_huge_sparse_collision_refuses_only_its_loop() {
+        let root = scratch("sparse");
+        let out = root.join("out");
+        fs::File::create(out.join("a.md"))
+            .unwrap()
+            .set_len(1 << 30)
+            .unwrap();
+        let exported = |id: &str| Exported {
+            loop_id: format!("loop_syn_{id}"),
+            name: format!("Loop [wizloop:{id}]"),
+            id: Some(id.into()),
+            files: vec![(format!("{id}.md"), "---\nid: \"x\"\n---\nGo.\n".into())],
+            binding: None,
+            refusals: Vec::new(),
+            unmapped: Vec::new(),
+        };
+        let a = write(&out, exported("a")).unwrap();
+        assert_eq!(a.result, "refused");
+        assert_eq!(a.exported.refusals[0].code, "export-exists");
+        assert_eq!(fs::metadata(out.join("a.md")).unwrap().len(), 1 << 30);
+        assert_eq!(write(&out, exported("b")).unwrap().result, "written");
+        assert_eq!(
+            fs::read_to_string(out.join("b.md")).unwrap(),
+            "---\nid: \"x\"\n---\nGo.\n"
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
 }

@@ -5,8 +5,9 @@ over a synthetic GitHub world.
 Test-only: copied into a scratch bin directory as `gh`. The world is JSON at
 $FAKE_GH_WORLD (else `../world.json` beside its bin directory); every call is appended to its `log` (method, path), so tests
 count provider effects. `faults` rows `{method, path, mode, times}` plant
-`lose` (the effect happens, the reply is lost), `drop` (no effect, no reply)
-or a status number (refused, no effect). Synthetic values only.
+`lose` (the effect happens, the reply is lost), `drop` (no effect, no reply),
+`taken` (someone else makes it first with the row's `body` fields, then the
+call gets 422) or a status number (refused, no effect). Synthetic values only.
 """
 import base64
 import json
@@ -49,6 +50,10 @@ def main(argv):
                   and f['times'] > 0), None)
     if fault is not None:
         fault['times'] -= 1
+    if fault is not None and fault['mode'] == 'taken':
+        handle_call(world, method, target, dict(body, **fault.get('body', {})))
+        save(world)
+        return reply(422, {'message': 'already_exists'})
     if fault is not None and fault['mode'] != 'lose':
         save(world)
         if fault['mode'] == 'drop':
