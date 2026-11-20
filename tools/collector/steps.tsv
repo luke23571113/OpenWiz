@@ -77,6 +77,8 @@ setup	The runner guard
 build	The carriage guard
 build	The PR test-code budget
 build	The changed-file privacy guard
+build	The owned-paths tests
+build	Every changed file is inside the ticket's owned paths
 setup	The hosted setup
 # X5: one plan, independent lanes, receipts, and the required-check transition.
 # #1055: the push-only trusted map-age read is setup, including key fetch.

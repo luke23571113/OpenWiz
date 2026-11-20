@@ -716,6 +716,40 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # #1418: a pull request's changed files must sit inside its linked ticket's
+  # owned paths, the fleet's standing supporting edits or a record author's F4
+  # grant (tools/owned-paths/README.md). It reads GitHub only through GraphQL,
+  # with this workflow's own read token. A pull request that links no ticket
+  # passes with a note. Its own check, beside ci; not a lane of the plan.
+  owned-paths:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || github.repository == 'jparker2006/ClosedWiz' && (vars.CI_SMALL_RUNS_ON || vars.CI_WEB_RUNS_ON || 'namespace-profile-closedwiz-rust') || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/private/
+      - name: The runner guard
+        id: guard
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: sh ci/hosted/guard.sh
+      - name: Python for the offline installer and release proofs
+        run: sh .github/actions/docs-only/python.sh
+      - name: The owned-paths tests
+        run: python3 -I tools/owned-paths/test_check.py
+      - name: Every changed file is inside the ticket's owned paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: python3 -I tools/owned-paths/check.py --repo "$GITHUB_REPOSITORY" --pr "$PR"
+
   # The next map (#432): after a traced run whose three jobs all passed, the
   # records each traced job kept become one map (map.py, which refuses a map
   # missing any test). A push or the nightly run on main signs it (GitHub's
