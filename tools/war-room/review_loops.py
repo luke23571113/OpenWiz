@@ -403,13 +403,17 @@ def description_rulings(text):
     """The ruling numbers a PR description's `## Rulings` section lists (v2), and its problems.
 
     None when the description has no such section."""
-    lines, fenced, fence = text.splitlines(), [], False
+    lines, fenced, fence = text.splitlines(), [], None
     for x in lines:  # a heading inside a code fence (a quoted example) is not a heading
-        if x.lstrip().startswith(('```', '~~~')):
-            fence = not fence
-            fenced.append(True)
-        else:
-            fenced.append(fence)
+        m = re.match(r'(`{3,}|~{3,})(.*)', x.lstrip())
+        if fence is None and m and not (m[1][0] == '`' and '`' in m[2]):
+            fence = m[1]  # it closes only on its own character, at least as long, with nothing after
+        elif fence and m and m[1][0] == fence[0] and len(m[1]) >= len(fence) and not m[2].strip():
+            fence = None
+        elif not fence:
+            fenced.append(False)
+            continue
+        fenced.append(True)
     heads = [i for i, x in enumerate(lines) if x.strip() == '## Rulings' and not fenced[i]]
     if not heads:
         return None, []
