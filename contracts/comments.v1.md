@@ -2,7 +2,7 @@
 
 Which comments stay in our code, how CI keeps new ones out, and how a repository's comment lines are counted, BEFORE and AFTER, the same way everywhere. The checker is [`tools/comment-check/check.py`](../tools/comment-check/check.py) (standard-library Python, one file); the count report's schema is [comments.v1.schema.json](comments.v1.schema.json); the fixtures are in [`fixtures/comments/`](fixtures/comments/), and `tools/comment-check/test_check.py` proves the checker against them.
 
-**Contract and checker first** (#1816, CC1 of spec #1815). Each repository's own ticket (CC2, CC6, CC8, CC9, CC11, CC12) carries a byte-identical copy of this file and the checker, wires the diff mode into its CI and cuts its comments; CC3 to CC5 cut OpenWiz by area; CC7 gives review-ticket its comment pass; CC10 draws the count report in the war room.
+**Contract and checker first** (#1816, CC1 of spec #1815). Each repository's own ticket (CC2, CC6, CC8, CC9, CC11, CC12) carries a byte-identical copy of this file and the checker and wires the diff mode into its CI; all but CC2 also cut that repository's comments, and CC3 to CC5 cut OpenWiz's by area; CC7 gives review-ticket its comment pass; CC10 draws the count report in the war room.
 
 Authority: spec #1815, from Jake's comment-cut decisions (J238, C1 to C3), 2026-11-19 and 2026-11-20 ([private record](https://github.com/jparker2006/ClosedWiz/issues/3065#issuecomment-7034782715)).
 
