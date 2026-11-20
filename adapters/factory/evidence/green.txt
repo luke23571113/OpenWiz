@@ -1,0 +1,9 @@
+# Green run: python3 -I adapters/factory/test_driver.py, against the Factory driver. PATH is fixtures/bin, /usr/bin and /bin only: the synthetic droid, never Factory.
+test_kit_passes_all_five (__main__.Factory.test_kit_passes_all_five) ... ok
+test_other_harness_is_refused_before_anything_runs (__main__.Factory.test_other_harness_is_refused_before_anything_runs) ... ok
+test_wake_without_a_session_starts_nothing (__main__.Factory.test_wake_without_a_session_starts_nothing) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in N.NNNs
+
+OK

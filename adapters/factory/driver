@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
+"""The Factory driver (kernel/driver.v1.md), built from adapters/template/: each turn is one local `droid exec`.
 
-Each turn of a run is a local process under its own supervisor, which keeps every process the turn starts:
-`start` runs the first turn, `wake` another once the last one has ended, `stop` ends everything the turns
-started. A run is saved before its first turn starts, and a wake or a stop holds the run's lock throughout.
-Adapt `command` to your harness, and `launch`, `running` and `end` to your host. Linux; standard library only.
+`start` runs the first turn in a new Droid session, with JSON output; `wake` runs another on that same session
+(`-s <session_id>` from the first turn's JSON) once the last turn has ended; `stop` ends everything the turns
+started. Each turn runs under its own supervisor, which keeps every process the turn starts. A run is saved
+before its first turn starts, and a wake or a stop holds the run's lock throughout. The driver never reads,
+passes or prints a login: `droid` uses the person's own Factory sign-in. Linux; standard library only.
 """
 import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
 
@@ -15,6 +16,8 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
+HARNESS = 'droid'  # on Factory the agent is always Droid; `model` picks its model
+SESSION = r'[A-Za-z0-9][A-Za-z0-9-]{0,99}'  # a Droid session id, as `droid exec -o json` prints it
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 
 
@@ -43,11 +46,30 @@ def read(fields):
     return req
 
 
-def command(req, woken):
-    """Adapt: your harness's own signed-in command. Never add a login or a token."""
-    what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
+def command(req, session, work):
+    """One `droid exec` turn, with Droid's own sign-in: a new session, or the run's session when woken."""
+    what = 'You were woken: read the ticket again and carry on' if session else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
-    return [req['harness'], '--model', req['model'], '-p', prompt]
+    return (['droid', 'exec', '--cwd', work, '-m', req['model'], '--auto', 'medium', '-o', 'json']
+            + (['-s', session] if session else []) + [prompt])
+
+
+def session_of(run, turns):
+    """The Droid session the run's turns ran in, from the newest turn whose JSON result names one, or None."""
+    for n in reversed(range(len(turns))):
+        try:
+            with open(os.path.join(STATE, '%s.%d.out' % (run, n))) as f:
+                lines = f.read().splitlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            try:
+                found = json.loads(line).get('session_id')
+            except (ValueError, AttributeError):
+                continue
+            if isinstance(found, str) and re.fullmatch(SESSION, found):
+                return found
+    return None
 
 
 def since(pid):
@@ -80,15 +102,17 @@ def descendants(pid):
     return found
 
 
-def supervise(cmd):
-    """One turn, as `driver --turn <command>`: run the harness, and keep every process it starts as this turn's
-    (an orphan comes back here, whatever its session or environment) until none is left; then exit."""
+def supervise(out, cmd):
+    """One turn, as `driver --turn <output file> <command>`: run droid with its output in that owner-only file,
+    and keep every process it starts as this turn's (an orphan comes back here, whatever its session or
+    environment) until none is left; then exit."""
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
+        log = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+        os.close(log)
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
@@ -102,25 +126,33 @@ def supervise(cmd):
             return
 
 
-def launch(req, run, woken):
-    """Start one turn under its supervisor; return what `running` and `end` need."""
-    if not shutil.which(req['harness']):
-        raise Refused('harness %s is not installed here' % req['harness'],
-                      'install %s and sign in to it yourself, then start again' % req['harness'])
+def launch(req, run, n, session):
+    """Start turn n under its supervisor, in the run's own workspace; return what `running` and `end` need."""
+    if not shutil.which(HARNESS):
+        raise Refused('Factory\'s droid CLI is not installed here',
+                      'install droid and sign in to Factory yourself, then start again')
+    work = os.path.join(STATE, 'work', run)
     try:
-        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + command(req, woken),
+        os.makedirs(work, mode=0o700, exist_ok=True)
+    except OSError:
+        raise Refused('the driver cannot make run %s a workspace; nothing was started' % run,
+                      'make OPENWIZ_FACTORY_STATE (or ~/.local/state/openwiz-factory) a folder you can write')
+    out = os.path.join(STATE, '%s.%d.out' % (run, n))
+    try:
+        sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn', out]
+                               + command(req, session, work),
                                env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         with sup.stdout:
             line = sup.stdout.readline()
     except OSError as e:
-        raise Refused('harness %s did not start: %s' % (req['harness'], e.strerror), 'check that it runs by hand')
+        raise Refused('droid did not start: %s' % e.strerror, 'check that `droid exec` runs by hand')
     try:
         turn = json.loads(line)
     except ValueError:
         turn = {'error': 'its supervisor did not answer'}
     if 'pid' not in turn:
-        raise Refused('harness %s did not start: %s' % (req['harness'], turn['error']), 'check that it runs by hand')
+        raise Refused('droid did not start: %s' % turn['error'], 'check that `droid exec` runs by hand')
     return {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid)}
 
 
@@ -207,6 +239,9 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
+        if req['harness'] != HARNESS:
+            raise Refused('Factory runs only its own agent, not %s' % req['harness'],
+                          'start again with harness droid, and pick its model with model')
         state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}  # never woken while starting
         try:  # save the run before its turn starts: nowhere to keep it, nothing starts
             saved(run, state)
@@ -215,7 +250,7 @@ def answer(cmd):
             raise Refused('the driver cannot save runs in its state folder; nothing was started',
                           'make OPENWIZ_FACTORY_STATE (or ~/.local/state/openwiz-factory) a folder you can write')
         try:
-            turn = launch(req, run, False)
+            turn = launch(req, run, 0, None)
         except Refused:
             try:
                 saved(run, dict(state, stopped=True))
@@ -250,12 +285,18 @@ def answer(cmd):
         # One agent per run: while its last turn runs, that agent is awake and reads the ticket itself.
         if state['turns'] and running(state['turns'][-1], run):
             return {'run': run, 'woke': True}
+        session = state.get('session') or session_of(run, state['turns'])
+        if not session:  # a wake without `-s` would start a second, unrelated agent
+            raise Refused('run %s has no Droid session to continue: its first turn ended before one began' % run,
+                          'read its output in OPENWIZ_FACTORY_STATE, sign in to Factory, then stop it and start '
+                          'a new run')
+        state = dict(state, session=session)
         try:  # a turn it could not save would be beyond a later wake's check: save first, or start nothing
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was started' % run,
                           'make OPENWIZ_FACTORY_STATE (or ~/.local/state/openwiz-factory) a folder you can write')
-        turn = launch(state['request'], run, True)
+        turn = launch(state['request'], run, len(state['turns']), session)
         try:
             saved(run, dict(state, turns=state['turns'] + [turn]))
         except OSError:
@@ -265,8 +306,8 @@ def answer(cmd):
 
 
 def main():
-    if len(sys.argv) > 2 and sys.argv[1] == '--turn':
-        return supervise(sys.argv[2:])
+    if len(sys.argv) > 3 and sys.argv[1] == '--turn':
+        return supervise(sys.argv[2], sys.argv[3:])
     try:
         out, code = answer(sys.argv[1] if len(sys.argv) == 2 else ''), 0
     except Refused as e:
