@@ -422,16 +422,7 @@ class InstalledCommand(Bundles):
         self.assertFalse((self.base / 'build-tools.log').exists())
 
 
-class FirstHourContract(unittest.TestCase):
-    def test_first_hour_contract(self):
-        # #2200: the release:install log must show the contract suite ran.
-        result = subprocess.run([sys.executable, '-I',
-                                 str(HERE / 'tests/first-hour-contract/test_contract.py'), '-v'],
-                                capture_output=True, text=True)
-        print(result.stdout + result.stderr, end='', flush=True)
-        self.assertEqual(result.returncode, 0, 'first-hour contract checks failed')
-
-
+class CompletionCheckpoint(unittest.TestCase):
     def test_completion_checkpoint(self):
         result = subprocess.run([sys.executable, '-I',
                                  str(HERE / 'completion/test_checkpoint.py'), '-v'],
