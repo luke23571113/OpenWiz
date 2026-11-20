@@ -24,6 +24,19 @@ pub fn run_models(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
+    let root = std::env::current_dir().unwrap_or_default();
+    run_models_in(args, &root, client, clock, stdout, stderr)
+}
+
+/// `openwiz models <args>` run from the project root `root`.
+pub fn run_models_in(
+    args: &[String],
+    _root: &std::path::Path,
+    client: &dyn NewThreadClient,
+    clock: &dyn Clock,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32 {
     let mut json = false;
     for arg in args {
         match arg.as_str() {
