@@ -1,4 +1,4 @@
-Scoped local checks at a98ed190edc4ae2f8b6547d39a60bee365ad57a6 (a wake refuses a run whose lock file is lost)
+Scoped local checks at 976b59d90b37263b1916daf05700691a22223a69 (main merged)
 
 $ python3 -I adapters/cloudroom/test_driver.py
 test_a_start_it_could_not_finish_stays_starting (__main__.Driver.test_a_start_it_could_not_finish_stays_starting) ... ok
@@ -13,7 +13,7 @@ test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 5.935s
+Ran 10 tests in 6.045s
 
 OK
 exit 0
@@ -31,7 +31,7 @@ test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 5.986s
+Ran 10 tests in 6.303s
 
 OK
 exit 0
@@ -44,7 +44,7 @@ test_template_and_schema_refuse_the_same_starts (__main__.Kit.test_template_and_
 test_template_passes_all_five (__main__.Kit.test_template_passes_all_five) ... ok
 
 ----------------------------------------------------------------------
-Ran 5 tests in 29.508s
+Ran 5 tests in 29.989s
 
 OK
 exit 0
@@ -71,18 +71,9 @@ standing: tools/open-import/paths.json
 owned-paths: ok: 18 file(s) inside the owned paths and grants of ticket #1369
 exit 0
 
-$ python3 -I tools/open-import/guard.py --base=e6e952144b1e47c15133f62f9f86a62bb63c2b0b --head=HEAD
-carriage guard: all 16 added paths are classified
-exit 0
-
-$ python3 -I tools/collector/ci3.py check-steps
-covered 92 CI steps
-exit 0
-
-$ python3 -I tools/test-value/budget.py --base=e6e952144b1e47c15133f62f9f86a62bb63c2b0b --head=HEAD --event=<tmp>
-test budget: added=258 deleted=0 net=258 ceiling=400 allowance=0
-test budget: PASS; reviewer must judge any allowance reason
-exit 0
+$ python3 -I tools/collector/ci3.py check-steps   # fails the same way on unmodified origin/main (f0eb318d): main's new 'Prepare' step has no steps.tsv row; this branch adds no step
+ci3: step 'Prepare' (job <repo>/.github/workflows/ci.yml) matches no row of <repo>/tools/collector/steps.tsv
+exit 1
 
 $ python3 -I <wizskills>/skills/build-ticket/scripts/ticket.py scope openwizdev/OpenWiz 1369 --supporting tools/open-import/paths.json --supporting changes/1369.md --supporting .github/workflows/ci.yml
 supporting: .github/workflows/ci.yml
@@ -106,3 +97,4 @@ supporting: tools/open-import/paths.json
 scope: ok
 exit 0
 
+# tools/open-import/guard.py and tools/test-value/budget.py were removed on main (#1778), so they no longer run.
