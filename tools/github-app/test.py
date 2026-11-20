@@ -212,12 +212,13 @@ class KeyFixture(unittest.TestCase):
 
     def assert_no_key(self, *outputs):
         # Include the full PEM and each body line, not just its banner.
+        # A failure names the output, never prints it: it may hold a runner's secrets (R5, #1480).
         needles = [self.pem] + self.pem.splitlines()[1:-1]
-        for output in outputs:
+        for number, output in enumerate(outputs, 1):
             if isinstance(output, str):
                 output = output.encode()
             for needle in needles:
-                self.assertNotIn(needle, output)
+                self.assertFalse(needle in output, f"the key reached output {number}")
 
     def token(self, endpoint, device_now=None, env=None):
         self.assertTrue((HERE / "mint-token.py").is_file())
@@ -1730,9 +1731,9 @@ class AgentTokenTests(KeyFixture):
         self.secret = base64.b64encode(self.pem).decode()
 
     def run_tool(self, script, endpoint, *extra, now=None, env=None, repositories=("synthetic-owner/work",)):
-        base = {k: v for k, v in os.environ.items() if not k.startswith(("OPENWIZ_GITHUB_APP", "GH_", "GITHUB_"))}
-        base["PATH"] = f"{self.bin}{os.pathsep}{base.get('PATH', '')}"
-        base.update(env or {})
+        # A minimal environment, never the runner's (its API keys would reach the fake's log) (R5, #1480).
+        base = {"PATH": f"{self.bin}{os.pathsep}{os.environ.get('PATH', os.defpath)}",
+                **{k: os.environ[k] for k in ("HOME", "LANG") if k in os.environ}, **(env or {})}
         args = ["--state-dir", str(self.state), "--installation-id", "2002", "--api-base", endpoint,
                 *[a for r in repositories for a in ("--repository", r)], *extra]
         if now is None:
@@ -1758,12 +1759,14 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
 
     def assert_hidden(self, token, *outputs):
         """Neither the key (PEM, its lines or its base64), the JWT nor the token
-        reached a child's arguments or environment, or any other output."""
+        reached a child's arguments or environment, or any other output. Output 1
+        is OpenSSL's log; a failure names the output, never its content."""
         log = self.openssl_log.read_bytes() if self.openssl_log.exists() else b""
         self.assert_no_key(log, *outputs)
         for needle in (self.secret.encode(), self.secret[:40].encode(), token.encode()):
-            for output in (log, *outputs):
-                self.assertNotIn(needle, output if isinstance(output, bytes) else output.encode())
+            for number, output in enumerate((log, *outputs), 1):
+                output = output if isinstance(output, bytes) else output.encode()
+                self.assertFalse(needle in output, f"a secret reached output {number}")
 
     def test_write_token_asks_for_and_accepts_exactly_the_apps_profile(self):
         """catches: a write token that loses a write, or gains workflows or administration."""
