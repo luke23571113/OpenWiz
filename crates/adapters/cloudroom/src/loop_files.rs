@@ -86,6 +86,9 @@ pub struct FileRead {
     pub refusals: Vec<Refusal>,
     /// The parsed file, only when it has no refusal.
     pub file: Option<LoopFile>,
+    /// Whether its `secrets` line is exactly `"all"`, whatever its other
+    /// fields' refusals: a catalog refuses that on its own.
+    pub all_secrets: bool,
 }
 
 /// A folder's result.
@@ -114,6 +117,7 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
         id: None,
         refusals: vec![refusal],
         file: None,
+        all_secrets: false,
     };
     // Step 1: encoding.
     let text = match std::str::from_utf8(bytes) {
@@ -127,7 +131,9 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
         }
     };
     // Steps 2 and 3: the frontmatter's two `---` lines.
-    let Some(rest) = text.strip_prefix("---\n") else {
+    // A file of exactly `---` has its opening line; only its closing line
+    // is missing.
+    let Some(rest) = text.strip_prefix("---\n").or((text == "---").then_some("")) else {
         return stop(Refusal::new(
             "frontmatter-start",
             "file",
@@ -188,6 +194,7 @@ pub fn read_loop(bytes: &[u8], check: &mut dyn FnMut(&str) -> CheckText) -> File
             id: None,
             refusals,
             file: None,
+            all_secrets: false,
         };
     }
     Fields::new(fields, body, check).read()
@@ -207,6 +214,11 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let name = entry.file_name();
+        // Selected by its bytes first: only a selected name must be UTF-8.
+        let bytes = name.as_encoded_bytes();
+        if !bytes.ends_with(b".md") || bytes == b"README.md" {
+            continue;
+        }
         let Some(name) = name.to_str() else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -215,10 +227,7 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
         };
         // A selected name whose metadata cannot be read fails the read,
         // never drops the file; a folder named `*.md` is not a loop file.
-        if name.ends_with(".md")
-            && name != "README.md"
-            && std::fs::metadata(entry.path())?.is_file()
-        {
+        if std::fs::metadata(entry.path())?.is_file() {
             names.push(name.to_owned());
         }
     }
@@ -243,21 +252,15 @@ pub fn read_loop_folder(dir: &Path, catalog: bool) -> io::Result<FolderRead> {
         }
     }
     if catalog {
-        for (name, read) in &files {
-            let all = read
-                .file
-                .as_ref()
-                .is_some_and(|f| f.frontmatter.get("secrets") == Some(&Value::from("all")));
-            if all {
-                refusals.push((
-                    name.clone(),
-                    Refusal::new(
-                        "catalog-all-secrets",
-                        "secrets",
-                        "must name each secret in a catalog file, never \"all\"",
-                    ),
-                ));
-            }
+        for (name, _) in files.iter().filter(|(_, read)| read.all_secrets) {
+            refusals.push((
+                name.clone(),
+                Refusal::new(
+                    "catalog-all-secrets",
+                    "secrets",
+                    "must name each secret in a catalog file, never \"all\"",
+                ),
+            ));
         }
     }
     Ok(FolderRead { files, refusals })
@@ -646,6 +649,7 @@ impl<'a, 'c> Fields<'a, 'c> {
             }
         });
         FileRead {
+            all_secrets: self.get("secrets") == Some(&Json::String("all".into())),
             id: self.id,
             refusals: self.refusals,
             file,
@@ -807,7 +811,8 @@ impl<'a, 'c> Fields<'a, 'c> {
                         "body",
                         "{{ must start a placeholder {{name}}",
                     ));
-                    at = start + 2;
+                    // One byte on: `{{{name}}}` holds `{{name}}` after it.
+                    at = start + 1;
                 }
             }
         }
@@ -889,7 +894,7 @@ fn check_uses(text: &str) -> Vec<CheckUse> {
             out.push((start, CheckUse::Placeholder(name.to_owned())));
             at = start + name.len() + 4;
         } else {
-            at = start + 2;
+            at = start + 1;
         }
     }
     for (start, _) in text.match_indices(PREFIX) {
