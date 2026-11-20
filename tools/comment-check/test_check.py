@@ -211,7 +211,7 @@ REVIEW_CASES = {
     'R2 an added line that starts with "++ "': (
         {'a.rs': 'fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n'},
         {'a.rs': '/* Example output:\n++ out */\nfn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n// New narration.\n'},
-        [], {('a.rs', 1, 'comment'), ('a.rs', 7, 'comment')}),
+        [], {('a.rs', 1, 'comment'), ('a.rs', 7, 'comment')}, 3),
     'R3 a newline in a path': ({}, {'odd\nname.py': '# New narration.\n'}, [], {('"odd\\nname.py"', 1, 'comment')}),
     'R3 a non-UTF-8 path byte': ({}, {b'\xffbad.py': '# New narration.\n'}, [], {('"\\377bad.py"', 1, 'comment')}),
     'R4 a deletion-only edit to a non-UTF-8 file': (
@@ -255,7 +255,7 @@ class Review(unittest.TestCase):
         return repo, base
 
     def test_each_reviewed_break_is_read_right_by_both_modes(self):
-        for name, (before, after, args, want) in REVIEW_CASES.items():
+        for name, (before, after, args, want, *lines) in REVIEW_CASES.items():
             with self.subTest(name):
                 repo, base = self.repo_with(before, after)
                 code, out, err = repo.check('diff', '--base', base, *args)
@@ -265,7 +265,7 @@ class Review(unittest.TestCase):
                 report = json.loads(out)
                 self.assertEqual(validate(report, SCHEMA), [])
                 self.assertEqual(report['after']['disallowed_lines'] - report['before']['disallowed_lines'],
-                                 sum(1 for path, line, kind in want), err)
+                                 lines[0] if lines else len(want), err)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-24.04 # the runner
     steps:
       # Check out first.
-      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v9.0.0
+      - uses: actions/checkout@v9
       - name: "Say # hello"
         run: |
           # Print the greeting.

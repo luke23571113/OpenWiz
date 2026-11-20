@@ -5,6 +5,7 @@ from bisect import bisect_right
 import fnmatch
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -34,9 +35,9 @@ DIRECTIVE = re.compile(
     r'^(noqa\b|type:\s*ignore\b|pragma:|pylint:|fmt:\s*(off|on|skip)\b|ruff:|mypy:|pyright:|isort:|'
     r'eslint(-disable|-enable)?\b|prettier-ignore\b|@ts-(ignore|expect-error|nocheck)\b|biome-ignore\b|'
     r'shellcheck\s|yamllint\s|stylelint-(disable|enable)|istanbul\s+ignore\b|c8\s+ignore\b|v8\s+ignore\b)')
-REASON = re.compile(r'\s(--|#)\s*\S')
+REASON = re.compile(r'\s(--|#)\s+\S')
 CODING = re.compile(r'^[ \t\f]*#.*?coding[:=]')
-PINNED = re.compile(r'\buses:\s*\S+@[0-9a-f]{40}\s*$')
+PINNED = re.compile(r'^\s*(?:-\s+)?uses:\s*(["\']?)[^\s"\'#]+@[0-9a-f]{40}\1\s*$')
 VERSION = re.compile(r'^v?[0-9][0-9A-Za-z.+-]*$')
 
 
@@ -75,7 +76,10 @@ def skip_quoted(s, i, quote, newline_ends=True):
     return n
 
 
-def block_comment(s, i, lines, out, nested=False):
+DOC_BLOCKS = {'rust': ('**', '*!'), 'js': ('**',)}
+
+
+def block_comment(s, i, lines, out, nested=False, docs=None):
     depth, j, n = 1, i + 2, len(s)
     while j < n and depth:
         if nested and s.startswith('/*', j):
@@ -85,7 +89,8 @@ def block_comment(s, i, lines, out, nested=False):
         else:
             j += 1
     body = s[i + 2:j - 2] if not depth else s[i + 2:]
-    doc = (body.startswith('*') and not body.startswith('**') and body != '*') or body.startswith('!')
+    opener = s[i + 1:i + 3]
+    doc = (opener in DOC_BLOCKS.get(docs, ()) and not s.startswith('/***', i) and not s.startswith('/**/', i))
     out.append(lines.span(i, j, '\n'.join(l.strip().lstrip('*').strip() for l in body.split('\n')).strip(), doc))
     return j
 
@@ -100,6 +105,7 @@ def line_comment(s, i, lines, out, marker, doc=False):
 RUST_RAW = re.compile(r'[bc]?r(#*)"')
 RUST_CHAR = re.compile(r"'(\\(x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|.)|[^\\'\n])'")
 WORD = re.compile(r'[A-Za-z_$][A-Za-z0-9_$]*')
+RUST_WORD = re.compile(r'\w+')
 
 
 def scan_rust(s):
@@ -110,7 +116,7 @@ def scan_rust(s):
             body = s[i + 2:]
             i = line_comment(s, i, lines, out, '//', (body.startswith('/') and not body.startswith('//')) or body.startswith('!'))
         elif s.startswith('/*', i):
-            i = block_comment(s, i, lines, out, nested=True)
+            i = block_comment(s, i, lines, out, nested=True, docs='rust')
         elif c == '"':
             i = skip_quoted(s, i, '"', newline_ends=False)
         elif c == "'":
@@ -122,10 +128,26 @@ def scan_rust(s):
                 end = s.find('"' + m.group(1), m.end())
                 i = n if end < 0 else end + 1 + len(m.group(1))
             else:
-                i = WORD.match(s, i).end()
+                i = RUST_WORD.match(s, i).end()
         else:
             i += 1
     return out
+
+
+def skip_triple(s, i):
+    q, j, n = s[i], i + 3, len(s)
+    while j < n:
+        if q == '"' and s[j] == '\\':
+            j += 2
+        elif s.startswith(q * 3, j):
+            j += 3
+            for _ in range(2):
+                if j < n and s[j] == q:
+                    j += 1
+            return j
+        else:
+            j += 1
+    return n
 
 
 def scan_hash(s, triple=True):
@@ -135,10 +157,7 @@ def scan_hash(s, triple=True):
         if c == '#':
             i = line_comment(s, i, lines, out, '#')
         elif triple and (s.startswith('"""', i) or s.startswith("'''", i)):
-            end = s.find(s[i:i + 3], i + 3)
-            while end > 0 and s[end - 1] == '\\' and s[i] == '"':
-                end = s.find(s[i:i + 3], end + 1)
-            i = n if end < 0 else end + 3
+            i = skip_triple(s, i)
         elif c == '"':
             i = skip_quoted(s, i, '"')
         elif c == "'":
@@ -164,7 +183,9 @@ def scan_python(s):
     src = s.split('\n')
     for node in ast.walk(tree):
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-            out.append(Span(node.lineno, 0, node.end_lineno, len(src[node.end_lineno - 1]), node.value.value.strip(), True))
+            span = Span(node.lineno, 0, node.end_lineno, len(src[node.end_lineno - 1]), node.value.value.strip(), True)
+            span.string = True
+            out.append(span)
     return out
 
 
@@ -172,8 +193,23 @@ HEREDOC = re.compile(r'<<(-?)[ \t]*(["\']?)([A-Za-z0-9_.-]+)\2')
 SHELL_BREAK = ' \t\n;&|()<>'
 
 
+def skip_parens(s, i):
+    depth, j, n = 0, i, len(s)
+    while j < n:
+        if s[j] == '(':
+            depth += 1
+        elif s[j] == ')':
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        elif s[j] == '\\':
+            j += 1
+        j += 1
+    return n
+
+
 def scan_shell(s):
-    lines, out, i, n, pending = Lines(s), [], 0, len(s), []
+    lines, out, i, n, pending, boundary = Lines(s), [], 0, len(s), [], True
     while i < n:
         c = s[i]
         if c == '\n' and pending:
@@ -186,27 +222,37 @@ def scan_shell(s):
                     i = end + 1
                     if (line.lstrip('\t') if strip else line) == word:
                         break
-            pending = []
-        elif c == '#' and (i == 0 or s[i - 1] in SHELL_BREAK):
-            i = line_comment(s, i, lines, out, '#')
-        elif c == "'":
-            end = s.find("'", i + 1)
-            i = n if end < 0 else end + 1
-        elif c == '$' and s.startswith("$'", i):
-            i = skip_quoted(s, i + 1, "'", newline_ends=False)
-        elif c in '"`':
-            i = skip_quoted(s, i, c, newline_ends=False)
-        elif c == '\\':
-            i += 2
-        elif s.startswith('<<', i) and not s.startswith('<<<', i):
+            pending, boundary = [], True
+        elif s.startswith('$((', i) or (boundary and s.startswith('((', i)):
+            i, boundary = skip_parens(s, i + 1 if c == '$' else i), False
+        elif s.startswith('$[', i):
+            end = s.find(']', i)
+            i, boundary = (n if end < 0 else end + 1), False
+        elif s.startswith('<<<', i):
+            i, boundary = i + 3, True
+        elif s.startswith('<<', i):
             m = HEREDOC.match(s, i)
             if m:
                 pending.append((m.group(1) == '-', m.group(3)))
                 i = m.end()
             else:
                 i += 2
+            boundary = m is None
+        elif c in SHELL_BREAK:
+            i, boundary = i + 1, True
+        elif c == '#' and boundary:
+            i = line_comment(s, i, lines, out, '#')
+        elif c == "'":
+            end = s.find("'", i + 1)
+            i, boundary = (n if end < 0 else end + 1), False
+        elif c == '$' and s.startswith("$'", i):
+            i, boundary = skip_quoted(s, i + 1, "'", newline_ends=False), False
+        elif c in '"`':
+            i, boundary = skip_quoted(s, i, c, newline_ends=False), False
+        elif c == '\\':
+            i, boundary = i + 2, False
         else:
-            i += 1
+            i, boundary = i + 1, False
     return out
 
 
@@ -214,26 +260,35 @@ YAML_BLOCK = re.compile(r'^(\s*(?:-\s+)?)([^\s#][^#]*?):\s*[|>][0-9+-]*\s*$')
 YAML_ITEM_BLOCK = re.compile(r'^(\s*)-\s+[|>][0-9+-]*\s*$')
 
 
-def yaml_line_comment(line):
-    quote, j = None, 0
+def scalar_starts(line, j):
+    before = line[:j].rstrip()
+    if not before or before[-1] in '[{,':
+        return True
+    return len(before) < j and before[-1] in ':?-' and (before[-1] != '-' or before.lstrip() == '-' or before.endswith(' -'))
+
+
+def yaml_line_comment(line, quote):
+    j = 0
     while j < len(line):
         c = line[j]
         if quote:
             if c == '\\' and quote == '"':
                 j += 1
+            elif c == quote == "'" and line[j + 1:j + 2] == "'":
+                j += 1
             elif c == quote:
                 quote = None
-        elif c in '"\'' and (j == 0 or line[j - 1] in ' \t[{,'):
+        elif c in '"\'' and scalar_starts(line, j):
             quote = c
         elif c == '#' and (j == 0 or line[j - 1] in ' \t'):
-            return j
+            return j, None
         j += 1
-    return -1
+    return -1, quote
 
 
 def scan_yaml(s):
     src = s.split('\n')
-    out, block, run = [], None, []
+    out, block, run, quote = [], None, [], None
 
     def flush():
         if run:
@@ -251,10 +306,13 @@ def scan_yaml(s):
                 continue
             flush()
             block = None
-        j = yaml_line_comment(line)
+        was_quoted = quote is not None
+        j, quote = yaml_line_comment(line, quote)
         code = line if j < 0 else line[:j]
         if j >= 0:
             out.append(Span(number, j, number, len(line), line[j:].lstrip('#').strip()))
+        if was_quoted or quote:
+            continue
         m = YAML_BLOCK.match(code)
         if m:
             block = (len(m.group(1)), m.group(2).strip() == 'run')
@@ -315,7 +373,7 @@ def scan_js(s, base=0, lines=None, out=None):
         elif s.startswith('//', i):
             i = line_comment(s, i, lines, out, '//')
         elif s.startswith('/*', i):
-            i = block_comment(s, i, lines, out)
+            i = block_comment(s, i, lines, out, docs='js')
         elif c in '"\'':
             i, prev = skip_quoted(s, i, c), 'a'
         elif c == '`':
@@ -360,31 +418,45 @@ def scan_css(s, base=0, lines=None, out=None):
     return out
 
 
-HTML_OPEN = re.compile(r'<!--|<(script|style)\b([^>]*)>', re.I)
-JS_TYPE = re.compile(r'\btype\s*=\s*["\']?([^"\'\s>]+)', re.I)
+HTML_TAG = re.compile(r'<(/?)([A-Za-z][A-Za-z0-9-]*)')
+HTML_ATTR = re.compile(r'\s*([^\s"\'>/=]+)(?:\s*=\s*("[^"]*"|\'[^\']*\'|[^\s"\'>]+))?')
+JS_TYPES = re.compile(r'^(|module|(text|application)/(java|ecma)script)$', re.I)
 
 
 def scan_html(s):
-    lines, out, i = Lines(s), [], 0
+    lines, out, i, n = Lines(s), [], 0, len(s)
     while True:
-        m = HTML_OPEN.search(s, i)
-        if not m:
+        j = s.find('<', i)
+        if j < 0:
             return out
-        if m.group(0) == '<!--':
-            end = s.find('-->', m.end())
-            end = len(s) if end < 0 else end + 3
-            out.append(lines.span(m.start(), end, s[m.end():max(m.end(), end - 3)].strip()))
+        if s.startswith('<!--', j):
+            end = s.find('-->', j + 4)
+            end = n if end < 0 else end + 3
+            out.append(lines.span(j, end, s[j + 4:max(j + 4, end - 3)].strip()))
             i = end
             continue
-        tag = m.group(1).lower()
-        close = re.compile(r'</' + tag + r'\s*>', re.I).search(s, m.end())
-        stop = len(s) if not close else close.start()
-        kind = JS_TYPE.search(m.group(2))
+        m = HTML_TAG.match(s, j)
+        if not m:
+            i = j + 1
+            continue
+        k, attrs = m.end(), {}
+        while k < n and s[k] != '>':
+            a = HTML_ATTR.match(s, k)
+            if a and a.end() > k:
+                attrs[a.group(1).lower()] = (a.group(2) or '').strip('"\'').strip()
+                k = a.end()
+            else:
+                k += 1
+        i, tag = min(k + 1, n), m.group(2).lower()
+        if m.group(1) or tag not in ('script', 'style'):
+            continue
+        close = re.compile(r'</' + tag + r'\b', re.I).search(s, i)
+        stop = n if not close else close.start()
         if tag == 'style':
-            scan_css(s[:stop], m.end(), lines, out)
-        elif not kind or re.search(r'javascript|module|ecmascript', kind.group(1), re.I):
-            scan_js(s[:stop], m.end(), lines, out)
-        i = stop if not close else close.end()
+            scan_css(s[:stop], i, lines, out)
+        elif JS_TYPES.match(attrs.get('type', '')):
+            scan_js(s[:stop], i, lines, out)
+        i = stop
 
 
 SCANNERS = {'rust': scan_rust, 'python': scan_python, 'shell': scan_shell, 'yaml': scan_yaml, 'toml': scan_hash,
@@ -423,8 +495,9 @@ def excluded(path, text, attributes, extra):
 
 
 class Judged:
-    def __init__(self, text, lang, docs):
+    def __init__(self, text, lang, docs, path=''):
         self.src = text.split('\n')
+        self.workflow = path.startswith('.github/workflows/') or path.rsplit('/', 1)[-1] in ('action.yml', 'action.yaml')
         self.failures, kept, masked = [], [], []
         for sp in SCANNERS[lang](text):
             (masked if self.is_code(sp, lang) else kept).append(sp)
@@ -451,9 +524,9 @@ class Judged:
             return True
         if lang == 'python' and sp.l1 <= 2 and CODING.match(self.src[sp.l1 - 1]):
             return True
-        if lang == 'yaml' and PINNED.search(self.src[sp.l1 - 1][:sp.c1]) and VERSION.match(sp.text):
+        if lang == 'yaml' and self.workflow and PINNED.match(self.src[sp.l1 - 1][:sp.c1]) and VERSION.match(sp.text):
             return True
-        if DIRECTIVE.match(sp.text):
+        if not getattr(sp, 'string', False) and DIRECTIVE.match(sp.text):
             if REASON.search(sp.text):
                 return True
             sp.directive = True
@@ -508,34 +581,57 @@ MESSAGES = {
     'comment': 'a comment outside the allowed kinds: delete it, or turn what it meant into a name, a test or a check',
     'escape-tag-reason': 'the escape tag needs a reason after "comment-ok:"',
     'external-link': 'an "External:" constraint needs a link to the outside source',
-    'directive-reason': 'a lint or formatter switch needs its reason after " -- "',
+    'directive-reason': 'a lint or formatter switch needs its reason after " -- " or " # "',
     'unreadable': 'a file in a listed language that is not UTF-8 text, so its comments cannot be read',
 }
 
 
-def git(*args):
-    run = subprocess.run(['git', *args], capture_output=True)
+def raw(path):
+    return path.encode('utf-8', 'surrogateescape')
+
+
+def text(data):
+    return data.decode('utf-8', 'surrogateescape')
+
+
+def fail(message):
+    print(f'comment-check: {message}', file=sys.stderr)
+    sys.exit(2)
+
+
+def git(*args, stdin=None):
+    run = subprocess.run(['git', *args], capture_output=True, input=stdin,
+                         env={**os.environ, 'GIT_LITERAL_PATHSPECS': '1'})
     if run.returncode:
-        print(f'comment-check: git {" ".join(args)}: {run.stderr.decode(errors="replace").strip()}', file=sys.stderr)
-        sys.exit(2)
-    return run.stdout.decode('utf-8', 'surrogateescape')
+        fail(f'git {" ".join(text(a) if isinstance(a, bytes) else a for a in args)}: {run.stderr.decode(errors="replace").strip()}')
+    return run.stdout
 
 
-def read_blobs(rev, paths):
-    if not paths:
+def shown(path):
+    if all(31 < ord(c) != 127 and not 0xdc80 <= ord(c) <= 0xdcff for c in path):
+        return path
+    escapes = {7: 'a', 8: 'b', 9: 't', 10: 'n', 11: 'v', 12: 'f', 13: 'r', 34: '"', 92: '\\'}
+    out = ''
+    for b in raw(path):
+        if b in escapes:
+            out += '\\' + escapes[b]
+        elif b < 32 or b >= 127:
+            out += '\\%03o' % b
+        else:
+            out += chr(b)
+    return f'"{out}"'
+
+
+def read_blobs(blobs):
+    if not blobs:
         return {}
-    run = subprocess.run(['git', 'cat-file', '--batch'], capture_output=True,
-                         input=''.join(f'{rev}:{p}\n' for p in paths).encode('utf-8', 'surrogateescape'))
-    if run.returncode:
-        print(f'comment-check: git cat-file: {run.stderr.decode(errors="replace").strip()}', file=sys.stderr)
-        sys.exit(2)
-    data, out, i = run.stdout, {}, 0
-    for path in paths:
+    data, out, i = git('cat-file', '--batch', stdin=''.join(f'{sha}\n' for sha in blobs.values()).encode()), {}, 0
+    for path, sha in blobs.items():
         end = data.index(b'\n', i)
         header = data[i:end].split()
         i = end + 1
-        if len(header) < 3 or header[1] != b'blob':
-            continue
+        if len(header) != 3 or header[0].decode() != sha or header[1] != b'blob':
+            fail(f'git cat-file: blob {sha} for {shown(path)} is missing')
         size = int(header[2])
         blob, i = data[i:i + size], i + size + 1
         try:
@@ -549,35 +645,33 @@ def attributes(rev, paths):
     if not paths:
         return set()
     run = subprocess.run(['git', 'check-attr', f'--source={rev}', '-z', '--stdin', 'linguist-generated', 'linguist-vendored'],
-                         input='\0'.join(paths).encode() + b'\0', capture_output=True)
-    fields = run.stdout.decode(errors='replace').split('\0')
+                         input=b''.join(raw(p) + b'\0' for p in paths), capture_output=True)
+    fields = text(run.stdout).split('\0')
     return {fields[k] for k in range(0, len(fields) - 2, 3) if fields[k + 2] not in ('unspecified', 'unset', 'false')}
 
 
 def files_at(rev, pathspecs, extra):
-    listing = git('ls-tree', '-r', '-z', '--full-tree', rev, '--', *pathspecs)
-    paths = []
-    for entry in listing.split('\0'):
-        if not entry:
-            continue
-        meta, path = entry.split('\t', 1)
-        mode, kind = meta.split()[:2]
-        if kind == 'blob' and mode in ('100644', '100755'):
-            paths.append(path)
-    texts = {p: t for p, t in read_blobs(rev, paths).items() if t is not None}
+    blobs = {}
+    for entry in text(git('ls-tree', '-r', '-z', '--full-tree', rev, '--', *pathspecs)).split('\0'):
+        if entry:
+            meta, path = entry.split('\t', 1)
+            mode, kind, sha = meta.split()
+            if kind == 'blob' and mode in ('100644', '100755'):
+                blobs[path] = sha
+    texts = {p: t for p, t in read_blobs(blobs).items() if t is not None}
     marked = attributes(rev, list(texts))
-    for path, text in texts.items():
-        lang = language(path, text)
-        if lang and not excluded(path, text, marked, extra):
-            yield path, lang, text
+    for path, body in texts.items():
+        lang = language(path, body)
+        if lang and not excluded(path, body, marked, extra):
+            yield path, lang, body
 
 
 def tally(rev, pathspecs, docs, extra, by_file):
-    sha = git('rev-parse', '--verify', f'{rev}^{{commit}}').strip()
+    sha = text(git('rev-parse', '--verify', f'{rev}^{{commit}}')).strip()
     out = {'rev': sha, 'files': 0, 'comment_lines': 0, 'disallowed_lines': 0, 'languages': {}}
     per = {}
-    for path, lang, text in files_at(sha, pathspecs, extra):
-        judged = Judged(text, lang, matches(path, docs))
+    for path, lang, body in files_at(sha, pathspecs, extra):
+        judged = Judged(body, lang, matches(path, docs), path)
         out['files'] += 1
         out['comment_lines'] += len(judged.lines)
         out['disallowed_lines'] += len(judged.bad_lines)
@@ -585,58 +679,62 @@ def tally(rev, pathspecs, docs, extra, by_file):
         entry['files'] += 1
         entry['comment_lines'] += len(judged.lines)
         if judged.lines:
-            per[path] = len(judged.lines)
+            per[shown(path)] = len(judged.lines)
     out['languages'] = dict(sorted(out['languages'].items()))
     if by_file:
         out['by_file'] = dict(sorted(per.items()))
     return out
 
 
-HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
+HUNK = re.compile(rb'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
 
 
-def unquote(path):
-    if not (path.startswith('"') and path.endswith('"')):
-        return path
-    raw = path[1:-1].encode('utf-8', 'surrogateescape').decode('unicode_escape')
-    return raw.encode('latin-1').decode('utf-8', 'surrogateescape')
+def changed_files(base, head):
+    fields, files, k = text(git('diff', '--raw', '-z', '--no-abbrev', '-M', '--diff-filter=d', f'{base}...{head}')).split('\0'), [], 0
+    while k < len(fields) and fields[k].startswith(':'):
+        meta = fields[k].split()
+        paths = fields[k + 1:k + 3] if meta[4][0] in 'RC' else fields[k + 1:k + 2]
+        k += 1 + len(paths)
+        if meta[1] in ('100644', '100755'):
+            files.append((paths, meta[3]))
+    return files
 
 
-def added_lines(base, head):
-    diff = git('-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--text', '-U0', '-M', '--diff-filter=d',
-               f'{base}...{head}')
-    added, path = {}, None
-    for line in diff.split('\n'):
-        if line.startswith('+++ '):
-            path = unquote(line[4:].rstrip('\t'))
-            path = path[2:] if path.startswith('b/') else None
-        elif path and line.startswith('@@'):
-            m = HUNK.match(line)
+def added_lines(base, head, paths):
+    patch = git('diff', '--no-color', '--no-ext-diff', '--text', '-U0', '-M', f'{base}...{head}', '--', *map(raw, paths))
+    added = set()
+    for line in patch.split(b'\n'):
+        m = HUNK.match(line)
+        if m:
             start, count = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
-            added.setdefault(path, set()).update(range(start, start + count))
+            added.update(range(start, start + count))
     return added
 
 
 def diff_mode(args):
-    head = git('rev-parse', '--verify', f'{args.head}^{{commit}}').strip()
-    added = added_lines(args.base, head)
-    texts = read_blobs(head, sorted(added))
+    head = text(git('rev-parse', '--verify', f'{args.head}^{{commit}}')).strip()
+    added, blobs = {}, {}
+    for paths, sha in changed_files(args.base, head):
+        lines = added_lines(args.base, head, paths)
+        if lines:
+            added[paths[-1]], blobs[paths[-1]] = lines, sha
+    texts = read_blobs(blobs)
     marked = attributes(head, list(texts))
     found = []
-    for path, text in sorted(texts.items()):
-        lang = language(path, text or '')
-        if not lang or excluded(path, text or '', marked, args.exclude):
+    for path, body in sorted(texts.items()):
+        lang = language(path, body or '')
+        if not lang or excluded(path, body or '', marked, args.exclude):
             continue
-        if text is None:
+        if body is None:
             found.append((path, min(added[path]), 'unreadable'))
             continue
-        judged = Judged(text, lang, matches(path, args.docs))
+        judged = Judged(body, lang, matches(path, args.docs), path)
         for lines, reason in judged.failures:
             hit = lines & added[path]
             if hit:
                 found.append((path, min(hit), reason))
     for path, line, reason in sorted(found):
-        print(f'{path}:{line}: {reason}: {MESSAGES[reason]}')
+        print(f'{shown(path)}:{line}: {reason}: {MESSAGES[reason]}')
     print(f'comment-check: {len(found)} disallowed comment(s) in added lines' if found else 'comment-check: ok', file=sys.stderr)
     return 1 if found else 0
 

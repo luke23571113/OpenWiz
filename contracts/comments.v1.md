@@ -26,7 +26,7 @@ Only these kinds. The checker reads each one from its form, so the form is the r
 | --- | --- | --- |
 | Licence or notice header | `SPDX-License-Identifier:`, `Copyright` or `Licensed under` in a block with no code before it in the file (a shebang or encoding line is not code) | `// SPDX-License-Identifier: MIT` |
 | A constraint from outside our code | The block starts `External:` and holds a link to something that isn't ours (not `github.com/openwizdev/` or `github.com/jparker2006/`) | `# External: the vendor API rounds timeouts down, https://example.com/vendor/issues/7` |
-| Public API docs a published documentation build renders | A doc comment (Rust `///`, `//!`, `/** */`, `/*! */`; JavaScript and TypeScript `/** */`; Python's standalone strings, docstrings included) in a path the repository names with `--docs`. A repository with no published documentation build names none | `/// Returns the answer.` under `--docs crates/sdk/` |
+| Public API docs a published documentation build renders | A doc comment of its own language (Rust `///`, `//!`, `/** */`, `/*! */`; JavaScript and TypeScript `/** */` only; Python's standalone strings, docstrings included; CSS has none) in a path the repository names with `--docs`. A repository with no published documentation build names none | `/// Returns the answer.` under `--docs crates/sdk/` |
 | A security or data-loss warning | The block starts `SECURITY:`, `SAFETY:`, `PRIVACY:` or `DATA LOSS:` and says something after it | `// SAFETY: the buffer outlives every reader.` |
 | A private-record pointer | The block holds a pointer in the [open development contract's form](open-development.v1.md#the-pointer) | `# Private record: https://github.com/jparker2006/ClosedWiz/issues/9001#issuecomment-9000000001` |
 
@@ -60,8 +60,8 @@ One form: `comment-ok:` at the start of the block's first line, then a reason of
 These are neither counted nor checked:
 
 - A shebang on line 1 (`#!/usr/bin/env python3`), and a Python encoding line on line 1 or 2 (`# -*- coding: utf-8 -*-`).
-- A lint or formatter switch **with its reason**: the comment starts with one of `noqa`, `type: ignore`, `pragma:`, `pylint:`, `fmt: off|on|skip`, `ruff:`, `mypy:`, `pyright:`, `isort:`, `eslint`, `eslint-disable`, `eslint-enable`, `prettier-ignore`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `biome-ignore`, `shellcheck `, `yamllint `, `stylelint-disable`, `stylelint-enable`, `istanbul ignore`, `c8 ignore` or `v8 ignore`, and gives a reason after ` -- ` or a second ` # `: `# shellcheck disable=SC2086 -- word splitting is wanted here`. The same switch without a reason is a comment and fails as `directive-reason`.
-- A pinned GitHub Action's version on its own line, which update tools read: `uses: owner/action@<40 hex digits> # v7.0.1`.
+- A lint or formatter switch **with its reason**: the comment starts with one of `noqa`, `type: ignore`, `pragma:`, `pylint:`, `fmt: off|on|skip`, `ruff:`, `mypy:`, `pyright:`, `isort:`, `eslint`, `eslint-disable`, `eslint-enable`, `prettier-ignore`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `biome-ignore`, `shellcheck `, `yamllint `, `stylelint-disable`, `stylelint-enable`, `istanbul ignore`, `c8 ignore` or `v8 ignore`, and gives a reason after ` -- ` or a second ` # `, each followed by a space and then the reason: `# shellcheck disable=SC2086 -- word splitting is wanted here`. The same switch without a reason (or with `#reason` and no space) is a comment and fails as `directive-reason`. Only real comments are switches: a Python string that reads like one is a standalone string, counted and judged as a comment.
+- A pinned GitHub Action's version, which update tools read: a line whose only value is a `uses:` field, plain or quoted, `uses: owner/action@<40 hex digits> # v7.0.1`, in a workflow (under `.github/workflows/`) or an action manifest (`action.yml`, `action.yaml`). Elsewhere it is a comment.
 
 Rust's `#[allow(...)]` and `#![allow(...)]` are attributes, not comments: Clippy's `allow_attributes_without_reason` makes each state its reason (CC2).
 
@@ -71,12 +71,12 @@ Rust's `#[allow(...)]` and `#![allow(...)]` are attributes, not comments: Clippy
 | --- | --- | --- | --- |
 | Rust | `.rs` | `//`, `///`, `//!`, `/* */` (nested), `/** */`, `/*! */` | strings, raw strings `r#"..."#`, byte and C strings, char literals, lifetimes, attributes |
 | Python | `.py`, `.pyi`, extensionless with a `python` shebang | `#` comments (Python's own tokenizer) and every string that stands alone as a statement (Python's own parser), docstrings included | strings in expressions; a file that doesn't parse is read with the TOML rules |
-| Shell | `.sh`, `.bash`, extensionless with a `sh`, `bash`, `dash` or `zsh` shebang | `#` starting a word | quoted text, `$#`, `${#x}`, here-documents |
-| YAML | `.yml`, `.yaml` | `#` at a line's start or after a space, outside quotes; the shell rules inside a `run:` block scalar | other block scalars' content, quoted text |
-| TOML | `.toml` | `#` outside strings | basic, literal and multi-line strings |
+| Shell | `.sh`, `.bash`, extensionless with a `sh`, `bash`, `dash` or `zsh` shebang | `#` starting a word (an escaped space doesn't end a word) | quoted text, `$#`, `${#x}`, here-documents (`<<`, never a `<<<` here-string), arithmetic `$(( ))`, `(( ))` and `$[ ]` |
+| YAML | `.yml`, `.yaml` | `#` at a line's start or after a space, outside quotes; the shell rules inside a `run:` block scalar | other block scalars' content; quoted text, including a quoted value that runs over several lines (a quote opens only where a value starts, never inside a plain value) |
+| TOML | `.toml` | `#` outside strings | basic and literal strings; multi-line strings, including a closing run of four or five quotes |
 | JavaScript, TypeScript | `.js`, `.mjs`, `.cjs`, `.jsx`, extensionless with a `node` shebang; `.ts`, `.mts`, `.cts`, `.tsx` | `//`, `/* */`, `/** */` | strings, template literals (with `${}` inside), regular expression literals |
 | CSS | `.css` | `/* */` | strings |
-| HTML | `.html`, `.htm` | `<!-- -->`; the CSS rules inside `<style>`; the JavaScript rules inside a `<script>` with no `type` or a JavaScript or module type | other `<script>` types (JSON, templates), escaped text |
+| HTML | `.html`, `.htm` | `<!-- -->` in text; the CSS rules inside `<style>`; the JavaScript rules inside a `<script>` whose own `type` attribute is absent, empty, `module` or a JavaScript type | tags and their attributes (quoted values included); other `<script>` types (JSON, templates), escaped text |
 
 Every other file (Markdown and other prose, JSON, lock files) has no comments here: prose is cut by the cleanup waves, not this contract.
 
@@ -102,7 +102,7 @@ It reads every file the pull request adds or changes at `--head` (default `HEAD`
 src/lib.rs:18: comment: a comment outside the allowed kinds: delete it, or turn what it meant into a name, a test or a check
 ```
 
-The reasons are `comment`, `escape-tag-reason`, `external-link`, `directive-reason`, and `unreadable` for a changed file in a listed language that isn't UTF-8 text (it fails rather than going unread). It exits 0 when nothing fails, 1 with one line per failure on stdout, and 2 when Git can't read the revisions. Old comments never fail a pull request: a block fails only when the pull request adds or changes one of its lines.
+The reasons are `comment`, `escape-tag-reason`, `external-link`, `directive-reason`, and `unreadable` for a changed file in a listed language that isn't UTF-8 text (it fails rather than going unread). It exits 0 when nothing fails, 1 with one line per failure on stdout, and 2 when Git can't read the revisions or a blob it named. A path with a control character or a byte that isn't UTF-8 is printed as Git quotes it (`"odd\nname.py"`, `"\377x.py"`); every other path is printed as it is. Paths reach Git NUL-delimited and as literal pathspecs, so no file name escapes the check. Old comments never fail a pull request: a block fails only when the pull request adds or changes one of its lines.
 
 ## Count mode and its report
 
@@ -123,7 +123,7 @@ It counts the UTF-8 text files Git tracks at `--at` (default `HEAD`), limited to
 | `<tally>.comment_lines` | Comment lines in those files, allowed kinds included |
 | `<tally>.disallowed_lines` | Lines of blocks that would fail the diff mode: what is left to cut |
 | `<tally>.languages` | Per language that has a counted file: its `files` and `comment_lines` |
-| `<tally>.by_file` | With `--by-file`, every counted file with at least one comment line and its count |
+| `<tally>.by_file` | With `--by-file`, every counted file with at least one comment line and its count, keyed by its path as the diff mode prints it |
 
 A cut's pull request reports `before.comment_lines` and `after.comment_lines` for its area, from one run with `--before <the base it branched from>`. The war room reads `after.comment_lines` per repository.
 

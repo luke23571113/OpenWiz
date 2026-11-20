@@ -1,4 +1,4 @@
-Green run: python3 -I tools/comment-check/test_check.py at the hand-back.
+Green run: python3 -I tools/comment-check/test_check.py after the fixes for review findings R1 to R11.
 
 test_before_and_after_are_counted_the_same_way (__main__.Count.test_before_and_after_are_counted_the_same_way) ... ok
 test_cases_count_their_comment_lines (__main__.Count.test_cases_count_their_comment_lines) ... ok
@@ -9,8 +9,9 @@ test_excluded_files_never_fail (__main__.Diff.test_excluded_files_never_fail) ..
 test_only_added_lines_fail (__main__.Diff.test_only_added_lines_fail) ... ok
 test_quoted_paths_and_undecodable_files_fail_closed (__main__.Diff.test_quoted_paths_and_undecodable_files_fail_closed) ... ok
 test_the_escape_tag_passes_only_with_a_reason (__main__.Diff.test_the_escape_tag_passes_only_with_a_reason) ... ok
+test_each_reviewed_break_is_read_right_by_both_modes (__main__.Review.test_each_reviewed_break_is_read_right_by_both_modes) ... ok
 
 ----------------------------------------------------------------------
-Ran 9 tests in 0.782s
+Ran 10 tests in 2.285s
 
 OK
