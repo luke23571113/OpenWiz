@@ -114,7 +114,7 @@ class PlantedBreaks(unittest.TestCase):
     def test_the_landed_comment_follows_the_brief_link(self):
         # catches: a landed comment posted on a report the merge closed directly,
         # without a record author's brief linking to it.
-        self.refused(case('landed', lambda d: d['input']['pull_request'].update(closes=[9101])),
+        self.refused(case('landed', lambda d: d['input']['pull_request'].update(closes=['Closes openwizdev/OpenWiz#9101'])),
                      'landed.json: posts must be []', 'fixtures: no landed case')
 
     def test_a_report_link_counts_only_from_a_record_author_and_last(self):
@@ -129,6 +129,12 @@ class PlantedBreaks(unittest.TestCase):
         # catches: a bare #<n> that points at the wrong repository, or a landed
         # comment for a pull request outside openwizdev.
         self.refused(case('landed', lambda d: d['input']['pull_request'].update(repository='synthetic-org/WizSkills')),
+                     'landed.json: posts must be []', 'fixtures: no landed case')
+
+    def test_only_a_full_closing_line_reaches_the_destination(self):
+        # catches: a bare `Closes #<n>` in a WizSkills or WizSite pull request
+        # read as closing an OpenWiz brief.
+        self.refused(case('landed', lambda d: d['input']['pull_request'].update(closes=['Closes #9106', 'Closes #9101'])),
                      'landed.json: posts must be []', 'fixtures: no landed case')
 
     def test_a_marker_counts_only_as_the_last_line(self):

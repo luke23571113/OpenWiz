@@ -7,8 +7,8 @@
       "number": 9201,
       "merged": true,
       "closes": [
-        9106,
-        9101
+        "Closes openwizdev/OpenWiz#9106",
+        "Closes openwizdev/OpenWiz#9101"
       ]
     },
     "issues": {
