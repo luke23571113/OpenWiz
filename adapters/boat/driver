@@ -180,16 +180,16 @@ trap 'rm -rf "$d"' EXIT
 git init -q "$d/r"
 GIT_AUTHOR_NAME=openwiz GIT_AUTHOR_EMAIL=openwiz@invalid GIT_COMMITTER_NAME=openwiz \
   GIT_COMMITTER_EMAIL=openwiz@invalid git -C "$d/r" commit -q --allow-empty -m 'push check'
-git -C "$d/r" push -q --dry-run '%s' HEAD:refs/heads/openwiz-push-check
+git -C "$d/r" push -q --dry-run '%(url)s' HEAD:refs/heads/openwiz-push-check-%(run)s
 echo openwiz-push-ok
 '''
 
 
-def can_push_or_refuse(sandbox, repository):
+def has_write_access_or_refuse(sandbox, repository, run):
     url = 'https://github.com/%s.git' % repository
     try:
         p = subprocess.run([boat_program(), 'exec', sandbox, '--timeout', str(PUSH_CHECK_WAIT), '--', 'sh', '-c',
-                            PUSH_CHECK % url], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                            PUSH_CHECK % {'url': url, 'run': run}], stdin=subprocess.DEVNULL, capture_output=True, text=True,
                            timeout=PUSH_CHECK_WAIT + 15)
         pushed = p.returncode == 0 and 'openwiz-push-ok' in p.stdout
     except subprocess.TimeoutExpired:
@@ -689,7 +689,7 @@ def start(req):
             raise Refused('the driver cannot save run %s; its new sandbox is stopped' % run,
                           UNWRITABLE + ', then start again')  # the cleanup below stops it, or reports why not
         install_skills(state['sandbox'], lock)
-        can_push_or_refuse(state['sandbox'], req['repository'])
+        has_write_access_or_refuse(state['sandbox'], req['repository'], run)
         turn, talk = prompt(state, run)
         state['conversation'] = talk
         refuse_a_dead_first_turn(run, turn, settle)

@@ -566,8 +566,8 @@ class Boat(unittest.TestCase):
         self.assertEqual(code, 0, out)
         pushes = self.env['FAKE_BOAT_STATE'] + '.homes/bx_fake0001/.fake-github-pushes'
         with open(pushes) if os.path.exists(pushes) else open(os.devnull) as f:
-            self.assertEqual(f.read().splitlines(),
-                             ['dry-run https://github.com/example/site.git HEAD:refs/heads/openwiz-push-check'])
+            self.assertEqual(f.read().splitlines(), ['dry-run https://github.com/example/site.git '
+                                                     'HEAD:refs/heads/openwiz-push-check-' + out['run']])
         self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
 
     def test_a_writable_repository_that_has_an_old_probe_branch_starts(self):
