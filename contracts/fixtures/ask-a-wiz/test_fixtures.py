@@ -7,6 +7,7 @@ import copy
 import datetime
 import hashlib
 import json
+import math
 import pathlib
 import re
 import unittest
@@ -15,7 +16,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 CONTRACT = HERE.parent.parent / 'ask-a-wiz.v1.md'
 FAKE_KEY = 'fake-openrouter-key'
 TERMINAL = ('done', 'not_covered', 'refused')
-STORE_KEY = re.compile(r'^(cap|visitor:[0-9a-f]{32}:([01][0-9]|2[0-3]))$')
+STORE_KEY = re.compile(r'^(cap|spend|visitor:[0-9a-f]{32}:([01][0-9]|2[0-3]))$')
 SALT = re.compile(r'^[0-9a-f]{64}$')
 DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
@@ -76,7 +77,7 @@ def expected_request(pin, case):
     prices = {'prompt': price(pin, case['settings'], 'max_prompt_price'),
               'completion': price(pin, case['settings'], 'max_completion_price')}
     return {'model': case['settings'][pin['names']['model']], 'stream': True,
-            'provider': {'max_price': prices, **pin['upstream']['provider']},
+            'provider': {'max_price': prices, **pin['upstream']['provider']}, 'usage': pin['upstream']['usage'],
             'max_tokens': pin['limits']['max_output_tokens'], 'temperature': pin['upstream']['temperature'],
             'messages': [{'role': 'system', 'content': pin['prompt']['system']}, {'role': 'user', 'content': user}]}
 
@@ -99,6 +100,23 @@ def price(pin, settings, name):
         return None
     number = float(value)
     return number if pin['prices']['min_exclusive'] < number <= pin['prices']['max'] else None
+
+
+def micro(usd):
+    return math.ceil(round(usd * 1000000, 3))
+
+
+def call_max(pin, settings):
+    lim = pin['limits']
+    return micro((lim['max_prompt_tokens'] * price(pin, settings, 'max_prompt_price')
+                  + lim['max_output_tokens'] * price(pin, settings, 'max_completion_price')) / 1000000)
+
+
+def cap_usd(pin, settings):
+    rule, value = pin['spend']['cap_usd'], settings.get(pin['names']['daily_cap_usd'])
+    if not isinstance(value, str) or not re.fullmatch(rule['pattern'], value):
+        return 0
+    return micro(float(value)) if rule['min_exclusive'] < float(value) <= rule['max'] else 0
 
 
 def utc(text):
@@ -126,22 +144,29 @@ def run(pin, case):
     if len(question) > pin['request']['max_question_chars']:
         return 'too_long', store, now
     if case.get('store_fails'):
-        return 'unavailable', store, now  # every store operation fails: nothing changes, nothing is sent
+        return 'store_error', store, now  # every store operation fails: nothing changes, nothing is sent
 
     def first_write(day):  # every write first deletes earlier days' rows
         for table in ('salts', 'counters'):
             store[table] = [r for r in store[table] if r['day'] >= day]
 
-    def count(day, key, limit):  # the conditional update: add one only below the limit
+    def row(day, key):
+        found = next((r for r in store['counters'] if r['day'] == day and r['key'] == key), None)
+        if found is None:
+            found = {'day': day, 'key': key, 'count': 0}
+            store['counters'].append(found)
+        return found
+
+    def count(day, key, limit, add=1):  # the conditional update: add only below the limit
         first_write(day)
-        row = next((r for r in store['counters'] if r['day'] == day and r['key'] == key), None)
-        if row is None:
-            row = {'day': day, 'key': key, 'count': 0}
-            store['counters'].append(row)
-        if row['count'] >= limit:
+        counter = row(day, key)
+        if counter['count'] >= limit:
             return False
-        row['count'] += 1
+        counter['count'] += add
         return True
+
+    def reserve(day):  # the call count, then the dollars
+        return count(day, 'cap', cap) and count(day, 'spend', cap_usd(pin, settings), call_max(pin, settings))
 
     day, hour = now.strftime('%Y-%m-%d'), now.strftime('%H')
     first_write(day)
@@ -158,12 +183,15 @@ def run(pin, case):
         cap = 0
     if not pin['daily_cap']['min'] <= cap <= pin['daily_cap']['max']:
         cap = 0
-    if not count(day, 'cap', cap):
+    if not reserve(day):
         return 'daily_cap', store, now
     sent = utc(case.get('dispatch_at', case['now']))  # the day changed before dispatch: reserve on the new day
-    if sent.strftime('%Y-%m-%d') != day and not count(sent.strftime('%Y-%m-%d'), 'cap', cap):
+    if sent.strftime('%Y-%m-%d') != day and not reserve(sent.strftime('%Y-%m-%d')):
         return 'daily_cap', store, sent
     upstream = case['upstream'] or {}
+    cost = upstream.get('cost')  # settle: the reported cost replaces the reservation; none keeps it
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
+        row(sent.strftime('%Y-%m-%d'), 'spend')['count'] += micro(cost) - call_max(pin, settings)
     if upstream.get('fails') and not upstream.get('after_chunks') or not fitting(pin, upstream.get('chunks', [])):
         return 'upstream_error', store, sent
     return 'stream', store, sent
@@ -345,10 +373,12 @@ class Pin(unittest.TestCase):
                              'the best passage must always fit')
         self.assertEqual(lim['max_prompt_tokens'], lim['max_prompt_bytes'] + lim['framing_tokens'],
                          'one token per byte at most, plus the framing margin')
-        self.assertEqual(pin['spend']['per_call'], '(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE'
-                         ' + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE) / 1000000')
+        self.assertEqual(pin['spend']['call_max'], 'ceil(round(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE'
+                         ' + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE, 3))')
+        self.assertEqual(pin['spend']['per_day'],
+                         'min(ASK_A_WIZ_DAILY_CAP_USD + call_max, ASK_A_WIZ_DAILY_CAP * call_max)')
+        self.assertEqual(call_max(pin, load('answer')['settings']), 1610, 'the contract\'s worked example')
         self.assertEqual(pin['upstream']['retries'], 0, 'every attempt is one counted call')
-        self.assertEqual(pin['spend']['per_day'], 'ASK_A_WIZ_DAILY_CAP * per_call')
 
     def test_every_refusal_has_a_case(self):
         pin = load_pin()
@@ -414,6 +444,14 @@ class TheCheckCatches(unittest.TestCase):
             'the old day pays after midnight': ('midnight-cap', lambda c: c.pop('dispatch_at')),
             'its own salt, not the stored one': ('first-write-race', lambda c: c.pop('rival_salt')),
             'a failed store still answered': ('store-error', lambda c: c.pop('store_fails')),
+            'a store failure shown as unavailable': ('store-error', lambda c: c['response'].update(
+                body=c['response']['body'].replace('store_error', 'unavailable'))),
+            'no cost asked for': ('answer', lambda c: c['upstream']['request'].pop('usage')),
+            'the reported cost not added': ('spend-near-cap', lambda c: c['upstream'].update(cost=0)),
+            'a missing cost counted as nothing': ('spend-missing-cost', lambda c: [
+                r.update(count=r['count'] - call_max(load_pin(), c['settings']))
+                for r in c['store_after']['counters'] if r['key'] == 'spend']),
+            'a call sent past the dollar cap': ('spend-cap', lambda c: c.update(upstream={'chunks': ['x']})),
             'max_tokens raised': ('answer', lambda c: c['upstream']['request'].update(max_tokens=4000)),
             'a seventh passage sent': ('answer-trimmed-count', lambda c: c['upstream']['request']['messages'][1].update(
                 content='Passage 7 from x:\nx\n\n' + c['upstream']['request']['messages'][1]['content'])),

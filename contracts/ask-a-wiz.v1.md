@@ -35,6 +35,7 @@ the contract is wrong and must be fixed.
     "switch_on": "on",
     "model": "ASK_A_WIZ_MODEL",
     "daily_cap": "ASK_A_WIZ_DAILY_CAP",
+    "daily_cap_usd": "ASK_A_WIZ_DAILY_CAP_USD",
     "max_prompt_price": "ASK_A_WIZ_MAX_PROMPT_PRICE",
     "max_completion_price": "ASK_A_WIZ_MAX_COMPLETION_PRICE",
     "index_path": "/ask-index.json"
@@ -75,7 +76,8 @@ the contract is wrong and must be fixed.
     "rate_limited": {"status": 429, "message": "That's a lot of questions at once. Try again in a few minutes."},
     "daily_cap": {"status": 429, "message": "Ask a Wiz has answered all it can for today. Try again tomorrow."},
     "upstream_error": {"status": 502, "message": "Ask a Wiz couldn't answer just now. Try again."},
-    "unavailable": {"status": 503, "message": "Ask a Wiz isn't available right now."}
+    "unavailable": {"status": 503, "message": "Ask a Wiz isn't available right now."},
+    "store_error": {"status": 503, "message": "Ask a Wiz couldn't keep count just now. Try again."}
   },
   "rate_limit": {"per_visitor": 10, "window": "utc_hour"},
   "daily_cap": {"counts": "model_calls", "day": "utc", "min": 1, "max": 100000, "unset_or_invalid": 0},
@@ -84,6 +86,7 @@ the contract is wrong and must be fixed.
     "stream": true,
     "temperature": 0,
     "provider": {"require_parameters": true},
+    "usage": {"include": true},
     "retries": 0
   },
   "prices": {"unit": "USD per million tokens", "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6})?$", "min_exclusive": 0, "max": 1000},
@@ -102,20 +105,25 @@ the contract is wrong and must be fixed.
     "question": "Question: {question}"
   },
   "spend": {
-    "per_call": "(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE) / 1000000",
-    "per_day": "ASK_A_WIZ_DAILY_CAP * per_call"
+    "key": "spend",
+    "unit": "micro-USD",
+    "to_micro": "ceil(round(usd * 1000000, 3))",
+    "call_max": "ceil(round(max_prompt_tokens * ASK_A_WIZ_MAX_PROMPT_PRICE + max_output_tokens * ASK_A_WIZ_MAX_COMPLETION_PRICE, 3))",
+    "cap_usd": {"pattern": "^[0-9]{1,4}(\\.[0-9]{1,6})?$", "min_exclusive": 0, "max": 1000, "unset_or_invalid": 0},
+    "per_day": "min(ASK_A_WIZ_DAILY_CAP_USD + call_max, ASK_A_WIZ_DAILY_CAP * call_max)"
   },
   "index": {"schema": "openwiz.ask-a-wiz.index.v1", "keys": ["schema", "sources", "passages"], "max_bytes": 2000000},
   "stored": {
     "tables": {"ask_counters": ["day", "key", "count"], "ask_salts": ["day", "salt"]},
-    "keys": ["cap", "visitor:<32 hex>:<hour>"],
+    "keys": ["cap", "spend", "visitor:<32 hex>:<hour>"],
     "nothing_else": true
   },
   "fixtures": [
     "answer", "answer-escaped", "not-covered", "not-covered-model", "too-long", "rate-limited",
     "daily-cap", "upstream-error", "upstream-error-midstream", "bad-request", "unavailable",
     "off", "probe-on", "probe-off", "answer-trimmed-count", "answer-trimmed-bytes", "answer-overflow",
-    "off-not-exact", "unavailable-price", "store-error", "midnight-cap", "midnight-answer", "first-write-race"
+    "off-not-exact", "unavailable-price", "store-error", "midnight-cap", "midnight-answer", "first-write-race",
+    "spend-cap", "spend-near-cap", "spend-missing-cost"
   ]
 }
 ```
@@ -123,7 +131,7 @@ the contract is wrong and must be fixed.
 ## The names Jake uses
 
 All of them belong to the openwiz.dev Cloudflare Pages project. FA5 (#1903)
-sets the secret, the store, the model, the two maximum prices and the cap;
+sets the secret, the store, the model, the two maximum prices and the two caps;
 Jake turns the switch on after FA6's go.
 
 | Name | Kind | Holds |
@@ -131,7 +139,8 @@ Jake turns the switch on after FA6's go.
 | `OPENROUTER_API_KEY` | Pages secret (encrypted) | The OpenRouter key, and nothing else |
 | `ASK_A_WIZ_COUNTERS` | D1 database binding | The counter store (see "What is stored") |
 | `ASK_A_WIZ_MODEL` | Pages variable | The OpenRouter model id, such as a cheap chat model's id |
-| `ASK_A_WIZ_DAILY_CAP` | Pages variable | The most model calls a UTC day may make, an integer from 1 to 100000 |
+| `ASK_A_WIZ_DAILY_CAP_USD` | Pages variable | The most a UTC day may spend, in US dollars, on the calls' reported cost: a decimal such as `1.00`, above 0 and at most 1000 |
+| `ASK_A_WIZ_DAILY_CAP` | Pages variable | A second guard: the most model calls a UTC day may make, an integer from 1 to 100000 |
 | `ASK_A_WIZ_MAX_PROMPT_PRICE` | Pages variable | The most any route may charge for input, in US dollars per million tokens: a decimal such as `0.10`, above 0 and at most 1000 |
 | `ASK_A_WIZ_MAX_COMPLETION_PRICE` | Pages variable | The same for output, reasoning included |
 | `ASK_A_WIZ` | Pages variable | The off switch: exactly `on` turns Ask a Wiz on; anything else, or unset, is off |
@@ -239,9 +248,10 @@ It is given in two cases:
 | `bad_request` | 400 | That question couldn't be read. Try again. | The request breaks "The request" |
 | `too_long` | 413 | That question is too long. Keep it to 300 characters or fewer. | 301 or more code points |
 | `rate_limited` | 429 | That's a lot of questions at once. Try again in a few minutes. | The visitor's hour is used up |
-| `daily_cap` | 429 | Ask a Wiz has answered all it can for today. Try again tomorrow. | The day's model calls are used up, or the cap is unset or invalid |
+| `daily_cap` | 429 | Ask a Wiz has answered all it can for today. Try again tomorrow. | The day's spend has reached the dollar cap, or its calls the call-count cap, or a cap is unset or invalid |
 | `upstream_error` | 502, or 200 mid-answer | Ask a Wiz couldn't answer just now. Try again. | OpenRouter refused, failed, timed out or sent something unreadable |
-| `unavailable` | 503 | Ask a Wiz isn't available right now. | The switch is on but the secret, the model, the store, a maximum price or the index is missing or invalid, or a store operation failed |
+| `unavailable` | 503 | Ask a Wiz isn't available right now. | The switch is on but the secret, the model, the store binding, a maximum price or the index is missing or invalid |
+| `store_error` | 503 | Ask a Wiz couldn't keep count just now. Try again. | A store operation before the call failed (an error or a timeout from D1) |
 
 A `429` carries a `Retry-After` header: the whole seconds until the visitor's
 UTC hour ends (`rate_limited`) or the UTC day ends (`daily_cap`). No refusal
@@ -259,48 +269,70 @@ The function checks in this order, and stops at the first that fails:
 4. The visitor's rate limit (`rate_limited`). A question that passes counts,
    whatever its outcome. This is the first store write.
 5. The passages (none: `not_covered`, no model call).
-6. The daily cap (`daily_cap`). A question that passes counts one model call
-   on the day it is dispatched (see "The rate limit and the daily cap").
+6. The daily caps (`daily_cap`): the call count, then the dollar
+   reservation, on the day the call is sent (see "The rate limit and the
+   daily caps").
 7. The model call (`upstream_error`, the model's `NOT_COVERED`, or the answer).
+8. Settling the call's reported cost (after the stream ends; it changes no
+   response).
 
-**A failing store fails closed.** Every store operation in steps 4 and 6
-(creating the tables, deleting earlier days, the salt, each count) either
-completes or fails. A completed conditional update that returns no row means
-the limit is reached. A failed operation (an error or a timeout from D1)
-ends the question at once with `503 unavailable`, one `refused` event, and
-no model call. All store work happens before the model call, so no store
-operation can fail after a call is sent.
+**A failing store refuses with `store_error`.** Every store operation in
+steps 4 and 6 (creating the tables, deleting earlier days, the salt, each
+count and reservation) either completes or fails. A completed conditional
+update that returns no row means the limit is reached. A failed operation
+(an error or a timeout from D1) ends the question at once with `503
+store_error`, one `refused` event, and no model call. All of that happens
+before the call. Only the settling write (step 8) comes after it; if it
+fails, the reservation stays, counted at the maximum, and the visitor's
+answer is unchanged.
 
-## The rate limit and the daily cap
+## The rate limit and the daily caps
 
 - **Rate limit:** at most 10 questions per visitor per UTC clock hour. The
   visitor is the request's `CF-Connecting-IP`, kept only as a hash (see "What
   is stored"). The 11th question in the same hour is `rate_limited`.
-- **Daily cap:** at most `ASK_A_WIZ_DAILY_CAP` model calls per UTC day, across
-  all visitors. An unset, non-integer or out-of-range value counts as `0`, so
-  every question that reaches step 6 is `daily_cap`: it fails closed. A call
-  counts when it is made, before its answer, so the cap is never passed, even
-  by questions asked at the same moment.
-- **Counted on the day it is sent.** A call counts against the UTC day on
-  which it is dispatched. The function reserves on the current day at step 6;
-  just before the call, it reads the clock again, and if the UTC day has
-  changed it reserves again on the new day (the same conditional update). If
-  that fails, the question is `daily_cap` with `Retry-After` to the new day's
-  end, and nothing is sent. The earlier day's reservation is never given
-  back. So every day's calls are at most that day's reservations, at most the
-  cap.
+- **The dollar cap, on actual cost.** `ASK_A_WIZ_DAILY_CAP_USD` is the most a
+  UTC day may spend, in US dollars (a decimal such as `1.00`, above 0 and at
+  most 1000). The day's spend is the `spend` counter, in whole micro-dollars.
+  Every dollar amount becomes micro-dollars as `ceil(round(usd * 1000000, 3))`.
+  - **Reserve before the call.** `call_max`, one call's most possible cost, is
+    `ceil(round(14096 * P + 500 * C, 3))` micro-dollars, with `P` and `C` the
+    two maximum prices. Before the call, the function adds `call_max` to
+    `spend` only if `spend` is still below the cap:
+    `UPDATE ask_counters SET count = count + ? WHERE day = ? AND key = 'spend' AND count < ? RETURNING count`.
+    No row back is `daily_cap`.
+  - **Settle after the call.** The call asks for its cost (`usage: {"include":
+    true}`), and OpenRouter reports it in US dollars as `usage.cost` in the
+    stream's last chunk. When the call ends, the function replaces the
+    reservation with that cost:
+    `UPDATE ask_counters SET count = count - ? + ? WHERE day = ? AND key = 'spend'`
+    (`call_max`, then the reported cost in micro-dollars), on the reservation's
+    own day.
+  - **No reported cost counts at the maximum.** A call that fails, is
+    cancelled, times out or ends with no valid `usage.cost` (a number from 0)
+    keeps its whole reservation. So does a call whose settling write fails.
+- **The call-count cap, a second guard.** `ASK_A_WIZ_DAILY_CAP` is the most
+  model calls a UTC day may make (1 to 100000). The function checks it first,
+  with the same conditional update on the `cap` counter, then reserves the
+  dollars.
+- **Both fail closed.** An unset or invalid value counts as `0`, so every
+  question that reaches step 6 is `daily_cap`. Nothing is given back: a count
+  or reservation made for a question that is then refused stays spent.
+- **One UTC day per row; a reservation never crosses midnight.** Every
+  counter row belongs to one UTC day. The function reserves (count, then
+  dollars) at step 6, then reads the clock again just before the call. If
+  the UTC day has changed, it reserves again on the new day (both counters,
+  the same conditional updates); if either fails, the question is
+  `daily_cap` with `Retry-After` to the new day's end, and nothing is sent. A
+  call is settled only on the row of the day it was sent; if that day's rows
+  are already gone, the settling write changes nothing.
 - **Every attempt counts, and there are no retries.** The function makes at
-  most one upstream attempt per question, and that attempt has already been
-  counted. A call that fails, times out or has an unknown outcome stays
-  counted.
-- **Counting is atomic.** Each count is one conditional statement that adds
-  one only below its limit:
-  `UPDATE ask_counters SET count = count + 1 WHERE day = ? AND key = ? AND count < ? RETURNING count`
-  (after inserting the row at `0` if it is missing). No row back means the
-  limit is reached: the question is refused, and nothing is added.
-- **What a day can spend:** the cap counts calls, and every call is bounded
-  (next section), so a day can never spend more than the cap times one call's
-  maximum cost.
+  most one upstream attempt per question, and that attempt has been counted
+  and reserved before it is sent.
+- **Counting is atomic.** Each count and reservation is one conditional
+  statement that adds only below its limit (after inserting the row at `0` if
+  it is missing). No row back means the limit is reached: the question is
+  refused, and nothing is added.
 
 ## The model call, bounded
 
@@ -309,10 +341,11 @@ operation can fail after a call is sent.
 `model` from `ASK_A_WIZ_MODEL`; `stream: true`; `max_tokens: 500`;
 `temperature: 0`; `provider: {"max_price": {"prompt": P, "completion": C},
 "require_parameters": true}`, with `P` and `C` the two maximum price settings
-as numbers; and `messages`: one `system` message whose content is the pin's
+as numbers; `usage: {"include": true}`, so the stream reports the call's
+cost; and `messages`: one `system` message whose content is the pin's
 `prompt.system`, then one `user` message. No `models` list and no fallback
-model. `max_price` keeps OpenRouter from routing to any provider dearer than
-the prices the formula uses, and `require_parameters` routes only to
+model. `max_price` is the request's price ceiling: OpenRouter routes it to no
+provider dearer than `P` and `C`, so no call can cost more than `call_max`, and `require_parameters` routes only to
 providers that honour `max_tokens`. Tests use a fake OpenRouter only; no test
 or fixture calls the real one.
 
@@ -345,20 +378,24 @@ that ignores `max_tokens`), the function passes on only the pieces that fit
 whole, cancels the upstream call and ends with `upstream_error`: status `200`
 after some text, or `502` if not even the first piece fits.
 
-**The worst-case spend.** With `P` and `C` the two maximum price settings,
-in US dollars per million tokens:
+**The worst-case spend.** The dollar cap is checked before each call against
+the day's actual reported spend plus the reservations of calls still
+running, and each call can cost at most `call_max`. So a day spends at most
+the cap plus one bounded call, and never more than the call-count guard
+allows:
 
 ```text
-one call = (14096 * P + 500 * C) / 1000000
-one day  = ASK_A_WIZ_DAILY_CAP * one call
+call_max = ceil(round(14096 * P + 500 * C, 3)) micro-dollars
+one day <= min(ASK_A_WIZ_DAILY_CAP_USD + call_max, ASK_A_WIZ_DAILY_CAP * call_max)
 ```
 
-For example, with `P` = `0.10` and `C` = `0.40` (synthetic prices), one call
-costs at most $0.0016096, and a cap of 200 spends at most $0.32192 a day.
-FA5 shows Jake this figure for the cap and prices he sets, with the prices
-at or above the chosen model's listed prices so a route exists. The bound
-holds only for a model billed for no output beyond `max_tokens`: FA5 picks a
-model without separately billed reasoning tokens.
+For example, with `P` = `0.10` and `C` = `0.40` (synthetic prices),
+`call_max` is 1610 micro-dollars ($0.00161); a dollar cap of `1.00` and a
+call cap of 200 give at most min($1.00161, $0.322) = $0.322 a day. FA5 shows
+Jake this figure for the caps and prices he sets, with the prices at or above
+the chosen model's listed prices so a route exists. `call_max` holds only for
+a model billed for no output beyond `max_tokens`: FA5 picks a model without
+separately billed reasoning tokens.
 
 ## The docs index
 
@@ -390,8 +427,10 @@ database, in two tables the function creates if they are missing. `day` is
 the UTC date, `YYYY-MM-DD`.
 
 - `ask_counters (day TEXT, key TEXT, count INTEGER, PRIMARY KEY (day, key))`,
-  where `key` is `cap` (the day's model calls) or `visitor:<hash>:<hour>` (one
-  visitor's questions in that UTC hour, `00` to `23`).
+  where `key` is `cap` (the day's model calls), `spend` (the day's spend in
+  micro-dollars, reported costs plus open reservations) or
+  `visitor:<hash>:<hour>` (one visitor's questions in that UTC hour, `00` to
+  `23`).
 - `ask_salts (day TEXT PRIMARY KEY, salt TEXT NOT NULL)`: one salt per day,
   32 random bytes as 64 lower-case hex digits.
 
@@ -429,7 +468,7 @@ some synthetic questions). Each case is a JSON object:
 | `rival_salt` | Optional: a salt a concurrent first request stored before this one's insert |
 | `dispatch_at` | Optional: the clock just before the model call, when it differs from `now` |
 | `store_fails` | Optional, `true`: every store operation fails |
-| `upstream` | The fake OpenRouter: `null` (never called), or `{"request", "chunks"}`: `request` is the exact JSON body the function must send, `chunks` the content pieces it streams back; with `"fails": true` it errors after `after_chunks` pieces |
+| `upstream` | The fake OpenRouter: `null` (never called), or `{"request", "chunks"}`: `request` is the exact JSON body the function must send, `chunks` the content pieces it streams back, and `cost` the `usage.cost` in US dollars its last chunk reports (left out when it reports none); with `"fails": true` it errors after `after_chunks` pieces |
 | `response` | `{"status", "headers", "body"}`; `body` is the exact response body string (the NDJSON lines), or `null` |
 
 `test_fixtures.py` checks every case: the shape of each event and stream,
