@@ -1,10 +1,10 @@
 //! The plan links contract, v1 (#1315, U1 of spec #1313): every fixture in
-//! `skills/plan-graph/test/links/` validates against
+//! `skills/to-tickets/test/links/` validates against
 //! `contracts/plan-links.v1.schema.json`, has its expected checker report and
 //! board numbers beside it, and each expectation agrees with its graph read
 //! by the contract's cross-record rules and definitions. Planted invalid
 //! fixtures are refused. U4 (#1318): the link checker,
-//! `skills/plan-graph/check-links.sh`, gives each fixture's expected reports
+//! `skills/to-tickets/check-links.sh`, gives each fixture's expected reports
 //! exactly, refuses each planted reason line, refuses a bad graph read, and
 //! reads a spec through a fake `gh`, refusing a failed or partial read.
 
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
-const FIXTURES: &str = "skills/plan-graph/test/links";
+const FIXTURES: &str = "skills/to-tickets/test/links";
 const CASE_FILES: [&str; 5] = [
     "board.json",
     "graph.json",
@@ -231,7 +231,7 @@ fn plan_links_planted_invalid_fixtures_are_refused() {
 
 // The link checker (U4, #1318).
 
-const CHECKER: &str = "skills/plan-graph/check-links.sh";
+const CHECKER: &str = "skills/to-tickets/check-links.sh";
 
 /// A fresh, empty folder for one test, outside every other test's.
 fn scratch(name: &str) -> PathBuf {

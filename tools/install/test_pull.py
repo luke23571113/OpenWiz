@@ -120,6 +120,66 @@ class Pull(unittest.TestCase):
         code, value = status()
         self.assertEqual((code, value.get('source'), value.get('version')), (0, '2' * 40, '0.0.99'), value)
 
+    def test_pre_0_2_0_skill_layout_selected_build_reports_status_and_upgrades(self):
+        # catches: the 0.2.0 skill list (to-tickets) applied to the already-installed
+        # manifest, so status refuses a working plan-graph install and the update never stages.
+        spec = importlib.util.spec_from_file_location('pull', Path(__file__).with_name('pull.py'))
+        pull = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pull)
+        f = fixture.Install()
+        f.setUp()
+        self.addCleanup(f.doCleanups)
+        target, old = fixture.TARGETS[2], 'b' * 40
+        # The pre-0.2.0 skill layout: plan-graph where 0.2.0 has to-tickets.
+        identity = f'openwiz.package.v1\n0.0.98\n{old}\n{target}\n'.encode()
+        files = {path: b'Synthetic runtime\n' for path in fixture.REQUIRED if path != 'runtime/skills/to-tickets/SKILL.md'}
+        files['runtime/skills/plan-graph/SKILL.md'] = b'Synthetic runtime\n'
+        files['openwiz'] = b'#!/bin/sh\nexit 0\n'
+        files['runtime/openwiz-build.txt'] = identity
+        mode = lambda path: '0700' if path == 'openwiz' or path.endswith('.sh') else '0600'
+        raw = json.dumps({'schema': 'openwiz.install.v1', 'version': '0.0.98', 'source': old,
+                          'target': target, 'setup_api': 1, 'archive': 'bundle.tar.gz',
+                          'archive_sha256': '0' * 64, 'archive_bytes': 1,
+                          'assets': [{'path': path, 'sha256': fixture.sha(data), 'bytes': len(data),
+                                      'mode': mode(path)} for path, data in sorted(files.items())]}).encode()
+        build = f.root / 'state/service/builds' / old
+        for folder in (f.root, f.root / 'state', f.root / 'state/service', build.parent, build):
+            folder.mkdir(mode=0o700)
+            folder.chmod(0o700)
+        for path, data in {**files, 'install-manifest.json': raw}.items():
+            for folder in reversed((build / path).relative_to(build).parents[:-1]):
+                (build / folder).mkdir(mode=0o700, exist_ok=True)
+                (build / folder).chmod(0o700)
+            (build / path).write_bytes(data)
+            (build / path).chmod(int(mode(path), 8))
+        (f.root / 'channel.json').write_bytes(b'{"schema":"openwiz.update-channel.v1","channel":"packaged"}\n')
+        (f.root / 'channel.json').chmod(0o600)
+        (f.root / 'current').symlink_to(build)
+
+        def status():
+            result = subprocess.run([sys.executable, str(HERE / 'install'), 'status', '--root', str(f.root)],
+                                    capture_output=True, text=True)
+            return result.returncode, json.loads(result.stdout)
+        code, value = status()
+        self.assertEqual((code, value.get('source'), value.get('version')), (0, old, '0.0.98'), value)
+
+        # A new candidate in the old layout stays refused: the old layout is only for the selected build.
+        old_raw = raw.replace(old.encode(), b'3' * 40).replace(b'0.0.98', b'0.0.99')
+        with self.assertRaisesRegex(pull.Refused, 'incomplete program or skill runtime'):
+            pull.stage(target, '0.0.99', '3' * 40, fixture.sha(old_raw), f.root, f.root / 'state',
+                       fetch=lambda url, limit: old_raw)
+
+        # The supported upgrade across the boundary: stage the 0.2.0-layout package beside
+        # the selected old build, then switch to it with the installer.
+        new = f.bundle(source='2' * 40)
+        new_raw, archive = new[0].read_bytes(), new[1].read_bytes()
+        staged = pull.stage(target, '0.0.99', '2' * 40, fixture.sha(new_raw), f.root, f.root / 'state',
+                            fetch=lambda url, limit: archive if url.endswith('.tar.gz') else new_raw)
+        self.assertEqual(((f.root / 'current').readlink(), staged['activated']), (build, False))
+        f.run_install(new)
+        code, value = status()
+        self.assertEqual((code, value.get('source'), value.get('version')), (0, '2' * 40, '0.0.99'), value)
+
 
 if __name__ == '__main__':
     unittest.main()

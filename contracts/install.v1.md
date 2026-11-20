@@ -28,7 +28,7 @@ update's version check), a complete pre-AP11 layout, with the `openwiz-service`
 and `openwiz-server` programs, web/ and its stamp, is also read.
 Every asset is hash-checked before activation, including repeated
 installs. The manifest lists every file (not directory globs). Runtime includes
-setup, grill, plan-graph and launch-fleet skills and their script resources.
+setup, grill, to-tickets and launch-fleet skills and their script resources.
 When the source commit tracks them, runtime also carries each launch host
 driver (`boat`, `cloudroom`, `local`) as `runtime/adapters/<host>/driver` and
 `runtime/adapters/<host>/schema.json`, and the driver kit as

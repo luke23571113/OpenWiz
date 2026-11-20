@@ -69,7 +69,8 @@ class InstalledFirstHour(unittest.TestCase):
         a = self.attempt
         doc = a.result
         choices = json.loads(a.j.state.read_text())['choices']
-        self.assertEqual(choices, {'harness': 'codex', 'model': 'syn-codex-model-01', 'effort': 'high', 'agents': 'cloud'})
+        self.assertEqual(choices, {'harness': 'codex', 'model': 'syn-codex-model-01', 'effort': 'high', 'agents': 'cloud',
+                                   'builder_tables': 'read'})
         self.assertEqual({k: doc['builder'][k] for k in ('harness', 'model', 'effort', 'location', 'usable')},
                          {'harness': 'codex', 'model': 'syn-codex-model-01', 'effort': 'high', 'location': 'cloud', 'usable': 'verified'})
         self.assertEqual({k: doc['reviewer'][k] for k in ('harness', 'usable')}, {'harness': 'claude_code', 'usable': 'verified'})
