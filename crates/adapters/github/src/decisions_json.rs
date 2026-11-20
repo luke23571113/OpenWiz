@@ -1,4 +1,3 @@
-//! Strict JSON: duplicate keys are refused before a Value can replace them.
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};

@@ -1,26 +1,3 @@
-//! Runs one allowlisted `gh` call under a deadline (OpenWiz 0.0.6, A3,
-//! ClosedWiz#111), shaped like the CloudRoom adapter's runner.
-//!
-//! Standard library only: a child process, two reader threads and polling.
-//! A call is stopped at the earlier of the run's deadline and
-//! [`READ_TIMEOUT`]; a stopped child is killed and reaped. Nothing is
-//! retried.
-//!
-//! **Only an [`Invocation`] runs**, with exactly its arguments, and only an
-//! argument list that some module's part of the allowlist allows builds
-//! one. While every part is empty (A3), nothing can run.
-//!
-//! **Its stdin is closed**, so `gh` can never wait for input. **Its
-//! environment passes through unchanged**: `gh` finds its login there.
-//!
-//! **None of `gh`'s error text is shown.** A1 saw no `gh` error line (every
-//! read exited 0), so no safe grammar is known: a failed call is reported
-//! only by its exit code and, when its first non-empty stderr line has one
-//! as a word of its own, its HTTP status ([`diagnostic`]).
-//!
-//! Only the child itself is killed. A process it started that keeps the
-//! pipes open is not; the call then times out without waiting longer.
-
 use std::io::Read as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -33,8 +10,6 @@ use openwiz_core::source::SourceError;
 
 use crate::allowlist::Invocation;
 
-/// One explicit execution source, shared by nested reads and confirmed writes.
-/// A supplied executor is authoritative: errors never fall back to a login.
 pub type Execute = dyn Fn(&Invocation, Instant) -> Result<Vec<u8>, SourceError> + Send + Sync;
 
 #[derive(Clone)]
@@ -56,8 +31,6 @@ impl Executor {
     pub fn program(program: impl Into<std::path::PathBuf>) -> Self {
         Self(Execution::Program(program.into(), READ_TIMEOUT))
     }
-    /// A synthetic program with a per-read cap, never above READ_TIMEOUT.
-    /// Production executors keep the default cap and read no fixture settings.
     pub fn program_for_fixtures(
         program: impl Into<std::path::PathBuf>,
         read_timeout: Duration,
@@ -91,35 +64,24 @@ impl Executor {
     }
 }
 
-/// The most stdout a call may print. A1's largest answer was 361 KB (REST
-/// `compare`). Provisional, as the CloudRoom adapter's.
 pub const MAX_STDOUT_BYTES: usize = 32 * 1024 * 1024;
 
-/// The most stderr kept from a call; only its first line is used, through
-/// [`diagnostic`].
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 
-/// How long the output of a child that has exited may still be collected
-/// after the deadline.
 const DRAIN_GRACE: Duration = Duration::from_millis(100);
 
-/// How often a running call is checked.
 const POLL: Duration = Duration::from_millis(5);
 
-/// Runs `program` with exactly `invocation.argv()` and returns its stdout.
 pub fn run(program: &Path, call: &Invocation, deadline: Instant) -> Result<Vec<u8>, SourceError> {
     run_inner(program, call, deadline, false, READ_TIMEOUT)?.ordinary()
 }
 
-/// A bounded GraphQL response with the command failure kept separately.
-/// The plan reader must validate these bytes and retain any failure as a gap.
 #[derive(Debug)]
 pub(crate) struct PlanGraphqlOutput {
     pub stdout: Vec<u8>,
     pub failure: Option<SourceError>,
 }
 
-/// Only the existing exact plan GraphQL queries may retain failed stdout.
 pub(crate) fn run_plan_graphql(
     program: &Path,
     call: &Invocation,
@@ -143,8 +105,6 @@ pub(crate) fn run_plan_graphql(
     })
 }
 
-/// The two checks reads also accept gh's exact no-checks diagnostic as
-/// an empty JSON list. No other invocation or failure gets this treatment.
 fn run_checks(
     program: &Path,
     call: &Invocation,
@@ -237,9 +197,6 @@ fn finish(
         }
     };
 
-    // The pipes close when the child exits, unless something it started
-    // still holds them; the deadline, plus a short grace for a child that
-    // exited just before it, bounds that wait too.
     let drain_until = stop_at.max(Instant::now() + DRAIN_GRACE);
     let left = drain_until.saturating_duration_since(Instant::now());
     let (out, out_complete) = stdout.recv_timeout(left).map_err(|_| timed_out())?;
@@ -282,6 +239,7 @@ fn finish(
     })
 }
 
+// comment-ok: P8a (tests/proof/p08a_allowlist_static.rs) reads the next line as the App runner's start
 // T7 App runner. The personal runner above retains its original spawn chain.
 pub(crate) fn run_app(
     program: &Path,
@@ -318,7 +276,6 @@ pub(crate) fn run_app(
     finish(child, started, stop_at, checks, program)?.ordinary()
 }
 
-/// Bounded capture for T7's fixed signing and token-exchange children.
 pub(crate) fn app_output(
     mut child: Child,
     input: Vec<u8>,
@@ -341,10 +298,9 @@ pub(crate) fn app_output(
         }),
     }
 }
+// comment-ok: P8a (tests/proof/p08a_allowlist_static.rs) reads the next line as the App runner's end
 // End T7 App runner.
 
-/// The complete, single-line gh 2.100.0 diagnostic, with a plain ASCII
-/// branch under the fleet adapter's existing branch grammar. Never trim.
 fn no_checks(stderr: &[u8]) -> bool {
     std::str::from_utf8(stderr)
         .ok()
@@ -353,10 +309,6 @@ fn no_checks(stderr: &[u8]) -> bool {
         .is_some_and(crate::fleets::is_branch)
 }
 
-/// What a failed call shows: `gh error: HTTP <status> (detail withheld)`
-/// when its first non-empty stderr line has an HTTP status as a word of its
-/// own, otherwise `gh error (detail withheld)`, or `no error output`.
-/// Nothing else of `gh`'s text, so no path, URL, token or terminal control.
 fn diagnostic(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
     let Some(line) = text.lines().map(str::trim).find(|l| !l.is_empty()) else {
@@ -368,7 +320,6 @@ fn diagnostic(stderr: &[u8]) -> String {
     }
 }
 
-/// The first `HTTP <code>` in `line` that is a word of its own.
 fn http_status(line: &str) -> Option<&str> {
     let bytes = line.as_bytes();
     line.match_indices("HTTP ").find_map(|(i, _)| {
@@ -379,13 +330,11 @@ fn http_status(line: &str) -> Option<&str> {
     })
 }
 
-/// Three ASCII digits from 100 to 599.
 fn is_status(code: &str) -> bool {
     let b = code.as_bytes();
     b.len() == 3 && (b'1'..=b'5').contains(&b[0]) && b[1..].iter().all(u8::is_ascii_digit)
 }
 
-/// Reads a pipe to its end, or to `limit + 1` bytes, on its own thread.
 fn collect(
     pipe: Option<impl std::io::Read + Send + 'static>,
     limit: usize,
@@ -400,7 +349,6 @@ fn collect(
     rx
 }
 
-/// Kills the child and reaps it, so no process is left behind.
 fn stop(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
@@ -416,7 +364,6 @@ mod tests {
 
     const SH: &str = "/bin/sh";
 
-    /// `sh -c <script> sh <args>`, run by the runner.
     fn sh(script: &str, args: &[&str], deadline: Instant) -> Result<Vec<u8>, SourceError> {
         let mut argv = vec!["-c", script, "sh"];
         argv.extend_from_slice(args);
@@ -427,7 +374,6 @@ mod tests {
         Instant::now() + Duration::from_secs(10)
     }
 
-    /// A private directory for one test.
     fn scratch(test: &str) -> PathBuf {
         let dir = std::env::temp_dir()
             .join(format!("openwiz-github-process-{}", std::process::id()))
@@ -548,8 +494,6 @@ mod tests {
     fn a_call_is_stopped_at_the_deadline_and_reaped() {
         let dir = scratch("deadline");
         let pid_file = dir.join("pid");
-        // Long enough that `sh` has written its pid first; the result is
-        // judged only by its kind, never by a measured time.
         let deadline = Instant::now() + Duration::from_secs(2);
         let script = "echo $$ > \"$1\"; exec sleep 30";
         let got = sh(script, &[pid_file.to_str().unwrap()], deadline);
@@ -595,9 +539,6 @@ mod tests {
     fn plan_program(name: &str, script: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let program = scratch(name).join("gh");
-        // A concurrent spawn can inherit this process's writable files until
-        // exec, even with CLOEXEC. Let a child own the writer and wait for its
-        // exit so no other test's fork can keep the script busy (ETXTBSY).
         assert_eq!(
             sh(
                 "umask 077; printf '#!/bin/sh\\n%s\\n' \"$2\" > \"$1\"",

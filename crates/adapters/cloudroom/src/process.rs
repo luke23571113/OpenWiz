@@ -1,19 +1,3 @@
-//! Runs one allowlisted `room-cli` read under a deadline.
-//!
-//! Standard library only: a child process, two reader threads and polling.
-//! A read is stopped at the earlier of the run's deadline and
-//! [`READ_TIMEOUT`]; a stopped child is killed and reaped. Nothing is retried.
-//!
-//! **The environment scrub** (sheet A-15): every call runs without the
-//! CloudRoom thread-context variables, [`is_scrubbed`], so a `room-cli`
-//! started from inside a CloudRoom thread can't act for that thread or
-//! rewrite the model asked for. `ROOM_SERVER_URL` is always kept. Everything
-//! else in the environment passes through unchanged.
-//!
-//! Only the child itself is killed. A process it started that keeps the
-//! pipes open is not; the read then times out without waiting longer.
-//! Whether `room-cli` starts such processes is unobserved (#4).
-
 use std::io::Read as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -27,22 +11,14 @@ use openwiz_core::source::SourceError;
 
 use crate::allowlist::Invocation;
 
-/// The most stdout a read may print. `thread list` printed about 1.2 MB for
-/// 763 sessions in capture C. Provisional.
 pub const MAX_STDOUT_BYTES: usize = 32 * 1024 * 1024;
 
-/// The most stderr kept from a read; only its first line is used, through
-/// [`diagnostic`].
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 
-/// How long the output of a child that has exited may still be collected
-/// after the deadline.
 const DRAIN_GRACE: Duration = Duration::from_millis(100);
 
-/// How often a running read is checked.
 const POLL: Duration = Duration::from_millis(5);
 
-/// Only synthetic fixture processes opt in; ordinary callers keep `POLL`.
 static FIXTURE_FAST_POLL: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn use_fast_polling_for_fixtures() {
@@ -57,32 +33,22 @@ fn poll_interval() -> Duration {
     }
 }
 
-/// The thread-context variables `room-cli` reads (spike run 3: its "Current
-/// context" names `ROOM_PROJECT_ID` and `ROOM_THREAD_ID`, and `spawn
-/// --parent-self` uses `ROOM_THREAD_ID`). Every `BB_*` name is removed too.
 pub const SCRUBBED_ENV: &[&str] = &["ROOM_THREAD_ID", "ROOM_PROJECT_ID"];
 
-/// The prefix of every other removed name.
 pub const SCRUBBED_ENV_PREFIX: &str = "BB_";
 
-/// The one CloudRoom variable that is never removed: where `room-cli`'s
-/// server is.
 pub const KEPT_ENV: &str = "ROOM_SERVER_URL";
 
-/// Whether the variable `name` is removed from every `room-cli` call.
 pub fn is_scrubbed(name: &str) -> bool {
     is_scrubbed_bytes(name.as_bytes())
 }
 
-/// [`is_scrubbed`] on the name's bytes, so a name that is not UTF-8 is
-/// judged by the same rule.
 fn is_scrubbed_bytes(name: &[u8]) -> bool {
     name != KEPT_ENV.as_bytes()
         && (SCRUBBED_ENV.iter().any(|n| n.as_bytes() == name)
             || name.starts_with(SCRUBBED_ENV_PREFIX.as_bytes()))
 }
 
-/// Removes the [`is_scrubbed`] variables from `command`'s environment.
 fn scrub(command: &mut Command) -> &mut Command {
     for (name, _) in std::env::vars_os() {
         if is_scrubbed_bytes(name.as_encoded_bytes()) {
@@ -92,18 +58,14 @@ fn scrub(command: &mut Command) -> &mut Command {
     command
 }
 
-/// How a call failed, before its stderr is judged.
 enum Failure {
-    /// It was stopped, could not run, or printed too much.
     Source(SourceError),
-    /// It exited non-zero, or without an exit code, with this stderr.
     Exited {
         exit_code: Option<i32>,
         stderr: Vec<u8>,
     },
 }
 
-/// Runs `program` with exactly `invocation.argv()` and returns its stdout.
 pub fn run(
     program: &Path,
     invocation: &Invocation,
@@ -112,8 +74,6 @@ pub fn run(
     run_with_read_timeout(program, invocation, deadline, read_timeout())
 }
 
-/// Per-source fixture injection: the cap is local and can only lower the
-/// ordinary timeout. The invocation's attachment allowance still applies.
 pub(crate) fn run_with_read_timeout(
     program: &Path,
     invocation: &Invocation,
@@ -131,11 +91,6 @@ pub(crate) fn run_with_read_timeout(
     )
 }
 
-/// A failed `thread spawn`: its exit code and the first non-empty line of
-/// its stderr, **raw**, so that the adapter can match it against the
-/// documented refusals (`Error: Failed to create thread: HTTP <status>:
-/// <message>`), which [`diagnostic`]'s safe grammar would withhold. Only
-/// `new_thread::spawn_error` reads the line, and nothing of it is passed on.
 pub(crate) enum SpawnFailure {
     Source(SourceError),
     Exited {
@@ -144,8 +99,6 @@ pub(crate) enum SpawnFailure {
     },
 }
 
-/// [`run`] for the one create: the same runner, scrub and deadline, with a
-/// failed call's raw first stderr line (see [`SpawnFailure`]).
 pub(crate) fn run_spawn(
     program: &Path,
     invocation: &Invocation,
@@ -165,10 +118,6 @@ pub(crate) fn run_spawn(
     })
 }
 
-/// A lower read timeout for this whole process, in milliseconds; 0 for
-/// none. Only the test-only fixture programs set it (#1259), through
-/// [`crate::source::lower_read_timeout_for_fixtures`]: the production
-/// binaries never do, so their reads keep [`READ_TIMEOUT`].
 static FIXTURE_READ_TIMEOUT_MS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn lower_read_timeout(timeout: Duration) {
@@ -178,12 +127,10 @@ pub(crate) fn lower_read_timeout(timeout: Duration) {
     FIXTURE_READ_TIMEOUT_MS.store(ms, Ordering::SeqCst);
 }
 
-/// This process's read timeout: [`READ_TIMEOUT`], or a fixture's lower one.
 fn read_timeout() -> Duration {
     read_timeout_with(FIXTURE_READ_TIMEOUT_MS.load(Ordering::SeqCst))
 }
 
-/// A fixture value can only lower [`READ_TIMEOUT`], never raise it.
 fn read_timeout_with(fixture_ms: u64) -> Duration {
     match fixture_ms {
         0 => READ_TIMEOUT,
@@ -202,7 +149,6 @@ fn execute_with_read_timeout(
     timeout: Duration,
 ) -> Result<Vec<u8>, Failure> {
     let started = Instant::now();
-    // A call carrying attachments gets their allowance on top (B2).
     let stop_at = deadline.min(started + timeout + invocation.allowance());
     if started >= stop_at {
         return Err(Failure::Source(SourceError::TimedOut { after_ms: 0 }));
@@ -233,10 +179,6 @@ fn execute_with_read_timeout(
         })
     };
 
-    // Only reads may be stopped as soon as their output is oversized.
-    // Writes keep waiting for exit/deadline: their effects may already have
-    // happened. `is_read` is exhaustive, so every new invocation is
-    // classified before it compiles.
     let refuse_oversized_early = invocation.is_read();
     let mut collected_stdout = None;
     let status = loop {
@@ -271,9 +213,6 @@ fn execute_with_read_timeout(
         }
     };
 
-    // The pipes close when the child exits, unless something it started
-    // still holds them; the deadline, plus a short grace for a child that
-    // exited just before it, bounds that wait too.
     let drain_until = stop_at.max(Instant::now() + DRAIN_GRACE);
     let left = drain_until.saturating_duration_since(Instant::now());
     let out = match collected_stdout {
@@ -297,25 +236,10 @@ fn execute_with_read_timeout(
     })
 }
 
-/// The longest reason phrase kept after `Error: HTTP <code>: `.
 const MAX_REASON_CHARS: usize = 60;
 
-/// The not-found line observed in capture C. A first line that is exactly
-/// this line is kept; one that only contains its `HTTP 404: Thread not
-/// found` is reported as this line and ` (detail withheld)`. So `thread
-/// show` and `thread output` (for `show` and `ls -l`) still find not-found by
-/// prefix, as before, while `send`'s target read and `thread tell` still
-/// match only the exact line, and nothing else of the line is shown.
 pub const NOT_FOUND_LINE: &str = "Error: HTTP 404: Thread not found";
 
-/// The line shown for a failed read: `room-cli`'s first non-empty stderr
-/// line, only if it is in the safe grammar, `Error: HTTP <code>` and
-/// optionally `: ` and a reason phrase of ASCII letters and single spaces.
-/// Otherwise only its status is kept, as `Error: HTTP <code> (detail
-/// withheld)`, or nothing of it. No digit beyond the status, punctuation,
-/// control or non-ASCII character from `room-cli` is shown, so no path,
-/// address, `KEY=value` or terminal control; a word of letters still can
-/// be. Provisional; see the source-diagnostics fix's evidence README.
 fn diagnostic(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
     let Some(line) = text.lines().map(str::trim).find(|l| !l.is_empty()) else {
@@ -350,7 +274,6 @@ fn is_safe(line: &str) -> bool {
             }))
 }
 
-/// The first `HTTP <code>` in `line` that is a word of its own.
 fn http_status(line: &str) -> Option<&str> {
     let bytes = line.as_bytes();
     line.match_indices("HTTP ").find_map(|(i, _)| {
@@ -361,13 +284,11 @@ fn http_status(line: &str) -> Option<&str> {
     })
 }
 
-/// Three ASCII digits from 100 to 599.
 fn is_status(code: &str) -> bool {
     let b = code.as_bytes();
     b.len() == 3 && (b'1'..=b'5').contains(&b[0]) && b[1..].iter().all(u8::is_ascii_digit)
 }
 
-/// Reads a pipe to its end, or to `limit + 1` bytes, on its own thread.
 fn collect(pipe: Option<impl std::io::Read + Send + 'static>, limit: usize) -> Receiver<Vec<u8>> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -380,7 +301,6 @@ fn collect(pipe: Option<impl std::io::Read + Send + 'static>, limit: usize) -> R
     rx
 }
 
-/// Kills the child and reaps it, so no process is left behind.
 fn stop(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
@@ -389,3 +309,25 @@ fn stop(child: &mut Child) {
 #[cfg(test)]
 #[path = "../../../../tests/support/cloudroom_process_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod scrub_tests {
+    use super::*;
+
+    #[test]
+    fn the_scrub_removes_thread_context_and_keeps_the_server_address() {
+        for name in ["ROOM_THREAD_ID", "ROOM_PROJECT_ID", "BB_THREAD_ID", "BB_"] {
+            assert!(is_scrubbed(name), "{name}");
+        }
+        for name in [
+            "ROOM_SERVER_URL",
+            "PATH",
+            "HOME",
+            "ROOM_THREAD",
+            "XBB_THREAD_ID",
+        ] {
+            assert!(!is_scrubbed(name), "{name}");
+        }
+        assert!(is_scrubbed_bytes(b"BB_\xff"));
+    }
+}
