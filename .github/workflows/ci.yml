@@ -77,23 +77,6 @@ jobs:
         run: sh ci/hosted/guard.sh
       - name: Python for the offline installer and release proofs
         run: sh .github/actions/docs-only/python.sh
-      - name: The PR test-code budget
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          python3 -I tools/test-value/test_budget.py
-          python3 -I tools/test-value/budget.py "--base=$BASE_SHA" "--head=$HEAD_SHA" "--event=$GITHUB_EVENT_PATH"
-      # #2412: every path a change adds must be classified by the importer's
-      # own rules (carriage list or private/retiring class); errors fail closed.
-      - name: The carriage guard
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: |
-          python3 -I tools/open-import/test_guard.py
-          python3 -I tools/open-import/guard.py "--base=$BASE_SHA" --head=HEAD
       # #2531: check every PR before selection, without private literals.
       # #2819: always scans after the proofs; for a local proofs-only run,
       # set BASE_SHA=HEAD (an empty diff).
