@@ -485,6 +485,9 @@ impl Parser<'_> {
 
     fn hex4(&mut self) -> Option<u32> {
         let hex = self.s.get(self.i..self.i + 4)?;
+        if !hex.iter().all(u8::is_ascii_hexdigit) {
+            return None;
+        }
         self.i += 4;
         u32::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()
     }
@@ -1039,75 +1042,16 @@ fn is_cron(cron: &str) -> bool {
             };
             *field == "*"
                 || field.split(',').all(|item| match item.split_once('/') {
-                    Some((b, step)) => {
-                        (b == "*" || base(b))
-                            && is_number(step)
-                            && step.parse::<u32>().is_ok_and(|n| n >= 1)
-                    }
+                    Some((b, step)) => (b == "*" || base(b)) && is_number(step) && step != "0",
                     None => base(item),
                 })
         })
 }
 
-/// `YYYY-MM-DDTHH:MM:SS[.f]` then `Z` or `±HH:MM`, a real date and time.
+/// An RFC 3339 time with seconds and an offset, using the same calendar,
+/// casing and leap-second rules as the adapter's instant comparison.
 fn is_rfc3339(at: &str) -> bool {
-    let b = at.as_bytes();
-    let num = |range: std::ops::Range<usize>| -> Option<u32> {
-        let s = at.get(range)?;
-        s.bytes()
-            .all(|c| c.is_ascii_digit())
-            .then(|| s.parse().ok())
-            .flatten()
-    };
-    let shape = b.len() >= 20
-        && b[4] == b'-'
-        && b[7] == b'-'
-        && b[10] == b'T'
-        && b[13] == b':'
-        && b[16] == b':';
-    if !shape {
-        return false;
-    }
-    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
-        num(0..4),
-        num(5..7),
-        num(8..10),
-        num(11..13),
-        num(14..16),
-        num(17..19),
-    ) else {
-        return false;
-    };
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => return false,
-    };
-    if !(1..=days).contains(&day) || hour > 23 || minute > 59 || second > 59 {
-        return false;
-    }
-    let mut rest = &at[19..];
-    if let Some(fraction) = rest.strip_prefix('.') {
-        let n = fraction.bytes().take_while(u8::is_ascii_digit).count();
-        if n == 0 {
-            return false;
-        }
-        rest = &fraction[n..];
-    }
-    if rest == "Z" {
-        return true;
-    }
-    let ob = rest.as_bytes();
-    ob.len() == 6
-        && (ob[0] == b'+' || ob[0] == b'-')
-        && ob[3] == b':'
-        && rest[1..3].bytes().all(|c| c.is_ascii_digit())
-        && rest[4..6].bytes().all(|c| c.is_ascii_digit())
-        && rest[1..3].parse::<u32>().is_ok_and(|h| h <= 23)
-        && rest[4..6].parse::<u32>().is_ok_and(|m| m <= 59)
+    instant(at).is_some()
 }
 
 fn agent(value: &Json, out: &mut Vec<Refusal>) {
@@ -1489,7 +1433,15 @@ fn cron_field(field: &str, min: u32, max: u32) -> Option<BTreeSet<u32>> {
     let mut values = BTreeSet::new();
     for item in field.split(',') {
         let (base, step) = match item.split_once('/') {
-            Some((base, step)) => (base, Some(cron_number(step, 1, u32::MAX)?)),
+            Some((base, step)) => {
+                if !is_number(step) || step == "0" {
+                    return None;
+                }
+                // A step larger than this field can only select the start.
+                // Clamp only for expansion, never for format validation.
+                let step = step.parse::<u32>().unwrap_or(max + 1).min(max + 1);
+                (base, Some(step))
+            }
             None => (item, None),
         };
         let (from, to) = if base == "*" {
@@ -2471,7 +2423,8 @@ pub struct ExportRefusal {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Param {
     Text(String),
-    Integer(i64),
+    /// A canonical decimal integer token, kept without a magnitude bound.
+    Integer(String),
 }
 
 impl Param {
@@ -2687,10 +2640,10 @@ pub fn read_script(script: &str) -> Option<(String, BTreeMap<String, Param>)> {
             let integer = digits == "0"
                 || (digits.starts_with(|c: char| ('1'..='9').contains(&c))
                     && digits.bytes().all(|b| b.is_ascii_digit()));
-            if !integer {
+            if !integer || value == "-0" {
                 return None;
             }
-            Param::Integer(value.parse().ok()?)
+            Param::Integer(value.to_owned())
         };
         params.insert(lower, value);
     }
@@ -2725,51 +2678,6 @@ fn valid_name(name: &str) -> bool {
     (1..=100).contains(&name.chars().count())
         && !name.chars().any(control)
         && name.chars().any(|c| !c.is_whitespace())
-}
-
-/// The format's `at`: an RFC 3339 time with seconds and an explicit offset.
-fn valid_at(at: &str) -> bool {
-    let b = at.as_bytes();
-    let digits = |r: std::ops::Range<usize>| {
-        b.get(r.clone())
-            .is_some_and(|s| s.iter().all(u8::is_ascii_digit))
-    };
-    let num = |r: std::ops::Range<usize>| at[r].parse::<u32>().unwrap_or(99);
-    if b.len() < 20
-        || !(digits(0..4)
-            && b[4] == b'-'
-            && digits(5..7)
-            && b[7] == b'-'
-            && digits(8..10)
-            && b[10] == b'T')
-        || !(digits(11..13) && b[13] == b':' && digits(14..16) && b[16] == b':' && digits(17..19))
-    {
-        return false;
-    }
-    if !((1..=12).contains(&num(5..7))
-        && (1..=31).contains(&num(8..10))
-        && num(11..13) <= 23
-        && num(14..16) <= 59
-        && num(17..19) <= 60)
-    {
-        return false;
-    }
-    let mut rest = &at[19..];
-    if let Some(fraction) = rest.strip_prefix('.') {
-        let len = fraction.bytes().take_while(u8::is_ascii_digit).count();
-        if len == 0 {
-            return false;
-        }
-        rest = &fraction[len..];
-    }
-    rest == "Z"
-        || (rest.len() == 6
-            && matches!(rest.as_bytes()[0], b'+' | b'-')
-            && rest.as_bytes()[3] == b':'
-            && rest[1..3].bytes().all(|b| b.is_ascii_digit())
-            && rest[4..6].bytes().all(|b| b.is_ascii_digit())
-            && rest[1..3].parse::<u32>().is_ok_and(|h| h <= 23)
-            && rest[4..6].parse::<u32>().is_ok_and(|m| m <= 59))
 }
 
 fn valid_secret(s: &str) -> bool {
@@ -2966,7 +2874,7 @@ fn export_one(
             ]))
         }
         (_, _, Some(at)) => {
-            if !valid_at(at) {
+            if !is_rfc3339(at) {
                 r.invalid("trigger.at", "bad-at");
             }
             Some(json_object(&[("at", string(at))]))
