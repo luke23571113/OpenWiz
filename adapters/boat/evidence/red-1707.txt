@@ -1,0 +1,46 @@
+# Red run (#1707): python3 -I adapters/boat/test_driver.py, the new failed-stop test against the driver at b1423db. PATH without a real harness.
+FF.../usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=5>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=6>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.....
+======================================================================
+FAIL: test_a_failed_stop_is_never_undone_by_a_wake (__main__.Boat.test_a_failed_stop_is_never_undone_by_a_wake) (block='staged-save')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 280, in test_a_failed_stop_is_never_undone_by_a_wake
+    self.assertEqual((code, len(self.logged()), self.sandboxes()), (1, turns, sandbox), 'a wake undid the stop')
+AssertionError: Tuples differ: (0, 2, {'bx_fake0001': 'running'}) != (1, 1, {'bx_fake0001': 'stopped'})
+
+First differing element 0:
+0
+1
+
+- (0, 2, {'bx_fake0001': 'running'})
++ (1, 1, {'bx_fake0001': 'stopped'}) : a wake undid the stop
+
+======================================================================
+FAIL: test_a_failed_stop_is_never_undone_by_a_wake (__main__.Boat.test_a_failed_stop_is_never_undone_by_a_wake) (block='read-only-folder')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 280, in test_a_failed_stop_is_never_undone_by_a_wake
+    self.assertEqual((code, len(self.logged()), self.sandboxes()), (1, turns, sandbox), 'a wake undid the stop')
+AssertionError: Tuples differ: (0, 4, {'bx_fake0001': 'running', 'bx_fake0002': 'running'}) != (1, 3, {'bx_fake0001': 'running', 'bx_fake0002': 'stopped'})
+
+First differing element 0:
+0
+1
+
+- (0, 4, {'bx_fake0001': 'running', 'bx_fake0002': 'running'})
+?  ^  ^                                             ^^^^^^^
+
++ (1, 3, {'bx_fake0001': 'running', 'bx_fake0002': 'stopped'})
+?  ^  ^                                             ^^^^^^^
+ : a wake undid the stop
+
+----------------------------------------------------------------------
+Ran 9 tests in 8.115s
+
+FAILED (failures=2)

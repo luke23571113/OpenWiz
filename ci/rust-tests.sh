@@ -25,78 +25,19 @@
 # `cargo test --workspace --locked` once instead, with 8 test threads (#1260),
 # and exits with its status.
 #
-# With `--alongside NAME COMMAND...` (#1251), it also runs COMMAND, from the
-# start to the end, beside the Rust tests (the rust job's skills' tests, so
-# the step lasts as long as the longer of the two, not their sum). Its output
-# goes to its own log, printed whole under `== rust-tests: NAME` once both
-# have finished, then a line saying whether it passed. Either failing fails
-# the step.
-#
-# With `--only IDS` (#432, K15), it runs only the tests the plan picked
-# (#1486: by path), by the CI selection record's ids, space-separated:
-# `rust:lib:<package>` runs `cargo test -p <package>` (every test of that
-# crate) and `rust:test:<target>` one openwiz-tests target. Every target at
-# once: one crates call for just the selected packages (none if none), and
-# one call per selected target. One command: one call for the packages and
-# one for the targets, one after the other. An id of another kind, an empty
-# list or a target cargo metadata doesn't list fails before any test runs.
-# Where every target may run at once, --only builds just the selected
-# packages and targets first, not the whole workspace: a shard of the Rust
-# lane (#1266, ci/shard/) builds only its own share.
-# Without --only, every test runs, as above.
-#
-# `--can-run-at-once` (#432) runs nothing: it applies the rule above (4 CPUs
-# by nproc, and limits that allow 4 CPUs and 6 GiB or set none) and exits 0
-# when every target may run at once, else prints why and exits 1. CI asks it
-# before tracing the tests, which runs them at once too.
-#
-# Run from the repository's root:
-#   sh ci/rust-tests.sh [--only IDS] [--alongside NAME COMMAND...]
-#   sh ci/rust-tests.sh --can-run-at-once
+# Run from the repository's root, as ci.yml's rust job does:
+#   sh ci/rust-tests.sh [--targets-only]
+# With --targets-only, only the openwiz-tests targets run (`cargo test -p
+# openwiz-tests`): ci.yml's lint job runs the other crates' tests, so they
+# never compete with the targets for the CPUs (#1777: a 3-second read in the
+# cloudroom adapter's tests timed out with every test at once on 4 CPUs).
 # By hand, `cargo test --workspace` runs the same tests (AGENTS.md).
 set -eu
-usage() { echo "usage: sh ci/rust-tests.sh [--only IDS] [--alongside NAME COMMAND...]" >&2; exit 2; }
-only= only_set= at_once_check=
-if [ "$#:${1:-}" = 1:--can-run-at-once ]; then
-  at_once_check=1
-  shift
-fi
-if [ "${1:-}" = --only ]; then
-  [ "$#" -ge 2 ] || usage
-  only="$2" only_set=1
-  shift 2
-fi
-# The selection: each id once, of a Rust kind, with a plain name; the
-# packages and the targets apart.
-sel_pkgs= sel_targets=
-if [ -n "$only_set" ]; then
-  [ -n "$only" ] || usage
-  case "$only" in *"  "* | " "* | *" " | *'
-'*) usage ;; esac
-  for id in $only; do
-    case "$id" in
-      rust:lib:?*) name="${id#rust:lib:}" ;;
-      rust:test:?*) name="${id#rust:test:}" ;;
-      *) usage ;;
-    esac
-    case "$name" in *[!A-Za-z0-9._-]*) usage ;; esac
-    case "$id" in
-      rust:lib:*) sel_pkgs="$sel_pkgs $name" ;;
-      *) sel_targets="$sel_targets $name" ;;
-    esac
-  done
-fi
-along_name=
+scope=--workspace
 case "$#:${1:-}" in
   0:) ;;
-  *:--alongside)
-    [ "$#" -ge 3 ] || usage
-    along_name="$2"
-    case "$along_name" in '' | *'
-'*) usage ;; esac
-    shift 2
-    ;;
-  *) usage ;;
+  1:--targets-only) scope="-p openwiz-tests" ;;
+  *) echo "usage: sh ci/rust-tests.sh [--targets-only]" >&2; exit 2 ;;
 esac
 # Tests only: a fake /sys/fs/cgroup and /proc/self/cgroup under this folder.
 root="${RUST_TESTS_ROOT:-}"
@@ -151,12 +92,6 @@ room() {
     limits || echo "the container's limits couldn't be read"
   fi
 }
-if [ -n "$at_once_check" ]; then
-  why="$(room)" || why="the room couldn't be read"
-  if [ -z "$why" ]; then echo "rust-tests: every target may run at once here"; exit 0; fi
-  echo "rust-tests: not every target at once here: $why"
-  exit 1
-fi
 out="$(mktemp -d)"
 sampler=
 cleanup() {
@@ -216,37 +151,9 @@ if [ "$rc" != 0 ]; then
 fi
 echo "rust-tests: the fixture release build took $(($(date +%s) - prebuild_began)) s"
 
-# The other suite (#1251), started now so it runs beside every Rust build
-# and test below, and counts in the peak memory.
-along=
-if [ -n "$along_name" ]; then
-  frame "rust-tests: $along_name, beside the Rust tests: $*"
-  (
-    s="$(date +%s)"
-    if "$@" > "$out/alongside.log" 2>&1; then echo 0; else echo "$?"; fi > "$out/alongside.rc"
-    echo $(($(date +%s) - s)) > "$out/alongside.took"
-  ) &
-  along=$!
-fi
-# finish RC: wait for the other suite, print its log whole under its label
-# and its line, then the peak memory, and exit: RC, or 1 if it failed.
+# finish RC: the peak memory line, then exit with RC.
 finish() {
   rc="$1"
-  if [ -n "$along" ]; then
-    wait "$along" || true
-    frame "== rust-tests: $along_name"
-    # A log that can't be read fails the step (R3 on #1291): it is not the
-    # whole log the step promises, whatever the suite's own status.
-    cat "$out/alongside.log" || { frame "rust-tests: $along_name: its log can't be read"; [ "$rc" != 0 ] || rc=1; }
-    status="$(cat "$out/alongside.rc" 2> /dev/null || true)"
-    frame "rust-tests: $along_name took $(cat "$out/alongside.took" 2> /dev/null || echo '?') s"
-    if [ "$status" = 0 ]; then
-      frame "rust-tests: $along_name: ok"
-    else
-      frame "rust-tests: $along_name: FAILED (exit ${status:-unknown})"
-      [ "$rc" != 0 ] || rc=1
-    fi
-  fi
   peak_line
   frame end
   exit "$rc"
@@ -264,7 +171,7 @@ peak_line() {
 # clippy, build, test and a release build) on a fresh clone of a synthetic
 # product, 40 to 112 s each on constrained runners, about 300 s of t6_update's 372
 # (private/evidence/ci-hotspot-t6-update/). Only a pull request to main skips
-# them, by exact name; every push to main, the nightly run, a merge group, a
+# them, by exact name; every push to main, a merge group, a
 # pull request to release-*, any other event and a run by hand run every
 # test. Every cargo test call gets the same skips, both ways (#1410); no
 # running test checks this list or its skips (#1152). A renamed one just runs
@@ -277,34 +184,14 @@ skip=
 if [ "${GITHUB_EVENT_NAME:-}" = pull_request ] && [ "${GITHUB_BASE_REF:-}" = main ]; then
   skip=--exact
   for t in $main_only; do skip="$skip --skip $t"; done
-  echo "rust-tests: a pull request to main: skipping the main-only proofs, which main pushes and the nightly run run:"
+  echo "rust-tests: a pull request to main: skipping the main-only proofs, which merge groups and main pushes run:"
   echo "$main_only" | sed 's/^/rust-tests:   /'
 fi
 why="$(room)" || why="the container's limits couldn't be read"
 cpus="$(nproc 2> /dev/null || true)"
-[ -z "$only_set" ] || echo "rust-tests: the selected tests only (#432): $only"
-if [ -n "$why" ] && [ -n "$only_set" ]; then
-  echo "rust-tests: one command each for the selected packages and targets: $why"
-  rc=0
-  began="$(date +%s)"
-  if [ -n "$sel_pkgs" ]; then
-    echo "== rust-tests: the selected packages:$sel_pkgs"
-    # shellcheck disable=SC2086 # the packages and the skip arguments, split
-    cargo test --locked $(for p in $sel_pkgs; do printf -- '-p %s ' "$p"; done) -- $skip || rc=$?
-  fi
-  if [ -n "$sel_targets" ]; then
-    echo "== rust-tests: the selected targets:$sel_targets"
-    t_rc=0
-    # shellcheck disable=SC2086 # the targets and the skip arguments, split
-    cargo test --locked -p openwiz-tests $(for t in $sel_targets; do printf -- '--test %s ' "$t"; done) -- $skip || t_rc=$?
-    [ "$rc" != 0 ] || rc="$t_rc"
-  fi
-  echo "rust-tests: the selected tests exited $rc after $(($(date +%s) - began)) s"
-  finish "$rc"
-fi
 if [ -n "$why" ]; then
   frame "rust-tests: one command, cargo test --workspace: $why"
-  frame "== rust-tests: cargo test --workspace"
+  frame "== rust-tests: cargo test $scope"
   rc=0
   began="$(date +%s)"
   # The test binaries still run one after another, but each with 8 test
@@ -313,30 +200,16 @@ if [ -n "$why" ]; then
   # finish about twice as fast; the at-once path below already gives each
   # target 8. The mode line above keeps its words (ci/escapes reads them).
   # shellcheck disable=SC2086 # the skip arguments, split
-  cargo test --workspace --locked -- --test-threads=8 $skip || rc=$?
-  frame "rust-tests: cargo test --workspace exited $rc after $(($(date +%s) - began)) s"
+  cargo test $scope --locked -- --test-threads=8 $skip || rc=$?
+  frame "rust-tests: cargo test $scope exited $rc after $(($(date +%s) - began)) s"
   finish "$rc"
 fi
 frame "rust-tests: every target at once: $cpus CPUs by nproc, and the container allows 4 CPUs and 6 GiB or more"
 threads=8
-# From here on a failure goes through finish (R1 on #1291), so the skills'
-# tests started above are still waited for and their log printed.
+# From here on a failure goes through finish (R1 on #1291).
 prep() { echo "rust-tests: $*" >&2; finish 1; }
-if [ -n "$only_set" ]; then
-  # A shard (#1266), or a selected run, builds only its own tests: the
-  # selected packages, then the selected targets, as the one-command path
-  # runs them.
-  if [ -n "$sel_pkgs" ]; then
-    # shellcheck disable=SC2046 # the packages, split
-    cargo test --locked $(for p in $sel_pkgs; do printf -- '-p %s ' "$p"; done) --no-run || prep "building the selected packages' tests failed"
-  fi
-  if [ -n "$sel_targets" ]; then
-    # shellcheck disable=SC2046 # the targets, split
-    cargo test --locked -p openwiz-tests $(for t in $sel_targets; do printf -- '--test %s ' "$t"; done) --no-run || prep "building the selected targets failed"
-  fi
-else
-  cargo test --workspace --no-run --locked || prep "building the tests failed"
-fi
+# shellcheck disable=SC2086 # the scope, split
+cargo test $scope --no-run --locked || prep "building the tests failed"
 cargo metadata --no-deps --format-version 1 --locked > "$out/metadata.json" || prep "cargo metadata failed"
 # openwiz-tests holds only integration tests; any other target of it that
 # tests would run is one this script doesn't know (fail closed).
@@ -349,13 +222,6 @@ for t in $targets; do
     crates | *[!a-z0-9-]*) prep "unexpected target name '$t'" ;;
   esac
 done
-# --only (#432): the selected targets, each one cargo lists.
-if [ -n "$only_set" ]; then
-  for t in $sel_targets; do
-    printf '%s\n' $targets | grep -qxF "$t" || prep "the selected target '$t' is not an openwiz-tests target"
-  done
-  targets="$sel_targets"
-fi
 
 # run NAME COMMAND...: in the background, its output to NAME.log and its exit
 # status to NAME.rc.
@@ -368,13 +234,9 @@ run() {
 }
 began="$(date +%s)"
 calls_run=
-if [ -z "$only_set" ]; then
+if [ "$scope" = --workspace ]; then
   # shellcheck disable=SC2086 # the skip arguments, split
   run crates cargo test --workspace --exclude openwiz-tests --locked -- --test-threads="$threads" $skip
-  calls_run=crates
-elif [ -n "$sel_pkgs" ]; then
-  # shellcheck disable=SC2046,SC2086 # the packages and the skip arguments, split
-  run crates cargo test --locked $(for p in $sel_pkgs; do printf -- '-p %s ' "$p"; done) -- --test-threads="$threads" $skip
   calls_run=crates
 fi
 for t in $targets; do

@@ -1,0 +1,59 @@
+# Red run (re-check of cc10882): python3 -I adapters/boat/test_driver.py; L2 with a failing boat info, #1707 with both stop writes failed, and a wake without its lock file, against cc10882. PATH without a real harness.
+FF..F./usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=5>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=6>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.....
+======================================================================
+FAIL: test_a_failed_stop_is_never_undone_by_a_wake (__main__.Boat.test_a_failed_stop_is_never_undone_by_a_wake) (block='both-writes')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 301, in test_a_failed_stop_is_never_undone_by_a_wake
+    self.assertEqual((code, len(self.logged()), self.sandboxes()), (1, turns, sandbox), 'a wake undid the stop')
+AssertionError: Tuples differ: (0, 4, {'bx_fake0001': 'stopped', 'bx_fake[39 chars]ng'}) != (1, 3, {'bx_fake0001': 'stopped', 'bx_fake[39 chars]ed'})
+
+First differing element 0:
+0
+1
+
+- (0,
+-  4,
++ (1,
++  3,
+-  {'bx_fake0001': 'stopped', 'bx_fake0002': 'stopped', 'bx_fake0003': 'running'})
+?                                                                       ^^^^^^^
+
++  {'bx_fake0001': 'stopped', 'bx_fake0002': 'stopped', 'bx_fake0003': 'stopped'})
+?                                                                       ^^^^^^^
+ : a wake undid the stop
+
+======================================================================
+FAIL: test_a_failed_stop_is_never_undone_by_a_wake (__main__.Boat.test_a_failed_stop_is_never_undone_by_a_wake)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 309, in test_a_failed_stop_is_never_undone_by_a_wake
+    self.assertEqual((self.driver('wake', out)[0], len(self.logged())), (1, turns), 'a wake ran without its lock')
+AssertionError: Tuples differ: (0, 6) != (1, 5)
+
+First differing element 0:
+0
+1
+
+- (0, 6)
++ (1, 5) : a wake ran without its lock
+
+======================================================================
+FAIL: test_an_unexpected_error_leaves_nothing_running (__main__.Boat.test_an_unexpected_error_leaves_nothing_running) (command='start', when='after', fails='info')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "adapters/boat/test_driver.py", line 321, in test_an_unexpected_error_leaves_nothing_running
+    self.assertEqual(set(self.sandboxes().values()), {'stopped'}, 'its sandbox still runs')
+AssertionError: Items in the first set but not the second:
+'running' : its sandbox still runs
+
+----------------------------------------------------------------------
+Ran 10 tests in 10.135s
+
+FAILED (failures=3)
