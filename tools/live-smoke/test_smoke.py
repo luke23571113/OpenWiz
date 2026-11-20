@@ -664,6 +664,50 @@ class Sheet(unittest.TestCase):
         self.run_sheet(code=3)
         self.assertEqual(len(self.driver_calls()), 3)
 
+    def test_a_reused_driver_folder_refuses_before_any_write_and_stops_nothing(self):
+        """catches (#1732 R6): a smoke bound to a driver folder that already holds
+        someone else's run, which journals its start, then lets teardown stop and
+        archive that other agent outside the approved throwaways."""
+        (self.root / 'state').mkdir()
+        other = {'thread': 'synthetic-other-thread', 'archived': False,
+                 'request': {'repository': 'example/other', 'ticket': 9, 'skill': 'synthetic-skill',
+                             'harness': 'claude', 'model': 'synthetic-model'}}
+        (self.root / 'state' / 'run-aaaaaaaaaaaa.json').write_text(json.dumps(other))
+        self.assertEqual(self.run_sheet(code=3)['reason'], 'command_failed')
+        self.assertEqual(self.driver_calls(), [])
+        self.assertFalse((self.root / 'room-calls').exists())
+        self.assertEqual(json.loads((self.root / 'state' / 'run-aaaaaaaaaaaa.json').read_text()), other)
+        events = [json.loads(line)['event']['kind'] for line in
+                  (self.root / 'checkpoint' / 'journal.jsonl').read_text().splitlines()]
+        self.assertNotIn('attempt', events)
+
+    def test_teardown_stops_only_the_runs_this_kit_started(self):
+        """catches (#1732 R6): a teardown that stops every run in the driver folder,
+        so a run another caller made there after the smoke's start is archived too."""
+        kit = self.bound()
+        # Another caller's run appears in the folder after this kit's start, and the wake then fails.
+        (self.root / 'no-delivery').write_text('')
+        ack = next(s for s in kit['steps'] if s['id'] == 'send_ack')
+        ack['argv'][-1] = '1'
+        other = {'thread': 'synthetic-other-thread', 'archived': False,
+                 'request': {'repository': 'example/other', 'ticket': 9, 'skill': 'synthetic-skill',
+                             'harness': 'claude', 'model': 'synthetic-model'}}
+        status = next(s for s in kit['steps'] if s['id'] == 'new_status')
+        late = self.root / 'state' / 'run-bbbbbbbbbbbb.json'
+        wake = next(s for s in kit['steps'] if s['id'] == 'send_once')
+        wake_index = kit['steps'].index(wake)
+        plant = {'id': 'plant', 'claim': 'send', 'kind': 'read', 'exit': 0,
+                 'argv': [status['argv'][0], '-I', '-c',
+                          'import json,sys;open(sys.argv[1],"w").write(sys.argv[2]);print(json.dumps({"ok":True}))',
+                          str(late), json.dumps(other)],
+                 'checks': [{'path': '/ok', 'equals': True}]}
+        kit['steps'].insert(wake_index, plant)
+        kit['release']['coverage'][1]['steps'].append('plant')
+        self.run_sheet(kit, code=1)
+        self.assertEqual([c[0] for c in self.driver_calls()], ['version', 'start', 'wake', 'stop'])
+        self.assertEqual(self.driver_calls()[3][1], {'run': 'run-0123456789ab'})
+        self.assertEqual(json.loads(late.read_text()), other)
+
     def test_driver_steps_call_only_driver_v1_commands_on_the_pinned_driver(self):
         """catches: a driver step naming a command the driver contract doesn't
         have, a driver write run outside the pinned `@driver`, a stop that isn't
