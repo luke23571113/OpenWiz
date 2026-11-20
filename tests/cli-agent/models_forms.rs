@@ -5,8 +5,14 @@
 use super::models::{FixedClock, Models};
 use super::{ROOT, schema};
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
+use openwiz_core::new_thread::effects::ProjectCandidate;
+use openwiz_core::new_thread::operation::{NewThreadClient, ObservedThread, SpawnRequest};
+use openwiz_core::new_thread::options::Catalogue;
+use openwiz_core::new_thread::outcome::SpawnReply;
+use openwiz_core::new_thread::start::ShownThread;
+use openwiz_core::{model::Timestamp, source::SourceError};
 use serde_json::{Value, json};
-use std::{fs, path::Path};
+use std::{fs, path::Path, process::Child, time::Instant};
 
 const FLEET: &str = "docs/agents/fleet.md";
 const SNAPSHOT: &str = "docs/agents/models-offered.json";
@@ -53,8 +59,18 @@ fn project(fleet: &str, answer: Value) -> Models {
 /// `openwiz models <args>` in this process, from the sandbox's root, with
 /// the fixed clock: the contract's `read_at`.
 fn run(fake: &Models, args: &[&str]) -> (i32, String, String) {
+    run_during(fake, args, || {})
+}
+
+/// [`run`], with `during` run inside its one `cloud status` read: what
+/// another writer does while a `set` waits on CloudRoom.
+fn run_during(
+    fake: &Models,
+    args: &[&str],
+    during: impl Fn() + Send + Sync,
+) -> (i32, String, String) {
     let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-    let source = CloudRoomSource::new(fake.0.0.join("bin/room-cli"));
+    let source = During(CloudRoomSource::new(fake.0.0.join("bin/room-cli")), during);
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let code = openwiz_cli::models::run_models_in(
         &args,
@@ -66,6 +82,43 @@ fn run(fake: &Models, args: &[&str]) -> (i32, String, String) {
     );
     let text = |b| String::from_utf8(b).unwrap();
     (code, text(out), text(err))
+}
+
+struct During<F>(CloudRoomSource, F);
+impl<F: Fn() + Send + Sync> NewThreadClient for During<F> {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+    fn tested_version(&self) -> &str {
+        self.0.tested_version()
+    }
+    fn cli_levels(&self) -> &[&str] {
+        self.0.cli_levels()
+    }
+    fn version(&self, d: Instant) -> Result<String, SourceError> {
+        self.0.version(d)
+    }
+    fn projects(&self, d: Instant) -> Result<Vec<ProjectCandidate>, SourceError> {
+        self.0.projects(d)
+    }
+    fn catalogue(&self, d: Instant) -> Result<Catalogue, SourceError> {
+        (self.1)();
+        self.0.catalogue(d)
+    }
+    fn spawn(&self, s: &SpawnRequest, d: Instant) -> SpawnReply {
+        self.0.spawn(s, d)
+    }
+    fn show_thread(&self, id: &str, d: Instant) -> Result<ShownThread, SourceError> {
+        self.0.show_thread(id, d)
+    }
+    fn threads_since(
+        &self,
+        p: &str,
+        t: Timestamp,
+        d: Instant,
+    ) -> Result<Vec<ObservedThread>, SourceError> {
+        self.0.threads_since(p, t, d)
+    }
 }
 
 /// The one JSON document a form printed, checked against its definition in
@@ -388,4 +441,172 @@ fn a_broken_models_table_is_refused_by_show_and_set_and_never_written() {
         assert_eq!(left, ["fleet.md"], "{to}: wrote another file");
         assert!(fake.invocations().is_empty(), "{to}");
     }
+}
+
+// catches (R1): a write that replaces or removes a file it didn't create
+// (one already at a staging path), or that follows a linked `docs/agents`
+// out of the checkout.
+#[test]
+fn writes_create_their_own_staging_file_and_stay_in_the_checkout() {
+    let fake = project("one-table/fleet.md", catalogue());
+    let agents = fake.0.0.join("docs/agents");
+    for name in [
+        "models-offered.json.openwiz-writing",
+        "fleet.md.openwiz-writing",
+    ] {
+        fs::write(agents.join(name), "synthetic bystander\n").unwrap();
+    }
+    let (code, _, err) = run(&fake, &["set", "reviewer", "codex", "gpt-6.2-sol", "high"]);
+    assert_eq!(code, 0, "{err}");
+    let mut left: Vec<_> = fs::read_dir(&agents)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    left.sort();
+    assert_eq!(
+        left,
+        [
+            "fleet.md",
+            "fleet.md.openwiz-writing",
+            "models-offered.json",
+            "models-offered.json.openwiz-writing"
+        ]
+    );
+    for name in [
+        "models-offered.json.openwiz-writing",
+        "fleet.md.openwiz-writing",
+    ] {
+        assert_eq!(
+            fs::read_to_string(agents.join(name)).unwrap(),
+            "synthetic bystander\n"
+        );
+    }
+    let outside = fake.0.0.join("outside");
+    fs::rename(&agents, &outside).unwrap();
+    std::os::unix::fs::symlink(&outside, &agents).unwrap();
+    let before = fs::read_to_string(outside.join("fleet.md")).unwrap();
+    for args in [
+        &["set", "fixer", "follows-builder"][..],
+        &["list", "--save"],
+    ] {
+        let (code, _, err) = run(&fake, args);
+        assert_eq!(code, 1, "{args:?}: {err}");
+    }
+    assert_eq!(
+        fs::read_to_string(outside.join("fleet.md")).unwrap(),
+        before
+    );
+}
+
+// catches (R2): a `set` that replaces fleet.md over an edit made while it
+// waited on CloudRoom, or two setters where the later one reverts the other.
+#[test]
+fn set_never_loses_an_edit_made_while_it_reads_cloudroom() {
+    let fake = project("one-table/fleet.md", catalogue());
+    let fleet = fake.0.0.join(FLEET);
+    let edited = format!(
+        "{}\nA synthetic edit made meanwhile.\n",
+        fixture("one-table/fleet.md")
+    );
+    let (code, out, err) = run_during(
+        &fake,
+        &["set", "orchestrator", "codex", "gpt-6.2-sol", "high"],
+        || fs::write(&fleet, &edited).unwrap(),
+    );
+    assert_eq!((code, out.as_str()), (1, ""), "{err}");
+    assert_eq!(fs::read_to_string(&fleet).unwrap(), edited);
+    assert!(!fake.0.0.join(SNAPSHOT).exists(), "wrote a snapshot");
+    let other = std::sync::Mutex::new(None::<Child>);
+    let (code, _, err) = run_during(
+        &fake,
+        &["set", "orchestrator", "codex", "gpt-6.2-sol", "high"],
+        || {
+            let mut child = fake.spawn(&["models", "set", "fixer", "follows-builder"]);
+            // Long enough for an unserialized setter to finish; a serialized
+            // one waits for this `set` whatever the time.
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = child.try_wait();
+            *other.lock().unwrap() = Some(child);
+        },
+    );
+    assert_eq!(code, 0, "{err}");
+    let status = other.lock().unwrap().take().unwrap().wait().unwrap();
+    assert!(status.success());
+    let (_, out, _) = run(&fake, &["show", "--json"]);
+    let show: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        show["roles"]["orchestrator"]["choice"]["effort"], "high",
+        "{show}"
+    );
+    assert_eq!(show["roles"]["fixer"]["follows"], "builder", "{show}");
+}
+
+// catches (R3): older tables with a surplus or duplicate row, a second table
+// or two Fixer rows of one family read, or migrated by `set`, as if whole.
+#[test]
+fn older_tables_with_surplus_rows_are_refused() {
+    let five = fixture("five-tables/fleet.md");
+    let effort = "| Effort | Medium | `--reasoning-level medium` |\n";
+    let claude = "| Claude | Claude Code | Opus 5.5 | Medium | `--provider claude-code --model claude-opus-5-5 --reasoning-level medium` |\n";
+    for (from, to) in [
+        (effort.to_owned(), format!("{effort}{effort}")),
+        (claude.to_owned(), format!("{claude}{claude}")),
+        (
+            "## Builder for small tickets\n".to_owned(),
+            format!("{effort}\n| a | b | c |\n\n## Builder for small tickets\n"),
+        ),
+    ] {
+        assert!(five.contains(&from), "{from}");
+        let fake = project("five-tables/fleet.md", catalogue());
+        let broken = five.replacen(&from, &to, 1);
+        fs::write(fake.0.0.join(FLEET), &broken).unwrap();
+        for args in [&["show"][..], &["set", "fixer", "follows-builder"]] {
+            assert_eq!(run(&fake, args).0, 1, "{to}: {args:?}");
+        }
+        assert_eq!(fs::read_to_string(fake.0.0.join(FLEET)).unwrap(), broken);
+    }
+}
+
+// catches (R4): an older row written with an id today's older readers
+// refuse (an upper-case model id), instead of kept and named, which stops
+// every fleet still reading the older tables.
+#[test]
+fn an_id_the_older_readers_refuse_stays_in_the_models_table_only() {
+    let mut offer = catalogue();
+    let demo = json!({"model": "Demo.Model", "reasoning_levels": ["medium"]});
+    offer["harnesses"][0]["models"]
+        .as_array_mut()
+        .unwrap()
+        .push(demo);
+    let fake = project("five-tables/fleet.md", offer);
+    let (code, out, _) = run(
+        &fake,
+        &[
+            "set",
+            "builder",
+            "claude-code",
+            "Demo.Model",
+            "medium",
+            "--json",
+        ],
+    );
+    let got = report(&out, "set_report");
+    assert_eq!(
+        (code, &got["after"]["choice"]["model"]),
+        (0, &json!("Demo.Model"))
+    );
+    assert_eq!(
+        got["older_tables"][0],
+        json!({"table": "Builder", "outcome": "kept"})
+    );
+    let written = fs::read_to_string(fake.0.0.join(FLEET)).unwrap();
+    assert!(!written.contains("`--model Demo.Model`"), "{written}");
+    assert!(
+        got["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w["table"] == "Builder"),
+        "{got}"
+    );
 }

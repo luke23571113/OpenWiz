@@ -78,7 +78,25 @@ impl Models {
         Self::new(json!({"stdout_file": status_file(name)}))
     }
     pub(super) fn run(&self, args: &[&str]) -> (i32, String, String) {
-        let out = Command::new(fixture_cli())
+        let out = self.command(args).output().unwrap();
+        (
+            out.status.code().expect("exited"),
+            String::from_utf8(out.stdout).unwrap(),
+            String::from_utf8(out.stderr).unwrap(),
+        )
+    }
+    /// The `openwiz <args>` process, started; its output discarded.
+    pub(super) fn spawn(&self, args: &[&str]) -> std::process::Child {
+        let null = Stdio::null;
+        self.command(args)
+            .stdout(null())
+            .stderr(null())
+            .spawn()
+            .unwrap()
+    }
+    fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(fixture_cli());
+        command
             .args(args)
             .env_clear()
             .env(
@@ -93,14 +111,8 @@ impl Models {
             .env("OPENWIZ_STATE_DIR", self.0.0.join("state"))
             .env("OPENWIZ_FIXTURE_PROGRAM", self.0.0.join("bin/room-cli"))
             .current_dir(&self.0.0)
-            .stdin(Stdio::null())
-            .output()
-            .unwrap();
-        (
-            out.status.code().expect("exited"),
-            String::from_utf8(out.stdout).unwrap(),
-            String::from_utf8(out.stderr).unwrap(),
-        )
+            .stdin(Stdio::null());
+        command
     }
     /// `openwiz models <args>` (the words after `models`) in this process, through the production
     /// `run_models` and the real CloudRoom source, with the fixed clock.
