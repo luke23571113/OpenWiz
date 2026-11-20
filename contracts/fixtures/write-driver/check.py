@@ -203,7 +203,7 @@ def reuse(b):
         problems.append('words: not four of the driver contract\'s commands')
     table = driver.split('## 3. The kit\'s five checks', 1)[-1]
     kit_rows = re.findall(r'^\| ([a-z]+) \|', table, re.M)
-    order = re.search(r'in the order ([a-z, ]+)\.', KIT.read_text(encoding='utf-8'))
+    order = re.search(r'in the order ([a-z, ]+)[.:]', KIT.read_text(encoding='utf-8'))
     kit_order = order.group(1).split(', ') if order else None
     if b.get('checks') != kit_order or sorted(kit_rows) != sorted(kit_order or []):
         problems.append('checks: not the kit\'s five checks in its order')
