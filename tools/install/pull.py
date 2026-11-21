@@ -109,13 +109,22 @@ def stage(target, version, source, checksum, root, state_root, fetch=fetch_bytes
     raw = fetch(prefix + name, 4 * 1024 * 1024)
     manifest = load(raw, checksum, target)
     require(manifest['version'] == version and manifest['source'] == source, 'published identity changed')
+    bundle = fetch(prefix + manifest['archive'], manifest['archive_bytes'])
+    listed = {}
+    for line in fetch(prefix + 'SHA256SUMS', 64 * 1024).decode('ascii', 'replace').splitlines():
+        match = re.fullmatch(r'([0-9a-f]{64})  ([A-Za-z0-9_.-]+)', line)
+        require(match and match[2] not in listed, 'invalid SHA256SUMS line')
+        listed[match[2]] = match[1]
+    for file, data in ((name, raw), (manifest['archive'], bundle)):
+        require(file in listed, 'SHA256SUMS does not list ' + file)
+        require(listed[file] == sha(data), 'SHA256SUMS does not match ' + file)
     with tempfile.TemporaryDirectory(prefix='.package-download-', dir=state_root / 'service') as temporary:
         directory = Path(temporary)
         manifest_file = directory / 'manifest.json'
         archive = directory / 'bundle.tar.gz'
         manifest_file.write_bytes(raw)
         manifest_file.chmod(0o600)
-        archive.write_bytes(fetch(prefix + manifest['archive'], manifest['archive_bytes']))
+        archive.write_bytes(bundle)
         archive.chmod(0o600)
         return install(manifest_file, archive, checksum, root, target, state_root=state_root, stage_only=True)
 
