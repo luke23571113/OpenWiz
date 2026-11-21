@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import io
 import json
 import os
 from pathlib import Path
@@ -11,7 +10,6 @@ import shutil
 import stat
 import subprocess
 import tarfile
-import tempfile
 import sys
 
 sys.dont_write_bytecode = True
@@ -43,16 +41,13 @@ DESCRIPTION = """OpenWiz's install entry (#1109): the commands the install skill
       update channel. No effects. Prints "not installed" and exits 1 when no
       build is selected at ROOT.
   install skills --root ROOT [--state-root STATE]
-      Verifies the selected build, then copies OpenWiz's skills into
-      ROOT/skills and into each harness present here: Claude Code, Codex
-      ($CODEX_HOME when set), Cursor, OpenCode and Grok (contracts/install.v1.md,
-      "Harness skills"). The skills are the newest published WizSkills release
-      of the line wizskills.lock pins, checked against its release record;
-      when that can't be read or checked, the build's own copy, and
-      skills_from says which and why. Each skill and harness stands alone: a
-      user's own same-named skill is kept and reported, and the rest install.
-      An absent harness gets nothing; with no harness to take them, nothing
-      is written and it exits 5.
+      Verifies the selected build, then copies its skills into ROOT/skills and
+      into each harness present here: Claude Code, Codex ($CODEX_HOME when
+      set), Cursor, OpenCode and Grok (contracts/install.v1.md, "Harness
+      skills"). Each skill and harness stands alone: the user's own
+      same-named skill is kept and reported, an unsafe folder refuses only
+      its harness, and the rest install. An absent harness gets nothing; with
+      no harness to take them, nothing is written and it exits 5.
 
 Every command prints one JSON object. Exit codes: 0 done, 1 failed,
 2 usage, 5 refused (nothing selected or changed). Python 3.9+, standard
@@ -312,85 +307,6 @@ def status(root, state_root):
             'state_root': str(state), 'reason': 'Read and verified the selected build only; nothing was changed.'}, 0
 
 
-WIZSKILLS = 'https://github.com/openwizdev/WizSkills.git'
-WIZSKILLS_LOCK = HERE.parents[1] / 'wizskills.lock'
-GIT_LOCATION = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
-                'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE')
-OID = re.compile('[0-9a-f]{40}')
-SKILL_NAME = re.compile('[a-z0-9][a-z0-9-]*')
-
-
-def wizskills_git(args, what, repo=None):
-    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION}
-    try:
-        done = subprocess.run(['git', '-c', 'core.fsmonitor=false', *(['--git-dir', str(repo)] if repo else []),
-                               *args], stdin=subprocess.DEVNULL, capture_output=True, env=env, timeout=120)
-    except (OSError, subprocess.SubprocessError):
-        raise installer.Refused('git could not run to read ' + what)
-    installer.require(done.returncode == 0, 'could not read ' + what)
-    return done.stdout
-
-
-def newest_skills(work):
-    lock = json.loads(WIZSKILLS_LOCK.read_text(encoding='utf-8'), object_pairs_hook=installer.unique)
-    pinned = re.fullmatch(r'(0\.[0-9]+)\.([0-9]+)', lock.get('version', '') if isinstance(lock, dict) else '')
-    installer.require(pinned, 'wizskills.lock names no release')
-    listed = wizskills_git(['ls-remote', '--tags', '--refs', WIZSKILLS, 'refs/tags/v%s.*' % pinned[1]],
-                           "WizSkills' releases").decode('ascii', 'replace')
-    patches = [int(m[1]) for m in re.finditer(r'refs/tags/v%s\.([0-9]+)$' % re.escape(pinned[1]), listed, re.M)]
-    installer.require(patches and max(patches) >= int(pinned[2]),
-                      'no WizSkills %s.x release at or after the pinned %s' % (pinned[1], lock['version']))
-    version = '%s.%d' % (pinned[1], max(patches))
-    tag, repo = 'v' + version, work / 'wizskills.git'
-    wizskills_git(['init', '-q', '--bare', str(repo)], 'a scratch repository')
-    wizskills_git(['fetch', '-q', '--no-tags', '--depth', '1', WIZSKILLS, '+refs/tags/%s:refs/tags/%s' % (tag, tag)],
-                  'WizSkills ' + tag, repo)
-    bad = 'WizSkills %s does not match its release record' % tag
-    installer.require(wizskills_git(['cat-file', '-t', 'refs/tags/' + tag], tag, repo).strip() == b'tag', bad)
-    header, _, message = wizskills_git(['cat-file', 'tag', 'refs/tags/' + tag], tag, repo).partition(b'\n\n')
-    fields = dict(line.split(' ', 1) for line in header.decode('utf-8', 'replace').splitlines() if ' ' in line)
-    try:
-        record = json.loads(message.decode('utf-8').strip(), object_pairs_hook=installer.unique)
-    except (ValueError, UnicodeError):
-        raise installer.Refused(bad)
-    installer.require(isinstance(record, dict) and set(record) == {'schema', 'version', 'commit', 'tree'}
-                      and record['schema'] == 'openwiz.wizskills.release.v1' and record['version'] == version
-                      and all(isinstance(record[k], str) and OID.fullmatch(record[k]) for k in ('commit', 'tree'))
-                      and fields.get('type') == 'commit' and fields.get('tag') == tag
-                      and fields.get('object') == record['commit'], bad)
-    tree = wizskills_git(['rev-parse', '--verify', '-q', record['commit'] + '^{tree}'], tag, repo)
-    installer.require(tree.decode('ascii', 'replace').strip() == record['tree'], bad)
-    archive = wizskills_git(['archive', '--format=tar', record['commit'], 'skills'], tag, repo)
-    folder = work / 'skills'
-    folder.mkdir(mode=0o700)
-    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-        for member in tar:
-            parts = member.name.rstrip('/').split('/')
-            if member.isdir() or len(parts) < 3:
-                continue
-            installer.require(member.isfile() and parts[0] == 'skills' and SKILL_NAME.fullmatch(parts[1])
-                              and all(p not in ('', '.', '..') for p in parts), tag + ' holds an unsafe skill file')
-            path = folder.joinpath(*parts[1:])
-            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                         0o700 if member.mode & 0o100 else 0o600)
-            with os.fdopen(fd, 'wb') as handle:
-                handle.write(tar.extractfile(member).read())
-    installer.require(any(folder.iterdir()), tag + ' ships no skills')
-    return folder, {'kind': 'release', 'version': version, 'commit': record['commit'], 'tree': record['tree']}
-
-
-def skills(root, state_root, home, codex_home):
-    build, _, manifest, _ = selected(root, state_root)
-    with tempfile.TemporaryDirectory(prefix='openwiz-skills-') as work:
-        try:
-            release, source = newest_skills(Path(work))
-        except (installer.Refused, OSError, ValueError, TypeError, tarfile.TarError) as error:
-            reason = str(error) if isinstance(error, installer.Refused) else 'could not read wizskills.lock or the release'
-            release, source = None, {'kind': 'bundled', 'reason': 'Installed the build\'s own skills: %s.' % reason}
-        return harness.install_skills(build, manifest, root, home, codex_home, release, source)
-
-
 def main(argv=None, fetch=pull.fetch_bytes, host=None, stdout=None):
     out = stdout or sys.stdout
     parser = Parser(prog='install', description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -433,7 +349,9 @@ def main(argv=None, fetch=pull.fetch_bytes, host=None, stdout=None):
         elif args.command == 'install':
             value, code = install(args.assets, args.target, args.root, args.state_root), 0
         elif args.command == 'skills':
-            value, code = skills(args.root, args.state_root, Path.home(), os.environ.get('CODEX_HOME'))
+            build, _, manifest, _ = selected(args.root, args.state_root)
+            value, code = harness.install_skills(build, manifest, args.root, Path.home(),
+                                                 os.environ.get('CODEX_HOME'))
         elif args.command == 'link':
             value, code = link(args.root, args.yes, args.state_root), 0
         else:

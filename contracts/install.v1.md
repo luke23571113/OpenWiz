@@ -81,20 +81,14 @@ For the future public-source release path, the [release candidate contract](rele
 
 ## Harness skills (#1361)
 
-`tools/install/install skills --root ROOT [--state-root STATE]` puts
-OpenWiz's skills where the user's agent finds them (#2168). It first verifies
-the build `status` verifies. Its skills are the newest published WizSkills
-release in the line that `wizskills.lock` beside the installer pins (the same
-`0.<minor>`, at or after the pin), fetched by that one tag and checked as
-[wizskills.v1](wizskills.v1.md) checks a release: the annotated tag's record,
-the commit it names and that commit's tree. When the release can't be read or
-checked, it uses the build's own `runtime/skills/` with their installed modes.
-`skills_from` says which (`release` with version, commit and tree, or `bundled`
-with the reason). It copies each skill folder into one canonical folder,
+`tools/install/install skills --root ROOT [--state-root STATE]` puts the
+selected build's skills where the user's agent finds them. It reads only the
+build `status` verifies: every file under its `runtime/skills/`, with its
+installed mode. It copies each skill folder into one canonical folder,
 `<ROOT>/skills/`, and then into each harness below that is present. A harness is
 present when its folder is a real directory this user owns. An absent harness
 is reported `absent`, naming its folder and what to do next, and nothing is
-created for it.
+created for it (#2168).
 
 | Harness | Present when this is a directory | Skills copy |
 | --- | --- | --- |
@@ -111,12 +105,12 @@ mark is the user's own. It is never touched: that skill is skipped in that
 harness only, and listed in the row's `skipped` with its folder and the next
 step. A stray staging or backup folder for a skill is handled the same way. A
 link or a folder that isn't the user's refuses that harness's row only. Other
-skills and harnesses still install. When no harness can take a skill (none is
+skills and harnesses still install. When no harness can take any skill (none is
 present, or every one is refused), nothing is written, not even the canonical
 folder, and the step exits 5 with `outcome: refused`. A repeated run gives the
 same files. Other skills in those folders, and skills a newer build no longer
 ships, stay. The result is one `openwiz.skills-install.v1` JSON object:
-version, source, `skills_from`, canonical folder, skill names and one row per
+version, source, canonical folder, skill names and one row per
 harness (`installed`, `partial`, `absent` or `refused`, its folder, a plain
 `next`, and `skipped` when a skill was skipped), plus `canonical_skipped` for
 a skill skipped in the canonical folder. `outcome` is `installed`
@@ -124,8 +118,7 @@ a skill skipped in the canonical folder. `outcome` is `installed`
 when something was skipped or refused, and `refused` (exit 5) when nothing was
 written.
 
-The step needs no Rust, Cargo, Node or npm. It reads the release with `git`
-and uses the bundled copy without it. It doesn't put anything on `PATH`.
+The step needs no Rust, Cargo, Node or npm. It doesn't put anything on `PATH`.
 The installed command is the build's own `openwiz`, beside its `runtime/`,
 reached through `<ROOT>/current/openwiz`. Its `init` uses the packaged setup
 runtime and the user's `gh` login to set up the repository's `openwiz` label

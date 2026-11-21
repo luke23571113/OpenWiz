@@ -247,10 +247,7 @@ class HarnessSkills(Bundles):
     def skills(self, home=None, env=None):
         result = subprocess.run([sys.executable, '-I', str(HERE / 'install'), 'skills', '--root', str(self.root)],
                                 capture_output=True, text=True,
-                                env={'PATH': os.environ['PATH'], 'HOME': str(home or self.home),
-                                     'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_VALUE_0': 'https://github.com/openwizdev/WizSkills.git',
-                                     'GIT_CONFIG_KEY_0': 'url.%s.insteadOf' % (self.base / 'no-wizskills.git').as_uri(),
-                                     **(env or {})})
+                                env={'PATH': os.environ['PATH'], 'HOME': str(home or self.home), **(env or {})})
         return result.returncode, json.loads(result.stdout or '{}')
 
     def test_skills_reach_the_canonical_folder_and_every_named_harness(self):

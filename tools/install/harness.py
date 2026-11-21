@@ -123,10 +123,9 @@ def unreadable(path, plain, error):
             'then run this again.')
 
 
-def install_skills(build, value, root, home, codex_home=None, release=None, skills_from=None):
-    skills = release or build / 'runtime/skills'
-    if release is None:
-        installer.private(skills)
+def install_skills(build, value, root, home, codex_home=None):
+    skills = build / 'runtime/skills'
+    installer.private(skills)
     names = sorted(p.name for p in skills.iterdir() if p.is_dir() and not p.is_symlink())
     installer.require(names, 'the selected build ships no skills')
     canonical = Path(root) / 'skills'
@@ -160,7 +159,6 @@ def install_skills(build, value, root, home, codex_home=None, release=None, skil
             row.update(state='refused', next=unreadable(Path(error.filename or base), plain, error))
         rows.append(row)
     result = {'schema': 'openwiz.skills-install.v1', 'version': value['version'], 'source': value['source'],
-              'skills_from': skills_from or {'kind': 'bundled', 'reason': 'The installed build\'s own skills.'},
               'canonical': str(canonical), 'skills': names, 'harnesses': rows}
     if not plan:
         return dict(result, outcome='refused', reason='No agent here can take OpenWiz\'s skills (see each row); '
