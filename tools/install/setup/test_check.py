@@ -21,7 +21,7 @@ import setup
 
 DOWNLOAD_PAGE = 'https://www.cloudroom.dev/download'
 PROJECT = {'repository': 'synthetic-owner/synthetic-consumer', 'project': 'prj_synthetic',
-           'operator': 'synthetic-owner', 'service_issue': 7, 'answer_thread': 'thr_synthetic_answer',
+           'operator': 'synthetic-owner', 'service_issue': 7, 'answer_thread': 'synthetic-answer-thread',
            'harness': 'claude-code', 'model': 'synthetic-model', 'effort': 'high', 'runtime': None}
 
 NEXT_MUST_NAME = {
