@@ -53,6 +53,11 @@ def alive(pid):
         return False
 
 
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
 HANDS_OFF_AS_IT_EXITS = """#!%s
 import os, subprocess, time
 time.sleep(0.7)
@@ -359,7 +364,7 @@ class Local(unittest.TestCase):
         return folder, pids
 
     def handed_off(self, pids):
-        written = lambda: os.path.exists(pids) and len(open(pids).read().split()) == 2
+        written = lambda: os.path.exists(pids) and len(read(pids).split()) == 2
         self.until(written)
         self.assertTrue(written(), 'the turn never handed off')
         with open(pids) as f:
