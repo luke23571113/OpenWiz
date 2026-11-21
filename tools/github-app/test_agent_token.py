@@ -40,7 +40,8 @@ stdin = sys.stdin.read() if name != "gh" else ""
 token = os.environ.get("GH_TOKEN")
 entry = {"name": name, "args": args, "stdin": stdin,
          "stdout_pipe": stat.S_ISFIFO(os.fstat(1).st_mode),
-         "gh_token": hashlib.sha256(token.encode()).hexdigest() if token else None}
+         "gh_token": hashlib.sha256(token.encode()).hexdigest() if token else None,
+         "gh_config": os.environ.get("GH_CONFIG_DIR")}
 log = os.environ["FAKE_LOG"]
 with open(log, "a") as f:
     f.write(json.dumps(entry) + "\n")
@@ -574,7 +575,11 @@ class Review(Helper):
         self.assertEqual(via_shell.returncode, 0, via_shell.stderr)
         self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN), "gh, found on PATH, gets it")
         direct = self.helper("run", *self.REQ, "--", str(self.bin / "gh"), "pr", "list")
+        self.assertIsNone(self.calls("gh")[-2]["gh_config"], "the stand-in restores the owner's gh config")
         self.assertIsNone(self.calls("gh")[-1]["gh_token"], "a gh the run did not start gets nothing")
+        lost = self.calls("gh")[-1]["gh_config"]
+        self.assertTrue(lost.startswith(str(self.private)) and not os.path.exists(lost),
+                        "nor the owner's gh login, so it fails visibly")
         self.assert_never_exposed(via_shell, direct)
 
     def test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused(self):

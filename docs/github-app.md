@@ -246,7 +246,10 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   through a symlink. Every folder on the way must be owned by root or you, and one that anyone
   else can write to, your own group included, must be sticky, like `/tmp`. Anything else is refused before any call.
 - **Handing it over.** `run` copies the token into a snapshot file that exists only while
-  the command runs. It puts `GH_TOKEN` in the command's own environment and, through
+  the command runs. No child gets `GH_TOKEN`. The run's `gh` stand-in, first on `PATH`,
+  reads the snapshot and starts the real gh with `GH_TOKEN` and the owner's own
+  `GH_CONFIG_DIR`. Any other child, a gh started by its full path included, sees an empty
+  `GH_CONFIG_DIR`, so it fails rather than sign in as the owner. Through
   `GIT_CONFIG_*` variables, resets git's credential helpers for `https://github.com` to
   one that reads that snapshot, so gh and git use the same token. That helper answers
   only git's own HTTPS transport (`git-remote-https`), and only when it is the last
@@ -260,7 +263,7 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   anything over. The folder's `git` refuses with the same note when `GIT_EXEC_PATH`,
   `GIT_SSH_COMMAND` or `GIT_ALLOW_PROTOCOL` was changed or unset, or when an
   `--exec-path=` option overrides it. Otherwise it starts the
-  real git without `GH_TOKEN`, which only gh needs, so no git trace can show it. Its
+  real git without `GH_TOKEN`, even when gh starts it, so no git trace can show it. Its
   `git-remote-http(s)` checks first. It drops `GIT_TRACE_CURL`, `GIT_TRACE_CURL_NO_DATA` and `GIT_CURL_VERBOSE`, so
   no trace shows the Authorization header. For github.com it refuses with the same
   note unless this run's helper is the last credential helper, no `http.*.extraHeader`
@@ -272,6 +275,11 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   them. The run also sets `GIT_ALLOW_PROTOCOL=file:https:ssh`, so other transports,
   such as `ext::`, which can run any command, are off whatever the configuration says.
   Nothing is exported to the agent's shell.
+- **The old App key.** With a token service configured, `start` and `run` refuse before
+  any call or command while `OPENWIZ_GITHUB_APP_KEY` (the earlier route's Cloudroom
+  secret) is set, naming the variable, never its value. Remove that secret from the
+  agent's environment, because the token service holds the key. The service call never
+  gets it either.
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
   fresh request. An answer is used only when it names exactly the requested
   repositories and permissions and has more than 300 and at most 3900 seconds left.
