@@ -1,4 +1,4 @@
-$ python3 -I tools/release/test_help.py   # at f2682376a1dfb4bcb5dd7f9f007473e323630023
+$ python3 -I tools/release/test_help.py   # at 22f6fb07573c27ac02f11b76918cb1c5a5d00940
 Ran 1 test in 1.391s
 
 OK
@@ -10,9 +10,9 @@ comment-check: ok
 
 $ python3 -I tools/comment-check/check.py count --before 507e6b8dca456181c5a757740455ac94a664455d <the 243 cut files>
 before 507e6b8dca456181c5a757740455ac94a664455d files 243 comment_lines 6602 disallowed_lines 6458
-after f2682376a1dfb4bcb5dd7f9f007473e323630023 files 243 comment_lines 153 disallowed_lines 0
+after 22f6fb07573c27ac02f11b76918cb1c5a5d00940 files 243 comment_lines 29 disallowed_lines 0
 
-# The area's suites at this head (exit status, test file)
+# The area's suites (exit status, test file), run at 3906ed35; later commits change only comments, plus cargo test --test proof --test messaging -- p08a m12 at 22f6fb07: 7 and 2 passed
 0 .github/actions/changelog/test_check.py
 0 adapters/boat/test_driver.py
 0 adapters/cloudroom/test_driver.py

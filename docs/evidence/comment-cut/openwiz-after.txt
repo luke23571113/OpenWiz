@@ -1,4 +1,4 @@
-$ python3 -I tools/comment-check/check.py count --at f2682376a1dfb4bcb5dd7f9f007473e323630023
+$ python3 -I tools/comment-check/check.py count --at 22f6fb07573c27ac02f11b76918cb1c5a5d00940
 {
   "schema": "openwiz.comments.v1",
   "paths": [],
@@ -6,9 +6,9 @@ $ python3 -I tools/comment-check/check.py count --at f2682376a1dfb4bcb5dd7f9f007
   "exclude": [],
   "before": null,
   "after": {
-    "rev": "f2682376a1dfb4bcb5dd7f9f007473e323630023",
+    "rev": "22f6fb07573c27ac02f11b76918cb1c5a5d00940",
     "files": 405,
-    "comment_lines": 1020,
+    "comment_lines": 896,
     "disallowed_lines": 831,
     "languages": {
       "python": {
@@ -17,7 +17,7 @@ $ python3 -I tools/comment-check/check.py count --at f2682376a1dfb4bcb5dd7f9f007
       },
       "rust": {
         "files": 221,
-        "comment_lines": 394
+        "comment_lines": 270
       },
       "shell": {
         "files": 19,
