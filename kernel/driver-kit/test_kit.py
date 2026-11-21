@@ -106,25 +106,34 @@ class Kit(unittest.TestCase):
                                   **spaced)
         self.assertEqual((code, out), (1, PLANTED['token-in-env']), err)
 
+    def test_without_proc_as_on_macos_a_driver_whose_run_stays_in_the_kits_group_passes_all_five(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable,
+                 'FAKE_SAME_GROUP': '1'}
+        code, out, err = self.kit(os.path.join(FIXTURES, 'same-group-driver'), os.path.join(NO_PROC, 'python3'),
+                                  **macos)
+        self.assertEqual((code, out), (0, PASS), err)
+
     def test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes(self):
         p = subprocess.run([os.path.join(NO_PROC, 'python3')] + module(os.path.join(HERE, 'kit.py')).PROBE,
                            input='', env=dict(self.env, NO_PROC_PYTHON=sys.executable), capture_output=True,
                            text=True, timeout=60)
         self.assertEqual((p.returncode, p.stdout, p.stderr), (0, '.', ''))
 
-    def test_without_proc_or_any_visible_environment_stop_and_token_fail_unverified(self):
-        blind = "ps shows no process's environment here, so the kit cannot tell which processes the driver started"
-        expected = {'template': PASS[:3] + ['fail stop: ' + blind, 'fail token: ' + blind],
-                    'stop-leaves-run': PASS[:3] + ['fail stop: ' + blind, 'fail token: ' + blind],
-                    'token-in-env': PASS[:3] + ['fail stop: ' + blind, 'fail token: ' + blind]}
-        for name, lines in expected.items():
-            with self.subTest(name):
-                self.tearDown()
-                self.setUp()
-                driver = TEMPLATE if name == 'template' else os.path.join(FIXTURES, 'planted', name)
-                code, out, err = self.kit(driver, os.path.join(NO_PROC, 'python3'), NO_PROC_HIDE_ENV='1',
-                                          PATH=NO_PROC + os.pathsep + self.env['PATH'], NO_PROC_PYTHON=sys.executable)
-                self.assertEqual((code, out), (1, lines), err)
+    def test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified(self):
+        cases = {'NO_PROC_HIDE_ENV': "ps shows no process's environment here, so the kit cannot tell which "
+                                     "processes the driver started",
+                 'NO_PROC_PROBE_ONLY': "ps -E never showed a process of this run, so the kit cannot tell which "
+                                       "processes the driver started"}
+        for hide, why in cases.items():
+            for name in ('template', 'stop-leaves-run', 'token-in-env'):
+                with self.subTest(hide=hide, driver=name):
+                    self.tearDown()
+                    self.setUp()
+                    driver = TEMPLATE if name == 'template' else os.path.join(FIXTURES, 'planted', name)
+                    code, out, err = self.kit(driver, os.path.join(NO_PROC, 'python3'), **{hide: '1'},
+                                              PATH=NO_PROC + os.pathsep + self.env['PATH'],
+                                              NO_PROC_PYTHON=sys.executable)
+                    self.assertEqual((code, out), (1, PASS[:3] + ['fail stop: ' + why, 'fail token: ' + why]), err)
 
     def test_each_planted_driver_fails_its_check(self):
         for name, lines in PLANTED.items():
