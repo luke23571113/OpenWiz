@@ -45,9 +45,6 @@ LINUX = os.path.isdir('/proc/self') and hasattr(os, 'pidfd_open')
 PR_SET_CHILD_SUBREAPER = 36
 
 
-TURN = re.compile(r'\s--turn\s')
-
-
 def ps(*args):
     try:
         p = subprocess.Popen(['ps'] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -60,17 +57,22 @@ def ps(*args):
     return out.splitlines(), p.pid
 
 
-def members(roots, run):
-    rows, me = ps('-A', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'command=', '-E')
-    mark = re.compile(r'(?:^|\s)OPENWIZ_RUN=%s(?:\s|$)' % re.escape(run))
-    found, children = set(), {}
+MACOS_SECONDS_BETWEEN_LOOKS = 0.2
+LOOKS_PER_OUTPUT_CHECK = 5
+
+
+# PRIVACY: reads only ps's process table (pid, parent, group, state, start time), never any environment.
+def members(roots, recorded, writers=()):
+    rows, me = ps('-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'lstart=')
+    started, children, found = {}, {}, set()
     for row in rows:
         f = row.split(None, 4)
-        if len(f) < 4 or f[3].startswith('Z'):
+        if len(f) < 5 or f[3].startswith('Z'):
             continue
         pid, ppid, group = int(f[0]), int(f[1]), int(f[2])
+        started[pid] = f[4].strip()
         children.setdefault(ppid, []).append(pid)
-        if group in roots or len(f) > 4 and mark.search(f[4]) and not TURN.search(f[4]):
+        if group in roots or recorded.get(pid) == started[pid] or pid in writers:
             found.add(pid)
     todo = list(roots) + list(found)
     while todo:
@@ -78,7 +80,76 @@ def members(roots, run):
             if c not in found:
                 found.add(c)
                 todo.append(c)
-    return found - set(roots) - {os.getpid(), me}
+    return {p: started[p] for p in found - set(roots) - {os.getpid(), me}}
+
+
+# PRIVACY: asks lsof only which processes hold this run's own output file open for writing, never any environment.
+def writing_to(path):
+    try:
+        out = subprocess.run(['lsof', '-F', 'pa', '--', path], stdin=subprocess.DEVNULL, capture_output=True,
+                             text=True, timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    found, pid = set(), None
+    for field in out.splitlines():
+        if field[:1] == 'p' and field[1:].isdigit():
+            pid = int(field[1:])
+        elif field[:1] == 'a' and field[1:2] in ('w', 'u') and pid is not None:
+            found.add(pid)
+    return found
+
+
+def turn_output(run, supervisor):
+    return os.path.join(STATE, '%s.%d.out' % (run, supervisor))
+
+
+def supervisor_record(run, supervisor):
+    return os.path.join(STATE, '%s.%d.sup' % (run, supervisor))
+
+
+def record_kept(run, kept):
+    record = supervisor_record(run, os.getpid())
+    try:
+        with open(record + '.new', 'w') as f:
+            json.dump({'supervisor_since': since(os.getpid()), 'kept': {str(p): t for p, t in kept.items()}}, f)
+        os.replace(record + '.new', record)
+    except OSError:
+        pass
+
+
+def recorded_by(run, supervisors):
+    recorded = {}
+    for pid, started in supervisors:
+        try:
+            with open(supervisor_record(run, pid)) as f:
+                record = json.load(f)
+            if record['supervisor_since'] == started:
+                recorded.update({int(p): t for p, t in record['kept'].items() if isinstance(t, str)})
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return recorded
+
+
+def look_after_the_turn_on_macos(run, output):
+    kept, looks = {}, 0
+    while True:
+        children_left = any_child_running_after_reaping()
+        scanned = looks % LOOKS_PER_OUTPUT_CHECK == 0
+        now = members({os.getpid()}, kept, writing_to(output) if scanned else ())
+        if not children_left and not now and not scanned:
+            now = members({os.getpid()}, kept, writing_to(output))
+        looks += 1
+        if now != kept:
+            kept = now
+            record_kept(run, kept)
+        if not children_left and not kept:
+            for name in (supervisor_record(run, os.getpid()), output):
+                try:
+                    os.remove(name)
+                except OSError:
+                    pass
+            return
+        time.sleep(MACOS_SECONDS_BETWEEN_LOOKS)
 
 
 def since(pid):
@@ -116,22 +187,34 @@ def supervise(cmd):
     if LINUX and ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
+    output = turn_output(os.environ['OPENWIZ_RUN'], os.getpid())
     try:
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
+        out = subprocess.DEVNULL if LINUX else os.open(output, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=out)
+        if out != subprocess.DEVNULL:
+            os.close(out)
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+    if not LINUX:
+        return look_after_the_turn_on_macos(os.environ['OPENWIZ_RUN'], output)
     while True:
         try:
             os.wait()
         except ChildProcessError:
-            if LINUX or not members({os.getpid()}, os.environ['OPENWIZ_RUN']):
-                return
-            time.sleep(0.2)
+            return
+
+
+def any_child_running_after_reaping():
+    while True:
+        try:
+            if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                return True
+        except ChildProcessError:
+            return False
 
 
 def launch(req, run, woken):
@@ -168,7 +251,8 @@ def end(turns, run):
             if not kept:
                 return
             if not LINUX:
-                for p in members({s for s, _ in kept}, run) - sent:
+                writers = set().union(*(writing_to(turn_output(run, s)) for s, _ in kept))
+                for p in set(members({s for s, _ in kept}, recorded_by(run, kept), writers)) - sent:
                     try:
                         os.kill(p, sig)
                         sent.add(p)

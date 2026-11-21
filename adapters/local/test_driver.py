@@ -53,6 +53,19 @@ def alive(pid):
         return False
 
 
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+HANDS_OFF_AS_IT_EXITS = """#!%s
+import os, subprocess, time
+time.sleep(0.7)
+worker = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL)
+with open(%r, 'w') as f:
+    f.write('%%d %%d' %% (os.getpid(), worker.pid))
+"""
+
 class Local(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.mkdtemp()
@@ -366,18 +379,63 @@ class Local(unittest.TestCase):
         self.assertEqual([f for f in os.listdir(self.env['OPENWIZ_LOCAL_STATE']) if f.startswith('run-')], [])
 
 
+    def harness_handing_off_as_it_exits(self, name):
+        folder, pids = os.path.join(self.folder, 'hands-off'), os.path.join(self.folder, 'handed-off')
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, name), 'w') as f:
+            f.write(HANDS_OFF_AS_IT_EXITS % (sys.executable, pids))
+        os.chmod(os.path.join(folder, name), 0o700)
+        return folder, pids
+
+    def handed_off(self, pids):
+        written = lambda: os.path.exists(pids) and len(read(pids).split()) == 2
+        self.until(written)
+        self.assertTrue(written(), 'the turn never handed off')
+        with open(pids) as f:
+            turn, worker = map(int, f.read().split())
+        self.until(lambda: not alive(turn))
+        self.assertFalse(alive(turn), 'the turn did not exit')
+        time.sleep(1)
+        self.assertTrue(alive(worker))
+        return worker
+
+    def test_without_proc_as_on_macos_stop_ends_a_worker_handed_off_as_the_turn_exits(self):
+        folder, pids = self.harness_handing_off_as_it_exits('claude')
+        macos = {'PATH': folder + os.pathsep + NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.start(env=dict(self.env, **macos))
+        self.assertEqual(code, 0, out)
+        worker = self.handed_off(pids)
+        self.assertEqual(self.driver('stop', out, dict(self.env, **macos)), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
+
+    def asked_ps_for_environments(self, calls):
+        with open(calls) as f:
+            asked = f.read().splitlines()
+        self.assertTrue(any(' -A ' in ' %s ' % c for c in asked), 'the driver never listed processes through ps')
+        return [c for c in asked if '-E' in c.split() or 'e' in c.split()]
+
+    def logging_ps(self, calls):
+        folder = os.path.join(self.folder, 'logging-ps')
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, 'ps'), 'w') as f:
+            f.write('#!/bin/sh\nprintf \'%%s\\n\' "$*" >> %s\nexec %s "$@"\n' % (calls, os.path.join(NO_PROC, 'ps')))
+        os.chmod(os.path.join(folder, 'ps'), 0o700)
+        return folder
+
     def test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
         for worker in ({}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
             with self.subTest(**worker):
                 self.tearDown()
                 self.setUp()
-                macos['PATH'] = NO_PROC + os.pathsep + self.env['PATH']
+                calls = os.path.join(self.folder, 'ps-calls')
+                macos['PATH'] = self.logging_ps(calls) + os.pathsep + NO_PROC + os.pathsep + self.env['PATH']
                 out, turn, child = self.first_turn(**macos, **worker)
                 self.until(lambda: not alive(turn))
                 self.assertTrue(alive(child))
                 self.assertEqual(self.driver('stop', out, dict(self.env, **macos)), (0, dict(out, stopped=True)))
                 self.assertFalse(alive(child), 'a grandchild of the harness still runs after stop')
+                self.assertEqual(self.asked_ps_for_environments(calls), [], 'the driver asked ps for process environments')
 
         self.tearDown()
         self.setUp()
