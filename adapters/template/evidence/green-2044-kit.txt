@@ -1,4 +1,4 @@
-# Green run (#2044, R1 fixed): python3 -I kernel/driver-kit/test_kit.py, the whole kit suite, at dfd1b02f.
+# Green run (#2044, R1 fixed): python3 -I kernel/driver-kit/test_kit.py, the whole kit suite, at daec9cbd.
 test_a_refusal_holding_a_credential_never_reaches_the_output (__main__.Kit.test_a_refusal_holding_a_credential_never_reaches_the_output) ... ok
 test_each_planted_driver_fails_its_check (__main__.Kit.test_each_planted_driver_fails_its_check) ... ok
 test_each_status_contract_credential_format_is_caught (__main__.Kit.test_each_status_contract_credential_format_is_caught) ... ok
@@ -9,6 +9,6 @@ test_without_proc_as_on_macos_the_template_passes_all_five (__main__.Kit.test_wi
 test_without_proc_or_any_visible_environment_stop_and_token_fail_unverified (__main__.Kit.test_without_proc_or_any_visible_environment_stop_and_token_fail_unverified) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 47.242s
+Ran 8 tests in 47.251s
 
 OK
