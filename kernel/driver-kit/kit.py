@@ -217,6 +217,7 @@ class Kit:
         self.env = dict(os.environ, OPENWIZ_KIT_RUN=self.mark.partition('=')[2])
         self.leaks = []
         self.groups = set()
+        self.seen = PROC
         self.blind = None if PROC else self.unseen()
 
     def leak(self, what):
@@ -308,12 +309,19 @@ class Kit:
             marked = bool(mark.search(text))
             if marked and group != os.getpgrp():
                 self.groups.add(group)
+                self.seen = True
             found.append((group, cmd, text, marked))
         for group, cmd, text, marked in found:
             if marked or group in self.groups:
                 for k, v in self.env.items():
                     text = re.sub(r'(?<=\s)%s(?=\s|$)' % re.escape('%s=%s' % (k, v)), '', text)
                 yield [cmd], [e.strip() for e in re.split(r'\s(?=[A-Za-z_][A-Za-z0-9_]*=)', text) if e.strip()]
+
+    def unverified(self):
+        """Why the kit cannot judge stop or token here, or None: on macOS it must first have seen a run process."""
+        if self.blind or self.seen:
+            return self.blind
+        return 'ps -E never showed a process of this run, so the kit cannot tell which processes the driver started'
 
     def scan(self):
         for cmd, env in self.started():
@@ -386,6 +394,9 @@ class Kit:
 
     def stop(self):
         kind, v = self.call('stop', {'run': self.run})
+        if self.unverified():
+            # Whatever the driver answered, the kit cannot judge this run's processes here.
+            return 'fail', self.unverified()
         if kind != 'ok':
             return 'fail', v['error'] if kind == 'refused' else v
         if v['run'] != self.run:
@@ -395,8 +406,6 @@ class Kit:
             return 'fail', 'a wake after stop was taken'
         if kind == 'bad':
             return 'fail', v
-        if self.blind:
-            return 'fail', self.blind
         if not self.wait(lambda: not any(True for _ in self.started())):
             return 'fail', 'a process the run started still runs after stop'
         return 'pass', 'the run ended, and a wake after it is refused'
@@ -411,8 +420,8 @@ class Kit:
         elif kind == 'bad':
             self.leak('its answer to a token field: ' + v)
         self.scan()
-        if self.blind:
-            self.leak(self.blind)
+        if self.unverified():
+            self.leak(self.unverified())
         if self.leaks:
             return 'fail', '; '.join(self.leaks)
         return 'pass', 'no login or token passed through the driver'

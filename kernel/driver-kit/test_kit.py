@@ -7,7 +7,6 @@ import importlib.machinery
 import importlib.util
 import json
 import os
-import re
 import secrets
 import signal
 import subprocess
@@ -129,11 +128,8 @@ class Kit(unittest.TestCase):
                                      "processes the driver started",
                  'NO_PROC_PROBE_ONLY': "ps -E never showed a process of this run, so the kit cannot tell which "
                                        "processes the driver started"}
-        # The template driver reads ps -E too: where it sees the probe but not its run, it refuses to call it stopped.
-        refused = 'fail stop: run run-<id> still has processes after stop'
         for hide, why in cases.items():
             for name in ('template', 'stop-leaves-run', 'token-in-env'):
-                stop = refused if hide == 'NO_PROC_PROBE_ONLY' and name != 'stop-leaves-run' else 'fail stop: ' + why
                 with self.subTest(hide=hide, driver=name):
                     self.tearDown()
                     self.setUp()
@@ -141,8 +137,7 @@ class Kit(unittest.TestCase):
                     code, out, err = self.kit(driver, os.path.join(NO_PROC, 'python3'), **{hide: '1'},
                                               PATH=NO_PROC + os.pathsep + self.env['PATH'],
                                               NO_PROC_PYTHON=sys.executable)
-                    out = [re.sub(r'\brun-[0-9a-f]+\b', 'run-<id>', line) for line in out]
-                    self.assertEqual((code, out), (1, PASS[:3] + [stop, 'fail token: ' + why]), err)
+                    self.assertEqual((code, out), (1, PASS[:3] + ['fail stop: ' + why, 'fail token: ' + why]), err)
 
     def test_each_planted_driver_fails_its_check(self):
         for name, lines in PLANTED.items():
