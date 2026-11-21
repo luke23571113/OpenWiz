@@ -124,6 +124,18 @@ class Remove(Installer):
         RootSafety.own(self, state / 'service', 'builds/' + 'f' * 40 + '/install-manifest.json')
         os.rename(state / 'cloudroom', self.base / 'cloudroom-moved')
         os.symlink(outside, state / 'cloudroom')
+        linked = self.base / 'linked service'
+        RootSafety.own(self, linked, 'config.json', 'app/data.db', 'keep.txt')
+        os.rename(state / 'service', self.base / 'service-moved')
+        os.symlink(linked, state / 'service')
+        for argv in (('--yes',), ()):
+            code, value = self.run_entry('remove', '--root', str(self.root), '--state-root', str(state), *argv)
+            self.assertEqual((code, value['outcome']), (5, 'refused'), value)
+            self.assertIn(str(state / 'service') + ' is a link', value['reason'])
+        self.assertEqual(tree(linked), ['app', 'app/data.db', 'config.json', 'keep.txt'])
+        self.assertTrue((self.root / 'current').is_symlink())
+        os.unlink(state / 'service')
+        os.rename(self.base / 'service-moved', state / 'service')
         before = tree(state)
         code, value = self.run_entry('remove', '--root', str(self.root), '--yes')
         self.assertEqual((code, value['outcome']), (5, 'refused'), value)
