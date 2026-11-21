@@ -123,7 +123,6 @@ class Kit(unittest.TestCase):
         self.assertEqual((p.returncode, p.stdout, p.stderr), (0, '.', ''))
 
     def test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified(self):
-        # #2039: with only the kit's own probe visible, the kit saw none of the run's processes, so it proves nothing.
         cases = {'NO_PROC_HIDE_ENV': "ps shows no process's environment here, so the kit cannot tell which "
                                      "processes the driver started",
                  'NO_PROC_PROBE_ONLY': "ps -E never showed a process of this run, so the kit cannot tell which "

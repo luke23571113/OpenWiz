@@ -318,7 +318,6 @@ class Kit:
                 yield [cmd], [e.strip() for e in re.split(r'\s(?=[A-Za-z_][A-Za-z0-9_]*=)', text) if e.strip()]
 
     def unverified(self):
-        """Why the kit cannot judge stop or token here, or None: on macOS it must first have seen a run process."""
         if self.blind or self.seen:
             return self.blind
         return 'ps -E never showed a process of this run, so the kit cannot tell which processes the driver started'
@@ -395,7 +394,6 @@ class Kit:
     def stop(self):
         kind, v = self.call('stop', {'run': self.run})
         if self.unverified():
-            # Whatever the driver answered, the kit cannot judge this run's processes here.
             return 'fail', self.unverified()
         if kind != 'ok':
             return 'fail', v['error'] if kind == 'refused' else v
