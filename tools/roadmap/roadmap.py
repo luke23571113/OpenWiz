@@ -8,6 +8,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+DESCRIPTION = """Reads GitHub's milestones over REST and writes the short public roadmap to
+the --public FILE. See README.md beside this file."""
+
 PUBLIC_REPO = "jparker2006/OpenWiz"
 REPO = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+")
 LANES = ("Infra", "0.0.X")
@@ -281,7 +284,7 @@ def repo_arg(value):
 
 
 def main(argv):
-    parser = argparse.ArgumentParser(prog="roadmap.py", description=__doc__.split("\n\n")[1])
+    parser = argparse.ArgumentParser(prog="roadmap.py", description=DESCRIPTION)
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[2]),
                         help="the repository's root (default: the one holding this script)")
     parser.add_argument("--public", metavar="FILE", required=True,

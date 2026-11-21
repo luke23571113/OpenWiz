@@ -14,6 +14,8 @@ import sys
 import tempfile
 import time
 
+DESCRIPTION = """Bounded, resumable combined live-smoke run sheets. Standard library only."""
+
 CLAIMS = ('fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
           'json', 'send', 'new', 'app', 'read_safety', 'install')
 COMBINED = CLAIMS[:11]
@@ -894,7 +896,7 @@ def steps(path, kit, state):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--kit', required=True, type=Path)
     parser.add_argument('--state', required=True, type=Path)
     parser.add_argument('--candidate', type=Path,

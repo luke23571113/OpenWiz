@@ -11,6 +11,35 @@ import tarfile
 import sys
 
 sys.dont_write_bytecode = True
+
+DESCRIPTION = """OpenWiz's install entry (#1109): the commands the install skill runs.
+
+  install preflight
+      Reads this machine only: Python, the supported target, free disk space,
+      and whether room-cli, gh and git are on PATH. It runs none of them.
+  install download --target TARGET --dir PRIVATE_DIR
+      Fetches the latest release's checksum file, manifest and archive from
+      github.com/openwizdev/OpenWiz/releases into a new private folder, within
+      their declared sizes, and checks the manifest against the checksum.
+  install install --assets PRIVATE_DIR --target TARGET --root ROOT [--state-root STATE]
+      Installs those downloaded files with the verified offline installer
+      (install.py, contracts/install.v1.md) and selects the build only when
+      every file matched. A refusal keeps the last good build selected.
+  install status --root ROOT [--state-root STATE]
+      Verifies the selected build against its state and reads its identity and
+      update channel. No effects.
+  install skills --root ROOT [--state-root STATE]
+      Verifies the selected build, then copies its skills into ROOT/skills and
+      into each harness present here: Claude Code, Codex, Cursor, OpenCode and
+      Grok (contracts/install.v1.md, "Harness skills", #1361). An absent
+      harness gets nothing; an unsafe folder or the user's own same-named
+      skill refuses the whole step before any write.
+
+Every command prints one JSON object. Exit codes: 0 done, 1 failed,
+2 usage, 5 refused (nothing selected or changed). Python 3.9+, standard
+library only: no Rust, Cargo, Node or npm. A checksum proves integrity, not
+a signed publisher identity.
+"""
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import install as installer
@@ -176,7 +205,7 @@ def status(root, state_root):
 
 def main(argv=None, fetch=pull.fetch_bytes, host=None, stdout=None):
     out = stdout or sys.stdout
-    parser = Parser(prog='install', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = Parser(prog='install', description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True, parser_class=Parser)
     commands.add_parser('preflight')
     d = commands.add_parser('download')

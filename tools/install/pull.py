@@ -12,6 +12,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from install import Refused, TARGETS, install, manifest_at, private, require, sha, unique
 
+DESCRIPTION = """Fixed published-release transport. No source checkout, build, push or shell."""
+
 BASE = 'https://github.com/openwizdev/OpenWiz/releases/'
 
 
@@ -84,7 +86,7 @@ def stage(target, version, source, checksum, root, state_root, fetch=fetch_bytes
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     commands = parser.add_subparsers(dest='action', required=True)
     discover_parser = commands.add_parser('discover')
     discover_parser.add_argument('target', choices=TARGETS)

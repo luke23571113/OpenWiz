@@ -22,6 +22,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'setup'))
 import store
 from store import Refused, require
 
+DESCRIPTION = """OpenWiz setup's CloudRoom step: install, reuse and sign in (#2201).
+
+  cloudroom.py status
+      Reads only: is CloudRoom installed here, and does CloudRoom report a
+      signed-in account now? Prints one fixed code.
+  cloudroom.py install
+      Preview. Reuses an existing installation; otherwise finds CloudRoom's
+      published installer for this platform and its published checksum, and
+      saves the install operation (id and fingerprint) before any effect.
+  cloudroom.py install --yes --operation ID
+      Installs exactly that preview, only after the checksum matches. A retry
+      reuses the same operation; an uncertain one is reconciled first.
+  cloudroom.py install --no --operation ID
+      Declines that preview. Nothing is installed.
+  cloudroom.py sign-in
+      Opens CloudRoom's own sign-in once, then reads the result back.
+
+Contract: contracts/public-cloudroom-setup.v1.md. Records go to owner-only
+`<state>/cloudroom/install.json`. Output is JSON with fixed public codes; never
+a sign-in link, account detail, password or token. Python 3.9+, standard
+library only.
+"""
+
 SCHEMA = 'openwiz.cloudroom-setup.v1'
 RECORD = 'openwiz.cloudroom-install.v1'
 KIND = 'install_cloudroom'
@@ -633,7 +656,7 @@ def sign_in(host, state_dir):
 
 
 def main(argv=None, host=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('status', description='Read whether CloudRoom is installed and signed in. Reads only.')
     p = commands.add_parser('install', description='Preview, confirm or decline installing CloudRoom.')

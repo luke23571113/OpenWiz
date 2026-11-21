@@ -9,6 +9,13 @@ import subprocess
 import sys
 import tempfile
 
+DESCRIPTION = """Small integration with the repository's real fixture dispatch and Rust fake.
+
+This proves the runner reaches the real bundle/adapter boundary, not live
+feature acceptance. The synthetic workflow's other labels exercise sequencing.
+No browser, product daemon or live endpoint is used.
+"""
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CLAIMS = ['fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
@@ -145,7 +152,7 @@ def receipt_case(cli, fake, case):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--cli', required=True, type=Path)
     parser.add_argument('--fake', required=True, type=Path)
     parser.add_argument('--case', choices=['integration', 'ready-preview', 'accepted-send', 'queued-send'], default='integration')

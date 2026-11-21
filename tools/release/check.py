@@ -11,6 +11,8 @@ import shutil
 import subprocess
 import sys
 
+DESCRIPTION = """Check and stage a public release branch in isolation; never publish."""
+
 
 class Refused(Exception):
     pass
@@ -559,7 +561,7 @@ class Check:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     sub = parser.add_subparsers(dest="command",required=True)
     check = sub.add_parser("check",help="stage and check; never push, tag or publish")
     check.add_argument("version")

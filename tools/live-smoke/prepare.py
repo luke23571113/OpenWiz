@@ -9,6 +9,8 @@ import runpy
 import stat
 import tempfile
 
+DESCRIPTION = """Bind the combined run sheet to approved private inputs, offline."""
+
 HERE = Path(__file__).resolve().parent
 smoke = runpy.run_path(str(HERE / 'smoke.py'))
 TEMPLATE = HERE / 'combined.template.json'
@@ -135,7 +137,7 @@ def prepare(inputs_path, out):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--inputs', required=True, type=Path, help='absolute owner-only inputs file (inputs.py)')
     parser.add_argument('--out', required=True, type=Path, help='absolute new kit path, outside any checkout')
     args = parser.parse_args()

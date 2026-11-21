@@ -13,6 +13,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'install'))
 from install import Refused, PROGRAMS, REQUIRED, TARGETS, digest, manifest_at, require, safe, sha, shape, unique
 
+DESCRIPTION = """Assemble artifacts only from an exact hash-bound build inventory. Never publish."""
+
 
 def assemble(products, identity, output):
     value = json.loads(identity.read_bytes(), object_pairs_hook=unique)
@@ -67,7 +69,7 @@ def assemble(products, identity, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     for key in ('products', 'identity', 'output'):
         parser.add_argument('--' + key, required=True, type=Path)
     try:

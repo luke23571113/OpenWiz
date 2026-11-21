@@ -11,6 +11,12 @@ import tempfile
 import unittest
 
 sys.dont_write_bytecode = True
+
+DESCRIPTION = """EB3-C synthetic conformance proofs, not helper invocation or a hand-back hook.
+
+Claims, plausible bugs and the existing coverage gap: the ticket proof plan.
+Run without arguments for the suite; --check reads explicit local JSON only.
+"""
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 FIX = HERE / 'contract-fixtures'
@@ -294,7 +300,7 @@ class Contract(unittest.TestCase):
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--check':
         import argparse
-        parser = argparse.ArgumentParser(description=__doc__)
+        parser = argparse.ArgumentParser(description=DESCRIPTION)
         parser.add_argument('--check', required=True)
         parser.add_argument('--current', required=True)
         parser.add_argument('--at', required=True)

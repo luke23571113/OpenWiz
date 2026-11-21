@@ -9,6 +9,8 @@ import re
 import stat
 import sys
 
+DESCRIPTION = """Candidate-bound smoke and risk receipts from a runner checkpoint (#1844, RL3)."""
+
 _SPEC = importlib.util.spec_from_file_location(
     'live_smoke_runner', Path(__file__).resolve().with_name('smoke.py'))
 smoke = importlib.util.module_from_spec(_SPEC)
@@ -366,7 +368,7 @@ def github_record(record):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     sub = parser.add_subparsers(dest='action', required=True)
     make = sub.add_parser('produce')
     make.add_argument('--kit', required=True, type=Path)

@@ -11,6 +11,8 @@ import sys
 import tempfile
 
 sys.dont_write_bytecode = True
+
+DESCRIPTION = """Prepare an ordinary public commit or a reviewed public patch, entirely locally."""
 HERE = Path(__file__).resolve().parent
 
 
@@ -408,7 +410,7 @@ def prepare(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     commands = parser.add_subparsers(dest='command', required=True)
     for name in ('tree', 'patch', 'apply-patch'):
         command = commands.add_parser(name)

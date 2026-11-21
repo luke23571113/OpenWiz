@@ -7,11 +7,13 @@ import runpy
 import subprocess
 import tempfile
 
+DESCRIPTION = """One approved T3 cleanup write, then a separately checked readback. No retry."""
+
 smoke = runpy.run_path(str(Path(__file__).with_name('smoke.py')))
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--gh', required=True)
     parser.add_argument('--repo', required=True)
     parser.add_argument('--ticket', required=True)

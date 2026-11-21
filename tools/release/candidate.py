@@ -12,6 +12,29 @@ import tempfile
 import time
 
 sys.dont_write_bytecode = True
+
+DESCRIPTION = """Prepare, evaluate and publish one checked public release candidate (#1843, RL2).
+
+    release candidate notes VERSION --repo CLONE --entry ENTRY.json --out DIR
+    release candidate prepare --state DIR --repo CLONE --body BODY.json --artifacts DIR
+    release candidate decide --state DIR (--ship POINTER | --changelog POINTER)
+    release candidate gate --state DIR --gate NAME --receipt FILE --inputs FILE
+    release candidate live --state DIR --kit FILE --smoke-state DIR --record POINTER
+    release candidate evaluate --state DIR --repo CLONE
+    release candidate publish --state DIR --repo CLONE --artifacts DIR
+    release candidate install --state DIR --receipt FILE
+    release candidate status --state DIR
+
+Every subcommand reads its private state directory, does what the current
+evidence allows, records the outcome in `record.json` (an
+`openwiz.release-candidate.v1` record) and prints one JSON object. It never
+waits: missing evidence returns `blocked` with its reasons, and the next event
+runs it again. Decisions are read from their actual private comments, never
+from a caller's flag. Publication creates only the annotated tag and the
+immutable release with its complete assets, from a commit already on public
+`main` or on the protected public `release-<version>` branch, and reads every
+byte back. An interrupted write is never repeated.
+"""
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'install'))
 from check import Refused, command, git_env, refuse_ranges, require, sha, unique
@@ -1488,7 +1511,7 @@ def status(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog='release candidate', description=__doc__,
+    parser = argparse.ArgumentParser(prog='release candidate', description=DESCRIPTION,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='action', required=True)
     made = sub.add_parser('notes')

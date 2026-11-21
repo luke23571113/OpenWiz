@@ -5,6 +5,9 @@ import re
 import subprocess
 import sys
 
+USAGE = """  check.py --pr N [--repo OWNER/NAME]           a pull request's changed files, as CI checks them
+  check.py --ticket N [--base REF] [--repo ...] this branch's changes (committed and not) against REF"""
+
 REPO_NAME = re.compile(r'[A-Za-z0-9-]+/[A-Za-z0-9_.-]+')
 LOGIN = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?')
 GRANT = re.compile(r'F4 supporting edits? granted', re.I)
@@ -315,7 +318,7 @@ def main(argv):
         if argv[i] in ('--pr', '--ticket', '--repo', '--base') and i + 1 < len(argv) and argv[i] not in flags:
             flags[argv[i]], i = argv[i + 1], i + 2
         else:
-            print(__doc__.split('\n\n')[1], file=sys.stderr)
+            print(USAGE, file=sys.stderr)
             return 2
     shown = flags.get('--repo') or os.environ.get('GITHUB_REPOSITORY') or 'openwizdev/OpenWiz'
     repo = shown.lower()

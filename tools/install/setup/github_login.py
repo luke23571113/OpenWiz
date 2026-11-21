@@ -13,6 +13,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import store
 import setup
 
+DESCRIPTION = """OpenWiz setup: GitHub browser sign-in and the explicit App skip (#633).
+
+  github_login.py status [--repository OWNER/NAME]
+      Reads the signed-in GitHub account through gh and, for the selected
+      repository, its push access. Reads only.
+  github_login.py sign-in [--repository OWNER/NAME] [--yes]
+      Reuses a positively read existing login. Signed out: without --yes,
+      prints the effects; with --yes, opens GitHub's own browser sign-in
+      (gh auth login --web) once, then reads the account back. A browser
+      launch or its callback alone is never a login. No personal token is
+      pasted, read or stored.
+  github_login.py skip-app [--yes --operation ID]
+      The owner's explicit choice to skip OpenWiz's App and act through the
+      verified personal login on the selected repository. Without --yes:
+      records the proposal and prints its effects, operation id and
+      fingerprint. With --yes --operation ID: saves exactly that choice.
+
+The choice goes to owner-only setup state (store.py). An App failure,
+revocation or unknown identity never selects the personal login; only
+skip-app does. Output is JSON with fixed public codes and the public login
+only: never a token or a provider body. Python 3.9+, standard library only.
+"""
+
 SCHEMA = 'openwiz.github-login.v1'
 SIGN_IN_TIMEOUT = 15 * 60
 SIGN_IN = ('auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--skip-ssh-key')
@@ -201,7 +224,7 @@ def status(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
     for name in ('status', 'sign-in', 'skip-app'):
         command = commands.add_parser(name)

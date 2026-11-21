@@ -22,6 +22,35 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'setup'))
 import store
 
+DESCRIPTION = """Verify an owner-configured phone route; never create or activate one.
+
+configure --plan PRIVATE_JSON [--yes --operation ID --secrets PRIVATE_JSON]
+status --operation ID
+reconcile --plan PRIVATE_JSON --revision ORIGINAL_REVISION --yes
+          --operation ID --secrets PRIVATE_JSON
+
+Preview durably records configure_access and its exact request fingerprint.
+Confirmation makes read-only provider checks and records independent readiness.
+Repeated confirmation reconciles the same resource; it cannot send/create work.
+Secrets are read from owner-only files, never arguments, output or shared state.
+Python 3.9+, standard library; Cloudflare uses the setup prerequisite
+/usr/bin/openssl; Tailscale verification also needs its local CLI.
+
+Plan JSON has exactly schema="openwiz.access-plan.v1", provider, host (fixed
+lowercase HTTPS DNS name), port (loopback integer), owner (email), plus:
+  cloudflare: account (32 hex), tunnel and application (UUID), team (slug).
+  tailscale: tailnet, device (stable node id), foreign (different email).
+Credential JSON has exactly api_token plus owner, expired, foreign JWT cookies
+for Cloudflare, or api_token alone for Tailscale. Keep both files private 0600,
+outside repositories. No credential value belongs in an argument or prompt.
+Cloudflare requires a remotely managed named tunnel, exact loopback ingress,
+owner-only all-path Access and origin audience validation. Tailscale requires
+private HTTPS Serve, Funnel off, current device approval/expiry and one explicit
+owner-only IPv4:443 ACL; current-policy validation tests owner accept/foreign
+deny, never a hypothetical replacement policy. Unsupported shapes stay unknown
+or refused. Native network enforcement remains a separately authorized check.
+"""
+
 HOUR_MS = 3_600_000
 MAX_BYTES = 4 * 1024 * 1024
 EMAIL = re.compile(r'[A-Za-z0-9.!#$%&\x27*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}')
@@ -378,7 +407,7 @@ def verify(http, p, secret_path, now, local, witness):
 
 
 def execute(argv=None, *, http=None, local=local_tailscale):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
     for name in ('configure', 'reconcile', 'status'):
         command = commands.add_parser(name)

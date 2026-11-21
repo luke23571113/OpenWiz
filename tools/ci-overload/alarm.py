@@ -12,6 +12,8 @@ import tempfile
 import time
 import uuid
 
+DESCRIPTION = """One bounded CS5 observation/admission decision. Never sends notifications."""
+
 ACTIONS = ('merge-batch', 'automatic-refresh', 'nonessential-poll',
            'completion', 'reconciliation')
 ESSENTIAL = ('completion', 'reconciliation')
@@ -257,7 +259,7 @@ def decision(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--repository', required=True)
     parser.add_argument('--input', required=True, type=Path)
     parser.add_argument('--state', required=True, type=Path)

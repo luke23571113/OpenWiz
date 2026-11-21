@@ -11,6 +11,28 @@ from check import (ALIAS, MODES, Refused, alias, changelog_entry, command, git_e
                    sha, shape, unique)
 
 from repository import repository, remote_url
+
+DESCRIPTION = """Publish an exact checked export, only on the maintainer's `publish VERSION`.
+
+    python3 tools/release/publish.py publish VERSION --repo EXPORT         --report EVIDENCE/report.json --approval 'publish VERSION'
+
+The approval argument records the maintainer's actual instruction; generating
+that argument is never itself approval. No retry or rollback is attempted on
+failure: inspect the remote before running again after a partial publication.
+The release notes are the checked commit's exact version entry in CHANGELOG.md.
+No content is rewritten after release check.
+
+With --backfill the report must come from `release check --historical` and
+name the exact historical commit checked out at EXPORT. That commit must already
+be reachable from public main. Only its annotated tag and release page are
+created; main is never pushed. A historical report cannot publish without
+--backfill, and a staged report cannot backfill.
+
+Before any write, GitHub immutable releases must be enabled for the public
+repository. After the release is created, its tag, title, notes, pre-release,
+non-draft and immutable state are read back, followed by the tag object and its
+peeled target. A failure stops there.
+"""
 CHECKS = ["plan", "open-development-privacy", "stage", "privacy", "historical-text", "links", "claims",
           "regression-proofs", "fresh-clone"]
 
@@ -232,7 +254,7 @@ def publish(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["publish"])
     parser.add_argument("version")
     parser.add_argument("--repo", type=Path, required=True)

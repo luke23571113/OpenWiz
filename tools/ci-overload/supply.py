@@ -10,6 +10,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'collector'))
 import collect_ci
 
+DESCRIPTION = """MT6 (#825): the overload guard's supplier. One on-demand collector read, written as the guard's input."""
+
 
 def write(path, data):
     fd, pending = tempfile.mkstemp(prefix='.observation-', dir=path.parent)
@@ -25,7 +27,7 @@ def write(path, data):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog='supply.py', description=__doc__.split('\n\n')[0])
+    parser = argparse.ArgumentParser(prog='supply.py', description=DESCRIPTION)
     parser.add_argument('--repository', required=True)
     parser.add_argument('--output', required=True, type=Path)
     args = parser.parse_args(argv)

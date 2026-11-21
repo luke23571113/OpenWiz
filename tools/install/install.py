@@ -12,6 +12,13 @@ import sys
 import tarfile
 import tempfile
 
+DESCRIPTION = """Verified, offline package installation. Python 3.9+; no Cargo, npm or network.
+
+Transport supplies a manifest, its separately checked checksum, and an archive.
+Checksums establish integrity, not a signed publisher identity. No program from
+an archive is run while validating or installing it.
+"""
+
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PROGRAMS = {'openwiz'}
 REQUIRED = PROGRAMS | {'runtime/openwiz-build.txt', 'runtime/install.py', 'runtime/pull.py',
@@ -273,7 +280,7 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     for flag in ('manifest', 'archive', 'manifest-sha256', 'root', 'target'):
         parser.add_argument('--' + flag, required=True)
     parser.add_argument('--state-root')

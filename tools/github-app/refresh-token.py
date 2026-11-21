@@ -14,13 +14,34 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import app
 
+DESCRIPTION = """Print an installation token for GH_TOKEN, minting only when needed (G2, #1402).
+
+Options are mint-token.py's, plus --write and --from-secret. Stdout is the
+token alone, so `GH_TOKEN="$(python3 -I refresh-token.py ...)"` works as is;
+nothing else is printed on success.
+
+- Without --write the token is read-only. With --write it carries exactly the
+  App's profile: Contents, Issues and Pull requests write, the rest read; an
+  answer granting anything else (workflows, administration) is refused.
+- The key is the PC state's private-key.pem, or with --from-secret the
+  Cloudroom secret OPENWIZ_GITHUB_APP_KEY (base64 of the PEM, one line) beside
+  OPENWIZ_GITHUB_APP_ID (cloud threads). It reaches OpenSSL only by descriptor.
+- A token is reused while more than five minutes of it are left, then a fresh
+  one is minted. Each scope (API, installation, repositories, profile, key
+  source) has its own cache entry in <state>/tokens/, owner-only (0700
+  directory, 0600 files, never a symlink); an unsafe cache is refused.
+
+mint-token.py stays byte-identical to the copy WizSkills' launch-fleet carries;
+this tool uses the same guards from app.py and the same installation checks.
+"""
+
 REFRESH = 300
 TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
 SECRET_KEY, SECRET_ID = "OPENWIZ_GITHUB_APP_KEY", "OPENWIZ_GITHUB_APP_ID"
 
 
 def parser():
-    result = app.arguments(__doc__)
+    result = app.arguments(DESCRIPTION)
     result.add_argument("--installation-id", required=True)
     result.add_argument("--repository", action="append", default=[],
                         help="OWNER/NAME (required, repeatable): downscope the token to this selected repository")

@@ -11,6 +11,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check
 
+DESCRIPTION = """Pre-push adapter: guard network destinations except the private repository."""
+
 
 def private_or_local(url):
     if url.startswith(('/', './', '../', 'file://')):
@@ -86,7 +88,7 @@ def destination_main(repo, url):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--url', required=True)
     parser.add_argument('--repo', required=True, type=Path)
     parser.add_argument('--head', required=True)

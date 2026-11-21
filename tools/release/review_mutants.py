@@ -10,6 +10,8 @@ import unittest
 from unittest.mock import patch
 
 sys.dont_write_bytecode = True
+
+DESCRIPTION = """Prove the R3/R4/R7 corrections detect narrowly targeted breaks in temporary copies."""
 ROOT = Path(__file__).resolve().parents[2]
 PASS = '            self.report["status"] = "pass"\n'
 FILES = '        files = sorted(self.report["files"],key=lambda i:i["path"])\n'
@@ -49,7 +51,7 @@ MUTANTS = {
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("--only",choices=list(MUTANTS),nargs="+")
     args = parser.parse_args()
     spec = importlib.util.spec_from_file_location("release_proofs",ROOT/"tools/release/test.py")

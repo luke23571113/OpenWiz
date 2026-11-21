@@ -19,6 +19,8 @@ import urllib.request
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import store
 
+DESCRIPTION = "OpenWiz setup: prepare one project and check each connection independently (#1105).\n\n  setup.py prepare --repository OWNER/NAME --project PRJ --operator NAME \\\n      --service-issue N --answer-thread THR --harness H --model M --effort E\n      Without --yes: records the proposed settings and prints their effects,\n      operation id and fingerprint; nothing else is saved. With\n      --yes --operation ID: saves exactly that preview's settings.\n  setup.py check\n      Reads CloudRoom through the installed openwiz CLI, the agents' own\n      GitHub login through gh, and OpenWiz's App through GitHub's App API, and\n      records one result code per component. Reads only: the App's\n      installation token is minted to prove access, then discarded.\n\nResults go to owner-only `<state>/setup/state.json` (store.py), which the\nsetup page reads. Output is JSON with fixed public codes: never a token, key,\nprovider body or URL with credentials. No personal-token fallback for the App.\nPython 3.9+, standard library and /usr/bin/openssl only.\n"
+
 HERE = Path(__file__).resolve().parent
 PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write',
            'pull_requests': 'write', 'checks': 'read', 'actions': 'read'}
@@ -599,7 +601,7 @@ def prepare(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
     for name in ('prepare', 'check'):
         command = commands.add_parser(name)

@@ -12,6 +12,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from workflow import Unknown, refused_jobs, parse
 
+DESCRIPTION = """Read-only privacy check for openwiz.open-development.v1."""
+
 DECIDERS = ('Jake',)
 PUBLIC_ROOT = 'f099f9e0cbd3fc2a8ce3edf981235c953ee2dec7'
 PUBLIC_ANCHOR = '5d069b025c6eacb4123ca8241ba21345f1eae9dd'
@@ -357,7 +359,7 @@ def git_files(repo, ref, blobs):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--tree', type=Path, help='explicit staged public directory; symlinks are not followed')
     parser.add_argument('--repo', type=Path)
     parser.add_argument('--git-tree', help='Git tree/ref to scan without checkout')

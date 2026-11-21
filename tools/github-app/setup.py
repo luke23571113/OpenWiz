@@ -12,6 +12,30 @@ import sys
 import time
 import urllib.parse
 
+DESCRIPTION = """Connect OpenWiz's GitHub App on this host (#1105): register it through GitHub's
+manifest flow, save its key, and capture its installation on selected repositories.
+
+Without --yes: records the proposed `connect_app` operation in the setup state
+and prints its effects and id; no network and no local server. With
+--yes --operation ID: runs the loopback flow for exactly that proposal.
+Registration happens at most once: the operation is uncertain before GitHub is
+asked to convert, a saved App is reconciled with GitHub instead of registered
+again, and an uncertain registration without a saved key is never repeated.
+
+With --agent-for LOGIN [--organization] (GI4, #2546): the agent mode prepares the
+one App for that account or organisation instead. Its public id is recorded here
+first, so it is registered once. GitHub's converted key goes only to the
+Cloudroom secret OPENWIZ_GITHUB_APP_KEY through --secret-store, or, with no store,
+is discarded (J27); no copy stays on this host. With that secret delivered, the
+App is reconciled with GitHub on every run, never registered again, and only its
+install is offered and read back.
+
+J48 (#606): each user's own App is registered private, under its own name, and
+installs only on its owner's account; a conversion owned by another account is
+refused before its key goes anywhere. --factory is the explicit, separate
+setting for the factory's public multi-account App and its named installations.
+"""
+
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parent / "setup"), str(HERE.parent / "install" / "setup")]
 import app
@@ -404,7 +428,7 @@ def agent_run(args, account, program, template, setup, directory):
 
 
 def main():
-    parser = app.arguments(__doc__)
+    parser = app.arguments(DESCRIPTION)
     parser.add_argument("--port", type=int, default=8765, help="loopback port (default 8765); keep it for reconnects")
     parser.add_argument("--repo", help="OWNER/NAME to select (default: this clone's GitHub origin)")
     parser.add_argument("--yes", action="store_true", help="carry out the previewed operation")

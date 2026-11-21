@@ -8,6 +8,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+DESCRIPTION = """Skills eval command line (contract.md). Standard library only.
+
+  eval.py check                          cases, coverage, provenance, required text, controls (offline)
+  eval.py coverage                       the skill-to-case map (offline)
+  eval.py run --out DIR [--rev REV]      paid role runs; resumable; needs OPENROUTER_API_KEY
+  eval.py score DIR                      score a results set; exit 0 only if every case passed every repeat
+  eval.py compare A B                    compare two scored sets with equal settings and cases hashes
+  eval.py tokens --out FILE [--rev REV] [--offline]
+  eval.py token-diff BEFORE AFTER
+"""
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import cases as C
@@ -354,7 +365,7 @@ def cmd_token_diff(a):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest='cmd', required=True)
     for name in ('check', 'coverage', 'run', 'score', 'tokens'):
         q = sub.add_parser(name)

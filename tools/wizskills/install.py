@@ -10,6 +10,8 @@ import sys
 import tempfile
 
 sys.dont_write_bytecode = True
+
+DESCRIPTION = """Install the WizSkills release pinned by `wizskills.lock` into `.wizskills/`."""
 URL = 'https://github.com/openwizdev/WizSkills.git'
 DEST = '.wizskills'
 LOCK = 'wizskills.lock'
@@ -274,7 +276,7 @@ def install(root):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--root', default=str(Path(__file__).resolve().parents[2]),
                         help='the ClosedWiz checkout (default: this one)')
     args = parser.parse_args(argv)

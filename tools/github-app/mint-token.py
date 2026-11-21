@@ -6,9 +6,20 @@ import sys
 
 import app
 
+DESCRIPTION = """Mint one read-only installation token on the PC, downscoped to the selected repositories.
+
+--repository is required (C8, #2315): the token covers exactly those selected
+repositories of one owner. Stdout is two lines: the token, then its expiry in
+Unix seconds. Agent reads use this through the carried WizSkills reader only.
+
+The installation is read back first (C-G1/J48, #606): a user's own App mints
+only on its owner's account; OPENWIZ_GITHUB_APP_MODE=factory is the explicit
+setting for the factory's App and its named installations only.
+"""
+
 
 def main():
-    parser = app.arguments(__doc__)
+    parser = app.arguments(DESCRIPTION)
     parser.add_argument("--installation-id", required=True)
     parser.add_argument("--repository", action="append", default=[],
                         help="OWNER/NAME (required, repeatable): downscope the read token to this selected repository")
