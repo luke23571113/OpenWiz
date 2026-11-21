@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
+import ctypes, fcntl, importlib.machinery, importlib.util, json, os, re, secrets, shutil, signal, subprocess, sys, time
+
+sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get('OPENWIZ_BOAT_STATE') or os.path.expanduser('~/.local/state/openwiz-boat')
@@ -13,6 +15,7 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
 RUN = {'run': r'run-[0-9a-f]{12}'}
 ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
 UP = ('running', 'ready', 'idle')  # the sandbox states a wake may prompt in; any other refuses it
+STATES = UP + ('stopped', 'archived')
 QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 120
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
 DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
@@ -20,6 +23,21 @@ SHOWN_LIMIT_TYPES = {'auth_expiry': 'auth_expiry', 'rate_limit': 'rate_limit'}
 MACOS_SECONDS_BETWEEN_LOOKS = 0.2
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
+KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
+# PRIVACY: boat's own words (an error's text, an unknown code, its stderr) are only classified, never repeated:
+# an auth diagnostic may hold a credential.
+HOST_ERRORS = {'provider_not_configured': "connect that harness's key or subscription in boat's dashboard (Agents & "
+                                          'Proxying) yourself',
+               'sandbox_not_found': 'check that the sandbox is still in `boat list --all`',
+               'sandbox_not_ready': 'check that the sandbox runs in `boat list --all`',
+               'conversation_not_found': 'check `boat conversations <sandbox>` for the conversation'}
+SIGNED_OUT = re.compile(r'sign|login|auth|401|unauthori[sz]ed|expired', re.I)
+SIGN_IN = 'sign in to boat yourself with `boat login`'
+INSTALL_REFUSALS = ((r'refused: tag v\S+ is not the pinned commit', 'its tag is not the pinned commit'),
+                    (r'refused: commit \S+ is not the pinned tree', 'its commit is not the pinned tree'),
+                    (r'refused: the installed release is not the pinned (?:commit|tree)',
+                     'the installed release is not the pinned one'),
+                    (r'refused: \S+ exists', 'another skill of that name is installed there'))
 
 
 class Refused(Exception):
@@ -53,6 +71,29 @@ def read(fields):
     return req
 
 
+def credential_check():
+    try:
+        spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
+            'openwiz_driver_kit', KIT))
+        kit = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(kit)
+        return kit.holds_credential
+    except Exception:
+        raise Refused("the driver kit's credential check is missing, so no start field can be checked; nothing "
+                      'was started', 'run the driver from an OpenWiz checkout or release that carries '
+                      'kernel/driver-kit/kit.py')
+
+
+def no_credentials(req):
+    # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
+    holds_credential = credential_check()
+    for key in START:
+        if isinstance(req[key], str) and holds_credential(req[key]):
+            raise Refused('%s looks like a credential, so nothing was saved or started' % key,
+                          'send the %s itself in %s; never a login, key or token' % (key, key))
+    return req
+
+
 def boat_program():
     found = shutil.which('boat')
     if not found:
@@ -61,17 +102,22 @@ def boat_program():
     return found
 
 
-def boat_error(what, lines, stderr, then):
-    """Refused, from boat's last `{"event": "error"}` line or its output; `then` is the step after the fix."""
+def host_said(lines, stderr):
     errors = [x for x in lines if x.get('event') == 'error']
-    detail = '%s (%s)' % (errors[-1].get('error'), errors[-1].get('code')) if errors else stderr or 'no answer'
-    if 'provider_not_configured' in detail:
-        step = "connect that harness's key or subscription in boat's dashboard (Agents & Proxying) yourself"
-    elif re.search(r'sign|login|auth|401', detail, re.I):
-        step = 'sign in to boat yourself with `boat login`'
-    else:
-        step = 'fix what boat said'
-    return Refused(line('boat %s failed: %s' % (what, detail)), line('%s, then %s' % (step, then)))
+    code = errors[-1].get('code') if errors else None
+    if isinstance(code, str) and code in HOST_ERRORS:
+        return code, HOST_ERRORS[code]
+    told = ' '.join(str(errors[-1].get(k)) for k in ('error', 'code')) if errors else stderr
+    if SIGNED_OUT.search(told):
+        return 'boat is not signed in', SIGN_IN
+    return ('boat gave an error the driver does not repeat' if told.strip() else 'boat gave no answer'), None
+
+
+def boat_error(what, lines, stderr, then, log=None):
+    why, step = host_said(lines, stderr)
+    if step is None:
+        step = 'read %s for what boat said' % log if log else 'run `boat %s` by hand to read what it says' % what
+    return Refused(line('boat %s failed: %s' % (what, why)), line('%s, then %s' % (step, then)))
 
 
 def parse(text):
@@ -168,11 +214,12 @@ def install_skills(sandbox, lock):
         raise Refused('the pinned WizSkills skills were not installed in sandbox %s in time' % sandbox,
                       'check that the sandbox reaches github.com, then start again')
     if p.returncode != 0 or ('openwiz-skills-ok ' + lock['version']) not in p.stdout:
-        why = re.findall(r'refused: [^"\\\n]+', p.stdout + p.stderr) or [(p.stderr or p.stdout).strip()[-150:] or 'no answer']
+        refused = [why for pattern, why in INSTALL_REFUSALS if re.search(pattern, p.stdout + p.stderr)]
+        why, step = (refused[0], None) if refused else host_said(parse(p.stdout), p.stderr.strip()[-200:])
         raise Refused(line('the pinned WizSkills skills (%s) could not be installed in sandbox %s: %s'
-                           % (lock['version'], sandbox, why[0])),
-                      'check that the sandbox reaches github.com and that no other skill of that name is installed '
-                      'there, then start again')
+                           % (lock['version'], sandbox, why)),
+                      line(('%s, then ' % step if step else '') + 'check that the sandbox reaches github.com and '
+                           'that no other skill of that name is installed there, then start again'))
 
 
 def path(run, name):
@@ -387,7 +434,7 @@ def prompt(state, run):
             return turn, queued[0]
         if ended:  # boat refused the prompt: nothing was queued
             end([turn], run)
-            raise boat_error('prompt', lines, text.strip()[-200:], then)
+            raise boat_error('prompt', lines, text.strip()[-200:], then, log)
         if time.monotonic() > deadline:
             end([turn], run)
             raise Refused('boat did not queue the turn within %d seconds; its outcome is unknown' % QUEUED_WAIT,
@@ -455,7 +502,7 @@ def sandbox_state(sandbox):
     for x in boat('stop the run', 'info', sandbox):
         box = x.get('sandbox') if isinstance(x.get('sandbox'), dict) else x
         if 'state' in box:
-            found = str(box['state'])
+            found = box['state'] if box['state'] in STATES else 'unknown'
     return found
 
 
@@ -653,7 +700,7 @@ def start(req):
     except Refused as e:
         raise Refused(e.args[0], line(e.args[1] + '; if `boat list` shows a sandbox named openwiz-%s, stop it '
                                                   'first' % run))
-    if not ready or not text_id(ready[-1].get('id')):
+    if not ready or not text_id(ready[-1].get('id')) or credential_check()(ready[-1]['id']):
         raise Refused('boat new gave no sandbox id', 'stop the sandbox named openwiz-%s in `boat list` yourself, '
                                                      'then start again' % run)
     state['sandbox'] = ready[-1]['id']
@@ -750,7 +797,7 @@ def answer(cmd):
         with open(os.path.join(HERE, 'schema.json')) as f:
             return json.load(f)
     if cmd == 'start':
-        return start(read(START))
+        return start(no_credentials(read(START)))
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
         return wake(run) if cmd == 'wake' else stop(run)

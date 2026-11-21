@@ -155,15 +155,31 @@ def prompt(args):
     say(data={'conversationId': cid, 'status': 'finished'}, event='chat', final=True)
 
 
+def leak(how):
+    marker = os.environ['FAKE_MARKER']
+    if how == 'json':
+        fail('not_authenticated', 'Synthetic sign-in expired; session ' + marker)
+    if how == 'code':
+        fail(marker, 'Synthetic diagnostic')
+    print('Synthetic auth diagnostic: login expired, session ' + marker, file=sys.stderr)
+    sys.exit(1)
+
+
 def main():
     cmd, rest = (ARGS[0], ARGS[1:]) if ARGS else ('', [])
+    if os.environ.get('FAKE_BOAT_ARGS'):
+        with open(os.environ['FAKE_BOAT_ARGS'], 'a') as f:
+            f.write(json.dumps(ARGS) + '\n')
+    planted = os.environ.get('FAKE_BOAT_LEAK', '').split(':')
+    if len(planted) == 2 and planted[0] == cmd:
+        leak(planted[1])
     if cmd in os.environ.get('FAKE_BOAT_FAIL', '').split(','):  # a planted failure of this command
         fail('internal_error', 'boat %s failed' % cmd)
     if cmd not in ('prompt', 'exec'):  # every other call the driver makes passes --json once, anywhere
         rest = [a for a in rest if a != '--json'] + ['--json'] * (rest.count('--json') == 1)
     if cmd == 'new' and len(rest) == 3 and rest[0] == '--name' and rest[2] == '--json':
         def create(state):
-            sid = 'bx_fake%04d' % (len(state['sandboxes']) + 1)
+            sid = os.environ.get('FAKE_BOAT_ID') or 'bx_fake%04d' % (len(state['sandboxes']) + 1)
             state['sandboxes'][sid] = {'name': rest[1], 'state': 'running', 'conversations': {}, 'interrupts': 0}
             return sid
         sid = update(create)

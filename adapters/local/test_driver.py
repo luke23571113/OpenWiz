@@ -326,6 +326,30 @@ class Local(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
 
+    def test_a_credential_shaped_start_field_is_refused_before_anything_starts(self):
+        calls, logging = os.path.join(self.folder, 'calls'), os.path.join(self.folder, 'logging-bin')
+        os.mkdir(logging)
+        for name in ('claude', 'codex', 'gh'):
+            with open(os.path.join(logging, name), 'w') as f:
+                f.write('#!/bin/sh\nprintf \'%%s\\n\' "$*" >> %s\nexec %s "$@"\n' % (calls, os.path.join(self.bin, name)))
+            os.chmod(os.path.join(logging, name), 0o700)
+        env = dict(self.env, PATH=logging + os.pathsep + self.env['PATH'])
+        request = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
+                   'model': 'synthetic-1'}
+        for field, value in (('model', 'sk-' + 'Synthetic0Marker' * 2), ('model', 'token: synthetic0marker'),
+                             ('model', 'AKIA' + 'SYNTHETIC0MARK00'), ('repository', TOKEN + '/site'),
+                             ('skill', 'sk-synthetic0marker0value00'), ('harness', 'sk-synthetic0marker0value00')):
+            with self.subTest(field=field, value=value):
+                code, out = self.driver('start', dict(request, **{field: value}), env)
+                self.assertEqual(code, 1, out)
+                self.assertIn(field, out['error'])
+                self.assertIn('credential', out['error'])
+                self.assertNotIn(value, json.dumps(out))
+                self.assertFalse(os.path.exists(calls), 'a harness or gh ran')
+                state = self.env['OPENWIZ_LOCAL_STATE']
+                self.assertEqual(sorted(os.listdir(state)), ['approvals.json'])
+        self.assertEqual(self.logged(), [])
+
     def test_missing_or_unknown_harness_is_an_error_with_next(self):
         python = os.path.join(self.folder, 'python')
         os.mkdir(python)
