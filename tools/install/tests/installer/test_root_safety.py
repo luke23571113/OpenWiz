@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# #2162: install refuses a root or state root holding entries OpenWiz didn't make, and
-# install remove deletes exactly OpenWiz's own entries and nothing else.
+import fcntl
 import json
 import os
 import shlex
@@ -141,6 +140,19 @@ class Remove(Installer):
         self.assertEqual(tree(state), ['other-app', 'other-app/data', 'service', 'service/builds',
                                        'service/builds/' + 'f' * 40,
                                        'service/builds/' + 'f' * 40 + '/install-manifest.json'])
+
+    def test_remove_refuses_while_an_install_or_update_holds_the_lock(self):
+        state, build = self.installed()
+        before = tree(self.root)
+        with open(self.root / 'install.lock', 'a+b') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            for argv in ((), ('--yes',)):
+                code, value = self.run_entry('remove', '--root', str(self.root), *argv)
+                self.assertEqual((code, value['outcome']), (5, 'refused'), value)
+                self.assertIn('an install or update is running', value['reason'])
+        self.assertEqual(tree(self.root), before)
+        code, value = self.run_entry('remove', '--root', str(self.root), '--yes')
+        self.assertEqual((code, value['outcome']), (0, 'removed'), value)
 
     def test_remove_on_a_root_with_nothing_installed_changes_nothing(self):
         self.root.mkdir(mode=0o700, parents=True)
