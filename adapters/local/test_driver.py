@@ -366,8 +366,6 @@ class Local(unittest.TestCase):
         self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
 
     def test_a_credential_shaped_start_field_is_refused_before_anything_starts(self):
-        # catches (#2058): a credential pasted into a start field passed the field's syntax check and was sent
-        # to the harness as an argument (`--model <it>`) or to gh, and a refusal that repeats it.
         calls, logging = os.path.join(self.folder, 'calls'), os.path.join(self.folder, 'logging-bin')
         os.mkdir(logging)
         for name in ('claude', 'codex', 'gh'):

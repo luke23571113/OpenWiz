@@ -4,7 +4,7 @@ import ctypes, fcntl, importlib.machinery, importlib.util, json, os, re, secrets
 sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')  # carried beside the drivers in a release
+KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
 STATE = os.environ.get('OPENWIZ_LOCAL_STATE') or os.path.expanduser('~/.local/state/openwiz-local')
 # The host owner's approved permission mode per repository and harness, saved by setup on this machine,
 # outside any repository: {"<owner>/<name>": {"<harness>": "<mode>"}}. A repository's own row must match it.
@@ -56,8 +56,7 @@ def read(fields):
 
 
 def no_credentials(req):
-    """req, unless a start field holds a credential's shape, by the driver kit's own check: then Refused, before
-    anything is saved or started, and never repeating the value."""
+    # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
     try:
         spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
             'openwiz_driver_kit', KIT))

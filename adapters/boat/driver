@@ -22,9 +22,9 @@ SHOWN_LIMIT_TYPES = {'auth_expiry': 'auth_expiry', 'rate_limit': 'rate_limit'}
 MACOS_SECONDS_BETWEEN_LOOKS = 0.2
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
-KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')  # carried beside the drivers in a release
-# The boat error codes the driver names, each with the step that fixes it. boat's own words (an error's text,
-# an unknown code, its stderr) are only classified, never repeated: an auth diagnostic may hold a credential.
+KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
+# PRIVACY: boat's own words (an error's text, an unknown code, its stderr) are only classified, never repeated:
+# an auth diagnostic may hold a credential.
 HOST_ERRORS = {'provider_not_configured': "connect that harness's key or subscription in boat's dashboard (Agents & "
                                           'Proxying) yourself',
                'sandbox_not_found': 'check that the sandbox is still in `boat list --all`',
@@ -32,7 +32,6 @@ HOST_ERRORS = {'provider_not_configured': "connect that harness's key or subscri
                'conversation_not_found': 'check `boat conversations <sandbox>` for the conversation'}
 SIGNED_OUT = re.compile(r'sign|login|auth|401|unauthori[sz]ed|expired', re.I)
 SIGN_IN = 'sign in to boat yourself with `boat login`'
-# The install script's own refusals (INSTALL, below), each shown in fixed words.
 INSTALL_REFUSALS = ((r'refused: tag v\S+ is not the pinned commit', 'its tag is not the pinned commit'),
                     (r'refused: commit \S+ is not the pinned tree', 'its commit is not the pinned tree'),
                     (r'refused: the installed release is not the pinned (?:commit|tree)',
@@ -72,8 +71,7 @@ def read(fields):
 
 
 def no_credentials(req):
-    """req, unless a start field holds a credential's shape, by the driver kit's own check: then Refused, before
-    anything is saved or started, and never repeating the value."""
+    # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
     try:
         spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
             'openwiz_driver_kit', KIT))
@@ -100,8 +98,6 @@ def boat_program():
 
 
 def host_said(lines, stderr):
-    """(why, step) in fixed words for a failed boat command, from its last `{"event": "error"}` line or its
-    stderr: a known code by name, a sign-in failure as one, anything else as unshown; step None if unknown."""
     errors = [x for x in lines if x.get('event') == 'error']
     code = errors[-1].get('code') if errors else None
     if isinstance(code, str) and code in HOST_ERRORS:
@@ -113,8 +109,6 @@ def host_said(lines, stderr):
 
 
 def boat_error(what, lines, stderr, then, log=None):
-    """Refused, in fixed words, from boat's last `{"event": "error"}` line or its stderr (host_said); `then` is
-    the step after the fix, and log the owner-only file that holds boat's own words, if any."""
     why, step = host_said(lines, stderr)
     if step is None:
         step = 'read %s for what boat said' % log if log else 'run `boat %s` by hand to read what it says' % what

@@ -307,7 +307,6 @@ class Boat(unittest.TestCase):
             self.assertEqual(self.sandboxes(), {sid: 'stopped'})
 
     def files_holding(self, marker):
-        """Every file under this test's folder (the driver's state, boat's, the tracker) that holds marker."""
         found = []
         for root, _, names in os.walk(self.folder):
             for name in names:
@@ -320,8 +319,6 @@ class Boat(unittest.TestCase):
         return found
 
     def test_a_credential_shaped_start_field_is_refused_before_anything_starts(self):
-        # catches (#2058): a credential pasted into a start field passed the field's syntax check, was saved in
-        # the run's record and was sent to boat as an argument (`--model <it>`), and a refusal that repeats it.
         args = os.path.join(self.folder, 'boat-args')
         for field, value in (('model', 'sk-' + 'Synthetic0Marker' * 2), ('model', 'token: synthetic0marker'),
                              ('model', 'AKIA' + 'SYNTHETIC0MARK00'), ('repository', TOKEN + '/site'),
@@ -337,8 +334,6 @@ class Boat(unittest.TestCase):
                 self.assertEqual(self.files_holding(value), [])
 
     def test_boat_diagnostics_never_reach_the_drivers_answer(self):
-        # catches (#2058): boat's raw diagnostics (a structured error's text or code, or its stderr) copied into
-        # the driver's JSON error, where a credential in an auth diagnostic would reach the caller's logs.
         marker = 'sk-' + 'Synthetic0Host0Marker' + self.mark
         cases = (('new', 'json', 'sign in to boat'), ('new', 'code', 'boat new failed'),
                  ('new', 'stderr', 'sign in to boat'), ('exec', 'json', 'sign in to boat'),

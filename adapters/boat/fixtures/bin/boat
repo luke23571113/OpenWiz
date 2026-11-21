@@ -10,9 +10,7 @@ It keeps its sandboxes in the JSON file FAKE_BOAT_STATE. `boat prompt` plays the
 conversation posts one builder status note in the local tracker KIT_TRACKER, and each later prompt
 in that conversation edits the same note; then the turn ends (see `prompt` for FAKE_HOLD).
 FAKE_BOAT_PROVIDERS (comma-separated) lists the connected providers; FAKE_BOAT_FAIL (comma-separated) names
-commands that fail. FAKE_BOAT_ARGS names a file each call appends its arguments to, as one JSON line.
-FAKE_BOAT_LEAK=<command>:<how> makes that command fail with the synthetic marker FAKE_MARKER in its
-diagnostic: `json` in a structured error's text, `code` as its error code, `stderr` as plain stderr. `boat exec` runs its script for real, in the sandbox's own home folder, with the
+commands that fail. `boat exec` runs its script for real, in the sandbox's own home folder, with the
 synthetic `git` of fixtures/sandbox-bin; the agent posts its note only if its skill is installed there."""
 import fcntl, json, os, re, subprocess, sys, time
 
