@@ -791,9 +791,29 @@ class InstallJourney(unittest.TestCase):
                 self.assertIn('macOS', check['next'])
 
 
+def own_settings():
+    return (ROOT / 'docs/agents/fleet.md').read_text()
+
+
+def in_section(text, title, old, new):
+    head, sep, rest = text.partition('\n## %s\n' % title)
+    body, more, tail = rest.partition('\n## ')
+    assert sep and body.count(old) == 1, (title, old)
+    return head + sep + body.replace(old, new) + more + tail
+
+
 class OwnSettings(unittest.TestCase):
-    def test_the_models_table_holds_j255_and_the_older_tables_the_pinned_skills_read_agree(self):
-        text = (ROOT / 'docs/agents/fleet.md').read_text()
+    def test_openwizs_own_models_table_and_the_older_tables_the_pinned_skills_read_agree(self):
+        self.agree(own_settings())
+
+    def test_a_role_set_in_both_forms_still_agrees(self):
+        high = '| Claude Code | Opus 5.5 | High | `--provider claude-code --model claude-opus-5-5 --reasoning-level high` |'
+        text = in_section(own_settings(), 'Models', '| Small builder | follows Builder | | | |', '| Small builder %s' % high)
+        text = in_section(text, 'Builder for small tickets', '| Effort | Medium | `--reasoning-level medium` |',
+                          '| Effort | High | `--reasoning-level high` |')
+        self.agree(text)
+
+    def agree(self, text):
         self.assertEqual(text.count('\n## Models\n'), 1, 'one Models section')
         body = text.split('\n## Models\n', 1)[1].split('\n## ', 1)[0]
         rows = [[cell.strip() for cell in line.strip()[1:-1].split('|')]
