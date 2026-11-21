@@ -251,35 +251,11 @@ def end(turns, run):
                   % ', '.join(str(p) for p, _ in kept))
 
 
-def own_supervisors(run):
-    me, turn = os.fsencode(os.path.abspath(__file__)), re.escape(os.fsencode(os.path.join(STATE, run)))
-    found = []
-    for p in filter(str.isdigit, os.listdir('/proc')):
-        try:
-            if os.stat('/proc/' + p).st_uid != os.getuid():
-                continue
-            with open('/proc/%s/cmdline' % p, 'rb') as f:
-                args = f.read().split(b'\0')
-        except OSError:
-            continue
-        if len(args) > 4 and args[2:4] == [me, b'--turn'] and re.fullmatch(turn + rb'\.[0-9]+\.session', args[4]):
-            found.append({'supervisor': int(p), 'supervisor_since': since(int(p))})
-    return found
-
-
 def stop_untrusted(run):
-    cannot = Refused('run %s\'s state in %s is not yours alone, and the driver could not end the run from the '
-                     'processes it started itself, so it ended nothing named there' % (run, STATE),
-                     'end the run\'s processes by hand if it still runs, then run chmod 700 on the folder and chmod '
-                     '600 on its files if they are your own')
-    turns = own_supervisors(run)
-    if not turns:
-        raise cannot
-    try:
-        end(turns, run)
-    except Refused:
-        raise cannot
-    return {'run': run, 'stopped': True}
+    raise Refused('run %s\'s state in %s is not yours alone, and the driver keeps no other proof of which processes '
+                  'are the run\'s, so it ended nothing' % (run, STATE),
+                  'end the run\'s processes by hand if it still runs, then run chmod 700 on the folder and chmod 600 '
+                  'on its files if they are your own')
 
 
 def lock(run):
@@ -360,7 +336,7 @@ def answer(cmd):
             state = saved(run)
         except Refused as e:
             if cmd == 'stop' and e.args == UNTRUSTED:
-                return stop_untrusted(run)
+                stop_untrusted(run)
             raise
         if cmd == 'stop':
             try:

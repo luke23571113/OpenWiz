@@ -217,12 +217,12 @@ class Factory(unittest.TestCase):
         self.assertIn(state, out['error'])
         self.assertIn('by hand', out['next'])
 
-    def test_stop_on_a_tampered_folder_still_ends_the_runs_own_processes(self):
+    def test_stop_on_a_tampered_folder_ends_nothing_and_says_so(self):
         state = self.env['OPENWIZ_FACTORY_STATE']
         code, out = self.call('start', REQUEST)
         self.assertEqual(code, 0, out)
         self.assertTrue(self.until(lambda: len(self.logged()) == 1), 'no turn ran')
-        ours = set(self.marked())
+        worker = int(self.logged()[0][1])
         other, child, planted = self.unrelated_tree()
         manifest = os.path.join(state, out['run'] + '.json')
         with open(manifest) as f:
@@ -231,9 +231,12 @@ class Factory(unittest.TestCase):
             json.dump(dict(saved, turns=planted), f)
         os.chmod(manifest, 0o666)
         os.chmod(state, 0o777)
-        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+        code, err = self.call('stop', out)
+        self.assertEqual(code, 1, err)
+        self.assertIn(state, err['error'])
+        self.assertIn('by hand', err['next'])
         self.assertTrue(alive(child) and alive(other.pid), 'stop ended a process named only by the tampered state')
-        self.assertEqual(set(self.marked()) & ours, set(), 'a process of the run still runs after stop')
+        self.assertTrue(alive(worker), 'stop signalled a process it found without trusted state')
         self.assertEqual(self.call('wake', out)[0], 1, 'a wake ran on a tampered folder')
 
     def test_stop_and_wake_refuse_a_run_they_cannot_trust(self):
