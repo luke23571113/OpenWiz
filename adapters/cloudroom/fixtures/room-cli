@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""A synthetic `room-cli` for the Cloudroom driver's tests. It never reaches Cloudroom.
+
+It logs each call's arguments as one JSON line in $FAKE_ROOM_LOG and keeps its threads in
+$FAKE_ROOM_LOG.threads. `thread spawn` starts the program named by --provider as a local turn
+(`<provider> --model <m> -p <prompt>`) and answers a receipt; `thread tell` starts another turn
+with the message file's text; `thread archive` ends every process the thread's turns started, in any
+session, as archiving a Cloudroom thread ends its sandbox. FAKE_ROOM_REFUSE
+names a subcommand (spawn, tell, archive) to refuse, as Cloudroom does: a line on stderr, exit 1.
+FAKE_ROOM_RECEIPT replaces the spawn receipt with that text, unchanged.
+FAKE_ROOM_BREAK names a folder that spawn replaces with a regular file once the thread exists, and
+FAKE_ROOM_READONLY one it makes read-only, as a full disk or a removed folder would break the caller's
+next write. FAKE_ROOM_HOLD names a file that `tell` waits for (it makes <file>.held first, and logs
+["thread", "told"] once it is done). `thread list` answers the threads not archived, as Cloudroom does.
+"""
 import json, os, shutil, signal, subprocess, sys, time
 
 args, log = sys.argv[1:], os.environ['FAKE_ROOM_LOG']
@@ -29,7 +43,7 @@ def turn(thread, prompt):
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         thread['turns'].append(p.pid)
     except FileNotFoundError:
-        pass
+        pass  # a provider with no local program: the thread exists, and runs nothing here
 
 
 if sub == 'spawn':
@@ -58,7 +72,7 @@ elif sub == 'list':
                                    for t, v in threads.items() if not v.get('archived')]})
 elif sub == 'archive' and args[2] in threads:
     threads[args[2]]['archived'] = True
-    for pid in filter(str.isdigit, os.listdir('/proc')):
+    for pid in filter(str.isdigit, os.listdir('/proc')):  # every process carrying the thread's mark
         try:
             with open('/proc/%s/environ' % pid, 'rb') as f:
                 if mark(args[2]).encode() in f.read().split(b'\0'):

@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+"""The Cloudroom driver (kernel/driver.v1.md): each run is one Cloudroom thread, made through the user's own
+signed-in `room-cli` from inside a Cloudroom thread of the project.
+
+start: `room-cli thread spawn --parent-self --project $ROOM_PROJECT_ID ...`, a child thread in its own sandbox.
+wake:  `room-cli thread tell <thread> --mode queue --message-file <file>`, the delivery the fleet's GitHub
+       event route uses, answered as woken only when room-cli accepts it.
+stop:  `room-cli thread archive <thread>`, which stops the thread and archives it.
+A run is saved, as `starting`, before its thread is made, and the thread's title carries the run id, so `stop`
+always reaches the thread (by title, if its id was never saved) and `wake` never uses a run that did not finish
+starting. A wake or a stop holds the run's lock throughout. No answer after a spawn says retry.
+It never reads, adds or passes a login: room-cli runs with the caller's environment, unchanged.
+Linux or macOS; standard library only.
+"""
 import fcntl, json, os, re, secrets, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -11,7 +24,7 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
 RUN = {'run': r'run-[0-9a-f]{12}'}
 THREAD, PROJECT = r'thr_[A-Za-z0-9_]{1,80}', r'[A-Za-z0-9_]{1,80}'
 WRITABLE = 'make OPENWIZ_CLOUDROOM_STATE (or ~/.local/state/openwiz-cloudroom) a folder you can write'
-PROVIDERS = {'claude': 'claude-code'}
+PROVIDERS = {'claude': 'claude-code'}  # the harness names OpenWiz uses that Cloudroom names otherwise
 LOOKUP = ("Read 'skills/{s}/SKILL.md' if present, otherwise find '*/skills/{s}/SKILL.md' only inside your own "
           "harness's configured plugin cache: Codex uses CODEX_HOME/plugins/cache (default HOME/.codex/plugins/cache); "
           "Claude uses CLAUDE_CODE_PLUGIN_CACHE_DIR/cache when set, otherwise CLAUDE_CONFIG_DIR/plugins/cache (default "
@@ -25,7 +38,7 @@ class Refused(Exception):
 
 
 class Unknown(Refused):
-    pass
+    """Cloudroom may have acted: the outcome is unknown."""
 
 
 def unique(pairs):
@@ -35,6 +48,7 @@ def unique(pairs):
 
 
 def read(fields):
+    """The request on stdin, with exactly these fields, each valid, or Refused."""
     try:
         req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
     except ValueError:
@@ -49,6 +63,7 @@ def read(fields):
 
 
 def room(*args):
+    """Run the user's own `room-cli` with the caller's environment unchanged: (exit code, stdout, last stderr line)."""
     try:
         p = subprocess.run(['room-cli', *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=100)
     except FileNotFoundError:
@@ -58,7 +73,7 @@ def room(*args):
         raise Unknown('room-cli thread %s did not answer within 100 seconds; its outcome is unknown' % args[1],
                       'read `room-cli thread list` before you do anything again, so nothing happens twice')
     said = ([x.strip() for x in p.stderr.splitlines() if x.strip()] or ['no reason given'])[-1]
-    said = re.sub(r'thr_[A-Za-z0-9_-]*', '<thread>', said)[:200]
+    said = re.sub(r'thr_[A-Za-z0-9_-]*', '<thread>', said)[:200]  # a run id never shows its thread
     return p.returncode, p.stdout, said
 
 
@@ -90,6 +105,7 @@ def spawn(req, title):
 
 
 def tell(state, req):
+    """The fleet route's delivery: queued, from a private file, woken only on room-cli's acceptance."""
     text = ('You were woken for %s#%d: read the ticket again, edit your own status note, and carry on with the %s '
             'skill.' % (req['repository'], req['ticket'], req['skill']))
     fd, path = tempfile.mkstemp(prefix='wake-', dir=STATE)
@@ -120,6 +136,8 @@ def saved(run, state=None):
 
 
 def lock(run, cmd):
+    """Hold the run's lock until this command ends, so its wakes and stops take turns. Only a stop may make a lost
+    lock file again: the file carries the stop's marks, so a wake never runs without it."""
     if not os.path.exists(os.path.join(STATE, run + '.json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     try:
@@ -135,10 +153,13 @@ def lock(run, cmd):
         raise Refused('the driver cannot lock run %s in its state folder' % run, WRITABLE)
 
 
-STOPPED_AT = 0
+STOPPED_AT = 0  # a stop sets the lock file's modification time to this: no write ever sets it
 
 
 def marked(run, mark=None):
+    """The run's lock file holds `live` until a stop begins, then `stop` for good, and a stop also sets its
+    modification time to STOPPED_AT. The file already exists, so its text needs no new file or space, and its
+    owner can set its time even when neither it nor its folder takes a write (#1705). Either mark is a stop."""
     path = os.path.join(STATE, run + '.lock')
     if mark is None:
         try:
@@ -147,7 +168,7 @@ def marked(run, mark=None):
             with open(path) as f:
                 return f.read().strip()
         except OSError:
-            return 'stop'
+            return 'stop'  # unreadable: fail closed
     kept = None
     try:
         fd = os.open(path, os.O_WRONLY)
@@ -159,7 +180,7 @@ def marked(run, mark=None):
         kept = mark
     except OSError:
         pass
-    try:
+    try:  # after the text, which would move the time
         os.utime(path, (STOPPED_AT, STOPPED_AT))
         kept = mark
     except OSError:
@@ -168,6 +189,7 @@ def marked(run, mark=None):
 
 
 def threads(state):
+    """The run's live threads: its saved thread, or, if its id was never saved, those titled with its run id."""
     if state['thread']:
         return [state['thread']]
     code, out, said = room('thread', 'list')
@@ -184,7 +206,7 @@ def threads(state):
 def start(req, run):
     title = '#%d: %s builder (%s)' % (req['ticket'], req['repository'], run)
     state = {'request': req, 'title': title, 'thread': None, 'starting': True, 'stopped': False, 'archived': False}
-    try:
+    try:  # save the run before its thread is made: nowhere to keep it, nothing starts
         saved(run, state)
         fd = os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
@@ -195,10 +217,10 @@ def start(req, run):
         raise Refused('the driver cannot keep runs in its state folder; nothing was started', WRITABLE)
     try:
         thread = spawn(req, title)
-    except Unknown as e:
+    except Unknown as e:  # a thread may exist: the record stays starting, so stop reaches it and wake refuses it
         raise Unknown('run %s: %s' % (run, e.args[0]), 'stop %s, which ends any thread it started, then start a new '
                       'run' % run)
-    except Refused:
+    except Refused:  # Cloudroom started nothing
         try:
             saved(run, dict(state, starting=False, stopped=True, archived=True))
         except OSError:
@@ -206,7 +228,7 @@ def start(req, run):
         raise
     try:
         saved(run, dict(state, thread=thread, starting=False))
-    except OSError:
+    except OSError:  # the thread exists but its run is not saved: end it, and never say retry
         if room('thread', 'archive', thread)[0] == 0:
             raise Unknown('run %s started a thread it could not save, so the driver archived it; the outcome is '
                           'unknown' % run, 'read `room-cli thread list` and the ticket for what its agent did before you start again')
@@ -218,7 +240,8 @@ def start(req, run):
 def stop(run, state):
     if state.get('archived'):
         return {'run': run, 'stopped': True}
-    marked(run, 'stop')
+    marked(run, 'stop')  # first, and for good: no wake reaches this run again (one it can't mark is gone or unreadable,
+    # and wake refuses that too), so the archive below always runs
     try:
         saved(run, dict(state, stopped=True))
         kept = True
@@ -256,7 +279,7 @@ def answer(cmd):
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
-        try:
+        try:  # save before you send: a run the driver cannot update is never woken
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was sent' % run, WRITABLE)
