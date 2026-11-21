@@ -74,8 +74,7 @@ def models_row(role, provider, model):
         role, provider, model)
 
 
-# The fleet settings the setup skill writes from the owner's recorded choice (#636), in
-# both forms as OpenWiz's own (#1809): the Models table, and the older tables it agrees with.
+# The fleet settings the setup skill writes from the owner's recorded choice (#636).
 FLEET_SETTINGS = ('# Fleet settings\n\nSynthetic settings.\n\n## Models\n\n'
                   '| Role | Harness | Model | Effort | `room-cli thread spawn` flags |\n| --- | --- | --- | --- | --- |\n'
                   + models_row('Orchestrator', 'codex', 'syn-codex-model-01')
@@ -793,9 +792,6 @@ class InstallJourney(unittest.TestCase):
 
 
 class OwnSettings(unittest.TestCase):
-    """#1809 (MD7): OpenWiz's own fleet.md holds the Models table (contracts/models.v1.md)
-    beside the older tables the pinned WizSkills release still reads; both start J255."""
-
     def test_the_models_table_holds_j255_and_the_older_tables_the_pinned_skills_read_agree(self):
         text = (ROOT / 'docs/agents/fleet.md').read_text()
         self.assertEqual(text.count('\n## Models\n'), 1, 'one Models section')
