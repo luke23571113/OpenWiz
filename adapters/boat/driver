@@ -14,7 +14,8 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
 ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
-UP = ('running', 'ready', 'idle')  # the sandbox states a wake may prompt in; any other refuses it
+UP = ('running', 'ready', 'idle')
+STATES = UP + ('stopped', 'archived')  # the sandbox states a wake may prompt in; any other refuses it
 QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 120
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
 DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
@@ -70,18 +71,22 @@ def read(fields):
     return req
 
 
-def no_credentials(req):
-    # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
+def credential_check():
     try:
         spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
             'openwiz_driver_kit', KIT))
         kit = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(kit)
-        holds_credential = kit.holds_credential
+        return kit.holds_credential
     except Exception:
         raise Refused("the driver kit's credential check is missing, so no start field can be checked; nothing "
                       'was started', 'run the driver from an OpenWiz checkout or release that carries '
                       'kernel/driver-kit/kit.py')
+
+
+def no_credentials(req):
+    # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
+    holds_credential = credential_check()
     for key in START:
         if isinstance(req[key], str) and holds_credential(req[key]):
             raise Refused('%s looks like a credential, so nothing was saved or started' % key,
@@ -497,7 +502,7 @@ def sandbox_state(sandbox):
     for x in boat('stop the run', 'info', sandbox):
         box = x.get('sandbox') if isinstance(x.get('sandbox'), dict) else x
         if 'state' in box:
-            found = str(box['state'])
+            found = box['state'] if box['state'] in STATES else 'unknown'
     return found
 
 
@@ -695,7 +700,7 @@ def start(req):
     except Refused as e:
         raise Refused(e.args[0], line(e.args[1] + '; if `boat list` shows a sandbox named openwiz-%s, stop it '
                                                   'first' % run))
-    if not ready or not text_id(ready[-1].get('id')):
+    if not ready or not text_id(ready[-1].get('id')) or credential_check()(ready[-1]['id']):
         raise Refused('boat new gave no sandbox id', 'stop the sandbox named openwiz-%s in `boat list` yourself, '
                                                      'then start again' % run)
     state['sandbox'] = ready[-1]['id']
