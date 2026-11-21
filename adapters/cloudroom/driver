@@ -104,7 +104,6 @@ def room_said(out, err):
 
 
 def room(*args):
-    """Run the user's own `room-cli` with the caller's environment unchanged: (exit code, stdout, fixed words)."""
     try:
         p = subprocess.run(['room-cli', *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=100)
     except FileNotFoundError:
