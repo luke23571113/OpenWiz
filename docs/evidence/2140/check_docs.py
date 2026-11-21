@@ -13,6 +13,9 @@ WHOLE_SERVICE = re.compile(r'(?i)delet\w*\s+(?:only\s+|its\s+|all of\s+)?`(?:<st
                            r'|rm -r\w*\s+\S*service/?(?=[\s`]|$)')
 WHOLE_STATE = re.compile(r'(?i)delet\w*\s+(?:only\s+)?`(?:<state>|<root>/state|state)/?`'
                          r'|rm -r\w*\s+\S*(?:<state>|state)/?(?=[\s`]|$)|delete it only if')
+STEP = re.compile(r'^(\d+)\. \*\*([^*]+)\*\*', re.M)
+GUIDE_NEEDS = ('continue the OpenWiz install', 'identity_unreadable', "'^version: 0.2.2$'", '.openwiz-skill')
+BARE_CONTINUE = re.compile(r'say "continue"')
 LINK = re.compile(r'\]\(([^)\s]+)\)')
 INSTALL = re.compile(r'tools/install/install ([a-z-]+)')
 RUNTIME = re.compile(r'(runtime/[a-z_/-]+\.py) ([a-z-]+)')
@@ -68,6 +71,19 @@ def main(package):
             checked += 1
             if not ok([sys.executable, '-I', '-B', str(Path(package) / tool), command, '--help']):
                 failures.append(f'{name}: `{tool} {command}` is not a command in the package')
+    guide = Path('docs/install.md').read_text()
+    for words in GUIDE_NEEDS:
+        checked += 1
+        if words not in guide:
+            failures.append(f'docs/install.md: missing {words!r}')
+    for words in BARE_CONTINUE.findall(guide):
+        failures.append(f'docs/install.md: a bare "continue" stalls some agents: {words!r}')
+    steps = [title for _, title in STEP.findall(guide.split('## What happens, in order', 1)[-1].split('\n## ', 1)[0])]
+    setup = next((n for n, t in enumerate(steps) if t.startswith('Setup')), None)
+    skills = next((n for n, t in enumerate(steps) if t.startswith('Skills')), None)
+    checked += 1
+    if setup is None or skills is None or not setup < skills:
+        failures.append(f'docs/install.md: steps {steps} must put setup and logins before the skills and the restart')
     for failure in failures:
         print('FAIL', failure)
     print(f'{checked} links and commands checked, {len(failures)} failures')
