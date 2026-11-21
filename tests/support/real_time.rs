@@ -14,7 +14,10 @@
 //! Its own tests are in `tests/checks/support_proofs.rs`, so they run once,
 //! not once per target that includes this file (#811).
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "included by more than one test target, and each uses only part of it"
+)]
 
 use std::time::{Duration, Instant};
 

@@ -3,8 +3,6 @@
 //! that answers the core through the adapter's own parsers, so the core and
 //! the adapter are proven together on the same fixtures.
 
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -215,16 +213,6 @@ impl FakeClient {
         .iter()
         .map(|c| c.load(Ordering::SeqCst))
         .sum()
-    }
-
-    pub fn last_argv(&self) -> Vec<String> {
-        self.spawned
-            .lock()
-            .unwrap()
-            .last()
-            .expect("a spawn")
-            .1
-            .clone()
     }
 }
 
