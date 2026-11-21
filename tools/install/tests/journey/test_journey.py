@@ -780,5 +780,43 @@ class InstallJourney(unittest.TestCase):
                 self.assertIn('macOS', check['next'])
 
 
+def load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class OwnSettings(unittest.TestCase):
+    """#1809 (MD7): OpenWiz's own fleet.md holds the Models table (contracts/models.v1.md)
+    beside the older tables the pinned WizSkills release still reads; both start J255."""
+
+    def test_the_models_table_holds_j255_and_the_older_tables_the_pinned_skills_read_agree(self):
+        text = (ROOT / 'docs/agents/fleet.md').read_text()
+        self.assertEqual(text.count('\n## Models\n'), 1, 'one Models section')
+        body = text.split('\n## Models\n', 1)[1].split('\n## ', 1)[0]
+        rows = [[cell.strip() for cell in line.strip()[1:-1].split('|')]
+                for line in body.splitlines() if line.startswith('|')]
+        opus = ['Claude Code', 'Opus 5.5', 'Medium',
+                '`--provider claude-code --model claude-opus-5-5 --reasoning-level medium`']
+        sol = ['Codex', 'Sol 6.2', 'Medium', '`--provider codex --model gpt-6.2-sol --reasoning-level medium`']
+        follows = ['follows Builder', '', '', '']
+        self.assertEqual(rows[2:], [['Orchestrator', *opus], ['Builder', *opus], ['Reviewer', *sol],
+                                    ['Small builder', *follows], ['Fixer', *follows]])
+        self.assertTrue(load(TOOLS / 'setup/setup.py', 'own_setup').fleet_settings_usable(text))
+        skills = ROOT / '.wizskills/skills'
+        problems = []
+        load(skills / 'setup/scripts/settings.py', 'own_settings').fleet(text, problems)
+        self.assertEqual(problems, [], 'the pinned setup check')
+        claude = dict(provider='claude-code', model='claude-opus-5-5', effort='medium')
+        codex = dict(provider='codex', model='gpt-6.2-sol', effort='medium')
+        starts = load(skills / 'launch-fleet/scripts/ops-starts.py', 'own_starts')
+        self.assertEqual(starts.read_settings(text),
+                         {'builder': claude, 'small': claude, 'claude-code': codex, 'codex': claude})
+        fixer = text.split('\n## Fixer\n', 1)[1].split('\n## ', 1)[0]
+        self.assertIn('| Claude | %s |' % ' | '.join(opus), fixer)
+        self.assertIn('| GPT | %s |' % ' | '.join(sol), fixer)
+
+
 if __name__ == '__main__':
     unittest.main()
