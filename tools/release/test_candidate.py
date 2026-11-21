@@ -128,6 +128,8 @@ def fetch_release(url, limit):
     assert url.startswith(base), url
     with open(os.environ["CALLS"], "a") as log:
         log.write(json.dumps({"tool": "https", "action": "download", "args": [url]}) + "\n")
+    if os.environ.get("FETCH_STATUS"):
+        raise urllib.error.HTTPError(url, int(os.environ["FETCH_STATUS"]), "Synthetic", None, None)
     store, rest = pathlib.Path(os.environ["RELEASES"]), url[len(base):]
     if rest.startswith("latest/download/"):
         shown = [m.parent.name for m in store.glob("*/meta.json") if not json.loads(m.read_text())["prerelease"]]
@@ -598,6 +600,20 @@ class Candidate(World):
         saved = self.state / installed['evidence']['record']
         self.assertEqual(sha(saved.read_bytes()), installed['evidence']['sha256'])
         self.assertEqual([d['url'] for d in json.loads(saved.read_text())['downloads']], self.downloads())
+        passed = self.cli('status', '--state', self.state)[1]
+        self.assertEqual(self.install_check(FETCH_STATUS='503'),
+                         (1, {'status': 'blocked', 'reasons': ['install_download_refused']}))
+        self.assertEqual(self.record()['install'], installed)
+        self.assertEqual(sha(saved.read_bytes()), installed['evidence']['sha256'])
+        status = self.cli('status', '--state', self.state)[1]
+        attempt = status.pop('install_attempt')
+        self.assertEqual((status['status'], status['finished_at']), ('incomplete', passed['finished_at']))
+        self.assertEqual({k: attempt[k] for k in ('target', 'status', 'reasons')},
+                         {'target': LINUX, 'status': 'blocked', 'reasons': ['install_download_refused']})
+        failed = self.state / attempt['evidence']['record']
+        self.assertNotEqual(failed, saved)
+        self.assertEqual(sha(failed.read_bytes()), attempt['evidence']['sha256'])
+        self.assertEqual(json.loads(failed.read_text())['downloads'][0]['status'], 503)
         rows = {(a['role'], a['target']): a['sha256'] for a in self.record()['candidate']['artifacts']}
         self.assertEqual({k: installed[k] for k in ('route', 'version', 'source', 'target', 'manifest_sha256',
                                                     'archive_sha256')},
