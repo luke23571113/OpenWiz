@@ -13,7 +13,6 @@ import tempfile
 import threading
 import time
 import unittest
-from collections.abc import Mapping
 from pathlib import Path
 from unittest import mock
 
@@ -117,22 +116,16 @@ def refusal(code):
     return {"exit": PIN["refusals"][code]["exit"], "stdout": json.dumps(body) + "\n"}
 
 
-class NameOnly(Mapping):
-    def __init__(self, values):
-        self.values, self.read = values, []
+def standard_environ(values, watched):
+    read = []
 
-    def __getitem__(self, key):
-        self.read.append(key)
-        return self.values[key]
+    def decode_value(raw):
+        if raw == watched:
+            read.append(True)
+        return raw.decode()
 
-    def __contains__(self, key):
-        return key in self.values
-
-    def __iter__(self):
-        return iter(self.values)
-
-    def __len__(self):
-        return len(self.values)
+    data = {key.encode(): value.encode() for key, value in values.items()}
+    return os._Environ(data, str.encode, bytes.decode, str.encode, decode_value), read
 
 
 def load_helper():
@@ -604,11 +597,12 @@ class Review(Helper):
 
     def test_r11_the_legacy_app_key_value_is_never_read(self):
         helper = load_helper()
-        environment = NameOnly(dict(self.env, OPENWIZ_GITHUB_APP_KEY="synthetic-legacy-key-sentinel"))
+        sentinel = "synthetic-legacy-key-sentinel"
+        environment, read = standard_environ(dict(self.env, OPENWIZ_GITHUB_APP_KEY=sentinel), sentinel.encode())
         for command in (["start", *REQ], ["run", *REQ, "--", "gh", "pr", "list"]):
             with self.subTest(command[0]), mock.patch.object(helper.os, "environ", environment):
                 self.assertEqual(helper.main(command), 2)
-        self.assertNotIn("OPENWIZ_GITHUB_APP_KEY", environment.read, "the legacy value is never fetched")
+        self.assertEqual(read, [], "the legacy value is never fetched")
         self.assertEqual(self.calls(), [])
 
     def test_r12_gh_gets_the_token_only_for_its_allowed_commands(self):
@@ -634,6 +628,31 @@ class Review(Helper):
         self.assertEqual(pager, "cat", "no pager child gets the token")
         for child in (editor, browser):
             self.assertTrue(child.startswith(str(self.private)), "editor and browser are the run's refusal")
+
+    def test_r12_only_the_gh_the_run_chose_gets_the_token(self):
+        self.answers(answer())
+        self.start()
+        rogue = self.root / "rogue"
+        rogue.mkdir()
+        flag = self.root / "rogue-had-token"
+        (rogue / "gh").write_text(f'#!/bin/sh\n[ -n "${{GH_TOKEN-}}" ] && : > "{flag}"\nexit 0\n')
+        (rogue / "gh").chmod(0o755)
+        cases = {
+            "another path": f'"$PY" -I "$H" gh "{rogue}/gh" "$GIT_EXEC_PATH/openwiz-gh-child" pr list',
+            "another refusal": f'"$PY" -I "$H" gh "{self.bin}/gh" "{rogue}/openwiz-gh-child" pr list',
+            "swapped binary": f'mv "{self.bin}/gh" "{self.bin}/gh.real" && cp "{rogue}/gh" "{self.bin}/gh" && gh pr list;'
+                              f' s=$?; mv -f "{self.bin}/gh.real" "{self.bin}/gh"; exit $s',
+        }
+        for name, script in cases.items():
+            with self.subTest(name):
+                flag.unlink(missing_ok=True)
+                ran = self.shell(script)
+                self.assertFalse(flag.exists(), "no other executable gets the token")
+                self.assertNotEqual(ran.returncode, 0)
+                self.assertEqual(ran.stderr.count("openwiz:"), 1, ran.stderr)
+                self.assert_never_exposed(ran)
+        bound = self.shell("gh pr list")
+        self.assertEqual((bound.returncode, self.calls("gh")[-1]["gh_token"]), (0, sha(TOKEN)))
 
     def test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused(self):
         self.answers(dict(answer(left=302), sleep=3))
