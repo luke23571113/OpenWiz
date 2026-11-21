@@ -21,4 +21,5 @@ Exit 0 when all hold, 1 otherwise. It reads only and installs nothing. The packa
 - `red-whole-service.txt`: the run after deleting all of `service/` was added as a failure, before the build-only steps were fixed (exit 1).
 - `red-whole-root.txt`: the run after the whole-folder check was added, before the removal and repair steps were fixed (exit 1).
 - `removal-run.txt`: the guide's repair and removal steps run on the real 0.1.0 package, with a file of the user's already in `<root>` and a skill of the user's in `~/.claude/skills`: both survive, settings survive the repair, and a separate `--state-root` holds the builds.
+- `service-run.txt`: a fresh install and a Decisions setting saved by the packaged first-fleet helper, then the guide's build-only removal: only the verified build folder goes, `service/config.json` and `setup/state.json` are unchanged, and a reinstall keeps them.
 - `green.txt`: the run on this branch's docs (exit 0).
