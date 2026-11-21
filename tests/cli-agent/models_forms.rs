@@ -1,7 +1,3 @@
-//! #1804 (MD2): `openwiz models show`, `list` and `set` against every models
-//! contract fixture (`contracts/fixtures/models/`), with a fake `cloud
-//! status` read that offers exactly the contract's `list/` snapshot. All
-//! inputs are synthetic.
 use super::models::{FixedClock, Models};
 use super::{ROOT, schema};
 use openwiz_adapter_cloudroom::source::CloudRoomSource;
@@ -26,8 +22,6 @@ fn doc(rel: &str) -> Value {
     serde_json::from_str(&fixture(rel)).unwrap()
 }
 
-/// The `cloud status` answer behind `list/models-offered.json`: two mapped
-/// harnesses and one that lists no models.
 fn catalogue() -> Value {
     let models = |rows: &[(&str, &[&str])]| -> Value {
         rows.iter()
@@ -45,8 +39,6 @@ fn catalogue() -> Value {
     ]})
 }
 
-/// A sandbox whose `fleet.md` is the named fixture (none when empty) and
-/// whose fake `cloud status` answers `answer`.
 fn project(fleet: &str, answer: Value) -> Models {
     let fake = Models::new(json!({ "stdout": answer.to_string() }));
     fs::create_dir_all(fake.0.0.join("docs/agents")).unwrap();
@@ -56,14 +48,10 @@ fn project(fleet: &str, answer: Value) -> Models {
     fake
 }
 
-/// `openwiz models <args>` in this process, from the sandbox's root, with
-/// the fixed clock: the contract's `read_at`.
 fn run(fake: &Models, args: &[&str]) -> (i32, String, String) {
     run_during(fake, args, || {})
 }
 
-/// [`run`], with `during` run inside its one `cloud status` read: what
-/// another writer does while a `set` waits on CloudRoom.
 fn run_during(
     fake: &Models,
     args: &[&str],
@@ -121,8 +109,6 @@ impl<F: Fn() + Send + Sync> NewThreadClient for During<F> {
     }
 }
 
-/// The one JSON document a form printed, checked against its definition in
-/// `contracts/models.v1.schema.json`.
 fn report(out: &str, definition: &str) -> Value {
     assert!(out.ends_with('\n'), "{out}");
     let got: Value = serde_json::from_str(out).expect("one JSON document");
@@ -140,16 +126,11 @@ fn report(out: &str, definition: &str) -> Value {
     got
 }
 
-/// A contract snapshot with `syn-other`'s text as `openwiz models` words it:
-/// the snapshot copies the read's own unavailable text (ruling 1).
 fn as_read(mut snapshot: Value) -> Value {
     snapshot["unavailable"][0]["text"] = json!("unavailable (catalogue not reported)");
     snapshot
 }
 
-// catches: a reader that disagrees with the contract on any role's harness,
-// model, effort or follow, a family's review or fix round, or a warning (a
-// stale older table winning, a same-family pair or kept older row unnamed).
 #[test]
 fn show_prints_every_contract_fixtures_reading_and_reads_nothing_else() {
     for (fleet, want) in [
@@ -175,9 +156,6 @@ fn show_prints_every_contract_fixtures_reading_and_reads_nothing_else() {
     }
 }
 
-// catches: `list` making more than one read, dropping or adding an offered
-// choice, recommending other than J255 or the current Orchestrator, or
-// `--save` writing anything but the snapshot (or writing without `--save`).
 #[test]
 fn list_offers_the_read_with_recommendations_and_saves_only_when_asked() {
     let fake = project("one-table/fleet.md", catalogue());
@@ -200,9 +178,6 @@ fn list_offers_the_read_with_recommendations_and_saves_only_when_asked() {
     );
 }
 
-// catches: `set` writing a choice that wasn't offered or can't be written,
-// changing another role, leaving the older tables out of step or a kept row
-// unnamed, a missing same-family warning, or files other than its report's.
 #[test]
 fn set_does_what_every_contract_case_says_and_writes_only_its_files() {
     for case in [
@@ -255,9 +230,6 @@ fn set_does_what_every_contract_case_says_and_writes_only_its_files() {
     }
 }
 
-// catches: the contract's text forms drifting: a role, review or fix line,
-// the same-family warning, a refusal without the offered list, or `list`
-// losing today's text or its recommendation lines.
 #[test]
 fn the_text_forms_print_the_contracts_lines() {
     let fake = project("same-family/fleet.md", catalogue());
@@ -314,9 +286,6 @@ fn the_text_forms_print_the_contracts_lines() {
     ), "{out}");
 }
 
-// catches: `follows-builder` reading CloudRoom or writing a snapshot, a row
-// written in another form than the contract's, or setting a role's current
-// value touching the file.
 #[test]
 fn set_follows_builder_reads_nothing_and_an_unchanged_set_leaves_the_file() {
     let fake = project("overridden/fleet.md", catalogue());
@@ -340,9 +309,6 @@ fn set_follows_builder_reads_nothing_and_an_unchanged_set_leaves_the_file() {
     assert_eq!(fs::read_to_string(fake.0.0.join(FLEET)).unwrap(), written);
 }
 
-// catches: a usage error that reads CloudRoom or writes, nothing offered
-// still writing, or a missing fleet.md not exiting 1 with the CLI's error
-// document.
 #[test]
 fn usage_errors_nothing_offered_and_no_fleet_md_change_nothing() {
     let fake = project("one-table/fleet.md", catalogue());
@@ -395,9 +361,6 @@ fn usage_errors_nothing_offered_and_no_fleet_md_change_nothing() {
     );
 }
 
-// catches: a broken Models table (a misnamed or misplaced row, a following
-// Builder, broken flags, a wrong header, two `## Models`) that `show` or
-// `set` still reads, or that `set` rewrites; and `show` writing anything.
 #[test]
 fn a_broken_models_table_is_refused_by_show_and_set_and_never_written() {
     let good = fixture("one-table/fleet.md");
@@ -443,9 +406,6 @@ fn a_broken_models_table_is_refused_by_show_and_set_and_never_written() {
     }
 }
 
-// catches (R1): a write that replaces or removes a file it didn't create
-// (one already at a staging path), or that follows a linked `docs/agents`
-// out of the checkout.
 #[test]
 fn writes_create_their_own_staging_file_and_stay_in_the_checkout() {
     let fake = project("one-table/fleet.md", catalogue());
@@ -498,8 +458,6 @@ fn writes_create_their_own_staging_file_and_stay_in_the_checkout() {
     );
 }
 
-// catches (R2): a `set` that replaces fleet.md over an edit made while it
-// waited on CloudRoom, or two setters where the later one reverts the other.
 #[test]
 fn set_never_loses_an_edit_made_while_it_reads_cloudroom() {
     let fake = project("one-table/fleet.md", catalogue());
@@ -523,8 +481,6 @@ fn set_never_loses_an_edit_made_while_it_reads_cloudroom() {
         &["set", "orchestrator", "codex", "gpt-6.2-sol", "medium"],
         || {
             let mut child = fake.spawn(&["models", "set", "fixer", "follows-builder"]);
-            // Long enough for an unserialized setter to finish; a serialized
-            // one waits for this `set` whatever the time.
             std::thread::sleep(std::time::Duration::from_millis(500));
             let _ = child.try_wait();
             *other.lock().unwrap() = Some(child);
@@ -542,8 +498,6 @@ fn set_never_loses_an_edit_made_while_it_reads_cloudroom() {
     assert_eq!(show["roles"]["fixer"]["follows"], "builder", "{show}");
 }
 
-// catches (R3): older tables with a surplus or duplicate row, a second table
-// or two Fixer rows of one family read, or migrated by `set`, as if whole.
 #[test]
 fn older_tables_with_surplus_rows_are_refused() {
     let five = fixture("five-tables/fleet.md");
@@ -568,9 +522,6 @@ fn older_tables_with_surplus_rows_are_refused() {
     }
 }
 
-// catches (R4): an older row written with an id today's older readers
-// refuse (an upper-case model id), instead of kept and named, which stops
-// every fleet still reading the older tables.
 #[test]
 fn an_id_the_older_readers_refuse_stays_in_the_models_table_only() {
     let mut offer = catalogue();
@@ -612,7 +563,6 @@ fn an_id_the_older_readers_refuse_stays_in_the_models_table_only() {
     );
 }
 
-/// Runs `step` on another thread over and over until `body` returns.
 fn racing<T>(step: impl Fn() + Send + Sync, body: impl FnOnce() -> T) -> T {
     let stop = std::sync::atomic::AtomicBool::new(false);
     std::thread::scope(|s| {
@@ -627,9 +577,6 @@ fn racing<T>(step: impl Fn() + Send + Sync, body: impl FnOnce() -> T) -> T {
     })
 }
 
-// catches (R1, re-check): a write checked once and then made by pathname, so
-// `docs/agents` swapped for a link to a folder outside the checkout between
-// the check and the staging write, rename or cleanup puts the file there.
 #[test]
 fn every_write_goes_through_the_directory_it_checked() {
     let fake = project("one-table/fleet.md", catalogue());
@@ -662,9 +609,6 @@ fn every_write_goes_through_the_directory_it_checked() {
     assert_eq!(fs::read_to_string(outside.join("fleet.md")).unwrap(), fleet);
 }
 
-/// `openwiz models <args>` as a process under the common 022 umask, so a
-/// file created with the default mode is world-readable whatever this
-/// test's own umask; returns its exit code.
 fn under_umask_022(fake: &Models, args: &[&str]) -> i32 {
     let root = &fake.0.0;
     let path = format!(
@@ -693,8 +637,6 @@ fn under_umask_022(fake: &Models, args: &[&str]) -> i32 {
         .expect("exited")
 }
 
-// catches (R5): a staged copy created with the process's default mode
-// (0644 under a 022 umask) while the file it replaces is owner-only.
 #[test]
 fn a_staged_copy_is_never_more_readable_than_its_target() {
     use std::os::unix::fs::PermissionsExt;
@@ -743,10 +685,6 @@ fn a_staged_copy_is_never_more_readable_than_its_target() {
     }
 }
 
-// catches (planner J87, ruling 16 overturned): a writer that refuses off
-// Linux or names its files through `/proc`, so `set` and `list --save` do
-// nothing on macOS; and on every Unix, a `docs/agents` that is a link, or is
-// swapped for one while `set` reads CloudRoom, moving a write outside.
 #[test]
 fn a_raced_docs_agents_is_refused_the_same_on_every_unix() {
     let source = fs::read_to_string(Path::new(ROOT).join("crates/cli/src/models.rs")).unwrap();

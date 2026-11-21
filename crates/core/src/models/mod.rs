@@ -1,9 +1,3 @@
-//! The models contract (`contracts/models.v1.md`, `openwiz.models.v1`): the
-//! one `## Models` table in `docs/agents/fleet.md`, the older five tables it
-//! replaces, and the follow, fixer and cross-family rules. [`read`] is the
-//! shared reader (`openwiz models show` and the fleet tick); [`write::set`]
-//! is the writer behind `openwiz models set`. No I/O: text in, text out.
-
 use serde::Serialize;
 
 pub mod write;
@@ -11,7 +5,6 @@ pub mod write;
 pub const FLEET_FILE: &str = "docs/agents/fleet.md";
 pub const SNAPSHOT_FILE: &str = "docs/agents/models-offered.json";
 
-/// The five roles, in the Models table's row order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
@@ -30,7 +23,6 @@ impl Role {
         Role::SmallBuilder,
         Role::Fixer,
     ];
-    /// As the table and people write it.
     pub fn row(self) -> &'static str {
         [
             "Orchestrator",
@@ -40,7 +32,6 @@ impl Role {
             "Fixer",
         ][self as usize]
     }
-    /// As the command line spells it.
     pub fn token(self) -> &'static str {
         [
             "orchestrator",
@@ -53,7 +44,6 @@ impl Role {
     pub fn from_token(word: &str) -> Option<Role> {
         Role::ALL.into_iter().find(|r| r.token() == word)
     }
-    /// Only the Small builder and the Fixer may follow the Builder.
     pub fn can_follow(self) -> bool {
         matches!(self, Role::SmallBuilder | Role::Fixer)
     }
@@ -90,8 +80,6 @@ pub struct Names {
     pub effort: String,
 }
 
-/// One harness, model and effort: the ids spawn takes and the names people
-/// read.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Choice {
     pub provider: String,
@@ -116,8 +104,6 @@ impl Choice {
         }
     }
 
-    /// The choice `set` writes, with the contract's names, or `None` when
-    /// its ids break the ids rule.
     pub fn named(provider: &str, model: &str, effort: &str) -> Option<Choice> {
         if !(is_id(provider) && is_model_id(model) && is_id(effort)) {
             return None;
@@ -141,13 +127,11 @@ impl Choice {
         ))
     }
 
-    /// The same provider, model and effort: what spawns.
     pub fn same_spawn(&self, other: &Choice) -> bool {
         (&self.provider, &self.model, &self.effort)
             == (&other.provider, &other.model, &other.effort)
     }
 
-    /// `Opus 5.5 Medium on Claude Code (claude-code claude-opus-5-5 medium)`.
     pub fn shown(&self) -> String {
         format!(
             "{} {} on {} ({} {} {})",
@@ -160,7 +144,6 @@ impl Choice {
         )
     }
 
-    /// The flags cell for this choice, in the spelling `flags` carries.
     fn flags(&self, flags: &SpawnFlags) -> String {
         format!(
             "`{} {} {} {} {} {}`",
@@ -169,10 +152,6 @@ impl Choice {
     }
 }
 
-/// The three `thread spawn` flags a choice is written with: the provider,
-/// model and effort flag words. The core spells none of them; the caller
-/// takes them from the `room-cli` allowlist's spawn builder, the one place
-/// they are spelled (the m12 allowlist guard).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpawnFlags {
     pub provider: String,
@@ -180,10 +159,6 @@ pub struct SpawnFlags {
     pub effort: String,
 }
 
-/// Whether today's older-table readers take this choice's ids (the fleet
-/// tick's `Rules::parse`): each at most 128 bytes of lower-case letters,
-/// digits, `.`, `_` or `-`, starting with a letter or digit. `set` writes an
-/// older row only then; otherwise the row is kept and named.
 pub fn older_form(c: &Choice) -> bool {
     [&c.provider, &c.model, &c.effort].iter().all(|id| {
         let lower = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit();
@@ -193,7 +168,6 @@ pub fn older_form(c: &Choice) -> bool {
     })
 }
 
-/// A provider or effort id: letters, digits, `.`, `_` or `-`.
 pub fn is_id(word: &str) -> bool {
     !word.is_empty()
         && word
@@ -201,7 +175,6 @@ pub fn is_id(word: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
 }
 
-/// A model id: one or more ids joined by `/`.
 pub fn is_model_id(word: &str) -> bool {
     word.split('/').all(is_id)
 }
@@ -212,8 +185,6 @@ pub enum Follows {
     Builder,
 }
 
-/// A role as read: what it follows, and its choice (the Builder's when it
-/// follows).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RoleRead {
     pub follows: Option<Follows>,
@@ -241,7 +212,6 @@ impl Roles {
     }
 }
 
-/// What serves a family's review or fix round.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum From {
@@ -303,7 +273,6 @@ pub enum Form {
     OlderTables,
 }
 
-/// `openwiz models show`'s report (`openwiz.models-show.v1`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Show {
     pub schema: &'static str,
@@ -316,7 +285,6 @@ pub struct Show {
     pub warnings: Vec<Warning>,
 }
 
-/// The older rows `set` keeps in step, in the contract's order.
 pub const OLDER_ROWS: [&str; 6] = [
     "Builder",
     "Builder for small tickets",
@@ -327,8 +295,6 @@ pub const OLDER_ROWS: [&str; 6] = [
 ];
 
 impl Show {
-    /// What each older row resolves to, in [`OLDER_ROWS`] order; `None`
-    /// waits.
     pub fn older_rows(&self) -> [Option<Choice>; 6] {
         [
             Some(self.roles.builder.choice.clone()),
@@ -340,8 +306,6 @@ impl Show {
         ]
     }
 }
-
-// ---- Parsing, with line positions for the writer ------------------------
 
 const MODELS_HEADER: [&str; 5] = [
     "Role",
@@ -364,7 +328,6 @@ fn cells(line: &str) -> Option<Vec<String>> {
     Some(inner.split('|').map(|c| c.trim().to_owned()).collect())
 }
 
-/// The heading line and the end of exactly one `## <name>` section.
 fn section(lines: &[&str], name: &str) -> Result<Option<(usize, usize)>, String> {
     let heading = format!("## {name}");
     let at: Vec<usize> = (0..lines.len()).filter(|&i| lines[i] == heading).collect();
@@ -380,8 +343,6 @@ fn section(lines: &[&str], name: &str) -> Result<Option<(usize, usize)>, String>
     }
 }
 
-/// A flags cell: one code span of the provider flag and its id, the model
-/// flag and its id, then the effort flag and its id, single-spaced.
 fn flags<'a>(cell: &'a str, f: &SpawnFlags) -> Result<[&'a str; 3], String> {
     let inner = cell
         .strip_prefix('`')
@@ -407,11 +368,8 @@ fn choice(names: [&str; 3], ids: [&str; 3]) -> Result<Choice, String> {
     Ok(Choice::new(ids, names))
 }
 
-/// The Models table: each row present, at its line, with its choice (`None`
-/// when it follows).
 struct ModelsTable {
     rows: Vec<(Role, usize, Option<Choice>)>,
-    /// One past the last table line.
     end: usize,
 }
 
@@ -465,17 +423,11 @@ fn models_table(
     Ok(ModelsTable { rows: out, end })
 }
 
-/// The older five tables: the four setting tables (with their Harness,
-/// Model and Effort lines) and the Fixer's Claude and GPT rows.
 struct Older {
     tables: [(Choice, [usize; 3]); 4],
     fixers: [(Choice, usize); 2],
 }
 
-/// The body rows of a section's one table, each with its line: exactly one
-/// table in the section, every row as wide as `header`, the header exactly
-/// `header`, then the separator. As strict as the fleet tick's reader of the
-/// older tables, so `set` never migrates or rewrites one it would refuse.
 fn one_table(
     lines: &[&str],
     (from, to): (usize, usize),
@@ -515,7 +467,6 @@ fn setting_table(
     let mut names = Vec::new();
     let mut ids = Vec::new();
     let mut at = [0; 3];
-    // Each value cell is exactly one flag and its id, in one code span.
     for (i, (setting, flag)) in [
         ("Harness", &f.provider),
         ("Model", &f.model),
@@ -591,8 +542,6 @@ impl Older {
     }
 }
 
-/// A `fleet.md` as parsed: the Models table when present, else the older
-/// tables, and whether any older table heading is present.
 struct Parsed<'a> {
     lines: Vec<&'a str>,
     models: Option<ModelsTable>,
@@ -621,9 +570,6 @@ fn parse<'a>(text: &'a str, f: &SpawnFlags) -> Result<Parsed<'a>, String> {
     })
 }
 
-/// Reads a `fleet.md`: the Models table, or the older five tables when it is
-/// absent, then the follow, fixer and cross-family rules. A refusal says
-/// why; nothing is guessed.
 pub fn read(text: &str, flags: &SpawnFlags) -> Result<Show, String> {
     Ok(resolve(&parse(text, flags)?))
 }
@@ -781,8 +727,6 @@ fn resolve(p: &Parsed) -> Show {
     show
 }
 
-/// The kept line's two values: the model ids, or `waits`; when those are
-/// equal, the model and effort; when those are too, all three ids.
 fn kept_values(now: Option<&Choice>, was: &Choice) -> (String, String) {
     let forms = |c: Option<&Choice>| match c {
         None => ["waits".to_owned(), "waits".to_owned(), "waits".to_owned()],

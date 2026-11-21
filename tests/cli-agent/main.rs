@@ -29,9 +29,9 @@ mod loop_export;
 mod loop_plan;
 mod loop_validate;
 mod models;
-mod models_forms;
 #[path = "../../contracts/fixtures/models/models_contract.rs"]
 mod models_contract;
+mod models_forms;
 mod process;
 mod results;
 mod review;

@@ -85,7 +85,6 @@ impl Models {
             String::from_utf8(out.stderr).unwrap(),
         )
     }
-    /// The `openwiz <args>` process, started; its output discarded.
     pub(super) fn spawn(&self, args: &[&str]) -> std::process::Child {
         let null = Stdio::null;
         self.command(args)

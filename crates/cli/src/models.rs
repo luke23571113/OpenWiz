@@ -19,8 +19,6 @@ use serde_json::{Value, json};
 use crate::{EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, clean, help, utc};
 
 pub const EXIT_NO_OPTIONS: i32 = 13;
-/// `models set`: the choice is not offered, or can't be written to the
-/// Models table; nothing was changed.
 pub const EXIT_REFUSED: i32 = 5;
 
 pub fn run_models(
@@ -34,7 +32,6 @@ pub fn run_models(
     run_models_in(args, &root, client, clock, stdout, stderr)
 }
 
-/// `openwiz models <args>` run from the project root `root`.
 pub fn run_models_in(
     args: &[String],
     root: &Path,
@@ -125,7 +122,6 @@ pub fn render_options(options: &CloudOptions) -> String {
     out
 }
 
-/// A parsed `show`, `list` or `set`.
 enum Parsed {
     Help,
     Show,
@@ -182,7 +178,6 @@ fn parse_form(args: &[String]) -> Result<(Parsed, bool), String> {
     Ok((parsed, json))
 }
 
-/// `models show|list|set`: exit codes as the models contract says.
 fn run_form(
     args: &[String],
     root: &Path,
@@ -259,9 +254,6 @@ fn run_form(
                 (code, out)
             })
         }
-        // One setter at a time: the lock is held from before fleet.md is
-        // read until the last write (R2), and every read and write goes
-        // through the one `docs/agents` it checked and locked (R1).
         Parsed::Set { role, asked } => Agents::open(root).and_then(|agents| {
             agents.lock()?;
             let text = agents.read(FLEET_FILE)?;
@@ -277,10 +269,6 @@ fn run_form(
     }
 }
 
-/// The provider, model and effort flag words of a Models table's flags
-/// cell, as the `room-cli` allowlist's one spawn builder spells them: a
-/// synthetic spawn invocation is built (never run) and the words beside its
-/// provider, model and effort values are read back.
 fn spawn_flags() -> Result<SpawnFlags, String> {
     let (provider, model, effort) = ("claude-code", "syn-models-flags", "medium");
     let request = format!("ow1-{}", "0".repeat(40));
@@ -299,7 +287,6 @@ fn spawn_flags() -> Result<SpawnFlags, String> {
     })
 }
 
-/// [`read`], with the allowlist's spawn flags.
 fn read_fleet(text: &str) -> Result<Show, String> {
     read(text, &spawn_flags()?)
 }
@@ -366,15 +353,12 @@ fn run_set(
         }
     };
     let result = set(text, role, &chosen, &spawn_flags()?)?;
-    // Only setters take the lock: anything else that edited fleet.md while
-    // this read CloudRoom wins, and nothing is written (R2).
     if agents.read(FLEET_FILE).ok().as_deref() != Some(text) {
         return Err(format!(
             "{FLEET_FILE} changed while set ran, so nothing was written; run it again"
         ));
     }
     let mut files = Vec::new();
-    // The snapshot first: if fleet.md then fails, only the offered list moved.
     if let Some(options) = &options {
         let current = read_fleet(result.text.as_deref().unwrap_or(text)).ok();
         put(
@@ -429,8 +413,6 @@ fn run_set(
     Ok((EXIT_OK, clean_lines(&out)))
 }
 
-/// The offered harnesses as the snapshot lists them: no attachment or
-/// steer facts.
 fn offered_harnesses(options: &CloudOptions) -> Vec<Value> {
     options
         .harnesses
@@ -448,8 +430,6 @@ fn is_offered(options: &CloudOptions, provider: &str, model: &str, effort: &str)
     })
 }
 
-/// The offered-models snapshot (`openwiz.models-offered.v1`) of one read,
-/// with the recommendations; `current` is the project's `fleet.md`, if read.
 fn snapshot(options: &CloudOptions, current: Option<&Show>) -> Value {
     let recommend = |c: Option<Choice>, source: &str| {
         let offered = c
@@ -588,7 +568,6 @@ fn harness_lines(harnesses: &[Value]) -> String {
     clean_lines(&out)
 }
 
-/// Each line made safe for a terminal, the newlines kept.
 fn clean_lines(text: &str) -> String {
     text.lines().map(|l| format!("{}\n", clean(l))).collect()
 }
@@ -600,13 +579,6 @@ fn document(value: &impl serde::Serialize) -> String {
     out
 }
 
-/// The checkout's `docs/agents`, held open: `docs`, then `agents` inside
-/// it, each opened as a directory and never through a link, so nothing is
-/// read for a write or written otherwise (R1). Every later step is a call
-/// relative to this handle (`openat`, `fstatat`, `renameat`, `unlinkat`,
-/// through `rustix`), so a folder swapped for a link after the check can't
-/// move a read, staging write, rename or cleanup anywhere else, on Linux and
-/// macOS alike.
 struct Agents(File);
 
 impl Agents {
@@ -634,8 +606,6 @@ impl Agents {
         Ok(text)
     }
 
-    /// Locks this folder for one `set`, so setters run one at a time;
-    /// released when it is dropped. It creates no file.
     fn lock(&self) -> Result<(), String> {
         self.0
             .lock()
@@ -643,17 +613,10 @@ impl Agents {
     }
 }
 
-/// A `docs/agents/<name>` path's last part.
 fn name(rel: &str) -> &str {
     rel.rsplit('/').next().unwrap_or(rel)
 }
 
-/// Writes a project file whole, through `docs/agents` held open (R1): the
-/// bytes go to a fresh file created exclusively beside it (never one
-/// already there, link or not), owner-only and then given the target's
-/// permissions before any byte is written (R5), which is then renamed over
-/// the target. On a failure only that fresh file is removed; a target that
-/// is not a regular file is refused.
 fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let fail = |e: std::io::Error| format!("cannot write {rel}: {e}");

@@ -1,8 +1,3 @@
-//! `openwiz models set`'s writer: one role's row in the Models table
-//! (inserting the table first when only the older tables exist), then the
-//! older tables kept in step while they are present. Text in, text out; it
-//! changes no line outside the rows it sets.
-
 use serde::Serialize;
 
 use super::{
@@ -10,8 +5,6 @@ use super::{
     older_form, parse, resolve, section,
 };
 
-/// What `set` was asked: a choice (already checked against the offered
-/// list and the ids rule), or to follow the Builder.
 pub enum Asked {
     Choice(Choice),
     Follows,
@@ -31,8 +24,6 @@ pub struct OlderRow {
     pub outcome: RowOutcome,
 }
 
-/// A `set`'s result: the role before and after, the new text when it
-/// changed, and the older rows' outcomes and the warnings of the result.
 pub struct Set {
     pub before: RoleRead,
     pub after: RoleRead,
@@ -42,9 +33,6 @@ pub struct Set {
     pub warnings: Vec<Warning>,
 }
 
-/// Sets `role` in the `fleet.md` text `text`. Refuses what [`super::read`]
-/// refuses, and older tables that are present but broken (they can't be
-/// kept in step).
 pub fn set(text: &str, role: Role, asked: &Asked, f: &SpawnFlags) -> Result<Set, String> {
     let p = parse(text, f)?;
     if p.older_present && p.older.is_none() {
@@ -116,9 +104,6 @@ pub fn set(text: &str, role: Role, asked: &Asked, f: &SpawnFlags) -> Result<Set,
         }
     }
     let mut text = lines.concat();
-    // The older rows, rewritten to what the Models table now resolves to,
-    // except one that waits or whose ids today's older readers refuse (a
-    // `/`, an upper-case letter: ruling 14 and R4).
     let p2 = parse(&text, f)?;
     if let Some(older) = &p2.older {
         let want = resolve(&p2).older_rows();
@@ -174,8 +159,6 @@ pub fn set(text: &str, role: Role, asked: &Asked, f: &SpawnFlags) -> Result<Set,
     })
 }
 
-/// Each older row: in step with the Models table (`changed` when that took
-/// a write) or `kept` as it was.
 fn outcomes(show: &Show, was: &[Choice; 6], in_file: &[Choice; 6]) -> Vec<OlderRow> {
     let want = show.older_rows();
     (0..6)
@@ -206,7 +189,6 @@ fn row_line(role: Role, c: Option<&Choice>, f: &SpawnFlags) -> String {
     }
 }
 
-/// A line that ends with a newline, so a row can be followed by another.
 fn ended(line: &str) -> String {
     if line.ends_with('\n') {
         line.to_owned()
@@ -215,7 +197,6 @@ fn ended(line: &str) -> String {
     }
 }
 
-/// Replaces line `at`'s content, keeping its line ending.
 fn put(lines: &mut [String], at: usize, content: &str) {
     let line = &lines[at];
     let ending = &line[line.trim_end_matches(['\r', '\n']).len()..];
