@@ -6,7 +6,7 @@ import urllib.request
 from pathlib import Path
 
 FILES = ('README.md', 'docs/install.md')
-STALE = re.compile(r'(?i:coming soon)|0\.0\.12|7370|install open\b|(?i:setup page)|before 0\.1\.0')
+STALE = re.compile(r'(?i:coming soon)|0\.0\.12|7370|install open\b|(?i:setup page)|before 0\.1\.0|Apple silicon (?:and|or) Intel|install the CloudRoom app yourself')
 LINK = re.compile(r'\]\(([^)\s]+)\)')
 INSTALL = re.compile(r'tools/install/install ([a-z-]+)')
 RUNTIME = re.compile(r'(runtime/[a-z_/-]+\.py) ([a-z-]+)')
