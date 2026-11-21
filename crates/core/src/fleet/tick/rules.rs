@@ -46,7 +46,11 @@ struct Agents {
 
 fn setting(c: &Choice) -> Result<AgentRule, &'static str> {
     let ids = [&c.provider, &c.model, &c.effort];
-    if ids.iter().any(|id| id.len() > 128 || !name_form(id, true)) {
+    if ids.iter().any(|id| id.len() > 128)
+        || !(models::is_id(&c.provider)
+            && models::is_model_id(&c.model)
+            && models::is_id(&c.effort))
+    {
         return Err("invalid agent setting");
     }
     Ok(AgentRule {
