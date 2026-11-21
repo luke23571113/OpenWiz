@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""GA3's proof (#1844): the agent helper, against a fake token service.
-
-Synthetic values only. Run: python3 -I tools/github-app/test_agent_token.py.
-No real room-cli, service, GitHub or token is touched: room-cli, python3 and gh
-are fakes on PATH that record what they were given, never a token itself.
-"""
 import base64
 import hashlib
 import importlib.util
@@ -39,8 +33,6 @@ NOTE = PIN["fallback"]["note"]
 WITHHELD = "openwiz: openwiz[bot] token withheld from git"
 URL = f"https://github.com/{REPO}"
 
-# One fake for room-cli, python3 and gh. It logs its name, argv, standard input,
-# whether its standard output is a pipe, and a hash of GH_TOKEN: never a token.
 FAKE = r'''
 import hashlib, json, os, stat, sys, time
 name, args = sys.argv[1], sys.argv[2:]
@@ -65,8 +57,6 @@ sys.exit(answer["exit"])
 
 
 class FakeGitHub(socketserver.ThreadingTCPServer):
-    """github.com behind a local HTTPS proxy, for git's real transport. It asks for Basic
-    auth and keeps a hash of each credential it is sent. Its certificate is a throwaway."""
     daemon_threads = allow_reuse_address = True
 
     def __init__(self, folder):
@@ -186,13 +176,11 @@ class Helper(unittest.TestCase):
         return json.loads(self.token_file().read_text())
 
     def token_file(self):
-        """The one request's cache file (the helper names it per requester and scope)."""
         files = sorted(self.private.glob("token-*.json")) if self.private.is_dir() else []
         self.assertLessEqual(len(files), 1, "one request, one cache file")
         return files[0] if files else self.private / "token-none.json"
 
     def assert_never_exposed(self, *results, tokens=(TOKEN, TOKEN2)):
-        """No token in any output, argument list or file outside the private token file."""
         for result in results:
             for token in tokens:
                 self.assertNotIn(token, result.stdout + result.stderr)
@@ -219,7 +207,6 @@ class Helper(unittest.TestCase):
 
 class Refresh(unittest.TestCase):
     def test_the_contract_refresh_boundary(self):
-        # catches: a refresh at under 300 seconds only, or never, so a token expires mid-work.
         helper = load_helper()
         for case in json.loads((FIXTURES / "refresh.json").read_text())["cases"]:
             with self.subTest(case["name"]):
@@ -228,7 +215,6 @@ class Refresh(unittest.TestCase):
 
 class MintedToken(Helper):
     def test_gh_and_git_use_the_minted_token(self):
-        # catches: gh or git not getting the App's token, or getting it through an argument or file in a tree.
         self.answers(answer())
         started = self.start()
         self.assertEqual((started.returncode, started.stdout, started.stderr), (0, "", ""))
@@ -238,7 +224,6 @@ class MintedToken(Helper):
         ran = self.helper("run", *REQ, "--", "gh", "issue", "view", "1")
         self.assertEqual((ran.returncode, ran.stderr), (0, ""))
         self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN))
-        # git's own HTTPS transport gets it; the owner's store helper never does (run resets the list).
         (self.home / ".gitconfig").write_text("[credential]\n\thelper = store\n")
         github = self.github()
         git = self.helper("run", *REQ, "--", *github.git())
@@ -251,7 +236,6 @@ class MintedToken(Helper):
         self.assert_never_exposed(started, ran, git)
 
     def test_the_request_names_repositories_and_permissions_only(self):
-        # catches: a request that is not the contract's, names the key, or asks for more than the App's.
         self.answers(answer(permissions=READ))
         self.start("--read")
         request = json.loads(self.one_call()["stdin"])
@@ -259,7 +243,6 @@ class MintedToken(Helper):
                                    "requester": "builder-1", "repositories": [REPO], "permissions": READ})
 
     def test_refreshes_with_five_minutes_left_before_the_next_use(self):
-        # catches: a held token used with 300 seconds or less left, or an expired one.
         self.answers(answer(), answer(token=TOKEN2))
         self.start()
         held = self.held()
@@ -272,8 +255,6 @@ class MintedToken(Helper):
         self.assert_never_exposed(ran)
 
     def test_token_crosses_the_pairing_only_as_piped_stdout_of_one_call(self):
-        # catches: the token route (#1839, option 1) broken: a token on a command line, a terminal or a
-        # second call, or a pairing call made before GA5's read-back passed.
         self.answers(answer())
         started = self.start()
         call = self.one_call()
@@ -290,7 +271,6 @@ class MintedToken(Helper):
                 self.assert_fallback(off, "pairing-off")
 
     def test_a_local_thread_runs_the_service_itself(self):
-        # catches: the local route sent over the pairing, or held back by the pairing's read-back.
         self.answers(answer())
         self.start(OPENWIZ_TOKEN_SERVICE_ROUTE="local", OPENWIZ_TOKEN_SERVICE_READBACK=None)
         call = self.one_call()
@@ -298,7 +278,6 @@ class MintedToken(Helper):
         self.assertTrue(call["stdout_pipe"])
 
     def test_a_private_place_inside_a_git_tree_is_refused(self):
-        # catches: the token file written where a commit could pick it up.
         self.answers(answer())
         tree = self.root / "work"
         (tree / ".git").mkdir(parents=True)
@@ -314,7 +293,6 @@ class MintedToken(Helper):
 
 class Fallback(Helper):
     def test_unreachable_service_falls_back_with_one_note(self):
-        # catches: no note, two notes (start then run), or a silent switch of identity.
         self.answers({"exit": 1, "stdout": "", "stderr": "synthetic: owner's machine unavailable"})
         started = self.start()
         self.assertEqual(started.returncode, 0)
@@ -326,13 +304,12 @@ class Fallback(Helper):
         self.assertNotIn("synthetic: owner", started.stderr, "service text never reaches the agent's stderr")
 
     def test_a_failed_refresh_leaves_no_service_credential(self):
-        # catches: gh and git split between the App and the owner after a failed refresh.
         self.answers(answer(), {"exit": 1, "stdout": ""})
         self.start()
         held = self.held()
         held["expires_at"] = int(time.time()) + 100
         self.token_file().write_text(json.dumps(held))
-        outer = str(self.private / ("run-" + "0" * 32 + ".json"))  # as an outer run marks its child
+        outer = str(self.private / ("run-" + "0" * 32 + ".json"))
         ran = self.helper("run", *REQ, "--", "gh", "pr", "list", GH_TOKEN=TOKEN,
                           OPENWIZ_AGENT_TOKEN_RUN=outer)
         self.assert_fallback(ran, "unreachable")
@@ -343,7 +320,6 @@ class Fallback(Helper):
         self.assertNotIn(TOKEN, git.stdout)
 
     def test_each_fixture_fallback_reason(self):
-        # catches: a refusal, a bad or wider answer, or an expiring answer used as a token.
         cases = {
             "not-installed": refusal("not-installed"),
             "unavailable": refusal("unavailable"),
@@ -372,7 +348,6 @@ class Fallback(Helper):
         self.assertLessEqual(reasons, set(PIN["fallback"]["reasons"]))
 
     def test_a_path_that_cannot_be_quoted_is_never_run(self):
-        # catches: a service path breaking out of the pairing command's single quotes.
         for path in ("/synthetic/it's.py", "/synthetic/a\nb.py", "relative/token-service.py"):
             with self.subTest(path=path):
                 result = self.start(OPENWIZ_TOKEN_SERVICE=path)
@@ -380,17 +355,15 @@ class Fallback(Helper):
                 self.assert_fallback(result, "unreachable")
 
     def test_a_service_that_does_not_answer_in_time(self):
-        # catches: an agent hanging on a pairing call that never returns.
         helper = load_helper()
         self.answers({"exit": 0, "stdout": "", "sleep": 5})
-        helper.TIMEOUT_S = 1  # the contract's 60 seconds, shortened for the test
+        helper.TIMEOUT_S = 1
         started = time.monotonic()
         reason = helper.ask([str(self.bin / "room-cli"), "x"], b"{}", self.env)[0]
         self.assertEqual(reason, "unreachable")
         self.assertLess(time.monotonic() - started, 4)
 
     def test_no_service_configured_is_exactly_as_today(self):
-        # catches: a note, a call or a changed environment when no service is set.
         result = self.start(OPENWIZ_TOKEN_SERVICE=None)
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
         ran = self.helper("run", *REQ, "--", "gh", "api", "user", OPENWIZ_TOKEN_SERVICE=None,
@@ -402,7 +375,6 @@ class Fallback(Helper):
 
 
 class Review(Helper):
-    """The review's findings R1 to R4 and R6 to R10 on #1916, each red first."""
     REQ = REQ
 
     def shell(self, script, *extra, **env):
@@ -410,7 +382,6 @@ class Review(Helper):
         return self.helper("run", *self.REQ, "--", "sh", "-c", script, *extra, **env)
 
     def test_r1_credential_answers_only_inside_git_exchange(self):
-        # catches: the credential subcommand printing the token when run by hand.
         self.answers(answer())
         self.start()
         direct = self.helper("credential", "get", stdin="protocol=https\nhost=github.com\n\n")
@@ -420,7 +391,6 @@ class Review(Helper):
         self.assertNotIn(TOKEN, by_hand.stdout + by_hand.stderr)
 
     def test_r2_a_symlinked_ancestor_into_a_git_tree_is_refused(self):
-        # catches: the lexical Git-tree guard followed through a symlink into a working tree.
         self.answers(answer())
         tree = self.root / "work"
         (tree / ".git").mkdir(parents=True)
@@ -431,7 +401,6 @@ class Review(Helper):
         self.assertFalse((tree / "sub" / "private").exists())
 
     def test_r1_a_git_credential_command_never_prints_the_token(self):
-        # catches: `git credential fill` inside a run printing the App token to its caller's stdout.
         self.answers(answer())
         self.start()
         fill = self.helper("run", *self.REQ, "--", "git", "credential", "fill",
@@ -442,15 +411,13 @@ class Review(Helper):
         self.assertEqual(fill.stderr.count(WITHHELD), 1, "one note")
 
     def test_r2_an_ancestor_swapped_before_the_open_never_redirects_the_token(self):
-        # catches: the directory checked by path, then reopened by path after an ancestor became a
-        # symlink into a Git tree, so the token is written inside the tree.
         helper = load_helper()
         tree = self.root / "work"
         (tree / ".git").mkdir(parents=True)
         (tree / "private").mkdir(mode=0o700)
         safe = self.root / "safe"
         (safe / "private").mkdir(parents=True, mode=0o700)
-        safe.chmod(0o700)  # under any umask, so only the swap can redirect it
+        safe.chmod(0o700)
         real_open = os.open
 
         def swap_then_open(path, *args, **kwargs):
@@ -469,7 +436,6 @@ class Review(Helper):
         self.assertEqual(list((tree / "private").iterdir()), [])
 
     def test_r2_an_ancestor_others_can_change_is_refused(self):
-        # catches: a private directory under a folder anyone can write, who could swap it later.
         self.answers(answer())
         shared = self.root / "shared"
         shared.mkdir()
@@ -479,8 +445,6 @@ class Review(Helper):
         self.assertFalse((shared / "private").exists())
 
     def test_r2_an_ancestor_its_group_can_change_is_refused(self):
-        # catches: a non-sticky folder writable by the caller's own group, whose other members
-        # could move the private directory into a Git tree.
         self.answers(answer())
         shared = self.root / "group"
         shared.mkdir()
@@ -491,8 +455,6 @@ class Review(Helper):
         self.assertFalse((shared / "private").exists())
 
     def test_r7_a_replaced_helper_list_or_header_never_authenticates_git(self):
-        # catches: higher-priority git config replacing the helper list, so the App helper is never
-        # asked and git signs in with the owner's helper or an owner's Authorization header.
         self.answers(answer())
         self.start()
         owner = "!f() { echo username=synthetic-owner; echo password=synthetic-owner-login; }; f"
@@ -509,8 +471,6 @@ class Review(Helper):
                 self.assertEqual(ran.stderr.count(WITHHELD), 1, "one note")
 
     def test_r8_git_http_tracing_never_shows_the_token(self):
-        # catches: inherited GIT_TRACE_CURL, GIT_CURL_VERBOSE or GIT_TRACE_REDACT=0 logging the App
-        # credential's Authorization header to the terminal or a trace file.
         self.answers(answer())
         self.start()
         github = self.github()
@@ -523,8 +483,6 @@ class Review(Helper):
         self.assert_never_exposed(ran, tokens=(TOKEN, encoded))
 
     def test_r7_an_unguarded_git_never_signs_in_as_the_owner(self):
-        # catches: git run without the transport guard (its exec-path lookup fails, or the agent
-        # overrides it), so a replaced helper list signs git in as the owner.
         self.answers(answer())
         self.start()
         owner = "!f() { echo username=synthetic-owner; echo password=synthetic-owner-login; }; f"
@@ -552,7 +510,6 @@ class Review(Helper):
                 self.assert_never_exposed(ran)
 
     def test_r9_git_process_tracing_never_shows_the_token(self):
-        # catches: GH_TOKEN in git's environment, where trace2.envVars logs it at git's startup.
         self.answers(answer())
         self.start()
         github = self.github()
@@ -565,8 +522,6 @@ class Review(Helper):
         self.assert_never_exposed(ran)
 
     def test_r10_ssh_never_signs_git_in_as_the_owner(self):
-        # catches: an SSH remote, an owner's insteadOf rewrite to SSH, or an ext:: transport
-        # starting the owner's ssh (and key) inside a run where the App identity was chosen.
         self.answers(answer())
         self.start()
         ssh_log = self.root / "owner-ssh.log"
@@ -598,7 +553,6 @@ class Review(Helper):
                 self.assert_never_exposed(ran)
 
     def test_r7_a_later_owner_helper_never_authenticates_git(self):
-        # catches: the helper declining for a later helper, so git silently signs in as the owner.
         self.answers(answer())
         self.start()
         github = self.github()
@@ -610,7 +564,6 @@ class Review(Helper):
         self.assert_never_exposed(ran)
 
     def test_r3_two_agents_on_one_account_keep_their_own_scopes(self):
-        # catches: a second agent's start replacing the first's request, so one gets the other's token.
         self.answers(answer(), answer(token=TOKEN2, permissions=READ))
         self.start()
         self.helper("start", "--requester", "reviewer-2", "--repository", REPO, "--read")
@@ -622,7 +575,6 @@ class Review(Helper):
         self.assert_never_exposed(first, second)
 
     def test_r4_a_command_scope_helper_never_gets_the_token(self):
-        # catches: `git -c credential.helper=store` adding a persisting helper after the reset.
         self.answers(answer())
         self.start()
         fill = self.helper("run", *self.REQ, "--", "git", "-c", "credential.helper=store",
@@ -633,7 +585,6 @@ class Review(Helper):
         self.assertFalse((self.home / ".git-credentials").exists())
 
     def test_r6_a_failed_start_inside_a_run_hands_no_app_token_on(self):
-        # catches: a fallback forwarding an inherited App token because the cache was already cleared.
         self.answers(answer())
         req = " ".join(self.REQ)
         ran = self.shell(f'OPENWIZ_TOKEN_SERVICE_READBACK=failed "$PY" -I "$H" start {req}; '
