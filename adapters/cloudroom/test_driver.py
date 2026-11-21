@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -256,6 +257,32 @@ class Driver(unittest.TestCase):
                 run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(err)).group()}
                 self.call('stop', run, FAKE_ROOM_HOST=host)
                 self.assertNotIn(TOKEN, json.dumps(self.calls()))
+                row = {'id': 'thr_' + TOKEN, 'title': '#7: example/site builder (%s)' % run['run'],
+                       'projectId': PROJECT, 'parentThreadId': PARENT}
+                code, err = self.call('stop', run, FAKE_ROOM_HOST=host, FAKE_ROOM_LIST=json.dumps([row]))
+                self.assertEqual(code, 1, err)
+                self.assertIn(run['run'], err['next'])
+                self.assertNotIn(TOKEN, json.dumps([err, [c for c in self.calls() if c[1] == 'archive']]))
+
+    def test_a_kit_lost_during_spawn_never_claims_nothing_started(self):
+        tree = tempfile.mkdtemp()
+        for part in ('adapters/cloudroom', 'kernel'):
+            shutil.copytree(os.path.join(HERE, '..', '..', part), os.path.join(tree, part))
+        driver, kit_file = os.path.join(tree, 'adapters/cloudroom/driver'), os.path.join(tree, 'kernel/driver-kit/kit.py')
+        for host in ('local', 'cloud'):
+            with self.subTest(host):
+                self.fresh()
+                shutil.copy(os.path.join(KIT, 'kit.py'), kit_file)
+                env = dict(self.env, FAKE_ROOM_HOST=host)
+                p = subprocess.run([sys.executable, driver, 'start'], input=json.dumps(START), capture_output=True,
+                                   text=True, timeout=60, env=dict(env, FAKE_ROOM_GONE=kit_file))
+                self.assertFalse(os.path.exists(kit_file))
+                found = re.search(r'run-[0-9a-f]{12}', p.stdout)
+                self.assertTrue(found, p.stdout)
+                p = subprocess.run([sys.executable, driver, 'stop'], input=json.dumps({'run': found.group()}),
+                                   capture_output=True, text=True, timeout=60, env=env)
+                self.assertEqual([c for c in self.calls() if c[1] == 'archive'], [['thread', 'archive', 'thr_syn_0001']],
+                                 'the builder spawned while the kit went missing still runs: ' + p.stdout)
 
     def archive_by_hand(self, thread):
         with open(self.log + '.threads') as f:

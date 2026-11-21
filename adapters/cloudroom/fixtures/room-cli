@@ -59,6 +59,8 @@ if sub == 'spawn':
     if os.environ.get('FAKE_ROOM_BREAK'):
         shutil.rmtree(os.environ['FAKE_ROOM_BREAK'], ignore_errors=True)
         open(os.environ['FAKE_ROOM_BREAK'], 'w').close()
+    if os.environ.get('FAKE_ROOM_GONE'):
+        os.remove(os.environ['FAKE_ROOM_GONE'])
     if os.environ.get('FAKE_ROOM_READONLY'):
         os.chmod(os.environ['FAKE_ROOM_READONLY'], 0o500)
     threads[tid].update(projectId=flag('--project'), parentThreadId=os.environ.get('ROOM_THREAD_ID'))
