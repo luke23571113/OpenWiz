@@ -53,8 +53,9 @@ def check(folder, names, plain):
     for name in names:
         try:
             reason = clash(folder, name, plain)
-        except installer.Refused as refusal:
-            reason = f'{refusal}; {plain} does not get OpenWiz\'s {name}. Make it a real folder of yours, then run this again.'
+        except installer.Refused:
+            reason = (f'{folder / name} is a link or not your folder, so {plain} keeps it and does not get '
+                      f'OpenWiz\'s {name}. To use OpenWiz\'s, move it away, then run this again.')
         if reason:
             skipped.append({'skill': name, 'path': str(folder / name), 'next': reason})
     return skipped

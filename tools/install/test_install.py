@@ -273,7 +273,7 @@ class HarnessSkills(Bundles):
         self.assertEqual(self.skills()[0], 0)
         self.assertEqual((snapshot(self.home), snapshot(self.root / 'skills')), before)
 
-    def test_absent_harness_is_reported_and_an_unsafe_destination_changes_nothing(self):
+    def test_absent_harness_is_reported_and_an_unsafe_destination_is_skipped_on_its_own(self):
         (self.home / '.claude').mkdir()
         (self.home / '.codex').mkdir()
         code, result = self.skills(env={'CODEX_HOME': str(self.home / 'codex-elsewhere')})
@@ -310,7 +310,7 @@ class HarnessSkills(Bundles):
                     self.assertEqual((rows['claude-code']['state'], rows['grok']['state']), ('installed', 'refused'))
                 self.assertEqual(snapshot(self.base / 'dotfiles'), {})
 
-    def test_a_user_entry_at_the_staging_or_backup_path_is_kept_and_nothing_is_written(self):
+    def test_a_user_entry_at_the_staging_or_backup_path_is_kept_and_only_that_skill_is_skipped(self):
         for name in ('.openwiz-stage-grill', '.openwiz-old-grill'):
             for kind in ('dir', 'file', 'fake-mark'):
                 with self.subTest(name=name, kind=kind):
@@ -333,7 +333,7 @@ class HarnessSkills(Bundles):
                     self.assertEqual(skill_files(home / '.claude/skills', skip=(name,)),
                                      skill_files(self.root / 'current/runtime/skills', skip=('grill',)))
 
-    def test_the_refusal_names_the_unmarked_folder_and_prints_a_working_remove_command(self):
+    def test_the_skip_names_the_unmarked_folder_and_prints_a_working_remove_command(self):
         home = self.base / "home it's here"
         entry = home / '.claude/skills/.openwiz-stage-grill'
         entry.mkdir(parents=True)
