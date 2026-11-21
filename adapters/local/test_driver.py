@@ -377,7 +377,7 @@ class Local(unittest.TestCase):
         p = subprocess.run([os.path.join(NO_PROC, 'python3'), '-I', os.path.join(KIT, 'kit.py'), '--driver', DRIVER,
                             '--repo', 'example/site', '--ticket', '7', '--harness', 'claude',
                             '--model', 'synthetic-1', '--tracker', self.tracker, '--wait', '15'],
-                           env=dict(self.env, FAKE_SAME_GROUP='1', **macos), capture_output=True, text=True, timeout=180)
+                           env=dict(self.env, **macos), capture_output=True, text=True, timeout=180)
         self.assertEqual((p.returncode, p.stdout.splitlines()), (0, PASS), p.stderr)
 
 if __name__ == '__main__':

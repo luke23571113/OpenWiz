@@ -38,7 +38,7 @@ if not worker:
         time.sleep(0.05)
     while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
         time.sleep(0.05)
-    subprocess.Popen([sys.executable, sys.argv[0], '--worker'] + args, start_new_session=not os.environ.get('FAKE_SAME_GROUP'),
+    subprocess.Popen([sys.executable, sys.argv[0], '--worker'] + args, start_new_session=True,
                      env=dict(os.environ, FAKE_TURN=str(os.getpid())), stdin=subprocess.DEVNULL)
     sys.exit(0)
 
