@@ -185,3 +185,21 @@ fn md3_a_namespaced_or_upper_case_id_is_read_and_an_overlong_one_refused() {
         assert_eq!(model, want.map(|m| m.map(String::from)), "{to}");
     }
 }
+
+#[test]
+fn md3_five_tables_keep_the_older_lowercase_setting_form() {
+    let five = fixture("five-tables");
+    assert!(Rules::parse(&five, &flags()).is_ok());
+    for (from, to) in [
+        ("`--reasoning-level medium`", "`--reasoning-level Medium`"),
+        ("`--model gpt-6.2-sol`", "`--model vendor/demo`"),
+    ] {
+        let text = five.replacen(from, to, 1);
+        assert_ne!(text, five);
+        assert_eq!(
+            Rules::parse(&text, &flags()).err(),
+            Some("invalid agent setting"),
+            "{to}"
+        );
+    }
+}
