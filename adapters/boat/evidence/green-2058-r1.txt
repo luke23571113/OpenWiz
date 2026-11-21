@@ -6,4 +6,5 @@ Ran 1 test in 1.327s
 
 OK
 
-# at c8963815: python3 -I adapters/boat/test_driver.py: Ran 23 tests in 45.177s, OK; python3 -I kernel/driver-kit/test_kit.py: Ran 8 tests in 43.446s, OK; comment-check: ok
+# at 87909cf5: python3 -I adapters/boat/test_driver.py: Ran 23 tests in 45.785s, OK; comment-check: ok (an earlier commit, c8963815, moved UP's comment onto a new line and failed the comment check; fixed here)
+# python3 -I kernel/driver-kit/test_kit.py at c8963815: Ran 8 tests, OK (this commit only restores a comment's line)
