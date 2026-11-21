@@ -50,6 +50,7 @@ ANCHOR = '5d069b025c6eacb4123ca8241ba21345f1eae9dd'
 PRIVATE = 'jparker2006/ClosedWiz'
 OWNER = 'jparker2006'
 SCHEMA = 'openwiz.release-candidate.v1'
+ATTEMPTS = 'install-attempts.json'
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PRODUCTS = ('cli', 'runtime')
 METHODS = {'cli': {'embedded-record', 'native-query'}, 'runtime': {'tracked-tree'}}
@@ -1583,28 +1584,45 @@ def install(args):
             archive = sha(archives[0].read_bytes()) if len(archives) == 1 else None
             if manifest != names.get(('manifest', target)) or archive != names.get(('archive', target)):
                 reason = 'install_mismatch'
-    state.write(f'evidence/install-{target}.json', evidence)
-    data = state.file(f'evidence/install-{target}.json').read_bytes()
+    verified = now()
+    if reason is None and verified < publication['verified_at']:
+        reason = 'install_mismatch'
+    attempt = install_attempt(state, target, reason, verified, evidence)
     if reason:
         block(reason)
-    verified = now()
-    if verified < publication['verified_at']:
-        block('install_mismatch')
     record['install'] = {'route': 'install', 'version': body['release_version'], 'source': body['source']['commit'],
                          'target': target, 'manifest_sha256': manifest, 'archive_sha256': archive,
-                         'verified_at': verified,
-                         'evidence': {'record': f'evidence/install-{target}.json', 'sha256': sha(data)}}
+                         'verified_at': verified, 'evidence': attempt['evidence']}
     record['timing']['finished_at'] = verified
     phase(record, 'install', publication['verified_at'], verified)
     state.write('record.json', record)
-    return report(record)
+    return report(record, attempt)
 
 
-def report(record):
+def install_attempt(state, target, reason, at, evidence):
+    attempts = state.read(ATTEMPTS) if state.exists(ATTEMPTS) else []
+    folder = state.file(f'evidence/install-{target}')
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    taken = [int(f.stem) for f in folder.iterdir() if re.fullmatch(r'[1-9][0-9]*\.json', f.name)]
+    name = f'evidence/install-{target}/{max(taken, default=0) + 1}.json'
+    data = (json.dumps(evidence, indent=1, sort_keys=True, ensure_ascii=False) + '\n').encode('utf-8')
+    fd = os.open(state.file(name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    attempt = {'target': target, 'status': 'blocked' if reason else 'passed', 'reasons': [reason] if reason else [],
+               'at': at, 'evidence': {'record': name, 'sha256': sha(data)}}
+    state.write(ATTEMPTS, attempts + [attempt])
+    return attempt
+
+
+def report(record, attempt=None):
     timing = record['timing']
     ship, finished = timing['original_ship_at'], timing['finished_at']
     elapsed = finished - ship if ship is not None and finished is not None else None
-    return {'status': 'complete' if elapsed is not None else 'incomplete',
+    passing = attempt is None or attempt['status'] == 'passed'
+    return {'status': 'complete' if elapsed is not None and passing else 'incomplete', 'install_attempt': attempt,
             'candidate_sha256': record['candidate_sha256'], 'original_ship_at': ship,
             'preparation_started_at': timing['preparation_started_at'], 'finished_at': finished,
             'elapsed_seconds': elapsed, 'target_met': None if elapsed is None else elapsed < TARGET_MET,
@@ -1613,7 +1631,9 @@ def report(record):
 
 
 def status(args):
-    return report(State(args.state).read())
+    state = State(args.state)
+    attempts = state.read(ATTEMPTS) if state.exists(ATTEMPTS) else []
+    return report(state.read(), attempts[-1] if attempts else None)
 
 
 def main(argv=None):
