@@ -1,4 +1,4 @@
-$ python3 -I tools/release/test_help.py   # at 22f6fb07573c27ac02f11b76918cb1c5a5d00940
+$ python3 -I tools/release/test_help.py   # at f647d3c5c01ac7b95fc8508bbe1af1cf830a8f1d
 Ran 1 test in 1.391s
 
 OK
@@ -8,14 +8,13 @@ OK
 $ python3 -I tools/comment-check/check.py diff --base 507e6b8dca456181c5a757740455ac94a664455d
 comment-check: ok
 
-$ python3 -I tools/comment-check/check.py count --before 507e6b8dca456181c5a757740455ac94a664455d <the 243 cut files>
-before 507e6b8dca456181c5a757740455ac94a664455d files 243 comment_lines 6602 disallowed_lines 6458
-after 22f6fb07573c27ac02f11b76918cb1c5a5d00940 files 243 comment_lines 29 disallowed_lines 0
+$ python3 -I tools/comment-check/check.py count --before 507e6b8dca456181c5a757740455ac94a664455d <the 240 cut files>
+before 507e6b8dca456181c5a757740455ac94a664455d files 240 comment_lines 6521 disallowed_lines 6377
+after f647d3c5c01ac7b95fc8508bbe1af1cf830a8f1d files 240 comment_lines 29 disallowed_lines 0
 
-# The area's suites (exit status, test file), run at 3906ed35; later commits change only comments, plus cargo test --test proof --test messaging -- p08a m12 at 22f6fb07: 7 and 2 passed
+# The area's suites (exit status, test file), run at 3906ed35; later commits change only comments, plus cargo test --test proof --test messaging -- p08a m12 at 22f6fb07 (adapters/cloudroom/ since restored to main, so its suite is main's): 7 and 2 passed
 0 .github/actions/changelog/test_check.py
 0 adapters/boat/test_driver.py
-0 adapters/cloudroom/test_driver.py
 0 adapters/local/test_driver.py
 0 adapters/template/test_driver.py
 0 kernel/driver-kit/test_kit.py
