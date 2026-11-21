@@ -182,10 +182,15 @@ def damaged(build, assets, raw):
     except (Refused, OSError):
         meta = build.lstat()
         require(stat.S_ISDIR(meta.st_mode) and meta.st_uid == os.getuid(), 'a foreign build is in the way')
+        os.chmod(build, 0o700)
         stored = build / 'install-manifest.json'
-        require(not (stored.exists() or stored.is_symlink())
-                or (stored.is_file() and not stored.is_symlink() and stored.read_bytes() == raw),
-                'existing source has a different manifest')
+        try:
+            require(not (stored.exists() or stored.is_symlink())
+                    or (stored.is_file() and not stored.is_symlink() and stored.read_bytes() == raw),
+                    'existing source has a different manifest')
+        except BaseException:
+            os.chmod(build, stat.S_IMODE(meta.st_mode))
+            raise
         return True
 
 
@@ -230,7 +235,8 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
             require(link.is_symlink() and link.lstat().st_uid == os.getuid(), 'foreign current selection')
             selected = Path(os.readlink(link))
             require(selected.is_absolute() and selected.parent == builds and digest(selected.name, 40), 'foreign current selection')
-            private(selected)
+            if selected != builds / value['source']:
+                private(selected)
         channel = root / 'channel.json'
         require(channel.exists() or not link.is_symlink(), 'source installation requires an explicit channel migration')
         channel_bytes = b'{"schema":"openwiz.update-channel.v1","channel":"packaged"}\n'
@@ -290,6 +296,8 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
                     else:
                         os.rename(temporary, build)
                     sync(builds)
+                    for leftover in builds.glob('.damaged-*-' + value['source']):
+                        shutil.rmtree(leftover, ignore_errors=True)
                 finally:
                     if temporary.exists():
                         shutil.rmtree(temporary)

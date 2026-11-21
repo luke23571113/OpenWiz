@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import http.client
 import json
 from pathlib import Path
 import re
@@ -43,6 +44,8 @@ def fetch_bytes(url, limit):
         if error.code == 404:
             raise NotFound('release asset 404 at ' + url)
         raise Refused('release asset HTTP %d at %s' % (error.code, url))
+    except http.client.HTTPException:
+        raise Refused('interrupted transfer at ' + url)
     except OSError as error:
         raise Refused('network error at %s: %s' % (url, getattr(error, 'reason', None) or error))
     require(len(data) <= limit, 'artifact exceeds its declared byte bound at ' + url)
