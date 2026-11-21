@@ -802,6 +802,12 @@ def in_section(text, title, old, new):
     return head + sep + body.replace(old, new) + more + tail
 
 
+def table_rows(text, title):
+    body = text.split('\n## %s\n' % title, 1)[1].split('\n## ', 1)[0]
+    return [[cell.strip() for cell in line.strip()[1:-1].split('|')]
+            for line in body.splitlines() if line.startswith('|')][2:]
+
+
 class OwnSettings(unittest.TestCase):
     def test_openwizs_own_models_table_and_the_older_tables_the_pinned_skills_read_agree(self):
         self.agree(own_settings())
@@ -813,32 +819,47 @@ class OwnSettings(unittest.TestCase):
                           '| Effort | High | `--reasoning-level high` |')
         self.agree(text)
 
+    def test_a_role_changed_in_one_form_only_or_a_second_fixer_row_is_refused(self):
+        for name, text in (
+                ('older small only', in_section(own_settings(), 'Builder for small tickets',
+                                                '| Effort | Medium | `--reasoning-level medium` |',
+                                                '| Effort | High | `--reasoning-level high` |')),
+                ('models reviewer only', in_section(own_settings(), 'Models', '--model gpt-6.2-sol --reasoning-level medium',
+                                                    '--model gpt-6.2-sol --reasoning-level high')),
+                ('older GPT fixer only', in_section(own_settings(), 'Fixer', '--model gpt-6.2-sol --reasoning-level medium',
+                                                    '--model gpt-6.2-sol --reasoning-level high')),
+                ('second GPT fixer row', in_section(own_settings(), 'Fixer', '\n\nSource:',
+                                                    '\n| GPT | Codex | Sol 6.2 | High | `--provider codex --model '
+                                                    'gpt-6.2-sol --reasoning-level high` |\n\nSource:'))):
+            with self.subTest(name), self.assertRaises(AssertionError):
+                self.agree(text)
+
     def agree(self, text):
-        self.assertEqual(text.count('\n## Models\n'), 1, 'one Models section')
-        body = text.split('\n## Models\n', 1)[1].split('\n## ', 1)[0]
-        rows = [[cell.strip() for cell in line.strip()[1:-1].split('|')]
-                for line in body.splitlines() if line.startswith('|')]
-        opus = ['Claude Code', 'Opus 5.5', 'Medium',
-                '`--provider claude-code --model claude-opus-5-5 --reasoning-level medium`']
-        sol = ['Codex', 'Sol 6.2', 'Medium', '`--provider codex --model gpt-6.2-sol --reasoning-level medium`']
-        follows = ['follows Builder', '', '', '']
-        self.assertEqual(rows[2:], [['Orchestrator', *opus], ['Builder', *opus], ['Reviewer', *sol],
-                                    ['Small builder', *follows], ['Fixer', *follows]])
         setup = module('own_setup', TOOLS / 'setup/setup.py')
         self.assertTrue(setup.models_usable(text, setup.sections(text)['Models']), 'the install setup reader')
         skills = ROOT / '.wizskills/skills'
         problems = []
         module('own_settings', skills / 'setup/scripts/settings.py').fleet(text, problems)
         self.assertEqual(problems, [], 'the pinned setup check')
-        claude = dict(provider='claude-code', model='claude-opus-5-5', effort='medium')
-        codex = dict(provider='codex', model='gpt-6.2-sol', effort='medium')
-        starts = module('own_starts', skills / 'launch-fleet/scripts/ops-starts.py')
-        self.assertEqual(starts.read_settings(text),
-                         {'builder': claude, 'small': claude, 'claude-code': codex, 'codex': claude})
-        fixer = text.split('\n## Fixer\n', 1)[1].split('\n## ', 1)[0]
-        self.assertIn('| Claude | %s |' % ' | '.join(opus), fixer)
-        self.assertIn('| GPT | %s |' % ' | '.join(sol), fixer)
-
+        flags = re.compile(r'`--provider (\S+) --model (\S+) --reasoning-level (\S+)`')
+        choice = lambda cell: dict(zip(('provider', 'model', 'effort'), flags.fullmatch(cell).groups()))
+        rows = {row[0]: row for row in table_rows(text, 'Models')}
+        role = {name: choice((rows['Builder'] if rows.get(name, [0, 'follows Builder'])[1] == 'follows Builder'
+                              else rows[name])[4]) for name in ('Builder', 'Reviewer', 'Small builder', 'Fixer')}
+        family = {'claude-code': 'claude', 'codex': 'gpt'}
+        models = dict(builder=role['Builder'], small=role['Small builder'])
+        for f in ('claude', 'gpt'):
+            models['review ' + f] = next((c for c in (role['Reviewer'], role['Builder'])
+                                          if family.get(c['provider']) not in (None, f)), 'waits')
+            models['fix ' + f] = next((c for c in (role['Fixer'], role['Reviewer'])
+                                       if family.get(c['provider']) == f), 'waits')
+        older = module('own_starts', skills / 'launch-fleet/scripts/ops-starts.py').read_settings(text)
+        fixers = table_rows(text, 'Fixer')
+        self.assertEqual([row[0] for row in fixers], ['Claude', 'GPT'], 'one older Fixer row per family')
+        self.assertEqual(dict(builder=older['builder'], small=older['small'], **{
+            'review claude': older['claude-code'], 'review gpt': older['codex'],
+            'fix claude': choice(fixers[0][4]), 'fix gpt': choice(fixers[1][4])}), models,
+            'the older tables start what the Models table resolves to')
 
 if __name__ == '__main__':
     unittest.main()
