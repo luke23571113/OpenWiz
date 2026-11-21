@@ -70,7 +70,7 @@ Every ticket may make these edits beside its owned paths without asking:
 
 1. **Its own rows in shared registries:** `tools/open-import/paths.json` and the CLI test catalogue in `tests/cli-agent/main.rs`.
 2. **Its changelog line** as `changes/<ticket>.md`, whatever its owned paths name.
-3. **Its own evidence folder** under `docs/evidence/`.
+3. **Its own evidence folder,** `docs/evidence/<ticket>/`.
 4. **Synthetic answers to test fakes its change breaks,** with no assertion change.
 5. **Updates to byte-identical carried copies** of a file it owns.
 
