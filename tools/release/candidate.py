@@ -54,6 +54,7 @@ ATTEMPT = re.compile(r'[1-9][0-9]*\.json')
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PRODUCTS = ('cli', 'runtime')
 METHODS = {'cli': {'embedded-record', 'native-query'}, 'runtime': {'tracked-tree'}}
+RELEASED = ('skills/', 'contracts/')
 RISKS = ('send', 'new', 'app_permissions', 'spending')
 GATES = ('cutover', 'ci', 'privacy', 'claims', 'products', 'smoke') + RISKS
 CLASSES = {'cutover': {'source-inspection'}, 'ci': {'ci'}, 'privacy': {'source-inspection', 'ci'},
@@ -874,8 +875,11 @@ def verify_products(record, inputs, ctx):
                 runtime = [a for a in assets if a['path'].startswith('runtime/')]
                 selection = row['selection']
                 if (not isinstance(selection, list) or selection != sorted(selection)
-                        or any(not isinstance(pair, list) or len(pair) != 2 for pair in selection)
-                        or sorted(name for _, name in selection) != sorted(a['path'] for a in runtime)):
+                        or any(not isinstance(pair, list) or len(pair) != 2
+                               or not all(isinstance(part, str) for part in pair) for pair in selection)
+                        or sorted(name for _, name in selection) != sorted(a['path'] for a in runtime)
+                        or any(name != 'runtime/' + repo for repo, name in selection
+                               if repo.startswith(RELEASED) or name.startswith(tuple('runtime/' + r for r in RELEASED)))):
                     return ['unverified']
                 if 'install' not in installed:
                     installed['install'] = rl4.install_locked(ctx['work'], source, tempfile.mkdtemp(dir=scratch))

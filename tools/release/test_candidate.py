@@ -53,6 +53,8 @@ rl4 = load('release_candidate_rl4_fixture', HERE / 'test_product_identity.py')
 RUNTIME = dict(rl4.RUNTIME, **{f'skills/{name}': f'Synthetic {name}.\n'.encode() for name in (
     'setup/SKILL.md', 'grill/SKILL.md', 'to-tickets/SKILL.md', 'launch-fleet/SKILL.md')},
     **{'skills/launch-fleet/scripts/fleet.sh': b'#!/bin/sh\necho synthetic\n'})
+RELEASED_CONTRACTS = {'contracts/alpha.v1.md': b'Synthetic alpha contract.\n',
+                      'contracts/beta.v1.md': b'Synthetic beta contract.\n'}
 RUNTIME['tools/install/cloudroom/cloudroom.py'] = b'# Synthetic CloudRoom setup tool.\n'
 rl4.PACKAGED['tools/install/cloudroom/cloudroom.py'] = 'runtime/cloudroom/cloudroom.py'
 RUNTIME['tools/install/setup/init.py'] = b'# Synthetic init runtime.\n'
@@ -330,15 +332,18 @@ class World(unittest.TestCase):
             receipts = rl4.build(binaries, self.head, target, work, version)
             identity, record = build_products.collect(self.repo, binaries, build / f'products-{target}', version,
                                                       self.head, target, receipts['program'])
-            (build / f'identity-{target}.json').write_text(json.dumps(identity))
-            out = build / f'bundle-{target}'
-            package.assemble(build / f'products-{target}', build / f'identity-{target}.json', out)
-            self.product_rows += record['products']
             runtime = next(p for p in record['products'] if p['identity']['product'] == 'runtime')
             selection = sorted([repository, name] for repository, name in
                                ([p, 'runtime/' + p] if p.startswith('skills/') else [p, rl4.PACKAGED[p]]
                                 for p in RUNTIME))
+            selection = sorted(selection + [[p, 'runtime/' + p] for p in getattr(self, 'released', {})])
             assert sha(rl4.canonical({'source': self.head, 'selection': selection})) == runtime['build_receipt']['sha256']
+            if getattr(self, 'swapped', None):
+                selection = self.swap_packaged(build / f'products-{target}', identity, runtime, selection, *self.swapped)
+            (build / f'identity-{target}.json').write_text(json.dumps(identity))
+            out = build / f'bundle-{target}'
+            package.assemble(build / f'products-{target}', build / f'identity-{target}.json', out)
+            self.product_rows += record['products']
             self.product_receipts.append({
                 'target': target, 'selection': selection,
                 **{kind: {'name': receipts[kind].name, 'utf8': receipts[kind].read_text()} for kind in ('program',)}})
@@ -997,11 +1002,27 @@ class Candidate(World):
         self.assertEqual(self.receipt('products', 'ci'), (0, {'status': 'recorded', 'gate': 'products'}))
         self.assertEqual(self.writes(), [])
 
+    def swap_packaged(self, products, identity, runtime, selection, first, second):
+        names = ('runtime/' + first, 'runtime/' + second)
+        data = [(products / name).read_bytes() for name in names]
+        for name, bytes_ in zip(names, reversed(data)):
+            (products / name).write_bytes(bytes_)
+        rows = {row['path']: row for row in identity['assets']}
+        a, b = (rows[name] for name in names)
+        for key in ('sha256', 'bytes'):
+            a[key], b[key] = b[key], a[key]
+        runtime['payload_sha256'] = build_products.payload([r for r in identity['assets'] if r['path'].startswith('runtime/')])
+        selection = [pair for pair in selection if pair[0] not in (first, second)]
+        selection = sorted(selection + [[first, names[1]], [second, names[0]]])
+        runtime['build_receipt']['sha256'] = sha(rl4.canonical({'source': self.head, 'selection': selection}))
+        return selection
+
     def lock_mode(self):
         install = self.repo / '.wizskills'
         install.mkdir()
-        for path, data in RUNTIME.items():
-            if path.startswith('skills/'):
+        self.released = RELEASED_CONTRACTS
+        for path, data in {**RUNTIME, **RELEASED_CONTRACTS}.items():
+            if path.startswith(('skills/', 'contracts/')):
                 (install / path).parent.mkdir(parents=True, exist_ok=True)
                 (install / path).write_bytes(data)
         (install / 'README.md').write_text('Synthetic WizSkills.\n')
@@ -1026,6 +1047,18 @@ class Candidate(World):
         self.assertEqual(self.receipt('products', 'ci'), (0, {'status': 'recorded', 'gate': 'products'}))
         skill = install / 'skills/synthetic/SKILL.md'
         skill.write_bytes(skill.read_bytes() + b'Edited after packaging.\n')
+        self.blocked(self.receipt('products', 'ci'), 'products_unverified')
+        self.assertEqual(self.writes(), [])
+
+    def test_r1_a_locked_contract_packaged_at_another_contracts_path_is_refused(self):
+        self.lock_mode()
+        self.swapped = ('contracts/alpha.v1.md', 'contracts/beta.v1.md')
+        self.smoke_kit()
+        self.artifacts()
+        self.made = self.body()
+        self.assertEqual(self.prepare()[0], 0)
+        self.decisions()
+        self.checks()
         self.blocked(self.receipt('products', 'ci'), 'products_unverified')
         self.assertEqual(self.writes(), [])
 
