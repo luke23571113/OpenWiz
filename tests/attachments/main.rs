@@ -10,21 +10,33 @@
 
 mod support;
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/schema.rs"]
 mod schema;
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/dirs.rs"]
 mod dirs;
 
 // Waiting out a forked child's copy of a file (#176).
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/forks.rs"]
 mod forks;
 
 // `pattern`, the shared schema keywords (one copy, in the new-thread target).
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../new-thread/pattern.rs"]
 mod pattern;
 

@@ -24,7 +24,14 @@ const WEBHOOK_PROMPT: &str = "Read the requests that arrived and route each one 
 
 /// A sandbox whose `room-cli` is the fake, behind a recorder that answers
 /// from `before` until a loop write is recorded and from `after` once one is.
-struct Room(PathBuf, #[allow(dead_code)] Sandbox);
+struct Room(
+    PathBuf,
+    #[allow(
+        dead_code,
+        reason = "held only so its Drop removes the sandbox when the Room goes"
+    )]
+    Sandbox,
+);
 
 impl Room {
     fn new(before: Vec<Value>, after: Vec<Value>) -> Self {
