@@ -34,6 +34,15 @@ pub enum MergeRule {
 }
 
 impl Rules {
+    pub fn read(text: &str, _flags: &crate::models::SpawnFlags) -> Result<Self, &'static str> {
+        Self::parse(text)
+    }
+    pub fn review(&self, family: super::BuilderFamily) -> Option<&AgentRule> {
+        Some(self.reviewer_for(family))
+    }
+    pub fn fixer(&self, _family: super::BuilderFamily) -> Option<&AgentRule> {
+        None
+    }
     pub fn parse(text: &str) -> Result<Self, &'static str> {
         let read = |heading| {
             agent(table(
