@@ -93,9 +93,10 @@ class Installer(test_install.Bundles):
             '<entry><link rel="alternate" type="text/html" href="https://github.com/openwizdev/OpenWiz/releases/tag/%s"/>'
             '</entry>' % tag for tag in tags).encode()
 
-    def assets(self):
-        folder = self.base / 'assets'
-        manifest, archive, _ = self.bundle(version='0.1.0', mutate=lambda m: m.update(archive=ARCHIVE))
+    def assets(self, name='assets', override=None):
+        folder = self.base / name
+        manifest, archive, _ = self.bundle(version='0.1.0', mutate=lambda m: m.update(archive=ARCHIVE),
+                                           override=override)
         folder.mkdir(mode=0o700)
         raw = manifest.read_bytes()
         for name, data in ((NAME + '.sha256', test_install.sha(raw).encode() + b'  ' + NAME.encode() + b'.manifest.json\n'),
@@ -251,6 +252,24 @@ class Repair(Installer):
                 self.assertEqual(self.run_entry('status', '--root', str(root))[1]['outcome'], 'installed')
                 self.assertEqual([p.name for p in build.parent.iterdir()], [build.name])
                 self.assertEqual((root / 'state' / 'owner-settings.json').read_text(), 'synthetic owner settings')
+
+    def test_a_retry_after_an_interrupted_repair_keeps_the_source_bound_to_its_manifest(self):
+        good = self.assets()
+        other = self.assets('other', override={'openwiz': b'#!/bin/sh\nexit 1\n'})
+        argv = ('--target', TARGET, '--root', str(self.root))
+        build = Path(self.run_entry('install', '--assets', str(good), *argv)[1]['build'])
+        original = (build / 'install-manifest.json').read_bytes()
+        backup = build.parent / ('.damaged-1-' + build.name)
+        build.rename(backup)
+        code, value = self.run_entry('install', '--assets', str(other), *argv)
+        self.assertEqual(code, 5, value)
+        self.assertIn('different manifest', value['reason'])
+        self.assertEqual((backup / 'install-manifest.json').read_bytes(), original)
+        self.assertFalse(build.exists())
+        code, value = self.run_entry('install', '--assets', str(good), *argv)
+        self.assertEqual((code, value['outcome']), (0, 'installed'), value)
+        self.assertEqual((build / 'install-manifest.json').read_bytes(), original)
+        self.assertEqual([p.name for p in build.parent.iterdir()], [build.name])
 
     def test_status_says_not_installed_on_an_empty_root(self):
         for root in (self.root, self.home):
