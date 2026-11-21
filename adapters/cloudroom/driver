@@ -1,0 +1,378 @@
+#!/usr/bin/env python3
+"""The Cloudroom driver (kernel/driver.v1.md): each run is one Cloudroom thread, made through the user's own
+signed-in `room-cli` from inside a Cloudroom thread of the project.
+
+start: `room-cli thread spawn --parent-self --project $ROOM_PROJECT_ID ...`, a child thread in its own sandbox.
+wake:  `room-cli thread tell <thread> --mode queue --message-file <file>`, the delivery the fleet's GitHub
+       event route uses, answered as woken only when room-cli accepts it.
+stop:  `room-cli thread archive <thread>`, which stops the thread and archives it.
+A run is saved, as `starting`, before its thread is made, and the thread's title carries the run id, so `stop`
+always reaches the thread (by title, if its id was never saved) and `wake` never uses a run that did not finish
+starting. A wake or a stop holds the run's lock throughout. No answer after a spawn says retry.
+It never reads, adds or passes a login: room-cli runs with the caller's environment, unchanged.
+Linux or macOS; standard library only.
+"""
+import fcntl, importlib.machinery, importlib.util, json, os, re, secrets, subprocess, sys, tempfile
+
+sys.dont_write_bytecode = True
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATE = os.environ.get('OPENWIZ_CLOUDROOM_STATE') or os.path.expanduser('~/.local/state/openwiz-cloudroom')
+VERSION = {'driver': 'cloudroom', 'records': ['openwiz:records v1'],
+           'can': ['start', 'wake', 'stop', 'many-at-once', 'own-sandbox']}
+START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
+         'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
+         'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
+RUN = {'run': r'run-[0-9a-f]{12}'}
+THREAD, PROJECT = r'thr_[A-Za-z0-9_]{1,80}', r'[A-Za-z0-9_]{1,80}'
+WRITABLE = 'make OPENWIZ_CLOUDROOM_STATE (or ~/.local/state/openwiz-cloudroom) a folder you can write'
+PROVIDERS = {'claude': 'claude-code'}  # the harness names OpenWiz uses that Cloudroom names otherwise
+LOOKUP = ("Read 'skills/{s}/SKILL.md' if present, otherwise find '*/skills/{s}/SKILL.md' only inside your own "
+          "harness's configured plugin cache: Codex uses CODEX_HOME/plugins/cache (default HOME/.codex/plugins/cache); "
+          "Claude uses CLAUDE_CODE_PLUGIN_CACHE_DIR/cache when set, otherwise CLAUDE_CONFIG_DIR/plugins/cache (default "
+          "HOME/.claude/plugins/cache); for another harness use its installation metadata. Verify "
+          ".claude-plugin/plugin.json manifest name openwiz and entry ./skills/{s}; report missing, unreadable or "
+          "ambiguous matches, otherwise read the unique matching file and follow it.")
+KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
+SIGNED_OUT = re.compile(r'\b(?:not signed in|signed out|sign in|log ?in|auth\w*|unauthori[sz]ed|401|expired)\b', re.I)
+
+
+class Refused(Exception):
+    pass
+
+
+class Unknown(Refused):
+    """Cloudroom may have acted: the outcome is unknown."""
+
+
+def unique(pairs):
+    if len({k for k, _ in pairs}) != len(pairs):
+        raise Refused('a key is repeated', 'send each key once')
+    return dict(pairs)
+
+
+def read(fields):
+    """The request on stdin, with exactly these fields, each valid, or Refused."""
+    try:
+        req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
+    except ValueError:
+        raise Refused('the input is not JSON', 'send one JSON object on stdin, as `driver schema` shows')
+    if not isinstance(req, dict) or set(req) != set(fields):
+        raise Refused('the input needs exactly ' + ', '.join(fields), 'send only those fields; never a login')
+    for key, pattern in fields.items():
+        v = req[key]
+        if not (type(v) is int and v > 0 if pattern is None else isinstance(v, str) and re.fullmatch(pattern, v)):
+            raise Refused(key + ' is not valid', 'fix ' + key + ' as `driver schema` shows')
+    return req
+
+
+def credential_check():
+    try:
+        spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
+            'openwiz_driver_kit', KIT))
+        kit = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(kit)
+        return kit.holds_credential
+    except Exception:
+        raise Refused("the driver kit's credential check is missing, so no start field can be checked; nothing "
+                      'was saved or started', 'run the driver from an OpenWiz checkout or release that carries '
+                      'kernel/driver-kit/kit.py')
+
+
+def passable(holds_credential, value):
+    try:
+        return not holds_credential(value)
+    except Exception:
+        return False
+
+
+def no_credentials(req, holds_credential):
+    # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
+    for key in START:
+        if isinstance(req[key], str) and holds_credential(req[key]):
+            raise Refused('%s looks like a credential, so nothing was saved or started' % key,
+                          'send the %s itself in %s; never a login, key or token' % (key, key))
+    return req
+
+
+def room_said(out, err):
+    # PRIVACY: room-cli's own words (its stderr, a structured error) are only classified, never repeated: a
+    # diagnostic may hold a credential.
+    try:
+        told = json.loads(out)
+        told = told['error'] if isinstance(told, dict) and isinstance(told.get('error'), str) else ''
+    except ValueError:
+        told = ''
+    told += ' ' + err
+    if SIGNED_OUT.search(told):
+        return 'room-cli is not signed in'
+    return 'room-cli gave an error the driver does not repeat' if told.strip() else 'room-cli gave no answer'
+
+
+def room(*args):
+    try:
+        p = subprocess.run(['room-cli', *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=100)
+    except FileNotFoundError:
+        raise Refused('room-cli is not installed here',
+                      'run the driver inside a Cloudroom thread, where room-cli is signed in')
+    except subprocess.TimeoutExpired:
+        raise Unknown('room-cli thread %s did not answer within 100 seconds; its outcome is unknown' % args[1],
+                      'read `room-cli thread list` before you do anything again, so nothing happens twice')
+    return p.returncode, p.stdout, room_said(p.stdout, p.stderr) if p.returncode else ''
+
+
+def brief(req):
+    return ('You are the builder for %s#%d. Build it with the %s skill. ' % (req['repository'], req['ticket'], req['skill'])
+            + LOOKUP.format(s=req['skill']))
+
+
+def spawn(req, title, holds_credential):
+    project = os.environ.get('ROOM_PROJECT_ID', '')
+    if not re.fullmatch(PROJECT, project):
+        raise Refused('no Cloudroom project here: ROOM_PROJECT_ID is not set',
+                      "run the driver inside a Cloudroom thread of the repository's project")
+    code, out, said = room('thread', 'spawn', '--parent-self', '--project', project,
+                           '--provider', PROVIDERS.get(req['harness'], req['harness']), '--model', req['model'],
+                           '--title', title, '--prompt', brief(req), '--json')
+    if code != 0:
+        raise Refused('Cloudroom refused the start: ' + said,
+                      'check the harness and model with `room-cli provider list`, then start again')
+    try:
+        receipt = json.loads(out)
+    except ValueError:
+        receipt = None
+    if not (isinstance(receipt, dict) and isinstance(receipt.get('id'), str) and re.fullmatch(THREAD, receipt['id'])
+            and receipt.get('projectId', project) == project and passable(holds_credential, receipt['id'])):
+        raise Unknown("Cloudroom's answer to the start names no thread of this project",
+                      'read `room-cli thread list` before you start again, so no builder runs twice')
+    return receipt['id']
+
+
+def tell(state, req):
+    """The fleet route's delivery: queued, from a private file, woken only on room-cli's acceptance."""
+    text = ('You were woken for %s#%d: read the ticket again, edit your own status note, and carry on with the %s '
+            'skill.' % (req['repository'], req['ticket'], req['skill']))
+    fd, path = tempfile.mkstemp(prefix='wake-', dir=STATE)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        code, _, said = room('thread', 'tell', state['thread'], '--mode', 'queue', '--message-file', path)
+    finally:
+        os.unlink(path)
+    if code != 0:
+        raise Refused('Cloudroom did not take the wake: ' + said,
+                      'leave the run as it is; the next GitHub event or safety-net check wakes it again')
+
+
+def saved(run, state=None):
+    path = os.path.join(STATE, run + '.json')
+    if state is not None:
+        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        with open(path + '.new', 'w') as f:
+            json.dump(state, f)
+        os.replace(path + '.new', path)
+        return state
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise Refused('no run ' + run, 'check the run id that `driver start` printed')
+
+
+def lock(run, cmd):
+    """Hold the run's lock until this command ends, so its wakes and stops take turns. Only a stop may make a lost
+    lock file again: the file carries the stop's marks, so a wake never runs without it."""
+    if not os.path.exists(os.path.join(STATE, run + '.json')):
+        raise Refused('no run ' + run, 'check the run id that `driver start` printed')
+    try:
+        fd = os.open(os.path.join(STATE, run + '.lock'), os.O_RDONLY | (os.O_CREAT if cmd == 'stop' else 0), 0o600)
+    except FileNotFoundError:
+        raise Refused('run %s has lost its lock file, so whether it was stopped is unknown' % run,
+                      'stop it, then start a new run')
+    except OSError:
+        raise Refused('the driver cannot lock run %s in its state folder' % run, WRITABLE)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except OSError:
+        raise Refused('the driver cannot lock run %s in its state folder' % run, WRITABLE)
+
+
+STOPPED_AT = 0  # a stop sets the lock file's modification time to this: no write ever sets it
+
+
+def marked(run, mark=None):
+    """The run's lock file holds `live` until a stop begins, then `stop` for good, and a stop also sets its
+    modification time to STOPPED_AT. The file already exists, so its text needs no new file or space, and its
+    owner can set its time even when neither it nor its folder takes a write (#1705). Either mark is a stop."""
+    path = os.path.join(STATE, run + '.lock')
+    if mark is None:
+        try:
+            if os.stat(path).st_mtime == STOPPED_AT:
+                return 'stop'
+            with open(path) as f:
+                return f.read().strip()
+        except OSError:
+            return 'stop'  # unreadable: fail closed
+    kept = None
+    try:
+        fd = os.open(path, os.O_WRONLY)
+        try:
+            os.write(fd, mark.encode())
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        kept = mark
+    except OSError:
+        pass
+    try:  # after the text, which would move the time
+        os.utime(path, (STOPPED_AT, STOPPED_AT))
+        kept = mark
+    except OSError:
+        pass
+    return kept
+
+
+def threads(state):
+    """The run's live threads: its saved thread, or, if its id was never saved, those titled with its run id."""
+    if state['thread']:
+        return [state['thread']]
+    project, parent = state.get('project'), state.get('parent')
+    by_hand = 'stop it again later, or archive its thread by hand: the one whose title ends "%s"' % (
+        state['title'][state['title'].rfind('('):])
+    if not (project and parent):
+        raise Unknown('this run saved no project and parent, so the driver cannot tell its thread from another', by_hand)
+    code, out, said = room('thread', 'list', '--json', '--project', project)
+    complete = code == 0
+    if code == 2:
+        complete = (os.environ.get('ROOM_PROJECT_ID'), os.environ.get('ROOM_THREAD_ID')) == (project, parent)
+        code, out, said = room('thread', 'list', '--json')
+    try:
+        rows = json.loads(out)
+        rows = rows['children'] if isinstance(rows, dict) else rows
+    except (ValueError, KeyError):
+        rows = None
+    if code != 0 or not isinstance(rows, list) or not all(
+            isinstance(t, dict) and isinstance(t.get('id'), str) and re.fullmatch(THREAD, t['id'])
+            and isinstance(t.get('title'), str) for t in rows):
+        raise Unknown('Cloudroom did not list its threads, so whether this run still runs is unknown: '
+                      + (said or 'its list could not be read'), by_hand)
+    titled = [t for t in rows if t['title'] == state['title']]
+    if not titled and not complete:
+        raise Unknown('this room-cli lists only its own thread\'s children, and this is not the thread that '
+                      'started the run', 'stop it from the thread that started it, or ' + by_hand[len('stop it '):])
+    parents = [t.get(k) for t in titled[:1] for k in ('parentThreadId', 'parent') if k in t]
+    if titled and not (len(titled) == 1 and titled[0].get('projectId') == project and parents
+                       and all(isinstance(p, str) and p == parent for p in parents)):
+        raise Unknown('Cloudroom lists %d threads with this run\'s title, and the driver cannot prove one of them is '
+                      'its own, in its project under its parent' % len(titled), by_hand)
+    found = [t['id'] for t in titled]
+    try:
+        holds_credential = credential_check()
+    except Refused:
+        holds_credential = None
+    if found and not (holds_credential and passable(holds_credential, found[0])):
+        raise Unknown("Cloudroom lists this run's thread with an id the driver will not pass on", by_hand)
+    return found
+
+
+def start(req, run, holds_credential):
+    title = '#%d: %s builder (%s)' % (req['ticket'], req['repository'], run)
+    state = {'request': req, 'title': title, 'thread': None, 'starting': True, 'stopped': False, 'archived': False,
+             'project': os.environ.get('ROOM_PROJECT_ID', ''), 'parent': os.environ.get('ROOM_THREAD_ID', '')}
+    try:  # save the run before its thread is made: nowhere to keep it, nothing starts
+        saved(run, state)
+        fd = os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, b'live')
+        finally:
+            os.close(fd)
+    except OSError:
+        raise Refused('the driver cannot keep runs in its state folder; nothing was started', WRITABLE)
+    try:
+        thread = spawn(req, title, holds_credential)
+    except Unknown as e:  # a thread may exist: the record stays starting, so stop reaches it and wake refuses it
+        raise Unknown('run %s: %s' % (run, e.args[0]), 'stop %s, which ends any thread it started, then start a new '
+                      'run' % run)
+    except Refused:  # Cloudroom started nothing
+        try:
+            saved(run, dict(state, starting=False, stopped=True, archived=True))
+        except OSError:
+            pass
+        raise
+    try:
+        saved(run, dict(state, thread=thread, starting=False))
+    except OSError:  # the thread exists but its run is not saved: end it, and never say retry
+        if room('thread', 'archive', thread)[0] == 0:
+            raise Unknown('run %s started a thread it could not save, so the driver archived it; the outcome is '
+                          'unknown' % run, 'read `room-cli thread list` and the ticket for what its agent did before you start again')
+        raise Unknown('run %s started a thread it could not save or archive; the outcome is unknown' % run,
+                      'stop %s, or archive the thread titled "%s" by hand, before you start again' % (run, title))
+    return {'run': run}
+
+
+def stop(run, state):
+    if state.get('archived'):
+        return {'run': run, 'stopped': True}
+    marked(run, 'stop')  # first, and for good: no wake reaches this run again (one it can't mark is gone or unreadable,
+    # and wake refuses that too), so the archive below always runs
+    try:
+        saved(run, dict(state, stopped=True))
+        kept = True
+    except OSError:
+        kept = False
+    for thread in threads(state):
+        code, _, said = room('thread', 'archive', thread)
+        if code != 0:
+            raise Refused('Cloudroom did not stop run %s: %s' % (run, said), 'stop it again: its thread still runs')
+    try:
+        saved(run, dict(state, stopped=True, starting=False, archived=True))
+    except OSError:
+        kept = False
+    if not kept:
+        raise Refused('run %s has ended, but the driver could not save that it is stopped' % run,
+                      WRITABLE + '; nothing of this run still runs')
+    return {'run': run, 'stopped': True}
+
+
+def answer(cmd):
+    if cmd == 'version':
+        return VERSION
+    if cmd == 'schema':
+        with open(os.path.join(HERE, 'schema.json')) as f:
+            return json.load(f)
+    if cmd == 'start':
+        holds_credential = credential_check()
+        req = no_credentials(read(START), holds_credential)
+        return start(req, 'run-' + secrets.token_hex(6), holds_credential)
+    if cmd in ('wake', 'stop'):
+        run = read(RUN)['run']
+        lock(run, cmd)
+        state = saved(run)
+        if cmd == 'stop':
+            return stop(run, state)
+        if state['stopped'] or marked(run) == 'stop':
+            raise Refused('run %s is stopped' % run, 'start a new run')
+        if state.get('starting'):
+            raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
+        try:  # save before you send: a run the driver cannot update is never woken
+            saved(run, state)
+        except OSError:
+            raise Refused('the driver cannot save run %s; nothing was sent' % run, WRITABLE)
+        tell(state, state['request'])
+        return {'run': run, 'woke': True}
+    raise Refused('unknown command', 'run one of: version, schema, start, wake, stop')
+
+
+def main():
+    try:
+        out, code = answer(sys.argv[1] if len(sys.argv) == 2 else ''), 0
+    except Refused as e:
+        out, code = {'error': e.args[0], 'next': e.args[1]}, 1
+    except Exception as e:
+        out, code = {'error': 'the driver failed: ' + type(e).__name__, 'next': 'read its code, fix it, retry'}, 1
+    print(json.dumps(out))
+    sys.exit(code)
+
+
+if __name__ == '__main__':
+    main()

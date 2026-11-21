@@ -1,13 +1,3 @@
-//! Operations: `list` (for `ls` and `ls -l`) and `show`.
-//!
-//! Every run reads the source's version first and goes on whatever it is
-//! (#37: the version is never a gate). Then `list` reads the session,
-//! project and machine lists, and `show` reads one session, the project and machine lists, and its final
-//! output. Grouping and location use only the lists read in the same run.
-//!
-//! The order is the sort key: most recently updated first, then by session
-//! id; sessions whose update time is unknown come last, by session id.
-
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
@@ -31,32 +21,23 @@ use crate::source::{
     SessionScope, SessionSource, SourceError,
 };
 
-/// Reads the time. The core takes all time from here, never from the
-/// system directly, so snapshots, ages and deadlines can be tested.
 pub trait Clock: Send + Sync {
-    /// Wall-clock time, for the snapshot and row ages.
     fn now(&self) -> Timestamp;
 
-    /// Monotonic time, for the run budget and every read's deadline.
     fn monotonic(&self) -> Instant;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Detail {
-    /// `ls`: no detail reads.
     Short,
-    /// `ls -l`: detail reads for the requested page only.
     Long,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListRequest {
     pub detail: Detail,
-    /// `--hidden`.
     pub include_hidden: bool,
-    /// `-a`.
     pub include_archived: bool,
-    /// At most [`MAX_LIMIT`]; a larger limit is refused.
     pub limit: usize,
     pub offset: usize,
     pub budget: Duration,
@@ -81,24 +62,14 @@ pub struct ShowRequest {
     pub budget: Duration,
 }
 
-/// An explicit error: no honest partial result is possible. Every string in
-/// it is within [`FIELD_MAX_CHARS`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpError {
-    /// The session list itself could not be read.
     ListFailed(SourceError),
-    /// `show` of a session the source does not know. Nothing more is read.
     NotFound(SessionId),
-    /// `show` could not read the session at all.
     ShowFailed(SourceError),
-    /// The request itself is out of bounds, such as a limit above the cap or
-    /// an id the source cannot accept.
     InvalidRequest(String),
 }
 
-/// What the run read as the source's version. Never a gate (#37, policy (b)):
-/// any version runs; one other than the live-tested version is marked
-/// untested, and text that is not a recognised version is unknown, with a gap.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VersionRead {
     version: Fact<String>,
@@ -106,10 +77,6 @@ struct VersionRead {
     gap: Option<Gap>,
 }
 
-/// A recognised version: `N.N.N` (1 to 4 digits each), as `room-cli` 0.43.1
-/// printed, or `v<N>` (1 to 6 digits), as `room-cli` v127 prints (#37). The
-/// only version text ever shown: the adapter's sanitizer (#21) and `send` use
-/// it too.
 pub fn is_version_text(text: &str) -> bool {
     let digits = |s: &str, max: usize| {
         !s.is_empty() && s.len() <= max && s.bytes().all(|b| b.is_ascii_digit())
@@ -121,10 +88,6 @@ pub fn is_version_text(text: &str) -> bool {
     parts.len() == 3 && parts.iter().all(|p| digits(p, 4))
 }
 
-/// The version a run reports, and whether it is `tested`. Never a gate (#37):
-/// the reads and `send` both use it. `read` names the version read, such as
-/// `room-cli --version`. A recognised version is known; anything else is
-/// unknown with OpenWiz's reason, and its text is never echoed.
 pub fn version_fact(
     read: &str,
     tested: &str,
@@ -148,24 +111,15 @@ pub fn version_fact(
     }
 }
 
-/// What a source reports, as its `Malformed` detail, for a version text
-/// outside [`is_version_text`]: the only malformed detail a version read's
-/// failure may show.
 pub const VERSION_NOT_RECOGNISED: &str =
     "printed a version that is not N.N.N or v<N> (detail withheld)";
 
-/// Only these complete, fixed diagnostics identify a pre-launch failure.
-/// Never extract a category from arbitrary source/OS text or a substring.
 pub fn launch_failure_category(detail: &str) -> Option<&'static str> {
     match detail {
-        "CloudRoom not running: room-cli could not be started (no bundled launcher)" => {
-            Some("no bundle")
-        }
-        "CloudRoom not running: room-cli could not be started (no running app identified)" => {
-            Some("no running app identified")
-        }
-        // The adapter's refusal for two or more running mounts, with its
-        // mid-update guidance (#1336); the adapter's tests pin both together.
+        "CloudRoom not running: room-cli could not be started (no bundled launcher and no \
+         room-cli on PATH). Open the CloudRoom app once and sign in." => Some("no bundle"),
+        "CloudRoom not running: room-cli could not be started (no running app identified). \
+         Open the CloudRoom app once and sign in." => Some("no running app identified"),
         "CloudRoom not running: room-cli could not be started (ambiguous app bundles). \
          CloudRoom is mid-update (two running app mounts): restart CloudRoom to finish the \
          update, then try again." => Some("ambiguous bundle"),
@@ -180,10 +134,6 @@ pub fn launch_failure_category(detail: &str) -> Option<&'static str> {
     }
 }
 
-/// A failed version read, described by safe facts only: the exit code, timeout
-/// or allowlisted launch category, never arbitrary source text.
-/// Even a line #21's sanitizer would show is withheld: the version read's
-/// failure reaches every envelope and send report.
 fn version_failure(error: &SourceError) -> String {
     match error {
         SourceError::CommandFailed {
@@ -194,9 +144,7 @@ fn version_failure(error: &SourceError) -> String {
             exit_code: None, ..
         } => "ended without an exit code (detail withheld)".to_owned(),
         SourceError::TimedOut { after_ms } => format!("timed out after {after_ms} ms"),
-        // The one malformed detail that is shown: OpenWiz's own fixed words
-        // for a version outside the grammar (#21, #37). Allowlisted, so any
-        // other detail is withheld.
+        // PRIVACY: only OpenWiz's own fixed words are shown; any other detail is withheld.
         SourceError::Malformed { detail } if detail == VERSION_NOT_RECOGNISED => detail.clone(),
         SourceError::Malformed { .. } => "returned malformed output (detail withheld)".to_owned(),
         SourceError::Unavailable { detail } => match launch_failure_category(detail) {
@@ -209,23 +157,16 @@ fn version_failure(error: &SourceError) -> String {
     }
 }
 
-/// A result and what its display needs beyond the envelope.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Report<T> {
     pub envelope: Envelope<T>,
-    /// Projects in the result whose name another project in the same run's
-    /// project list shares. Their display name is `name~<last 6 characters
-    /// of the id>`; the JSON keeps the reported name.
     pub shared_names: BTreeSet<ProjectId>,
 }
 
-/// The reason on a configuration that `ls` without `-l` does not read.
 pub const NOT_READ_SHORT: &str = "not read: ls without -l";
 
-/// The reason on anything the run budget left unread.
 pub const NOT_READ_BUDGET: &str = "not read: budget";
 
-/// `ls` and `ls -l`.
 pub fn list(
     source: &dyn SessionSource,
     clock: &dyn Clock,
@@ -234,7 +175,6 @@ pub fn list(
     list_report(source, clock, request).map(|r| r.envelope)
 }
 
-/// `show <id>`.
 pub fn show(
     source: &dyn SessionSource,
     clock: &dyn Clock,
@@ -245,7 +185,6 @@ pub fn show(
 
 const STATUS_CONFLICT: &str = "session list returned conflicting status facts for this session id";
 
-/// [`list`], with the shared project names for display.
 pub fn list_report(
     source: &dyn SessionSource,
     clock: &dyn Clock,
@@ -271,8 +210,6 @@ pub fn list_report(
     let listed = rows.records.len() + rows.unreadable.len();
     let mut unreadable = rows.unreadable.len();
     gaps.extend(rows.unreadable);
-    // Each kept id's index in `kept`, and the ids whose rows disagree on
-    // status: one gap each, pushed in id order so row order never matters.
     let mut seen: BTreeMap<SessionId, usize> = BTreeMap::new();
     let mut conflicted = BTreeSet::new();
     let mut kept: Vec<SessionRecord> = Vec::new();
@@ -288,7 +225,6 @@ pub fn list_report(
                 ),
             ));
         } else if let Some(&index) = seen.get(&record.id) {
-            // Compare source facts before capping: different values may share a prefix.
             if kept[index].status != record.status {
                 kept[index].status = Fact::Unknown(STATUS_CONFLICT.to_owned());
                 conflicted.insert(record.id.0.clone());
@@ -327,7 +263,6 @@ pub fn list_report(
             matched.push(record);
         }
     }
-    // IDs are unique here, so the id tie-breaker makes every sort key distinct.
     matched.sort_unstable_by(sort_key);
     let matched_count = matched.len();
     let page: Vec<SessionRecord> = matched
@@ -339,8 +274,6 @@ pub fn list_report(
     let projects = run.projects(request.include_hidden, &mut gaps);
     let machines = run.machines(&mut gaps);
 
-    // Each session's reported configuration and, from `ls -l`'s detail read,
-    // the start time that read reports (#539, R1): `show` reports it too.
     let configurations: Vec<(ReportedConfiguration, Option<Timestamp>)> = match request.detail {
         Detail::Short => page
             .iter()
@@ -360,8 +293,6 @@ pub fn list_report(
         .zip(configurations)
         .map(
             |(record, (configuration, detail_start))| match (&record.started_at, detail_start) {
-                // Only when the list reported none; build_session still checks it
-                // against the snapshot.
                 (Fact::Unknown(_), Some(at)) => build_session(
                     &SessionRecord {
                         started_at: Fact::Known(at),
@@ -395,7 +326,6 @@ pub fn list_report(
     })
 }
 
-/// [`show`], with the shared project names for display.
 pub fn show_report(
     source: &dyn SessionSource,
     clock: &dyn Clock,
@@ -440,8 +370,6 @@ pub fn show_report(
     })
 }
 
-/// The sort key: most recently updated first, then by id; unknown update
-/// times last, by id.
 fn sort_key(a: &SessionRecord, b: &SessionRecord) -> Ordering {
     let by_time = match (&a.updated_at, &b.updated_at) {
         (Fact::Known(x), Fact::Known(y)) => y.cmp(x),
@@ -452,10 +380,8 @@ fn sort_key(a: &SessionRecord, b: &SessionRecord) -> Ordering {
     by_time.then_with(|| a.id.cmp(&b.id))
 }
 
-/// A list that was read in this run, or why it was not.
 type Listed<T> = Result<T, String>;
 
-/// One run: its deadline, snapshot time and source.
 struct Run<'a> {
     source: &'a dyn SessionSource,
     clock: &'a dyn Clock,
@@ -463,7 +389,6 @@ struct Run<'a> {
     snapshot: Timestamp,
 }
 
-/// What became of one detail read.
 enum Outcome {
     Read(Box<SessionDetailRecord>),
     Failed(SourceError),
@@ -489,14 +414,10 @@ impl<'a> Run<'a> {
         self.source.read_name(read)
     }
 
-    /// `<read> <what went wrong>`, such as `thread show exited 1: …`.
     fn describe(&self, read: Read, error: &SourceError) -> String {
         format!("{} {error}", self.name(read))
     }
 
-    /// The source's version, read once. Never a gate (#37): the run goes on
-    /// whatever it is. Only a recognised version text is shown; anything else
-    /// is unknown with a reason and a gap, and is never echoed.
     fn read_version(&self) -> VersionRead {
         let (version, tested) = version_fact(
             self.name(Read::Version),
@@ -514,7 +435,6 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// The project list of this run: names by id.
     fn projects(
         &self,
         include_hidden: bool,
@@ -524,9 +444,6 @@ impl<'a> Run<'a> {
             self.source.list_projects(include_hidden, deadline)
         })?;
         let mut names = BTreeMap::new();
-        // Conflicting ids, collected in a set so each yields one gap. The
-        // gaps are pushed after the loop in id order, so the project-row
-        // order never changes the merged gap's subjects (#714).
         let mut conflicted: BTreeSet<ProjectId> = BTreeSet::new();
         for ProjectRecord { id, name } in rows {
             if id.0.chars().count() > FIELD_MAX_CHARS {
@@ -556,14 +473,12 @@ impl<'a> Run<'a> {
                 "project list returned conflicting name facts for this project id".to_owned(),
             ));
         }
-        // Compare source facts before capping: different names may share a prefix.
         Ok(names
             .into_iter()
             .map(|(id, name)| (id, cap_fact(&name)))
             .collect())
     }
 
-    /// The machine list of this run: names by id.
     fn machines(&self, gaps: &mut Vec<Gap>) -> Listed<BTreeMap<String, Fact<String>>> {
         let rows = self.list(Read::Machines, gaps, |deadline| {
             self.source.list_machines(deadline)
@@ -582,15 +497,12 @@ impl<'a> Run<'a> {
                 })
                 .or_insert(name);
         }
-        // Compare source facts before capping: different names may share a prefix.
         Ok(names
             .into_iter()
             .map(|(id, name)| (id, cap_fact(&name)))
             .collect())
     }
 
-    /// Reads a supporting list. A failure is a gap, and the reason the list
-    /// is missing.
     fn list<T>(
         &self,
         read: Read,
@@ -619,9 +531,6 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// `thread show` (or the source's detail read) for `ids`, at most
-    /// [`MAX_CONCURRENT_DETAIL_READS`] at once, none started after the
-    /// deadline.
     fn details(&self, ids: &[SessionId]) -> Vec<Outcome> {
         let next = AtomicUsize::new(0);
         let results: Vec<Mutex<Option<Outcome>>> = ids.iter().map(|_| Mutex::new(None)).collect();
@@ -654,8 +563,6 @@ impl<'a> Run<'a> {
             .collect()
     }
 
-    /// The reported configuration from one detail read, its known start
-    /// time, if it reports one, and its gaps.
     fn configuration(
         &self,
         id: &SessionId,
@@ -694,7 +601,6 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// The final output and the reported error of one session.
     fn output(
         &self,
         id: &SessionId,
@@ -863,7 +769,6 @@ fn build_session(
     }
 }
 
-/// Projects among `groups` whose name another project in `projects` shares.
 fn shared_names<'g>(
     projects: &Listed<BTreeMap<ProjectId, Fact<String>>>,
     groups: impl IntoIterator<Item = &'g Grouping>,
@@ -909,8 +814,6 @@ fn kind_of(error: &SourceError) -> GapKind {
     }
 }
 
-/// One gap per kind and detail: the same problem in many rows is one gap,
-/// whose subject lists them. Every subject and detail is capped.
 fn merge_gaps(gaps: Vec<Gap>) -> Vec<Gap> {
     let mut merged: Vec<(GapKind, String, Vec<String>)> = Vec::new();
     let mut index: HashMap<(GapKind, String), (usize, HashSet<String>)> = HashMap::new();

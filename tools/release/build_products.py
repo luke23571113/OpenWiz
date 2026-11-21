@@ -15,6 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from product_identity import PROGRAMS as COMPILED, WIZSKILLS, architecture, canonical, expected, git, \
     locked_skills, mode, payload, release_version, verify_programs, verify_runtime
 
+# #1699: the drivers 0.1.0 launches with (KN3 to KN5), each carried when the source tracks it,
+# and the driver kit's files (kit.py reads its schema, ../records.v1.md and ../records-kit/check.py).
+DRIVERS = ('boat', 'cloudroom', 'local')
+KIT = ['kernel/driver-kit/kit.py', 'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py',
+       'kernel/records.v1.md']
+
 
 def collect(root, binaries, output, version, source, target, program_receipt):
     require(target in TARGETS and digest(source, 40) and release_version(version), 'invalid build identity')
@@ -79,6 +85,23 @@ def collect(root, binaries, output, version, source, target, program_receipt):
                 and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
                 'unsafe or missing GitHub sign-in helper')
         files['runtime/setup/github_login.py'] = tool
+    # #1699: the host drivers 0.1.0 launches with, where KN6's caller (launch-fleet's
+    # host.py) runs them, `$OPENWIZ_ADAPTERS/<host>/driver` with OPENWIZ_ADAPTERS the
+    # installed runtime/adapters, and the kernel files the driver kit's checks read. Each
+    # keeps its tracked path under runtime/, so the tracked-tree receipt maps it back.
+    # Only these files: never the template, tests, fixtures, evidence or an untracked file.
+    tracked = set(git(root, 'ls-tree', '-r', '-z', '--name-only', '--end-of-options', source,
+                      '--', 'adapters', 'kernel').decode('utf-8').split('\0'))
+    selected = [f'adapters/{host}/{name}' for host in DRIVERS if f'adapters/{host}/driver' in tracked
+                for name in ('driver', 'schema.json')]
+    if 'kernel/driver-kit/kit.py' in tracked:
+        selected += KIT
+    for path in selected:
+        tool = root / path
+        require(path in tracked and tool.is_file() and tool.stat().st_nlink == 1
+                and not any(p.is_symlink() for p in (tool, *list(tool.parents)[:3])),
+                'unsafe or missing driver runtime')
+        files['runtime/' + path] = tool
     # #555: a runtime file's repository path, as the receipt records it and the
     # candidate verifies it: a skill is skills/<path>, the path users and briefs
     # see through the link, even when its bytes come from the WizSkills install.

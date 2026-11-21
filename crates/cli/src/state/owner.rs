@@ -1,14 +1,8 @@
-//! The state directory's owner, for the loop switches' private-state checks.
-//! Moved unchanged from the deleted attachment store (#1264), which the
-//! folded `loops/paths.rs` and `loops/storage.rs` still call.
-
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
 
-/// Derive the owner from a file this process exclusively creates in private
-/// state (Jake, #1102 comment 6672035698). No subprocess or identity environment.
 pub fn owner_uid_from_private_state(root: &Path) -> Result<u32, String> {
     use std::path::Component;
     if !root.is_absolute()
@@ -61,7 +55,6 @@ pub fn owner_uid_from_private_state(root: &Path) -> Result<u32, String> {
         }
         Ok(meta.uid())
     })();
-    // Remove exactly the exclusively created empty file on success or failure.
     let cleanup =
         fs::remove_file(&path).map_err(|_| "cannot remove private owner probe".to_owned());
     let uid = result.and_then(|uid| cleanup.map(|()| uid))?;
@@ -78,7 +71,6 @@ pub fn owner_uid_from_private_state(root: &Path) -> Result<u32, String> {
 #[cfg(target_os = "macos")]
 static PROCESS_OWNER: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
 
-/// Retain the existing Linux kernel owner query without starting a program.
 #[cfg(target_os = "linux")]
 pub fn effective_uid() -> Result<u32, String> {
     fs::metadata("/proc/self")
@@ -101,7 +93,6 @@ pub fn effective_uid() -> Result<u32, String> {
     Err("state ownership is unsupported on this platform".to_owned())
 }
 
-/// The probe's name: `att-` and 32 random hex digits, as before the move.
 fn new_id() -> io::Result<String> {
     let mut bytes = [0u8; 16];
     File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes))?;

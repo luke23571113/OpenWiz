@@ -1,0 +1,14 @@
+Real Cloudroom smoke run of adapters/cloudroom/driver (2026-11-19), from a Cloudroom Cloud thread,
+room-cli 0.1.116, synthetic request: example/site#7, skill build-ticket, harness claude, model claude-haiku-5-5.
+Thread ids stay private; nothing was written to GitHub.
+
+start  -> exit 0, {"run": "run-<12 hex>"}; Cloudroom's receipt named a thr_ id; the child appeared under the caller
+wake   -> exit 0, {"run": ..., "woke": true}; the child's log holds the brief once and the queued
+          "You were woken for example/site#7: read the ticket again, edit your own status note, ..." once
+stop   -> exit 0, {"run": ..., "stopped": true}; room-cli thread archive accepted
+wake   -> exit 1, {"error": "run run-<12 hex> is stopped", "next": "start a new run"}
+
+The child reported that it could not resolve the build-ticket skill in its sandbox (no repo copy, no
+openwiz plugin in its harness's plugin cache), so it changed nothing and posted no status note. The kit's
+start check needs that note: the full five-check run waits for the skill to be resolvable in a Cloudroom
+child sandbox and for a throwaway repository and ticket (see the pull request's Gaps).

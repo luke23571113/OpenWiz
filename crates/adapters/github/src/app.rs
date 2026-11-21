@@ -1,4 +1,3 @@
-//! Installation authentication for the PC service. Credentials have no Debug form.
 use crate::{allowlist::Invocation, process};
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Value, json};
@@ -23,7 +22,6 @@ pub trait Clock: Send + Sync {
     fn now_s(&self) -> u64;
 }
 
-/// The exchange seam receives a signed JWT, never a private key or its bytes.
 pub trait Exchange: Send + Sync {
     fn exchange(
         &self,
@@ -32,9 +30,6 @@ pub trait Exchange: Send + Sync {
         body: &[u8],
         deadline: Instant,
     ) -> Result<Vec<u8>, Error>;
-    /// GI5 (#2547): one App-authenticated GitHub call, answering its HTTP
-    /// status and body; `Err` only when no complete answer arrived. It too
-    /// receives a signed JWT, never a key. The default refuses (fail closed).
     fn github(
         &self,
         call: &Call<'_>,
@@ -46,15 +41,9 @@ pub trait Exchange: Send + Sync {
     }
 }
 
-/// GI5's GitHub calls, in order: for a user App, read the App's owner
-/// (J48, #606); find the repository's installation; then mint that
-/// installation's token for exactly that repository.
 pub enum Call<'a> {
-    /// `GET /app`: the App the JWT authenticates, for its owner's account.
     App,
-    /// `GET /repos/<owner>/<name>/installation`
     Installation { repository: &'a str },
-    /// `POST /app/installations/<id>/access_tokens` with `body`
     AccessToken { installation: u64, body: &'a [u8] },
 }
 
@@ -68,7 +57,6 @@ impl Clock for SystemClock {
     }
 }
 
-/// Public identifiers only. The key is always service/app/private-key.pem.
 pub struct Identity {
     pub app_id: u64,
     pub installation_id: u64,
@@ -97,9 +85,6 @@ struct Cached {
     expires: u64,
 }
 impl App {
-    /// The App in the mode the explicit setting names (`OPENWIZ_GITHUB_APP_MODE`,
-    /// J48, #606): unset or `user`, the user's own App; exactly `factory`, the
-    /// factory's named installations. Any other value refuses.
     pub fn open(
         root: &Path,
         identity: Identity,
@@ -117,7 +102,6 @@ impl App {
         };
         Self::open_mode(root, identity, mode, gh, exchange, clock)
     }
-    /// The App in an explicit mode; `open` reads the mode from the setting.
     pub fn open_mode(
         root: &Path,
         identity: Identity,
@@ -148,7 +132,6 @@ impl App {
             refreshed: Condvar::new(),
         })
     }
-    /// Fixed opt-in event-read authentication; ordinary clients are unchanged.
     pub fn open_for_events(
         root: &Path,
         identity: Identity,
@@ -157,7 +140,6 @@ impl App {
         clock: Arc<dyn Clock>,
     ) -> Result<Self, Error> {
         let mut app = Self::open(root, identity, gh, exchange, clock)?;
-        // Construction never mints: the selected profile owns an empty cache.
         app.event_reads = true;
         Ok(app)
     }
@@ -195,7 +177,6 @@ impl App {
     fn token(&self, key: &Key, deadline: Instant) -> Result<Cached, Error> {
         let mut cache = self.cache.lock().map_err(|_| Error)?;
         loop {
-            // A waiter may wake after its budget or the token's refresh boundary.
             let now = self.clock.now_s();
             if Instant::now() >= deadline {
                 return Err(Error);
@@ -213,8 +194,6 @@ impl App {
                         .0;
                 }
                 _ => {
-                    // Clear the old token before releasing the mutex. Only one
-                    // caller mints; other callers wait with their own budgets.
                     *cache = Cache::Refreshing;
                     drop(cache);
                     let minted = self.mint(key, now, deadline);
@@ -250,10 +229,6 @@ impl App {
 }
 
 impl App {
-    /// C-G1/J48 (#606 review R3): the configured installation must be this
-    /// App's, for a repository its account owns, selected only; and for a user
-    /// App on the App owner's account, or in factory mode one the identity
-    /// contract names. Read before any token exists, on every mint.
     fn owner_bound(&self, jwt: &str, deadline: Instant) -> Result<(), Error> {
         let repository = self.identity.repository.as_str();
         let (owner, _) = repository.split_once('/').ok_or(Error)?;
@@ -279,23 +254,17 @@ impl App {
     }
 }
 
-/// The App JWT (RS256, nine minutes, a minute of clock skew), signed by the
-/// pinned key; never printed or passed in an argument.
 fn app_jwt(key: &Key, app_id: u64, now: u64, deadline: Instant) -> Result<String, Error> {
     let message = format!("{}.{}", base64url(br#"{"alg":"RS256","typ":"JWT"}"#), base64url(json!({"iss":app_id.to_string(),"iat":now.saturating_sub(60),"exp":now.checked_add(540).ok_or(Error)?}).to_string().as_bytes()));
     let signature = sign(key, message.as_bytes(), deadline)?;
     Ok(format!("{message}.{}", base64url(&signature)))
 }
 
-/// The access-token request: exactly one repository and exactly `permissions`.
 fn token_body(repository: &str, permissions: &Value) -> Result<String, Error> {
     let name = repository.split_once('/').ok_or(Error)?.1;
     Ok(json!({"repositories":[name],"permissions":permissions}).to_string())
 }
 
-/// GitHub's access-token answer, read strictly: each key once, only the known
-/// keys, exactly the requested permissions for exactly `repository`, and an
-/// expiry after `now` and no more than 3900 seconds away.
 fn checked_token(
     raw: &[u8],
     repository: &str,
@@ -324,8 +293,6 @@ fn checked_token(
     {
         return Err(Error);
     }
-    // Event authentication requires positive response identity as well as
-    // the existing repository-scoped request and child environment binding.
     if require_repositories && !object.contains_key("repositories") {
         return Err(Error);
     }
@@ -366,24 +333,12 @@ fn checked_token(
     })
 }
 
-// GI5 (#2547): `openwiz github token`'s one-shot mint from the Cloudroom secret.
-
-/// Which App the secret holds (J48, #606; contracts/setup-onboard.v1.md). A
-/// user's own App is private and mints only on its owner's account; only the
-/// explicit factory setting accepts the factory's named installations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// Each user's own App, the default: installation and repository on the
-    /// App owner's account only.
     User,
-    /// The factory's public multi-account App: only the installations
-    /// contracts/github-identity.v1.md names.
     Factory,
 }
 
-/// The factory's installations, as contracts/github-identity.v1.md pins them:
-/// each account and the selected repositories it names. Nothing else mints
-/// in factory mode.
 pub const FACTORY_INSTALLATIONS: &[(&str, &[&str])] = &[
     ("jparker2006", &["jparker2006/ClosedWiz"]),
     (
@@ -396,7 +351,6 @@ pub const FACTORY_INSTALLATIONS: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// Is `repository`, on `account`, one of the factory's named installations?
 fn factory_named(account: &str, repository: &str) -> bool {
     FACTORY_INSTALLATIONS.iter().any(|(named, repositories)| {
         named.eq_ignore_ascii_case(account)
@@ -406,26 +360,18 @@ fn factory_named(account: &str, repository: &str) -> bool {
     })
 }
 
-/// Why no token was minted. No variant carries a provider body, id or secret.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    /// The key could not be used or GitHub gave no complete answer.
     Unavailable,
-    /// GitHub has no installation of this App for the repository (404).
     NotInstalled,
-    /// GitHub refused, or answered outside the contract or the expiry guards.
     Refused,
 }
 
-/// A freshly minted installation token. No Debug form; nothing stores it.
 pub struct Minted {
     pub token: String,
     pub expires_at: u64,
 }
 
-/// The App, authenticated by the key from the `OPENWIZ_GITHUB_APP_KEY`
-/// secret instead of the PC's key file. The key lives only in an unnamed
-/// pipe this process holds; the signer reads it through that descriptor.
 pub struct SecretApp {
     key: Key,
     app_id: u64,
@@ -434,13 +380,9 @@ pub struct SecretApp {
     clock: Arc<dyn Clock>,
 }
 
-/// A GitHub App key's PEM file is under 4096 bytes (a 4096-bit RSA key is
-/// about 3300), so it always fits one pipe buffer, even a one-page one.
 const SECRET_PEM_MAX: usize = 4096;
 
 impl SecretApp {
-    /// `encoded` is the secret's value: the PEM file, standard base64 on one
-    /// line. Anything else, or an App id of 0, is refused. Linux only.
     pub fn from_secret(
         encoded: &str,
         app_id: u64,
@@ -473,9 +415,6 @@ impl SecretApp {
         })
     }
 
-    /// Mint one token for `repository` (`owner/name`): the App's profile, or
-    /// with `read` exactly the read profile. Signs once, so the key is
-    /// consumed: a second token needs a new `SecretApp`.
     pub fn mint(self, repository: &str, read: bool, deadline: Instant) -> Result<Minted, Refusal> {
         let repository = openwiz_core::fleet::starts::Repository::parse(repository)
             .map_err(|_| Refusal::Refused)?;
@@ -496,7 +435,6 @@ impl SecretApp {
             Ok((404, _)) if matches!(call, Call::Installation { .. }) => Err(Refusal::NotInstalled),
             Ok(_) => Err(Refusal::Refused),
         };
-        // J48 (#606): a user App's owner, read from GitHub with this App's JWT.
         let app_owner = match self.mode {
             Mode::User => {
                 let raw = call(Call::App, 200)?;
@@ -507,8 +445,6 @@ impl SecretApp {
         let raw = call(Call::Installation { repository }, 200)?;
         let installation = installation_for(&raw, self.app_id, owner).ok_or(Refusal::Refused)?;
         let allowed = match &app_owner {
-            // The installation's account is the repository's owner (checked
-            // above), and must also be the App owner's.
             Some(app_owner) => owner.eq_ignore_ascii_case(app_owner),
             None => factory_named(owner, repository),
         };
@@ -525,7 +461,6 @@ impl SecretApp {
         )?;
         let minted =
             checked_token(&raw, repository, &wanted, true, now).map_err(|_| Refusal::Refused)?;
-        // The adapter's refresh boundary: more than 300 seconds must remain.
         let left = minted.expires.saturating_sub(self.clock.now_s());
         if left <= 300 {
             return Err(Refusal::Refused);
@@ -537,7 +472,6 @@ impl SecretApp {
     }
 }
 
-/// The owner's login from GitHub's App object, only when it is this App's.
 fn app_owner(raw: &[u8], app_id: u64) -> Option<String> {
     let value = serde_json::from_slice::<Unique>(raw).ok()?.0;
     (value.get("id")?.as_u64()? == app_id)
@@ -552,9 +486,6 @@ fn app_owner(raw: &[u8], app_id: u64) -> Option<String> {
         .filter(|login| !login.is_empty())
 }
 
-/// The installation id from GitHub's installation object, only when it is
-/// this App's, its account is the repository's owner and its repositories
-/// are selected. Each key once; fields this check doesn't use are ignored.
 fn installation_for(raw: &[u8], app_id: u64, owner: &str) -> Option<u64> {
     let value = serde_json::from_slice::<Unique>(raw).ok()?.0;
     let id = value.get("id")?.as_u64().filter(|id| *id > 0)?;
@@ -572,8 +503,6 @@ fn read_permissions() -> Value {
     json!({"metadata":"read","contents":"read","issues":"read","pull_requests":"read","checks":"read","actions":"read"})
 }
 
-/// The key in an unnamed pipe, written whole and its write end closed before
-/// the signer opens `/proc/<pid>/fd/<n>`; nothing touches the filesystem.
 #[cfg(target_os = "linux")]
 fn piped_key(pem: &[u8]) -> Result<Key, Error> {
     use std::io::Write as _;
@@ -587,7 +516,6 @@ fn piped_key(_: &[u8]) -> Result<Key, Error> {
     Err(Error)
 }
 
-/// Standard base64 with padding, nothing else (no line breaks or spaces).
 fn base64_decode(text: &[u8]) -> Option<Vec<u8>> {
     if text.is_empty() || !text.len().is_multiple_of(4) {
         return None;
@@ -613,7 +541,6 @@ fn base64_decode(text: &[u8]) -> Option<Vec<u8>> {
         }
         n <<= 6 * pad as u32;
         let bytes = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
-        // Refuse non-canonical padding bits, so one key has one encoding.
         if (pad == 1 && bytes[2] != 0) || (pad == 2 && bytes[1] != 0) {
             return None;
         }
@@ -622,7 +549,6 @@ fn base64_decode(text: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// GitHub's UTC, whole-second timestamp. Refuse normalization of invalid dates.
 fn expiry(text: &str) -> Option<u64> {
     let b = text.as_bytes();
     if b.len() != 20
@@ -702,8 +628,6 @@ fn sign(key: &Key, message: &[u8], deadline: Instant) -> Result<Vec<u8>, Error> 
     if Instant::now() >= deadline {
         return Err(Error);
     }
-    // Rust's key descriptor stays CLOEXEC. OpenSSL opens the parent's pinned
-    // descriptor, so replacing the original pathname cannot substitute a key.
     let key = format!("/proc/{}/fd/{}", std::process::id(), key.as_raw_fd());
     let child = Command::new(OPENSSL_PROGRAM)
         .args(SIGN_ARGS)
@@ -734,8 +658,6 @@ fn open_key(root: &Path, _deadline: Instant) -> Result<Key, Error> {
         },
         path::Component,
     };
-    // Linux fcntl.h values. Darwin uses standard-library openat bindings in the
-    // compiled helper below; both paths pin the validated key without unsafe/libc.
     #[cfg(target_arch = "x86_64")]
     const NOFOLLOW: i32 = 0o400000;
     #[cfg(target_arch = "x86_64")]
@@ -820,8 +742,6 @@ fn open_key(_: &Path, _: Instant) -> Result<Key, Error> {
     Err(Error)
 }
 
-// Python 3.9+ is the packaged install prerequisite, not a new dependency.
-// The script is compiled into this adapter; no mutable script path or fixture override.
 #[cfg(target_os = "macos")]
 const PYTHON_PROGRAM: &str = "/usr/bin/python3";
 #[cfg(target_os = "macos")]
@@ -856,7 +776,6 @@ fn open_key(root: &Path, deadline: Instant) -> Result<Key, Error> {
     Ok(root.to_owned())
 }
 
-/// Preserve every JSON key occurrence before selecting the token fields.
 struct Unique(Value);
 impl<'de> Deserialize<'de> for Unique {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -921,7 +840,6 @@ fn base64url(bytes: &[u8]) -> String {
     out
 }
 
-/// HTTPS transport with a fixed endpoint; no URL or credential in argv.
 #[derive(Default)]
 pub struct CurlExchange;
 const CURL_PROGRAM: &str = "/usr/bin/curl";
@@ -995,8 +913,6 @@ impl Exchange for CurlExchange {
     }
 }
 
-/// GI5's calls: the same fixed endpoint and argument list, but without
-/// `--fail-with-body`, so a 404 is an answer (not installed), not a failure.
 const CURL_STATUS_ARGS: [&str; 14] = [
     "--disable",
     "--silent",
@@ -1050,7 +966,6 @@ impl CurlExchange {
         ))
     }
 }
-/// The body and the three-digit status `--write-out` appends after it.
 fn status_answer(mut result: Vec<u8>) -> Result<(u16, Vec<u8>), Error> {
     let at = result.len().checked_sub(4).ok_or(Error)?;
     let tail = result.get(at..).ok_or(Error)?;

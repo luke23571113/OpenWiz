@@ -1,4 +1,3 @@
-//! Assemble the pure planner's observations. An error never becomes absence.
 use super::records;
 use crate::state::StartFileStore;
 use openwiz_adapter_cloudroom::{fleet as cloud, source::CloudRoomSource};
@@ -43,9 +42,7 @@ impl PlanningDeadline {
 
 #[derive(Default)]
 struct MergeCache {
-    // A fresh inventory must name the same PR/head/merge before a files hit.
     files: BTreeMap<(String, Number, Commit, Commit), Vec<ChangedFile>>,
-    // A branch name is mutable: compare and cache two immutable commit IDs.
     contains: BTreeMap<(String, Commit, Commit), Result<bool>>,
 }
 #[derive(Clone)]
@@ -114,7 +111,6 @@ impl Inventory {
     }
 }
 struct ClosedPrReferences {
-    // Preserve local node/number matches even when URL or completeness checks fail.
     candidates: BTreeSet<Number>,
     targets: Result<Vec<Number>>,
 }
@@ -133,9 +129,7 @@ pub struct World {
     pub repository: openwiz_adapter_github::tick::Repository,
     pub issues: BTreeMap<Number, IssueRow>,
     pub prs: Vec<PrRow>,
-    /// Only the record authors' comments (#718): see [`World::read_factory`].
     pub comments: BTreeMap<Number, Vec<Comment>>,
-    /// The rules file's record authors, lowercase (#718).
     pub authors: BTreeSet<String>,
     pub starts: Vec<StartRecord>,
     title_rows: RefCell<Option<Result<Vec<SessionRecord>>>>,
@@ -248,8 +242,6 @@ impl World {
             .filter(|i| !i.sub_issues.nodes.is_empty())
             .map(|i| i.number)
             .collect::<BTreeSet<_>>();
-        // Placement is checked across the whole inventory, even for a targeted
-        // authority refresh. Only the fleets involved lose planning authority.
         let mut placed = BTreeMap::new();
         let mut unread_specs = BTreeSet::new();
         for spec in &specs {
@@ -282,7 +274,6 @@ impl World {
         let branch = gh.branch(repository.default.as_str(), deadline)?;
         let text = gh.rules(&branch, deadline)?;
         let rules = Rules::parse(&text).map_err(|_| "rules unread or invalid")?;
-        // #718: who wrote the factory's records, read before any comment.
         let authors = records::record_authors(&text)?;
         let starts = if room.is_some() {
             start_records(state, &repository.name)?
@@ -301,7 +292,6 @@ impl World {
         } else {
             None
         };
-        // Only this repository's verified issue identities establish placement.
         let prs: Vec<PrRow> = prs
             .into_iter()
             .map(|mut p| {
@@ -403,9 +393,6 @@ impl World {
         world.snapshot.fleets = Observed::Complete(fleets);
         Ok(world)
     }
-    /// One issue's comments read afresh, keeping only the record authors'
-    /// (#718). Every comment read in a tick comes through here or the
-    /// repository-wide snapshot, filtered the same way.
     pub fn read_factory(
         &self,
         gh: &TickReads,
@@ -508,7 +495,6 @@ impl World {
                 && let Some(cs) = self.comments.get(&pr)
                 && let Ok(reviewers) = self.reviewers(None, pr, cs, false, deadline)
             {
-                // One archive-state observation and one output observation.
                 work = work.saturating_add(reviewers.agents.len().saturating_mul(2));
             }
         }
@@ -623,9 +609,6 @@ impl World {
         } else {
             0
         };
-        // Recompute from the original deadline and the complete initial work;
-        // never add an allowance to an already extended deadline. Fixed
-        // authority refreshes keep the execution deadline even for more pages.
         let deadline = budget.with_work(work.saturating_add(agent_work))?;
         self.deadline = deadline;
         for chunk in jobs.chunks(openwiz_core::fleet::tickets::MAX_CONCURRENT_READS) {
@@ -735,8 +718,6 @@ impl World {
                 }
             }
         }
-        // Closed tickets need merge authority only for a possible summary;
-        // otherwise their remaining action is archival of recorded agents.
         let closed_pr_unneeded =
             !self.summary_needs_merges(&row, approval.as_ref(), spec_records.summary_written);
         let mut tickets = vec![];
@@ -811,8 +792,6 @@ impl World {
             _ => Ok(None),
         }
     }
-    /// Private B4 records are primary. Titles are an independent fallback and
-    /// disagreement check; helpers and other projects never enter the match.
     fn titled_thread(
         &self,
         room: Option<&CloudRoomSource>,
@@ -957,16 +936,12 @@ impl World {
                 return Err("fallback replacement does not match the checked branch");
             }
             builders.remove(old.as_str());
-            // The original B4 start remains durable on disk. It no longer
-            // places the active builder after an explicitly recorded restart.
             starts
                 .retain(|s| !matches!(&s.state, StartState::Started { thread } if *thread == old));
         }
         if builders.len() > 1 {
             return Err("more than one builder");
         }
-        // B4 identity cannot override a public checked branch, including when
-        // the Rust-started builder has no matching title in the fallback list.
         if public_builder
             && let (Some(room), Some((_, branch)), Some(thread)) =
                 (room, checked.as_ref(), builders.iter().next())
@@ -983,8 +958,6 @@ impl World {
         });
         let archived = records::has(&comments, "launch-fleet: archived");
         if row.state == openwiz_core::fleet::model::IssueState::Closed && !archived {
-            // A replacement can change the ticket's head. Unknown review heads
-            // still refuse cleanup; only a positive other-ticket match exempts it.
             let mut heads = BTreeSet::new();
             let mut other_heads = BTreeSet::new();
             for p in self.prs.iter().filter_map(|p| match p {
@@ -1045,7 +1018,6 @@ impl World {
             })
             .collect::<Vec<_>>();
         let mut reviewers = vec![];
-        // Keep reviewers of every historical PR, even once the ticket merged.
         let ticket_prs = self
             .prs
             .iter()
@@ -1137,8 +1109,6 @@ impl World {
             .rev()
             .find(|c| !records::first(c).starts_with("launch-fleet:"))
             .map(|c| c.id);
-        // A replacement continues the old branch's code. Its current provider
-        // alone cannot establish the family of all the code being reviewed.
         let builder_source = checked.as_ref().filter(|_| !builder_replaced).and_then(|(thread, branch)| {
             let room = room?;
             if builder.as_ref()?.thread != *thread {
@@ -1181,7 +1151,6 @@ impl World {
             })
         });
         let mut ticket_records = records::ticket_records(&comments);
-        // A durable due record consumes the one allowed fallback for the ticket.
         ticket_records.builder_fallback_due = records::fallback_due(&comments);
         Ok(TicketFacts {
             issue: records::issue(&row),
@@ -1206,8 +1175,6 @@ impl World {
         archived: bool,
         deadline: Instant,
     ) -> Result<Reviewers> {
-        // An archived ticket has no remaining agent action in GitHub-only due.
-        // Its completed archive record suffices without inventing identities.
         if room.is_none() && archived {
             return Ok(Reviewers {
                 agents: vec![],
@@ -1308,7 +1275,6 @@ impl World {
                 .or(current.as_deref())
                 .ok_or("review activity without a start")?;
             let entry = known.get_mut(id).ok_or("review activity without a start")?;
-            // A give-up closes every alias, even activity after the edited claim.
             if failed.contains(id) || (r.thread.is_none() && span_closed) {
                 if r.kind == "re-check sent" {
                     retired_rechecks.insert(r.comment);
@@ -1339,7 +1305,6 @@ impl World {
             } else {
                 None
             };
-            // Keep the original start instant through whole-ticket ordering.
             out.push((
                 first_at,
                 Reviewer {
@@ -1482,7 +1447,6 @@ fn start_facts(r: &StartRecord, comments: &[Comment]) -> Vec<Start> {
         .collect()
 }
 
-// Positive stop messages only; generic capacity/auth/API errors are not plan limits.
 fn claude_plan_limit(text: &str) -> bool {
     text.lines().any(|line| {
         let line = line.trim();

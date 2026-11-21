@@ -291,7 +291,6 @@ fn b2_frontier_exact_facts_and_idle() {
     expect(&s, &[]);
 }
 
-/// #1662: NonEmpty alone does not make a default branch safe for planning.
 fn b2_default_branch_validation_refuses_malformed_nonempty_snapshots() {
     let rules = Rules::parse(RULES).unwrap();
     for branch in [
@@ -312,7 +311,6 @@ fn b2_default_branch_validation_refuses_malformed_nonempty_snapshots() {
             "{branch:?}"
         );
     }
-    // These are the current validator's rules, not a stricter Git ref grammar.
     for branch in ["main", "syn/topic", "syn..topic", &"a".repeat(255)] {
         let mut s = snapshot(ready());
         s.default_branch = Observed::Complete(text(branch));
@@ -429,7 +427,6 @@ fn b2_every_missing_merge_condition_gives_zero_merges() {
             serde_json::to_value(plan(&s, &Rules::parse(&source).unwrap(), NOW).unwrap()).unwrap();
         assert!(!rules(&v).contains(&"adr_0008"));
     }
-    // A merge does not require a hand-back; approval, not its subject, is authority.
     let mut t = approved();
     pr(&mut t).subject = "Synthetic fix".into();
     expect(&snapshot(t), &["adr_0008"]);
@@ -487,7 +484,6 @@ fn b2_frontier_gates_and_verified_cross_version_blockers() {
     let mut s = snapshot(ready());
     fleet(&mut s).approval.as_mut().unwrap().rows.clear();
     expect(&s, &[]);
-    // Fleet order and versions don't constrain the frontier.
     let mut s = snapshot(ready());
     let mut f = fleet(&mut s).clone();
     f.tickets[0].number = n(911);
@@ -768,7 +764,6 @@ fn b2_doubtful_contract_placement_prevents_merge() {
     t.builder = None;
     t.relies_on = vec![text("contracts/synthetic.md")];
     let mut s = snapshot(t);
-    // A verified builder is not required for an ordinary eligible merge.
     expect(&s, &["adr_0008"]);
     fleet(&mut s)
         .changes
@@ -779,7 +774,6 @@ fn b2_doubtful_contract_placement_prevents_merge() {
     ticket(&mut s).records.looked.push(reason.into());
     expect(&s, &[]);
 
-    // Recording the look cannot authorize a merge; questions still relay.
     ticket(&mut s).issue.labels = vec![text("needs-info")];
     ticket(&mut s).question = Some(n(5100));
     expect(&s, &["needs_info"]);
@@ -810,8 +804,6 @@ fn b2_doubtful_contract_placement_withholds_review_starts() {
             _ => {}
         }
         let mut s = snapshot(t);
-        // Without a builder, a new reviewer already waits on the builder
-        // family (#1196); only the re-check, which needs none, starts.
         if rule == "re_check" {
             expect(&s, &[rule]);
         } else {
@@ -977,11 +969,9 @@ fn b2_close_archive_summary_and_unlock_only_after_readback() {
     assert_eq!(v["actions"][0]["facts"]["follow_ups"], json!([999]));
     fleet(&mut s).records.summary_written = true;
     expect(&s, &[]);
-    // An empty graph is never treated as a finished fleet.
     fleet(&mut s).tickets.clear();
     fleet(&mut s).approval.as_mut().unwrap().rows.clear();
     expect(&s, &[]);
-    // Closing a ticket is not a speculative unlock in the same snapshot.
     let mut s = snapshot(ready());
     ticket(&mut s).blockers.push(BlockerInput {
         number: n(800),
@@ -1404,8 +1394,6 @@ fn b2_archived_reviewers_are_never_quiet_reviewers() {
     expect(&s, &["all_closed"]);
 }
 
-/// The orchestrator's authority clarification on #118: relays remain due
-/// after a row is dropped; none of them grants authority to start or merge.
 fn b2_relays_do_not_grant_start_or_merge_authority() {
     fn authority(s: &mut Snapshot, case: &str) {
         match case {
@@ -1538,14 +1526,12 @@ fn b2_r1_unrecognised_round_status_still_relays_findings() {
             &["review_findings"]
         };
         expect(&snapshot(t.clone()), expected);
-        // An earlier recorded look must not suppress the findings relay.
         t.records.looked.push("malformed finding rounds".into());
         expect(&snapshot(t), expected);
     }
 }
 
 fn b2_r2_quiet_reviewers_follow_their_own_head() {
-    // The first two rows reproduce the old-head stall. All clocks are supplied.
     for (name, earlier, elapsed, given_up, evidence, other_pr, expected) in [
         (
             "earlier head at deadline",

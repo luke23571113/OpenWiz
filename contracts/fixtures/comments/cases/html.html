@@ -1,0 +1,21 @@
+<!-- Copyright 2030 Synthetic Example -->
+<!doctype html>
+<html>
+<head>
+<style>
+  /* Make the page dark. */
+  body { background: #000; }
+</style>
+</head>
+<body>
+<!-- The main heading. -->
+<h1>Hello <!-- inline --></h1>
+<p>Text with &lt;!-- not a comment --&gt;</p>
+<script>
+  // Say hello.
+  const s = "<!-- a string -->";
+</script>
+<script type="application/json">{"a": "// not js"}</script>
+<!-- comment-ok: the synthetic host injects its banner after this marker -->
+</body>
+</html>

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+import json, os, re, subprocess, sys, time
+
+OPAQUE = 'opaque-fixture-value-7Kq2Zr9w'
+
+worker = sys.argv[1:2] == ['--worker']
+name, args = os.path.basename(sys.argv[0]), sys.argv[2 if worker else 1:]
+if len(args) == 4:
+    args = args + ['--permission-mode', '-'] if name == 'claude' else args[:3] + ['--sandbox', '-', args[3]]
+if name == 'claude' and len(args) == 6 and args[0] == '-p' and args[2:5:2] == ['--model', '--permission-mode']:
+    prompt, model, mode = args[1], args[3], args[5]
+elif name == 'codex' and len(args) == 6 and args[:2] == ['exec', '--model'] and args[3] == '--sandbox':
+    model, mode, prompt = args[2], args[4], args[5]
+else:
+    sys.exit(2)
+skill = re.search(r'with the ([a-z0-9-]+) skill', prompt).group(1)
+woken = prompt.startswith('You were woken')
+
+if not worker:
+    quick = {'refuse': ('Fake harness: permission to use Bash was denied (%s).' % OPAQUE, 0),
+             'expired': ('Fake harness: OAuth session expired (%s). Please run /login.' % OPAQUE, 0),
+             'fail': ('Fake harness: it stopped with an error (%s).' % OPAQUE, 3), 'quick': ('Fake harness: nothing to do.', 0)}
+    if mode in quick:
+        print(quick[mode][0])
+        sys.exit(quick[mode][1])
+    child = subprocess.Popen(['sleep', '120'], start_new_session=not os.environ.get('FAKE_SAME_GROUP'), stdin=subprocess.DEVNULL,
+                             env={'PATH': os.environ['PATH']} if os.environ.get('FAKE_CLEAN') else None)
+    with open(os.environ['FAKE_TURNS'], 'a') as f:
+        f.write('%d %d %s %s %s\n' % (os.getpid(), child.pid, 'woken' if woken else 'first', os.getcwd(), mode))
+    state = os.path.join(os.environ['OPENWIZ_LOCAL_STATE'], os.environ['OPENWIZ_RUN'] + '.json')
+    while True:
+        try:
+            with open(state) as f:
+                if json.load(f).get('starting') is False:
+                    break
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.05)
+    while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
+        time.sleep(0.05)
+    subprocess.Popen([sys.executable, sys.argv[0], '--worker'] + args, start_new_session=True,
+                     env=dict(os.environ, FAKE_TURN=str(os.getpid())), stdin=subprocess.DEVNULL)
+    sys.exit(0)
+
+while os.getppid() == int(os.environ['FAKE_TURN']):
+    time.sleep(0.01)
+now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+body = '\n'.join(['<!-- openwiz:status v1 -->', 'agent: builder', 'state: working', 'harness: Fake',
+                  'model: ' + model, 'skills: %s@0.1.2' % skill,
+                  'step: ' + ('woke and read the ticket again' if woken else 'started the throwaway ticket'),
+                  'time: ' + now]) + '\n'
+path = os.environ['KIT_TRACKER']
+with open(path) as f:
+    tracker = json.load(f)
+mine = [c for c in tracker['comments'] if c['author'] == 'example-bot[bot]' and 'agent: builder' in c['body']]
+if woken:
+    mine[-1].update(body=body, updated_at=now)
+else:
+    tracker['comments'].append({'id': 1 + max([c['id'] for c in tracker['comments']], default=0),
+                                'author': 'example-bot[bot]', 'updated_at': now, 'body': body})
+with open(path + '.%d' % os.getpid(), 'w') as f:
+    json.dump(tracker, f)
+os.replace(path + '.%d' % os.getpid(), path)

@@ -123,7 +123,7 @@ def bundle_assets(source):
     assets.update(tracked(TOOLS / 'setup', 'runtime/setup/'))
     assets.update(tracked(ROOT / 'tools/github-app', 'runtime/github-app/'))
     assets['runtime/access/access.py'] = (TOOLS / 'access/access.py').read_bytes()
-    for skill in ('setup', 'grill', 'plan-graph', 'launch-fleet', 'onboard', 'install'):
+    for skill in ('setup', 'grill', 'to-spec', 'to-tickets', 'launch-fleet', 'install'):  # the 0.2.0 catalog (#1187)
         assets.update(tracked(ROOT / 'skills' / skill, f'runtime/skills/{skill}/'))
     assets = {k: v for k, v in assets.items() if not re.search(r'(^|/)test[^/]*$|/tests?/', k)}
     identity = f'openwiz.package.v1\n{VERSION}\n{source}\n{TARGET}\n'.encode()
@@ -431,9 +431,6 @@ class InstallJourney(unittest.TestCase):
             installed = self.build / 'runtime/skills'
             said = section(installed / 'install/SKILL.md', 'Explain')
             quote = [line for line in said.splitlines() if line.startswith('> ')]
-            onboard = [line for line in section(installed / 'onboard/SKILL.md', 'Explain').splitlines()
-                       if line.startswith('> ')]
-            self.assertEqual(quote, onboard, 'the same few sentences the onboarding gives')
             for concept in ('**idea**', '**grill**', '**spec**', '**tickets**', '**builder**', '**reviewer**', '**merges**'):
                 self.assertIn(concept, quote[0])
 
@@ -625,9 +622,9 @@ class InstallJourney(unittest.TestCase):
         self.repository = onboard.JOURNEY['repo']  # the conversation's one repository
         said = onboard.answers(onboard.JOURNEY['turns'])
         self.settings = {k: said[k] for k in ('harness', 'model', 'effort')}  # answered once, at Connect
-        installed = self.build / 'runtime/skills/onboard'
+        installed = self.build / 'runtime/skills/install'  # onboard merged into install (#1187)
         onboard.SKILL = installed / 'SKILL.md'
-        onboard.HELPER = installed / 'scripts/onboard.py'
+        onboard.HELPER = installed / 'scripts/first_fleet.py'
         self.onboard = onboard
         j = onboard.Journey(self)
         j.openwiz = self.build / 'openwiz'

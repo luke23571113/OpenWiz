@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+import os, shutil, sys
+
+OPAQUE = 'opaque-fixture-value-7Kq2Zr9w'
+
+args = sys.argv[1:]
+if len(args) != 4 or args[:2] != ['repo', 'clone']:
+    sys.exit('fake gh: only `gh repo clone <repo> <folder>` is supported')
+source = os.path.join(os.environ['FAKE_REPOS'], args[2])
+if not os.path.isdir(source):
+    sys.exit('GraphQL: Could not resolve to a Repository with the name \'%s\' (%s).' % (args[2], OPAQUE))
+shutil.copytree(source, args[3])

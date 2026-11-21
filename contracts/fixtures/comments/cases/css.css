@@ -1,0 +1,9 @@
+/* Copyright 2030 Synthetic Example */
+body {
+  margin: 0; /* reset */
+  content: "/* not a comment */";
+}
+/* The header is blue because the old design said so. */
+h1 { color: blue; }
+/* External: the synthetic browser ignores gap in tables, https://example.com/browser/issues/5 */
+table { border-spacing: 4px; }

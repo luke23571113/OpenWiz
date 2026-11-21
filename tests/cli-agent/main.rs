@@ -9,14 +9,15 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-#[allow(dead_code)]
 #[path = "../support/dirs.rs"]
 mod dirs;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/schema.rs"]
 mod schema;
 // Placing fixture programs without holding their writer (#811).
-#[allow(dead_code)]
 #[path = "../support/place.rs"]
 mod place;
 
@@ -24,19 +25,18 @@ mod fake_loops;
 mod github_token;
 mod init;
 mod loop_apply;
-mod loop_contract;
 mod loop_export;
 mod loop_plan;
 mod loop_validate;
 mod models;
-// #1804 (MD2): `openwiz models show`, `list` and `set`.
 mod models_forms;
-// #1803 (MD1): the models contract's fixture checks, kept beside the fixtures.
 #[path = "../../contracts/fixtures/models/models_contract.rs"]
 mod models_contract;
 mod process;
 mod results;
 mod review;
+#[path = "../../contracts/fixtures/roster/roster_contract.rs"]
+mod roster_contract;
 mod ui;
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");

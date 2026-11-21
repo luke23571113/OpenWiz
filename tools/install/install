@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-"""OpenWiz's install entry (#1109): the commands the install skill runs.
+import argparse
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import stat
+import tarfile
+import sys
+
+sys.dont_write_bytecode = True
+
+DESCRIPTION = """OpenWiz's install entry (#1109): the commands the install skill runs.
 
   install preflight
       Reads this machine only: Python, the supported target, free disk space,
@@ -27,23 +40,11 @@ Every command prints one JSON object. Exit codes: 0 done, 1 failed,
 library only: no Rust, Cargo, Node or npm. A checksum proves integrity, not
 a signed publisher identity.
 """
-import argparse
-import json
-import os
-from pathlib import Path
-import platform
-import re
-import shutil
-import stat
-import tarfile
-import sys
-
-sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import install as installer  # noqa: E402
-import harness  # noqa: E402
-import pull  # noqa: E402
+import install as installer
+import harness
+import pull
 
 HOSTS = {('Darwin', 'arm64'): 'aarch64-apple-darwin', ('Darwin', 'x86_64'): 'x86_64-apple-darwin',
          ('Linux', 'x86_64'): 'x86_64-unknown-linux-gnu'}
@@ -125,9 +126,6 @@ def download(target, folder, fetch):
 
 
 def prepare_parent(root):
-    """Make a missing install parent, only inside HOME, only through real
-    directories this user owns, each new one owner-only (0700). The installer's
-    own path and ownership guards still apply to the root itself."""
     root = Path(root)
     installer.require(root.is_absolute(), 'the install root must be an absolute path')
     if root.parent.is_dir():
@@ -170,9 +168,6 @@ def install(assets, target, root, state_root):
 
 
 def selected(root, state_root=None):
-    """The selected build, bound to this root and its explicit state: no link on
-    any ancestor path, the exact builds folder, named by its own source, with a
-    strictly valid manifest and every installed asset verified."""
     root = Path(root)
     installer.require(root.is_absolute(), 'the install root must be an absolute path')
     installer.path_guard(root)
@@ -186,7 +181,6 @@ def selected(root, state_root=None):
     build = Path(os.readlink(link))
     installer.require(build.is_absolute() and build.parent == state / 'service/builds'
                       and re.fullmatch('[0-9a-f]{40}', build.name), 'foreign current selection')
-    # No link anywhere on the way: the build and every ancestor, service/ and builds/ included.
     installer.path_guard(build)
     installer.private(build)
     manifest = build / 'install-manifest.json'
@@ -211,7 +205,7 @@ def status(root, state_root):
 
 def main(argv=None, fetch=pull.fetch_bytes, host=None, stdout=None):
     out = stdout or sys.stdout
-    parser = Parser(prog='install', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = Parser(prog='install', description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True, parser_class=Parser)
     commands.add_parser('preflight')
     d = commands.add_parser('download')

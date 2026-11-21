@@ -1,0 +1,44 @@
+$ python3 -I docs/evidence/1817/test_ci_step.py   # before the comment-check step exists in ci.yml
+FFF
+======================================================================
+FAIL: test_a_pull_request_adding_a_disallowed_comment_fails (__main__.CommentCheckStep.test_a_pull_request_adding_a_disallowed_comment_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "docs/evidence/1817/test_ci_step.py", line 81, in test_a_pull_request_adding_a_disallowed_comment_fails
+    self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_a_reasoned_escape_tag_passes (__main__.CommentCheckStep.test_a_reasoned_escape_tag_passes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "docs/evidence/1817/test_ci_step.py", line 89, in test_a_reasoned_escape_tag_passes
+    self.assertEqual(run.stdout.splitlines()[-1:], ['comment-check: ok'])
+AssertionError: Lists differ: [] != ['comment-check: ok']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'comment-check: ok'
+
+- []
++ ['comment-check: ok']
+
+======================================================================
+FAIL: test_comments_main_added_are_not_the_pull_requests (__main__.CommentCheckStep.test_comments_main_added_are_not_the_pull_requests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "docs/evidence/1817/test_ci_step.py", line 96, in test_comments_main_added_are_not_the_pull_requests
+    self.assertEqual(run.stdout.splitlines()[-1:], ['comment-check: ok'])
+AssertionError: Lists differ: [] != ['comment-check: ok']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'comment-check: ok'
+
+- []
++ ['comment-check: ok']
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.344s
+
+FAILED (failures=3)

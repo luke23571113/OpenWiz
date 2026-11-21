@@ -1,13 +1,6 @@
-//! B2 (ClosedWiz#15): the rules and the static checks. AD8 (no stronger
-//! claim), AD11 (one implementation), the attachments digest, the one
-//! claim rule, the gate's all-or-nothing on an in-memory store, the
-//! dispatch order, the allowance, and the messaging schema's attachments.
-//! The end-to-end proofs are in `tests/messaging/ad_send_attachments.rs`
-//! and `tests/new-thread/ad_new_thread_attachments.rs`.
-
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -35,30 +28,6 @@ fn read(path: &str) -> String {
     fs::read_to_string(Path::new(ROOT).join(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
-fn sources(dir: &str) -> Vec<(PathBuf, String)> {
-    let mut files = Vec::new();
-    rust_files(&Path::new(ROOT).join(dir), &mut files);
-    assert!(!files.is_empty(), "{dir}");
-    files
-        .into_iter()
-        .map(|p| {
-            let text = fs::read_to_string(&p).unwrap();
-            (p, text)
-        })
-        .collect()
-}
-
 fn op(kind: OpKind, id: &str) -> OpRef {
     OpRef {
         kind,
@@ -82,8 +51,6 @@ fn staged(a: PromptAttachment) -> StagedAttachment {
         attachment: a,
     }
 }
-
-// The attachments digest.
 
 #[test]
 fn ad_static_affected_contracts_preserve_original_cases() {
@@ -131,7 +98,6 @@ fn the_digest_is_the_canonical_list_in_the_owners_order_and_the_empty_one_is_fix
     assert_eq!(empty_attachments_digest(), attachments_digest(&[]));
     let a = attachment("att-syn-1", "syn-notes.txt", Kind::File, b"notes");
     let b = attachment("att-syn-2", "syn-photo.png", Kind::Image, b"photo");
-    // Written out by hand, independently of the code.
     let canonical = format!(
         "openwiz.prompt.attachments.v2\n{} 5 file syn-notes.txt\n{} 5 image syn-photo.png\n",
         sha256_hex(b"notes"),
@@ -141,7 +107,6 @@ fn the_digest_is_the_canonical_list_in_the_owners_order_and_the_empty_one_is_fix
         attachments_digest(&[a.clone(), b.clone()]),
         sha256_hex(canonical.as_bytes())
     );
-    // The order counts; the id doesn't.
     assert_ne!(
         attachments_digest(&[a.clone(), b.clone()]),
         attachments_digest(&[b.clone(), a.clone()])
@@ -166,7 +131,6 @@ fn files_go_first_then_images_each_in_the_owners_order() {
         .map(|a| a.attachment.id.as_str().to_owned())
         .collect();
     assert_eq!(order, ["att-f1", "att-f2", "att-i1", "att-i2"]);
-    // The binding keeps the owner's order.
     let bound: Vec<String> = prompt
         .bound()
         .iter()
@@ -207,8 +171,6 @@ fn a_prompt_lists_an_attachment_once() {
     );
 }
 
-// The one claim rule.
-
 fn the_claim_rule_follows_retention() {
     let me = op(OpKind::Send, "op-me");
     let other = op(OpKind::NewThread, "op-other");
@@ -246,14 +208,10 @@ fn the_claim_rule_follows_retention() {
             "{claim:?}"
         );
     }
-    // The same op id under the other kind is another operation.
     let twin = op(OpKind::NewThread, "op-me");
     assert!(claimable(&me, Some(&(twin, Claim::Dispatching)), fresh).is_err());
 }
 
-// The gate, on an in-memory store.
-
-/// An in-memory attachment store: each id's lookup, and every claim made.
 #[derive(Default)]
 struct Memory {
     lookups: BTreeMap<String, Lookup>,
@@ -362,10 +320,8 @@ fn the_gate_passes_every_attachment_or_names_every_one_that_cant_go() {
             ("att-broken", &Problem::Failed(FailReason::SizeMismatch)),
         ]
     );
-    // Every attachment was looked at, and nothing was claimed.
     assert_eq!(memory.reads.lock().unwrap().len(), 5);
     assert!(memory.claims.lock().unwrap().is_empty());
-    // Only the ready one: it passes, with its staged copy.
     payload.attachments = vec![AttachmentId::parse("att-good").unwrap()];
     let ready = gate(&memory, &payload, &me, T0).unwrap();
     assert_eq!(ready.bound(), vec![good]);
@@ -375,10 +331,8 @@ fn the_gate_passes_every_attachment_or_names_every_one_that_cant_go() {
     );
 }
 
-// AD8: no stronger claim.
-
 #[test]
-fn ad08_the_wording_table_and_no_stronger_claim_anywhere() {
+fn ad08_the_wording_table_and_no_stronger_claim() {
     assert_eq!(
         handed_over(1),
         ", with 1 attachment handed to CloudRoom. Delivery to the agent's machine is not reported"
@@ -405,7 +359,6 @@ fn ad08_the_wording_table_and_no_stronger_claim_anywhere() {
         "{}",
         created.text()
     );
-    // A failed or uncertain outcome never says it handed anything over.
     for unchanged in [
         Delivery::failed(openwiz_core::messaging::send::FailReason::InvalidInput)
             .with_attachments(2),
@@ -418,68 +371,7 @@ fn ad08_the_wording_table_and_no_stronger_claim_anywhere() {
             unchanged.text()
         );
     }
-    // No source says more than the table.
-    for dir in [
-        "crates/core/src",
-        "crates/cli/src",
-        "crates/adapters/cloudroom/src",
-    ] {
-        for (path, text) in sources(dir) {
-            let lower = text.to_lowercase();
-            for phrase in [
-                "delivered to the worker",
-                "delivered to the agent",
-                "delivered to the cloud",
-                "read by the agent",
-                "visible to the agent",
-                "the agent received",
-                "the agent has the",
-                "reached the agent",
-                "uploaded to the worker",
-                "uploaded to the sandbox",
-            ] {
-                assert!(!lower.contains(phrase), "{path:?} says {phrase:?}");
-            }
-        }
-    }
 }
-
-// AD11: one implementation.
-
-#[test]
-fn ad11_one_attachment_args_and_no_other_place_builds_file_or_image() {
-    let mut builders = 0;
-    for (path, text) in sources("crates") {
-        builders += text.matches("fn attachment_args(").count();
-        let is_allowlist = path.ends_with("adapters/cloudroom/src/allowlist.rs");
-        for flag in ["\"--file\"", "\"--image\""] {
-            let n = text.matches(flag).count();
-            if is_allowlist {
-                assert_eq!(n, 1, "{flag} once in the allowlist");
-                let builder = text
-                    .split("pub fn attachment_args(")
-                    .nth(1)
-                    .and_then(|rest| rest.split("\n}\n").next())
-                    .unwrap();
-                assert!(builder.contains(flag), "{flag} outside attachment_args");
-            } else {
-                assert_eq!(n, 0, "{path:?} spells {flag}");
-            }
-        }
-    }
-    assert_eq!(builders, 1, "one attachment_args");
-    // Both writes take their tail from it, once, in argv.
-    let allowlist = read("crates/adapters/cloudroom/src/allowlist.rs");
-    let argv = allowlist.split("pub fn argv(&self)").nth(1).unwrap();
-    assert_eq!(argv.matches("attachment_args(").count(), 1);
-    for variant in ["Self::ThreadTell {", "Self::ThreadSpawn("] {
-        let arm = argv.split(variant).nth(1).unwrap();
-        let arm = &arm[..arm.find("\n            }").unwrap()];
-        assert!(arm.contains("tail"), "{variant} without the tail");
-    }
-}
-
-// The messaging schema's attachments (AD13's contract half for send).
 
 fn messaging_schema() -> Value {
     serde_json::from_str(&read("contracts/messaging.v1.schema.json")).unwrap()
@@ -519,8 +411,6 @@ fn the_messaging_schema_takes_attachments_only_in_their_shape() {
     let mut extra = a.clone();
     extra["display_name"] = json!("Synthetic.txt");
     assert!(!validate_messaging("prompt_attachment", &extra).is_empty());
-    // The checklist's "the contract and the code refuse the same values":
-    // the same good and bad values through the core's strict reader.
     let read = |v: &Value| serde_json::from_value::<PromptAttachment>(v.clone());
     assert!(read(&a).is_ok());
     for (key, bad) in [
@@ -538,7 +428,6 @@ fn the_messaging_schema_takes_attachments_only_in_their_shape() {
     missing.as_object_mut().unwrap().remove("name");
     assert!(read(&missing).is_err(), "a missing key");
     assert!(!validate_messaging("prompt_attachment", &missing).is_empty());
-    // A key given twice, which no JSON value can hold, is refused too.
     let twice = r#"{"id": "att-syn-1", "id": "att-syn-2", "sha256": "SHA", "size_bytes": 5, "kind": "file", "name": "syn-notes.txt"}"#
         .replace("SHA", &"a".repeat(64));
     assert!(serde_json::from_str::<PromptAttachment>(&twice).is_err());

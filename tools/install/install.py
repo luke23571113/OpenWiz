@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Verified, offline package installation. Python 3.9+; no Cargo, npm or network.
-
-Transport supplies a manifest, its separately checked checksum, and an archive.
-Checksums establish integrity, not a signed publisher identity. No program from
-an archive is run while validating or installing it.
-"""
 import argparse
 import fcntl
 import hashlib
@@ -18,21 +12,31 @@ import sys
 import tarfile
 import tempfile
 
+DESCRIPTION = """Verified, offline package installation. Python 3.9+; no Cargo, npm or network.
+
+Transport supplies a manifest, its separately checked checksum, and an archive.
+Checksums establish integrity, not a signed publisher identity. No program from
+an archive is run while validating or installing it.
+"""
+
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PROGRAMS = {'openwiz'}
 REQUIRED = PROGRAMS | {'runtime/openwiz-build.txt', 'runtime/install.py', 'runtime/pull.py',
     'runtime/skills/setup/SKILL.md', 'runtime/skills/grill/SKILL.md',
-    'runtime/skills/plan-graph/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
+    'runtime/skills/to-tickets/SKILL.md', 'runtime/skills/launch-fleet/SKILL.md',
     'runtime/skills/launch-fleet/scripts/fleet.sh',
-    'runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/setup/github_login.py',  # #633
+    'runtime/setup/setup.py', 'runtime/setup/store.py', 'runtime/setup/github_login.py',
     'runtime/github-app/setup.py',
     'runtime/github-app/app.py', 'runtime/github-app/manifest.json',
-    'runtime/cloudroom/cloudroom.py',  # #2201: setup's CloudRoom install, reuse and sign-in tool
-    'runtime/setup/init.py'}  # #635: installed openwiz init's packaged runtime
-# #1575: the pre-AP11 layout (#1264 removed its server, service and web/), accepted
-# only when verifying the build already selected, never for a new package.
+    'runtime/cloudroom/cloudroom.py',
+    'runtime/setup/init.py'}
 LEGACY_PROGRAMS = PROGRAMS | {'openwiz-service', 'openwiz-server'}
 LEGACY_REQUIRED = REQUIRED | LEGACY_PROGRAMS | {'web/openwiz-build.txt', 'web/index.html', 'web/setup.html'}
+PREVIOUS_SKILLS = {'runtime/skills/to-tickets/SKILL.md': 'runtime/skills/plan-graph/SKILL.md'}
+
+
+def previous(required):
+    return {PREVIOUS_SKILLS.get(path, path) for path in required}
 
 
 class Refused(Exception):
@@ -74,8 +78,6 @@ def safe(path, legacy=False):
 
 
 def manifest_at(path, checksum, target, selected=False):
-    """A new package's manifest, or with selected=True the already-selected
-    build's, which may instead be a complete pre-AP11 layout (read-only)."""
     data = path.read_bytes()
     require(len(data) <= 4 * 1024 * 1024 and sha(data) == checksum, 'manifest checksum mismatch')
     value = json.loads(data, object_pairs_hook=unique)
@@ -99,9 +101,13 @@ def manifest_at(path, checksum, target, selected=False):
         require(path not in assets and not any(path.startswith(p + '/') or p.startswith(path + '/') for p in assets),
                 'duplicate or overlapping asset')
         require(digest(item['sha256']) and type(item['bytes']) is int and item['bytes'] >= 0, 'invalid asset identity')
-        require(item['mode'] == ('0700' if path in programs or path.endswith('.sh') else '0600'), 'invalid asset mode')
+        require(item['mode'] == ('0700' if path in programs or path.endswith('.sh')
+                                 or re.fullmatch(r'runtime/adapters/[a-z0-9-]+/driver', path) else '0600'),
+                'invalid asset mode')
         assets[path] = item
-    require((LEGACY_REQUIRED if legacy else REQUIRED) <= assets.keys(), 'incomplete program or skill runtime')
+    required = LEGACY_REQUIRED if legacy else REQUIRED
+    layouts = (required, previous(required)) if selected else (required,)
+    require(any(layout <= assets.keys() for layout in layouts), 'incomplete program or skill runtime')
     identity = f"openwiz.package.v1\n{value['version']}\n{value['source']}\n{target}\n".encode()
     for stamp in ('runtime/openwiz-build.txt', 'web/openwiz-build.txt') if legacy else ('runtime/openwiz-build.txt',):
         require(assets[stamp]['sha256'] == sha(identity) and assets[stamp]['bytes'] == len(identity),
@@ -184,7 +190,6 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
     manifest, archive, root = Path(manifest), Path(archive), Path(root)
     value, assets, raw = manifest_at(manifest, manifest_sha256, target)
     require(archive.stat().st_size == value['archive_bytes'], 'archive size mismatch')
-    # Verify the compressed bytes before parsing any archive headers.
     hasher = hashlib.sha256()
     with archive.open('rb') as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b''):
@@ -219,8 +224,6 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
             private(channel, False)
             require(channel.read_bytes() == channel_bytes, 'existing update channel requires explicit migration')
         build = builds / value['source']
-        # All archive members must be ordinary, unique, allowlisted files. Never
-        # use extractall: links, devices, directories and metadata are refused.
         with tarfile.open(archive, 'r:gz') as tar:
             members = []
             seen = set()
@@ -277,7 +280,7 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     for flag in ('manifest', 'archive', 'manifest-sha256', 'root', 'target'):
         parser.add_argument('--' + flag, required=True)
     parser.add_argument('--state-root')

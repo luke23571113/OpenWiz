@@ -1,14 +1,3 @@
-//! `openwiz models`: the Cloud harnesses, models and efforts CloudRoom offers
-//! right now, from one `cloud status` read. Read-only: no state, no write.
-//! Kept from the removed `new` command's module by J233 (#1264):
-//! setup's harness check and the onboarding skill read its output.
-//!
-//! `openwiz models show`, `list` and `set` (#1804, MD2) are the models
-//! contract's forms (`contracts/models.v1.md`): they read the project's
-//! `docs/agents/fleet.md` through the core's [`openwiz_core::models`] reader,
-//! and `list --save` and `set` write that project file and the offered-models
-//! snapshot beside it, for the agent to commit.
-
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -29,14 +18,11 @@ use serde_json::{Value, json};
 
 use crate::{EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, clean, help, utc};
 
-/// Nothing can be offered right now; the report says why.
 pub const EXIT_NO_OPTIONS: i32 = 13;
 /// `models set`: the choice is not offered, or can't be written to the
 /// Models table; nothing was changed.
 pub const EXIT_REFUSED: i32 = 5;
 
-/// Runs `openwiz models <args>` and returns the exit code: one `cloud
-/// status` read.
 pub fn run_models(
     args: &[String],
     client: &dyn NewThreadClient,
@@ -106,7 +92,6 @@ pub fn run_models_in(
     }
 }
 
-/// The options as text.
 pub fn render_options(options: &CloudOptions) -> String {
     let mut out = format!(
         "openwiz models · read {} · {}\n",

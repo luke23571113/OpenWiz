@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Bounded, resumable combined live-smoke run sheets. Standard library only."""
 import argparse
 import ctypes
 import fcntl
@@ -15,17 +14,16 @@ import sys
 import tempfile
 import time
 
+DESCRIPTION = """Bounded, resumable combined live-smoke run sheets. Standard library only."""
+
 CLAIMS = ('fleet', 'swarms', 'service', 'loops', 'cockpit', 'decisions',
           'json', 'send', 'new', 'app', 'read_safety', 'install')
-# A kit without a `claims` declaration is #1844's combined sheet: all of these.
 COMBINED = CLAIMS[:11]
 
 
 def kit_claims(kit):
-    """The claims this kit checks: its declaration, exactly (#772)."""
     return tuple(kit['claims']) if 'claims' in kit else COMBINED
 LIMIT = 32 * 1024 * 1024
-# AC6's bound on one fleet block: sittings (block events passed) and seconds.
 SITTINGS, FLEET_SECONDS = 60, 10800
 
 
@@ -34,23 +32,13 @@ class Refusal(Exception):
 
 
 JOURNAL = 'journal.jsonl'
-# The reviewed probe script a live fleet-claim write may run (T3 cleanup; the
-# AC6 phone-reply browser probe went with the web view, #1264). launch-fleet
-# makes the fleet's own writes; the runner only reads them back. Anything else,
-# such as a wrapper, is refused before any step.
 PROBES = (str(Path(__file__).resolve().with_name('cleanup.py')),)
 
 
-# my.openwiz.dev's server owns 7370 on the PC (#772): no step may reach it.
-# The no-argument TUI always connects there, so it can never be a kit step.
 RESERVED_PORT = 7370
 
 
 def refuse_reserved_port(kit, argv):
-    """Refuse 7370 wherever a step's argv reaches a loopback port: `--port N`,
-    and the HTTP probe's port. A launch that would fall back to
-    the default port (bare `openwiz`, `openwiz ui`, bare `openwiz-terminal`)
-    is refused as if it named 7370."""
     ports = []
     for index, arg in enumerate(argv):
         following = argv[index + 1] if index + 1 < len(argv) else None
@@ -70,13 +58,6 @@ def refuse_reserved_port(kit, argv):
 
 
 def retired(kit, argv):
-    """`openwiz fleet tick` in any form, and `openwiz engine`: the engine
-    retirement and the smoke restriction are documented in the adjacent README.
-
-    The program is the pinned `openwiz` by its path, by file identity (a
-    symlink or hardlink to it) or by its pinned bytes (a pinned copy). The
-    CLI dispatches on its arguments, never its name. An identity that cannot
-    be read counts as the same program: fail closed (review R2)."""
     if argv[1:3] != ['fleet', 'tick'] and argv[1:2] != ['engine']:
         return False
     if argv[0] == kit['openwiz']:
@@ -91,14 +72,12 @@ def retired(kit, argv):
 
 
 def in_block(kit, index):
-    """Whether step `index` is inside a fleet repeat block."""
     ids = {s['id']: i for i, s in enumerate(kit['steps'])}
     return any('again_from' in s and ids.get(s['again_from'], i) <= index < i
                for i, s in enumerate(kit['steps']))
 
 
 def _elf(path, name=None):
-    """A real compiled program (not a script that could run anything else)."""
     try:
         real = Path(path).resolve(strict=True)
         with open(real, 'rb') as stream:
@@ -109,8 +88,6 @@ def _elf(path, name=None):
 
 
 def reviewed_probe(argv):
-    """The whole reviewed invocation: a real interpreter running this folder's
-    probe with exactly its arguments. A pinned wrapper is never an interpreter."""
     if (len(argv) == 11 and argv[1:4] == ['-I', PROBES[0], '--gh'] and argv[5] == '--repo'
             and argv[7] == '--ticket' and argv[9] == '--action' and argv[10] in ('unlabel', 'close')):
         try:
@@ -148,7 +125,6 @@ def digest(value):
 
 
 def contract_sha(value):
-    """The release-candidate contract's canonical JSON digest."""
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'),
                                      ensure_ascii=False).encode('utf-8')).hexdigest()
 
@@ -188,7 +164,6 @@ def pointer(value, path):
 
 def load_kit(path):
     kit = decode(path.read_bytes())
-    # The old no-argument TUI key could only mean 7370 (#772).
     if type(kit) is dict and 'default_terminal_port' in kit:
         raise Refusal('reserved_port')
     base = {'schema', 'mode', 'cwd', 'openwiz', 'artifacts', 'env', 'timeout_seconds', 'steps'}
@@ -212,8 +187,6 @@ def load_kit(path):
             raise Refusal('invalid_kit')
     if kit['openwiz'] not in kit['artifacts']:
         raise Refusal('invalid_kit')
-    # receipt.py checks the whole release section; the runner enforces its
-    # write bounds before each dispatch, so their shape is checked here too.
     if 'release' in kit and (
             type(kit['release']) is not dict or type(kit['release'].get('scope')) is not dict
             or type(kit['release']['scope'].get('writes')) is not dict
@@ -249,8 +222,15 @@ def load_kit(path):
             keys = {'id', 'claim', 'kind', 'argv', 'exit', 'checks'}
             exact(step, keys | ({'again_from'} if 'again_from' in step else set())
                   | ({'until'} if 'until' in step else set())
-                  | ({'token_env'} if 'token_env' in step else set()))
+                  | ({'token_env'} if 'token_env' in step else set())
+                  | ({'timeout_seconds'} if 'timeout_seconds' in step else set())
+                  | ({'teardown'} if 'teardown' in step else set()))
             if 'token_env' in step and step['token_env'] != 'OPENWIZ_SMOKE_APP_TOKEN':
+                raise Refusal('invalid_kit')
+            if 'teardown' in step and (step['teardown'] is not True or step['kind'] != 'read'):
+                raise Refusal('invalid_kit')
+            if 'timeout_seconds' in step and (not (step['kind'] == 'write' or step.get('teardown'))
+                                              or not integer(step['timeout_seconds'], 1, 130)):
                 raise Refusal('invalid_kit')
             if step['kind'] not in ('read', 'write', 'await'):
                 raise Refusal('invalid_kit')
@@ -261,7 +241,6 @@ def load_kit(path):
                 raise Refusal('retired_command')
             if argv[0] not in kit['artifacts'] or not os.access(argv[0], os.X_OK):
                 raise Refusal('invalid_kit')
-            # Pin scripts and private probe inputs as well as their interpreters.
             for arg in argv[1:]:
                 if Path(arg).is_absolute() and Path(arg).is_file() and arg not in kit['artifacts']:
                     raise Refusal('invalid_kit')
@@ -295,18 +274,36 @@ def load_kit(path):
             if step['kind'] != 'await' or 'until' not in step or step['claim'] != 'fleet' or step['again_from'] not in ids - {step['id']}:
                 raise Refusal('invalid_kit')
             start = next(i for i, s in enumerate(kit['steps']) if s['id'] == step['again_from'])
-            # A block is launch-fleet's work read back: its own event(s), where
-            # launch-fleet acts, and reads. No write is ever repeated.
             block = kit['steps'][start:kit['steps'].index(step)]
             if (any(s['claim'] != 'fleet' or 'again_from' in s or s['kind'] == 'write' for s in block)
                     or not any(s['kind'] == 'event' for s in block)):
                 raise Refusal('invalid_kit')
+    marks = [bool(s.get('teardown')) for s in kit['steps']]
+    if any(marks) and (marks != sorted(marks) or any(s['kind'] == 'event' for s in kit['steps'])):
+        raise Refusal('invalid_kit')
     if claims != set(kit_claims(kit)):
         raise Refusal('missing_claim')
     for claim in {'send', 'new'} & claims:
         if not any(s['claim'] == claim and s['kind'] == 'write' for s in kit['steps']):
             raise Refusal('missing_write')
+    if 'release' in kit:
+        section = release_section(kit)
+        if not {s for ids in section['risk'].values() for s in ids} <= {s for r in section['coverage'] for s in r['steps']}:
+            raise Refusal('coverage_mismatch')
     return kit
+
+
+def release_section(kit):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('live_smoke_receipt', Path(__file__).resolve().with_name('receipt.py'))
+    receipt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(receipt)
+    try:
+        return receipt.release_section(kit)
+    except receipt.Refusal as error:
+        if str(error) == 'scope_exceeded':
+            return kit['release']
+        raise Refusal(str(error)) from error
 
 
 def validate_pointer(path):
@@ -329,14 +326,10 @@ def verify_artifacts(kit):
 
 
 def owned_children():
-    """Only this process's adopted/direct children, never a machine-wide scan."""
     return [int(pid) for pid in Path(f'/proc/self/task/{os.getpid()}/children').read_text().split()]
 
 
 def enable_containment():
-    # Linux subreaper ownership survives descendants' setsid/double-fork. It
-    # needs no cgroup delegation or privileged namespace. pidfds bind signals
-    # to process identities, so a recycled numeric pid is never killed.
     try:
         if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0 or owned_children():
             raise OSError()
@@ -364,9 +357,6 @@ def reap_owned():
                 pass
             finally:
                 os.close(fd)
-        # Killing the driver reparents its separate-session children here.
-        # Repeat until every owned descendant is killed AND reaped, including
-        # ones that forked during exit. No orphan is handed to an unrelated init.
         while True:
             try:
                 pid, _ = os.waitpid(-1, os.WNOHANG)
@@ -379,7 +369,6 @@ def reap_owned():
 
 
 def launch(kit, argv, token_env=None):
-    """Never persist diagnostics. Bound output, duration and owned descendants."""
     env = dict(os.environ, **kit['env'])
     env.pop('OPENWIZ_SMOKE_APP_TOKEN', None)
     if token_env:
@@ -388,7 +377,7 @@ def launch(kit, argv, token_env=None):
             raise Refusal('missing_credential')
         env['GH_TOKEN'] = token
         env.pop('GITHUB_TOKEN', None)
-    enable_containment()  # refusal is before Popen, not after a leaking child
+    enable_containment()
     with tempfile.TemporaryFile() as output:
         import resource
 
@@ -422,12 +411,6 @@ def command(kit, argv, token_env=None, seen=None):
 
 
 def journal(path, event):
-    """Append one hash-chained observation, durably, before it is relied on.
-
-    The journal is the run's evidence: step outcomes, exit codes and output
-    digests (never raw output), each line naming the previous line's digest.
-    receipt.py refuses a checkpoint it does not match.
-    """
     target = path / JOURNAL
     prev, seq = '0' * 64, 0
     if target.exists():
@@ -444,7 +427,6 @@ def journal(path, event):
 
 
 def read_journal(path):
-    """The journal's bytes and events, with its hash chain checked."""
     target = path / JOURNAL
     info = target.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -469,7 +451,6 @@ def read_journal(path):
 
 
 def observe(doc, checks):
-    """What each check compared, bounded: a digest, a listed string or the actions."""
     seen = []
     for check in checks:
         value = pointer(doc, check['path'])
@@ -481,7 +462,6 @@ def observe(doc, checks):
 
 
 def apply(kit, state, event):
-    """The one place a journaled transition changes run state."""
     kind = event['kind']
     if kind == 'start':
         state['candidate'] = event['candidate']
@@ -497,7 +477,6 @@ def apply(kit, state, event):
         state['writes'][step['claim']] = state['writes'].get(step['claim'], 0) + 1
     elif kind == 'step':
         item.update(state=event['state'], facts=event['facts'])
-        # Each block event passed is one fleet sitting; the first starts the clock.
         if step['kind'] == 'event' and in_block(kit, index):
             state['fleet'].update(sittings=state['fleet']['sittings'] + 1,
                                   started=state['fleet']['started'] or event['at'])
@@ -533,9 +512,6 @@ def _evaluates(kit, step, observed, state):
 
 
 def replay(kit, events):
-    """Rebuild run state from the journal, refusing any event the runner could
-    not have recorded: out of order, a pass with a wrong exit or an observation
-    that fails the step's own checks, or an attempt that was never made."""
     state = initial(kit)
     sha = re.compile('[0-9a-f]{64}')
     ids = {s['id']: i for i, s in enumerate(kit['steps'])}
@@ -559,7 +535,9 @@ def replay(kit, events):
         if index is None:
             raise Refusal('evidence_mismatch')
         step, item = kit['steps'][index], state['steps'][index]
-        before = all(i['state'] == 'pass' for i in state['steps'][:index])
+        closing = any(s.get('teardown') and i['state'] != 'not_run' for s, i in zip(kit['steps'], state['steps']))
+        before = (bool(step.get('teardown')) and any(state['writes'].values())
+                  or all(i['state'] == 'pass' for i in state['steps'][:index]) and not closing)
         pending = state['fleet']['pending']
         if kind == 'attempt':
             if (set(event) != {'kind', 'id', 'claim', 'at'}
@@ -579,7 +557,6 @@ def replay(kit, events):
             elif readback:
                 ok = event['state'] in ('pass', 'fail')
             else:
-                # A read or await that ended incomplete is simply run again.
                 ok = item['state'] in ('not_run', 'incomplete') and before and not pending
             if step['kind'] == 'event':
                 ok = (ok and event['state'] == 'pass'
@@ -604,7 +581,6 @@ def replay(kit, events):
 
 
 def bind_candidate(kit, candidate):
-    """The sealed candidate this run tests: its kit and scope are this kit's."""
     if (type(candidate) is not dict or candidate.get('schema') != 'openwiz.release-candidate.v1'
             or type(candidate.get('candidate')) is not dict
             or contract_sha(candidate['candidate']) != candidate.get('candidate_sha256')):
@@ -741,14 +717,11 @@ def assess(doc, step, state, ids):
 
 
 def record(path, kit, state, event):
-    """Journal first (the evidence), then apply it and save the checkpoint (its cache)."""
     apply(kit, state, journal(path, event))
     save(path, state)
 
 
 def reconcile(path, kit, state):
-    """The checkpoint must be the journal's replay, or lag it by one event that
-    an interruption left unapplied; then that event is adopted, never redone."""
     if not (path / JOURNAL).exists():
         if state != initial(kit):
             raise Refusal('invalid_state')
@@ -775,8 +748,6 @@ def run(kit, path, candidate=None):
         except BlockingIOError as error:
             raise Refusal('runner_busy') from error
         state = reconcile(path, kit, load_state(path, kit))
-        # One run tests one sealed candidate, bound before its first step and
-        # required unchanged on every resume. An unbound run binds nothing later.
         bound = bind_candidate(kit, candidate) if candidate is not None else None
         started = (path / JOURNAL).exists()
         if started and state['candidate'] != bound:
@@ -786,111 +757,146 @@ def run(kit, path, candidate=None):
                 'kind': 'start', 'kit': digest(kit), 'candidate': bound, 'mode': kit['mode'],
                 'runner': file_hash(Path(__file__).resolve()),
                 'source': kit['source']['head'] if 'source' in kit else None})
-        if any(s['state'] == 'fail' for s in state['steps']):
-            return report(kit, state, 'fail', 'comparison'), 1
-        if any(s['state'] == 'attempting' for s in state['steps']):
-            return report(kit, state, 'incomplete', 'uncertain_write'), 3
-        # The real inventory path runs bundle discovery; help/version do not.
-        try:
-            code, doc = command(kit, [kit['openwiz'], 'ls', '--json'])
-            good = (code == 0 and type(doc) is dict and doc.get('schema') == 'openwiz.inventory.v1'
-                    and pointer(doc, '/coverage/state') == 'complete' and doc.get('gaps') == [])
-        except Refusal as error:
-            if str(error) in ('process_containment_unavailable', 'process_containment_failed'):
-                return report(kit, state, 'incomplete', str(error)), 3
-            good = False
-        except subprocess.TimeoutExpired:
-            good = False
-        if not good:
-            return report(kit, state, 'incomplete', 'bundle_preflight'), 3
-        ids = {s['id']: i for i, s in enumerate(kit['steps'])}
-        if (state['fleet']['started']
-                and any('again_from' in s and item['state'] != 'pass'
-                        for s, item in zip(kit['steps'], state['steps']))
-                and not 0 <= int(time.time()) - state['fleet']['started'] < FLEET_SECONDS):
-            return report(kit, state, 'incomplete', 'fleet_limit'), 3
-        # A pending readback is checked first on the next event: once
-        # launch-fleet's work shows, the block is done; otherwise its reads run
-        # again, within AC6's cap. The block holds no write to repeat.
-        if state['fleet']['pending']:
-            index = next(i for i, s in enumerate(kit['steps'])
-                         if 'again_from' in s and state['steps'][i]['state'] == 'incomplete')
-            step = kit['steps'][index]
-            seen = {}
-            try:
-                code, doc = command(kit, step['argv'], step.get('token_env'), seen)
-                if code != step['exit']:
-                    raise Refusal('command_failed')
-                assess(doc, step, state, ids)
-            except Refusal as error:
-                if str(error) == 'comparison':
-                    record(path, kit, state, dict(seen, kind='step', id=step['id'], state='fail',
-                                                  facts={}, reason='comparison', pending=False))
-                    return report(kit, state, 'fail', 'comparison'), 1
-                if str(error) != 'pending':
-                    return report(kit, state, 'incomplete', str(error)), 3
-                if state['fleet']['sittings'] >= SITTINGS:
-                    return report(kit, state, 'incomplete', 'fleet_limit'), 3
-                record(path, kit, state, dict(seen, kind='repeat', id=step['id'], again_from=step['again_from']))
-            else:
-                record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts={},
-                                              reason='none', pending=False,
-                                              observed=observe(doc, step['checks'] + step.get('until', []))))
-        for index, step in enumerate(kit['steps']):
-            item = state['steps'][index]
-            if item['state'] == 'pass':
-                continue
-            if step['kind'] == 'event':
-                if in_block(kit, index) and state['fleet']['sittings'] >= SITTINGS:
-                    return report(kit, state, 'incomplete', 'fleet_limit'), 3
-                record(path, kit, state, {'kind': 'step', 'id': step['id'], 'state': 'pass', 'facts': {},
-                                          'reason': state['reason'], 'pending': False})
-                return report(kit, state, 'incomplete', 'next_event'), 3
-            if item['state'] == 'incomplete' and step['kind'] == 'write':
-                return report(kit, state, 'incomplete', 'uncertain_write'), 3
-            verify_artifacts(kit)
-            seen = {}
-            if step['kind'] == 'write':
-                # The approved scope bounds consumed attempts.
-                if ('release' in kit and state['writes'].get(step['claim'], 0)
-                        >= kit['release']['scope']['writes'].get(step['claim'], 0)):
-                    return report(kit, state, 'incomplete', 'write_limit'), 3
-                # Durable BEFORE any effect; this attempt is never replayed.
-                record(path, kit, state, {'kind': 'attempt', 'id': step['id'], 'claim': step['claim']})
-            try:
-                code, doc = command(kit, step['argv'], step.get('token_env'), seen)
-                if code != step['exit']:
-                    raise Refusal('command_failed')
-                assess(doc, step, state, ids)
-                # Retain only hashes of facts later comparisons require.
-                facts = {}
-                for later in kit['steps'][index + 1:]:
-                    for check in later.get('checks', []) + later.get('until', []):
-                        ref = check.get('same_as')
-                        if ref and ref['step'] == step['id']:
-                            facts[digest(ref['path'])] = digest(pointer(doc, ref['path']))
-                record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts=facts,
-                                              reason='none', pending=False,
-                                              observed=observe(doc, step['checks'] + step.get('until', []))))
-            except (Refusal, subprocess.TimeoutExpired) as error:
-                # A write that failed or timed out has still consumed its
-                # attempt: it is never launched again.
-                reason = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else str(error)
-                if step['kind'] == 'write' and reason != 'comparison':
-                    reason = 'uncertain_write'
-                failed = reason == 'comparison'
-                record(path, kit, state, dict(seen, kind='step', id=step['id'],
-                                              state='fail' if failed else 'incomplete', facts={}, reason=reason,
-                                              pending=reason == 'pending' and 'again_from' in step))
-                return report(kit, state, 'fail' if failed else 'incomplete', reason), 1 if failed else 3
+        doc, code = steps(path, kit, state)
+        if code and any(state['writes'].values()):
+            for index, step in enumerate(kit['steps']):
+                if (doc['reason'] != 'teardown' and step.get('teardown')
+                        and state['steps'][index]['state'] in ('not_run', 'incomplete')):
+                    if not dispatch(path, kit, state, index):
+                        break
+            ends = [i['state'] for s, i in zip(kit['steps'], state['steps']) if s.get('teardown')]
+            if 'fail' in ends:
+                return report(kit, state, 'fail', 'teardown'), 1
+            if any(e != 'pass' for e in ends):
+                return report(kit, state, 'incomplete', 'teardown'), 3
+        return doc, code
+
+
+def dispatch(path, kit, state, index):
+    step, seen = kit['steps'][index], {}
+    ids = {s['id']: i for i, s in enumerate(kit['steps'])}
+    try:
         verify_artifacts(kit)
-        if not state['times']['finished']:
-            record(path, kit, state, {'kind': 'finish'})
-        return report(kit, state, 'pass', 'none'), 0
+        code, doc = command(dict(kit, timeout_seconds=step.get('timeout_seconds', kit['timeout_seconds'])),
+                            step['argv'], step.get('token_env'), seen)
+        if code != step['exit']:
+            raise Refusal('command_failed')
+        assess(doc, step, state, ids)
+    except (Refusal, subprocess.TimeoutExpired) as error:
+        reason = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else str(error)
+        record(path, kit, state, dict(seen, kind='step', id=step['id'], facts={}, pending=False,
+                                      state='fail' if reason == 'comparison' else 'incomplete', reason=reason))
+        return False
+    record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts={}, reason='none',
+                                  pending=False, observed=observe(doc, step['checks'])))
+    return True
+
+
+def steps(path, kit, state):
+    if any(s.get('teardown') and i['state'] != 'not_run' for s, i in zip(kit['steps'], state['steps'])):
+        return report(kit, state, 'incomplete', 'torn_down'), 3
+    if any(s['state'] == 'fail' for s in state['steps']):
+        return report(kit, state, 'fail', 'comparison'), 1
+    if any(s['state'] == 'attempting' for s in state['steps']):
+        return report(kit, state, 'incomplete', 'uncertain_write'), 3
+    try:
+        code, doc = command(kit, [kit['openwiz'], 'ls', '--json'])
+        good = (code == 0 and type(doc) is dict and doc.get('schema') == 'openwiz.inventory.v1'
+                and pointer(doc, '/coverage/state') == 'complete' and doc.get('gaps') == [])
+    except Refusal as error:
+        if str(error) in ('process_containment_unavailable', 'process_containment_failed'):
+            return report(kit, state, 'incomplete', str(error)), 3
+        good = False
+    except subprocess.TimeoutExpired:
+        good = False
+    if not good:
+        return report(kit, state, 'incomplete', 'bundle_preflight'), 3
+    ids = {s['id']: i for i, s in enumerate(kit['steps'])}
+    if (state['fleet']['started']
+            and any('again_from' in s and item['state'] != 'pass'
+                    for s, item in zip(kit['steps'], state['steps']))
+            and not 0 <= int(time.time()) - state['fleet']['started'] < FLEET_SECONDS):
+        return report(kit, state, 'incomplete', 'fleet_limit'), 3
+    if state['fleet']['pending']:
+        index = next(i for i, s in enumerate(kit['steps'])
+                     if 'again_from' in s and state['steps'][i]['state'] == 'incomplete')
+        step = kit['steps'][index]
+        seen = {}
+        try:
+            code, doc = command(kit, step['argv'], step.get('token_env'), seen)
+            if code != step['exit']:
+                raise Refusal('command_failed')
+            assess(doc, step, state, ids)
+        except Refusal as error:
+            if str(error) == 'comparison':
+                record(path, kit, state, dict(seen, kind='step', id=step['id'], state='fail',
+                                              facts={}, reason='comparison', pending=False))
+                return report(kit, state, 'fail', 'comparison'), 1
+            if str(error) != 'pending':
+                return report(kit, state, 'incomplete', str(error)), 3
+            if state['fleet']['sittings'] >= SITTINGS:
+                return report(kit, state, 'incomplete', 'fleet_limit'), 3
+            record(path, kit, state, dict(seen, kind='repeat', id=step['id'], again_from=step['again_from']))
+        else:
+            record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts={},
+                                          reason='none', pending=False,
+                                          observed=observe(doc, step['checks'] + step.get('until', []))))
+    for index, step in enumerate(kit['steps']):
+        item = state['steps'][index]
+        if item['state'] == 'pass':
+            continue
+        if step.get('teardown'):
+            if not dispatch(path, kit, state, index):
+                failed = state['steps'][index]['state'] == 'fail'
+                return report(kit, state, 'fail' if failed else 'incomplete', 'teardown'), 1 if failed else 3
+            continue
+        if step['kind'] == 'event':
+            if in_block(kit, index) and state['fleet']['sittings'] >= SITTINGS:
+                return report(kit, state, 'incomplete', 'fleet_limit'), 3
+            record(path, kit, state, {'kind': 'step', 'id': step['id'], 'state': 'pass', 'facts': {},
+                                      'reason': state['reason'], 'pending': False})
+            return report(kit, state, 'incomplete', 'next_event'), 3
+        if item['state'] == 'incomplete' and step['kind'] == 'write':
+            return report(kit, state, 'incomplete', 'uncertain_write'), 3
+        verify_artifacts(kit)
+        seen = {}
+        if step['kind'] == 'write':
+            if ('release' in kit and state['writes'].get(step['claim'], 0)
+                    >= kit['release']['scope']['writes'].get(step['claim'], 0)):
+                return report(kit, state, 'incomplete', 'write_limit'), 3
+            record(path, kit, state, {'kind': 'attempt', 'id': step['id'], 'claim': step['claim']})
+        try:
+            code, doc = command(dict(kit, timeout_seconds=step.get('timeout_seconds', kit['timeout_seconds'])),
+                                step['argv'], step.get('token_env'), seen)
+            if code != step['exit']:
+                raise Refusal('command_failed')
+            assess(doc, step, state, ids)
+            facts = {}
+            for later in kit['steps'][index + 1:]:
+                for check in later.get('checks', []) + later.get('until', []):
+                    ref = check.get('same_as')
+                    if ref and ref['step'] == step['id']:
+                        facts[digest(ref['path'])] = digest(pointer(doc, ref['path']))
+            record(path, kit, state, dict(seen, kind='step', id=step['id'], state='pass', facts=facts,
+                                          reason='none', pending=False,
+                                          observed=observe(doc, step['checks'] + step.get('until', []))))
+        except (Refusal, subprocess.TimeoutExpired) as error:
+            reason = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else str(error)
+            if step['kind'] == 'write' and reason != 'comparison':
+                reason = 'uncertain_write'
+            failed = reason == 'comparison'
+            record(path, kit, state, dict(seen, kind='step', id=step['id'],
+                                          state='fail' if failed else 'incomplete', facts={}, reason=reason,
+                                          pending=reason == 'pending' and 'again_from' in step))
+            return report(kit, state, 'fail' if failed else 'incomplete', reason), 1 if failed else 3
+    verify_artifacts(kit)
+    if not state['times']['finished']:
+        record(path, kit, state, {'kind': 'finish'})
+    return report(kit, state, 'pass', 'none'), 0
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument('--kit', required=True, type=Path)
     parser.add_argument('--state', required=True, type=Path)
     parser.add_argument('--candidate', type=Path,
@@ -908,7 +914,6 @@ def main():
         if args.execute and (kit['mode'] != 'live' or args.execute != digest(kit)):
             raise Refusal('approval_mismatch')
         if args.dry_run:
-            # A dry run given the candidate checks it carries this kit (#772).
             if args.candidate:
                 bind_candidate(kit, decode(args.candidate.read_bytes()))
             doc, code = report(kit, initial(kit), 'not_run', 'dry_run'), 0
@@ -916,7 +921,6 @@ def main():
             candidate = decode(args.candidate.read_bytes()) if args.candidate else None
             doc, code = run(kit, args.state, candidate)
     except (Refusal, OSError, TypeError, ValueError, KeyError, subprocess.SubprocessError) as error:
-        # Never interpolate an exception: it may contain private argv/paths/output.
         reason = str(error) if isinstance(error, Refusal) else 'invalid_input'
         doc, code = {'schema': 'openwiz.live-smoke.v1', 'verdict': 'incomplete', 'reason': reason}, 2
     print(json.dumps(doc, sort_keys=True))
