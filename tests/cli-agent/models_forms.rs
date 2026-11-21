@@ -863,3 +863,147 @@ fn a_replaced_file_keeps_its_group_and_access_acl_and_gains_none() {
         "the snapshot's group"
     );
 }
+
+/// Connect's own settings check, `fleet_settings_usable` in
+/// `tools/install/setup/setup.py`, run on `text`.
+fn connect_accepts(text: &str) -> bool {
+    use std::io::Write;
+    let script = "import importlib.util,sys\n\
+        s=importlib.util.spec_from_file_location('setup',sys.argv[1])\n\
+        m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n\
+        print(m.fleet_settings_usable(sys.stdin.read()))";
+    let mut child = std::process::Command::new("python3")
+        .args(["-I", "-c", script])
+        .arg(Path::new(ROOT).join("tools/install/setup/setup.py"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(text.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    match String::from_utf8(out.stdout).unwrap().trim() {
+        "True" => true,
+        "False" => false,
+        other => panic!("{other}"),
+    }
+}
+
+/// The five older tables, each with a Source line, and the rest of a
+/// project's settings, so Connect accepts it as it stands.
+fn older_settings_connect_accepts() -> String {
+    let five = fixture("five-tables/fleet.md")
+        .replace("\n## ", "\n\nSource: synthetic owner, 2026-11-21.\n\n## ");
+    let consumer = fs::read_to_string(
+        Path::new(ROOT)
+            .join("tools/install/tests/fixtures/install-connections/consumer/docs/agents/fleet.md"),
+    )
+    .unwrap();
+    let rest = &consumer[consumer.find("## Test commands").unwrap()..];
+    let text = format!("{five}\nSource: synthetic owner, 2026-11-21.\n\n{rest}");
+    assert!(connect_accepts(&text), "the start is usable: {text}");
+    text
+}
+
+fn models_section(text: &str) -> &str {
+    let start = text.find("## Models\n").unwrap();
+    let end = text[start + 1..]
+        .find("\n## ")
+        .map_or(text.len(), |e| start + 1 + e);
+    &text[start..end]
+}
+
+#[test]
+fn a_set_that_inserts_the_models_section_leaves_settings_connect_accepts() {
+    // catches: `models set` inserting a Models section with no Source line, so
+    // Connect refuses settings it accepted before the set (#2208).
+    for argv in [
+        &[
+            "set",
+            "builder",
+            "claude-code",
+            "claude-opus-5-5",
+            "high",
+            "--json",
+        ][..],
+        &[
+            "set",
+            "orchestrator",
+            "codex",
+            "gpt-6.2-sol",
+            "high",
+            "--json",
+        ][..],
+        &["set", "fixer", "follows-builder", "--json"][..],
+    ] {
+        let fake = project("", catalogue());
+        fs::write(fake.0.0.join(FLEET), older_settings_connect_accepts()).unwrap();
+        let (code, out, _) = run(&fake, argv);
+        let got = report(&out, "set_report");
+        assert_eq!(
+            (code, &got["models_table_added"]),
+            (0, &json!(true)),
+            "{argv:?}: {out}"
+        );
+        let written = fs::read_to_string(fake.0.0.join(FLEET)).unwrap();
+        assert!(connect_accepts(&written), "{argv:?}: {written}");
+    }
+}
+
+#[test]
+fn a_set_keeps_an_existing_models_sections_source_line() {
+    // catches: a set that rewrites or drops the Source line of a Models section
+    // it did not insert (#2208).
+    let source = "Source: synthetic owner, 2026-11-20.";
+    let models = format!(
+        "## Models\n\n\
+        | Role | Harness | Model | Effort | `room-cli thread spawn` flags |\n\
+        | --- | --- | --- | --- | --- |\n\
+        | Orchestrator | Claude Code | Opus 5.5 | Medium | `--provider claude-code --model claude-opus-5-5 --reasoning-level medium` |\n\
+        | Builder | Claude Code | Opus 5.5 | Medium | `--provider claude-code --model claude-opus-5-5 --reasoning-level medium` |\n\
+        | Reviewer | Codex | Sol 6.2 | Medium | `--provider codex --model gpt-6.2-sol --reasoning-level medium` |\n\
+        | Small builder | follows Builder | | | |\n\
+        | Fixer | follows Builder | | | |\n\n\
+        {source}\n\n"
+    );
+    let older = older_settings_connect_accepts();
+    let at = older.find("## Builder\n").unwrap();
+    let start = format!("{}{models}{}", &older[..at], &older[at..]);
+    assert!(connect_accepts(&start), "{start}");
+    let fake = project("", catalogue());
+    fs::write(fake.0.0.join(FLEET), &start).unwrap();
+    let (code, out, _) = run(
+        &fake,
+        &[
+            "set",
+            "builder",
+            "claude-code",
+            "claude-opus-5-5",
+            "high",
+            "--json",
+        ],
+    );
+    let got = report(&out, "set_report");
+    assert_eq!(
+        (code, &got["models_table_added"]),
+        (0, &json!(false)),
+        "{out}"
+    );
+    let written = fs::read_to_string(fake.0.0.join(FLEET)).unwrap();
+    let sources: Vec<&str> = models_section(&written)
+        .lines()
+        .filter(|l| l.starts_with("Source:"))
+        .collect();
+    assert_eq!(sources, [source], "{written}");
+    assert!(connect_accepts(&written), "{written}");
+}
