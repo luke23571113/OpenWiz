@@ -87,7 +87,7 @@ def load_tests(loader, tests, pattern):
                                       LinkedConfig)
     suite.addTests(loader.loadTestsFromTestCase(case)
                    for case in (Download, Path_, Preflight, Repair, RootSafety, Remove,
-                                skills.Report, skills.PerSkill, skills.Truthful))
+                                skills.Report, skills.PerSkill, skills.Truthful, skills.Isolation))
     return suite
 
 
