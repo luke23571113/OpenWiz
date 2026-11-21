@@ -56,7 +56,7 @@ NEXT_MUST_NAME = {
         'identity_unreadable': 'gh auth status',
         'identity_bot': 'gh auth login --web',
         'identity_no_push': 'gh auth login --web',
-        'identity_account_mismatch': 'gh auth switch',
+        'identity_account_mismatch': 'setup/github_login.py skip-app',
         'identity_verified': 'None',
     },
     'project': {
@@ -70,9 +70,9 @@ NEXT_MUST_NAME = {
     },
     'github_app': {
         'app_missing': 'github-app/setup.py --repo',
-        'app_files_unusable': 'github-app/setup.py --repo',
+        'app_files_unusable': 'setup/github_login.py skip-app',
         'app_not_installed': 'github-app/setup.py --repo',
-        'app_key_rejected': 'github-app/setup.py --repo',
+        'app_key_rejected': 'private-key.pem',
         'app_unreadable': 'setup/setup.py check',
         'app_revoked': 'github-app/setup.py --repo',
         'app_suspended': 'https://github.com/settings/installations',
@@ -99,7 +99,7 @@ def tools_by_folder_without_state(step):
     return COMMAND.sub(short, step)
 
 
-def check_answering(state, results, project=None):
+def check_answering(state, results, project=None, identity=None, gh=True):
     reads = {'cloudroom': 'check_cloudroom', 'harness': 'check_harness', 'personal_github': 'check_identity',
              'project': 'check_project'}
     with contextlib.ExitStack() as stack:
@@ -109,7 +109,9 @@ def check_answering(state, results, project=None):
         if project is not None:
             real = setup.store.Store.read
             stack.enter_context(mock.patch.object(setup.store.Store, 'read', lambda self: {
-                **real(self), 'project': project}))
+                **real(self), 'project': project, 'identity': identity}))
+        if not gh:
+            stack.enter_context(mock.patch.object(setup.shutil, 'which', lambda name: None))
         out = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
         setup.check(argparse.Namespace(state_dir=str(state), api_base=setup.API, openwiz=None, runtime=None))
     answer = json.loads(out.getvalue())
@@ -172,6 +174,51 @@ class EveryCodeHasANextStep(unittest.TestCase):
         self.assertEqual(done.returncode, 0)
         self.assertNotIn('setup page', done.stdout)
         self.assertIn('next', done.stdout)
+
+
+SKIPPED = {'selected': 'personal_login', 'app_choice': 'skip', 'acting_login': 'synthetic-owner',
+           'repository': PROJECT['repository']}
+
+
+class GitHubStepsFromTheReview(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = Path(self.tmp.name) / 'state'
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def step(self, component, code, **given):
+        results = {c: next(iter(NEXT_MUST_NAME[c])) for c in NEXT_MUST_NAME}
+        results.update({component: code, **given.pop('results', {})})
+        return tools_by_folder_without_state(check_answering(self.state, results, PROJECT, **given)['next'][component])
+
+    def test_r1_signed_out_without_gh_installs_gh_before_signing_in(self):
+        step = self.step('personal_github', 'identity_signed_out', gh=False)
+        self.assertIn('https://cli.github.com', step)
+        self.assertLess(step.index('https://cli.github.com'), step.index('setup/github_login.py sign-in'))
+        self.assertNotIn('https://cli.github.com', self.step('personal_github', 'identity_signed_out'))
+
+    def test_r2_a_skipped_app_stays_skipped(self):
+        step = self.step('github_app', 'app_missing', identity=SKIPPED,
+                         results={'personal_github': 'identity_verified'})
+        self.assertTrue(step.startswith('None:'), step)
+        for offer in ('github-app/setup.py', 'skip-app'):
+            self.assertNotIn(offer, step)
+        other = {**SKIPPED, 'repository': 'synthetic-owner/another'}
+        self.assertIn('github-app/setup.py --repo', self.step('github_app', 'app_missing', identity=other))
+
+    def test_r3_a_newly_chosen_account_is_recorded_by_skip_app(self):
+        step = self.step('personal_github', 'identity_account_mismatch', identity=SKIPPED)
+        self.assertIn('gh auth switch', step)
+        self.assertIn('setup/github_login.py skip-app', step)
+        self.assertNotIn('sign-in', step)
+
+    def test_r4_a_rejected_app_key_is_replaced_not_reconnected(self):
+        step = self.step('github_app', 'app_key_rejected')
+        self.assertNotIn('github-app/setup.py', step)
+        self.assertIn('private-key.pem', step)
+        self.assertIn('setup/github_login.py skip-app', step)
 
 
 class IntelMac(unittest.TestCase):

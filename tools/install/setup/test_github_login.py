@@ -358,7 +358,7 @@ class SkipApp(Recording):
                          'a choice for another repository binds nothing here')
 
 
-from test_check import EveryCodeHasANextStep, IntelMac
+from test_check import EveryCodeHasANextStep, GitHubStepsFromTheReview, IntelMac
 
 
 if __name__ == '__main__':
