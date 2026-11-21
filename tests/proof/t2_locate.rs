@@ -753,3 +753,92 @@ fn ta3_locate_fault_worker() {
     };
     assert_eq!(result, expected, "{fault}");
 }
+
+fn path_launcher(f: &Fixture, dir: &str, mode: u32) -> PathBuf {
+    let launcher = f.0.join(dir).join("room-cli");
+    dirs::private_dir_all(launcher.parent().unwrap()).unwrap();
+    process::executable(&launcher, "#!/bin/sh\nexit 0\n");
+    fs::set_permissions(&launcher, fs::Permissions::from_mode(mode)).unwrap();
+    launcher
+}
+
+fn relative_to_current_dir(path: &Path) -> PathBuf {
+    let up = std::env::current_dir().unwrap().components().count() - 1;
+    let mut relative: PathBuf = std::iter::repeat_n("..", up).collect();
+    relative.push(path.strip_prefix("/").unwrap());
+    relative
+}
+
+#[test]
+fn t2_room_cli_on_path_is_found_when_no_bundle_is() {
+    use openwiz_adapter_cloudroom::locate::{Basis, Located};
+    for mounts in 0..=1 {
+        let f = Fixture::new();
+        for index in 0..mounts {
+            let launcher = f.file(format!(".mount_synthetic_{index}/{TAIL}"));
+            process::executable(&launcher, "#!/bin/sh\n\":\" //; exit 0\n");
+        }
+        let relative = path_launcher(&f, "relative-bin", 0o755);
+        path_launcher(&f, "plain-file-bin", 0o644);
+        path_launcher(&f, "writable-bin", 0o777);
+        let expected = path_launcher(&f, "bin", 0o755);
+        let search = std::env::join_paths([
+            relative_to_current_dir(relative.parent().unwrap()),
+            f.0.join("empty-bin"),
+            f.0.join("plain-file-bin"),
+            f.0.join("writable-bin"),
+            f.0.join("bin"),
+        ])
+        .unwrap();
+        assert_eq!(
+            f.discovery().with_search_path(search).locate(),
+            Ok(Located {
+                launcher: expected,
+                basis: Basis::Path
+            }),
+            "{mounts} mounts"
+        );
+    }
+}
+
+#[test]
+fn t2_a_running_bundle_or_a_refused_one_is_never_replaced_from_path() {
+    let f = Fixture::new();
+    path_launcher(&f, "bin", 0o755);
+    let search = f.0.join("bin").into_os_string();
+    let active = f.file(format!(".mount_synthetic_active/{TAIL}"));
+    process::executable(&active, "#!/bin/sh\n\":\" //; exit 0\n");
+    f.running(".mount_synthetic_active", "101");
+    assert_eq!(
+        f.discovery().with_search_path(search.clone()).resolve(),
+        Ok(active)
+    );
+    let other = f.file(format!(".mount_synthetic_other/{TAIL}"));
+    process::executable(&other, "#!/bin/sh\n\":\" //; exit 0\n");
+    f.running(".mount_synthetic_other", "102");
+    assert_eq!(
+        f.discovery().with_search_path(search).resolve(),
+        Err(LocateError::Ambiguous)
+    );
+}
+
+#[test]
+fn t2_room_cli_missing_everywhere_says_to_open_cloudroom_once() {
+    use openwiz_core::{ops::launch_failure_category, source::SourceError};
+    let f = Fixture::new();
+    let error = f
+        .discovery()
+        .with_search_path(f.0.join("empty-bin").into_os_string())
+        .resolve()
+        .unwrap_err();
+    assert_eq!(error, LocateError::NotRunning);
+    let SourceError::Unavailable { detail } = error.into() else {
+        panic!("a missing room-cli is unavailable");
+    };
+    assert_eq!(
+        detail,
+        "CloudRoom not running: room-cli could not be started (no bundled launcher and \
+         no room-cli on PATH). Open the CloudRoom app once and sign in."
+    );
+    assert_eq!(launch_failure_category(&detail), Some("no bundle"));
+}

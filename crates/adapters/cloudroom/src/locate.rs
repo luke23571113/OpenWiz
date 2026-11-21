@@ -17,11 +17,17 @@ pub struct Discovery {
     metadata: fn(&fs::Metadata) -> LauncherMetadata,
     fixed: bool,
     process_root: PathBuf,
+    search_path: Option<std::ffi::OsString>,
 }
 
 impl Discovery {
     pub fn with_process_root(mut self, root: PathBuf) -> Self {
         self.process_root = root;
+        self
+    }
+
+    pub fn with_search_path(mut self, path: std::ffi::OsString) -> Self {
+        self.search_path = Some(path);
         self
     }
 
@@ -31,6 +37,7 @@ impl Discovery {
             metadata,
             fixed: false,
             process_root: PathBuf::from("/proc"),
+            search_path: None,
         }
     }
 
@@ -40,6 +47,7 @@ impl Discovery {
             metadata,
             fixed: true,
             process_root: PathBuf::from("/proc"),
+            search_path: None,
         }
     }
 
@@ -567,6 +575,7 @@ struct Root {
 pub enum Basis {
     Fixed,
     OneRoot,
+    Path,
     AppImagePair { gui: PathBuf, bridge: PathBuf },
 }
 
@@ -575,6 +584,7 @@ impl Basis {
         match self {
             Self::Fixed => "room-cli from the fixed app bundle".to_owned(),
             Self::OneRoot => "room-cli from the one running app mount".to_owned(),
+            Self::Path => "room-cli from PATH".to_owned(),
             Self::AppImagePair { gui, bridge } => format!(
                 "room-cli from the bridge's mount {} (paired with the GUI's mount {}: \
                  one AppImage file, identical room-cli)",
