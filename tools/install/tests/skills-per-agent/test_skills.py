@@ -99,6 +99,20 @@ class PerSkill(Skills):
         self.assertEqual((again[0], again[1].get('outcome')), (0, 'partial'))
         self.assertEqual({k: v for k, v in base.snapshot(own).items() if k.split('/')[0] in CLASHES}, before)
 
+    def test_a_linked_skill_folder_is_skipped_and_its_link_kept(self):
+        (self.home / '.claude/skills').mkdir(parents=True)
+        mine = self.base / 'my-grill'
+        mine.mkdir()
+        os.symlink(mine, self.home / '.claude/skills/grill')
+        code, result = self.skills()
+        self.assertEqual((code, result.get('outcome')), (0, 'partial'), result)
+        skipped = self.rows(result)['claude-code']['skipped']
+        self.assertEqual([s['skill'] for s in skipped], ['grill'])
+        self.assertIn(str(self.home / '.claude/skills/grill'), skipped[0]['next'])
+        self.assertNotIn('nothing was changed', skipped[0]['next'])
+        self.assertEqual(os.readlink(self.home / '.claude/skills/grill'), str(mine))
+        self.assertEqual(list(mine.iterdir()), [])
+
 
 if __name__ == '__main__':
     unittest.main()

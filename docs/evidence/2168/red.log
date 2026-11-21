@@ -12,3 +12,8 @@ AssertionError: Tuples differ: (0, 'installed') != (5, 'refused')
 Ran 6 tests in 2.710s
 FAILED (failures=5)
 The CODEX_HOME proof passes before the fix: install skills already uses $CODEX_HOME/skills.
+
+Red run 2 (self-review): python3 -I tools/install/tests/skills-per-agent/test_skills.py
+FAIL: test_a_linked_skill_folder_is_skipped_and_its_link_kept (__main__.PerSkill.test_a_linked_skill_folder_is_skipped_and_its_link_kept)
+AssertionError: 'nothing was changed' unexpectedly found in "<synthetic home>/.claude/skills/grill is a link or not your folder; nothing was changed; Claude Code does not get OpenWiz's grill. Make it a real folder of yours, then run this again."
+FAILED (failures=1)
