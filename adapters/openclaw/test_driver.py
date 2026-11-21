@@ -252,10 +252,33 @@ class OpenClaw(unittest.TestCase):
         self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
         self.assertEqual(self.driver('stop', out, FAKE_REMAP_ON_CANCEL='1'), (0, dict(out, stopped=True)))
         self.assertTrue(os.path.exists(os.path.join(self.state, 'work', out['run'], '.acpxrc.json')))
-        ran = [c['ran'] for c in self.seen()]
-        self.assertNotIn(['synthetic-gateway-bridge'], ran, 'an acpx call ran a configured command')
-        self.assertEqual(ran, [self.adapter()] * 5)
+        seen = self.seen()
+        self.assertEqual([c['auth'] for c in seen], [[]] * len(seen), 'acpx loaded the project config')
+        self.assertEqual([c['ran'] for c in seen], [self.adapter()] * 4)
         self.assertEqual(owned(), [])
+
+    def test_a_project_acpx_config_in_the_run_folder_never_reaches_acpx(self):
+        code, out = self.driver('start', REQUEST)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        calls = len(self.seen())
+        project = os.path.join(self.state, 'work', out['run'], '.acpxrc.json')
+        for planted in ('file', 'link'):
+            with self.subTest(planted=planted):
+                if planted == 'file':
+                    with open(project, 'w') as f:
+                        json.dump({'auth': {'synthetic-project-method': 'synthetic-not-a-login'}}, f)
+                else:
+                    os.remove(project)
+                    os.symlink(os.path.join(self.folder, 'missing.json'), project)
+                code, err = self.driver('wake', out)
+                self.assertEqual(code, 1, err)
+                self.assertIn('.acpxrc.json', err['error'])
+                self.assertNotIn('synthetic', json.dumps(err))
+                self.assertEqual(len(self.seen()), calls, 'acpx ran with a project config in the run folder')
+        self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+        self.assertEqual(len(self.seen()), calls, 'stop ran acpx with a project config in the run folder')
+        self.assertEqual((owned(), self.kept('synthetic-not-a-login')), ([], []))
 
     def test_the_driver_never_reads_your_acpx_config_and_acpx_never_loads_it(self):
         os.mkdir(os.path.join(self.home, '.acpx'))

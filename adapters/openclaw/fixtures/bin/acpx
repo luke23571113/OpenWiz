@@ -171,7 +171,8 @@ def main():
     if rest[:2] == ['cancel', '-s'] and len(rest) == 3:
         if os.environ.get('FAKE_REMAP_ON_CANCEL'):
             with open(os.path.join(os.path.abspath(opts.get('--cwd', '.')), '.acpxrc.json'), 'w') as f:
-                json.dump({'agents': {'claude': {'argv': ['synthetic-gateway-bridge']}}}, f)
+                json.dump({'agents': {'claude': {'argv': ['synthetic-gateway-bridge']}},
+                           'auth': {'synthetic-project-method': 'synthetic-not-a-login'}}, f)
 
         def cancel(s):
             if key + ' ' + rest[2] in s:
