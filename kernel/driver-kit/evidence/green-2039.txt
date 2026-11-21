@@ -1,4 +1,4 @@
-# #2039 green at 274b0ba0: python3 -I kernel/driver-kit/test_kit.py (Linux, with the simulated macOS cases)
+# #2039 green at 4df708e5: python3 -I kernel/driver-kit/test_kit.py (Linux, with the simulated macOS cases)
 test_a_refusal_holding_a_credential_never_reaches_the_output (__main__.Kit.test_a_refusal_holding_a_credential_never_reaches_the_output) ... ok
 test_each_planted_driver_fails_its_check (__main__.Kit.test_each_planted_driver_fails_its_check) ... ok
 test_each_status_contract_credential_format_is_caught (__main__.Kit.test_each_status_contract_credential_format_is_caught) ... ok
@@ -9,6 +9,6 @@ test_without_proc_as_on_macos_the_template_passes_all_five (__main__.Kit.test_wi
 test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified (__main__.Kit.test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 69.383s
+Ran 8 tests in 69.388s
 
 OK
