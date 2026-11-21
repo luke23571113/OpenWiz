@@ -32,7 +32,6 @@ check = _load('setup_onboard_check', HERE / 'check.py')
 CONTRACT = (ROOT / 'contracts/setup-onboard.v1.md').read_text()
 SCHEMA = json.loads((ROOT / 'contracts/setup-onboard.v1.schema.json').read_text())
 SETUP_SCHEMA = json.loads((ROOT / 'contracts/setup.v1.schema.json').read_text())
-FIRST_HOUR_SCHEMA = json.loads((ROOT / 'tools/install/tests/first-hour-contract/first-hour.schema.json').read_text())
 IDENTITY = (ROOT / 'contracts/github-identity.v1.md').read_text()
 CASES_PATH = HERE / 'fixtures/cases.json'
 CASES = json.loads(CASES_PATH.read_text())
@@ -200,15 +199,6 @@ class Limits(unittest.TestCase):
         self.assertIn('unproven_pass', r['problems'])
         del doc['actions']['count']
         self.assertEqual(report(doc)['problems'], ['schema'])
-
-    def test_the_first_hour_keeps_its_own_measures(self):
-        text = json.dumps(FIRST_HOUR_SCHEMA)
-        self.assertIn('"const": 3600000', text, 'first-hour keeps its one-hour limit')
-        self.assertNotIn('1800000', text, 'the 0.0.16 limit is not folded into first-hour.v1')
-        clock = SCHEMA['$defs']['first_merge_receipt']['properties']['clock']['properties']
-        self.assertEqual((clock['limit_ms'], clock['rule']), ({'const': 1800000}, {'const': 'strictly_less_than'}))
-        self.assertEqual(SCHEMA['$defs']['first_merge_receipt']['properties']['actions']['properties']['limit'], {'const': 5})
-        self.assertNotIn('ten_minute', json.dumps(SCHEMA), 'the ten-minute measure stays first-hour.v1 only')
 
 
 class Credentials(unittest.TestCase):

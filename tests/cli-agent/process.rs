@@ -180,7 +180,10 @@ fn cp2_inventory_success_partial_and_failure_keep_their_meaning() {
     }
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../fleet/b5_fake.rs"]
 mod fleet_fixture;
 #[path = "../fleet/schema.rs"]

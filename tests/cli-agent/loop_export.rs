@@ -3,9 +3,14 @@
 //! These read `contracts/` and `tests/fake-room-cli/`, so they live here
 //! rather than in the CLI crate, whose tests also run where only the crates
 //! are copied (the service's update proofs).
-// Off Linux the check-writing tests are compiled out (R1), so their helpers
-// go unused there.
-#![cfg_attr(not(target_os = "linux"), allow(dead_code, unused_imports))]
+#![cfg_attr(
+    not(target_os = "linux"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "off Linux the check-writing tests are compiled out, so their helpers go unused"
+    )
+)]
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};

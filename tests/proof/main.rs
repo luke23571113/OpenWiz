@@ -9,11 +9,13 @@
 
 mod support;
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/schema.rs"]
 mod schema;
 
-#[allow(dead_code)]
 #[path = "../support/dirs.rs"]
 mod dirs;
 

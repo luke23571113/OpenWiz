@@ -7,7 +7,10 @@
 //! These came after the code. Each one's red is a planted break of the
 //! rule it proves, recorded in the pull request.
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with other test targets; this one uses only part of it"
+)]
 #[path = "../support/dirs.rs"]
 mod dirs;
 

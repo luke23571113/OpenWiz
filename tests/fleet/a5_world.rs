@@ -12,14 +12,12 @@
 //! <commit>`) is a value the fixture scan doesn't accept. Every value is
 //! synthetic.
 
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::DirBuilder;
 use std::os::unix::fs::DirBuilderExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use openwiz_adapter_github::tickets::{
@@ -348,7 +346,6 @@ impl World {
             stdout: String::from_utf8(out).expect("UTF-8 stdout"),
             stderr: String::from_utf8(err).expect("UTF-8 stderr"),
             calls: fake.invocations(),
-            dir: fake.dir,
         }
     }
 }
@@ -359,7 +356,6 @@ pub struct Ran {
     pub stdout: String,
     pub stderr: String,
     pub calls: Vec<Vec<String>>,
-    pub dir: PathBuf,
 }
 
 impl Ran {
