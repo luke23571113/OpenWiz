@@ -661,6 +661,36 @@ class Boat(unittest.TestCase):
         self.assertEqual([c for c in asked if '-E' in c.split() or 'e' in c.split()], [],
                          'the driver asked ps for process environments')
 
+    def test_without_proc_as_on_macos_stop_ends_a_worker_writing_the_log_after_its_supervisor_is_gone(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.driver('start', REQUEST, **macos)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        prompt_pid, worker_pid = self.logged()[0][:2]
+        self.assertTrue(self.until(lambda: not alive(prompt_pid)))
+        with open(os.path.join(self.env['OPENWIZ_BOAT_STATE'], out['run'] + '.json')) as f:
+            supervisor = json.load(f)['turns'][0]['supervisor']
+        os.kill(supervisor, signal.SIGKILL)
+        self.assertTrue(self.until(lambda: not alive(supervisor)))
+        self.assertTrue(alive(worker_pid))
+        self.assertEqual(self.driver('stop', out, **macos), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(worker_pid), 'a worker writing the turn log still runs after stop')
+
+    def test_without_proc_as_on_macos_a_failed_wake_ends_only_its_own_turn(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.driver('start', REQUEST, **macos)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        prompt_pid, earlier = self.logged()[0][:2]
+        self.assertTrue(self.until(lambda: not alive(prompt_pid)))
+        code, woke = self.driver('wake', out, FAKE_RESUME_FAILS='1', **macos)
+        self.assertEqual(code, 1, woke)
+        failed = self.logged()[1][1]
+        self.assertFalse(alive(failed), "the failed wake's worker still runs")
+        self.assertTrue(alive(earlier), "the failed wake ended an earlier turn's worker")
+        self.assertEqual(self.driver('stop', out, **macos), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(earlier))
+
     def test_without_proc_as_on_macos_stop_ends_a_worker_the_turn_hands_off_as_it_exits(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
         code, out = self.driver('start', REQUEST, FAKE_LATE_WORKER='0.7', **macos)
