@@ -60,6 +60,7 @@ rl4.PACKAGED['tools/install/setup/init.py'] = 'runtime/setup/init.py'
 RUNTIME['tools/install/setup/github_login.py'] = b'# Synthetic GitHub sign-in helper.\n'
 rl4.PACKAGED['tools/install/setup/github_login.py'] = 'runtime/setup/github_login.py'
 LINUX = 'x86_64-unknown-linux-gnu'
+SCHEMA = json.loads((ROOT / 'contracts/release-candidate.v1.schema.json').read_text())
 
 
 def canonical(value):
@@ -92,6 +93,8 @@ LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate
           'w and setattr(candidate, "smoke_module", lambda: (lambda m: (setattr(m, "WAIVABLE", w), m)[1])(load())); '
           'i = os.environ.get("WIZSKILLS_INSTALL"); import product_identity, pathlib; '
           'i and setattr(product_identity, "install_locked", lambda root, source, scratch: pathlib.Path(i)); '
+          'f = os.environ.get("FETCH"); f and exec(f, vars(candidate)); '
+          'h = os.environ.get("HOLD"); h and exec(h, vars(candidate)); '
           'sys.exit(candidate.main(sys.argv[1:]))')
 
 FAKE_GIT = r'''#!/usr/bin/env python3
@@ -118,6 +121,46 @@ if network and any(a.startswith(("https://", "http://", "ssh://", "git@")) for a
     sys.exit(97)
 sys.exit(subprocess.run([REAL] + mapped).returncode)
 '''.replace('@REAL@', repr(REAL_GIT)).replace('@URL@', repr(PUBLIC_URL))
+
+FAKE_FETCH = r'''
+def fetch_release(url, limit):
+    import json, os, pathlib, urllib.error
+    base = "https://github.com/openwizdev/OpenWiz/releases/"
+    assert url.startswith(base), url
+    with open(os.environ["CALLS"], "a") as log:
+        log.write(json.dumps({"tool": "https", "action": "download", "args": [url]}) + "\n")
+    if os.environ.get("FETCH_STATUS"):
+        raise urllib.error.HTTPError(url, int(os.environ["FETCH_STATUS"]), "Synthetic", None, None)
+    store, rest = pathlib.Path(os.environ["RELEASES"]), url[len(base):]
+    if rest.startswith("latest/download/"):
+        shown = [m.parent.name for m in store.glob("*/meta.json") if not json.loads(m.read_text())["prerelease"]]
+        tag = max(shown, key=lambda t: tuple(map(int, t[1:].split("."))), default="")
+        name = rest[len("latest/download/"):]
+    else:
+        tag, name = rest[len("download/"):].split("/", 1)
+    file = store / tag / "assets" / name
+    if not tag or not file.is_file():
+        raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+    return file.read_bytes()[:limit + 1]
+'''
+
+HOLD_INDEX = r'''
+def _hold(write):
+    def held(self, name, value):
+        import os, pathlib, time
+        if name != "install-attempts.json":
+            return write(self, name, value)
+        hold, me, end = pathlib.Path(os.environ["HOLD_DIR"]), os.environ["HOLD_ME"], time.time() + 60
+        (hold / ("read-" + me)).touch()
+        while len(list(hold.glob("read-*"))) < 2 and time.time() < end:
+            time.sleep(0.05)
+        while me != "first" and not (hold / "done-first").exists() and time.time() < end:
+            time.sleep(0.05)
+        write(self, name, value)
+        (hold / ("done-" + me)).touch()
+    return held
+State.write = _hold(State.write)
+'''
 
 FAKE_GH = r'''#!/usr/bin/env python3
 import json, os, pathlib, shutil, sys
@@ -196,7 +239,8 @@ class World(unittest.TestCase):
                         GIT_AUTHOR_EMAIL=NOREPLY, GIT_COMMITTER_EMAIL=NOREPLY,
                         PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
                         CALLS=str(self.root / 'calls.jsonl'), PUBLIC_FAKE=str(self.remote),
-                        GH_WORLD=str(self.world_path), RELEASES=str(self.releases), TODAY='2026-11-20')
+                        GH_WORLD=str(self.world_path), RELEASES=str(self.releases), TODAY='2026-11-20',
+                        FETCH=FAKE_FETCH)
         self.now = int(time.time())
         self.world = {f'repos/{PUBLIC}': {'full_name': PUBLIC, 'visibility': 'public', 'archived': False,
                                           'default_branch': 'main'},
@@ -491,17 +535,15 @@ class World(unittest.TestCase):
         return self.cli('publish', '--state', self.state, '--repo', self.repo,
                         '--artifacts', self.root / 'artifacts', '--literals', self.literals, **extra)
 
-    def install_receipt(self, at=None, target='x86_64-unknown-linux-gnu'):
-        record = self.record()
-        rows = {(a['role'], a['target']): a['sha256'] for a in record['candidate']['artifacts']}
-        body = 'Synthetic installed read-back.\n'
-        pointer = self.comment(9401, body, self.now)
-        receipt = {'route': 'update', 'version': VERSION, 'source': self.head, 'target': target,
-                   'manifest_sha256': rows[('manifest', target)], 'archive_sha256': rows[('archive', target)],
-                   'verified_at': at or int(time.time()) + 5,
-                   'evidence': {'record': pointer, 'sha256': sha(body.encode())}}
-        (self.root / 'install.json').write_text(json.dumps(receipt))
-        return self.cli('install', '--state', self.state, '--receipt', self.root / 'install.json')
+    def latest(self, version=VERSION, latest=True):
+        meta = self.releases / ('v' + version) / 'meta.json'
+        meta.write_text(json.dumps(dict(json.loads(meta.read_text()), prerelease=not latest)))
+
+    def install_check(self, target=LINUX, **extra):
+        return self.cli('install', '--state', self.state, '--target', target, **extra)
+
+    def downloads(self):
+        return [c['args'][0] for c in self.calls() if c['tool'] == 'https']
 
 
 class Candidate(World):
@@ -529,8 +571,94 @@ class Candidate(World):
         self.assertEqual(publication['tag_object'], self.git(self.remote, 'rev-parse', 'refs/tags/v' + VERSION))
         self.assertEqual(self.publish(), (0, {'status': 'published', 'tag': 'v' + VERSION}))
         self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
-        code, out = self.install_receipt()
+        self.latest()
+        code, out = self.install_check()
         self.assertEqual((code, out['status'], out['target_met']), (0, 'complete', True), out)
+
+    def test_install_check_takes_the_strangers_latest_route_and_refuses_a_prerelease(self):
+        self.ready()
+        self.assertEqual(self.publish()[0], 0)
+        base = 'https://github.com/openwizdev/OpenWiz/releases/'
+        name = 'openwiz-' + LINUX
+        self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': ['install_latest_unresolved']}))
+        self.assertEqual(self.downloads(), [base + f'latest/download/{name}.sha256'])
+        self.assertIsNone(self.record()['install'])
+        other = self.artifacts('0.0.100', self.root / 'other')
+        (self.releases / 'v0.0.100' / 'assets').mkdir(parents=True)
+        for item in other.iterdir():
+            shutil.copy(item, self.releases / 'v0.0.100' / 'assets' / item.name)
+        (self.releases / 'v0.0.100' / 'meta.json').write_text(json.dumps({'prerelease': False}))
+        self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': ['install_latest_not_candidate']}))
+        self.assertIsNone(self.record()['install'])
+        shutil.rmtree(self.releases / 'v0.0.100')
+        self.latest()
+        archive = self.releases / ('v' + VERSION) / 'assets' / f'openwiz-{VERSION}-{LINUX}.tar.gz'
+        good = archive.read_bytes()
+        for planted, reason in ((good + b'x', 'install_download_refused'),
+                                (good[:-1] + bytes([good[-1] ^ 1]), 'install_refused')):
+            archive.write_bytes(planted)
+            self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': [reason]}))
+            self.assertIsNone(self.record()['install'])
+        archive.write_bytes(good)
+        sealed = (self.state / 'record.json').read_bytes()
+        other = self.record()
+        row = next(a for a in other['candidate']['artifacts'] if (a['role'], a['target']) == ('archive', LINUX))
+        row['sha256'] = sha(b'x')
+        (self.state / 'record.json').write_text(json.dumps(other))
+        self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': ['install_mismatch']}))
+        (self.state / 'record.json').write_bytes(sealed)
+        (self.root / 'calls.jsonl').unlink()
+        code, out = self.install_check()
+        self.assertEqual((code, out['status']), (0, 'complete'), out)
+        self.assertEqual(self.downloads(), [base + f'latest/download/{name}.sha256',
+                                            base + f'latest/download/{name}.manifest.json',
+                                            base + f'download/v{VERSION}/openwiz-{VERSION}-{LINUX}.tar.gz'])
+        self.assertNotIn(['release', 'download'], [c['args'][:2] for c in self.calls()])
+        installed = self.record()['install']
+        self.assertEqual(sorted(installed), sorted(SCHEMA['$defs']['install']['required']))
+        saved = self.state / installed['evidence']['record']
+        self.assertEqual(sha(saved.read_bytes()), installed['evidence']['sha256'])
+        self.assertEqual([d['url'] for d in json.loads(saved.read_text())['downloads']], self.downloads())
+        passed = self.cli('status', '--state', self.state)[1]
+        self.assertEqual(self.install_check(FETCH_STATUS='503'),
+                         (1, {'status': 'blocked', 'reasons': ['install_download_refused']}))
+        self.assertEqual(self.record()['install'], installed)
+        self.assertEqual(sha(saved.read_bytes()), installed['evidence']['sha256'])
+        status = self.cli('status', '--state', self.state)[1]
+        [attempt] = status.pop('install_attempts')
+        self.assertEqual((status['status'], status['finished_at']), ('incomplete', passed['finished_at']))
+        self.assertEqual({k: attempt[k] for k in ('target', 'status', 'reasons')},
+                         {'target': LINUX, 'status': 'blocked', 'reasons': ['install_download_refused']})
+        failed = self.state / attempt['evidence']['record']
+        self.assertNotEqual(failed, saved)
+        self.assertEqual(sha(failed.read_bytes()), attempt['evidence']['sha256'])
+        self.assertEqual(json.loads(failed.read_text())['downloads'][0]['status'], 503)
+        rows = {(a['role'], a['target']): a['sha256'] for a in self.record()['candidate']['artifacts']}
+        self.assertEqual({k: installed[k] for k in ('route', 'version', 'source', 'target', 'manifest_sha256',
+                                                    'archive_sha256')},
+                         {'route': 'install', 'version': VERSION, 'source': self.head, 'target': LINUX,
+                          'manifest_sha256': rows[('manifest', LINUX)], 'archive_sha256': rows[('archive', LINUX)]})
+
+    def test_overlapping_install_checks_for_two_targets_keep_both_attempts(self):
+        self.ready()
+        self.assertEqual(self.publish()[0], 0)
+        hold = self.root / 'hold'
+        hold.mkdir()
+        mac = 'aarch64-apple-darwin'
+        runs = [subprocess.Popen([sys.executable, '-c', LAUNCH, str(HERE), self.anchor, 'install', '--state',
+                                  str(self.state), '--target', target], stdout=subprocess.PIPE, text=True,
+                                 env=dict(self.env, HOLD=HOLD_INDEX, HOLD_DIR=str(hold), HOLD_ME=me))
+                for target, me in ((LINUX, 'first'), (mac, 'second'))]
+        for run in runs:
+            out, _ = run.communicate(timeout=120)
+            self.assertEqual((run.returncode, json.loads(out)),
+                             (1, {'status': 'blocked', 'reasons': ['install_latest_unresolved']}))
+        status = self.cli('status', '--state', self.state)[1]
+        self.assertEqual(sorted((a['target'], a['status']) for a in status.get('install_attempts', [])),
+                         [(mac, 'blocked'), (LINUX, 'blocked')])
+        for attempt in status['install_attempts']:
+            saved = self.state / attempt['evidence']['record']
+            self.assertEqual(sha(saved.read_bytes()), attempt['evidence']['sha256'])
 
     def test_missing_ship_or_exact_changelog_approval_refuses_before_any_write(self):
         self.smoke_kit()
@@ -1150,7 +1278,7 @@ class Candidate(World):
                 self.assertEqual((code, out['status']), (1, 'incomplete'), out)
                 self.assertIn(reason, out['reasons'])
                 self.assertEqual(self.record()['publication']['status'], 'incomplete')
-                self.assertEqual(self.cli('install', '--state', self.state, '--receipt', self.root / 'none.json'),
+                self.assertEqual(self.install_check(),
                                  (1, {'status': 'blocked', 'reasons': ['publication_incomplete']}))
                 self.assertEqual(self.publish(PLANT=plant, AT=str(self.now - 200))[1]['reasons'], out['reasons'])
                 self.assertEqual(self.writes(), ['tag', 'tag-push', 'release'])
@@ -1375,7 +1503,8 @@ class Candidate(World):
         self.assertEqual(self.evaluate()[0], 0)
         self.assertEqual(self.publish()[0], 0)
         late = self.now - 900 + 1800
-        code, out = self.install_receipt(at=max(late, self.record()['publication']['verified_at']))
+        self.latest()
+        code, out = self.install_check(AT=str(max(late, self.record()['publication']['verified_at'])))
         self.assertEqual(code, 0, out)
         self.assertEqual(out['original_ship_at'], self.now - 900)
         self.assertEqual(out['elapsed_seconds'], out['finished_at'] - (self.now - 900))
