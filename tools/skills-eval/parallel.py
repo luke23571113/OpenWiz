@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Resume a frozen results set with four independent in-process driver runs.
-
-This scheduler never changes prompts, settings, scoring or run_case. Every
-request still passes the driver's durable checkpoint before transport. The
-checkpoint serializes the *whole set's* cost plus in-flight reservations.
-"""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import fcntl

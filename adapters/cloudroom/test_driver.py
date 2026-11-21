@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""The Cloudroom driver on a synthetic room-cli (fixtures/room-cli): the kit's five checks, the wake
-route the fleet's GitHub events use, and the refusals that keep a run from being claimed falsely.
-
-Run: python3 -I adapters/cloudroom/test_driver.py   (Linux: the kit watches /proc)
-"""
 import json
 import os
 import re
@@ -20,9 +15,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit')
 sys.path.insert(0, KIT)
-import kit  # noqa: E402
+import kit
 
-TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'  # a token's shape, built here so no file holds one
+TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'
 PROJECT = 'prj_syn_0001'
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude', 'model': 'Opus 5.5'}
 
@@ -61,7 +56,6 @@ class Driver(unittest.TestCase):
             return [json.loads(line) for line in f]
 
     def test_kit_passes_all_five(self):
-        # catches: a driver whose start, wake or stop doesn't reach the run's thread, or that passes a login through.
         p = subprocess.run([sys.executable, '-I', os.path.join(KIT, 'kit.py'), '--driver', DRIVER, '--repo',
                             'example/site', '--ticket', '7', '--harness', 'fake-harness', '--model', 'Synthetic 1',
                             '--tracker', self.env['KIT_TRACKER'], '--wait', '8'],
@@ -74,8 +68,6 @@ class Driver(unittest.TestCase):
             'pass token: no login or token passed through the driver']), p.stderr)
 
     def test_wake_is_the_fleet_routes_queued_delivery(self):
-        # catches: a wake that steers (interrupts) instead of queueing, passes its text as an argument, answers
-        # woke when Cloudroom refused the message, shows the thread id in an error, or reaches Cloudroom after stop.
         code, out = self.call('start', START)
         self.assertEqual(code, 0)
         run, spawn = out['run'], self.calls()[0]
@@ -100,8 +92,6 @@ class Driver(unittest.TestCase):
         self.assertEqual(len(self.calls()), before, 'a stopped run reached Cloudroom again')
 
     def test_start_refuses_a_run_cloudroom_did_not_make(self):
-        # catches: a run id answered for a thread that doesn't exist, isn't safe to address, or is in another
-        # project; and a missing project or room-cli reported as a crash instead of an error with next.
         receipt = {'id': 'thr_syn_0001', 'projectId': PROJECT}
         cases = {'no project': {'ROOM_PROJECT_ID': ''}, 'no room-cli': {'PATH': os.path.join(KIT, 'fixtures')},
                  'refused': {'FAKE_ROOM_REFUSE': 'spawn'}, 'not JSON': {'FAKE_ROOM_RECEIPT': 'Synthetic text'},
@@ -111,7 +101,7 @@ class Driver(unittest.TestCase):
         for name, env in cases.items():
             with self.subTest(name):
                 self.assertEqual(self.call('start', START, **env)[0], 1)
-                for run in self.runs():  # a run kept so stop can reach what it may have started is never woken
+                for run in self.runs():
                     self.assertEqual(self.call('wake', {'run': run})[0], 1)
                 self.assertNotIn('tell', [c[1] for c in self.calls()] if os.path.exists(self.log) else [])
 
@@ -119,8 +109,6 @@ class Driver(unittest.TestCase):
         state = self.env['OPENWIZ_CLOUDROOM_STATE']
         return [f[:-5] for f in os.listdir(state) if f.endswith('.json')] if os.path.isdir(state) else []
     def test_start_that_cannot_save_its_run_never_says_retry(self):
-        # catches: a start whose run can't be saved answering "retry", which starts a second builder for the
-        # ticket while the first has no run id that `stop` can reach.
         state, blocker = self.env['OPENWIZ_CLOUDROOM_STATE'], os.path.join(self.folder, 'a-file')
         open(blocker, 'w').close()
         code, out = self.call('start', START, OPENWIZ_CLOUDROOM_STATE=os.path.join(blocker, 'state'))
@@ -133,8 +121,6 @@ class Driver(unittest.TestCase):
         self.assertNotIn('retry', json.dumps(out))
 
     def test_a_start_it_could_not_finish_stays_starting(self):
-        # catches: a start whose final save fails leaving a live thread no `stop` can reach, or a record a later
-        # wake on the run id from the error uses to reach that thread (R5).
         if os.geteuid() == 0:
             self.skipTest('root ignores a read-only folder')
         state = self.env['OPENWIZ_CLOUDROOM_STATE']
@@ -155,8 +141,6 @@ class Driver(unittest.TestCase):
                          'stop did not find and end the thread by its title')
 
     def test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake(self):
-        # catches: a stop whose save fails answering "retry" and leaving a live record that a later wake uses to
-        # reach the archived thread (R3).
         code, out = self.call('start', START)
         os.mkdir(os.path.join(self.env['OPENWIZ_CLOUDROOM_STATE'], out['run'] + '.json.new'))
         code, err = self.call('stop', out)
@@ -167,15 +151,13 @@ class Driver(unittest.TestCase):
         self.assertNotIn('tell', [c[1] for c in self.calls()], 'a wake reached the stopped run')
 
     def test_a_stop_waits_for_a_wake_in_progress(self):
-        # catches: a stop that archives the thread while a wake is still delivering to it, so the wake answers
-        # woke for a run that has ended (the per-run lock).
         code, out = self.call('start', START)
         hold = os.path.join(self.folder, 'hold')
         wake = subprocess.Popen([sys.executable, DRIVER, 'wake'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                 env=dict(self.env, FAKE_ROOM_HOLD=hold))
         wake.stdin.write(json.dumps(out).encode())
         wake.stdin.close()
-        for _ in range(3000):  # until the wake is inside its tell
+        for _ in range(3000):
             if os.path.exists(hold + '.held'):
                 break
             time.sleep(0.01)
@@ -183,7 +165,7 @@ class Driver(unittest.TestCase):
                                 env=self.env)
         stop.stdin.write(json.dumps(out).encode())
         stop.stdin.close()
-        try:  # without a lock the stop finishes now; with one it waits for the wake
+        try:
             stop.wait(3)
         except subprocess.TimeoutExpired:
             pass
@@ -192,8 +174,6 @@ class Driver(unittest.TestCase):
         self.assertEqual([c[1] for c in self.calls()], ['spawn', 'tell', 'told', 'archive'])
 
     def test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover(self):
-        # catches: a stop whose save and archive both fail leaving the old live record, so once the state folder
-        # is writable again the next GitHub event wakes the builder the operator stopped (#1705).
         if os.geteuid() == 0:
             self.skipTest('root ignores a read-only folder')
         state = self.env['OPENWIZ_CLOUDROOM_STATE']
@@ -212,8 +192,6 @@ class Driver(unittest.TestCase):
         self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
 
     def test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable(self):
-        # catches: a stop whose state folder AND lock file both refuse writes, with the archive refused, leaving
-        # the lock saying live, so once writes recover the next wake tells the builder (#1705, re-check).
         if os.geteuid() == 0:
             self.skipTest('root ignores read-only files')
         state = self.env['OPENWIZ_CLOUDROOM_STATE']
@@ -234,8 +212,6 @@ class Driver(unittest.TestCase):
         self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
 
     def test_a_wake_refuses_a_run_whose_lock_file_was_lost(self):
-        # catches: after a stop that could not save and whose archive was refused, storage recovery keeping the
-        # live run record but losing the lock file, and a wake recreating an empty lock and telling the builder.
         if os.geteuid() == 0:
             self.skipTest('root ignores read-only files')
         state = self.env['OPENWIZ_CLOUDROOM_STATE']
@@ -247,7 +223,7 @@ class Driver(unittest.TestCase):
             self.assertEqual(self.call('stop', out, FAKE_ROOM_REFUSE='archive')[0], 1)
         finally:
             os.chmod(state, 0o700)
-        os.remove(lockfile)  # recovery kept the run record, not the lock file
+        os.remove(lockfile)
         self.assertEqual(self.call('wake', out)[0], 1, 'a wake reached a builder whose lock file was lost')
         self.assertNotIn('tell', [c[1] for c in self.calls()])
         self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))

@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""Assemble the kit's owner-only inputs file on the PC, offline (#772).
-
-Each --records file is an owner-only JSON object of named inputs that the Local
-PC agent copied from the existing private records (never from Git). Records
-merge; one name with two different values refuses. The result is one new
-owner-only file outside any checkout, for prepare.py, which checks the names.
-It prints only counts, never a value.
-"""
 import argparse
 import json
 from pathlib import Path

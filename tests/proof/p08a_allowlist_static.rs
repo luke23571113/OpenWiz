@@ -115,8 +115,6 @@ use openwiz_core::attachment::{
 };
 use openwiz_core::messaging::Mode;
 
-/// The two staged copies of the attachment forms (B2): a file, then an
-/// image.
 const STAGED_FILE: &str = "/synthetic/state/attachments/att-syn-0001/syn-notes.txt";
 const STAGED_IMAGE: &str = "/synthetic/state/attachments/att-syn-0002/syn-photo.png";
 
@@ -143,10 +141,8 @@ fn staged() -> Vec<StagedAttachment> {
     .collect()
 }
 
-/// The request id of the spawn forms below.
 const RID: &str = "ow1-0123456789abcdef0123456789abcdef01234567";
 
-/// The allowlist as approved in ClosedWiz#2, written out by hand.
 const ALLOWED: &[&[&str]] = &[
     &["--version"],
     &["thread", "list", "--json"],
@@ -170,7 +166,6 @@ const ALLOWED: &[&[&str]] = &[
     &["machine", "list", "--json"],
     &["thread", "show", "thr_syn_0001", "--json"],
     &["thread", "output", "thr_syn_0001", "--json"],
-    // The one write (OpenWiz 0.0.3, ClosedWiz#8). Documented, not observed.
     &[
         "thread",
         "tell",
@@ -191,8 +186,6 @@ const ALLOWED: &[&[&str]] = &[
         "--",
         "Synthetic",
     ],
-    // OpenWiz 0.0.4 (ClosedWiz#11, sheet A-2): the catalogue read and the
-    // second write, in the shapes spike run 3 recorded.
     &["cloud", "status", "--json"],
     &[
         "thread",
@@ -213,8 +206,6 @@ const ALLOWED: &[&[&str]] = &[
         "--prompt",
         "Synthetic",
     ],
-    // B2 (ClosedWiz#15, sheet B-7): each write with attachments, staged
-    // absolute paths only, the tail before the text's placement.
     &[
         "thread",
         "tell",
@@ -252,17 +243,11 @@ const ALLOWED: &[&[&str]] = &[
         "--prompt",
         "Synthetic",
     ],
-    // OpenWiz 0.0.6 (ClosedWiz#114, A6): one Cloud thread's branch,
-    // approved by Jake on #107, 2026-10-31.
     &["cloud", "thread-workspace", "thr_syn_0001", "--json"],
-    // B4 (ClosedWiz#120): the third write, observed in help (0.43.1).
     &["thread", "archive", "thr_syn_0001", "--json"],
-    // T5: only inventory and a single verified owned-loop resume.
     &["loop", "list", "--json"],
     &["loop", "resume", "loop_syn_1", "--json"],
     &["loop", "pause", "loop_syn_1", "--json"],
-    // #792 (J109, orchestrator ruling on #792): the loop file writes, in
-    // contracts/loop-cli.v1.md's forms; plan builds them, apply runs them.
     &[
         "loop",
         "create",
@@ -313,7 +298,6 @@ const ALLOWED: &[&[&str]] = &[
     ],
 ];
 
-/// Arguments that must never be passed, whatever the invocation.
 const FORBIDDEN: &[&str] = &[
     "--work-status",
     "--git-diff",
@@ -342,9 +326,6 @@ fn syn_agent() -> LoopAgentArgs {
     }
 }
 
-/// Every invocation the adapter can build. The `match` makes a new variant
-/// a compile error here, as a reminder to add its forms to `all`; it cannot
-/// force that by itself.
 fn every_invocation() -> Vec<Invocation> {
     let id = ThreadId::parse("thr_syn_0001").expect("valid id");
     let all = vec![
@@ -525,11 +506,6 @@ fn hidden_and_archived_flags_are_added_only_on_request() {
 fn no_invocation_passes_a_forbidden_argument() {
     for invocation in every_invocation() {
         let argv = invocation.argv();
-        // The two writes: `tell` and `spawn` are their subcommands, and the
-        // text after `--` or `--prompt` is not an argument to `room-cli` (it
-        // is the message or the prompt).
-        // B2: the attachment tail sits before the text's placement; its
-        // paths are staged copies, never a word room-cli reads as a command.
         let (checked, allowed): (&[String], &[&str]) = match invocation {
             Invocation::ThreadTell { .. } => {
                 assert_eq!(argv[1], "tell");
@@ -543,14 +519,10 @@ fn no_invocation_passes_a_forbidden_argument() {
                 assert_eq!(argv[end], "--prompt", "the text follows --prompt");
                 (&argv[..=end], &["spawn"])
             }
-            // B4: `archive` is the third write's subcommand, and nothing
-            // else.
             Invocation::ThreadArchive(_) => {
                 assert_eq!(argv[1], "archive");
                 (&argv[..], &["archive"])
             }
-            // #792 (J109): the loop file writes' subcommands, and nothing
-            // else; update's `--prompt` value is the prompt, not an argument.
             Invocation::LoopCreate(_) => {
                 assert_eq!(argv[1], "create");
                 (&argv[..], &["create"])
@@ -580,8 +552,6 @@ fn no_invocation_passes_a_forbidden_argument() {
                 "{invocation:?} passes {word}"
             );
         }
-        // Every read asks for JSON, except --version, which prints plain
-        // text; the loop file writes (#792) have no --json form.
         assert!(
             argv == ["--version"]
                 || matches!(
@@ -644,8 +614,6 @@ fn product_sources() -> Vec<(PathBuf, String)> {
         .collect()
 }
 
-/// The GitHub adapter's runner: the one source there that may start a
-/// process, `gh` with an allowlisted invocation only (#111, Q3 (a)).
 const GITHUB_RUNNER: &str = "../crates/adapters/github/src/process.rs";
 const GITHUB_APP: &str = "../crates/adapters/github/src/app.rs";
 const GITHUB_APP_TRANSPORT_TESTS: &str = "../crates/adapters/github/src/app_transport_tests.rs";
@@ -733,10 +701,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
         .canonicalize()
         .unwrap();
     let mut signed = false;
-    // #1264: T7's curl transport test moved, unchanged, from
-    // `tests/service/` to beside `app.rs`. It is that file's
-    // `#[cfg(test)]` module only, never product code, so it keeps the
-    // process start it had outside `crates/`, and nothing else does.
     let app_transport_tests = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(GITHUB_APP_TRANSPORT_TESTS)
         .canonicalize()
@@ -761,7 +725,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
             || text.contains("process::{");
         let canonical = path.canonicalize().expect("path");
         let in_adapter = canonical.starts_with(&adapter);
-        // Exact canonical files, never the loops directory as a whole.
         if canonical == loop_repository {
             assert_eq!(l3_repository_problems(&text), Vec::<String>::new());
             checked_loops[0] = true;
@@ -841,8 +804,6 @@ fn only_the_adapter_can_start_a_process_and_only_from_the_allowlist() {
     assert_eq!(checked_loops, [true; 1], "the canonical L3 gate checked");
 }
 
-// Normalize layout and discard comments, retaining literal contents. A cited
-// gate in a comment must not stand in for the operative function or call.
 fn l3_compact(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::new();
@@ -891,9 +852,7 @@ fn l3_literal_end(bytes: &[u8], start: usize) -> Option<usize> {
             i += 2;
         } else if bytes[i] == quote {
             return Some(i + 1);
-        }
-        // An apostrophe naming a lifetime is not a character literal.
-        else if quote == b'\'' && (bytes[i].is_ascii_whitespace() || i > start + 4) {
+        } else if quote == b'\'' && (bytes[i].is_ascii_whitespace() || i > start + 4) {
             return None;
         } else {
             i += 1;
@@ -937,7 +896,6 @@ fn l3_function<'a>(code: &'a str, signature: &str) -> Option<&'a str> {
             }
             found = Some(&code[start..i]);
         } else {
-            // Move over a complete UTF-8 character outside literals too.
             i += code[i..].chars().next()?.len_utf8();
         }
     }
@@ -970,8 +928,6 @@ fn l3_repository_problems(text: &str) -> Vec<String> {
             ("GitRead(", 1),
             ("Self(", 1),
             ("Command::new(", 1),
-            // Count qualified calls too: C::new/C::spawn must not hide
-            // behind unchanged Command::new/.spawn counts (#1015).
             ("::new(", 9),
             ("Vec::new(", 2),
             ("BTreeSet::new(", 1),
@@ -985,7 +941,6 @@ fn l3_repository_problems(text: &str) -> Vec<String> {
             ("::exec(", 0),
             ("Commandas", 0),
             ("processas", 0),
-            // The existing import and the synthetic test's process id.
             ("process::", 2),
             ("process::Command,", 1),
             ("std::process::id()", 1),
@@ -1247,8 +1202,6 @@ fn l3_repository_exception_rejects_planted_breaks() {
     assert!(!l3_repository_problems(&extra).is_empty());
 }
 
-// #1015: extra starts must fail even when literal Command::new/.spawn
-// counts stay unchanged. Mutate copies only; no planted command is executed.
 fn l3_exceptions_reject_aliased_process_starts() {
     let mut missed = Vec::new();
     for (name, text, inspect) in [(
@@ -1281,10 +1234,6 @@ fn l3_exceptions_reject_aliased_process_starts() {
     assert!(missed.is_empty(), "missed planted breaks: {missed:#?}");
 }
 
-/// #111's one exception for GitHub, and nothing more: one process, of the
-/// program it is given, with exactly an `Invocation`'s argv, stdin closed
-/// and both outputs piped, in exactly that call. No other argument,
-/// variable or directory can be given, and nothing else is started.
 fn github_runner_problems(text: &str) -> Vec<String> {
     let Some((personal, app)) = split_app_runner(text) else {
         return vec!["missing or repeated App runner boundary".to_owned()];
@@ -1347,8 +1296,6 @@ fn t7_the_approved_app_runner_preserves_the_personal_runner() {
     );
 }
 
-/// The GitHub runner's rule catches each break it exists for, planted in a
-/// copy of the real runner.
 fn the_github_runner_rule_catches_a_planted_break() {
     let whole = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(GITHUB_RUNNER))
         .expect("the GitHub runner");
@@ -1468,7 +1415,6 @@ fn app_runner_problems(text: &str) -> Vec<String> {
 fn app_source_problems(text: &str) -> Vec<String> {
     let mut errors = Vec::new();
     for (word, count) in [
-        // GI5 (#2547, J26): a second fixed curl call, its status read.
         ("Command::new(", 4),
         ("Command::new(PYTHON_PROGRAM)", 1),
         ("Command::new(CURL_PROGRAM)", 2),
@@ -1511,7 +1457,6 @@ fn app_source_problems(text: &str) -> Vec<String> {
         "constCURL_PROGRAM:&str=\"/usr/bin/curl\";",
         "constCURL_ARGS:[&str;15]=[\"--disable\",\"--silent\",\"--show-error\",\"--fail-with-body\",\"--max-time\",\"15\",\"--proto\",\"=https\",\"--max-redirs\",\"0\",\"--config\",\"-\",\"--write-out\",\"\\\\n%{http_code}\",\"--no-progress-meter\",];",
         r#"https://api.github.com/app/installations/{installation}/access_tokens\"\nrequest=\"POST\"\n"#,
-        // GI5 (#2547, J26): the second call's list, URL template and endpoints.
         "constCURL_STATUS_ARGS:[&str;14]=[\"--disable\",\"--silent\",\"--show-error\",\"--max-time\",\"15\",\"--proto\",\"=https\",\"--max-redirs\",\"0\",\"--config\",\"-\",\"--write-out\",\"\\\\n%{http_code}\",\"--no-progress-meter\",];",
         r#""url=\"https://api.github.com/{url}\"\n{post}header=\"Authorization:Bearer{jwt}\"\nheader=\"Accept:application/vnd.github+json\"\nheader=\"X-GitHub-Api-Version:2026-03-10\"\n""#,
         r#"format!("repos/{repository}/installation")"#,
@@ -1532,7 +1477,6 @@ fn app_source_problems(text: &str) -> Vec<String> {
     {
         errors.push("App signing spawn changed".to_owned());
     }
-    // Each curl spawn, in order: the token exchange, then GI5's status call.
     let curl: Vec<String> = text
         .split("Command::new(CURL_PROGRAM)")
         .skip(1)
@@ -1573,7 +1517,6 @@ fn t7_the_token_endpoint_rejects_suffixes() {
     let end = r#"access_tokens\"\nrequest"#;
     assert_eq!(app.matches(end).count(), 1);
     for suffix in ["/synthetic", "?synthetic=1", "#synthetic"] {
-        // GI5's two templates take no suffix either.
         for (from, to) in [
             ("/installation\")", format!("/installation{suffix}\")")),
             ("/access_tokens\")", format!("/access_tokens{suffix}\")")),
@@ -1646,7 +1589,6 @@ fn t7_app_guards_catch_extra_programs_arguments_environments_and_endpoints() {
             "\"--fail-with-body\",\n    \"--max-time\",\n    \"15\",\n    \"--proto\",\n    \"=http,https\"",
         ),
         (".arg(root)", ".arg(root).arg(\"--extra\")"),
-        // GI5's second curl call: its program, list, chain and endpoints.
         (
             ".args(CURL_STATUS_ARGS)",
             ".args(CURL_STATUS_ARGS).arg(\"--location\")",
@@ -1698,8 +1640,6 @@ fn no_product_source_spells_a_forbidden_argument() {
     for (path, text) in product_sources() {
         let path = path.canonicalize().expect("path");
         for word in FORBIDDEN {
-            // #792 (J109): `loop create` and `loop update`, once each, only
-            // opening their own argv arm in the allowlist.
             if matches!(*word, "create" | "update") && path == allowlist {
                 let variant = if *word == "create" {
                     "LoopCreate"
@@ -1726,9 +1666,6 @@ fn no_product_source_spells_a_forbidden_argument() {
                 );
                 continue;
             }
-            // The two writes' subcommands, only where the allowlist builds
-            // them, each exactly once, inside its variant's argv; and
-            // OpenWiz's own `send` command, only in the CLI.
             let arm = |variant: &str| {
                 text.split(variant)
                     .nth(1)
@@ -1752,7 +1689,6 @@ fn no_product_source_spells_a_forbidden_argument() {
                 );
                 continue;
             }
-            // B4 (ClosedWiz#120): the third write's subcommand, the same way.
             if *word == "archive" && path == allowlist {
                 assert_eq!(text.matches("\"archive\"").count(), 1, "{path:?}");
                 assert!(
@@ -1792,7 +1728,6 @@ fn t13_key_helper_keeps_one_fixed_descriptor_handover() {
 }
 
 fn t2_linux_owner_query_keeps_the_existing_kernel_boundary() {
-    // #1264: the owner query moved, unchanged, to the command's state module.
     let code = l3_compact(include_str!("../../crates/cli/src/state/owner.rs"));
     let linux = code
         .split_once("#[cfg(target_os=\"linux\")]")
@@ -1808,8 +1743,6 @@ fn t2_linux_owner_query_keeps_the_existing_kernel_boundary() {
     );
 }
 
-// #1680: the public invocation must carry the allowance for the aggregate
-// staged bytes. These expectations are literal B2 examples, not its formula.
 fn ta3_staged_totals_reach_tell_and_spawn_allowances() {
     use std::time::Duration;
     for (sizes, seconds) in [

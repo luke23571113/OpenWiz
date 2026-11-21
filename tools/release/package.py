@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Assemble artifacts only from an exact hash-bound build inventory. Never publish."""
 import argparse
 import gzip
 import io
@@ -24,7 +23,6 @@ def assemble(products, identity, output):
     manifest = dict(value, schema='openwiz.install.v1', setup_api=1, archive=name + '.tar.gz',
                     archive_sha256='0' * 64, archive_bytes=1)
     manifest['assets'] = sorted(value['assets'], key=lambda row: row['path'])
-    # Apply the consumer's exact manifest contract before writing any output.
     with tempfile.TemporaryDirectory(prefix='openwiz-manifest-') as temporary:
         test = Path(temporary) / 'manifest.json'
         raw = json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode() + b'\n'
@@ -44,7 +42,6 @@ def assemble(products, identity, output):
         require(file.stat().st_size == assets[path]['bytes'] and sha(file.read_bytes()) == assets[path]['sha256'],
                 'build product differs from reviewed identity')
     require(not output.exists() and output.parent.is_dir(), 'output must be new with an existing parent')
-    # Build privately; a failure never leaves a seemingly complete artifact set.
     with tempfile.TemporaryDirectory(prefix='.package-', dir=output.parent) as temporary:
         stage = Path(temporary)
         archive = stage / manifest['archive']
@@ -66,7 +63,6 @@ def assemble(products, identity, output):
         (stage / 'SHA256SUMS').write_text(''.join(sha(p.read_bytes()) + '  ' + p.name + '\n'
             for p in (manifest_file, archive)))
         os.rename(stage, output)
-        # TemporaryDirectory's original name is gone; cleanup is harmless.
     return manifest
 
 

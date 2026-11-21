@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""EB3-C synthetic conformance proofs, not helper invocation or a hand-back hook.
-
-Claims, plausible bugs and the existing coverage gap: the ticket proof plan.
-Run without arguments for the suite; --check reads explicit local JSON only.
-"""
 import copy
 from datetime import timedelta
 import importlib.util
@@ -26,7 +21,6 @@ _spec.loader.exec_module(C)
 
 
 def validate_check(value):
-    """Candidate self-check shape consumed by EB4; never an approved rule."""
     C.fields(value, 'id kind check instruction', 'candidate check')
     C.require(type(value['id']) is str and re.fullmatch(r'[a-z0-9][a-z0-9-]*', value['id']), 'invalid check id')
     C.require(type(value['kind']) is str and value['kind'] in C.J.KINDS, 'invalid kind')
@@ -112,7 +106,6 @@ def validate_result(value):
 
 
 def assess(record, current, bundle=None, journey=None, *, at):
-    """Conformance only. The caller supplies independently verified current facts."""
     C.fields(record, 'request result', 'record')
     validate_request(record['request']); validate_request(current)
     for value in (record, current):
@@ -270,8 +263,6 @@ class Contract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unknown'): self.check()
 
     def test_time_staleness_at_cli_boundary(self):
-        # Claim 1/2: identical hashes cannot make an expired/future report current.
-        # Existing tests change bytes; they miss staleness from time alone.
         with tempfile.TemporaryDirectory() as tmp:
             record = Path(tmp) / 'record.json'; current = Path(tmp) / 'current.json'
             record.write_text(json.dumps(self.record)); current.write_text(json.dumps(self.current))

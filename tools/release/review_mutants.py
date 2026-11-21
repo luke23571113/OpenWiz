@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Prove the R3/R4/R7 corrections detect narrowly targeted breaks in temporary copies."""
 import argparse
 import importlib.util
 import os
@@ -75,8 +74,6 @@ def main():
             temp = scratch/"tmp"
             home.mkdir()
             temp.mkdir()
-            # The original test also runs safely: its unobserved HOME/TMPDIR
-            # writes go into this disposable sandbox, never the actual home.
             with patch.dict(os.environ,{"HOME":str(home),"TMPDIR":str(temp)}), patch.object(proofs,"CLI",runner/"release"):
                 result = unittest.TestResult()
                 proofs.ReleaseCheck(test).run(result)

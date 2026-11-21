@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Remove one release guard per disposable copy and require its outside-in proof to fail."""
 import argparse
 import importlib.util
 from pathlib import Path
@@ -10,7 +9,6 @@ import unittest
 from unittest.mock import patch
 
 sys.dont_write_bytecode = True
-# Each literal anchor must match once: an obsolete mutation never counts as killed.
 MUTANTS = {
     "named-regression": ("scans.py",
         '            require(re.search(r"\\bfn\\s+"+re.escape(test)+r"\\s*\\(",check.texts[proof]),f"{name}: missing named regression")',

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""One approved T3 cleanup write, then a separately checked readback. No retry."""
 import argparse
 import json
 from pathlib import Path
@@ -36,9 +35,6 @@ def main():
                                 stderr=subprocess.DEVNULL, timeout=25)
         if result.returncode != 0:
             raise ValueError()
-        # Pipes bypass RLIMIT_FSIZE and capture_output grows memory before we
-        # can inspect it. Bound the child's regular-file output, respect the
-        # caller's tighter limit, and discard diagnostics without capturing.
         with tempfile.TemporaryFile() as output:
             def bound_output():
                 resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))

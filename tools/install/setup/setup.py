@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""OpenWiz setup: prepare one project and check each connection independently (#1105).
-
-  setup.py prepare --repository OWNER/NAME --project PRJ --operator NAME \\
-      --service-issue N --answer-thread THR --harness H --model M --effort E
-      Without --yes: records the proposed settings and prints their effects,
-      operation id and fingerprint; nothing else is saved. With
-      --yes --operation ID: saves exactly that preview's settings.
-  setup.py check
-      Reads CloudRoom through the installed openwiz CLI, the agents' own
-      GitHub login through gh, and OpenWiz's App through GitHub's App API, and
-      records one result code per component. Reads only: the App's
-      installation token is minted to prove access, then discarded.
-
-Results go to owner-only `<state>/setup/state.json` (store.py), which the
-setup page reads. Output is JSON with fixed public codes: never a token, key,
-provider body or URL with credentials. No personal-token fallback for the App.
-Python 3.9+, standard library and /usr/bin/openssl only.
-"""
 import argparse
 import base64
 from datetime import datetime, timezone
@@ -35,10 +17,9 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import store  # noqa: E402
+import store
 
 HERE = Path(__file__).resolve().parent
-# OpenWiz's established service App profile (crates/adapters/github/src/app.rs).
 PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write',
            'pull_requests': 'write', 'checks': 'read', 'actions': 'read'}
 WRITES = ('contents', 'issues', 'pull_requests')
@@ -48,7 +29,6 @@ TIMEOUT = 30
 
 
 def run(argv, limit=4 * 1024 * 1024, env=None):
-    """One read. Returns (exit code, parsed JSON or None). Never echoes output."""
     try:
         result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT, env=env)
     except (OSError, subprocess.TimeoutExpired):
@@ -61,13 +41,7 @@ def run(argv, limit=4 * 1024 * 1024, env=None):
         return result.returncode, None
 
 
-# --- CloudRoom and the harness, through the installed openwiz CLI ---------
-
 def check_cloudroom(openwiz, state=None):
-    # #2201: with setup's CloudRoom tool beside it (runtime/cloudroom/), the
-    # result is that tool's install and login code (contracts/
-    # public-cloudroom-setup.v1.md): signed in only on CloudRoom's positive,
-    # current account read. A runtime without the tool keeps the read below.
     tool = HERE.parent / 'cloudroom/cloudroom.py'
     if state is not None and tool.is_file():
         spec = importlib.util.spec_from_file_location('openwiz_cloudroom', tool)
@@ -79,13 +53,8 @@ def check_cloudroom(openwiz, state=None):
     code, value = run([str(openwiz), 'ls', '--json', '--limit', '1'])
     if code != 0 or type(value) is not dict or value.get('schema') != 'openwiz.inventory.v1':
         return 'cloudroom_unreadable'
-    # Review R5: only a complete live read with no gap is evidence; a partial
-    # read (a supporting read failed or timed out) proves nothing.
     if (value.get('coverage') or {}).get('state') != 'complete' or value.get('gaps') != []:
         return 'cloudroom_partial'
-    # Re-check R5: contracts/setup.v1.md: a successful inventory read alone
-    # never verifies. No authorized read proves a current login yet, so a
-    # complete read stays unknown (#1105, orchestrator question 6686776256).
     return 'cloudroom_reachable'
 
 
@@ -104,13 +73,9 @@ def check_harness(openwiz, project):
             for model in harness.get('models', []):
                 if (type(model) is dict and model.get('model') == project['model']
                         and project['effort'] in model.get('efforts', [])):
-                    # Review R5: the catalogue may be a saved copy and proves no
-                    # current harness login, so it never verifies the harness.
                     return 'harness_listed'
     return 'harness_unavailable'
 
-
-# --- The agents' own GitHub identity, through gh --------------------------
 
 def gh(path):
     program = shutil.which('gh')
@@ -120,21 +85,13 @@ def gh(path):
 
 
 def github_com(path):
-    """#633 R1: one gh read bound to github.com, where the browser sign-in
-    happens. gh otherwise follows GH_HOST, or defaults to another server when
-    that server holds its only login: neither may stand in for github.com."""
     return github_com_read(path)[:2]
 
 
-# Final check R3: gh's own line for GitHub's 401 answer, exactly. With a
-# credential only for another server, gh still asks github.com, which answers
-# 401, and gh exits 1 (exit 4 means no credential anywhere).
 UNAUTHENTICATED = re.compile(rb'gh: [^\n]* \(HTTP 401\)\n?')
 
 
 def github_com_read(path):
-    """(exit code, parsed JSON or None, whether gh's whole stderr is GitHub's 401
-    line) for one github.com read; anything else is not an authentication answer."""
     program = shutil.which('gh')
     if program is None:
         return None, None, False
@@ -151,11 +108,8 @@ def github_com_read(path):
 
 
 def account():
-    """(failure code or None, login): the signed-in account read from GitHub
-    now (#633). Only a person's own account is a login; a bot, an unreadable
-    answer or a browser that merely returned is not."""
     code, user, unauthenticated = github_com_read('user')
-    if code is None or code == 4 or unauthenticated:  # no answer, no credential, or GitHub's 401
+    if code is None or code == 4 or unauthenticated:
         return 'identity_signed_out', None
     if code != 0 or type(user) is not dict:
         return 'identity_unreadable', None
@@ -168,8 +122,6 @@ def account():
 
 
 def read_back(repository):
-    """(code, login or None): the account and its push access to REPOSITORY,
-    both read from GitHub now. github_login.py reports the same read."""
     failure, login = account()
     if failure is not None:
         return failure, None
@@ -183,8 +135,6 @@ def read_back(repository):
 
 
 def check_identity(project, identity=None):
-    """When the owner skipped the App for this repository (#633), the signed-in
-    account must also be the login they chose to act; any other is refused."""
     if project is None:
         return 'identity_unselected'
     code, login = read_back(project['repository'])
@@ -195,10 +145,7 @@ def check_identity(project, identity=None):
     return code
 
 
-# --- Project settings: explicit, checked, never invented ------------------
-
 def runtime_pin(runtime):
-    """`<version> <source>` of the installed package's runtime, with its skills."""
     if runtime is None:
         return None
     try:
@@ -215,7 +162,6 @@ def runtime_pin(runtime):
 
 
 def sections(text):
-    """`## Heading` -> its lines, up to the next `## ` heading."""
     found, name = {}, None
     for line in text.split('\n'):
         if line.startswith('## '):
@@ -227,7 +173,6 @@ def sections(text):
 
 
 def table(lines):
-    """The first Markdown table in LINES as rows of {header: cell}; [] if none."""
     rows = [line.strip() for line in lines if line.strip().startswith('|')]
     if len(rows) < 2 or not re.fullmatch(r'\|(\s*:?-{3,}:?\s*\|)+', rows[1]):
         return []
@@ -237,18 +182,12 @@ def table(lines):
 
 
 PLACEHOLDER = re.compile(r'<[A-Za-z][^<>\n]*>')
-# contracts/models.v1.md: the Models table's header, rows and one ids rule (#1807).
 MODELS_HEADER = ['Role', 'Harness', 'Model', 'Effort', '`room-cli thread spawn` flags']
 MODEL_ID = r'[A-Za-z0-9._-]+'
 MODEL_FLAGS = re.compile(r'`--provider %s --model %s(?:/%s)* --reasoning-level %s`' % ((MODEL_ID,) * 4))
 
 
 def models_usable(text, body):
-    """A whole, filled Models table, as contracts/models.v1.md defines it: one
-    `## Models` heading; the section's first table with the contract's header,
-    the Orchestrator, Builder and Reviewer rows each naming a harness, model
-    and effort with their exact flags, then an optional Small builder and Fixer
-    that follow the Builder or name their own choice; and a Source line."""
     if sum(line.startswith('## ') and line[3:].strip() == 'Models' for line in text.split('\n')) != 1:
         return False
     rows = []
@@ -264,7 +203,6 @@ def models_usable(text, body):
             [], ['Small builder'], ['Fixer'], ['Small builder', 'Fixer']):
         return False
     for role, harness, model, effort, flags in rows[2:]:
-        # Review R1: the reserved value is never a choice; only an optional role may follow, with empty cells.
         if harness == 'follows Builder':
             if role not in ('Small builder', 'Fixer') or model or effort or flags:
                 return False
@@ -275,23 +213,15 @@ def models_usable(text, body):
 
 
 def fleet_settings_usable(text):
-    """Review R2: the setup skill's fleet settings, filled in. The builder and a
-    reviewer name a harness, model and effort; at least one test command and one
-    CI check; a merge rule; each with its Source line; no unfilled template
-    placeholder. Empty headings or the bare template are not settings. A
-    `## Models` table (contracts/models.v1.md, #1807) stands for the builder and
-    reviewer tables; when present it must be whole, and older tables beside it
-    are ignored, as that contract's readers ignore them."""
     found = sections(text)
     reviewers = [name for name in found if name.startswith('Reviewer')]
-    # Re-check R2: every builder table present counts, small-ticket builders included.
     builders = [name for name in found if name.startswith('Builder')]
     needed = ['Test commands', 'CI checks', 'Standing merge rules']
     if 'Models' in found:
         if not models_usable(text, found['Models']):
             return False
         needed.insert(0, 'Models')
-        builders = reviewers = []  # Review R2 of #1947: readers ignore the older tables beside a Models table
+        builders = reviewers = []
     elif not reviewers:
         return False
     else:
@@ -312,8 +242,6 @@ def fleet_settings_usable(text):
         return False
     if not any(row.get('Check', '').strip('`') for row in table(found['CI checks'])):
         return False
-    # Re-check R2: a rule is a filled table row, or the template's explicit
-    # owner-waits line. Table headers and separators are scaffolding, not a rule.
     merge = found['Standing merge rules']
     rows = [row for row in table(merge) if all(cell.strip() for cell in row.values())]
     waits = any(line.strip() == 'None yet: every merge waits for the user.' for line in merge)
@@ -321,13 +249,6 @@ def fleet_settings_usable(text):
 
 
 def check_brain(brain, repository):
-    """#635: the saved brain reference, resolved on GitHub. None, or a brain
-    for another repository (kept as it is), is an existing project: nothing is
-    inferred and the check is unchanged. Otherwise the brain
-    repository must read back private and hold its merged settings record
-    naming this placement; a proposal that is not merged yet is still missing."""
-    # R3: a brain retained for another repository is not this project's: the
-    # selected repository is an existing project and its check is unchanged.
     if brain is None or brain['code_repository'].lower() != repository.lower():
         return 'project_verified'
     home = brain['brain_repository']
@@ -385,8 +306,6 @@ def check_project(openwiz, project, runtime, brain=None):
     return check_brain(brain, project['repository'])
 
 
-# --- OpenWiz's App, through GitHub's App API ------------------------------
-
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *_args, **_kwargs):
         return None
@@ -403,12 +322,10 @@ def api_base(value):
 
 
 def request(base, method, path, jwt, body=None):
-    """(status, JSON or None). Never follows redirects or echoes a body."""
     return linked_request(base, method, path, jwt, body)[:2]
 
 
 def linked_request(base, method, path, jwt, body=None):
-    """(status, JSON or None, Link header or None), as request() reads it."""
     headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'OpenWiz-setup',
                'X-GitHub-Api-Version': '2022-11-28', 'Authorization': 'Bearer ' + jwt}
     data = None
@@ -435,9 +352,6 @@ PAGES = 100
 
 
 def read_installations(base, jwt):
-    """(status, every page's installations or None). C-G2: follows GitHub's
-    rel="next" pages, on the same origin and path only and at most PAGES of
-    them, so an installation past the first page is never read as revoked."""
     found, path = [], '/app/installations'
     origin = urllib.parse.urlsplit(base)[:2]
     for _ in range(PAGES):
@@ -447,9 +361,6 @@ def read_installations(base, jwt):
         found.extend(page)
         following = NEXT.search(link or '')
         if following is None:
-            # #2955: any other `next` outside a URI is an unsupported
-            # pagination form (RFC 8288's rel=next, rel="next last", ...):
-            # unreadable, never the end of the list.
             if re.search(r'\bnext\b', re.sub(r'<[^<>]*>', '', link or ''), re.IGNORECASE):
                 return None, None
             return status, found
@@ -471,7 +382,6 @@ def private_file(directory, name, limit):
 
 
 def app_directory(state):
-    """service/app, as tools/github-app/setup.py saves it, or None."""
     fd = None
     try:
         fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -493,7 +403,6 @@ def b64(data):
 
 
 def sign_jwt(directory, app_id):
-    """RS256 JWT; OpenSSL reads the key through an inherited descriptor."""
     fd = private_file(directory, 'private-key.pem', 16384)
     try:
         now = int(time.time())
@@ -509,7 +418,6 @@ def sign_jwt(directory, app_id):
 
 
 def check_app(state_path, project, recorded, base):
-    """(code, captured App ids or None). Never reads GH_TOKEN or gh's login."""
     try:
         directory = app_directory(state_path)
     except (store.Refused, OSError):
@@ -530,7 +438,6 @@ def check_app(state_path, project, recorded, base):
             return 'app_not_installed', {'app_id': app_id, 'installation_id': None}
         jwt = sign_jwt(directory, app_id)
     except (store.Refused, OSError, ValueError, subprocess.SubprocessError):
-        # Security R2: an unsafe, missing or unusable key or ID, or failed signing.
         return 'app_files_unusable', None
     finally:
         os.close(directory)
@@ -544,8 +451,6 @@ def check_app(state_path, project, recorded, base):
             and isinstance((i.get('account') or {}).get('login'), str)
             and i['account']['login'].lower() == owner.lower()]
     if len(mine) == 1:
-        # C-G1/J48 (#606 review R3): the user's own App is verified only on its owner's
-        # account; another account's App installed by the repository owner is not.
         status, found = request(base, 'GET', '/app', jwt)
         if status == 401:
             return 'app_key_rejected', None
@@ -568,7 +473,6 @@ def check_app(state_path, project, recorded, base):
         if type(granted) is dict and any(granted.get(k) != 'write' for k in WRITES):
             return 'app_read_only', ids
         return 'app_permissions_mismatch', ids
-    # Proof of access: a token for exactly the selected repository and profile.
     status, token = request(base, 'POST', f"/app/installations/{installation['id']}/access_tokens", jwt,
                             {'repositories': [name], 'permissions': PROFILE})
     if status == 404:
@@ -587,7 +491,7 @@ def check_app(state_path, project, recorded, base):
         return 'app_wrong_repository', ids
     if not usable_token(token, time.time()):
         return 'app_token_unusable', ids
-    del token  # held in memory only for this check, never written or printed
+    del token
     return 'app_verified', ids
 
 
@@ -595,8 +499,6 @@ TOKEN = re.compile(r'[A-Za-z0-9._~+/-]{1,16384}=*')
 
 
 def usable_token(answer, now):
-    """Security R1: a bounded token and a valid expiry in the future, at most an
-    hour (plus five minutes of clock drift) away, as the existing minters check."""
     token, expiry = answer.get('token'), answer.get('expires_at')
     if not isinstance(token, str) or TOKEN.fullmatch(token) is None or len(token) > 16384:
         return False
@@ -609,12 +511,10 @@ def usable_token(answer, now):
     return 0 < at - now <= 3600 + 300
 
 
-# --- Commands -------------------------------------------------------------
-
 def default_openwiz(explicit):
     if explicit is not None:
         return Path(explicit) if Path(explicit).is_file() else None
-    packaged = HERE.parent.parent / 'openwiz'  # <build>/runtime/setup/setup.py
+    packaged = HERE.parent.parent / 'openwiz'
     return packaged if packaged.is_file() else None
 
 
@@ -633,8 +533,6 @@ def check(args):
     openwiz = default_openwiz(args.openwiz)
 
     def guarded(check_one, failed):
-        # Security R2: a check that fails is still a result. Its fixed code is
-        # saved, so it replaces this component's earlier positive evidence.
         try:
             return check_one()
         except Exception:
@@ -645,8 +543,6 @@ def check(args):
                                           'identity_unreadable'),
                'project': guarded(lambda: check_project(openwiz, project, default_runtime(args.runtime),
                                                         before.get('brain')), 'project_unreadable')}
-    # Local App files (key, ID, their directory or signing) that cannot be used
-    # safely are a refusal of this component, never an abort.
     results['github_app'], ids = guarded(lambda: check_app(setup.state, project, before['app'], base),
                                          ('app_unreadable', None))
 
@@ -656,7 +552,6 @@ def check(args):
         value['checks']['committed'] = generation
         bound = revision
         if value['revision'] == revision and ids is not None and value['app'] != ids:
-            # A captured or changed installation is a new selection.
             value['app'] = ids
             value['revision'] = bound = revision + 1
         now = int(time.time() * 1000)
@@ -680,7 +575,6 @@ def prepare(args):
                (f"Pin packaged runtime {pin.split()[0]} (source {pin.split()[1][:12]})." if pin
                 else "No packaged runtime found; project stays unverified."),
                "Save these settings in this host's owner-only OpenWiz state. Nothing is sent or created."]
-    # Review R1: an applied preparation stands only while it is the saved selection.
     def current(value):
         return value['project'] == project
     if not args.yes:
@@ -692,7 +586,7 @@ def prepare(args):
         def change(value):
             operation = setup.authorized(value, args.operation, 'prepare_project', project, current)
             if operation['phase'] == 'applied':
-                return dict(operation)  # A retry applies nothing twice.
+                return dict(operation)
             store.require(operation['phase'] == 'proposed', 'that operation is not awaiting confirmation')
             if value['project'] != project:
                 value['project'] = project

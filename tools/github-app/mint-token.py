@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""Mint one read-only installation token on the PC, downscoped to the selected repositories.
-
---repository is required (C8, #2315): the token covers exactly those selected
-repositories of one owner. Stdout is two lines: the token, then its expiry in
-Unix seconds. Agent reads use this through the carried WizSkills reader only.
-
-The installation is read back first (C-G1/J48, #606): a user's own App mints
-only on its owner's account; OPENWIZ_GITHUB_APP_MODE=factory is the explicit
-setting for the factory's App and its named installations only.
-"""
 from datetime import datetime, timezone
 import os
 import re
@@ -40,7 +30,6 @@ def main():
         config = app.parse_json(app.read_file(directory, "app.json", 1024))
         app.require(set(config) == {"app_id"})
         jwt = app.jwt(directory, config["app_id"])
-        # The App's owner and the installation's account, before any token exists.
         status, found = app.get(args.api_base, "/app", jwt)
         app.require(status == 200 and found.get("id") == config["app_id"])
         status, held = app.get(args.api_base, f"/app/installations/{installation}", jwt)
@@ -59,9 +48,7 @@ def main():
                 re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", token) is not None)
     expiry = datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00"))
     remaining = (expiry - datetime.now(timezone.utc)).total_seconds()
-    # GitHub stamps expiry on its clock; tolerate five minutes of PC drift.
     app.require(0 < remaining <= 3600 + 300)
-    # Exactly the requested selection, nothing wider or foreign.
     listed = result.get("repositories")
     app.require(result.get("repository_selection") == "selected" and isinstance(listed, list))
     app.require(all(isinstance(r, dict) and isinstance(r.get("full_name"), str) for r in listed))
