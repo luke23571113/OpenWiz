@@ -52,10 +52,14 @@ impl Discovery {
     }
 
     pub fn system() -> Self {
-        if cfg!(target_os = "macos") {
+        let discovery = if cfg!(target_os = "macos") {
             Self::fixed(PathBuf::from(MAC_BUNDLE_CLI), real_metadata)
         } else {
             Self::pc(PathBuf::from(PC_BUNDLE_ROOT), real_metadata)
+        };
+        match std::env::var_os("PATH") {
+            Some(path) => discovery.with_search_path(path),
+            None => discovery,
         }
     }
 
@@ -64,7 +68,27 @@ impl Discovery {
     }
 
     pub fn locate(&self) -> Result<Located, LocateError> {
-        retry_ambiguous(Duration::from_millis(100), || self.locate_once())
+        match retry_ambiguous(Duration::from_millis(100), || self.locate_once()) {
+            Err(error @ (LocateError::NotRunning | LocateError::NoRunningApp)) => self
+                .on_search_path()
+                .map(|launcher| Located {
+                    launcher,
+                    basis: Basis::Path,
+                })
+                .ok_or(error),
+            located => located,
+        }
+    }
+
+    fn on_search_path(&self) -> Option<PathBuf> {
+        std::env::split_paths(self.search_path.as_ref()?)
+            .filter(|dir| dir.is_absolute())
+            .map(|dir| dir.join(crate::PROGRAM))
+            .find(|candidate| {
+                fs::metadata(candidate).is_ok_and(|file| {
+                    file.is_file() && file.mode() & 0o111 != 0 && file.mode() & 0o022 == 0
+                })
+            })
     }
 
     fn locate_once(&self) -> Result<Located, LocateError> {
@@ -672,20 +696,22 @@ fn report(basis: &Basis) {
 impl From<LocateError> for openwiz_core::source::SourceError {
     fn from(error: LocateError) -> Self {
         let reason = match error {
-            LocateError::NotRunning => "no bundled launcher",
+            LocateError::NotRunning => "no bundled launcher and no room-cli on PATH",
             LocateError::NoRunningApp => "no running app identified",
             LocateError::Ambiguous => "ambiguous app bundles",
             LocateError::UnexpectedFile => "unexpected bundle file",
             LocateError::Unreadable => "unreadable app bundle",
         };
         let detail = format!("CloudRoom not running: room-cli could not be started ({reason})");
-        let detail = if error == LocateError::Ambiguous {
-            format!(
+        let detail = match error {
+            LocateError::Ambiguous => format!(
                 "{detail}. CloudRoom is mid-update (two running app mounts): \
                  restart CloudRoom to finish the update, then try again."
-            )
-        } else {
-            detail
+            ),
+            LocateError::NotRunning => {
+                format!("{detail}. Open the CloudRoom app once and sign in.")
+            }
+            _ => detail,
         };
         Self::Unavailable { detail }
     }
