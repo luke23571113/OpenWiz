@@ -250,7 +250,7 @@ class Driver(unittest.TestCase):
                 receipt = json.dumps({'id': 'thr_' + TOKEN, 'projectId': PROJECT})
                 code, err = self.call('start', START, FAKE_ROOM_HOST=host, FAKE_ROOM_RECEIPT=receipt)
                 self.assertEqual(code, 1, err)
-                self.assertIn('unknown', err['error'])
+                self.assertIn('names no thread', err['error'])
                 self.assertNotIn(TOKEN, json.dumps(err))
                 self.assertEqual(self.files_holding(TOKEN), [])
                 run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(err)).group()}

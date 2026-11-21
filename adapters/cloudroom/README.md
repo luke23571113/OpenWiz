@@ -16,6 +16,8 @@ Runs (run id, thread id, request) are kept privately in `$OPENWIZ_CLOUDROOM_STAT
 
 **Logins.** The driver never reads, adds or passes a login: `room-cli` runs with the caller's environment unchanged, and inputs carry no credential (D1, N1 to N3).
 
+**No credential in, no diagnostic out.** `start` refuses a field whose value has a credential's shape, by the driver kit's own check (`kernel/driver-kit/kit.py`), before it saves or starts anything; its error names the field, never the value, and without the kit it refuses every start. A spawn receipt whose thread id has a credential's shape is never saved or passed on: the run stays `starting`, and `stop` finds its thread by title. A failed `room-cli` command answers fixed words: a sign-in failure as one, anything else as an error the driver does not repeat, and silence as no answer. `room-cli`'s own text, from a structured error or its stderr, never reaches the driver's answer.
+
 ## Waking on GitHub's events
 
 GitHub's events reach a fleet through launch-fleet's route (#1329's FF2): the repository's webhook runs the project's wake loop, its tick runs `fleet.sh wake` on the numbers the events name, and for a spec with a fleet loop that runs the loop. The fleet wake then delivers to the ticket's builder with `room-cli thread tell <id> --mode queue --message-file <file>`, counting it only on `tell`'s own acceptance. `wake` is exactly that delivery, so a fleet that keeps a run id calls `driver wake` there instead, with the same rules.

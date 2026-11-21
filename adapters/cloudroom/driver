@@ -12,7 +12,9 @@ starting. A wake or a stop holds the run's lock throughout. No answer after a sp
 It never reads, adds or passes a login: room-cli runs with the caller's environment, unchanged.
 Linux or macOS; standard library only.
 """
-import fcntl, json, os, re, secrets, subprocess, sys, tempfile
+import fcntl, importlib.machinery, importlib.util, json, os, re, secrets, subprocess, sys, tempfile
+
+sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get('OPENWIZ_CLOUDROOM_STATE') or os.path.expanduser('~/.local/state/openwiz-cloudroom')
@@ -31,6 +33,8 @@ LOOKUP = ("Read 'skills/{s}/SKILL.md' if present, otherwise find '*/skills/{s}/S
           "HOME/.claude/plugins/cache); for another harness use its installation metadata. Verify "
           ".claude-plugin/plugin.json manifest name openwiz and entry ./skills/{s}; report missing, unreadable or "
           "ambiguous matches, otherwise read the unique matching file and follow it.")
+KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
+SIGNED_OUT = re.compile(r'\b(?:not signed in|signed out|sign in|log ?in|auth\w*|unauthori[sz]ed|401|expired)\b', re.I)
 
 
 class Refused(Exception):
@@ -62,8 +66,45 @@ def read(fields):
     return req
 
 
+def credential_check():
+    try:
+        spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
+            'openwiz_driver_kit', KIT))
+        kit = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(kit)
+        return kit.holds_credential
+    except Exception:
+        raise Refused("the driver kit's credential check is missing, so no start field can be checked; nothing "
+                      'was saved or started', 'run the driver from an OpenWiz checkout or release that carries '
+                      'kernel/driver-kit/kit.py')
+
+
+def no_credentials(req):
+    # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
+    holds_credential = credential_check()
+    for key in START:
+        if isinstance(req[key], str) and holds_credential(req[key]):
+            raise Refused('%s looks like a credential, so nothing was saved or started' % key,
+                          'send the %s itself in %s; never a login, key or token' % (key, key))
+    return req
+
+
+def room_said(out, err):
+    # PRIVACY: room-cli's own words (its stderr, a structured error) are only classified, never repeated: a
+    # diagnostic may hold a credential.
+    try:
+        told = json.loads(out)
+        told = told['error'] if isinstance(told, dict) and isinstance(told.get('error'), str) else ''
+    except ValueError:
+        told = ''
+    told += ' ' + err
+    if SIGNED_OUT.search(told):
+        return 'room-cli is not signed in'
+    return 'room-cli gave an error the driver does not repeat' if told.strip() else 'room-cli gave no answer'
+
+
 def room(*args):
-    """Run the user's own `room-cli` with the caller's environment unchanged: (exit code, stdout, last stderr line)."""
+    """Run the user's own `room-cli` with the caller's environment unchanged: (exit code, stdout, fixed words)."""
     try:
         p = subprocess.run(['room-cli', *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=100)
     except FileNotFoundError:
@@ -72,9 +113,7 @@ def room(*args):
     except subprocess.TimeoutExpired:
         raise Unknown('room-cli thread %s did not answer within 100 seconds; its outcome is unknown' % args[1],
                       'read `room-cli thread list` before you do anything again, so nothing happens twice')
-    said = ([x.strip() for x in p.stderr.splitlines() if x.strip()] or ['no reason given'])[-1]
-    said = re.sub(r'thr_[A-Za-z0-9_-]*', '<thread>', said)[:200]  # a run id never shows its thread
-    return p.returncode, p.stdout, said
+    return p.returncode, p.stdout, room_said(p.stdout, p.stderr) if p.returncode else ''
 
 
 def brief(req):
@@ -98,7 +137,7 @@ def spawn(req, title):
     except ValueError:
         receipt = None
     if not (isinstance(receipt, dict) and isinstance(receipt.get('id'), str) and re.fullmatch(THREAD, receipt['id'])
-            and receipt.get('projectId', project) == project):
+            and receipt.get('projectId', project) == project and not credential_check()(receipt['id'])):
         raise Unknown("Cloudroom's answer to the start names no thread of this project",
                       'read `room-cli thread list` before you start again, so no builder runs twice')
     return receipt['id']
@@ -210,7 +249,8 @@ def threads(state):
     if code != 0 or not isinstance(rows, list) or not all(
             isinstance(t, dict) and isinstance(t.get('id'), str) and re.fullmatch(THREAD, t['id'])
             and isinstance(t.get('title'), str) for t in rows):
-        raise Unknown('Cloudroom did not list its threads, so whether this run still runs is unknown: ' + said, by_hand)
+        raise Unknown('Cloudroom did not list its threads, so whether this run still runs is unknown: '
+                      + (said or 'its list could not be read'), by_hand)
     titled = [t for t in rows if t['title'] == state['title']]
     if not titled and not complete:
         raise Unknown('this room-cli lists only its own thread\'s children, and this is not the thread that '
@@ -290,7 +330,7 @@ def answer(cmd):
         with open(os.path.join(HERE, 'schema.json')) as f:
             return json.load(f)
     if cmd == 'start':
-        return start(read(START), 'run-' + secrets.token_hex(6))
+        return start(no_credentials(read(START)), 'run-' + secrets.token_hex(6))
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
         lock(run, cmd)
