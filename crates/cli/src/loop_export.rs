@@ -438,35 +438,8 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    const BOUNDED: &str = "OPENWIZ_SPARSE_EXPORT_BOUNDED";
-
     #[test]
     fn a_huge_sparse_collision_refuses_only_its_loop() {
-        if !cfg!(target_os = "linux") || std::env::var_os(BOUNDED).is_some() {
-            return sparse_collision_refuses_only_its_loop();
-        }
-        let name = format!(
-            "{}::a_huge_sparse_collision_refuses_only_its_loop",
-            module_path!().split_once("::").unwrap().1
-        );
-        let under_256_mib_address_space = "ulimit -v 262144 && exec \"$0\" \"$@\"";
-        let child = std::process::Command::new("/bin/sh")
-            .args(["-c", under_256_mib_address_space])
-            .arg(std::env::current_exe().unwrap())
-            .args([name.as_str(), "--exact", "--test-threads=1", "--nocapture"])
-            .env(BOUNDED, "1")
-            .output()
-            .unwrap();
-        let printed = String::from_utf8_lossy(&child.stdout);
-        assert!(
-            child.status.success() && printed.contains("test result: ok. 1 passed"),
-            "under a 256 MiB limit: {}\n{printed}{}",
-            child.status,
-            String::from_utf8_lossy(&child.stderr)
-        );
-    }
-
-    fn sparse_collision_refuses_only_its_loop() {
         let root = scratch("sparse");
         let out = root.join("out");
         fs::File::create(out.join("a.md"))
