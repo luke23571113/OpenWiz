@@ -13,8 +13,8 @@ mod b3_writes;
 mod b4_starts;
 
 mod b2_planner;
-mod md3_models;
 mod b5_tick;
+mod md3_models;
 
 mod c10_inventory;
 mod c10_questions;

@@ -79,10 +79,24 @@
           "$ref": "#/$defs/agent"
         },
         "reviewer_claude": {
-          "$ref": "#/$defs/agent"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/agent"
+            }
+          ]
         },
         "reviewer_gpt": {
-          "$ref": "#/$defs/agent"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/agent"
+            }
+          ]
         }
       }
     },

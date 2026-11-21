@@ -22,7 +22,7 @@ const TAIL: &str = "
 | A ticket in an approved plan graph | Synthetic | The loop, as soon as the reviewer's APPROVE names that exact commit and all checks pass |
 ";
 
-fn flags() -> SpawnFlags {
+pub(crate) fn flags() -> SpawnFlags {
     let (provider, model, effort) = ("claude-code", "syn-md3-flags", "medium");
     let request = format!("ow1-{}", "0".repeat(40));
     let args = SpawnArgs::new("syn-md3", provider, model, effort, &request, "syn").unwrap();
@@ -38,12 +38,12 @@ fn flags() -> SpawnFlags {
     }
 }
 
-fn fixture(case: &str) -> String {
+pub(crate) fn fixture(case: &str) -> String {
     fs::read_to_string(Path::new(MODELS).join(case).join("fleet.md")).unwrap() + TAIL
 }
 
 fn read(case: &str) -> Result<Rules, &'static str> {
-    Rules::read(&fixture(case), &flags())
+    Rules::parse(&fixture(case), &flags())
 }
 
 fn agent(choice: &Value) -> Option<AgentRule> {
@@ -68,8 +68,8 @@ fn picks(rules: &Rules) -> Picks {
     [
         Some(rules.builder().clone()),
         Some(rules.small_builder().clone()),
-        rules.review(BuilderFamily::Claude).cloned(),
-        rules.review(BuilderFamily::Gpt).cloned(),
+        rules.reviewer_for(BuilderFamily::Claude).cloned(),
+        rules.reviewer_for(BuilderFamily::Gpt).cloned(),
         rules.fixer(BuilderFamily::Claude).cloned(),
         rules.fixer(BuilderFamily::Gpt).cloned(),
     ]
@@ -122,7 +122,7 @@ fn md3_every_tick_readable_fixture_agrees_with_its_show() {
 #[test]
 fn md3_a_same_family_reviewer_falls_back_to_the_builder_or_waits() {
     let review =
-        |text: &str, family| Rules::read(text, &flags()).map(|r| r.review(family).cloned());
+        |text: &str, family| Rules::parse(text, &flags()).map(|r| r.reviewer_for(family).cloned());
     let opus = j255("claude-code", "claude-opus-5-5");
     let sol = j255("codex", "gpt-6.2-sol");
     let mut high = opus.clone();
@@ -155,14 +155,14 @@ fn md3_a_broken_models_table_is_refused_never_read_past() {
         "## Models\n\n| Role | Harness |\n| --- | --- |\n\n## Builder\n",
         1,
     );
-    assert!(Rules::read(&five, &flags()).is_ok());
+    assert!(Rules::parse(&five, &flags()).is_ok());
     assert_eq!(
-        Rules::read(&broken, &flags()).err(),
+        Rules::parse(&broken, &flags()).err(),
         Some("models table refused")
     );
     let twice = format!("{}\n## Models\n", fixture("one-table"));
     assert_eq!(
-        Rules::read(&twice, &flags()).err(),
+        Rules::parse(&twice, &flags()).err(),
         Some("models table refused")
     );
 }
@@ -170,7 +170,7 @@ fn md3_a_broken_models_table_is_refused_never_read_past() {
 #[test]
 fn md3_an_id_outside_the_tick_setting_form_is_refused() {
     let one = fixture("one-table");
-    assert!(Rules::read(&one, &flags()).is_ok());
+    assert!(Rules::parse(&one, &flags()).is_ok());
     for (from, to) in [
         ("--model gpt-6.2-sol", "--model vendor/demo"),
         ("--model gpt-6.2-sol", "--model Sol-6.2"),
@@ -178,7 +178,7 @@ fn md3_an_id_outside_the_tick_setting_form_is_refused() {
         let text = one.replacen(from, to, 1);
         assert_ne!(text, one);
         assert_eq!(
-            Rules::read(&text, &flags()).err(),
+            Rules::parse(&text, &flags()).err(),
             Some("invalid agent setting"),
             "{to}"
         );
