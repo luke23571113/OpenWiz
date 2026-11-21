@@ -12,7 +12,7 @@ Otherwise it leaves a detached child in its own session that `stop` must also en
 child gets only PATH, so it carries no mark it inherited), and appends `<turn pid> <child pid> first|woken
 <working folder> <mode>` to the file named by FAKE_TURNS. Its turn lasts until the driver has saved the run
 as started (OPENWIZ_LOCAL_STATE/<OPENWIZ_RUN>.json), and while the file named by FAKE_HOLD exists; then it
-hands the note to a worker and ends. Once the turn has ended, the worker posts (or, when woken, edits) one
+hands the note to a worker (in its own session, unless FAKE_SAME_GROUP is set) and ends. Once the turn has ended, the worker posts (or, when woken, edits) one
 builder status note in the tracker named by KIT_TRACKER, as the kit's fake harness does.
 """
 import json, os, re, subprocess, sys, time
@@ -54,7 +54,7 @@ if not worker:
         time.sleep(0.05)
     while os.environ.get('FAKE_HOLD') and os.path.exists(os.environ['FAKE_HOLD']):
         time.sleep(0.05)
-    subprocess.Popen([sys.executable, sys.argv[0], '--worker'] + args, start_new_session=True,
+    subprocess.Popen([sys.executable, sys.argv[0], '--worker'] + args, start_new_session=not os.environ.get('FAKE_SAME_GROUP'),
                      env=dict(os.environ, FAKE_TURN=str(os.getpid())), stdin=subprocess.DEVNULL)
     sys.exit(0)
 

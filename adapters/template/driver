@@ -53,9 +53,6 @@ LINUX = os.path.isdir('/proc/self') and hasattr(os, 'pidfd_open')
 PR_SET_CHILD_SUBREAPER = 36
 
 
-TURN = re.compile(r'\s--turn\s')
-
-
 def ps(*args):
     try:
         p = subprocess.Popen(['ps'] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -68,17 +65,21 @@ def ps(*args):
     return out.splitlines(), p.pid
 
 
-def members(roots, run):
-    rows, me = ps('-A', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'command=', '-E')
-    mark = re.compile(r'(?:^|\s)OPENWIZ_RUN=%s(?:\s|$)' % re.escape(run))
-    found, children = set(), {}
+MACOS_SECONDS_BETWEEN_LOOKS = 0.2
+
+
+# PRIVACY: reads only ps's process table (pid, parent, group, state, start time), never any environment.
+def members(roots, recorded):
+    rows, me = ps('-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'lstart=')
+    started, children, found = {}, {}, set()
     for row in rows:
         f = row.split(None, 4)
-        if len(f) < 4 or f[3].startswith('Z'):
+        if len(f) < 5 or f[3].startswith('Z'):
             continue
         pid, ppid, group = int(f[0]), int(f[1]), int(f[2])
+        started[pid] = f[4].strip()
         children.setdefault(ppid, []).append(pid)
-        if group in roots or len(f) > 4 and mark.search(f[4]) and not TURN.search(f[4]):
+        if group in roots or recorded.get(pid) == started[pid]:
             found.add(pid)
     todo = list(roots) + list(found)
     while todo:
@@ -86,7 +87,54 @@ def members(roots, run):
             if c not in found:
                 found.add(c)
                 todo.append(c)
-    return found - set(roots) - {os.getpid(), me}
+    return {p: started[p] for p in found - set(roots) - {os.getpid(), me}}
+
+
+def supervisor_record(run, supervisor):
+    return os.path.join(STATE, '%s.%d.sup' % (run, supervisor))
+
+
+def record_kept(run, kept):
+    """Save, for `end` on a host with no subreaper, the processes this supervisor keeps (pid: start time)."""
+    record = supervisor_record(run, os.getpid())
+    try:
+        with open(record + '.new', 'w') as f:
+            json.dump({'supervisor_since': since(os.getpid()), 'kept': {str(p): t for p, t in kept.items()}}, f)
+        os.replace(record + '.new', record)
+    except OSError:
+        pass
+
+
+def recorded_by(run, supervisors):
+    """The processes these live supervisors (pid, start time) recorded as their turns' (pid: start time)."""
+    recorded = {}
+    for pid, started in supervisors:
+        try:
+            with open(supervisor_record(run, pid)) as f:
+                record = json.load(f)
+            if record['supervisor_since'] == started:
+                recorded.update({int(p): t for p, t in record['kept'].items() if isinstance(t, str)})
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return recorded
+
+
+def look_after_the_turn_on_macos(run):
+    """Keep the turn's processes from ps's process table alone, recording each one it finds, until none is left."""
+    kept = {}
+    while True:
+        children_left = any_child_running_after_reaping()
+        now = members({os.getpid()}, kept)
+        if now != kept:
+            kept = now
+            record_kept(run, kept)
+        if not children_left and not kept:
+            try:
+                os.remove(supervisor_record(run, os.getpid()))
+            except OSError:
+                pass
+            return
+        time.sleep(MACOS_SECONDS_BETWEEN_LOOKS)
 
 
 def since(pid):
@@ -137,13 +185,23 @@ def supervise(cmd):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+    if not LINUX:
+        return look_after_the_turn_on_macos(os.environ['OPENWIZ_RUN'])
     while True:
         try:
             os.wait()
         except ChildProcessError:
-            if LINUX or not members({os.getpid()}, os.environ['OPENWIZ_RUN']):
-                return
-            time.sleep(0.2)
+            return
+
+
+def any_child_running_after_reaping():
+    """Whether any child is still running, once every exited one is reaped."""
+    while True:
+        try:
+            if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                return True
+        except ChildProcessError:
+            return False
 
 
 def launch(req, run, woken):
@@ -184,7 +242,7 @@ def end(turns, run):
             if not kept:
                 return
             if not LINUX:
-                for p in members({s for s, _ in kept}, run) - sent:
+                for p in set(members({s for s, _ in kept}, recorded_by(run, kept))) - sent:
                     try:
                         os.kill(p, sig)
                         sent.add(p)
