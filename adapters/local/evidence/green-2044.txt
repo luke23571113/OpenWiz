@@ -1,4 +1,4 @@
-# Green run (#2044): python3 -I adapters/local/test_driver.py, the whole suite, at 48187ac7.
+# Green run (#2044): python3 -I adapters/local/test_driver.py, the whole suite, at e004adc3.
 test_a_first_turn_that_ends_at_once_fails_start_with_its_reason (__main__.Local.test_a_first_turn_that_ends_at_once_fails_start_with_its_reason) ... ok
 test_each_run_works_in_its_own_clone_of_its_repository (__main__.Local.test_each_run_works_in_its_own_clone_of_its_repository) ... ok
 test_kit_passes_all_five_with_each_harness (__main__.Local.test_kit_passes_all_five_with_each_harness) ... ok
@@ -15,6 +15,6 @@ test_wake_while_a_turn_runs_starts_no_second_turn (__main__.Local.test_wake_whil
 test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild (__main__.Local.test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild) ... ok
 
 ----------------------------------------------------------------------
-Ran 14 tests in 41.070s
+Ran 14 tests in 41.941s
 
 OK

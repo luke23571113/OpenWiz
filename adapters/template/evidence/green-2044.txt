@@ -1,4 +1,4 @@
-# Green run (#2044): python3 -I adapters/template/test_driver.py, the whole suite, at 48187ac7.
+# Green run (#2044): python3 -I adapters/template/test_driver.py, the whole suite, at e004adc3.
 test_save_failure_after_spawn_reports_unknown (__main__.Template.test_save_failure_after_spawn_reports_unknown) ... ok
 test_simultaneous_wakes_start_one_turn (__main__.Template.test_simultaneous_wakes_start_one_turn) ... /usr/lib/python3.11/unittest/case.py:579: ResourceWarning: unclosed file <_io.BufferedReader name=5>
   if method() is not None:
@@ -17,6 +17,6 @@ test_wake_while_a_turn_runs_starts_no_second_turn (__main__.Template.test_wake_w
 test_without_proc_as_on_macos_stop_ends_each_grandchild (__main__.Template.test_without_proc_as_on_macos_stop_ends_each_grandchild) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 10.188s
+Ran 10 tests in 10.661s
 
 OK
