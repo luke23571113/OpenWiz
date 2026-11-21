@@ -18,4 +18,5 @@ Exit 0 when all hold, 1 otherwise. It reads only and installs nothing. The packa
 - `red.txt`: the run at `main` before the fix (exit 1).
 - `red-intel-mac.txt`: the run after the Intel Mac checks were added, before those lines were fixed (exit 1).
 - `red-whole-root.txt`: the run after the whole-folder check was added, before the removal and repair steps were fixed (exit 1).
+- `removal-run.txt`: the guide's repair and removal steps run on the real 0.1.0 package, with a file of the user's already in `<root>` and a skill of the user's in `~/.claude/skills`: both survive, settings survive the repair, and a separate `--state-root` holds the builds.
 - `green.txt`: the run on this branch's docs (exit 0).

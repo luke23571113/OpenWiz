@@ -18,7 +18,7 @@ Using Grok Bot? See [Grok Bot + OpenWiz](grok-bot.md).
 
 ## What happens, in order
 
-The agent runs each command itself and reads its JSON. `<root>` is the install folder, by default `~/.local/lib/openwiz`; `<target>` is `aarch64-apple-darwin`, `x86_64-apple-darwin` or `x86_64-unknown-linux-gnu`.
+The agent runs each command itself and reads its JSON. `<root>` is the install folder, by default `~/.local/lib/openwiz`: use a new or empty folder that holds nothing else, because the installer also accepts a folder that already has other files in it; `<target>` is `aarch64-apple-darwin`, `x86_64-apple-darwin` or `x86_64-unknown-linux-gnu`.
 
 1. **Preflight.** It clones this repository into a private temporary folder as `$openwiz` and checks this computer: Python, a supported system, free disk space, and whether `room-cli`, `gh` and `git` are installed. It reads only; anything missing comes with its next step.
 
@@ -76,14 +76,16 @@ The agent runs each command itself and reads its JSON. `<root>` is the install f
 
 Ask the agent to continue: every step checks what is already done before doing anything. A repeated install reuses the verified build. A refused install or update leaves the last good build in use. Setup, sign-in, App and brain steps remember their operation, so an interrupted step is finished or replaced, never done twice; an unclear result is checked before anything is retried.
 
-`install status --root <root>` checks the installed build against its manifest. If it reports `installed asset mismatch`, a file in the build was changed, and installing the same release again refuses the same way: remove the install as below, then install again. If a connection shows a code that is not ready, follow its step above, then run `setup.py check` again.
+`install status --root <root>` checks the installed build against its manifest. If it reports `installed asset mismatch`, a file in the build was changed, and installing the same release again refuses the same way. To repair it and keep your settings, delete only the `<root>/current` link and the build folder it points to (`<build>`, inside `<state>/service/builds/`), then run step 2's `install install` again. If a connection shows a code that is not ready, follow its step above, then run `setup.py check` again.
 
 ## Remove it
 
-Ask the agent to remove OpenWiz. There is no remove command: it deletes the install folder, `<root>`.
+Ask the agent to remove OpenWiz. There is no remove command, and the agent never removes the whole of `<root>`: the installer accepts a folder that already holds other files, so it may hold yours.
 
-- **That deletes your OpenWiz settings too.** By default they are in `<root>/state`, inside the install folder. Keep them only if you installed with a separate `--state-root`.
-- **The skill copies stay.** Delete OpenWiz's skills from each agent's folder listed in step 3 yourself, if you want them gone.
+- **Look first.** List what is in `<root>` (`ls -A <root>`). A fresh install puts exactly these there: `current` (a link to the installed build), `channel.json`, `install.lock`, `skills/` (after step 3) and, unless you gave a separate `--state-root`, `state/`. Delete only those. Keep anything else, and any of those names that was there before you installed: you or another program put it there.
+- **`state/` holds your OpenWiz settings and the installed builds.** The builds are in `state/service/`; the settings are everything else in it (such as `state/setup/` and `state/cloudroom/`). To keep your settings, copy them somewhere first, or delete only `state/service/`.
+- **A separate `--state-root`** is outside `<root>`, so removing `<root>`'s entries leaves it, builds included. Delete its `service/` folder to remove the builds, and the rest only if you want your settings gone.
+- **The skill copies stay.** To remove them, delete only OpenWiz's 18 skill folders from each agent's folder listed in step 3: `ask-wiz`, `build-ticket`, `diagnose`, `grill`, `handoff`, `hill-climb`, `huntr`, `image`, `install`, `launch-fleet`, `research`, `review-ticket`, `setup`, `to-spec`, `to-tickets`, `triage`, `wayfind` and `where-are-we`. Other skills there are yours.
 - Your repositories, branches, pull requests and CloudRoom threads are your work and are never deleted.
 
 **Removing OpenWiz from this computer does not revoke its access.** To revoke it:
