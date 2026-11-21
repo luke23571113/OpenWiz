@@ -552,6 +552,36 @@ class Review(Helper):
                 self.assertEqual(ran.stderr.count(WITHHELD), notes, ran.stderr)
                 self.assert_never_exposed(ran)
 
+    def test_r11_a_legacy_app_key_is_refused_by_name(self):
+        self.answers(answer())
+        sentinel = "synthetic-legacy-key-sentinel"
+        started = self.start(OPENWIZ_GITHUB_APP_KEY=sentinel)
+        ran = self.shell('[ -n "${OPENWIZ_GITHUB_APP_KEY+x}" ] && echo key-present', OPENWIZ_GITHUB_APP_KEY=sentinel)
+        for result in (started, ran):
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("OPENWIZ_GITHUB_APP_KEY", result.stderr)
+            self.assertNotIn(sentinel, result.stdout + result.stderr)
+        self.assertNotIn("key-present", ran.stdout)
+        self.assertEqual(self.calls(), [], "no service call and no command")
+
+    def test_r12_only_gh_gets_the_app_token(self):
+        self.answers(answer())
+        self.start()
+        printed = self.helper("run", *self.REQ, "--", "env")
+        self.assertEqual(printed.returncode, 0, printed.stderr)
+        self.assert_never_exposed(printed)
+        via_shell = self.shell("gh pr list")
+        self.assertEqual(via_shell.returncode, 0, via_shell.stderr)
+        self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN), "gh, found on PATH, gets it")
+        direct = self.helper("run", *self.REQ, "--", str(self.bin / "gh"), "pr", "list")
+        self.assertIsNone(self.calls("gh")[-1]["gh_token"], "a gh the run did not start gets nothing")
+        self.assert_never_exposed(via_shell, direct)
+
+    def test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused(self):
+        self.answers(dict(answer(left=302), sleep=3))
+        started = self.start()
+        self.assert_fallback(started, "bad-answer")
+
     def test_r7_a_later_owner_helper_never_authenticates_git(self):
         self.answers(answer())
         self.start()
