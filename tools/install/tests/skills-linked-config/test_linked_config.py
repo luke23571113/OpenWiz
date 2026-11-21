@@ -13,6 +13,9 @@ spec.loader.exec_module(base)
 sys.path.insert(0, str(INSTALL / 'tests' / 'installer'))
 from test_installer import Download, Path_, Preflight, Repair
 from test_root_safety import Remove, RootSafety
+per_agent = importlib.util.spec_from_file_location('test_skills', INSTALL / 'tests/skills-per-agent/test_skills.py')
+skills = importlib.util.module_from_spec(per_agent)
+per_agent.loader.exec_module(skills)
 
 
 class LinkedConfig(base.HarnessSkills):
@@ -39,11 +42,11 @@ class LinkedConfig(base.HarnessSkills):
         dotfiles = self.linked_config(opencode=True)
         dotfiles.chmod(0o600)
         self.addCleanup(dotfiles.chmod, 0o700)
-        before = base.snapshot(self.home)
         code, result = self.skills()
         self.assertEqual((code, result.get('schema'), result.get('outcome')),
-                         (5, 'openwiz.skills-install.v1', 'refused'), result)
-        self.assertEqual(base.snapshot(self.home), before)
+                         (0, 'openwiz.skills-install.v1', 'partial'), result)
+        self.assertEqual(base.skill_files(self.home / '.claude/skills'),
+                         base.skill_files(self.root / 'current/runtime/skills'))
         rows = {r['id']: r for r in result['harnesses']}
         self.assertEqual({h: r['state'] for h, r in rows.items()},
                          {'claude-code': 'installed', 'codex': 'absent', 'cursor': 'absent',
@@ -64,10 +67,12 @@ class LinkedConfig(base.HarnessSkills):
 
     def test_a_present_harness_behind_a_linked_config_is_refused_on_its_own_row(self):
         dotfiles = self.linked_config(opencode=True)
-        before = base.snapshot(self.home), base.snapshot(dotfiles)
+        before = base.snapshot(dotfiles)
         code, result = self.skills()
-        self.assertEqual((code, result.get('outcome')), (5, 'refused'), result)
-        self.assertEqual((base.snapshot(self.home), base.snapshot(dotfiles)), before)
+        self.assertEqual((code, result.get('outcome')), (0, 'partial'), result)
+        self.assertEqual(base.snapshot(dotfiles), before)
+        self.assertEqual(base.skill_files(self.home / '.claude/skills'),
+                         base.skill_files(self.root / 'current/runtime/skills'))
         rows = {r['id']: r for r in result['harnesses']}
         self.assertEqual({h: r['state'] for h, r in rows.items()},
                          {'claude-code': 'installed', 'codex': 'absent', 'cursor': 'absent',
@@ -81,7 +86,8 @@ def load_tests(loader, tests, pattern):
     suite = loader.loadTestsFromNames(sorted(name for name in LinkedConfig.__dict__ if name.startswith('test_')),
                                       LinkedConfig)
     suite.addTests(loader.loadTestsFromTestCase(case)
-                   for case in (Download, Path_, Preflight, Repair, RootSafety, Remove))
+                   for case in (Download, Path_, Preflight, Repair, RootSafety, Remove,
+                                skills.Report, skills.PerSkill, skills.Truthful, skills.Isolation))
     return suite
 
 

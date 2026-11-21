@@ -45,6 +45,7 @@ class RootSafety(Installer):
         code, value = self.install(self.root)
         self.assertEqual((code, value['outcome']), (0, 'installed'), value)
         self.own(self.root / 'state', *SETTINGS)
+        (self.home / '.claude').mkdir()
         self.assertEqual(self.run_entry('skills', '--root', str(self.root))[0], 0)
         code, value = self.install(self.root)
         self.assertEqual((code, value['outcome']), (0, 'installed'), value)

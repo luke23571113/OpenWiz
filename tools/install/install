@@ -43,10 +43,12 @@ DESCRIPTION = """OpenWiz's install entry (#1109): the commands the install skill
       build is selected at ROOT.
   install skills --root ROOT [--state-root STATE]
       Verifies the selected build, then copies its skills into ROOT/skills and
-      into each harness present here: Claude Code, Codex, Cursor, OpenCode and
-      Grok (contracts/install.v1.md, "Harness skills", #1361). An absent
-      harness gets nothing; an unsafe folder or the user's own same-named
-      skill refuses the whole step before any write.
+      into each harness present here: Claude Code, Codex ($CODEX_HOME when
+      set), Cursor, OpenCode and Grok (contracts/install.v1.md, "Harness
+      skills"). Each skill and harness stands alone: the user's own
+      same-named skill is kept and reported, an unsafe folder refuses only
+      its harness, and the rest install. An absent harness gets nothing; with
+      no harness to take them, nothing is written and it exits 5.
 
   install remove --root ROOT [--state-root STATE] [--yes]
       Previews deleting exactly what OpenWiz made (#2162): the current link,

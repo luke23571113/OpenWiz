@@ -52,6 +52,9 @@ class Host(BaseHTTPRequestHandler):
         pass
 
 
+AGENT_HOMES = ('CODEX_HOME',)
+
+
 class Installer(test_install.Bundles):
     def setUp(self):
         super().setUp()
@@ -69,6 +72,9 @@ class Installer(test_install.Bundles):
         for key in ('HOME', 'PATH'):
             self.addCleanup(os.environ.__setitem__, key, os.environ[key])
         os.environ['HOME'] = str(self.home)
+        for key in AGENT_HOMES:
+            if key in os.environ:
+                self.addCleanup(os.environ.__setitem__, key, os.environ.pop(key))
         self.root = self.home / '.local/lib/openwiz'
 
     def run_entry(self, *argv, host=None):
