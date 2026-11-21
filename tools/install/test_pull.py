@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
 import json
+import re
 from pathlib import Path
 import subprocess
 import unittest
@@ -9,6 +10,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_install as fixture
 
 HERE = Path(__file__).resolve().parent
+PREFIX = 'https://github.com/openwizdev/OpenWiz/releases/download/v0.0.99/'
+
+
+def release_sums(raw, archive, target=fixture.TARGETS[2]):
+    return ('%s  openwiz-0.0.99-%s.manifest.json\n%s  bundle.tar.gz\n'
+            % (fixture.sha(raw), target, fixture.sha(archive))).encode()
 
 
 class Pull(unittest.TestCase):
@@ -35,6 +42,8 @@ class Pull(unittest.TestCase):
                 return raw
             if url.endswith('.tar.gz'):
                 return new[1].read_bytes()
+            if url == PREFIX + 'SHA256SUMS':
+                return release_sums(raw, new[1].read_bytes())
             self.fail('unexpected transport URL ' + url)
         candidate = pull.discover(target, fetch=fetch)
         self.assertEqual(candidate['source'], '2' * 40)
@@ -46,12 +55,49 @@ class Pull(unittest.TestCase):
             'https://github.com/openwizdev/OpenWiz/releases/latest/download/openwiz-x86_64-unknown-linux-gnu.manifest.json',
             'https://github.com/openwizdev/OpenWiz/releases/download/v0.0.99/openwiz-0.0.99-x86_64-unknown-linux-gnu.manifest.json',
             'https://github.com/openwizdev/OpenWiz/releases/download/v0.0.99/bundle.tar.gz',
+            'https://github.com/openwizdev/OpenWiz/releases/download/v0.0.99/SHA256SUMS',
         ])
         with self.assertRaises(pull.Refused):
             pull.stage(target, '0.0.98', '2' * 40, digest, f.root, f.root / 'state', fetch=fetch)
         with self.assertRaises(pull.Refused):
             pull.stage(target, '0.0.99', '2' * 40, '0' * 64, f.root, f.root / 'state', fetch=fetch)
         self.assertEqual((f.root / 'current').readlink(), before)
+
+    def test_stage_refuses_a_release_whose_files_do_not_match_its_sha256sums(self):
+        spec = importlib.util.spec_from_file_location('pull', Path(__file__).with_name('pull.py'))
+        pull = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pull)
+        f = fixture.Install()
+        f.setUp()
+        self.addCleanup(f.doCleanups)
+        f.run_install(f.bundle(version='0.0.98'))
+        before = (f.root / 'current').readlink()
+        new = f.bundle(source='2' * 40)
+        raw, archive = new[0].read_bytes(), new[1].read_bytes()
+        target, other = fixture.TARGETS[2], fixture.sha(b'synthetic other bytes')
+        manifest_line = 'openwiz-0.0.99-%s.manifest.json' % target
+        cases = [
+            ('archive differs', release_sums(raw, b'synthetic other bytes'), 'SHA256SUMS does not match bundle.tar.gz'),
+            ('manifest differs', release_sums(b'synthetic other bytes', archive),
+             'SHA256SUMS does not match ' + manifest_line),
+            ('archive unlisted', ('%s  %s\n' % (fixture.sha(raw), manifest_line)).encode(),
+             'SHA256SUMS does not list bundle.tar.gz'),
+            ('manifest unlisted', ('%s  bundle.tar.gz\n' % fixture.sha(archive)).encode(),
+             'SHA256SUMS does not list ' + manifest_line),
+            ('malformed', release_sums(raw, archive) + b'not a checksum line\n', 'invalid SHA256SUMS line'),
+            ('duplicate', release_sums(raw, archive) + ('%s  bundle.tar.gz\n' % other).encode(),
+             'invalid SHA256SUMS line'),
+        ]
+        for name, sums, refusal in cases:
+            with self.subTest(name):
+                def fetch(url, limit):
+                    if url == PREFIX + 'SHA256SUMS':
+                        return sums
+                    return archive if url == PREFIX + 'bundle.tar.gz' else raw
+                with self.assertRaisesRegex(pull.Refused, '^' + re.escape(refusal) + '$'):
+                    pull.stage(target, '0.0.99', '2' * 40, fixture.sha(raw), f.root, f.root / 'state', fetch=fetch)
+                self.assertEqual((f.root / 'current').readlink(), before)
+                self.assertFalse((f.root / 'state/service/builds' / ('2' * 40)).exists())
 
 
     def test_pre_ap11_selected_build_reports_status_and_upgrades_to_a_cli_only_candidate(self):
@@ -105,9 +151,11 @@ class Pull(unittest.TestCase):
         fetched = []
         def fetch(url, limit):
             fetched.append(url)
+            if url.endswith('SHA256SUMS'):
+                return release_sums(new_raw, archive)
             return archive if url.endswith('.tar.gz') else new_raw
         staged = pull.stage(target, '0.0.99', '2' * 40, fixture.sha(new_raw), f.root, f.root / 'state', fetch=fetch)
-        self.assertEqual(fetched[-1], 'https://github.com/openwizdev/OpenWiz/releases/download/v0.0.99/bundle.tar.gz')
+        self.assertEqual(fetched[-2:], [PREFIX + 'bundle.tar.gz', PREFIX + 'SHA256SUMS'])
         self.assertEqual(((f.root / 'current').readlink(), staged['activated']), (build, False))
         f.run_install(new)
         code, value = status()
@@ -161,7 +209,8 @@ class Pull(unittest.TestCase):
         new = f.bundle(source='2' * 40)
         new_raw, archive = new[0].read_bytes(), new[1].read_bytes()
         staged = pull.stage(target, '0.0.99', '2' * 40, fixture.sha(new_raw), f.root, f.root / 'state',
-                            fetch=lambda url, limit: archive if url.endswith('.tar.gz') else new_raw)
+                            fetch=lambda url, limit: release_sums(new_raw, archive) if url.endswith('SHA256SUMS')
+                            else archive if url.endswith('.tar.gz') else new_raw)
         self.assertEqual(((f.root / 'current').readlink(), staged['activated']), (build, False))
         f.run_install(new)
         code, value = status()
