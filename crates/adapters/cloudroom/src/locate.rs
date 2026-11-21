@@ -68,27 +68,43 @@ impl Discovery {
     }
 
     pub fn locate(&self) -> Result<Located, LocateError> {
+        self.candidates().map(|mut found| found.swap_remove(0))
+    }
+
+    pub fn candidates(&self) -> Result<Vec<Located>, LocateError> {
         match retry_ambiguous(Duration::from_millis(100), || self.locate_once()) {
-            Err(error @ (LocateError::NotRunning | LocateError::NoRunningApp)) => self
-                .on_search_path()
-                .map(|launcher| Located {
-                    launcher,
-                    basis: Basis::Path,
-                })
-                .ok_or(error),
-            located => located,
+            Err(error @ (LocateError::NotRunning | LocateError::NoRunningApp)) => {
+                let found: Vec<_> = self
+                    .on_search_path()
+                    .into_iter()
+                    .map(|launcher| Located {
+                        launcher,
+                        basis: Basis::Path,
+                    })
+                    .collect();
+                if found.is_empty() {
+                    Err(error)
+                } else {
+                    Ok(found)
+                }
+            }
+            located => located.map(|one| vec![one]),
         }
     }
 
-    fn on_search_path(&self) -> Option<PathBuf> {
-        std::env::split_paths(self.search_path.as_ref()?)
+    fn on_search_path(&self) -> Vec<PathBuf> {
+        let Some(search) = self.search_path.as_ref() else {
+            return Vec::new();
+        };
+        std::env::split_paths(search)
             .filter(|dir| dir.is_absolute())
             .map(|dir| dir.join(crate::PROGRAM))
-            .find(|candidate| {
+            .filter(|candidate| {
                 fs::metadata(candidate).is_ok_and(|file| {
                     file.is_file() && file.mode() & 0o111 != 0 && file.mode() & 0o022 == 0
                 })
             })
+            .collect()
     }
 
     fn locate_once(&self) -> Result<Located, LocateError> {
@@ -667,13 +683,13 @@ pub fn install(discovery: Discovery) -> Result<(), LocateError> {
         .map_err(|_| LocateError::UnexpectedFile)
 }
 
-pub fn program(program: &Path) -> Result<PathBuf, openwiz_core::source::SourceError> {
+pub fn programs(program: &Path) -> Result<Vec<PathBuf>, openwiz_core::source::SourceError> {
     if program == Path::new(crate::PROGRAM) {
-        let located = DISCOVERY.get_or_init(Discovery::system).locate()?;
-        report(&located.basis);
-        Ok(located.launcher)
+        let found = DISCOVERY.get_or_init(Discovery::system).candidates()?;
+        report(&found[0].basis);
+        Ok(found.into_iter().map(|located| located.launcher).collect())
     } else if program.is_absolute() {
-        Ok(program.to_path_buf())
+        Ok(vec![program.to_path_buf()])
     } else {
         Err(LocateError::UnexpectedFile.into())
     }
@@ -708,7 +724,7 @@ impl From<LocateError> for openwiz_core::source::SourceError {
                 "{detail}. CloudRoom is mid-update (two running app mounts): \
                  restart CloudRoom to finish the update, then try again."
             ),
-            LocateError::NotRunning => {
+            LocateError::NotRunning | LocateError::NoRunningApp => {
                 format!("{detail}. Open the CloudRoom app once and sign in.")
             }
             _ => detail,

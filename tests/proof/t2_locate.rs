@@ -912,7 +912,7 @@ fn t2_path_launch_worker() {
         .with_search_path(search),
     )
     .unwrap();
-    dirs::private_dir_all(&root.join("proc/self")).unwrap();
+    dirs::private_dir_all(root.join("proc/self")).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     assert_eq!(
         CloudRoomSource::from_path().version(deadline),
