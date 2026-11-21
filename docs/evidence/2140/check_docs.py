@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""#2140's proof: README.md and docs/install.md tell the truth about 0.1.0.
-
-  python3 -I docs/evidence/2140/check_docs.py <unpacked 0.1.0 package>
-
-From the repository root. Checks, and prints one line per failure:
-  1. no stale words (a "coming soon" 0.1.0, 0.0.12 as current, the removed
-     setup page or `install open`);
-  2. every link resolves: a relative link to a file Git tracks, a web
-     link to an HTTP status below 400 (redirects followed);
-  3. every `install <command>` the files name is a command of
-     tools/install/install, and every `runtime/<tool>.py <command>` is a
-     command of that tool in the unpacked package (its --help exits 0).
-Exit 0 when all hold, 1 otherwise. Reads only; it runs no install.
-"""
 import re
 import subprocess
 import sys
