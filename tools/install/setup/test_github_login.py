@@ -358,5 +358,9 @@ class SkipApp(Recording):
                          'a choice for another repository binds nothing here')
 
 
+# #2143: CI runs this file, so it carries setup check's next-step proofs too.
+from test_check import EveryCodeHasANextStep, IntelMac  # noqa: E402,F401
+
+
 if __name__ == '__main__':
     unittest.main()
