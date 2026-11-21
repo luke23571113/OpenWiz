@@ -1,20 +1,3 @@
-//! B2 proof plan (#118). Fixture tests only; no live claim.
-//!
-//! Rules: table-test fleet.md's operative rows, malformed forms and duplicates.
-//! S2-1: one eligible merge, then remove each authority, head, reviewer, CI,
-//! base and branch condition independently; every negative has zero merges.
-//! Frontier: approved rows across versions, verified blockers, ready labels,
-//! starts (including crashes and uncertainty), holds, people and stale plans.
-//! Reviews: first/fresh/re-check, findings and CI failures; per-head records.
-//! S2-4: an idle snapshot yields exactly [] and no judgment items.
-//! S2-5: exact/directory/folder-local glob contract matches; holds block starts,
-//! building tickets get notes; two hits are consumed lowest PR first per tick.
-//! S2-6: closed-ticket agents archived once; close/unlock and summary lifecycle.
-//! Judgment: new questions, independent dispute/diagnosis records, unread or
-//! duplicate facts, quiet reviewers and blocked merges yield one combined look.
-//! Output: exact facts against independent literals, every action against the
-//! published tick schema, canonical ordering, and no additional dependencies.
-
 use openwiz_core::fleet::tick::Rules;
 
 const RULES: &str = "## Builder
@@ -209,8 +192,6 @@ fn b2_1196_all_conditional_tables_are_strict_and_other_family() {
 }
 
 fn b2_1196_setup_template_can_produce_the_strict_rules() {
-    // Fill the template's setting/check placeholders with synthetic literals.
-    // A fresh setup must supply every table the product requires.
     let filled = include_str!("../../skills/setup/templates/fleet.md")
         .replace("`--provider <id>`", "`--provider codex`")
         .replace("`--model <id>`", "`--model syn-model`")

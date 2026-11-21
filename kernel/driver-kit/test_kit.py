@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""D1, D2: the driver kit passes the template on a throwaway ticket and fails each planted bad driver.
-
-Run: python3 -I kernel/driver-kit/test_kit.py   (Linux: the kit watches /proc)
-"""
 import importlib.machinery
 import importlib.util
 import json
@@ -19,14 +15,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, 'fixtures')
 TEMPLATE = os.path.join(HERE, '..', '..', 'adapters', 'template', 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
-# A synthetic value in a GitHub token's shape, built here so no file holds one.
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
         'pass start: the run posted builder status note 2',
         'pass wake: the run edited builder status note 2',
         'pass stop: the run ended, and a wake after it is refused',
         'pass token: no login or token passed through the driver']
-# Each planted driver, with the exact lines the kit must print for it, and nothing else.
 PLANTED = {
     'token-in-args': PASS[:4] + ['fail token: a process the driver started holds a credential on its command line'],
     'token-in-env': PASS[:4] + ['fail token: a process the driver started holds a credential in OPENWIZ_GITHUB, '
@@ -41,13 +35,11 @@ PLANTED = {
 }
 
 
-# The credential formats the pinned status contract lists (agent-status v1, "What it never holds").
 CONTRACT_FORMATS = ['token=', 'key=', 'secret=', 'password=', 'sig=', 'password:', 'Bearer', 'gh?_', 'github_pat_',
                     'AKIA', 'xox?-', 'sk-']
 
 
 def planted(name):
-    """A planted driver's module, without running it."""
     return module(os.path.join(FIXTURES, 'planted', name))
 
 
@@ -60,7 +52,6 @@ def module(path):
 
 
 def tracker(folder):
-    """A throwaway ticket: one older note from an earlier run, which the kit must leave alone."""
     path = os.path.join(folder, 'tracker.json')
     old = '<!-- openwiz:status v1 -->\nagent: builder\nstate: stopped\nharness: Fake\nmodel: m\n' \
           'skills: build-ticket@0.1.2\nstep: an earlier run\ntime: 2030-01-02T03:04:05Z\n'
@@ -79,7 +70,6 @@ class Kit(unittest.TestCase):
                         PATH=FIXTURES + os.pathsep + os.environ.get('PATH', ''))
 
     def tearDown(self):
-        # A planted driver can leave its fake harness running: end every process this test started.
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
                 with open('/proc/%s/environ' % pid, 'rb') as f:
@@ -144,8 +134,6 @@ class Kit(unittest.TestCase):
                 self.assertEqual(self.kit(os.path.join(FIXTURES, 'planted', name))[:2], (1, lines))
 
     def test_a_refusal_holding_a_credential_never_reaches_the_output(self):
-        # #1524: the kit used to print a refusal's error text as its diagnostic, credential and all.
-        # Escaped: the JSON text holds only \\u escapes, and decoding restores the credential.
         sample = planted('refuses-with-credential').SAMPLE
         for escape in ('', '1'):
             with self.subTest(escape=escape):
@@ -161,7 +149,6 @@ class Kit(unittest.TestCase):
                     'held a credential, which the kit does not show']))
 
     def test_each_status_contract_credential_format_is_caught(self):
-        # #1568: the kit's shapes missed formats the status contract lists, when no secret of its environment held them.
         formats = planted('leaks-format').FORMATS
         self.assertLessEqual(set(CONTRACT_FORMATS), set(formats))
         for name, sample in formats.items():

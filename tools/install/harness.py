@@ -1,11 +1,3 @@
-"""Harness skills (#1361, contracts/install.v1.md "Harness skills").
-
-Copies the selected, verified build's runtime/skills/ into one canonical folder
-under the install root and into each present harness's own skills folder. It
-checks every destination before writing anything; it never follows a link,
-never touches a skill it didn't put there, and creates nothing for a harness
-the user doesn't have. Python 3.9+, standard library only.
-"""
 import os
 from pathlib import Path
 import re
@@ -15,12 +7,11 @@ import stat
 
 import install as installer
 
-# (id, the harness folder under HOME, its plain name). The copy goes to <folder>/skills.
 HARNESSES = (('claude-code', '.claude', 'Claude Code'), ('codex', '.codex', 'Codex'),
              ('cursor', '.cursor', 'Cursor'), ('opencode', '.config/opencode', 'OpenCode'),
              ('grok', '.grok', 'Grok'))
 MARK = '.openwiz-skill'
-MARKED = re.compile(rb'openwiz\.skill-copy\.v1\n[0-9a-f]{40}\n')  # mark()'s bytes for a verified source
+MARKED = re.compile(rb'openwiz\.skill-copy\.v1\n[0-9a-f]{40}\n')
 
 
 def mark(source):
@@ -28,8 +19,6 @@ def mark(source):
 
 
 def owned_dir(path):
-    """True for a real directory this user owns; False when nothing is there.
-    Anything else (a link, a file, another owner) refuses."""
     try:
         info = os.lstat(path)
     except FileNotFoundError:
@@ -40,8 +29,6 @@ def owned_dir(path):
 
 
 def check(folder, names):
-    """A skills folder may take these skills: no link on the way, and every
-    same-named skill, staging or backup folder already there is an OpenWiz copy."""
     installer.path_guard(folder)
     if not owned_dir(folder):
         return
@@ -59,29 +46,24 @@ def check(folder, names):
 
 
 def leftovers(folder, name):
-    """The fixed staging and backup paths an interrupted run may leave behind."""
     return folder / f'.openwiz-stage-{name}', folder / f'.openwiz-old-{name}'
 
 
 def ours(path):
-    """True when nothing is there or it is an OpenWiz copy: a real folder of
-    this user's holding the copy mark exactly as mark() writes it, which every
-    staging folder gets first. A same-named file with other text proves nothing."""
     if not owned_dir(path):
         return True
-    try:  # never through a link, and never waiting on a pipe
+    try:
         fd = os.open(path / MARK, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
         return False
     try:
-        text = os.read(fd, 64) if stat.S_ISREG(os.fstat(fd).st_mode) else b''  # one byte past the 63-byte mark
+        text = os.read(fd, 64) if stat.S_ISREG(os.fstat(fd).st_mode) else b''
     finally:
         os.close(fd)
     return MARKED.fullmatch(text) is not None
 
 
 def place(folder, skills, names, source):
-    """Copy each skill through a staging folder, then swap it in."""
     folder.mkdir(mode=0o700, exist_ok=True)
     for name in names:
         (stage, old), target = leftovers(folder, name), folder / name
@@ -109,7 +91,6 @@ def place(folder, skills, names, source):
 
 
 def guard_parent(base, plain):
-    """A present harness behind a linked or non-folder parent is refused with the folder to fix."""
     try:
         installer.path_guard(base.parent)
     except installer.Refused:
@@ -121,7 +102,6 @@ def guard_parent(base, plain):
 
 
 def unreadable(path, plain, error):
-    """The refusal for a folder OpenWiz could not look into: the outermost one it may not search."""
     culprit = next((p for p in reversed((path, *path.parents)) if not os.access(p, os.X_OK)), path.parent)
     return (f'OpenWiz could not look inside {culprit} ({error.strerror}), so it cannot tell what is in {plain}\'s '
             f'folder; nothing was changed. Give yourself access with chmod u+rx -- {shlex.quote(str(culprit))}, '
@@ -129,7 +109,6 @@ def unreadable(path, plain, error):
 
 
 def install_skills(build, value, root, home, codex_home=None):
-    """The step's result and exit code (0 done, 5 refused with nothing changed)."""
     skills = build / 'runtime/skills'
     installer.private(skills)
     names = sorted(p.name for p in skills.iterdir() if p.is_dir() and not p.is_symlink())
@@ -141,7 +120,7 @@ def install_skills(build, value, root, home, codex_home=None):
         row = {'id': harness, 'path': str(base / 'skills')}
         try:
             installer.require(base.is_absolute(), f'{base} is not an absolute folder')
-            try:  # #1423: the harness's own folder first, so a linked parent of an absent harness blocks nothing
+            try:
                 present = owned_dir(base)
             except NotADirectoryError:
                 present = False
@@ -154,7 +133,7 @@ def install_skills(build, value, root, home, codex_home=None):
                        f'{plain} is not set up here ({base} is missing); install it, then run this again.')
         except installer.Refused as refusal:
             row.update(state='refused', next=str(refusal))
-        except OSError as error:  # #1956 R1: a lookup that can't tell what is there refuses this row only
+        except OSError as error:
             row.update(state='refused', next=unreadable(Path(error.filename or base), plain, error))
         rows.append(row)
     result = {'schema': 'openwiz.skills-install.v1', 'version': value['version'], 'source': value['source'],

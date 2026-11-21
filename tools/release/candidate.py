@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
-"""Prepare, evaluate and publish one checked public release candidate (#1843, RL2).
+import argparse
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import sys
+import tempfile
+import time
+
+sys.dont_write_bytecode = True
+
+DESCRIPTION = """Prepare, evaluate and publish one checked public release candidate (#1843, RL2).
 
     release candidate notes VERSION --repo CLONE --entry ENTRY.json --out DIR
     release candidate prepare --state DIR --repo CLONE --body BODY.json --artifacts DIR
@@ -21,26 +35,13 @@ immutable release with its complete assets, from a commit already on public
 `main` or on the protected public `release-<version>` branch, and reads every
 byte back. An interrupted write is never repeated.
 """
-import argparse
-import datetime
-import hashlib
-import json
-import os
-from pathlib import Path
-import re
-import shutil
-import sys
-import tempfile
-import time
-
-sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'install'))
-from check import Refused, command, git_env, refuse_ranges, require, sha, unique  # noqa: E402
-import entry  # noqa: E402
-from install import manifest_at  # noqa: E402
-from publish import git as remote_git, refs  # noqa: E402
-from repository import remote_url, repository  # noqa: E402
+from check import Refused, command, git_env, refuse_ranges, require, sha, unique
+import entry
+from install import manifest_at
+from publish import git as remote_git, refs
+from repository import remote_url, repository
 
 PUBLIC = 'openwizdev/OpenWiz'
 ANCHOR = '5d069b025c6eacb4123ca8241ba21345f1eae9dd'
@@ -54,7 +55,6 @@ RISKS = ('send', 'new', 'app_permissions', 'spending')
 GATES = ('cutover', 'ci', 'privacy', 'claims', 'products', 'smoke') + RISKS
 CLASSES = {'cutover': {'source-inspection'}, 'ci': {'ci'}, 'privacy': {'source-inspection', 'ci'},
            'claims': {'source-inspection', 'ci'}, 'products': {'ci'}}
-# The public required checks each gate re-reads at the exact candidate commit.
 CHECK_RUNS = {'ci': 'ci', 'privacy': 'privacy'}
 RECEIPT = ('candidate_sha256 inputs_sha256 artifacts_sha256 kit_sha256 evidence_class status '
            'started_at finished_at evidence coverage gaps')
@@ -63,28 +63,16 @@ POINTER = re.compile(r'https://github\.com/' + re.escape(PRIVATE) + r'/(?:issues
                      r'#issuecomment-([1-9][0-9]*)')
 DECISION = re.compile(r'Release decision: (ship|changelog) ([0-9a-f]{64})')
 REVOKED = re.compile(r'Release decision revoked: ([1-9][0-9]*)')
-# APP-1 (a), Jake, 2026-11-15 (private record ClosedWiz #325, comment 6902318590):
-# the App-permission live check is waived for 0.0.12 only. A recorded waiver
-# names one risk and one exact version; nothing else is waivable.
 WAIVABLE = {('app_permissions', '0.0.12')}
-# J264: a release's public name counts announced ships, not semver, so it is a
-# recorded table, never computed. A version not in it is named `OpenWiz <version>`.
 PUBLIC_NAMES = {'0.1.0': 'OpenWiz 0.01'}
 WAIVER = re.compile(r'Release waiver: ([a-z_]+) v(0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))')
 WAIVER_REVOKED = re.compile(r'Release waiver revoked: ([1-9][0-9]*)')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 HEADING = re.compile(r'## (' + VERSION.pattern + r') · ([0-9]{4}-[0-9]{2}-[0-9]{2})')
 TARGET_MET = 1800
-# The PR's named assumptions D1-D6 (orchestrator ruling on #1843, 2026-11-13),
-# each in one place so it is easy to change.
-# D1: only GitHub Actions check runs of these trusted workflow files count.
 WORKFLOWS = {'ci': '.github/workflows/ci.yml', 'privacy': '.github/workflows/privacy.yml'}
-# D3: the open-development cut-over (O17) and its rehearsal (O16), private issues.
 O16, O17 = 1284, 1285
-# D5: an existing kit approval, restated once in the private-record form.
 AUTHORITY = re.compile(r'Release kit authority: scope ([0-9a-f]{64})')
-# D6: a changed path matching a category's pattern can never be classified `no`.
-# Spending has no pattern yet: its `no` rests on every row saying `no`.
 RISK_PATTERNS = {
     'send': ('crates/adapters/cloudroom/src/allowlist.rs', 'crates/adapters/cloudroom/src/messaging.rs',
              'crates/core/src/messaging/**', 'crates/core/src/attachment.rs'),
@@ -93,20 +81,16 @@ RISK_PATTERNS = {
     'app_permissions': ('tools/github-app/**', 'crates/adapters/github/src/allowlist.rs',
                         'crates/adapters/github/src/app.rs'),
     'spending': ()}
-# The gates the command establishes from its own reads (D1-D4), never from a receipt.
 READ_GATES = ('cutover', 'ci', 'privacy', 'claims')
 
 
 class Blocked(Exception):
-    """Progress needs evidence or an event: reasons, no write attempted."""
-
     def __init__(self, reasons, status='blocked'):
         super().__init__(', '.join(reasons))
         self.reasons, self.status = list(reasons), status
 
 
 def same_name(value, name):
-    """GitHub matches owner and repository names in any capitals (RN6); anything not ASCII is refused."""
     return isinstance(value, str) and value.isascii() and value.lower() == name.lower()
 
 
@@ -144,7 +128,6 @@ def now():
 
 
 def today():
-    """The UTC publication day, YYYY-MM-DD."""
     return datetime.datetime.fromtimestamp(now(), datetime.timezone.utc).date().isoformat()
 
 
@@ -167,8 +150,6 @@ def local_git(repo, *args):
     return command(['git', '--no-replace-objects', '-c', 'core.hooksPath=/dev/null', '-C', repo, *args],
                    repo, git_env(), timeout=300)
 
-
-# ---------------------------------------------------------------- state
 
 class State:
     def __init__(self, path):
@@ -197,7 +178,6 @@ class State:
             os.fsync(stream.fileno())
         temporary.chmod(0o600)
         os.replace(temporary, target)
-        # The intent must survive a crash before its write is attempted.
         directory = os.open(target.parent, os.O_RDONLY)
         try:
             os.fsync(directory)
@@ -211,10 +191,7 @@ def phase(record, name, started, finished):
         record['timing']['phases'].append({'name': name, 'started_at': started, 'finished_at': finished})
 
 
-# ---------------------------------------------------------------- notes
-
 def section_hash(text, version):
-    """The contract's section bytes: heading to the next version heading, trailing LF removed."""
     starts = [m.start() for m in re.finditer(r'^## ', text, re.M)]
     for index, start in enumerate(starts):
         match = HEADING.match(text, start)
@@ -225,9 +202,6 @@ def section_hash(text, version):
 
 
 def notes_input(data, version):
-    """The notes input: generated from changes/ (`versions`, `excluded`), or RL6's
-    curated changelog (`curated`: its tracked path, its approved `curated_sha256`,
-    the approved release notes' `notes_sha256`, and the `included` versions)."""
     curated = {'curated', 'curated_sha256', 'notes_sha256', 'included'}
     require(isinstance(data, dict) and set(data) in ({'versions', 'excluded'}, curated), 'invalid entry input')
     if 'curated' in data:
@@ -240,9 +214,6 @@ def notes_input(data, version):
 
 
 def made_notes(data, version, read, tags, sections):
-    """(release notes, the curated changelog or None) from the notes input; `read`
-    reads a tracked file at the source commit, `sections` generates from changes/.
-    A curated file and its cut notes must be exactly the approved bytes (RL6)."""
     if 'curated' in data:
         raw = read(data['curated'])
         require(sha(raw) == data['curated_sha256'], 'entry: curated notes are not the approved bytes')
@@ -259,8 +230,6 @@ def made_notes(data, version, read, tags, sections):
 
 
 def expected_changelog(published, notes_text, curated, tags):
-    """CHANGELOG.md at the candidate: published history plus these notes, or the
-    curated changelog byte for byte, which must itself keep every published entry."""
     if curated is None:
         return entry.compose(published, notes_text, restate=not tags)
     if tags:
@@ -275,8 +244,6 @@ def expected_changelog(published, notes_text, curated, tags):
 
 
 def history(read, tags):
-    """The published changelog CHANGELOG.md builds on: the newest tag's, or with
-    nothing published yet, the fixed public anchor's unpublished history (RL6)."""
     try:
         return read(f'refs/tags/{tags[max(tags)]}^{{commit}}' if tags else ANCHOR)
     except Refused:
@@ -284,8 +251,6 @@ def history(read, tags):
 
 
 def notes(args):
-    """Proposed notes from changes/ at the clone's HEAD, J6 caps and recorded
-    exclusions, or from RL6's curated file there."""
     repo = Path(args.repo).resolve(strict=True)
     require(same_name(repository(repo), PUBLIC), 'notes come from the public repository')
     data = notes_input(strict(Path(args.entry).read_bytes()), args.version)
@@ -326,7 +291,6 @@ def notes(args):
 
 
 def latest_changelog(repo):
-    """CHANGELOG.md at the newest published v* tag on the public remote, or empty."""
     tags = published_tags(repo)
     if not tags:
         return b''
@@ -343,8 +307,6 @@ def latest_changelog(repo):
 
 
 def remote_tags(cwd, own=None):
-    """Published v* tags on the public remote, {version: tag name}. `own` is this
-    attempt's verified (tag, tag object, commit): only that exact tag is excluded."""
     output = remote_git(cwd, 'ls-remote', '--tags', remote_url(PUBLIC)).decode()
     rows = {}
     for line in output.splitlines():
@@ -366,8 +328,6 @@ def published_tags(cwd, own=None):
     return set(remote_tags(cwd, own))
 
 
-# ---------------------------------------------------------------- prepare
-
 def check_source(repo, body, scratch):
     source = body['source']
     keys(source, 'repository commit tree anchor', 'invalid_source')
@@ -375,8 +335,6 @@ def check_source(repo, body, scratch):
         block('private_source')
     if source['anchor'] != ANCHOR or not digest(source['commit'], 40) or not digest(source['tree'], 40):
         block('unrelated_history')
-    # The public remote's own main must contain the commit: a matching tree copied
-    # from private history, or a commit only in this clone, never qualifies.
     work = Path(scratch) / 'main.git'
     remote_git(scratch, 'clone', '-q', '--bare', '--no-local', '--no-tags', '--single-branch',
                '--branch', 'main', remote_url(PUBLIC), work)
@@ -396,15 +354,11 @@ def check_source(repo, body, scratch):
 
 
 def release_heads(work):
-    """#964: every public `release-*` branch head, fetched into `refs/release/`."""
     remote_git(work, 'fetch', '-q', '--no-tags', remote_url(PUBLIC), '+refs/heads/release-*:refs/release/release-*')
     return remote_git(work, 'for-each-ref', '--format=%(refname)', 'refs/release/').decode().split()
 
 
 def release_source(work, body):
-    """#964: a commit not on public main is accepted only at or below the head of
-    the public `release-<version>` branch, exactly the candidate's version, while
-    that branch is protected (D3's ruleset read)."""
     commit, version = body['source']['commit'], body.get('release_version')
     if not isinstance(version, str) or VERSION.fullmatch(version) is None:
         block('not_on_public_main')
@@ -478,9 +432,6 @@ def check_notes(body, work, own=None, entry_input=None):
     for item in body['included_versions']:
         if section_hash(text, item['version']) != item['section_sha256']:
             block('section_changed')
-    # The commit's CHANGELOG.md is the published history plus exactly these notes,
-    # or plus the whole curated file they come from (RL6). With nothing published
-    # yet, that history is the fixed anchor's, and the new text may restate it.
     tags = remote_tags(work, own)
     if tags:
         tag = tags[max(tags)]
@@ -534,7 +485,6 @@ def expected_artifacts(version):
 
 
 def check_artifacts(body, folder):
-    """The complete asset inventory, its local bytes and the install contract's links."""
     version, rows = body['release_version'], body['artifacts']
     expected = expected_artifacts(version)
     if not isinstance(rows, list) or [r.get('name') if isinstance(r, dict) else None for r in rows] != sorted(expected):
@@ -577,7 +527,7 @@ def check_artifacts(body, folder):
             block('artifact_links')
         try:
             value, _, _ = manifest_at(folder / manifest, sha(data[manifest]), target)
-        except Exception:  # noqa: BLE001 - the install contract's refusal, without its text
+        except Exception:
             block('artifact_manifest')
         if (value['version'] != version or value['source'] != body['source']['commit']
                 or value['archive'] != archive or value['archive_sha256'] != sha(data[archive])
@@ -588,14 +538,11 @@ def check_artifacts(body, folder):
 
 
 def stage(manifest, archive, checksum, target, keep=None):
-    """Stage one archive exactly as a user's install does: the installer's own
-    format, member, mode, size and payload checks, never activated. Returns the
-    staged files when `keep` names a directory for them."""
     import install as installer
     scratch = Path(tempfile.mkdtemp(prefix='release-stage-', dir=keep))
     try:
         result = installer.install(manifest, archive, checksum, scratch / 'root', target, stage_only=True)
-    except Exception:  # noqa: BLE001 - the installer's refusal, without its text
+    except Exception:
         shutil.rmtree(scratch, ignore_errors=True)
         block('artifact_archive')
     if keep is None:
@@ -652,8 +599,6 @@ def prepare(args):
     if state.exists():
         old = state.read()
         if old['candidate_sha256'] == candidate_sha:
-            # The same candidate: refresh only the validated supporting inputs that
-            # changed, and drop only the claims receipt built from the entry.
             changed = [n for n in ('entry', 'classification')
                        if not state.exists(f'{n}.json') or canonical(state.read(f'{n}.json')) != canonical(inputs[n])]
             if changed and state.exists('attempt.json'):
@@ -668,8 +613,6 @@ def prepare(args):
             block('publication_started')
         if old['candidate']['release_version'] != body['release_version']:
             block('different_release')
-        # The same release instruction keeps its original ship time and decision
-        # records; evaluation decides which still bind the new candidate.
         timing, decisions = old['timing'], old['decisions']
         for name in os.listdir(state.path):
             if name in ('inputs', 'live.json'):
@@ -683,10 +626,7 @@ def prepare(args):
     return {'status': 'prepared', 'candidate_sha256': candidate_sha}
 
 
-# ---------------------------------------------------------------- decisions and evidence
-
 def comment(pointer):
-    """An existing private comment, read through gh: body, author and times."""
     match = POINTER.fullmatch(pointer) if isinstance(pointer, str) else None
     if not match:
         block('pointer_invalid')
@@ -711,11 +651,6 @@ def epoch(text):
 
 
 def revoked(issue, comment_id, decided_at, pattern=REVOKED):
-    """A later operative revocation line for this record; an earlier one does not
-    revoke it, and one whose order against the record cannot be read refuses.
-    A comment carrying the line that was ever edited revokes it whatever its
-    times say (#816 R1): its creation time does not date the line, so it fails
-    closed rather than trusting an older comment edited to revoke."""
     try:
         rows = strict(gh('api', '--paginate', '--slurp', f'repos/{PRIVATE}/issues/{issue}/comments?per_page=100'))
     except (Refused, ValueError):
@@ -735,7 +670,6 @@ def revoked(issue, comment_id, decided_at, pattern=REVOKED):
 
 
 def resolve_decision(kind, pointer):
-    """Jake's recorded decision: the orchestrator's unedited private record form."""
     issue, comment_id, data = comment(pointer)
     body = data['body']
     lines = body.splitlines()
@@ -753,8 +687,6 @@ def resolve_decision(kind, pointer):
 
 
 def resolve_waiver(pointer, body):
-    """Jake's recorded one-release waiver, in the same unedited private record
-    form as the release decisions: exactly one waiver line, one risk, one version."""
     issue, comment_id, data = comment(pointer)
     text = data['body']
     lines = text.splitlines()
@@ -767,7 +699,7 @@ def resolve_waiver(pointer, body):
         block('waiver_not_a_record')
     found = [WAIVER.fullmatch(line) for line in named]
     if len(named) != 1 or not found[0]:
-        block('waiver_invalid')  # several lines, several risks or a range
+        block('waiver_invalid')
     risk, version = found[0][1], found[0][2]
     if risk not in {r for r, _ in WAIVABLE}:
         block('waiver_wrong_risk')
@@ -780,8 +712,6 @@ def resolve_waiver(pointer, body):
 
 
 def current_waiver(record):
-    """The saved waiver if it still resolves unchanged for this candidate, else
-    its reasons. No saved waiver: (None, [])."""
     saved = record['decisions'].get('waiver')
     if saved is None:
         return None, []
@@ -793,8 +723,6 @@ def current_waiver(record):
 
 
 def applied_waiver(record):
-    """The saved waiver when it still resolves and its risk is classified yes;
-    otherwise None (its problems are reported by evaluate)."""
     waiver, _ = current_waiver(record)
     if waiver is not None and record['candidate']['risk'][waiver['risk']]['required'] == 'yes':
         return waiver
@@ -847,7 +775,6 @@ def check_runs(commit):
 
 
 def gate_reasons(record, gate, receipt, inputs, ctx=None):
-    """Why a non-live gate receipt does not pass for this exact candidate, or []."""
     body = record['candidate']
     if not isinstance(receipt, dict) or set(receipt) != set(RECEIPT.split()):
         return ['invalid']
@@ -909,9 +836,6 @@ def gate_reasons(record, gate, receipt, inputs, ctx=None):
 
 
 def verify_products(record, inputs, ctx):
-    """RL4's own verifiers over each archive as the installer stages it: the
-    compiled program against its native query receipt and the runtime
-    against the public commit's tracked tree. The results must be exactly the candidate's product rows."""
     import product_identity as rl4
     body = record['candidate']
     version, source = body['release_version'], body['source']['commit']
@@ -943,8 +867,6 @@ def verify_products(record, inputs, ctx):
                                            saved / row['program']['name'], version, source, target)
                 value, _, _ = manifest_at(manifest, checksum, target)
                 assets = [a for a in value['assets'] if a['path'] not in rl4.STAMPS]
-                # #2539: the receipt and selection checks read the stamp-free rows;
-                # the payload hash reads the complete stamped inventory.
                 final = {'runtime': rl4.payload([a for a in value['assets'] if a['path'].startswith('runtime/')])}
                 runtime = [a for a in assets if a['path'].startswith('runtime/')]
                 selection = row['selection']
@@ -952,8 +874,6 @@ def verify_products(record, inputs, ctx):
                         or any(not isinstance(pair, list) or len(pair) != 2 for pair in selection)
                         or sorted(name for _, name in selection) != sorted(a['path'] for a in runtime)):
                     return ['unverified']
-                # #555: a source tracking the WizSkills link verifies its skills
-                # against the release its own lock pins, installed once per run.
                 if 'install' not in installed:
                     installed['install'] = rl4.install_locked(ctx['work'], source, tempfile.mkdtemp(dir=scratch))
                 rl4.verify_runtime(ctx['work'], source, {repo: (build / name).read_bytes() for repo, name in selection},
@@ -963,13 +883,12 @@ def verify_products(record, inputs, ctx):
                              'build_receipt': {'record': 'tracked-tree', 'sha256': sha(rl4.canonical(
                                  {'source': source, 'selection': selection}))}})
                 got += sorted(rows, key=lambda r: r['identity']['product'])
-    except Exception:  # noqa: BLE001 - RL4's or the installer's refusal, without its text
+    except Exception:
         return ['unverified']
     return [] if got == body['products'] else ['mismatch']
 
 
 def pages(path, key=None):
-    """Every page of a paginated GitHub read, flattened."""
     data = strict(gh('api', '--paginate', '--slurp', path))
     require(isinstance(data, list), 'unexpected pages')
     rows = []
@@ -981,8 +900,6 @@ def pages(path, key=None):
 
 
 def required_check(gate, commit):
-    """D1: the latest run of the trusted workflow at this exact commit, by GitHub
-    Actions, succeeded, and its own check run of this name succeeded."""
     try:
         runs = [r for r in check_runs(commit) if isinstance(r, dict) and r.get('name') == gate]
         workflows = pages(f'repos/{PUBLIC}/actions/runs?head_sha={commit}&per_page=100', 'workflow_runs')
@@ -997,8 +914,6 @@ def required_check(gate, commit):
         return ['untrusted'], None
 
     def skipped(workflow):
-        # #18: a run whose own check of this name was only skipped (a main push's
-        # main-light run) is not evidence; the merge-queue run at that commit is.
         own = [r for r in runs if isinstance(r.get('check_suite'), dict)
                and r['check_suite'].get('id') == workflow.get('check_suite_id')]
         return bool(own) and all(r.get('status') == 'completed' and r.get('conclusion') == 'skipped' for r in own)
@@ -1018,7 +933,6 @@ def required_check(gate, commit):
 
 
 def scan_artifacts(body, folder, literals):
-    """D2: the existing O3 checker over every staged runtime file."""
     import subprocess
     if literals is None or not Path(literals).is_file():
         return ['literals_missing']
@@ -1047,21 +961,16 @@ def scan_artifacts(body, folder, literals):
 
 
 def ref_matches(pattern, ref, default):
-    """One ruleset ref pattern against a full ref; an unevaluable form refuses."""
     if pattern == '~ALL':
         return True
     if pattern == '~DEFAULT_BRANCH':
         return ref == 'refs/heads/' + default
     require(isinstance(pattern, str) and re.fullmatch(r'[A-Za-z0-9._/*-]+', pattern) is not None
             and '**' not in pattern, 'unevaluable ref pattern')
-    # A `*` stays within one path segment, as in GitHub's ref patterns.
     return re.fullmatch('[^/]*'.join(map(re.escape, pattern.split('*'))), ref) is not None
 
 
 def ruleset_applies(detail, default, ref=None):
-    """D3: an active branch ruleset whose include matches `ref` (the default
-    branch unless named) and whose exclude does not. A ref matching any exclude
-    is outside the ruleset."""
     if detail.get('enforcement') != 'active' or detail.get('target') != 'branch':
         return False
     conditions = detail.get('conditions')
@@ -1075,8 +984,6 @@ def ruleset_applies(detail, default, ref=None):
 
 
 def branch_rulesets(ref=None):
-    """D3's read: the public repository, and every active branch ruleset that
-    applies to `ref` (its default branch unless named). Anything unreadable raises."""
     meta = gh_json(f'repos/{PUBLIC}')
     sets = [gh_json(f"repos/{PUBLIC}/rulesets/{r['id']}") for r in pages(f'repos/{PUBLIC}/rulesets?per_page=100')]
     default = meta.get('default_branch')
@@ -1091,8 +998,6 @@ def required_contexts(rulesets):
 
 
 def release_protection(ref):
-    """#964: the release branch's rulesets require ci and privacy, have no bypass
-    actors, and block force-pushes and deletion; anything unreadable refuses."""
     try:
         _, applied = branch_rulesets(ref)
         types = {rule.get('type') for d in applied for rule in d.get('rules') or []}
@@ -1104,7 +1009,6 @@ def release_protection(ref):
 
 
 def cutover_reasons():
-    """D3: O17 completed, no hold on O16/O17, the public repository and its default-branch protection."""
     try:
         o16, o17 = gh_json(f'repos/{PRIVATE}/issues/{O16}'), gh_json(f'repos/{PRIVATE}/issues/{O17}')
 
@@ -1125,8 +1029,6 @@ def cutover_reasons():
 
 
 def claims_reasons(body, entry_input, work):
-    """D4: the approved notes are exactly what changes/ at the candidate commit
-    generates, or exactly the included sections of its curated file (RL6)."""
     commit = body['source']['commit']
     check = argparse.Namespace(args=argparse.Namespace(repo=work))
     try:
@@ -1142,7 +1044,6 @@ def claims_reasons(body, entry_input, work):
 
 
 def kit_reasons(body):
-    """D5: the kit's existing authority names this exact scope and still applies."""
     try:
         issue, comment_id, data = comment(body['kit']['authority'])
     except Blocked:
@@ -1167,7 +1068,6 @@ def matches(path, pattern):
 
 
 def risk_reasons(body, rows, work, own=None):
-    """D6: a per-path classification of the complete change since the last publication."""
     try:
         tags = remote_tags(work, own)
         base = ANCHOR
@@ -1196,7 +1096,6 @@ def risk_reasons(body, rows, work, own=None):
 
 
 def read_receipt(record, gate, inputs, started):
-    """The command's own receipt for a gate it established from its reads."""
     body = record['candidate']
     full = dict(inputs, gate=gate, candidate_sha256=record['candidate_sha256'],
                 artifacts_sha256=canonical(body['artifacts']))
@@ -1221,13 +1120,11 @@ def smoke_module():
 
 
 def preserved(record_pointer):
-    """The live run's preserved private record, for RL3's accept()."""
     _, _, data = comment(record_pointer)
     return {'body': data['body'], 'created_at': epoch(data['created_at'])}
 
 
 def live(args):
-    """Produce RL3's smoke and risk receipts from the approved kit and run state."""
     state = State(args.state)
     record = state.read()
     receipts = smoke_module()
@@ -1245,8 +1142,6 @@ def live(args):
 
 
 def live_reasons(record, saved, waiver=None):
-    """Every live gate's reasons. A risk in `waived` needs no live receipt: its
-    resolved waiver stands in, recorded as waived, never as passed."""
     waived = (waiver['risk'],) if waiver else ()
     reasons = []
     risk = record['candidate']['risk']
@@ -1302,8 +1197,6 @@ def gate(args):
 
 
 def reasons_for(record, state, repo, own=None, artifacts=None, literals=None, made=None):
-    """Every reason this candidate cannot publish now; [] means ready. `made`
-    receives the command's own receipts for the gates it read."""
     reasons, started = [], now()
     made = {} if made is None else made
     if canonical(record['candidate']) != record['candidate_sha256']:
@@ -1382,8 +1275,6 @@ def evaluate(args):
                 **({'waived': waived} if waived else {}))
 
 
-# ---------------------------------------------------------------- publication
-
 def tagger(work, commit):
     name = remote_git(work, 'show', '-s', '--format=%an', commit).decode().strip()
     email = remote_git(work, 'show', '-s', '--format=%ae', commit).decode().strip()
@@ -1394,12 +1285,10 @@ def tagger(work, commit):
 
 
 def public_name(version):
-    """The GitHub release name for `version`: its recorded public name, else `OpenWiz <version>`."""
     return PUBLIC_NAMES.get(version, 'OpenWiz ' + version)
 
 
 def release_readback(record, scratch, tag_object):
-    """The remote release, tag and every downloaded asset against the candidate and the intended tag object."""
     body = record['candidate']
     tag = 'v' + body['release_version']
     commit = body['source']['commit']
@@ -1410,7 +1299,6 @@ def release_readback(record, scratch, tag_object):
         problems.append('release_identity')
         data = data if isinstance(data, dict) else {}
     remote_body = data.get('body')
-    # The exact approved UTF-8 bytes: no newline or whitespace normalization (contract `changelog`).
     if not isinstance(remote_body, str) or \
             remote_body.encode('utf-8', 'surrogatepass') != notes_text.encode('utf-8'):
         problems.append('notes')
@@ -1423,7 +1311,7 @@ def release_readback(record, scratch, tag_object):
     if sorted(a.get('name') for a in assets if isinstance(a, dict)) != sorted(wanted) \
             or any(a.get('size') != wanted[a['name']]['bytes'] for a in assets if a.get('name') in wanted):
         problems.append('assets')
-    folder = Path(tempfile.mkdtemp(prefix='downloaded-', dir=scratch))  # fresh for each read-back
+    folder = Path(tempfile.mkdtemp(prefix='downloaded-', dir=scratch))
     gh('release', 'download', tag, '--repo', PUBLIC, '--dir', str(folder), cwd=scratch)
     got = {p.name: p.read_bytes() for p in folder.iterdir()}
     if sorted(got) != sorted(wanted) or any(sha(got[n]) != wanted[n]['sha256'] for n in got if n in wanted):
@@ -1435,7 +1323,6 @@ def release_readback(record, scratch, tag_object):
 
 
 def settle(record, attempt, scratch):
-    """Resume after an interrupted write: only a matching read-back settles it."""
     body = record['candidate']
     tag = 'v' + body['release_version']
     if attempt['steps'].get('tag') == 'started':
@@ -1443,9 +1330,9 @@ def settle(record, attempt, scratch):
         if found.get(f'refs/tags/{tag}^{{}}') != body['source']['commit']:
             raise Blocked(['uncertain_tag'], status='uncertain')
         if found.get(f'refs/tags/{tag}') == body['source']['commit']:
-            raise Blocked(['uncertain_tag'], status='uncertain')  # not the annotated tag
+            raise Blocked(['uncertain_tag'], status='uncertain')
         if not attempt.get('tag_object') or found.get(f'refs/tags/{tag}') != attempt['tag_object']:
-            raise Blocked(['uncertain_tag'], status='uncertain')  # not the annotated tag this attempt made
+            raise Blocked(['uncertain_tag'], status='uncertain')
         attempt['steps']['tag'] = 'done'
     if attempt['steps'].get('release') == 'started':
         try:
@@ -1458,7 +1345,6 @@ def settle(record, attempt, scratch):
 
 
 def ready(body, artifacts, scratch, tag, own=None):
-    """The pre-write checks shared by the tag and release steps."""
     data = check_artifacts(body, artifacts)
     try:
         enabled = gh_json(f'repos/{PUBLIC}/immutable-releases')
@@ -1473,15 +1359,11 @@ def ready(body, artifacts, scratch, tag, own=None):
 
 
 def date_reasons(body):
-    """Every section's date is the publication day, checked before each still-unattempted
-    publication write (the tag push, and release creation after it): refuse, never edit."""
     dates = [m[5] for m in re.finditer('^' + HEADING.pattern + '$', body['changelog']['utf8'], re.M)]
     return ['changelog_date'] if any(d != today() for d in dates) else []
 
 
 def record_waived(record, state, made):
-    """Save each gate the publication checks applied a waiver to as `waived`,
-    before any publication effect (#816 R2): never left as an earlier pass."""
     waived = {g: r for g, r in made.items() if r and r.get('status') == 'waived'}
     if waived:
         record['gates'].update(waived)
@@ -1500,7 +1382,6 @@ def publish(args):
     with tempfile.TemporaryDirectory(prefix='release-candidate-') as scratch:
         attempt = state.read('attempt.json') if state.exists('attempt.json') else None
         if record['publication']:
-            # Every write is done and was recorded incomplete: re-read only, never write.
             if attempt is None or attempt['steps'] != {'tag': 'done', 'release': 'done'}:
                 raise Blocked(['publication_incomplete'], status='incomplete')
         else:
@@ -1518,27 +1399,21 @@ def publish(args):
                 try:
                     remote_git(work, 'cat-file', '-e', body['source']['commit'] + '^{commit}')
                 except Refused:
-                    release_heads(work)  # #964: the commit reasons_for just found on its release branch
+                    release_heads(work)
                 name, email = tagger(work, body['source']['commit'])
-                # The annotated tag object is made locally first, so the attempt persists it as
-                # the intended effect; only that object settles the push.
                 remote_git(work, '-c', 'user.name=' + name, '-c', 'user.email=' + email, '-c', 'tag.gpgSign=false',
                            'tag', '-a', tag, body['source']['commit'], '-m', 'OpenWiz ' + body['release_version'])
                 intended = remote_git(work, 'rev-parse', '--verify', f'refs/tags/{tag}').decode().strip()
                 attempt = {'attempt_id': f"{record['candidate_sha256'][:16]}-{started}",
                            'candidate_sha256': record['candidate_sha256'], 'tag': tag, 'steps': {},
                            'started_at': started, 'tag_object': intended}
-                # Persist each intended effect before it; an interruption stays uncertain.
                 attempt['steps']['tag'] = 'started'
                 state.write('attempt.json', attempt)
                 remote_git(work, 'push', '--no-follow-tags', '--porcelain', remote_url(PUBLIC),
                            f'refs/tags/{tag}:refs/tags/{tag}')
-            # A started step is settled only by its own matching read-back.
             settle(record, attempt, scratch)
             state.write('attempt.json', attempt)
             if attempt['steps'].get('tag') == 'done' and 'release' not in attempt['steps']:
-                # The release write is unattempted: re-check every decision, gate and
-                # setting now, excluding only this attempt's own verified tag.
                 own = (tag, attempt['tag_object'], body['source']['commit'])
                 made = {}
                 reasons = (reasons_for(record, state, repo, own, Path(args.artifacts), args.literals, made)
@@ -1573,12 +1448,9 @@ def publish(args):
             'status': 'incomplete' if problems else 'complete', 'attempt_id': attempt['attempt_id'], 'tag': tag,
             'tag_object': tag_object or attempt.get('tag_object'), 'commit': body['source']['commit'],
             'notes_sha256': body['changelog']['sha256'], 'artifacts_sha256': canonical(body['artifacts']),
-            # A property never read stays unverified: false, never true by absence.
             'immutable': not {'unreadable', 'immutable'} & set(problems),
             'prerelease': not {'unreadable', 'prerelease'} & set(problems),
             'verified_at': verified, 'evidence': {'record': 'readback:' + tag, 'sha256': sha(evidence)}}
-        # Publishing time runs from the persisted attempt start, across failed or interrupted
-        # invocations and the waits between them; a re-read continues from the last publish phase.
         prior = [p['finished_at'] for p in record['timing']['phases'] if p['name'] == 'publish']
         phase(record, 'publish', max([attempt['started_at']] + prior), verified)
         state.write('record.json', record)
@@ -1639,7 +1511,7 @@ def status(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog='release candidate', description=__doc__,
+    parser = argparse.ArgumentParser(prog='release candidate', description=DESCRIPTION,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='action', required=True)
     made = sub.add_parser('notes')
@@ -1683,7 +1555,6 @@ def main(argv=None):
     except Blocked as error:
         result, code = {'status': error.status, 'reasons': error.reasons}, 1
     except (Refused, OSError, ValueError, KeyError, TypeError) as error:
-        # A failed write leaves its intent recorded: inspect, never retry blindly.
         result, code = {'status': 'refused', 'reasons': [type(error).__name__ if not isinstance(error, Refused)
                                                          else str(error)]}, 1
     print(json.dumps(result, sort_keys=True))

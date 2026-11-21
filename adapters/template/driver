@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""A minimal OpenWiz driver (kernel/driver.v1.md). Copy this folder to adapters/<host>/ and adapt it.
-
-Each turn of a run is a local process under its own supervisor, which keeps every process the turn starts:
-`start` runs the first turn, `wake` another once the last one has ended, `stop` ends everything the turns
-started. A run is saved before its first turn starts, and a wake or a stop holds the run's lock throughout.
-"""
 import ctypes, fcntl, json, os, re, secrets, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -14,7 +8,7 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
-GRACE = 10  # seconds a stopped process has to exit before it is killed
+GRACE = 10
 
 
 class Refused(Exception):
@@ -28,7 +22,6 @@ def unique(pairs):
 
 
 def read(fields):
-    """The request on stdin, with exactly these fields, each valid, or Refused."""
     try:
         req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
     except ValueError:
@@ -43,7 +36,6 @@ def read(fields):
 
 
 def command(req, woken):
-    """Adapt: your harness's own signed-in command. Never add a login or a token."""
     what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
     return [req['harness'], '--model', req['model'], '-p', prompt]
@@ -135,7 +127,6 @@ def look_after_the_turn_on_macos(run):
 
 
 def since(pid):
-    """When process pid started, or None once it has exited: with its pid, this names one process."""
     if not LINUX:
         row = ps('-o', 'stat=', '-o', 'lstart=', '-p', str(pid))[0]
         return row[0].split(None, 1)[1].strip() if row and not row[0].lstrip().startswith('Z') else None
@@ -148,7 +139,6 @@ def since(pid):
 
 
 def descendants(pid):
-    """Every live process under pid."""
     children = {}
     for p in filter(str.isdigit, os.listdir('/proc')):
         try:
@@ -168,8 +158,6 @@ def descendants(pid):
 
 
 def supervise(cmd):
-    """One turn, as `driver --turn <command>`: run the harness, and keep every process it starts as this turn's
-    (an orphan comes back here, whatever its session or environment) until none is left; then exit."""
     if LINUX and ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
@@ -179,7 +167,7 @@ def supervise(cmd):
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only `end` stops a turn, and it never orphans one
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
     if not LINUX:
@@ -201,7 +189,6 @@ def any_child_running_after_reaping():
 
 
 def launch(req, run, woken):
-    """Start one turn under its supervisor; return what `running` and `end` need."""
     if not shutil.which(req['harness']):
         raise Refused('harness %s is not installed here' % req['harness'],
                       'install %s and sign in to it yourself, then start again' % req['harness'])
@@ -223,13 +210,10 @@ def launch(req, run, woken):
 
 
 def running(turn, run):
-    """Whether the turn `launch` returned still runs its harness."""
     return bool(turn) and turn['since'] is not None and since(turn['pid']) == turn['since']
 
 
 def end(turns, run):
-    """Stop the run: every process its turns' supervisors still keep, whatever its session or environment.
-    A supervisor exits only once none of its processes is left, so answer once every supervisor has exited."""
     kept = [(t['supervisor'], t['supervisor_since']) for t in turns if t and t['supervisor_since'] is not None]
     for sig, wait in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
         sent, deadline = set(), time.monotonic() + wait
@@ -248,7 +232,7 @@ def end(turns, run):
                 continue
             pinned = {}
             for p in set().union(*(descendants(s) for s, _ in kept)) - sent:
-                try:  # pin each pid first, then check it is still under a supervisor, so no reused pid is hit
+                try:
                     pinned[p] = os.pidfd_open(p)
                 except OSError:
                     pass
@@ -269,7 +253,6 @@ def end(turns, run):
 
 
 def lock(run):
-    """Hold the run's lock until this command ends, so its wakes and stops take turns."""
     if not os.path.exists(os.path.join(STATE, run + '.json')):
         raise Refused('no run ' + run, 'check the run id that `driver start` printed')
     try:
@@ -295,7 +278,6 @@ def saved(run, state=None):
 
 
 def unsaved(run, turn, cmd):
-    """A turn began but could not be saved: end it, and say the outcome is unknown, never retry."""
     try:
         end([turn], run)
     except Refused:
@@ -314,8 +296,8 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(START), 'run-' + secrets.token_hex(6)
-        state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}  # never woken while starting
-        try:  # save the run before its turn starts: nowhere to keep it, nothing starts
+        state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}
+        try:
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
         except OSError:
@@ -331,7 +313,7 @@ def answer(cmd):
             raise
         try:
             saved(run, dict(state, turns=[turn], starting=False))
-        except OSError:  # the turn began but its run is not saved: end it, and never say retry
+        except OSError:
             unsaved(run, turn, 'start')
         return {'run': run}
     if cmd in ('wake', 'stop'):
@@ -339,12 +321,12 @@ def answer(cmd):
         lock(run)
         state = saved(run)
         if cmd == 'stop':
-            try:  # first, so no wake starts a turn meanwhile
+            try:
                 saved(run, dict(state, stopped=True))
                 kept = True
             except OSError:
                 kept = False
-            end(state['turns'], run)  # whether or not that save worked
+            end(state['turns'], run)
             if not kept:
                 raise Refused('run %s has ended, but the driver could not save that it is stopped' % run,
                               'make OPENWIZ_TEMPLATE_STATE (or ~/.local/state/openwiz-template) a folder you can '
@@ -354,10 +336,9 @@ def answer(cmd):
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
-        # One agent per run: while its last turn runs, that agent is awake and reads the ticket itself.
         if state['turns'] and running(state['turns'][-1], run):
             return {'run': run, 'woke': True}
-        try:  # a turn it could not save would be beyond a later wake's check: save first, or start nothing
+        try:
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was started' % run,

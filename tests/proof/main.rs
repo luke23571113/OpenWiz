@@ -1,12 +1,3 @@
-//! The OpenWiz 0.0.1 proof cases, P1 to P12, written before the behaviour.
-//!
-//! Fixture tests show that the logic is right for synthetic inputs. They
-//! never prove live behaviour; that needs live evidence (ticket 3).
-//!
-//! Only P8(a), the static allowlist, passes in ticket 1. Every other case is
-//! marked `#[ignore = "pending: ticket 2"]`, and `tests/checks` keeps that
-//! list exact. Run them with `cargo test -p openwiz-tests --test proof -- --ignored`.
-
 mod support;
 
 #[allow(
@@ -32,5 +23,4 @@ mod p09_reported_configuration;
 mod p10_json_matches_text;
 mod p11_visibility;
 mod p12_drift;
-// #1264: #267's bundle-location proofs, moved from the deleted `service` target.
 mod t2_locate;
