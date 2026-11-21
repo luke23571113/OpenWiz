@@ -383,18 +383,36 @@ class Local(unittest.TestCase):
         self.assertEqual([f for f in os.listdir(self.env['OPENWIZ_LOCAL_STATE']) if f.startswith('run-')], [])
 
 
+    def asked_ps_for_environments(self, calls):
+        """The ps calls, logged to calls by a wrapper on PATH, that ask ps for any process's environment."""
+        with open(calls) as f:
+            asked = f.read().splitlines()
+        self.assertTrue(any(' -A ' in ' %s ' % c for c in asked), 'the driver never listed processes through ps')
+        return [c for c in asked if '-E' in c.split() or 'e' in c.split()]
+
+    def logging_ps(self, calls):
+        """A folder holding a `ps` that logs each call's arguments to calls, then runs the no-proc fixture's ps."""
+        folder = os.path.join(self.folder, 'logging-ps')
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, 'ps'), 'w') as f:
+            f.write('#!/bin/sh\nprintf \'%%s\\n\' "$*" >> %s\nexec %s "$@"\n' % (calls, os.path.join(NO_PROC, 'ps')))
+        os.chmod(os.path.join(folder, 'ps'), 0o700)
+        return folder
+
     def test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
         for worker in ({}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
             with self.subTest(**worker):
                 self.tearDown()
                 self.setUp()
-                macos['PATH'] = NO_PROC + os.pathsep + self.env['PATH']
+                calls = os.path.join(self.folder, 'ps-calls')
+                macos['PATH'] = self.logging_ps(calls) + os.pathsep + NO_PROC + os.pathsep + self.env['PATH']
                 out, turn, child = self.first_turn(**macos, **worker)
                 self.until(lambda: not alive(turn))
                 self.assertTrue(alive(child))
                 self.assertEqual(self.driver('stop', out, dict(self.env, **macos)), (0, dict(out, stopped=True)))
                 self.assertFalse(alive(child), 'a grandchild of the harness still runs after stop')
+                self.assertEqual(self.asked_ps_for_environments(calls), [], 'the driver asked ps for process environments')
 
         self.tearDown()
         self.setUp()

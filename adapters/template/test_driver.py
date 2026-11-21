@@ -300,12 +300,30 @@ class Template(unittest.TestCase):
         self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the unsaved turn still runs')
 
 
+    def asked_ps_for_environments(self, calls):
+        """The ps calls, logged to calls by a wrapper on PATH, that ask ps for any process's environment."""
+        with open(calls) as f:
+            asked = f.read().splitlines()
+        self.assertTrue(any(' -A ' in ' %s ' % c for c in asked), 'the driver never listed processes through ps')
+        return [c for c in asked if '-E' in c.split() or 'e' in c.split()]
+
+    def logging_ps(self, calls):
+        """A folder holding a `ps` that logs each call's arguments to calls, then runs the no-proc fixture's ps."""
+        folder = os.path.join(self.folder, 'logging-ps')
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, 'ps'), 'w') as f:
+            f.write('#!/bin/sh\nprintf \'%%s\\n\' "$*" >> %s\nexec %s "$@"\n' % (calls, os.path.join(NO_PROC, 'ps')))
+        os.chmod(os.path.join(folder, 'ps'), 0o700)
+        return folder
+
     def test_without_proc_as_on_macos_stop_ends_each_grandchild(self):
         for worker in ({}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
             with self.subTest(**worker):
                 self.tearDown()
                 self.setUp()
-                macos = dict(worker, PATH=NO_PROC + os.pathsep + self.env['PATH'], NO_PROC_PYTHON=sys.executable)
+                calls = os.path.join(self.folder, 'ps-calls')
+                macos = dict(worker, PATH=self.logging_ps(calls) + os.pathsep + NO_PROC + os.pathsep + self.env['PATH'],
+                             NO_PROC_PYTHON=sys.executable)
                 code, out = self.call('start', START, **macos)
                 self.assertEqual(code, 0, out)
                 [(turn, child, _)] = self.logged(1)
@@ -314,6 +332,7 @@ class Template(unittest.TestCase):
                 self.assertEqual(self.call('stop', out, **macos), (0, dict(out, stopped=True)))
                 self.assertFalse(alive(child), 'a grandchild of the harness still runs after stop')
                 self.assertEqual(self.marked(), [], 'a process the run started still runs after stop')
+                self.assertEqual(self.asked_ps_for_environments(calls), [], 'the driver asked ps for process environments')
 
 
 if __name__ == '__main__':
