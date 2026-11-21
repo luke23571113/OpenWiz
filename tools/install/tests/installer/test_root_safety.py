@@ -3,6 +3,7 @@
 # install remove deletes exactly OpenWiz's own entries and nothing else.
 import json
 import os
+import shlex
 from pathlib import Path
 import sys
 import unittest
@@ -124,7 +125,16 @@ class Remove(Installer):
         RootSafety.own(self, state / 'service', 'builds/' + 'f' * 40 + '/install-manifest.json')
         os.rename(state / 'cloudroom', self.base / 'cloudroom-moved')
         os.symlink(outside, state / 'cloudroom')
-        code, value = self.run_entry('remove', '--root', str(self.root), '--state-root', str(state), '--yes')
+        before = tree(state)
+        code, value = self.run_entry('remove', '--root', str(self.root), '--yes')
+        self.assertEqual((code, value['outcome']), (5, 'refused'), value)
+        self.assertIn('selects a build outside ' + str(self.root / 'state/service/builds'), value['reason'])
+        self.assertEqual((tree(state), (self.root / 'current').is_symlink()), (before, True))
+        code, value = self.run_entry('remove', '--root', str(self.root), '--state-root', str(state))
+        self.assertEqual((code, value['outcome']), (0, 'preview'), value)
+        command = shlex.split(value['next'].split('Run ', 1)[1].split(' to delete')[0])
+        self.assertEqual(command, ['install', 'remove', '--root', str(self.root), '--state-root', str(state), '--yes'])
+        code, value = self.run_entry(*command[1:])
         self.assertEqual((code, value['outcome']), (0, 'removed'), value)
         self.assertEqual(tree(outside), ['kept.txt'])
         self.assertFalse(build.exists())

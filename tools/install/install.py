@@ -205,6 +205,42 @@ def repair_backups(builds, source, raw):
     return found
 
 
+# #2162: OpenWiz's own entries in an install root and its state root (docs/install.md, "Remove it").
+ROOT_ENTRIES = re.compile(r'current|channel\.json|install\.lock|skills|state|\.current-[0-9]+')
+STATE_ENTRIES = (('', re.compile(r'setup|cloudroom|service')),
+                 ('service', re.compile(r'config\.json|app|state\.json|loops|clone|builds')),
+                 ('service/builds', re.compile(r'[0-9a-f]{40}|\.stage-[A-Za-z0-9_]+|\.damaged-[0-9]+-[0-9a-f]{40}')))
+
+
+def entries(folder):
+    return sorted(os.listdir(folder)) if folder.is_dir() and not folder.is_symlink() else []
+
+
+def previous_state(root, state_root):
+    builds = state_root / 'service/builds'
+    if (root / 'current').is_symlink() and Path(os.readlink(root / 'current')).parent == builds:
+        return True
+    for name in entries(builds):
+        try:
+            if digest(name, 40) and (builds / name / 'install-manifest.json').is_file():
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def only_ours(root, state_root):
+    """Refuse a root or state root holding an entry OpenWiz didn't make, unless it is a previous install or state."""
+    unexpected = 'it is not OpenWiz\'s, so nothing was changed. Give install a new or empty folder'
+    if not (os.path.lexists(root / 'current') or os.path.lexists(root / 'channel.json')):
+        for name in entries(root):
+            require(ROOT_ENTRIES.fullmatch(name), '%s is already there and %s' % (root / name, unexpected))
+    if not previous_state(root, state_root):
+        for folder, names in STATE_ENTRIES:
+            for name in entries(state_root / folder if folder else state_root):
+                require(names.fullmatch(name), '%s is already there and %s' % (state_root / folder / name, unexpected))
+
+
 def activate_link(build, root):
     temporary = root / ('.current-' + str(os.getpid()))
     os.symlink(build, temporary)
@@ -227,6 +263,7 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
     require(hasher.hexdigest() == value['archive_sha256'], 'archive checksum mismatch')
     path_guard(root)
     require(root.parent.is_dir(), 'installation parent must exist')
+    only_ours(root, Path(state_root) if state_root else root / 'state')
     directory(root)
     lock_path = root / 'install.lock'
     if lock_path.exists() or lock_path.is_symlink():
