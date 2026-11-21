@@ -1265,14 +1265,18 @@ def evaluate(args):
     started = now()
     made = {}
     reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts), literals=args.literals, made=made)
+    unreadable = None
     if reasons != ['candidate_changed']:
         with tempfile.TemporaryDirectory(prefix='release-candidate-') as scratch:
-            reasons += first_write_reasons(record['candidate'], Path(args.artifacts), scratch)
+            found, unreadable = first_write_reasons(record['candidate'], Path(args.artifacts), scratch)
+            reasons += found
     record['gates'].update(made)
     phase(record, 'checks', started, now())
     state.write('record.json', record)
     if reasons:
         raise Blocked(reasons)
+    if unreadable is not None:
+        raise unreadable
     waived = sorted(g for g, r in made.items() if r and r.get('status') == 'waived')
     return dict({'status': 'ready', 'candidate_sha256': record['candidate_sha256']},
                 **({'waived': waived} if waived else {}))
@@ -1381,18 +1385,29 @@ def tagging_clone(scratch, commit):
     return work
 
 
+def tagger_reasons(scratch, commit):
+    try:
+        tagger(tagging_clone(scratch, commit), commit)
+    except Blocked as error:
+        return error.reasons
+    return []
+
+
 def first_write_reasons(body, artifacts, scratch):
     tag, reasons = 'v' + body['release_version'], date_reasons(body)
     try:
         check_artifacts(body, artifacts)
     except Blocked as error:
         reasons += error.reasons
-    reasons += immutable_reasons() + tag_reasons(scratch, tag)
-    try:
-        tagger(tagging_clone(scratch, body['source']['commit']), body['source']['commit'])
-    except Blocked as error:
-        reasons += error.reasons
-    return reasons
+    reasons += immutable_reasons()
+    unreadable = None
+    for read in (lambda: tag_reasons(scratch, tag),
+                 lambda: tagger_reasons(scratch, body['source']['commit'])):
+        try:
+            reasons += read()
+        except Refused as error:
+            unreadable = unreadable or error
+    return reasons, unreadable
 
 
 def date_reasons(body):
