@@ -47,13 +47,15 @@ else:
 
 
 def run(scenario):
+    fleet = json.loads((FIXTURES / f'{scenario}.json').read_text()).get('fleet')
+    fleet = HERE.parents[1] / fleet if fleet else FIXTURES / 'fleet.md'
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         (tmp / 'gh').write_text(FAKE_GH)
         (tmp / 'gh').chmod(0o755)
         env = dict(os.environ, PATH=f'{tmp}{os.pathsep}{os.environ["PATH"]}',
                    FAKE_GH_SCENARIO=str(FIXTURES / f'{scenario}.json'),
-                   FAKE_GH_FLEET=str(FIXTURES / 'fleet.md'), FAKE_GH_LOG=str(tmp / 'log'))
+                   FAKE_GH_FLEET=str(fleet), FAKE_GH_LOG=str(tmp / 'log'))
         r = subprocess.run([sys.executable, '-I', str(CHECK), '--repo', 'example/project', '--pr', '42'],
                            capture_output=True, text=True, env=env, timeout=60)
         calls = [json.loads(l) for l in (tmp / 'log').read_text().splitlines()] if (tmp / 'log').exists() else []
@@ -85,6 +87,9 @@ class Check(unittest.TestCase):
 
     def test_the_standing_supporting_edit_rule_covers_its_paths_only(self):
         self.verdict('standing')
+
+    def test_this_projects_evidence_rule_admits_only_the_linked_tickets_folder(self):
+        self.verdict('standing-project')
 
     def test_a_pull_request_with_no_linked_ticket_passes_with_a_note(self):
         self.verdict('no-ticket')
