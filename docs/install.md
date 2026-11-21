@@ -8,7 +8,7 @@ The agent follows the [install skill](https://github.com/openwizdev/WizSkills/bl
 
 Using Grok Bot? See [Grok Bot + OpenWiz](grok-bot.md).
 
-**Status:** this is the install for OpenWiz 0.1.0 ("OpenWiz 0.01"). It installs CloudRoom-first: setup checks CloudRoom before anything else, so have the CloudRoom app installed and signed in.
+**Status:** this is the install for OpenWiz 0.1.0 ("OpenWiz 0.01"). It needs CloudRoom: setup is done only when CloudRoom is installed and signed in.
 
 ## Before you start
 
@@ -33,7 +33,7 @@ The agent runs each command itself and reads its JSON. `<root>` is the install f
    python3 -I "$openwiz"/tools/install/install install --assets <that folder> --target <target> --root <root>
    ```
 
-   `install` prints `"activated": true`, the version, and the `build` and `state_root` folders. `download` reads GitHub's latest release, which skips a release marked pre-release; if it refuses with "could not be completed safely", check the [release page](https://github.com/openwizdev/OpenWiz/releases/tag/v0.1.0). The same three files are under `https://github.com/openwizdev/OpenWiz/releases/download/v0.1.0/`: `openwiz-<target>.sha256`, `openwiz-<target>.manifest.json` and `openwiz-0.1.0-<target>.tar.gz`. Put them in a new private folder (mode 700, files 600) and run `install install --assets` on it; it checks every hash the same way.
+   `install` prints `"activated": true`, the version, and the `build` and `state_root` folders, written below as `<build>` and `<state>`. `download` reads GitHub's latest release, which skips a release marked pre-release; if it refuses with "could not be completed safely", check the [release page](https://github.com/openwizdev/OpenWiz/releases/tag/v0.1.0). The same three files are under `https://github.com/openwizdev/OpenWiz/releases/download/v0.1.0/`: `openwiz-<target>.sha256`, `openwiz-<target>.manifest.json` and `openwiz-0.1.0-<target>.tar.gz`. Put them in a new private folder (mode 700, files 600) and run `install install --assets` on it; it checks every hash the same way.
 
 3. **Skills into your agents, then a restart.** It copies OpenWiz's 18 skills into each agent found on this computer: `~/.claude/skills` (Claude Code), `~/.codex/skills` (Codex), `~/.cursor/skills` (Cursor), `~/.config/opencode/skills` (OpenCode) and `~/.grok/skills` (Grok). A skill of yours with the same name stops the step before anything is written.
 
@@ -61,13 +61,13 @@ The agent runs each command itself and reads its JSON. `<root>` is the install f
    - It connects GitHub for that repository. Then you choose your own OpenWiz App (Create, then Install on that repository only) or skip it. If you skip it, your personal GitHub login acts for the factory and setup says so; the App is never shown as verified.
    - It saves the project with your harness, model and effort, asked once, and makes its private brain (`openwiz init`): in your repository if it is private, or in a new private companion repository if it is public. It tells you where in one line and opens a pull request you merge.
    - It grills you briefly and plans 4 to 7 small tickets. You confirm the spec, then approve the exact plan, as two separate answers.
-   - It shows the start: one fleet thread with its own loop, which starts the approved tickets' builders and their reviewers. Only your yes to that starts anything, and that yes covers its Cloud Credits.
+   - It asks where the agents run, then shows the start: one fleet thread with its own loop, which starts the approved tickets' builders and their reviewers. Only your yes to that starts anything, and that yes covers its Cloud Credits.
 
 ## What it may change, and when
 
 - **Nothing without your yes.** Before signing in, creating or skipping the GitHub App, saving project settings, creating the brain, setting up phone access or starting agents, the agent shows exactly what will happen and waits for your yes to that.
 - **Installing is not approving work.** Saying yes to the install or setup approves no plan. Agents start only after you confirm a spec and approve its plan.
-- **Your files.** The install writes only to its own folder (by default `~/.local/lib/openwiz`) and its private state inside it. Existing settings and credentials are never replaced.
+- **Your files.** The install writes only to its own folder (by default `~/.local/lib/openwiz`), its private state inside it, and OpenWiz's skills in your agents' skill folders (step 3). Existing settings, credentials and skills of your own are never replaced.
 - **GitHub.** Your own OpenWiz App is private to your account and installed only on repositories you select, with read access to metadata, checks and actions and write access to contents, issues and pull requests. Your personal login acts only if you explicitly skip the App; an App that fails or is removed never switches to it on its own.
 - **Credentials.** Keys stay in owner-only storage: OpenWiz's private state on this computer, or CloudRoom's own secret store. If setup asks you for the App's key, paste it only into CloudRoom's secret prompt. Never paste a key or token into the chat.
 - **Cost.** OpenWiz is free now. Paid plans come later. CloudRoom and model charges are separate and not included. Cloud agents, including each fleet thread, use your CloudRoom Cloud Credits, and your model provider bills you directly. More credits are CloudRoom's own plan, bought from [CloudRoom](https://cloudroom.dev/pricing), not from OpenWiz. Referral verification is unavailable. No referral is applied.
