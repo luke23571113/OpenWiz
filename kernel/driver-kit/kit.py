@@ -307,9 +307,9 @@ class Kit:
             words = full.get(pid, '').strip()
             text = ' ' + (words[len(cmd):] if words.startswith(cmd) else words)
             marked = bool(mark.search(text))
+            self.seen = self.seen or marked
             if marked and group != os.getpgrp():
                 self.groups.add(group)
-                self.seen = True
             found.append((group, cmd, text, marked))
         for group, cmd, text, marked in found:
             if marked or group in self.groups:

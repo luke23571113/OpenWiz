@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""The template driver, but its runs stay in the caller's process group: a good driver for the kit's tests."""
 import importlib.machinery, importlib.util, os, subprocess, sys
 sys.dont_write_bytecode = True
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'adapters', 'template', 'driver')
