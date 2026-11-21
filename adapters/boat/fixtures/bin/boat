@@ -126,15 +126,22 @@ def prompt(args):
             note(box['conversations'][cid], resume is not None, model, skill)
         return cid, box['interrupts']
 
+    if resume and os.environ.get('FAKE_RESUME_FAILS'):
+        worker = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL)
+        with open(os.environ['FAKE_TURNS'], 'a') as f:
+            f.write('%d %d %s failed\n' % (os.getpid(), worker.pid, resume))
+        fail('sandbox_not_ready', 'the sandbox is not ready')
     cid, interrupts = update(queue)
     # The live shape (boat CLI 1.0.103): the ids are nested under `data`.
     say(data={'conversationId': cid, 'promptId': 'p%d' % os.getpid(), 'status': 'queued'}, event='queued')
     # The turn leaves a detached worker in its own session behind, as a CLI that starts a helper might
     # (with FAKE_CLEAN, in a clean environment that carries no inherited mark), and logs
     # `<prompt pid> <worker pid> <conversation> first|woken` to FAKE_TURNS.
+    time.sleep(float(os.environ.get('FAKE_LATE_WORKER', '0')))
+    output = subprocess.DEVNULL if os.environ.get('FAKE_DAEMON') else None
     worker = subprocess.Popen(['sleep', '120'], start_new_session=not os.environ.get('FAKE_SAME_GROUP'),
                               env={'PATH': os.environ['PATH']} if os.environ.get('FAKE_CLEAN') else None,
-                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                              stdin=subprocess.DEVNULL, stdout=output, stderr=output)
     if os.environ.get('FAKE_TURNS'):
         with open(os.environ['FAKE_TURNS'], 'a') as f:
             f.write('%d %d %s %s\n' % (os.getpid(), worker.pid, cid, 'woken' if resume else 'first'))
@@ -155,15 +162,31 @@ def prompt(args):
     say(data={'conversationId': cid, 'status': 'finished'}, event='chat', final=True)
 
 
+def leak(how):
+    marker = os.environ['FAKE_MARKER']
+    if how == 'json':
+        fail('not_authenticated', 'Synthetic sign-in expired; session ' + marker)
+    if how == 'code':
+        fail(marker, 'Synthetic diagnostic')
+    print('Synthetic auth diagnostic: login expired, session ' + marker, file=sys.stderr)
+    sys.exit(1)
+
+
 def main():
     cmd, rest = (ARGS[0], ARGS[1:]) if ARGS else ('', [])
+    if os.environ.get('FAKE_BOAT_ARGS'):
+        with open(os.environ['FAKE_BOAT_ARGS'], 'a') as f:
+            f.write(json.dumps(ARGS) + '\n')
+    planted = os.environ.get('FAKE_BOAT_LEAK', '').split(':')
+    if len(planted) == 2 and planted[0] == cmd:
+        leak(planted[1])
     if cmd in os.environ.get('FAKE_BOAT_FAIL', '').split(','):  # a planted failure of this command
         fail('internal_error', 'boat %s failed' % cmd)
     if cmd not in ('prompt', 'exec'):  # every other call the driver makes passes --json once, anywhere
         rest = [a for a in rest if a != '--json'] + ['--json'] * (rest.count('--json') == 1)
     if cmd == 'new' and len(rest) == 3 and rest[0] == '--name' and rest[2] == '--json':
         def create(state):
-            sid = 'bx_fake%04d' % (len(state['sandboxes']) + 1)
+            sid = os.environ.get('FAKE_BOAT_ID') or 'bx_fake%04d' % (len(state['sandboxes']) + 1)
             state['sandboxes'][sid] = {'name': rest[1], 'state': 'running', 'conversations': {}, 'interrupts': 0}
             return sid
         sid = update(create)

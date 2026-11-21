@@ -161,7 +161,69 @@ Agents get theirs per run, as [Agent tokens](#agent-tokens-g2) says.
 Never print a token in a thread or save it in a repository.
 App-counted live reads and contribution credit remain unverified until that check.
 
+## The token service (GA2)
+
+**This replaces the Cloudroom-secret route below.** Under spec #1837 and
+[`token-service.v1`](../contracts/token-service.v1.md), the App's key stays on the
+owner's machine, cloud threads included. Don't follow "Agent tokens (G2)"'s
+`--from-secret` route or its rollout step 2. Put the key in no Cloudroom secret,
+secret store, sandbox or prompt. That section stays only as the record of the
+legacy flow.
+
+The token service mints agents' one-hour `openwiz[bot]` installation tokens on the
+owner's machine, beside the key. It listens on no port. An agent runs it per token:
+through the owner's machine pairing from a cloud thread, or locally from a local
+thread. The request goes on standard input and the answer comes back as one JSON
+line on standard output.
+
+Run these commands **as the owner, on the machine that holds the App's state**. Pass the
+same `--state-dir` as setup (by default `~/.local/state/openwiz`):
+
+```sh
+# Start: agents may now mint. A fresh install is stopped.
+python3 -I tools/github-app/token-service.py start --state-dir "$HOME/.local/state/openwiz"
+# The factory's App (installations on more than its owner's account): start it with the setting.
+OPENWIZ_GITHUB_APP_MODE=factory python3 -I tools/github-app/token-service.py start \
+  --state-dir "$HOME/.local/state/openwiz"
+# Stop: every mint fails like an unreachable service, and agents fall back to your login.
+python3 -I tools/github-app/token-service.py stop --state-dir "$HOME/.local/state/openwiz"
+```
+
+- **The App setting.** `start` records `OPENWIZ_GITHUB_APP_MODE` as it is then
+  (unset or `user`, or `factory`), and every mint uses that recorded setting, whatever
+  its own environment holds. A paired `mint` call carries no setting of its own, so
+  this is how the factory's App reaches its named installations. To change it, run
+  `start` again with the new setting. Any other value refuses to start.
+- **What it mints.** A token for exactly the requested repositories (one owner, each
+  in the App's selected installation) and permissions (at most the App's profile).
+  GitHub's grant is checked against the request. A wider or different grant, or a
+  request outside the installation or profile, gets the contract's refusal and never
+  a token.
+- **Time left.** The expiry is checked on a fresh clock after GitHub answers. The
+  token must have more than five minutes plus ten seconds left (for the log write and
+  the pipe), and at most 65 minutes. A slow exchange can't hand over a token already
+  due for refresh.
+- **The key.** It stays at `<state>/service/app/private-key.pem`, owner-only. Only
+  the service reads it, and only to sign the App's JWT. A key file that others can
+  read, or that another user owns, makes every mint `unavailable` before GitHub is
+  called. An agent never asks for, reads or holds it.
+- **The mint log.** `<state>/service/token-service/mint-log.jsonl` (0600, in a 0700
+  folder) has one line per request: when, the requester label, the repositories, the
+  permissions granted, the outcome and the expiry. It never holds a token. A log
+  that others can read, or a symlink in its place, makes every mint `unavailable`.
+  The line is written before the token is handed over.
+- **Never exposed.** No token or key reaches the command line, standard error or any
+  file but the key's own. Standard error stays empty except for the stopped
+  service's one sentence.
+- **Tests.** `python3 -I tools/github-app/test_token_service.py` runs every
+  `contracts/fixtures/token-service/requests.json` case and the guards above against
+  a fake GitHub with a throwaway key.
+
 ## Agent tokens (G2)
+
+**The legacy Cloudroom-secret route is retired: use [the token service
+(GA2)](#the-token-service-ga2) instead.** Put the App's key in no Cloudroom secret,
+secret store, sandbox or prompt, and don't follow the earlier `--from-secret` route.
 
 Agents read and write GitHub as the App (`<app slug>[bot]`), not as the person's
 login, so their API use comes out of the App's own allowance and their comments,
@@ -212,9 +274,10 @@ never on GitHub. No key or token is recorded anywhere.
 
 ## The agent helper (GA3)
 
-An agent gets its `openwiz[bot]` token from the owner's token service through
-`tools/github-app/agent-token.py`, under [the token-service
-contract](../contracts/token-service.v1.md). The App's key stays on the owner's
+An agent gets its `openwiz[bot]` token from [the owner's token service
+(GA2)](#the-token-service-ga2) through `tools/github-app/agent-token.py`, under [the
+token-service contract](../contracts/token-service.v1.md), never through the legacy
+Cloudroom-secret route. The App's key stays on the owner's
 machine: the helper never asks for, reads or holds it.
 
 ```sh

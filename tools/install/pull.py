@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Fixed published-release transport. No source checkout, build, push or shell."""
 import argparse
 import json
 from pathlib import Path
@@ -12,6 +11,8 @@ import urllib.request
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from install import Refused, TARGETS, install, manifest_at, private, require, sha, unique
+
+DESCRIPTION = """Fixed published-release transport. No source checkout, build, push or shell."""
 
 BASE = 'https://github.com/openwizdev/OpenWiz/releases/'
 
@@ -66,15 +67,13 @@ def stage(target, version, source, checksum, root, state_root, fetch=fetch_bytes
     private(selected)
     private(selected / 'install-manifest.json', False)
     old_raw = (selected / 'install-manifest.json').read_bytes()
-    old = load(old_raw, sha(old_raw), target, selected=True)  # #1575: may be pre-AP11
+    old = load(old_raw, sha(old_raw), target, selected=True)
     require(tuple(map(int, version.split('.'))) > tuple(map(int, old['version'].split('.'))), 'published version must advance')
     name = f'openwiz-{version}-{target}.manifest.json'
     prefix = BASE + 'download/v' + version + '/'
     raw = fetch(prefix + name, 4 * 1024 * 1024)
     manifest = load(raw, checksum, target)
     require(manifest['version'] == version and manifest['source'] == source, 'published identity changed')
-    # Files are stored privately; the installer verifies compressed integrity
-    # before parsing and every asset before staging. Nothing selects current.
     with tempfile.TemporaryDirectory(prefix='.package-download-', dir=state_root / 'service') as temporary:
         directory = Path(temporary)
         manifest_file = directory / 'manifest.json'
@@ -87,7 +86,7 @@ def stage(target, version, source, checksum, root, state_root, fetch=fetch_bytes
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
     commands = parser.add_subparsers(dest='action', required=True)
     discover_parser = commands.add_parser('discover')
     discover_parser.add_argument('target', choices=TARGETS)
