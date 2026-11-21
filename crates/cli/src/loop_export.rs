@@ -445,14 +445,13 @@ mod tests {
         if !cfg!(target_os = "linux") || std::env::var_os(BOUNDED).is_some() {
             return sparse_collision_refuses_only_its_loop();
         }
-        // An unbounded read of the 1 GiB file passes in an unlimited process,
-        // so the assertions run again in a child under a 256 MiB address space.
         let name = format!(
             "{}::a_huge_sparse_collision_refuses_only_its_loop",
             module_path!().split_once("::").unwrap().1
         );
+        let under_256_mib_address_space = "ulimit -v 262144 && exec \"$0\" \"$@\"";
         let child = std::process::Command::new("/bin/sh")
-            .args(["-c", "ulimit -v 262144 && exec \"$0\" \"$@\""])
+            .args(["-c", under_256_mib_address_space])
             .arg(std::env::current_exe().unwrap())
             .args([name.as_str(), "--exact", "--test-threads=1", "--nocapture"])
             .env(BOUNDED, "1")

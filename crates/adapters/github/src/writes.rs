@@ -681,15 +681,13 @@ mod before_write_tests {
         format!(r#"{{"url": "{url}"}}"#)
     }
 
-    /// Runs `write` through the normal write path with synthetic answers to
-    /// the check, the write and the read back, returning every call made.
     fn perform_answering(
         write: &Write,
-        answers: [&str; 3],
+        check_write_and_read_back: [&str; 3],
     ) -> (Result<Confirmed, WriteError>, Vec<Vec<String>>) {
         let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Vec<String>>::new()));
         let seen = calls.clone();
-        let answers = answers.map(|answer| answer.as_bytes().to_vec());
+        let answers = check_write_and_read_back.map(|answer| answer.as_bytes().to_vec());
         let executor = process::Executor::supplied(std::sync::Arc::new(
             move |call: &Invocation, _: Instant| {
                 let mut seen = seen.lock().unwrap();
