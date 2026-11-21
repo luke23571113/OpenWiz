@@ -89,7 +89,7 @@ def spawn(req, title):
                       "run the driver inside a Cloudroom thread of the repository's project")
     code, out, said = room('thread', 'spawn', '--parent-self', '--project', project,
                            '--provider', PROVIDERS.get(req['harness'], req['harness']), '--model', req['model'],
-                           '--title', title, '--prompt', brief(req))
+                           '--title', title, '--prompt', brief(req), '--json')
     if code != 0:
         raise Refused('Cloudroom refused the start: ' + said,
                       'check the harness and model with `room-cli provider list`, then start again')
@@ -192,20 +192,42 @@ def threads(state):
     """The run's live threads: its saved thread, or, if its id was never saved, those titled with its run id."""
     if state['thread']:
         return [state['thread']]
-    code, out, said = room('thread', 'list')
+    project, parent = state.get('project'), state.get('parent')
+    by_hand = 'stop it again later, or archive its thread by hand: the one whose title ends "%s"' % (
+        state['title'][state['title'].rfind('('):])
+    if not (project and parent):
+        raise Unknown('this run saved no project and parent, so the driver cannot tell its thread from another', by_hand)
+    code, out, said = room('thread', 'list', '--json', '--project', project)
+    complete = code == 0
+    if code == 2:
+        complete = (os.environ.get('ROOM_PROJECT_ID'), os.environ.get('ROOM_THREAD_ID')) == (project, parent)
+        code, out, said = room('thread', 'list', '--json')
     try:
-        found = [t['id'] for t in json.loads(out)['children'] if t.get('title') == state['title']]
-    except (ValueError, KeyError, TypeError, AttributeError):
-        found = None
-    if code != 0 or found is None or not all(isinstance(t, str) and re.fullmatch(THREAD, t) for t in found):
-        raise Unknown('Cloudroom did not list its threads, so whether this run still runs is unknown: ' + said,
-                      'stop it again later, or archive the thread titled "%s" by hand' % state['title'])
+        rows = json.loads(out)
+        rows = rows['children'] if isinstance(rows, dict) else rows
+    except (ValueError, KeyError):
+        rows = None
+    if code != 0 or not isinstance(rows, list) or not all(
+            isinstance(t, dict) and isinstance(t.get('id'), str) and re.fullmatch(THREAD, t['id'])
+            and isinstance(t.get('title'), str) for t in rows):
+        raise Unknown('Cloudroom did not list its threads, so whether this run still runs is unknown: ' + said, by_hand)
+    titled = [t for t in rows if t['title'] == state['title']]
+    if not titled and not complete:
+        raise Unknown('this room-cli lists only its own thread\'s children, and this is not the thread that '
+                      'started the run', 'stop it from the thread that started it, or ' + by_hand[len('stop it '):])
+    parents = [t.get(k) for t in titled[:1] for k in ('parentThreadId', 'parent') if k in t]
+    if titled and not (len(titled) == 1 and titled[0].get('projectId') == project and parents
+                       and all(isinstance(p, str) and p == parent for p in parents)):
+        raise Unknown('Cloudroom lists %d threads with this run\'s title, and the driver cannot prove one of them is '
+                      'its own, in its project under its parent' % len(titled), by_hand)
+    found = [t['id'] for t in titled]
     return found
 
 
 def start(req, run):
     title = '#%d: %s builder (%s)' % (req['ticket'], req['repository'], run)
-    state = {'request': req, 'title': title, 'thread': None, 'starting': True, 'stopped': False, 'archived': False}
+    state = {'request': req, 'title': title, 'thread': None, 'starting': True, 'stopped': False, 'archived': False,
+             'project': os.environ.get('ROOM_PROJECT_ID', ''), 'parent': os.environ.get('ROOM_THREAD_ID', '')}
     try:  # save the run before its thread is made: nowhere to keep it, nothing starts
         saved(run, state)
         fd = os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
