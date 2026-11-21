@@ -2,6 +2,8 @@
 from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from importlib.machinery import SourceFileLoader
+import shlex
+import shutil
 import importlib.util
 import io
 import json
@@ -26,15 +28,25 @@ ARCHIVE = 'openwiz-0.1.0-' + TARGET + '.tar.gz'
 
 
 class Host(BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
     routes = {}
     seen = []
+    truncated = set()
 
     def do_GET(self):
         Host.seen.append(self.path)
         body = Host.routes.get(self.path)
         self.send_response(200 if body is not None else 404)
+        if self.path in Host.truncated:
+            self.send_header('Transfer-Encoding', 'chunked')
+            self.end_headers()
+            self.wfile.write(b'%x\r\n' % len(body) + body[:len(body) // 2])
+            self.close_connection = True
+            return
+        body = body if body is not None else b'Not Found'
+        self.send_header('Content-Length', str(len(body)))
         self.end_headers()
-        self.wfile.write(body if body is not None else b'Not Found')
+        self.wfile.write(body)
 
     def log_message(self, *args):
         pass
@@ -51,7 +63,7 @@ class Installer(test_install.Bundles):
         for key, value in (('BASE', base + '/'), ('FEED', base + '.atom')):
             self.addCleanup(setattr, pull, key, getattr(pull, key, None))
             setattr(pull, key, value)
-        Host.routes, Host.seen = {}, []
+        Host.routes, Host.seen, Host.truncated = {}, [], set()
         self.home = self.base / 'home'
         self.home.mkdir(mode=0o700)
         for key in ('HOME', 'PATH'):
@@ -67,11 +79,14 @@ class Installer(test_install.Bundles):
 
     def publish(self, tag, version='0.1.0'):
         manifest, archive, _ = self.bundle(version=version, mutate=lambda m: m.update(archive=ARCHIVE))
-        raw = manifest.read_bytes()
+        raw, data = manifest.read_bytes(), archive.read_bytes()
         prefix = '/openwizdev/OpenWiz/releases/download/' + tag + '/'
+        sums = '%s  openwiz-%s-%s.manifest.json\n%s  %s\n' % (test_install.sha(raw), version, TARGET,
+                                                             test_install.sha(data), ARCHIVE)
         Host.routes.update({prefix + NAME + '.sha256': test_install.sha(raw).encode() + b'  ' + NAME.encode()
                             + b'.manifest.json\n', prefix + NAME + '.manifest.json': raw,
-                            prefix + ARCHIVE: archive.read_bytes()})
+                            prefix + ARCHIVE: data, prefix + 'SHA256SUMS': sums.encode()})
+        return prefix
 
     def feed(self, *tags):
         Host.routes['/openwizdev/OpenWiz/releases.atom'] = ''.join(
@@ -131,6 +146,39 @@ class Download(Installer):
         self.assertIn('published version does not match its tag', value['reason'])
 
 
+    def test_every_downloaded_file_is_checked_before_success_on_every_route(self):
+        for route in ('latest', 'fallback', 'v0.1.0'):
+            argv = ('--version', route) if route == 'v0.1.0' else ()
+            for case in ('archive', 'sums', 'no sums', 'truncated'):
+                with self.subTest(route=route, case=case):
+                    Host.routes.clear()
+                    Host.truncated.clear()
+                    prefix = self.publish('v0.1.0')
+                    self.feed('v0.1.0')
+                    if route == 'latest':
+                        for name in (NAME + '.sha256', NAME + '.manifest.json'):
+                            Host.routes['/openwizdev/OpenWiz/releases/latest/download/' + name] = Host.routes[prefix + name]
+                    if case == 'archive':
+                        data = Host.routes[prefix + ARCHIVE]
+                        Host.routes[prefix + ARCHIVE] = data[:-1] + bytes([data[-1] ^ 1])
+                    elif case == 'sums':
+                        Host.routes[prefix + 'SHA256SUMS'] = Host.routes[prefix + 'SHA256SUMS'].replace(
+                            test_install.sha(Host.routes[prefix + ARCHIVE]).encode(), b'0' * 64)
+                    elif case == 'no sums':
+                        del Host.routes[prefix + 'SHA256SUMS']
+                    else:
+                        Host.truncated.add(prefix + ARCHIVE)
+                    folder = self.base / ('dl-%s-%s' % (route, case.replace(' ', '-')))
+                    code, value = self.run_entry('download', '--target', TARGET, '--dir', str(folder), *argv)
+                    self.assertEqual((code, value['outcome']), (5, 'refused'), value)
+                    self.assertIn({'archive': 'archive checksum mismatch',
+                                   'sums': 'SHA256SUMS does not match ' + ARCHIVE,
+                                   'no sums': 'release asset 404 at ' + pull.BASE + 'download/v0.1.0/SHA256SUMS',
+                                   'truncated': 'interrupted transfer at ' + pull.BASE + 'download/v0.1.0/' + ARCHIVE
+                                   }[case], value['reason'])
+                    self.assertFalse(folder.exists())
+
+
 class Preflight(Installer):
     def ldd(self, line):
         folder = self.base / ('bin-' + str(self.counter))
@@ -184,6 +232,26 @@ class Repair(Installer):
         self.assertEqual((self.root / 'state' / 'owner-settings.json').read_text(), 'synthetic owner settings')
         self.assertEqual([p.name for p in (self.root / 'state/service/builds').iterdir()], [value['source']])
 
+    def test_install_repairs_a_missing_or_mispermissioned_selected_build(self):
+        folder = self.assets()
+        for n, case in enumerate(('missing', 'mode 0755', 'mode 0000', 'interrupted')):
+            with self.subTest(case=case):
+                root = self.home / ('.local/lib/openwiz-%d' % n)
+                argv = ('install', '--assets', str(folder), '--target', TARGET, '--root', str(root))
+                build = Path(self.run_entry(*argv)[1]['build'])
+                (root / 'state' / 'owner-settings.json').write_text('synthetic owner settings')
+                if case == 'missing':
+                    shutil.rmtree(build)
+                elif case == 'interrupted':
+                    build.rename(build.parent / ('.damaged-1-' + build.name))
+                else:
+                    build.chmod(int(case[-4:], 8))
+                code, value = self.run_entry(*argv)
+                self.assertEqual((code, value['outcome']), (0, 'installed'), value)
+                self.assertEqual(self.run_entry('status', '--root', str(root))[1]['outcome'], 'installed')
+                self.assertEqual([p.name for p in build.parent.iterdir()], [build.name])
+                self.assertEqual((root / 'state' / 'owner-settings.json').read_text(), 'synthetic owner settings')
+
     def test_status_says_not_installed_on_an_empty_root(self):
         for root in (self.root, self.home):
             with self.subTest(root=root):
@@ -206,6 +274,19 @@ class Path_(Installer):
         self.assertEqual((code, value['outcome']), (0, 'linked'), value)
         self.assertEqual(os.readlink(link), str(self.root / 'current/openwiz'))
         self.assertEqual(self.run_entry('link', '--root', str(self.root), '--yes')[1]['outcome'], 'linked')
+
+    def test_the_printed_link_commands_carry_a_custom_state_root(self):
+        state = self.base / 'synthetic state'
+        code, value = self.run_entry('install', '--assets', str(self.assets()), '--target', TARGET,
+                                     '--root', str(self.root), '--state-root', str(state))
+        self.assertEqual(code, 0, value)
+        preview = shlex.split(value['next'].split('run ', 1)[1].split(' to preview')[0])
+        self.assertEqual(preview, ['install', 'link', '--root', str(self.root), '--state-root', str(state)])
+        code, value = self.run_entry(*preview[1:])
+        self.assertEqual((code, value['outcome']), (0, 'preview'), value)
+        confirm = shlex.split(value['next'].split('Run ', 1)[1].split(' to make it')[0])
+        self.assertEqual(confirm, preview + ['--yes'])
+        self.assertEqual(self.run_entry(*confirm[1:])[1]['outcome'], 'linked')
 
     def test_link_never_replaces_the_users_own_openwiz(self):
         self.run_entry('install', '--assets', str(self.assets()), '--target', TARGET, '--root', str(self.root))
