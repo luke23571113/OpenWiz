@@ -28,21 +28,36 @@ def owned_dir(path):
     return True
 
 
-def check(folder, names):
+def clash(folder, name, plain):
+    target = folder / name
+    if not ours(target):
+        return (f'{target} is your own {name} skill, not an OpenWiz copy, so {plain} keeps it and does not get '
+                f'OpenWiz\'s {name}. To use OpenWiz\'s, move or rename yours, then run this again.')
+    for path in leftovers(folder, name):
+        try:
+            clear = ours(path)
+        except installer.Refused:
+            clear = False
+        if not clear:
+            return (f'{path} is in the way and OpenWiz did not make it, so {plain} does not get OpenWiz\'s {name}. '
+                    'Look inside it, and if it holds nothing you want, remove it and run this again: '
+                    f'rm -rf -- {shlex.quote(str(path))}')
+    return None
+
+
+def check(folder, names, plain):
     installer.path_guard(folder)
     if not owned_dir(folder):
-        return
+        return []
+    skipped = []
     for name in names:
-        target = folder / name
-        installer.require(ours(target), f'{target} is not an OpenWiz copy; nothing was changed')
-        for path in leftovers(folder, name):
-            try:
-                clear = ours(path)
-            except installer.Refused:
-                clear = False
-            installer.require(clear, f'{path} is in the way and OpenWiz did not make it; nothing was changed. '
-                                     'Look inside it, and if it holds nothing you want, remove it and run this '
-                                     f'again: rm -rf -- {shlex.quote(str(path))}')
+        try:
+            reason = clash(folder, name, plain)
+        except installer.Refused as refusal:
+            reason = f'{refusal}; {plain} does not get OpenWiz\'s {name}. Make it a real folder of yours, then run this again.'
+        if reason:
+            skipped.append({'skill': name, 'path': str(folder / name), 'next': reason})
+    return skipped
 
 
 def leftovers(folder, name):
@@ -108,13 +123,14 @@ def unreadable(path, plain, error):
             'then run this again.')
 
 
-def install_skills(build, value, root, home, codex_home=None):
-    skills = build / 'runtime/skills'
-    installer.private(skills)
+def install_skills(build, value, root, home, codex_home=None, release=None, skills_from=None):
+    skills = release or build / 'runtime/skills'
+    if release is None:
+        installer.private(skills)
     names = sorted(p.name for p in skills.iterdir() if p.is_dir() and not p.is_symlink())
     installer.require(names, 'the selected build ships no skills')
     canonical = Path(root) / 'skills'
-    rows, folders = [], [canonical]
+    rows, plan = [], []
     for harness, relative, plain in HARNESSES:
         base = Path(codex_home) if harness == 'codex' and codex_home else Path(home) / relative
         row = {'id': harness, 'path': str(base / 'skills')}
@@ -124,31 +140,41 @@ def install_skills(build, value, root, home, codex_home=None):
                 present = owned_dir(base)
             except NotADirectoryError:
                 present = False
-            if present:
+            if not present:
+                row.update(state='absent', next=f'{plain} is not set up here ({base} is missing), so it got no '
+                                                f'skills; install {plain}, then run this again.')
+            else:
                 guard_parent(base, plain)
-                check(base / 'skills', names)
-                folders.append(base / 'skills')
-            row.update(state='installed' if present else 'absent',
-                       next=f'{plain} finds these skills next time it starts.' if present else
-                       f'{plain} is not set up here ({base} is missing); install it, then run this again.')
+                skipped = check(base / 'skills', names, plain)
+                wanted = [n for n in names if n not in {s['skill'] for s in skipped}]
+                if wanted:
+                    plan.append((base / 'skills', wanted))
+                row.update(state='partial' if skipped and wanted else 'refused' if skipped else 'installed',
+                           next=f'{plain} finds these skills next time it starts.' if not skipped else
+                           f'{plain} did not get {len(skipped)} skill(s); each one below says why and what to do.')
+                if skipped:
+                    row['skipped'] = skipped
         except installer.Refused as refusal:
             row.update(state='refused', next=str(refusal))
         except OSError as error:
             row.update(state='refused', next=unreadable(Path(error.filename or base), plain, error))
         rows.append(row)
     result = {'schema': 'openwiz.skills-install.v1', 'version': value['version'], 'source': value['source'],
+              'skills_from': skills_from or {'kind': 'bundled', 'reason': 'The installed build\'s own skills.'},
               'canonical': str(canonical), 'skills': names, 'harnesses': rows}
-    reason = 'A destination is not safe to write; nothing was changed.'
+    if not plan:
+        return dict(result, outcome='refused', reason='No agent here can take OpenWiz\'s skills (see each row); '
+                                                      'nothing was changed.'), 5
     try:
-        check(canonical, names)
+        skipped = check(canonical, names, 'OpenWiz\'s own skills folder')
     except installer.Refused as refusal:
-        reason = str(refusal)
-    else:
-        if not any(row['state'] == 'refused' for row in rows):
-            reason = None
-    if reason:
-        return dict(result, outcome='refused', reason=reason), 5
-    for folder in folders:
-        place(folder, skills, names, value['source'])
-    return dict(result, outcome='installed',
-                reason='Copied the verified build\'s skills; absent harnesses were left alone.'), 0
+        return dict(result, outcome='refused', reason=str(refusal) + '; nothing was changed.'), 5
+    if skipped:
+        result['canonical_skipped'] = skipped
+    plan.insert(0, (canonical, [n for n in names if n not in {s['skill'] for s in skipped}]))
+    for folder, wanted in plan:
+        place(folder, skills, wanted, value['source'])
+    whole = not skipped and all(row['state'] in ('installed', 'absent') for row in rows)
+    return dict(result, outcome='installed' if whole else 'partial',
+                reason='Copied the skills into every agent here.' if whole else
+                'Copied the skills where it was safe; the rows say what was skipped and why.'), 0

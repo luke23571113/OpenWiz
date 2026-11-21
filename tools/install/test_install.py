@@ -247,7 +247,10 @@ class HarnessSkills(Bundles):
     def skills(self, home=None, env=None):
         result = subprocess.run([sys.executable, '-I', str(HERE / 'install'), 'skills', '--root', str(self.root)],
                                 capture_output=True, text=True,
-                                env={'PATH': os.environ['PATH'], 'HOME': str(home or self.home), **(env or {})})
+                                env={'PATH': os.environ['PATH'], 'HOME': str(home or self.home),
+                                     'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_VALUE_0': 'https://github.com/openwizdev/WizSkills.git',
+                                     'GIT_CONFIG_KEY_0': 'url.%s.insteadOf' % (self.base / 'no-wizskills.git').as_uri(),
+                                     **(env or {})})
         return result.returncode, json.loads(result.stdout or '{}')
 
     def test_skills_reach_the_canonical_folder_and_every_named_harness(self):
@@ -296,10 +299,18 @@ class HarnessSkills(Bundles):
                 else:
                     os.symlink(self.base / 'dotfiles', home / '.grok')
                 (self.root / 'skills/grill/SKILL.md').write_bytes(b'stale\n')
-                before = snapshot(home), snapshot(self.root / 'skills')
+                owner = snapshot(home / '.claude/skills/grill')
                 code, result = self.skills(home=home)
-                self.assertEqual((code, result.get('outcome')), (5, 'refused'), result)
-                self.assertEqual((snapshot(home), snapshot(self.root / 'skills')), before)
+                self.assertEqual((code, result.get('outcome')), (0, 'partial'), result)
+                rows = {r['id']: r for r in result['harnesses']}
+                self.assertEqual(skill_files(home / '.cursor/skills'), skill_files(self.root / 'current/runtime/skills'))
+                self.assertEqual(skill_files(self.root / 'skills'), skill_files(self.root / 'current/runtime/skills'))
+                if case == 'foreign':
+                    self.assertEqual(rows['claude-code']['state'], 'partial')
+                    self.assertEqual([s['skill'] for s in rows['claude-code']['skipped']], ['grill'])
+                    self.assertEqual(snapshot(home / '.claude/skills/grill'), owner)
+                else:
+                    self.assertEqual((rows['claude-code']['state'], rows['grok']['state']), ('installed', 'refused'))
                 self.assertEqual(snapshot(self.base / 'dotfiles'), {})
 
     def test_a_user_entry_at_the_staging_or_backup_path_is_kept_and_nothing_is_written(self):
@@ -317,10 +328,13 @@ class HarnessSkills(Bundles):
                     else:
                         entry.parent.mkdir(parents=True)
                         entry.write_bytes(b'Synthetic owner notes.\n')
-                    before = snapshot(home), snapshot(self.root / 'skills')
+                    before = snapshot(entry) if entry.is_dir() else entry.read_bytes()
                     code, result = self.skills(home=home)
-                    self.assertEqual((code, result.get('outcome')), (5, 'refused'), result)
-                    self.assertEqual((snapshot(home), snapshot(self.root / 'skills')), before)
+                    self.assertEqual((code, result.get('outcome')), (0, 'partial'), result)
+                    self.assertEqual(snapshot(entry) if entry.is_dir() else entry.read_bytes(), before)
+                    self.assertFalse((home / '.claude/skills/grill').exists())
+                    self.assertEqual(skill_files(home / '.claude/skills', skip=(name,)),
+                                     skill_files(self.root / 'current/runtime/skills', skip=('grill',)))
 
     def test_the_refusal_names_the_unmarked_folder_and_prints_a_working_remove_command(self):
         home = self.base / "home it's here"
@@ -328,14 +342,14 @@ class HarnessSkills(Bundles):
         entry.mkdir(parents=True)
         (entry / 'notes.md').write_bytes(b'Synthetic owner notes.\n')
         code, result = self.skills(home=home)
-        self.assertEqual(code, 5, result)
-        text = {r['id']: r['next'] for r in result['harnesses']}['claude-code']
+        self.assertEqual(code, 0, result)
+        text = {r['id']: r for r in result['harnesses']}['claude-code']['skipped'][0]['next']
         self.assertTrue(text.startswith(f'{entry} '), text)
         self.assertIn('Look inside it', text)
         command = text.split('run this again: ', 1)[1]
         subprocess.run(['sh', '-c', command], check=True, cwd=self.base)
-        self.assertEqual(sorted(p.name for p in entry.parent.iterdir()), [])
-        self.assertEqual(self.skills(home=home)[0], 0)
+        self.assertFalse(entry.exists())
+        self.assertEqual(self.skills(home=home)[1].get('outcome'), 'installed')
 
     def test_leftovers_of_an_interrupted_run_are_cleaned_up(self):
         (self.home / '.claude').mkdir()
