@@ -802,6 +802,36 @@ def in_section(text, title, old, new):
     return head + sep + body.replace(old, new) + more + tail
 
 
+OPUS = '| Claude Code | Opus 5.5 | Medium | `--provider claude-code --model claude-opus-5-5 --reasoning-level medium` |'
+SOL = '| Codex | Sol 6.2 | Medium | `--provider codex --model gpt-6.2-sol --reasoning-level medium` |'
+OPUS_SETTINGS = ('| Harness | Claude Code | `--provider claude-code` |', '| Model | Opus 5.5 | `--model claude-opus-5-5` |',
+                 '| Effort | Medium | `--reasoning-level medium` |')
+SOL_SETTINGS = ('| Harness | Codex | `--provider codex` |', '| Model | Sol 6.2 | `--model gpt-6.2-sol` |',
+                '| Effort | Medium | `--reasoning-level medium` |')
+STABLE_ROWS = {
+    'Models': ('| Orchestrator ' + OPUS, '| Builder ' + OPUS, '| Reviewer ' + SOL,
+               '| Small builder | follows Builder | | | |', '| Fixer | follows Builder | | | |'),
+    'Builder': OPUS_SETTINGS,
+    'Builder for small tickets': OPUS_SETTINGS,
+    'Reviewer for Claude-built': SOL_SETTINGS,
+    'Reviewer for GPT-built': OPUS_SETTINGS,
+    'Fixer': ('| Claude ' + OPUS, '| GPT ' + SOL),
+}
+
+
+def stable_settings():
+    text = own_settings()
+    for title, rows in STABLE_ROWS.items():
+        head, sep, rest = text.partition('\n## %s\n' % title)
+        body, more, tail = rest.partition('\n## ')
+        lines = body.split('\n')
+        table = [i for i, line in enumerate(lines) if line.startswith('|')]
+        assert sep and len(table) > 2 and table == list(range(table[0], table[-1] + 1)), title
+        lines[table[0] + 2:table[-1] + 1] = rows
+        text = head + sep + '\n'.join(lines) + more + tail
+    return text
+
+
 def table_rows(text, title):
     body = text.split('\n## %s\n' % title, 1)[1].split('\n## ', 1)[0]
     return [[cell.strip() for cell in line.strip()[1:-1].split('|')]
@@ -814,21 +844,21 @@ class OwnSettings(unittest.TestCase):
 
     def test_a_role_set_in_both_forms_still_agrees(self):
         high = '| Claude Code | Opus 5.5 | High | `--provider claude-code --model claude-opus-5-5 --reasoning-level high` |'
-        text = in_section(own_settings(), 'Models', '| Small builder | follows Builder | | | |', '| Small builder %s' % high)
+        text = in_section(stable_settings(), 'Models', '| Small builder | follows Builder | | | |', '| Small builder %s' % high)
         text = in_section(text, 'Builder for small tickets', '| Effort | Medium | `--reasoning-level medium` |',
                           '| Effort | High | `--reasoning-level high` |')
         self.agree(text)
 
     def test_a_role_changed_in_one_form_only_or_a_second_fixer_row_is_refused(self):
         for name, text in (
-                ('older small only', in_section(own_settings(), 'Builder for small tickets',
+                ('older small only', in_section(stable_settings(), 'Builder for small tickets',
                                                 '| Effort | Medium | `--reasoning-level medium` |',
                                                 '| Effort | High | `--reasoning-level high` |')),
-                ('models reviewer only', in_section(own_settings(), 'Models', '--model gpt-6.2-sol --reasoning-level medium',
+                ('models reviewer only', in_section(stable_settings(), 'Models', '--model gpt-6.2-sol --reasoning-level medium',
                                                     '--model gpt-6.2-sol --reasoning-level high')),
-                ('older GPT fixer only', in_section(own_settings(), 'Fixer', '--model gpt-6.2-sol --reasoning-level medium',
+                ('older GPT fixer only', in_section(stable_settings(), 'Fixer', '--model gpt-6.2-sol --reasoning-level medium',
                                                     '--model gpt-6.2-sol --reasoning-level high')),
-                ('second GPT fixer row', in_section(own_settings(), 'Fixer', '\n\nSource:',
+                ('second GPT fixer row', in_section(stable_settings(), 'Fixer', '\n\nSource:',
                                                     '\n| GPT | Codex | Sol 6.2 | High | `--provider codex --model '
                                                     'gpt-6.2-sol --reasoning-level high` |\n\nSource:'))):
             with self.subTest(name), self.assertRaises(AssertionError):
