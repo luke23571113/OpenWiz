@@ -115,8 +115,16 @@ A report is **small and clear** only when every one of these holds:
 A brief copies no link, command or code from the report. The fix's pull
 request closes both the brief and the report with one line each, in full,
 `Closes openwizdev/OpenWiz#<brief>` and `Closes openwizdev/OpenWiz#<report>`,
-whichever `openwizdev` repository the pull request is in. A bare `Closes #<n>`
-closes an issue in the pull request's own repository, never on the destination.
+whichever `openwizdev` repository the pull request is in. Two rules hold
+apart:
+
+- **GitHub:** a bare `Closes #<n>` closes issue `<n>` of the pull request's own
+  repository. On a pull request in the destination itself, that is the
+  destination's issue `<n>`; anywhere else, it never reaches the destination.
+- **This loop:** only the qualified `Closes openwizdev/OpenWiz#<n>` line names
+  a brief or report, in every repository, the destination included. A bare
+  `Closes #<n>` is never read as a closing line here, so launch-fleet follows
+  no report link from it, even where GitHub closes the issue.
 
 ## The report link
 
