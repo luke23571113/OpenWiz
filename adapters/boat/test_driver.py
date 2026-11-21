@@ -155,7 +155,7 @@ class Boat(unittest.TestCase):
     def only_these_tools(self):
         tools = os.path.join(self.folder, 'tools')
         os.mkdir(tools)
-        for name in ('python3', 'sh', 'sleep', 'mktemp', 'rm', 'readlink', 'ln', 'mkdir', 'dirname'):
+        for name in ('python3', 'sh', 'sleep', 'mktemp', 'rm', 'readlink', 'ln', 'mkdir', 'dirname', 'lsof'):
             os.symlink(shutil.which(name), os.path.join(tools, name))
         return tools
 
@@ -661,14 +661,56 @@ class Boat(unittest.TestCase):
         self.assertEqual([c for c in asked if '-E' in c.split() or 'e' in c.split()], [],
                          'the driver asked ps for process environments')
 
+    def test_without_proc_as_on_macos_stop_ends_a_worker_writing_the_log_after_its_supervisor_is_gone(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.driver('start', REQUEST, **macos)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        prompt_pid, worker_pid = self.logged()[0][:2]
+        self.assertTrue(self.until(lambda: not alive(prompt_pid)))
+        with open(os.path.join(self.env['OPENWIZ_BOAT_STATE'], out['run'] + '.json')) as f:
+            supervisor = json.load(f)['turns'][0]['supervisor']
+        os.kill(supervisor, signal.SIGKILL)
+        self.assertTrue(self.until(lambda: not alive(supervisor)))
+        self.assertTrue(alive(worker_pid))
+        self.assertEqual(self.driver('stop', out, **macos), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(worker_pid), 'a worker writing the turn log still runs after stop')
+
+    def test_without_proc_as_on_macos_a_failed_wake_ends_only_its_own_turn(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.driver('start', REQUEST, **macos)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        prompt_pid, earlier = self.logged()[0][:2]
+        self.assertTrue(self.until(lambda: not alive(prompt_pid)))
+        code, woke = self.driver('wake', out, FAKE_RESUME_FAILS='1', **macos)
+        self.assertEqual(code, 1, woke)
+        failed = self.logged()[1][1]
+        self.assertFalse(alive(failed), "the failed wake's worker still runs")
+        self.assertTrue(alive(earlier), "the failed wake ended an earlier turn's worker")
+        self.assertEqual(self.driver('stop', out, **macos), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(earlier))
+
+    def test_without_proc_as_on_macos_stop_ends_a_worker_the_turn_hands_off_as_it_exits(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.driver('start', REQUEST, FAKE_LATE_WORKER='0.7', **macos)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: len(self.logged()) == 1))
+        prompt_pid, worker_pid = self.logged()[0][:2]
+        self.assertTrue(self.until(lambda: not alive(prompt_pid)))
+        time.sleep(1)
+        self.assertTrue(alive(worker_pid))
+        self.assertEqual(self.driver('stop', out, **macos), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(worker_pid), 'a worker the turn handed off as it exited still runs after stop')
+
     def test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
-        for worker in ({}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
+        for worker in ({'FAKE_DAEMON': '1'}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
             with self.subTest(**worker):
                 self.tearDown()
                 self.setUp()
                 macos['PATH'] = NO_PROC + os.pathsep + self.env['PATH']
-                detached = not worker
+                detached = 'FAKE_DAEMON' in worker
                 if detached:
                     open(self.hold, 'w').close()
                 code, out = self.driver('start', REQUEST, **macos, **worker)
@@ -690,7 +732,7 @@ class Boat(unittest.TestCase):
         p = subprocess.run([os.path.join(NO_PROC, 'python3'), '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
                             '--ticket', '7', '--harness', 'claude', '--model', 'claude-opus-5-5',
                             '--tracker', self.tracker, '--wait', '8'],
-                           env=dict(self.env, FAKE_SAME_GROUP='1', **macos), capture_output=True, text=True, timeout=300)
+                           env=dict(self.env, **macos), capture_output=True, text=True, timeout=300)
         self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
             'pass version: openwiz:records v1, and the schema is driver v1',
             'pass start: the run posted builder status note 1',
