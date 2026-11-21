@@ -116,6 +116,13 @@ class Kit(unittest.TestCase):
                                   **spaced)
         self.assertEqual((code, out), (1, PLANTED['token-in-env']), err)
 
+    def test_without_proc_as_on_macos_a_driver_whose_run_stays_in_the_kits_group_passes_all_five(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable,
+                 'FAKE_SAME_GROUP': '1'}
+        code, out, err = self.kit(os.path.join(FIXTURES, 'same-group-driver'), os.path.join(NO_PROC, 'python3'),
+                                  **macos)
+        self.assertEqual((code, out), (0, PASS), err)
+
     def test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes(self):
         p = subprocess.run([os.path.join(NO_PROC, 'python3')] + module(os.path.join(HERE, 'kit.py')).PROBE,
                            input='', env=dict(self.env, NO_PROC_PYTHON=sys.executable), capture_output=True,
