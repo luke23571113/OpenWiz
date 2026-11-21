@@ -20,7 +20,10 @@ with open(log, 'a') as f:
     f.write(json.dumps(args) + '\n')
 sub = args[1] if len(args) > 1 and args[0] == 'thread' else ''
 if sub and os.environ.get('FAKE_ROOM_REFUSE') == sub:
-    sys.exit(print('Synthetic refusal of thread %s %s.' % (sub, ' '.join(args[2:3])), file=sys.stderr) or 1)
+    if os.environ.get('FAKE_ROOM_SAY'):
+        print(json.dumps({'error': os.environ['FAKE_ROOM_SAY']}))
+    sys.exit(print(os.environ.get('FAKE_ROOM_SAY') or 'Synthetic refusal of thread %s %s.' % (
+        sub, ' '.join(args[2:3])), file=sys.stderr) or 1)
 try:
     with open(log + '.threads') as f:
         threads = json.load(f)

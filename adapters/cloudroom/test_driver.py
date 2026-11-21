@@ -184,6 +184,79 @@ class Driver(unittest.TestCase):
                     self.assertEqual([c for c in self.calls() if c[1] == 'archive'],
                                      [['thread', 'archive', 'thr_syn_0001']])
 
+    def files_holding(self, marker):
+        found = []
+        for root, _, names in os.walk(self.folder):
+            for name in names:
+                try:
+                    with open(os.path.join(root, name), errors='replace') as f:
+                        if marker in f.read():
+                            found.append(os.path.join(root, name))
+                except OSError:
+                    pass
+        return found
+
+    def test_a_credential_shaped_start_field_is_refused_before_anything_starts(self):
+        cases = (('model', 'sk-' + 'Synthetic0Marker' * 2), ('model', 'token: synthetic0marker'),
+                 ('model', 'AKIA' + 'SYNTHETIC0MARK00'), ('repository', TOKEN + '/site'),
+                 ('skill', 'sk-synthetic0marker0value00'), ('harness', 'sk-synthetic0marker0value00'))
+        for host in ('local', 'cloud'):
+            for field, value in cases:
+                with self.subTest(host=host, field=field, value=value):
+                    self.fresh()
+                    code, err = self.call('start', dict(START, **{field: value}), FAKE_ROOM_HOST=host)
+                    self.assertEqual(code, 1, err)
+                    self.assertIn(field, err['error'])
+                    self.assertIn('credential', err['error'])
+                    self.assertNotIn(value, json.dumps(err))
+                    self.assertFalse(os.path.exists(self.log), 'room-cli ran')
+                    self.assertEqual((self.runs(), self.files_holding(value)), ([], []))
+        alone = tempfile.mkdtemp()
+        with open(DRIVER) as f, open(os.path.join(alone, 'driver'), 'w') as g:
+            g.write(f.read())
+        p = subprocess.run([sys.executable, os.path.join(alone, 'driver'), 'start'], input=json.dumps(START),
+                           env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertIn('credential check is missing', json.loads(p.stdout)['error'])
+        self.assertFalse(os.path.exists(self.log), 'room-cli ran without the credential check')
+
+    def test_room_cli_diagnostics_never_reach_the_drivers_answer(self):
+        marker = 'sk-' + 'Synthetic0Room0Marker' + self.mark
+        says = (('Synthetic diagnostic ' + marker, 'does not repeat'),
+                ('Synthetic: not signed in, token: ' + marker, 'not signed in'), ('', 'gave no answer'))
+        for host in ('local', 'cloud'):
+            for refuse in ('spawn', 'tell', 'archive', 'list'):
+                for say, words in says:
+                    with self.subTest(host=host, refuse=refuse, say=words):
+                        self.fresh()
+                        env = {'FAKE_ROOM_HOST': host}
+                        bad = dict(env, FAKE_ROOM_REFUSE=refuse, FAKE_ROOM_SAY=say or ' ')
+                        if refuse == 'spawn':
+                            code, err = self.call('start', START, **bad)
+                        else:
+                            code, out = self.call('start', START, **dict(
+                                env, FAKE_ROOM_RECEIPT='Synthetic lost receipt') if refuse == 'list' else env)
+                            run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(out)).group()}
+                            code, err = self.call('wake' if refuse == 'tell' else 'stop', run, **bad)
+                        self.assertEqual(code, 1, err)
+                        self.assertNotIn(marker, json.dumps(err))
+                        self.assertNotIn('Synthetic', json.dumps(err))
+                        self.assertIn(words, err['error'])
+
+    def test_a_credential_shaped_thread_id_is_never_kept_or_passed(self):
+        for host in ('local', 'cloud'):
+            with self.subTest(host):
+                self.fresh()
+                receipt = json.dumps({'id': 'thr_' + TOKEN, 'projectId': PROJECT})
+                code, err = self.call('start', START, FAKE_ROOM_HOST=host, FAKE_ROOM_RECEIPT=receipt)
+                self.assertEqual(code, 1, err)
+                self.assertIn('unknown', err['error'])
+                self.assertNotIn(TOKEN, json.dumps(err))
+                self.assertEqual(self.files_holding(TOKEN), [])
+                run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(err)).group()}
+                self.call('stop', run, FAKE_ROOM_HOST=host)
+                self.assertNotIn(TOKEN, json.dumps(self.calls()))
+
     def archive_by_hand(self, thread):
         with open(self.log + '.threads') as f:
             threads = json.load(f)
