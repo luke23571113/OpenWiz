@@ -179,7 +179,7 @@ def main():
         rest = [a for a in rest if a != '--json'] + ['--json'] * (rest.count('--json') == 1)
     if cmd == 'new' and len(rest) == 3 and rest[0] == '--name' and rest[2] == '--json':
         def create(state):
-            sid = 'bx_fake%04d' % (len(state['sandboxes']) + 1)
+            sid = os.environ.get('FAKE_BOAT_ID') or 'bx_fake%04d' % (len(state['sandboxes']) + 1)
             state['sandboxes'][sid] = {'name': rest[1], 'state': 'running', 'conversations': {}, 'interrupts': 0}
             return sid
         sid = update(create)

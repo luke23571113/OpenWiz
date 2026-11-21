@@ -349,6 +349,25 @@ class Boat(unittest.TestCase):
                 self.assertNotIn('running', self.sandboxes().values())
         self.assertEqual(self.notes(), [])
 
+    def test_boat_output_never_reaches_a_wake_or_stop_answer(self):
+        marker = 'sk-' + 'Synthetic0Host0Marker' + self.mark
+        for shape in ('nested', 'flat'):
+            with self.subTest(shape=shape):
+                code, out = self.driver('start', REQUEST)
+                self.assertEqual(code, 0, out)
+                self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])), 'the first turn never ended')
+                self.set_state('<b>Synthetic diagnostic</b> ' + marker)
+                code, err = self.driver('wake', out, FAKE_BOAT_INFO=shape)
+                self.assertEqual(code, 1, err)
+                self.assertIn('is unknown, not running', err['error'])
+                self.assertNotIn(marker, json.dumps(err))
+                self.assertNotIn('Synthetic', json.dumps(err))
+                self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
+        code, err = self.driver('start', REQUEST, FAKE_BOAT_ID=marker)
+        self.assertEqual(code, 1, err)
+        self.assertNotIn(marker, json.dumps(err))
+        self.assertIn('sandbox id', err['error'])
+
     def test_a_start_that_fails_leaves_no_sandbox_running(self):
         # catches: a sandbox left running (and billing) when the agent can't start, or created for a
         # harness boat doesn't have.
