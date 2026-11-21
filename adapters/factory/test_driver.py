@@ -196,6 +196,27 @@ class Factory(unittest.TestCase):
         return other, child, [{'n': 0, 'pid': other.pid, 'since': since, 'supervisor': other.pid,
                                'supervisor_since': since}]
 
+    def test_stop_on_a_tampered_folder_never_signals_a_process_matched_by_its_command_line(self):
+        state = self.env['OPENWIZ_FACTORY_STATE']
+        os.mkdir(state, 0o700)
+        run = 'run-00000000000b'
+        with open(os.path.join(state, run + '.json'), 'w') as f:
+            json.dump({'request': REQUEST, 'stopped': False, 'turns': []}, f)
+        lookalike = subprocess.Popen([sys.executable, '-I', DRIVER, '--turn', os.path.join(state, run + '.0.session'),
+                                      sys.executable, '-c', 'import time; time.sleep(60)'],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+        self.addCleanup(lookalike.wait)
+        self.addCleanup(lookalike.kill)
+        child = json.loads(lookalike.stdout.readline())['pid']
+        lookalike.stdout.close()
+        self.addCleanup(lambda: alive(child) and os.kill(child, signal.SIGKILL))
+        os.chmod(state, 0o777)
+        code, out = self.call('stop', {'run': run})
+        self.assertTrue(alive(lookalike.pid) and alive(child), 'stop signalled a process matched by command line')
+        self.assertEqual(code, 1, out)
+        self.assertIn(state, out['error'])
+        self.assertIn('by hand', out['next'])
+
     def test_stop_on_a_tampered_folder_still_ends_the_runs_own_processes(self):
         state = self.env['OPENWIZ_FACTORY_STATE']
         code, out = self.call('start', REQUEST)
