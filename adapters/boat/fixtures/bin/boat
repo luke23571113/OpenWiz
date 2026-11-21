@@ -9,7 +9,7 @@ FAKE_BOAT_INFO=flat this fake prints the older flat shape, a top-level `state`, 
 It keeps its sandboxes in the JSON file FAKE_BOAT_STATE. `boat prompt` plays the agent: a new
 conversation posts one builder status note in the local tracker KIT_TRACKER, and each later prompt
 in that conversation edits the same note; then the turn ends (see `prompt` for FAKE_HOLD).
-FAKE_PROMPTS, when set, logs each prompt's text. FAKE_BOAT_PROVIDERS (comma-separated) lists the connected providers; FAKE_BOAT_FAIL (comma-separated) names
+FAKE_BOAT_PROVIDERS (comma-separated) lists the connected providers; FAKE_BOAT_FAIL (comma-separated) names
 commands that fail. `boat exec` runs its script for real, in the sandbox's own home folder, with the
 synthetic `git` of fixtures/sandbox-bin; the agent posts its note only if its skill is installed there."""
 import fcntl, json, os, re, subprocess, sys, time
@@ -105,7 +105,7 @@ def prompt(args):
     if provider not in PROVIDERS:
         fail('provider_not_configured', 'connect a %s key or subscription first' % provider)
     skill = re.search(r'the ([a-z0-9-]+) skill', text).group(1)
-    if os.environ.get('FAKE_PROMPTS'):  # the text the agent reads, one JSON string per prompt
+    if os.environ.get('FAKE_PROMPTS'):
         with open(os.environ['FAKE_PROMPTS'], 'a') as f:
             f.write(json.dumps(text) + '\n')
 

@@ -268,8 +268,6 @@ class Boat(unittest.TestCase):
         self.assertIn('is archived, not running', err['error'])
 
     def test_every_turn_tells_the_agent_its_note_says_default_effort(self):
-        # catches: a boat run whose status note names only the model (or a configured effort it never got),
-        # when driver v1 passes no effort and the run uses the host's default effort (DW10, #2007).
         prompts = os.path.join(self.folder, 'prompts')
         code, out = self.driver('start', REQUEST, FAKE_PROMPTS=prompts)
         self.assertEqual(code, 0, out)
