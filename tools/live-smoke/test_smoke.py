@@ -450,6 +450,9 @@ elif cmd == 'start':
     if (root / 'lose-start').exists():
         sys.exit(1)
     out = {'run': 'run-0123456789ab'}
+elif cmd == 'wake' and (root / 'refuse-wake').exists():
+    print(json.dumps({'error': 'Cloudroom did not take the wake: synthetic refusal', 'next': 'leave the run'}))
+    sys.exit(1)
 elif cmd == 'wake':
     if not (root / 'no-delivery').exists():
         with (root / 'room-log').open('a') as log:
@@ -468,10 +471,22 @@ root = pathlib.Path(__file__).parent
 assert sys.argv[1:3] in (['thread', 'show'], ['thread', 'log']) and sys.argv[3] == 'synthetic-child-thread', sys.argv
 with (root / 'room-calls').open('a') as log:
     log.write(json.dumps(sys.argv[1:3]) + '\\n')
+state = dict(json.loads((root / 'room-state').read_text()), id='synthetic-child-thread')
 if sys.argv[2] == 'log':
-    print((root / 'room-log').read_text() if (root / 'room-log').exists() else '')
+    text = (root / 'room-log').read_text() if (root / 'room-log').exists() else ''
+    if text and (root / 'host-local').exists():
+        text = '[message from thread:synthetic-parent]\\n\\n%s\\n── Worked for (1ms) ──\\n' % text
+    print(text)
+elif not (root / 'host-local').exists():
+    print(json.dumps(state))
+elif '--json' not in sys.argv:
+    print('ID  TITLE  STATUS\\n%s  synthetic  idle' % state['id'])
 else:
-    print(json.dumps(dict(json.loads((root / 'room-state').read_text()), id='synthetic-child-thread')))
+    print(json.dumps({'thread': {'id': state['id'], 'title': 'synthetic', 'projectId': state['projectId'],
+                                 'parentThreadId': None, 'providerId': 'claude-code', 'status': 'idle',
+                                 'createdAt': 1700000000000, 'updatedAt': 1700000000000, 'deletedAt': None,
+                                 'archivedAt': 1700000000000 if state['archived'] else None},
+                      'environment': {}, 'execution': {}, 'pendingTodos': []}))
 """
 FAKE_CLI = """#!/usr/bin/env python3
 import json, sys
@@ -557,6 +572,29 @@ class Sheet(unittest.TestCase):
         section = runpy_path('receipt.py')['release_section'](kit)
         self.assertEqual(section['scope']['writes'], {'send': 1, 'new': 1})
         self.assertEqual(section['scope']['spending_cents'], 0)
+
+    def test_every_step_passes_on_a_local_and_a_cloud_room_cli(self):
+        for host in ('local', 'cloud'):
+            with self.subTest(host):
+                self.setUp()
+                if host == 'local':
+                    (self.root / 'host-local').write_text('')
+                doc = self.run_sheet()
+                self.assertEqual(doc['claims'], {c: 'pass' for c in template()['claims']})
+                self.assertEqual([c[0] for c in self.driver_calls()], ['version', 'start', 'wake', 'stop'])
+                self.assertTrue(self.archived())
+
+    def test_a_refused_wake_fails_send_on_both_room_clis_and_still_tears_down(self):
+        for host in ('local', 'cloud'):
+            with self.subTest(host):
+                self.setUp()
+                (self.root / 'refuse-wake').write_text('')
+                if host == 'local':
+                    (self.root / 'host-local').write_text('')
+                doc = self.run_sheet(code=3)
+                self.assertEqual((doc['reason'], doc['claims']['send']), ('uncertain_write', 'incomplete'))
+                self.assertEqual([c[0] for c in self.driver_calls()], ['version', 'start', 'wake', 'stop'])
+                self.assertTrue(self.archived())
 
     def test_driver_steps_start_wake_and_stop_one_run_through_the_runner(self):
         doc = self.run_sheet()
