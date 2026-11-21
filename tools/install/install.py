@@ -194,6 +194,17 @@ def damaged(build, assets, raw):
         return True
 
 
+def repair_backups(builds, source, raw):
+    found = sorted(builds.glob('.damaged-*-' + source))
+    for backup in found:
+        meta = backup.lstat()
+        require(stat.S_ISDIR(meta.st_mode) and meta.st_uid == os.getuid(), 'a foreign repair backup is in the way')
+        stored = backup / 'install-manifest.json'
+        require(stored.is_file() and not stored.is_symlink() and stored.read_bytes() == raw,
+                'existing source has a different manifest in its repair backup ' + backup.name)
+    return found
+
+
 def activate_link(build, root):
     temporary = root / ('.current-' + str(os.getpid()))
     os.symlink(build, temporary)
@@ -259,6 +270,7 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
             require(seen == set(assets), 'incomplete archive')
             repair = (build.exists() or build.is_symlink()) and damaged(build, assets, raw)
             if repair or not (build.exists() or build.is_symlink()):
+                backups = repair_backups(builds, value['source'], raw)
                 needed = sum(item['bytes'] for item in assets.values()) + len(raw)
                 require(free_bytes(builds) >= needed, 'insufficient disk space')
                 temporary = Path(tempfile.mkdtemp(prefix='.stage-', dir=builds))
@@ -291,13 +303,13 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
                         except BaseException:
                             os.rename(aside, build)
                             raise
-                        sync(builds)
-                        shutil.rmtree(aside, ignore_errors=True)
+                        backups.append(aside)
                     else:
                         os.rename(temporary, build)
                     sync(builds)
-                    for leftover in builds.glob('.damaged-*-' + value['source']):
-                        shutil.rmtree(leftover, ignore_errors=True)
+                    verify_installed(build, assets, raw)
+                    for backup in backups:
+                        shutil.rmtree(backup, ignore_errors=True)
                 finally:
                     if temporary.exists():
                         shutil.rmtree(temporary)
