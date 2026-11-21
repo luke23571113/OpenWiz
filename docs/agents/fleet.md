@@ -88,7 +88,7 @@ The skill that holds a ticket first creates `held`, once, with the description "
 
 ## Test commands
 
-- **Test budget:** at most 400 net new test lines per pull request in `tests/**`, `crates/*/tests/**`, `**/test_*.py`, `**/*_test.py`, `**/*.test.mjs`, `**/*.test.ts(x)` and `**/__tests__/**`. Offset the excess with deletions, or write `Test budget allowance: <N> lines. Why: <reason>` in the description.
+- **Test budget:** at most 400 net new test lines per pull request in `tests/**`, `crates/*/tests/**`, `**/test_*.py`, `**/*_test.py`, `**/*.test.mjs`, `**/*.test.ts(x)` and `**/__tests__/**`. Offset the excess with deletions, or write `Test budget allowance: <N> lines. Why: <reason>` in the description. No CI step counts these lines: the reviewer checks the limit and any recorded allowance during review, on the exact head, and a pull request over the limit without an allowance gets a finding.
 - **Locally,** run the red/green proof and only the tests your change can affect, plus `cargo fmt --check` and `cargo clippy -p <touched-crate> --all-targets -- -D warnings`. Never run the full workspace locally. CI runs the full set; its green result at the exact head is the hand-back gate. Source: Jake, 2026-11-03 ([private record](https://github.com/jparker2006/ClosedWiz/issues/1724#issuecomment-6697900652)).
 - **One `cargo` command per checkout at a time.** A build can replace `target/debug/fake-room-cli` or `target/release/openwiz` under running tests. Run anything alongside in a separate worktree with its own `target/` (#195).
 
