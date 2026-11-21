@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The token service (GA2, #1841): mint one-hour openwiz[bot] installation tokens
+USAGE = """The token service (GA2, #1841): mint one-hour openwiz[bot] installation tokens
 on the owner's machine, under contracts/token-service.v1.md.
 
   token-service.py start   let agents mint (a fresh install is stopped); the App
@@ -27,9 +27,8 @@ import time
 import urllib.error
 import urllib.parse
 
-# The documented `python3 -I` drops this folder from sys.path: add exactly it.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import app  # noqa: E402
+import app  # noqa: E402 -- the documented `python3 -I` drops this folder from sys.path
 
 SCHEMA = "openwiz.token-service.v1"
 REFUSALS = {
@@ -45,9 +44,6 @@ LEVEL = {"read": 0, "write": 1}
 REQUESTER = re.compile(r"[a-z][a-z0-9-]{0,63}")
 PERMISSION = re.compile(r"[a-z][a-z_]*")
 TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
-# A handed-over token has more than REFRESH and at most LONGEST seconds left (the pin),
-# checked on a fresh clock after the exchange with HANDOVER seconds kept for the log
-# write and the pipe, so the helper never receives a token already due for refresh.
 REFRESH, LONGEST, HANDOVER = 300, 3900, 10
 REQUEST_LIMIT = 64 * 1024
 FOLDER, STARTED, LOG = "token-service", "started", "mint-log.jsonl"
@@ -66,10 +62,9 @@ def check(condition, code):
 
 
 def request_of(data):
-    """The one valid request in DATA, or a usage refusal. Nothing in it is trusted before this."""
     try:
         check(len(data) <= REQUEST_LIMIT, "usage")
-        value = app.parse_json(data.decode("utf-8"))  # a repeated key at any depth is refused
+        value = app.parse_json(data.decode("utf-8"))
     except (ValueError, RecursionError):
         raise Refused("usage") from None
     check(set(value) == {"schema", "kind", "requester", "repositories", "permissions"}, "usage")
@@ -88,7 +83,6 @@ def request_of(data):
 
 
 def folder(state, create=False):
-    """The service's own owner-only folder, <state>/service/token-service, as a descriptor."""
     fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         app.checked(fd, directory=True)
@@ -109,8 +103,6 @@ def folder(state, create=False):
 
 
 def started(directory):
-    """The App setting recorded by `start` ("user" or "factory"), or None when stopped.
-    A marker that is not owner-only or not exactly start's is stopped."""
     try:
         value = app.parse_json(app.read_file(directory, STARTED, 64))
     except (OSError, ValueError):
@@ -120,7 +112,6 @@ def started(directory):
 
 
 def mint(api, request, setting):
-    """(token, expires_at) for exactly REQUEST, or a refusal, checked in the contract's order."""
     repositories, permissions = request["repositories"], request["permissions"]
     owners = {name.split("/")[0].lower() for name in repositories}
     check(len(owners) == 1, "one-owner")
@@ -129,7 +120,7 @@ def mint(api, request, setting):
         try:
             config = app.parse_json(app.read_file(directory, "app.json", 1024))
             app.require(set(config) == {"app_id"})
-            jwt = app.jwt(directory, config["app_id"])  # the key reaches OpenSSL only by descriptor
+            jwt = app.jwt(directory, config["app_id"])
         finally:
             os.close(directory)
     except Exception:
@@ -162,7 +153,6 @@ def mint(api, request, setting):
         raise Refused("unavailable") from None
     except Exception:
         raise Refused("github") from None
-    # Exactly the request: never a wider, narrower or other grant.
     token, listed = result.get("token"), result.get("repositories")
     check(result.get("permissions") == permissions and result.get("repository_selection") == "selected", "github")
     check(isinstance(listed, list) and all(isinstance(r, dict) and isinstance(r.get("full_name"), str)
@@ -173,13 +163,12 @@ def mint(api, request, setting):
         expires_at = int(datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00")).timestamp())
     except Exception:
         raise Refused("github") from None
-    left = expires_at - time.time()  # now, after the exchange: what the caller will get
+    left = expires_at - time.time()
     check(REFRESH + HANDOVER < left <= LONGEST, "expiry")
     return token, expires_at
 
 
 def serve(api, log, data, setting):
-    """(message, exit) for one request; the log line is written before any token is handed over."""
     now = time.time()
     line = {"schema": SCHEMA, "kind": "mint-log", "at": int(now), "requester": "-"}
     try:
@@ -193,7 +182,6 @@ def serve(api, log, data, setting):
         line["outcome"] = refused.code
         message = refusal(refused.code)
     except Exception:
-        # Anything unforeseen is unavailable, and still logged.
         line["outcome"] = "unavailable"
         message = refusal("unavailable")
     entry = (json.dumps(line) + "\n").encode()
@@ -207,7 +195,7 @@ def refusal(code):
 
 
 def main():
-    parser = app.arguments(__doc__)
+    parser = app.arguments(USAGE)
     parser.add_argument("command", choices=("mint", "start", "stop"))
     args = parser.parse_args()
     if args.command != "mint":
@@ -220,7 +208,6 @@ def main():
                     print("Token service not started: OPENWIZ_GITHUB_APP_MODE must be unset, user or factory.",
                           file=sys.stderr)
                     return 1
-                # Replaced whole, never edited in place: a mint reads the old or the new setting.
                 temporary = f".{STARTED}.{os.getpid()}"
                 try:
                     os.unlink(temporary, dir_fd=directory)
@@ -276,5 +263,5 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except Exception:
-        # Never a traceback: it could carry a request, a path or a provider body.
+        # SECURITY: never a traceback: it could carry a request, a path or a provider body.
         sys.exit(answer(refusal("unavailable"), 1))

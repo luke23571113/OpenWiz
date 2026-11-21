@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""P2 (#1841): the token service mints scoped one-hour tokens and never exposes the key or a token.
-
-Synthetic only: a generated throwaway key, a fake GitHub on loopback and
-contracts/fixtures/token-service/requests.json on a controlled clock.
-Run: python3 -I tools/github-app/test_token_service.py
-"""
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,7 +20,7 @@ SERVICE = HERE / "token-service.py"
 FIXTURES = HERE.parents[1] / "contracts/fixtures/token-service"
 REQUESTS = json.loads((FIXTURES / "requests.json").read_text())
 SCHEMA = json.loads((FIXTURES.parents[1] / "token-service.v1.schema.json").read_text())
-sys.dont_write_bytecode = True  # leave no __pycache__ in contracts/
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("contract_fixtures", FIXTURES / "test_fixtures.py")
 CONTRACT = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(CONTRACT)
@@ -35,8 +29,6 @@ CASE = {case["name"]: case["request"] for case in REQUESTS["cases"]}
 WRITE = CASE["a good write request gets the App's profile for one repository"]
 SMALL = CASE["repository names match the installation in any case"]
 INSTALLATION = 2002
-# Runs the real CLI with time.time() read from a clock file the test (and the fake GitHub) sets:
-# the fixtures' controlled clock, never a wall-clock race.
 CLOCK = ("import runpy, sys, time\n"
          "clock = sys.argv[1]; time.time = lambda: float(open(clock).read())\n"
          "sys.argv = sys.argv[2:]\n"
@@ -45,7 +37,6 @@ CLOCK = ("import runpy, sys, time\n"
 
 @contextmanager
 def fake_github(pem, installed):
-    """GitHub's App endpoints the service uses. Every refusal body carries the key, so an echo shows."""
     calls = []
     behavior = {"token": "synthetic-token", "expires_at": NOW + 3600, "status": 201, "grant": {},
                 "app_owner": "synthetic-owner", "account": "synthetic-owner", "clock": None, "elapse": 0}
@@ -76,7 +67,7 @@ def fake_github(pem, installed):
             calls.append(("POST", self.path, body))
             if self.path != f"/app/installations/{INSTALLATION}/access_tokens" or behavior["status"] != 201:
                 return self.reply(behavior["status"] if behavior["status"] != 201 else 404, {"message": pem.decode()})
-            if behavior["clock"]:  # the exchange takes this long on the service's clock
+            if behavior["clock"]:
                 behavior["clock"].write_text(str(NOW + behavior["elapse"]))
             at = datetime.fromtimestamp(behavior["expires_at"], timezone.utc).isoformat().replace("+00:00", "Z")
             result = {"token": behavior["token"], "expires_at": at, "permissions": body["permissions"],
@@ -97,7 +88,6 @@ def fake_github(pem, installed):
 
 
 def closed_port():
-    """A loopback address nothing listens on: GitHub unreachable."""
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         return f"http://127.0.0.1:{probe.getsockname()[1]}"
@@ -130,7 +120,6 @@ class ServiceFixture(unittest.TestCase):
     def mint(self, endpoint, request, env=None):
         text = request if isinstance(request, str) else json.dumps(request)
         self.clock.write_text(str(NOW))
-        # The mint's environment holds no App setting unless a test gives one: a paired call's doesn't.
         environment = {k: v for k, v in os.environ.items() if k != "OPENWIZ_GITHUB_APP_MODE"}
         return subprocess.run(["python3", "-I", "-c", CLOCK, str(self.clock), str(SERVICE), "mint",
                                "--state-dir", str(self.state), "--api-base", endpoint],
@@ -144,8 +133,6 @@ class ServiceFixture(unittest.TestCase):
         self.assertEqual(CONTRACT.errors(message, SCHEMA, SCHEMA), [], message)
 
     def assert_nothing_exposed(self, token, *outputs):
-        """Neither the token nor the key (any PEM line) in OUTPUTS or any state file but the key's own.
-        A failure names the place, never prints the secret."""
         needles = [token.encode(), *self.pem.splitlines()[1:-1]]
         places = [(f"output {n}", o.encode()) for n, o in enumerate(outputs, 1)]
         places += [(str(p.relative_to(self.state)), p.read_bytes()) for p in self.state.rglob("*")
@@ -157,8 +144,6 @@ class ServiceFixture(unittest.TestCase):
 
 class RequestFixtureTests(ServiceFixture):
     def test_every_request_fixture_gets_its_answer_exit_and_log_line(self):
-        # catches: a mint wider than the request, a missed refusal, a wrong exit or sentence,
-        # a refusal checked out of order, or a log line holding untrusted request text.
         for number, case in enumerate(REQUESTS["cases"], 1):
             with self.subTest(case["name"]), fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
                 message = case["out"]["message"]
@@ -190,10 +175,7 @@ class RequestFixtureTests(ServiceFixture):
                     self.assertEqual(calls, [], "no GitHub call for a request refused on its face")
 
     def test_every_message_the_schema_refuses_is_a_usage_refusal_with_no_github_call(self):
-        # catches: a reader looser than the schema (an unknown level, a repeated repository,
-        # a requester with spaces, another version, an answer posing as a request).
         invalid = json.loads((FIXTURES / "invalid.json").read_text())["cases"]
-        # The code's one stricter reading: a repository repeated in another case is the same one.
         twice = dict(SMALL, repositories=["synthetic-owner/work", "Synthetic-Owner/Work"])
         for name, message in [(c["name"], c["message"]) for c in invalid] + [("repeated in another case", twice)]:
             with self.subTest(name), fake_github(self.pem, REQUESTS["installed"]) as (url, calls, _fake):
@@ -202,7 +184,6 @@ class RequestFixtureTests(ServiceFixture):
                 self.assertEqual(calls, [])
 
     def test_a_grant_wider_or_other_than_the_request_is_refused(self):
-        # catches: trusting GitHub's grant instead of checking it is exactly the request.
         for grant in ({"permissions": {"metadata": "read", "workflows": "write"}},
                       {"repositories": [{"full_name": "synthetic-owner/work"}, {"full_name": "synthetic-owner/tools"}]},
                       {"repository_selection": "all"}, {"expires_at": "not a time"},
@@ -215,7 +196,6 @@ class RequestFixtureTests(ServiceFixture):
                 self.assert_nothing_exposed("synthetic-token", done.stdout, done.stderr)
 
     def test_a_token_expiring_beyond_the_contracts_bound_is_refused(self):
-        # catches: an expiry guard that checks only the lower bound.
         with fake_github(self.pem, REQUESTS["installed"]) as (url, _calls, fake):
             fake["expires_at"] = NOW + 3901
             done = self.mint(url, SMALL)
@@ -225,28 +205,24 @@ class RequestFixtureTests(ServiceFixture):
 
 
     def test_a_token_is_checked_for_time_left_at_handover_not_at_request(self):
-        # catches: an expiry guard on the clock read before the exchange, so a slow exchange
-        # hands over a token already inside the helper's refresh window (R1 on #1915).
         with fake_github(self.pem, REQUESTS["installed"]) as (url, _calls, fake):
             fake.update(clock=self.clock, elapse=15)
-            fake["expires_at"] = NOW + 310  # 310 s left when asked, 295 s at handover
+            fake["expires_at"] = NOW + 310
             done = self.mint(url, SMALL)
             self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "expiry"))
             self.assertEqual(self.logged()[-1]["outcome"], "expiry")
-            fake["expires_at"] = NOW + 15 + 311  # more than 300 s and the handover margin left
+            fake["expires_at"] = NOW + 15 + 311
             self.assertEqual(self.mint(url, SMALL).returncode, 0)
 
 
 class FactoryTests(ServiceFixture):
     def test_the_factory_setting_given_at_start_holds_for_every_mint(self):
-        # catches: a factory App's mint falling back to the user setting because the paired
-        # call's environment has no OPENWIZ_GITHUB_APP_MODE (R2 on #1915).
         text = (HERE.parents[1] / "contracts/github-identity.v1.md").read_text()
         pin = json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
         account, repository = pin["installations"][-1]["account"], pin["installations"][-1]["repositories"][0]
         request = dict(SMALL, repositories=[repository])
         with fake_github(self.pem, request["repositories"]) as (url, _calls, fake):
-            fake.update(app_owner="synthetic-elsewhere", account=account)  # the owners differ
+            fake.update(app_owner="synthetic-elsewhere", account=account)
             self.assertEqual(self.control("start", {"OPENWIZ_GITHUB_APP_MODE": "factory"}).returncode, 0)
             self.assertEqual(self.mint(url, request).returncode, 0, "factory set at start, none at mint")
             self.assertEqual(self.control("start", {"OPENWIZ_GITHUB_APP_MODE": "user"}).returncode, 0)
@@ -257,8 +233,6 @@ class FactoryTests(ServiceFixture):
 
 class NeverExposedTests(ServiceFixture):
     def test_the_log_and_state_hold_no_token_and_the_key_and_log_stay_owner_only(self):
-        # catches: a token written to the mint log or any other state file, a world-readable
-        # log, or a mint that loosens the key file's mode.
         with fake_github(self.pem, REQUESTS["installed"]) as (url, _calls, fake):
             fake["token"] = "synthetic-secret-token"
             done = self.mint(url, WRITE)
@@ -269,7 +243,6 @@ class NeverExposedTests(ServiceFixture):
         self.assertEqual(stat.S_IMODE(self.log.parent.stat().st_mode), 0o700)
 
     def test_an_unsafe_key_or_log_is_unavailable_before_any_github_call(self):
-        # catches: minting with a key others can read, or logging into a file others can read or swap.
         cases = [("key", lambda: self.key.chmod(0o640)),
                  ("log", lambda: self.log.chmod(0o644)),
                  ("log link", lambda: (self.log.unlink(), self.log.symlink_to(self.state / "elsewhere")))]
@@ -292,8 +265,6 @@ class NeverExposedTests(ServiceFixture):
 
 class StartStopTests(ServiceFixture):
     def test_a_stopped_service_answers_like_an_unreachable_one_and_start_resumes(self):
-        # catches: a stopped service that still mints, or answers with a refusal the helper
-        # would read as the service's word instead of falling back as unreachable.
         with fake_github(self.pem, REQUESTS["installed"]) as (url, calls, _fake):
             self.assertEqual(self.control("stop").returncode, 0)
             done = self.mint(url, WRITE)
@@ -304,7 +275,6 @@ class StartStopTests(ServiceFixture):
             self.assertEqual(self.mint(url, WRITE).returncode, 0)
 
     def test_a_service_never_started_is_stopped(self):
-        # catches: a fresh install that mints before the owner starts it.
         (self.state / "service/token-service/started").unlink()
         done = self.mint(closed_port(), WRITE)
         self.assertEqual((done.returncode, done.stdout), (1, ""))
@@ -312,8 +282,6 @@ class StartStopTests(ServiceFixture):
 
 class RunbookTests(unittest.TestCase):
     def test_every_link_into_the_legacy_secret_route_lands_on_the_ga2_warning(self):
-        # catches: a direct link (#agent-tokens-g2) that skips the GA2 section and lands on the
-        # legacy steps that move the App's key into a cloud secret, with no warning in view.
         doc = (HERE.parents[1] / "docs/github-app.md").read_text()
         self.assertIn("## The token service (GA2)\n", doc)
         linked = set(re.findall(r"\]\(#([a-z0-9-]+)\)", doc))
