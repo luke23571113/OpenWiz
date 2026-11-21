@@ -659,12 +659,12 @@ def strays(run, known):
     return found
 
 
-def shutdown(run, turns, sandbox, conversation, stop_sandbox, logs):
+def shutdown(run, turns, sandbox, conversation, stop_sandbox, logs=None):
     """End the run's local turns, then always stop its sandbox (or only interrupt the conversation), whatever
     the first step did: a failure of one never skips the other. Returns each failure, as Refused."""
     failures = []
     try:
-        end(turns + strays(run, {t['supervisor'] for t in turns}), run, logs)
+        end(turns + strays(run, {t['supervisor'] for t in turns}), run, turn_logs(run) if logs is None else logs)
     except Refused as e:
         failures.append(e)
     except Exception as e:  # even a /proc this driver may not read (L2): the sandbox's stop below still runs
@@ -810,7 +810,7 @@ def stop(run):
         kept = True
     except OSError:
         kept = False
-    failures = shutdown(run, state['turns'], state['sandbox'], state['conversation'], True, turn_logs(run))  # whatever the save did
+    failures = shutdown(run, state['turns'], state['sandbox'], state['conversation'], True)  # whatever the save did
     every_process_ended = not failures
     for name in os.listdir(STATE):
         if name.startswith(run + '.') and (name.endswith('.log') or name.endswith('.sup') and every_process_ended):
