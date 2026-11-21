@@ -1,0 +1,14 @@
+Red run, before the fix: python3 -I tools/install/tests/skills-per-agent/test_skills.py (synthetic home and synthetic WizSkills remote).
+FAIL: test_a_newest_tag_whose_record_does_not_match_installs_the_bundled_copy_and_says_so (__main__.Newest.test_a_newest_tag_whose_record_does_not_match_installs_the_bundled_copy_and_says_so)
+AssertionError: None != 'bundled'
+FAIL: test_an_unreadable_release_installs_the_bundled_copy_and_says_so (__main__.Newest.test_an_unreadable_release_installs_the_bundled_copy_and_says_so)
+AssertionError: None != 'bundled'
+FAIL: test_the_newest_release_of_the_pinned_line_is_installed_over_the_bundled_copy (__main__.Newest.test_the_newest_release_of_the_pinned_line_is_installed_over_the_bundled_copy)
+AssertionError: None != {'kind': 'release', 'version': '0.2.1', '[99 chars]f0e'}
+FAIL: test_the_users_own_same_named_skills_in_one_agent_block_nothing_else (__main__.PerSkill.test_the_users_own_same_named_skills_in_one_agent_block_nothing_else)
+AssertionError: Tuples differ: (5, 'refused') != (0, 'partial')
+FAIL: test_no_agent_folder_is_absent_and_never_reported_installed (__main__.Report.test_no_agent_folder_is_absent_and_never_reported_installed)
+AssertionError: Tuples differ: (0, 'installed') != (5, 'refused')
+Ran 6 tests in 2.710s
+FAILED (failures=5)
+The CODEX_HOME proof passes before the fix: install skills already uses $CODEX_HOME/skills.
