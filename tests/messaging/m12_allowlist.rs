@@ -1,25 +1,4 @@
 //! Approval provenance: [private record](https://github.com/jparker2006/ClosedWiz/issues/1277#issuecomment-6704800036).
-//! M12 Allowlist: `thread tell` is `send`'s only write, and every other
-//! mutating subcommand is still refused. P8(a) is updated for it (see the
-//! evidence README for the recorded reason).
-//!
-//! **Updated for OpenWiz 0.0.4 (ClosedWiz#11, A1 phase 2, N16)**, with this
-//! recorded reason: sheet item A-2 (approved by Jake, 2026-10-30) adds
-//! `cloud status --json` and the second write, `thread spawn`, in the shapes
-//! spike run 3 recorded. `spawn`, `--model` and `--reasoning-level` may now
-//! be spelled only in the allowlist, inside `ThreadSpawn`'s argv, never in
-//! `tell`'s; `--model` is also `openwiz new`'s own option in the CLI. The
-//! catalogue key `steer` stays only in the adapter's `cloud status` reader.
-//! `tell`'s shape and every other refusal are unchanged; N16
-//! (`tests/new-thread/n16_allowlist.rs`) proves `spawn`'s shape.
-//!
-//! **Updated for B2 (ClosedWiz#15)**, with this recorded reason: sheet B-7
-//! (approved by Jake, 2026-10-30) adds `--file` and `--image` to `tell`
-//! and `spawn`, only with staged paths. A path in the text remains text
-//! (#15, AD12). So each flag may be spelled only in the allowlist,
-//! once, inside its one `attachment_args`, and the fake (its own copy of the
-//! allowlist) takes them only in OpenWiz's position, with a staged copy's
-//! absolute path, and never with steer. Every other refusal is unchanged.
 
 use std::fs;
 use std::path::{Path, PathBuf};
