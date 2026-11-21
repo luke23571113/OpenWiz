@@ -688,6 +688,19 @@ class Candidate(World):
         self.assertEqual(self.git(self.remote, 'rev-parse', f'refs/tags/v{VERSION}^{{}}'), self.head)
         self.assertEqual(self.git(self.remote, 'rev-parse', 'main'), self.published)
 
+    def test_2127_an_unreadable_release_branch_gives_evaluate_publishs_reasons(self):
+        self.release_branch()
+        self.ready()
+
+        def checked():
+            return [p['name'] for p in self.record()['timing']['phases']].count('checks')
+        before = checked()
+        evaluated = self.blocked(self.evaluate(FAIL_ACTION='fetch'), 'release_branch_unreadable')
+        self.assertEqual(checked(), before + 1)
+        refused = self.blocked(self.publish(FAIL_ACTION='fetch'), 'release_branch_unreadable')
+        self.assertEqual((evaluated['status'], evaluated['reasons']), ('blocked', refused['reasons']))
+        self.assertEqual(self.writes(), [])
+
     def test_964_each_unproven_release_branch_refuses_with_its_reason(self):
         self.release_branch()
         self.smoke_kit()
@@ -1468,6 +1481,48 @@ class Candidate(World):
         self.git(self.remote, 'tag', 'v' + VERSION, self.published)
         self.blocked(self.publish(), 'version_order')
         self.assertEqual(self.writes(), [])
+
+    def author(self, name, email):
+        shutil.rmtree(self.repo)
+        shutil.rmtree(self.remote)
+        saved = self.env['GIT_AUTHOR_NAME'], self.env['GIT_AUTHOR_EMAIL']
+        self.env['GIT_AUTHOR_NAME'], self.env['GIT_AUTHOR_EMAIL'] = name, email
+        self.history()
+        self.env['GIT_AUTHOR_NAME'], self.env['GIT_AUTHOR_EMAIL'] = saved
+
+    def unprotected(self):
+        self.world[f'repos/{PUBLIC}/immutable-releases'] = {'enabled': False}
+        self.save()
+        return {}
+
+    def test_2127_evaluate_gives_each_publish_precondition_publish_refuses_before_its_first_write(self):
+        def changed():
+            alias = self.root / 'artifacts' / 'openwiz-x86_64-apple-darwin.sha256'
+            alias.write_bytes(alias.read_bytes() + b'synthetic change\n')
+            return {}
+
+        def tagged():
+            self.git(self.remote, 'tag', 'v' + VERSION, self.published)
+            return {}
+        for name, before, after, reason, same in (
+                ('notes dated the day before', None, lambda: {'TODAY': '2026-11-21'}, 'changelog_date', True),
+                ('asset bytes changed after the gates', None, changed, 'artifact_changed', True),
+                ('author name with a digit', lambda: self.author('Synthetic Maintainer 2', NOREPLY), None,
+                 'tagger_identity', True),
+                ('author email not a noreply address',
+                 lambda: self.author('Synthetic Maintainer', 'fixture@example.invalid'), None, 'tagger_identity', True),
+                ('immutable releases off', None, self.unprotected, 'immutable_releases_off', False),
+                ('tag already present', None, tagged, 'tag_exists', False)):
+            with self.subTest(case=name):
+                self.setUp()
+                before and before()
+                self.ready()
+                extra = after() if after else {}
+                out = self.blocked(self.evaluate(**extra), reason)
+                refused = self.blocked(self.publish(**extra))
+                if same:
+                    self.assertEqual((out['reasons'], refused['reasons']), ([reason], [reason]))
+                self.assertEqual(self.writes(), [])
 
     def test_dispatcher_exposes_the_candidate_command(self):
         result = subprocess.run([sys.executable, str(HERE / 'release'), 'candidate', '--help'],
