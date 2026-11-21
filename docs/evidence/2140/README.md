@@ -24,4 +24,5 @@ Exit 0 when all hold, 1 otherwise. It reads only and installs nothing. The packa
 - `red-whole-root.txt`: the run after the whole-folder check was added, before the removal and repair steps were fixed (exit 1).
 - `removal-run.txt`: the guide's repair and removal steps run on the real 0.1.0 package, with a file of the user's already in `<root>` and a skill of the user's in `~/.claude/skills`: both survive, settings survive the repair, and a separate `--state-root` holds the builds.
 - `service-run.txt`: a fresh install and a Decisions setting saved by the packaged first-fleet helper, then the guide's build-only removal: only the verified build folder goes, `service/config.json` and `setup/state.json` are unchanged, and a reinstall keeps them.
+- `shared-state-run.txt`: the guide's full removal on the real package, with a `--state-root` that already held another app's files (including one inside its `service/`): every OpenWiz entry goes and the other app's files stay; with a dedicated `<root>` and the default state, nothing is left.
 - `green.txt`: the run on this branch's docs (exit 0).
