@@ -304,15 +304,16 @@ fn family(choice: &Value) -> Option<&'static str> {
     }
 }
 
-/// The choice models.v1 resolves for a pick's start, or null when it waits.
-fn resolve(rows: &[(String, Option<Value>)], start: &Value) -> Result<Value, String> {
+fn models_v1_choice_or_wait(
+    rows: &[(String, Option<Value>)],
+    start: &Value,
+) -> Result<Value, String> {
     let own = |role: &str| {
         rows.iter()
             .find(|(r, _)| r == role)
             .and_then(|(_, c)| c.clone())
     };
-    // Only the Small builder and the Fixer follow the Builder, by row or by absence.
-    let row = |role: &str| match (own(role), role) {
+    let row_or_followed_builder = |role: &str| match (own(role), role) {
         (Some(c), _) => c,
         (None, "Small builder" | "Fixer") => own("Builder").unwrap_or(Value::Null),
         _ => Value::Null,
@@ -341,13 +342,13 @@ fn resolve(rows: &[(String, Option<Value>)], start: &Value) -> Result<Value, Str
     let first = |roles: &[&str], ok: &dyn Fn(Option<&str>) -> bool| {
         roles
             .iter()
-            .map(|r| row(r))
+            .map(|r| row_or_followed_builder(r))
             .find(|c| !c.is_null() && ok(family(c)))
             .unwrap_or(Value::Null)
     };
     Ok(match kind {
-        "spec" => row("Orchestrator"),
-        "helper" => row("Builder"),
+        "spec" => row_or_followed_builder("Orchestrator"),
+        "helper" => row_or_followed_builder("Builder"),
         "build" => {
             let labels = start["labels"]
                 .as_array()
@@ -355,7 +356,7 @@ fn resolve(rows: &[(String, Option<Value>)], start: &Value) -> Result<Value, Str
             let small = labels
                 .iter()
                 .any(|l| matches!(l.as_str(), Some("polish" | "huntr" | "proposal")));
-            row(if small { "Small builder" } else { "Builder" })
+            row_or_followed_builder(if small { "Small builder" } else { "Builder" })
         }
         "fix" => match builder_family()? {
             Some(f) => first(&["Fixer", "Reviewer"], &|x| x == Some(f)),
@@ -561,7 +562,7 @@ fn every_choice_is_what_models_v1_resolves_for_its_start() {
                 wrong.push(format!("{at}: a {} start takes another role", p["start"]));
                 continue;
             }
-            match resolve(&rows, &p["start"]) {
+            match models_v1_choice_or_wait(&rows, &p["start"]) {
                 Ok(c) if c == p["choice"] => {}
                 Ok(c) => wrong.push(format!(
                     "{at}: models.v1 resolves {c}, the case says {}",
