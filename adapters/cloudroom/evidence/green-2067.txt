@@ -1,4 +1,4 @@
-# #2067 green, after the fix: python3 -I adapters/cloudroom/test_driver.py (all), then python3 -I kernel/driver-kit/test_kit.py: Ran 9 tests, OK
+# #2067 green at 9388f0dd, after the fix: python3 -I adapters/cloudroom/test_driver.py (all), then python3 -I kernel/driver-kit/test_kit.py: Ran 9 tests, OK; python3 -I tools/comment-check/check.py diff --base origin/main: ok
 # The red run's thread-id case asserted the word "unknown"; the driver's existing receipt refusal says "names no thread", so that assertion now reads that.
 test_a_credential_shaped_start_field_is_refused_before_anything_starts (__main__.Driver.test_a_credential_shaped_start_field_is_refused_before_anything_starts) ... ok
 test_a_credential_shaped_thread_id_is_never_kept_or_passed (__main__.Driver.test_a_credential_shaped_thread_id_is_never_kept_or_passed) ... ok
@@ -17,6 +17,6 @@ test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 15 tests in 16.721s
+Ran 15 tests in 17.059s
 
 OK
