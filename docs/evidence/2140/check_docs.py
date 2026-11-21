@@ -7,6 +7,8 @@ from pathlib import Path
 
 FILES = ('README.md', 'docs/install.md')
 STALE = re.compile(r'(?i:coming soon)|0\.0\.12|7370|install open\b|(?i:setup page)|before 0\.1\.0|Apple silicon (?:and|or) Intel|install the CloudRoom app yourself')
+WHOLE_ROOT = re.compile(r'(?i)rm -r\w*\s+(?:<root>|~/\.local/lib/openwiz)/?(?=[\s`]|$)'
+                        r'|remove the install\b|delet\w*\s+(?:the install folder|(?:the )?`(?:<root>|~/\.local/lib/openwiz)/?`)')
 LINK = re.compile(r'\]\(([^)\s]+)\)')
 INSTALL = re.compile(r'tools/install/install ([a-z-]+)')
 RUNTIME = re.compile(r'(runtime/[a-z_/-]+\.py) ([a-z-]+)')
@@ -38,6 +40,8 @@ def main(package):
         for number, line in enumerate(text.splitlines(), 1):
             for word in STALE.findall(line):
                 failures.append(f'{name}:{number}: stale words: {word!r}')
+            for words in WHOLE_ROOT.findall(line):
+                failures.append(f'{name}:{number}: deletes the whole install folder: {words!r}')
         for target in sorted(set(LINK.findall(text))):
             checked += 1
             if target.startswith('#'):
