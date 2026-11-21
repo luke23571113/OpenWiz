@@ -728,3 +728,138 @@ fn a_raced_docs_agents_is_refused_the_same_on_every_unix() {
     assert_eq!(left, ["fleet.md"], "a write landed outside the checkout");
     assert_eq!(fs::read_to_string(outside.join("fleet.md")).unwrap(), fleet);
 }
+
+#[test]
+fn list_save_writes_into_the_checkout_it_started_in_even_when_moved() {
+    let fake = project("one-table/fleet.md", catalogue());
+    let root = fake.0.0.clone();
+    let moved = root.with_extension("moved");
+    let (code, _, err) = run_during(&fake, &["list", "--save"], || {
+        fs::rename(&root, &moved).unwrap();
+        fs::create_dir_all(root.join("docs/agents")).unwrap();
+        for fake_cli in ["bin", "scenario.json"] {
+            fs::rename(moved.join(fake_cli), root.join(fake_cli)).unwrap();
+        }
+    });
+    let landed = (moved.join(SNAPSHOT).exists(), root.join(SNAPSHOT).exists());
+    fs::remove_dir_all(&moved).unwrap();
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(
+        landed,
+        (true, false),
+        "(moved checkout, path's new checkout)"
+    );
+}
+
+fn saved_snapshot(fleet: Option<&Path>, linked: bool) -> String {
+    let fake = project("", catalogue());
+    let target = fake.0.0.join(FLEET);
+    match (fleet, linked) {
+        (Some(from), true) => std::os::unix::fs::symlink(from, &target).unwrap(),
+        (Some(from), false) => {
+            fs::copy(from, &target).unwrap();
+        }
+        (None, _) => {}
+    }
+    let (code, _, err) = run(&fake, &["list", "--save"]);
+    assert_eq!(code, 0, "{err}");
+    fs::read_to_string(fake.0.0.join(SNAPSHOT)).unwrap()
+}
+
+#[test]
+fn list_save_never_takes_its_recommendation_from_a_linked_fleet_md() {
+    let outside = super::Sandbox::new();
+    let elsewhere = outside.0.join("fleet.md");
+    fs::write(&elsewhere, fixture("overridden/fleet.md")).unwrap();
+    let unread = saved_snapshot(None, false);
+    assert_ne!(saved_snapshot(Some(&elsewhere), false), unread);
+    assert_eq!(saved_snapshot(Some(&elsewhere), true), unread);
+}
+
+const ACL: &str = "system.posix_acl_access";
+const DEFAULT_ACL: &str = "system.posix_acl_default";
+
+fn xattr(path: &Path, name: &str, set: Option<&str>) -> String {
+    let script = "import os,sys\np,n,v=sys.argv[1:4]\n\
+        v and os.setxattr(p,n,bytes.fromhex(v))\n\
+        print(os.getxattr(p,n).hex() if n.encode() in [x.encode() for x in os.listxattr(p)] else 'none')";
+    let out = std::process::Command::new("python3")
+        .args(["-I", "-c", script])
+        .arg(path)
+        .args([name, set.unwrap_or("")])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).unwrap().trim().to_owned()
+}
+
+fn nobody_reads(mask: u16) -> String {
+    let entry = |tag: u16, perm: u16, id: u32| {
+        [
+            &tag.to_le_bytes()[..],
+            &perm.to_le_bytes(),
+            &id.to_le_bytes(),
+        ]
+        .concat()
+    };
+    let bytes = [
+        2u32.to_le_bytes().to_vec(),
+        entry(1, 6, u32::MAX),
+        entry(2, 4, 65534),
+        entry(4, 0, u32::MAX),
+        entry(0x10, mask, u32::MAX),
+        entry(0x20, 0, u32::MAX),
+    ]
+    .concat();
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn groups() -> Vec<u32> {
+    let out = std::process::Command::new("id").arg("-G").output().unwrap();
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|g| g.parse().unwrap())
+        .collect()
+}
+
+#[test]
+fn a_replaced_file_keeps_its_group_and_access_acl_and_gains_none() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let fake = project("one-table/fleet.md", catalogue());
+    let agents = fake.0.0.join("docs/agents");
+    let fleet = fake.0.0.join(FLEET);
+    let snapshot = fake.0.0.join(SNAPSHOT);
+    fs::write(&snapshot, "{}\n").unwrap();
+    xattr(&agents, DEFAULT_ACL, Some(&nobody_reads(4)));
+    for path in [&fleet, &snapshot] {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o640)).unwrap();
+        assert_eq!(xattr(path, ACL, None), "none");
+    }
+    xattr(&fleet, ACL, Some(&nobody_reads(4)));
+    let kept = xattr(&fleet, ACL, None);
+    let other = groups().into_iter().skip(1).find(|g| *g != groups()[0]);
+    if let Some(group) = other {
+        std::os::unix::fs::chown(&snapshot, None, Some(group)).unwrap();
+    }
+    let group = fs::metadata(&snapshot).unwrap().gid();
+    let (code, _, err) = run(&fake, &["set", "reviewer", "codex", "gpt-6.2-sol", "high"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(fs::read_to_string(&fleet).unwrap().contains("gpt-6.2-sol"));
+    assert_eq!(xattr(&fleet, ACL, None), kept, "fleet.md's ACL");
+    assert_eq!(
+        xattr(&snapshot, ACL, None),
+        "none",
+        "the snapshot gained an ACL"
+    );
+    assert_eq!(fs::metadata(&snapshot).unwrap().mode() & 0o7777, 0o640);
+    assert_eq!(
+        fs::metadata(&snapshot).unwrap().gid(),
+        group,
+        "the snapshot's group"
+    );
+}
