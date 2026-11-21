@@ -130,6 +130,8 @@ class OpenClaw(unittest.TestCase):
         found = []
         for root, _, files in os.walk(self.state):
             for name in files:
+                if os.path.islink(os.path.join(root, name)):
+                    continue
                 with open(os.path.join(root, name), 'rb') as f:
                     if text.encode() in f.read():
                         found.append(name)

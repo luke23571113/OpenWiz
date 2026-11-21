@@ -49,7 +49,15 @@ def read(fields):
     return req
 
 
+class Project(Refused):
+    pass
+
+
 def acpx(run, *args, harness):
+    project = os.path.join(STATE, 'work', run, '.acpxrc.json')
+    if os.path.lexists(project):
+        raise Project('the run\'s folder holds %s, an acpx project config, so acpx was not run' % project,
+                      'delete that file without opening it (the driver never reads it), then try again')
     home = ''.join('\\' + c for c in os.path.expanduser('~'))
     return ['acpx', '--cwd', os.path.join(STATE, 'work', run), '--agent',
             'env HOME=%s %s' % (home, AGENTS[harness])] + list(args)
@@ -302,6 +310,8 @@ def answer(cmd):
                 if state['turns'] and shutil.which('acpx'):
                     for call in (['cancel', '-s', run], ['sessions', 'close', run]):
                         step(acpx(run, harness=state['request']['harness']) + call, run)
+            except Project:
+                pass
             finally:
                 end(state['turns'], run)
             if not kept:
