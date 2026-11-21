@@ -1265,6 +1265,9 @@ def evaluate(args):
     started = now()
     made = {}
     reasons = reasons_for(record, state, repo, artifacts=Path(args.artifacts), literals=args.literals, made=made)
+    if reasons != ['candidate_changed']:
+        with tempfile.TemporaryDirectory(prefix='release-candidate-') as scratch:
+            reasons += first_write_reasons(record['candidate'], Path(args.artifacts), scratch)
     record['gates'].update(made)
     phase(record, 'checks', started, now())
     state.write('record.json', record)
@@ -1344,18 +1347,52 @@ def settle(record, attempt, scratch):
         attempt['steps']['release'] = 'done'
 
 
-def ready(body, artifacts, scratch, tag, own=None):
-    data = check_artifacts(body, artifacts)
+def immutable_reasons():
     try:
         enabled = gh_json(f'repos/{PUBLIC}/immutable-releases')
     except (Refused, ValueError):
         enabled = None
-    if not isinstance(enabled, dict) or enabled.get('enabled') is not True:
-        block('immutable_releases_off')
+    return [] if isinstance(enabled, dict) and enabled.get('enabled') is True else ['immutable_releases_off']
+
+
+def tag_reasons(scratch, tag, own=None):
     found = refs(scratch, remote_url(PUBLIC), f'refs/tags/{tag}', f'refs/tags/{tag}^{{}}')
     if found and (own is None or found != {f'refs/tags/{tag}': own[1], f'refs/tags/{tag}^{{}}': own[2]}):
-        block('tag_exists')
+        return ['tag_exists']
+    return []
+
+
+def ready(body, artifacts, scratch, tag, own=None):
+    data = check_artifacts(body, artifacts)
+    reasons = immutable_reasons() or tag_reasons(scratch, tag, own)
+    if reasons:
+        block(*reasons)
     return data
+
+
+def tagging_clone(scratch, commit):
+    work = Path(scratch) / 'main.git'
+    remote_git(scratch, 'clone', '-q', '--bare', '--no-local', '--no-tags', '--single-branch',
+               '--branch', 'main', remote_url(PUBLIC), work)
+    try:
+        remote_git(work, 'cat-file', '-e', commit + '^{commit}')
+    except Refused:
+        release_heads(work)
+    return work
+
+
+def first_write_reasons(body, artifacts, scratch):
+    tag, reasons = 'v' + body['release_version'], date_reasons(body)
+    try:
+        check_artifacts(body, artifacts)
+    except Blocked as error:
+        reasons += error.reasons
+    reasons += immutable_reasons() + tag_reasons(scratch, tag)
+    try:
+        tagger(tagging_clone(scratch, body['source']['commit']), body['source']['commit'])
+    except Blocked as error:
+        reasons += error.reasons
+    return reasons
 
 
 def date_reasons(body):
@@ -1393,13 +1430,7 @@ def publish(args):
                     raise Blocked(reasons)
                 record_waived(record, state, made)
                 ready(body, args.artifacts, scratch, tag)
-                work = Path(scratch) / 'main.git'
-                remote_git(scratch, 'clone', '-q', '--bare', '--no-local', '--no-tags', '--single-branch',
-                           '--branch', 'main', remote_url(PUBLIC), work)
-                try:
-                    remote_git(work, 'cat-file', '-e', body['source']['commit'] + '^{commit}')
-                except Refused:
-                    release_heads(work)
+                work = tagging_clone(scratch, body['source']['commit'])
                 name, email = tagger(work, body['source']['commit'])
                 remote_git(work, '-c', 'user.name=' + name, '-c', 'user.email=' + email, '-c', 'tag.gpgSign=false',
                            'tag', '-a', tag, body['source']['commit'], '-m', 'OpenWiz ' + body['release_version'])
