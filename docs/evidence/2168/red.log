@@ -17,3 +17,11 @@ Red run 2 (self-review): python3 -I tools/install/tests/skills-per-agent/test_sk
 FAIL: test_a_linked_skill_folder_is_skipped_and_its_link_kept (__main__.PerSkill.test_a_linked_skill_folder_is_skipped_and_its_link_kept)
 AssertionError: 'nothing was changed' unexpectedly found in "<synthetic home>/.claude/skills/grill is a link or not your folder; nothing was changed; Claude Code does not get OpenWiz's grill. Make it a real folder of yours, then run this again."
 FAILED (failures=1)
+
+After, the same proofs at the fix (the newest-release proofs were dropped with the planner's ruling):
+$ python3 -I tools/install/tests/skills-per-agent/test_skills.py
+Ran 4 tests
+OK
+$ python3 -I tools/install/tests/skills-linked-config/test_linked_config.py
+Ran 23 tests
+OK
