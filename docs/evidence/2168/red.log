@@ -35,3 +35,11 @@ FAIL: test_when_no_agent_can_be_written_the_canonical_folder_is_not_written_eith
 AssertionError: None != 'refused'
 Ran 7 tests in 2.819s
 FAILED (failures=3)
+
+After R1 and R2:
+$ python3 -I tools/install/tests/skills-per-agent/test_skills.py
+Ran 7 tests
+OK
+$ python3 -I tools/install/tests/skills-linked-config/test_linked_config.py
+Ran 26 tests
+OK
