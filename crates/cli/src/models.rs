@@ -278,7 +278,7 @@ fn run_form(
     }
 }
 
-fn spawn_flags() -> Result<SpawnFlags, String> {
+pub(crate) fn spawn_flags() -> Result<SpawnFlags, String> {
     let (provider, model, effort) = ("claude-code", "syn-models-flags", "medium");
     let request = format!("ow1-{}", "0".repeat(40));
     let args = SpawnArgs::new("syn-models", provider, model, effort, &request, "syn")

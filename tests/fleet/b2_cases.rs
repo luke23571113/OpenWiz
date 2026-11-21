@@ -1,4 +1,5 @@
 use super::RULES;
+use crate::md3_models::{fixture, flags};
 use openwiz_core::fleet::model::{
     Check, CheckResult, Commit, Issue, IssueState, MergedPr, NonEmpty, Number, PrFields, Review,
     Verdict,
@@ -187,8 +188,12 @@ fn run(s: &Snapshot) -> Value {
     run_at(s, NOW)
 }
 fn run_at(s: &Snapshot, now: u64) -> Value {
+    run_with(s, RULES, now)
+}
+fn run_with(s: &Snapshot, source: &str, now: u64) -> Value {
     let value =
-        serde_json::to_value(plan(s, &Rules::parse(RULES).unwrap(), now).expect("plan")).unwrap();
+        serde_json::to_value(plan(s, &Rules::parse(source, &flags()).unwrap(), now).expect("plan"))
+            .unwrap();
     let schema: Value =
         serde_json::from_str(include_str!("../../contracts/fleet-tick.v1.schema.json")).unwrap();
     assert_eq!(crate::schema::lint(&schema), Vec::<String>::new());
@@ -292,7 +297,7 @@ fn b2_frontier_exact_facts_and_idle() {
 }
 
 fn b2_default_branch_validation_refuses_malformed_nonempty_snapshots() {
-    let rules = Rules::parse(RULES).unwrap();
+    let rules = Rules::parse(RULES, &flags()).unwrap();
     for branch in [
         " ",
         "syn branch",
@@ -424,7 +429,8 @@ fn b2_every_missing_merge_condition_gives_zero_merges() {
         RULES.replace("`main`, `release-*`", "`scratch`"),
     ] {
         let v =
-            serde_json::to_value(plan(&s, &Rules::parse(&source).unwrap(), NOW).unwrap()).unwrap();
+            serde_json::to_value(plan(&s, &Rules::parse(&source, &flags()).unwrap(), NOW).unwrap())
+                .unwrap();
         assert!(!rules(&v).contains(&"adr_0008"));
     }
     let mut t = approved();
@@ -1044,13 +1050,13 @@ fn b2_unknown_and_duplicate_inputs_fail_closed() {
     let mut s = snapshot(ready());
     let t = fleet(&mut s).tickets[0].clone();
     fleet(&mut s).tickets.push(t);
-    assert!(plan(&s, &Rules::parse(RULES).unwrap(), NOW).is_err());
+    assert!(plan(&s, &Rules::parse(RULES, &flags()).unwrap(), NOW).is_err());
     let mut s = snapshot(ready());
     s.fleets = Observed::Unread(vec![Problem::Graph]);
-    assert!(plan(&s, &Rules::parse(RULES).unwrap(), NOW).is_err());
+    assert!(plan(&s, &Rules::parse(RULES, &flags()).unwrap(), NOW).is_err());
     let mut s = snapshot(ready());
     s.default_branch = Observed::Unread(vec![Problem::Issue]);
-    assert!(plan(&s, &Rules::parse(RULES).unwrap(), NOW).is_err());
+    assert!(plan(&s, &Rules::parse(RULES, &flags()).unwrap(), NOW).is_err());
 }
 
 fn b2_release_default_starts_nothing() {
@@ -1358,7 +1364,7 @@ fn b2_manual_merge_row_means_none() {
         "The loop, as soon as the reviewer's APPROVE names that exact commit and all checks pass",
         "The user only",
     );
-    let rules = Rules::parse(&manual).expect("manual merge policy is valid");
+    let rules = Rules::parse(&manual, &flags()).expect("manual merge policy is valid");
     assert_eq!(serde_json::to_value(rules).unwrap()["merge"], "none");
 }
 
@@ -1799,4 +1805,73 @@ fn b2_summary_waits_for_ambiguous_pull_requests() {
         v["actions"][1]["facts"]["threads"],
         json!([{"thread": "syn-independent-builder", "role": "builder"}])
     );
+}
+
+#[test]
+fn md3_models_table_reviews_wait_or_fall_back_to_the_builder() {
+    let agent = |harness: &str, model: &str, effort: &str| json!({"harness": harness, "model": model, "effort": effort});
+    let opus = agent("claude-code", "claude-opus-5-5", "medium");
+    let sol = agent("codex", "gpt-6.2-sol", "medium");
+    let high = agent("claude-code", "claude-opus-5-5", "high");
+    for (case, family, given_up, rule, settings) in [
+        (
+            "one-table",
+            BuilderFamily::Claude,
+            false,
+            "first_review",
+            Some(&sol),
+        ),
+        (
+            "one-table",
+            BuilderFamily::Gpt,
+            false,
+            "first_review",
+            Some(&opus),
+        ),
+        (
+            "one-table",
+            BuilderFamily::Gpt,
+            true,
+            "fresh_review",
+            Some(&opus),
+        ),
+        (
+            "same-family",
+            BuilderFamily::Gpt,
+            false,
+            "first_review",
+            Some(&high),
+        ),
+        ("same-family", BuilderFamily::Claude, false, "look", None),
+        ("same-family", BuilderFamily::Claude, true, "look", None),
+    ] {
+        let mut t = reviewing();
+        if let Some(source) = t.builder_source.as_mut() {
+            source.family = family;
+        }
+        if given_up {
+            let mut r = reviewer();
+            r.given_up = true;
+            t.reviewers.push(r);
+        }
+        let v = run_with(&snapshot(t), &fixture(case), NOW);
+        let name = format!("{case} {family:?} given up {given_up}");
+        assert_eq!(rules(&v), [rule], "{name}");
+        let facts = &v["actions"][0]["facts"];
+        match settings {
+            Some(want) => assert_eq!(&facts["settings"], want, "{name}"),
+            None => assert_eq!(
+                facts["reason"], "review waits: no other-family reviewer",
+                "{name}"
+            ),
+        }
+    }
+    let namespaced = fixture("one-table").replacen("--model gpt-6.2-sol", "--model vendor/demo", 1);
+    assert!(Rules::parse(&namespaced, &flags()).is_ok());
+    let mut t = reviewing();
+    if let Some(source) = t.builder_source.as_mut() {
+        source.family = BuilderFamily::Claude;
+    }
+    let v = run_with(&snapshot(t), &namespaced, NOW);
+    assert_eq!(v["actions"][0]["facts"]["settings"]["model"], "vendor/demo");
 }
