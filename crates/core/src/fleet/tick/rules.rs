@@ -95,10 +95,17 @@ fn older(text: &str, f: &SpawnFlags) -> Result<Agents, &'static str> {
 impl Rules {
     pub fn parse(text: &str, flags: &SpawnFlags) -> Result<Self, &'static str> {
         let has_models = text.lines().any(|l| l == "## Models");
-        let agents = match models::read(text, flags) {
-            Ok(show) => from_show(&show)?,
-            Err(_) if !has_models => older(text, flags)?,
-            Err(_) => return Err("models table refused"),
+        let agents = if has_models {
+            from_show(&models::read(text, flags).map_err(|_| "models table refused")?)?
+        } else {
+            let mut agents = older(text, flags)?;
+            if let Some(read) = models::read(text, flags)
+                .ok()
+                .and_then(|s| from_show(&s).ok())
+            {
+                agents.fixers = read.fixers;
+            }
+            agents
         };
         if !has_models
             && agents
