@@ -9,6 +9,6 @@ test_an_empty_root_and_a_previous_install_are_accepted (__main__.RootSafety.test
 test_an_empty_state_root_and_a_previous_openwiz_state_are_accepted (__main__.RootSafety.test_an_empty_state_root_and_a_previous_openwiz_state_are_accepted) ... ok
 
 ----------------------------------------------------------------------
-Ran 9 tests in 4.522s
+Ran 9 tests in 4.519s
 
 OK

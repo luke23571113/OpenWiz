@@ -374,6 +374,10 @@ def remove(root, state_root, yes, home, codex_home=None):
 
 def remove_unlocked(root, state, state_root, yes, home, codex_home):
     builds = state / 'service/builds'
+    for folder in (state / 'service', builds, root / 'skills'):
+        installer.require(not os.path.lexists(folder) or owned(folder, stat.S_ISDIR),
+                          '%s is a link or not your folder, so install remove will not delete through it; '
+                          'nothing was changed' % folder)
     link = root / 'current'
     if link.is_symlink():
         installer.require(Path(os.readlink(link)).parent == builds, '%s selects a build outside %s; pass that '
