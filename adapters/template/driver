@@ -134,9 +134,10 @@ def look_after_the_turn_on_macos(run, output):
     kept, looks = {}, 0
     while True:
         children_left = any_child_running_after_reaping()
-        about_to_exit = not children_left and not kept
-        writers = writing_to(output) if looks % LOOKS_PER_OUTPUT_CHECK == 0 or about_to_exit else ()
-        now = members({os.getpid()}, kept, writers)
+        scanned = looks % LOOKS_PER_OUTPUT_CHECK == 0
+        now = members({os.getpid()}, kept, writing_to(output) if scanned else ())
+        if not children_left and not now and not scanned:
+            now = members({os.getpid()}, kept, writing_to(output))
         looks += 1
         if now != kept:
             kept = now
