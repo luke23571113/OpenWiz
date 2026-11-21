@@ -255,14 +255,14 @@ class Driver(unittest.TestCase):
                 self.assertNotIn(TOKEN, json.dumps(err))
                 self.assertEqual(self.files_holding(TOKEN), [])
                 run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(err)).group()}
-                self.call('stop', run, FAKE_ROOM_HOST=host)
-                self.assertNotIn(TOKEN, json.dumps(self.calls()))
                 row = {'id': 'thr_' + TOKEN, 'title': '#7: example/site builder (%s)' % run['run'],
                        'projectId': PROJECT, 'parentThreadId': PARENT}
                 code, err = self.call('stop', run, FAKE_ROOM_HOST=host, FAKE_ROOM_LIST=json.dumps([row]))
                 self.assertEqual(code, 1, err)
                 self.assertIn(run['run'], err['next'])
                 self.assertNotIn(TOKEN, json.dumps([err, [c for c in self.calls() if c[1] == 'archive']]))
+                self.call('stop', run, FAKE_ROOM_HOST=host)
+                self.assertNotIn(TOKEN, json.dumps(self.calls()))
 
     def test_a_kit_lost_during_spawn_never_claims_nothing_started(self):
         tree = tempfile.mkdtemp()
