@@ -268,7 +268,8 @@ class Driver(unittest.TestCase):
         tree = tempfile.mkdtemp()
         for part in ('adapters/cloudroom', 'kernel'):
             shutil.copytree(os.path.join(HERE, '..', '..', part), os.path.join(tree, part))
-        driver, kit_file = os.path.join(tree, 'adapters/cloudroom/driver'), os.path.join(tree, 'kernel/driver-kit/kit.py')
+        driver = os.path.join(tree, 'adapters/cloudroom/driver')
+        kit_file = os.path.join(tree, 'kernel/driver-kit/kit.py')
         for host in ('local', 'cloud'):
             with self.subTest(host):
                 self.fresh()
@@ -281,7 +282,8 @@ class Driver(unittest.TestCase):
                 self.assertTrue(found, p.stdout)
                 p = subprocess.run([sys.executable, driver, 'stop'], input=json.dumps({'run': found.group()}),
                                    capture_output=True, text=True, timeout=60, env=env)
-                self.assertEqual([c for c in self.calls() if c[1] == 'archive'], [['thread', 'archive', 'thr_syn_0001']],
+                self.assertEqual([c for c in self.calls() if c[1] == 'archive'],
+                                 [['thread', 'archive', 'thr_syn_0001']],
                                  'the builder spawned while the kit went missing still runs: ' + p.stdout)
 
     def archive_by_hand(self, thread):

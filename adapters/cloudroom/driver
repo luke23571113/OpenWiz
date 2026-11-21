@@ -79,9 +79,15 @@ def credential_check():
                       'kernel/driver-kit/kit.py')
 
 
-def no_credentials(req):
+def passable(holds_credential, value):
+    try:
+        return not holds_credential(value)
+    except Exception:
+        return False
+
+
+def no_credentials(req, holds_credential):
     # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
-    holds_credential = credential_check()
     for key in START:
         if isinstance(req[key], str) and holds_credential(req[key]):
             raise Refused('%s looks like a credential, so nothing was saved or started' % key,
@@ -120,7 +126,7 @@ def brief(req):
             + LOOKUP.format(s=req['skill']))
 
 
-def spawn(req, title):
+def spawn(req, title, holds_credential):
     project = os.environ.get('ROOM_PROJECT_ID', '')
     if not re.fullmatch(PROJECT, project):
         raise Refused('no Cloudroom project here: ROOM_PROJECT_ID is not set',
@@ -136,7 +142,7 @@ def spawn(req, title):
     except ValueError:
         receipt = None
     if not (isinstance(receipt, dict) and isinstance(receipt.get('id'), str) and re.fullmatch(THREAD, receipt['id'])
-            and receipt.get('projectId', project) == project and not credential_check()(receipt['id'])):
+            and receipt.get('projectId', project) == project and passable(holds_credential, receipt['id'])):
         raise Unknown("Cloudroom's answer to the start names no thread of this project",
                       'read `room-cli thread list` before you start again, so no builder runs twice')
     return receipt['id']
@@ -260,10 +266,16 @@ def threads(state):
         raise Unknown('Cloudroom lists %d threads with this run\'s title, and the driver cannot prove one of them is '
                       'its own, in its project under its parent' % len(titled), by_hand)
     found = [t['id'] for t in titled]
+    try:
+        holds_credential = credential_check()
+    except Refused:
+        holds_credential = None
+    if found and not (holds_credential and passable(holds_credential, found[0])):
+        raise Unknown("Cloudroom lists this run's thread with an id the driver will not pass on", by_hand)
     return found
 
 
-def start(req, run):
+def start(req, run, holds_credential):
     title = '#%d: %s builder (%s)' % (req['ticket'], req['repository'], run)
     state = {'request': req, 'title': title, 'thread': None, 'starting': True, 'stopped': False, 'archived': False,
              'project': os.environ.get('ROOM_PROJECT_ID', ''), 'parent': os.environ.get('ROOM_THREAD_ID', '')}
@@ -277,7 +289,7 @@ def start(req, run):
     except OSError:
         raise Refused('the driver cannot keep runs in its state folder; nothing was started', WRITABLE)
     try:
-        thread = spawn(req, title)
+        thread = spawn(req, title, holds_credential)
     except Unknown as e:  # a thread may exist: the record stays starting, so stop reaches it and wake refuses it
         raise Unknown('run %s: %s' % (run, e.args[0]), 'stop %s, which ends any thread it started, then start a new '
                       'run' % run)
@@ -329,7 +341,9 @@ def answer(cmd):
         with open(os.path.join(HERE, 'schema.json')) as f:
             return json.load(f)
     if cmd == 'start':
-        return start(no_credentials(read(START)), 'run-' + secrets.token_hex(6))
+        holds_credential = credential_check()
+        req = no_credentials(read(START), holds_credential)
+        return start(req, 'run-' + secrets.token_hex(6), holds_credential)
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
         lock(run, cmd)
