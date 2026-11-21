@@ -94,6 +94,7 @@ LAUNCH = ('import os, sys; sys.path.insert(0, sys.argv.pop(1)); import candidate
           'i = os.environ.get("WIZSKILLS_INSTALL"); import product_identity, pathlib; '
           'i and setattr(product_identity, "install_locked", lambda root, source, scratch: pathlib.Path(i)); '
           'f = os.environ.get("FETCH"); f and exec(f, vars(candidate)); '
+          'h = os.environ.get("HOLD"); h and exec(h, vars(candidate)); '
           'sys.exit(candidate.main(sys.argv[1:]))')
 
 FAKE_GIT = r'''#!/usr/bin/env python3
@@ -141,6 +142,24 @@ def fetch_release(url, limit):
     if not tag or not file.is_file():
         raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
     return file.read_bytes()[:limit + 1]
+'''
+
+HOLD_INDEX = r'''
+def _hold(write):
+    def held(self, name, value):
+        import os, pathlib, time
+        if name != "install-attempts.json":
+            return write(self, name, value)
+        hold, me, end = pathlib.Path(os.environ["HOLD_DIR"]), os.environ["HOLD_ME"], time.time() + 60
+        (hold / ("read-" + me)).touch()
+        while len(list(hold.glob("read-*"))) < 2 and time.time() < end:
+            time.sleep(0.05)
+        while me != "first" and not (hold / "done-first").exists() and time.time() < end:
+            time.sleep(0.05)
+        write(self, name, value)
+        (hold / ("done-" + me)).touch()
+    return held
+State.write = _hold(State.write)
 '''
 
 FAKE_GH = r'''#!/usr/bin/env python3
@@ -619,6 +638,27 @@ class Candidate(World):
                                                     'archive_sha256')},
                          {'route': 'install', 'version': VERSION, 'source': self.head, 'target': LINUX,
                           'manifest_sha256': rows[('manifest', LINUX)], 'archive_sha256': rows[('archive', LINUX)]})
+
+    def test_overlapping_install_checks_for_two_targets_keep_both_attempts(self):
+        self.ready()
+        self.assertEqual(self.publish()[0], 0)
+        hold = self.root / 'hold'
+        hold.mkdir()
+        mac = 'aarch64-apple-darwin'
+        runs = [subprocess.Popen([sys.executable, '-c', LAUNCH, str(HERE), self.anchor, 'install', '--state',
+                                  str(self.state), '--target', target], stdout=subprocess.PIPE, text=True,
+                                 env=dict(self.env, HOLD=HOLD_INDEX, HOLD_DIR=str(hold), HOLD_ME=me))
+                for target, me in ((LINUX, 'first'), (mac, 'second'))]
+        for run in runs:
+            out, _ = run.communicate(timeout=120)
+            self.assertEqual((run.returncode, json.loads(out)),
+                             (1, {'status': 'blocked', 'reasons': ['install_latest_unresolved']}))
+        status = self.cli('status', '--state', self.state)[1]
+        self.assertEqual(sorted((a['target'], a['status']) for a in status.get('install_attempts', [])),
+                         [(mac, 'blocked'), (LINUX, 'blocked')])
+        for attempt in status['install_attempts']:
+            saved = self.state / attempt['evidence']['record']
+            self.assertEqual(sha(saved.read_bytes()), attempt['evidence']['sha256'])
 
     def test_missing_ship_or_exact_changelog_approval_refuses_before_any_write(self):
         self.smoke_kit()
