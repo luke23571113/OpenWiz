@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -54,7 +55,8 @@ DESCRIPTION = """OpenWiz's install entry (#1109): the commands the install skill
       (docs/install.md, "Remove it"); with --yes it deletes them, then removes
       each folder left empty. Anything else stays, links are never followed,
       and each agent's skill folder holding OpenWiz copies is listed to clean
-      by hand. Prints "not installed" and exits 1 when nothing is OpenWiz's.
+      by hand. It refuses while an install or update holds ROOT/install.lock.
+      Prints "not installed" and exits 1 when nothing is OpenWiz's.
 
 Every command prints one JSON object. Exit codes: 0 done, 1 failed,
 2 usage, 5 refused (nothing selected or changed). Python 3.9+, standard
@@ -356,6 +358,21 @@ def remove(root, state_root, yes, home, codex_home=None):
     installer.require(state.is_absolute(), 'the state root must be an absolute path')
     installer.path_guard(root)
     installer.path_guard(state)
+    if not owned(root / 'install.lock', stat.S_ISREG):
+        return remove_unlocked(root, state, state_root, yes, home, codex_home)
+    lock = os.open(root / 'install.lock', os.O_RDWR | os.O_NOFOLLOW)
+    try:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise installer.Refused('an install or update is running at %s; nothing was changed. Run install '
+                                    'remove again once it finishes' % root) from None
+        return remove_unlocked(root, state, state_root, yes, home, codex_home)
+    finally:
+        os.close(lock)
+
+
+def remove_unlocked(root, state, state_root, yes, home, codex_home):
     builds = state / 'service/builds'
     link = root / 'current'
     if link.is_symlink():

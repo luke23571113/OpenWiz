@@ -12,6 +12,7 @@ base = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base)
 sys.path.insert(0, str(INSTALL / 'tests' / 'installer'))
 from test_installer import Download, Path_, Preflight, Repair
+from test_root_safety import Remove, RootSafety
 
 
 class LinkedConfig(base.HarnessSkills):
@@ -79,7 +80,8 @@ class LinkedConfig(base.HarnessSkills):
 def load_tests(loader, tests, pattern):
     suite = loader.loadTestsFromNames(sorted(name for name in LinkedConfig.__dict__ if name.startswith('test_')),
                                       LinkedConfig)
-    suite.addTests(loader.loadTestsFromTestCase(case) for case in (Download, Path_, Preflight, Repair))
+    suite.addTests(loader.loadTestsFromTestCase(case)
+                   for case in (Download, Path_, Preflight, Repair, RootSafety, Remove))
     return suite
 
 

@@ -205,7 +205,6 @@ def repair_backups(builds, source, raw):
     return found
 
 
-# #2162: OpenWiz's own entries in an install root and its state root (docs/install.md, "Remove it").
 ROOT_ENTRIES = re.compile(r'current|channel\.json|install\.lock|skills|state|\.current-[0-9]+')
 STATE_ENTRIES = (('', re.compile(r'setup|cloudroom|service')),
                  ('service', re.compile(r'config\.json|app|state\.json|loops|clone|builds')),
@@ -230,7 +229,6 @@ def previous_state(root, state_root):
 
 
 def only_ours(root, state_root):
-    """Refuse a root or state root holding an entry OpenWiz didn't make, unless it is a previous install or state."""
     unexpected = 'it is not OpenWiz\'s, so nothing was changed. Give install a new or empty folder'
     if not (os.path.lexists(root / 'current') or os.path.lexists(root / 'channel.json')):
         for name in entries(root):
