@@ -60,6 +60,8 @@ import pull
 
 HOSTS = {('Darwin', 'arm64'): 'aarch64-apple-darwin', ('Darwin', 'x86_64'): 'x86_64-apple-darwin',
          ('Linux', 'x86_64'): 'x86_64-unknown-linux-gnu'}
+NO_CLOUDROOM = {('Darwin', 'x86_64'): "This Intel Mac runs openwiz, but OpenWiz's install needs CloudRoom, which has"
+                " no Intel Mac build today; stop here and install on an Apple silicon Mac or Linux on x86_64."}
 DISK = 512 * 1024 * 1024
 GLIBC = (2, 34)
 TOOLS = (('room-cli', 'Install the CloudRoom app and sign in; it provides room-cli.'),
@@ -107,8 +109,8 @@ def preflight(host, which, disk):
          'next': 'Python %d.%d is enough.' % sys.version_info[:2] if sys.version_info >= (3, 9)
          else 'Install Python 3.9 or later.'},
         {'id': 'target', 'state': 'ok' if target else 'refused',
-         'next': 'Supported.' if target else
-         'OpenWiz supports macOS on Apple silicon or Intel, and Linux on x86_64.'},
+         'next': NO_CLOUDROOM.get(host, 'Supported.') if target else
+         'OpenWiz installs on macOS on Apple silicon and on Linux on x86_64.'},
     ]
     free = disk()
     checks.append({'id': 'disk', 'state': 'ok' if free is not None and free >= DISK else 'refused',
@@ -120,7 +122,8 @@ def preflight(host, which, disk):
         found = which(tool) is not None
         checks.append({'id': tool, 'state': 'ok' if found else 'missing',
                        'next': 'Found on PATH; setup checks it.' if found else missing})
-    ready = all(check['state'] == 'ok' for check in checks if check['id'] not in dict(TOOLS))
+    ready = host not in NO_CLOUDROOM and all(check['state'] == 'ok' for check in checks
+                                             if check['id'] not in dict(TOOLS))
     return {'schema': 'openwiz.preflight.v1', 'ready': ready, 'target': target, 'checks': checks,
             'reason': 'Read this machine only' + (', running only ldd --version' if host[0] == 'Linux' else '')
             + '; nothing was installed.'}, 0 if ready else 5

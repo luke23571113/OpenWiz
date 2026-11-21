@@ -216,6 +216,29 @@ class Preflight(Installer):
         self.assertEqual(self.glibc(('Darwin', 'arm64'))[2], [])
 
 
+    def test_an_intel_mac_passes_the_platform_check_but_stops_because_cloudroom_has_no_intel_build(self):
+        folder = self.base / 'tools'
+        folder.mkdir()
+        for tool in ('room-cli', 'gh', 'git'):
+            (folder / tool).write_text('#!/bin/sh\nexit 0\n')
+            (folder / tool).chmod(0o755)
+        os.environ['PATH'] = str(folder)
+        code, value = self.run_entry('preflight', host=('Darwin', 'arm64'))
+        self.assertEqual((code, value['ready']), (0, True), value)
+        code, value = self.run_entry('preflight', host=('Darwin', 'x86_64'))
+        target = [c for c in value['checks'] if c['id'] == 'target']
+        self.assertEqual((code, value['ready'], value['target'], len(target), target[0]['state']),
+                         (5, False, 'x86_64-apple-darwin', 1, 'ok'), value)
+        self.assertEqual([c['id'] for c in value['checks'] if c['state'] != 'ok'], [], value)
+        for words in ('Intel Mac', 'needs CloudRoom', 'no Intel Mac build'):
+            self.assertIn(words, target[0]['next'])
+        code, value = self.run_entry('preflight', host=('Linux', 'aarch64'))
+        refused = [c['next'] for c in value['checks'] if c['id'] == 'target']
+        self.assertEqual((code, len(refused)), (5, 1), value)
+        self.assertIn('Apple silicon', refused[0])
+        self.assertNotIn('Intel', refused[0])
+
+
 class Repair(Installer):
     def test_install_replaces_a_build_that_fails_verification(self):
         folder = self.assets()
