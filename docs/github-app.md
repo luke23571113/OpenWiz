@@ -247,8 +247,13 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   else can write to, your own group included, must be sticky, like `/tmp`. Anything else is refused before any call.
 - **Handing it over.** `run` copies the token into a snapshot file that exists only while
   the command runs. No child gets `GH_TOKEN`. The run's `gh` stand-in, first on `PATH`,
-  reads the snapshot and starts the real gh with `GH_TOKEN` and the owner's own
-  `GH_CONFIG_DIR`. Any other child, a gh started by its full path included, sees an empty
+  hands over the token only for gh's own `api`, `cache`, `issue`, `label`, `pr`,
+  `release`, `repo`, `run`, `search`, `status` and `workflow` commands. Anything else,
+  such as `gh auth token`, `gh config`, an alias or an extension, is refused with one
+  line, `openwiz: openwiz[bot] token withheld from gh (<reason>); gh stops rather than use
+  another account`. For an allowed command, it reads the snapshot and starts the real gh
+  with `GH_TOKEN`, the owner's own `GH_CONFIG_DIR`, `GH_PAGER=cat`, and an editor and
+  browser that refuse with that line, so gh starts no other program with the token. Any other child, a gh started by its full path included, sees an empty
   `GH_CONFIG_DIR`, so it fails rather than sign in as the owner. Through
   `GIT_CONFIG_*` variables, resets git's credential helpers for `https://github.com` to
   one that reads that snapshot, so gh and git use the same token. That helper answers
@@ -275,9 +280,10 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   them. The run also sets `GIT_ALLOW_PROTOCOL=file:https:ssh`, so other transports,
   such as `ext::`, which can run any command, are off whatever the configuration says.
   Nothing is exported to the agent's shell.
-- **The old App key.** With a token service configured, `start` and `run` refuse before
-  any call or command while `OPENWIZ_GITHUB_APP_KEY` (the earlier route's Cloudroom
-  secret) is set, naming the variable, never its value. Remove that secret from the
+- **The old App key.** With a token service configured, every helper command refuses
+  while `OPENWIZ_GITHUB_APP_KEY` (the earlier route's Cloudroom secret) is set. It checks
+  the name only, before any environment value is read or copied, and names the variable,
+  never its value. Remove that secret from the
   agent's environment, because the token service holds the key. The service call never
   gets it either.
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a

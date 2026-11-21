@@ -37,6 +37,9 @@ GUARDED = (("GIT_EXEC_PATH", EXEC_MARK), ("PATH", PATH_MARK),
            ("GIT_ALLOW_PROTOCOL", "OPENWIZ_AGENT_TOKEN_PROTOCOLS_WAS"),
            ("GH_CONFIG_DIR", "OPENWIZ_AGENT_TOKEN_GH_CONFIG_WAS"))
 LEGACY_APP_KEY = "OPENWIZ_GITHUB_APP_KEY"
+GH_ALLOWED = frozenset({"api", "cache", "issue", "label", "pr", "release", "repo", "run", "search",
+                        "status", "workflow"})
+GH_REFUSE = "openwiz-gh-child"
 GH_WITHHELD = "openwiz: openwiz[bot] token withheld from gh ({}); gh stops rather than use another account\n"
 TRANSPORTS = ("git-remote-http", "git-remote-https")
 CURL_TRACES = ("GIT_TRACE_CURL", "GIT_TRACE_CURL_NO_DATA", "GIT_CURL_VERBOSE")
@@ -407,7 +410,10 @@ def exec_folder(private, child):
         for key in ("GIT_EXEC_PATH", "GIT_SSH_COMMAND", "GIT_ALLOW_PROTOCOL"))
     if real_gh:
         scripts["gh"] = (f"exec {shlex.quote(sys.executable)} -I {shlex.quote(os.path.abspath(__file__))} "
-                         f"gh {shlex.quote(os.path.abspath(real_gh))} \"$@\"\n")
+                         f"gh {shlex.quote(os.path.abspath(real_gh))} "
+                         f"{shlex.quote(os.path.join(folder, GH_REFUSE))} \"$@\"\n")
+        gh_note = GH_WITHHELD.replace("{}", "%s").replace("\n", "\\n")
+        scripts[GH_REFUSE] = f'printf {shlex.quote(gh_note)} "gh tried to start another program" >&2\nexit 1\n'
     scripts[SSH_STAND_IN] = f'printf {shlex.quote(note)} "SSH has no openwiz[bot] identity" >&2\nexit 128\n'
     scripts["git"] = (
         f'reason=\n{checks}'
@@ -535,8 +541,13 @@ def credential(args, env):
 
 
 def gh(args, env):
-    if not args or not os.path.isabs(args[0]) or os.path.basename(args[0]) != "gh":
+    if (len(args) < 2 or not os.path.isabs(args[0]) or os.path.basename(args[0]) != "gh"
+            or os.path.basename(args[1]) != GH_REFUSE):
         raise Refused(f"usage: {USAGE}")
+    real, refuse, args = args[0], args[1], [args[0], *args[2:]]
+    if len(args) < 2 or args[1] not in GH_ALLOWED:
+        sys.stderr.write(GH_WITHHELD.format("that gh command is not on the App's list"))
+        return 128
     reason, token = snapshot_token(env.get(RUN_MARK, ""), env, check=lambda snapshot, env: None)
     if reason:
         sys.stderr.write(GH_WITHHELD.format(reason))
@@ -546,9 +557,10 @@ def gh(args, env):
         env["GH_CONFIG_DIR"] = was[1:]
     else:
         env.pop("GH_CONFIG_DIR", None)
-    env["GH_TOKEN"] = token
+    env.update({"GH_TOKEN": token, "GH_PAGER": "cat", "GH_EDITOR": shlex.quote(refuse),
+                "GH_BROWSER": shlex.quote(refuse)})
     try:
-        os.execve(args[0], args, env)
+        os.execve(real, args, env)
     except OSError:
         raise Refused("cannot run gh")
 
@@ -558,7 +570,10 @@ def main(argv):
     try:
         if not argv or argv[0] not in commands:
             raise Refused(f"usage: {USAGE}")
-        return commands[argv[0]](list(argv[1:]), dict(os.environ))
+        environ = os.environ
+        if LEGACY_APP_KEY in environ and environ.get("OPENWIZ_TOKEN_SERVICE"):
+            no_legacy_app_key(environ)
+        return commands[argv[0]](list(argv[1:]), dict(environ))
     except Refused as error:
         sys.stderr.write(f"openwiz: agent-token: {error}\n")
         return 2
