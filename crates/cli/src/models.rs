@@ -13,7 +13,9 @@ use openwiz_core::models::{
 use openwiz_core::new_thread::operation::NewThreadClient;
 use openwiz_core::new_thread::options::{CloudOptions, OptionsState, cloud_options};
 use openwiz_core::ops::Clock;
-use rustix::fs::{AtFlags, CWD, FileType, Mode, OFlags};
+use rustix::fd::AsFd;
+use rustix::fs::{AtFlags, CWD, FileType, Gid, Mode, OFlags, Uid, XattrFlags};
+use rustix::io::Errno;
 use serde_json::{Value, json};
 
 use crate::{EXIT_OK, EXIT_READ_FAILED, EXIT_USAGE, clean, help, utc};
@@ -28,8 +30,7 @@ pub fn run_models(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let root = std::env::current_dir().unwrap_or_default();
-    run_models_in(args, &root, client, clock, stdout, stderr)
+    run_models_in(args, Path::new("."), client, clock, stdout, stderr)
 }
 
 pub fn run_models_in(
@@ -225,16 +226,22 @@ fn run_form(
             (EXIT_OK, out)
         }),
         Parsed::List { save } => {
+            let checkout = save.then(|| Checkout::open(root));
             let options = read_options();
-            let current = fleet().ok().and_then(|text| read_fleet(&text).ok());
+            let agents = checkout.map(|checkout| checkout.and_then(|c| Agents::open(&c)));
+            let text = match &agents {
+                Some(agents) => agents.as_ref().ok().and_then(|a| a.read(FLEET_FILE).ok()),
+                None => fleet().ok(),
+            };
+            let current = text.and_then(|text| read_fleet(&text).ok());
             let snapshot = snapshot(&options, current.as_ref());
             let offered = matches!(options.state, OptionsState::Offered);
             let saved = save && offered;
-            let written = if saved {
-                Agents::open(root)
-                    .and_then(|agents| put(&agents, SNAPSHOT_FILE, &document(&snapshot)))
-            } else {
-                Ok(())
+            let written = match agents {
+                Some(agents) if saved => {
+                    agents.and_then(|agents| put(&agents, SNAPSHOT_FILE, &document(&snapshot)))
+                }
+                _ => Ok(()),
             };
             written.map(|()| {
                 let code = if offered { EXIT_OK } else { EXIT_NO_OPTIONS };
@@ -254,11 +261,13 @@ fn run_form(
                 (code, out)
             })
         }
-        Parsed::Set { role, asked } => Agents::open(root).and_then(|agents| {
-            agents.lock()?;
-            let text = agents.read(FLEET_FILE)?;
-            run_set(&text, role, asked, &agents, json, &read_options)
-        }),
+        Parsed::Set { role, asked } => Checkout::open(root)
+            .and_then(|checkout| Agents::open(&checkout))
+            .and_then(|agents| {
+                agents.lock()?;
+                let text = agents.read(FLEET_FILE)?;
+                run_set(&text, role, asked, &agents, json, &read_options)
+            }),
     };
     match outcome {
         Ok(printed) => emit(stdout, stderr, printed),
@@ -579,17 +588,28 @@ fn document(value: &impl serde::Serialize) -> String {
     out
 }
 
+struct Checkout(File);
+
+impl Checkout {
+    fn open(root: &Path) -> Result<Self, String> {
+        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+        rustix::fs::openat(CWD, root, flags, Mode::empty())
+            .map(|fd| Checkout(File::from(fd)))
+            .map_err(|e| format!("cannot open the checkout: {e}; nothing was written"))
+    }
+}
+
 struct Agents(File);
 
 impl Agents {
-    fn open(root: &Path) -> Result<Self, String> {
+    fn open(checkout: &Checkout) -> Result<Self, String> {
         let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
         let refused = |dir: &str| {
             format!(
                 "{dir} is not a directory of this checkout (missing or a link); nothing was written"
             )
         };
-        let docs = rustix::fs::openat(CWD, root.join("docs"), flags, Mode::empty())
+        let docs = rustix::fs::openat(&checkout.0, "docs", flags, Mode::empty())
             .map_err(|_| refused("docs"))?;
         rustix::fs::openat(&docs, "agents", flags, Mode::empty())
             .map(|fd| Agents(File::from(fd)))
@@ -622,9 +642,18 @@ fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("cannot write {rel}: {e}");
     let dir = &agents.0;
     let target = name(rel);
-    let existing = rustix::fs::statat(dir, target, AtFlags::SYMLINK_NOFOLLOW).ok();
-    if existing.is_some_and(|st| FileType::from_raw_mode(st.st_mode) != FileType::RegularFile) {
-        return Err(format!("cannot write {rel}: it is not a regular file"));
+    let read = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+    let existing = match rustix::fs::openat(dir, target, read, Mode::empty()) {
+        Ok(fd) => Some(fd),
+        Err(Errno::NOENT) => None,
+        Err(Errno::LOOP) => return Err(format!("cannot write {rel}: it is not a regular file")),
+        Err(e) => return Err(fail(e.into())),
+    };
+    if let Some(fd) = &existing {
+        let st = rustix::fs::fstat(fd).map_err(|e| fail(e.into()))?;
+        if FileType::from_raw_mode(st.st_mode) != FileType::RegularFile {
+            return Err(format!("cannot write {rel}: it is not a regular file"));
+        }
     }
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let temporary = format!(".{target}.openwiz-{}-{n}", std::process::id());
@@ -635,11 +664,10 @@ fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
         None => Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::WGRP | Mode::ROTH | Mode::WOTH,
     };
     let fd = rustix::fs::openat(dir, &temporary, create, mode).map_err(|e| fail(e.into()))?;
-    let written = match existing {
-        Some(st) => rustix::fs::fchmod(&fd, Mode::from_raw_mode(st.st_mode)),
+    let written = match &existing {
+        Some(target) => access_like(&fd, target),
         None => Ok(()),
     }
-    .map_err(std::io::Error::from)
     .and_then(|()| {
         let mut file = File::from(fd);
         file.write_all(text.as_bytes())?;
@@ -650,6 +678,42 @@ fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
         let _ = rustix::fs::unlinkat(dir, &temporary, AtFlags::empty());
         fail(e)
     })
+}
+
+const ACCESS_ACL: &str = "system.posix_acl_access";
+
+fn access_like(staged: impl AsFd, target: impl AsFd) -> std::io::Result<()> {
+    let want = rustix::fs::fstat(&target)?;
+    let have = rustix::fs::fstat(&staged)?;
+    if (want.st_uid, want.st_gid) != (have.st_uid, have.st_gid) {
+        let owner = Uid::from_raw(want.st_uid);
+        let group = Gid::from_raw(want.st_gid);
+        rustix::fs::fchown(&staged, Some(owner), Some(group))?;
+    }
+    rustix::fs::fchmod(&staged, Mode::from_raw_mode(want.st_mode))?;
+    match (access_acl(&target)?, access_acl(&staged)?) {
+        (Some(acl), _) => rustix::fs::fsetxattr(&staged, ACCESS_ACL, &acl, XattrFlags::empty())?,
+        (None, Some(_)) => rustix::fs::fremovexattr(&staged, ACCESS_ACL)?,
+        (None, None) => {}
+    }
+    Ok(())
+}
+
+fn access_acl(fd: impl AsFd) -> std::io::Result<Option<Vec<u8>>> {
+    let mut names = match rustix::fs::flistxattr_query(&fd) {
+        Ok(size) => vec![0; size],
+        Err(e) if e == Errno::NOTSUP || e == Errno::OPNOTSUPP => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let size = rustix::fs::flistxattr(&fd, &mut names[..])?;
+    names.truncate(size);
+    if !names.split(|b| *b == 0).any(|n| n == ACCESS_ACL.as_bytes()) {
+        return Ok(None);
+    }
+    let mut acl = vec![0; rustix::fs::fgetxattr_query(&fd, ACCESS_ACL)?];
+    let size = rustix::fs::fgetxattr(&fd, ACCESS_ACL, &mut acl[..])?;
+    acl.truncate(size);
+    Ok(Some(acl))
 }
 
 fn emit(stdout: &mut dyn Write, stderr: &mut dyn Write, (code, text): (i32, String)) -> i32 {
