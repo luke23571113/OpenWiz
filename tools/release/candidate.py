@@ -50,7 +50,7 @@ ANCHOR = '5d069b025c6eacb4123ca8241ba21345f1eae9dd'
 PRIVATE = 'jparker2006/ClosedWiz'
 OWNER = 'jparker2006'
 SCHEMA = 'openwiz.release-candidate.v1'
-ATTEMPTS = 'install-attempts.json'
+ATTEMPT = re.compile(r'[1-9][0-9]*\.json')
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 PRODUCTS = ('cli', 'runtime')
 METHODS = {'cli': {'embedded-record', 'native-query'}, 'runtime': {'tracked-tree'}}
@@ -1596,33 +1596,51 @@ def install(args):
     record['timing']['finished_at'] = verified
     phase(record, 'install', publication['verified_at'], verified)
     state.write('record.json', record)
-    return report(record, attempt)
+    return report(record, install_attempts(state))
 
 
 def install_attempt(state, target, reason, at, evidence):
-    attempts = state.read(ATTEMPTS) if state.exists(ATTEMPTS) else []
     folder = state.file(f'evidence/install-{target}')
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-    taken = [int(f.stem) for f in folder.iterdir() if re.fullmatch(r'[1-9][0-9]*\.json', f.name)]
-    name = f'evidence/install-{target}/{max(taken, default=0) + 1}.json'
-    data = (json.dumps(evidence, indent=1, sort_keys=True, ensure_ascii=False) + '\n').encode('utf-8')
-    fd = os.open(state.file(name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'wb') as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
-    attempt = {'target': target, 'status': 'blocked' if reason else 'passed', 'reasons': [reason] if reason else [],
-               'at': at, 'evidence': {'record': name, 'sha256': sha(data)}}
-    state.write(ATTEMPTS, attempts + [attempt])
-    return attempt
+    outcome = {'status': 'blocked' if reason else 'passed', 'reasons': [reason] if reason else [], 'at': at}
+    data = (json.dumps(dict(evidence, **outcome), indent=1, sort_keys=True, ensure_ascii=False) + '\n').encode('utf-8')
+    while True:
+        taken = [int(f.stem) for f in folder.iterdir() if ATTEMPT.fullmatch(f.name)]
+        name = f'evidence/install-{target}/{max(taken, default=0) + 1}.json'
+        try:
+            fd = os.open(state.file(name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except FileExistsError:
+            continue
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return dict(outcome, target=target, evidence={'record': name, 'sha256': sha(data)})
 
 
-def report(record, attempt=None):
+def install_attempts(state):
+    latest = {}
+    for target in TARGETS:
+        folder = state.file(f'evidence/install-{target}')
+        names = [f for f in folder.iterdir() if ATTEMPT.fullmatch(f.name)] if folder.is_dir() else []
+        files = sorted((int(f.stem), f) for f in names)
+        if files:
+            data = files[-1][1].read_bytes()
+            saved = strict(data)
+            latest[target] = {'target': target, 'status': saved['status'], 'reasons': saved['reasons'],
+                              'at': saved['at'], 'attempts': len(files),
+                              'evidence': {'record': f'evidence/install-{target}/{files[-1][0]}.json',
+                                           'sha256': sha(data)}}
+    return [latest[t] for t in TARGETS if t in latest]
+
+
+def report(record, attempts=()):
     timing = record['timing']
     ship, finished = timing['original_ship_at'], timing['finished_at']
     elapsed = finished - ship if ship is not None and finished is not None else None
-    passing = attempt is None or attempt['status'] == 'passed'
-    return {'status': 'complete' if elapsed is not None and passing else 'incomplete', 'install_attempt': attempt,
+    passing = all(a['status'] == 'passed' for a in attempts)
+    return {'status': 'complete' if elapsed is not None and passing else 'incomplete',
+            'install_attempts': list(attempts),
             'candidate_sha256': record['candidate_sha256'], 'original_ship_at': ship,
             'preparation_started_at': timing['preparation_started_at'], 'finished_at': finished,
             'elapsed_seconds': elapsed, 'target_met': None if elapsed is None else elapsed < TARGET_MET,
@@ -1632,8 +1650,7 @@ def report(record, attempt=None):
 
 def status(args):
     state = State(args.state)
-    attempts = state.read(ATTEMPTS) if state.exists(ATTEMPTS) else []
-    return report(state.read(), attempts[-1] if attempts else None)
+    return report(state.read(), install_attempts(state))
 
 
 def main(argv=None):

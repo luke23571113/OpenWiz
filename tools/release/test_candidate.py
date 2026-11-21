@@ -625,7 +625,7 @@ class Candidate(World):
         self.assertEqual(self.record()['install'], installed)
         self.assertEqual(sha(saved.read_bytes()), installed['evidence']['sha256'])
         status = self.cli('status', '--state', self.state)[1]
-        attempt = status.pop('install_attempt')
+        [attempt] = status.pop('install_attempts')
         self.assertEqual((status['status'], status['finished_at']), ('incomplete', passed['finished_at']))
         self.assertEqual({k: attempt[k] for k in ('target', 'status', 'reasons')},
                          {'target': LINUX, 'status': 'blocked', 'reasons': ['install_download_refused']})
