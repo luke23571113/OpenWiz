@@ -1,4 +1,3 @@
-//! Test-only CLI: exact production dispatch, private verified fake bundle.
 mod fixture;
 #[path = "../../crates/cli/src/main.rs"]
 #[allow(

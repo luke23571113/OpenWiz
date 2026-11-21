@@ -1,6 +1,3 @@
-//! Foundation checks that pass in ticket 1: the approved dependency set, the
-//! fixture scan, schema conformance and the pending list.
-
 #[path = "../support/schema.rs"]
 mod schema;
 
@@ -27,7 +24,6 @@ mod strict_json;
 #[path = "../support/place.rs"]
 mod place;
 
-// LP1 contract conformance (ClosedWiz#543), using the existing extensions.
 mod loops_schema;
 #[path = "../new-thread/pattern.rs"]
 mod pattern;

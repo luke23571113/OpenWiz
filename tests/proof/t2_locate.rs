@@ -1,20 +1,3 @@
-//! #267's fixture-only layout and marker checks. Ownership cases use
-//! synthetic metadata; the executable proofs share production dispatch
-//! through the approved fixture-only binaries.
-//! Claim: only the fixed bundle layout yields a candidate; no candidate,
-//! ambiguity and unexpected file types are refused, without executing them.
-//!
-//! Red run 1 (2026-11-01), before candidate selection was implemented:
-//! `cargo test -p openwiz-tests --test service t2_only_the_fixed_bundle_layout_supplies_a_candidate`
-//! exited 101. The literal bundle-path assertion failed: left Err(NotRunning),
-//! right Ok(the fixture's .mount_synthetic/resources/.../dist/room-cli).
-//! `test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s`
-//!
-//! Red run 6 (full-set check 9 at ce192b6, 2026-11-01):
-//! `cargo test --workspace` exited 101. The existing directory-mode check
-//! reported four calls here leaving mode to the umask (lines 33, 39, 166,
-//! 220 before this comment). Checks result: 37 passed; 1 failed.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -24,11 +7,8 @@ use openwiz_adapter_cloudroom::locate::{
 };
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-// The proof target's own `dirs` module (#1264: this file moved into it).
 use crate::dirs;
 
-// #1264: the one helper this file used from the deleted `t2_process.rs`,
-// moved here unchanged when this file moved from the `service` target.
 #[path = "../support/place.rs"]
 mod place;
 
@@ -63,7 +43,6 @@ impl Fixture {
     fn file(&self, relative: impl AsRef<Path>) -> PathBuf {
         let path = self.0.join(relative);
         dirs::private_dir_all(path.parent().unwrap()).unwrap();
-        // Deliberately not an executable or a claimed real launcher.
         fs::write(&path, "synthetic unverified candidate\n").unwrap();
         if path.file_name().is_some_and(|name| name == "room-cli") {
             for sibling in ["daemon-bundle.mjs", "index.js"] {
@@ -73,8 +52,6 @@ impl Fixture {
         path
     }
 
-    // Synthetic assumptions: proc entries identify a root-owned executable
-    // directly in its AppImage mount. This shape has NOT been observed on PC.
     fn process_root(&self) -> PathBuf {
         let root = self.0.join("proc");
         dirs::private_dir_all(root.join("self")).unwrap();
@@ -116,7 +93,6 @@ fn t2_active_process_selects_one_bundle_beside_a_stale_mount() {
         process::executable(candidate, "#!/bin/sh\n\":\" //; exit 0\n");
     }
     f.running(".mount_synthetic_active", "101");
-    // Layout alone remains ambiguous; only process evidence can select it.
     assert_eq!(pc_bundle_candidate(&f.0), Err(LocateError::Ambiguous));
     assert_eq!(f.discovery().resolve(), Ok(active.clone()));
     let calls = f.0.join("active-calls");
@@ -178,8 +154,6 @@ fn t2_unreadable_unrelated_process_does_not_hide_a_verified_running_app() {
         let unrelated = f.file("bin/synthetic-unrelated-app");
         std::os::unix::fs::symlink(unrelated, restore.0.join("exe")).unwrap();
         fs::set_permissions(&restore.0, fs::Permissions::from_mode(0o000)).unwrap();
-        // Synthetic non-dumpable-process analogue: the proc directory still
-        // belongs to this user, but its exe link supplies no readable evidence.
         assert_eq!(
             fs::metadata(&restore.0).unwrap().uid(),
             fs::metadata(proc.join("self")).unwrap().uid()
@@ -234,9 +208,6 @@ fn t2_absent_and_unmatched_bundles_have_distinct_safe_reasons_without_execution(
     }
 }
 
-// Red run 4 (2026-11-01): the command selecting this test exited 101.
-// An empty prefix got Ok(()), expected Err(UnexpectedFile).
-// Result: 0 passed; 1 failed; 29 filtered out.
 #[test]
 fn t2_launcher_markers_require_the_observed_prefix_and_safe_root_permissions() {
     let observed_prefix = b"#!/bin/sh\n\":\" //;";
@@ -250,8 +221,6 @@ fn t2_launcher_markers_require_the_observed_prefix_and_safe_root_permissions() {
         ),
         Ok(())
     );
-    // Expected values come from the read-only PC observation on #267;
-    // every rejected value below is a synthetic mutation of those facts.
     let bad_prefixes: &[&[u8]] = &[
         b"",
         b"#!/bin/sh",
@@ -295,7 +264,6 @@ fn t2_launcher_markers_require_the_observed_prefix_and_safe_root_permissions() {
 #[test]
 fn t2_only_the_fixed_bundle_layout_supplies_a_candidate() {
     let f = Fixture::new();
-    // These are plausible decoys, including a PATH-style bin directory.
     for relative in [
         "bin/room-cli".to_owned(),
         format!("mount_synthetic/{TAIL}"),
@@ -309,9 +277,6 @@ fn t2_only_the_fixed_bundle_layout_supplies_a_candidate() {
     assert_eq!(pc_bundle_candidate(&f.0), Ok(expected));
 }
 
-// Red run 2 (2026-11-01): the command selecting this test exited 101.
-// The two-bundle assertion got Ok(the first fixture path), expected
-// Err(Ambiguous). Result: 0 passed; 1 failed; 27 filtered out.
 #[test]
 fn t2_ambiguity_is_refused_and_selection_is_not_cached() {
     let f = Fixture::new();
@@ -322,7 +287,6 @@ fn t2_ambiguity_is_refused_and_selection_is_not_cached() {
     assert_eq!(pc_bundle_candidate(&f.0), Err(LocateError::Ambiguous));
     fs::remove_dir_all(f.0.join(".mount_synthetic_one")).unwrap();
     assert_eq!(pc_bundle_candidate(&f.0), Ok(second.clone()));
-    // A restart may use the same bundle name later; never cache either path.
     fs::remove_dir_all(f.0.join(".mount_synthetic_two")).unwrap();
     assert_eq!(pc_bundle_candidate(&f.0), Err(LocateError::NotRunning));
     let first_again = f.file(format!(".mount_synthetic_one/{TAIL}"));
@@ -336,9 +300,6 @@ fn t2_ambiguity_is_refused_and_selection_is_not_cached() {
     );
 }
 
-// Red run 3 (2026-11-01): the command selecting this test exited 101.
-// A directory at the CLI leaf got Err(NotRunning), expected
-// Err(UnexpectedFile). Result: 0 passed; 1 failed; 28 filtered out.
 #[test]
 fn t2_unexpected_files_and_symlink_components_are_refused() {
     let f = Fixture::new();
@@ -388,9 +349,6 @@ fn t2_unexpected_files_and_symlink_components_are_refused() {
     assert_eq!(pc_bundle_candidate(&f.0), Err(LocateError::UnexpectedFile));
 }
 
-// Red run 5 (2026-11-01): the command selecting this test exited 101.
-// Missing daemon-bundle.mjs got Ok(the candidate), expected Err(UnexpectedFile).
-// Result: 0 passed; 1 failed; 30 filtered out.
 #[test]
 fn t2_both_recorded_siblings_must_be_regular_files() {
     for sibling in ["daemon-bundle.mjs", "index.js"] {
@@ -417,17 +375,12 @@ fn t2_both_recorded_siblings_must_be_regular_files() {
     }
 }
 
-// Red run 7 (2026-11-01): selecting this test exited 101. Discovery
-// returned Ok(the executable candidate) for a file with the wrong prefix,
-// rather than Err(UnexpectedFile). The layout-only scanner was insufficient.
 #[test]
 fn t2_discovery_verifies_the_file_before_returning_an_executable() {
     let f = Fixture::new();
     let candidate = f.file(format!(".mount_synthetic/{TAIL}"));
     f.running(".mount_synthetic", "101");
     fs::set_permissions(&candidate, fs::Permissions::from_mode(0o755)).unwrap();
-    // Synthetic ownership is injected only in the test; the other metadata
-    // and all file bytes and sibling checks are read from the private bundle.
     let discovery = f.discovery();
     assert_eq!(discovery.resolve(), Err(LocateError::UnexpectedFile));
     process::executable(&candidate, "#!/bin/sh\n\":\" //; exit 0\n");
@@ -506,7 +459,6 @@ fn t2_only_unique_running_bundle_identity_selects_a_launcher() {
         };
         assert_eq!(f.discovery().resolve(), expected, "{state}");
     }
-    // A lone stale mount is never enough, even if its name claims activity.
     let f = Fixture::new();
     let path = f.file(format!(".mount_active/{TAIL}"));
     process::executable(&path, "#!/bin/sh\n\":\" //; exit 0\n");
@@ -572,8 +524,6 @@ fn t2_process_evidence_cannot_bypass_bundle_or_executable_checks() {
             }
             _ => {}
         }
-        // Distinct fixture modes let this non-capturing metadata seam
-        // mutate the app or launcher owner independently.
         let metadata: fn(&fs::Metadata) -> LauncherMetadata = match state {
             "owner" => |m| LauncherMetadata {
                 uid: if m.mode() & 0o777 == 0o755 { 1000 } else { 0 },
@@ -675,8 +625,6 @@ fn ta3_running_app_requires_execute_bits_independently() {
     }
 }
 
-// #1677/#1679: inject OS results only in a separate process, and judge the
-// public resolver's result. The parent test's environment is never changed.
 #[cfg(target_os = "linux")]
 #[test]
 fn ta3_locate_faults_preserve_errors_and_executable_identity() {
@@ -696,8 +644,6 @@ fn ta3_locate_faults_preserve_errors_and_executable_identity() {
         "{}",
         String::from_utf8_lossy(&compile.stderr)
     );
-    // Exact fixture paths and occurrences describe external filesystem
-    // evidence, not a count or shape of production implementation calls.
     for (op, leaf, occurrence, fault, expected) in [
         ("statx", "proc/102", "1", "missing", "selected"),
         ("statx", "proc/102", "1", "io", "unreadable"),
@@ -761,7 +707,6 @@ fn ta3_locate_faults_preserve_errors_and_executable_identity() {
     process::executable(&candidate, "#!/bin/sh\n\":\" //; exit 97\n");
     f.running(".mount_synthetic", "101");
     assert_eq!(f.discovery().resolve(), Ok(candidate));
-    // A real non-symlink exe is malformed evidence, not an I/O failure.
     fs::remove_file(f.process_root().join("101/exe")).unwrap();
     f.file("proc/101/exe");
     assert_eq!(f.discovery().resolve(), Err(LocateError::UnexpectedFile));
