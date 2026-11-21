@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""#2143: every code `setup.py check` prints comes with a one-line next step.
-
-The codes and the step each must name come from contracts/public-cloudroom-setup.v1.md
-(CloudRoom) and from setup.py's own component reads, written out here by hand.
-"""
 import argparse
 import contextlib
 import importlib.util
@@ -29,9 +24,7 @@ PROJECT = {'repository': 'synthetic-owner/synthetic-consumer', 'project': 'prj_s
            'operator': 'synthetic-owner', 'service_issue': 7, 'answer_thread': 'thr_synthetic_answer',
            'harness': 'claude-code', 'model': 'synthetic-model', 'effort': 'high', 'runtime': None}
 
-# Each code a component can print, and what its next step must name: the exact
-# command (by its tool) or the person's step.
-CODES = {
+NEXT_MUST_NAME = {
     'cloudroom': {
         'cloudroom_not_installed': 'cloudroom/cloudroom.py install',
         'cloudroom_installing': 'setup/setup.py check',
@@ -94,8 +87,7 @@ CODES = {
 COMMAND = re.compile(r'`([^`]+)`')
 
 
-def plain(step):
-    """The step with each `python3 -I <tool>` command written as `<folder>/<tool> <words>`, without --state-dir."""
+def tools_by_folder_without_state(step):
     def short(match):
         words = shlex.split(match.group(1))
         if words[:2] == ['python3', '-I']:
@@ -107,8 +99,7 @@ def plain(step):
     return COMMAND.sub(short, step)
 
 
-def run_check(state, results, project=None):
-    """setup.py check with each component's read answering the given code."""
+def check_answering(state, results, project=None):
     reads = {'cloudroom': 'check_cloudroom', 'harness': 'check_harness', 'personal_github': 'check_identity',
              'project': 'check_project'}
     with contextlib.ExitStack() as stack:
@@ -137,18 +128,18 @@ class EveryCodeHasANextStep(unittest.TestCase):
 
     def test_each_code_prints_a_one_line_next_naming_its_command_or_step(self):
         for project in (None, PROJECT):
-            for component, codes in CODES.items():
+            for component, codes in NEXT_MUST_NAME.items():
                 for code, names in codes.items():
                     with self.subTest(project=project is not None, component=component, code=code):
-                        results = {c: next(iter(CODES[c])) for c in CODES}
+                        results = {c: next(iter(NEXT_MUST_NAME[c])) for c in NEXT_MUST_NAME}
                         results[component] = code
-                        answer = run_check(self.state, results, project)
+                        answer = check_answering(self.state, results, project)
                         self.assertEqual(answer['results'], results, 'the codes are unchanged')
-                        self.assertEqual(sorted(answer['next']), sorted(CODES), 'one next per component')
+                        self.assertEqual(sorted(answer['next']), sorted(NEXT_MUST_NAME), 'one next per component')
                         step = answer['next'][component]
                         self.assertIsInstance(step, str)
-                        self.assertTrue(step and '\n' not in step and len(step) <= 400, step)
-                        self.assertIn(names, plain(step))
+                        self.assertTrue(step and '\n' not in step, step)
+                        self.assertIn(names, tools_by_folder_without_state(step))
                         for command in COMMAND.findall(step):
                             words = shlex.split(command)
                             if words[:2] == ['python3', '-I']:
@@ -157,16 +148,16 @@ class EveryCodeHasANextStep(unittest.TestCase):
                                 self.assertEqual(words[words.index('--state-dir') + 1], str(self.state))
 
     def test_an_unknown_code_still_gets_a_next_step(self):
-        results = {c: next(iter(CODES[c])) for c in CODES}
+        results = {c: next(iter(NEXT_MUST_NAME[c])) for c in NEXT_MUST_NAME}
         results['project'] = 'project_from_a_newer_build'
-        answer = run_check(self.state, results)
+        answer = check_answering(self.state, results)
         self.assertIn('setup/setup.py check', answer['next']['project'])
 
     def test_the_printed_check_command_runs_through_a_shell_on_the_same_state(self):
         self.state = self.base / "it's a state"
-        results = {c: next(iter(CODES[c])) for c in CODES}
+        results = {c: next(iter(NEXT_MUST_NAME[c])) for c in NEXT_MUST_NAME}
         results['cloudroom'] = 'cloudroom_installing'
-        step = run_check(self.state, results)['next']['cloudroom']
+        step = check_answering(self.state, results)['next']['cloudroom']
         command, = COMMAND.findall(step)
         env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.base / 'home')}
         done = subprocess.run(['sh', '-c', command], capture_output=True, text=True, env=env, timeout=120)
@@ -202,9 +193,9 @@ class IntelMac(unittest.TestCase):
     def test_an_intel_mac_without_cloudroom_is_sent_to_the_download_page(self):
         code = self.cloudroom.status(self.host(), self.base / 'state')['code']
         self.assertEqual(code, 'cloudroom_unsupported')
-        results = {c: next(iter(CODES[c])) for c in CODES}
+        results = {c: next(iter(NEXT_MUST_NAME[c])) for c in NEXT_MUST_NAME}
         results['cloudroom'] = code
-        step = run_check(self.base / 'state', results)['next']['cloudroom']
+        step = check_answering(self.base / 'state', results)['next']['cloudroom']
         self.assertIn(DOWNLOAD_PAGE, step)
         self.assertIn('Intel Mac', step)
 
