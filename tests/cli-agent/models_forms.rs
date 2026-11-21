@@ -864,8 +864,6 @@ fn a_replaced_file_keeps_its_group_and_access_acl_and_gains_none() {
     );
 }
 
-/// Connect's own settings check, `fleet_settings_usable` in
-/// `tools/install/setup/setup.py`, run on `text`.
 fn connect_accepts(text: &str) -> bool {
     use std::io::Write;
     let script = "import importlib.util,sys\n\
@@ -899,8 +897,6 @@ fn connect_accepts(text: &str) -> bool {
     }
 }
 
-/// The five older tables, each with a Source line, and the rest of a
-/// project's settings, so Connect accepts it as it stands.
 fn older_settings_connect_accepts() -> String {
     let five = fixture("five-tables/fleet.md")
         .replace("\n## ", "\n\nSource: synthetic owner, 2026-11-21.\n\n## ");
@@ -909,8 +905,15 @@ fn older_settings_connect_accepts() -> String {
             .join("tools/install/tests/fixtures/install-connections/consumer/docs/agents/fleet.md"),
     )
     .unwrap();
-    let rest = &consumer[consumer.find("## Test commands").unwrap()..];
-    let text = format!("{five}\nSource: synthetic owner, 2026-11-21.\n\n{rest}");
+    let rest = &consumer[consumer.find("## Test commands").unwrap()
+        ..consumer.find("## Standing merge rules").unwrap()];
+    let text = format!(
+        "{five}\nSource: synthetic owner, 2026-11-21.\n\n{rest}## Standing merge rules\n\n\
+        | Pull request | Review | Merged by, and when |\n| --- | --- | --- |\n\
+        | A ticket in an approved plan graph | Synthetic | The loop, as soon as the reviewer's \
+        APPROVE names that exact commit and all checks pass |\n\n\
+        Source: synthetic owner, 2026-11-21.\n"
+    );
     assert!(connect_accepts(&text), "the start is usable: {text}");
     text
 }
@@ -925,8 +928,6 @@ fn models_section(text: &str) -> &str {
 
 #[test]
 fn a_set_that_inserts_the_models_section_leaves_settings_connect_accepts() {
-    // catches: `models set` inserting a Models section with no Source line, so
-    // Connect refuses settings it accepted before the set (#2208).
     for argv in [
         &[
             "set",
@@ -962,8 +963,6 @@ fn a_set_that_inserts_the_models_section_leaves_settings_connect_accepts() {
 
 #[test]
 fn a_set_keeps_an_existing_models_sections_source_line() {
-    // catches: a set that rewrites or drops the Source line of a Models section
-    // it did not insert (#2208).
     let source = "Source: synthetic owner, 2026-11-20.";
     let models = format!(
         "## Models\n\n\
@@ -1006,4 +1005,62 @@ fn a_set_keeps_an_existing_models_sections_source_line() {
         .collect();
     assert_eq!(sources, [source], "{written}");
     assert!(connect_accepts(&written), "{written}");
+}
+
+#[test]
+fn every_reader_reads_an_inserted_models_section_the_same_with_its_source_line() {
+    use openwiz_core::fleet::tick::{AgentRule, Rules};
+    use openwiz_core::models::{SpawnFlags, read};
+    let fake = project("", catalogue());
+    fs::write(fake.0.0.join(FLEET), older_settings_connect_accepts()).unwrap();
+    let argv = [
+        "set",
+        "builder",
+        "claude-code",
+        "claude-opus-5-5",
+        "high",
+        "--json",
+    ];
+    assert_eq!(run(&fake, &argv).0, 0);
+    let written = fs::read_to_string(fake.0.0.join(FLEET)).unwrap();
+    let source = models_section(&written)
+        .lines()
+        .find(|l| l.starts_with("Source: "))
+        .expect("the inserted section has a Source line");
+    let without = written.replace(&format!("\n{source}\n"), "");
+    assert_ne!(without, written);
+    let flags = SpawnFlags {
+        provider: "--provider".into(),
+        model: "--model".into(),
+        effort: "--reasoning-level".into(),
+    };
+    let models_read = read(&written, &flags);
+    assert!(models_read.is_ok(), "models::read: {models_read:?}");
+    assert_eq!(models_read, read(&without, &flags), "models::read");
+    let show = |text: &str| {
+        let fake = project("", catalogue());
+        fs::write(fake.0.0.join(FLEET), text).unwrap();
+        let (code, out, err) = run(&fake, &["show", "--json"]);
+        assert_eq!((code, err.as_str()), (0, ""), "models show");
+        report(&out, "show_report")
+    };
+    let shown = show(&written);
+    assert_eq!(
+        shown["roles"]["builder"]["choice"],
+        json!({"provider": "claude-code", "model": "claude-opus-5-5", "effort": "high",
+            "family": "claude", "names": {"harness": "Claude Code", "model": "Opus 5.5", "effort": "High"}}),
+        "models show"
+    );
+    assert_eq!(shown, show(&without), "models show");
+    let tick = Rules::parse(&written, &flags);
+    assert_eq!(
+        tick.as_ref().map(|r| r.builder().clone()),
+        Ok(AgentRule {
+            harness: "claude-code".into(),
+            model: "claude-opus-5-5".into(),
+            effort: "high".into(),
+        }),
+        "the fleet tick"
+    );
+    assert_eq!(tick, Rules::parse(&without, &flags), "the fleet tick");
 }
