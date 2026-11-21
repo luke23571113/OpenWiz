@@ -114,5 +114,48 @@ class PerSkill(Skills):
         self.assertEqual(list(mine.iterdir()), [])
 
 
+
+class Truthful(Skills):
+    def test_a_linked_canonical_folder_is_refused_on_its_own_and_every_agent_still_installs(self):
+        (self.home / '.claude').mkdir()
+        dotfiles = self.base / 'dotfiles-skills'
+        dotfiles.mkdir()
+        os.symlink(dotfiles, self.root / 'skills')
+        code, result = self.skills()
+        self.assertEqual((code, result.get('outcome')), (0, 'partial'), result)
+        self.assertEqual(self.rows(result)['claude-code']['state'], 'installed')
+        self.assertEqual(sorted(p.name for p in (self.home / '.claude/skills').iterdir()), sorted(NAMES))
+        self.assertIn(str(self.root / 'skills'), result.get('canonical_refused', ''))
+        self.assertEqual(list(dotfiles.iterdir()), [])
+        self.assertTrue((self.root / 'skills').is_symlink())
+
+    @unittest.skipIf(os.getuid() == 0, 'root ignores write permission')
+    def test_a_read_only_agent_folder_fails_on_its_own_row_and_the_next_agent_installs(self):
+        (self.home / '.claude/skills').mkdir(parents=True)
+        (self.home / '.claude/skills').chmod(0o500)
+        self.addCleanup((self.home / '.claude/skills').chmod, 0o700)
+        (self.home / '.codex').mkdir()
+        code, result = self.skills()
+        self.assertEqual((code, result.get('outcome')), (0, 'partial'), result)
+        rows = self.rows(result)
+        self.assertEqual(rows['claude-code']['state'], 'refused')
+        self.assertIn(str(self.home / '.claude/skills'), rows['claude-code']['next'])
+        self.assertIn('run this again', rows['claude-code']['next'])
+        self.assertEqual(list((self.home / '.claude/skills').iterdir()), [])
+        self.assertEqual(rows['codex']['state'], 'installed')
+        self.assertEqual(sorted(p.name for p in (self.home / '.codex/skills').iterdir()), sorted(NAMES))
+        self.assertEqual(sorted(p.name for p in (self.root / 'skills').iterdir()), sorted(NAMES))
+
+    @unittest.skipIf(os.getuid() == 0, 'root ignores write permission')
+    def test_when_no_agent_can_be_written_the_canonical_folder_is_not_written_either(self):
+        (self.home / '.claude/skills').mkdir(parents=True)
+        (self.home / '.claude/skills').chmod(0o500)
+        self.addCleanup((self.home / '.claude/skills').chmod, 0o700)
+        code, result = self.skills()
+        self.assertEqual((code, result.get('outcome')), (5, 'refused'), result)
+        self.assertEqual(self.rows(result).get('claude-code', {}).get('state'), 'refused')
+        self.assertFalse((self.root / 'skills').exists())
+
+
 if __name__ == '__main__':
     unittest.main()

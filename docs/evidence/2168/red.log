@@ -25,3 +25,13 @@ OK
 $ python3 -I tools/install/tests/skills-linked-config/test_linked_config.py
 Ran 23 tests
 OK
+
+Red run 3 (review R1, R2 at eba124d0): python3 -I tools/install/tests/skills-per-agent/test_skills.py
+FAIL: test_a_linked_canonical_folder_is_refused_on_its_own_and_every_agent_still_installs (__main__.Truthful.test_a_linked_canonical_folder_is_refused_on_its_own_and_every_agent_still_installs)
+AssertionError: Tuples differ: (5, 'refused') != (0, 'partial')
+FAIL: test_a_read_only_agent_folder_fails_on_its_own_row_and_the_next_agent_installs (__main__.Truthful.test_a_read_only_agent_folder_fails_on_its_own_row_and_the_next_agent_installs)
+AssertionError: Tuples differ: (5, 'refused') != (0, 'partial')
+FAIL: test_when_no_agent_can_be_written_the_canonical_folder_is_not_written_either (__main__.Truthful.test_when_no_agent_can_be_written_the_canonical_folder_is_not_written_either)
+AssertionError: None != 'refused'
+Ran 7 tests in 2.819s
+FAILED (failures=3)

@@ -85,7 +85,8 @@ def load_tests(loader, tests, pattern):
     suite = loader.loadTestsFromNames(sorted(name for name in LinkedConfig.__dict__ if name.startswith('test_')),
                                       LinkedConfig)
     suite.addTests(loader.loadTestsFromTestCase(case) for case in (Download, Path_, Preflight, Repair,
-                                                                  skills.Report, skills.PerSkill))
+                                                                  skills.Report, skills.PerSkill,
+                                                                  skills.Truthful))
     return suite
 
 
