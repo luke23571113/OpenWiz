@@ -398,7 +398,7 @@ class InstallJourney(unittest.TestCase):
             self.assertEqual(report['target'], TARGET)
             self.assertTrue(report['ready'])
             ids = [check['id'] for check in report['checks']]
-            self.assertEqual(ids, ['python', 'target', 'disk', 'room-cli', 'gh', 'git'])
+            self.assertEqual(ids, ['python', 'target', 'disk', 'glibc', 'room-cli', 'gh', 'git'])
             self.assertNotIn('cargo', result.stdout)
 
         def verified_install():
