@@ -825,20 +825,97 @@ fn t2_a_running_bundle_or_a_refused_one_is_never_replaced_from_path() {
 #[test]
 fn t2_room_cli_missing_everywhere_says_to_open_cloudroom_once() {
     use openwiz_core::{ops::launch_failure_category, source::SourceError};
+    for (mounts, error, reason, category) in [
+        (
+            0,
+            LocateError::NotRunning,
+            "no bundled launcher and no room-cli on PATH",
+            "no bundle",
+        ),
+        (
+            1,
+            LocateError::NoRunningApp,
+            "no running app identified",
+            "no running app identified",
+        ),
+    ] {
+        let f = Fixture::new();
+        for index in 0..mounts {
+            let launcher = f.file(format!(".mount_synthetic_stale_{index}/{TAIL}"));
+            process::executable(&launcher, "#!/bin/sh\n\":\" //; exit 0\n");
+        }
+        let got = f
+            .discovery()
+            .with_search_path(f.0.join("empty-bin").into_os_string())
+            .resolve()
+            .unwrap_err();
+        assert_eq!(got, error);
+        let SourceError::Unavailable { detail } = got.into() else {
+            panic!("a missing room-cli is unavailable");
+        };
+        assert_eq!(
+            detail,
+            format!(
+                "CloudRoom not running: room-cli could not be started ({reason}). \
+                 Open the CloudRoom app once and sign in."
+            )
+        );
+        assert_eq!(launch_failure_category(&detail), Some(category));
+    }
+}
+
+#[test]
+fn t2_a_path_room_cli_the_caller_cannot_run_does_not_hide_a_later_one() {
+    use std::process::Command;
     let f = Fixture::new();
-    let error = f
-        .discovery()
-        .with_search_path(f.0.join("empty-bin").into_os_string())
-        .resolve()
-        .unwrap_err();
-    assert_eq!(error, LocateError::NotRunning);
-    let SourceError::Unavailable { detail } = error.into() else {
-        panic!("a missing room-cli is unavailable");
-    };
+    let denied = path_launcher(&f, "denied-bin", 0o601);
+    let runnable = f.0.join("bin/room-cli");
+    dirs::private_dir_all(runnable.parent().unwrap()).unwrap();
+    process::executable(&runnable, "#!/bin/sh\nprintf 'v999\\n'\n");
     assert_eq!(
-        detail,
-        "CloudRoom not running: room-cli could not be started (no bundled launcher and \
-         no room-cli on PATH). Open the CloudRoom app once and sign in."
+        Command::new(&denied).status().unwrap_err().kind(),
+        std::io::ErrorKind::PermissionDenied,
+        "the fixture's first room-cli must be refused to this caller"
     );
-    assert_eq!(launch_failure_category(&detail), Some("no bundle"));
+    let search = std::env::join_paths([f.0.join("denied-bin"), f.0.join("bin")]).unwrap();
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "t2_locate::t2_path_launch_worker", "--nocapture"])
+        .env("synthetic_path_root", &f.0)
+        .env("synthetic_path_search", search)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn t2_path_launch_worker() {
+    use openwiz_adapter_cloudroom::{locate, source::CloudRoomSource};
+    use openwiz_core::source::SessionSource;
+    let (Some(root), Some(search)) = (
+        std::env::var_os("synthetic_path_root"),
+        std::env::var_os("synthetic_path_search"),
+    ) else {
+        return;
+    };
+    let root = PathBuf::from(root);
+    locate::install(
+        Discovery::pc(root.clone(), |m| LauncherMetadata {
+            uid: 0,
+            mode: m.mode(),
+        })
+        .with_process_root(root.join("proc"))
+        .with_search_path(search),
+    )
+    .unwrap();
+    dirs::private_dir_all(&root.join("proc/self")).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    assert_eq!(
+        CloudRoomSource::from_path().version(deadline),
+        Ok("v999".to_owned())
+    );
 }
