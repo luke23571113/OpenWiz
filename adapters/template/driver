@@ -58,10 +58,11 @@ def ps(*args):
 
 
 MACOS_SECONDS_BETWEEN_LOOKS = 0.2
+LOOKS_PER_OUTPUT_CHECK = 5
 
 
 # PRIVACY: reads only ps's process table (pid, parent, group, state, start time), never any environment.
-def members(roots, recorded):
+def members(roots, recorded, writers=()):
     rows, me = ps('-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'lstart=')
     started, children, found = {}, {}, set()
     for row in rows:
@@ -71,7 +72,7 @@ def members(roots, recorded):
         pid, ppid, group = int(f[0]), int(f[1]), int(f[2])
         started[pid] = f[4].strip()
         children.setdefault(ppid, []).append(pid)
-        if group in roots or recorded.get(pid) == started[pid]:
+        if group in roots or recorded.get(pid) == started[pid] or pid in writers:
             found.add(pid)
     todo = list(roots) + list(found)
     while todo:
@@ -80,6 +81,26 @@ def members(roots, recorded):
                 found.add(c)
                 todo.append(c)
     return {p: started[p] for p in found - set(roots) - {os.getpid(), me}}
+
+
+# PRIVACY: asks lsof only which processes hold this run's own output file open for writing, never any environment.
+def writing_to(path):
+    try:
+        out = subprocess.run(['lsof', '-F', 'pa', '--', path], stdin=subprocess.DEVNULL, capture_output=True,
+                             text=True, timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    found, pid = set(), None
+    for field in out.splitlines():
+        if field[:1] == 'p' and field[1:].isdigit():
+            pid = int(field[1:])
+        elif field[:1] == 'a' and field[1:2] in ('w', 'u') and pid is not None:
+            found.add(pid)
+    return found
+
+
+def turn_output(run, supervisor):
+    return os.path.join(STATE, '%s.%d.out' % (run, supervisor))
 
 
 def supervisor_record(run, supervisor):
@@ -109,19 +130,23 @@ def recorded_by(run, supervisors):
     return recorded
 
 
-def look_after_the_turn_on_macos(run):
-    kept = {}
+def look_after_the_turn_on_macos(run, output):
+    kept, looks = {}, 0
     while True:
         children_left = any_child_running_after_reaping()
-        now = members({os.getpid()}, kept)
+        about_to_exit = not children_left and not kept
+        writers = writing_to(output) if looks % LOOKS_PER_OUTPUT_CHECK == 0 or about_to_exit else ()
+        now = members({os.getpid()}, kept, writers)
+        looks += 1
         if now != kept:
             kept = now
             record_kept(run, kept)
         if not children_left and not kept:
-            try:
-                os.remove(supervisor_record(run, os.getpid()))
-            except OSError:
-                pass
+            for name in (supervisor_record(run, os.getpid()), output):
+                try:
+                    os.remove(name)
+                except OSError:
+                    pass
             return
         time.sleep(MACOS_SECONDS_BETWEEN_LOOKS)
 
@@ -161,9 +186,12 @@ def supervise(cmd):
     if LINUX and ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
+    output = turn_output(os.environ['OPENWIZ_RUN'], os.getpid())
     try:
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
+        out = subprocess.DEVNULL if LINUX else os.open(output, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=out)
+        if out != subprocess.DEVNULL:
+            os.close(out)
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
@@ -171,7 +199,7 @@ def supervise(cmd):
     print(json.dumps({'pid': harness.pid, 'since': since(harness.pid)}), flush=True)
     os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
     if not LINUX:
-        return look_after_the_turn_on_macos(os.environ['OPENWIZ_RUN'])
+        return look_after_the_turn_on_macos(os.environ['OPENWIZ_RUN'], output)
     while True:
         try:
             os.wait()
@@ -222,7 +250,8 @@ def end(turns, run):
             if not kept:
                 return
             if not LINUX:
-                for p in set(members({s for s, _ in kept}, recorded_by(run, kept))) - sent:
+                writers = set().union(*(writing_to(turn_output(run, s)) for s, _ in kept))
+                for p in set(members({s for s, _ in kept}, recorded_by(run, kept), writers)) - sent:
                     try:
                         os.kill(p, sig)
                         sent.add(p)

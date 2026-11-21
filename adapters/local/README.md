@@ -2,7 +2,7 @@
 
 Login: stays on your machine
 
-The default host: a [driver v1](../../kernel/driver.v1.md) that runs builders on the machine it runs on, your computer or a VPS, with the harnesses you have already signed into. One Python file, standard library only. **Platforms:** Linux and macOS, Python 3.9 or later (it finds a run's processes through `/proc` on Linux, and through each turn's process group and `ps`'s process table on macOS, never another process's environment).
+The default host: a [driver v1](../../kernel/driver.v1.md) that runs builders on the machine it runs on, your computer or a VPS, with the harnesses you have already signed into. One Python file, standard library only. **Platforms:** Linux and macOS, Python 3.9 or later (it finds a run's processes through `/proc` on Linux, and through each turn's process group, `ps`'s process table and `lsof`'s list of processes writing to the run's log on macOS, never another process's environment). On macOS, a process that leaves its turn's group, closes or redirects its output (as a daemon does), and is orphaned before the supervisor's next look is out of reach of `stop`.
 
 ```sh
 echo '{"repository":"example/site","ticket":7,"skill":"build-ticket","harness":"claude","model":"claude-opus-5-5"}' \

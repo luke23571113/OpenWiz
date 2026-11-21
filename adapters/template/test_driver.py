@@ -267,6 +267,17 @@ class Template(unittest.TestCase):
         self.assertTrue(self.until(lambda: set(self.marked()) <= before), 'the unsaved turn still runs')
 
 
+    def recorded_by_supervisors(self, run):
+        state, found = self.env['OPENWIZ_TEMPLATE_STATE'], set()
+        for name in os.listdir(state):
+            if name.startswith(run + '.') and name.endswith('.sup'):
+                try:
+                    with open(os.path.join(state, name)) as f:
+                        found.update(int(p) for p in json.load(f)['kept'])
+                except (OSError, ValueError):
+                    pass
+        return found
+
     def asked_ps_for_environments(self, calls):
         with open(calls) as f:
             asked = f.read().splitlines()
@@ -289,9 +300,16 @@ class Template(unittest.TestCase):
                 calls = os.path.join(self.folder, 'ps-calls')
                 macos = dict(worker, PATH=self.logging_ps(calls) + os.pathsep + NO_PROC + os.pathsep + self.env['PATH'],
                              NO_PROC_PYTHON=sys.executable)
+                closes_its_output = not worker
+                if closes_its_output:
+                    open(self.hold, 'w').close()
                 code, out = self.call('start', START, **macos)
                 self.assertEqual(code, 0, out)
                 [(turn, child, _)] = self.logged(1)
+                if closes_its_output:
+                    self.assertTrue(self.until(lambda: child in self.recorded_by_supervisors(out['run'])),
+                                    'the supervisor never recorded the detached child')
+                    os.remove(self.hold)
                 self.assertTrue(self.until(lambda: not alive(turn)), 'the fake turn did not end')
                 self.assertTrue(alive(child))
                 self.assertEqual(self.call('stop', out, **macos), (0, dict(out, stopped=True)))
