@@ -531,7 +531,7 @@ DOWNLOAD_PAGE = 'https://www.cloudroom.dev/download'
 INSTALLATIONS = 'https://github.com/settings/installations'
 
 
-def next_steps(results, state, project, openwiz):
+def next_steps(results, state, project, openwiz, identity=None):
     where = ['--state-dir', shlex.quote(str(state))]
     app_tool = HERE.parent / 'github-app/setup.py'
     if not app_tool.is_file():
@@ -556,6 +556,10 @@ def next_steps(results, state, project, openwiz):
     preview = tool(cloudroom, 'install')
     app = tool(app_tool, '--repo', shlex.quote(repository))
     gh_login = "Sign in to GitHub as yourself with `gh auth login --web`"
+    skip_app = tool(HERE / 'github_login.py', 'skip-app')
+    choose_personal = f'or act as your personal GitHub login instead: preview {skip_app}, then confirm with --yes --operation and the id it prints'
+    skipped = (project is not None and type(identity) is dict and identity.get('app_choice') == 'skip'
+               and identity.get('repository') == project['repository'])
     models = '`' + (shlex.quote(str(openwiz)) if openwiz is not None else 'openwiz') + ' models --json`'
     steps = {
         'cloudroom_not_installed': f'Preview installing CloudRoom with {preview}, then confirm with --yes --operation and the id it prints.',
@@ -584,7 +588,7 @@ def next_steps(results, state, project, openwiz):
         'identity_unreadable': f'GitHub could not be read: check `gh auth status`, then run {again} again.',
         'identity_bot': f'{gh_login}, not as a bot or organisation, then run {again} again.',
         'identity_no_push': f'The signed-in GitHub account cannot push to {repository}: {gh_login[0].lower() + gh_login[1:]} with an account that can, or ask its owner for write access.',
-        'identity_account_mismatch': f"gh is signed in as another account than the one you chose: switch with `gh auth switch`, or choose again with {tool(HERE / 'github_login.py', 'sign-in')}.",
+        'identity_account_mismatch': f"gh is signed in as another account than the one you chose: switch back with `gh auth switch`, or record this account instead: preview {skip_app}, then confirm with --yes --operation and the id it prints.",
         'identity_verified': 'None: your agents can push with this GitHub login.',
         'project_unprepared': f'Choose the project for your first fleet: {prepare()}, then confirm with --yes --operation and the id it prints.',
         'project_runtime_missing': f'The project is pinned to another OpenWiz build: prepare it again from this build with {prepare()}.',
@@ -593,10 +597,11 @@ def next_steps(results, state, project, openwiz):
         'project_settings_missing': f"{repository} has no usable fleet settings (docs/agents/fleet.md, and the brain's settings after init): ask your agent to run the setup skill there, then run {again} again.",
         'project_answer_refused': f"That answer thread is not in the project's CloudRoom project: pick one that is, then prepare again: {prepare(answer_thread='THR')}.",
         'project_verified': 'None: the project is ready.',
-        'app_missing': f"Connect OpenWiz's GitHub App with {app}, then confirm with --yes --operation and the id it prints; or skip the App with {tool(HERE / 'github_login.py', 'skip-app')}.",
-        'app_files_unusable': f"The App's files in the state's service/app folder must be yours and private (mode 0600): fix them, or connect the App again with {app}.",
+        'app_missing': (f'None: you skipped the App for {repository}, so your personal GitHub login acts instead.' if skipped else
+                        f"Connect OpenWiz's GitHub App with {app}, then confirm with --yes --operation and the id it prints; or skip the App with {skip_app}."),
+        'app_files_unusable': f"The App's files in the state's service/app folder (app.json and private-key.pem) must be yours and private (mode 0600): fix them, then run {again} again; {choose_personal}.",
         'app_not_installed': f'Install the App on {repository}: run {app} and follow Install the App.',
-        'app_key_rejected': f"GitHub rejected the App's key: connect the App again with {app}.",
+        'app_key_rejected': f"GitHub rejected the App's key: generate a new private key in your App's settings at https://github.com/settings/apps, save it as service/app/private-key.pem in the state (yours, mode 0600), then run {again} again; {choose_personal}.",
         'app_unreadable': f"GitHub's App API could not be read: wait a minute, then run {again} again.",
         'app_revoked': f'The App is no longer installed for {repository}: install it again with {app}.',
         'app_suspended': f'The App is suspended: unsuspend it at {INSTALLATIONS}, then run {again} again.',
@@ -604,11 +609,16 @@ def next_steps(results, state, project, openwiz):
         'app_read_only': f"The App lacks write access: accept OpenWiz's requested permissions at {INSTALLATIONS}, then run {again} again.",
         'app_permissions_mismatch': f"The App's permissions differ from OpenWiz's profile: accept the requested permissions at {INSTALLATIONS}, then run {again} again.",
         'app_wrong_repository': f"The App can't reach {repository}: add it to the App's selected repositories at {INSTALLATIONS}, then run {again} again.",
-        'app_token_unusable': f'GitHub returned an unusable App token: run {again} again; if it repeats, connect the App again with {app}.',
+        'app_token_unusable': f'GitHub returned an unusable App token: run {again} again; if it repeats, {choose_personal}.',
         'app_verified': 'None: the App can act on the project.',
     }
     unknown = f'This build does not know that code: run {again} again; if it repeats, reinstall OpenWiz.'
-    return {component: steps.get(code, unknown) for component, code in results.items()}
+    found = {component: steps.get(code, unknown) for component, code in results.items()}
+    if shutil.which('gh') is None:
+        for component in ('personal_github', 'project'):
+            if '`gh ' in found[component] or 'github_login.py' in found[component]:
+                found[component] = f'Install the GitHub CLI from https://cli.github.com first, then: {found[component]}'
+    return found
 
 
 def check(args):
@@ -646,7 +656,7 @@ def check(args):
             value['observations'][component] = {'code': code, 'revision': bound, 'at': now}
     setup.update(change)
     print(json.dumps({'schema': 'openwiz.setup-check.v1', 'results': results,
-                      'next': next_steps(results, setup.state, project, openwiz)}, sort_keys=True))
+                      'next': next_steps(results, setup.state, project, openwiz, before.get('identity'))}, sort_keys=True))
 
 
 def prepare(args):
