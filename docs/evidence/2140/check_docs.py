@@ -9,6 +9,8 @@ FILES = ('README.md', 'docs/install.md')
 STALE = re.compile(r'(?i:coming soon)|0\.0\.12|7370|install open\b|(?i:setup page)|before 0\.1\.0|Apple silicon (?:and|or) Intel|install the CloudRoom app yourself')
 WHOLE_ROOT = re.compile(r'(?i)rm -r\w*\s+(?:<root>|~/\.local/lib/openwiz)/?(?=[\s`]|$)'
                         r'|remove the install\b|delet\w*\s+(?:the install folder|(?:the )?`(?:<root>|~/\.local/lib/openwiz)/?`)')
+WHOLE_SERVICE = re.compile(r'(?i)delet\w*\s+(?:only\s+|its\s+|all of\s+)?`(?:<state>/|state/)?service/?`'
+                           r'|rm -r\w*\s+\S*service/?(?=[\s`]|$)')
 LINK = re.compile(r'\]\(([^)\s]+)\)')
 INSTALL = re.compile(r'tools/install/install ([a-z-]+)')
 RUNTIME = re.compile(r'(runtime/[a-z_/-]+\.py) ([a-z-]+)')
@@ -42,6 +44,8 @@ def main(package):
                 failures.append(f'{name}:{number}: stale words: {word!r}')
             for words in WHOLE_ROOT.findall(line):
                 failures.append(f'{name}:{number}: deletes the whole install folder: {words!r}')
+            for words in WHOLE_SERVICE.findall(line):
+                failures.append(f'{name}:{number}: deletes all of service/, which holds settings: {words!r}')
         for target in sorted(set(LINK.findall(text))):
             checked += 1
             if target.startswith('#'):
