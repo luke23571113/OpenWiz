@@ -21,6 +21,7 @@ INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
 DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
 SHOWN_LIMIT_TYPES = {'auth_expiry': 'auth_expiry', 'rate_limit': 'rate_limit'}
 MACOS_SECONDS_BETWEEN_LOOKS = 0.2
+LOOKS_PER_OUTPUT_CHECK = 5
 GRACE = 10  # seconds a stopped process has to exit before it is killed
 UNWRITABLE = 'make OPENWIZ_BOAT_STATE (or ~/.local/state/openwiz-boat) a folder you can write'
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
@@ -243,7 +244,7 @@ def ps(*args):
 
 
 # PRIVACY: reads only ps's process table (pid, parent, group, state, start time), never any environment.
-def members(roots, recorded):
+def members(roots, recorded, writers=()):
     rows, me = ps('-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'stat=', '-o', 'lstart=')
     started, children, found = {}, {}, set()
     for row in rows:
@@ -253,7 +254,7 @@ def members(roots, recorded):
         pid, ppid, group = int(f[0]), int(f[1]), int(f[2])
         started[pid] = f[4].strip()
         children.setdefault(ppid, []).append(pid)
-        if group in roots or recorded.get(pid) == started[pid]:
+        if group in roots or recorded.get(pid) == started[pid] or pid in writers:
             found.add(pid)
     todo = list(roots) + list(found)
     while todo:
@@ -262,6 +263,32 @@ def members(roots, recorded):
                 found.add(c)
                 todo.append(c)
     return {p: started[p] for p in found - set(roots) - {os.getpid(), me}}
+
+
+# PRIVACY: asks lsof only which processes hold this run's own turn logs open for writing, never any environment.
+def writing_to(paths):
+    if not paths:
+        return set()
+    try:
+        out = subprocess.run(['lsof', '-F', 'pa', '--'] + list(paths), stdin=subprocess.DEVNULL,
+                             capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    found, pid = set(), None
+    for field in out.splitlines():
+        if field[:1] == 'p' and field[1:].isdigit():
+            pid = int(field[1:])
+        elif field[:1] == 'a' and field[1:2] in ('w', 'u') and pid is not None:
+            found.add(pid)
+    return found
+
+
+def turn_logs(run):
+    try:
+        names = os.listdir(STATE)
+    except FileNotFoundError:
+        return []
+    return sorted(os.path.join(STATE, n) for n in names if n.startswith(run + '.') and n.endswith('.log'))
 
 
 def since(pid):
@@ -327,10 +354,14 @@ def supervise(log, cmd):
                 os.wait()
             except ChildProcessError:
                 return
-    kept = {}
+    kept, looks = {}, 0
     while True:
         children_left = any_child_running_after_reaping()
-        now = members({os.getpid()}, kept)
+        scanned = looks % LOOKS_PER_OUTPUT_CHECK == 0
+        now = members({os.getpid()}, kept, writing_to([log]) if scanned else ())
+        if not children_left and not now and not scanned:
+            now = members({os.getpid()}, kept, writing_to([log]))
+        looks += 1
         if now != kept:
             kept = now
             try:
@@ -367,7 +398,8 @@ def end(turns, run):
             if not kept:
                 return
             if not LINUX:
-                for p in set(members({s for s, _ in kept}, recorded_by(run, {s for s, _ in kept}))) - sent:
+                supervisors = {s for s, _ in kept}
+                for p in set(members(supervisors, recorded_by(run, supervisors), writing_to(turn_logs(run)))) - sent:
                     try:
                         os.kill(p, sig)
                         sent.add(p)
