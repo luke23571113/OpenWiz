@@ -595,7 +595,7 @@ class Candidate(World):
         archive = self.releases / ('v' + VERSION) / 'assets' / f'openwiz-{VERSION}-{LINUX}.tar.gz'
         good = archive.read_bytes()
         for planted, reason in ((good + b'x', 'install_download_refused'),
-                                (good[:-1] + bytes([good[-1] ^ 1]), 'install_refused')):
+                                (good[:-1] + bytes([good[-1] ^ 1]), 'install_download_refused')):
             archive.write_bytes(planted)
             self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': [reason]}))
             self.assertIsNone(self.record()['install'])
@@ -612,7 +612,8 @@ class Candidate(World):
         self.assertEqual((code, out['status']), (0, 'complete'), out)
         self.assertEqual(self.downloads(), [base + f'latest/download/{name}.sha256',
                                             base + f'latest/download/{name}.manifest.json',
-                                            base + f'download/v{VERSION}/openwiz-{VERSION}-{LINUX}.tar.gz'])
+                                            base + f'download/v{VERSION}/openwiz-{VERSION}-{LINUX}.tar.gz',
+                                            base + f'download/v{VERSION}/SHA256SUMS'])
         self.assertNotIn(['release', 'download'], [c['args'][:2] for c in self.calls()])
         installed = self.record()['install']
         self.assertEqual(sorted(installed), sorted(SCHEMA['$defs']['install']['required']))
