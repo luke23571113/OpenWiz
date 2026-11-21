@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
 from unittest import mock
 
@@ -41,7 +42,8 @@ token = os.environ.get("GH_TOKEN")
 entry = {"name": name, "args": args, "stdin": stdin,
          "stdout_pipe": stat.S_ISFIFO(os.fstat(1).st_mode),
          "gh_token": hashlib.sha256(token.encode()).hexdigest() if token else None,
-         "gh_config": os.environ.get("GH_CONFIG_DIR")}
+         "gh_config": os.environ.get("GH_CONFIG_DIR"),
+         "gh_children": [os.environ.get(k) for k in ("GH_EDITOR", "GH_BROWSER", "GH_PAGER")]}
 log = os.environ["FAKE_LOG"]
 with open(log, "a") as f:
     f.write(json.dumps(entry) + "\n")
@@ -113,6 +115,24 @@ def refusal(code):
     body = {"schema": "openwiz.token-service.v1", "kind": "refusal", "refusal": code,
             "message": PIN["refusals"][code]["message"]}
     return {"exit": PIN["refusals"][code]["exit"], "stdout": json.dumps(body) + "\n"}
+
+
+class NameOnly(Mapping):
+    def __init__(self, values):
+        self.values, self.read = values, []
+
+    def __getitem__(self, key):
+        self.read.append(key)
+        return self.values[key]
+
+    def __contains__(self, key):
+        return key in self.values
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __len__(self):
+        return len(self.values)
 
 
 def load_helper():
@@ -581,6 +601,39 @@ class Review(Helper):
         self.assertTrue(lost.startswith(str(self.private)) and not os.path.exists(lost),
                         "nor the owner's gh login, so it fails visibly")
         self.assert_never_exposed(via_shell, direct)
+
+    def test_r11_the_legacy_app_key_value_is_never_read(self):
+        helper = load_helper()
+        environment = NameOnly(dict(self.env, OPENWIZ_GITHUB_APP_KEY="synthetic-legacy-key-sentinel"))
+        for command in (["start", *REQ], ["run", *REQ, "--", "gh", "pr", "list"]):
+            with self.subTest(command[0]), mock.patch.object(helper.os, "environ", environment):
+                self.assertEqual(helper.main(command), 2)
+        self.assertNotIn("OPENWIZ_GITHUB_APP_KEY", environment.read, "the legacy value is never fetched")
+        self.assertEqual(self.calls(), [])
+
+    def test_r12_gh_gets_the_token_only_for_its_allowed_commands(self):
+        self.answers(answer())
+        self.start()
+        denied = (["auth", "token"], ["auth", "status", "--show-token"], ["config", "get", "editor"],
+                  ["alias", "set", "co", "!sh -c env"], ["co"], ["extension", "exec", "synthetic"],
+                  ["synthetic-extension"], [])
+        for args in denied:
+            with self.subTest(args):
+                self.log.unlink(missing_ok=True)
+                ran = self.helper("run", *self.REQ, "--", "gh", *args)
+                self.assertEqual([c["gh_token"] for c in self.calls("gh")], [], "authenticated gh never starts")
+                self.assertNotEqual(ran.returncode, 0)
+                self.assertEqual(ran.stderr.count("openwiz: openwiz[bot] token withheld from gh"), 1)
+        owner = {"GH_EDITOR": "synthetic-owner-editor", "GH_BROWSER": "synthetic-owner-browser",
+                 "GH_PAGER": "synthetic-owner-pager"}
+        allowed = self.helper("run", *self.REQ, "--", "gh", "pr", "view", "1", **owner)
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        call = self.calls("gh")[-1]
+        self.assertEqual(call["gh_token"], sha(TOKEN))
+        editor, browser, pager = call["gh_children"]
+        self.assertEqual(pager, "cat", "no pager child gets the token")
+        for child in (editor, browser):
+            self.assertTrue(child.startswith(str(self.private)), "editor and browser are the run's refusal")
 
     def test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused(self):
         self.answers(dict(answer(left=302), sleep=3))
