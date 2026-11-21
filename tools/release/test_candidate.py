@@ -60,6 +60,7 @@ rl4.PACKAGED['tools/install/setup/init.py'] = 'runtime/setup/init.py'
 RUNTIME['tools/install/setup/github_login.py'] = b'# Synthetic GitHub sign-in helper.\n'
 rl4.PACKAGED['tools/install/setup/github_login.py'] = 'runtime/setup/github_login.py'
 LINUX = 'x86_64-unknown-linux-gnu'
+SCHEMA = json.loads((ROOT / 'contracts/release-candidate.v1.schema.json').read_text())
 
 
 def canonical(value):
@@ -120,8 +121,6 @@ if network and any(a.startswith(("https://", "http://", "ssh://", "git@")) for a
 sys.exit(subprocess.run([REAL] + mapped).returncode)
 '''.replace('@REAL@', repr(REAL_GIT)).replace('@URL@', repr(PUBLIC_URL))
 
-# The stranger's route: GitHub's release download URLs, served from the fake release store. "latest"
-# skips pre-releases, as GitHub's does; a missing file is GitHub's 404.
 FAKE_FETCH = r'''
 def fetch_release(url, limit):
     import json, os, pathlib, urllib.error
@@ -571,8 +570,23 @@ class Candidate(World):
         self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': ['install_latest_not_candidate']}))
         self.assertIsNone(self.record()['install'])
         shutil.rmtree(self.releases / 'v0.0.100')
-        (self.root / 'calls.jsonl').unlink()
         self.latest()
+        archive = self.releases / ('v' + VERSION) / 'assets' / f'openwiz-{VERSION}-{LINUX}.tar.gz'
+        good = archive.read_bytes()
+        for planted, reason in ((good + b'x', 'install_download_refused'),
+                                (good[:-1] + bytes([good[-1] ^ 1]), 'install_refused')):
+            archive.write_bytes(planted)
+            self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': [reason]}))
+            self.assertIsNone(self.record()['install'])
+        archive.write_bytes(good)
+        sealed = (self.state / 'record.json').read_bytes()
+        other = self.record()
+        row = next(a for a in other['candidate']['artifacts'] if (a['role'], a['target']) == ('archive', LINUX))
+        row['sha256'] = sha(b'x')
+        (self.state / 'record.json').write_text(json.dumps(other))
+        self.assertEqual(self.install_check(), (1, {'status': 'blocked', 'reasons': ['install_mismatch']}))
+        (self.state / 'record.json').write_bytes(sealed)
+        (self.root / 'calls.jsonl').unlink()
         code, out = self.install_check()
         self.assertEqual((code, out['status']), (0, 'complete'), out)
         self.assertEqual(self.downloads(), [base + f'latest/download/{name}.sha256',
@@ -580,10 +594,14 @@ class Candidate(World):
                                             base + f'download/v{VERSION}/openwiz-{VERSION}-{LINUX}.tar.gz'])
         self.assertNotIn(['release', 'download'], [c['args'][:2] for c in self.calls()])
         installed = self.record()['install']
+        self.assertEqual(sorted(installed), sorted(SCHEMA['$defs']['install']['required']))
+        saved = self.state / installed['evidence']['record']
+        self.assertEqual(sha(saved.read_bytes()), installed['evidence']['sha256'])
+        self.assertEqual([d['url'] for d in json.loads(saved.read_text())['downloads']], self.downloads())
         rows = {(a['role'], a['target']): a['sha256'] for a in self.record()['candidate']['artifacts']}
         self.assertEqual({k: installed[k] for k in ('route', 'version', 'source', 'target', 'manifest_sha256',
                                                     'archive_sha256')},
-                         {'route': 'latest', 'version': VERSION, 'source': self.head, 'target': LINUX,
+                         {'route': 'install', 'version': VERSION, 'source': self.head, 'target': LINUX,
                           'manifest_sha256': rows[('manifest', LINUX)], 'archive_sha256': rows[('archive', LINUX)]})
 
     def test_missing_ship_or_exact_changelog_approval_refuses_before_any_write(self):

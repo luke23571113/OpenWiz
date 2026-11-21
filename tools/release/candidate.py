@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import shutil
 import sys
 import tempfile
 import time
+import urllib.error
 
 sys.dont_write_bytecode = True
 
@@ -22,7 +24,7 @@ DESCRIPTION = """Prepare, evaluate and publish one checked public release candid
     release candidate live --state DIR --kit FILE --smoke-state DIR --record POINTER
     release candidate evaluate --state DIR --repo CLONE
     release candidate publish --state DIR --repo CLONE --artifacts DIR
-    release candidate install --state DIR --receipt FILE
+    release candidate install --state DIR --target TARGET
     release candidate status --state DIR
 
 Every subcommand reads its private state directory, does what the current
@@ -1505,37 +1507,95 @@ def publish(args):
     return {'status': 'published', 'tag': tag, 'tag_object': record['publication']['tag_object']}
 
 
+def fetch_release(url, limit):
+    import pull
+    return pull.fetch_bytes(url, limit)
+
+
+def installer_entry():
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader('openwiz_install_entry', str(HERE.parent / 'install' / 'install'))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
+def strangers_install_route(target, clean, body):
+    entry_cli, fetched, steps = installer_entry(), [], []
+
+    def fetch(url, limit):
+        try:
+            data = fetch_release(url, limit)
+        except urllib.error.HTTPError as error:
+            fetched.append({'url': url, 'status': error.code})
+            raise
+        except Exception:
+            fetched.append({'url': url, 'status': None})
+            raise
+        fetched.append({'url': url, 'status': 200, 'sha256': sha(data)})
+        return data
+
+    def run(*argv):
+        out = io.StringIO()
+        code = entry_cli.main(list(argv), fetch=fetch, stdout=out)
+        try:
+            value = strict(out.getvalue())
+        except ValueError:
+            value = None
+        steps.append({'command': argv[0], 'exit': code, 'output': value})
+        return value if code == 0 and isinstance(value, dict) else None
+
+    identity = (body['release_version'], body['source']['commit'])
+    got = run('download', '--target', target, '--dir', str(clean / 'download'))
+    if got is None:
+        unresolved = fetched[:1] and fetched[0]['status'] == 404
+        reason = 'install_latest_unresolved' if unresolved else 'install_download_refused'
+    elif (got.get('version'), got.get('source')) != identity:
+        reason = 'install_latest_not_candidate'
+    else:
+        reason = None
+        root = str(clean / 'openwiz')
+        for step in (('install', '--assets', str(clean / 'download'), '--target', target, '--root', root),
+                     ('status', '--root', root)):
+            got = run(*step)
+            if got is None or got.get('outcome') != 'installed' or (got.get('version'), got.get('source')) != identity:
+                reason = 'install_refused'
+                break
+    return reason, {'target': target, 'downloads': fetched, 'steps': steps}
+
+
 def install(args):
     state = State(args.state)
     record = state.read()
     publication = record['publication']
     if not publication or publication['status'] != 'complete':
         block('publication_incomplete')
-    try:
-        receipt = strict(Path(args.receipt).read_bytes())
-    except (OSError, ValueError, Refused):
-        block('install_unreadable')
-    keys(receipt, 'route version source target manifest_sha256 archive_sha256 verified_at evidence', 'install_invalid')
-    body = record['candidate']
+    body, target = record['candidate'], args.target
     names = {(a['role'], a['target']): a['sha256'] for a in body['artifacts']}
-    if (receipt['route'] not in ('install', 'update') or receipt['version'] != body['release_version']
-            or receipt['source'] != body['source']['commit'] or receipt['target'] not in TARGETS
-            or receipt['manifest_sha256'] != names.get(('manifest', receipt['target']))
-            or receipt['archive_sha256'] != names.get(('archive', receipt['target']))):
+    with tempfile.TemporaryDirectory(prefix='openwiz-install-check-') as clean:
+        clean = Path(clean).resolve()
+        reason, evidence = strangers_install_route(target, clean, body)
+        if reason is None:
+            name = 'openwiz-' + target
+            manifest = sha((clean / 'download' / (name + '.manifest.json')).read_bytes())
+            archives = [f for f in (clean / 'download').iterdir() if f.name.endswith('.tar.gz')]
+            archive = sha(archives[0].read_bytes()) if len(archives) == 1 else None
+            if manifest != names.get(('manifest', target)) or archive != names.get(('archive', target)):
+                reason = 'install_mismatch'
+    state.write(f'evidence/install-{target}.json', evidence)
+    data = state.file(f'evidence/install-{target}.json').read_bytes()
+    if reason:
+        block(reason)
+    verified = now()
+    if verified < publication['verified_at']:
         block('install_mismatch')
-    if type(receipt['verified_at']) is not int or receipt['verified_at'] < publication['verified_at']:
-        block('install_mismatch')
-    keys(receipt['evidence'], 'record sha256', 'install_invalid')
-    try:
-        if sha(evidence_bytes(receipt['evidence']['record'])) != receipt['evidence']['sha256']:
-            block('install_evidence_mismatch')
-    except Blocked as error:
-        if error.reasons != ['install_evidence_mismatch']:
-            block('install_unreadable')
-        raise
-    record['install'] = receipt
-    record['timing']['finished_at'] = receipt['verified_at']
-    phase(record, 'install', publication['verified_at'], receipt['verified_at'])
+    record['install'] = {'route': 'install', 'version': body['release_version'], 'source': body['source']['commit'],
+                         'target': target, 'manifest_sha256': manifest, 'archive_sha256': archive,
+                         'verified_at': verified,
+                         'evidence': {'record': f'evidence/install-{target}.json', 'sha256': sha(data)}}
+    record['timing']['finished_at'] = verified
+    phase(record, 'install', publication['verified_at'], verified)
     state.write('record.json', record)
     return report(record)
 
@@ -1589,7 +1649,7 @@ def main(argv=None):
         made.add_argument('--literals', required=True, help='the private O3 named-terms file (D2)')
     made = sub.add_parser('install')
     made.add_argument('--state', required=True)
-    made.add_argument('--receipt', required=True)
+    made.add_argument('--target', required=True, choices=TARGETS)
     made = sub.add_parser('status')
     made.add_argument('--state', required=True)
     args = parser.parse_args(argv)
