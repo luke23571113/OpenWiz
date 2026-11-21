@@ -663,12 +663,12 @@ class Boat(unittest.TestCase):
 
     def test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
-        for worker in ({}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
+        for worker in ({'FAKE_DAEMON': '1'}, {'FAKE_CLEAN': '1', 'FAKE_SAME_GROUP': '1'}):
             with self.subTest(**worker):
                 self.tearDown()
                 self.setUp()
                 macos['PATH'] = NO_PROC + os.pathsep + self.env['PATH']
-                detached = not worker
+                detached = 'FAKE_DAEMON' in worker
                 if detached:
                     open(self.hold, 'w').close()
                 code, out = self.driver('start', REQUEST, **macos, **worker)
@@ -690,7 +690,7 @@ class Boat(unittest.TestCase):
         p = subprocess.run([os.path.join(NO_PROC, 'python3'), '-I', KIT, '--driver', DRIVER, '--repo', 'example/site',
                             '--ticket', '7', '--harness', 'claude', '--model', 'claude-opus-5-5',
                             '--tracker', self.tracker, '--wait', '8'],
-                           env=dict(self.env, FAKE_SAME_GROUP='1', **macos), capture_output=True, text=True, timeout=300)
+                           env=dict(self.env, **macos), capture_output=True, text=True, timeout=300)
         self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
             'pass version: openwiz:records v1, and the schema is driver v1',
             'pass start: the run posted builder status note 1',
