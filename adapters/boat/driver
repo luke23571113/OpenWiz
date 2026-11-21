@@ -103,7 +103,9 @@ def boat(then, *args):
 def prompt_text(req, woken):
     what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
     return ('%s: GitHub repository %s, ticket #%d, with the %s skill (~/wizskills/skills/%s/SKILL.md). Clone '
-            'the repository if it is not here yet, and follow its instructions.'
+            'the repository if it is not here yet, and follow its instructions. This run uses the host\'s default '
+            'effort (driver v1 passes none), so your status note\'s model field is `<your model> default effort`, '
+            'such as `Opus 5.5 default effort`, never a configured effort.'
             % (what, req['repository'], req['ticket'], req['skill'], req['skill']))
 
 

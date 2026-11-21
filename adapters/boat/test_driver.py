@@ -267,6 +267,20 @@ class Boat(unittest.TestCase):
         self.assertEqual((code, len(self.logged())), (1, 8), err)
         self.assertIn('is archived, not running', err['error'])
 
+    def test_every_turn_tells_the_agent_its_note_says_default_effort(self):
+        prompts = os.path.join(self.folder, 'prompts')
+        code, out = self.driver('start', REQUEST, FAKE_PROMPTS=prompts)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])), 'the first turn never ended')
+        self.set_state('idle')
+        self.assertEqual(self.driver('wake', out, FAKE_PROMPTS=prompts), (0, dict(out, woke=True)))
+        with open(prompts) as f:
+            texts = [json.loads(line) for line in f]
+        self.assertEqual(len(texts), 2)
+        for text in texts:
+            self.assertRegex(text, r"host's default effort")
+            self.assertRegex(text, r'status note.* model field .*`<your model> default effort`')
+
     def set_state(self, now):
         """Set the newest synthetic sandbox's state, as boat would once the agent's turn has ended."""
         with open(self.env['FAKE_BOAT_STATE']) as f:

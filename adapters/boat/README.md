@@ -24,6 +24,8 @@ The driver never touches a login (driver v1, N1 to N3): it calls `boat` with you
 2. In boat's dashboard, connect GitHub (so the agent's `gh` and `git push` work in the sandbox, as your agents' account) and the key or subscription for each harness you use (Agents & Proxying).
 3. `harness` is one of boat's providers: `claude`, `codex`, `pi`, `opencode`, `prime`, `kimi` or `mistral`. `model` is passed to `--model` unchanged.
 
+**Effort:** runs use the host's default effort. Driver v1's `start` has no effort field, so whatever effort a fleet configures isn't applied, and each prompt tells the agent to write its status note's model as `<model> default effort`. Passing an effort needs a driver v2 field, a separate decision.
+
 boat bills per second while a sandbox runs, against your plan.
 
 ## The kit

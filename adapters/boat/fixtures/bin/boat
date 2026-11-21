@@ -105,6 +105,9 @@ def prompt(args):
     if provider not in PROVIDERS:
         fail('provider_not_configured', 'connect a %s key or subscription first' % provider)
     skill = re.search(r'the ([a-z0-9-]+) skill', text).group(1)
+    if os.environ.get('FAKE_PROMPTS'):
+        with open(os.environ['FAKE_PROMPTS'], 'a') as f:
+            f.write(json.dumps(text) + '\n')
 
     def queue(state):
         box = sandbox(state, sid)
