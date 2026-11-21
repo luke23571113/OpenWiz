@@ -10,3 +10,5 @@ OK
 Ran 15 tests in 41.837s
 
 OK
+
+# re-run at 3c249f6a after the comment-contract fix: full boat and local suites pass; comment-check: ok
