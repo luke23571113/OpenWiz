@@ -7,7 +7,7 @@ test_no_service_configured_is_exactly_as_today (__main__.Fallback.test_no_servic
 test_unreachable_service_falls_back_with_one_note (__main__.Fallback.test_unreachable_service_falls_back_with_one_note) ... ok
 test_a_local_thread_runs_the_service_itself (__main__.MintedToken.test_a_local_thread_runs_the_service_itself) ... ok
 test_a_private_place_inside_a_git_tree_is_refused (__main__.MintedToken.test_a_private_place_inside_a_git_tree_is_refused) ... ok
-test_gh_and_git_use_the_minted_token (__main__.MintedToken.test_gh_and_git_use_the_minted_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 41613), raddr=('127.0.0.1', 52000)>
+test_gh_and_git_use_the_minted_token (__main__.MintedToken.test_gh_and_git_use_the_minted_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 43047), raddr=('127.0.0.1', 32968)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
@@ -22,6 +22,7 @@ openwiz: agent-token: OPENWIZ_GITHUB_APP_KEY is set: remove the old App-key secr
 ok
 test_r12_gh_gets_the_token_only_for_its_allowed_commands (__main__.Review.test_r12_gh_gets_the_token_only_for_its_allowed_commands) ... ok
 test_r12_only_gh_gets_the_app_token (__main__.Review.test_r12_only_gh_gets_the_app_token) ... ok
+test_r12_only_the_gh_the_run_chose_gets_the_token (__main__.Review.test_r12_only_the_gh_the_run_chose_gets_the_token) ... ok
 test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused (__main__.Review.test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused) ... ok
 test_r1_a_git_credential_command_never_prints_the_token (__main__.Review.test_r1_a_git_credential_command_never_prints_the_token) ... ok
 test_r1_credential_answers_only_inside_git_exchange (__main__.Review.test_r1_credential_answers_only_inside_git_exchange) ... ok
@@ -35,16 +36,16 @@ test_r6_a_failed_start_inside_a_run_hands_no_app_token_on (__main__.Review.test_
 test_r7_a_later_owner_helper_never_authenticates_git (__main__.Review.test_r7_a_later_owner_helper_never_authenticates_git) ... ok
 test_r7_a_replaced_helper_list_or_header_never_authenticates_git (__main__.Review.test_r7_a_replaced_helper_list_or_header_never_authenticates_git) ... ok
 test_r7_an_unguarded_git_never_signs_in_as_the_owner (__main__.Review.test_r7_an_unguarded_git_never_signs_in_as_the_owner) ... ok
-test_r8_git_http_tracing_never_shows_the_token (__main__.Review.test_r8_git_http_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 33441), raddr=('127.0.0.1', 48278)>
+test_r8_git_http_tracing_never_shows_the_token (__main__.Review.test_r8_git_http_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 45613), raddr=('127.0.0.1', 37264)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
-test_r9_git_process_tracing_never_shows_the_token (__main__.Review.test_r9_git_process_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 38131), raddr=('127.0.0.1', 34566)>
+test_r9_git_process_tracing_never_shows_the_token (__main__.Review.test_r9_git_process_tracing_never_shows_the_token) ... /usr/lib/python3.11/socket.py:777: ResourceWarning: unclosed <ssl.SSLSocket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 37147), raddr=('127.0.0.1', 56224)>
   self._sock = None
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
 
 ----------------------------------------------------------------------
-Ran 33 tests
+Ran 34 tests
 
 OK

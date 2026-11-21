@@ -314,7 +314,10 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   `release`, `repo`, `run`, `search`, `status` and `workflow` commands. Anything else,
   such as `gh auth token`, `gh config`, an alias or an extension, is refused with one
   line, `openwiz: openwiz[bot] token withheld from gh (<reason>); gh stops rather than use
-  another account`. For an allowed command, it reads the snapshot and starts the real gh
+  another account`. It runs only the gh the run chose: the run records that gh's path
+  and file identity in the private directory, and the stand-in refuses another path, or
+  a file changed since, before the token is looked up. For an allowed command, it reads
+  the snapshot and starts that gh
   with `GH_TOKEN`, the owner's own `GH_CONFIG_DIR`, `GH_PAGER=cat`, and an editor and
   browser that refuse with that line, so gh starts no other program with the token. Any other child, a gh started by its full path included, sees an empty
   `GH_CONFIG_DIR`, so it fails rather than sign in as the owner. Through
@@ -345,7 +348,7 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   Nothing is exported to the agent's shell.
 - **The old App key.** With a token service configured, every helper command refuses
   while `OPENWIZ_GITHUB_APP_KEY` (the earlier route's Cloudroom secret) is set. It checks
-  the name only, before any environment value is read or copied, and names the variable,
+  the name only, by listing the environment's names, before any value is read or copied, and names the variable,
   never its value. Remove that secret from the
   agent's environment, because the token service holds the key. The service call never
   gets it either.

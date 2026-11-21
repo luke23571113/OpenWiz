@@ -643,6 +643,8 @@ class Review(Helper):
             "swapped binary": f'mv "{self.bin}/gh" "{self.bin}/gh.real" && cp "{rogue}/gh" "{self.bin}/gh" && gh pr list;'
                               f' s=$?; mv -f "{self.bin}/gh.real" "{self.bin}/gh"; exit $s',
         }
+        reasons = {"another path": "not the gh this run chose", "another refusal": "not the gh this run chose",
+                   "swapped binary": "the gh this run chose was changed"}
         for name, script in cases.items():
             with self.subTest(name):
                 flag.unlink(missing_ok=True)
@@ -650,6 +652,7 @@ class Review(Helper):
                 self.assertFalse(flag.exists(), "no other executable gets the token")
                 self.assertNotEqual(ran.returncode, 0)
                 self.assertEqual(ran.stderr.count("openwiz:"), 1, ran.stderr)
+                self.assertIn(reasons[name], ran.stderr)
                 self.assert_never_exposed(ran)
         bound = self.shell("gh pr list")
         self.assertEqual((bound.returncode, self.calls("gh")[-1]["gh_token"]), (0, sha(TOKEN)))
