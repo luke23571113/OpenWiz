@@ -168,19 +168,20 @@ fn md3_a_broken_models_table_is_refused_never_read_past() {
 }
 
 #[test]
-fn md3_an_id_outside_the_tick_setting_form_is_refused() {
+fn md3_a_namespaced_or_upper_case_id_is_read_and_an_overlong_one_refused() {
     let one = fixture("one-table");
-    assert!(Rules::parse(&one, &flags()).is_ok());
-    for (from, to) in [
-        ("--model gpt-6.2-sol", "--model vendor/demo"),
-        ("--model gpt-6.2-sol", "--model Sol-6.2"),
+    let long = format!("--model {}", "x".repeat(129));
+    for (to, want) in [
+        ("--model vendor/demo", Ok(Some("vendor/demo"))),
+        ("--model Sol-6.2", Ok(Some("Sol-6.2"))),
+        (long.as_str(), Err("invalid agent setting")),
     ] {
-        let text = one.replacen(from, to, 1);
+        let text = one.replacen("--model gpt-6.2-sol", to, 1);
         assert_ne!(text, one);
-        assert_eq!(
-            Rules::parse(&text, &flags()).err(),
-            Some("invalid agent setting"),
-            "{to}"
-        );
+        let model = Rules::parse(&text, &flags()).map(|r| {
+            r.reviewer_for(BuilderFamily::Claude)
+                .map(|a| a.model.clone())
+        });
+        assert_eq!(model, want.map(|m| m.map(String::from)), "{to}");
     }
 }

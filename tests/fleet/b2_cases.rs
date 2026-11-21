@@ -1866,4 +1866,12 @@ fn md3_models_table_reviews_wait_or_fall_back_to_the_builder() {
             ),
         }
     }
+    let namespaced = fixture("one-table").replacen("--model gpt-6.2-sol", "--model vendor/demo", 1);
+    assert!(Rules::parse(&namespaced, &flags()).is_ok());
+    let mut t = reviewing();
+    if let Some(source) = t.builder_source.as_mut() {
+        source.family = BuilderFamily::Claude;
+    }
+    let v = run_with(&snapshot(t), &namespaced, NOW);
+    assert_eq!(v["actions"][0]["facts"]["settings"]["model"], "vendor/demo");
 }
