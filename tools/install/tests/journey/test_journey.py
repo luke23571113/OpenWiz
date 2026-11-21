@@ -69,8 +69,20 @@ def settings_table(title, provider, model):
             '| Effort | High | `--reasoning-level high` |\n\nSource: synthetic owner, 2026-11-01.\n\n' % (title, provider, model))
 
 
-# The fleet settings the setup skill writes from the owner's recorded choice (#636).
-FLEET_SETTINGS = ('# Fleet settings\n\nSynthetic settings.\n\n'
+def models_row(role, provider, model):
+    return '| %s | Synthetic | Synthetic | High | `--provider %s --model %s --reasoning-level high` |\n' % (
+        role, provider, model)
+
+
+# The fleet settings the setup skill writes from the owner's recorded choice (#636), in
+# both forms as OpenWiz's own (#1809): the Models table, and the older tables it agrees with.
+FLEET_SETTINGS = ('# Fleet settings\n\nSynthetic settings.\n\n## Models\n\n'
+                  '| Role | Harness | Model | Effort | `room-cli thread spawn` flags |\n| --- | --- | --- | --- | --- |\n'
+                  + models_row('Orchestrator', 'codex', 'syn-codex-model-01')
+                  + models_row('Builder', 'codex', 'syn-codex-model-01')
+                  + models_row('Reviewer', 'claude-code', 'syn-claude-model-01')
+                  + '| Small builder | follows Builder | | | |\n| Fixer | follows Builder | | | |\n\n'
+                  'Source: synthetic owner, 2026-11-01.\n\n'
                   + settings_table('Builder', 'codex', 'syn-codex-model-01')
                   + settings_table('Builder for small tickets', 'codex', 'syn-codex-model-01')
                   + settings_table('Reviewer for GPT-built', 'claude-code', 'syn-claude-model-01')
@@ -780,13 +792,6 @@ class InstallJourney(unittest.TestCase):
                 self.assertIn('macOS', check['next'])
 
 
-def load(path, name):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 class OwnSettings(unittest.TestCase):
     """#1809 (MD7): OpenWiz's own fleet.md holds the Models table (contracts/models.v1.md)
     beside the older tables the pinned WizSkills release still reads; both start J255."""
@@ -803,14 +808,15 @@ class OwnSettings(unittest.TestCase):
         follows = ['follows Builder', '', '', '']
         self.assertEqual(rows[2:], [['Orchestrator', *opus], ['Builder', *opus], ['Reviewer', *sol],
                                     ['Small builder', *follows], ['Fixer', *follows]])
-        self.assertTrue(load(TOOLS / 'setup/setup.py', 'own_setup').fleet_settings_usable(text))
+        setup = module('own_setup', TOOLS / 'setup/setup.py')
+        self.assertTrue(setup.models_usable(text, setup.sections(text)['Models']), 'the install setup reader')
         skills = ROOT / '.wizskills/skills'
         problems = []
-        load(skills / 'setup/scripts/settings.py', 'own_settings').fleet(text, problems)
+        module('own_settings', skills / 'setup/scripts/settings.py').fleet(text, problems)
         self.assertEqual(problems, [], 'the pinned setup check')
         claude = dict(provider='claude-code', model='claude-opus-5-5', effort='medium')
         codex = dict(provider='codex', model='gpt-6.2-sol', effort='medium')
-        starts = load(skills / 'launch-fleet/scripts/ops-starts.py', 'own_starts')
+        starts = module('own_starts', skills / 'launch-fleet/scripts/ops-starts.py')
         self.assertEqual(starts.read_settings(text),
                          {'builder': claude, 'small': claude, 'claude-code': codex, 'codex': claude})
         fixer = text.split('\n## Fixer\n', 1)[1].split('\n## ', 1)[0]
