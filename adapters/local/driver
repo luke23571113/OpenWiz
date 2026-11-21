@@ -191,7 +191,6 @@ def supervisor_record(run, supervisor):
 
 
 def record_kept(run, kept):
-    """Save, for `end` on a host with no subreaper, the processes this supervisor keeps (pid: start time)."""
     record = supervisor_record(run, os.getpid())
     try:
         with open(record + '.new', 'w') as f:
@@ -202,7 +201,6 @@ def record_kept(run, kept):
 
 
 def recorded_by(run, supervisors):
-    """The processes these live supervisors (pid, start time) recorded as their turns' (pid: start time)."""
     recorded = {}
     for pid, started in supervisors:
         try:
@@ -216,7 +214,6 @@ def recorded_by(run, supervisors):
 
 
 def look_after_the_turn_on_macos(run, harness):
-    """Keep the turn's processes from ps's process table alone, recording each one it finds, until none is left."""
     kept = {}
     while True:
         children_left = any_child_running_after_reaping(harness)
@@ -292,7 +289,7 @@ def supervise(cmd):
 
 
 def saved_exit(pid, status, harness):
-    if pid == harness:  # its exit code, for `start` to read (`exited`)
+    if pid == harness:
         try:
             with open(exit_file(os.environ['OPENWIZ_RUN'], pid), 'w') as f:
                 f.write(str(os.waitstatus_to_exitcode(status)))
@@ -301,7 +298,6 @@ def saved_exit(pid, status, harness):
 
 
 def any_child_running_after_reaping(harness):
-    """Whether any child is still running, once every exited one is reaped (the harness's exit code saved)."""
     while True:
         try:
             pid, status = os.waitpid(-1, os.WNOHANG)

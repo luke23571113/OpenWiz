@@ -384,14 +384,12 @@ class Local(unittest.TestCase):
 
 
     def asked_ps_for_environments(self, calls):
-        """The ps calls, logged to calls by a wrapper on PATH, that ask ps for any process's environment."""
         with open(calls) as f:
             asked = f.read().splitlines()
         self.assertTrue(any(' -A ' in ' %s ' % c for c in asked), 'the driver never listed processes through ps')
         return [c for c in asked if '-E' in c.split() or 'e' in c.split()]
 
     def logging_ps(self, calls):
-        """A folder holding a `ps` that logs each call's arguments to calls, then runs the no-proc fixture's ps."""
         folder = os.path.join(self.folder, 'logging-ps')
         os.makedirs(folder, exist_ok=True)
         with open(os.path.join(folder, 'ps'), 'w') as f:
