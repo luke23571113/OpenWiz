@@ -354,8 +354,6 @@ RECEIPT_UNPROVEN = sorted(['not_live', 'clock_unknown', 'not_fresh:machine', 'no
 S, O = 'agent_for_owner', 'owner'
 # first-hour.json's own turns, and at its Connect step the installed tools' yeses (skills/install/SKILL.md:
 # every effect waits for the owner's yes), each written by hand.
-# WizSkills 0.3.0's onboarding road: where agents run (and what Cloudroom spends) comes first, the grill's
-# yes is the spec confirmation, and to-tickets' checks record the plan approval, so no owner turn approves it.
 BEFORE_CONNECT = [('spending_approval', 'run', O), ('typed_choice', 'start', O), ('confirmation', 'prepare_project', S)]
 AFTER_CONNECT = [('confirmation', 'init', S), ('tap', 'brain_merge', S), ('typed_choice', 'connect', O),
                  ('typed_choice', 'grill', O), ('confirmation', 'spec_confirmation', O),

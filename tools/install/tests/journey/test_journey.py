@@ -125,12 +125,9 @@ def bundle_assets(source):
     assets['runtime/access/access.py'] = (TOOLS / 'access/access.py').read_bytes()
     for skill in ('setup', 'grill', 'to-spec', 'to-tickets', 'launch-fleet', 'install'):  # the 0.2.0 catalog (#1187)
         assets.update(tracked(ROOT / 'skills' / skill, f'runtime/skills/{skill}/'))
-    # launch-fleet's grants.py loads its ops protocol from test/ at run time (host.py, from 0.3.0's
-    # onboarding road), and the real package carries every installed skill file.
     runtime_test = 'runtime/skills/launch-fleet/test/ops-protocol/'
     assets = {k: v for k, v in assets.items()
               if k.startswith(runtime_test) or not re.search(r'(^|/)test[^/]*$|/tests?/', k)}
-    # #2014: the package carries the release's contracts/ beside its skills, at runtime/contracts/.
     assets.update(tracked(ROOT / '.wizskills/contracts', 'runtime/contracts/'))
     identity = f'openwiz.package.v1\n{VERSION}\n{source}\n{TARGET}\n'.encode()
     assets['runtime/openwiz-build.txt'] = identity

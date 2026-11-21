@@ -83,7 +83,6 @@ STORE = module('openwiz_setup_store', ROOT / 'tools/install/setup/store.py')
 
 
 def skill_steps():
-    """The journey's step names, in order, from the packaged skill's numbered sections."""
     explain, _, branch = SKILL.read_text().partition('## 5. The onboarding road\n')
     names = re.findall(r'^## 4\. (Teach)$', explain, re.M)
     names.extend(re.findall(r'^### [0-9]+\. (.+)$', branch.partition('\n## ')[0], re.M))
@@ -163,7 +162,6 @@ class Journey:
         self.state = self.dir / 'private/onboard.json'
         self.options = self.dir / 'private/models.json'
         self.options.write_text(json.dumps(JOURNEY['options']))
-        # Outside the project checkout below: setup's real store refuses state inside a repository.
         self.setup_dir = Path(tempfile.mkdtemp(prefix='onboard-setup-')) / 'openwiz-state'
         case.addCleanup(shutil.rmtree, self.setup_dir.parent, True)
         self.world_path = self.dir / 'world.json'
@@ -183,8 +181,6 @@ class Journey:
         for path in (self.openwiz, gh, room):
             path.chmod(0o755)
         self.world = {'repo': JOURNEY['repo'], 'default': 'main', 'files': dict(FILES), 'issues': [], 'pulls': []}
-        # The project checkout the helper runs in, and its origin: launch-fleet's host.py reads
-        # docs/agents/host.md from origin's default branch (records v1, section 6).
         self.origin = self.dir / 'origin.git'
         self.git('init', '-q', '--bare', '-b', 'main', str(self.origin))
         self.git('init', '-q', '-b', 'main', str(self.dir))
@@ -203,7 +199,6 @@ class Journey:
                               check=True, capture_output=True, timeout=60)
 
     def origin_write(self, files):
-        """One commit on origin's default branch writing these files, as a merge there would."""
         work = Path(tempfile.mkdtemp(prefix='origin-', dir=self.dir))
         self.git('clone', '-q', str(self.origin), str(work))
         for name, text in files.items():
@@ -256,8 +251,6 @@ class Journey:
         self.save_world()
 
     def approve(self, spec=None, tickets=None, comment=90001, grill=GRILL, human=False):
-        """to-tickets's machine plan approval (decisions.v1) of this grill, or an older human approval record,
-        with the fingerprint revision.sh gives the plan now."""
         spec, tickets = spec or self.spec, tickets or self.tickets
         out = subprocess.run(['sh', str(REVISION), str(spec)], env=self.env(), capture_output=True, check=True)
         fingerprint = hashlib.sha256(out.stdout).hexdigest()
@@ -269,7 +262,7 @@ class Journey:
                     'Private record: https://github.com/synthetic-owner/synthetic-private/issues/1#issuecomment-1\n\n'
                     '| Ticket | Title | Blocked by | Label |\n| --- | --- | --- | --- |\n%s\n\n'
                     'Fingerprint: `%s`\n' % (rows, fingerprint))
-        else:  # to-tickets' approve.py layout, read whole by launch-fleet (#1340)
+        else:
             n = len(tickets)
             body = ('**Machine plan approval, 2026-11-01, revision 1:** links, relies, sizes, width and owned paths '
                     'passed.\nGrill confirmed: %s\n\nChecks: %d tickets; links 0; relies 0; sizes S %d, M 0, L 0; '
@@ -372,7 +365,7 @@ class Journey:
             elif turn.get('approve'):
                 self.approve()
             elif turn.get('world') == 'fleet_record':
-                self.fleet_record()  # launch-fleet's own start path, read back (R7)
+                self.fleet_record()
             elif 'setup' in turn:
                 self.write_setup(setup_state(turn['setup'], repository=JOURNEY['repo'],
                                              settings=tuple(self.settings[k] for k in ('harness', 'model', 'effort'))))
@@ -660,7 +653,6 @@ class Launch(unittest.TestCase):
         self.assertEqual(j.spawns(), [])
 
     def test_a_start_settles_only_on_launch_fleets_activation_record(self):
-        # R7: catches the yes, or anything short of launch-fleet's own record read back, counted as the start
         j = Journey(self)
         j.replay(until='launch')
         self.assertEqual(j.tool(PREVIEW).returncode, 12)
@@ -749,7 +741,6 @@ class Launch(unittest.TestCase):
         self.assertEqual(j.spawns(), [], 'reconciliation never dispatches a fleet of its own')
 
     def test_no_start_once_setup_no_longer_verifies(self):
-        # Review R4: catches a fleet started after setup refuses a prerequisite or its checks expire.
         stale = int(time.time() * 1000) - 2 * 60 * 60 * 1000
         for name, state in (('login lost push access', setup_state(overrides={'personal_github': 'identity_no_push'})),
                             ('checks expired', setup_state(at=stale))):
@@ -847,7 +838,7 @@ class Launch(unittest.TestCase):
         k = Journey(self)
         k.replay(until='launch')
         saved = json.loads(k.state.read_text())
-        saved['choices']['agents'] = 'local'  # agents chosen for a place the user never answered
+        saved['choices']['agents'] = 'local'
         k.state.write_text(json.dumps(saved))
         local = k.tool(PREVIEW)
         self.assertEqual(local.returncode, 5, local.stdout)

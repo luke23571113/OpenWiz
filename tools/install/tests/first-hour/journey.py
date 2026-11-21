@@ -386,8 +386,6 @@ class Attempt:
 
     # 2. The fleet: the fleet thread's starts land on CloudRoom and GitHub.
     def _fleet(self):
-        # WizSkills 0.3.0: the onboarding helper starts nothing; the orchestrator starts the fleet
-        # thread through launch-fleet's own path, and its record is already on the spec.
         self.case.assertEqual(self.j.spawns(), [], 'the onboarding helper started no thread itself')
         self.fleet_op = intent('start_agent', f'{REPO}#{self.j.spec}:fleet')
         self.cloudroom.start(self.fleet_op, 'Fleet #%d: %s' % (self.j.spec, self.j.world['issues'][0]['title']),
@@ -815,8 +813,6 @@ class Attempt:
 
     def fleet_start(self):
         """How the first fleet started, read back: CloudRoom's spawns, the spec's fleet record and the engine's log."""
-        # The fleet thread's record is on the spec from the conversation's launch step (WizSkills 0.3.0);
-        # the fleet thread itself is the orchestrator's start, read back from the recording CloudRoom.
         titles = [t['title'] for t in self.cloudroom.matching('Fleet #')]
         comments = next(i for i in self.j.world['issues'] if i['number'] == self.j.spec)['comments']
         loops = [int(n) for c in comments for n in re.findall(r'^launch-fleet: fleet active, loop fleet-([0-9]+)$',
