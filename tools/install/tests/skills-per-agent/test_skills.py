@@ -157,5 +157,24 @@ class Truthful(Skills):
         self.assertFalse((self.root / 'skills').exists())
 
 
+
+class Isolation(base.Bundles):
+    def test_the_in_process_installer_suites_never_touch_an_agent_home_outside_their_synthetic_home(self):
+        codex = self.base / 'developer-codex'
+        (codex / 'skills/grill').mkdir(parents=True)
+        (codex / 'skills/grill/.openwiz-skill').write_bytes(b'openwiz.skill-copy.v1\n' + b'2' * 40 + b'\n')
+        (codex / 'skills/grill/SKILL.md').write_bytes(b'The developer sentinel.\n')
+        home = self.base / 'developer-home'
+        home.mkdir()
+        before = base.snapshot(self.base)
+        for suite in ('installer/test_root_safety.py', 'installer/test_installer.py'):
+            with self.subTest(suite=suite):
+                run = subprocess.run([sys.executable, '-I', str(INSTALL / 'tests' / suite)], capture_output=True,
+                                     text=True, env={'PATH': os.environ['PATH'], 'HOME': str(home),
+                                                     'CODEX_HOME': str(codex), 'TMPDIR': str(self.base / 'tmp')})
+                self.assertEqual(run.returncode, 0, run.stderr[-2000:])
+        self.assertEqual({k: v for k, v in base.snapshot(self.base).items() if not k.startswith('tmp')}, before)
+
+
 if __name__ == '__main__':
     unittest.main()

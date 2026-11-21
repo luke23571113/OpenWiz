@@ -43,3 +43,8 @@ OK
 $ python3 -I tools/install/tests/skills-linked-config/test_linked_config.py
 Ran 26 tests
 OK
+
+Red run 4 (review R6 at 9dc0aa24): python3 -I tools/install/tests/skills-per-agent/test_skills.py Isolation
+FAIL (suite='installer/test_root_safety.py'): Remove.test_remove_of_a_dedicated_install_leaves_no_root_and_lists_agent_skills_to_clean listed <tmp>/developer-codex/skills, the CODEX_HOME inherited from the caller.
+FAIL: the sentinel developer-codex/skills/grill was replaced: its mark now names the synthetic build (1111...) instead of 2222..., and its SKILL.md is synthetic bytes.
+FAILED (failures=2)
