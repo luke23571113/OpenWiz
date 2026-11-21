@@ -53,6 +53,14 @@ def alive(pid):
         return False
 
 
+HANDS_OFF_AS_IT_EXITS = """#!%s
+import os, subprocess, time
+time.sleep(0.7)
+worker = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subprocess.DEVNULL)
+with open(%r, 'w') as f:
+    f.write('%%d %%d' %% (os.getpid(), worker.pid))
+"""
+
 class Local(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.mkdtemp()
@@ -341,6 +349,35 @@ class Local(unittest.TestCase):
                 self.assertIn(says, out['next'])
         self.assertEqual([f for f in os.listdir(self.env['OPENWIZ_LOCAL_STATE']) if f.startswith('run-')], [])
 
+
+    def harness_handing_off_as_it_exits(self, name):
+        folder, pids = os.path.join(self.folder, 'hands-off'), os.path.join(self.folder, 'handed-off')
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, name), 'w') as f:
+            f.write(HANDS_OFF_AS_IT_EXITS % (sys.executable, pids))
+        os.chmod(os.path.join(folder, name), 0o700)
+        return folder, pids
+
+    def handed_off(self, pids):
+        written = lambda: os.path.exists(pids) and len(open(pids).read().split()) == 2
+        self.until(written)
+        self.assertTrue(written(), 'the turn never handed off')
+        with open(pids) as f:
+            turn, worker = map(int, f.read().split())
+        self.until(lambda: not alive(turn))
+        self.assertFalse(alive(turn), 'the turn did not exit')
+        time.sleep(1)
+        self.assertTrue(alive(worker))
+        return worker
+
+    def test_without_proc_as_on_macos_stop_ends_a_worker_handed_off_as_the_turn_exits(self):
+        folder, pids = self.harness_handing_off_as_it_exits('claude')
+        macos = {'PATH': folder + os.pathsep + NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        code, out = self.start(env=dict(self.env, **macos))
+        self.assertEqual(code, 0, out)
+        worker = self.handed_off(pids)
+        self.assertEqual(self.driver('stop', out, dict(self.env, **macos)), (0, dict(out, stopped=True)))
+        self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
 
     def asked_ps_for_environments(self, calls):
         with open(calls) as f:
