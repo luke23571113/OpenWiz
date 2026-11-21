@@ -1,7 +1,8 @@
-# Green run at 34fd72b9: python3 -I adapters/openclaw/test_driver.py. Each test's environment is built from scratch; PATH holds only the fake acpx, python3 and sleep, and setup refuses a real claude, codex, acpx, openclaw, gh, npx, node, bash or sh on it.
+# Green run at c47c7cac: python3 -I adapters/openclaw/test_driver.py. Each test's environment is built from scratch; PATH holds only the fake acpx, python3 and sleep, and setup refuses a real claude, codex, acpx, openclaw, gh, npx, node, bash or sh on it.
 test_a_field_shaped_like_a_credential_is_refused_before_anything_keeps_it (__main__.OpenClaw.test_a_field_shaped_like_a_credential_is_refused_before_anything_keeps_it) ... ok
 test_a_harness_acpx_would_run_as_a_command_is_refused_without_echoing_it (__main__.OpenClaw.test_a_harness_acpx_would_run_as_a_command_is_refused_without_echoing_it) ... ok
 test_a_missing_acpx_is_refused_with_how_to_install_it (__main__.OpenClaw.test_a_missing_acpx_is_refused_with_how_to_install_it) ... ok
+test_a_project_acpx_config_in_the_run_folder_never_reaches_acpx (__main__.OpenClaw.test_a_project_acpx_config_in_the_run_folder_never_reaches_acpx) ... ok
 test_a_refused_prompt_fails_start_and_wake (__main__.OpenClaw.test_a_refused_prompt_fails_start_and_wake) ... ok
 test_a_start_whose_session_fails_leaves_nothing (__main__.OpenClaw.test_a_start_whose_session_fails_leaves_nothing) ... ok
 test_a_wake_during_a_turn_reaches_the_same_session_after_acpx_acknowledged_the_first (__main__.OpenClaw.test_a_wake_during_a_turn_reaches_the_same_session_after_acpx_acknowledged_the_first) ... ok
@@ -14,6 +15,6 @@ test_stop_runs_the_built_in_adapter_even_when_a_config_appears_while_it_runs (__
 test_the_driver_never_reads_your_acpx_config_and_acpx_never_loads_it (__main__.OpenClaw.test_the_driver_never_reads_your_acpx_config_and_acpx_never_loads_it) ... ok
 
 ----------------------------------------------------------------------
-Ran 13 tests in 5.936s
+Ran 14 tests in 6.339s
 
 OK
