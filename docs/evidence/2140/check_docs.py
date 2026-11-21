@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""#2140's proof: README.md and docs/install.md tell the truth about 0.1.0.
+
+  python3 -I docs/evidence/2140/check_docs.py <unpacked 0.1.0 package>
+
+From the repository root. Checks, and prints one line per failure:
+  1. no stale words (a "coming soon" 0.1.0, 0.0.12 as current, the removed
+     setup page or `install open`);
+  2. every link resolves: a relative link to a file Git tracks, a web
+     link to an HTTP status below 400 (redirects followed);
+  3. every `install <command>` the files name is a command of
+     tools/install/install, and every `runtime/<tool>.py <command>` is a
+     command of that tool in the unpacked package (its --help exits 0).
+Exit 0 when all hold, 1 otherwise. Reads only; it runs no install.
+"""
+import re
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+FILES = ('README.md', 'docs/install.md')
+STALE = re.compile(r'(?i:coming soon)|0\.0\.12|7370|install open\b|(?i:setup page)|before 0\.1\.0')
+LINK = re.compile(r'\]\(([^)\s]+)\)')
+INSTALL = re.compile(r'tools/install/install ([a-z-]+)')
+RUNTIME = re.compile(r'(runtime/[a-z_/-]+\.py) ([a-z-]+)')
+
+
+def status(url):
+    request = urllib.request.Request(url, method='GET', headers={'User-Agent': 'openwiz-docs-check'})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+    except OSError as error:
+        return str(error)
+
+
+def ok(argv):
+    return subprocess.run(argv, capture_output=True).returncode == 0
+
+
+def tracked(path):
+    return ok(['git', 'ls-files', '--error-unmatch', str(path)])
+
+
+def main(package):
+    failures, checked = [], 0
+    for name in FILES:
+        text = Path(name).read_text()
+        for number, line in enumerate(text.splitlines(), 1):
+            for word in STALE.findall(line):
+                failures.append(f'{name}:{number}: stale words: {word!r}')
+        for target in sorted(set(LINK.findall(text))):
+            checked += 1
+            if target.startswith('#'):
+                continue
+            if re.match(r'https?://', target):
+                code = status(target)
+                if not (isinstance(code, int) and code < 400):
+                    failures.append(f'{name}: link {target} answered {code}')
+            elif not tracked(Path(name).parent / target.split('#')[0]):
+                failures.append(f'{name}: link {target} is not a tracked file, so GitHub answers 404')
+        for command in sorted(set(INSTALL.findall(text))):
+            checked += 1
+            if not ok([sys.executable, '-I', 'tools/install/install', command, '--help']):
+                failures.append(f'{name}: `install {command}` is not an installer command')
+        for tool, command in sorted(set(RUNTIME.findall(text))):
+            checked += 1
+            if not ok([sys.executable, '-I', '-B', str(Path(package) / tool), command, '--help']):
+                failures.append(f'{name}: `{tool} {command}` is not a command in the package')
+    for failure in failures:
+        print('FAIL', failure)
+    print(f'{checked} links and commands checked, {len(failures)} failures')
+    return 1 if failures else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1]))
