@@ -688,6 +688,19 @@ class Candidate(World):
         self.assertEqual(self.git(self.remote, 'rev-parse', f'refs/tags/v{VERSION}^{{}}'), self.head)
         self.assertEqual(self.git(self.remote, 'rev-parse', 'main'), self.published)
 
+    def test_2127_an_unreadable_release_branch_gives_evaluate_publishs_reasons(self):
+        self.release_branch()
+        self.ready()
+
+        def checked():
+            return [p['name'] for p in self.record()['timing']['phases']].count('checks')
+        before = checked()
+        evaluated = self.blocked(self.evaluate(FAIL_ACTION='fetch'), 'release_branch_unreadable')
+        self.assertEqual(checked(), before + 1)
+        refused = self.blocked(self.publish(FAIL_ACTION='fetch'), 'release_branch_unreadable')
+        self.assertEqual((evaluated['status'], evaluated['reasons']), ('blocked', refused['reasons']))
+        self.assertEqual(self.writes(), [])
+
     def test_964_each_unproven_release_branch_refuses_with_its_reason(self):
         self.release_branch()
         self.smoke_kit()
