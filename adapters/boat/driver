@@ -14,8 +14,8 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
 ID = re.compile(r'[A-Za-z0-9_.:-]{1,100}')
-UP = ('running', 'ready', 'idle')
-STATES = UP + ('stopped', 'archived')  # the sandbox states a wake may prompt in; any other refuses it
+UP = ('running', 'ready', 'idle')  # the sandbox states a wake may prompt in; any other refuses it
+STATES = UP + ('stopped', 'archived')
 QUEUED_WAIT = 45  # seconds for boat to queue a turn; the kit gives a command 120
 INSTALL_WAIT = 60  # seconds for the sandbox to install the pinned skills
 DEFAULT_SETTLE_SECONDS, MAX_SETTLE_SECONDS = 20, 60
