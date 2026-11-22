@@ -3092,7 +3092,14 @@ mod polish_tests {
             assert_eq!(restored, check);
             assert_eq!(render_script(&restored, &params).unwrap(), script);
         }
-        for digits in ["+1", "01", "-0", "1.0"] {
+        for digits in [
+            "+1",
+            "01",
+            "-0",
+            "1.0",
+            "18446744073709551616",
+            "-9223372036854775809",
+        ] {
             let script = format!(
                 "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_COUNT={digits}\n# wizloop: the check\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n"
             );
@@ -3132,6 +3139,9 @@ mod polish_tests {
             ("2016-12-31t23:59:60.5z", true),
             ("1990-12-31T15:59:60-08:00", true),
             ("1991-01-01T00:59:60+01:00", true),
+            ("2030-01-02T03:04:60Z", false),
+            ("2030-06-15T12:30:60+00:00", false),
+            ("2016-12-31T23:59:60+01:00", false),
             ("2030-02-29t03:04:05z", false),
             ("2030-01-02t24:04:05z", false),
             ("2030-01-02t03:60:05z", false),
