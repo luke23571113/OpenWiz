@@ -30,6 +30,7 @@ GOOD = 'the contract, the folder, the kit\'s five checks, and the session, env, 
 PLANTED = {
     'example': 'pass example: ' + GOOD,
     'example-none': 'pass example-none: ' + GOOD,
+    'signed-out-json': 'pass signed-out-json: ' + GOOD,
     'wake-no-session': 'fail wake-no-session: row.json wake: it has no {session}',
     'larger-argument': 'fail larger-argument: row.json start: a placeholder sits inside a larger argument; '
                        'each fills a whole argument',
@@ -41,6 +42,7 @@ PLANTED = {
     'effort-unpassed': 'fail effort-unpassed: row.json effort: it maps effort values to arguments, but start has no '
                        '{effort} to pass them',
     'row-missing': 'fail row-missing: row.json is missing',
+    'signed-out-bad-pattern': 'fail signed-out-bad-pattern: row.json signed_out: a pattern does not compile',
     'effort-missing': 'fail effort-missing: row.json effort: it has no effort form; give an effort map or '
                       '"none: <one line why>"',
 }
@@ -260,6 +262,16 @@ def check_turns(env, row):
         raise Fail('daemon', 'the background process the row declares still runs after stop')
 
 
+def check_signed_out(env, row):
+    if not row.get('signed_out'):
+        return
+    code, out = env.start(FAKE_CLI_SIGNED_OUT='1')
+    if not (code == 1 and kit.invalid(out, ERROR) is None and 'the harness is not signed in' in out['error'] and
+            row['login_command'] in out['next']):
+        raise Fail('signed_out', "a signed-out first turn did not fail start with 'the harness is not signed in' "
+                                 "and a next naming the row's login_command")
+
+
 def check_effort(env, row):
     table = row['effort'] if isinstance(row['effort'], dict) else {}
     for value, setting in table.items():
@@ -290,6 +302,7 @@ def check(rows, name):
                 raise Fail('kit', next((x for x in lines if not x.startswith('pass ')),
                                        'it gave %d lines' % len(lines)))
             check_turns(env, row)
+            check_signed_out(env, row)
             check_effort(env, row)
         test = os.path.join(folder, 'test_row.py')
         if os.path.exists(test):
