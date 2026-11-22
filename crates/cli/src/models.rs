@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use openwiz_adapter_cloudroom::allowlist::{Invocation, SpawnArgs};
@@ -44,11 +44,30 @@ pub fn run_models_in(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
+    let lister = cfg!(target_os = "macos").then(|| Path::new(MACOS_LS));
+    run_models_listing_acls(args, root, client, clock, lister, stdout, stderr)
+}
+
+/// Runs `models` with `lister` as the macOS `ls` that shows a file's extended ACL
+/// (`ls -lde`), or with no lister where the platform keeps no such ACL.
+pub fn run_models_listing_acls(
+    args: &[String],
+    root: &Path,
+    client: &dyn NewThreadClient,
+    clock: &dyn Clock,
+    lister: Option<&Path>,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32 {
     if matches!(
         args.first().map(String::as_str),
         Some("show" | "list" | "set")
     ) {
-        return run_form(args, root, client, clock, stdout, stderr);
+        let acl = lister.map(|lister| AclCheck {
+            lister: lister.to_path_buf(),
+            dir: root.join("docs/agents"),
+        });
+        return run_form(args, root, client, clock, acl, stdout, stderr);
     }
     let (mut json, mut host) = (false, None);
     let mut args_iter = args.iter().map(String::as_str);
@@ -262,6 +281,7 @@ fn run_form(
     root: &Path,
     client: &dyn NewThreadClient,
     clock: &dyn Clock,
+    acl: Option<AclCheck>,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
@@ -293,7 +313,7 @@ fn run_form(
         Parsed::List { save } => {
             let checkout = save.then(|| Checkout::open(root));
             let options = read_cloud_options(client, clock);
-            let agents = checkout.map(|checkout| checkout.and_then(|c| Agents::open(&c)));
+            let agents = checkout.map(|checkout| checkout.and_then(|c| Agents::open(&c, acl)));
             let text = match &agents {
                 Some(agents) => agents.as_ref().ok().and_then(|a| a.read(FLEET_FILE).ok()),
                 None => fleet().ok(),
@@ -327,7 +347,7 @@ fn run_form(
             })
         }
         Parsed::Set { role, asked } => Checkout::open(root)
-            .and_then(|checkout| Agents::open(&checkout))
+            .and_then(|checkout| Agents::open(&checkout, acl))
             .and_then(|agents| {
                 agents.lock()?;
                 let text = agents.read(FLEET_FILE)?;
@@ -675,10 +695,10 @@ impl Checkout {
     }
 }
 
-struct Agents(File);
+struct Agents(File, Option<AclCheck>);
 
 impl Agents {
-    fn open(checkout: &Checkout) -> Result<Self, String> {
+    fn open(checkout: &Checkout, acl: Option<AclCheck>) -> Result<Self, String> {
         let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
         let refused = |dir: &str| {
             format!(
@@ -688,7 +708,7 @@ impl Agents {
         let docs = rustix::fs::openat(&checkout.0, "docs", flags, Mode::empty())
             .map_err(|_| refused("docs"))?;
         rustix::fs::openat(&docs, "agents", flags, Mode::empty())
-            .map(|fd| Agents(File::from(fd)))
+            .map(|fd| Agents(File::from(fd), acl))
             .map_err(|_| refused("docs/agents"))
     }
 
@@ -757,6 +777,12 @@ fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
 }
 
 const ACCESS_ACL: &str = "system.posix_acl_access";
+const MACOS_LS: &str = "/bin/ls";
+
+struct AclCheck {
+    lister: PathBuf,
+    dir: PathBuf,
+}
 
 fn access_like(staged: impl AsFd, target: impl AsFd) -> std::io::Result<()> {
     let want = rustix::fs::fstat(&target)?;
