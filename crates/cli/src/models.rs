@@ -12,8 +12,8 @@ use openwiz_core::models::{
 };
 use openwiz_core::new_thread::operation::NewThreadClient;
 use openwiz_core::new_thread::options::{
-    CloudOptions, J255_CLAUDE_MODEL, J255_CODEX_MODEL, J255_EFFORT, OptionsState, cloud_options,
-    local_options,
+    CloudOptions, J255_CLAUDE_MODEL, J255_CODEX_MODEL, J255_EFFORT, OptionsSource, OptionsState,
+    cloud_options, local_options,
 };
 use openwiz_core::ops::Clock;
 use rustix::fd::AsFd;
@@ -401,8 +401,8 @@ fn run_set(
         };
         Ok((code, out))
     };
-    let (chosen, options) = match asked {
-        None => (Asked::Follows, None),
+    let (chosen, options, unlisted) = match asked {
+        None => (Asked::Follows, None, false),
         Some([p, m, e]) => {
             let options = read_options();
             if let OptionsState::NoOptions { text, .. } = &options.state {
@@ -415,7 +415,13 @@ fn run_set(
                 );
             }
             let offered = json!(offered_harnesses(&options));
-            if !is_offered(&options, p, m, e) {
+            let listed = is_offered(&options, p, m, e);
+            let installed = options.source == Some(OptionsSource::Local)
+                && options
+                    .harnesses
+                    .iter()
+                    .any(|harness| harness.provider == *p);
+            if !listed && !installed {
                 let why = format!("not offered: {p} {m} {e}; nothing was changed");
                 return refused(EXIT_REFUSED, "refused", "not_offered", why, offered);
             }
@@ -425,7 +431,7 @@ fn run_set(
                 );
                 return refused(EXIT_REFUSED, "refused", "not_writable", why, offered);
             };
-            (Asked::Choice(choice), Some(options))
+            (Asked::Choice(choice), Some(options), !listed)
         }
     };
     let result = set(text, role, &chosen, &spawn_flags()?)?;
@@ -453,13 +459,16 @@ fn run_set(
     } else {
         "unchanged"
     };
-    let report = json!({
+    let mut report = json!({
         "schema": "openwiz.models-set.v1", "outcome": outcome, "role": role,
         "asked": asked_doc, "before": before, "after": result.after,
         "models_table_added": result.models_table_added, "older_tables": result.older_tables,
         "files": files, "warnings": result.warnings, "refusal": null, "offered": null,
     });
     if json {
+        if unlisted {
+            report["listed"] = json!(false);
+        }
         return Ok((EXIT_OK, document(&report)));
     }
     let mut out = format!(
