@@ -947,6 +947,7 @@ fn a_file_whose_macos_acl_cannot_be_checked_is_refused() {
         "echo 'ls: syn: Operation not permitted'",
         "printf -- '-rw-r--r--+ 1 syn  staff  9 Nov 22 08:00 %s\\n' \"$2\"",
         "printf -- '-rw-r--r--  1 syn  staff  9 Nov 22 08:00 %s\\nsyn extra\\n' \"$2\"",
+        "printf -- '-rw-r--r--  1 syn  staff  9 Nov 22 08:00 %s\\n' \"$2\"; echo 'ls: syn: Operation not permitted' >&2",
     ] {
         let fake = project("one-table/fleet.md", catalogue());
         let before = agents_files(&fake);
@@ -962,6 +963,32 @@ fn a_file_whose_macos_acl_cannot_be_checked_is_refused() {
         );
         assert_eq!(agents_files(&fake), before, "{listing}");
     }
+}
+
+#[test]
+fn an_acl_found_on_a_later_check_leaves_every_file_as_it_was() {
+    let fake = project("one-table/fleet.md", catalogue());
+    fs::write(fake.0.0.join(SNAPSHOT), "{}\n").unwrap();
+    let before = agents_files(&fake);
+    let later = format!(
+        "case \"$2\" in */fleet.md) [ -e \"$0.fleet\" ] && {{ {ACL_LISTED}; exit; }}; : > \"$0.fleet\";; esac\n\
+         printf -- '-rw-r--r--  1 syn  staff  9 Nov 22 08:00 %s\\n' \"$2\""
+    );
+    let (code, _, err) = run_listing(
+        &fake,
+        &later,
+        &["set", "reviewer", "codex", "gpt-6.2-sol", "high"],
+    );
+    assert_eq!(code, 1, "{err}");
+    assert!(
+        err.contains("cannot write docs/agents/fleet.md: it has a macOS extended ACL"),
+        "{err}"
+    );
+    assert_eq!(
+        agents_files(&fake),
+        before,
+        "a file was replaced before the refusal"
+    );
 }
 
 #[test]
