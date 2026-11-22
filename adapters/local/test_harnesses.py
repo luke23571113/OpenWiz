@@ -19,7 +19,7 @@ local = importlib.util.module_from_spec(importlib.util.spec_from_loader(
     'openwiz_local_driver', importlib.machinery.SourceFileLoader('openwiz_local_driver', DRIVER)))
 local.__spec__.loader.exec_module(local)
 
-# The planner's no-op stubs: no real agent CLI runs here. Only a row's own fake goes ahead of them.
+# SAFETY: no-op stubs for every known agent CLI, so no real one runs here; only a row's own fake goes ahead of them.
 STUBS = ('claude codex cursor-agent agent pi opencode copilot goose gemini kimi qwen cline kilo crush vibe auggie '
          'kiro-cli junie amp agy oz sculpt hermes acpx droid').split()
 CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster "
@@ -110,6 +110,12 @@ class Env:
 
     def __init__(self, rows, name, program=None, fake=None, mode=None, names=()):
         self.folder = tempfile.mkdtemp(prefix='rows-')
+        checkout = os.path.join(self.folder, 'checkout', 'adapters', 'local')
+        os.makedirs(checkout)
+        for link, real in (('driver', DRIVER), ('schema.json', os.path.join(HERE, 'schema.json')), ('harnesses', rows),
+                           ('../../kernel', os.path.join(HERE, '..', '..', 'kernel'))):
+            os.symlink(os.path.abspath(real), os.path.join(checkout, link))
+        self.driver_path = os.path.join(checkout, 'driver')
         self.name, self.state, self.record = name, os.path.join(self.folder, 'state'), os.path.join(self.folder, 'rec')
         stubs, binary, repo = (os.path.join(self.folder, d) for d in ('stubs', 'bin', 'repos/example/site/docs/agents'))
         for d in (stubs, binary, repo):
@@ -131,13 +137,13 @@ class Env:
             json.dump({'record_authors': ['Example-Bot[bot]'], 'comments': []}, f)
         path = os.pathsep.join([binary, stubs, os.environ.get('PATH', '')])
         self.env = dict(os.environ, PATH=path, KIT_TRACKER=self.tracker, FAKE_REPOS=os.path.join(self.folder, 'repos'),
-                        OPENWIZ_LOCAL_STATE=self.state, OPENWIZ_LOCAL_SETTLE='2', OPENWIZ_LOCAL_ROWS=rows,
+                        OPENWIZ_LOCAL_STATE=self.state, OPENWIZ_LOCAL_SETTLE='2',
                         FAKE_CLI_LIB=FIXTURES, FAKE_CLI_RECORD=self.record, FAKE_CLI_ENV=','.join(names),
                         FAKE_CLI_HOST=os.path.join(self.folder, 'host'), PYTHONDONTWRITEBYTECODE='1')
         self.host = Host(self.env['FAKE_CLI_HOST'], {'PATH': path})
         self.wrapper = os.path.join(self.folder, 'driver-with-effort')
         with open(self.wrapper, 'w') as f:
-            f.write('#!%s\n' % sys.executable + WRAPPER % DRIVER)
+            f.write('#!%s\n' % sys.executable + WRAPPER % self.driver_path)
         os.chmod(self.wrapper, 0o700)
 
     def __enter__(self):
@@ -160,9 +166,9 @@ class Env:
     def runs(self):
         return sorted(f for f in os.listdir(self.state) if f.startswith('run-') and f.endswith('.json'))
 
-    def driver(self, cmd, request, program=DRIVER, **env):
-        p = subprocess.run([program, cmd], input=json.dumps(request), env=dict(self.env, **env), capture_output=True,
-                           text=True, timeout=120)
+    def driver(self, cmd, request, program=None, **env):
+        p = subprocess.run([program or self.driver_path, cmd], input=json.dumps(request), env=dict(self.env, **env),
+                           capture_output=True, text=True, timeout=120)
         try:
             return p.returncode, json.loads(p.stdout)
         except ValueError:
@@ -183,8 +189,8 @@ class Env:
             (self.runs(), len(self.records())) == before
 
     def kit(self):
-        p = subprocess.run([sys.executable, '-I', os.path.join(KIT_DIR, 'kit.py'), '--driver', DRIVER, '--repo',
-                            'example/site', '--ticket', '7', '--harness', self.name, '--model', 'synthetic-1',
+        p = subprocess.run([sys.executable, '-I', os.path.join(KIT_DIR, 'kit.py'), '--driver', self.driver_path,
+                            '--repo', 'example/site', '--ticket', '7', '--harness', self.name, '--model', 'synthetic-1',
                             '--tracker', self.tracker, '--wait', '15'], env=self.env, capture_output=True, text=True,
                            timeout=300)
         return p.stdout.splitlines()
@@ -241,8 +247,9 @@ def check_turns(env, row):
     turns = env.records()
     first = [t for t in turns if t['turn'] == 'first']
     woken = [t for t in turns if t['turn'] == 'woken']
-    if not first or not woken:
-        raise Fail('session', 'the fake recorded no start turn and wake turn')
+    if len(first) != 1 or len(woken) != 1:
+        raise Fail('session', 'the fake recorded %d start turns and %d wake turns, not one of each'
+                   % (len(first), len(woken)))
     if any(t['session'] != first[0]['session'] for t in woken):
         raise Fail('session', 'the wake turn got a different session id from the start turn')
     if any(t['env'].get(k) != v for t in turns for k, v in row['env'].items()):

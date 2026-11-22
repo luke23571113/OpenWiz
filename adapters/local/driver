@@ -17,7 +17,7 @@ RUN = {'run': r'run-[0-9a-f]{12}'}
 HARNESSES = {'claude': lambda model, mode, prompt: ['-p', prompt, '--model', model, '--permission-mode', mode],
              'codex': lambda model, mode, prompt: ['exec', '--model', model, '--sandbox', mode, prompt]}
 MODE_ROW = '| Harness permission mode |'
-ROWS = os.path.abspath(os.environ.get('OPENWIZ_LOCAL_ROWS') or os.path.join(HERE, 'harnesses'))
+ROWS = os.path.join(HERE, 'harnesses')
 ROW_FIELDS = ('harness', 'program', 'start', 'wake', 'session', 'modes', 'env', 'effort', 'login', 'daemon')
 PLACEHOLDERS = ('{prompt}', '{model}', '{session}', '{mode}', '{effort}')
 SESSION = r'[A-Za-z0-9._:-]{1,100}'
@@ -93,7 +93,7 @@ def no_credentials(req):
 
 
 class Broken(Exception):
-    """A row that breaks adapters/local/harness-row.md: (the rule, the reason). It never holds the row's values."""
+    pass
 
 
 def line(v):
@@ -197,8 +197,7 @@ def read_row(path, name):
 
 
 def row_file(harness):
-    path = os.path.join(ROWS, harness, 'row.json')
-    return os.path.relpath(path, os.path.join(HERE, '..', '..')) if path.startswith(HERE + os.sep) else path
+    return os.path.join('adapters', 'local', 'harnesses', harness, 'row.json')
 
 
 def row_folders():
@@ -234,7 +233,6 @@ def program(harness):
 
 
 def effort_of(harness, row, effort):
-    """The arguments and environment an effort adds, or the D3 refusal. #2471 turns on the start field."""
     if effort is None:
         return [], {}
     setting = row['effort'].get(effort) if row and isinstance(row['effort'], dict) else None
@@ -244,7 +242,6 @@ def effort_of(harness, row, effort):
 
 
 def command(state, woken):
-    """A run's turn: its command line and the environment it adds."""
     req, row = state['request'], state.get('row')
     text = prompt(req, woken)
     if not row:
@@ -257,8 +254,7 @@ def command(state, woken):
         dict(row['env'], **env)
 
 
-def reported(run, session):
-    """The session id the run's first turn printed in its log, or None while it hasn't."""
+def reported_session(run, session):
     try:
         with open(log_path(run), errors='replace') as f:
             lines = f.read().splitlines()
@@ -780,7 +776,7 @@ def answer(cmd):
         if state['turns'] and running(state['turns'][-1]):
             return {'run': run, 'woke': True}
         if state.get('row') and state['session'] is None:
-            state['session'] = reported(run, state['row']['session'])
+            state['session'] = reported_session(run, state['row']['session'])
             if state['session'] is None:
                 raise Refused('run %s has no session id from its first turn yet; nothing was started' % run,
                               'wait until its first turn has printed its session id, then wake again')
