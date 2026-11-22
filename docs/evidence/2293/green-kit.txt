@@ -12,6 +12,6 @@ test_without_proc_as_on_macos_the_template_passes_all_five (__main__.Kit.test_wi
 test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified (__main__.Kit.test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified) ... ok
 
 ----------------------------------------------------------------------
-Ran 12 tests in 53.116s
+Ran 12 tests in 53.001s
 
 OK

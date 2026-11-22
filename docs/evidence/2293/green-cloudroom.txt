@@ -21,6 +21,6 @@ test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 21 tests in 18.338s
+Ran 21 tests in 18.808s
 
 OK

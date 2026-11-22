@@ -17,7 +17,8 @@ FIXTURES = os.path.join(HERE, 'fixtures')
 TEMPLATE = os.path.join(HERE, '..', '..', 'adapters', 'template', 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
 REPO = os.path.realpath(os.path.join(HERE, '..', '..'))
-HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider', 'goose')
+HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider',
+             'goose')
 TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname', 'true')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
