@@ -277,8 +277,10 @@ def journal_read(setup):
     store.require(type(value) is dict and value.get('schema') == JOURNAL and set(value) == {'schema', 'operations'}
                   and type(value['operations']) is dict, 'init journal is invalid')
     for key, entry in value['operations'].items():
-        store.require(HEX32.fullmatch(key) and type(entry) is dict and set(entry) == {'rows', 'pull', 'wrote'}
-                      and type(entry['rows']) is list and type(entry['wrote']) is bool, 'init journal is invalid')
+        store.require(HEX32.fullmatch(key) and type(entry) is dict
+                      and set(entry) in ({'rows', 'pull', 'wrote'}, {'rows', 'pull', 'wrote', 'own'})
+                      and type(entry['rows']) is list and type(entry['wrote']) is bool
+                      and type(entry.get('own', {})) is dict, 'init journal is invalid')
         for row in entry['rows']:
             store.require(type(row) is dict and set(row) == {'kind', 'repository', 'phase', 'effect_count',
                                                             'attempts', 'reconciliation'}
@@ -478,9 +480,14 @@ def merged(plan):
     return found['state'] == 'merged'
 
 
+def made_here(entry):
+    own = entry.get('own') or {}
+    return (type(own.get('companion')) is int and type(own.get('pull')) is dict
+            and own['pull'].get('number') == (entry['pull'] or {}).get('number'))
+
+
 def effect(plan, row, entry, journal, save):
-    if row['kind'] == 'merge_pull_request' and row['attempts'] == 0 and not any(
-            r['kind'] == 'create_companion' and r['phase'] == 'applied' for r in entry['rows']):
+    if row['kind'] == 'merge_pull_request' and row['attempts'] == 0 and not made_here(entry):
         entry['rows'].remove(row)
         save()
         return True
@@ -527,8 +534,12 @@ def write(plan, row, entry, save):
     if kind == 'create_companion':
         owner, name = b.split('/')
         path = 'user/repos' if plan.owner_type == 'User' else f'orgs/{owner}/repos'
-        return gh.call('POST', path, {'name': name, 'private': True, 'description': marker(code),
-                                      'auto' '_init': True, 'has_issues': False, 'has_wiki': False})[0]
+        status, value = gh.call('POST', path, {'name': name, 'private': True, 'description': marker(code),
+                                               'auto' '_init': True, 'has_issues': False, 'has_wiki': False})
+        if (status in range(200, 300) and type(value) is dict and same(value.get('full_name'), b)
+                and type(value.get('id')) is int):
+            entry.setdefault('own', {})['companion'] = value['id']
+        return status
     if kind == 'link_companion':
         return gh.call('PATCH', f'repos/{b}', {'homepage': link(code)})[0]
     if kind == 'create_label':
@@ -550,9 +561,10 @@ def write(plan, row, entry, save):
             if status not in range(200, 300):
                 return status
         return 201
-    base = plan.destination()['default_branch']
+    destination = plan.destination()
+    base = destination['default_branch']
     if kind == 'merge_pull_request':
-        return merge(plan, entry, base)
+        return merge(plan, entry, destination)
     status, ref = gh.call('GET', f'repos/{b}/git/ref/heads/{quote(BRANCH)}')
     if status == 404:
         status, head = gh.call('GET', f'repos/{b}/git/ref/heads/{quote(base)}')
@@ -592,6 +604,9 @@ def write(plan, row, entry, save):
                                                          'base': base, 'body': body})
     if status in range(200, 300) and type(value) is dict and type(value.get('number')) is int:
         entry['pull'] = {'number': value['number'], 'state': 'open'}
+        sha = (value.get('head') or {}).get('sha') if type(value.get('head')) is dict else None
+        if isinstance(sha, str):
+            entry.setdefault('own', {})['pull'] = {'number': value['number'], 'sha': sha}
     elif status is not None and status < 500:
         return status
     else:
@@ -599,17 +614,20 @@ def write(plan, row, entry, save):
     return status
 
 
-def merge(plan, entry, base):
-    gh, b = plan.gh, plan.brain['brain_repository']
-    number = (entry['pull'] or {}).get('number')
-    if type(number) is not int:
-        return None
+def merge(plan, entry, destination):
+    gh, b, base = plan.gh, plan.brain['brain_repository'], destination['default_branch']
+    if not made_here(entry):
+        return 409
+    own = entry['own']
+    if destination.get('id') != own['companion']:
+        return 409
+    number = own['pull']['number']
     status, pull = gh.call('GET', f'repos/{b}/pulls/{number}')
     if status != 200 or type(pull) is not dict:
         return None
     head, target = (pull.get(k) if type(pull.get(k)) is dict else {} for k in ('head', 'base'))
     if (pull.get('number') != number or pull.get('state') != 'open' or pull.get('merged_at') is not None
-            or head.get('ref') != BRANCH or target.get('ref') != base or not isinstance(head.get('sha'), str)):
+            or head.get('ref') != BRANCH or target.get('ref') != base or head.get('sha') != own['pull']['sha']):
         return 409
     status, value = gh.call('PUT', f'repos/{b}/pulls/{number}/merge',
                             {'merge_method': 'merge', 'sha': head['sha'],

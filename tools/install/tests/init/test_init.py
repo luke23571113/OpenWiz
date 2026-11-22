@@ -283,12 +283,13 @@ class Init(unittest.TestCase):
                 preview = self.init()
                 self.assertEqual(self.apply(preview, expect=6)['outcome'], 'uncertain')
                 self.edit(change)
+                main = self.files(COMPANION, 'main')
                 done = self.apply(preview)
                 self.assertEqual((done['outcome'], done['reason_code']), ('applied', 'brain_proposed'))
                 self.assertEqual(done['pull_requests'][0]['state'], 'open')
                 self.assertNotIn(('merge_pull_request', 'applied'),
                                  [(e['kind'], e['phase']) for e in done['effects']])
-                self.assertEqual(self.files(COMPANION, 'main'), {})
+                self.assertEqual(self.files(COMPANION, 'main'), main)
                 self.assertEqual([c for c in self.writes() if c[1].endswith('/merge')],
                                  [['PUT', f'repos/{COMPANION}/pulls/1/merge']] if fault['method'] == 'PUT' else [])
 

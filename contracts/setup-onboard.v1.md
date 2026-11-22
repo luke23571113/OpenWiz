@@ -169,8 +169,11 @@ An `init_result` reports what happened:
   When init creates the companion in this same apply, it also merges that
   pull request, under the same authorization, right after opening it and
   reading it back, and reports it `merged`; the pull request stays as the
-  visible proposal and record. An existing companion, an in-repository brain
-  and a repeated init leave the pull request `open` for the user.
+  visible proposal and record. Only GitHub's own replies to this operation's
+  create requests count: the companion's repository id and the pull request's
+  number and head must still match them. A creation or proposal known only
+  from a later read, an existing companion, an in-repository brain and a
+  repeated init leave the pull request `open` for the user.
 - **One line.** `report_line` names the brain's repository as a whole word and
   says how to change it later.
 - **Effects once.** Each effect (`create_companion`, `link_companion`,
