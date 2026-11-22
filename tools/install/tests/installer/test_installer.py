@@ -186,6 +186,10 @@ class Download(Installer):
                     self.assertFalse(folder.exists())
 
 
+OPTIONAL_ROOM_CLI = {'id': 'room-cli', 'state': 'missing', 'next': 'Optional: CloudRoom is needed only if you'
+                     ' pick it as the host; then install the CloudRoom app and sign in, which provides room-cli.'}
+
+
 class Preflight(Installer):
     def ldd(self, line):
         folder = self.base / ('bin-' + str(self.counter))
@@ -238,15 +242,14 @@ class Preflight(Installer):
         target = [c for c in value['checks'] if c['id'] == 'target']
         self.assertEqual(target, [{'id': 'target', 'state': 'ok', 'next': 'Supported. CloudRoom has no Intel Mac'
                                    ' build, so on this Mac, agents run on this computer or on boat.dev.'}], value)
-        self.assertEqual([c['id'] for c in value['checks'] if c['state'] != 'ok'], ['room-cli'], value)
+        self.assertEqual([c for c in value['checks'] if c['state'] != 'ok'], [OPTIONAL_ROOM_CLI], value)
 
-    def test_apple_silicon_and_linux_preflight_output_is_unchanged(self):
+    def test_apple_silicon_and_linux_preflight_output_keeps_its_checks_and_calls_room_cli_optional(self):
         python = {'id': 'python', 'state': 'ok', 'next': 'Python %d.%d is enough.' % sys.version_info[:2]}
         disk = {'id': 'disk', 'state': 'ok', 'next': 'Enough free space.'}
         found = [{'id': tool, 'state': 'ok', 'next': 'Found on PATH; setup checks it.'}
                  for tool in ('room-cli', 'gh', 'git')]
-        missing = {'id': 'room-cli', 'state': 'missing',
-                   'next': 'Install the CloudRoom app and sign in; it provides room-cli.'}
+        missing = OPTIONAL_ROOM_CLI
         mac = {'id': 'target', 'state': 'ok', 'next': 'Supported.'}
         linux = [mac, disk, {'id': 'glibc', 'state': 'ok', 'next': 'glibc 2.36 is enough.'}]
         refused = {'id': 'target', 'state': 'refused',
