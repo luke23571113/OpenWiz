@@ -49,6 +49,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / 'tools/install'))
 import package
 import build_products
+import entry as rl6_entry
 rl4 = load('release_candidate_rl4_fixture', HERE / 'test_product_identity.py')
 RUNTIME = dict(rl4.RUNTIME, **{f'skills/{name}': f'Synthetic {name}.\n'.encode() for name in (
     'setup/SKILL.md', 'grill/SKILL.md', 'to-tickets/SKILL.md', 'launch-fleet/SKILL.md')},
@@ -697,7 +698,6 @@ class Candidate(World):
             second = candidate.install_attempt(state, LINUX, 'install_refused', 200, evidence)
         finally:
             sys.settrace(None)
-        # Each read while the write is held sees the old attempt, or the new one once it is complete.
         self.assertGreater(len(held), 3)
         self.assertLessEqual(set(held), {1, 2})
         self.assertEqual(held, sorted(held))
@@ -2252,7 +2252,29 @@ class Notes(World):
 
 def kept_history(current, raw):
     cut = raw.index(b'\n\n', raw.index(b'All OpenWiz versions')) + 2
-    assert current.startswith(raw[:cut]) and current.endswith(raw[cut:]), 'the approved changelog bytes moved'
+    if not (current.startswith(raw[:cut]) and current.endswith(raw[cut:])):
+        raise AssertionError('the approved changelog bytes moved')
+    inserted = current[cut:len(current) - len(raw) + cut].decode('utf-8')
+    if not inserted:
+        return []
+    if not (inserted.startswith('## ') and inserted.endswith('\n\n')):
+        raise AssertionError('inserted changelog text is not whole version sections')
+    lines = inserted[:-2].split('\n')
+    starts = [i for i, line in enumerate(lines) if line.startswith('## ')]
+    found = []
+    for k, start in enumerate(starts):
+        end = starts[k + 1] - 1 if k + 1 < len(starts) else len(lines)
+        if k + 1 < len(starts) and lines[end] != '':
+            raise AssertionError('inserted changelog sections are not separated by one blank line')
+        try:
+            found.append(tuple(map(int, rl6_entry.curated_section(lines[start:end]).split('.'))))
+        except rl6_entry.Refused as error:
+            raise AssertionError(f'inserted changelog text: {error}') from None
+    kept = re.search(rb'^## ([0-9]+)\.([0-9]+)\.([0-9]+) ', raw[cut:], re.M)
+    order = found + [tuple(map(int, kept.groups()))]
+    if not all(x > y for x, y in zip(order, order[1:])):
+        raise AssertionError('inserted changelog versions are not newest first and newer than the kept history')
+    return found
 
 
 def section(version):
