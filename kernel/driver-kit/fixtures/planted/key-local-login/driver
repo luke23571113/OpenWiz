@@ -7,14 +7,4 @@ d = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(d)
 t = d.t
 NAME = 'DEV' + 'IN_API_' + 'KEY'
-launch = t.launch
-
-
-def short_child(req, run, woken):
-    subprocess.run([sys.executable, '-c', 'import time; time.sleep(0.3)', os.environ.get(NAME, '')],
-                   env=dict(os.environ, OPENWIZ_COPY=os.environ.get(NAME, '')))
-    return launch(req, run, woken)
-
-
-t.launch = short_child
 t.main()
