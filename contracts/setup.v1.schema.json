@@ -334,6 +334,11 @@
           }
         }
       ]
+    },
+    "host": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -351,22 +356,6 @@
         "properties": {
           "components": {
             "allOf": [
-              {
-                "contains": {
-                  "properties": {
-                    "id": {
-                      "const": "cloudroom"
-                    },
-                    "state": {
-                      "const": "verified"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "state"
-                  ]
-                }
-              },
               {
                 "contains": {
                   "properties": {
@@ -462,6 +451,103 @@
     {
       "if": {
         "properties": {
+          "ready": {
+            "const": true
+          },
+          "host": {
+            "const": "cloud"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "components": {
+            "contains": {
+              "properties": {
+                "id": {
+                  "const": "cloudroom"
+                },
+                "state": {
+                  "const": "verified"
+                }
+              },
+              "required": [
+                "id",
+                "state"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "host": {
+            "const": "cloud"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "components": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "reason": {
+                    "const": "cloudroom_not_needed"
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "host"
+        ],
+        "not": {
+          "properties": {
+            "host": {
+              "const": "cloud"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "components": {
+            "contains": {
+              "properties": {
+                "id": {
+                  "const": "cloudroom"
+                },
+                "state": {
+                  "const": "unknown"
+                },
+                "reason": {
+                  "const": "cloudroom_not_needed"
+                }
+              },
+              "required": [
+                "id",
+                "state",
+                "reason"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "cost": {
             "properties": {
               "provenance": {
@@ -517,5 +603,147 @@
         }
       }
     }
-  ]
+  ],
+  "$defs": {
+    "prepared_project": {
+      "description": "The project settings prepare saves: a cloud project's nine keys exactly as today, or another host's ten, naming the host and holding no CloudRoom id.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "project",
+            "operator",
+            "service_issue",
+            "answer_thread",
+            "harness",
+            "model",
+            "effort",
+            "runtime"
+          ],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]{1,100}$"
+            },
+            "project": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            },
+            "operator": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "service_issue": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "answer_thread": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            },
+            "harness": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+            },
+            "model": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+            },
+            "effort": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+            },
+            "runtime": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^0\\.[0-9]{1,10}\\.[0-9]{1,10} [0-9a-f]{40}$"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "project",
+            "operator",
+            "service_issue",
+            "answer_thread",
+            "harness",
+            "model",
+            "effort",
+            "runtime",
+            "host"
+          ],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]{1,100}$"
+            },
+            "project": {
+              "type": "null"
+            },
+            "operator": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "service_issue": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "answer_thread": {
+              "type": "null"
+            },
+            "harness": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+            },
+            "model": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+            },
+            "effort": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+            },
+            "runtime": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^0\\.[0-9]{1,10}\\.[0-9]{1,10} [0-9a-f]{40}$"
+                }
+              ]
+            },
+            "host": {
+              "allOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                {
+                  "not": {
+                    "const": "cloud"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
 }
