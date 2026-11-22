@@ -37,6 +37,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
@@ -100,6 +101,7 @@ FLEET_SETTINGS = ('# Fleet settings\n\nSynthetic settings.\n\n## Models\n\n'
 
 sys.path.insert(0, str(TOOLS))
 sys.dont_write_bytecode = True
+import install as installer  # noqa: E402
 from install import PROGRAMS, REQUIRED, sha  # noqa: E402
 
 
@@ -418,9 +420,16 @@ class InstallJourney(unittest.TestCase):
 
         def preflight():
             # The actual entry on this machine's real PATH and disk; the host is
-            # the journey's supported Linux target, so any CI host replays it.
+            # the journey's supported Linux target, so any CI host replays it. A
+            # synthetic glibc 2.34 ldd comes first on PATH: the forced Linux check
+            # never reads the host's ldd, which a macOS or musl host lacks (#2164).
+            (c.dir / 'ldd').mkdir()
+            (c.dir / 'ldd/ldd').write_text('#!/bin/sh\necho "ldd (Synthetic GLIBC 2.34-0) 2.34"\n')
+            (c.dir / 'ldd/ldd').chmod(0o755)
             out = io.StringIO()
-            self.assertEqual(entry().main(['preflight'], host=('Linux', 'x86_64'), stdout=out), 0, out.getvalue())
+            with mock.patch.dict(os.environ, PATH='%s:%s' % (c.dir / 'ldd', os.environ.get('PATH', ''))):
+                code = entry().main(['preflight'], host=('Linux', 'x86_64'), stdout=out)
+            self.assertEqual(code, 0, out.getvalue())
             result = type('Result', (), {'stdout': out.getvalue()})
             report = json.loads(result.stdout)
             self.assertEqual(report['schema'], 'openwiz.preflight.v1')
@@ -428,6 +437,8 @@ class InstallJourney(unittest.TestCase):
             self.assertTrue(report['ready'])
             ids = [check['id'] for check in report['checks']]
             self.assertEqual(ids, ['python', 'target', 'disk', 'glibc', 'room-cli', 'gh', 'git'])
+            self.assertEqual([check['next'] for check in report['checks'] if check['id'] == 'glibc'],
+                             ['glibc 2.34 is enough.'])
             self.assertNotIn('cargo', result.stdout)
 
         def verified_install():
@@ -547,6 +558,21 @@ class InstallJourney(unittest.TestCase):
         self.assertFalse(c.downloads.exists())
         self.assertEqual(os.readlink(c.root / 'current'), first['build'], 'the last good build stays selected')
         self.assertFalse((c.root / 'state/service/builds' / ('2' * 40)).exists())
+
+    def test_a_repair_refused_for_zero_free_bytes_keeps_the_builds_mode(self):
+        # #2171: a damaged build is opened to 0700 to read its manifest; a refusal
+        # before the swap, here a full disk, puts its own mode back.
+        c = Consumer(self)
+        build = Path(self.install(c, release(c.dir / 'published'))[0]['build'])
+        build.chmod(0o000)
+        self.addCleanup(build.chmod, 0o700)
+        name = c.downloads / (NAME + '.manifest.json')
+        checksum = (c.downloads / (NAME + '.sha256')).read_text().split()[0]
+        archive = c.downloads / json.loads(name.read_text())['archive']
+        with self.assertRaisesRegex(installer.Refused, 'insufficient disk space'):
+            installer.install(name, archive, checksum, c.root, TARGET, free_bytes=lambda _: 0)
+        self.assertEqual(build.lstat().st_mode & 0o777, 0o000)
+        self.assertEqual(sorted(p.name for p in build.parent.iterdir()), [build.name])
 
     def test_a_repeated_install_reuses_the_verified_build(self):
         c = Consumer(self)
