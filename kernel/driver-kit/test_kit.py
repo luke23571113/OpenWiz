@@ -51,7 +51,8 @@ PLANTED_KEY = {
                               'kernel/driver-kit/hosts.json'] + NOT_RUN + [NEVER],
     'key-host-in-path': [PASS[0], 'fail start: the key helper refused: path has // (a host)'] + NOT_RUN + [NEVER],
     'key-in-env': PASS[:4] + ['fail token: ' + IN_COPY],
-    'key-echoed': PASS[:4] + ['fail token: the driver printed the devin key'],
+    'key-echoed': PASS[:4] + ["fail token: the driver printed the devin key; start failed against the kit's fake host, "
+                              "so the kit could not check wake and stop"],
     'key-in-body': PASS[:4] + [NEVER],
     'key-calls-keychain': PASS[:4] + ["fail token: the driver's file driver calls the keychain tool secret-tool"],
     'key-in-short-child': PASS[:4] + ['fail token: %s; %s' % (IN_ARGS, IN_COPY)],
