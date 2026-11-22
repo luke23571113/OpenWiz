@@ -312,6 +312,8 @@ def check_project(openwiz, project, runtime, brain=None):
     read = github_com if local else gh
     if local:
         code, repo = read(f'repos/{repository}')
+        if code == 1 and type(repo) is dict and repo.get('message') == 'Not Found':
+            return 'project_no_write'
         if code != 0 or type(repo) is not dict:
             return 'project_unreadable'
         permissions = repo.get('permissions')
@@ -667,7 +669,7 @@ def next_steps(results, state, project, openwiz, identity=None):
             'harness_unreadable': f'The installed harness choices could not be read: try {local_models}, then run {again} again.',
             'harness_unavailable': f'That harness, model or effort cannot be selected: see {local_models}, then prepare again: {choose}.',
             'project_unreadable': f'GitHub could not be read for the project: check `gh auth status`, then run {again} again.',
-            'project_no_write': steps['identity_no_push'],
+            'project_no_write': f"The signed-in GitHub account cannot push to {repository}, or cannot see it: if OWNER/NAME is wrong, prepare again with the right one: {prepare(repository='OWNER/NAME')}; otherwise {gh_login[0].lower() + gh_login[1:]} with an account that can push, or ask its owner for write access.",
         })
     unknown = f'This build does not know that code: run {again} again; if it repeats, reinstall OpenWiz.'
     found = {component: steps.get(code, unknown) for component, code in results.items()}
