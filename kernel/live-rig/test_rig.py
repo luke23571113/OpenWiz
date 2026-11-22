@@ -28,6 +28,12 @@ PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
 SKIPS = {'fixture-missing': 'not installed: rig-fixture-not-installed',
          'fixture-signed-out': 'not signed in: fake-signed-out',
          'fixture-cost': 'cost'}
+EARLIER = '<!-- openwiz:status v1 -->\nagent: builder\nstate: stopped\nharness: Fake\nmodel: m\n' \
+          'skills: build-ticket@0.1.2\nstep: an earlier run\ntime: 2030-01-02T03:04:05Z\n'
+# SAFETY: no-op stubs first on PATH for every agent CLI, so a fixture mistake can never start a real one.
+AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'copilot', 'goose', 'gemini', 'kimi',
+              'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy', 'oz', 'sculpt',
+              'hermes', 'acpx', 'droid']
 COPIED = ['kernel/live-rig/rig.py', 'kernel/driver-kit/kit.py', 'kernel/driver-kit/schema.json',
           'kernel/driver-kit/fixtures/planted', 'kernel/records-kit/check.py', 'kernel/records.v1.md',
           'adapters/template/driver', 'adapters/template/schema.json']
@@ -49,8 +55,9 @@ class Rig(unittest.TestCase):
                 continue
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, dst)
-        os.makedirs(os.path.join(self.checkout, 'adapters', 'planted'))
-        shutil.copy2(os.path.join(FAKES, 'planted-driver'), os.path.join(self.checkout, 'adapters', 'planted', 'driver'))
+        for name in ('planted', 'quoting'):
+            os.makedirs(os.path.join(self.checkout, 'adapters', name))
+            shutil.copy2(os.path.join(FAKES, name + '-driver'), os.path.join(self.checkout, 'adapters', name, 'driver'))
         git(self.checkout, 'init', '-q')
         git(self.checkout, 'add', '-A')
         git(self.checkout, 'commit', '-q', '-m', 'fixture checkout')
@@ -63,8 +70,17 @@ class Rig(unittest.TestCase):
         self.mark = secrets.token_hex(8)
         tracker = os.path.join(self.folder, 'tracker.json')
         with open(tracker, 'w') as f:
-            json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
-        path = os.pathsep.join([FAKES, os.path.join(ROOT, 'kernel', 'driver-kit', 'fixtures'), os.environ['PATH']])
+            json.dump({'record_authors': ['example-bot[bot]'], 'comments': [
+                {'id': 1, 'author': 'example-bot[bot]', 'updated_at': '2030-01-02T03:04:05Z', 'body': EARLIER}]}, f)
+        stubs = tempfile.mkdtemp(dir=self.folder)
+        for name in AGENT_CLIS:
+            with open(os.path.join(stubs, name), 'w') as f:
+                f.write('#!/bin/sh\necho "%s: refused, the rig tests never start an agent CLI" >&2\nexit 1\n' % name)
+            os.chmod(os.path.join(stubs, name), 0o700)
+        path = os.pathsep.join([stubs, FAKES, os.path.join(ROOT, 'kernel', 'driver-kit', 'fixtures'),
+                                os.environ['PATH']])
+        self.assertEqual({shutil.which(name, path=path) for name in AGENT_CLIS},
+                         {os.path.join(stubs, name) for name in AGENT_CLIS})
         self.env = dict(os.environ, PATH=path, KIT_TRACKER=tracker, RIG_TEST=self.mark, RIG_GH_LOG=self.gh_log,
                         RIG_GH_REPO=REPO, RIG_GH_TICKET=str(TICKET), GH_TOKEN=SECRET, RIG_PLANTED_KEY=SECRET,
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'))
@@ -97,13 +113,18 @@ class Rig(unittest.TestCase):
         return sorted(n for _, _, names in os.walk(self.out) for n in names if n.endswith('.json'))
 
     def record(self, host):
-        day = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
-        with open(os.path.join(self.out, day, '%s-fake-harness-Synthetic 1.json' % host)) as f:
+        utc = datetime.datetime.now(datetime.timezone.utc)
+        days = {(utc - datetime.timedelta(days=n)).strftime('%Y-%m-%d') for n in (0, 1)}
+        found = [d for d in os.listdir(self.out) if os.path.exists(
+            os.path.join(self.out, d, '%s-fake-harness-Synthetic 1.json' % host))]
+        self.assertEqual(len(found), 1, found)
+        with open(os.path.join(self.out, found[0], '%s-fake-harness-Synthetic 1.json' % host)) as f:
             text = f.read()
         record = json.loads(text)
         self.assertEqual(list(record), KEYS)
         self.assertEqual((record['host'], record['harness'], record['model'], record['date']),
-                         (host, 'fake-harness', 'Synthetic 1', day))
+                         (host, 'fake-harness', 'Synthetic 1', found[0]))
+        self.assertIn(record['date'], days)
         self.assertEqual((record['driver_commit'], record['kit_commit']), (self.head, self.head))
         self.assertIs(type(record['seconds']), int)
         for private in (self.folder, os.path.realpath(self.folder), REPO, 'example-bot', SECRET, 'rig-throwaway'):
@@ -161,13 +182,20 @@ class Rig(unittest.TestCase):
         self.assertEqual((record['outcome'], record['kit_exit']), ('ran', 1))
         self.assertIn('fail wake: builder status note 2 did not change after the wake', record['stdout'])
 
+    def test_a_kit_line_quoting_the_checkout_or_the_repository_is_recorded_without_them(self):
+        code, out, err = self.rig('--host', 'fixture-quoting')
+        self.assertEqual((code, out), (1, ['ran fixture-quoting fake-harness: 2 of 5']), err)
+        self.assertIn('fail start: cannot start <repository> in <checkout>/adapters/quoting\n',
+                      self.record('fixture-quoting')['stdout'])
+
     def test_every_host_in_one_run_keeps_paths_logins_the_repository_and_planted_secrets_out(self):
         code, out, err = self.rig()
         self.assertEqual(code, 1, err)
         self.assertEqual(sorted(out), sorted(['ran fixture-template fake-harness: 5 of 5',
-                                              'ran fixture-planted fake-harness: 4 of 5'] +
+                                              'ran fixture-planted fake-harness: 4 of 5',
+                                              'ran fixture-quoting fake-harness: 2 of 5'] +
                                              ['skipped %s fake-harness: %s' % s for s in SKIPS.items()]))
-        for host in ['fixture-template', 'fixture-planted'] + list(SKIPS):
+        for host in ['fixture-template', 'fixture-planted', 'fixture-quoting'] + list(SKIPS):
             self.record(host)
         self.assertNotIn(SECRET, '\n'.join(out) + err)
 

@@ -3,7 +3,7 @@
   "driver": "adapters/template/driver",
   "needs": ["fake-harness", "fake-signed-out"],
   "signed_in": [["fake-signed-in", "status"], ["fake-signed-out", "status"]],
-  "cost": "none",
+  "cost": "unknown",
   "runs": [{"harness": "fake-harness", "model": "Synthetic 1"}],
   "wait": 8
 }

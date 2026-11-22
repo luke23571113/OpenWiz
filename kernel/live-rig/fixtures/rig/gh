@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# A fake `gh` for the rig's tests: answers the kit's two GraphQL reads (fleet.md's Record authors row and
-# the ticket's comments) from the fake harness's tracker file, and logs each call. It never reaches GitHub.
 import json, os, sys
 
 args = sys.argv[1:]
