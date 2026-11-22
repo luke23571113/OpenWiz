@@ -8,8 +8,7 @@ wake:  `room-cli thread tell <thread> --mode queue --message-file <file>`, the d
 stop:  `room-cli thread archive <thread>`, which stops the thread and archives it.
 A run is saved, as `starting`, before its thread is made, and the thread's title carries the run id, so `stop`
 always reaches the thread (by title, if its id was never saved) and `wake` never uses a run that did not finish
-starting. A wake or a stop holds the run's lock throughout. No answer after a spawn says retry. A stop whose run
-record is lost archives the caller's one child titled with the run id.
+starting. A wake or a stop holds the run's lock throughout. No answer after a spawn says retry.
 It never reads, adds or passes a login: room-cli runs with the caller's environment, unchanged.
 Linux or macOS; standard library only.
 """
@@ -204,8 +203,7 @@ STOPPED_AT = 0  # a stop sets the lock file's modification time to this: no writ
 def marked(run, mark=None):
     """The run's lock file holds `live` until a stop begins, then `stop` for good, and a stop also sets its
     modification time to STOPPED_AT. The file already exists, so its text needs no new file or space, and its
-    owner can set its time even when neither it nor its folder takes a write (#1705). Only exactly `live` is live:
-    an empty file, as a stop killed after it made a lost lock file again leaves, or any other text is a stop."""
+    owner can set its time even when neither it nor its folder takes a write (#1705). Either mark is a stop."""
     path = os.path.join(STATE, run + '.lock')
     if mark is None:
         try:
@@ -234,9 +232,8 @@ def marked(run, mark=None):
     return kept
 
 
-def threads(state, ends=False):
-    """The run's live threads: its saved thread, or, if its id was never saved, those titled with its run id (with
-    `ends`, those whose title ends with state['title'])."""
+def threads(state, title_ends=False):
+    """The run's live threads: its saved thread, or, if its id was never saved, those titled with its run id."""
     if state['thread']:
         return [state['thread']]
     project, parent = state.get('project'), state.get('parent')
@@ -259,7 +256,8 @@ def threads(state, ends=False):
             and isinstance(t.get('title'), str) for t in rows):
         raise Unknown('Cloudroom did not list its threads, so whether this run still runs is unknown: '
                       + (said or 'its list could not be read'), by_hand)
-    titled = [t for t in rows if t['title'] == state['title'] or (ends and t['title'].endswith(' ' + state['title']))]
+    titled = [t for t in rows
+              if t['title'] == state['title'] or (title_ends and t['title'].endswith(' ' + state['title']))]
     if not titled and not complete:
         raise Unknown('this room-cli lists only its own thread\'s children, and this is not the thread that '
                       'started the run', 'stop it from the thread that started it, or ' + by_hand[len('stop it '):])
@@ -341,15 +339,13 @@ def stop(run, state):
     return {'run': run, 'stopped': True}
 
 
-def recover(run):
-    """A stop for a run whose record is lost (#1706): it archives the caller's own child thread whose title ends
-    with the run id, only when there is exactly one, by the same rules as a run whose thread id was never saved."""
+def stop_without_a_record(run):
     state = {'thread': None, 'title': '(%s)' % run, 'project': os.environ.get('ROOM_PROJECT_ID', ''),
              'parent': os.environ.get('ROOM_THREAD_ID', '')}
     if not (re.fullmatch(PROJECT, state['project']) and re.fullmatch(THREAD, state['parent'])):
         raise Refused('no run %s here, and no Cloudroom thread to look for its thread from' % run,
                       'check the run id that `driver start` printed, and stop it from the thread that started it')
-    found = threads(state, ends=True)
+    found = threads(state, title_ends=True)
     if not found:
         raise Refused('no run %s, and no thread this one started has its title' % run,
                       'check the run id that `driver start` printed, and stop it from the thread that started it')
@@ -372,7 +368,7 @@ def answer(cmd):
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
         if cmd == 'stop' and not os.path.exists(os.path.join(STATE, run + '.json')):
-            return recover(run)
+            return stop_without_a_record(run)
         lock(run, cmd)
         state = saved(run)
         if cmd == 'stop':

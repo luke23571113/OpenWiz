@@ -56,8 +56,6 @@ def module(path):
 
 
 def pinned_path(folder, *fixtures):
-    """The tests' PATH: the fixtures, then a folder of only the system tools they run, never the caller's PATH,
-    where a real harness may be installed (#2023)."""
     tools = os.path.join(folder, 'tools')
     os.makedirs(tools)
     for name in TOOLS:

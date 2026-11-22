@@ -412,9 +412,7 @@ class Kit:
             return 'fail', '; '.join(self.leaks)
         return 'pass', 'no login or token passed through the driver'
 
-    def end_run(self):
-        """Once start has answered a run id, the run is stopped before the kit goes on or exits, whatever failed;
-        this stop is not the stop check."""
+    def stop_the_started_run_unchecked(self):
         if self.run and not self.stopped:
             self.stopped = True
             self.call('stop', {'run': self.run})
@@ -424,12 +422,12 @@ class Kit:
         try:
             result = self.start()
             if result[0] != 'pass':
-                self.end_run()
+                self.stop_the_started_run_unchecked()
             yield 'start', result
             for name in ('wake', 'stop'):
                 yield name, getattr(self, name)() if result[0] == 'pass' else ('fail', 'not run: start failed')
         finally:
-            self.end_run()
+            self.stop_the_started_run_unchecked()
         yield 'token', self.token()
 
 

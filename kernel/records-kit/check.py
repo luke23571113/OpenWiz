@@ -178,8 +178,7 @@ def read_lines(body):
     return out
 
 
-def own_link(line, repo):
-    """A long-form link line naming this repository, in any case, reads as its `- #<n>` line."""
+def short_form_if_own(line, repo):
     m = LONG_LINK.match(line)
     if m and m.group(1).lower() == repo.lower():
         return '- #%s %s:%s' % m.group(2, 3, 4)
@@ -195,7 +194,7 @@ def links(lines, blockers, repo):
         if re.match(r'^(#{1,6} |#{1,6}$)', line):
             break
         if line:
-            section.append(own_link(line, repo))
+            section.append(short_form_if_own(line, repo))
     if heads and not section:
         return ['malformed section: no lines']
     odd = [line for line in section if line != 'none' and not LINK.match(line)]
