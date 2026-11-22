@@ -674,20 +674,22 @@ class Candidate(World):
         state = candidate.State(self.root / 'attempts')
         evidence = {'target': LINUX, 'downloads': [], 'steps': []}
         first = candidate.install_attempt(state, LINUX, None, 100, evidence)
-        held, stops = [], 0
+        code = candidate.install_attempt.__code__
 
         def at_each_line(watch):
             def tracer(frame, event, arg):
-                if frame.f_code is not candidate.install_attempt.__code__:
+                if frame.f_code is not code:
                     return None
                 def line(frame, event, arg):
                     if event == 'line':
-                        watch()
+                        watch(frame.f_lineno)
                     return line
                 return line
             return tracer
 
-        def status():
+        held = []
+
+        def status(_):
             try:
                 [attempt] = candidate.install_attempts(state)
                 held.append(attempt['attempts'])
@@ -703,36 +705,37 @@ class Candidate(World):
         self.assertEqual(held, sorted(held))
         self.assertIn(1, held)
         self.assertEqual(candidate.install_attempts(state)[0]['evidence'], second['evidence'])
-        while True:
-            calls = [0]
+        interrupted = 0
+        for at, stop in enumerate(sorted({n for _, _, n in code.co_lines() if n}), 300):
+            fired = []
 
-            def interrupt():
-                calls[0] += 1
-                if calls[0] > stops:
+            def interrupt(lineno):
+                if lineno == stop and not fired:
+                    fired.append(lineno)
                     raise KeyboardInterrupt
             sys.settrace(at_each_line(interrupt))
             try:
-                candidate.install_attempt(state, LINUX, 'install_refused', 300 + stops, evidence)
-                break
+                candidate.install_attempt(state, LINUX, 'install_refused', at, evidence)
             except KeyboardInterrupt:
-                pass
+                interrupted += 1
             finally:
                 sys.settrace(None)
             try:
                 [attempt] = candidate.install_attempts(state)
             except ValueError as error:
-                self.fail(f'status after an interrupt at line {stops + 1}: {error}')
+                self.fail(f'status after an interrupt at line {stop}: {error}')
             self.assertIn(attempt['attempts'], (2, 3))
             if attempt['attempts'] == 3:
                 saved = state.file(attempt['evidence']['record'])
-                self.assertEqual(json.loads(saved.read_bytes())['at'], 300 + stops)
+                self.assertEqual(json.loads(saved.read_bytes())['at'], at)
                 saved.unlink()
-            stops += 1
-        self.assertGreater(stops, 3)
+        self.assertGreater(interrupted, 3)
+        third = candidate.install_attempt(state, LINUX, 'install_refused', 400, evidence)
         folder = state.file(f'evidence/install-{LINUX}')
         self.assertEqual(sorted(p.name for p in folder.iterdir() if candidate.ATTEMPT.fullmatch(p.name)),
                          ['1.json', '2.json', '3.json'])
-        self.assertEqual(first['evidence']['record'], f'evidence/install-{LINUX}/1.json')
+        self.assertEqual((first['evidence']['record'], third['evidence']['record']),
+                         (f'evidence/install-{LINUX}/1.json', f'evidence/install-{LINUX}/3.json'))
 
     def test_missing_ship_or_exact_changelog_approval_refuses_before_any_write(self):
         self.smoke_kit()
