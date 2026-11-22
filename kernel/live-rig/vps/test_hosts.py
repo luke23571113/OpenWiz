@@ -24,14 +24,14 @@ AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'cop
               'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy', 'oz', 'sculpt',
               'hermes', 'acpx', 'droid']
 SECRET = 'fk-' + 'Synthetic0Vps0Value' * 2
-# What each config must be: the spec's "VPS session files", the ticket and each driver's README on its build branch.
+# What each config (hosts/<file>.json) must be: the lead's fixed host names, the spec's "VPS session files", the ticket and each driver's README on its build branch.
 CONFIGS = {
-    'hermes': {'driver': 'adapters/hermes/driver', 'tool': 'hermes', 'key': None, 'harness': 'claude'},
-    'pane': {'driver': 'adapters/pane/driver', 'tool': 'runpane', 'key': None, 'harness': 'claude'},
-    'factory': {'driver': 'adapters/factory/driver', 'tool': 'droid', 'key': 'FACTORY_API_KEY', 'harness': 'droid'},
-    'conductor': {'driver': 'adapters/conductor/driver', 'tool': 'curl', 'key': 'CONDUCTOR_API_KEY',
+    'hermes': {'host': 'Hermes', 'driver': 'adapters/hermes/driver', 'tool': 'hermes', 'key': None, 'harness': 'claude'},
+    'pane': {'host': 'Pane', 'driver': 'adapters/pane/driver', 'tool': 'runpane', 'key': None, 'harness': 'claude'},
+    'factory': {'host': 'Factory', 'driver': 'adapters/factory/driver', 'tool': 'droid', 'key': 'FACTORY_API_KEY', 'harness': 'droid'},
+    'conductor': {'host': 'Conductor', 'driver': 'adapters/conductor/driver', 'tool': 'curl', 'key': 'CONDUCTOR_API_KEY',
                   'harness': 'claude'},
-    'cursor': {'driver': 'adapters/cursor/driver', 'tool': 'curl', 'key': 'CURSOR_API_KEY', 'harness': 'cursor'},
+    'cursor': {'host': 'Cursor', 'driver': 'adapters/cursor/driver', 'tool': 'curl', 'key': 'CURSOR_API_KEY', 'harness': 'cursor'},
 }
 # The exact skip reason per host and situation, written out (never computed from the configs).
 # tool missing: the host's tool is not on PATH; gh missing: gh is not; tool out: the tool's status command fails;
@@ -49,8 +49,6 @@ SKIPS = {
     'cursor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool out': 'cost',
                'no key': 'not signed in: python3', 'gh out': 'not signed in: gh', 'signed in': 'cost'},
 }
-# The only calls a status check may make to a fake: read-only status commands, never a turn or a sign-in.
-READ_ONLY = {'gh auth status', 'runpane repos list --json'}
 
 
 def load(name, path):
@@ -74,11 +72,12 @@ class Configs(unittest.TestCase):
     def test_the_five_configs_load_through_rig_load_host(self):
         rig = load('rig', RIG)
         self.assertEqual(host_names(), sorted(CONFIGS))
-        self.assertEqual(sorted(h['host'] for h in rig.load_hosts(HOSTS, None)), sorted(CONFIGS))
+        self.assertEqual(sorted(h['host'] for h in rig.load_hosts(HOSTS, None)),
+                         sorted(c['host'] for c in CONFIGS.values()))
         for name, want in CONFIGS.items():
             with self.subTest(host=name):
                 config = rig.load_host(os.path.join(HOSTS, name + '.json'))
-                self.assertEqual(config['host'], name)
+                self.assertEqual(config['host'], want['host'])
                 self.assertEqual(config['driver'], want['driver'])
                 self.assertEqual(config['needs'], [want['tool'], 'gh'])
                 self.assertEqual(config['cost'], 'paid')
@@ -109,8 +108,11 @@ class Skips(unittest.TestCase):
         """PATH for one run: the refusing stubs first, then the fakes, then only git and python3."""
         stubs, fakes = tempfile.mkdtemp(dir=self.folder), tempfile.mkdtemp(dir=self.folder)
         wired = {'tool missing': [], 'gh missing': [tool]}.get(situation, [tool, 'gh'])
+        # A missing tool has no stub either, or the stub would count as installed. PATH holds only these folders,
+        # so nothing real can answer in its place.
+        absent = [tool] if situation == 'tool missing' else []
         for name in AGENT_CLIS:
-            if name not in wired:
+            if name not in wired + absent:
                 with open(os.path.join(stubs, name), 'w') as f:
                     f.write('#!/bin/sh\necho "%s: refused, the VPS host tests never start an agent CLI" >&2\n'
                             'exit 1\n' % name)
@@ -132,7 +134,7 @@ class Skips(unittest.TestCase):
                 env[key] = SECRET
         out = os.path.join(self.folder, 'out-' + host + '-' + situation.replace(' ', '-'))
         p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py'),
-                            '--hosts', HOSTS, '--settings', self.settings, '--out', out, '--host', host],
+                            '--hosts', HOSTS, '--settings', self.settings, '--out', out, '--host', want['host']],
                            cwd=self.checkout, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                            timeout=120)
         records = []
@@ -149,7 +151,8 @@ class Skips(unittest.TestCase):
                 with self.subTest(host=host, situation=situation):
                     p, records = self.rig(host, situation)
                     self.assertEqual(p.returncode, 0, p.stderr)
-                    self.assertEqual(p.stdout, 'skipped %s %s: %s\n' % (host, CONFIGS[host]['harness'], why))
+                    self.assertEqual(p.stdout, 'skipped %s %s: %s\n' % (CONFIGS[host]['host'], CONFIGS[host]['harness'],
+                                                                         why))
                     self.assertEqual([(r['outcome'], r['skipped'], r['kit_exit']) for r in records],
                                      [('skipped', why, None)])
                     for text in (p.stdout, p.stderr, json.dumps(records)):
@@ -158,11 +161,12 @@ class Skips(unittest.TestCase):
     def test_status_checks_call_only_read_only_status_commands(self):
         for host in SKIPS:
             self.rig(host, 'signed in')
-        calls = set()
+        calls = []
         if os.path.isfile(self.log):
             with open(self.log) as f:
-                calls = set(f.read().splitlines())
-        self.assertEqual(calls, READ_ONLY)
+                calls = f.read().splitlines()
+        # Exactly one `gh auth status` per host and Pane's one `runpane repos list --json`, and nothing else.
+        self.assertEqual(sorted(calls), sorted(['gh auth status'] * 5 + ['runpane repos list --json']))
 
 
 class Page(unittest.TestCase):
@@ -171,11 +175,13 @@ class Page(unittest.TestCase):
         if os.path.isfile(PAGE):
             with open(PAGE) as f:
                 self.page = f.read()
+        # Each host's row starts with its host name; this keys the rows by the config file that names it.
+        files = {c['host']: name for name, c in CONFIGS.items()}
         self.rows = {}
         for line in self.page.splitlines():
             cells = [c.strip() for c in line.strip().strip('|').split('|')] if line.startswith('|') else []
-            if cells and cells[0].strip('`*') in CONFIGS:
-                self.rows[cells[0].strip('`*')] = cells
+            if cells and cells[0].strip('`*') in files:
+                self.rows[files[cells[0].strip('`*')]] = cells
 
     def test_the_page_has_one_row_per_host_in_hosts(self):
         self.assertEqual(sorted(self.rows), host_names())
@@ -186,6 +192,7 @@ class Page(unittest.TestCase):
             with self.subTest(host=host):
                 row = ' | '.join(cells)
                 self.assertIn('adapters/%s/README.md' % host, row)
+                self.assertIn('hosts/%s.json' % host, row)
                 self.assertRegex(row, r'\]\(https://[^)]+\)')
                 self.assertIn(cells[-2].strip('*`'), ('no', 'yes', 'unknown'))
                 key = CONFIGS[host]['key']
