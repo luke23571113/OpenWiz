@@ -210,8 +210,9 @@ shape below.
   `medium`). `attachments` and `steer` are `null`, `unavailable` is empty.
 - **Nothing installed:** `state` is `no_options` with reason
   `harnesses_not_reported`, and `harnesses` is empty.
-- **`label`** keeps its one value, so a reader tells the two lists apart by
-  `source`, never by the label.
+- **`label`** is `Installed local harnesses with OpenWiz's current choices`
+  for the local source. CloudRoom keeps `as reported by CloudRoom; it may answer from a saved copy`.
+  Readers use `source` to distinguish them.
 
 For the local source, `openwiz models set <role> <provider> <model> <effort>`
 accepts any settable model id for an installed harness, including ids

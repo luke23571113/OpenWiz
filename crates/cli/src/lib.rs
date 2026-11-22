@@ -79,11 +79,11 @@ pub fn help() -> String {
 Usage:
   openwiz ls [-l] [-a] [--hidden] [--limit N] [--offset N] [--json]
   openwiz show <id> [--json]
-  openwiz models [--json]
-  openwiz models show [--json]
+  openwiz models [--json] [--host NAME]
+  openwiz models show [--json] [--host NAME]
   openwiz models list [--save] [--json]
-  openwiz models set <role> <provider> <model> <effort> [--json]
-  openwiz models set <small-builder|fixer> follows-builder [--json]
+  openwiz models set <role> <provider> <model> <effort> [--json] [--host NAME]
+  openwiz models set <small-builder|fixer> follows-builder [--json] [--host NAME]
 {fleets_usage}{fleet_usage}{tick_usage}{loops_usage}{loop_files_usage}{init_usage}{github_usage}  openwiz help --agent
   openwiz help
   openwiz --help
@@ -110,19 +110,22 @@ Each read stops after {read} seconds and is not retried; a run stops after {budg
 A result is complete or partial: its gaps say what is missing.
 
 models
-  The Cloud harnesses, models and efforts CloudRoom offers right now, from one cloud status
-  read, as reported (it may answer from a saved copy); harnesses it lists but OpenWiz
-  cannot offer, with the reason. Nothing is marked default. --json prints
+  With the cloud host, reads the options from one CloudRoom cloud status read, which
+  may answer from a saved copy. Other hosts show OpenWiz's current choices for the
+  Claude Code and Codex programs on PATH. --host NAME overrides the saved project
+  host, with cloud as the fallback. Nothing is marked default. --json prints
   openwiz.cloud-options.v1.
 models show|list|set
   Run from the project root; they read docs/agents/fleet.md (contracts/models.v1.md).
   show: each role's harness, model and effort, what it follows, and each family's
   review and fix round; no cloud status read. list: the options above with the
   recommended choice per role; --save writes docs/agents/models-offered.json.
-  set: checks the choice against one cloud status read, rewrites the role's row
-  (and the older tables' matching rows), writes the snapshot and prints what
-  changed, for you to commit; follows-builder reads nothing. Roles: orchestrator,
-  builder, reviewer, small-builder, fixer. --json prints openwiz.models-show.v1,
+  show and set accept --host NAME. Show reads the roles for every host.
+  set: checks the choice against the CloudRoom list for cloud, or accepts settable
+  IDs for an installed harness for other hosts. It rewrites the role's row and
+  matching older rows, writes the snapshot and prints what changed. The
+  follows-builder form skips the catalogue. Roles: orchestrator, builder,
+  reviewer, small-builder, fixer. --json prints openwiz.models-show.v1,
   openwiz.models-list.v1 or openwiz.models-set.v1.
 {loops_help}{loop_files_help}{fleets_help}{fleet_help}{tick_help}{github_help}
 Exit codes:

@@ -1338,7 +1338,7 @@
       "document": {
         "schema": "openwiz.cloud-options.v1",
         "read_at": 1700000000000,
-        "label": "as reported by CloudRoom; it may answer from a saved copy",
+        "label": "Installed local harnesses with OpenWiz's current choices",
         "state": {
           "kind": "offered"
         },
@@ -1381,7 +1381,7 @@
       "document": {
         "schema": "openwiz.cloud-options.v1",
         "read_at": 1700000000000,
-        "label": "as reported by CloudRoom; it may answer from a saved copy",
+        "label": "Installed local harnesses with OpenWiz's current choices",
         "state": {
           "kind": "offered"
         },
@@ -1410,7 +1410,7 @@
       "document": {
         "schema": "openwiz.cloud-options.v1",
         "read_at": 1700000000000,
-        "label": "as reported by CloudRoom; it may answer from a saved copy",
+        "label": "Installed local harnesses with OpenWiz's current choices",
         "state": {
           "kind": "no_options",
           "reason": "harnesses_not_reported",

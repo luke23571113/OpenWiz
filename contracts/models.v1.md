@@ -211,9 +211,10 @@ change and keeps the older rows in step; its report says `models_table_added: tr
 ## The offered-models snapshot
 
 `docs/agents/models-offered.json`, beside `fleet.md`, is a
-`snapshot` (`openwiz.models-offered.v1`): what the user's signed-in
-harnesses offered at one `cloud status` read, so the app can show real
-choices without access to the harnesses.
+`snapshot` (`openwiz.models-offered.v1`): what CloudRoom offered at one
+`cloud status` read or OpenWiz's current choices for the installed local
+harnesses, so the app can show the choices without a fresh read. The
+label identifies the list's provenance.
 
 - `read_at` (milliseconds since the epoch), `label`, `state`, `harnesses`
   and `unavailable` mean what `openwiz models --json`
