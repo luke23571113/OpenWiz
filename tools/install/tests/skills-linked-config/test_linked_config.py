@@ -113,7 +113,7 @@ class LockedRemove(Remove):
         seen, real = [], entry.remove_unlocked
 
         def probe(*args):
-            with open(self.root / 'install.lock', 'a+b') as other:  # as install.py takes it
+            with open(self.root / 'install.lock', 'a+b') as other:
                 try:
                     fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     seen.append('free')

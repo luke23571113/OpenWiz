@@ -91,7 +91,6 @@ def discard(path, plain, name, landed):
 
 
 def place(folder, skills, name, source, plain):
-    """Puts one skill in place; returns what went wrong around it, or None."""
     folder.mkdir(mode=0o700, exist_ok=True)
     (stage, old), target = leftovers(folder, name), folder / name
     for leftover in (stage, old):
