@@ -657,6 +657,95 @@ class Review(Helper):
         bound = self.shell("gh pr list")
         self.assertEqual((bound.returncode, self.calls("gh")[-1]["gh_token"]), (0, sha(TOKEN)))
 
+    def test_r12_a_gh_swapped_between_its_check_and_its_exec_never_gets_the_token(self):
+        helper = load_helper()
+        real = self.bin / "gh"
+        checked = real.read_text()
+        rogue = "#!/bin/sh\n# synthetic rogue gh\nexit 0\n"
+        name = "run-" + "0" * 32 + ".json"
+        private = helper.Private(self.env, create=True)
+        private.write(name, {"token": TOKEN, "expires_at": int(time.time()) + 3600})
+        refuse = str(self.private / "exec-synthetic" / helper.GH_REFUSE)
+        env = dict(self.env, **{helper.RUN_MARK: str(self.private / name)})
+        load = helper.snapshot_token
+
+        def load_then_swap(*args, **kwargs):
+            held = load(*args, **kwargs)
+            swapped = self.bin / "gh.swap"
+            swapped.write_text(rogue)
+            swapped.chmod(0o755)
+            os.replace(swapped, real)
+            return held
+
+        for platform in ("linux", "darwin"):
+            with self.subTest(platform):
+                real.write_text(checked)
+                real.chmod(0o755)
+                self.bin.chmod(0o755 if platform == "linux" else 0o775)
+                private.write(helper.gh_binding(name), {"gh": str(real), "refuse": refuse,
+                                                        "identity": helper.gh_identity(str(real))})
+                ran = []
+
+                def exec_boundary(path, args, child):
+                    target = f"/proc/self/fd/{path}" if isinstance(path, int) else path
+                    ran.append((Path(target).read_text(), child.get("GH_TOKEN")))
+                    raise OSError("synthetic exec boundary")
+
+                with mock.patch.object(helper, "snapshot_token", load_then_swap), \
+                        mock.patch.object(helper.sys, "platform", platform), \
+                        mock.patch.object(helper.os, "execve", exec_boundary), \
+                        mock.patch.object(helper.sys, "stderr") as stderr:
+                    try:
+                        code = helper.gh([str(real), refuse, "pr", "list"], dict(env))
+                    except helper.Refused:
+                        code = "exec intercepted"
+                self.assertNotIn((rogue, TOKEN), ran, "a gh swapped in after the check gets the token")
+                if platform == "linux":
+                    self.assertEqual((code, ran), ("exec intercepted", [(checked, TOKEN)]),
+                                     "the checked gh runs from the file that was checked")
+                else:
+                    said = "".join(call.args[0] for call in stderr.write.call_args_list)
+                    self.assertEqual((code, ran), (128, []), "no exec where the checked file can't be run")
+                    self.assertIn("a folder above gh is not owner-only", said)
+
+    def test_r1_gh_checks_intermediate_symlink_targets_before_path_exec(self):
+        helper = load_helper()
+        name = "run-" + "0" * 32 + ".json"
+        private = helper.Private(self.env, create=True)
+        self.addCleanup(os.close, private.fd)
+        private.write(name, {"token": TOKEN, "expires_at": int(time.time()) + 3600})
+        refuse = str(self.private / "exec-synthetic" / helper.GH_REFUSE)
+        env = dict(self.env, **{helper.RUN_MARK: str(self.private / name)})
+
+        with tempfile.TemporaryDirectory(dir=Path.home().resolve()) as folder:
+            root = Path(folder)
+            intermediate = root / "intermediate"
+            intermediate.mkdir()
+            intermediate.chmod(0o775)
+            target = root / "target"
+            target.mkdir(mode=0o755)
+            real = target / "gh"
+            real.write_text("#!/bin/sh\nexit 0\n")
+            real.chmod(0o755)
+            (intermediate / "next").symlink_to("../target", target_is_directory=True)
+            (root / "entry").symlink_to(intermediate / "next", target_is_directory=True)
+            chosen = str(root / "entry" / "gh")
+            private.write(helper.gh_binding(name), {"gh": chosen, "refuse": refuse,
+                                                    "identity": helper.gh_identity(str(real))})
+            args = [chosen, refuse, "pr", "list"]
+            with mock.patch.object(helper.sys, "platform", "darwin"), \
+                    mock.patch.object(helper.os, "execve") as run, \
+                    mock.patch.object(helper.sys, "stderr") as stderr:
+                code = helper.gh(args, dict(env))
+                self.assertEqual((code, run.call_count), (128, 0), "unsafe intermediate directory must block exec")
+                self.assertIn("a folder above gh is not owner-only", stderr.write.call_args.args[0])
+
+                intermediate.chmod(0o755)
+                helper.gh(args, dict(env))
+                self.assertEqual(run.call_count, 1)
+                self.assertEqual(run.call_args.args[0], str(real))
+                self.assertEqual(run.call_args.args[2]["GH_TOKEN"], TOKEN)
+
     def test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused(self):
         self.answers(dict(answer(left=302), sleep=3))
         started = self.start()

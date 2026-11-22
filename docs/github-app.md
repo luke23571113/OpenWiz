@@ -316,7 +316,10 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   line, `openwiz: openwiz[bot] token withheld from gh (<reason>); gh stops rather than use
   another account`. It runs only the gh the run chose: the run records that gh's path
   and file identity in the private directory, and the stand-in refuses another path, or
-  a file changed since, before the token is looked up. For an allowed command, it reads
+  a file changed since, before the token is looked up. It runs gh through its open file on Linux
+  and uses the resolved path on systems such as macOS only when every directory visited during
+  resolution, including through symlinks, is owned by you or root and writable by no one else.
+  For an allowed command, it reads
   the snapshot and starts that gh
   with `GH_TOKEN`, the owner's own `GH_CONFIG_DIR`, `GH_PAGER=cat`, and an editor and
   browser that refuse with that line, so gh starts no other program with the token. Any other child, a gh started by its full path included, sees an empty
