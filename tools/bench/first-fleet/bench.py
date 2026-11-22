@@ -15,7 +15,7 @@ FIELDS = {'spec.json': ('createdAt',), 'tickets.json': ('createdAt',),
 
 
 class Bad(Exception):
-
+    pass
 
 def no_repeats(pairs):
     keys = [k for k, _ in pairs]
