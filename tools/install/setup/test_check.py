@@ -450,6 +450,25 @@ Source: synthetic
         self.assertEqual(answer['results']['project'], 'project_no_write')
         self.assertEqual(answer['results']['personal_github'], 'identity_no_push')
 
+    def test_missing_repository_is_refused_with_a_prepare_again_step(self):
+        for body, code in (({'message': 'Not Found', 'status': '404'}, 'project_no_write'),
+                           ({'message': 'Bad credentials', 'status': '401'}, 'project_unreadable')):
+            with self.subTest(code=code):
+                self.setUp()
+                self.prepare_check()
+                self.program('claude', '')
+                self.program('gh', 'import json, sys\n'
+                                   'if sys.argv[2] == "user":\n'
+                                   '    print(json.dumps({"type": "User", "login": "synthetic-owner"}))\n'
+                                   '    sys.exit(0)\n'
+                                   f'print(json.dumps({body!r}))\n'
+                                   'sys.exit(1)\n')
+                answer = self.checked()
+                self.assertEqual(answer['results']['project'], code)
+                if code == 'project_no_write':
+                    self.assertIn('prepare --repository OWNER/NAME', answer['next']['project'])
+                    self.assertIn('--host local', answer['next']['project'])
+
     def test_non_settable_choice_names_only_local_next_steps(self):
         self.prepare_check(choice={'model': 'synthetic//demo'})
         self.program('claude', '')
