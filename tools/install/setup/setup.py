@@ -20,7 +20,7 @@ import urllib.request
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import store
 
-DESCRIPTION = "OpenWiz setup: prepare one project and check each connection independently (#1105).\n\n  setup.py prepare --repository OWNER/NAME --project PRJ --operator NAME \\\n      --service-issue N --answer-thread THR --harness H --model M --effort E\n      Without --yes: records the proposed settings and prints their effects,\n      operation id and fingerprint; nothing else is saved. With\n      --yes --operation ID: saves exactly that preview's settings.\n  setup.py check\n      Reads CloudRoom through the installed openwiz CLI, the agents' own\n      GitHub login through gh, and OpenWiz's App through GitHub's App API, and\n      records one result code per component. Reads only: the App's\n      installation token is minted to prove access, then discarded. Beside\n      each code it prints one `next` line: the exact command to run, or the\n      person's step (#2143).\n\nResults go to owner-only `<state>/setup/state.json` (store.py). Output is JSON with fixed public codes: never a token, key,\nprovider body or URL with credentials. No personal-token fallback for the App.\nPython 3.9+, standard library and /usr/bin/openssl only.\n"
+DESCRIPTION = "OpenWiz setup: prepare one project and check each connection independently (#1105).\n\n  setup.py prepare --repository OWNER/NAME --project PRJ --operator NAME \\\n      --service-issue N --answer-thread THR --harness H --model M --effort E\n      With --host NAME other than cloud, omit --project and --answer-thread.\n      Without --yes: records the proposed settings and prints their effects,\n      operation id and fingerprint; nothing else is saved. With\n      --yes --operation ID: saves exactly that preview's settings.\n  setup.py check\n      Reads CloudRoom through the installed openwiz CLI, the agents' own\n      GitHub login through gh, and OpenWiz's App through GitHub's App API, and\n      records one result code per component. Reads only: the App's\n      installation token is minted to prove access, then discarded. Beside\n      each code it prints one `next` line: the exact command to run, or the\n      person's step (#2143).\n\nResults go to owner-only `<state>/setup/state.json` (store.py). Output is JSON with fixed public codes: never a token, key,\nprovider body or URL with credentials. No personal-token fallback for the App.\nPython 3.9+, standard library and /usr/bin/openssl only.\n"
 
 HERE = Path(__file__).resolve().parent
 PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write',
@@ -665,14 +665,19 @@ def prepare(args):
     project = {'repository': args.repository, 'project': args.project, 'operator': args.operator,
                'service_issue': args.service_issue, 'answer_thread': args.answer_thread,
                'harness': args.harness, 'model': args.model, 'effort': args.effort, 'runtime': pin}
+    if args.host != 'cloud':
+        project['host'] = args.host
     store.check_project(project)
-    effects = [f"Select {args.repository} and CloudRoom project {args.project} for your first fleet.",
-               f"Record {args.operator} as the loop operator and issue #{args.service_issue} for service records.",
-               f"Send answers to thread {args.answer_thread}.",
-               f"Run agents on {args.harness}, {args.model}, {args.effort} effort.",
-               (f"Pin packaged runtime {pin.split()[0]} (source {pin.split()[1][:12]})." if pin
-                else "No packaged runtime found; project stays unverified."),
-               "Save these settings in this host's owner-only OpenWiz state. Nothing is sent or created."]
+    operator = f"Record {args.operator} as the loop operator and issue #{args.service_issue} for service records."
+    if args.host == 'cloud':
+        effects = [f"Select {args.repository} and CloudRoom project {args.project} for your first fleet.",
+                   operator, f"Send answers to thread {args.answer_thread}."]
+    else:
+        effects = [f"Select {args.repository} for your first fleet, with agents on {args.host}.", operator]
+    effects += [f"Run agents on {args.harness}, {args.model}, {args.effort} effort.",
+                (f"Pin packaged runtime {pin.split()[0]} (source {pin.split()[1][:12]})." if pin
+                 else "No packaged runtime found; project stays unverified."),
+                "Save these settings in this host's owner-only OpenWiz state. Nothing is sent or created."]
     def current(value):
         return value['project'] == project
     if not args.yes:
@@ -705,10 +710,11 @@ def main():
         command.add_argument('--runtime', help='installed runtime directory (default: this packaged runtime)')
     p = commands.choices['prepare']
     p.add_argument('--repository', required=True)
-    p.add_argument('--project', required=True)
+    p.add_argument('--project')
     p.add_argument('--operator', required=True)
     p.add_argument('--service-issue', type=int, required=True)
-    p.add_argument('--answer-thread', required=True)
+    p.add_argument('--answer-thread')
+    p.add_argument('--host', default='cloud', help='where the agents run (default: cloud)')
     p.add_argument('--harness', required=True)
     p.add_argument('--model', required=True)
     p.add_argument('--effort', required=True)
@@ -718,6 +724,11 @@ def main():
     c.add_argument('--openwiz', help='installed openwiz CLI (default: this package\'s)')
     c.add_argument('--api-base', default=API, help='GitHub API; loopback HTTP for synthetic tests only')
     args = parser.parse_args()
+    if args.command == 'prepare' and args.host == 'cloud':
+        missing = [flag for flag, value in (('--project', args.project), ('--answer-thread', args.answer_thread))
+                   if value is None]
+        if missing:
+            p.error('the following arguments are required: ' + ', '.join(missing))
     (prepare if args.command == 'prepare' else check)(args)
 
 
