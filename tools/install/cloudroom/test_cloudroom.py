@@ -1050,6 +1050,20 @@ class Login(Base):
                 else:
                     self.assertIn("CloudRoom's sign-in gave no usable link and said nothing", err)
 
+    def test_a_credential_split_across_lines_never_reaches_stderr(self):
+        self.installed('signed-out')
+        for said in (b'Sign-in failed.\n{\n  "error": "refresh failed",\n  "refresh_token":\n    "rt1"\n}\n',
+                     b'{\n  "message": "Sign-in failed.",\n  "session":\n    "rt1"\n}\n',
+                     b'Sign-in failed.\ntoken:\n  rt1\n',
+                     b'Sign-in failed.\nrefresh_token =\n\trt1 rt1\n',
+                     b'Sign-in failed.\n[{"nested": {"cookie":\n"rt1"}}]\n'):
+            with self.subTest(said=said):
+                self.host.sign_in_code, self.host.sign_in_reply, self.host.sign_in_said = 1, b'', said
+                result, err = self.said()
+                self.assertEqual((result['code'], result['opened']), ('cloudroom_login_missing', None))
+                self.assertIn('openwiz-cloudroom: CloudRoom said: Sign-in failed.\n', err)
+                self.assertNotIn('rt1', err)
+
     def test_an_opener_that_fails_is_shown_and_not_counted_as_opened(self):
         self.installed('signed-out')
         self.host.open_result = (4, b'xdg-open: no method available for opening '
