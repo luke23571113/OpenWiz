@@ -15,7 +15,7 @@ pass driver: a wake before the reported session id is known is a D3 error that s
 rows in adapters/local/harnesses: none yet
 exit 0
 
-$ python3 -I adapters/local/test_harnesses.py --rows adapters/local/fixtures/rows   # the runner on the planted rows alone: it fails each bad row with its named reason
+$ python3 -I adapters/local/test_harnesses.py --rows adapters/local/fixtures/rows   # the planted rows alone: each bad row fails with its named reason
 fail claude: row.json harness: claude is built in, and no row may use a built-in name
 fail credential-env: row.json env: a value looks like a credential; env holds only fixed settings that are not credentials
 fail daemon-survives: daemon: the background process the row declares still runs after stop
@@ -29,6 +29,6 @@ fail wake-no-session: row.json wake: it has no {session}
 exit 1
 
 $ python3 -I adapters/local/test_driver.py
-Ran 18 tests in 53.181s
+Ran 18 tests in 53.062s
 
 OK
