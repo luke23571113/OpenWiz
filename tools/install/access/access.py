@@ -142,6 +142,9 @@ class Http:
         with response:
             data = response.read(MAX_BYTES + 1)
             need(len(data) <= MAX_BYTES, 'access_unavailable')
+            declared = response.headers.get('Content-Length')
+            need(declared is None or (re.fullmatch('[0-9]{1,16}', declared) is not None
+                                      and int(declared) == len(data)), 'access_unavailable')
             return response.code, data
 
 
@@ -413,9 +416,16 @@ def verify(http, p, secret_path, now, local, witness):
 
 
 def observed(operations):
-    checks = [(int(found.group(1)), o) for o in operations
-              if o['kind'] == 'configure_access' and (found := CHECK.match(o['reason']))]
-    return max(checks, key=lambda pair: pair[0])[1] if checks else None
+    tagged = [o for o in operations if o['kind'] == 'configure_access' and CHECK.match(o['reason'])]
+    return tagged[0] if len(tagged) == 1 else None
+
+
+def untag(operations):
+    for operation in operations:
+        found = CHECK.match(operation['reason'])
+        if operation['kind'] == 'configure_access' and found:
+            rest = operation['reason'][found.end():]
+            operation['reason'] = rest[:1].upper() + rest[1:]
 
 
 def execute(argv=None, *, http=None, local=local_tailscale):
@@ -472,10 +482,7 @@ def execute(argv=None, *, http=None, local=local_tailscale):
                         return dict(operation)
             operation = {'operation_id': random.token_hex(16), 'kind': 'configure_access', 'phase': 'proposed',
                          'fingerprint': digest, 'effects': effects, 'reason': 'Proposed: confirm with --yes --operation.'}
-            writer = observed(value['operations'])
             value['operations'] = store.retained(value['operations'], (value.get('engine') or {}).get('operation_id')) + [operation]
-            if writer is not None and writer not in value['operations']:
-                value['observations'].pop('remote_access', None)
             return dict(operation)
         operation = setup.update(propose)
         return {'operation': operation, 'observation': None, 'selection_revision': revision}
@@ -490,6 +497,7 @@ def execute(argv=None, *, http=None, local=local_tailscale):
         operation = setup.authorized(value, args.operation, 'configure_access', request, selected_request)
         if operation['phase'] == 'proposed':
             operation['phase'] = 'uncertain'
+        untag(value['operations'])
         operation['reason'] = (f'Check {generation}: verification code ' + random.token_hex(16)
                                + '. Check this operation after an interrupted verification.')
         value['observations']['remote_access'] = {'code': 'access_checking', 'revision': revision,
