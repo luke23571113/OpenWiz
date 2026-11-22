@@ -11,9 +11,15 @@ It reads `README.md` and `docs/install.md` and prints one line per failure:
 1. **Nothing says CloudRoom is required:** no "needs CloudRoom", "requires CloudRoom", "CloudRoom is required", "You need CloudRoom", "done only when CloudRoom" or "sets up through it".
 2. **CloudRoom's install is conditional:** every line that runs `cloudroom.py install` says "only if you pick" CloudRoom, and no "Before you start" bullet lists CloudRoom without saying it is optional.
 3. **The three hosts, this computer first:** each file has a line that names this computer, boat.dev and CloudRoom in that order and says "CloudRoom is optional".
-4. **0.1.0 and 0.1.1 told apart:** each file has a sentence saying that on 0.1.0 the automatic fleet runs in CloudRoom, and one saying 0.1.1 adds it on this computer; no sentence puts the automatic fleet on this computer without naming 0.1.1.
+4. **0.1.0 and 0.1.1 told apart:** each file has a sentence saying that on 0.1.0 the automatic fleet runs in CloudRoom, and one saying 0.1.1 runs it on this computer.
+5. **The 0.1.1 path is the default (review R1):** each file has a section headed with 0.1.0; outside it, no `maint/0.2` link and a link to the install skill at WizSkills `v0.4.0`. The guide clones `v0.1.1`, expects build identity `0.1.1`, and has no `maint/0.2` overwrite step outside the 0.1.0 section.
+6. **Intel Mac (R2):** no line says an Intel Mac installs only from 0.1.1.
+7. **The heartbeat (R3):** nothing says it "wakes the fleet every ten minutes"; the guide says it checks every ten minutes and wakes only when work is due, that boat.dev fleets use it too, lists `jq`, and says a same-family review is marked.
+8. **Removal (R4):** the guide's "Remove it" names `heartbeat.py pause`, `heartbeat.py remove` and `install remove`, and nothing says there is no remove command.
+9. **boat.dev credentials (R5):** the guide's boat.dev prerequisites name its dashboard, GitHub write access and the Claude Code or Codex key.
 
 Exit 0 when all hold, 1 otherwise. It reads only.
 
 - `red.txt`: the run at `main` before the fix (exit 1).
 - `green.txt`: the run after the fix (exit 0).
+- `red-review.txt`: the run at the reviewed head `eba812af`, after checks 5 to 9 were added, before the fix (exit 1).

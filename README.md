@@ -9,7 +9,7 @@
 
 You make the decisions: answer a few questions. The agents run the factory: they write the spec and the tickets, build, review and merge. You watch it ship.
 
-**Status:** OpenWiz 0.1.0 ("OpenWiz 0.01") is out: the [release](https://github.com/openwizdev/OpenWiz/releases/tag/v0.1.0) installs on macOS on Apple silicon and on Linux on x86_64 (glibc 2.34 or later). An Intel Mac installs from 0.1.1 on, with agents on this computer or on boat.dev: CloudRoom offers no Intel Mac build today. OpenWiz builds itself, in public, in this repo.
+**Status:** OpenWiz 0.1.1 ("OpenWiz 0.02") is out: the [release](https://github.com/openwizdev/OpenWiz/releases/tag/v0.1.1) installs on macOS (Apple silicon or Intel) and on Linux on x86_64 (glibc 2.34 or later), with no CloudRoom. CloudRoom offers no Intel Mac build today, so on an Intel Mac your agents run on this computer or on boat.dev. OpenWiz builds itself, in public, in this repo.
 
 ## Quick start
 
@@ -17,9 +17,13 @@ You need Python 3.9 or later, `git`, and the GitHub CLI (`gh`). Then paste this 
 
 > Install OpenWiz from github.com/openwizdev/OpenWiz
 
-Your agent follows the [install skill](https://github.com/openwizdev/WizSkills/blob/maint/0.2/skills/install/SKILL.md). First it asks where your agents run: **this computer**, with the Claude Code or Codex you're signed in to; **boat.dev**; or **[CloudRoom](https://cloudroom.dev)**. CloudRoom is optional: the install never needs it, and its install and sign-in run only if you pick it. On 0.1.0, the automatic fleet (its own thread and loops, which start builders and reviewers) runs in CloudRoom; without CloudRoom, you plan, start each builder by hand on this computer or on boat.dev, and review its pull request yourself. 0.1.1 adds the automatic fleet on this computer: builders and reviewers start with your own Claude Code or Codex login, and a scheduled job you approve wakes the fleet every ten minutes.
+Your agent follows the [install skill](https://github.com/openwizdev/WizSkills/blob/v0.4.0/skills/install/SKILL.md). First it asks where your agents run: **this computer**, with the Claude Code or Codex you're signed in to; **boat.dev**; or **[CloudRoom](https://cloudroom.dev)**. CloudRoom is optional: the install never needs it, and its install and sign-in run only if you pick it. In 0.1.1 the automatic fleet runs on this computer, on boat.dev or in CloudRoom. With this computer or boat.dev, a scheduled job on this computer, shown first and installed on your yes, checks GitHub every ten minutes and starts or wakes the fleet only when work is due; builders and reviewers start through OpenWiz's drivers with your own Claude Code or Codex login.
 
 It checks your computer, installs the verified prebuilt release (no Rust or Node), puts OpenWiz's skills into your agents, and checks each connection. Nothing starts until you approve a plan. People: see the [install guide](docs/install.md) for every step and command. OpenWiz is free. Your model and host charges are your own.
+
+### OpenWiz 0.1.0
+
+OpenWiz 0.1.0 ("OpenWiz 0.01") also installs with no CloudRoom, on Apple silicon, an Intel Mac or Linux on x86_64, through its own [install skill](https://github.com/openwizdev/WizSkills/blob/maint/0.2/skills/install/SKILL.md) (WizSkills `maint/0.2`). On 0.1.0 the automatic fleet runs in CloudRoom; without CloudRoom you plan, start each builder by hand on this computer or on boat.dev, and review its pull request yourself.
 
 ## How it works
 
