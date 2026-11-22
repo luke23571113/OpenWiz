@@ -129,6 +129,26 @@ class LockedRemove(Remove):
         self.assertIn(str(self.root / 'install.lock'), value['delete'])
         self.assertFalse(self.root.exists())
 
+    def test_an_install_that_wins_the_lock_remove_made_keeps_it_and_a_retry_is_refused(self):
+        state, _ = self.installed()
+        (self.root / 'install.lock').unlink()
+        holder = []
+
+        def install_first(fd, flags):
+            holder.append(open(self.root / 'install.lock', 'a+b'))
+            fcntl.flock(holder[0], fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fcntl.flock(fd, flags)
+        race = mock.Mock(wraps=fcntl, flock=install_first, LOCK_EX=fcntl.LOCK_EX, LOCK_NB=fcntl.LOCK_NB)
+        with mock.patch.object(entry, 'fcntl', race):
+            code, value = self.run_entry('remove', '--root', str(self.root), '--yes')
+        self.addCleanup(holder[0].close)
+        self.assertEqual((code, value['outcome']), (5, 'refused'), value)
+        self.assertTrue(os.path.lexists(self.root / 'install.lock'))
+        self.assertTrue(os.path.samestat(os.stat(self.root / 'install.lock'), os.fstat(holder[0].fileno())))
+        code, value = self.run_entry('remove', '--root', str(self.root), '--yes')
+        self.assertEqual((code, value['outcome']), (5, 'refused'), value)
+        self.assertTrue((state / 'service/config.json').exists())
+
     def test_remove_refuses_a_lock_that_is_not_a_private_file(self):
         self.installed()
         (self.root / 'install.lock').chmod(0o644)

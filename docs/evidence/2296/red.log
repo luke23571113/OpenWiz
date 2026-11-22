@@ -77,3 +77,17 @@ First differing element 0:
 ----------------------------------------------------------------------
 Ran 7 tests in 3.515s
 FAILED (failures=2)
+
+# Red run for review R1 at 86dc8868 (install wins the lock remove made)
+$ python3 -I tools/install/tests/skills-linked-config/test_linked_config.py LockedRemove
+F.......
+======================================================================
+FAIL: test_an_install_that_wins_the_lock_remove_made_keeps_it_and_a_retry_is_refused (__main__.LockedRemove.test_an_install_that_wins_the_lock_remove_made_keeps_it_and_a_retry_is_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/install/tests/skills-linked-config/test_linked_config.py", line 146, in test_an_install_that_wins_the_lock_remove_made_keeps_it_and_a_retry_is_refused
+    self.assertTrue(os.path.lexists(self.root / 'install.lock'))
+AssertionError: False is not true
+----------------------------------------------------------------------
+Ran 8 tests in 4.020s
+FAILED (failures=1)
