@@ -284,7 +284,15 @@ class Package(unittest.TestCase):
                  'model': 'synthetic'}), env=env, capture_output=True, text=True, timeout=120)
             self.assertNotIn('wizskills.lock', started.stdout + started.stderr)
             # Past the pin check, the driver made its sandbox with the fake `boat`.
-            self.assertTrue(json.loads(boats.read_bytes())['sandboxes'], started.stdout + started.stderr)
+            self.assertEqual(len(json.loads(boats.read_bytes())['sandboxes']), 1, started.stdout + started.stderr)
+            self.assertEqual((root / 'installed/current/runtime/wizskills.lock').read_bytes(),
+                             (ROOT / 'wizskills.lock').read_bytes())
+            # A lock on disk that isn't the requested commit's is never carried.
+            (root / 'wizskills.lock').write_bytes((ROOT / 'wizskills.lock').read_bytes() + b'\n')
+            stale = subprocess.run(elsewhere(collector(root, binaries, output, source, target, receipts),
+                                             str(output) + '-stale'), capture_output=True, text=True)
+            self.assertEqual(stale.returncode, 1, stale.stderr)
+            self.assertFalse(Path(str(output) + '-stale').exists())
 
     def bound_and_installed(self, root, target, identity_file, bundle, products=None, home=None):
         """#1148: the collected, packaged target's candidate artifact rows bind
