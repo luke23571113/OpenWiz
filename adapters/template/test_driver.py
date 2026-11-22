@@ -64,13 +64,14 @@ def pinned_path(folder, *fixtures):
         if shutil.which(name):
             os.symlink(shutil.which(name), os.path.join(tools, name))
     os.symlink(sys.executable, os.path.join(tools, 'python3'))
-    return no_real_harness(os.pathsep.join(fixtures + (tools,)))
+    return no_real_harness(os.pathsep.join(fixtures + (tools,)), fixtures)
 
 
-def no_real_harness(path):
+def no_real_harness(path, fixtures=(os.path.join(HERE, 'fixtures'),)):
+    allowed = {os.path.realpath(f) for f in fixtures}
     for name in HARNESSES:
         found = shutil.which(name, path=path)
-        if found and not os.path.realpath(found).startswith(REPO + os.sep):
+        if found and os.path.dirname(os.path.realpath(found)) not in allowed:
             raise AssertionError('%s on the PATH is %s, outside the fixtures: a test could launch a real harness'
                                  % (name, found))
     return path

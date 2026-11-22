@@ -63,13 +63,14 @@ def pinned_path(folder, *fixtures):
         if shutil.which(name):
             os.symlink(shutil.which(name), os.path.join(tools, name))
     os.symlink(sys.executable, os.path.join(tools, 'python3'))
-    return no_real_harness(os.pathsep.join(fixtures + (tools,)))
+    return no_real_harness(os.pathsep.join(fixtures + (tools,)), fixtures)
 
 
-def no_real_harness(path):
+def no_real_harness(path, fixtures=(FIXTURES,)):
+    allowed = {os.path.realpath(f) for f in fixtures}
     for name in HARNESSES:
         found = shutil.which(name, path=path)
-        if found and not os.path.realpath(found).startswith(REPO + os.sep):
+        if found and os.path.dirname(os.path.realpath(found)) not in allowed:
             raise AssertionError('%s on the PATH is %s, outside the fixtures: a test could launch a real harness'
                                  % (name, found))
     return path
@@ -90,7 +91,7 @@ class Kit(unittest.TestCase):
         self.folder = tempfile.mkdtemp()
         self.mark = secrets.token_hex(8)
         self.env = dict(os.environ, KIT_TRACKER=tracker(self.folder), KIT_TEST=self.mark, GH_TOKEN=TOKEN,
-                        OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'),
+                        OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'), OPENWIZ_TEMPLATE_LIVE='1',
                         PATH=pinned_path(self.folder, FIXTURES))
 
     def left(self):
@@ -145,6 +146,22 @@ class Kit(unittest.TestCase):
                                               PATH=real + os.pathsep + self.env['PATH'], OPENWIZ_TEMPLATE_LIVE=live)
                     self.assertEqual((code, out[1].startswith('fail start: ')), (1, True), out)
                     self.assertFalse(os.path.exists(ran), 'the kit started a real %s through the template' % name)
+
+    def test_the_kit_treats_only_a_driver_holding_the_templates_command_as_the_template(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        with open(TEMPLATE) as f:
+            source = f.read()
+        edited = os.path.join(self.folder, 'edited')
+        with open(edited, 'w') as f:
+            f.write(source.replace("return [req['harness'], '--model'", "return ['my-host', req['harness'], '--model'"))
+        renamed = os.path.join(self.folder, 'renamed')
+        with open(renamed, 'w') as f:
+            f.write(source.replace("'driver': 'template'", "'driver': 'example'"))
+        cloudroom = os.path.join(HERE, '..', '..', 'adapters', 'cloudroom', 'driver')
+        for driver, held in ((TEMPLATE, True), (renamed, True), (os.path.join(self.folder, 'missing'), True),
+                             (edited, False), (cloudroom, False)):
+            with self.subTest(driver=os.path.basename(driver)):
+                self.assertEqual(kit.holds_template_command(driver), held)
 
     def test_without_proc_as_on_macos_the_template_passes_all_five(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}

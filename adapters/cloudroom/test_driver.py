@@ -33,7 +33,7 @@ _spec.loader.exec_module(driver)
 
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'  # a token's shape, built here so no file holds one
 PROJECT, PARENT = 'prj_syn_0001', 'thr_syn_parent'
-PLATFORMS = r'\*\*Platforms:\*\* (Linux|macOS)[^\n]*, Python 3\.[0-9]+ or later'
+PLATFORMS = r'\*\*Platforms:\*\*[ \t]*[^\s*]'
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude', 'model': 'Opus 5.5'}
 
 
@@ -553,6 +553,8 @@ class Driver(unittest.TestCase):
             with self.subTest(path):
                 with open(path) as f:
                     self.assertRegex(f.read(), PLATFORMS)
+        with open(os.path.join(HERE, 'README.md')) as f:
+            self.assertRegex(f.read(), r'\*\*Platforms:\*\* (Linux|macOS)[^\n]*, Python 3\.[0-9]+ or later')
 
     def test_the_shared_platform_check_takes_any_platform_and_language(self):
         for text, named in (('**Platforms:** Windows', True), ('**Platforms:** Linux, a Rust binary', True),

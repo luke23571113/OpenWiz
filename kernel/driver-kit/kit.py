@@ -7,8 +7,10 @@ import os
 import re
 import secrets
 import select
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.dont_write_bytecode = True
@@ -30,11 +32,36 @@ KEYWORDS = {'$schema', 'type', 'required', 'additionalProperties', 'properties',
             'maxLength', 'minimum', 'items', 'minItems', 'uniqueItems', 'enum', 'const', 'allOf', 'contains'}
 TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool}
 PROC = os.path.isdir('/proc/self')
+TEMPLATE = os.path.join(HERE, '..', '..', 'adapters', 'template', 'driver')
+AGENT_CLIS = ('claude', 'claude-code', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'openclaw', 'copilot',
+              'goose', 'gemini', 'kimi', 'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp',
+              'agy', 'oz', 'sculpt', 'hermes', 'acpx', 'droid', 'aider')
+STUB = '#!/bin/sh\necho "kit.py: refused: $0 is an agent CLI, and a driver that still holds the template\'s command ' \
+       'never starts one" >&2\nexit 1\n'
 PROBE = ['-I', '-c', "import sys; sys.stdout.write('.'); sys.stdout.flush(); sys.stdin.read()"]
 
 
 class Unusable(Exception):
     pass
+
+
+def holds_template_command(driver):
+    # SAFETY: a driver the kit can't read, or that still holds the template's `command`, is treated as the template.
+    try:
+        with open(TEMPLATE) as f:
+            found = re.search(r'^def command\(.*?(?=^\S)', f.read(), re.S | re.M)
+        with open(driver) as f:
+            return not found or found.group(0) in f.read()
+    except (OSError, UnicodeDecodeError):
+        return True
+
+
+def stub_agent_clis(folder):
+    for name in AGENT_CLIS:
+        with open(os.path.join(folder, name), 'w') as f:
+            f.write(STUB)
+        os.chmod(os.path.join(folder, name), 0o700)
+    return folder
 
 
 def _unique(pairs):
@@ -210,6 +237,10 @@ class Kit:
         self.groups = set()
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
+        self.stubs = None
+        if holds_template_command(args.driver):
+            self.stubs = stub_agent_clis(tempfile.mkdtemp(prefix='openwiz-kit-stubs-'))
+            self.env['PATH'] = self.stubs + os.pathsep + self.env.get('PATH', '')
 
     def leak(self, what):
         if what not in self.leaks:
@@ -440,7 +471,7 @@ def main(argv):
     ap.add_argument('--tracker', help='a local throwaway tracker file, read instead of GitHub')
     ap.add_argument('--wait', type=int, default=900, help='seconds to wait for each note change')
     args = ap.parse_args(argv)
-    failed = False
+    failed, kit = False, None
     try:
         kit = Kit(args, Ticket(args.repo, args.ticket, args.tracker))
         for name, (verdict, what) in kit.checks():
@@ -449,6 +480,9 @@ def main(argv):
     except (Unusable, records_kit.Unreadable) as e:
         print('kit.py: %s' % e, file=sys.stderr)
         return 2
+    finally:
+        if kit and kit.stubs:
+            shutil.rmtree(kit.stubs, ignore_errors=True)
     return 1 if failed else 0
 
 
