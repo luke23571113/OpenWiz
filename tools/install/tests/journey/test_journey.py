@@ -60,7 +60,8 @@ SHELL_ARGUMENT = re.compile(r'"\$[0-9](?=["/])')
 
 
 def not_offered(raw):
-    return NOT_OFFERED.findall(SHELL_ARGUMENT.sub('"ARG', ' '.join(raw.split())))
+    code = re.sub(r'^```[a-z]*\n.*?^```$', lambda m: SHELL_ARGUMENT.sub('"ARG', m[0]), raw, flags=re.M | re.S)
+    return NOT_OFFERED.findall(' '.join(code.split()))
 BUILD_TOOLS = ('cargo', 'rustc', 'rustup', 'npm', 'node', 'npx')
 REPO = 'synthetic-owner/synthetic-consumer'
 PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write', 'pull_requests': 'write',
