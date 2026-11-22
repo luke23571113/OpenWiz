@@ -1017,8 +1017,11 @@ class Login(Base):
         secret = (b'Could not reach the CloudRoom server.\n'
                   b'Retry at https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001 as owner@example.invalid\n'
                   b'token: synthetic-token-0123456789abcdefghij\n\x1b[31mpassword=hunter2\x1b[0m\n'
-                  b'Authorization: Bearer synthetic-bearer\n')
-        for code, reply, said in ((1, b'', secret), (1, secret, b''), (None, b'', b''), (1, b'', b''),
+                  b'Authorization: Bearer synthetic-bearer\n{"token": "tk1", "refresh_token":"tk2"}\n'
+                  b'Authorization:\tBearer\ttb3\n\x1b[38:2:255:0:0mcolour\x1b[0m done\n')
+        hung = b'CloudRoom could not start its server.\nhalf a line with tk4'
+        for code, reply, said in ((1, b'', secret), (1, secret, b''), (None, b'', b''), (None, b'', hung),
+                                  (None, secret, b''), (1, b'', b''),
                                   (0, b'{"error": {"message": "Sign-in is busy."}}', b'')):
             with self.subTest(code=code, reply=reply, said=said):
                 self.host.sign_in_code, self.host.sign_in_reply, self.host.sign_in_said = code, reply, said
@@ -1026,13 +1029,19 @@ class Login(Base):
                 self.assertEqual((result['code'], result['opened']), ('cloudroom_login_missing', None))
                 self.assertEqual(self.host.opened, [])
                 for word in ('synthetic-nonce', 'owner@example.invalid', 'synthetic-token', 'hunter2', 'synthetic-bearer',
-                             '\x1b'):
+                             '\x1b', 'tk1', 'tk2', 'tb3', 'tk4', '38:2', '255'):
                     self.assertNotIn(word, err)
+                if code is None:
+                    self.assertIn("CloudRoom's sign-in did not answer", err)
+                if said == hung:
+                    self.assertIn('openwiz-cloudroom: CloudRoom said: CloudRoom could not start its server.\n', err)
+                    self.assertNotIn('half a line', err)
                 if secret in (reply, said):
                     self.assertIn('openwiz-cloudroom: CloudRoom said: Could not reach the CloudRoom server.\n', err)
                     self.assertIn('openwiz-cloudroom: CloudRoom said: Retry at [link removed] as [address removed]\n', err)
+                    self.assertIn('openwiz-cloudroom: CloudRoom said: colour done\n', err)
                 elif code is None:
-                    self.assertIn("CloudRoom's sign-in did not answer", err)
+                    pass
                 elif code == 0:
                     self.assertIn('openwiz-cloudroom: CloudRoom said: Sign-in is busy.\n', err)
                 else:
@@ -1063,6 +1072,35 @@ class Login(Base):
                               'openwiz-cloudroom: CloudRoom said: see [link removed]\n'
                               'openwiz-cloudroom: CloudRoom said: state [removed]\n')
 
+    def test_a_launch_that_outlives_the_wait_never_fills_a_file(self):
+        go, wrote, pidfile, app = (self.base / name for name in ('go', 'wrote', 'pid', 'app'))
+        app.write_text(f'#!/bin/sh\necho $$ > {pidfile}\nwhile [ ! -e {go} ]; do sleep 0.05; done\n'
+                       f'head -c 4194304 /dev/zero\necho done > {wrote}\nexec sleep 60\n')
+        app.chmod(0o700)
+        real = cloudroom.Host(system='Linux', machine='x86_64', home=self.host.home, root=self.host.root)
+        with patch.object(cloudroom, 'OPEN_WAIT', 0.5):
+            self.assertEqual(real.open([str(app)]), (None, b''))
+        for _ in range(400):
+            if pidfile.exists() and pidfile.read_text().strip():
+                break
+            time.sleep(0.05)
+        pid = int(pidfile.read_text())
+        self.addCleanup(lambda: os.kill(pid, 9))
+        go.touch()
+        for _ in range(400):
+            if wrote.exists():
+                break
+            time.sleep(0.05)
+        self.assertEqual(wrote.read_text(), 'done\n', 'later output is drained, never blocking the app')
+        for fd in (1, 2):
+            self.assertTrue(os.readlink(f'/proc/{pid}/fd/{fd}').startswith('pipe:'), 'no file holds its output')
+        noisy = self.base / 'noisy'
+        noisy.write_text('#!/bin/sh\nhead -c 300000 /dev/zero | tr "\\0" x\nexit 7\n')
+        noisy.chmod(0o700)
+        with patch.object(cloudroom, 'OPEN_WAIT', 120):
+            code, out = real.open([str(noisy)])
+        self.assertEqual((code, len(out)), (7, 1 << 16))
+
     def test_a_headless_linux_machine_is_told_what_sign_in_needs(self):
         fuse_runtime = b'\x7fELF synthetic AppImage runtime libfuse.so.2 fusermount'
         cases = {
@@ -1074,7 +1112,7 @@ class Login(Base):
             'no libfuse2': (dict(app=fuse_runtime), ['libfuse.so.2', 'libfuse2']),
             'headless and no FUSE': (dict(environ={}, missing='dev/fuse'), ['needs a desktop session', 'needs FUSE']),
         }
-        for status in ('signed-out', None):
+        for status in ('signed-out', 'signed-in', None):
             for index, (name, (case, words)) in enumerate(cases.items()):
                 with self.subTest(name, status=status):
                     base = self.base / f'headless-{index}-{status}'
@@ -1086,12 +1124,13 @@ class Login(Base):
                     self.host.environ = case.get('environ', self.host.environ)
                     if 'missing' in case:
                         (self.host.root / case['missing']).unlink()
+                    self.host.calls.clear()
                     with self.assertRaises(cloudroom.Refused) as refused:
                         self.sign_in()
                     for word in words:
                         self.assertIn(word, str(refused.exception))
                     self.assertEqual(self.host.opened, [])
-                    self.assertNotIn(['cloud', 'sign-in', '--json'], [c[1:] for c in self.host.calls])
+                    self.assertEqual([c for c in self.host.calls if Path(c[0]).name == 'room-cli'], [])
         base = self.base / 'with libfuse2'
         base.mkdir()
         self.host, self.state = FakeHost(base), base / 'state'
