@@ -146,7 +146,8 @@ class Mark(unittest.TestCase):
     # catches: mark accepting a step or wait the report would then refuse.
     def test_mark_refuses_an_unknown_step_or_wait(self):
         run_dir = self.tmp / 'run'
-        for args in (('deploy', 'agent'), ('grill', 'nobody'), ('grill', 'user', '--at', 'soon')):
+        for args in (('deploy', 'agent'), ('grill', 'nobody'), ('grill', 'user', '--at', 'soon'),
+                     ('grill', 'user', '--failure', ' ')):
             with self.subTest(args=args):
                 r = bench('mark', run_dir, *args)
                 self.assertNotEqual(r.returncode, 0)

@@ -16,10 +16,30 @@ STEPS = ('preflight', 'install', 'setup check', 'skills copy', 'where', 'repo', 
          'models', 'host setting', 'plan', 'launch', 'build', 'review', 'merge')
 WAITS = ('user', 'agent', 'timer', 'ci')
 LOG = 'steps.jsonl'
+LOG_KEYS = {'at', 'step', 'waits_on', 'failure'}
+FIELDS = {'spec.json': ('createdAt',), 'tickets.json': ('createdAt',),
+          'prs.json': ('createdAt', 'mergedAt', 'closingIssuesReferences')}
 
 
 class Bad(Exception):
     """An unreadable input: the message names the file and line."""
+
+
+def no_repeats(pairs):
+    keys = [k for k, _ in pairs]
+    repeated = sorted({k for k in keys if keys.count(k) > 1})
+    if repeated:
+        raise ValueError(f'repeated key {repeated[0]!r}')
+    return dict(pairs)
+
+
+def exact_keys(where, value, required, optional=()):
+    if not isinstance(value, dict):
+        raise Bad(f'{where}: not a JSON object')
+    missing = sorted(set(required) - set(value))
+    extra = sorted(set(value) - set(required) - set(optional))
+    if missing or extra:
+        raise Bad(f'{where}: ' + '; '.join([f'missing {k!r}' for k in missing] + [f'unknown key {k!r}' for k in extra]))
 
 
 def parse_time(value):
@@ -56,11 +76,10 @@ def read_log(path):
             continue
         where = f'{path.name} line {n}'
         try:
-            line = json.loads(raw)
-        except ValueError:
-            raise Bad(f'{where}: not JSON') from None
-        if not isinstance(line, dict):
-            raise Bad(f'{where}: not a JSON object')
+            line = json.loads(raw, object_pairs_hook=no_repeats)
+        except ValueError as e:
+            raise Bad(f'{where}: not JSON ({e})') from None
+        exact_keys(where, line, LOG_KEYS - {'failure'}, {'failure'})
         at = parse_time(line.get('at'))
         if at is None:
             raise Bad(f'{where}: "at" is not a time with a zone')
@@ -69,11 +88,11 @@ def read_log(path):
         if line.get('waits_on') not in WAITS:
             raise Bad(f'{where}: unknown wait {line.get("waits_on")!r}; one of {", ".join(WAITS)}')
         failure = line.get('failure')
-        if failure is not None and not isinstance(failure, str):
+        if 'failure' in line and not (isinstance(failure, str) and failure.strip()):
             raise Bad(f'{where}: "failure" is not text')
         if steps and at < steps[-1]['at']:
             raise Bad(f'{where}: earlier than the line before it')
-        steps.append({'at': at, 'step': line['step'], 'waits_on': line['waits_on'], 'failure': failure or None})
+        steps.append({'at': at, 'step': line['step'], 'waits_on': line['waits_on'], 'failure': failure})
     return steps
 
 
@@ -83,13 +102,15 @@ def read_json(path):
     if not path.is_file():
         raise Bad(f'{path.name}: missing')
     text = path.read_text(encoding='utf-8')
-    decoder = json.JSONDecoder()
+    decoder = json.JSONDecoder(object_pairs_hook=no_repeats)
 
     def value_at(i):
         try:
             return decoder.raw_decode(text, i)
-        except ValueError as e:
+        except json.JSONDecodeError as e:
             raise Bad(f'{path.name} line {e.lineno}: not JSON ({e.msg})') from None
+        except ValueError as e:
+            raise Bad(f'{path.name} line {line(i)}: not JSON ({e})') from None
 
     def skip(i):
         while i < len(text) and text[i] in ' \t\r\n':
@@ -122,10 +143,9 @@ def read_json(path):
     return out
 
 
-def record(name, n, value, fields):
-    where = f'{name} line {n}'
-    if not isinstance(value, dict):
-        raise Bad(f'{where}: not a JSON object')
+def record(name, n, value):
+    where, fields = f'{name} line {n}', FIELDS[name]
+    exact_keys(where, value, ('number',) + fields)
     if not isinstance(value.get('number'), int) or isinstance(value.get('number'), bool):
         raise Bad(f'{where}: "number" is not a number')
     out = {'number': value['number']}
@@ -151,10 +171,9 @@ def read_github(run_dir):
     spec = read_json(run_dir / 'spec.json')
     if len(spec) != 1 or isinstance(spec[0][1], list):
         raise Bad(f'spec.json line {spec[0][0] if spec else 1}: not one JSON object')
-    spec = record('spec.json', *spec[0], ('createdAt',))
-    tickets = [record('tickets.json', n, v, ('createdAt',)) for n, v in read_json(run_dir / 'tickets.json')]
-    prs = [record('prs.json', n, v, ('createdAt', 'mergedAt', 'closingIssuesReferences'))
-           for n, v in read_json(run_dir / 'prs.json')]
+    spec = record('spec.json', *spec[0])
+    tickets = [record('tickets.json', n, v) for n, v in read_json(run_dir / 'tickets.json')]
+    prs = [record('prs.json', n, v) for n, v in read_json(run_dir / 'prs.json')]
     numbers = {t['number'] for t in tickets}
     fleet = [pr for pr in prs if pr['closes'] & numbers]
     return spec, tickets, fleet
@@ -167,7 +186,7 @@ def report(run_dir):
     events += [(t['createdAt'], f'ticket #{t["number"]} created') for t in tickets]
     events += [(pr['createdAt'], f'pull request #{pr["number"]} created') for pr in fleet]
     events += [(pr['mergedAt'], f'pull request #{pr["number"]} merged') for pr in fleet if pr['mergedAt']]
-    events.sort(key=lambda e: e[0])  # stable: equal times keep their order
+    events.sort(key=lambda e: e[0])
 
     start = next((s['at'] for s in steps if s['step'] == 'install'), None)
     merged = sorted((pr for pr in fleet if pr['mergedAt']), key=lambda pr: pr['mergedAt'])
@@ -225,8 +244,10 @@ def mark(run_dir, step, waits_on, failure, at):
     t = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0) if at is None else parse_time(at)
     if t is None:
         raise Bad(f'--at {at!r} is not a time with a zone')
+    if failure is not None and not failure.strip():
+        raise Bad('--failure is empty')
     line = {'at': iso(t), 'step': step, 'waits_on': waits_on}
-    if failure:
+    if failure is not None:
         line['failure'] = failure
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / LOG, 'a', encoding='utf-8') as f:
