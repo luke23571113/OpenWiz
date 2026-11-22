@@ -345,15 +345,23 @@ class Access(unittest.TestCase):
                 pass
             def do_GET(self):
                 self.send_response(200)
-                self.send_header('Transfer-Encoding', 'chunked')
-                self.end_headers()
-                self.wfile.write(b'400\r\n{"keys": [')
+                if self.path == '/chunked':
+                    self.send_header('Transfer-Encoding', 'chunked')
+                    self.end_headers()
+                    self.wfile.write(b'400\r\n{"keys": [')
+                else:
+                    self.send_header('Content-Length', str(len(keys) + 64))
+                    self.end_headers()
+                    self.wfile.write(keys)
                 self.close_connection = True
+        keys = json.dumps({'keys': self.provider.keys}).encode()
         server = HTTPServer(('127.0.0.1', 0), Truncated)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
-        cut = f'http://127.0.0.1:{server.server_port}/cdn-cgi/access/certs'
-        answers = {'nested': lambda: (200, b'[' * 100_000), 'truncated': lambda: access.Http().request('GET', cut, {})}
+        cut = f'http://127.0.0.1:{server.server_port}'
+        answers = {'nested': lambda: (200, b'[' * 100_000),
+                   'truncated': lambda: access.Http().request('GET', cut + '/chunked', {}),
+                   'short': lambda: access.Http().request('GET', cut + '/short', {})}
         recorded = self.provider.request
         operation = self.preview()
         try:
@@ -386,30 +394,46 @@ class Access(unittest.TestCase):
         self.assertIsNone(status(first)['observation'], 'the second route\'s result is not the first operation\'s')
 
     def test_pruning_the_checked_operation_never_hands_its_observation_to_an_older_check(self):
-        self.p['host'] = 'second.synthetic.invalid'
-        self.save()
-        pruned = self.preview()
-        self.p['host'] = 'openwiz.synthetic.invalid'
-        self.save()
-        kept = self.preview()
-        self.assertEqual(self.apply(kept)['operation']['phase'], 'applied')
-        self.p['host'] = 'second.synthetic.invalid'
-        self.save()
-        owner_report, self.provider = self.provider.owner_report, Recording(self.p, self.secrets)
-        self.provider.owner_report = owner_report
-        self.assertEqual(self.apply(pruned)['operation']['phase'], 'applied')
-        def fill(value):
-            value['operations'] += [{**value['operations'][0], 'operation_id': f'{n:032x}', 'phase': 'proposed',
-                                     'reason': 'Synthetic unchecked proposal.'}
-                                    for n in range(access.store.MAX_OPERATIONS - len(value['operations']))]
-        access.store.Store(str(self.state)).update(fill)
-        self.p['host'] = 'third.synthetic.invalid'
-        self.save()
-        self.preview()
-        saved = access.store.Store(str(self.state)).read()['operations']
-        self.assertNotIn(pruned['operation_id'], [o['operation_id'] for o in saved])
-        status = access.execute(['status', '--state-dir', str(self.state), '--operation', kept['operation_id']])
-        self.assertIsNone(status['observation'], 'the pruned later check\'s result is not the kept operation\'s')
+        project = ['--repository', 'synthetic-owner/synthetic-repo', '--operator', 'Synthetic Operator',
+                   '--service-issue', '7', '--harness', 'claude-code', '--model', 'claude-opus-5-5',
+                   '--effort', 'medium', '--host', 'local']
+        def setup_preview():
+            subprocess.run([sys.executable, '-I', '-B', str(ROOT / 'tools/install/setup/setup.py'), 'prepare',
+                            '--state-dir', str(self.state), *project], check=True, capture_output=True,
+                           env={'PATH': '/usr/bin:/bin', 'HOME': str(self.root)}, timeout=30)
+        def access_preview():
+            self.p['host'] = 'third.synthetic.invalid'
+            self.save()
+            self.preview()
+        for pruner in (access_preview, setup_preview):
+            with self.subTest(pruner=pruner.__name__):
+                self.state = self.root / pruner.__name__
+                self.p = selected()
+                self.provider = Recording(self.p, self.secrets)
+                self.provider.owner_report = lambda: {'schema': 'openwiz.setup.v1', 'operations':
+                                                      access.store.Store(str(self.state)).read()['operations']}
+                self.p['host'] = 'second.synthetic.invalid'
+                self.save()
+                pruned = self.preview()
+                self.p['host'] = 'openwiz.synthetic.invalid'
+                self.save()
+                kept = self.preview()
+                self.assertEqual(self.apply(kept)['operation']['phase'], 'applied')
+                self.p['host'] = 'second.synthetic.invalid'
+                self.save()
+                owner_report, self.provider = self.provider.owner_report, Recording(self.p, self.secrets)
+                self.provider.owner_report = owner_report
+                self.assertEqual(self.apply(pruned)['operation']['phase'], 'applied')
+                def fill(value):
+                    value['operations'] += [{**value['operations'][0], 'operation_id': f'{n:032x}',
+                                             'phase': 'proposed', 'reason': 'Synthetic unchecked proposal.'}
+                                            for n in range(access.store.MAX_OPERATIONS - len(value['operations']))]
+                access.store.Store(str(self.state)).update(fill)
+                pruner()
+                saved = access.store.Store(str(self.state)).read()['operations']
+                self.assertNotIn(pruned['operation_id'], [o['operation_id'] for o in saved])
+                status = access.execute(['status', '--state-dir', str(self.state), '--operation', kept['operation_id']])
+                self.assertIsNone(status['observation'], 'the pruned later check\'s result is not the kept operation\'s')
 
     def test_tailscale_cli_runs_only_from_a_fixed_location_with_a_fixed_environment(self):
         planted, fixed = self.root / 'planted', self.root / 'fixed'
