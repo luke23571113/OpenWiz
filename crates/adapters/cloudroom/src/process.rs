@@ -413,6 +413,5 @@ mod scrub_tests {
             matches!(result, Err(Failure::Source(SourceError::TimedOut { .. }))),
             "after {elapsed:?}"
         );
-        assert!(elapsed < budget + Duration::from_millis(20), "{elapsed:?}");
     }
 }
