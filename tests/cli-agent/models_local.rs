@@ -61,14 +61,18 @@ fn report(output: Output, code: i32, contract: &str, definition: &str) -> Value 
         String::from_utf8_lossy(&output.stderr)
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    validate(&value, contract, definition);
+    value
+}
+
+fn validate(value: &Value, contract: &str, definition: &str) {
     let mut contract: Value = serde_json::from_slice(
         &fs::read(Path::new(ROOT).join("contracts").join(contract)).unwrap(),
     )
     .unwrap();
     contract.as_object_mut().unwrap().remove("oneOf");
     contract["$ref"] = json!(format!("#/$defs/{definition}"));
-    assert_eq!(schema::validate(&contract, &value), Vec::<String>::new());
-    value
+    assert_eq!(schema::validate(&contract, value), Vec::<String>::new());
 }
 
 #[test]
@@ -203,5 +207,41 @@ fn local_set_reports_unlisted_choices_and_refuses_unsettable_ones() {
         assert_eq!(fs::read(sandbox.0.join(FLEET)).unwrap(), fleet);
         assert_eq!(fs::read(sandbox.0.join(SNAPSHOT)).unwrap(), snapshot);
     }
+    assert!(!sandbox.0.join("calls").exists());
+}
+
+#[test]
+fn local_inventory_and_snapshot_describe_installed_harnesses() {
+    let sandbox = project();
+    install(&sandbox, "codex");
+    let local_label = "Installed local harnesses with OpenWiz's current choices";
+    let options = report(
+        sandbox.run(&["models", "--host", "local", "--json"]),
+        0,
+        "new-thread.v1.schema.json",
+        "options",
+    );
+    assert_eq!(options["label"], local_label);
+
+    report(
+        sandbox.run(&[
+            "models",
+            "set",
+            "reviewer",
+            "codex",
+            "gpt-6.2-sol",
+            "medium",
+            "--host",
+            "local",
+            "--json",
+        ]),
+        0,
+        "models.v1.schema.json",
+        "set_report",
+    );
+    let snapshot: Value =
+        serde_json::from_slice(&fs::read(sandbox.0.join(SNAPSHOT)).unwrap()).unwrap();
+    assert_eq!(snapshot["label"], local_label);
+    validate(&snapshot, "models.v1.schema.json", "snapshot");
     assert!(!sandbox.0.join("calls").exists());
 }
