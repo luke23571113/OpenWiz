@@ -320,6 +320,30 @@ class Template(unittest.TestCase):
         self.assertEqual(self.call('stop', out, **macos), (0, dict(out, stopped=True)))
         self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
 
+    def test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file(self):
+        # catches: a stop that, with lsof failing, falls back to the turn's group and recorded processes in silence.
+        for broken in (False, True):
+            with self.subTest(lsof_fails=broken):
+                self.tearDown()
+                self.setUp()
+                macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+                code, out = self.call('start', START, **macos)
+                self.assertEqual(code, 0, out)
+                self.logged(1)
+                stop = dict(self.env, **macos)
+                if broken:
+                    folder = os.path.join(self.folder, 'broken-lsof')
+                    os.mkdir(folder)
+                    with open(os.path.join(folder, 'lsof'), 'w') as f:
+                        f.write('#!/bin/sh\necho "lsof: synthetic failure %s" >&2\nexit 1\n' % self.mark)
+                    os.chmod(os.path.join(folder, 'lsof'), 0o700)
+                    stop['PATH'] = folder + os.pathsep + stop['PATH']
+                p = subprocess.run([DRIVER, 'stop'], input=json.dumps(out), env=stop, capture_output=True, text=True,
+                                   timeout=60)
+                self.assertEqual((p.returncode, json.loads(p.stdout)), (0, dict(out, stopped=True)))
+                self.assertEqual('could not check' in p.stderr, broken, p.stderr)
+                self.assertNotIn(self.mark, p.stderr)
+
     def asked_ps_for_environments(self, calls):
         with open(calls) as f:
             asked = f.read().splitlines()
