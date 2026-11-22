@@ -103,7 +103,7 @@ class Template(unittest.TestCase):
         self.mark = secrets.token_hex(8)
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
         self.env = dict(os.environ, KIT_TEST=self.mark, FAKE_TURNS=self.turns, FAKE_HOLD=self.hold,
-                        OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'),
+                        OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'), OPENWIZ_TEMPLATE_LIVE='1',
                         PATH=pinned_path(self.folder, os.path.join(HERE, 'fixtures')))
 
     def tearDown(self):
@@ -185,6 +185,21 @@ class Template(unittest.TestCase):
                          os.path.join(HERE, 'fixtures', 'fake-harness'))
         with self.assertRaisesRegex(AssertionError, 'could launch a real harness'):
             self.call('start', dict(START, harness='claude'), PATH=outside + os.pathsep + self.env['PATH'])
+
+    def test_without_the_live_opt_in_start_and_wake_start_no_harness(self):
+        for live in ('', '0', 'yes'):
+            with self.subTest(live=live):
+                code, out = self.call('start', START, OPENWIZ_TEMPLATE_LIVE=live)
+                self.assertEqual((code, out.get('error')),
+                                 (1, 'the template starts no harness unless OPENWIZ_TEMPLATE_LIVE=1 is set'), out)
+        code, run = self.call('start', START)
+        self.assertEqual(code, 0, run)
+        self.logged(1)
+        code, out = self.call('wake', run, OPENWIZ_TEMPLATE_LIVE='')
+        self.assertEqual((code, out.get('error')),
+                         (1, 'the template starts no harness unless OPENWIZ_TEMPLATE_LIVE=1 is set'), out)
+        self.assertEqual(len(self.logged()), 1, 'a turn started without the live opt-in')
+        self.assertEqual(self.call('stop', run), (0, dict(run, stopped=True)))
 
     def test_stop_ends_what_the_turn_left_behind_after_it_exits(self):
         code, out = self.call('start', START)
