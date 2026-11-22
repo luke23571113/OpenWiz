@@ -468,8 +468,11 @@ class Driver(unittest.TestCase):
                 self.assertNotIn('tell', [c[1] for c in self.calls()])
 
     def test_stop_finds_its_thread_by_title_when_the_run_record_is_lost(self):
-        cases = {'own child': ({}, 0), 'cloud': ({'FAKE_ROOM_HOST': 'cloud'}, 1),
-                 'another caller': ({'ROOM_THREAD_ID': 'thr_syn_else'}, 1), 'two titled': ({'TWIN': 1}, 1)}
+        cases = {'own child': ({}, 0), 'cloud': ({'FAKE_ROOM_HOST': 'cloud'}, 0),
+                 'another caller': ({'ROOM_THREAD_ID': 'thr_syn_else'}, 1), 'two titled': ({'TWIN': 1}, 1),
+                 'cloud, another caller': ({'FAKE_ROOM_HOST': 'cloud', 'ROOM_THREAD_ID': 'thr_syn_else'}, 1),
+                 'cloud, two titled': ({'FAKE_ROOM_HOST': 'cloud', 'TWIN': 1}, 1),
+                 'cloud, another project': ({'FAKE_ROOM_HOST': 'cloud', 'ROOM_PROJECT_ID': 'prj_syn_0002'}, 1)}
         for name, (env, want) in cases.items():
             with self.subTest(name):
                 self.fresh()
@@ -492,8 +495,34 @@ class Driver(unittest.TestCase):
                                  err)
                 if want:
                     self.assertIn(run['run'], json.dumps(err))
+                else:
+                    before = len(self.calls())
+                    self.assertEqual(self.call('stop', run, **env), (0, dict(run, stopped=True)),
+                                     'a retried stop of a recovered run is not answered as stopped')
+                    self.assertNotIn('archive', [c[1] for c in self.calls()[before:]])
                 self.assertEqual(self.call('wake', run)[0], 1)
                 self.assertNotIn('tell', [c[1] for c in self.calls()])
+
+    def test_no_provider_on_the_callers_path_is_ever_started(self):
+        outside = os.path.join(self.folder, 'outside')
+        ran = os.path.join(self.folder, 'provider-ran')
+        os.mkdir(outside)
+        with open(os.path.join(outside, 'claude-code'), 'w') as f:
+            f.write('#!/bin/sh\ntouch %s\n' % ran)
+        os.chmod(os.path.join(outside, 'claude-code'), 0o700)
+        old = os.environ['PATH']
+        os.environ['PATH'] = outside + os.pathsep + old
+        try:
+            self.fresh()
+        finally:
+            os.environ['PATH'] = old
+        code, out = self.call('start', START)
+        self.assertEqual(code, 0, out)
+        with open(self.log + '.threads') as f:
+            self.assertEqual(json.load(f)['thr_syn_0001']['turns'], [],
+                             "the fake room-cli started a provider from the caller's PATH")
+        self.assertFalse(os.path.exists(ran))
+        self.assertIsNone(shutil.which('claude-code', path=self.env['PATH']))
 
     def test_a_failed_room_cli_command_is_named_by_fixed_words(self):
         signed_out, other, silent = 'room-cli is not signed in', 'room-cli gave an error the driver does not repeat', \
