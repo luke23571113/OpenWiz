@@ -245,3 +245,23 @@ fn local_inventory_and_snapshot_describe_installed_harnesses() {
     validate(&snapshot, "models.v1.schema.json", "snapshot");
     assert!(!sandbox.0.join("calls").exists());
 }
+
+#[test]
+fn list_save_reads_the_saved_local_host_without_cloudroom() {
+    let sandbox = project();
+    install(&sandbox, "codex");
+    save_host(&sandbox, "local-without-cloudroom-ids");
+    let listed = report(
+        sandbox.run(&["models", "list", "--save", "--json"]),
+        0,
+        "models.v1.schema.json",
+        "list_report",
+    );
+    assert_eq!(listed["saved"], SNAPSHOT);
+    assert_eq!(listed["offered"]["source"], "local");
+    assert_eq!(listed["offered"]["harnesses"][0]["provider"], "codex");
+    let snapshot: Value =
+        serde_json::from_slice(&fs::read(sandbox.0.join(SNAPSHOT)).unwrap()).unwrap();
+    assert_eq!(snapshot, listed["offered"]);
+    assert!(!sandbox.0.join("calls").exists());
+}
