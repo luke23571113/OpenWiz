@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""receipt.py's command line and the receipt file it writes, on fixture run records only."""
 import json
 import os
 import shutil
@@ -14,7 +13,6 @@ RECEIPT = os.path.join(HERE, 'receipt.py')
 FIXTURES = os.path.join(HERE, 'fixtures', 'receipts')
 RECORDS = os.path.join(FIXTURES, 'records')
 EXPECTED = os.path.join(FIXTURES, 'expected')
-# WizMarket's own valid receipt fixture, copied from contracts/listing.v1.md's fixtures at this commit.
 WIZMARKET_FIXTURE = os.path.join(FIXTURES, 'wizmarket', 'verified-driver.txt')
 WIZMARKET_SOURCE = 'fixtures/valid/verified-driver/receipts/example-driver/2026-11-01-aaaaaaaaaaaa.txt'
 TOKEN = 'gh' + 'p_' + 'Synthetic0Receipt0Value' * 2
@@ -23,7 +21,6 @@ AGENT_CLIS = ('claude codex cursor-agent agent pi opencode copilot goose gemini 
 
 
 def stubs():
-    """Refusing no-op stubs for every agent CLI, first on PATH, so no test here can reach a real one."""
     d = tempfile.mkdtemp(prefix='receipt-stubs-')
     for name in AGENT_CLIS:
         path = os.path.join(d, name)
@@ -63,7 +60,7 @@ class Receipt(unittest.TestCase):
         e = dict(os.environ, PATH=STUBS + os.pathsep + os.environ.get('PATH', ''))
         e.pop('OPENWIZ_GITHUB_APP_KEY', None)
         e.update(env or {})
-        return subprocess.run([sys.executable, '-I', RECEIPT, path, '--listing', listing, '--run-by', run_by,
+        return subprocess.run([sys.executable, '-I', RECEIPT, path, '--listing', listing, '--run-by=' + run_by,
                                '-o', self.out], capture_output=True, text=True, env=e, timeout=60)
 
     def written(self, rel):
@@ -80,7 +77,6 @@ class Receipt(unittest.TestCase):
         self.assertEqual(files(self.out), [], 'a refused record wrote a file')
         return lines[0]
 
-    # catches: a writer whose receipt drifts from the contract's 14 lines by one byte (header, <note>, Result line).
     def test_five_of_five_gives_the_byte_exact_receipt(self):
         p = self.run_receipt(record('5-of-5.json'))
         self.assertEqual(p.returncode, 0, p.stderr)
@@ -90,7 +86,6 @@ class Receipt(unittest.TestCase):
             self.assertEqual(self.written(rel), f.read())
         self.assertEqual(p.stdout, os.path.join(self.out, rel) + '\n')
 
-    # catches: a receipt in a shape of our own, checked against WizMarket's own valid fixture, not our expectation.
     def test_receipt_matches_wizmarkets_own_valid_fixture(self):
         self.assertEqual(self.run_receipt(record('5-of-5.json')).returncode, 0)
         ours = self.written(os.path.join('receipts', 'local', '2026-11-01-aaaaaaaaaaaa.txt')).decode()
@@ -104,7 +99,6 @@ class Receipt(unittest.TestCase):
     def test_four_of_five_writes_nothing(self):
         self.refused(record('4-of-5.json'), 'kit.py exited 1')
 
-    # catches: a writer that trusts kit_exit alone and lets a fail line through.
     def test_a_fail_line_with_exit_0_writes_nothing(self):
         self.refused(record('4-of-5.json', kit_exit=0), '4 of 5 pass')
 
@@ -114,30 +108,25 @@ class Receipt(unittest.TestCase):
     def test_lines_out_of_order_write_nothing(self):
         self.refused(record('out-of-order.json'), 'out of order')
 
-    # catches: a missing check that kit.py printed exactly its five lines.
     def test_a_missing_or_extra_line_writes_nothing(self):
         lines = record('5-of-5.json')['stdout'].splitlines(True)
         self.refused(record('5-of-5.json', stdout=''.join(lines[:4])), '4 lines')
         self.refused(record('5-of-5.json', stdout=''.join(lines) + 'pass extra: more\n'), '6 lines')
 
-    # catches: a credential copied from a run into a public receipt.
     def test_a_planted_credential_writes_nothing(self):
         stdout = record('5-of-5.json')['stdout'].replace('driver v1', 'driver v1 ' + TOKEN)
         line = self.refused(record('5-of-5.json', stdout=stdout), 'credential')
         self.assertNotIn(TOKEN, line)
 
-    # catches: a writer that checks the shapes but not the kit's other half, a value from the environment.
     def test_a_secret_from_the_environment_writes_nothing(self):
         value = 'synthetic-environment-value-0001'
         line = self.refused(record('5-of-5.json', model=value), 'credential', env={'EXAMPLE_SERVICE_TOKEN': value})
         self.assertNotIn(value, line)
 
-    # catches: a machine path leaking into a receipt through a free-text field.
     def test_a_machine_path_writes_nothing(self):
         self.refused(record('5-of-5.json', model='/home/example/model'), 'machine path')
         self.refused(record('5-of-5.json', harness='C:\\Users\\example\\claude'), 'machine path')
 
-    # catches: the raw note id (a live identifier) reaching the receipt, or start/wake text other than kit.py's.
     def test_start_and_wake_must_be_kits_text(self):
         stdout = record('5-of-5.json')['stdout'].replace('posted builder status note', 'posted note')
         self.refused(record('5-of-5.json', stdout=stdout), 'start')
@@ -148,7 +137,6 @@ class Receipt(unittest.TestCase):
         stdout = record('5-of-5.json')['stdout'].replace('no login or token passed', 'nothing passed')
         self.refused(record('5-of-5.json', stdout=stdout), 'token')
 
-    # catches: a writer that trusts the record's types and writes a broken header.
     def test_a_malformed_record_writes_nothing(self):
         self.refused(record('5-of-5.json', driver_commit='a' * 12), 'driver_commit')
         self.refused(record('5-of-5.json', kit_commit='B' * 40), 'kit_commit')
@@ -162,7 +150,6 @@ class Receipt(unittest.TestCase):
     def test_an_unmapped_host_writes_nothing(self):
         self.refused(record('5-of-5.json', host='example-host'), 'example-host')
 
-    # catches: a receipt filed under a listing that isn't this run's, or a harness listing nobody mapped.
     def test_a_listing_that_is_not_this_runs_writes_nothing(self):
         self.refused(record('5-of-5.json'), 'local/claude', listing='claude')
         self.refused(record('5-of-5.json'), 'boat-dev', listing='boat-dev')
@@ -174,12 +161,10 @@ class Receipt(unittest.TestCase):
             text = self.written(os.path.join('receipts', listing, '2026-11-01-aaaaaaaaaaaa.txt')).decode()
             self.assertTrue(text.startswith('# listing: %s\n# host: %s\n' % (listing, host)), text)
 
-    # catches: a run-by that isn't a GitHub login, the one login a receipt may name.
     def test_run_by_must_be_a_login(self):
         self.refused(record('5-of-5.json'), 'run-by', run_by='/home/example')
         self.refused(record('5-of-5.json'), 'run-by', run_by='-example')
 
-    # catches: a second writer replacing the first receipt at a path, which the contract forbids.
     def test_the_first_receipt_is_kept(self):
         self.assertEqual(self.run_receipt(record('5-of-5.json')).returncode, 0)
         rel = os.path.join('receipts', 'local', '2026-11-01-aaaaaaaaaaaa.txt')
@@ -198,7 +183,6 @@ class Receipt(unittest.TestCase):
 
 
 class WizMarket(unittest.TestCase):
-    """WizMarket's own copy and checker, when a checkout is reachable through $WIZMARKET; skipped otherwise."""
 
     def checkout(self):
         root = os.environ.get('WIZMARKET')
