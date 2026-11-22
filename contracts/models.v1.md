@@ -261,7 +261,7 @@ the CLI's existing `openwiz.cli-error.v1` document. Exit numbers keep the
 `list_report` and `set_report`; they ship with MD2 (#1804) and are listed
 in `help --agent`'s catalogue (`crates/cli/src/agent-catalogue.json`) and
 human help. The forms below describe the CloudRoom behaviour. For 0.1.1,
-see [host selection and local models](setup.v1.md#the-local-offered-list)
+see [host selection and local models](https://github.com/openwizdev/OpenWiz/blob/main/contracts/setup.v1.md#the-local-offered-list)
 for the `--host` selector on plain `models`, `models set` and `models show`,
 and for the local `set` eligibility and report rules. `cli.v1.md` is a
 contract WizSkills carries byte for byte, so these rows live here until a
