@@ -251,5 +251,70 @@ class IntelMac(unittest.TestCase):
         self.assertEqual(self.cloudroom.status(self.host(), self.base / 'state')['code'], 'cloudroom_reused')
 
 
+class HostSetup(unittest.TestCase):
+    fixtures = json.loads((HERE.parent / 'tests/setup-onboard-contract/fixtures/hosts.json').read_text())
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name)
+        self.state = self.base / 'state'
+        self.env = {'HOME': str(self.base), 'PATH': str(self.base)}
+
+    def invoke(self, command, *args):
+        return subprocess.run([sys.executable, '-I', '-B', str(HERE / 'setup.py'), command,
+                               '--state-dir', str(self.state), *args], capture_output=True, env=self.env,
+                              timeout=30)
+
+    def prepare_args(self, project):
+        return [part for key, value in project.items() if key != 'runtime' and value is not None
+                for part in ('--' + key.replace('_', '-'), str(value))]
+
+    def saved(self):
+        return json.loads((self.state / 'setup/state.json').read_text())
+
+    def test_prepare_matches_host_fixtures(self):
+        cases = self.fixtures['prepared_projects']
+        for name in ('local-without-cloudroom-ids', 'boat-without-cloudroom-ids',
+                     'other-driver-without-cloudroom-ids', 'local-with-cloudroom-project',
+                     'local-with-answer-thread', 'cloudroom-driver-name', 'local-uppercase-host',
+                     'cloud-without-project', 'cloud-without-answer-thread'):
+            with self.subTest(case=name):
+                case = cases[name]
+                project = case['document']
+                args = self.prepare_args(project)
+                preview = self.invoke('prepare', *args)
+                self.assertEqual(preview.returncode == 0, case['valid'], preview.stderr)
+                if not case['valid']:
+                    self.assertEqual(preview.stdout, b'')
+                    continue
+                operation = json.loads(preview.stdout)
+                self.assertEqual(operation['effects'], [
+                    f"Select {project['repository']} for your first fleet, with agents on {project['host']}.",
+                    f"Record {project['operator']} as the loop operator and issue #7 for service records.",
+                    f"Run agents on {project['harness']}, {project['model']}, {project['effort']} effort.",
+                    'No packaged runtime found; project stays unverified.',
+                    "Save these settings in this host's owner-only OpenWiz state. Nothing is sent or created.",
+                ])
+                applied = self.invoke('prepare', *args, '--yes', '--operation', operation['operation_id'])
+                self.assertEqual(applied.returncode, 0, applied.stderr)
+                self.assertEqual(self.saved()['project'], project)
+
+    def test_explicit_cloud_prepare_has_the_legacy_bytes_and_settings(self):
+        project = self.fixtures['prepared_projects']['cloud-nine-keys']['document']
+        args = self.prepare_args(project)
+        preview = self.invoke('prepare', *args)
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        explicit = self.invoke('prepare', *args, '--host=cloud')
+        self.assertEqual(explicit.returncode, 0, explicit.stderr)
+        self.assertEqual(explicit.stdout, preview.stdout)
+        operation = json.loads(explicit.stdout)
+        applied = self.invoke('prepare', *args, '--host=cloud', '--yes', '--operation', operation['operation_id'])
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertEqual(self.saved()['project'], project)
+        self.assertEqual(self.invoke('prepare', *args, '--yes', '--operation', operation['operation_id']).stdout,
+                         applied.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()
