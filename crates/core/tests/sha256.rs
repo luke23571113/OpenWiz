@@ -1,7 +1,6 @@
-//! The core's SHA-256, which `openwiz fleet` fingerprints and start ids
-//! hash with: the streaming `Sha256Hasher` gives the same hash as
-//! `sha256_hex` of the whole input, however the bytes are cut into pieces,
-//! and the FIPS 180-4 examples.
+//! The streaming SHA-256 (`Sha256Hasher`) that staging hashes with: the
+//! same hash as `sha256_hex` of the whole input, however the bytes are cut
+//! into pieces, and the FIPS 180-4 examples.
 
 use openwiz_core::messaging::{Sha256Hasher, sha256_hex};
 
