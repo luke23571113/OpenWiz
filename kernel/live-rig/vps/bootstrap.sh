@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# Install the free CLIs the waiting live-check hosts need, pinned in tools.json, into your own prefix.
-#
-#   bash kernel/live-rig/vps/bootstrap.sh [--dry-run] [--prefix DIR] [--tools FILE]
-#
-# --prefix defaults to ~/.local (commands go in <prefix>/bin). Every download is checked against its
-# pinned sha256 before anything is run or installed from it. It never signs in, never installs a paid
-# tool, never runs sudo (a third-party installer finds a refusing sudo first on its PATH), and runs
-# nothing it installed except `<tool> --version`. A second run installs nothing. --dry-run prints each
-# step and changes nothing. Exit 0 when every tool is installed, already there or left out by design;
-# 1 when a download, checksum or install failed; 2 on a usage error or a missing python3 3.9+.
 set -eu
 py="$(command -v python3 || true)"
 if [ -z "$py" ] || ! "$py" -I -c 'import sys; sys.exit(sys.version_info < (3, 9))' 2>/dev/null; then
@@ -32,7 +22,16 @@ import tempfile
 import urllib.request
 import zipfile
 
-USAGE = 'usage: bootstrap.sh [--dry-run] [--prefix DIR] [--tools FILE]'
+USAGE = '''usage: bootstrap.sh [--dry-run] [--prefix DIR] [--tools FILE]
+
+Installs the free CLIs the waiting live-check hosts need, pinned in tools.json, into --prefix
+(default ~/.local; commands go in <prefix>/bin). Every download is checked against its pinned
+sha256 before anything is run or installed from it. It never signs in, never installs a paid tool,
+never runs sudo, and runs nothing it installed except `<tool> --version`. A second run installs
+nothing. --dry-run prints each step and changes nothing.
+
+Exit 0 when every tool is installed, already there or left out by design; 1 when a download,
+checksum or install failed; 2 on a usage error or a missing python3 3.9+.'''
 NO_SUDO = 'this bootstrap never runs sudo'
 
 
@@ -76,7 +75,6 @@ def env():
 
 
 def run_version(command):
-    """The one way anything is run here: `<command> --version`, with no input."""
     try:
         r = subprocess.run([command, '--version'], stdin=subprocess.DEVNULL, capture_output=True, text=True,
                            timeout=60, env=env())
@@ -91,7 +89,6 @@ def numbers(text):
 
 
 def system_tool(name, minimum):
-    """(version, None) when a new enough <name> is on PATH, else (None, why)."""
     path = shutil.which(name)
     have = numbers(run_version(path)) if path else None
     fix = 'install %s %s or later with your system package manager (%s)' % (name, minimum, NO_SUDO)
@@ -159,6 +156,7 @@ def install(tool, file, prefix, work):
         place(('#!/bin/sh\nexec %s -I -c %s %s "$@"\n' % (shlex.quote(sys.executable), shlex.quote(code),
                                                          shlex.quote(wheel))).encode(), dst)
     elif kind == 'installer':
+        # SAFETY: a third-party installer finds a refusing sudo first on its PATH; this bootstrap never runs sudo.
         guard = os.path.join(work, 'guard')
         place(('#!/bin/sh\necho "bootstrap: sudo refused; %s" >&2\nexit 1\n' % NO_SUDO).encode(),
               os.path.join(guard, 'sudo'))

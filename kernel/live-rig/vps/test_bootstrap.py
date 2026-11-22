@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Fixture tests for bootstrap.sh: fake installers and fake downloads in a temp prefix, never a real host."""
 import hashlib
 import io
 import json
@@ -29,8 +28,7 @@ def script(path, body):
     os.chmod(path, 0o755)
 
 
-def fake_tool(version):
-    # Every call is logged, so a test can show the bootstrap ran nothing but --version.
+def logged_logged_fake_tool(version):
     return 'echo "$(basename "$0") $*" >> "$FAKE_CALLS"\necho "fake %s (synthetic)"\n' % version
 
 
@@ -40,7 +38,6 @@ def sha256(path):
 
 
 class Fixture:
-    """A temp home, prefix and PATH, with fake downloads served as file:// URLs and a fake tools.json."""
 
     def __init__(self, root):
         self.root = root
@@ -53,11 +50,8 @@ class Fixture:
         self.installer_log = os.path.join(root, 'installer.log')
         for d in (self.home, self.dl, self.bin, self.stubs):
             os.makedirs(d)
-        # Refusing agent-CLI stubs come first on PATH: no fixture mistake can reach a real one.
         for name in AGENT_CLIS:
             script(os.path.join(self.stubs, name), 'echo "refused: %s is a stub" >&2\nexit 1\n' % name)
-        # The machine's own tools: an old curl (so the pinned one is installed), a git, and a sudo
-        # that records being run, so a test sees whether anything reached it.
         script(os.path.join(self.bin, 'curl'), 'echo "curl 7.88.1 (synthetic)"\n')
         script(os.path.join(self.bin, 'git'), 'echo "git version 2.43.0 (synthetic)"\n')
         script(os.path.join(self.bin, 'sudo'), 'echo sudo-ran >> "%s"\nexec "$@"\n' % self.installer_log)
@@ -66,11 +60,11 @@ class Fixture:
 
     def raw(self, name, version):
         path = os.path.join(self.dl, name)
-        script(path, fake_tool(version))
+        script(path, logged_fake_tool(version))
         return path
 
     def archive(self, name, member, version, zipped=False):
-        body = ('#!/bin/sh\n' + fake_tool(version)).encode()
+        body = ('#!/bin/sh\n' + logged_fake_tool(version)).encode()
         path = os.path.join(self.dl, name)
         if zipped:
             with zipfile.ZipFile(path, 'w') as z:
@@ -96,9 +90,7 @@ class Fixture:
                        '    return 0\n' % version)
         return path
 
-    def installer(self, name):
-        # A fake third-party installer: it records its arguments, tries sudo, and publishes the
-        # tool where the real one does, under $HOME/.local/bin.
+    def installer_that_tries_sudo(self, name):
         payload = self.raw('fakeagent.payload', '3.2.1')
         path = os.path.join(self.dl, name)
         with open(path, 'w') as f:
@@ -137,7 +129,7 @@ class Fixture:
             {'name': 'fakeagent', 'kind': 'installer', 'version': '3.2.1', 'needs': ['git', 'curl'],
              'args': ['--pin', 'abc123', '--dir', '{prefix}/lib/fakeagent'],
              'provides': '{home}/.local/bin/fakeagent', 'hosts': ['hermes'], 'source': 'synthetic',
-             'why': 'synthetic', 'files': {'any': {'url': 'file://' + self.installer('install.sh'),
+             'why': 'synthetic', 'files': {'any': {'url': 'file://' + self.installer_that_tries_sudo('install.sh'),
                                                     'sha256': sha256(os.path.join(self.dl, 'install.sh'))}}},
             {'name': 'gatedtool', 'kind': 'binary', 'version': '1.0.0', 'hosts': ['all'], 'source': 'synthetic',
              'why': 'synthetic', 'left_out': 'its only download needs a paid account'},
@@ -152,6 +144,10 @@ class Fixture:
                'PATH': os.pathsep.join([self.stubs, self.bin, '/usr/bin', '/bin'])}
         return subprocess.run(['bash', BOOTSTRAP, '--prefix', self.prefix, '--tools', tools or self.tools] +
                               list(args), env=env, cwd=self.root, capture_output=True, text=True, timeout=120)
+
+    def remove_downloads(self):
+        for name in os.listdir(self.dl):
+            os.remove(os.path.join(self.dl, name))
 
     def tree(self):
         found = []
@@ -180,8 +176,7 @@ class BootstrapTest(unittest.TestCase):
         return lines[index[0]], lines[index[0] + 1:]
 
     def test_dry_run_prints_every_step_and_changes_nothing(self):
-        for name in os.listdir(self.fx.dl):   # a dry run that fetched anything would fail on these
-            os.remove(os.path.join(self.fx.dl, name))
+        self.fx.remove_downloads()
         r = self.fx.run('--dry-run')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         for name in ('curl 8.23.0', 'gh 2.105.0', 'fakedroid 1.17.2', 'fakeapp 2.4.246', 'runpane 2.4.246',
@@ -215,11 +210,9 @@ class BootstrapTest(unittest.TestCase):
         for name in ('curl', 'gh', 'fakedroid', 'fakeapp', 'runpane', 'fakeagent'):
             path = os.path.join(self.fx.prefix, 'bin', name)
             self.assertTrue(os.access(path, os.X_OK), name)
-        # The installer got its pinned arguments, with the prefix filled in, and its sudo was refused.
         log = self.fx.read(self.fx.installer_log)
         self.assertIn('args: --pin abc123 --dir %s/lib/fakeagent\n' % self.fx.prefix, log)
         self.assertNotIn('sudo', log)
-        # Nothing installed was run except with --version, and the never-run app not at all.
         calls = self.fx.read(self.fx.calls).splitlines()
         self.assertEqual(sorted(calls), sorted('%s --version' % n for n in
                                                ('curl', 'gh', 'fakedroid', 'runpane', 'fakeagent')))
@@ -250,7 +243,7 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         before = {p: sha256(p) for p in self.fx.tree()}
         installer_log = self.fx.read(self.fx.installer_log)
-        shutil.rmtree(self.fx.dl)   # a second run that fetched anything would fail now
+        self.fx.remove_downloads()
         r = self.fx.run()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         line, rest = self.summary(r.stdout)
