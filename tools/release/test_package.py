@@ -238,6 +238,54 @@ class Package(unittest.TestCase):
             self.assertEqual(sorted(a['path'] for a in assets if a['path'].startswith('runtime/contracts/')),
                              sorted('runtime/' + path for path in roots))
 
+    def test_installed_boat_driver_finds_the_wizskills_pin(self):
+        # #2229: the installed boat driver reads the pin at runtime/wizskills.lock (../../ from itself);
+        # the package must carry the requested commit's lock there, or every installed `start` refuses.
+        release = ROOT / '.wizskills'
+        self.assertTrue((release / '.git').is_dir(), 'Install the pinned WizSkills first: tools/wizskills/install.py')
+        driver = ('adapters/boat/driver', 'adapters/boat/schema.json', 'kernel/driver-kit/kit.py',
+                  'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py', 'kernel/records.v1.md')
+        with tempfile.TemporaryDirectory(prefix='openwiz-boat-pin-') as temporary:
+            root = Path(temporary)
+            binaries = root / 'bin'
+            binaries.mkdir()
+            runtime_root(self, root)
+            subprocess.run(['rm', '-rf', str(root / 'skills')], check=True)
+            shutil.copytree(release, root / '.wizskills', symlinks=True)
+            os.symlink('.wizskills/skills', root / 'skills')
+            (root / '.gitignore').write_bytes(b'/.wizskills/\n')
+            for path in ('wizskills.lock', *driver):
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / path, root / path)
+            source = commit(root, '.gitignore', 'wizskills.lock', 'skills', 'tools', *driver)
+            target = TARGETS[0]
+            (root / 'job').mkdir()
+            receipts = build(binaries, source, target, root / 'job')
+            output = root / 'products'
+            result = subprocess.run(collector(root, binaries, output, source, target, receipts),
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            bundle = root / 'bundle'
+            result = subprocess.run([sys.executable, str(ROOT / 'tools/release/package.py'), '--products', str(output),
+                                     '--identity', str(output) + '.json', '--output', str(bundle)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.bound_and_installed(root, target, Path(str(output) + '.json'), bundle,
+                                     products=output, home=root / 'installed')
+            installed = root / 'installed/current/runtime/adapters/boat/driver'
+            boats = root / 'boat.json'
+            env = {'HOME': str(root / 'home'), 'PATH': str(ROOT / 'adapters/boat/fixtures/bin') + os.pathsep
+                   + os.environ['PATH'], 'FAKE_BOAT_STATE': str(boats), 'OPENWIZ_BOAT_STATE': str(root / 'state'),
+                   'OPENWIZ_BOAT_SETTLE': '1', 'KIT_TRACKER': str(root / 'tracker.json'),
+                   'FAKE_BOAT_FAIL': 'exec'}  # stop at the first sandbox command: past the pin, nothing runs
+            (root / 'tracker.json').write_text(json.dumps({'record_authors': ['synthetic-author'], 'comments': []}))
+            started = subprocess.run([str(installed), 'start'], input=json.dumps(
+                {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
+                 'model': 'synthetic'}), env=env, capture_output=True, text=True, timeout=120)
+            self.assertNotIn('wizskills.lock', started.stdout + started.stderr)
+            # Past the pin check, the driver made its sandbox with the fake `boat`.
+            self.assertTrue(json.loads(boats.read_bytes())['sandboxes'], started.stdout + started.stderr)
+
     def bound_and_installed(self, root, target, identity_file, bundle, products=None, home=None):
         """#1148: the collected, packaged target's candidate artifact rows bind
         each package file's digest, and the bundle installs."""
