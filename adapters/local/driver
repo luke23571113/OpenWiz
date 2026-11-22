@@ -19,11 +19,16 @@ HARNESSES = {'claude': lambda model, mode, prompt: ['-p', prompt, '--model', mod
 MODE_ROW = '| Harness permission mode |'
 GRACE = 10
 SETTLE = float(os.environ.get('OPENWIZ_LOCAL_SETTLE') or 30)
-SIGNED_OUT = re.compile(r'(?i)\b(not|no longer) (logged|signed) in\b|\bplease (run /login|log ?in|sign ?in)\b|'
-                        r'\b(oauth|login|session|token|credentials?)\b[^.\n]{0,40}\b(expired|invalid|revoked)\b|'
-                        r'\binvalid api key\b|\bauthentication (failed|error|required)\b|\bunauthori[sz]ed\b')
-REFUSAL = re.compile(r'(?i)\bpermission\b[^.\n]{0,60}\b(denied|refused|rejected)\b|'
-                     r'\b(was|were|been) (denied|refused)\b|\bnot allowed to (run|use|write|edit|execute)\b')
+DIAGNOSTIC_LINE = r'(?im)^[ \t]*(?:[\w .()\[\]-]{0,40}:[ \t]*){0,2}(?:%s)'
+SIGNED_OUT = re.compile(DIAGNOSTIC_LINE % '|'.join((
+    r'(?:not|no longer) (?:logged|signed) in\b', r'please (?:run /login|log ?in|sign ?in)\b', r'invalid api key\b',
+    r'authentication (?:failed|error|required)\b',
+    r'(?:oauth|login|auth|session)(?: token| session)?(?: has| is)? (?:expired|revoked)\b',
+    r'(?:401 )?unauthori[sz]ed[ \t]*[.!]?[ \t]*$')))
+REFUSAL = re.compile(DIAGNOSTIC_LINE % '|'.join((
+    r'permission\b[^.\n]{0,60}\b(?:denied|refused|rejected)\b',
+    r'(?:\w+ ){0,3}(?:was |were |has been |is )?(?:denied|refused)\b',
+    r'not allowed to (?:run|use|write|edit|execute)\b')))
 LSOF_COULD_NOT_CHECK = []
 NO_LSOF = ('driver: lsof could not run or failed, so the driver could not check which processes hold this '
            "run's output file open; it ended only the turns' process groups and the processes their "
