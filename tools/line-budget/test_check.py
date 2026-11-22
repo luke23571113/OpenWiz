@@ -106,7 +106,8 @@ class Ceiling(unittest.TestCase):
         self.assertIn('21 lines is 1 over the ceiling of 20; grew: product +10', r.stdout + r.stderr)
 
     def test_lockfiles_binaries_and_symlinks_do_not_count(self):
-        merge = self.merge(9, **{'Cargo.lock': lines(500), 'blob.bin': b'\x00' + b'\n' * 500})
+        merge = self.merge(9, **{'Cargo.lock': lines(500), 'blob.bin': b'\x00' + b'\n' * 500,
+                                 'docs/pnpm-lock.yaml': lines(3), 'tests/package-lock.json': lines(4)})
         (self.repo.root / 'link.rs').symlink_to('src/a.rs')
         merge = self.repo.commit()
         r = self.run_check(merge)
@@ -124,7 +125,9 @@ class Ceiling(unittest.TestCase):
                     POINTER.replace('jparker2006/ClosedWiz', 'synthetic/Other'),
                     POINTER + ' please', POINTER.replace('-4102', '-0'), 'pending'):
             cases += [(over, f'Line budget exception: {bad}', 1), (under, f'Line budget exception: {bad}', 1)]
-        cases += [(over, f'line budget exception: {POINTER}', 1), (under, f'Line budget exception {POINTER}', 1)]
+        cases += [(over, f'line budget exception: {POINTER}', 1), (over, f'    Line budget exception: {POINTER}', 1),
+                  (over, f'Line budget exception: {POINTER} ', 1), (under, 'Line budget exceptions are rare.', 0),
+                  (under, f'Line budget exception {POINTER}', 0), (under, f'  Line budget exception: {POINTER}x', 0)]
         for merge, description, code in cases:
             r = self.run_check(merge, description)
             self.assertEqual(r.returncode, code, (description, r.stdout, r.stderr))
@@ -133,6 +136,7 @@ class Ceiling(unittest.TestCase):
         merge = self.merge(1, **{'line-budget.json': '{"ceiling": 30}\n'})
         self.assertEqual(self.run_check(merge).returncode, 1)
         self.assertEqual(self.run_check(merge, f'Line budget ceiling: {POINTER}x').returncode, 1)
+        self.assertEqual(self.run_check(merge, f'    Line budget ceiling: {POINTER}').returncode, 1)
         self.assertEqual(self.run_check(merge, f'Line budget ceiling: {POINTER}').returncode, 0)
 
     def test_unreadable_input_exits_2(self):
