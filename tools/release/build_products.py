@@ -43,8 +43,6 @@ def collect(root, binaries, output, version, source, target, program_receipt):
         files['runtime/' + relative] = actual
     files['runtime/install.py'] = root / 'tools/install/install.py'
     files['runtime/pull.py'] = root / 'tools/install/pull.py'
-    # #2229: the pin the skills came from, where a host driver reads it (../../ from itself);
-    # verify_runtime checks it is the requested commit's lock.
     if installed is not None:
         files['runtime/wizskills.lock'] = root / 'wizskills.lock'
     # #1105: the setup and App connection tools an installed consumer runs.

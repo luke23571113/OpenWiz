@@ -239,8 +239,6 @@ class Package(unittest.TestCase):
                              sorted('runtime/' + path for path in roots))
 
     def test_installed_boat_driver_finds_the_wizskills_pin(self):
-        # #2229: the installed boat driver reads the pin at runtime/wizskills.lock (../../ from itself);
-        # the package must carry the requested commit's lock there, or every installed `start` refuses.
         release = ROOT / '.wizskills'
         self.assertTrue((release / '.git').is_dir(), 'Install the pinned WizSkills first: tools/wizskills/install.py')
         driver = ('adapters/boat/driver', 'adapters/boat/schema.json', 'kernel/driver-kit/kit.py',
@@ -277,17 +275,15 @@ class Package(unittest.TestCase):
             env = {'HOME': str(root / 'home'), 'PATH': str(ROOT / 'adapters/boat/fixtures/bin') + os.pathsep
                    + os.environ['PATH'], 'FAKE_BOAT_STATE': str(boats), 'OPENWIZ_BOAT_STATE': str(root / 'state'),
                    'OPENWIZ_BOAT_SETTLE': '1', 'KIT_TRACKER': str(root / 'tracker.json'),
-                   'FAKE_BOAT_FAIL': 'exec'}  # stop at the first sandbox command: past the pin, nothing runs
+                   'FAKE_BOAT_FAIL': 'exec'}
             (root / 'tracker.json').write_text(json.dumps({'record_authors': ['synthetic-author'], 'comments': []}))
             started = subprocess.run([str(installed), 'start'], input=json.dumps(
                 {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
                  'model': 'synthetic'}), env=env, capture_output=True, text=True, timeout=120)
             self.assertNotIn('wizskills.lock', started.stdout + started.stderr)
-            # Past the pin check, the driver made its sandbox with the fake `boat`.
             self.assertEqual(len(json.loads(boats.read_bytes())['sandboxes']), 1, started.stdout + started.stderr)
             self.assertEqual((root / 'installed/current/runtime/wizskills.lock').read_bytes(),
                              (ROOT / 'wizskills.lock').read_bytes())
-            # A lock on disk that isn't the requested commit's is never carried.
             (root / 'wizskills.lock').write_bytes((ROOT / 'wizskills.lock').read_bytes() + b'\n')
             stale = subprocess.run(elsewhere(collector(root, binaries, output, source, target, receipts),
                                              str(output) + '-stale'), capture_output=True, text=True)
