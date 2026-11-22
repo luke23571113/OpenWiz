@@ -31,7 +31,7 @@ JOURNAL = 'openwiz.init-journal.v1'
 MAX_JOURNAL = 16
 ASSUMPTIONS = ['A command outcome is not a live proof; live brain creation is observed only under its own kit.']
 HEX32 = re.compile('[0-9a-f]{32}')
-ORDER = ('create_companion', 'link_companion', 'create_label', 'open_pull_request')
+ORDER = ('create_companion', 'link_companion', 'create_label', 'open_pull_request', 'merge_pull_request')
 
 
 class Exit(Exception):
@@ -324,7 +324,8 @@ def disclosed(plan, rows):
             'link_companion': f'Link {b} to {code} (its homepage), exposing nothing in {code}.',
             'create_label': f'Create the labels {", ".join(plan.missing)} on {code} for specs and tickets; '
                             'labels already there are kept as they are.',
-            'open_pull_request': f'Open a visible pull request on {b} proposing {FOLDER} (records only).'}
+            'open_pull_request': f'Open a visible pull request on {b} proposing {FOLDER} (records only).',
+            'merge_pull_request': f'Merge that pull request once it reads back, because {b} is new in this apply.'}
     return [text[r['kind']] for r in rows] or [f'Reuse the existing brain proposal on {b}; nothing new is written.']
 
 
@@ -350,6 +351,8 @@ def needed(plan):
                       'nothing was written.')
     if existing is None:
         row('open_pull_request', b)
+        if rows[0]['kind'] == 'create_companion':
+            row('merge_pull_request', b)
     return rows, existing
 
 
@@ -456,6 +459,9 @@ def apply(setup, plan, operation_id):
         except Unread:
             stop(6, 'uncertain', 'effect_uncertain',
                  'A GitHub read was lost; apply the same operation to reconcile it before anything else.')
+        if entry['pull']['state'] == 'merged':
+            save('applied', 'Brain merged into its new private companion.', brain=True)
+            return result(plan, operation, 'applied', 'brain_merged', report(plan.brain), entry)
         save('applied', 'Brain proposed. Merge its pull request to accept it.', brain=True)
         return result(plan, operation, 'applied', 'brain_proposed', report(plan.brain), entry)
 
@@ -467,13 +473,24 @@ def proposed(plan):
     return found is not None
 
 
+def merged(plan):
+    found = plan.proposal()
+    return found['state'] == 'merged'
+
+
 def effect(plan, row, entry, journal, save):
+    if row['kind'] == 'merge_pull_request' and row['attempts'] == 0 and not any(
+            r['kind'] == 'create_companion' and r['phase'] == 'applied' for r in entry['rows']):
+        entry['rows'].remove(row)
+        save()
+        return True
     present = {'create_companion': plan.companion, 'link_companion': plan.linked,
-               'create_label': plan.label, 'open_pull_request': lambda: proposed(plan)}[row['kind']]
+               'create_label': plan.label, 'open_pull_request': lambda: proposed(plan),
+               'merge_pull_request': lambda: merged(plan)}[row['kind']]
     if row['attempts'] > 0:
         row['reconciliation'] = 'provider_read_back'
     if present():
-        if row['kind'] == 'open_pull_request':
+        if row['kind'] in ('open_pull_request', 'merge_pull_request'):
             entry['pull'] = plan.pull()
         if row['attempts'] == 0:
             entry['rows'].remove(row)
@@ -496,6 +513,9 @@ def effect(plan, row, entry, journal, save):
         save()
         return True
     row['phase'] = 'refused'
+    if row['kind'] == 'merge_pull_request':
+        save()
+        return True
     raise Refusal('companion_denied' if row['kind'] == 'create_companion' else 'effect_denied',
                   f"GitHub refused {row['kind'].replace('_', ' ')} (HTTP {status}); no private content "
                   'was published.')
@@ -531,6 +551,8 @@ def write(plan, row, entry, save):
                 return status
         return 201
     base = plan.destination()['default_branch']
+    if kind == 'merge_pull_request':
+        return merge(plan, entry, base)
     status, ref = gh.call('GET', f'repos/{b}/git/ref/heads/{quote(BRANCH)}')
     if status == 404:
         status, head = gh.call('GET', f'repos/{b}/git/ref/heads/{quote(base)}')
@@ -574,6 +596,29 @@ def write(plan, row, entry, save):
         return status
     else:
         return None
+    return status
+
+
+def merge(plan, entry, base):
+    gh, b = plan.gh, plan.brain['brain_repository']
+    number = (entry['pull'] or {}).get('number')
+    if type(number) is not int:
+        return None
+    status, pull = gh.call('GET', f'repos/{b}/pulls/{number}')
+    if status != 200 or type(pull) is not dict:
+        return None
+    head, target = (pull.get(k) if type(pull.get(k)) is dict else {} for k in ('head', 'base'))
+    if (pull.get('number') != number or pull.get('state') != 'open' or pull.get('merged_at') is not None
+            or head.get('ref') != BRANCH or target.get('ref') != base or not isinstance(head.get('sha'), str)):
+        return 409
+    status, value = gh.call('PUT', f'repos/{b}/pulls/{number}/merge',
+                            {'merge_method': 'merge', 'sha': head['sha'],
+                             'commit_title': 'Accept the OpenWiz brain'})
+    if status is None or status >= 500 or (status == 200 and (type(value) is not dict
+                                                              or value.get('merged') is not True)):
+        return None
+    if status == 200:
+        entry['pull'] = {'number': number, 'state': 'merged'}
     return status
 
 
