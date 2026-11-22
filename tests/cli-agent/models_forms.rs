@@ -881,7 +881,12 @@ fn run_listing(fake: &Models, listing: &str, args: &[&str]) -> (i32, String, Str
         &fake.0.0,
         &source,
         &FixedClock,
-        Some(&lister),
+        Some(&|path: &Path| {
+            std::process::Command::new(&lister)
+                .arg("-lde")
+                .arg(path)
+                .output()
+        }),
         &mut out,
         &mut err,
     );

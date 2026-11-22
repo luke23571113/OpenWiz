@@ -44,7 +44,11 @@ pub fn run_models_in(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let lister = (std::env::consts::OS == "macos").then(|| Path::new(MACOS_LS));
+    let lister: Option<AclLister> = if std::env::consts::OS == "macos" {
+        Some(&macos_ls)
+    } else {
+        None
+    };
     run_models_listing_acls(args, root, client, clock, lister, stdout, stderr)
 }
 
@@ -53,7 +57,7 @@ pub fn run_models_listing_acls(
     root: &Path,
     client: &dyn NewThreadClient,
     clock: &dyn Clock,
-    lister: Option<&Path>,
+    lister: Option<AclLister>,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
@@ -62,7 +66,7 @@ pub fn run_models_listing_acls(
         Some("show" | "list" | "set")
     ) {
         let acl = lister.map(|lister| AclCheck {
-            lister: lister.to_path_buf(),
+            lister,
             dir: root.join("docs/agents"),
         });
         return run_form(args, root, client, clock, acl, stdout, stderr);
@@ -279,7 +283,7 @@ fn run_form(
     root: &Path,
     client: &dyn NewThreadClient,
     clock: &dyn Clock,
-    acl: Option<AclCheck>,
+    acl: Option<AclCheck<'_>>,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
@@ -696,10 +700,10 @@ impl Checkout {
     }
 }
 
-struct Agents(File, Option<AclCheck>);
+struct Agents<'a>(File, Option<AclCheck<'a>>);
 
-impl Agents {
-    fn open(checkout: &Checkout, acl: Option<AclCheck>) -> Result<Self, String> {
+impl<'a> Agents<'a> {
+    fn open(checkout: &Checkout, acl: Option<AclCheck<'a>>) -> Result<Self, String> {
         let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
         let refused = |dir: &str| {
             format!(
@@ -748,16 +752,10 @@ impl Agents {
             }
         };
         unmoved()?;
-        let lister = check.lister.display();
-        let listed = std::process::Command::new(&check.lister)
-            .arg("-lde")
-            .arg(&path)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .map_err(|e| unchecked(format!("cannot run {lister}: {e}")))?;
+        let listed = (check.lister)(&path).map_err(|e| unchecked(format!("cannot run ls: {e}")))?;
         unmoved()?;
         if !listed.status.success() {
-            return Err(unchecked(format!("{lister} failed: {}", listed.status)));
+            return Err(unchecked(format!("ls failed: {}", listed.status)));
         }
         match String::from_utf8(listed.stdout)
             .ok()
@@ -767,9 +765,7 @@ impl Agents {
             Some(true) => Err(format!(
                 "cannot write {rel}: it has a macOS extended ACL, which openwiz cannot keep; nothing was written"
             )),
-            None => Err(unchecked(format!(
-                "{lister} printed no listing openwiz reads"
-            ))),
+            None => Err(unchecked("ls printed no listing openwiz reads".to_owned())),
         }
     }
 
@@ -829,11 +825,20 @@ fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
 }
 
 const ACCESS_ACL: &str = "system.posix_acl_access";
-const MACOS_LS: &str = "/bin/ls";
+pub type AclLister<'a> = &'a dyn Fn(&Path) -> std::io::Result<std::process::Output>;
 
-struct AclCheck {
-    lister: PathBuf,
+struct AclCheck<'a> {
+    lister: AclLister<'a>,
     dir: PathBuf,
+}
+
+fn macos_ls(path: &Path) -> std::io::Result<std::process::Output> {
+    std::process::Command::new("/bin/ls")
+        .arg("-lde")
+        .arg(path)
+        .env_clear()
+        .stdin(std::process::Stdio::null())
+        .output()
 }
 
 fn access_like(staged: impl AsFd, target: impl AsFd) -> std::io::Result<()> {
