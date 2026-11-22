@@ -158,6 +158,9 @@ class FakeHost(cloudroom.Host):
         self.opened.append(list(argv))
         return self.open_result
 
+    def start(self, argv):
+        self.opened.append(list(argv))
+
     def alive(self, pid):
         return pid not in self.dead
 
@@ -1018,7 +1021,7 @@ class Login(Base):
                   b'Retry at https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001 as owner@example.invalid\n'
                   b'token: synthetic-token-0123456789abcdefghij\n\x1b[31mpassword=hunter2\x1b[0m\n'
                   b'Authorization: Bearer synthetic-bearer\n{"token": "tk1", "refresh_token":"tk2"}\n'
-                  b'Authorization:\tBearer\ttb3\n\x1b[38:2:255:0:0mcolour\x1b[0m done\n')
+                  b'Authorization:\tBearer\ttb3\naccessToken tk5\n\x1b[38:2:255:0:0mcolour\x1b[0m done\n')
         hung = b'CloudRoom could not start its server.\nhalf a line with tk4'
         for code, reply, said in ((1, b'', secret), (1, secret, b''), (None, b'', b''), (None, b'', hung),
                                   (None, secret, b''), (1, b'', b''),
@@ -1029,7 +1032,7 @@ class Login(Base):
                 self.assertEqual((result['code'], result['opened']), ('cloudroom_login_missing', None))
                 self.assertEqual(self.host.opened, [])
                 for word in ('synthetic-nonce', 'owner@example.invalid', 'synthetic-token', 'hunter2', 'synthetic-bearer',
-                             '\x1b', 'tk1', 'tk2', 'tb3', 'tk4', '38:2', '255'):
+                             '\x1b', 'tk1', 'tk2', 'tb3', 'tk4', 'tk5', '38:2', '255'):
                     self.assertNotIn(word, err)
                 if code is None:
                     self.assertIn("CloudRoom's sign-in did not answer", err)

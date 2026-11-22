@@ -163,6 +163,11 @@ never printed, saved or shown.
 **Sign-in** (`sign-in`) opens CloudRoom's own sign-in once, then reads the login
 back:
 
+- On Linux it first checks, before any `room-cli` call: a desktop session
+  (`DISPLAY` or `WAYLAND_DISPLAY` set), and FUSE (`/dev/fuse`, a `fusermount`,
+  and `libfuse.so.2` when the checked AppImage's runtime loads it). Whatever is
+  missing is refused as its own reason with its next step, and nothing runs or
+  opens.
 - A current verified login is reused. Nothing opens, so there is no second
   sign-in.
 - If CloudRoom has opened before (its launcher exists), the tool runs
@@ -172,6 +177,18 @@ back:
   whitespace). The link is never printed or saved.
 - If CloudRoom has never opened here, the tool opens the CloudRoom app once.
   CloudRoom's own first-run setup starts with its sign-in.
+- The opener or app is watched for a short start window (3 seconds). If it
+  exits with an error within it, `opened` is `null`. At most 64 KiB of its
+  output is read in that window. Later output is drained and discarded, and
+  never written to a file. The app keeps running.
+- When the sign-in gives no usable link, times out or fails to open, the
+  tool shows the program's own words on standard error. On a timeout, it shows
+  only the complete lines printed before it. Before any line is shown,
+  terminal sequences and control characters are removed. Links, email
+  addresses, everything after a credential word (token, password, key, code,
+  session, cookie, authorization, bearer and the like) and opaque runs are
+  replaced. Lines that are still unsafe are dropped. At most 20 lines of 300
+  characters are shown. These words are never on standard output or saved.
 
 OpenWiz never asks for, receives, stores or logs a CloudRoom password or token.
 The tool has no option for one and reads nothing from standard input.
@@ -226,8 +243,12 @@ link. It is the last line of the CloudRoom step, in the caption style
 
 `python3 -I <build>/runtime/cloudroom/cloudroom.py status | install [--yes | --no] [--operation ID] | sign-in [--state-dir DIR]`.
 It prints one JSON object: `{"schema": "openwiz.cloudroom-setup.v1", "code": <code>, "operation": <operation or null>, "opened": null | "sign_in" | "app" | "download_page"}`.
-A refusal exits 5 with `openwiz-cloudroom: refused: <reason>` on standard
-error. The packaged runtime ships the tool as `runtime/cloudroom/cloudroom.py`
+`sign-in` may also write diagnostic lines to standard error, each
+`openwiz-cloudroom: <program> said: <sanitized line>` (or a fixed notice for a
+timeout or a silent failure). Standard output stays exactly that four-key
+object. A refusal exits 5 with `openwiz-cloudroom: refused: <reason>` on standard
+error and nothing on standard output. A missing desktop session or missing FUSE
+on Linux is such a refusal, and its reason ends with `Next:` and the step. The packaged runtime ships the tool as `runtime/cloudroom/cloudroom.py`
 (mode `0600`), and the installer requires it. #1109 wires these commands into
 the install line and skill. #2207 runs them for real.
 

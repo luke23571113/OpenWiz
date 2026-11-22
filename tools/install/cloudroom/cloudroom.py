@@ -10,12 +10,13 @@ from pathlib import Path
 import platform
 import re
 import secrets
+import select
 import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 
@@ -78,16 +79,20 @@ TIMEOUT = 30
 EFFECT_TIMEOUT = 900
 RUNNING_MS = 30 * 60 * 1000
 OPEN_WAIT = 3
+OPEN_CAPTURE = 1 << 16
 SAID_LINES, SAID_WIDTH = 20, 300
 FUSERMOUNT = ('usr/bin/fusermount', 'usr/bin/fusermount3', 'bin/fusermount', 'bin/fusermount3')
 LIBFUSE2 = tuple(f'{d}/libfuse.so.2' for d in ('lib/x86_64-linux-gnu', 'usr/lib/x86_64-linux-gnu', 'lib64',
                                                 'usr/lib64', 'lib', 'usr/lib'))
 RUNTIME_BYTES = 2 << 20
+TERMINAL = re.compile(r'\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\][^\x07\x1b]*(?:\x07|\x1b\\)'
+                      r'|[PX^_][^\x1b]*\x1b\\|[\x20-\x2f]*[\x30-\x7e])|\x9b[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]')
+CREDENTIAL = ('authorization|credentials?|passwords?|passwd|passphrase|passcode|secrets?|apikeys?|keys?|tokens?'
+              '|codes?|nonces?|sessions?|cookies?|auth|bearer|jwt|otp|signatures?|sig')
+CAMEL = '|'.join(word[0].upper() + word[1:] for word in CREDENTIAL.split('|'))
 REDACTIONS = ((re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://\S*'), '[link removed]'),
               (re.compile(r'\S+@\S+\.\S+'), '[address removed]'),
-              (re.compile(r'(?i)\b(token|password|passwd|secret|key|code|nonce|session|cookie|authorization|bearer)'
-                          r'\s*[:=].*'), r'\1 [removed]'),
-              (re.compile(r'(?i)\bbearer\s+\S+'), 'Bearer [removed]'),
+              (re.compile(rf'((?<![A-Za-z])(?i:{CREDENTIAL})|(?<=[a-z])(?:{CAMEL}))(?![a-z]).*'), r'\1 [removed]'),
               (re.compile(r'[A-Za-z0-9+/_=.-]{24,}|(?=[A-Za-z+/_=.-]*[0-9])[A-Za-z0-9+/_=.-]{16,}'), '[removed]'))
 
 
@@ -145,22 +150,46 @@ class Host:
         try:
             result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout,
                                     env={'PATH': '/usr/bin:/bin', 'HOME': str(self.home), 'LC_ALL': 'C'})
-        except subprocess.TimeoutExpired:
-            return None, b'', b''
+        except subprocess.TimeoutExpired as late:
+            return None, (late.stdout or b'')[:1 << 20], (late.stderr or b'')[:1 << 20]
         except OSError:
             return -1, b'', b''
         return result.returncode, result.stdout[:1 << 20], result.stderr[:1 << 20]
 
+    def start(self, argv):
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, close_fds=True)
+
     def open(self, argv):
-        with tempfile.TemporaryFile() as log:
-            child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                                     start_new_session=True, close_fds=True)
+        read, write = os.pipe()
+        try:
             try:
-                code = child.wait(OPEN_WAIT)
+                child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=write, stderr=write,
+                                         start_new_session=True, close_fds=True)
+            finally:
+                os.close(write)
+            captured, ended = bytearray(), False
+            deadline = time.monotonic() + OPEN_WAIT
+            while not ended:
+                left = deadline - time.monotonic()
+                if left <= 0 or not select.select([read], [], [], left)[0]:
+                    break
+                chunk = os.read(read, 1 << 16)
+                ended = not chunk
+                captured += chunk[:OPEN_CAPTURE - len(captured)]
+            try:
+                code = child.wait(max(0.0, deadline - time.monotonic()) if ended else 0)
             except subprocess.TimeoutExpired:
-                return None, b''
-            log.seek(0)
-            return code, log.read(1 << 16)
+                code = None
+            if not ended:
+                try:
+                    subprocess.Popen(['/bin/cat'], stdin=read, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     start_new_session=True, close_fds=True)
+                except OSError:
+                    pass
+            return code, bytes(captured)
+        finally:
+            os.close(read)
 
     def alive(self, pid):
         try:
@@ -580,7 +609,7 @@ def install(host, state_dir, yes=False, decline=False, operation=None):
         if source is None:
             code = 'cloudroom_source_unchecked' if name else 'cloudroom_unsupported'
             if yes:
-                host.open(opener(host) + [DOWNLOAD_PAGE])
+                host.start(opener(host) + [DOWNLOAD_PAGE])
                 return answer(code, opened='download_page')
             return answer(code)
         require(not yes, '--yes needs --operation from the preview')
@@ -660,10 +689,16 @@ def sign_in_link(raw):
     return url
 
 
-def said(raw):
+def said(raw, complete=False):
     lines = []
-    for line in raw.decode('utf-8', 'replace').splitlines():
-        line = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]|[\x00-\x1f\x7f]', '', line).strip()
+    text = raw.decode('utf-8', 'replace')
+    rows = re.split(r'\r\n|\n|\r', text)
+    for line in rows[:-1] if complete or not rows[-1] else rows:
+        line = TERMINAL.sub('', line)
+        if '\x1b' in line or '\x9b' in line:
+            continue
+        line = ''.join(' ' if unicodedata.category(c)[0] in 'CZ' else c for c in line)
+        line = ' '.join(line.split())
         for pattern, replacement in REDACTIONS:
             line = pattern.sub(replacement, line)
         if line:
@@ -671,11 +706,11 @@ def said(raw):
     return lines
 
 
-def reply_words(out):
+def reply_words(out, complete=False):
     try:
         value = json.loads(out, object_pairs_hook=store.unique)
     except (ValueError, Refused, RecursionError):
-        return said(out)
+        return said(out, complete)
     error = value.get('error') if type(value) is dict else None
     message = error.get('message') if type(error) is dict else error
     return said(message.encode()) if isinstance(message, str) else []
@@ -727,12 +762,13 @@ def linux_needs(host, operation):
 
 def sign_in(host, state_dir):
     records = Records(state_dir)
-    code = code_for(host, records.read())
-    require(code in ('cloudroom_installed', 'cloudroom_reused') or code.startswith('cloudroom_login_'),
-            'CloudRoom is not installed here; install it first')
+    operation = records.read()
+    installed = install_code(host, operation)
+    require(installed in ('cloudroom_installed', 'cloudroom_reused'), 'CloudRoom is not installed here; install it first')
+    linux_needs(host, operation)
+    code = login_code(host) or installed
     if code == 'cloudroom_login_verified':
         return answer(code)
-    linux_needs(host, records.read())
     launcher = host.home / LAUNCHER
     opened = None
     if launcher.is_file():
@@ -744,6 +780,7 @@ def sign_in(host, state_dir):
         elif result is None:
             print("openwiz-cloudroom: CloudRoom's sign-in did not answer within "
                   f'{TIMEOUT} seconds; is CloudRoom running?', file=sys.stderr)
+            tell('CloudRoom', said(err, complete=True) + reply_words(out, complete=True))
         else:
             words = said(err) + reply_words(out)
             if words:
