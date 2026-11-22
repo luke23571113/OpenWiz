@@ -8,19 +8,19 @@ The agent follows the [install skill](https://github.com/openwizdev/WizSkills/bl
 
 Using Grok Bot? See [Grok Bot + OpenWiz](grok-bot.md).
 
-**Status:** this is the install for OpenWiz 0.1.0 ("OpenWiz 0.01"). It needs CloudRoom: setup is done only when CloudRoom is installed and signed in.
+**Status:** this is the install for OpenWiz 0.1.0 ("OpenWiz 0.01"). CloudRoom is optional: setup is done when GitHub's sign-in is verified, and CloudRoom's sign-in too only if you pick CloudRoom.
 
 ## Before you start
 
 - **A supported computer:** macOS on Apple silicon, or Linux on x86_64 with glibc 2.34 or later (`ldd --version` shows it). Linux on ARM is not supported. **An Intel Mac installs from 0.1.1 on, with no CloudRoom:** preflight reads it ready. CloudRoom has no Intel Mac build, so on an Intel Mac, agents run on this computer or on boat.dev. On Linux older than glibc 2.39, `openwiz` may print a `GLIBC_2.39` warning and still work.
 - **Python 3.9 or later, `git`, and the GitHub CLI** (`gh`, signed in with `gh auth login`).
-- **CloudRoom,** installed, opened once and signed in. Opening it once creates its `room-cli`.
+- **Where your agents run,** asked first, before anything else: **this computer**, with the Claude Code or Codex you're signed in to; **boat.dev**, with its `boat` CLI, which you sign in to yourself (it bills per second while a sandbox runs, on your plan); or **CloudRoom**, installed, opened once and signed in (opening it once creates its `room-cli`). CloudRoom is optional: only the CloudRoom choice needs it installed.
 
 ## What happens, in order
 
 The agent runs each command itself and reads its JSON. `<root>` is the install folder, by default `~/.local/lib/openwiz`: use a new or empty folder that holds nothing else, because the installer also accepts a folder that already has other files in it. If you give `install install` a separate `--state-root`, it too must be a new or empty folder used by OpenWiz alone, never one shared with another app. `<target>` is `aarch64-apple-darwin`, `x86_64-apple-darwin` or `x86_64-unknown-linux-gnu`.
 
-1. **Preflight.** It clones this repository at the `v0.1.0` tag into a private temporary folder as `$openwiz` (`git clone --depth 1 --branch v0.1.0 https://github.com/openwizdev/OpenWiz "$openwiz"`) and checks this computer: Python, a supported system, free disk space, and whether `room-cli`, `gh` and `git` are installed. It reads only; anything missing comes with its next step. An Intel Mac passes it with no CloudRoom, as "Before you start" says.
+1. **Preflight.** It clones this repository at the `v0.1.0` tag into a private temporary folder as `$openwiz` (`git clone --depth 1 --branch v0.1.0 https://github.com/openwizdev/OpenWiz "$openwiz"`) and checks this computer: Python, a supported system, free disk space, and whether `room-cli`, `gh` and `git` are installed. It reads only; anything missing comes with its next step. A missing `room-cli` never stops it: it matters only if you pick CloudRoom. An Intel Mac passes it with no CloudRoom, as "Before you start" says.
 
    ```sh
    python3 -I "$openwiz"/tools/install/install preflight
@@ -45,7 +45,7 @@ The agent runs each command itself and reads its JSON. `<root>` is the install f
 
    It prints one code per part: `cloudroom`, `personal_github`, `github_app`, `harness` and `project`. On a new computer expect codes such as `app_missing`, `harness_unselected`, `identity_unselected` and `project_unprepared`: those wait until you pick a repository. A connection is ready only when a check proves it, never because a setting was saved.
 
-   - **CloudRoom:** `runtime/cloudroom/cloudroom.py status` reads whether CloudRoom is installed and signed in; `runtime/cloudroom/cloudroom.py install` shows CloudRoom's published installer and its checksum and waits for your yes; `runtime/cloudroom/cloudroom.py sign-in` opens CloudRoom's own sign-in once, where you sign in yourself. Each takes `--state-dir <state>`. CloudRoom is done when `check` reads `cloudroom_login_verified`.
+   - **CloudRoom,** only if you pick it; otherwise skip this row, and no `cloudroom_*` code `check` prints blocks the install: `runtime/cloudroom/cloudroom.py status` reads whether CloudRoom is installed and signed in; `runtime/cloudroom/cloudroom.py install` shows CloudRoom's published installer and its checksum and waits for your yes; `runtime/cloudroom/cloudroom.py sign-in` opens CloudRoom's own sign-in once, where you sign in yourself. Each takes `--state-dir <state>`. CloudRoom is done when `check` reads `cloudroom_login_verified`.
    - **GitHub:** `runtime/setup/github_login.py sign-in --state-dir <state>` reuses your existing `gh` login, or shows what GitHub's own browser sign-in will do and waits for your yes. You paste no token.
    - **`identity_unreadable`** (for `personal_github`): GitHub's answer could not be read just then. Wait a minute and run `check` again; it usually clears.
 
@@ -74,12 +74,14 @@ The agent runs each command itself and reads its JSON. `<root>` is the install f
    Your agent finds the skills the next time it starts. Restart it (a new session), then say exactly: "continue the OpenWiz install". It resumes at the first unfinished step, from the installed files.
 
 5. **Explain.** A few sentences on ideas, grills, specs, tickets, builders, independent review and merges.
-6. **First fleet.** The same agent continues through the install skill's first-fleet section when you want to try it:
+6. **First fleet.** The same agent continues through the install skill's first-fleet section when you want to try it. On 0.1.0 these steps run when you picked CloudRoom; the last two bullets say what you have without it:
    - It offers a few quick ideas and a new private demo repository, or one of yours. That one repository is used from here on.
    - It connects GitHub for that repository. Then you choose your own OpenWiz App (Create, then Install on that repository only) or skip it. If you skip it, your personal GitHub login acts for the factory and setup says so; the App is never shown as verified.
    - It saves the project with your harness, model and effort, asked once, and makes its private brain (`openwiz init`): in your repository if it is private, or in a new private companion repository if it is public. It tells you where in one line and opens a pull request you merge.
    - It grills you briefly and plans 4 to 7 small tickets. You confirm the spec, then approve the exact plan, as two separate answers.
-   - It asks where the agents run, then shows the start: one fleet thread with its own loop, which starts the approved tickets' builders and their reviewers. Only your yes to that starts anything, and that yes covers its Cloud Credits.
+   - On 0.1.0, the automatic fleet runs in CloudRoom: the agent shows the start, one fleet thread with its own loop, which starts the approved tickets' builders and their reviewers. Only your yes to that starts anything, and that yes covers its Cloud Credits.
+   - On 0.1.0 without CloudRoom (this computer or boat.dev), you plan (grill, spec, tickets), the agent starts a builder by hand on this computer or on boat.dev after your yes to that start, and you review and merge its pull request yourself.
+   - 0.1.1 adds the automatic fleet on this computer: builders and reviewers start through OpenWiz's local driver with your own Claude Code or Codex login (the reviewer from the other family when you have both), and a scheduled job on your computer, shown first and installed on your yes, wakes the fleet every ten minutes. Saying "run the fleet now" wakes it at once.
 
 ## What it may change, and when
 

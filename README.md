@@ -13,11 +13,13 @@ You make the decisions: answer a few questions. The agents run the factory: they
 
 ## Quick start
 
-You need [CloudRoom](https://cloudroom.dev), signed in: the 0.1.0 install sets up through it. You also need Python 3.9 or later, `git`, and the GitHub CLI (`gh`). Then paste this line into your coding agent (Claude Code, Codex or another):
+You need Python 3.9 or later, `git`, and the GitHub CLI (`gh`). Then paste this line into your coding agent (Claude Code, Codex or another):
 
 > Install OpenWiz from github.com/openwizdev/OpenWiz
 
-Your agent follows the [install skill](https://github.com/openwizdev/WizSkills/blob/maint/0.2/skills/install/SKILL.md). It checks your computer, installs the verified prebuilt release (no Rust or Node), puts OpenWiz's skills into your agents, and checks each connection. Nothing starts until you approve a plan. People: see the [install guide](docs/install.md) for every step and command. OpenWiz is free. Your model and host charges are your own.
+Your agent follows the [install skill](https://github.com/openwizdev/WizSkills/blob/maint/0.2/skills/install/SKILL.md). First it asks where your agents run: **this computer**, with the Claude Code or Codex you're signed in to; **boat.dev**; or **[CloudRoom](https://cloudroom.dev)**. CloudRoom is optional: the install never needs it, and its install and sign-in run only if you pick it. On 0.1.0, the automatic fleet (its own thread and loops, which start builders and reviewers) runs in CloudRoom; without CloudRoom, you plan, start each builder by hand on this computer or on boat.dev, and review its pull request yourself. 0.1.1 adds the automatic fleet on this computer: builders and reviewers start with your own Claude Code or Codex login, and a scheduled job you approve wakes the fleet every ten minutes.
+
+It checks your computer, installs the verified prebuilt release (no Rust or Node), puts OpenWiz's skills into your agents, and checks each connection. Nothing starts until you approve a plan. People: see the [install guide](docs/install.md) for every step and command. OpenWiz is free. Your model and host charges are your own.
 
 ## How it works
 

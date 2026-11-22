@@ -14,7 +14,7 @@ def paragraphs(text):
 
 
 def sentences(paragraph):
-    return re.split(r'(?<=[.!?])\s+', ' '.join(paragraph.split()))
+    return re.split(r'(?<=[.!?;])\s+', ' '.join(paragraph.split()))
 
 
 def check(name, text):
@@ -30,13 +30,13 @@ def check(name, text):
         if re.match(r'- \*\*[^*]*CloudRoom', bullet) and 'optional' not in bullet:
             failures.append(f'{name}: "Before you start" lists CloudRoom without saying it is optional: {bullet[:60]!r}')
 
-    def hosts_in_order(paragraph):
-        flat = ' '.join(paragraph.split())
+    def hosts_in_order(line):
+        flat = ' '.join(line.split())
         at = [flat.find(host) for host in HOSTS]
         return -1 not in at and at == sorted(at) and 'CloudRoom is optional' in flat
 
-    if not any(hosts_in_order(p) for p in paragraphs(text)):
-        failures.append(f'{name}: no paragraph names this computer, boat.dev and CloudRoom in that order and says '
+    if not any(hosts_in_order(line) for line in text.splitlines()):
+        failures.append(f'{name}: no line names this computer, boat.dev and CloudRoom in that order and says '
                         '"CloudRoom is optional"')
     said_010 = said_011 = False
     for paragraph in paragraphs(text):
