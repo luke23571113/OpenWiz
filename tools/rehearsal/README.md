@@ -41,4 +41,7 @@ write.
 It runs no real fleet: no grill, ticket, builder, reviewer, heartbeat or merge. It touches no real
 account or repository: GitHub and Claude Code are fakes, and the first-fleet dry run stops at the
 last step a preview can reach with no `--yes` (`where`, `select`, the repository read-back and
-`next`), since connecting a repository writes to GitHub. It is not the person's own rehearsal.
+`next`), since connecting a repository writes to GitHub. The one `--yes` it gives is `setup.py
+prepare --host local`'s, in the `setup` step: it writes only the owner-only local setup state, and
+the setup check reads `cloudroom_not_needed` only for a prepared local host. It is not the person's
+own rehearsal.
