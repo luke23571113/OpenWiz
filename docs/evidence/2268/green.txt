@@ -7,5 +7,5 @@ test_total_always_passes (__main__.Ceiling.test_total_always_passes) ... ok
 test_under_and_at_pass_over_fails_naming_the_numbers (__main__.Ceiling.test_under_and_at_pass_over_fails_naming_the_numbers) ... ok
 test_unreadable_input_exits_2 (__main__.Ceiling.test_unreadable_input_exits_2) ... ok
 test_matches_the_reference_pipeline (__main__.Counter.test_matches_the_reference_pipeline) ... ok
-Ran 8 tests in 1.372s
+Ran 8 tests in 1.576s
 OK
