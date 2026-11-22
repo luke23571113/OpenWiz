@@ -21,6 +21,7 @@ records_kit = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(records_kit)
 OVERRIDE = 'OPENWIZ_HOSTKEY_TEST_ORIGIN'
 TEST_KEY = 'OPENWIZ_HOSTKEY_TEST_KEY'
+KEY_PATH = '/.openwiz/hostkey-test-key'
 HOSTKEY = os.path.realpath(os.path.join(HERE, 'hostkey.py'))
 SHOWN_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]{0,63}')
 PYTHON = re.compile(r'python3?(\.[0-9]+)?')
@@ -158,9 +159,14 @@ FLEET = """query($owner: String!, $name: String!) { repository(owner: $owner, na
   object(expression: "HEAD:docs/agents/fleet.md") { ... on Blob { text } } } }"""
 
 
+class Request(tuple):
+    phase = None
+
+
 class FakeHost:
-    def __init__(self, status=200, headers=(), body=b'{}', answers=(), tag=None):
-        self.requests, self.tags = [], []
+    def __init__(self, status=200, headers=(), body=b'{}', answers=(), test_key=None, trust=None, phase=None):
+        self.requests, self.fetches = [], []
+        self.lock = threading.Lock()
         host = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -172,13 +178,23 @@ class FakeHost:
                     size = int(self.headers.get('Content-Length') or 0)
                 except ValueError:
                     size = 0
-                host.tags.append(tag(self.client_address[1]) if tag else None)
-                host.requests.append((self.requestline, list(self.headers.items()), self.rfile.read(size)))
+                sent = self.rfile.read(size)
                 code, data = status, body
-                for a in answers:
-                    if a['method'] == self.command and re.fullmatch(a['path'], self.path.partition('?')[0]):
-                        code, data = a['status'], json.dumps(a['body']).encode()
-                        break
+                if self.path == KEY_PATH:
+                    given = test_key is not None and self.command == 'GET' and (
+                        trust is None or trust(self.client_address[1]))
+                    with host.lock:
+                        host.fetches.append(given)
+                    code, data = (200, json.dumps({'key': test_key}).encode()) if given else (404, b'{}')
+                else:
+                    record = Request((self.requestline, list(self.headers.items()), sent))
+                    record.phase = phase() if phase else None
+                    with host.lock:
+                        host.requests.append(record)
+                    for a in answers:
+                        if a['method'] == self.command and re.fullmatch(a['path'], self.path.partition('?')[0]):
+                            code, data = a['status'], json.dumps(a['body']).encode()
+                            break
                 self.send_response(code)
                 for k, v in headers:
                     self.send_header(k, v)
