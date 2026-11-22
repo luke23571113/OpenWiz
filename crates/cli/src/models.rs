@@ -16,7 +16,7 @@ use openwiz_core::new_thread::options::{
     cloud_options, local_options,
 };
 use openwiz_core::ops::Clock;
-use rustix::fd::AsFd;
+use rustix::fd::{AsFd, OwnedFd};
 use rustix::fs::{Access, AtFlags, CWD, FileType, Gid, Mode, OFlags, Uid, XattrFlags};
 use rustix::io::Errno;
 use serde_json::{Value, json};
@@ -326,7 +326,8 @@ fn run_form(
             let saved = save && offered;
             let written = match agents {
                 Some(agents) if saved => {
-                    agents.and_then(|agents| put(&agents, SNAPSHOT_FILE, &document(&snapshot)))
+                    let text = document(&snapshot);
+                    agents.and_then(|agents| put_all(&agents, &[(SNAPSHOT_FILE, &text)]))
                 }
                 _ => Ok(()),
             };
@@ -462,23 +463,20 @@ fn run_set(
             "{FLEET_FILE} changed while set ran, so nothing was written; run it again"
         ));
     }
-    let mut files = Vec::new();
-    if result.text.is_some() {
-        agents.keep_acl(FLEET_FILE)?;
-    }
-    if let Some(options) = &options {
+    let offered = options.as_ref().map(|options| {
         let current = read_fleet(result.text.as_deref().unwrap_or(text)).ok();
-        put(
-            agents,
-            SNAPSHOT_FILE,
-            &document(&snapshot(options, current.as_ref())),
-        )?;
-        files.push(SNAPSHOT_FILE);
+        document(&snapshot(options, current.as_ref()))
+    });
+    let mut writes = Vec::new();
+    if let Some(offered) = &offered {
+        writes.push((SNAPSHOT_FILE, offered.as_str()));
     }
     if let Some(new) = &result.text {
-        put(agents, FLEET_FILE, new)?;
-        files.insert(0, FLEET_FILE);
+        writes.push((FLEET_FILE, new.as_str()));
     }
+    put_all(agents, &writes)?;
+    let mut files: Vec<&str> = writes.iter().map(|(rel, _)| *rel).collect();
+    files.reverse();
     let outcome = if result.text.is_some() {
         "changed"
     } else {
@@ -727,8 +725,8 @@ impl<'a> Agents<'a> {
         Ok(text)
     }
 
-    fn keep_acl(&self, rel: &str) -> Result<(), String> {
-        let Some(check) = &self.1 else {
+    fn keep_acl(&self, rel: &str, fd: Option<&OwnedFd>) -> Result<(), String> {
+        let (Some(check), Some(fd)) = (&self.1, fd) else {
             return Ok(());
         };
         let unchecked = |why: String| {
@@ -736,15 +734,9 @@ impl<'a> Agents<'a> {
                 "cannot write {rel}: cannot check its macOS extended ACL ({why}); nothing was written"
             )
         };
-        let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
-        let fd = match rustix::fs::openat(&self.0, name(rel), flags, Mode::empty()) {
-            Ok(fd) => fd,
-            Err(Errno::NOENT) => return Ok(()),
-            Err(e) => return Err(unchecked(e.to_string())),
-        };
         let path = check.dir.join(name(rel));
         let unmoved = || {
-            let open = rustix::fs::fstat(&fd).map_err(|e| unchecked(e.to_string()))?;
+            let open = rustix::fs::fstat(fd).map_err(|e| unchecked(e.to_string()))?;
             let here = rustix::fs::lstat(&path).map_err(|e| unchecked(e.to_string()))?;
             match (open.st_dev, open.st_ino) == (here.st_dev, here.st_ino) {
                 true => Ok(()),
@@ -756,6 +748,9 @@ impl<'a> Agents<'a> {
         unmoved()?;
         if !listed.status.success() {
             return Err(unchecked(format!("ls failed: {}", listed.status)));
+        }
+        if !listed.stderr.is_empty() {
+            return Err(unchecked("ls warned while it listed the file".to_owned()));
         }
         match String::from_utf8(listed.stdout)
             .ok()
@@ -780,10 +775,61 @@ fn name(rel: &str) -> &str {
     rel.rsplit('/').next().unwrap_or(rel)
 }
 
-fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
+struct Staged<'r> {
+    rel: &'r str,
+    temporary: String,
+    existing: Option<OwnedFd>,
+}
+
+fn put_all(agents: &Agents, files: &[(&str, &str)]) -> Result<(), String> {
+    let mut staged = Vec::new();
+    let mut result = Ok(());
+    for &(rel, text) in files {
+        match stage(agents, rel, text) {
+            Ok(one) => staged.push(one),
+            Err(e) => {
+                result = Err(e);
+                break;
+            }
+        }
+    }
+    let result = result
+        .and_then(|()| staged.iter().try_for_each(|one| unchanged(agents, one)))
+        .and_then(|()| {
+            staged.iter().try_for_each(|one| {
+                rustix::fs::renameat(&agents.0, &one.temporary, &agents.0, name(one.rel))
+                    .map_err(|e| format!("cannot write {}: {e}", one.rel))
+            })
+        });
+    if result.is_err() {
+        for one in &staged {
+            let _ = rustix::fs::unlinkat(&agents.0, &one.temporary, AtFlags::empty());
+        }
+    }
+    result
+}
+
+fn unchanged(agents: &Agents, one: &Staged) -> Result<(), String> {
+    let rel = one.rel;
+    let changed =
+        || format!("cannot write {rel}: it changed while openwiz wrote it; nothing was written");
+    let here = rustix::fs::statat(&agents.0, name(rel), AtFlags::SYMLINK_NOFOLLOW);
+    match (&one.existing, here) {
+        (None, Err(Errno::NOENT)) => Ok(()),
+        (Some(fd), Ok(here)) => {
+            let open = rustix::fs::fstat(fd).map_err(|_| changed())?;
+            if (open.st_dev, open.st_ino) != (here.st_dev, here.st_ino) {
+                return Err(changed());
+            }
+            agents.keep_acl(rel, Some(fd))
+        }
+        _ => Err(changed()),
+    }
+}
+
+fn stage<'r>(agents: &Agents, rel: &'r str, text: &str) -> Result<Staged<'r>, String> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let fail = |e: std::io::Error| format!("cannot write {rel}: {e}");
-    agents.keep_acl(rel)?;
     let dir = &agents.0;
     let target = name(rel);
     let read = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
@@ -799,6 +845,7 @@ fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
             return Err(format!("cannot write {rel}: it is not a regular file"));
         }
     }
+    agents.keep_acl(rel, existing.as_ref())?;
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let temporary = format!(".{target}.openwiz-{}-{n}", std::process::id());
     let create =
@@ -816,12 +863,18 @@ fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
         let mut file = File::from(fd);
         file.write_all(text.as_bytes())?;
         file.sync_all()
-    })
-    .and_then(|()| Ok(rustix::fs::renameat(dir, &temporary, dir, target)?));
-    written.map_err(|e| {
-        let _ = rustix::fs::unlinkat(dir, &temporary, AtFlags::empty());
-        fail(e)
-    })
+    });
+    match written {
+        Ok(()) => Ok(Staged {
+            rel,
+            temporary,
+            existing,
+        }),
+        Err(e) => {
+            let _ = rustix::fs::unlinkat(dir, &temporary, AtFlags::empty());
+            Err(fail(e))
+        }
+    }
 }
 
 const ACCESS_ACL: &str = "system.posix_acl_access";
