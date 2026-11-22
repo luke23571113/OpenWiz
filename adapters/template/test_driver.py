@@ -15,6 +15,9 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
+REPO = os.path.realpath(os.path.join(HERE, '..', '..'))
+HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider', 'goose')
+TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname')
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'fake-harness',
          'model': 'Synthetic 1'}
 BREAKS_AFTER_SPAWN = '''import importlib.machinery, importlib.util, os, shutil, sys
@@ -121,8 +124,9 @@ class Template(unittest.TestCase):
         return path
 
     def call(self, cmd, request, driver=DRIVER, **env):
-        p = subprocess.run([driver, cmd], input=json.dumps(request), env=dict(self.env, **env),
-                           capture_output=True, text=True, timeout=60)
+        env = dict(self.env, **env)
+        p = subprocess.run([driver, cmd], input=json.dumps(request), env=env, capture_output=True, text=True,
+                           timeout=60)
         return p.returncode, json.loads(p.stdout)
 
     def logged(self, count=None):
@@ -142,6 +146,26 @@ class Template(unittest.TestCase):
         while not ready() and time.monotonic() < deadline:
             time.sleep(0.05)
         return ready()
+
+    def test_no_harness_outside_the_fixtures_is_on_the_tests_path(self):
+        # catches: a test PATH that keeps the caller's PATH, where a real harness such as claude would be found
+        # and launched (#2023).
+        outside = os.path.join(self.folder, 'outside')
+        os.mkdir(outside)
+        with open(os.path.join(outside, 'claude'), 'w') as f:
+            f.write('#!/bin/sh\nexit 0\n')
+        os.chmod(os.path.join(outside, 'claude'), 0o700)
+        old = os.environ['PATH']
+        os.environ['PATH'] = outside + os.pathsep + old
+        try:
+            self.setUp()
+        finally:
+            os.environ['PATH'] = old
+        self.assertIsNone(shutil.which('claude', path=self.env['PATH']), 'the PATH reaches a real claude')
+        self.assertEqual(shutil.which('fake-harness', path=self.env['PATH']),
+                         os.path.join(HERE, 'fixtures', 'fake-harness'))
+        with self.assertRaisesRegex(AssertionError, 'could launch a real harness'):
+            self.call('start', dict(START, harness='claude'), PATH=outside + os.pathsep + self.env['PATH'])
 
     def test_stop_ends_what_the_turn_left_behind_after_it_exits(self):
         code, out = self.call('start', START)
