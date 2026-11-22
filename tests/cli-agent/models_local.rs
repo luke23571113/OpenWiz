@@ -258,7 +258,10 @@ fn list_save_reads_the_saved_local_host_without_cloudroom() {
         "list_report",
     );
     assert_eq!(listed["saved"], SNAPSHOT);
-    assert_eq!(listed["offered"]["source"], "local");
+    assert_eq!(
+        listed["offered"]["label"],
+        "Installed local harnesses with OpenWiz's current choices"
+    );
     assert_eq!(listed["offered"]["harnesses"][0]["provider"], "codex");
     let snapshot: Value =
         serde_json::from_slice(&fs::read(sandbox.0.join(SNAPSHOT)).unwrap()).unwrap();

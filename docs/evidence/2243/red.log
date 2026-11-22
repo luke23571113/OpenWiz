@@ -5,12 +5,12 @@ failures:
 
 ---- models_local::list_save_reads_the_saved_local_host_without_cloudroom stdout ----
 
-thread 'models_local::list_save_reads_the_saved_local_host_without_cloudroom' (3684) panicked at tests/cli-agent/models_local.rs:56:5:
+thread 'models_local::list_save_reads_the_saved_local_host_without_cloudroom' (9045) panicked at tests/cli-agent/models_local.rs:56:5:
 assertion `left == right` failed: stdout: {
   "offered": {
     "harnesses": [],
     "label": "as reported by CloudRoom; it may answer from a saved copy",
-    "read_at": 1795334571960,
+    "read_at": 1795334607795,
     "recommended": {
       "builder": {
         "choice": {
@@ -79,6 +79,6 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 failures:
     models_local::list_save_reads_the_saved_local_host_without_cloudroom
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 121 filtered out; finished in 0.04s
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 121 filtered out; finished in 1.37s
 
 error: test failed, to rerun pass `-p openwiz-tests --test cli-agent`
