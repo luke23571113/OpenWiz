@@ -1078,7 +1078,7 @@ fn integer_params_beyond_i64_and_u64_keep_their_digits_through_plan_and_export()
         "argv": ["loop", "list", "--json"],
         "stdout": json!({"automations": [live]}).to_string(),
     }));
-    super::dirs::private_dir_all(&fake.dir().join("exported")).unwrap();
+    super::dirs::private_dir_all(fake.dir().join("exported")).unwrap();
     let export = fake.0.run(&[
         "loop",
         "export",

@@ -2437,10 +2437,7 @@ pub fn read_script(script: &str) -> Option<(String, BTreeMap<String, Param>)> {
             let integer = digits == "0"
                 || (digits.starts_with(|c: char| ('1'..='9').contains(&c))
                     && digits.bytes().all(|b| b.is_ascii_digit()));
-            if !integer
-                || value == "-0"
-                || (value.parse::<i64>().is_err() && value.parse::<u64>().is_err())
-            {
+            if !integer {
                 return None;
             }
             Param::Integer(value.to_owned())
@@ -3073,6 +3070,10 @@ mod polish_tests {
             "9223372036854775808",
             "18446744073709551615",
             "-9223372036854775808",
+            "18446744073709551616",
+            "-9223372036854775809",
+            "123456789012345678901234567890",
+            "-0",
         ] {
             let script = format!(
                 "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_COUNT={digits}\n# wizloop: the check\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n"
@@ -3099,21 +3100,16 @@ mod polish_tests {
             });
             assert!(read.refusals.is_empty(), "{:?}", read.refusals);
             let parsed = read.file.unwrap();
-            let count = &parsed.frontmatter["params"]["count"];
-            assert!(count.is_number());
-            assert_eq!(count.to_string(), digits);
+            assert!(parsed.frontmatter["params"]["count"].is_number());
+            assert_eq!(
+                parsed.params,
+                [("count".to_owned(), PlanParam::Int(digits.to_owned()))]
+            );
             let (restored, params) = read_script(&script).unwrap();
             assert_eq!(restored, check);
             assert_eq!(render_script(&restored, &params).unwrap(), script);
         }
-        for digits in [
-            "+1",
-            "01",
-            "-0",
-            "1.0",
-            "18446744073709551616",
-            "-9223372036854775809",
-        ] {
+        for digits in ["+1", "01", "-01", "1.0", "1e3", "-"] {
             let script = format!(
                 "#!/bin/sh\n# wizloop: params from the loop file, as data\nexport WIZLOOP_PARAM_COUNT={digits}\n# wizloop: the check\nprintf '%s' \"$WIZLOOP_PARAM_COUNT\"\n"
             );
