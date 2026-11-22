@@ -38,27 +38,36 @@ PLANTED = {
 
 
 KEY = 'synthetic-kit-key-' + 'Kit0Value' * 2
-KEY_PASS = PASS[4] + ", and the devin key reached only its host, in the helper's header"
+KEY_PASS = PASS[4] + ", and on start, wake and stop the devin key reached its host only from the key helper, in its header"
 KEY_HOST = os.path.join(FIXTURES, 'key-host', 'driver')
 NOT_RUN = ['fail wake: not run: start failed', 'fail stop: not run: start failed']
-IN_ARGS = 'a process the driver started holds a credential on its command line'
+NEVER = "fail token: the devin key never reached the kit's fake host"
+IN_ARGS = 'a process holds the devin key on its command line'
+IN_COPY = 'a process the driver started holds the devin key in OPENWIZ_COPY, not in DEVIN_API_KEY'
 PLANTED_KEY = {
     'key-reads-itself': PASS[:4] + ["fail token: the driver's file driver names DEVIN_API_KEY, the key's variable"],
-    'key-in-args': PASS[:4] + ['fail token: %s; a process holds the devin key on its command line' % IN_ARGS],
+    'key-in-args': PASS[:4] + ['fail token: ' + IN_ARGS],
     'key-unregistered-host': [PASS[0], 'fail start: the key helper refused: host is not in '
-                              'kernel/driver-kit/hosts.json'] + NOT_RUN +
-                             ["fail token: the devin key never reached the kit's fake host"],
-    'key-host-in-path': [PASS[0], 'fail start: the key helper refused: path has // (a host)'] + NOT_RUN +
-                        ["fail token: the devin key never reached the kit's fake host"],
-    'key-in-env': PASS[:4] + ['fail token: a process the driver started holds a credential in OPENWIZ_COPY, which '
-                              'the kit never gave it; a process the driver started holds the devin key in '
-                              'OPENWIZ_COPY, not in DEVIN_API_KEY'],
-    'key-echoed': PASS[:4] + ['fail token: the driver printed a credential; the driver printed the devin key'],
-    'key-in-body': PASS[:4] + ["fail token: the devin key reached the kit's fake host outside the helper's "
-                               "Authorization header"],
+                              'kernel/driver-kit/hosts.json'] + NOT_RUN + [NEVER],
+    'key-host-in-path': [PASS[0], 'fail start: the key helper refused: path has // (a host)'] + NOT_RUN + [NEVER],
+    'key-in-env': PASS[:4] + ['fail token: ' + IN_COPY],
+    'key-echoed': PASS[:4] + ['fail token: the driver printed the devin key'],
+    'key-in-body': PASS[:4] + [NEVER],
     'key-calls-keychain': PASS[:4] + ["fail token: the driver's file driver calls the keychain tool secret-tool"],
-    'key-sets-override': PASS[:4] + ["fail token: the driver's file driver names OPENWIZ_HOSTKEY_TEST_ORIGIN, the "
-                                     "kit's test override"],
+    'key-in-short-child': PASS[:4] + ['fail token: %s; %s' % (IN_ARGS, IN_COPY)],
+    'key-env-name': PASS[:4] + ['fail token: a process the driver started holds the devin key in a variable the kit '
+                                'does not name, not in DEVIN_API_KEY'],
+    'key-sent-directly': PASS[:4] + ["fail token: a request reached the kit's fake host from a process that is not "
+                                     "the key helper; the devin key reached the kit's fake host outside the "
+                                     "helper's Authorization header"],
+    'key-start-refused': PASS[:4] + ["fail token: start failed against the kit's fake host, so the kit could not "
+                                     "check wake and stop"],
+    'key-hidden-in-test-file': PASS[:4] + ["fail token: the driver's file test_reader.py names DEVIN_API_KEY, the "
+                                           "key's variable"],
+    'key-readme-names-variable': PASS[:4] + ["fail token: the driver's file README.md names DEVIN_API_KEY, the key's "
+                                             "variable"],
+    'key-runtime-script': PASS[:4] + ["fail token: the file ../../runtime-reader, which a process of the driver ran, "
+                                      "names DEVIN_API_KEY, the key's variable"],
 }
 HOST_SCHEMA = {'type': 'object', 'required': ['origin', 'variable', 'keychain', 'header'],
                'additionalProperties': False,
@@ -122,9 +131,14 @@ class Kit(unittest.TestCase):
         kit = module(os.path.join(HERE, 'kit.py'))
         host = kit.FakeHost(*answer)
         self.addCleanup(host.close)
-        code, out, err = self.kit(driver, python, DEVIN_API_KEY=KEY, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin, **env)
-        for text in ['\n'.join(out) + err] + [open(os.path.join(d, n), errors='replace').read()
-                                              for d, _, names in os.walk(self.folder) for n in names]:
+        code, out, err = self.kit(driver, python, OPENWIZ_HOSTKEY_TEST_KEY=KEY, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin,
+                                  **env)
+        texts = ['\n'.join(out) + err]
+        for d, _, names in os.walk(self.folder):
+            for n in names:
+                with open(os.path.join(d, n), errors='replace') as f:
+                    texts.append(f.read())
+        for text in texts:
             self.assertNotIn('kit-canary-', text)
             self.assertNotIn(KEY, text)
         return code, out, host
@@ -162,7 +176,7 @@ class Kit(unittest.TestCase):
                                           PATH=NO_PROC + os.pathsep + self.env['PATH'])
                 self.assertEqual((code, out), (1, PLANTED_KEY[name]))
 
-    def test_without_the_key_helper_the_kit_refuses_a_driver_with_a_readme_and_runs_one_without(self):
+    def test_without_the_key_helper_the_kit_refuses_a_cloud_driver_and_runs_a_local_one(self):
         kit = os.path.join(self.folder, 'kernel', 'driver-kit')
         os.makedirs(kit)
         for name in ('kit.py', 'schema.json'):
@@ -173,7 +187,7 @@ class Kit(unittest.TestCase):
         os.makedirs(bare)
         for name in ('driver', 'schema.json'):
             shutil.copy(os.path.join(os.path.dirname(TEMPLATE), name), bare)
-        for driver, want in ((KEY_HOST, 2), (TEMPLATE, 2), (os.path.join(bare, 'driver'), 0)):
+        for driver, want in ((KEY_HOST, 2), (TEMPLATE, 0), (os.path.join(bare, 'driver'), 0)):
             with self.subTest(driver):
                 p = subprocess.run([sys.executable, '-I', os.path.join(kit, 'kit.py'), '--driver', driver, '--repo',
                                     'example/site', '--ticket', '7', '--harness', 'fake-harness', '--model', 'm',

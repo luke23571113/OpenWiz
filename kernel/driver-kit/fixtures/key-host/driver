@@ -18,8 +18,8 @@ def ask(method, where, body=None):
     request = {'host': HOST, 'method': method, 'path': where}
     if body is not None:
         request['body'] = body
-    p = subprocess.run([sys.executable, '-I', HELPER], input=json.dumps(request), capture_output=True, text=True,
-                       timeout=120)
+    python = os.environ.get('NO_PROC_PYTHON') or sys.executable
+    p = subprocess.run([python, '-I', HELPER], input=json.dumps(request), capture_output=True, text=True, timeout=120)
     try:
         out = json.loads(p.stdout)
     except ValueError:
