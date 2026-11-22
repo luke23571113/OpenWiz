@@ -284,7 +284,8 @@ class Hosts(unittest.TestCase):
     def test_prepared_projects_refuse_what_the_store_refuses(self):
         store = _load('setup_store', ROOT / 'tools/install/setup/store.py')
         edges = [('operator', v) for v in ('', ' ', '\t', ' Synthetic', 'Synthetic ', 'Synthetic\n', 'Syn\x00thetic',
-                                           'Syn\x85thetic', 'S', 'Synthetic  Operator', 'S' * 100, 'S' * 101)]
+                                           'Syn\x85thetic', '\xa0Synthetic', 'Synthetic\u3000', 'S',
+                                           'Synthetic  Operator', 'S' * 100, 'S' * 101)]
         edges += [('repository', 'synthetic-owner/' + v) for v in ('.', '..', '...', '.github', '..x', 'x..', '-', '_')]
         edges += [('service_issue', v) for v in (0, 1, 2 ** 53 - 1, 2 ** 53, 2 ** 63)]
         for base in ('cloud-nine-keys', 'local-without-cloudroom-ids'):
