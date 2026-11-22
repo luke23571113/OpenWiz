@@ -343,17 +343,30 @@ class Local(unittest.TestCase):
         talker = os.path.join(self.folder, 'talker')
         os.mkdir(talker)
         with open(os.path.join(talker, 'claude'), 'w') as f:
-            f.write('#!%s\nprint("Updated the permission documentation and the login guide.")\n' % sys.executable)
+            f.write('#!%s\nimport os\nprint(os.environ["TALK"])\n' % sys.executable)
         os.chmod(os.path.join(talker, 'claude'), 0o700)
         request = {'repository': 'example/quick', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
                    'model': 'synthetic-1'}
-        for case, env in (('ordinary words', dict(self.env, PATH=talker + os.pathsep + self.env['PATH'])),
-                          ('relative state', dict(self.env, OPENWIZ_LOCAL_STATE='state'))):
+        talks = dict(self.env, PATH=talker + os.pathsep + self.env['PATH'])
+        for case, env in [('relative state', dict(self.env, OPENWIZ_LOCAL_STATE='state'))] + [
+                (said, dict(talks, TALK=said)) for said in (
+                    'Updated the permission documentation and the login guide.',
+                    'Added tests for unauthorized requests.',
+                    'Summary: unauthorized requests now get a 401, and a denied upload was refused.',
+                    'Checked that the session token is invalid after logout, and that the request was denied.')]:
             with self.subTest(case):
                 p = subprocess.run([DRIVER, 'start'], input=json.dumps(request), env=env, cwd=self.folder,
                                    capture_output=True, text=True, timeout=60)
                 self.assertEqual(p.returncode, 0, p.stdout)
                 self.assertEqual(self.driver('wake', json.loads(p.stdout))[0], 0)
+        for said, says in (('Error: 401 Unauthorized', 'not signed in'), ('Unauthorized', 'not signed in'),
+                           ('Not logged in \u00b7 Please run /login', 'not signed in'),
+                           ('API Error: OAuth token has expired.', 'not signed in'),
+                           ('Error: permission to use Write was denied.', 'refused a tool')):
+            with self.subTest(said):
+                code, err = self.start(env=dict(talks, TALK=said), repository='example/quick')
+                self.assertEqual(code, 1, err)
+                self.assertIn(says + ' (exit 0)', err['error'])
 
     def test_a_credential_shaped_start_field_is_refused_before_anything_starts(self):
         calls, logging = os.path.join(self.folder, 'calls'), os.path.join(self.folder, 'logging-bin')
