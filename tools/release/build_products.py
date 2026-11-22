@@ -17,9 +17,10 @@ from product_identity import PROGRAMS as COMPILED, WIZSKILLS, architecture, cano
 
 # #1699: the drivers 0.1.0 launches with (KN3 to KN5), each carried when the source tracks it,
 # and the driver kit's files (kit.py reads its schema, ../records.v1.md and ../records-kit/check.py).
-DRIVERS = ('boat', 'cloudroom', 'local')
+# #1996: Devin's driver reaches its host only through the key helper, so hostkey.py and hosts.json ship beside kit.py.
+DRIVERS = ('boat', 'cloudroom', 'devin', 'local')
 KIT = ['kernel/driver-kit/kit.py', 'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py',
-       'kernel/records.v1.md']
+       'kernel/records.v1.md', 'kernel/driver-kit/hostkey.py', 'kernel/driver-kit/hosts.json']
 
 
 def collect(root, binaries, output, version, source, target, program_receipt):

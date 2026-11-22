@@ -254,7 +254,8 @@ class Package(unittest.TestCase):
         release = ROOT / '.wizskills'
         self.assertTrue((release / '.git').is_dir(), 'Install the pinned WizSkills first: tools/wizskills/install.py')
         driver = ('adapters/boat/driver', 'adapters/boat/schema.json', 'kernel/driver-kit/kit.py',
-                  'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py', 'kernel/records.v1.md')
+                  'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py', 'kernel/records.v1.md',
+                  'kernel/driver-kit/hostkey.py', 'kernel/driver-kit/hosts.json')
         with tempfile.TemporaryDirectory(prefix='openwiz-boat-pin-') as temporary:
             root = Path(temporary)
             binaries = root / 'bin'
