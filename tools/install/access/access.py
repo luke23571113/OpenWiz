@@ -2,13 +2,13 @@
 import argparse
 import base64
 from datetime import datetime, timezone
+from http.client import HTTPException
 import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import secrets as random
-import shutil
 import stat
 import subprocess
 import sys
@@ -34,7 +34,8 @@ Confirmation makes read-only provider checks and records independent readiness.
 Repeated confirmation reconciles the same resource; it cannot send/create work.
 Secrets are read from owner-only files, never arguments, output or shared state.
 Python 3.9+, standard library; Cloudflare uses the setup prerequisite
-/usr/bin/openssl; Tailscale verification also needs its local CLI.
+/usr/bin/openssl; Tailscale verification also needs its local CLI at a
+fixed system location (never PATH).
 
 Plan JSON has exactly schema="openwiz.access-plan.v1", provider, host (fixed
 lowercase HTTPS DNS name), port (loopback integer), owner (email), plus:
@@ -56,6 +57,9 @@ MAX_BYTES = 4 * 1024 * 1024
 EMAIL = re.compile(r'[A-Za-z0-9.!#$%&\x27*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}')
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 TOKEN = re.compile(r'[A-Za-z0-9._~+/-]{1,16384}=*')
+TAILSCALE = ('/usr/bin/tailscale', '/usr/sbin/tailscale', '/usr/local/bin/tailscale', '/opt/homebrew/bin/tailscale',
+             '/Applications/Tailscale.app/Contents/MacOS/Tailscale')
+CHECK = re.compile('Check ([0-9]{1,16}): ')
 
 
 class Unverified(Exception):
@@ -329,10 +333,11 @@ def cloudflare(http, p, secrets, now, witness):
 
 
 def local_tailscale(kind):
-    executable = shutil.which('tailscale')
+    executable = next((path for path in TAILSCALE if os.path.isfile(path) and os.access(path, os.X_OK)), None)
     need(executable is not None, 'access_unavailable')
     args = ['status', '--json'] if kind == 'status' else ['serve', 'status', '--json']
-    reply = subprocess.run([executable, *args], stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+    reply = subprocess.run([executable, *args], stdin=subprocess.DEVNULL, capture_output=True, timeout=30,
+                           env={'PATH': '/usr/bin:/bin'})
     need(reply.returncode == 0 and len(reply.stdout) <= MAX_BYTES, 'access_unavailable')
     return decode(reply.stdout)
 
@@ -402,8 +407,15 @@ def verify(http, p, secret_path, now, local, witness):
         return 'access_' + p['provider'] + '_verified', at
     except Unverified as error:
         return error.code, int(now * 1000)
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, store.Refused, subprocess.SubprocessError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, HTTPException,
+            store.Refused, subprocess.SubprocessError):
         return 'access_unavailable', int(now * 1000)
+
+
+def observed(operations):
+    checks = [(int(found.group(1)), o) for o in operations
+              if o['kind'] == 'configure_access' and (found := CHECK.match(o['reason']))]
+    return max(checks, key=lambda pair: pair[0])[1] if checks else None
 
 
 def execute(argv=None, *, http=None, local=local_tailscale):
@@ -426,7 +438,8 @@ def execute(argv=None, *, http=None, local=local_tailscale):
         operation = next((o for o in value['operations'] if o['operation_id'] == args.operation
                           and o['kind'] == 'configure_access'), None)
         store.require(operation is not None, 'unknown access operation')
-        return {'operation': operation, 'observation': value['observations'].get('remote_access')}
+        bound = observed(value['operations']) is operation
+        return {'operation': operation, 'observation': value['observations'].get('remote_access') if bound else None}
     selected = plan(private_json(args.plan))
     before = setup.read()
     context_revision = before['revision']
@@ -459,7 +472,10 @@ def execute(argv=None, *, http=None, local=local_tailscale):
                         return dict(operation)
             operation = {'operation_id': random.token_hex(16), 'kind': 'configure_access', 'phase': 'proposed',
                          'fingerprint': digest, 'effects': effects, 'reason': 'Proposed: confirm with --yes --operation.'}
+            writer = observed(value['operations'])
             value['operations'] = store.retained(value['operations'], (value.get('engine') or {}).get('operation_id')) + [operation]
+            if writer is not None and writer not in value['operations']:
+                value['observations'].pop('remote_access', None)
             return dict(operation)
         operation = setup.update(propose)
         return {'operation': operation, 'observation': None, 'selection_revision': revision}
@@ -474,7 +490,8 @@ def execute(argv=None, *, http=None, local=local_tailscale):
         operation = setup.authorized(value, args.operation, 'configure_access', request, selected_request)
         if operation['phase'] == 'proposed':
             operation['phase'] = 'uncertain'
-        operation['reason'] = 'Verification code ' + random.token_hex(16) + '. Check this operation after an interrupted verification.'
+        operation['reason'] = (f'Check {generation}: verification code ' + random.token_hex(16)
+                               + '. Check this operation after an interrupted verification.')
         value['observations']['remote_access'] = {'code': 'access_checking', 'revision': revision,
                                                 'at': int(time.time() * 1000)}
         return {key: operation[key] for key in ('operation_id', 'kind', 'fingerprint', 'phase', 'reason')}
@@ -490,11 +507,12 @@ def execute(argv=None, *, http=None, local=local_tailscale):
         value['observations']['remote_access'] = observation
         if code in ('access_cloudflare_verified', 'access_tailscale_verified'):
             operation['phase'] = 'applied'
-            operation['reason'] = 'Route checked. Readiness still requires current independent evidence.'
+            reason = 'Route checked. Readiness still requires current independent evidence.'
         else:
-            operation['reason'] = ('Previous verification is recorded; current access needs attention.'
-                                   if operation['phase'] == 'applied'
-                                   else 'Verification remains uncertain; recheck this exact route before changing it.')
+            reason = ('Previous verification is recorded; current access needs attention.'
+                      if operation['phase'] == 'applied'
+                      else 'Verification remains uncertain; recheck this exact route before changing it.')
+        operation['reason'] = f'Check {generation}: {reason}'
         return {'operation': dict(operation), 'observation': observation}
     return setup.update(finish)
 
