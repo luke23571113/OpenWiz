@@ -16,7 +16,9 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOSTKEY = os.path.join(HERE, 'hostkey.py')
 KEY = 'synthetic-host-key-' + 'Kit0Value' * 3
+PRODUCTION = 'synthetic-production-key-' + 'Kit0Value' * 3
 NAMES = 'DEVIN_API_KEY or the keychain entry openwiz-devin'
+TEST_KEY = 'OPENWIZ_HOSTKEY_TEST_KEY'
 GOOD = {'host': 'devin', 'method': 'POST', 'path': '/v3/organizations/org-syn1/sessions', 'body': {'prompt': 'hi'}}
 
 
@@ -56,7 +58,8 @@ class Helper(unittest.TestCase):
 
     def env(self, **more):
         env = {'PATH': self.bin + os.pathsep + '/usr/bin:/bin', 'HOME': self.folder, 'TMPDIR': self.folder,
-               'TOOL_LOG': self.log, 'DEVIN_API_KEY': KEY, 'OPENWIZ_HOSTKEY_TEST_ORIGIN': self.host.origin}
+               'TOOL_LOG': self.log, 'DEVIN_API_KEY': PRODUCTION, TEST_KEY: KEY,
+               'OPENWIZ_HOSTKEY_TEST_ORIGIN': self.host.origin}
         env.update(more)
         return {k: v for k, v in env.items() if v is not None}
 
@@ -66,12 +69,18 @@ class Helper(unittest.TestCase):
                            capture_output=True, text=True, timeout=60)
         for text in (p.stdout, p.stderr):
             self.assertNotIn(KEY, text)
+            self.assertNotIn(PRODUCTION, text)
         self.assertEqual(p.stderr, '')
         files = [os.path.join(d, n) for d, _, names in os.walk(self.folder) for n in names]
         for name in files:
             with open(name, 'rb') as f:
-                self.assertNotIn(KEY.encode(), f.read(), name)
-        return p.returncode, json.loads(p.stdout)
+                data = f.read()
+                self.assertNotIn(KEY.encode(), data, name)
+                self.assertNotIn(PRODUCTION.encode(), data, name)
+        for _, headers, _ in self.host.requests:
+            self.assertNotIn(PRODUCTION, repr(headers), 'a production key reached the loopback fake')
+        return p.returncode, json.loads(p.stdout, parse_constant=lambda name: self.fail('the answer is not strict '
+                                                                                         'JSON: ' + name))
 
     def refused(self, request, why, raw=None, **env):
         code, out = self.run_helper(request, raw, **env)
@@ -178,13 +187,47 @@ class Helper(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertIn("the host's answer held the key", out['error'])
 
-    def test_a_key_with_quotes_or_backslashes_is_still_never_echoed(self):
-        key = 'synthetic"quoted\\key-' + 'Kit0Value' * 2
-        host = self.fake(500, [], json.dumps({'echo': key}).encode())
-        p = subprocess.run([sys.executable, '-I', HOSTKEY], input=json.dumps(GOOD), capture_output=True, text=True,
-                           env=self.env(DEVIN_API_KEY=key, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin), timeout=60)
-        self.assertEqual(p.returncode, 1)
-        self.assertFalse(key in p.stdout or key in json.loads(p.stdout)['error'] + json.loads(p.stdout)['next'])
+    def test_under_the_override_no_production_key_is_ever_read(self):
+        for env in ({TEST_KEY: None}, {TEST_KEY: ''}, {TEST_KEY: None, 'DEVIN_API_KEY': None}):
+            with self.subTest(env):
+                out = self.refused(GOOD, 'no test key in OPENWIZ_HOSTKEY_TEST_KEY', **env)
+                self.assertFalse(os.path.exists(self.log), 'the keychain was read under the test override')
+        code, out = self.run_helper(GOOD)
+        self.assertEqual([v for k, v in self.host.requests[0][1] if k == 'Authorization'], ['Bearer ' + KEY])
+
+    def test_a_request_that_holds_the_key_is_refused_before_it_is_sent(self):
+        quoted = KEY.replace('s', '%73')
+        cases = [dict(GOOD, path='/v1/' + KEY), dict(GOOD, path='/v1?k=' + KEY), dict(GOOD, path='/v1/' + quoted),
+                 dict(GOOD, body={'k': KEY}), dict(GOOD, body={KEY: 1}), dict(GOOD, body={'k': ['x' + KEY + 'y']})]
+        for request in cases:
+            with self.subTest(request):
+                self.refused(request, 'the request holds the key')
+
+    def test_a_body_strict_json_cannot_hold_comes_back_null_with_its_status(self):
+        for body in (b'{"n": 1e400}', b'[-1e999]'):
+            with self.subTest(body):
+                host = self.fake(200, [], body)
+                self.assertEqual(self.run_helper(GOOD, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin),
+                                 (0, {'status': 200, 'body': None}))
+
+    def test_native_tls_configuration_from_the_environment_never_reaches_the_helper(self):
+        conf = os.path.join(self.folder, 'min13.cnf')
+        with open(conf, 'w') as f:
+            f.write('openssl_conf = c\n[c]\nssl_conf = s\n[s]\nsystem_default = d\n[d]\nMinProtocol = TLSv1.3\n')
+        probe = ('import importlib.machinery as m, importlib.util as u, sys\n'
+                 'if sys.argv[1] == "helper":\n'
+                 '    s = u.spec_from_loader("hostkey", m.SourceFileLoader("hostkey", %r))\n'
+                 '    s.loader.exec_module(u.module_from_spec(s))\n'
+                 'import ssl\nprint(int(ssl.create_default_context().minimum_version))\n' % HOSTKEY)
+        seen = {}
+        for who in ('control', 'helper'):
+            p = subprocess.run([sys.executable, '-I', '-c', probe, who], capture_output=True, text=True, timeout=60,
+                               env=dict(self.env(), OPENSSL_CONF=conf, OPENSSL_MODULES=self.folder,
+                                        OPENSSL_ENGINES=self.folder, SSLKEYLOGFILE=os.path.join(self.folder, 'k')))
+            self.assertEqual(p.returncode, 0, p.stderr)
+            seen[who] = int(p.stdout)
+        self.assertEqual(seen['control'], int(ssl.TLSVersion.TLSv1_3), 'the planted configuration does not work')
+        self.assertNotEqual(seen['helper'], int(ssl.TLSVersion.TLSv1_3), 'the helper took the planted TLS minimum')
 
     def test_a_non_json_answer_comes_back_as_a_null_body(self):
         for body in (b'', b'not json', b'{"n": NaN}', b'\xff'):
@@ -198,21 +241,34 @@ class Helper(unittest.TestCase):
         self.host.close()
         self.refused(GOOD, 'could not reach the host', OPENWIZ_HOSTKEY_TEST_ORIGIN='http://127.0.0.1:%d' % port)
 
-    def test_a_missing_key_names_the_variable_and_the_entry(self):
-        for value in (None, ''):
-            with self.subTest(value):
-                out = self.refused(GOOD, 'no key', DEVIN_API_KEY=value)
-                self.assertIn(NAMES, out['error'] + ' ' + out['next'])
-                self.assertFalse(os.path.exists(self.log), 'the keychain was read under the test override')
-
-    def test_a_key_that_is_not_one_printable_line_is_refused_without_its_value(self):
-        for bad in (KEY + '\n', KEY + ' x', 'a\rb', KEY + '\t', KEY + '\u00e9'):
+    def test_a_key_outside_the_supported_format_is_refused_without_its_value(self):
+        for bad in (KEY + '\n', KEY + ' x', 'a\rb', KEY + '\t', KEY + '\u00e9', 'short-key-15chr', KEY + '"q',
+                    KEY + '\\', KEY + ':', 'x' * 4097):
             with self.subTest(repr(bad)):
-                code, out = self.run_helper(GOOD, DEVIN_API_KEY=bad)
+                code, out = self.run_helper(GOOD, **{TEST_KEY: bad})
                 self.assertEqual(code, 1)
-                self.assertIn('is not one line of printable characters', out['error'])
+                self.assertIn('is not a key of 16 to 4096 letters, digits or ._~+/=-', out['error'])
                 self.assertNotIn(bad.strip(), json.dumps(out))
                 self.assertEqual(self.host.requests, [])
+
+    def test_a_key_that_fits_inside_the_helpers_own_texts_is_never_printed(self):
+        for key in ('held', 'the'):
+            with self.subTest(key):
+                host = self.fake(200, [], json.dumps({'echo': key}).encode())
+                p = subprocess.run([sys.executable, '-I', HOSTKEY], input=json.dumps(GOOD), capture_output=True,
+                                   text=True, timeout=60, env=self.env(DEVIN_API_KEY=key, OPENWIZ_HOSTKEY_TEST_ORIGIN=
+                                                                       host.origin, **{TEST_KEY: key}))
+                self.assertEqual(p.returncode, 1)
+                self.assertNotIn(key, p.stdout)
+
+    def test_every_output_path_including_its_fallbacks_holds_no_key(self):
+        hostkey = module(HOSTKEY, 'hostkey')
+        for keys in (['the-answer-held-the-key'], ['the answer held the key'], ['helper did not print']):
+            with self.subTest(keys):
+                text, code = hostkey.render({'status': 200, 'body': {'k': keys[0]}}, keys)
+                self.assertEqual(code, 1)
+                self.assertFalse(any(k in text for k in keys), text)
+                self.assertEqual(sorted(json.loads(text)), ['error', 'next'])
 
     def test_the_helper_runs_only_in_isolated_mode(self):
         code, out = self.run_helper(GOOD, isolated=False)
@@ -231,15 +287,27 @@ class Keychain(unittest.TestCase):
 
     fake = Helper.fake
 
-    def lookup(self, platform='linux', **env):
-        environ = {'PATH': self.bin + os.pathsep + '/usr/bin:/bin', 'TOOL_LOG': self.log, 'TOOL_KEY': os.path.join(self.folder, 'key')}
+    def lookup(self, platform='linux', tool_exit=0, key_file='key', **env):
+        trusted = os.path.join(self.folder, 'trusted')
+        os.makedirs(trusted, exist_ok=True)
+        for tool in ('secret-tool', 'security'):
+            with open(os.path.join(trusted, tool), 'w') as f:
+                f.write(FAKE_TOOL.replace('"$TOOL_LOG"', repr(self.log)).replace('"$TOOL_KEY"', repr(
+                    os.path.join(self.folder, key_file))).replace('${TOOL_EXIT:-0}', str(tool_exit)))
+            os.chmod(os.path.join(trusted, tool), 0o700)
+        environ = {'PATH': self.bin + os.pathsep + '/usr/bin:/bin', 'HOME': self.folder, 'LANG': 'C.UTF-8',
+                   'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/synthetic/bus', 'XDG_RUNTIME_DIR': '/synthetic/run',
+                   'PLANTED': 'from the driver', 'LD_PRELOAD': '/synthetic/planted.so'}
         environ.update(env)
-        old = sys.platform
+        old, tools = sys.platform, dict(self.hostkey.TOOLS)
         sys.platform = platform
+        self.hostkey.TOOLS.update({p: [os.path.join(trusted, argv[0].rpartition('/')[2])] + argv[1:]
+                                   for p, argv in tools.items()})
         try:
             return self.hostkey.find_key(self.entry, {k: v for k, v in environ.items() if v is not None})
         finally:
             sys.platform = old
+            self.hostkey.TOOLS.update(tools)
 
     def tool_calls(self):
         if not os.path.exists(self.log):
@@ -251,29 +319,49 @@ class Keychain(unittest.TestCase):
         self.assertEqual(self.lookup(DEVIN_API_KEY='from-the-variable'), 'from-the-variable')
         self.assertEqual(self.tool_calls(), '')
 
-    def test_an_empty_variable_reads_the_keychain_through_a_pipe(self):
+    def test_an_empty_variable_reads_the_keychain_from_its_trusted_path_with_a_minimal_environment(self):
+        hijack = {'PATH': self.bin, 'TOOL_LOG': self.log, 'TOOL_KEY': os.path.join(self.folder, 'key')}
+        old = sys.platform
+        sys.platform = 'linux'
+        try:
+            self.hostkey.find_key(self.entry, dict(hijack, DEVIN_API_KEY=''))
+        except self.hostkey.Refused:
+            pass
+        finally:
+            sys.platform = old
+        self.assertEqual(self.tool_calls(), '', 'a keychain tool found on the caller\'s PATH ran')
+        allowed = {'linux': {'PATH', 'HOME', 'LANG', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR'},
+                   'darwin': {'PATH', 'HOME', 'LANG'}}
+        self.assertEqual(self.hostkey.TOOLS, {'linux': ['/usr/bin/secret-tool', 'lookup', 'service'],
+                                              'darwin': ['/usr/bin/security', 'find-generic-password', '-w', '-s']})
         for platform, argv in (('linux', 'secret-tool lookup service openwiz-devin'),
-                               ('darwin', 'security find-generic-password -s openwiz-devin -w')):
+                               ('darwin', 'security find-generic-password -w -s openwiz-devin')):
             with self.subTest(platform):
                 os.path.exists(self.log) and os.remove(self.log)
                 self.assertEqual(self.lookup(platform, DEVIN_API_KEY=''), KEY)
-                calls = self.tool_calls()
-                self.assertEqual(calls.splitlines()[0], os.path.join(self.bin, argv))
-                self.assertNotIn(KEY, calls, 'the key was in the keychain tool\'s arguments or environment')
-                self.assertNotIn('DEVIN_API_KEY', calls)
+                calls = self.tool_calls().splitlines()
+                self.assertEqual(calls[0], os.path.join(self.folder, 'trusted', argv))
+                names = {line.partition('=')[0] for line in calls[1:]} - {'PWD', 'SHLVL', '_', 'OLDPWD'}
+                self.assertEqual(names, allowed[platform])
+                self.assertIn('PATH=/usr/bin:/bin', calls)
+                self.assertNotIn(KEY, '\n'.join(calls[:1] + [c for c in calls[1:] if not c.startswith('PATH=')]))
 
     def test_a_failed_or_empty_keychain_is_a_missing_key(self):
-        for env in ({'TOOL_EXIT': '1'}, {'TOOL_KEY': os.path.join(self.folder, 'none')}, {'PATH': self.folder}):
-            with self.subTest(env):
+        for kw in ({'tool_exit': 1}, {'key_file': 'none'}):
+            with self.subTest(kw):
                 with self.assertRaises(self.hostkey.Refused) as caught:
-                    self.lookup(**env)
+                    self.lookup(**kw)
                 self.assertIn(NAMES, ' '.join(caught.exception.args))
 
-    def test_the_keychain_is_never_read_under_the_test_override(self):
-        with self.assertRaises(self.hostkey.Refused) as caught:
-            self.lookup(OPENWIZ_HOSTKEY_TEST_ORIGIN='http://127.0.0.1:9')
-        self.assertIn(NAMES, ' '.join(caught.exception.args))
-        self.assertEqual(self.tool_calls(), '')
+    def test_under_the_test_override_neither_production_source_is_read(self):
+        for env in ({}, {'DEVIN_API_KEY': PRODUCTION}):
+            with self.subTest(env):
+                with self.assertRaises(self.hostkey.Refused) as caught:
+                    self.lookup(OPENWIZ_HOSTKEY_TEST_ORIGIN='http://127.0.0.1:9', **env)
+                self.assertIn('no test key in OPENWIZ_HOSTKEY_TEST_KEY', caught.exception.args[0])
+                self.assertEqual(self.tool_calls(), '')
+        self.assertEqual(self.lookup(OPENWIZ_HOSTKEY_TEST_ORIGIN='http://127.0.0.1:9', DEVIN_API_KEY=PRODUCTION,
+                                     **{TEST_KEY: KEY}), KEY)
 
     def test_tls_is_verified_with_the_system_defaults_and_ignores_cert_variables(self):
         cert, key = os.path.join(self.folder, 'c.pem'), os.path.join(self.folder, 'k.pem')
