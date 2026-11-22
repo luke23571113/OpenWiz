@@ -3,6 +3,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -35,6 +36,37 @@ PLANTED = {
 }
 
 
+KEY = 'synthetic-kit-key-' + 'Kit0Value' * 2
+KEY_PASS = PASS[4] + ", and the devin key reached only its host, in the helper's header"
+KEY_HOST = os.path.join(FIXTURES, 'key-host', 'driver')
+NOT_RUN = ['fail wake: not run: start failed', 'fail stop: not run: start failed']
+IN_ARGS = 'a process the driver started holds a credential on its command line'
+PLANTED_KEY = {
+    'key-reads-itself': PASS[:4] + ["fail token: the driver's file driver names DEVIN_API_KEY, the key's variable"],
+    'key-in-args': PASS[:4] + ['fail token: %s; a process holds the devin key on its command line' % IN_ARGS],
+    'key-unregistered-host': [PASS[0], 'fail start: the key helper refused: host is not in '
+                              'kernel/driver-kit/hosts.json'] + NOT_RUN +
+                             ["fail token: the devin key never reached the kit's fake host"],
+    'key-host-in-path': [PASS[0], 'fail start: the key helper refused: path has // (a host)'] + NOT_RUN +
+                        ["fail token: the devin key never reached the kit's fake host"],
+    'key-in-env': PASS[:4] + ['fail token: a process the driver started holds a credential in OPENWIZ_COPY, which '
+                              'the kit never gave it; a process the driver started holds the devin key in '
+                              'OPENWIZ_COPY, not in DEVIN_API_KEY'],
+    'key-echoed': PASS[:4] + ['fail token: the driver printed a credential; the driver printed the devin key'],
+    'key-in-body': PASS[:4] + ["fail token: the devin key reached the kit's fake host outside the helper's "
+                               "Authorization header"],
+    'key-calls-keychain': PASS[:4] + ["fail token: the driver's file driver calls the keychain tool secret-tool"],
+    'key-sets-override': PASS[:4] + ["fail token: the driver's file driver names OPENWIZ_HOSTKEY_TEST_ORIGIN, the "
+                                     "kit's test override"],
+}
+HOST_SCHEMA = {'type': 'object', 'required': ['origin', 'variable', 'keychain', 'header'],
+               'additionalProperties': False,
+               'properties': {'origin': {'type': 'string',
+                                         'pattern': r'^https://[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+(-[a-z0-9]+)*)+$'},
+                              'variable': {'type': 'string', 'pattern': '^[A-Z][A-Z0-9_]{0,63}$'},
+                              'keychain': {'type': 'string', 'pattern': r'^[a-z0-9]+([.-][a-z0-9]+)*$'},
+                              'header': {'const': 'authorization-bearer'}}}
+HOST_NAME = {'type': 'string', 'pattern': '^(?=.{1,40}$)[a-z0-9]+(-[a-z0-9]+)*$'}
 CONTRACT_FORMATS = ['token=', 'key=', 'secret=', 'password=', 'sig=', 'password:', 'Bearer', 'gh?_', 'github_pat_',
                     'AKIA', 'xox?-', 'sk-']
 
@@ -84,6 +116,79 @@ class Kit(unittest.TestCase):
                             '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', '8'],
                            env=dict(self.env, **env), capture_output=True, text=True, timeout=120)
         return p.returncode, p.stdout.splitlines(), p.stderr
+
+    def keyed(self, driver, *answer, python=sys.executable, **env):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        host = kit.FakeHost(*answer)
+        self.addCleanup(host.close)
+        code, out, err = self.kit(driver, python, DEVIN_API_KEY=KEY, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin, **env)
+        for text in ['\n'.join(out) + err] + [open(os.path.join(d, n), errors='replace').read()
+                                              for d, _, names in os.walk(self.folder) for n in names]:
+            self.assertNotIn('kit-canary-', text)
+            self.assertNotIn(KEY, text)
+        return code, out, host
+
+    def test_a_key_host_driver_that_uses_only_the_helper_passes_all_five(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        for python, env in ((sys.executable, {}), (os.path.join(NO_PROC, 'python3'), macos)):
+            with self.subTest(python):
+                self.tearDown()
+                self.setUp()
+                code, out, host = self.keyed(KEY_HOST, python=python, **dict(env, PATH=env and macos['PATH']
+                                                                                 or self.env['PATH']))
+                self.assertEqual((code, out), (0, PASS[:4] + [KEY_PASS]))
+                lines = [re.sub(r'run-[0-9a-f]{12}', '<run>', r[0].rpartition(' ')[0]) for r in host.requests]
+                self.assertEqual(lines, ['POST /v1/runs/<run>/start', 'POST /v1/runs/<run>/wake',
+                                         'DELETE /v1/runs/<run>'])
+                for _, headers, _ in host.requests:
+                    self.assertEqual([v for k, v in headers if k == 'Authorization'], ['Bearer ' + KEY])
+
+    def test_each_planted_key_driver_fails_with_its_own_line(self):
+        for name, lines in PLANTED_KEY.items():
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                code, out, _ = self.keyed(os.path.join(FIXTURES, 'planted', name, 'driver'))
+                self.assertEqual((code, out), (1, lines))
+
+    def test_a_host_that_answers_a_redirect_fails_start_and_the_redirect_is_never_followed(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        target = kit.FakeHost()
+        self.addCleanup(target.close)
+        code, out, host = self.keyed(KEY_HOST, 302, [('Location', target.origin + '/v1/runs')], b'')
+        self.assertEqual((code, out), (1, [PASS[0], 'fail start: the host answered 302'] + NOT_RUN + [KEY_PASS]))
+        self.assertEqual((len(host.requests), target.requests), (1, []))
+
+    def test_the_registry_holds_devin_and_the_schema_and_helper_refuse_the_same_registries(self):
+        kit, hostkey = module(os.path.join(HERE, 'kit.py')), module(os.path.join(HERE, 'hostkey.py'))
+        good = {'devin': {'origin': 'https://api.devin.ai', 'variable': 'DEVIN_API_KEY', 'keychain': 'openwiz-devin',
+                          'header': 'authorization-bearer'}}
+        self.assertEqual(hostkey.registry(), good)
+        entry = good['devin']
+        cases = [good, dict(good, other=dict(entry, origin='https://api.example.org')), {}, [entry], {'devin': [1]},
+                 {'Devin': entry}, {'d' * 41: entry}, {'devin': dict(entry, extra='x')}, {'devin': {'origin': 'x'}},
+                 {'devin': dict(entry, origin='http://api.devin.ai')}, {'devin': dict(entry, origin=entry['origin'] + '/')},
+                 {'devin': dict(entry, origin=entry['origin'] + ':443')}, {'devin': dict(entry, origin='https://API.devin.ai')},
+                 {'devin': dict(entry, origin='https://localhost')}, {'devin': dict(entry, header='x-api-key')},
+                 {'devin': dict(entry, variable='devin_api_key')}, {'devin': dict(entry, keychain='openwiz devin')},
+                 {'devin': dict(entry, variable=7)}, 'raw:{"devin": %s, "devin": %s}' % (json.dumps(entry), json.dumps(entry)),
+                 'raw:{"devin": {"origin": NaN}}', 'raw:not json']
+        for case in cases:
+            with self.subTest(case):
+                path = os.path.join(self.folder, 'hosts.json')
+                with open(path, 'w') as f:
+                    f.write(case[4:] if isinstance(case, str) else json.dumps(case))
+                try:
+                    value = kit.parse(case[4:]) if isinstance(case, str) else case
+                    schema = isinstance(value, dict) and bool(value) and all(
+                        kit.invalid(n, HOST_NAME) is None and kit.invalid(e, HOST_SCHEMA) is None for n, e in value.items())
+                except ValueError:
+                    schema, value = False, None
+                try:
+                    helper = hostkey.registry(path) == value
+                except hostkey.Refused:
+                    helper = False
+                self.assertEqual((schema, helper), (schema, schema))
 
     def test_template_passes_all_five(self):
         self.assertEqual(self.kit(TEMPLATE)[:2], (0, PASS))
