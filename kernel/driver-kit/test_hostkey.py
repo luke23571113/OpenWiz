@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""The key helper's own tests (driver v1 N4): every refusal, and that the key never leaks."""
 import http.client
 import importlib.machinery
 import importlib.util
@@ -214,8 +213,6 @@ class Helper(unittest.TestCase):
 
 
 class Keychain(unittest.TestCase):
-    """The key lookup, read in the helper's own process: no test here ever reaches a real keychain."""
-
     def setUp(self):
         Helper.setUp(self)
         self.hostkey = module(HOSTKEY, 'hostkey')

@@ -1,16 +1,7 @@
 #!/usr/bin/env python3
-"""The kit's key helper (driver v1 N4): the one place a host API key is ever read.
-
-A driver runs `python3 -I kernel/driver-kit/hostkey.py` with one JSON request on stdin: exactly `host`, `method`
-(GET, POST or DELETE), `path` and an optional `body` (an object). The helper reads the host's key from the
-environment variable registered for it in hosts.json, or else from the system keychain, sends the request only to
-the host's registered HTTPS origin with the key in its Authorization header, and prints exactly `status` and `body`.
-On a refusal or failure it exits 1 with driver v1's D3 error. Standard library only.
-
-SECURITY: the key is never printed, logged, echoed, cached or put on a command line, and no error text, answer or
-child process's arguments or environment carries it. Every error below is a fixed text that names only registry
-names, never a value the driver sent or the host answered.
-"""
+# SECURITY: the one place a host API key is ever read (driver v1 N4). The key is never printed, logged, cached or put
+# on a command line, and no error text, answer or child process's arguments or environment carries it: every error
+# is a fixed text naming only registry names, never a value the driver sent or the host answered.
 import json
 import os
 import re
@@ -51,7 +42,6 @@ def _no_constant(name):
 
 
 def registry(path=REGISTRY):
-    """The registry, read whole and exactly: a host name maps to exactly origin, variable, keychain and header."""
     bad = Refused('kernel/driver-kit/hosts.json is not a valid registry', 'restore it from OpenWiz')
     try:
         with open(path, 'rb') as f:
@@ -69,7 +59,6 @@ def registry(path=REGISTRY):
 
 
 def path_fault(path):
-    """Why a request path could leave the registered origin, or None. It fails closed: one fixed character set."""
     if not isinstance(path, str):
         return 'path is not a string'
     if not path.startswith('/'):
@@ -124,7 +113,6 @@ def read_request(text, hosts):
 
 
 def test_origin(environ):
-    """The kit's loopback override, honoured only as exactly http://127.0.0.1:<port>; any other value refuses."""
     if OVERRIDE not in environ:
         return None
     m = TEST_ORIGIN.fullmatch(environ[OVERRIDE])
@@ -135,10 +123,7 @@ def test_origin(environ):
 
 
 def find_key(entry, environ):
-    """The key: the registered variable when set and non-empty, else the keychain entry, read from a pipe.
-
-    Under the test override the keychain is never read, so no test and no driver can send a stored key to a fake host.
-    """
+    # SECURITY: under the test override the keychain is never read, so no stored key can reach a loopback fake.
     variable, keychain = entry['variable'], entry['keychain']
     names = '%s or the keychain entry %s' % (variable, keychain)
     key, where = environ.get(variable, ''), variable
@@ -173,7 +158,6 @@ def _keychain(entry, env):
 
 
 def send(origin, method, path, body, key):
-    """One request, with no redirect followed, no proxy and TLS verified against the system defaults."""
     import http.client
     import ssl
     scheme, _, hostport = origin.partition('://')

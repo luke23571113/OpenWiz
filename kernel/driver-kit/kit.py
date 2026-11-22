@@ -148,8 +148,6 @@ FLEET = """query($owner: String!, $name: String!) { repository(owner: $owner, na
 
 
 class FakeHost:
-    """A loopback HTTP host that records each request whole and gives every one the same answer."""
-
     def __init__(self, status=200, headers=(), body=b'{}'):
         self.requests = []
         host = self
@@ -480,7 +478,6 @@ class Kit:
             ", and the %s key reached only its host, in the helper's header" % name for name in hosts)
 
     def key_hosts(self):
-        """The registered hosts the driver's README names, as whole words in any case (driver v1 N4)."""
         try:
             with open(os.path.join(os.path.dirname(os.path.abspath(self.args.driver)), 'README.md'), 'rb') as f:
                 text = f.read().decode('utf-8')
@@ -502,7 +499,6 @@ class Kit:
                 if re.search(r'(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])' % re.escape(n), text, re.I)]
 
     def driver_files(self):
-        """Every file of the driver's folder but its README.md, its evidence/ folder and test_* files."""
         top = os.path.dirname(os.path.abspath(self.args.driver))
         for folder, subs, names in os.walk(top):
             if folder == top:

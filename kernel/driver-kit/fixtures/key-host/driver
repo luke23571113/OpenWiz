@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""A fake key-host driver: the template, with each run's start, wake and stop also sent to its host through the kit's
-key helper. It sends only a host name, a method and a path; it never names, reads or passes the key."""
 import importlib.machinery, importlib.util, json, os, subprocess, sys
 sys.dont_write_bytecode = True
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..')
