@@ -544,9 +544,10 @@ class Boat(unittest.TestCase):
     def test_a_start_that_cannot_push_fails_fast_naming_the_fix(self):
         code, err = self.driver('start', REQUEST, FAKE_BOAT_PUSH='denied')
         self.assertEqual((code, err), (1, {
-            'error': "the sandbox cannot push to example/site: install boat.dev's GitHub App on this repository, "
-                     "with write access",
-            'next': "install boat.dev's GitHub App on example/site with write access, then start again"}))
+            'error': "the sandbox cannot push to example/site: the GitHub account connected in boat needs write "
+                     "access to it",
+            'next': "give the GitHub account connected in boat's dashboard write access to example/site, then start "
+                    "again"}))
         self.assertEqual((self.logged(), list(self.sandboxes().values())), ([], ['stopped']),
                          'a start that cannot push ran a turn or left its sandbox running')
         for detail in ('synthetic-app', '403', 'Permission', TOKEN, 'bx_fake'):
@@ -581,7 +582,7 @@ class Boat(unittest.TestCase):
                             '--tracker', self.tracker, '--wait', '8'],
                            env=dict(self.env, FAKE_BOAT_PUSH='denied'), capture_output=True, text=True, timeout=300)
         self.assertEqual((p.returncode, p.stdout.splitlines()[1]), (1, "fail start: the sandbox cannot push to "
-                         "example/site: install boat.dev's GitHub App on this repository, with write access"), p.stderr)
+                         "example/site: the GitHub account connected in boat needs write access to it"), p.stderr)
 
     def test_start_installs_the_pinned_skills_or_refuses(self):
         # catches: a sandbox without the pinned WizSkills skills, so its agent can't follow the skill or post

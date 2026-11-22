@@ -195,9 +195,10 @@ def has_write_access_or_refuse(sandbox, repository, run):
     except subprocess.TimeoutExpired:
         pushed = False
     if not pushed:
-        raise Refused("the sandbox cannot push to %s: install boat.dev's GitHub App on this repository, with write "
-                      "access" % repository,
-                      "install boat.dev's GitHub App on %s with write access, then start again" % repository)
+        raise Refused("the sandbox cannot push to %s: the GitHub account connected in boat needs write access to "
+                      "it" % repository,
+                      "give the GitHub account connected in boat's dashboard write access to %s, then start again"
+                      % repository)
 
 
 def path(run, name):
