@@ -8,7 +8,6 @@ from pathlib import Path
 
 CHECK = Path(__file__).resolve().parent / 'check.py'
 POINTER = 'https://github.com/jparker2006/ClosedWiz/issues/4101#issuecomment-4102'
-# The cleanup measurement, verbatim (#2268): the oracle the counter must match.
 REFERENCE = r"""git ls-files -z | xargs -0 grep -Ic '' 2>/dev/null | awk -F: '
 { p=$1; n=$2; c="product"
   if (p ~ /(^|\/)(tests?|fixtures?|__tests__|testdata)\// || p ~ /(_test|\.test|\.spec)\./ || p ~ /(^|\/)test_[^\/]*$/) c="tests+fixtures"
@@ -65,8 +64,6 @@ def lines(n, end='\n'):
 
 class Counter(unittest.TestCase):
     def test_matches_the_reference_pipeline(self):
-        # catches: a category tested out of order, a missed path pattern, or a
-        # last line without a newline, blank line or binary file counted wrong.
         repo = Repo(self)
         head = repo.commit({
             'line-budget.json': '{"ceiling": 250000}\n', 'crates/a/src/lib.rs': lines(5, ''),
@@ -92,7 +89,7 @@ class Counter(unittest.TestCase):
 
 class Ceiling(unittest.TestCase):
     def setUp(self):
-        self.repo = Repo(self)  # base: 1 + 10 = 11 lines, ceiling 20
+        self.repo = Repo(self)
         self.base = self.repo.commit({'line-budget.json': '{"ceiling": 20}\n', 'src/a.rs': lines(10)})
 
     def merge(self, extra, **files):
@@ -103,14 +100,12 @@ class Ceiling(unittest.TestCase):
         return self.repo.check('--base', self.base, '--merge', merge, description=description)
 
     def test_under_and_at_pass_over_fails_naming_the_numbers(self):
-        # catches: `>=` instead of `>`, or a failure that hides the total or the category.
         for extra, code in ((8, 0), (9, 0), (10, 1)):
             r = self.run_check(self.merge(extra))
             self.assertEqual(r.returncode, code, (extra, r.stdout, r.stderr))
         self.assertIn('21 lines is 1 over the ceiling of 20; grew: product +10', r.stdout + r.stderr)
 
     def test_lockfiles_binaries_and_symlinks_do_not_count(self):
-        # catches: a lockfile, NUL-bearing file or symlink target added to the ceiling total.
         merge = self.merge(9, **{'Cargo.lock': lines(500), 'blob.bin': b'\x00' + b'\n' * 500})
         (self.repo.root / 'link.rs').symlink_to('src/a.rs')
         merge = self.repo.commit()
@@ -119,7 +114,6 @@ class Ceiling(unittest.TestCase):
         self.assertRegex(r.stdout, r'(?m)^  lockfiles +0 +500 +\+500$')
 
     def test_exception_lines(self):
-        # catches: an exception read loosely, or a malformed one ignored.
         over, under = self.merge(10), self.merge(1)
         cases = [(over, f'Why.\r\nLine budget exception: {POINTER}\r\n', 0),
                  (over, f'Line budget exception: {POINTER.replace("issues", "pull")}', 0),
@@ -135,26 +129,22 @@ class Ceiling(unittest.TestCase):
             self.assertEqual(r.returncode, code, (description, r.stdout, r.stderr))
 
     def test_a_ceiling_change_needs_its_pointer(self):
-        # catches: an agent raising the ceiling in the same pull request without a record.
         merge = self.merge(1, **{'line-budget.json': '{"ceiling": 30}\n'})
         self.assertEqual(self.run_check(merge).returncode, 1)
         self.assertEqual(self.run_check(merge, f'Line budget ceiling: {POINTER}x').returncode, 1)
         self.assertEqual(self.run_check(merge, f'Line budget ceiling: {POINTER}').returncode, 0)
 
     def test_unreadable_input_exits_2(self):
-        # catches: a broken ceiling file or revision read as a pass.
         self.assertEqual(self.run_check('no-such-rev').returncode, 2)
         bad = self.merge(1, **{'line-budget.json': '{"ceiling": "many"}\n'})
         self.assertEqual(self.run_check(bad, f'Line budget ceiling: {POINTER}').returncode, 2)
 
     def test_total_always_passes(self):
-        # catches: a push to main failing, or printing no total.
         r = self.repo.check('--total', self.merge(10))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('total, lockfiles excluded: 21 of 20', r.stdout)
 
     def test_queue_ref_names_its_pull_request(self):
-        # catches: the merge queue reading the wrong pull request's description.
         sys.path.insert(0, str(CHECK.parent))
         from check import pr_number
         self.assertEqual(pr_number('refs/heads/gh-readonly-queue/main/pr-4101-' + 'a' * 40), 4101)
