@@ -51,9 +51,9 @@ STEPS = ('preflight', 'install', 'build_identity', 'setup', 'skills', 'first_fle
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 BUILD_TOOLS = ('cargo', 'rustc', 'rustup', 'npm', 'node', 'npx')
 ALLOWED = ('python3', 'git', 'sh', 'uname', 'ldd')
-NOT_ON_PATH = ('room-cli', 'cloudroom', 'codex', 'openwiz') + BUILD_TOOLS
-SECRET = re.compile(r'(GITHUB_TOKEN|GH_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|OPENWIZ_GITHUB_APP_.*|ACTIONS_.*TOKEN.*'
-                    r'|ROOM_.*|CLOUDROOM.*)')
+ABSENT = ('room-cli', 'cloudroom', 'codex', 'openwiz')
+SECRET = re.compile(r'(GITHUB_TOKEN|GH_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|OPENWIZ_GITHUB_APP_.*'
+                    r'|ACTIONS_.*TOKEN.*|ROOM_.*|CLOUDROOM.*)')
 HERE = Path(__file__).resolve().parent
 FAKES = HERE / 'fakes'
 WORLD = json.loads((FAKES / 'world.json').read_text(encoding='utf-8'))
@@ -114,7 +114,7 @@ class Stranger:
                     'SHELL': '/bin/sh', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8', 'TERM': 'dumb', 'TMPDIR': str(tmp),
                     'REHEARSAL_GH_WORLD': str(self.world), 'REHEARSAL_GH_LOG': str(self.gh_log),
                     'REHEARSAL_TOOL_LOG': str(self.tool_log)}
-        for tool in NOT_ON_PATH[:4]:
+        for tool in ABSENT:
             require(shutil.which(tool, path=self.env['PATH']) is None, '%s is on the stranger\'s PATH' % tool)
         self.transcript = []
 
