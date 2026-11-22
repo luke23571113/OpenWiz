@@ -154,11 +154,6 @@ fn execute_with_read_timeout(
         return Err(Failure::Source(SourceError::TimedOut { after_ms: 0 }));
     }
     let resolved = crate::locate::programs(program).map_err(Failure::Source)?;
-    if Instant::now() >= stop_at {
-        return Err(Failure::Source(SourceError::TimedOut {
-            after_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-        }));
-    }
     let mut child = launch(&resolved, invocation, started, stop_at)?;
     let stdout = collect(child.stdout.take(), MAX_STDOUT_BYTES);
     let stderr = collect(child.stderr.take(), MAX_STDERR_BYTES);
@@ -233,6 +228,11 @@ fn launch(
 ) -> Result<Child, Failure> {
     let mut spawned = None;
     for program in resolved {
+        if Instant::now() >= stop_at {
+            return Err(Failure::Source(SourceError::TimedOut {
+                after_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            }));
+        }
         match scrub(&mut Command::new(program))
             .args(invocation.argv())
             .stdin(Stdio::null())
