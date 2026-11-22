@@ -155,7 +155,9 @@ class Receipt(unittest.TestCase):
         self.refused(record('5-of-5.json'), 'boat-dev', listing='boat-dev')
 
     def test_mapped_hosts_name_their_listing(self):
-        for host, listing in (('boat.dev', 'boat-dev'), ('Cloudroom', 'cloudroom')):
+        for host, listing in (('boat.dev', 'boat-dev'), ('Cloudroom', 'cloudroom'), ('Hermes', 'hermes'),
+                              ('Pane', 'pane'), ('Factory', 'factory'), ('Conductor', 'conductor'),
+                              ('Cursor cloud agents', 'cursor-cloud-agents')):
             p = self.run_receipt(record('5-of-5.json', host=host), listing=listing)
             self.assertEqual(p.returncode, 0, p.stderr)
             text = self.written(os.path.join('receipts', listing, '2026-11-01-aaaaaaaaaaaa.txt')).decode()
